@@ -1,0 +1,10 @@
+services:
+  fsrsnext:
+    image: oven/bun
+    command: bun dev --turbo
+    environment:
+      - PORT=80
+      - HOSTNAME=0.0.0.0
+    volumes:
+      - ./:/home/bun/app
+    restart: always

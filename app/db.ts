@@ -1,0 +1,10 @@
+import KeyvMongo from "@keyv/mongo";
+import Keyv from "keyv";
+import { MongoClient } from "mongodb";
+import DIE from "phpdie";
+const g = global as typeof global & { mongodbClient: MongoClient };
+const MONGODB_URI = process.env.MONGODB_URI ?? DIE("missing MONGODB_URI");
+export const mongoClient = (g.mongodbClient ??= new MongoClient(MONGODB_URI));
+export const db = mongoClient.db();
+const store = new KeyvMongo(MONGODB_URI, { collection: "kv" });
+export const kv = new Keyv({ store });
