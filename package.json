@@ -10,13 +10,17 @@
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.7.0",
+    "@clerk/nextjs": "^5.7.5",
     "@keyv/mongo": "^3.0.1",
     "@types/md5": "^2.3.5",
     "@types/sha256": "^0.2.2",
     "enhanced-ms": "^3.0.0",
     "keyv": "^5.1.0",
     "md5": "^2.3.0",
+    "mongo-http": "^0.0.20",
+    "mongo-rest-client": "^1.1.2",
     "mongodb": "^6.9.0",
+    "mongodb-rest-relay": "^1.11.0",
     "next": "14.2.15",
     "next-auth": "^5.0.0-beta.22",
     "nodemailer": "^6.9.15",
@@ -37,5 +41,6 @@
     "tailwindcss": "^3.4.1",
     "eslint": "^8",
     "eslint-config-next": "14.2.15"
-  }
+  },
+  "browser": { "crypto": false }
 }

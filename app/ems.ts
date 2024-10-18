@@ -1,2 +1,2 @@
-import ems from 'enhanced-ms'
-export default ems
+export { default as ems } from 'enhanced-ms';
+

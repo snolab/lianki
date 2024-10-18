@@ -1,7 +1,8 @@
-import { ObjectId } from "mongodb";
+import { ObjectId } from "mongodb-rest-relay";
 import DIE from "phpdie";
 import { values } from "rambda";
 // import { renderToString } from "react-dom/server";
+// import { ObjectId } from "mongodb";
 import { sf, TextEncoderStream } from "sflow";
 import {
   createEmptyCard,
@@ -11,14 +12,15 @@ import {
   type Card,
   type Grade,
 } from "ts-fsrs";
-import { db } from "./db";
-import ems from "./ems";
+import { ems } from "./ems";
+import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
 export type FSRSNote = {
   url: string;
   title?: string;
   card: Card;
 };
 
+// export const runtime = "edge";
 // if (import.meta.main) {
 //   // // 2024-08-19 easy https://www.youtube.com/watch?v=iWbKrq-oEJo&list=TLPQMTkwODIwMjSoskG2PYr69Q&index=18
 //   // const url =
@@ -34,12 +36,10 @@ export type FSRSNote = {
 
 // "FSRSNotes","FSRSNotes@670cb38bd6d5a0afbbf199ba"
 
-export const fsrsHandler = async (req: Request, userId?: string) => {
+export const fsrsHandler = async (req: Request, email?: string) => {
   // console.log({ userId });
   // await db.collection("FSRSNotes").rename("FSRSNotes@670cb38bd6d5a0afbbf199ba");
-  const FSRSNotes = db.collection<FSRSNote>(
-    "FSRSNotes" + (userId?.replace(/^/, "@") ?? "")
-  );
+  const FSRSNotes = getFSRSNotesCollection(email);
 
   type RegexRoutes = Record<
     string,
@@ -57,7 +57,6 @@ export const fsrsHandler = async (req: Request, userId?: string) => {
           sf(`
 <a href='/next'>next</a>
 <a href='/all'>all</a>
-<pre>
 `),
           notesPreviewFlow(),
         ]).confluenceByConcat()
@@ -189,15 +188,17 @@ export const fsrsHandler = async (req: Request, userId?: string) => {
 
   function notesPreviewFlow(): sf<string> {
     return sf(
+      sf(`<pre>\n`),
+
       sf("Total cards:"),
       sf(FSRSNotes.countDocuments({})).map(String),
-      sf("<br/>"),
+      sf("\n"),
 
       sf("Due cards:"),
       sf(FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })).map(
         String
       ),
-      sf("<br/>"),
+      sf("\n"),
 
       sf(FSRSNotes.find({}, { sort: { "card.due": 1 } }))
         .map(
@@ -206,15 +207,11 @@ export const fsrsHandler = async (req: Request, userId?: string) => {
               (note.title?.replace(/$/, " - ") ?? "") + note.url
             }`
         )
-        .join("<br/>\n")
-    );
-  }
+        .join("\n"),
+      sf("\n"),
 
-  function dueMs(due: Date) {
-    return ems(+due - +new Date(), {
-      shortFormat: true,
-      roundUp: true,
-    });
+      sf(`</pre>\n`)
+    );
   }
 
   function HTMLR(html: BodyInit): Response | PromiseLike<Response> {
@@ -249,7 +246,9 @@ export const fsrsHandler = async (req: Request, userId?: string) => {
   ) {
     const params = getParams(req, options);
     if (params.id) {
-      const _id = new ObjectId(params.id);
+      const id = params.id;
+      const _id = new ObjectId(id);
+      // const _id = { $objectId: id };
       return await FSRSNotes.findOne({ _id });
     }
     const { url, title } = getQuery(req, options);
@@ -261,9 +260,17 @@ export const fsrsHandler = async (req: Request, userId?: string) => {
   ) {
     const params = getParams(req, options);
     const url = params["url"];
-    const _id = params["id"];
+    const id = params["id"];
     return await FSRSNotes.findOne(
-      _id ? { _id: new ObjectId(_id) } : url ? { url } : DIE("no query")
+      id
+        ? (function () {
+            // const _id = { $objectId: id };
+            const _id = new ObjectId(id);
+            return { _id };
+          })()
+        : url
+        ? { url }
+        : DIE("no query")
     );
   }
   function getParams(
@@ -316,8 +323,10 @@ export const fsrsHandler = async (req: Request, userId?: string) => {
   }
   return new Response("404", { status: 404 });
 };
-// const server = Bun.serve({
-//   port: process.env.PORT ?? 12675,
-//   fetch: handler,
-// });
-// console.log("listening on http://localhost:" + server.port);
+
+function dueMs(due: Date) {
+  return ems(+due - +new Date(), {
+    shortFormat: true,
+    roundUp: true,
+  });
+}

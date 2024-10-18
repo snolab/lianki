@@ -1,10 +1,12 @@
 services:
   fsrsnext:
-    image: oven/bun
-    command: bun dev --turbo
+    # image: oven/bun # not compatiable with nextjs Edge VM
+    image: node
+    command: npx -y bun dev --turbo
     environment:
       - PORT=80
       - HOSTNAME=0.0.0.0
+    working_dir: /home/bun/app
     volumes:
       - ./:/home/bun/app
     restart: always
