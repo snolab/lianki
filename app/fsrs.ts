@@ -6,7 +6,7 @@ import DIE from "phpdie";
 import { values } from "rambda";
 // import { renderToString } from "react-dom/server";
 // import { ObjectId } from "mongodb";
-import type { WithId, WithId } from "mongodb";
+import type { WithId } from "mongodb";
 import { sf, TextEncoderStream } from "sflow";
 import {
   createEmptyCard,
