@@ -1,5 +1,7 @@
 // import { bsonId } from 'bsonid';
-import { ObjectId } from "bson";
+var ObjectId = require("bson-objectid");
+
+// import { ObjectId } from "bson";
 import DIE from "phpdie";
 import { values } from "rambda";
 // import { renderToString } from "react-dom/server";

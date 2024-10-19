@@ -5,7 +5,6 @@ import { getFSRSNotesCollection } from "./getFSRSNotesCollection"
 import { signInEmail } from "./signInEmail"
 
 /**
- * 
  * @author: snomiao <snomiao@gmail.com>
  */
 export default async function HomePage() {
