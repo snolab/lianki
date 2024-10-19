@@ -1,5 +1,5 @@
 // import { bsonId } from 'bsonid';
-var ObjectId = require("bson-objectid");
+// var ObjectId = require("bson-objectid");
 
 // import { ObjectId } from "bson";
 import DIE from "phpdie";
@@ -254,10 +254,13 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     const params = getParams(req, options);
     if (params.id) {
       const id = params.id;
-      const _id = new ObjectId(id);
+      // const _id = new ObjectId(id);
       // const _id = bsonId(  id );
       // const _id = { $objectId: id };
-      return await FSRSNotes.findOne({ _id });
+      return await FSRSNotes.aggregate([
+        { $set: { _id: { $toString: "$_id" } } },
+        { $match: { _id: id } },
+      ]).next();
     }
     const { url, title } = getQuery(req, options);
     return saveNote({ url, title: title ?? undefined });
@@ -269,18 +272,21 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     const params = getParams(req, options);
     const url = params["url"];
     const id = params["id"];
-    return await FSRSNotes.findOne(
-      id
-        ? (function () {
-            // const _id = { $objectId: id };
-            const _id = new ObjectId(id);
-            // const _id = bsonId(  id );
-            return { _id };
-          })()
-        : url
-        ? { url }
-        : DIE("no query")
-    );
+    return await FSRSNotes.aggregate([
+      { $set: { _id: { $toString: "$_id" } } },
+      {
+        $match: id
+          ? (function () {
+              // const _id = { $objectId: id };
+              // const _id = new ObjectId(id);
+              // const _id = bsonId(  id );
+              return { _id: id };
+            })()
+          : url
+          ? { url }
+          : DIE("no query"),
+      },
+    ]).next();
   }
   function getParams(
     req: Request,
