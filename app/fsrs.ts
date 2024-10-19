@@ -6,6 +6,7 @@ import DIE from "phpdie";
 import { values } from "rambda";
 // import { renderToString } from "react-dom/server";
 // import { ObjectId } from "mongodb";
+import type { WithId, WithId } from "mongodb";
 import { sf, TextEncoderStream } from "sflow";
 import {
   createEmptyCard,
@@ -272,7 +273,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     const params = getParams(req, options);
     const url = params["url"];
     const id = params["id"];
-    return await FSRSNotes.aggregate([
+    return (await FSRSNotes.aggregate([
       { $set: { _id: { $toString: "$_id" } } },
       {
         $match: id
@@ -286,7 +287,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           ? { url }
           : DIE("no query"),
       },
-    ]).next();
+    ]).next()) as WithId<FSRSNote>;
   }
   function getParams(
     req: Request,
