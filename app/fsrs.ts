@@ -1,4 +1,4 @@
-import { ObjectId } from "mongodb-rest-relay";
+import { ObjectId } from "mongodb";
 import DIE from "phpdie";
 import { values } from "rambda";
 // import { renderToString } from "react-dom/server";
@@ -19,6 +19,7 @@ export type FSRSNote = {
   title?: string;
   card: Card;
 };
+
 
 // export const runtime = "edge";
 // if (import.meta.main) {
@@ -112,7 +113,6 @@ export const fsrsHandler = async (req: Request, email?: string) => {
             .map(
               (logitem, i) =>
                 `<a href="/review/${i + 1}/?${new URLSearchParams({
-                  // url: note.url,
                   id: note._id.toString(),
                 }).toString()}" rel="noopener noreferrer" accessKey='${
                   i + 1
@@ -127,10 +127,15 @@ export const fsrsHandler = async (req: Request, email?: string) => {
               (note.title?.replace(/$/, " - ") ?? "") + note.url
             }</a>`
           ),
+          // sf(
+          //   `<a href="/delete-confirm/?url=${encodeURIComponent(
+          //     note.url
+          //   )}">DELETE NOTE</a>`
+          // ),
           sf(
-            `<a href="/delete-confirm/?url=${encodeURIComponent(
-              note.url
-            )}">DELETE NOTE</a>`
+            `<a href="/delete/?${new URLSearchParams({
+              id: note._id.toString(),
+            }).toString()}"> DELETE </a>`
           ),
         ]).confluenceByConcat()
       );
