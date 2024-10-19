@@ -7,7 +7,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   //   jwt: async ({ token, user }) => {
   //     if (user) {
   //       token.id = user.id;
-  //     }
+  //     }f
   //     return token;
   //   },
   // },

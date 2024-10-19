@@ -1,4 +1,5 @@
-import { ObjectId } from "mongodb";
+// import { bsonId } from 'bsonid';
+import { ObjectId } from "bson";
 import DIE from "phpdie";
 import { values } from "rambda";
 // import { renderToString } from "react-dom/server";
@@ -19,7 +20,6 @@ export type FSRSNote = {
   title?: string;
   card: Card;
 };
-
 
 // export const runtime = "edge";
 // if (import.meta.main) {
@@ -253,6 +253,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     if (params.id) {
       const id = params.id;
       const _id = new ObjectId(id);
+      // const _id = bsonId(  id );
       // const _id = { $objectId: id };
       return await FSRSNotes.findOne({ _id });
     }
@@ -271,6 +272,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         ? (function () {
             // const _id = { $objectId: id };
             const _id = new ObjectId(id);
+            // const _id = bsonId(  id );
             return { _id };
           })()
         : url
