@@ -1,4 +1,4 @@
-import { db } from "../db-edge";
+import { db } from "../db";
 // export const runtime = "edge";
 
 export const GET = async () => {
