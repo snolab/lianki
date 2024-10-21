@@ -3,6 +3,7 @@ import type { NextAuthConfig } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
+import Nodemailer from "next-auth/providers/nodemailer";
 import sha256 from "sha256";
 import { db } from "./app/db";
 // import { db, mongoClient } from "./app/db-edge";
@@ -18,15 +19,15 @@ const users = db.collection<{
 
 export const authConfig = {
   providers: [
-    // ...(process.env.EMAIL_SERVER
-    //   ? [
-    //       Nodemailer({
-    //         name: "Email",
-    //         server: process.env.EMAIL_SERVER,
-    //         from: process.env.EMAIL_FROM,
-    //       }),
-    //     ]
-    //   : []),
+    ...(process.env.EMAIL_SERVER
+      ? [
+          Nodemailer({
+            name: "Email",
+            server: process.env.EMAIL_SERVER,
+            from: process.env.EMAIL_FROM,
+          }),
+        ]
+      : []),
     ...(process.env.AUTH_GITHUB_SECRET ? [GitHub] : []),
     ...(process.env.AUTH_GOOGLE_SECRET ? [Google] : []),
     CredentialsProvider({
