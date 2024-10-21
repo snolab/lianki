@@ -1,4 +1,4 @@
-import { db } from "./db-edge";
+import { db } from "./db";
 import { FSRSNote } from "./fsrs";
 
 export function getFSRSNotesCollection(email: string | undefined) {
