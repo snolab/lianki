@@ -4,6 +4,7 @@ import { ems } from "./ems"
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection"
 import { signInEmail } from "./signInEmail"
 
+export const dynamic = 'force-dynamic'
 /**
  * @author: snomiao <snomiao@gmail.com>
  */
