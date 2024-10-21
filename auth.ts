@@ -1,8 +1,9 @@
+import { MongoDBAdapter } from "@auth/mongodb-adapter";
 import NextAuth from "next-auth";
+import { mongoClient } from "./app/db";
 import { authConfig } from "./auth.config";
-
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  // adapter: MongoDBAdapter(mongoClient),
+  adapter: MongoDBAdapter(mongoClient),
   // callbacks: {
   //   jwt: async ({ token, user }) => {
   //     if (user) {
