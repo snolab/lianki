@@ -2,14 +2,14 @@ import { Suspense } from "react"
 import { sf } from "sflow"
 import { ems } from "./ems"
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection"
-import { signInEmail } from "./signInEmail"
+import { authEmail } from "./signInEmail"
 
 export const dynamic = 'force-dynamic'
 /**
  * @author: snomiao <snomiao@gmail.com>
  */
 export default async function HomePage() {
-    const email = await signInEmail()
+    const email = await authEmail()
     const FSRSNotes = getFSRSNotesCollection(email)
     return <div>
         <nav>

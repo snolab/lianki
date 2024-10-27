@@ -189,7 +189,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     },
     "GET /delete(?:/|$|\\?)": async (req, opt) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("fail to find note");
-      await FSRSNotes.deleteOne({ _id: note._id });
+      console.log(await FSRSNotes.deleteOne({ url: note.url }));
       return HTMLR(`<script>location.href='/'</script>`);
     },
   };
