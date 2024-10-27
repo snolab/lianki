@@ -2,7 +2,12 @@ import type { MongoClient } from "mongodb";
 import RelayMongoClient from "mongodb-rest-relay";
 import DIE from "phpdie";
 const g = global as typeof global & { mongodbClient: MongoClient };
-const uri = process.env.MONGODB_RELAY_URI ?? DIE("ENV");
+const endpoint = "/api/mongodb-relay";
+const uri =
+  process.env.VERCEL_URL?.replace(/.*/, (s) => `https://${s}${endpoint}`) ??
+  process.env.MONGODB_RELAY_ORIGIN?.replace(/.*/, (s) => s + endpoint) ??
+  DIE("Missing MONGODB_RELAY_URI");
+
 export const mongoClient = (g.mongodbClient ??= new RelayMongoClient(
   uri
 ) as unknown as MongoClient);

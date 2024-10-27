@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:push": "bunx --bun drizzle-kit push"
+    "db:push": "bunx --bun drizzle-kit push",
+    "prepare": "husky"
   },
   "exports": {
     "import": "./index.ts"
