@@ -6,9 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:push": "bunx --bun drizzle-kit push"
+  },
+  "exports": {
+    "import": "./index.ts"
   },
   "dependencies": {
+    "@auth/drizzle-adapter": "^1.7.2",
     "@auth/mongodb-adapter": "^3.7.0",
     "@clerk/nextjs": "^5.7.5",
     "@keyv/mongo": "^3.0.1",
@@ -31,6 +36,7 @@
     "next-auth": "^5.0.0-beta.22",
     "nodemailer": "^6.9.15",
     "phpdie": "^1.2.14",
+    "postgres": "^3.4.4",
     "rambda": "^9.3.0",
     "react": "^18",
     "react-dom": "^18",
@@ -49,6 +55,5 @@
     "tailwindcss": "^3.4.1",
     "tsx": "^4.19.1",
     "typescript": "^5"
-  },
-  "browser": { "crypto": false }
+  }
 }
