@@ -3,7 +3,7 @@ import type { NextAuthConfig } from "next-auth";
 
 import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
-// import Nodemailer from "next-auth/providers/nodemailer";
+import Nodemailer from "next-auth/providers/nodemailer";
 // import { db } from "./app/db";
 // import { db, mongoClient } from "./app/db-edge";
 // const Users = db.collection<{
@@ -19,15 +19,15 @@ import Google from "next-auth/providers/google";
 export const authConfig = {
   providers: [
     // otl should be used for sign up
-    // ...(process.env.EMAIL_SERVER
-    //   ? [
-    //       Nodemailer({
-    //         name: "Email",
-    //         server: process.env.EMAIL_SERVER,
-    //         from: process.env.EMAIL_FROM,
-    //       }),
-    //     ]
-    //   : []),
+    ...(process.env.EMAIL_SERVER
+      ? [
+          Nodemailer({
+            name: "Email",
+            server: process.env.EMAIL_SERVER,
+            from: process.env.EMAIL_FROM,
+          }),
+        ]
+      : []),
     ...(process.env.AUTH_GITHUB_SECRET ? [GitHub] : []),
     ...(process.env.AUTH_GOOGLE_SECRET ? [Google] : []),
 
