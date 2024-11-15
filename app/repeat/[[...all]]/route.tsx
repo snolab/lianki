@@ -2,6 +2,7 @@ import { auth, signIn } from "@/auth"
 import DIE from "phpdie"
 import { fsrsHandler } from "../../fsrs"
 export const dynamic = 'force-dynamic'
+
 // export const runtime = 'edge'
 export const GET = async (req: Request) => {
     const session = (await auth()) ?? await signIn()

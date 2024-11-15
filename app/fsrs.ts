@@ -86,6 +86,10 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       new Response(
         sf(
           FSRSNotes.find(
+            { "card.due": { $lte: new Date() }, url: /brainstorm/ },
+            { sort: { "card.due": 1 } }
+          ),
+          FSRSNotes.find(
             { "card.due": { $lte: new Date() } },
             { sort: { "card.due": 1 } }
           )
@@ -135,11 +139,23 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           //     note.url
           //   )}">DELETE NOTE</a>`
           // ),
+          sf("<br/>"),
           sf(
             `<a href="/delete/?${new URLSearchParams({
               id: note._id.toString(),
             }).toString()}"> DELETE </a>`
           ),
+
+          sf("<br/>"),
+          sf("Due cards:"),
+          sf(
+            FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })
+          ).map(String),
+          sf("<br/>"),
+          sf("Total cards:"),
+          sf(FSRSNotes.countDocuments({})).map(String),
+          sf("<br/>"),
+          sf("<br/>"),
         ]).confluenceByConcat()
       );
     },
