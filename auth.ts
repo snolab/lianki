@@ -12,13 +12,13 @@ declare module "next-auth" {
 export const { handlers, signIn, signOut, auth } = NextAuth({
   // adapter: MongoDBAdapter(mongoClient),
   adapter: DrizzleAdapter(db),
-  pages: {
-    // signIn: '/auth/signin',
-    // signOut: '/auth/signout',
-    // error: '/auth/error',
-    // verifyRequest: '/auth/verify-request',
-    // newUser: '/auth/new-user'
-  },
+  // pages: {
+  //   // signIn: '/auth/signin',
+  //   // signOut: '/auth/signout',
+  //   // error: '/auth/error',
+  //   // verifyRequest: '/auth/verify-request',
+  //   // newUser: '/auth/new-user'
+  // },
   // callbacks: {
   //   jwt: async ({ token, user }) => {
   //     if (user) {
