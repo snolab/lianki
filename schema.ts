@@ -103,3 +103,18 @@ export const authenticators = pgTable(
 //   age: integer().notNull(),
 //   email: varchar({ length: 255 }).notNull().unique(),
 // });
+
+/* 
+problem:
+
+785 | 
+786 |   function ErrorResponse(x) {
+787 |     query && (query.cursorFn || query.describeFirst) && write(Sync)
+788 |     const error = Errors.postgres(parseError(x))
+                               ^
+PostgresError: constraint "authenticator_userid_credentialid_pk" of relation "authenticator" does not exist
+ code: "42704"
+
+
+*/
+
