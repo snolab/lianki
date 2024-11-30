@@ -1,17 +1,17 @@
-import { DrizzleAdapter } from "@auth/drizzle-adapter";
+// import { DrizzleAdapter } from "@auth/drizzle-adapter";
 // import { MongoDBAdapter } from "@auth/mongodb-adapter";
+import { MongoDBAdapter } from "@auth/mongodb-adapter";
 import NextAuth from "next-auth";
-// import { mongoClient } from "./app/db";
+import { mongoClient } from "./app/db";
 import { authConfig } from "./auth.config";
-import { db } from "./schema";
 declare module "next-auth" {
   interface User {
     password?: string;
   }
 }
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  // adapter: MongoDBAdapter(mongoClient),
-  adapter: DrizzleAdapter(db),
+  adapter: MongoDBAdapter(mongoClient),
+  // adapter: DrizzleAdapter(db),
   // pages: {
   //   // signIn: '/auth/signin',
   //   // signOut: '/auth/signout',

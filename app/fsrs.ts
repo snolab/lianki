@@ -4,6 +4,7 @@
 // import { ObjectId } from "bson";
 import DIE from "phpdie";
 import { values } from "rambda";
+import { z } from "zod";
 // import { renderToString } from "react-dom/server";
 // import { ObjectId } from "mongodb";
 import type { WithId } from "mongodb";
@@ -82,6 +83,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       ),
     "GET /add(?:/|$|\\?)": async (req, options) =>
       JSONR(saveQueryNote(req, options)),
+    "POST /api/fsrs/add/?$": async (req) => JSONR(saveQueryNoteByJSONData(req)),
     "GET /next": async () =>
       new Response(
         sf(
@@ -264,6 +266,20 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     return new Response(JSON.stringify(await data), {
       headers: { "content-type": "application/json" },
     });
+  }
+  async function saveQueryNoteByJSONData(req: Request) {
+
+    const zAddNote = z.object({
+      url: z.string(),
+      title: z.string().optional().nullable(),
+    });
+    const input = await req.json();
+    // const zUpdateNote = z.object({ id: z.string() });
+    console.log({input})
+    const { url, title } = zAddNote.parse(input);
+    const resp = await saveNote({ url, title: title ?? undefined });
+    console.log({resp})
+    return resp;
   }
   async function saveQueryNote(
     req: Request,

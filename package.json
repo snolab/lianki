@@ -43,7 +43,8 @@
     "react-dom": "^18",
     "sflow": "^1.16.23",
     "sha256": "^0.2.0",
-    "ts-fsrs": "^4.4.1"
+    "ts-fsrs": "^4.4.1",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20",
