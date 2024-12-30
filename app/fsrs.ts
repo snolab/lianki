@@ -145,7 +145,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           sf(
             `<a href="/delete/?${new URLSearchParams({
               id: note._id.toString(),
-            }).toString()}"> DELETE </a>`
+            }).toString()}" accessKey='5'> DELETE </a>`
           ),
 
           sf("<br/>"),

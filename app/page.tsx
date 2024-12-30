@@ -13,10 +13,8 @@ export default async function HomePage() {
   return (
     <div>
       <nav></nav>
-      <></>
-
       <div>
-        <a href="/next" className="btn">
+        <a href="/next" className="btn" accessKey="1">
           next card
         </a>
       </div>
