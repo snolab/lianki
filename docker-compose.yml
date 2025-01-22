@@ -6,7 +6,8 @@ services:
     environment:
       - PORT=80
       - HOSTNAME=0.0.0.0
-    working_dir: /home/bun/app
+    working_dir: /app
     volumes:
-      - ./:/home/bun/app
+      - ./:/app
+      - ./.next-srv:/app/.next
     restart: always

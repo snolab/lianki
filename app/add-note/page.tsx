@@ -8,7 +8,7 @@ import { FSRSNote } from "../fsrs";
  */
 export default function UrlAddingPage() {
   // read url from url's hash, once
-  const sp = new URLSearchParams(globalThis?.location.hash.slice(1) ?? "");
+  const sp = new URLSearchParams(globalThis.location?.hash?.slice(1) ?? "");
   const url = sp.get("url");
   const title = sp.get("title");
   const [resp, setResp] = useState<FSRSNote & { _id: string }>();
@@ -29,7 +29,7 @@ export default function UrlAddingPage() {
       const q = new URLSearchParams({
         id: note._id.toString(),
       }).toString();
-      if (globalThis?.location) {
+      if (globalThis?.location?.href) {
         window.location.href = `/repeat/?${q}`;
       }
     })();
