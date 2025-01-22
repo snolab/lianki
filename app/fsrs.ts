@@ -268,17 +268,16 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     });
   }
   async function saveQueryNoteByJSONData(req: Request) {
-
     const zAddNote = z.object({
       url: z.string(),
       title: z.string().optional().nullable(),
     });
     const input = await req.json();
     // const zUpdateNote = z.object({ id: z.string() });
-    console.log({input})
+    console.log({ input });
     const { url, title } = zAddNote.parse(input);
     const resp = await saveNote({ url, title: title ?? undefined });
-    console.log({resp})
+    console.log({ resp });
     return resp;
   }
   async function saveQueryNote(
@@ -365,9 +364,13 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     const m = path.match(pattern);
     if (m)
       return fn(req, { params: m.groups ?? {} }).catch((error) => {
-        return new Response("Error: " + String(error.message ?? error), {
-          status: 500,
-        });
+        return new Response(
+          `Error: ${String(error.message ?? error)}; <a href='/'>Home</a>`,
+          {
+            status: 500,
+            headers: { "Content-Type": "text/html" },
+          }
+        );
       });
   }
   return new Response("404", { status: 404 });
