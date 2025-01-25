@@ -88,7 +88,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       new Response(
         sf(
           FSRSNotes.find(
-            { "card.due": { $lte: new Date() }, url: /brainstorm/ },
+            { "card.due": { $lte: new Date() }, url: /brainstorm|JLPT|japanese|n2|n1|n3/i },
             { sort: { "card.due": 1 } }
           ),
           FSRSNotes.find(

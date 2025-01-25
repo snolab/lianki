@@ -28,34 +28,44 @@ export default async function HomePage() {
         </Suspense>
       </p>
       <ul>
-        <Cards />
+        <Suspense>
+          <Cards />
+        </Suspense>
       </ul>
     </div>
   );
-  function Cards({ page = 0, size = 1 }) {
+  async function Cards({ page = 0, size = 100 }) {
+    const email = await authEmail();
+    const FSRSNotes = getFSRSNotesCollection(email);
     return (
       <>
         <Suspense>
           {(async function () {
+            // "use server";
             return sf(
               FSRSNotes.find({}, { sort: { "card.due": 1 } })
                 .skip(page * size)
                 .limit(size)
             )
-              .map(
-                (note) =>
-                  `${dueMs(note.card.due)} ${
-                    (note.title?.replace(/$/, " - ") ?? "") + note.url
-                  }`
-              )
-              .map((e) => <li key={e}>{e}</li>)
+              .map((note) => {
+                const due = dueMs(note.card.due);
+                const title = note.title;
+                const url = note.url;
+                return (
+                  <li key={note._id.toString()}>
+                    {due} <a href={url}>{title || url}</a>
+                  </li>
+                );
+              })
               .toArray();
           })().then((list) => {
             if (!list.length) return <></>;
             return (
               <>
                 {list}
-                <Cards page={page + 1} />
+                <Suspense>
+                  <Cards page={page + 1} />
+                </Suspense>
               </>
             );
           })}
