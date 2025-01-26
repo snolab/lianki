@@ -9,10 +9,13 @@
 // @run-at      document-start
 // ==/UserScript==
 
-const unload = async () => {
+const effect = () => {
   let opened = false;
+  const origin = "https://fsrsnext.snomiao.com";
+
   const openFsrs = (_url, target = "_blank") => {
     if (_url.startsWith("https://fsrsnext.snomiao.com")) return; // prevent open self
+    if (_url.startsWith("https://fsrsnext.snomiao.dev")) return; // prevent open self
     const url = _url
       // for youtube
       // delete list and index &list=TLPQMjAwODIwMjQT4k3MtI2vbA&index=4
@@ -28,23 +31,25 @@ const unload = async () => {
     }
     const title = parent.document.title || document.title;
     const repeatUrl =
-      "https://fsrsnext.snomiao.com/repeat/?" +
-      new URLSearchParams({ url, title }).toString();
+      origin + "/repeat/?" + new URLSearchParams({ url, title }).toString();
+    const addingUrl =
+      origin + "/add-note#?" + new URLSearchParams({ url, title }).toString();
+    const targetUrl = repeatUrl.length < 512 ? repeatUrl : addingUrl;
     if (target === "_blank")
-      return parent.window.open(repeatUrl, target, "noopener,noreferrer");
+      return parent.window.open(targetUrl, target, "noopener,noreferrer");
     if (target === "_self")
-      return parent.window.open(repeatUrl, target, "noopener,noreferrer");
+      return parent.window.open(targetUrl, target, "noopener,noreferrer");
     throw new Error("Error: no target");
   };
   // brainstorm
-  const goTTS = () => {
-    const selected = window?.getSelection()?.toString().trim() || "";
-    const q = selected.replace(/\n\n+/g, "\n");
-    const ttsURL =
-      "https://brainstorm.snomiao.dev/tts?" +
-      new URLSearchParams({ q: selected }).toString();
-    window.open(ttsURL);
-  };
+  // const goTTS = () => {
+  //   const selected = window?.getSelection()?.toString().trim() || "";
+  //   const q = selected.replace(/\n\n+/g, "\n");
+  //   const ttsURL =
+  //     "https://brainstorm.snomiao.dev/faq?" +
+  //     new URLSearchParams({ a: selected }).toString();
+  //   window.open(ttsURL);
+  // };
 
   const eventListenerEffect = (target, ...args) => {
     target.addEventListener(...args);
@@ -63,12 +68,12 @@ const unload = async () => {
         openFsrs(parent?.location?.href || location.href, "_self"),
           e.stopPropagation(),
           e.preventDefault();
-      if (e.code === "KeyT" && e.altKey && !e.shiftKey && !e.ctrlKey)
-        goTTS(), e.stopPropagation(), e.preventDefault();
+      // if (e.code === "KeyT" && e.altKey && !e.shiftKey && !e.ctrlKey)
+      //   goTTS(), e.stopPropagation(), e.preventDefault();
     },
     { capture: true }
   );
 };
 
 globalThis.unload_FSRSEverywhere?.();
-globalThis.unload_FSRSEverywhere = unload();
+globalThis.unload_FSRSEverywhere = effect();
