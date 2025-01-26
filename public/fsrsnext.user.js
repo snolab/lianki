@@ -60,14 +60,16 @@ const effect = () => {
     window,
     "keydown",
     (e) => {
-      if (e.code === "KeyV" && e.altKey && !e.shiftKey && !e.ctrlKey)
-        openFsrs(parent?.location?.href || location.href, "_blank"),
-          e.stopPropagation(),
-          e.preventDefault();
-      if (e.code === "KeyF" && e.altKey && !e.shiftKey && !e.ctrlKey)
-        openFsrs(parent?.location?.href || location.href, "_self"),
-          e.stopPropagation(),
-          e.preventDefault();
+      if (e.code === "KeyV" && e.altKey && !e.shiftKey && !e.ctrlKey) {
+        openFsrs(parent?.location?.href || location.href, "_blank");
+        e.stopPropagation();
+        e.preventDefault();
+      }
+      if (e.code === "KeyF" && e.altKey && !e.shiftKey && !e.ctrlKey) {
+        openFsrs(parent?.location?.href || location.href, "_self");
+        e.stopPropagation();
+        e.preventDefault();
+      }
       // if (e.code === "KeyT" && e.altKey && !e.shiftKey && !e.ctrlKey)
       //   goTTS(), e.stopPropagation(), e.preventDefault();
     },
