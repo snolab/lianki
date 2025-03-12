@@ -12,10 +12,13 @@ export default async function HomePage() {
   const FSRSNotes = getFSRSNotesCollection(email);
   return (
     <div>
-      <nav></nav>
+      <nav><ul>
+        <li>
+          <a href='./fsrsnext.user.js'>Install user script</a>
+        </li></ul></nav>
       <div>
         <a href="/next" className="btn" accessKey="1">
-          next card
+          Next card
         </a>
       </div>
       <p>
