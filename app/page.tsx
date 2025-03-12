@@ -19,9 +19,15 @@ export default async function HomePage() {
           <a href='./fsrsnext.user.js'>Install user script</a>
         </li>
         <li>
-          {user.image && <Image className='w-4 h-4' alt='avater' src={user.image} />}
-          <a>{email}</a>
-          <a href='/api/auth/signout'>Logout</a>
+          <summary>
+            {user.image && <Image className='w-4 h-4' alt='avater' src={user.image} />}
+            <details>
+              <li>
+                <a>{email}</a></li>
+              <li>
+                <a href='/api/auth/signout'>Sign out</a></li>
+            </details>
+          </summary>
         </li>
       </ul></nav>
       <div>
