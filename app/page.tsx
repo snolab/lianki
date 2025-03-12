@@ -21,11 +21,11 @@ export default async function HomePage() {
         <li>
           <summary>
             {user.image && <Image className='w-4 h-4' alt='avater' src={user.image} />}
-            <details>
+            <details><ul>
               <li>
                 <a>{email}</a></li>
               <li>
-                <a href='/api/auth/signout'>Sign out</a></li>
+                <a href='/api/auth/signout'>Sign out</a></li></ul>
             </details>
           </summary>
         </li>
