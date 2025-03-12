@@ -20,12 +20,17 @@ export default async function HomePage() {
         </li>
         <li>
           <summary>
-            {user.image && <Image className='w-4 h-4' alt='avater' src={user.image} />}
-            <details><ul>
-              <li>
-                <a>{email}</a></li>
-              <li>
-                <a href='/api/auth/signout'>Sign out</a></li></ul>
+            <span>
+              {user.image && <Image className='w-4 h-4' alt='avater' src={user.image} />}
+              <a>{user.name}</a>
+            </span>
+            <details>
+              <ul>
+                <li>
+                  <a>{email}</a>
+                </li>
+                <li>
+                  <a href='/api/auth/signout'>Sign out</a></li></ul>
             </details>
           </summary>
         </li>
