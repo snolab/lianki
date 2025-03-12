@@ -75,7 +75,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           )
         )
           .map((note) => `window.open(${JSON.stringify(note.url)})`)
-          .onFlush((c) => c.enqueue("window.close(); alert('ALL REVIEWS DONE, IT's TIME TO LEARN NEW TRICKS')"))
+          .onFlush((c) => c.enqueue("window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')"))
           // .map((script) => `<script>${script}</script>`)
           // .forEach(() => sleep(1000))
           .join("\n"),
@@ -104,7 +104,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
             }).toString();
             return `window.open(${url}); location.href='/repeat/?${q}'`;
           })
-          .onFlush((c) => c.enqueue("window.close(); alert('ALL REVIEWS DONE, IT's TIME TO LEARN NEW TRICKS')"))
+          .onFlush((c) => c.enqueue("window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')"))
           .map((script) => `<script>${script}</script>`)
           // .forEach(() => sleep(1000))
           .join("\n")
