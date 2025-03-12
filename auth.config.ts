@@ -29,6 +29,7 @@ export const authConfig = {
         ]
       : []),
     ...(process.env.AUTH_GITHUB_SECRET ? [GitHub] : []),
+    
     ...(process.env.AUTH_GOOGLE_SECRET ? [Google] : []),
 
     // able to use after create password
