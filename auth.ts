@@ -1,9 +1,10 @@
 // import { DrizzleAdapter } from "@auth/drizzle-adapter";
-// import { MongoDBAdapter } from "@auth/mongodb-adapter";
-import PostgresAdapter from "@auth/pg-adapter";
-import { Pool } from "@neondatabase/serverless";
+import { MongoDBAdapter } from "@auth/mongodb-adapter";
+// import PostgresAdapter from "@auth/pg-adapter";
+// import { Pool } from "@neondatabase/serverless";
 
 import NextAuth from "next-auth";
+import { mongoClient } from "./app/db";
 import { authConfig } from "./auth.config";
 declare module "next-auth" {
   interface User {
@@ -11,11 +12,11 @@ declare module "next-auth" {
   }
 }
 export const { handlers, signIn, signOut, auth } = NextAuth(() => {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  // const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   return {
-    // adapter: MongoDBAdapter(mongoClient),
+    adapter: MongoDBAdapter(mongoClient),
     // adapter: DrizzleAdapter(db),
-    adapter: PostgresAdapter(pool),
+    // adapter: PostgresAdapter(pool),
     // pages: {
     //   // signIn: '/auth/signin',
     //   // signOut: '/auth/signout',
