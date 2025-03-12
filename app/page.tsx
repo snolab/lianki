@@ -27,6 +27,9 @@ export default async function HomePage() {
             <details>
               <ul>
                 <li>
+                  <a href="/profile">Profile</a>
+                </li>
+                <li>
                   <a>{email}</a>
                 </li>
                 <li>
