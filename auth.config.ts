@@ -28,8 +28,27 @@ export const authConfig = {
           }),
         ]
       : []),
+    // CredentialsProvider({
+    //   credentials: {
+    //     email: { type: "text", label: "Email" },
+    //     password: { type: "password", label: "Password" },
+    //   },
+    //   async authorize(credentials) {
+    //     const crd = credentials as { email: string; password: string };
+    //     const hashPassword = (
+    //       password: string,
+    //       salt = process.env.AUTH_SECRET
+    //     ) => sha256(salt + password);
+    //     const user = await users.findOne({
+    //       email: crd.email,
+    //       password: hashPassword(crd.password),
+    //     });
+    //     console.log({ user });
+    //     return user;
+    //     // ...
+    //   },
+    // }),
     ...(process.env.AUTH_GITHUB_SECRET ? [GitHub] : []),
-    
     ...(process.env.AUTH_GOOGLE_SECRET ? [Google] : []),
 
     // able to use after create password
