@@ -1,21 +1,29 @@
+import Image from "next/image";
 import { Suspense } from "react";
 import { sf } from "sflow";
 import { ems } from "./ems";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
-import { authEmail } from "./signInEmail";
+import { authEmail, authUser } from "./signInEmail";
 export const dynamic = "force-dynamic";
 /**
  * @author: snomiao <snomiao@gmail.com>
  */
 export default async function HomePage() {
   const email = await authEmail();
+  const user = await authUser()
   const FSRSNotes = getFSRSNotesCollection(email);
   return (
     <div>
       <nav><ul>
         <li>
           <a href='./fsrsnext.user.js'>Install user script</a>
-        </li></ul></nav>
+        </li>
+        <li>
+          {user.image && <Image className='w-4 h-4' alt='avater' src={user.image} />}
+          <a>{email}</a>
+          <a href='/api/auth/signout'>Logout</a>
+        </li>
+      </ul></nav>
       <div>
         <a href="/next" className="btn" accessKey="1">
           Next card
@@ -33,7 +41,7 @@ export default async function HomePage() {
       <ul>
         <Suspense>
           <Cards />
-        </Suspense>
+        </Suspense>w
       </ul>
     </div>
   );
