@@ -3,24 +3,30 @@
 // @namespace   Violentmonkey Scripts
 // @match       *://*/*
 // @grant       none
-// @version     1.0
-// @author      -
-// @description 2024/8/19 19:31:35
+// @version     1.0.1
+// @author      snomiao@gmail.com
+// @description fsrs everywhere
 // @run-at      document-start
 // ==/UserScript==
 
-const effect = () => {
-  let opened = false;
+globalThis.unload_FSRSEverywhere?.();
+globalThis.unload_FSRSEverywhere = main();
+
+function main() {
+  const ac = new AbortController();
   const origin = "https://fsrsnext.snomiao.com";
 
   const openFsrs = (_url, target = "_blank") => {
-    if (_url.startsWith("https://fsrsnext.snomiao.com")) return; // prevent open self
-    if (_url.startsWith("https://fsrsnext.snomiao.dev")) return; // prevent open self
+    if (_url.match(/^https:\/\/fsrsnext.snomiao.(com|dev)/))
+      location.href = location.origin; // go home if fsrs it self
+
     const url = _url
       // for youtube
-      // delete list and index &list=TLPQMjAwODIwMjQT4k3MtI2vbA&index=4
+      // delete list and index &list=..........................&index=1
       .replace(/&list=[^&]+&index=\d+$/, "")
+      // for calibre, delete book pos
       .replace(/&bookpos=.*?&/, "&")
+      // for leetcode, delete submissions
       .replace(
         /(?<=https:\/\/leetcode.com\/problems\/.*\/)submissions\/.*/,
         ""
@@ -41,23 +47,8 @@ const effect = () => {
       return parent.window.open(targetUrl, target, "noopener,noreferrer");
     throw new Error("Error: no target");
   };
-  // brainstorm
-  // const goTTS = () => {
-  //   const selected = window?.getSelection()?.toString().trim() || "";
-  //   const q = selected.replace(/\n\n+/g, "\n");
-  //   const ttsURL =
-  //     "https://brainstorm.snomiao.dev/faq?" +
-  //     new URLSearchParams({ a: selected }).toString();
-  //   window.open(ttsURL);
-  // };
 
-  const eventListenerEffect = (target, ...args) => {
-    target.addEventListener(...args);
-    return () => target.removeEventListener(...args);
-  };
-
-  return eventListenerEffect(
-    window,
+  window.addEventListener(
     "keydown",
     (e) => {
       if (e.code === "KeyV" && e.altKey && !e.shiftKey && !e.ctrlKey) {
@@ -70,12 +61,10 @@ const effect = () => {
         e.stopPropagation();
         e.preventDefault();
       }
-      // if (e.code === "KeyT" && e.altKey && !e.shiftKey && !e.ctrlKey)
-      //   goTTS(), e.stopPropagation(), e.preventDefault();
     },
-    { capture: true }
+    { capture: true, signal: ac.signal }
   );
-};
-
-globalThis.unload_FSRSEverywhere?.();
-globalThis.unload_FSRSEverywhere = effect();
+  return () => {
+    ac.abort();
+  };
+}
