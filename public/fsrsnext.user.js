@@ -7,8 +7,8 @@
 // @author      snomiao@gmail.com
 // @description fsrs everywhere
 // @run-at      document-start
-// @downloadURL http://fsrsnext.snomiao.com/fsrsnext.user.js
-// @updateUrl   http://fsrsnext.snomiao.com/fsrsnext.user.js
+// @downloadURL https://fsrsnext.snomiao.com/fsrsnext.user.js
+// @updateUrl   https://fsrsnext.snomiao.com/fsrsnext.user.js
 // ==/UserScript==
 
 globalThis.unload_FSRSEverywhere?.();
