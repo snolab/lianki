@@ -3,7 +3,7 @@
 // @namespace   Violentmonkey Scripts
 // @match       *://*/*
 // @grant       none
-// @version     1.1.0
+// @version     1.1.1
 // @author      snomiao@gmail.com
 // @description fsrs everywhere
 // @run-at      document-start
@@ -43,10 +43,19 @@ function main() {
     const addingUrl =
       origin + "/add-note#?" + new URLSearchParams({ url, title }).toString();
     const targetUrl = repeatUrl.length < 512 ? repeatUrl : addingUrl;
-    if (target === "_blank")
-      return parent.window.open(targetUrl, target, "noopener,noreferrer");
-    if (target === "_self")
-      return parent.window.open(targetUrl, target, "noopener,noreferrer");
+    // if (target === "_blank")
+    //   return parent.window.open(targetUrl, target, "noopener,noreferrer");
+    // if (target === "_self")
+    //   return parent.window.open(targetUrl, target, "noopener,noreferrer");
+    if (target === "_blank") {
+      parent.window.open(targetUrl, "fsrsnext", "noopener,noreferrer");
+      return;
+    }
+    if (target === "_self") {
+      parent.window.open(targetUrl, "fsrsnext", "noopener,noreferrer");
+      parent.window.close()
+      return;
+    }
     throw new Error("Error: no target");
   };
 
