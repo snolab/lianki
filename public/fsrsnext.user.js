@@ -49,17 +49,6 @@ function main() {
   window.addEventListener(
     "keydown",
     (e) => {
-      // if (e.code === "KeyV" && e.altKey && !e.shiftKey && !e.ctrlKey) {
-      //   openFsrs(parent?.location?.href || location.href, "_blank");
-      //   e.stopPropagation();
-      //   e.preventDefault();
-      // }
-      // if (e.code === "KeyF" && e.altKey && !e.shiftKey && !e.ctrlKey) {
-      //   openFsrs(parent?.location?.href || location.href, "_self");
-      //   e.stopPropagation();
-      //   e.preventDefault();
-      // }
-
       const actions = {
         "alt+f": () =>
           openFsrs(parent?.location?.href || location.href, "_self"),
@@ -121,7 +110,7 @@ function main() {
         }
       }
     },
-    { capture: true, signal: ac.signal }
+    { signal: ac.signal }
   );
   return () => {
     ac.abort();
