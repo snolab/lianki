@@ -128,9 +128,13 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const search = new URLSearchParams({
         id: note._id.toString(),
       }).toString();
+      const doctitle = `[${dueMs(note.card.due)}] ${note.title ?? note.url}`;
       return HTMLR(
         sf([
           sf(`Current due: ${dueMs(note.card.due)}`),
+
+          sf(`<script>document.title = ${JSON.stringify(doctitle)};</script>`),
+
           sf(`<br/>`),
           sf(values(fsrs().repeat(note.card, new Date())))
             .map(
@@ -177,7 +181,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
               if (e.key === 'm') location.href = '/delete-and-close/?${search}';
             });
           </script>`),
-          
+
           sf(`<br/>`),
           sf(
             `Reviewing <a target="_blank" href="${note.url}">${
