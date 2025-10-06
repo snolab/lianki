@@ -271,7 +271,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           sf(
             [
               `Reviewed, Next review after ${due}<br/><br/>\n`,
-              `<a href="/next" autofocus>Next Card</a><br/>\n`,
+              `<a href="/next" autofocus accessKey='1'>Next Card</a><br/>\n`,
               `<script>window.close();</script>\n`,
             ],
             notesPreviewFlow()

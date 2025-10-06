@@ -3,12 +3,12 @@
 // @namespace   Violentmonkey Scripts
 // @match       *://*/*
 // @grant       none
-// @version     1.2.0
+// @version     1.2.1
 // @author      snomiao@gmail.com
 // @description fsrs everywhere
 // @run-at      document-start
-// @downloadURL https://fsrsne xt.snomiao.com/fsrsnext.user.js
-// @updateUrl   https://fsrsnext.snomiao.com/fsrsnext.user.js
+// @downloadURL https://fsrsnext.snomiao.com/fsrsnext.user.js
+// @updateURL   https://fsrsnext.snomiao.com/fsrsnext.user.js
 // ==/UserScript==
 
 globalThis.unload_FSRSEverywhere?.();
