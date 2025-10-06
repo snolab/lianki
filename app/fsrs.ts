@@ -169,10 +169,10 @@ export const fsrsHandler = async (req: Request, email?: string) => {
               if (e.key === '5') location.href = '/delete-and-close/?${search}';
 
               // asdt = easy, good, again, delete
-              if (e.key === 'a') location.href = '/review-and-close/4/?${search}';
-              if (e.key === 's') location.href = '/review-and-close/3/?${search}';
-              if (e.key === 'd') location.href = '/review-and-close/1/?${search}';
-              if (e.key === 't') location.href = '/delete-and-close/?${search}';
+              if (e.key === 'a') location.href = '/review/4/?${search}';
+              if (e.key === 's') location.href = '/review/3/?${search}';
+              if (e.key === 'd') location.href = '/review/1/?${search}';
+              if (e.key === 't') location.href = '/delete/?${search}';
 
               // hjlm = easy, good, again, delete
               if (e.key === 'h') location.href = '/review-and-close/4/?${search}';
