@@ -65,6 +65,19 @@ function main() {
           openFsrs(parent?.location?.href || location.href, "_self"),
         "alt+v": () =>
           openFsrs(parent?.location?.href || location.href, "_blank"),
+        // add all now
+        "alt+shift+f": async () => {
+          const anchors = getMainAnchorsList();
+          if (anchors.length === 0) return alert("no link found");
+          const msg = `Found ${
+            anchors.length
+          } links, open fsrs for all?\n ${anchors
+            .map((a) => `- [${a.textContent.trim()}](${fsrsUrlClean(a.href)})`)
+            .join("\n")}`;
+          if (!confirm(msg)) return alert("user aborted");
+          anchors.map((a) => openFsrs(fsrsUrlClean(a.href), "_blank"));
+        },
+        // view all now
         "alt+shift+v": async () => {
           const anchors = getMainAnchorsList();
           if (anchors.length === 0) return alert("no link found");
