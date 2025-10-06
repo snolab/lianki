@@ -294,7 +294,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("fail to find note");
       console.log(await FSRSNotes.deleteOne({ url: note.url }));
       return HTMLR(
-        `<script>window.open('/next', 'fsrs-reviewing');</script>\n`
+        // `<script>window.open('/next', 'fsrs-reviewing');</script>\n`
+        `<script>window.close();</script>\n` // list mode
       );
     },
     "GET /delete-and-close(?:/|$|\\?)": async (req, opt) => {
