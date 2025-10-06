@@ -55,7 +55,7 @@ function main() {
         "alt+v": () =>
           openFsrs(parent?.location?.href || location.href, "_blank"),
         // add all now
-        "alt+shift+f": async () => {
+        "alt+shift+v": async () => {
           const anchors = getMainAnchorsList();
           if (anchors.length === 0) return alert("no link found");
           const msg = `Found ${
@@ -67,34 +67,34 @@ function main() {
           anchors.map((a) => openFsrs(fsrsUrlClean(a.href), "_blank"));
         },
         // view all now
-        "alt+shift+v": async () => {
-          const anchors = getMainAnchorsList();
-          if (anchors.length === 0) return alert("no link found");
-          const msg = `Found ${anchors.length} links, open all?\n ${anchors
-            .map((a) => `- [${a.textContent.trim()}](${fsrsUrlClean(a.href)})`)
-            .join("\n")}`;
-          if (!confirm(msg)) return alert("user aborted");
+        // "alt+shift+v": async () => {
+        //   const anchors = getMainAnchorsList();
+        //   if (anchors.length === 0) return alert("no link found");
+        //   const msg = `Found ${anchors.length} links, open all?\n ${anchors
+        //     .map((a) => `- [${a.textContent.trim()}](${fsrsUrlClean(a.href)})`)
+        //     .join("\n")}`;
+        //   if (!confirm(msg)) return alert("user aborted");
 
-          // all page order: [targetpage, fsrspage, targetpage, fsrspage, ...]
-          // 8 pages as a batch in reverse order
-          /** @type {Array<Array<HTMLAnchorElement>>} */
-          const batches = Object.values(
-            Object.groupBy(anchors, (e, i) => String(Math.floor(i / 8)))
-          );
-          for await (const batch of batches) {
-            for (const anchor of batch.toReversed()) {
-              const url = fsrsUrlClean(anchor.href);
-              openFsrs(url, "_blank");
-              window.open(url, "_blank");
-            }
-            await new Promise((r) => setTimeout(r, 1e3)); // 1s cd
-            await new Promise((r) =>
-              document.addEventListener("visibilitychange", r, {
-                once: true,
-              })
-            ); // wait for page visible for next batch
-          }
-        },
+        //   // all page order: [targetpage, fsrspage, targetpage, fsrspage, ...]
+        //   // 8 pages as a batch in reverse order
+        //   /** @type {Array<Array<HTMLAnchorElement>>} */
+        //   const batches = Object.values(
+        //     Object.groupBy(anchors, (e, i) => String(Math.floor(i / 8)))
+        //   );
+        //   for await (const batch of batches) {
+        //     for (const anchor of batch.toReversed()) {
+        //       const url = fsrsUrlClean(anchor.href);
+        //       openFsrs(url, "_blank");
+        //       window.open(url, "_blank");
+        //     }
+        //     await new Promise((r) => setTimeout(r, 1e3)); // 1s cd
+        //     await new Promise((r) =>
+        //       document.addEventListener("visibilitychange", r, {
+        //         once: true,
+        //       })
+        //     ); // wait for page visible for next batch
+        //   }
+        // },
       };
       for (const [hotkey, action] of Object.entries(actions)) {
         if (hotkeyEventMatcher(hotkey)(e)) {
