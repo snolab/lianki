@@ -75,7 +75,11 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           )
         )
           .map((note) => `window.open(${JSON.stringify(note.url)})`)
-          .onFlush((c) => c.enqueue("window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')"))
+          .onFlush((c) =>
+            c.enqueue(
+              "window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')"
+            )
+          )
           // .map((script) => `<script>${script}</script>`)
           // .forEach(() => sleep(1000))
           .join("\n"),
@@ -88,7 +92,10 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       new Response(
         sf(
           FSRSNotes.find(
-            { "card.due": { $lte: new Date() }, url: /brainstorm|JLPT|japanese|n2|n1|n3/i },
+            {
+              "card.due": { $lte: new Date() },
+              url: /brainstorm|JLPT|japanese|n2|n1|n3/i,
+            },
             { sort: { "card.due": 1 } }
           ),
           FSRSNotes.find(
@@ -104,7 +111,11 @@ export const fsrsHandler = async (req: Request, email?: string) => {
             }).toString();
             return `window.open(${url}); location.href='/repeat/?${q}'`;
           })
-          .onFlush((c) => c.enqueue("window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')"))
+          .onFlush((c) =>
+            c.enqueue(
+              "window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')"
+            )
+          )
           .map((script) => `<script>${script}</script>`)
           // .forEach(() => sleep(1000))
           .join("\n")
@@ -114,6 +125,9 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     // preview repeats
     "GET /repeat(?:/|$|\\?)": async (req, opt) => {
       const note = (await saveQueryNote(req, opt)) ?? DIE("note not found");
+      const search = new URLSearchParams({
+        id: note._id.toString(),
+      }).toString();
       return HTMLR(
         sf([
           sf(`Current due: ${dueMs(note.card.due)}`),
@@ -130,6 +144,40 @@ export const fsrsHandler = async (req: Request, email?: string) => {
                 )}</a>`
             )
             .join("<br/>"),
+          sf(`<br/>`),
+
+          sf(`
+            <div>
+              hotkeys: <br/>
+              hjlm = easy, good, again, delete <br/>
+              asdt = easy, good, again, delete <br/>
+              1,2,3,4,5 = again, hard, good, easy, delete <br/>
+            </div>
+            <script>
+            document.body.addEventListener('keydown', (e) => {
+              if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+              // no modifier keys
+              if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+              if (e.key === '1') location.href = '/review-and-close/1/?${search}';
+              if (e.key === '2') location.href = '/review-and-close/2/?${search}';
+              if (e.key === '3') location.href = '/review-and-close/3/?${search}';
+              if (e.key === '4') location.href = '/review-and-close/4/?${search}';
+              if (e.key === '5') location.href = '/delete-and-close/?${search}';
+
+              // asdt = easy, good, again, delete
+              if (e.key === 'a') location.href = '/review-and-close/4/?${search}';
+              if (e.key === 's') location.href = '/review-and-close/3/?${search}';
+              if (e.key === 'd') location.href = '/review-and-close/1/?${search}';
+              if (e.key === 't') location.href = '/delete-and-close/?${search}';
+
+              // hjlm = easy, good, again, delete
+              if (e.key === 'h') location.href = '/review-and-close/4/?${search}';
+              if (e.key === 'j') location.href = '/review-and-close/3/?${search}';
+              if (e.key === 'l') location.href = '/review-and-close/1/?${search}';
+              if (e.key === 'm') location.href = '/delete-and-close/?${search}';
+            });
+          </script>`),
+          
           sf(`<br/>`),
           sf(
             `Reviewing <a target="_blank" href="${note.url}">${
@@ -195,6 +243,37 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         )
       );
     },
+    "GET /review-and-close/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)":
+      async (req, options) => {
+        const params = getParams(req, options);
+        const rating =
+          {
+            "1": Rating.Again,
+            again: Rating.Again,
+            "2": Rating.Hard,
+            hard: Rating.Hard,
+            "3": Rating.Good,
+            good: Rating.Good,
+            "4": Rating.Easy,
+            easy: Rating.Easy,
+          }[params.rating] ?? DIE("unknown rating: " + String(params.rating));
+
+        const reviewdCard = await reviewed(
+          (await getQueryNote(req, options)) ?? DIE("fail to find note"),
+          rating as Grade
+        );
+        const due = dueMs(reviewdCard.card.due);
+        return HTMLR(
+          sf(
+            [
+              `Reviewed, Next review after ${due}<br/><br/>\n`,
+              `<a href="/next" autofocus>Next Card</a><br/>\n`,
+              `<script>window.close();</script>\n`,
+            ],
+            notesPreviewFlow()
+          )
+        );
+      },
     "GET /delete-confirm(?:/|$|\\?)": async (req, opt) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("fail to find note");
       return HTMLR(
@@ -209,7 +288,14 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     "GET /delete(?:/|$|\\?)": async (req, opt) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("fail to find note");
       console.log(await FSRSNotes.deleteOne({ url: note.url }));
-      return HTMLR(`<script>window.open('/next', 'fsrs-reviewing');</script>\n`);
+      return HTMLR(
+        `<script>window.open('/next', 'fsrs-reviewing');</script>\n`
+      );
+    },
+    "GET /delete-and-close(?:/|$|\\?)": async (req, opt) => {
+      const note = (await getQueryNote(req, opt)) ?? DIE("fail to find note");
+      console.log(await FSRSNotes.deleteOne({ url: note.url }));
+      return HTMLR(`<script>window.close();</script>\n`);
     },
   };
 
