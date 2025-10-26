@@ -24,15 +24,15 @@ export default async function ProfilePage() {
         }}
       >
         <input name="email" type="email" />
-        <button>Change Email</button>
+        <button type="submit">Change Email</button>
       </form>
-
       <button
         onClick={async () => {
           "use server";
           await authUser();
           await signIn("github");
         }}
+        type="button"
       >
         Link Github
       </button>
@@ -45,9 +45,9 @@ export default async function ProfilePage() {
         }}
       >
         Password: {user.password ? "***" : "No Password yet"}
-        <input type="password" name="password" />
-        <input type="password" name="confirm-password" />
-        <button>Update Password</button>
+        <input name="password" type="password" />
+        <input name="confirm-password" type="password" />
+        <button type="submit">Update Password</button>
       </form>
     </>
   );

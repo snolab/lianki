@@ -15,7 +15,7 @@ export default async function Logout() {
       }}
     >
       {email}
-      <button>logout</button>
+      <button type="submit">logout</button>
     </form>
   );
 }

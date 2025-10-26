@@ -1,4 +1,5 @@
 // ==UserScript==
+/** biome-ignore-all lint/suspicious/noAssignInExpressions: userscript code */
 // @name        FSRS Everywhere
 // @namespace   Violentmonkey Scripts
 // @match       *://*/*
@@ -25,10 +26,8 @@ function main() {
     const url = fsrsUrlClean(_url);
 
     const title = parent.document.title || document.title;
-    const repeatUrl =
-      origin + "/repeat/?" + new URLSearchParams({ url, title }).toString();
-    const addingUrl =
-      origin + "/add-note#?" + new URLSearchParams({ url, title }).toString();
+    const repeatUrl = `${origin}/repeat/?${new URLSearchParams({ url, title }).toString()}`;
+    const addingUrl = `${origin}/add-note#?${new URLSearchParams({ url, title }).toString()}`;
     const targetUrl = repeatUrl.length < 512 ? repeatUrl : addingUrl;
     // if (target === "_blank")
     //   return parent.window.open(targetUrl, target, "noopener,noreferrer");
@@ -110,7 +109,7 @@ function main() {
         }
       }
     },
-    { signal: ac.signal }
+    { signal: ac.signal },
   );
   return () => {
     ac.abort();
@@ -161,11 +160,11 @@ function fsrsUrlClean(_url) {
 
 ////////////////////////
 // get main link list stealth from page flood
-async function openLinks(links) {
+async function _openLinks(links) {
   // max 8 page on 1 origin once batch
   // max 16 page on all origin once batch
   const urlss = Object.values(
-    Object.groupBy(links, (url, i) => String(Math.floor(i / 8)))
+    Object.groupBy(links, (_url, i) => String(Math.floor(i / 8))),
   );
   for await (const urls of urlss) {
     const urlList = urls.map((e) => e.href).join("\n");
@@ -174,7 +173,7 @@ async function openLinks(links) {
     urls.toReversed().map(openDeduplicatedUrl);
     await new Promise((r) => setTimeout(r, 1e3)); // 1s cd
     await new Promise((r) =>
-      document.addEventListener("visibilitychange", r, { once: true })
+      document.addEventListener("visibilitychange", r, { once: true }),
     ); // wait for page visible
   }
   // await Promise.all(Object.entries(Object.groupBy(links, e => e.origin)).map(async ([origin, links]) => {
@@ -198,17 +197,18 @@ function BagOfWordsModel() {
   return {
     wordSet,
     fit: (texts) => {
-      texts.forEach((text) =>
-        text
-          .toLowerCase()
-          .split(/\W+/)
-          .forEach((word) => wordSet.add(word))
+      texts.forEach(
+        (text) =>
+          void text
+            .toLowerCase()
+            .split(/\W+/)
+            .forEach((word) => void wordSet.add(word)),
       );
     },
     transform: (text) => {
       const words = text.toLowerCase().split(/\W+/);
       const vec = Array.from(wordSet).map((word) =>
-        words.includes(word) ? 1 : 0
+        words.includes(word) ? 1 : 0,
       );
       return vec;
     },
@@ -234,17 +234,17 @@ function getMainAnchorsList() {
       .map((e) => ({
         ...e,
         _: e.bow.fit(
-          e.list.map((el) => el.className + " " + getElementAttributeNames(el))
+          e.list.map((el) => `${el.className} ${getElementAttributeNames(el)}`),
         ),
       }))
       .map((e) => ({
         ...e,
-        vec: e.list.map((el, i) => [
+        vec: e.list.map((el, _i) => [
           elementDepth(el),
           area(el.parentElement?.getBoundingClientRect()),
           el.parentElement?.getBoundingClientRect().width,
           el.parentElement?.getBoundingClientRect().height,
-          ...e.bow.transform(el.className + " " + getElementAttributeNames(el)),
+          ...e.bow.transform(`${el.className} ${getElementAttributeNames(el)}`),
         ]),
       }))
       .map((e) => ({ ...e, nor: normalize(e.vec) }))
@@ -272,13 +272,13 @@ function getMainAnchorsList() {
               flashBorder(
                 el,
                 getOklch(i / a.length),
-                500 + (a.length - i) * 500
-              )
-            )
+                500 + (a.length - i) * 500,
+              ),
+            ),
           ),
       }))
       // debug
-      .map((e) => (console.log(e), { ...e }))
+      .map((e) => ({ ...e }))
       .map((e) => e.rank.at(0).anchors)
       .at(0)
   );
@@ -315,7 +315,7 @@ function elementDepth(e) {
 function normalize(arr) {
   const maxs = arr.reduce(
     (a, b) => a.map((e, i) => Math.max(e, b[i])),
-    Array(arr[0].length).fill(-Infinity)
+    Array(arr[0].length).fill(-Infinity),
   );
   return arr.map((e) => e.map((v, i) => v / maxs[i]));
 }

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { FSRSNote } from "../fsrs";
+import type { FSRSNote } from "../fsrs";
 
 /**
  *
@@ -16,7 +16,7 @@ export default function UrlAddingPage() {
     if (!url) return;
     // add url to database
     // ...
-    (async function () {
+    (async () => {
       const note = await (
         await fetch("/api/fsrs/add", {
           method: "POST",
@@ -39,7 +39,7 @@ export default function UrlAddingPage() {
 
   return (
     <>
-      <>Adding... {url}</>
+      Adding... {url}
       <br />
       {resp && <pre>{JSON.stringify(resp, null, 2)}</pre>}
     </>

@@ -6,6 +6,7 @@ import { MongoDBAdapter } from "@auth/mongodb-adapter";
 import NextAuth from "next-auth";
 import { mongoClient } from "./app/db";
 import { authConfig } from "./auth.config";
+
 declare module "next-auth" {
   interface User {
     password?: string;

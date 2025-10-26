@@ -1,6 +1,6 @@
+import DIE from "phpdie";
 import { fsrsHandler } from "@/app/fsrs";
 import { auth, signIn } from "@/auth";
-import DIE from "phpdie";
 export const dynamic = "force-dynamic";
 // export const runtime = 'edge'
 export const GET = async (req: Request) => {
