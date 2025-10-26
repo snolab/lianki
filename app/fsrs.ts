@@ -88,21 +88,13 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     "GET /add(?:/|$|\\?)": async (req, options) =>
       JSONR(saveQueryNote(req, options)),
     "POST /api/fsrs/add/?$": async (req) => JSONR(saveQueryNoteByJSONData(req)),
-    "GET /next": async () =>
-      new Response(
-        sflow(
-          FSRSNotes.find(
-            {
-              "card.due": { $lte: new Date() },
-              url: /brainstorm|JLPT|japanese|n2|n1|n3/i,
-            },
-            { sort: { "card.due": 1 } },
-          ),
-          FSRSNotes.find(
-            { "card.due": { $lte: new Date() } },
-            { sort: { "card.due": 1 } },
-          ),
-        )
+    "GET /next": async () => {
+      const dueCards = await FSRSNotes.find(
+        { "card.due": { $lte: new Date() } },
+        { sort: { "card.due": 1 } },
+      ).toArray();
+      return new Response(
+        sflow(dueCards.toSorted(() => Math.random() - 0.5))
           .limit(1)
           .map((note) => {
             const url = JSON.stringify(note.url);
@@ -121,7 +113,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           .join("\n")
           .by(new TextEncoderStream()),
         { headers: { "content-type": "text/html" } },
-      ),
+      );
+    },
     // preview repeats
     "GET /repeat(?:/|$|\\?)": async (req, opt) => {
       const note = (await saveQueryNote(req, opt)) ?? DIE("note not found");
