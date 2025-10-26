@@ -299,7 +299,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     },
   };
 
-  function notesPreviewFlow(): sf<string> {
+  function notesPreviewFlow(): sflow<string> {
     return sflow(
       sflow(`<pre>\n`),
 
