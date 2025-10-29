@@ -1,27 +1,27 @@
 // ==UserScript==
 /** biome-ignore-all lint/suspicious/noAssignInExpressions: userscript code */
-// @name        FSRS Everywhere
+// @name        Lianki Everywhere
 // @namespace   Violentmonkey Scripts
 // @match       *://*/*
 // @grant       none
-// @version     1.2.1
+// @version     2.0.0
 // @author      snomiao@gmail.com
-// @description fsrs everywhere
+// @description Learn any URL with spaced repetition - Link + Anki = Lianki
 // @run-at      document-start
-// @downloadURL https://fsrsnext.snomiao.com/fsrsnext.user.js
-// @updateURL   https://fsrsnext.snomiao.com/fsrsnext.user.js
+// @downloadURL https://lianki.com/lianki.user.js
+// @updateURL   https://lianki.com/lianki.user.js
 // ==/UserScript==
 
-globalThis.unload_FSRSEverywhere?.();
-globalThis.unload_FSRSEverywhere = main();
+globalThis.unload_Lianki?.();
+globalThis.unload_Lianki = main();
 
 function main() {
   const ac = new AbortController();
-  const origin = "https://fsrsnext.snomiao.com";
+  const origin = "https://lianki.com";
 
-  const openFsrs = (_url, target = "_blank") => {
-    if (_url.match(/^https:\/\/fsrsnext.snomiao.(com|dev)/))
-      location.href = location.origin; // go home if fsrs it self
+  const openLianki = (_url, target = "_blank") => {
+    if (_url.match(/^https:\/\/lianki.(com|dev)/))
+      location.href = location.origin; // go home if lianki it self
 
     const url = fsrsUrlClean(_url);
 
@@ -34,11 +34,11 @@ function main() {
     // if (target === "_self")
     //   return parent.window.open(targetUrl, target, "noopener,noreferrer");
     if (target === "_blank") {
-      parent.window.open(targetUrl, "fsrsnext", "noopener,noreferrer");
+      parent.window.open(targetUrl, "lianki", "noopener,noreferrer");
       return;
     }
     if (target === "_self") {
-      parent.window.open(targetUrl, "fsrsnext", "noopener,noreferrer");
+      parent.window.open(targetUrl, "lianki", "noopener,noreferrer");
       parent.window.close();
       return;
     }
@@ -50,20 +50,20 @@ function main() {
     (e) => {
       const actions = {
         "alt+f": () =>
-          openFsrs(parent?.location?.href || location.href, "_self"),
+          openLianki(parent?.location?.href || location.href, "_self"),
         "alt+v": () =>
-          openFsrs(parent?.location?.href || location.href, "_blank"),
+          openLianki(parent?.location?.href || location.href, "_blank"),
         // add all now
         "alt+shift+v": async () => {
           const anchors = getMainAnchorsList();
           if (anchors.length === 0) return alert("no link found");
           const msg = `Found ${
             anchors.length
-          } links, open fsrs for all?\n ${anchors
+          } links, open lianki for all?\n ${anchors
             .map((a) => `- [${a.textContent.trim()}](${fsrsUrlClean(a.href)})`)
             .join("\n")}`;
           if (!confirm(msg)) return alert("user aborted");
-          anchors.map((a) => openFsrs(fsrsUrlClean(a.href), "_blank"));
+          anchors.map((a) => openLianki(fsrsUrlClean(a.href), "_blank"));
         },
         // view all now
         // "alt+shift+v": async () => {
@@ -83,7 +83,7 @@ function main() {
         //   for await (const batch of batches) {
         //     for (const anchor of batch.toReversed()) {
         //       const url = fsrsUrlClean(anchor.href);
-        //       openFsrs(url, "_blank");
+        //       openLianki(url, "_blank");
         //       window.open(url, "_blank");
         //     }
         //     await new Promise((r) => setTimeout(r, 1e3)); // 1s cd
