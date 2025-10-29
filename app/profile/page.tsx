@@ -1,50 +1,37 @@
-// 1. create password
+import { authUser, getSession } from "@/lib/auth-utils";
 
-import { auth, signIn } from "@/auth";
-import { authUser } from "../signInEmail";
-
-// 2. link oauth
 export default async function ProfilePage() {
-  //
-  // /onborarding/step1-create-password
-  // /onborarding/step2-link-oauth
-  // /onborarding/step3-tutorial
-
   const user = await authUser();
+  const session = await getSession();
 
   return (
     <>
       Email: {user.email}
       <br />
-      {JSON.stringify(await auth())}
+      {JSON.stringify(session)}
       <form
         action={async (fd: FormData) => {
           "use server";
-          await signIn("nodemailer", fd);
+          // TODO: Implement email change with better-auth
+          // This will require implementing custom email update logic
+          console.log("Email change:", fd.get("email"));
         }}
       >
-        <input name="email" type="email" />
+        <input defaultValue={user.email} name="email" type="email" />
         <button type="submit">Change Email</button>
       </form>
-      <button
-        onClick={async () => {
-          "use server";
-          await authUser();
-          await signIn("github");
-        }}
-        type="button"
-      >
-        Link Github
-      </button>
+      <a href="/api/auth/signin/github">
+        <button type="button">Link Github</button>
+      </a>
       <form
         action={async () => {
           "use server";
-          // const user = await authUser()
-
-          // user.password
+          // TODO: Implement password update with better-auth
+          // This will require implementing custom password update logic
+          console.log("Password update requested");
         }}
       >
-        Password: {user.password ? "***" : "No Password yet"}
+        Password: {user.emailVerified ? "***" : "No Password yet"}
         <input name="password" type="password" />
         <input name="confirm-password" type="password" />
         <button type="submit">Update Password</button>
