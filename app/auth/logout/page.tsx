@@ -1,5 +1,7 @@
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { authEmail } from "@/app/signInEmail";
-import { signOut } from "@/auth";
+import { auth } from "@/lib/auth";
 
 /**
  *
@@ -11,7 +13,10 @@ export default async function Logout() {
     <form
       action={async () => {
         "use server";
-        await signOut();
+        await auth.api.signOut({
+          headers: await headers(),
+        });
+        redirect("/");
       }}
     >
       {email}
