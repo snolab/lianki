@@ -4,6 +4,8 @@ import { mongoClient } from "@/app/db";
 
 export const auth = betterAuth({
   database: mongodbAdapter(mongoClient.db()),
+  secret: process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET,
+  baseURL: process.env.BETTER_AUTH_URL || process.env.NEXTAUTH_URL,
   emailAndPassword: {
     enabled: true,
   },
