@@ -1,5 +1,5 @@
+import { redirect } from "next/navigation";
 import { authEmail } from "@/app/signInEmail";
-import { signOut } from "@/auth";
 
 /**
  *
@@ -11,7 +11,8 @@ export default async function Logout() {
     <form
       action={async () => {
         "use server";
-        await signOut();
+        // Redirect to the auth signout endpoint
+        redirect("/api/auth/sign-out");
       }}
     >
       {email}

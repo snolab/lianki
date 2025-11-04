@@ -1,29 +1,34 @@
-import DIE from "phpdie";
+import { getAuthenticatedEmail } from "@/app/auth-utils";
 import { fsrsHandler } from "@/app/fsrs";
-import { auth, signIn } from "@/auth";
+
 export const dynamic = "force-dynamic";
-// export const runtime = 'edge'
+
 export const GET = async (req: Request) => {
-  const session = (await auth()) ?? (await signIn());
-  const email = session?.user?.email ?? DIE("");
-  return await fsrsHandler(req, email).catch((error) => {
+  try {
+    const email = await getAuthenticatedEmail(req);
+    return await fsrsHandler(req, email);
+  } catch (error) {
     console.error(error);
-    return new Response("sth wrong", { status: 500 });
-  });
+    return new Response("Authentication required", { status: 401 });
+  }
 };
+
 export const POST = async (req: Request) => {
-  const session = (await auth()) ?? (await signIn());
-  const email = session?.user?.email ?? DIE("");
-  return await fsrsHandler(req, email).catch((error) => {
+  try {
+    const email = await getAuthenticatedEmail(req);
+    return await fsrsHandler(req, email);
+  } catch (error) {
     console.error(error);
-    return new Response("sth wrong", { status: 500 });
-  });
+    return new Response("Authentication required", { status: 401 });
+  }
 };
+
 export const DELETE = async (req: Request) => {
-  const session = (await auth()) ?? (await signIn());
-  const email = session?.user?.email ?? DIE("");
-  return await fsrsHandler(req, email).catch((error) => {
+  try {
+    const email = await getAuthenticatedEmail(req);
+    return await fsrsHandler(req, email);
+  } catch (error) {
     console.error(error);
-    return new Response("sth wrong", { status: 500 });
-  });
+    return new Response("Authentication required", { status: 401 });
+  }
 };
