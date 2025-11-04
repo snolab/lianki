@@ -1,7 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { authEmail } from "@/app/signInEmail";
-import { auth } from "@/lib/auth";
+import { auth, authEmail } from "@/auth";
 
 /**
  *

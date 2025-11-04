@@ -1,4 +1,4 @@
-import { authUser, getSession } from "@/lib/auth-utils";
+import { authUser, getSession } from "@/auth";
 
 export default async function ProfilePage() {
   const user = await authUser();

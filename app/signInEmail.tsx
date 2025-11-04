@@ -1,2 +1,2 @@
-// Re-export from lib/auth-utils for backward compatibility
-export { authEmail, authUser } from "@/lib/auth-utils";
+// Re-export from auth for backward compatibility
+export { authEmail, authUser } from "@/auth";
