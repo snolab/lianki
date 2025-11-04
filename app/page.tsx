@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const email = await authEmail();
   const user = await authUser();
-  const FSRSNotes = getFSRSNotesCollection(email);
+  const FSRSNotes = await getFSRSNotesCollection(email);
   return (
     <div>
       <nav>
@@ -68,7 +68,7 @@ export default async function HomePage() {
   );
   async function Cards({ page = 0, size = 100 }) {
     const email = await authEmail();
-    const FSRSNotes = getFSRSNotesCollection(email);
+    const FSRSNotes = await getFSRSNotesCollection(email);
     return (
       <Suspense>
         {(async () => {

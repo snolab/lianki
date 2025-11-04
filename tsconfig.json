@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": ["dom", "dom.iterable", "esnext", "es2024.promise"],
     "skipLibCheck": true,
+    "noImplicitAny": false,
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,
@@ -19,7 +20,8 @@
     "paths": {
       "@/*": ["./*"]
     },
-    "target": "esnext"
+    "target": "esnext",
+    "allowJs": true
   },
   "include": [
     "next-env.d.ts",
@@ -28,5 +30,5 @@
     ".next/types/**/*.ts",
     "next.config.mjs"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "node_modules/sflow/**/*"]
 }

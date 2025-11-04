@@ -37,7 +37,7 @@ export type FSRSNote = {
 export const fsrsHandler = async (req: Request, email?: string) => {
   // console.log({ userId });
   // await db.collection("FSRSNotes").rename("FSRSNotes@670cb38bd6d5a0afbbf199ba");
-  const FSRSNotes = getFSRSNotesCollection(email);
+  const FSRSNotes = await getFSRSNotesCollection(email);
 
   type RegexRoutes = Record<
     string,
