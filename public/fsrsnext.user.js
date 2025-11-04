@@ -19,15 +19,26 @@ function main() {
   const ac = new AbortController();
   const origin = "https://fsrsnext.snomiao.com";
 
-  const openFsrs = (_url, target = "_blank") => {
+  const openFsrs = (_urlOrAnchor, target = "_blank") => {
+    const _url = _urlOrAnchor.href ? _urlOrAnchor.href : _urlOrAnchor;
+
     if (_url.match(/^https:\/\/fsrsnext.snomiao.(com|dev)/))
       location.href = location.origin; // go home if fsrs it self
 
     const url = fsrsUrlClean(_url);
 
-    const title = parent.document.title || document.title;
-    const repeatUrl = `${origin}/repeat/?${new URLSearchParams({ url, title }).toString()}`;
-    const addingUrl = `${origin}/add-note#?${new URLSearchParams({ url, title }).toString()}`;
+    const title = _urlOrAnchor.href
+      ? _urlOrAnchor.textContent.trim()
+      : parent.document.title || document.title;
+
+    const repeatUrl = `${origin}/repeat/?${new URLSearchParams({
+      url,
+      title,
+    }).toString()}`;
+    const addingUrl = `${origin}/add-note#?${new URLSearchParams({
+      url,
+      title,
+    }).toString()}`;
     const targetUrl = repeatUrl.length < 512 ? repeatUrl : addingUrl;
     // if (target === "_blank")
     //   return parent.window.open(targetUrl, target, "noopener,noreferrer");
