@@ -1,16 +1,28 @@
 import Image from "next/image";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import sflow from "sflow";
 import { ems } from "./ems";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
-import { authEmail, authUser } from "./signInEmail";
+import { getSession } from "./signInEmail";
 export const dynamic = "force-dynamic";
 /**
  * @author: snomiao <snomiao@gmail.com>
  */
 export default async function HomePage() {
-  const email = await authEmail();
-  const user = await authUser();
+  const session = await getSession();
+
+  if (!session?.user) {
+    redirect("/sign-in");
+  }
+
+  const email = session.user.email;
+  const user = session.user;
+
+  if (!email) {
+    redirect("/sign-in");
+  }
+
   const FSRSNotes = await getFSRSNotesCollection(email);
   return (
     <div>
@@ -67,7 +79,6 @@ export default async function HomePage() {
     </div>
   );
   async function Cards({ page = 0, size = 100 }) {
-    const email = await authEmail();
     const FSRSNotes = await getFSRSNotesCollection(email);
     return (
       <Suspense>
