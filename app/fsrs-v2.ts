@@ -1,7 +1,13 @@
+// import { bsonId } from 'bsonid';
+// var ObjectId = require("bson-objectid");
+
+// import { renderToString } from "react-dom/server";
+// import { ObjectId } from "mongodb";
 import type { WithId } from "mongodb";
+// import { ObjectId } from "bson";
 import DIE from "phpdie";
 import { values } from "rambda";
-import sflow, { TextEncoderStream } from "sflow";
+import { sflow as sf, TextEncoderStream } from "sflow";
 import {
   type Card,
   createEmptyCard,
@@ -30,6 +36,7 @@ export type FSRSNote = {
 //   // console.log(fsrs().repeat(note.card, new Date())[4]);
 //   console.log(renderToString("hello"));
 // }
+
 // migrate
 
 // "FSRSNotes","FSRSNotes@670cb38bd6d5a0afbbf199ba"
@@ -51,8 +58,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     // due cards
     "GET /$": async () =>
       HTMLR(
-        sflow([
-          sflow(`
+        sf([
+          sf(`
 <a href='/next'>next</a>
 <a href='/all'>all</a>
 `),
@@ -61,7 +68,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       ),
     "GET /all$": async () =>
       new Response(
-        sflow(
+        sf(
           FSRSNotes.find(
             { "card.due": { $lte: new Date() } },
             { sort: { "card.due": 1 } },
@@ -81,13 +88,21 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     "GET /add(?:/|$|\\?)": async (req, options) =>
       JSONR(saveQueryNote(req, options)),
     "POST /api/fsrs/add/?$": async (req) => JSONR(saveQueryNoteByJSONData(req)),
-    "GET /next": async () => {
-      const dueCards = await FSRSNotes.find(
-        { "card.due": { $lte: new Date() } },
-        { sort: { "card.due": 1 } },
-      ).toArray();
-      return new Response(
-        sflow(dueCards.toSorted(() => Math.random() - 0.5))
+    "GET /next": async () =>
+      new Response(
+        sf(
+          FSRSNotes.find(
+            {
+              "card.due": { $lte: new Date() },
+              url: /brainstorm|JLPT|japanese|n2|n1|n3/i,
+            },
+            { sort: { "card.due": 1 } },
+          ),
+          FSRSNotes.find(
+            { "card.due": { $lte: new Date() } },
+            { sort: { "card.due": 1 } },
+          ),
+        )
           .limit(1)
           .map((note) => {
             const url = JSON.stringify(note.url);
@@ -106,8 +121,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           .join("\n")
           .by(new TextEncoderStream()),
         { headers: { "content-type": "text/html" } },
-      );
-    },
+      ),
     // preview repeats
     "GET /repeat(?:/|$|\\?)": async (req, opt) => {
       const note = (await saveQueryNote(req, opt)) ?? DIE("note not found");
@@ -116,15 +130,13 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       }).toString();
       const doctitle = `[${dueMs(note.card.due)}] ${note.title ?? note.url}`;
       return HTMLR(
-        sflow([
-          sflow(`Current due: ${dueMs(note.card.due)}`),
+        sf([
+          sf(`Current due: ${dueMs(note.card.due)}`),
 
-          sflow(
-            `<script>document.title = ${JSON.stringify(doctitle)};</script>`,
-          ),
+          sf(`<script>document.title = ${JSON.stringify(doctitle)};</script>`),
 
-          sflow(`<br/>`),
-          sflow(values(fsrs().repeat(note.card, new Date())))
+          sf(`<br/>`),
+          sf(values(fsrs().repeat(note.card, new Date())))
             .map(
               (logitem, i) =>
                 `<a href="/review/${i + 1}/?${new URLSearchParams({
@@ -136,9 +148,9 @@ export const fsrsHandler = async (req: Request, email?: string) => {
                 )}</a>`,
             )
             .join("<br/>"),
-          sflow(`<br/>`),
+          sf(`<br/>`),
 
-          sflow(`
+          sf(`
             <div>
               hotkeys: <br/>
               hjlm = easy, good, again, delete <br/>
@@ -146,82 +158,58 @@ export const fsrsHandler = async (req: Request, email?: string) => {
               1,2,3,4,5 = again, hard, good, easy, delete <br/>
             </div>
             <script>
-            const hotkeyMapper = (map) => (e) =>
-              Object.entries(map)
-                .filter(([k, _v]) =>
-                  k
-                    .toLowerCase()
-                    .trim()
-                    .split(/,/)
-                    .some(
-                      (k) =>
-                        "alt,ctrl,shift,meta"
-                          .split(",")
-                          .every((m) => k.includes(m) === e[m+"Key"]) &&
-                        (k.split("+").includes(e.key.toLowerCase()) ||
-                          k.split("+").includes(e.code.toLowerCase().replace(/^key/, "")))
-                      ,
-                    ),
-                )
-                .map(tap(console.log))
-                .map(tap(([_, v]) => v()))
-                .at(0)
-              && e.stopPropagation() | e.preventDefault() | 1
-
-            window.addEventListener('keydown', (e) => {
+            document.body.addEventListener('keydown', (e) => {
               if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
-              return hotkeyMapper({
               // no modifier keys
-              
-              '1': ()=>location.href = '/review-and-close/1/?${search}',
-              '2': ()=>location.href = '/review-and-close/2/?${search}',
-              '3': ()=>location.href = '/review-and-close/3/?${search}',
-              '4': ()=>location.href = '/review-and-close/4/?${search}',
-              '5': ()=>location.href = '/delete-and-close/?${search}',
+              if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+              if (e.key === '1') location.href = '/review-and-close/1/?${search}';
+              if (e.key === '2') location.href = '/review-and-close/2/?${search}';
+              if (e.key === '3') location.href = '/review-and-close/3/?${search}';
+              if (e.key === '4') location.href = '/review-and-close/4/?${search}';
+              if (e.key === '5') location.href = '/delete-and-close/?${search}';
 
               // asdt = easy, good, again, delete
-              'a': ()=>location.href = '/review/4/?${search}',
-              's': ()=>location.href = '/review/3/?${search}',
-              'd': ()=>location.href = '/review/1/?${search}',
-              't': ()=>location.href = '/delete/?${search}',
+              if (e.key === 'a') location.href = '/review/4/?${search}';
+              if (e.key === 's') location.href = '/review/3/?${search}';
+              if (e.key === 'd') location.href = '/review/1/?${search}';
+              if (e.key === 't') location.href = '/delete/?${search}';
 
               // hjlm = easy, good, again, delete
-              'h': ()=>location.href = '/review-and-close/4/?${search}',
-              'j': ()=>location.href = '/review-and-close/3/?${search}',
-              'l': ()=>location.href = '/review-and-close/1/?${search}',
-              'm': ()=>location.href = '/delete-and-close/?${search}',
-              })(e);
+              if (e.key === 'h') location.href = '/review-and-close/4/?${search}';
+              if (e.key === 'j') location.href = '/review-and-close/3/?${search}';
+              if (e.key === 'l') location.href = '/review-and-close/1/?${search}';
+              if (e.key === 'm') location.href = '/delete-and-close/?${search}';
             });
           </script>`),
 
-          sflow(`<br/>`),
-          sflow(
+          sf(`<br/>`),
+          sf(
             `Reviewing <a target="_blank" href="${note.url}">${
               (note.title?.replace(/$/, " - ") ?? "") + note.url
             }</a>`,
           ),
-          // sflow(
+          // sf(
           //   `<a href="/delete-confirm/?url=${encodeURIComponent(
           //     note.url
           //   )}">DELETE NOTE</a>`
           // ),
-          sflow("<br/>"),
-          sflow(
+          sf("<br/>"),
+          sf(
             `<a href="/delete/?${new URLSearchParams({
               id: note._id.toString(),
             }).toString()}" accessKey='5'> DELETE </a>`,
           ),
 
-          sflow("<br/>"),
-          sflow("Due cards:"),
-          sflow(
+          sf("<br/>"),
+          sf("Due cards:"),
+          sf(
             FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } }),
           ).map(String),
-          sflow("<br/>"),
-          sflow("Total cards:"),
-          sflow(FSRSNotes.countDocuments({})).map(String),
-          sflow("<br/>"),
-          sflow("<br/>"),
+          sf("<br/>"),
+          sf("Total cards:"),
+          sf(FSRSNotes.countDocuments({})).map(String),
+          sf("<br/>"),
+          sf("<br/>"),
         ]).confluenceByConcat(),
       );
     },
@@ -241,7 +229,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           good: Rating.Good,
           "4": Rating.Easy,
           easy: Rating.Easy,
-        }[params.rating] ?? DIE(`unknown rating: ${String(params.rating)}`);
+        }[params.rating] ?? DIE("unknown rating: " + String(params.rating));
 
       const reviewdCard = await reviewed(
         (await getQueryNote(req, options)) ?? DIE("fail to find note"),
@@ -249,7 +237,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       );
       const due = dueMs(reviewdCard.card.due);
       return HTMLR(
-        sflow(
+        sf(
           [
             `Reviewed, Next review after ${due}<br/><br/>\n`,
             `<a href="/next" autofocus>Next Card</a><br/>\n`,
@@ -272,7 +260,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
             good: Rating.Good,
             "4": Rating.Easy,
             easy: Rating.Easy,
-          }[params.rating] ?? DIE(`unknown rating: ${String(params.rating)}`);
+          }[params.rating] ?? DIE("unknown rating: " + String(params.rating));
 
         const reviewdCard = await reviewed(
           (await getQueryNote(req, options)) ?? DIE("fail to find note"),
@@ -280,7 +268,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         );
         const due = dueMs(reviewdCard.card.due);
         return HTMLR(
-          sflow(
+          sf(
             [
               `Reviewed, Next review after ${due}<br/><br/>\n`,
               `<a href="/next" autofocus accessKey='1'>Next Card</a><br/>\n`,
@@ -316,21 +304,21 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     },
   };
 
-  function notesPreviewFlow(): sflow<string> {
-    return sflow(
-      sflow(`<pre>\n`),
+  function notesPreviewFlow(): sf<string> {
+    return sf(
+      sf(`<pre>\n`),
 
-      sflow("Total cards:"),
-      sflow(FSRSNotes.countDocuments({})).map(String),
-      sflow("\n"),
+      sf("Total cards:"),
+      sf(FSRSNotes.countDocuments({})).map(String),
+      sf("\n"),
 
-      sflow("Due cards:"),
-      sflow(FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })).map(
+      sf("Due cards:"),
+      sf(FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })).map(
         String,
       ),
-      sflow("\n"),
+      sf("\n"),
 
-      sflow(FSRSNotes.find({}, { sort: { "card.due": 1 } }))
+      sf(FSRSNotes.find({}, { sort: { "card.due": 1 } }))
         .map(
           (note) =>
             `${dueMs(note.card.due)} ${
@@ -338,9 +326,9 @@ export const fsrsHandler = async (req: Request, email?: string) => {
             }`,
         )
         .join("\n"),
-      sflow("\n"),
+      sf("\n"),
 
-      sflow(`</pre>\n`),
+      sf(`</pre>\n`),
     );
   }
 
@@ -358,13 +346,11 @@ export const fsrsHandler = async (req: Request, email?: string) => {
   async function reviewed(note: FSRSNote, grade: Grade) {
     const { card, log } = fsrs().repeat(note.card, new Date())[grade];
     const url = note.url;
-    const result = await FSRSNotes.findOneAndUpdate(
+    return (await FSRSNotes.findOneAndUpdate(
       { url },
       { $set: { card }, $push: { log } },
       { returnDocument: "after", upsert: true },
-    );
-    if (!result) throw new Error("Failed to update note");
-    return result;
+    ))!;
   }
 
   async function JSONR<T>(data: T | Promise<T>) {
@@ -408,8 +394,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     options?: { params?: Record<string, string> },
   ) {
     const params = getParams(req, options);
-    const url = params.url;
-    const id = params.id;
+    const url = params["url"];
+    const id = params["id"];
     return (await FSRSNotes.aggregate([
       { $set: { _id: { $toString: "$_id" } } },
       {
@@ -482,7 +468,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 };
 
 function dueMs(due: Date) {
-  return ems(+due - Date.now(), {
+  return ems(+due - +new Date(), {
     shortFormat: true,
     roundUp: true,
   });
