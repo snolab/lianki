@@ -1,7 +1,6 @@
 // 1. create password
 
-import { auth, signIn } from "@/auth";
-import { authUser } from "../signInEmail";
+import { authUser, getSession } from "../signInEmail";
 
 // 2. link oauth
 export default async function ProfilePage() {
@@ -16,23 +15,23 @@ export default async function ProfilePage() {
     <>
       Email: {user.email}
       <br />
-      {JSON.stringify(await auth())}
+      {JSON.stringify(await getSession())}
       <form
-        action={async (fd: FormData) => {
+        action={async () => {
           "use server";
-          await signIn("nodemailer", fd);
+          // TODO: Implement email change with better-auth
         }}
       >
         <input name="email" type="email" />
-        <button>Change Email</button>
+        <button type="submit">Change Email</button>
       </form>
-
       <button
         onClick={async () => {
           "use server";
           await authUser();
-          await signIn("github");
+          // TODO: Implement GitHub linking with better-auth
         }}
+        type="button"
       >
         Link Github
       </button>
@@ -44,10 +43,10 @@ export default async function ProfilePage() {
           // user.password
         }}
       >
-        Password: {user.password ? "***" : "No Password yet"}
-        <input type="password" name="password" />
-        <input type="password" name="confirm-password" />
-        <button>Update Password</button>
+        Password: {"***" /* Password field not exposed in better-auth */}
+        <input name="password" type="password" />
+        <input name="confirm-password" type="password" />
+        <button type="submit">Update Password</button>
       </form>
     </>
   );

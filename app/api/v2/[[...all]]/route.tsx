@@ -1,7 +1,8 @@
 import { getAuthenticatedEmail } from "@/app/auth-utils";
-import { fsrsHandler } from "../../fsrs";
+import { fsrsHandler } from "@/app/fsrs-v2";
+
 export const dynamic = "force-dynamic";
-// export const runtime = 'edge'
+
 export const GET = async (req: Request) => {
   try {
     const email = await getAuthenticatedEmail(req);
