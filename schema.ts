@@ -11,7 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 // import postgres from "postgres"
 // import { drizzle } from "drizzle-orm/postgres-js"
-import type { AdapterAccountType } from "next-auth/adapters";
+// import type { AdapterAccountType } from "next-auth/adapters"; // Commented out for better-auth migration
 import DIE from "phpdie";
 
 // const connectionString = "postgres://postgres:postgres@localhost:5432/drizzle"
@@ -36,7 +36,7 @@ export const accounts = pgTable(
     userId: text("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    type: text("type").$type<AdapterAccountType>().notNull(),
+    type: text("type").notNull(), // Removed AdapterAccountType for better-auth migration
     provider: text("provider").notNull(),
     providerAccountId: text("providerAccountId").notNull(),
     refresh_token: text("refresh_token"),
@@ -51,7 +51,7 @@ export const accounts = pgTable(
     compoundKey: primaryKey({
       columns: [account.provider, account.providerAccountId],
     }),
-  })
+  }),
 );
 
 export const sessions = pgTable("session", {
@@ -73,7 +73,7 @@ export const verificationTokens = pgTable(
     compositePk: primaryKey({
       columns: [verificationToken.identifier, verificationToken.token],
     }),
-  })
+  }),
 );
 
 export const authenticators = pgTable(
@@ -94,7 +94,7 @@ export const authenticators = pgTable(
     compositePK: primaryKey({
       columns: [authenticator.userId, authenticator.credentialID],
     }),
-  })
+  }),
 );
 // import { integer, pgTable, varchar } from "drizzle-orm/pg-core";
 // export const usersTable = pgTable("users", {
