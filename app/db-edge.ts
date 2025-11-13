@@ -1,7 +1,6 @@
 import type { MongoClient } from "mongodb";
 import RelayMongoClient from "mongodb-rest-relay";
 import DIE from "phpdie";
-
 const g = global as typeof global & { mongodbClient: MongoClient };
 const endpoint = "/api/mongodb-relay";
 const uri =
@@ -9,10 +8,9 @@ const uri =
   process.env.MONGODB_RELAY_ORIGIN?.replace(/.*/, (s) => s + endpoint) ??
   DIE("Missing MONGODB_RELAY_URI");
 
-if (!g.mongodbClient) {
-  g.mongodbClient = new RelayMongoClient(uri) as unknown as MongoClient;
-}
-export const mongoClient = g.mongodbClient;
+export const mongoClient = (g.mongodbClient ??= new RelayMongoClient(
+  uri
+) as unknown as MongoClient);
 export const db = mongoClient.db("brainstorm");
 
 // export const db = MongoDB.connect({

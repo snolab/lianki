@@ -1,56 +1,54 @@
-import { betterAuth } from "better-auth";
-import { mongodbAdapter } from "better-auth/adapters/mongodb";
+// import { DrizzleAdapter } from "@auth/drizzle-adapter";
+import { MongoDBAdapter } from "@auth/mongodb-adapter";
+// import PostgresAdapter from "@auth/pg-adapter";
+// import { Pool } from "@neondatabase/serverless";
 
-// Conditionally load MongoDB client
-// biome-ignore lint/suspicious/noExplicitAny: Required for dynamic database import
-let database: any = null;
-
-try {
-  if (process.env.MONGODB_URI) {
-    // biome-ignore lint/style/noCommonJs: Required for conditional database import during build
-    const { db } = require("./app/db");
-    database = db;
+import NextAuth from "next-auth";
+import { mongoClient } from "./app/db";
+import { authConfig } from "./auth.config";
+declare module "next-auth" {
+  interface User {
+    password?: string;
   }
-} catch {
-  console.warn("Database connection not available during build");
 }
+export const { handlers, signIn, signOut, auth } = NextAuth(() => {
+  // const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  return {
+    adapter: MongoDBAdapter(mongoClient),
+    // adapter: DrizzleAdapter(db),
+    // adapter: PostgresAdapter(pool),
+    // pages: {
+    //   // signIn: '/auth/signin',
+    //   // signOut: '/auth/signout',
+    //   // error: '/auth/error',
+    //   // verifyRequest: '/auth/verify-request',
+    //   // newUser: '/auth/new-user'
+    // },
+    // callbacks: {
+    //   jwt: async ({ token, user }) => {
+    //     if (user) {
+    //       token.id = user.id;
+    //     }
+    //     return token;
+    //   },
+    // },
+    callbacks: {
+      jwt({ token, user }) {
+        if (user) {
+          // User is available during sign-in
+          token.id = user.id;
+        }
+        return token;
+      },
+      session({ session, token }) {
+        // @ts-expect-error any
+        session.user.id = token.id;
+        return session;
+      },
+    },
 
-export const auth = betterAuth({
-  database: database ? mongodbAdapter(database) : undefined,
-  emailAndPassword: {
-    enabled: true,
-  },
-  socialProviders: {
-    ...(process.env.AUTH_GITHUB_SECRET && process.env.AUTH_GITHUB_ID
-      ? {
-          github: {
-            clientId: process.env.AUTH_GITHUB_ID,
-            clientSecret: process.env.AUTH_GITHUB_SECRET,
-          },
-        }
-      : {}),
-    ...(process.env.AUTH_GOOGLE_SECRET && process.env.AUTH_GOOGLE_ID
-      ? {
-          google: {
-            clientId: process.env.AUTH_GOOGLE_ID,
-            clientSecret: process.env.AUTH_GOOGLE_SECRET,
-          },
-        }
-      : {}),
-  },
-  session: {
-    expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24, // 1 day
-  },
-  secret:
-    process.env.BETTER_AUTH_SECRET ??
-    process.env.AUTH_SECRET ??
-    "fallback-secret-key",
-  baseURL:
-    process.env.BETTER_AUTH_URL ??
-    process.env.NEXTAUTH_URL ??
-    "http://localhost:3000",
+    session: { strategy: "jwt" },
+    // force JWT session with a database
+    ...authConfig,
+  };
 });
-
-export type Session = typeof auth.$Infer.Session;
-export type User = typeof auth.$Infer.Session.user;
