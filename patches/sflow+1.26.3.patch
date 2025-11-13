@@ -1,0 +1,48 @@
+diff --git a/node_modules/sflow/src/mergeAscends.ts b/node_modules/sflow/src/mergeAscends.ts
+index 77dcace..cdcb3b9 100644
+--- a/node_modules/sflow/src/mergeAscends.ts
++++ b/node_modules/sflow/src/mergeAscends.ts
+@@ -87,7 +87,7 @@ curr: ${JSON.stringify(minValue)}
+                 lastMinValue = minValue;
+                 ctrl.enqueue(minValue!);
+                 slots[minIndex] = undefined;
+-                pendingSlotRemoval[minIndex]?.resolve();
++                pendingSlotRemoval[minIndex]?.resolve(undefined);
+                 pendingSlotRemoval[minIndex] = undefined;
+                 return true;
+               }
+@@ -183,7 +183,7 @@ curr: ${JSON.stringify(maxValue)}
+                 lastMaxValue = maxValue;
+                 ctrl.enqueue(maxValue!);
+                 slots[maxIndex] = undefined;
+-                pendingSlotRemoval[maxIndex]?.resolve();
++                pendingSlotRemoval[maxIndex]?.resolve(undefined);
+                 pendingSlotRemoval[maxIndex] = undefined;
+                 return true;
+               }
+diff --git a/node_modules/sflow/src/throttles.ts b/node_modules/sflow/src/throttles.ts
+index dcddbeb..96fcd6d 100644
+--- a/node_modules/sflow/src/throttles.ts
++++ b/node_modules/sflow/src/throttles.ts
+@@ -38,7 +38,7 @@ export function throttles<T>(
+         Promise.withResolvers(),
+         setTimeout(() => {
+           timerId = null;
+-          cdPromise.resolve();
++          cdPromise.resolve(undefined);
+           // lasts.map((e) => ctrl.enqueue(e));
+         }, interval),
+       ] as const;
+diff --git a/node_modules/sflow/src/toLatest.ts b/node_modules/sflow/src/toLatest.ts
+index 5bd3c3e..21d1cf6 100644
+--- a/node_modules/sflow/src/toLatest.ts
++++ b/node_modules/sflow/src/toLatest.ts
+@@ -17,7 +17,7 @@ export function toLatests<T>(r: ReadableStream<T>): {
+         nextPromise = Promise.withResolvers<T>();
+       },
+       close: () => {
+-        nextPromise.resolve(undefined);
++        nextPromise.resolve(undefined as any);
+       },
+     }),
+   );
