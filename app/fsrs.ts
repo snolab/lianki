@@ -8,7 +8,7 @@ import { z } from "zod";
 // import { renderToString } from "react-dom/server";
 // import { ObjectId } from "mongodb";
 import type { WithId } from "mongodb";
-import { sf, TextEncoderStream } from "sflow";
+import  { sflow, TextEncoderStream } from "sflow";
 import {
   createEmptyCard,
   fsrs,
@@ -58,8 +58,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     // due cards
     "GET /$": async () =>
       HTMLR(
-        sf([
-          sf(`
+        sflow([
+          sflow(`
 <a href='/next'>next</a>
 <a href='/all'>all</a>
 `),
@@ -68,7 +68,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       ),
     "GET /all$": async () =>
       new Response(
-        sf(
+        sflow(
           FSRSNotes.find(
             { "card.due": { $lte: new Date() } },
             { sort: { "card.due": 1 } }
@@ -90,7 +90,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     "POST /api/fsrs/add/?$": async (req) => JSONR(saveQueryNoteByJSONData(req)),
     "GET /next": async () =>
       new Response(
-        sf(
+        sflow(
           FSRSNotes.find(
             {
               "card.due": { $lte: new Date() },
@@ -130,13 +130,13 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       }).toString();
       const doctitle = `[${dueMs(note.card.due)}] ${note.title ?? note.url}`;
       return HTMLR(
-        sf([
-          sf(`Current due: ${dueMs(note.card.due)}`),
+        sflow([
+          sflow(`Current due: ${dueMs(note.card.due)}`),
 
-          sf(`<script>document.title = ${JSON.stringify(doctitle)};</script>`),
+          sflow(`<script>document.title = ${JSON.stringify(doctitle)};</script>`),
 
-          sf(`<br/>`),
-          sf(values(fsrs().repeat(note.card, new Date())))
+          sflow(`<br/>`),
+          sflow(values(fsrs().repeat(note.card, new Date())))
             .map(
               (logitem, i) =>
                 `<a href="/review/${i + 1}/?${new URLSearchParams({
@@ -148,9 +148,9 @@ export const fsrsHandler = async (req: Request, email?: string) => {
                 )}</a>`
             )
             .join("<br/>"),
-          sf(`<br/>`),
+          sflow(`<br/>`),
 
-          sf(`
+          sflow(`
             <div>
               hotkeys: <br/>
               hjlm = easy, good, again, delete <br/>
@@ -182,34 +182,34 @@ export const fsrsHandler = async (req: Request, email?: string) => {
             });
           </script>`),
 
-          sf(`<br/>`),
-          sf(
+          sflow(`<br/>`),
+          sflow(
             `Reviewing <a target="_blank" href="${note.url}">${
               (note.title?.replace(/$/, " - ") ?? "") + note.url
             }</a>`
           ),
-          // sf(
+          // sflow(
           //   `<a href="/delete-confirm/?url=${encodeURIComponent(
           //     note.url
           //   )}">DELETE NOTE</a>`
           // ),
-          sf("<br/>"),
-          sf(
+          sflow("<br/>"),
+          sflow(
             `<a href="/delete/?${new URLSearchParams({
               id: note._id.toString(),
             }).toString()}" accessKey='5'> DELETE </a>`
           ),
 
-          sf("<br/>"),
-          sf("Due cards:"),
-          sf(
+          sflow("<br/>"),
+          sflow("Due cards:"),
+          sflow(
             FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })
           ).map(String),
-          sf("<br/>"),
-          sf("Total cards:"),
-          sf(FSRSNotes.countDocuments({})).map(String),
-          sf("<br/>"),
-          sf("<br/>"),
+          sflow("<br/>"),
+          sflow("Total cards:"),
+          sflow(FSRSNotes.countDocuments({})).map(String),
+          sflow("<br/>"),
+          sflow("<br/>"),
         ]).confluenceByConcat()
       );
     },
@@ -237,7 +237,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       );
       const due = dueMs(reviewdCard.card.due);
       return HTMLR(
-        sf(
+        sflow(
           [
             `Reviewed, Next review after ${due}<br/><br/>\n`,
             `<a href="/next" autofocus>Next Card</a><br/>\n`,
@@ -268,7 +268,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         );
         const due = dueMs(reviewdCard.card.due);
         return HTMLR(
-          sf(
+          sflow(
             [
               `Reviewed, Next review after ${due}<br/><br/>\n`,
               `<a href="/next" autofocus accessKey='1'>Next Card</a><br/>\n`,
@@ -304,21 +304,21 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     },
   };
 
-  function notesPreviewFlow(): sf<string> {
-    return sf(
-      sf(`<pre>\n`),
+  function notesPreviewFlow(): sflow<string> {
+    return sflow(
+      sflow(`<pre>\n`),
 
-      sf("Total cards:"),
-      sf(FSRSNotes.countDocuments({})).map(String),
-      sf("\n"),
+      sflow("Total cards:"),
+      sflow(FSRSNotes.countDocuments({})).map(String),
+      sflow("\n"),
 
-      sf("Due cards:"),
-      sf(FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })).map(
+      sflow("Due cards:"),
+      sflow(FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })).map(
         String
       ),
-      sf("\n"),
+      sflow("\n"),
 
-      sf(FSRSNotes.find({}, { sort: { "card.due": 1 } }))
+      sflow(FSRSNotes.find({}, { sort: { "card.due": 1 } }))
         .map(
           (note) =>
             `${dueMs(note.card.due)} ${
@@ -326,9 +326,9 @@ export const fsrsHandler = async (req: Request, email?: string) => {
             }`
         )
         .join("\n"),
-      sf("\n"),
+      sflow("\n"),
 
-      sf(`</pre>\n`)
+      sflow(`</pre>\n`)
     );
   }
 
