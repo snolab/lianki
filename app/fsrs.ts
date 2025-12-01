@@ -1,22 +1,22 @@
 // import { bsonId } from 'bsonid';
 // var ObjectId = require("bson-objectid");
 
-// import { ObjectId } from "bson";
-import DIE from "phpdie";
-import { values } from "rambda";
-import { z } from "zod";
 // import { renderToString } from "react-dom/server";
 // import { ObjectId } from "mongodb";
 import type { WithId } from "mongodb";
-import  { sflow, TextEncoderStream } from "sflow";
+// import { ObjectId } from "bson";
+import DIE from "phpdie";
+import { values } from "rambda";
+import { sflow, TextEncoderStream } from "sflow";
 import {
+  type Card,
   createEmptyCard,
   fsrs,
+  type Grade,
   Rating,
   RecordLogItem,
-  type Card,
-  type Grade,
 } from "ts-fsrs";
+import { z } from "zod";
 import { ems } from "./ems";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
 export type FSRSNote = {
@@ -50,7 +50,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     string,
     (
       req: Request,
-      options: { params: Record<string, string> }
+      options: { params: Record<string, string> },
     ) => Promise<Response>
   >;
 
@@ -64,26 +64,26 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 <a href='/all'>all</a>
 `),
           notesPreviewFlow(),
-        ]).confluenceByConcat()
+        ]).confluenceByConcat(),
       ),
     "GET /all$": async () =>
       new Response(
         sflow(
           FSRSNotes.find(
             { "card.due": { $lte: new Date() } },
-            { sort: { "card.due": 1 } }
-          )
+            { sort: { "card.due": 1 } },
+          ),
         )
           .map((note) => `window.open(${JSON.stringify(note.url)})`)
           .onFlush((c) =>
             c.enqueue(
-              "window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')"
-            )
+              "window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')",
+            ),
           )
           // .map((script) => `<script>${script}</script>`)
           // .forEach(() => sleep(1000))
           .join("\n"),
-        { headers: { "content-type": "text/html" } }
+        { headers: { "content-type": "text/html" } },
       ),
     "GET /add(?:/|$|\\?)": async (req, options) =>
       JSONR(saveQueryNote(req, options)),
@@ -96,12 +96,12 @@ export const fsrsHandler = async (req: Request, email?: string) => {
               "card.due": { $lte: new Date() },
               url: /brainstorm|JLPT|japanese|n2|n1|n3/i,
             },
-            { sort: { "card.due": 1 } }
+            { sort: { "card.due": 1 } },
           ),
           FSRSNotes.find(
             { "card.due": { $lte: new Date() } },
-            { sort: { "card.due": 1 } }
-          )
+            { sort: { "card.due": 1 } },
+          ),
         )
           .limit(1)
           .map((note) => {
@@ -113,14 +113,14 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           })
           .onFlush((c) =>
             c.enqueue(
-              "window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')"
-            )
+              "window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')",
+            ),
           )
           .map((script) => `<script>${script}</script>`)
           // .forEach(() => sleep(1000))
           .join("\n")
           .by(new TextEncoderStream()),
-        { headers: { "content-type": "text/html" } }
+        { headers: { "content-type": "text/html" } },
       ),
     // preview repeats
     "GET /repeat(?:/|$|\\?)": async (req, opt) => {
@@ -133,7 +133,9 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         sflow([
           sflow(`Current due: ${dueMs(note.card.due)}`),
 
-          sflow(`<script>document.title = ${JSON.stringify(doctitle)};</script>`),
+          sflow(
+            `<script>document.title = ${JSON.stringify(doctitle)};</script>`,
+          ),
 
           sflow(`<br/>`),
           sflow(values(fsrs().repeat(note.card, new Date())))
@@ -144,8 +146,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
                 }).toString()}" rel="noopener noreferrer" accessKey='${
                   i + 1
                 }'>${["Again", "Hard", "Good", "Easy"][i]} ${dueMs(
-                  (logitem as RecordLogItem).card.due
-                )}</a>`
+                  (logitem as RecordLogItem).card.due,
+                )}</a>`,
             )
             .join("<br/>"),
           sflow(`<br/>`),
@@ -186,7 +188,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           sflow(
             `Reviewing <a target="_blank" href="${note.url}">${
               (note.title?.replace(/$/, " - ") ?? "") + note.url
-            }</a>`
+            }</a>`,
           ),
           // sflow(
           //   `<a href="/delete-confirm/?url=${encodeURIComponent(
@@ -197,26 +199,26 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           sflow(
             `<a href="/delete/?${new URLSearchParams({
               id: note._id.toString(),
-            }).toString()}" accessKey='5'> DELETE </a>`
+            }).toString()}" accessKey='5'> DELETE </a>`,
           ),
 
           sflow("<br/>"),
           sflow("Due cards:"),
           sflow(
-            FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })
+            FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } }),
           ).map(String),
           sflow("<br/>"),
           sflow("Total cards:"),
           sflow(FSRSNotes.countDocuments({})).map(String),
           sflow("<br/>"),
           sflow("<br/>"),
-        ]).confluenceByConcat()
+        ]).confluenceByConcat(),
       );
     },
     // click btns
     "GET /review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (
       req,
-      options
+      options,
     ) => {
       const params = getParams(req, options);
       const rating =
@@ -233,7 +235,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
       const reviewdCard = await reviewed(
         (await getQueryNote(req, options)) ?? DIE("fail to find note"),
-        rating as Grade
+        rating as Grade,
       );
       const due = dueMs(reviewdCard.card.due);
       return HTMLR(
@@ -243,8 +245,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
             `<a href="/next" autofocus>Next Card</a><br/>\n`,
             `<script>window.open('/next', 'fsrs-reviewing');</script>\n`,
           ],
-          notesPreviewFlow()
-        )
+          notesPreviewFlow(),
+        ),
       );
     },
     "GET /review-and-close/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)":
@@ -264,7 +266,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
         const reviewdCard = await reviewed(
           (await getQueryNote(req, options)) ?? DIE("fail to find note"),
-          rating as Grade
+          rating as Grade,
         );
         const due = dueMs(reviewdCard.card.due);
         return HTMLR(
@@ -274,8 +276,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
               `<a href="/next" autofocus accessKey='1'>Next Card</a><br/>\n`,
               `<script>window.close();</script>\n`,
             ],
-            notesPreviewFlow()
-          )
+            notesPreviewFlow(),
+          ),
         );
       },
     "GET /delete-confirm(?:/|$|\\?)": async (req, opt) => {
@@ -286,7 +288,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         }</a>?<br/><a href="/delete/?${new URLSearchParams({
           // url: note.url,
           id: note._id.toString(),
-        }).toString()}">YES</a> <a href="/">NO</a>`
+        }).toString()}">YES</a> <a href="/">NO</a>`,
       );
     },
     "GET /delete(?:/|$|\\?)": async (req, opt) => {
@@ -294,7 +296,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       console.log(await FSRSNotes.deleteOne({ url: note.url }));
       return HTMLR(
         // `<script>window.open('/next', 'fsrs-reviewing');</script>\n`
-        `<script>window.close();</script>\n` // list mode
+        `<script>window.close();</script>\n`, // list mode
       );
     },
     "GET /delete-and-close(?:/|$|\\?)": async (req, opt) => {
@@ -314,7 +316,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
       sflow("Due cards:"),
       sflow(FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })).map(
-        String
+        String,
       ),
       sflow("\n"),
 
@@ -323,12 +325,12 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           (note) =>
             `${dueMs(note.card.due)} ${
               (note.title?.replace(/$/, " - ") ?? "") + note.url
-            }`
+            }`,
         )
         .join("\n"),
       sflow("\n"),
 
-      sflow(`</pre>\n`)
+      sflow(`</pre>\n`),
     );
   }
 
@@ -349,7 +351,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     return (await FSRSNotes.findOneAndUpdate(
       { url },
       { $set: { card }, $push: { log } },
-      { returnDocument: "after", upsert: true }
+      { returnDocument: "after", upsert: true },
     ))!;
   }
 
@@ -373,7 +375,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
   }
   async function saveQueryNote(
     req: Request,
-    options?: { params?: Record<string, string> }
+    options?: { params?: Record<string, string> },
   ) {
     const params = getParams(req, options);
     if (params.id) {
@@ -391,7 +393,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
   }
   async function getQueryNote(
     req: Request,
-    options?: { params?: Record<string, string> }
+    options?: { params?: Record<string, string> },
   ) {
     const params = getParams(req, options);
     const url = params["url"];
@@ -407,14 +409,14 @@ export const fsrsHandler = async (req: Request, email?: string) => {
               return { _id: id };
             })()
           : url
-          ? { url }
-          : DIE("no query"),
+            ? { url }
+            : DIE("no query"),
       },
     ]).next()) as WithId<FSRSNote>;
   }
   function getParams(
     req: Request,
-    options: { params?: Record<string, string> } | undefined
+    options: { params?: Record<string, string> } | undefined,
   ) {
     return Object.fromEntries([
       ...(options?.params ? Object.entries(options.params) : []),
@@ -424,7 +426,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
   function getQuery(
     req: Request,
-    options: { params?: Record<string, string> } | undefined
+    options: { params?: Record<string, string> } | undefined,
   ) {
     const params = getParams(req, options);
     return {
@@ -443,7 +445,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           $setOnInsert: { card: createEmptyCard() },
           $set: { ...(title && { title }) },
         },
-        { upsert: true, returnDocument: "after" }
+        { upsert: true, returnDocument: "after" },
       )) ?? DIE("fail to find or create note")
     );
   }
@@ -460,7 +462,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           {
             status: 500,
             headers: { "Content-Type": "text/html" },
-          }
+          },
         );
       });
   }

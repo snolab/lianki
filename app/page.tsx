@@ -10,34 +10,40 @@ export const dynamic = "force-dynamic";
  */
 export default async function HomePage() {
   const email = await authEmail();
-  const user = await authUser()
+  const user = await authUser();
   const FSRSNotes = getFSRSNotesCollection(email);
   return (
     <div>
-      <nav><ul>
-        <li>
-          <a href='./fsrsnext.user.js'>Install user script</a>
-        </li>
-        <li>
-          <summary>
-            <span>
-              {user.image && <Image className='w-4 h-4' alt='avater' src={user.image} />}
-              <a>{user.name}</a>
-            </span>
-            <details>
-              <ul>
-                <li>
-                  <a href="/profile">Profile</a>
-                </li>
-                <li>
-                  <a>{email}</a>
-                </li>
-                <li>
-                  <a href='/api/auth/signout'>Sign out</a></li></ul>
-            </details>
-          </summary>
-        </li>
-      </ul></nav>
+      <nav>
+        <ul>
+          <li>
+            <a href="./fsrsnext.user.js">Install user script</a>
+          </li>
+          <li>
+            <summary>
+              <span>
+                {user.image && (
+                  <Image className="w-4 h-4" alt="avater" src={user.image} />
+                )}
+                <a>{user.name}</a>
+              </span>
+              <details>
+                <ul>
+                  <li>
+                    <a href="/profile">Profile</a>
+                  </li>
+                  <li>
+                    <a>{email}</a>
+                  </li>
+                  <li>
+                    <a href="/api/auth/signout">Sign out</a>
+                  </li>
+                </ul>
+              </details>
+            </summary>
+          </li>
+        </ul>
+      </nav>
       <div>
         <a href="/next" className="btn" accessKey="1">
           Next card
@@ -55,7 +61,8 @@ export default async function HomePage() {
       <ul>
         <Suspense>
           <Cards />
-        </Suspense>w
+        </Suspense>
+        w
       </ul>
     </div>
   );
@@ -70,7 +77,7 @@ export default async function HomePage() {
             return sflow(
               FSRSNotes.find({}, { sort: { "card.due": 1 } })
                 .skip(page * size)
-                .limit(size)
+                .limit(size),
             )
               .map((note) => {
                 const due = dueMs(note.card.due);

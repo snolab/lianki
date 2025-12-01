@@ -26,7 +26,6 @@ export default async function ProfilePage() {
         <input name="email" type="email" />
         <button>Change Email</button>
       </form>
-
       <button
         onClick={async () => {
           "use server";
