@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { Suspense } from "react";
-import sflow, { sf } from "sflow";
+import sflow from "sflow";
 import { ems } from "./ems";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
 import { authEmail, authUser } from "./signInEmail";
