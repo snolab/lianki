@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "bun db:push && next start ",
-    "lint": "next lint",
+    "fix": "biome check --fix",
     "db:push": "bun x --bun drizzle-kit push",
     "prepare": "husky"
   },
@@ -17,6 +17,7 @@
     "@auth/drizzle-adapter": "^1.7.2",
     "@auth/mongodb-adapter": "^3.7.0",
     "@auth/pg-adapter": "^1.8.0",
+    "@biomejs/biome": "^2.3.8",
     "@clerk/nextjs": "^5.7.5",
     "@keyv/mongo": "^3.0.1",
     "@neondatabase/serverless": "^0.10.1",

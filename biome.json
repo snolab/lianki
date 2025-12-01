@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.2.6/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.3.8/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": { "ignoreUnknown": false },
   "formatter": { "enabled": true, "indentStyle": "space" },
@@ -13,7 +13,6 @@
       },
       "correctness": { "noUnusedVariables": "error" },
       "nursery": {
-        "noNonNullAssertedOptionalChain": "error",
         "noUnusedExpressions": "off"
       },
       "style": {
@@ -28,7 +27,8 @@
         "noMisleadingInstantiator": "error",
         "noTsIgnore": "error",
         "noUnsafeDeclarationMerging": "error",
-        "useNamespaceKeyword": "error"
+        "useNamespaceKeyword": "error",
+        "noNonNullAssertedOptionalChain": "error"
       }
     }
   },
