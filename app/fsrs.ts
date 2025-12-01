@@ -158,27 +158,27 @@ export const fsrsHandler = async (req: Request, email?: string) => {
               1,2,3,4,5 = again, hard, good, easy, delete <br/>
             </div>
             <script>
-            document.body.addEventListener('keydown', (e) => {
+            addEventListener('keydown', (e) => {
               if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
               // no modifier keys
               if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-              if (e.key === '1') location.href = '/review-and-close/1/?${search}';
-              if (e.key === '2') location.href = '/review-and-close/2/?${search}';
-              if (e.key === '3') location.href = '/review-and-close/3/?${search}';
-              if (e.key === '4') location.href = '/review-and-close/4/?${search}';
-              if (e.key === '5') location.href = '/delete-and-close/?${search}';
+              if (e.code === 'Digit1') location.href = '/review-and-close/1/?${search}';
+              if (e.code === 'Digit2') location.href = '/review-and-close/2/?${search}';
+              if (e.code === 'Digit3') location.href = '/review-and-close/3/?${search}';
+              if (e.code === 'Digit4') location.href = '/review-and-close/4/?${search}';
+              if (e.code === 'Digit5') location.href = '/delete-and-close/?${search}';
 
               // asdt = easy, good, again, delete
-              if (e.key === 'a') location.href = '/review/4/?${search}';
-              if (e.key === 's') location.href = '/review/3/?${search}';
-              if (e.key === 'd') location.href = '/review/1/?${search}';
-              if (e.key === 't') location.href = '/delete/?${search}';
+              if (e.code === 'KeyA') location.href = '/review/4/?${search}';
+              if (e.code === 'KeyS') location.href = '/review/3/?${search}';
+              if (e.code === 'KeyD') location.href = '/review/1/?${search}';
+              if (e.code === 'KeyT') location.href = '/delete/?${search}';
 
               // hjlm = easy, good, again, delete
-              if (e.key === 'h') location.href = '/review-and-close/4/?${search}';
-              if (e.key === 'j') location.href = '/review-and-close/3/?${search}';
-              if (e.key === 'l') location.href = '/review-and-close/1/?${search}';
-              if (e.key === 'm') location.href = '/delete-and-close/?${search}';
+              if (e.code === 'KeyH') location.href = '/review-and-close/4/?${search}';
+              if (e.code === 'KeyJ') location.href = '/review-and-close/3/?${search}';
+              if (e.code === 'KeyL') location.href = '/review-and-close/1/?${search}';
+              if (e.code === 'KeyM') location.href = '/delete-and-close/?${search}';
             });
           </script>`),
 
