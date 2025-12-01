@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { Suspense } from "react";
-import { sf } from "sflow";
+import sflow, { sf } from "sflow";
 import { ems } from "./ems";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
 import { authEmail, authUser } from "./signInEmail";
@@ -67,7 +67,7 @@ export default async function HomePage() {
         <Suspense>
           {(async function () {
             // "use server";
-            return sf(
+            return sflow(
               FSRSNotes.find({}, { sort: { "card.due": 1 } })
                 .skip(page * size)
                 .limit(size)
