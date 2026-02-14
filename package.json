@@ -35,7 +35,7 @@
     "mongo-rest-client": "^1.1.2",
     "mongodb": "^6.9.0",
     "mongodb-rest-relay": "^1.11.0",
-    "next": "^15.2.2",
+    "next": "15.2.8",
     "next-auth": "^5.0.0-beta.22",
     "nodemailer": "^6.9.15",
     "phpdie": "^1.2.14",
