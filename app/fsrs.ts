@@ -3,6 +3,8 @@
 
 // import { renderToString } from "react-dom/server";
 // import { ObjectId } from "mongodb";
+import { readFileSync } from "fs";
+import { join } from "path";
 import type { WithId } from "mongodb";
 // import { ObjectId } from "bson";
 import DIE from "phpdie";
@@ -12,6 +14,16 @@ import { type Card, createEmptyCard, fsrs, type Grade, Rating, RecordLogItem } f
 import { z } from "zod";
 import { ems } from "./ems";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
+
+const LIANKI_USERSCRIPT_VERSION = (() => {
+  try {
+    const src = readFileSync(join(process.cwd(), "public/lianki.user.js"), "utf8");
+    return src.match(/@version\s+([\d.]+)/)?.[1] ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
+
 export type FSRSNote = {
   url: string;
   title?: string;
@@ -345,7 +357,10 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
   async function JSONR<T>(data: T | Promise<T>) {
     return new Response(JSON.stringify(await data), {
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "x-lianki-version": LIANKI_USERSCRIPT_VERSION,
+      },
     });
   }
   async function saveQueryNoteByJSONData(req: Request) {

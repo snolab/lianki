@@ -42,10 +42,31 @@ function main() {
   let fab = null;
   let dialog = null;
 
+  // ── Auto-update ────────────────────────────────────────────────────────────
+  const CURRENT_VERSION = GM_info?.script?.version ?? "0.0.0";
+  let updatePrompted = false;
+
+  function isNewerVersion(server, client) {
+    const p = (v) => v.split(".").map(Number);
+    const [sa, sb, sc] = p(server);
+    const [ca, cb, cc] = p(client);
+    return sa !== ca ? sa > ca : sb !== cb ? sb > cb : sc > cc;
+  }
+
+  function checkVersion(r) {
+    if (updatePrompted) return;
+    const sv = r.headers.get("x-lianki-version");
+    if (sv && isNewerVersion(sv, CURRENT_VERSION)) {
+      updatePrompted = true;
+      window.open(`${ORIGIN}/lianki.user.js`, "_blank");
+    }
+  }
+
   // ── API ────────────────────────────────────────────────────────────────────
   const api = (path, opts = {}) =>
     gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      checkVersion(r);
       return r.json();
     });
 
