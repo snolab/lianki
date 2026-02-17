@@ -1,1 +1,4 @@
 bun fix
+bunx oxlint --fix
+bunx oxfmt .
+bunx @typescript/native-preview --noEmit
