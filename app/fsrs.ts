@@ -288,7 +288,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         }</a>?<br/><a href="/delete/?${new URLSearchParams({
           // url: note.url,
           id: note._id.toString(),
-        }).toString()}">YES</a> <a href="/">NO</a>`,
+        }).toString()}">YES</a> <a href="/list">NO</a>`,
       );
     },
     "GET /delete(?:/|$|\\?)": async (req, opt) => {

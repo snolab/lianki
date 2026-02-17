@@ -1,113 +1,115 @@
-import Image from "next/image";
-import { Suspense } from "react";
-import sflow from "sflow";
-import { ems } from "./ems";
-import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
-import { authEmail, authUser } from "./signInEmail";
-export const dynamic = "force-dynamic";
-/**
- * @author: snomiao <snomiao@gmail.com>
- */
-export default async function HomePage() {
-  const email = await authEmail();
-  const user = await authUser();
-  const FSRSNotes = getFSRSNotesCollection(email);
+export default function LandingPage() {
   return (
-    <div>
-      <nav>
-        <ul>
-          <li>
-            <a href="./fsrsnext.user.js">Install user script</a>
-          </li>
-          <li>
-            <summary>
-              <span>
-                {user.image && (
-                  <Image className="w-4 h-4" alt="avater" src={user.image} />
-                )}
-                <a>{user.name}</a>
-              </span>
-              <details>
-                <ul>
-                  <li>
-                    <a href="/profile">Profile</a>
-                  </li>
-                  <li>
-                    <a>{email}</a>
-                  </li>
-                  <li>
-                    <a href="/api/auth/signout">Sign out</a>
-                  </li>
-                </ul>
-              </details>
-            </summary>
-          </li>
-        </ul>
-      </nav>
-      <div>
-        <a href="/next" className="btn" accessKey="1">
-          Next card
-        </a>
-      </div>
-      <p>
-        Total cards: <Suspense>{FSRSNotes.countDocuments({})}</Suspense>
-      </p>
-      <p>
-        Due cards:{" "}
-        <Suspense>
-          {FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })}
-        </Suspense>
-      </p>
-      <ul>
-        <Suspense>
-          <Cards />
-        </Suspense>
-      </ul>
+    <div className="flex flex-col min-h-screen">
+      {/* Header */}
+      <header className="py-4 px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">FSRSNext</h1>
+          <nav>
+            <a href="/list" className="text-lg font-medium hover:underline">
+              Go to App
+            </a>
+          </nav>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-grow">
+        {/* Hero Section */}
+        <section className="py-12 px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-4xl font-bold mb-4">
+            Supercharge Your Learning with Spaced Repetition
+          </h2>
+          <p className="text-lg mb-8 max-w-2xl mx-auto">
+            FSRSNext is a modern, open-source spaced repetition system designed
+            for efficient flashcard review and long-term memorization.
+          </p>
+          <a
+            href="/list"
+            className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700"
+          >
+            Get Started for Free
+          </a>
+        </section>
+
+        {/* Features Section */}
+        <section className="py-12 bg-gray-100 dark:bg-gray-900 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-4xl mx-auto">
+            <h3 className="text-3xl font-bold text-center mb-8">
+              Key Features
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="text-center">
+                <h4 className="text-xl font-semibold mb-2">FSRS Algorithm</h4>
+                <p>
+                  Utilizes the powerful FSRS algorithm for optimal review
+                  scheduling.
+                </p>
+              </div>
+              <div className="text-center">
+                <h4 className="text-xl font-semibold mb-2">
+                  Browser Integration
+                </h4>
+                <p>
+                  Add flashcards from any webpage with our Tampermonkey
+                  userscript.
+                </p>
+              </div>
+              <div className="text-center">
+                <h4 className="text-xl font-semibold mb-2">
+                  Multi-User Support
+                </h4>
+                <p>
+                  Sign in with Email, GitHub, or Google and keep your learning
+                  progress private.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* How to Use Section */}
+        <section className="py-12 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-4xl mx-auto text-center">
+            <h3 className="text-3xl font-bold mb-8">How It Works</h3>
+            <ol className="list-decimal list-inside text-left max-w-lg mx-auto">
+              <li className="mb-4">
+                <a
+                  href="/fsrsnext.user.js"
+                  className="text-blue-600 hover:underline"
+                >
+                  Install the userscript
+                </a>{" "}
+                in your browser (Tampermonkey or Violentmonkey required).
+              </li>
+              <li className="mb-4">
+                Use keyboard shortcuts (e.g., Alt+F) to add a webpage as a
+                flashcard.
+              </li>
+              <li className="mb-4">
+                Review your due cards daily with our simple interface.
+              </li>
+              <li className="mb-4">
+                The FSRS algorithm schedules the next review based on your
+                performance.
+              </li>
+            </ol>
+          </div>
+        </section>
+      </main>
+
+      {/* Footer */}
+      <footer className="py-4 px-4 sm:px-6 lg:px-8 text-center">
+        <p>
+          FSRSNext is an open-source project.{" "}
+          <a
+            href="https://github.com/snomiao/lianki"
+            className="text-blue-600 hover:underline"
+          >
+            View on GitHub
+          </a>
+        </p>
+      </footer>
     </div>
   );
-  async function Cards({ page = 0, size = 100 }) {
-    const email = await authEmail();
-    const FSRSNotes = getFSRSNotesCollection(email);
-    return (
-      <>
-        <Suspense>
-          {(async function () {
-            // "use server";
-            return sflow(
-              FSRSNotes.find({}, { sort: { "card.due": 1 } })
-                .skip(page * size)
-                .limit(size),
-            )
-              .map((note) => {
-                const due = dueMs(note.card.due);
-                const title = note.title;
-                const url = note.url;
-                return (
-                  <li key={note._id.toString()}>
-                    {due} <a href={url}>{title || url}</a>
-                  </li>
-                );
-              })
-              .toArray();
-          })().then((list) => {
-            if (!list.length) return <></>;
-            return (
-              <>
-                {list}
-                <Suspense>
-                  <Cards page={page + 1} />
-                </Suspense>
-              </>
-            );
-          })}
-        </Suspense>
-      </>
-    );
-  }
-}
-function dueMs(due: Date) {
-  return ems(+due - +new Date(), {
-    shortFormat: true,
-    roundUp: true,
-  });
 }

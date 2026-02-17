@@ -27,7 +27,7 @@ export default async function ProfilePage() {
         <pre>{JSON.stringify(session, null, 2)}</pre>
       </div>
       <div>
-        <a href="/">Back to Home</a>
+        <a href="/list">Back to Home</a>
       </div>
     </div>
   );
