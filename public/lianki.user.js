@@ -15,7 +15,7 @@
 // @connect     lianki.com
 // @connect     www.lianki.com
 // @connect     beta.lianki.com
-// @require     https://github.com/trim21/gm-fetch/releases/latest/download/gm-fetch.js
+// @require     https://cdn.jsdelivr.net/npm/@trim21/gm-fetch/dist/gm_fetch.js
 // ==/UserScript==
 
 globalThis.unload_Lianki?.();
@@ -64,7 +64,7 @@ function main() {
 
   // ── API ────────────────────────────────────────────────────────────────────
   const api = (path, opts = {}) =>
-    gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
+    GM_fetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       checkVersion(r);
       return r.json();
