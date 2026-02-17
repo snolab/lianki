@@ -497,7 +497,7 @@ function main() {
       if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyF") {
         e.preventDefault();
         e.stopPropagation();
-        dialog ? closeDialog() : openDialog();
+        if (dialog) closeDialog(); else openDialog();
         return;
       }
       if (!dialog || state.phase !== "reviewing") return;
