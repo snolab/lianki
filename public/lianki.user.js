@@ -132,6 +132,8 @@ function main() {
 
   const deleteNote = (id) => api(`/api/fsrs/delete?id=${encodeURIComponent(id)}`);
 
+  const getNextUrl = () => api("/api/fsrs/next-url");
+
   // ── Helpers ────────────────────────────────────────────────────────────────
   const btn = (bg, extra = "") =>
     `background:${bg};color:#eee;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;min-width:60px;${extra}`;
@@ -306,7 +308,12 @@ function main() {
       dialog.appendChild(errDiv);
 
       const btnRow = document.createElement("div");
-      Object.assign(btnRow.style, { display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" });
+      Object.assign(btnRow.style, {
+        display: "flex",
+        gap: "8px",
+        marginTop: "10px",
+        flexWrap: "wrap",
+      });
 
       const loginBtn = document.createElement("button");
       loginBtn.setAttribute("style", btn("#2a5f8f"));
@@ -449,11 +456,19 @@ function main() {
     }
   }
 
-  async function afterReview(message) {
+  async function afterReview(doneMessage) {
     state.phase = "reviewed";
-    state.message = message;
+    state.message = "Redirecting\u2026";
     renderDialog();
-    setTimeout(closeDialog, 2000);
+
+    const { url: nextUrl } = await getNextUrl().catch(() => ({ url: null }));
+    if (nextUrl && /^https?:\/\//.test(nextUrl)) {
+      location.href = nextUrl;
+    } else {
+      state.message = `${doneMessage} \u2014 All done!`;
+      renderDialog();
+      setTimeout(closeDialog, 2000);
+    }
   }
 
   // ── Keyboard ───────────────────────────────────────────────────────────────
