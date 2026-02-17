@@ -1,2 +1,2 @@
 bun fix
-bunx @typescript/native-preview --noEmit
+bun run typecheck
