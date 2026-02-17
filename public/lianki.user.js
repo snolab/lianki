@@ -85,8 +85,6 @@ function main() {
 
   const deleteNote = (id) => api(`/api/fsrs/delete?id=${encodeURIComponent(id)}`);
 
-  const getNextUrl = () => api("/api/fsrs/next-url");
-
   // ── Helpers ────────────────────────────────────────────────────────────────
   const btn = (bg, extra = "") =>
     `background:${bg};color:#eee;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;min-width:60px;${extra}`;
@@ -378,17 +376,10 @@ function main() {
   }
 
   async function afterReview(message) {
-    const { url: nextUrl } = await getNextUrl().catch(() => ({ url: null }));
     state.phase = "reviewed";
-    state.message = nextUrl ? `${message} — navigating to next card…` : `${message} — All done!`;
+    state.message = message;
     renderDialog();
-
-    if (nextUrl && /^https?:\/\//.test(nextUrl)) {
-      sessionStorage.setItem("lianki_auto_open", "1");
-      setTimeout(() => (location.href = nextUrl), 1500);
-    } else {
-      setTimeout(closeDialog, 2000);
-    }
+    setTimeout(closeDialog, 2000);
   }
 
   // ── Keyboard ───────────────────────────────────────────────────────────────
@@ -431,12 +422,6 @@ function main() {
     },
     { signal },
   );
-
-  // ── Auto-open after navigation ─────────────────────────────────────────────
-  if (sessionStorage.getItem("lianki_auto_open")) {
-    sessionStorage.removeItem("lianki_auto_open");
-    setTimeout(openDialog, 500);
-  }
 
   // ── Mount ──────────────────────────────────────────────────────────────────
   fab = createFab();
