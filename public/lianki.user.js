@@ -66,12 +66,6 @@ function main() {
   const getNextUrl = () => api("/api/fsrs/next-url");
 
   // ── Helpers ────────────────────────────────────────────────────────────────
-  const esc = (s) =>
-    String(s ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-
   const btn = (bg, extra = "") =>
     `background:${bg};color:#eee;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;min-width:60px;${extra}`;
 
@@ -182,63 +176,124 @@ function main() {
   function renderDialog() {
     if (!dialog) return;
     const { phase, options, error, message } = state;
-    let body = "";
 
-    if (phase === "adding") {
-      body = `
-        <style>
-          @keyframes lk-spin { to { transform: rotate(360deg); } }
-          .lk-spinner {
-            display: inline-block;
-            width: 20px; height: 20px;
-            border: 3px solid #555;
-            border-top-color: #7eb8f7;
-            border-radius: 50%;
-            animation: lk-spin 0.8s linear infinite;
-            vertical-align: middle;
-            margin-right: 8px;
-          }
-        </style>
-        <div style="display:flex;flex-direction:column;gap:10px">
-          <div style="font-size:15px;font-weight:600">
-            <span class="lk-spinner"></span>Adding note…
-          </div>
-          <div style="color:#888;font-size:12px;word-break:break-all">${esc(location.href)}</div>
-        </div>`;
-    } else if (phase === "error") {
-      body = `<div style="color:#f77">Error: ${esc(error)}<br><small>Are you logged in to Lianki?</small></div>`;
-    } else if (phase === "reviewing") {
-      const ratingBtns = options
-        .map(
-          (o) =>
-            `<button data-rating="${o.rating}" style="${btn("#2a5f8f")}">${esc(o.label)}<br><small style="opacity:.7;font-size:11px">${esc(o.due)}</small></button>`,
-        )
-        .join("");
-      body = `
-        <div style="margin-bottom:12px;word-break:break-all;font-size:13px;opacity:.8">
-          <b>${esc(document.title || location.href)}</b>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${ratingBtns}</div>
-        <div><button data-delete style="${btn("#7a2a2a")}">Delete</button></div>
-        <div style="margin-top:14px;opacity:.4;font-size:11px">
-          A/H=Easy &nbsp;·&nbsp; S/J=Good &nbsp;·&nbsp; W/K=Hard &nbsp;·&nbsp; D/L=Again &nbsp;·&nbsp; T/M=Delete &nbsp;·&nbsp; Esc=Close
-        </div>`;
-    } else if (phase === "reviewed") {
-      body = `<div style="color:#6f6;font-size:15px">${esc(message)}</div>`;
-    }
+    // Clear existing content
+    while (dialog.lastChild) dialog.removeChild(dialog.lastChild);
 
-    dialog.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <span style="font-weight:700;font-size:16px">🔖 Lianki</span>
-        <button id="lk-close" style="${btn("transparent")};color:#aaa;font-size:20px;padding:0 6px;line-height:1">×</button>
-      </div>
-      ${body}`;
-
-    dialog.querySelector("#lk-close")?.addEventListener("click", closeDialog);
-    dialog.querySelectorAll("[data-rating]").forEach((b) => {
-      b.addEventListener("click", () => doReview(Number(b.dataset.rating)));
+    // ── Header ──────────────────────────────────────────────────────────────
+    const header = document.createElement("div");
+    Object.assign(header.style, {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: "16px",
     });
-    dialog.querySelector("[data-delete]")?.addEventListener("click", doDelete);
+
+    const titleSpan = document.createElement("span");
+    Object.assign(titleSpan.style, { fontWeight: "700", fontSize: "16px" });
+    titleSpan.textContent = "🔖 Lianki";
+
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "×";
+    closeBtn.setAttribute(
+      "style",
+      `${btn("transparent")};color:#aaa;font-size:20px;padding:0 6px;line-height:1`,
+    );
+    closeBtn.addEventListener("click", closeDialog);
+
+    header.appendChild(titleSpan);
+    header.appendChild(closeBtn);
+    dialog.appendChild(header);
+
+    // ── Body ────────────────────────────────────────────────────────────────
+    if (phase === "adding") {
+      const styleEl = document.createElement("style");
+      styleEl.textContent =
+        "@keyframes lk-spin{to{transform:rotate(360deg)}}" +
+        ".lk-spinner{display:inline-block;width:20px;height:20px;" +
+        "border:3px solid #555;border-top-color:#7eb8f7;border-radius:50%;" +
+        "animation:lk-spin 0.8s linear infinite;vertical-align:middle;margin-right:8px}";
+      dialog.appendChild(styleEl);
+
+      const wrap = document.createElement("div");
+      Object.assign(wrap.style, { display: "flex", flexDirection: "column", gap: "10px" });
+
+      const spinRow = document.createElement("div");
+      Object.assign(spinRow.style, { fontSize: "15px", fontWeight: "600" });
+      const spinner = document.createElement("span");
+      spinner.className = "lk-spinner";
+      spinRow.appendChild(spinner);
+      spinRow.appendChild(document.createTextNode("Adding note\u2026"));
+
+      const urlDiv = document.createElement("div");
+      Object.assign(urlDiv.style, { color: "#888", fontSize: "12px", wordBreak: "break-all" });
+      urlDiv.textContent = location.href;
+
+      wrap.appendChild(spinRow);
+      wrap.appendChild(urlDiv);
+      dialog.appendChild(wrap);
+    } else if (phase === "error") {
+      const errDiv = document.createElement("div");
+      errDiv.style.color = "#f77";
+      errDiv.textContent = `Error: ${error}`;
+      errDiv.appendChild(document.createElement("br"));
+      const hint = document.createElement("small");
+      hint.textContent = "Are you logged in to Lianki?";
+      errDiv.appendChild(hint);
+      dialog.appendChild(errDiv);
+    } else if (phase === "reviewing") {
+      const titleDiv = document.createElement("div");
+      Object.assign(titleDiv.style, {
+        marginBottom: "12px",
+        wordBreak: "break-all",
+        fontSize: "13px",
+        opacity: ".8",
+      });
+      const bold = document.createElement("b");
+      bold.textContent = document.title || location.href;
+      titleDiv.appendChild(bold);
+      dialog.appendChild(titleDiv);
+
+      const btnRow = document.createElement("div");
+      Object.assign(btnRow.style, {
+        display: "flex",
+        gap: "8px",
+        flexWrap: "wrap",
+        marginBottom: "8px",
+      });
+      options.forEach((o) => {
+        const b = document.createElement("button");
+        b.setAttribute("style", btn("#2a5f8f"));
+        b.appendChild(document.createTextNode(o.label));
+        b.appendChild(document.createElement("br"));
+        const small = document.createElement("small");
+        Object.assign(small.style, { opacity: ".7", fontSize: "11px" });
+        small.textContent = o.due;
+        b.appendChild(small);
+        b.addEventListener("click", () => doReview(Number(o.rating)));
+        btnRow.appendChild(b);
+      });
+      dialog.appendChild(btnRow);
+
+      const deleteRow = document.createElement("div");
+      const deleteBtn = document.createElement("button");
+      deleteBtn.setAttribute("style", btn("#7a2a2a"));
+      deleteBtn.textContent = "Delete";
+      deleteBtn.addEventListener("click", doDelete);
+      deleteRow.appendChild(deleteBtn);
+      dialog.appendChild(deleteRow);
+
+      const hints = document.createElement("div");
+      Object.assign(hints.style, { marginTop: "14px", opacity: ".4", fontSize: "11px" });
+      hints.textContent =
+        "A/H=Easy \u00b7 S/J=Good \u00b7 W/K=Hard \u00b7 D/L=Again \u00b7 T/M=Delete \u00b7 Esc=Close";
+      dialog.appendChild(hints);
+    } else if (phase === "reviewed") {
+      const msgDiv = document.createElement("div");
+      Object.assign(msgDiv.style, { color: "#6f6", fontSize: "15px" });
+      msgDiv.textContent = message;
+      dialog.appendChild(msgDiv);
+    }
   }
 
   // ── Open / Close ───────────────────────────────────────────────────────────
@@ -306,7 +361,7 @@ function main() {
     state.message = nextUrl ? `${message} — navigating to next card…` : `${message} — All done!`;
     renderDialog();
 
-    if (nextUrl) {
+    if (nextUrl && /^https?:\/\//.test(nextUrl)) {
       sessionStorage.setItem("lianki_auto_open", "1");
       setTimeout(() => (location.href = nextUrl), 1500);
     } else {
