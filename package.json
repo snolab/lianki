@@ -2,12 +2,12 @@
   "name": "main",
   "version": "0.1.0",
   "private": true,
-  "exports": {
-    "import": "./index.ts"
-  },
   "workspaces": [
     "packages/*"
   ],
+  "exports": {
+    "import": "./index.ts"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

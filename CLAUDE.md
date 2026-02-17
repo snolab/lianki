@@ -43,19 +43,20 @@ Spaced repetition app (FSRS algorithm) built with Next.js 15. Renamed from FSRSN
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `app/page.tsx` | Landing page |
-| `app/list/page.tsx` | Note listing (main app) |
-| `app/fsrs.ts` | Core FSRS handler logic |
-| `app/db.ts` | MongoDB client |
-| `auth.ts` / `auth.config.ts` | NextAuth setup |
-| `public/lianki.user.js` | Tampermonkey/Violentmonkey userscript |
-| `.husky/pre-commit` | Pre-commit hook |
-| `.github/workflows/deploy.yml` | CI/CD to Vercel |
+| File                           | Purpose                               |
+| ------------------------------ | ------------------------------------- |
+| `app/page.tsx`                 | Landing page                          |
+| `app/list/page.tsx`            | Note listing (main app)               |
+| `app/fsrs.ts`                  | Core FSRS handler logic               |
+| `app/db.ts`                    | MongoDB client                        |
+| `auth.ts` / `auth.config.ts`   | NextAuth setup                        |
+| `public/lianki.user.js`        | Tampermonkey/Violentmonkey userscript |
+| `.husky/pre-commit`            | Pre-commit hook                       |
+| `.github/workflows/deploy.yml` | CI/CD to Vercel                       |
 
 ## Google OAuth
 
 Credentials (`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`) are shared between `fsrsnext.snomiao.com` and `lianki.com`. Both domains need to be in the Google Cloud Console OAuth client's authorized origins and redirect URIs:
+
 - `https://lianki.com/api/auth/callback/google`
 - `https://www.lianki.com/api/auth/callback/google`
