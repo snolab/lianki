@@ -1,4 +1,4 @@
-# FSRSNext
+# Lianki
 
 A modern spaced repetition learning system built with Next.js 15, implementing the FSRS (Free Spaced Repetition System) algorithm for efficient flashcard review and memorization.
 
@@ -14,7 +14,7 @@ A modern spaced repetition learning system built with Next.js 15, implementing t
 
 ## Live Demo
 
-https://fsrsnext.snomiao.com/
+https://www.lianki.com/
 
 ## Tech Stack
 
@@ -39,7 +39,7 @@ https://fsrsnext.snomiao.com/
 
 ```bash
 git clone <repository-url>
-cd fsrsnext
+cd lianki
 ```
 
 ### 2. Install dependencies
@@ -62,7 +62,7 @@ Edit `.env` and fill in your values:
 
 ```env
 # Required
-MONGODB_URI=mongodb://localhost:27017/fsrsnext
+MONGODB_URI=mongodb://localhost:27017/lianki
 AUTH_SECRET=<generate with: openssl rand -base64 32>
 
 # Optional - Email Authentication
@@ -91,7 +91,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ### Adding Cards
 
 1. **Via Web Interface**: Navigate to `/add-note` and paste a URL with optional title
-2. **Via Userscript**: Install the userscript from `/fsrsnext.user.js` and use:
+2. **Via Userscript**: Install the userscript from `/lianki.user.js` and use:
    - `Alt+F`: Add current page
    - `Alt+V`: Add from clipboard
    - `Alt+Shift+V`: Bulk add multiple URLs
@@ -167,7 +167,7 @@ docker-compose up
 ├── auth.ts                   # NextAuth configuration
 ├── auth.config.ts            # Auth providers config
 ├── public/
-│   └── fsrsnext.user.js      # Tampermonkey userscript
+│   └── lianki.user.js        # Tampermonkey userscript
 └── .env.example              # Environment variables template
 ```
 

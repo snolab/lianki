@@ -8,8 +8,8 @@
 // @author      snomiao@gmail.com
 // @description fsrs everywhere
 // @run-at      document-start
-// @downloadURL https://fsrsnext.snomiao.com/fsrsnext.user.js
-// @updateURL   https://fsrsnext.snomiao.com/fsrsnext.user.js
+// @downloadURL https://lianki.com/lianki.user.js
+// @updateURL   https://lianki.com/lianki.user.js
 // ==/UserScript==
 
 globalThis.unload_FSRSEverywhere?.();
@@ -17,12 +17,12 @@ globalThis.unload_FSRSEverywhere = main();
 
 function main() {
   const ac = new AbortController();
-  const origin = "https://fsrsnext.snomiao.com";
+  const origin = "https://lianki.com";
 
   const openFsrs = (_urlOrAnchor, target = "_blank") => {
     const _url = _urlOrAnchor.href ? _urlOrAnchor.href : _urlOrAnchor;
 
-    if (_url.match(/^https:\/\/fsrsnext.snomiao.(com|dev)/)) location.href = location.origin; // go home if fsrs it self
+    if (_url.match(/^https:\/\/lianki\.com/)) location.href = location.origin; // go home if lianki itself
 
     const url = fsrsUrlClean(_url);
 
@@ -44,11 +44,11 @@ function main() {
     // if (target === "_self")
     //   return parent.window.open(targetUrl, target, "noopener,noreferrer");
     if (target === "_blank") {
-      parent.window.open(targetUrl, "fsrsnext", "noopener,noreferrer");
+      parent.window.open(targetUrl, "lianki", "noopener,noreferrer");
       return;
     }
     if (target === "_self") {
-      parent.window.open(targetUrl, "fsrsnext", "noopener,noreferrer");
+      parent.window.open(targetUrl, "lianki", "noopener,noreferrer");
       parent.window.close();
       return;
     }

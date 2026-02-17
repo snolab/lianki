@@ -4,7 +4,7 @@ export default function LandingPage() {
       {/* Header */}
       <header className="py-4 px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">FSRSNext</h1>
+          <h1 className="text-2xl font-bold">Lianki</h1>
           <nav>
             <a href="/list" className="text-lg font-medium hover:underline">
               Go to App
@@ -21,7 +21,7 @@ export default function LandingPage() {
             Supercharge Your Learning with Spaced Repetition
           </h2>
           <p className="text-lg mb-8 max-w-2xl mx-auto">
-            FSRSNext is a modern, open-source spaced repetition system designed for efficient
+            Lianki is a modern, open-source spaced repetition system designed for efficient
             flashcard review and long-term memorization.
           </p>
           <a
@@ -61,7 +61,7 @@ export default function LandingPage() {
             <h3 className="text-3xl font-bold mb-8">How It Works</h3>
             <ol className="list-decimal list-inside text-left max-w-lg mx-auto">
               <li className="mb-4">
-                <a href="/fsrsnext.user.js" className="text-blue-600 hover:underline">
+                <a href="/lianki.user.js" className="text-blue-600 hover:underline">
                   Install the userscript
                 </a>{" "}
                 in your browser (Tampermonkey or Violentmonkey required).
@@ -81,7 +81,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="py-4 px-4 sm:px-6 lg:px-8 text-center">
         <p>
-          FSRSNext is an open-source project.{" "}
+          Lianki is an open-source project.{" "}
           <a href="https://github.com/snomiao/lianki" className="text-blue-600 hover:underline">
             View on GitHub
           </a>

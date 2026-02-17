@@ -17,7 +17,7 @@ export default async function HomePage() {
       <nav>
         <ul>
           <li>
-            <a href="./fsrsnext.user.js">Install user script</a>
+            <a href="./lianki.user.js">Install user script</a>
           </li>
           <li>
             <summary>

@@ -1,5 +1,5 @@
 services:
-  fsrsnext:
+  lianki:
     # image: oven/bun # not compatiable with nextjs Edge VM
     image: node
     command: npx -y bun dev --turbo
