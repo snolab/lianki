@@ -103,6 +103,33 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       );
       return JSONR({ url: note?.url ?? null });
     },
+    "GET /api/fsrs/review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (
+      req,
+      options,
+    ) => {
+      const params = getParams(req, options);
+      const rating =
+        ({
+          "1": Rating.Again,
+          again: Rating.Again,
+          "2": Rating.Hard,
+          hard: Rating.Hard,
+          "3": Rating.Good,
+          good: Rating.Good,
+          "4": Rating.Easy,
+          easy: Rating.Easy,
+        } as Record<string, Rating>)[params.rating] ?? DIE("unknown rating: " + String(params.rating));
+      const reviewedCard = await reviewed(
+        (await getQueryNote(req, options)) ?? DIE("note not found"),
+        rating as Grade,
+      );
+      return JSONR({ ok: true, due: dueMs(reviewedCard.card.due) });
+    },
+    "GET /api/fsrs/delete(?:/|$|\\?)": async (req, opt) => {
+      const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
+      await FSRSNotes.deleteOne({ url: note.url });
+      return JSONR({ ok: true });
+    },
     "GET /next": async () =>
       new Response(
         sflow(
