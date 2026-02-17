@@ -3,7 +3,6 @@
 // @namespace   Violentmonkey Scripts
 // @match       *://*/*
 // @grant       GM_xmlhttpRequest
-// @grant       GM.xmlHttpRequest
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
@@ -16,7 +15,6 @@
 // @connect     lianki.com
 // @connect     www.lianki.com
 // @connect     beta.lianki.com
-// @require     https://cdn.jsdelivr.net/npm/@trim21/gm-fetch/dist/gm_fetch.js
 // ==/UserScript==
 
 globalThis.unload_Lianki?.();
@@ -63,9 +61,47 @@ function main() {
     }
   }
 
+  // ── Fetch wrapper (avoids gm-fetch set-cookie bug on mobile) ─────────────
+  function gmFetch(url, opts = {}) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: (opts.method || "GET").toUpperCase(),
+        url: String(url),
+        headers: opts.headers || {},
+        data: opts.body ?? undefined,
+        withCredentials: opts.credentials === "include",
+        onload(resp) {
+          const hdrs = {};
+          for (const line of resp.responseHeaders.split("\r\n")) {
+            const i = line.indexOf(": ");
+            if (i > 0) {
+              const name = line.slice(0, i).toLowerCase();
+              // skip set-cookie — its value contains "; Path=..." which
+              // throws "invalid header value" in strict mobile environments
+              if (name !== "set-cookie") hdrs[name] = line.slice(i + 2);
+            }
+          }
+          resolve({
+            ok: resp.status >= 200 && resp.status < 300,
+            status: resp.status,
+            headers: { get: (n) => hdrs[n.toLowerCase()] ?? null },
+            json: () => Promise.resolve(JSON.parse(resp.responseText)),
+            text: () => Promise.resolve(resp.responseText),
+          });
+        },
+        onerror() {
+          reject(new Error("Network error"));
+        },
+        onabort() {
+          reject(new Error("Request aborted"));
+        },
+      });
+    });
+  }
+
   // ── API ────────────────────────────────────────────────────────────────────
   const api = (path, opts = {}) =>
-    GM_fetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
+    gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       checkVersion(r);
       return r.json();
