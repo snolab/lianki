@@ -10,7 +10,11 @@
 import "dotenv/config";
 import { MongoClient } from "mongodb";
 
-const uri = process.env.MONGODB_URI ?? (() => { throw new Error("missing MONGODB_URI"); })();
+const uri =
+  process.env.MONGODB_URI ??
+  (() => {
+    throw new Error("missing MONGODB_URI");
+  })();
 const client = new MongoClient(uri);
 
 function normalizeUrl(href: string): string {
@@ -24,10 +28,23 @@ function normalizeUrl(href: string): string {
     }
     if (u.hostname.startsWith("m.")) u.hostname = "www." + u.hostname.slice(2);
     for (const p of [
-      "si", "pp", "feature", "ref", "source",
-      "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-      "fbclid", "gclid", "mc_cid", "mc_eid", "igshid",
-    ]) u.searchParams.delete(p);
+      "si",
+      "pp",
+      "feature",
+      "ref",
+      "source",
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_term",
+      "utm_content",
+      "fbclid",
+      "gclid",
+      "mc_cid",
+      "mc_eid",
+      "igshid",
+    ])
+      u.searchParams.delete(p);
     u.searchParams.sort();
     return u.toString();
   } catch {
@@ -55,7 +72,10 @@ async function main() {
 
     for (const note of notes) {
       const normalized = normalizeUrl(note.url);
-      if (normalized === note.url) { skipped++; continue; }
+      if (normalized === note.url) {
+        skipped++;
+        continue;
+      }
 
       // Check if a note with the normalized URL already exists
       const existing = await col.findOne({ url: normalized });
@@ -72,16 +92,18 @@ async function main() {
           ((note.card.reps ?? 0) === (existing.card.reps ?? 0) &&
             (note.card.stability ?? 0) > (existing.card.stability ?? 0));
 
-        const [winner, loser] = keepOld
-          ? [note, existing]
-          : [existing, note];
+        const [winner, loser] = keepOld ? [note, existing] : [existing, note];
 
         await col.updateOne(
           { _id: winner._id },
-          { $set: { url: normalized, ...(loser.title && !winner.title && { title: loser.title }) } },
+          {
+            $set: { url: normalized, ...(loser.title && !winner.title && { title: loser.title }) },
+          },
         );
         await col.deleteOne({ _id: loser._id });
-        console.log(`  merged: ${note.url}\n      + ${existing.url}\n      → ${normalized} (kept ${keepOld ? "old" : "existing"}, reps=${winner.card.reps})`);
+        console.log(
+          `  merged: ${note.url}\n      + ${existing.url}\n      → ${normalized} (kept ${keepOld ? "old" : "existing"}, reps=${winner.card.reps})`,
+        );
         merged++;
       }
     }
@@ -92,4 +114,7 @@ async function main() {
   await client.close();
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

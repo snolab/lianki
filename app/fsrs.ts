@@ -469,10 +469,23 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       if (u.hostname.startsWith("m.")) u.hostname = "www." + u.hostname.slice(2);
       // Strip tracking & session params
       for (const p of [
-        "si", "pp", "feature", "ref", "source",
-        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-        "fbclid", "gclid", "mc_cid", "mc_eid", "igshid",
-      ]) u.searchParams.delete(p);
+        "si",
+        "pp",
+        "feature",
+        "ref",
+        "source",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_term",
+        "utm_content",
+        "fbclid",
+        "gclid",
+        "mc_cid",
+        "mc_eid",
+        "igshid",
+      ])
+        u.searchParams.delete(p);
       u.searchParams.sort();
       return u.toString();
     } catch {
