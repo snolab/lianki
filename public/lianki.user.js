@@ -185,7 +185,26 @@ function main() {
     let body = "";
 
     if (phase === "adding") {
-      body = `<div style="color:#aaa">Adding…<br><small style="opacity:.6;word-break:break-all">${esc(location.href)}</small></div>`;
+      body = `
+        <style>
+          @keyframes lk-spin { to { transform: rotate(360deg); } }
+          .lk-spinner {
+            display: inline-block;
+            width: 20px; height: 20px;
+            border: 3px solid #555;
+            border-top-color: #7eb8f7;
+            border-radius: 50%;
+            animation: lk-spin 0.8s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+          }
+        </style>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:15px;font-weight:600">
+            <span class="lk-spinner"></span>Adding note…
+          </div>
+          <div style="color:#888;font-size:12px;word-break:break-all">${esc(location.href)}</div>
+        </div>`;
     } else if (phase === "error") {
       body = `<div style="color:#f77">Error: ${esc(error)}<br><small>Are you logged in to Lianki?</small></div>`;
     } else if (phase === "reviewing") {
