@@ -29,6 +29,12 @@ yarn-error.log*
 
 # local env files
 .env*.local
+.env
+
+# backup and temporary files
+*_bak.ts
+*_bak*.ts
+solve*.ts
 
 # vercel
 .vercel

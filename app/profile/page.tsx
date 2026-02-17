@@ -1,53 +1,34 @@
-// 1. create password
-
-import { auth, signIn } from "@/auth";
+import { auth } from "@/auth";
 import { authUser } from "../signInEmail";
 
-// 2. link oauth
 export default async function ProfilePage() {
-  //
-  // /onborarding/step1-create-password
-  // /onborarding/step2-link-oauth
-  // /onborarding/step3-tutorial
-
   const user = await authUser();
+  const session = await auth();
 
   return (
-    <>
-      Email: {user.email}
-      <br />
-      {JSON.stringify(await auth())}
-      <form
-        action={async (fd: FormData) => {
-          "use server";
-          await signIn("nodemailer", fd);
-        }}
-      >
-        <input name="email" type="email" />
-        <button>Change Email</button>
-      </form>
-      <button
-        onClick={async () => {
-          "use server";
-          await authUser();
-          await signIn("github");
-        }}
-      >
-        Link Github
-      </button>
-      <form
-        action={async () => {
-          "use server";
-          // const user = await authUser()
-
-          // user.password
-        }}
-      >
-        Password: {user.password ? "***" : "No Password yet"}
-        <input type="password" name="password" />
-        <input type="password" name="confirm-password" />
-        <button>Update Password</button>
-      </form>
-    </>
+    <div>
+      <h1>Profile</h1>
+      <div>
+        <h2>User Information</h2>
+        <p>
+          <strong>Name:</strong> {user.name || "N/A"}
+        </p>
+        <p>
+          <strong>Email:</strong> {user.email}
+        </p>
+        {user.image && (
+          <p>
+            <strong>Avatar:</strong> <img src={user.image} alt="User avatar" />
+          </p>
+        )}
+      </div>
+      <div>
+        <h2>Session Details</h2>
+        <pre>{JSON.stringify(session, null, 2)}</pre>
+      </div>
+      <div>
+        <a href="/">Back to Home</a>
+      </div>
+    </div>
   );
 }

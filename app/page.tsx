@@ -62,7 +62,6 @@ export default async function HomePage() {
         <Suspense>
           <Cards />
         </Suspense>
-        w
       </ul>
     </div>
   );

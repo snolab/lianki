@@ -11,6 +11,14 @@ declare module "next-auth" {
   interface User {
     password?: string;
   }
+  interface Session {
+    user: {
+      id: string;
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
+    };
+  }
 }
 export const { handlers, signIn, signOut, auth } = NextAuth(() => {
   // const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -42,8 +50,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth(() => {
         return token;
       },
       session({ session, token }) {
-        // @ts-expect-error any
-        session.user.id = token.id;
+        session.user.id = token.id as string;
         return session;
       },
     },
