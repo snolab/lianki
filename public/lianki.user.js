@@ -3,6 +3,7 @@
 // @namespace   Violentmonkey Scripts
 // @match       *://*/*
 // @grant       GM_xmlhttpRequest
+// @grant       GM.xmlHttpRequest
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
