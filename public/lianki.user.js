@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.3.0
+// @version     2.3.1
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation
 // @run-at      document-end
@@ -49,10 +49,23 @@ function main() {
       if (u.hostname.startsWith("m.")) u.hostname = "www." + u.hostname.slice(2);
       // Strip tracking & session params
       for (const p of [
-        "si", "pp", "feature", "ref", "source",
-        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-        "fbclid", "gclid", "mc_cid", "mc_eid", "igshid",
-      ]) u.searchParams.delete(p);
+        "si",
+        "pp",
+        "feature",
+        "ref",
+        "source",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_term",
+        "utm_content",
+        "fbclid",
+        "gclid",
+        "mc_cid",
+        "mc_eid",
+        "igshid",
+      ])
+        u.searchParams.delete(p);
       u.searchParams.sort();
       return u.toString();
     } catch {
@@ -482,13 +495,26 @@ function main() {
     }
   }
 
+  // Domains that open their native app on mobile instead of staying in the browser
+  const MOBILE_APP_DOMAINS = ["zhihu.com"];
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  function wouldHijackApp(url) {
+    if (!isMobile) return false;
+    try {
+      const h = new URL(url).hostname;
+      return MOBILE_APP_DOMAINS.some((d) => h === d || h.endsWith("." + d));
+    } catch {
+      return false;
+    }
+  }
+
   async function afterReview(doneMessage) {
     state.phase = "reviewed";
     state.message = "Redirecting\u2026";
     renderDialog();
 
     const { url: nextUrl } = await getNextUrl().catch(() => ({ url: null }));
-    if (nextUrl && /^https?:\/\//.test(nextUrl)) {
+    if (nextUrl && /^https?:\/\//.test(nextUrl) && !wouldHijackApp(nextUrl)) {
       location.href = nextUrl;
     } else {
       state.message = `${doneMessage} \u2014 All done!`;
