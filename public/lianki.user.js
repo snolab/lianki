@@ -85,7 +85,13 @@ function main() {
             ok: resp.status >= 200 && resp.status < 300,
             status: resp.status,
             headers: { get: (n) => hdrs[n.toLowerCase()] ?? null },
-            json: () => Promise.resolve(JSON.parse(resp.responseText)),
+            json: () => {
+              try {
+                return Promise.resolve(JSON.parse(resp.responseText));
+              } catch {
+                return Promise.reject(new Error("Login required"));
+              }
+            },
             text: () => Promise.resolve(resp.responseText),
           });
         },
@@ -297,6 +303,27 @@ function main() {
       hint.textContent = "Are you logged in to Lianki?";
       errDiv.appendChild(hint);
       dialog.appendChild(errDiv);
+
+      const copyBtn = document.createElement("button");
+      copyBtn.setAttribute("style", `${btn("#444")};margin-top:10px`);
+      copyBtn.textContent = "Copy error";
+      copyBtn.addEventListener("click", () => {
+        const text = `Error: ${error}`;
+        (navigator.clipboard?.writeText(text) ?? Promise.reject()).catch(() => {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.cssText = "position:fixed;opacity:0";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          ta.remove();
+        });
+        copyBtn.textContent = "Copied!";
+        setTimeout(() => {
+          copyBtn.textContent = "Copy error";
+        }, 2000);
+      });
+      dialog.appendChild(copyBtn);
     } else if (phase === "reviewing") {
       const titleDiv = document.createElement("div");
       Object.assign(titleDiv.style, {
