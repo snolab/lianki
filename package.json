@@ -19,6 +19,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.77.0",
     "@auth/mongodb-adapter": "^3.7.0",
+    "@marsidev/react-turnstile": "^1.4.2",
+    "better-auth": "^1.4.18",
     "bson": "^6.8.0",
     "dotenv": "^16.4.5",
     "enhanced-ms": "^3.0.0",
@@ -28,7 +30,6 @@
     "mongodb": "^6.9.0",
     "mongodb-rest-relay": "^1.11.0",
     "next": "^16.1.6",
-    "next-auth": "^5.0.0-beta.22",
     "next-intlayer": "^8.1.2",
     "nodemailer": "^6.9.15",
     "openai": "^6.22.0",
@@ -42,6 +43,7 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/nodemailer": "^7.0.10",
     "@types/react": "19",
     "@types/react-dom": "19",
     "@typescript/native-preview": "^7.0.0-dev.20260217.1",
