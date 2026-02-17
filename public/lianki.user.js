@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.2.0
+// @version     2.2.1
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation
 // @run-at      document-end
