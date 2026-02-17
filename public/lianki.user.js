@@ -6,12 +6,12 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.1.0
+// @version     2.2.0
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation
 // @run-at      document-end
-// @downloadURL https://lianki.com/lianki.user.js
-// @updateURL   https://lianki.com/lianki.user.js
+// @downloadURL https://www.lianki.com/lianki.user.js
+// @updateURL   https://www.lianki.com/lianki.user.js
 // @connect     lianki.com
 // @connect     www.lianki.com
 // @connect     beta.lianki.com
@@ -22,16 +22,20 @@ globalThis.unload_Lianki = main();
 
 function main() {
   // ── Origin (auto-detected from @downloadURL so beta.lianki.com works too) ──
+  // Normalize bare lianki.com → www.lianki.com: session cookies use __Host- prefix
+  // which binds them to the exact hostname; www.lianki.com is the auth domain.
   const ORIGIN = (() => {
     try {
-      return new URL(GM_info?.script?.downloadURL || "").origin;
+      const u = new URL(GM_info?.script?.downloadURL || "");
+      if (u.hostname === "lianki.com") u.hostname = "www.lianki.com";
+      return u.origin;
     } catch {
-      return "https://lianki.com";
+      return "https://www.lianki.com";
     }
   })();
 
   // Skip running on the Lianki app itself
-  if (location.origin === ORIGIN) return () => {};
+  if (location.hostname === new URL(ORIGIN).hostname) return () => {};
 
   const ac = new AbortController();
   const { signal } = ac;
@@ -299,14 +303,19 @@ function main() {
       const errDiv = document.createElement("div");
       errDiv.style.color = "#f77";
       errDiv.textContent = `Error: ${error}`;
-      errDiv.appendChild(document.createElement("br"));
-      const hint = document.createElement("small");
-      hint.textContent = "Are you logged in to Lianki?";
-      errDiv.appendChild(hint);
       dialog.appendChild(errDiv);
 
+      const btnRow = document.createElement("div");
+      Object.assign(btnRow.style, { display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" });
+
+      const loginBtn = document.createElement("button");
+      loginBtn.setAttribute("style", btn("#2a5f8f"));
+      loginBtn.textContent = "Login to Lianki";
+      loginBtn.addEventListener("click", () => window.open(ORIGIN, "_blank"));
+      btnRow.appendChild(loginBtn);
+
       const copyBtn = document.createElement("button");
-      copyBtn.setAttribute("style", `${btn("#444")};margin-top:10px`);
+      copyBtn.setAttribute("style", btn("#444"));
       copyBtn.textContent = "Copy error";
       copyBtn.addEventListener("click", () => {
         const text = `Error: ${error}`;
@@ -324,7 +333,8 @@ function main() {
           copyBtn.textContent = "Copy error";
         }, 2000);
       });
-      dialog.appendChild(copyBtn);
+      btnRow.appendChild(copyBtn);
+      dialog.appendChild(btnRow);
     } else if (phase === "reviewing") {
       const titleDiv = document.createElement("div");
       Object.assign(titleDiv.style, {
