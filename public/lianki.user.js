@@ -89,7 +89,8 @@ function main() {
               try {
                 return Promise.resolve(JSON.parse(resp.responseText));
               } catch {
-                return Promise.reject(new Error("Login required"));
+                const preview = resp.responseText.slice(0, 120).replace(/\s+/g, " ").trim();
+                return Promise.reject(new Error(`Login required (got: ${preview})`));
               }
             },
             text: () => Promise.resolve(resp.responseText),
