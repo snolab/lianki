@@ -5,6 +5,9 @@
   "exports": {
     "import": "./index.ts"
   },
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
