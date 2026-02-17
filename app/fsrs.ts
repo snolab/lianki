@@ -70,6 +70,27 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       ),
     "GET /add(?:/|$|\\?)": async (req, options) => JSONR(saveQueryNote(req, options)),
     "POST /api/fsrs/add/?$": async (req) => JSONR(saveQueryNoteByJSONData(req)),
+    "GET /api/fsrs/options(?:/|$|\\?)": async (req, options) => {
+      const note = (await getQueryNote(req, options)) ?? DIE("note not found");
+      const repeatRecord = fsrs().repeat(note.card, new Date());
+      return JSONR({
+        id: (note as WithId<FSRSNote> & { _id: string })._id.toString(),
+        options: ([Rating.Again, Rating.Hard, Rating.Good, Rating.Easy] as const).map(
+          (rating, i) => ({
+            rating,
+            label: ["Again", "Hard", "Good", "Easy"][i],
+            due: dueMs(repeatRecord[rating].card.due),
+          }),
+        ),
+      });
+    },
+    "GET /api/fsrs/next-url(?:/|$|\\?)": async () => {
+      const note = await FSRSNotes.findOne(
+        { "card.due": { $lte: new Date() } },
+        { sort: { "card.due": 1 } },
+      );
+      return JSONR({ url: note?.url ?? null });
+    },
     "GET /next": async () =>
       new Response(
         sflow(

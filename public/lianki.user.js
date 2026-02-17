@@ -1,347 +1,355 @@
 // ==UserScript==
-/** biome-ignore-all lint/suspicious/noAssignInExpressions: userscript code */
-// @name        FSRS Everywhere
+// @name        Lianki
 // @namespace   Violentmonkey Scripts
 // @match       *://*/*
-// @grant       none
-// @version     1.2.1
+// @grant       GM_xmlhttpRequest
+// @grant       GM_setValue
+// @grant       GM_getValue
+// @grant       GM_info
+// @version     2.0.0
 // @author      snomiao@gmail.com
-// @description fsrs everywhere
-// @run-at      document-start
+// @description Lianki spaced repetition — inline review without page navigation
+// @run-at      document-end
 // @downloadURL https://lianki.com/lianki.user.js
 // @updateURL   https://lianki.com/lianki.user.js
+// @connect     lianki.com
+// @connect     www.lianki.com
+// @connect     beta.lianki.com
+// @require     https://github.com/trim21/gm-fetch/releases/latest/download/gm-fetch.js
 // ==/UserScript==
 
-globalThis.unload_FSRSEverywhere?.();
-globalThis.unload_FSRSEverywhere = main();
+globalThis.unload_Lianki?.();
+globalThis.unload_Lianki = main();
 
 function main() {
+  // ── Origin (auto-detected from @downloadURL so beta.lianki.com works too) ──
+  const ORIGIN = (() => {
+    try {
+      return new URL(GM_info?.script?.downloadURL || "").origin;
+    } catch {
+      return "https://lianki.com";
+    }
+  })();
+
+  // Skip running on the Lianki app itself
+  if (location.origin === ORIGIN) return () => {};
+
   const ac = new AbortController();
-  const origin = "https://lianki.com";
+  const { signal } = ac;
 
-  const openFsrs = (_urlOrAnchor, target = "_blank") => {
-    const _url = _urlOrAnchor.href ? _urlOrAnchor.href : _urlOrAnchor;
+  // ── State ──────────────────────────────────────────────────────────────────
+  let state = { phase: "idle", noteId: null, options: null, error: null, message: null };
+  let fab = null;
+  let dialog = null;
 
-    if (_url.match(/^https:\/\/lianki\.com/)) location.href = location.origin; // go home if lianki itself
+  // ── API ────────────────────────────────────────────────────────────────────
+  const api = (path, opts = {}) =>
+    gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    });
 
-    const url = fsrsUrlClean(_url);
+  const addNote = (url, title) =>
+    api("/api/fsrs/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url, title }),
+    });
 
-    const title = _urlOrAnchor.href
-      ? _urlOrAnchor.textContent.trim()
-      : parent.document.title || document.title;
+  const getOptions = (id) => api(`/api/fsrs/options?id=${encodeURIComponent(id)}`);
 
-    const repeatUrl = `${origin}/repeat/?${new URLSearchParams({
-      url,
-      title,
-    }).toString()}`;
-    const addingUrl = `${origin}/add-note#?${new URLSearchParams({
-      url,
-      title,
-    }).toString()}`;
-    const targetUrl = repeatUrl.length < 512 ? repeatUrl : addingUrl;
-    // if (target === "_blank")
-    //   return parent.window.open(targetUrl, target, "noopener,noreferrer");
-    // if (target === "_self")
-    //   return parent.window.open(targetUrl, target, "noopener,noreferrer");
-    if (target === "_blank") {
-      parent.window.open(targetUrl, "lianki", "noopener,noreferrer");
-      return;
+  const submitReview = (id, rating) =>
+    api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}`);
+
+  const deleteNote = (id) => api(`/api/fsrs/delete?id=${encodeURIComponent(id)}`);
+
+  const getNextUrl = () => api("/api/fsrs/next-url");
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const esc = (s) =>
+    String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+
+  const btn = (bg, extra = "") =>
+    `background:${bg};color:#eee;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;min-width:60px;${extra}`;
+
+  // ── FAB ────────────────────────────────────────────────────────────────────
+  function createFab() {
+    const el = document.createElement("button");
+    el.textContent = "🔖";
+    el.title = "Lianki (Alt+F)";
+    Object.assign(el.style, {
+      position: "fixed",
+      zIndex: "2147483647",
+      width: "44px",
+      height: "44px",
+      borderRadius: "50%",
+      border: "none",
+      background: "rgba(30,30,30,0.85)",
+      fontSize: "20px",
+      cursor: "pointer",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+      userSelect: "none",
+    });
+
+    const saved = (() => {
+      try {
+        return JSON.parse(GM_getValue("lianki_pos", "null"));
+      } catch {
+        return null;
+      }
+    })();
+    if (saved) {
+      el.style.left = saved.x + "px";
+      el.style.top = saved.y + "px";
+    } else {
+      el.style.right = "20px";
+      el.style.bottom = "20px";
     }
-    if (target === "_self") {
-      parent.window.open(targetUrl, "lianki", "noopener,noreferrer");
-      parent.window.close();
-      return;
+
+    let dragged = false;
+    el.addEventListener("mousedown", (e) => {
+      dragged = false;
+      const ox = e.clientX - el.getBoundingClientRect().left;
+      const oy = e.clientY - el.getBoundingClientRect().top;
+      const onMove = (e2) => {
+        dragged = true;
+        el.style.right = "auto";
+        el.style.bottom = "auto";
+        el.style.left = e2.clientX - ox + "px";
+        el.style.top = e2.clientY - oy + "px";
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        GM_setValue(
+          "lianki_pos",
+          JSON.stringify({ x: parseInt(el.style.left), y: parseInt(el.style.top) }),
+        );
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+
+    el.addEventListener("click", () => {
+      if (!dragged) openDialog();
+    });
+
+    document.body.appendChild(el);
+    return el;
+  }
+
+  // ── Dialog ─────────────────────────────────────────────────────────────────
+  function mountDialog() {
+    const backdrop = document.createElement("div");
+    Object.assign(backdrop.style, {
+      position: "fixed",
+      inset: "0",
+      background: "rgba(0,0,0,0.45)",
+      zIndex: "2147483645",
+    });
+    backdrop.addEventListener("click", closeDialog);
+
+    const el = document.createElement("div");
+    el.tabIndex = -1;
+    Object.assign(el.style, {
+      position: "fixed",
+      zIndex: "2147483646",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%,-50%)",
+      background: "#1e1e1e",
+      color: "#eee",
+      borderRadius: "12px",
+      padding: "20px 24px",
+      minWidth: "320px",
+      maxWidth: "480px",
+      boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+      fontFamily: "system-ui,sans-serif",
+      fontSize: "14px",
+      outline: "none",
+      lineHeight: "1.5",
+    });
+
+    document.body.appendChild(backdrop);
+    document.body.appendChild(el);
+    el._backdrop = backdrop;
+    return el;
+  }
+
+  function renderDialog() {
+    if (!dialog) return;
+    const { phase, options, error, message } = state;
+    let body = "";
+
+    if (phase === "adding") {
+      body = `<div style="color:#aaa">Adding…<br><small style="opacity:.6;word-break:break-all">${esc(location.href)}</small></div>`;
+    } else if (phase === "error") {
+      body = `<div style="color:#f77">Error: ${esc(error)}<br><small>Are you logged in to Lianki?</small></div>`;
+    } else if (phase === "reviewing") {
+      const ratingBtns = options
+        .map(
+          (o) =>
+            `<button data-rating="${o.rating}" style="${btn("#2a5f8f")}">${esc(o.label)}<br><small style="opacity:.7;font-size:11px">${esc(o.due)}</small></button>`,
+        )
+        .join("");
+      body = `
+        <div style="margin-bottom:12px;word-break:break-all;font-size:13px;opacity:.8">
+          <b>${esc(document.title || location.href)}</b>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${ratingBtns}</div>
+        <div><button data-delete style="${btn("#7a2a2a")}">Delete</button></div>
+        <div style="margin-top:14px;opacity:.4;font-size:11px">
+          A/H=Easy &nbsp;·&nbsp; S/J=Good &nbsp;·&nbsp; W/K=Hard &nbsp;·&nbsp; D/L=Again &nbsp;·&nbsp; T/M=Delete &nbsp;·&nbsp; Esc=Close
+        </div>`;
+    } else if (phase === "reviewed") {
+      body = `<div style="color:#6f6;font-size:15px">${esc(message)}</div>`;
     }
-    throw new Error("Error: no target");
+
+    dialog.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <span style="font-weight:700;font-size:16px">🔖 Lianki</span>
+        <button id="lk-close" style="${btn("transparent")};color:#aaa;font-size:20px;padding:0 6px;line-height:1">×</button>
+      </div>
+      ${body}`;
+
+    dialog.querySelector("#lk-close")?.addEventListener("click", closeDialog);
+    dialog.querySelectorAll("[data-rating]").forEach((b) => {
+      b.addEventListener("click", () => doReview(Number(b.dataset.rating)));
+    });
+    dialog.querySelector("[data-delete]")?.addEventListener("click", doDelete);
+  }
+
+  // ── Open / Close ───────────────────────────────────────────────────────────
+  function openDialog() {
+    if (dialog) return;
+    dialog = mountDialog();
+    state = { phase: "adding", noteId: null, options: null, error: null, message: null };
+    renderDialog();
+    dialog.focus();
+
+    addNote(location.href, document.title)
+      .then((note) => {
+        state.noteId = note._id;
+        return getOptions(note._id);
+      })
+      .then((data) => {
+        state.phase = "reviewing";
+        state.options = data.options;
+        renderDialog();
+      })
+      .catch((err) => {
+        state.phase = "error";
+        state.error = err.message;
+        renderDialog();
+      });
+  }
+
+  function closeDialog() {
+    if (!dialog) return;
+    dialog._backdrop?.remove();
+    dialog.remove();
+    dialog = null;
+    state = { phase: "idle", noteId: null, options: null, error: null, message: null };
+  }
+
+  // ── Review actions ─────────────────────────────────────────────────────────
+  async function doReview(rating) {
+    if (state.phase !== "reviewing" || !state.noteId) return;
+    try {
+      await submitReview(state.noteId, rating);
+      const opt = state.options.find((o) => o.rating === rating);
+      await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
+    } catch (err) {
+      state.phase = "error";
+      state.error = err.message;
+      renderDialog();
+    }
+  }
+
+  async function doDelete() {
+    if (state.phase !== "reviewing" || !state.noteId) return;
+    try {
+      await deleteNote(state.noteId);
+      await afterReview("Deleted!");
+    } catch (err) {
+      state.phase = "error";
+      state.error = err.message;
+      renderDialog();
+    }
+  }
+
+  async function afterReview(message) {
+    const { url: nextUrl } = await getNextUrl().catch(() => ({ url: null }));
+    state.phase = "reviewed";
+    state.message = nextUrl ? `${message} — navigating to next card…` : `${message} — All done!`;
+    renderDialog();
+
+    if (nextUrl) {
+      sessionStorage.setItem("lianki_auto_open", "1");
+      setTimeout(() => (location.href = nextUrl), 1500);
+    } else {
+      setTimeout(closeDialog, 2000);
+    }
+  }
+
+  // ── Keyboard ───────────────────────────────────────────────────────────────
+  const KEYS = {
+    Digit1: () => doReview(1),
+    KeyD: () => doReview(1),
+    KeyL: () => doReview(1),
+    Digit2: () => doReview(2),
+    KeyW: () => doReview(2),
+    KeyK: () => doReview(2),
+    Digit3: () => doReview(3),
+    KeyS: () => doReview(3),
+    KeyJ: () => doReview(3),
+    Digit4: () => doReview(4),
+    KeyA: () => doReview(4),
+    KeyH: () => doReview(4),
+    Digit5: () => doDelete(),
+    KeyT: () => doDelete(),
+    KeyM: () => doDelete(),
+    Escape: () => closeDialog(),
   };
 
-  window.addEventListener(
+  document.addEventListener(
     "keydown",
     (e) => {
-      const actions = {
-        "alt+f": () => openFsrs(parent?.location?.href || location.href, "_self"),
-        "alt+v": () => openFsrs(parent?.location?.href || location.href, "_blank"),
-        // add all now
-        "alt+shift+v": async () => {
-          const anchors = getMainAnchorsList();
-          if (anchors.length === 0) return alert("no link found");
-          const msg = `Found ${anchors.length} links, open fsrs for all?\n ${anchors
-            .map((a) => `- [${a.textContent.trim()}](${fsrsUrlClean(a.href)})`)
-            .join("\n")}`;
-          if (!confirm(msg)) return alert("user aborted");
-          anchors.map((a) => openFsrs(fsrsUrlClean(a.href), "_blank"));
-        },
-        // view all now
-        // "alt+shift+v": async () => {
-        //   const anchors = getMainAnchorsList();
-        //   if (anchors.length === 0) return alert("no link found");
-        //   const msg = `Found ${anchors.length} links, open all?\n ${anchors
-        //     .map((a) => `- [${a.textContent.trim()}](${fsrsUrlClean(a.href)})`)
-        //     .join("\n")}`;
-        //   if (!confirm(msg)) return alert("user aborted");
-
-        //   // all page order: [targetpage, fsrspage, targetpage, fsrspage, ...]
-        //   // 8 pages as a batch in reverse order
-        //   /** @type {Array<Array<HTMLAnchorElement>>} */
-        //   const batches = Object.values(
-        //     Object.groupBy(anchors, (e, i) => String(Math.floor(i / 8)))
-        //   );
-        //   for await (const batch of batches) {
-        //     for (const anchor of batch.toReversed()) {
-        //       const url = fsrsUrlClean(anchor.href);
-        //       openFsrs(url, "_blank");
-        //       window.open(url, "_blank");
-        //     }
-        //     await new Promise((r) => setTimeout(r, 1e3)); // 1s cd
-        //     await new Promise((r) =>
-        //       document.addEventListener("visibilitychange", r, {
-        //         once: true,
-        //       })
-        //     ); // wait for page visible for next batch
-        //   }
-        // },
-      };
-      for (const [hotkey, action] of Object.entries(actions)) {
-        if (hotkeyEventMatcher(hotkey)(e)) {
-          e.stopPropagation();
-          e.preventDefault();
-          try {
-            const ret = action();
-            if (ret instanceof Promise) ret.catch(console.error);
-          } catch (err) {
-            console.error(err);
-            alert(err.message);
-          }
-        }
+      if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyF") {
+        e.preventDefault();
+        e.stopPropagation();
+        dialog ? closeDialog() : openDialog();
+        return;
+      }
+      if (!dialog || state.phase !== "reviewing") return;
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const action = KEYS[e.code];
+      if (action) {
+        e.preventDefault();
+        e.stopPropagation();
+        action();
       }
     },
-    { signal: ac.signal },
+    { signal },
   );
+
+  // ── Auto-open after navigation ─────────────────────────────────────────────
+  if (sessionStorage.getItem("lianki_auto_open")) {
+    sessionStorage.removeItem("lianki_auto_open");
+    setTimeout(openDialog, 500);
+  }
+
+  // ── Mount ──────────────────────────────────────────────────────────────────
+  fab = createFab();
+
+  // ── Cleanup ────────────────────────────────────────────────────────────────
   return () => {
     ac.abort();
+    closeDialog();
+    fab?.remove();
+    fab = null;
   };
-}
-
-/**
- * Parse a hotkey string (e.g. "Ctrl+Shift+X") and return a function that
- * checks if a keyboard event matches the hotkey.
- * Supports modifier keys: Ctrl, Alt, Shift, Meta (Cmd on Mac)
- * Supports character keys and special keys (e.g. Enter, Escape)
- * @param {string} hotkey - The hotkey string to parse
- * @returns {(event: KeyboardEvent) => boolean} - Function to check if event matches hotkey
- */
-const hotkeyEventMatcher = (hotkey) => (event) => {
-  const keys = hotkey
-    .toLowerCase()
-    .split("+")
-    .map((k) => k.trim());
-  const keySet = new Set(keys);
-  if (keySet.has("ctrl") !== event.ctrlKey) return false;
-  if (keySet.has("alt") !== event.altKey) return false;
-  if (keySet.has("shift") !== event.shiftKey) return false;
-  if (keySet.has("meta") !== event.metaKey) return false;
-  const key = keys.find((k) => !["ctrl", "alt", "shift", "meta"].includes(k));
-  if (!key) return false;
-  if (key.length === 1) {
-    return event.key.toLowerCase() === key; // character key
-  } else {
-    return event.code.toLowerCase().replace(/key$/, "") === key; // special key
-  }
-};
-
-function fsrsUrlClean(_url) {
-  const converted = _url
-    // for youtube
-    // delete list and index &list=..........................&index=1
-    .replace(/&list=[^&]+&index=\d+(&t=\d+s)?(&pp=\w+?)?$/, "")
-    // for calibre, delete book pos
-    .replace(/&bookpos=.*?&/, "&")
-    // for leetcode, delete submissions
-    .replace(/(?<=https:\/\/leetcode.com\/problems\/.*\/)submissions\/.*/, "");
-  if (converted !== _url) {
-    console.log("convert url", _url, "=>", converted);
-  }
-  return converted;
-}
-
-////////////////////////
-// get main link list stealth from page flood
-async function _openLinks(links) {
-  // max 8 page on 1 origin once batch
-  // max 16 page on all origin once batch
-  const urlss = Object.values(Object.groupBy(links, (_url, i) => String(Math.floor(i / 8))));
-  for await (const urls of urlss) {
-    const urlList = urls.map((e) => e.href).join("\n");
-    const confirmMsg = `confirm to open ${urls.length} pages?\n\n${urlList}`;
-    if (!confirm(confirmMsg)) throw alert("cancelled by user");
-    urls.toReversed().map(openDeduplicatedUrl);
-    await new Promise((r) => setTimeout(r, 1e3)); // 1s cd
-    await new Promise((r) => document.addEventListener("visibilitychange", r, { once: true })); // wait for page visible
-  }
-  // await Promise.all(Object.entries(Object.groupBy(links, e => e.origin)).map(async ([origin, links]) => {
-  //   const urls = links.map(e => e.href)
-  //   const urlss = Object.values(Object.groupBy(urls, (url, i) => String(Math.floor(i / 8))))
-  //   for await (const urls of urlss) {
-  //     urls.toReversed().map(openUrl)
-  //     await new Promise(r => setTimeout(r, 1e3)) // 1s cd
-  //     await new Promise(r => document.addEventListener("visibilitychange", r, { once: true })) // wait for page visible
-  //   }
-  // }))
-}
-
-function openDeduplicatedUrl(url) {
-  const opened = (globalThis.openDeduplicatedUrl_opened ??= new Set());
-  return opened.has(url) || (window.open(url, "_blank") && opened.add(url));
-}
-
-function BagOfWordsModel() {
-  const wordSet = new Set();
-  return {
-    wordSet,
-    fit: (texts) => {
-      texts.forEach(
-        (text) =>
-          void text
-            .toLowerCase()
-            .split(/\W+/)
-            .forEach((word) => void wordSet.add(word)),
-      );
-    },
-    transform: (text) => {
-      const words = text.toLowerCase().split(/\W+/);
-      const vec = Array.from(wordSet).map((word) => (words.includes(word) ? 1 : 0));
-      return vec;
-    },
-  };
-}
-
-/**
- * Get the main list of anchor elements on the page by analyzing their features.
- * Uses a Bag of Words model on class names and attributes, along with geometric features.
- * Groups similar anchors by cosine similarity and ranks groups by area and count.
- * Highlights the top group of anchors on the page.
- * @returns {HTMLAnchorElement[]} - List of main anchor elements
- */
-function getMainAnchorsList() {
-  // groupBy words and then return map
-  return (
-    [{ sel: "a" }]
-      .map((e) => ({ ...e, list: [...document.querySelectorAll(e.sel)] }))
-      .map((e) => ({
-        ...e,
-        bow: BagOfWordsModel(),
-      }))
-      .map((e) => ({
-        ...e,
-        _: e.bow.fit(e.list.map((el) => `${el.className} ${getElementAttributeNames(el)}`)),
-      }))
-      .map((e) => ({
-        ...e,
-        vec: e.list.map((el, _i) => [
-          elementDepth(el),
-          area(el.parentElement?.getBoundingClientRect()),
-          el.parentElement?.getBoundingClientRect().width,
-          el.parentElement?.getBoundingClientRect().height,
-          ...e.bow.transform(`${el.className} ${getElementAttributeNames(el)}`),
-        ]),
-      }))
-      .map((e) => ({ ...e, nor: normalize(e.vec) }))
-      .map((e) => ({ ...e, vecGrp: groupByCosineSimilarity(e.nor, 0.99) }))
-      .map((e) => ({ ...e, grp: e.vecGrp.map((g) => g.map((i) => e.list[i])) }))
-      .map((e) => ({
-        ...e,
-        rank: e.grp
-          .map((g) => ({
-            anchors: g,
-            area: area(maxRect(g.map((el) => el.getBoundingClientRect()))),
-            areaSum: g.map((el) => area(el.getBoundingClientRect())).reduce((a, b) => a + b, 0),
-          }))
-          .map((g) => ({ ...g, score: Math.log(g.area * g.areaSum) }))
-          .toSorted(compareBy((g) => -g.score)),
-      }))
-      .map((e) => ({
-        ...e,
-        _: e.rank
-          .slice(0, 1)
-          .map((grp, i, a) =>
-            grp.anchors.map((el) =>
-              flashBorder(el, getOklch(i / a.length), 500 + (a.length - i) * 500),
-            ),
-          ),
-      }))
-      // debug
-      .map((e) => ({ ...e }))
-      .map((e) => e.rank.at(0).anchors)
-      .at(0)
-  );
-}
-
-function getOklch(t) {
-  const l = 0.9 - 0.5 * t;
-  const c = 0.2 + 0.3 * t;
-  const h = 360 * t;
-  return `oklch(${l} ${c} ${h})`;
-}
-function flashBorder(el, color, duration = 1000) {
-  const orig = el.style.outline;
-  el.style.outline = `3px solid ${color}`;
-  return setTimeout(() => (el.style.outline = orig), duration);
-}
-function compareBy(fn) {
-  return (a, b) => fn(a) - fn(b);
-}
-function maxRect(rects) {
-  return {
-    left: Math.min(...rects.map((e) => e.left)),
-    top: Math.min(...rects.map((e) => e.top)),
-    right: Math.max(...rects.map((e) => e.right)),
-    bottom: Math.max(...rects.map((e) => e.bottom)),
-  };
-}
-function area({ left, right, top, bottom }) {
-  return (right - left) * (bottom - top);
-}
-function elementDepth(e) {
-  return !e ? 0 : 1 + elementDepth(e.parentElement);
-}
-function normalize(arr) {
-  const maxs = arr.reduce(
-    (a, b) => a.map((e, i) => Math.max(e, b[i])),
-    Array(arr[0].length).fill(-Infinity),
-  );
-  return arr.map((e) => e.map((v, i) => v / maxs[i]));
-}
-function dot(a, b) {
-  return a.reduce((s, v, i) => s + v * b[i], 0);
-}
-function magnitude(a) {
-  return Math.sqrt(dot(a, a));
-}
-function cosineSimilarity(a, b) {
-  return dot(a, b) / (magnitude(a) * magnitude(b));
-}
-function groupByCosineSimilarity(arr, threshold = 0.99) {
-  const groups = [];
-  const visited = new Set();
-  arr.forEach((vec, i) => {
-    if (visited.has(i)) return;
-    const group = [i];
-    visited.add(i);
-    for (let j = i + 1; j < arr.length; j++) {
-      if (cosineSimilarity(vec, arr[j]) > threshold) {
-        group.push(j);
-        visited.add(j);
-      }
-    }
-    groups.push(group);
-  });
-  return groups;
-}
-
-function getElementAttributeNames(el) {
-  if (!el) return "";
-  const attrs = Array.from(el.attributes || [])
-    .map((attr) => attr.name)
-    .join(" ");
-  return attrs;
 }
