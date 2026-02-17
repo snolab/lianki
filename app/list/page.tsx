@@ -1,9 +1,9 @@
 import Image from "next/image";
 import { Suspense } from "react";
 import sflow from "sflow";
-import { ems } from "./ems";
-import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
-import { authEmail, authUser } from "./signInEmail";
+import { ems } from "../ems";
+import { getFSRSNotesCollection } from "../getFSRSNotesCollection";
+import { authEmail, authUser } from "../signInEmail";
 export const dynamic = "force-dynamic";
 /**
  * @author: snomiao <snomiao@gmail.com>
