@@ -1,2 +1,12 @@
 bun fix
 bun run typecheck
+
+# If lianki.user.js has staged changes, require its @version to differ from HEAD
+if git diff --cached --name-only | grep -q "public/lianki.user.js"; then
+  staged=$(git show :public/lianki.user.js 2>/dev/null | grep -m1 '@version' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+  head=$(git show HEAD:public/lianki.user.js 2>/dev/null | grep -m1 '@version' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+  if [ "$staged" = "$head" ]; then
+    echo "ERROR: lianki.user.js was changed but @version ($staged) was not bumped. Update @version before committing."
+    exit 1
+  fi
+fi

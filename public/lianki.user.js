@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.2.1
+// @version     2.3.0
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation
 // @run-at      document-end
@@ -33,6 +33,32 @@ function main() {
       return "https://www.lianki.com";
     }
   })();
+
+  // ── URL normalization (dedup mobile/desktop variants, strip tracking) ──────
+  function normalizeUrl(href) {
+    try {
+      const u = new URL(href);
+      // YouTube: youtu.be/ID → youtube.com/watch?v=ID
+      if (u.hostname === "youtu.be") {
+        const id = u.pathname.slice(1);
+        u.hostname = "www.youtube.com";
+        u.pathname = "/watch";
+        u.searchParams.set("v", id);
+      }
+      // YouTube / any site: strip mobile subdomain
+      if (u.hostname.startsWith("m.")) u.hostname = "www." + u.hostname.slice(2);
+      // Strip tracking & session params
+      for (const p of [
+        "si", "pp", "feature", "ref", "source",
+        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+        "fbclid", "gclid", "mc_cid", "mc_eid", "igshid",
+      ]) u.searchParams.delete(p);
+      u.searchParams.sort();
+      return u.toString();
+    } catch {
+      return href;
+    }
+  }
 
   // Skip running on the Lianki app itself
   if (location.hostname === new URL(ORIGIN).hostname) return () => {};
@@ -405,7 +431,7 @@ function main() {
     renderDialog();
     dialog.focus();
 
-    addNote(location.href, document.title)
+    addNote(normalizeUrl(location.href), document.title)
       .then((note) => {
         state.noteId = note._id;
         return getOptions(note._id);
@@ -497,7 +523,8 @@ function main() {
       if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyF") {
         e.preventDefault();
         e.stopPropagation();
-        if (dialog) closeDialog(); else openDialog();
+        if (dialog) closeDialog();
+        else openDialog();
         return;
       }
       if (!dialog || state.phase !== "reviewing") return;

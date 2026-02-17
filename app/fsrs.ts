@@ -455,12 +455,38 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     };
   }
 
+  function normalizeUrl(href: string): string {
+    try {
+      const u = new URL(href);
+      // YouTube: youtu.be/ID → youtube.com/watch?v=ID
+      if (u.hostname === "youtu.be") {
+        const id = u.pathname.slice(1);
+        u.hostname = "www.youtube.com";
+        u.pathname = "/watch";
+        u.searchParams.set("v", id);
+      }
+      // Strip mobile subdomain (m.youtube.com → www.youtube.com)
+      if (u.hostname.startsWith("m.")) u.hostname = "www." + u.hostname.slice(2);
+      // Strip tracking & session params
+      for (const p of [
+        "si", "pp", "feature", "ref", "source",
+        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+        "fbclid", "gclid", "mc_cid", "mc_eid", "igshid",
+      ]) u.searchParams.delete(p);
+      u.searchParams.sort();
+      return u.toString();
+    } catch {
+      return href;
+    }
+  }
+
   async function saveNote({ url, title }: { url: string; title?: string }) {
+    const normalized = normalizeUrl(url);
     return (
       (await FSRSNotes.findOneAndUpdate(
-        { url },
+        { url: normalized },
         {
-          $setOnInsert: { card: createEmptyCard() },
+          $setOnInsert: { card: createEmptyCard(), url: normalized },
           $set: { ...(title && { title }) },
         },
         { upsert: true, returnDocument: "after" },
