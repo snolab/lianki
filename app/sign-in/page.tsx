@@ -34,18 +34,14 @@ export default function SignInPage() {
       <h1 className="text-2xl font-bold">Sign in to Lianki</h1>
 
       <button
-        onClick={() =>
-          authClient.signIn.social({ provider: "github", callbackURL: "/list" })
-        }
+        onClick={() => authClient.signIn.social({ provider: "github", callbackURL: "/list" })}
         className="px-6 py-2 bg-gray-900 text-white rounded hover:bg-gray-700"
       >
         Sign in with GitHub
       </button>
 
       <button
-        onClick={() =>
-          authClient.signIn.social({ provider: "google", callbackURL: "/list" })
-        }
+        onClick={() => authClient.signIn.social({ provider: "google", callbackURL: "/list" })}
         className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
       >
         Sign in with Google

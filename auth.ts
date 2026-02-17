@@ -35,9 +35,7 @@ export const auth = betterAuth({
       ? [
           magicLink({
             sendMagicLink: async ({ email, url }) => {
-              const transport = nodemailer.createTransport(
-                process.env.EMAIL_SERVER!,
-              );
+              const transport = nodemailer.createTransport(process.env.EMAIL_SERVER!);
               await transport.sendMail({
                 from: process.env.EMAIL_FROM,
                 to: email,
