@@ -22,9 +22,7 @@ export default async function HomePage() {
           <li>
             <summary>
               <span>
-                {user.image && (
-                  <Image className="w-4 h-4" alt="avater" src={user.image} />
-                )}
+                {user.image && <Image className="w-4 h-4" alt="avater" src={user.image} />}
                 <a>{user.name}</a>
               </span>
               <details>
@@ -54,9 +52,7 @@ export default async function HomePage() {
       </p>
       <p>
         Due cards:{" "}
-        <Suspense>
-          {FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })}
-        </Suspense>
+        <Suspense>{FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })}</Suspense>
       </p>
       <ul>
         <Suspense>

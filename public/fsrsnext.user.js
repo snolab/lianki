@@ -22,8 +22,7 @@ function main() {
   const openFsrs = (_urlOrAnchor, target = "_blank") => {
     const _url = _urlOrAnchor.href ? _urlOrAnchor.href : _urlOrAnchor;
 
-    if (_url.match(/^https:\/\/fsrsnext.snomiao.(com|dev)/))
-      location.href = location.origin; // go home if fsrs it self
+    if (_url.match(/^https:\/\/fsrsnext.snomiao.(com|dev)/)) location.href = location.origin; // go home if fsrs it self
 
     const url = fsrsUrlClean(_url);
 
@@ -60,17 +59,13 @@ function main() {
     "keydown",
     (e) => {
       const actions = {
-        "alt+f": () =>
-          openFsrs(parent?.location?.href || location.href, "_self"),
-        "alt+v": () =>
-          openFsrs(parent?.location?.href || location.href, "_blank"),
+        "alt+f": () => openFsrs(parent?.location?.href || location.href, "_self"),
+        "alt+v": () => openFsrs(parent?.location?.href || location.href, "_blank"),
         // add all now
         "alt+shift+v": async () => {
           const anchors = getMainAnchorsList();
           if (anchors.length === 0) return alert("no link found");
-          const msg = `Found ${
-            anchors.length
-          } links, open fsrs for all?\n ${anchors
+          const msg = `Found ${anchors.length} links, open fsrs for all?\n ${anchors
             .map((a) => `- [${a.textContent.trim()}](${fsrsUrlClean(a.href)})`)
             .join("\n")}`;
           if (!confirm(msg)) return alert("user aborted");
@@ -174,18 +169,14 @@ function fsrsUrlClean(_url) {
 async function _openLinks(links) {
   // max 8 page on 1 origin once batch
   // max 16 page on all origin once batch
-  const urlss = Object.values(
-    Object.groupBy(links, (_url, i) => String(Math.floor(i / 8))),
-  );
+  const urlss = Object.values(Object.groupBy(links, (_url, i) => String(Math.floor(i / 8))));
   for await (const urls of urlss) {
     const urlList = urls.map((e) => e.href).join("\n");
     const confirmMsg = `confirm to open ${urls.length} pages?\n\n${urlList}`;
     if (!confirm(confirmMsg)) throw alert("cancelled by user");
     urls.toReversed().map(openDeduplicatedUrl);
     await new Promise((r) => setTimeout(r, 1e3)); // 1s cd
-    await new Promise((r) =>
-      document.addEventListener("visibilitychange", r, { once: true }),
-    ); // wait for page visible
+    await new Promise((r) => document.addEventListener("visibilitychange", r, { once: true })); // wait for page visible
   }
   // await Promise.all(Object.entries(Object.groupBy(links, e => e.origin)).map(async ([origin, links]) => {
   //   const urls = links.map(e => e.href)
@@ -218,9 +209,7 @@ function BagOfWordsModel() {
     },
     transform: (text) => {
       const words = text.toLowerCase().split(/\W+/);
-      const vec = Array.from(wordSet).map((word) =>
-        words.includes(word) ? 1 : 0,
-      );
+      const vec = Array.from(wordSet).map((word) => (words.includes(word) ? 1 : 0));
       return vec;
     },
   };
@@ -244,9 +233,7 @@ function getMainAnchorsList() {
       }))
       .map((e) => ({
         ...e,
-        _: e.bow.fit(
-          e.list.map((el) => `${el.className} ${getElementAttributeNames(el)}`),
-        ),
+        _: e.bow.fit(e.list.map((el) => `${el.className} ${getElementAttributeNames(el)}`)),
       }))
       .map((e) => ({
         ...e,
@@ -267,9 +254,7 @@ function getMainAnchorsList() {
           .map((g) => ({
             anchors: g,
             area: area(maxRect(g.map((el) => el.getBoundingClientRect()))),
-            areaSum: g
-              .map((el) => area(el.getBoundingClientRect()))
-              .reduce((a, b) => a + b, 0),
+            areaSum: g.map((el) => area(el.getBoundingClientRect())).reduce((a, b) => a + b, 0),
           }))
           .map((g) => ({ ...g, score: Math.log(g.area * g.areaSum) }))
           .toSorted(compareBy((g) => -g.score)),
@@ -280,11 +265,7 @@ function getMainAnchorsList() {
           .slice(0, 1)
           .map((grp, i, a) =>
             grp.anchors.map((el) =>
-              flashBorder(
-                el,
-                getOklch(i / a.length),
-                500 + (a.length - i) * 500,
-              ),
+              flashBorder(el, getOklch(i / a.length), 500 + (a.length - i) * 500),
             ),
           ),
       }))

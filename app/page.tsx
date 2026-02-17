@@ -21,8 +21,8 @@ export default function LandingPage() {
             Supercharge Your Learning with Spaced Repetition
           </h2>
           <p className="text-lg mb-8 max-w-2xl mx-auto">
-            FSRSNext is a modern, open-source spaced repetition system designed
-            for efficient flashcard review and long-term memorization.
+            FSRSNext is a modern, open-source spaced repetition system designed for efficient
+            flashcard review and long-term memorization.
           </p>
           <a
             href="/list"
@@ -35,33 +35,20 @@ export default function LandingPage() {
         {/* Features Section */}
         <section className="py-12 bg-gray-100 dark:bg-gray-900 px-4 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto">
-            <h3 className="text-3xl font-bold text-center mb-8">
-              Key Features
-            </h3>
+            <h3 className="text-3xl font-bold text-center mb-8">Key Features</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="text-center">
                 <h4 className="text-xl font-semibold mb-2">FSRS Algorithm</h4>
-                <p>
-                  Utilizes the powerful FSRS algorithm for optimal review
-                  scheduling.
-                </p>
+                <p>Utilizes the powerful FSRS algorithm for optimal review scheduling.</p>
               </div>
               <div className="text-center">
-                <h4 className="text-xl font-semibold mb-2">
-                  Browser Integration
-                </h4>
-                <p>
-                  Add flashcards from any webpage with our Tampermonkey
-                  userscript.
-                </p>
+                <h4 className="text-xl font-semibold mb-2">Browser Integration</h4>
+                <p>Add flashcards from any webpage with our Tampermonkey userscript.</p>
               </div>
               <div className="text-center">
-                <h4 className="text-xl font-semibold mb-2">
-                  Multi-User Support
-                </h4>
+                <h4 className="text-xl font-semibold mb-2">Multi-User Support</h4>
                 <p>
-                  Sign in with Email, GitHub, or Google and keep your learning
-                  progress private.
+                  Sign in with Email, GitHub, or Google and keep your learning progress private.
                 </p>
               </div>
             </div>
@@ -74,24 +61,17 @@ export default function LandingPage() {
             <h3 className="text-3xl font-bold mb-8">How It Works</h3>
             <ol className="list-decimal list-inside text-left max-w-lg mx-auto">
               <li className="mb-4">
-                <a
-                  href="/fsrsnext.user.js"
-                  className="text-blue-600 hover:underline"
-                >
+                <a href="/fsrsnext.user.js" className="text-blue-600 hover:underline">
                   Install the userscript
                 </a>{" "}
                 in your browser (Tampermonkey or Violentmonkey required).
               </li>
               <li className="mb-4">
-                Use keyboard shortcuts (e.g., Alt+F) to add a webpage as a
-                flashcard.
+                Use keyboard shortcuts (e.g., Alt+F) to add a webpage as a flashcard.
               </li>
+              <li className="mb-4">Review your due cards daily with our simple interface.</li>
               <li className="mb-4">
-                Review your due cards daily with our simple interface.
-              </li>
-              <li className="mb-4">
-                The FSRS algorithm schedules the next review based on your
-                performance.
+                The FSRS algorithm schedules the next review based on your performance.
               </li>
             </ol>
           </div>
@@ -102,10 +82,7 @@ export default function LandingPage() {
       <footer className="py-4 px-4 sm:px-6 lg:px-8 text-center">
         <p>
           FSRSNext is an open-source project.{" "}
-          <a
-            href="https://github.com/snomiao/lianki"
-            className="text-blue-600 hover:underline"
-          >
+          <a href="https://github.com/snomiao/lianki" className="text-blue-600 hover:underline">
             View on GitHub
           </a>
         </p>
