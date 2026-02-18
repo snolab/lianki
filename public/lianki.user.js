@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.3.1
+// @version     2.4.0
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation
 // @run-at      document-end
@@ -157,12 +157,32 @@ function main() {
       return r.json();
     });
 
-  const addNote = (url, title) =>
+  // ── GM-backed TTL cache (cross-origin, persists across pages) ───────────────
+  // Like keyv with GM_setValue as the storage adapter.
+  function gmCache(key, ttlMs, fn) {
+    const raw = GM_getValue(key);
+    if (raw) {
+      try {
+        const { v, exp } = JSON.parse(raw);
+        if (Date.now() < exp) return Promise.resolve(v);
+      } catch {}
+    }
+    return fn().then((v) => {
+      GM_setValue(key, JSON.stringify({ v, exp: Date.now() + ttlMs }));
+      return v;
+    });
+  }
+
+  const _addNote = (url, title) =>
     api("/api/fsrs/add", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ url, title }),
     });
+
+  // Cache addNote by URL for 10 min — skips round-trip on repeat visits
+  const addNote = (url, title) =>
+    gmCache(`lk:note:${url}`, 10 * 60 * 1000, () => _addNote(url, title));
 
   const getOptions = (id) => api(`/api/fsrs/options?id=${encodeURIComponent(id)}`);
 
@@ -172,6 +192,9 @@ function main() {
   const deleteNote = (id) => api(`/api/fsrs/delete?id=${encodeURIComponent(id)}`);
 
   const getNextUrl = () => api("/api/fsrs/next-url");
+
+  // Prefetched next URL — populated in background while user reviews current card
+  let prefetchedNextUrl = null;
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const btn = (bg, extra = "") =>
@@ -444,9 +467,16 @@ function main() {
     renderDialog();
     dialog.focus();
 
+    prefetchedNextUrl = null;
     addNote(normalizeUrl(location.href), document.title)
       .then((note) => {
         state.noteId = note._id;
+        // Prefetch next URL in background while user reviews this card
+        getNextUrl()
+          .then(({ url }) => {
+            prefetchedNextUrl = url;
+          })
+          .catch(() => {});
         return getOptions(note._id);
       })
       .then((data) => {
@@ -510,10 +540,15 @@ function main() {
 
   async function afterReview(doneMessage) {
     state.phase = "reviewed";
-    state.message = "Redirecting\u2026";
-    renderDialog();
-
-    const { url: nextUrl } = await getNextUrl().catch(() => ({ url: null }));
+    // Use prefetched URL if ready, otherwise fetch now (shows Redirecting… only then)
+    const nextUrl =
+      prefetchedNextUrl ??
+      (state.message = "Redirecting\u2026",
+      renderDialog(),
+      await getNextUrl()
+        .then((r) => r.url)
+        .catch(() => null));
+    prefetchedNextUrl = null;
     if (nextUrl && /^https?:\/\//.test(nextUrl) && !wouldHijackApp(nextUrl)) {
       location.href = nextUrl;
     } else {
