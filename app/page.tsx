@@ -1,3 +1,5 @@
+import ContactForm from "./ContactForm";
+
 export default function LandingPage() {
   return (
     <div className="flex flex-col min-h-screen">
@@ -76,6 +78,9 @@ export default function LandingPage() {
             </ol>
           </div>
         </section>
+
+        {/* Contact Section */}
+        <ContactForm />
       </main>
 
       {/* Footer */}
