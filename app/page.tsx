@@ -26,7 +26,7 @@ export default function LandingPage() {
             Supercharge Your Learning with Spaced Repetition
           </h2>
           <p className="text-lg mb-8 max-w-2xl mx-auto">
-            Lianki is a modern, open-source spaced repetition system designed for efficient
+            Lianki is a modern spaced repetition system designed for efficient
             flashcard review and long-term memorization.
           </p>
           <a
@@ -88,12 +88,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="py-4 px-4 sm:px-6 lg:px-8 text-center">
-        <p>
-          Lianki is an open-source project.{" "}
-          <a href="https://github.com/snomiao/lianki" className="text-blue-600 hover:underline">
-            View on GitHub
-          </a>
-        </p>
+        <p>© {new Date().getFullYear()} Lianki</p>
       </footer>
     </div>
   );

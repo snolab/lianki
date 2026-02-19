@@ -43,8 +43,6 @@ Lianki 附带一个 Tampermonkey/Violentmonkey 用户脚本，在你访问的每
 
 脚本还会自动规范化 URL。如果你在手机上从 `youtu.be/xyz` 保存了一个 YouTube 视频，之后在桌面端从 `youtube.com/watch?v=xyz` 打开同一个视频，Lianki 会把它们识别为同一张卡片。跟踪参数（`utm_*`、`fbclid` 等）也会被自动去除，防止产生重复卡片。
 
-## 开源
+## 开始使用
 
-完整源码在 [github.com/snomiao/lianki](https://github.com/snomiao/lianki)，采用 MIT 协议。你可以用自己的 MongoDB 实例自托管，唯一必须的环境变量是 `MONGODB_URI`。
-
-托管版本免费，访问 [www.lianki.com](https://www.lianki.com)，支持 Google、GitHub 或邮箱登录。
+Lianki 免费开放，访问 [www.lianki.com](https://www.lianki.com)，支持 Google、GitHub 或邮箱登录。
