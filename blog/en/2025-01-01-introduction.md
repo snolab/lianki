@@ -43,8 +43,6 @@ Lianki ships a Tampermonkey/Violentmonkey userscript that puts a floating button
 
 The userscript also normalizes URLs automatically. If you save a YouTube video from `youtu.be/xyz` on mobile and later encounter it at `youtube.com/watch?v=xyz` on desktop, Lianki treats them as the same card. Tracking parameters (`utm_*`, `fbclid`, etc.) are stripped so you don't accumulate duplicates.
 
-## Open Source
+## Get Started
 
-The full source is at [github.com/snomiao/lianki](https://github.com/snomiao/lianki). It's MIT licensed. You can self-host it with your own MongoDB instance — the only required environment variable is `MONGODB_URI`.
-
-The hosted version is free at [www.lianki.com](https://www.lianki.com). Sign in with Google, GitHub, or email.
+Lianki is free at [www.lianki.com](https://www.lianki.com). Sign in with Google, GitHub, or email.
