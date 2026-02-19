@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.4.0
+// @version     2.5.0
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation
 // @run-at      document-end
@@ -21,9 +21,9 @@ globalThis.unload_Lianki?.();
 globalThis.unload_Lianki = main();
 
 function main() {
-  // ── Origin (auto-detected from @downloadURL so beta.lianki.com works too) ──
-  // Normalize bare lianki.com → www.lianki.com: session cookies use __Host- prefix
-  // which binds them to the exact hostname; www.lianki.com is the auth domain.
+  // ── Origin ─────────────────────────────────────────────────────────────────
+  // Auto-detected from @downloadURL so beta.lianki.com works too.
+  // Normalize bare lianki.com → www.lianki.com: __Host- cookies bind to exact hostname.
   const ORIGIN = (() => {
     try {
       const u = new URL(GM_info?.script?.downloadURL || "");
@@ -34,38 +34,25 @@ function main() {
     }
   })();
 
-  // ── URL normalization (dedup mobile/desktop variants, strip tracking) ──────
+  // ── URL normalization ───────────────────────────────────────────────────────
   function normalizeUrl(href) {
     try {
       const u = new URL(href);
-      // YouTube: youtu.be/ID → youtube.com/watch?v=ID
+      // youtu.be/ID → youtube.com/watch?v=ID
       if (u.hostname === "youtu.be") {
         const id = u.pathname.slice(1);
         u.hostname = "www.youtube.com";
         u.pathname = "/watch";
         u.searchParams.set("v", id);
       }
-      // YouTube / any site: strip mobile subdomain
+      // m.example.com → www.example.com
       if (u.hostname.startsWith("m.")) u.hostname = "www." + u.hostname.slice(2);
       // Strip tracking & session params
       for (const p of [
-        "si",
-        "pp",
-        "feature",
-        "ref",
-        "source",
-        "utm_source",
-        "utm_medium",
-        "utm_campaign",
-        "utm_term",
-        "utm_content",
-        "fbclid",
-        "gclid",
-        "mc_cid",
-        "mc_eid",
-        "igshid",
-      ])
-        u.searchParams.delete(p);
+        "si", "pp", "feature", "ref", "source",
+        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+        "fbclid", "gclid", "mc_cid", "mc_eid", "igshid",
+      ]) u.searchParams.delete(p);
       u.searchParams.sort();
       return u.toString();
     } catch {
@@ -79,20 +66,26 @@ function main() {
   const ac = new AbortController();
   const { signal } = ac;
 
+  // ── Constants ──────────────────────────────────────────────────────────────
+  // Domains that hijack navigation to their native app on mobile
+  const MOBILE_APP_DOMAINS = ["zhihu.com"];
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
   // ── State ──────────────────────────────────────────────────────────────────
   let state = { phase: "idle", noteId: null, options: null, error: null, message: null };
   let fab = null;
   let dialog = null;
+  let prefetchedNextUrl = null; // populated while user reads current card
 
   // ── Auto-update ────────────────────────────────────────────────────────────
   const CURRENT_VERSION = GM_info?.script?.version ?? "0.0.0";
   let updatePrompted = false;
 
-  function isNewerVersion(server, client) {
-    const p = (v) => v.split(".").map(Number);
-    const [sa, sb, sc] = p(server);
-    const [ca, cb, cc] = p(client);
-    return sa !== ca ? sa > ca : sb !== cb ? sb > cb : sc > cc;
+  function isNewerVersion(a, b) {
+    const seg = (v) => v.split(".").map((n) => parseInt(n) || 0);
+    const [aa, ab, ac2] = seg(a);
+    const [ba, bb, bc] = seg(b);
+    return aa !== ba ? aa > ba : ab !== bb ? ab > bb : ac2 > bc;
   }
 
   function checkVersion(r) {
@@ -104,7 +97,9 @@ function main() {
     }
   }
 
-  // ── Fetch wrapper (avoids gm-fetch set-cookie bug on mobile) ─────────────
+  // ── Fetch ──────────────────────────────────────────────────────────────────
+  // Inline wrapper around GM_xmlhttpRequest — avoids gm-fetch's set-cookie
+  // header bug that throws on strict mobile environments.
   function gmFetch(url, opts = {}) {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
@@ -119,8 +114,6 @@ function main() {
             const i = line.indexOf(": ");
             if (i > 0) {
               const name = line.slice(0, i).toLowerCase();
-              // skip set-cookie — its value contains "; Path=..." which
-              // throws "invalid header value" in strict mobile environments
               if (name !== "set-cookie") hdrs[name] = line.slice(i + 2);
             }
           }
@@ -128,7 +121,7 @@ function main() {
             ok: resp.status >= 200 && resp.status < 300,
             status: resp.status,
             headers: { get: (n) => hdrs[n.toLowerCase()] ?? null },
-            json: () => {
+            json() {
               try {
                 return Promise.resolve(JSON.parse(resp.responseText));
               } catch {
@@ -139,12 +132,8 @@ function main() {
             text: () => Promise.resolve(resp.responseText),
           });
         },
-        onerror() {
-          reject(new Error("Network error"));
-        },
-        onabort() {
-          reject(new Error("Request aborted"));
-        },
+        onerror() { reject(new Error("Network error")); },
+        onabort() { reject(new Error("Request aborted")); },
       });
     });
   }
@@ -157,48 +146,56 @@ function main() {
       return r.json();
     });
 
-  // ── GM-backed TTL cache (cross-origin, persists across pages) ───────────────
-  // Like keyv with GM_setValue as the storage adapter.
+  // ── Cache (keyv-style, GM_setValue as cross-origin storage adapter) ────────
   function gmCache(key, ttlMs, fn) {
-    const raw = GM_getValue(key);
-    if (raw) {
-      try {
+    try {
+      const raw = GM_getValue(key);
+      if (raw) {
         const { v, exp } = JSON.parse(raw);
         if (Date.now() < exp) return Promise.resolve(v);
-      } catch {}
-    }
+      }
+    } catch {}
     return fn().then((v) => {
       GM_setValue(key, JSON.stringify({ v, exp: Date.now() + ttlMs }));
       return v;
     });
   }
 
-  const _addNote = (url, title) =>
-    api("/api/fsrs/add", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url, title }),
-    });
+  function gmCacheInvalidate(key) {
+    GM_setValue(key, "");
+  }
 
-  // Cache addNote by URL for 10 min — skips round-trip on repeat visits
+  // ── API helpers ────────────────────────────────────────────────────────────
+  const noteKey = (url) => `lk:note:${url}`;
+
+  // Cache addNote by normalized URL for 10 min — skips round-trip on repeat visits
   const addNote = (url, title) =>
-    gmCache(`lk:note:${url}`, 10 * 60 * 1000, () => _addNote(url, title));
+    gmCache(noteKey(url), 10 * 60 * 1000, () =>
+      api("/api/fsrs/add", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url, title }),
+      }),
+    );
 
   const getOptions = (id) => api(`/api/fsrs/options?id=${encodeURIComponent(id)}`);
-
-  const submitReview = (id, rating) =>
-    api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}`);
-
+  const submitReview = (id, rating) => api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}`);
   const deleteNote = (id) => api(`/api/fsrs/delete?id=${encodeURIComponent(id)}`);
-
   const getNextUrl = () => api("/api/fsrs/next-url");
-
-  // Prefetched next URL — populated in background while user reviews current card
-  let prefetchedNextUrl = null;
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const btn = (bg, extra = "") =>
     `background:${bg};color:#eee;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;min-width:60px;${extra}`;
+
+  function wouldHijackApp(url) {
+    if (!isMobile) return false;
+    try {
+      const h = new URL(url).hostname;
+      return MOBILE_APP_DOMAINS.some((d) => h === d || h.endsWith("." + d));
+    } catch {
+      return false;
+    }
+  }
 
   // ── FAB ────────────────────────────────────────────────────────────────────
   function createFab() {
@@ -219,17 +216,16 @@ function main() {
       userSelect: "none",
     });
 
-    const saved = (() => {
-      try {
-        return JSON.parse(GM_getValue("lianki_pos", "null"));
-      } catch {
-        return null;
+    try {
+      const saved = JSON.parse(GM_getValue("lianki_pos", "null"));
+      if (saved) {
+        el.style.left = saved.x + "px";
+        el.style.top = saved.y + "px";
+      } else {
+        el.style.right = "20px";
+        el.style.bottom = "20px";
       }
-    })();
-    if (saved) {
-      el.style.left = saved.x + "px";
-      el.style.top = saved.y + "px";
-    } else {
+    } catch {
       el.style.right = "20px";
       el.style.bottom = "20px";
     }
@@ -258,10 +254,7 @@ function main() {
       document.addEventListener("mouseup", onUp);
     });
 
-    el.addEventListener("click", () => {
-      if (!dragged) openDialog();
-    });
-
+    el.addEventListener("click", () => { if (!dragged) openDialog(); });
     document.body.appendChild(el);
     return el;
   }
@@ -308,10 +301,9 @@ function main() {
     if (!dialog) return;
     const { phase, options, error, message } = state;
 
-    // Clear existing content
     while (dialog.lastChild) dialog.removeChild(dialog.lastChild);
 
-    // ── Header ──────────────────────────────────────────────────────────────
+    // Header
     const header = document.createElement("div");
     Object.assign(header.style, {
       display: "flex",
@@ -319,24 +311,18 @@ function main() {
       alignItems: "center",
       marginBottom: "16px",
     });
-
     const titleSpan = document.createElement("span");
     Object.assign(titleSpan.style, { fontWeight: "700", fontSize: "16px" });
     titleSpan.textContent = "🔖 Lianki";
-
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "×";
-    closeBtn.setAttribute(
-      "style",
-      `${btn("transparent")};color:#aaa;font-size:20px;padding:0 6px;line-height:1`,
-    );
+    closeBtn.setAttribute("style", `${btn("transparent")};color:#aaa;font-size:20px;padding:0 6px;line-height:1`);
     closeBtn.addEventListener("click", closeDialog);
-
     header.appendChild(titleSpan);
     header.appendChild(closeBtn);
     dialog.appendChild(header);
 
-    // ── Body ────────────────────────────────────────────────────────────────
+    // Body
     if (phase === "adding") {
       const styleEl = document.createElement("style");
       styleEl.textContent =
@@ -348,18 +334,15 @@ function main() {
 
       const wrap = document.createElement("div");
       Object.assign(wrap.style, { display: "flex", flexDirection: "column", gap: "10px" });
-
       const spinRow = document.createElement("div");
       Object.assign(spinRow.style, { fontSize: "15px", fontWeight: "600" });
       const spinner = document.createElement("span");
       spinner.className = "lk-spinner";
       spinRow.appendChild(spinner);
       spinRow.appendChild(document.createTextNode("Adding note\u2026"));
-
       const urlDiv = document.createElement("div");
       Object.assign(urlDiv.style, { color: "#888", fontSize: "12px", wordBreak: "break-all" });
-      urlDiv.textContent = location.href;
-
+      urlDiv.textContent = normalizeUrl(location.href);
       wrap.appendChild(spinRow);
       wrap.appendChild(urlDiv);
       dialog.appendChild(wrap);
@@ -370,12 +353,7 @@ function main() {
       dialog.appendChild(errDiv);
 
       const btnRow = document.createElement("div");
-      Object.assign(btnRow.style, {
-        display: "flex",
-        gap: "8px",
-        marginTop: "10px",
-        flexWrap: "wrap",
-      });
+      Object.assign(btnRow.style, { display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" });
 
       const loginBtn = document.createElement("button");
       loginBtn.setAttribute("style", btn("#2a5f8f"));
@@ -398,9 +376,7 @@ function main() {
           ta.remove();
         });
         copyBtn.textContent = "Copied!";
-        setTimeout(() => {
-          copyBtn.textContent = "Copy error";
-        }, 2000);
+        setTimeout(() => { copyBtn.textContent = "Copy error"; }, 2000);
       });
       btnRow.appendChild(copyBtn);
       dialog.appendChild(btnRow);
@@ -418,13 +394,8 @@ function main() {
       dialog.appendChild(titleDiv);
 
       const btnRow = document.createElement("div");
-      Object.assign(btnRow.style, {
-        display: "flex",
-        gap: "8px",
-        flexWrap: "wrap",
-        marginBottom: "8px",
-      });
-      options.forEach((o) => {
+      Object.assign(btnRow.style, { display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "8px" });
+      for (const o of options) {
         const b = document.createElement("button");
         b.setAttribute("style", btn("#2a5f8f"));
         b.appendChild(document.createTextNode(o.label));
@@ -435,16 +406,14 @@ function main() {
         b.appendChild(small);
         b.addEventListener("click", () => doReview(Number(o.rating)));
         btnRow.appendChild(b);
-      });
+      }
       dialog.appendChild(btnRow);
 
-      const deleteRow = document.createElement("div");
       const deleteBtn = document.createElement("button");
       deleteBtn.setAttribute("style", btn("#7a2a2a"));
       deleteBtn.textContent = "Delete";
       deleteBtn.addEventListener("click", doDelete);
-      deleteRow.appendChild(deleteBtn);
-      dialog.appendChild(deleteRow);
+      dialog.appendChild(deleteBtn);
 
       const hints = document.createElement("div");
       Object.assign(hints.style, { marginTop: "14px", opacity: ".4", fontSize: "11px" });
@@ -464,19 +433,16 @@ function main() {
     if (dialog) return;
     dialog = mountDialog();
     state = { phase: "adding", noteId: null, options: null, error: null, message: null };
+    prefetchedNextUrl = null;
     renderDialog();
     dialog.focus();
 
-    prefetchedNextUrl = null;
-    addNote(normalizeUrl(location.href), document.title)
+    const url = normalizeUrl(location.href);
+    addNote(url, document.title)
       .then((note) => {
         state.noteId = note._id;
         // Prefetch next URL in background while user reviews this card
-        getNextUrl()
-          .then(({ url }) => {
-            prefetchedNextUrl = url;
-          })
-          .catch(() => {});
+        getNextUrl().then(({ url: u }) => { prefetchedNextUrl = u; }).catch(() => {});
         return getOptions(note._id);
       })
       .then((data) => {
@@ -504,7 +470,7 @@ function main() {
     if (state.phase !== "reviewing" || !state.noteId) return;
     try {
       await submitReview(state.noteId, rating);
-      const opt = state.options.find((o) => o.rating === rating);
+      const opt = state.options.find((o) => Number(o.rating) === rating);
       await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
     } catch (err) {
       state.phase = "error";
@@ -517,6 +483,7 @@ function main() {
     if (state.phase !== "reviewing" || !state.noteId) return;
     try {
       await deleteNote(state.noteId);
+      gmCacheInvalidate(noteKey(normalizeUrl(location.href)));
       await afterReview("Deleted!");
     } catch (err) {
       state.phase = "error";
@@ -525,30 +492,19 @@ function main() {
     }
   }
 
-  // Domains that open their native app on mobile instead of staying in the browser
-  const MOBILE_APP_DOMAINS = ["zhihu.com"];
-  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-  function wouldHijackApp(url) {
-    if (!isMobile) return false;
-    try {
-      const h = new URL(url).hostname;
-      return MOBILE_APP_DOMAINS.some((d) => h === d || h.endsWith("." + d));
-    } catch {
-      return false;
-    }
-  }
-
   async function afterReview(doneMessage) {
     state.phase = "reviewed";
-    // Use prefetched URL if ready, otherwise fetch now (shows Redirecting… only then)
-    const nextUrl =
-      prefetchedNextUrl ??
-      (state.message = "Redirecting\u2026",
-      renderDialog(),
-      await getNextUrl()
-        .then((r) => r.url)
-        .catch(() => null));
+
+    // Use prefetched URL if already ready — redirect is instant, no spinner
+    let nextUrl = prefetchedNextUrl;
     prefetchedNextUrl = null;
+
+    if (!nextUrl) {
+      state.message = "Redirecting\u2026";
+      renderDialog();
+      nextUrl = await getNextUrl().then((r) => r.url).catch(() => null);
+    }
+
     if (nextUrl && /^https?:\/\//.test(nextUrl) && !wouldHijackApp(nextUrl)) {
       location.href = nextUrl;
     } else {
@@ -560,21 +516,11 @@ function main() {
 
   // ── Keyboard ───────────────────────────────────────────────────────────────
   const KEYS = {
-    Digit1: () => doReview(1),
-    KeyD: () => doReview(1),
-    KeyL: () => doReview(1),
-    Digit2: () => doReview(2),
-    KeyW: () => doReview(2),
-    KeyK: () => doReview(2),
-    Digit3: () => doReview(3),
-    KeyS: () => doReview(3),
-    KeyJ: () => doReview(3),
-    Digit4: () => doReview(4),
-    KeyA: () => doReview(4),
-    KeyH: () => doReview(4),
-    Digit5: () => doDelete(),
-    KeyT: () => doDelete(),
-    KeyM: () => doDelete(),
+    Digit1: () => doReview(1), KeyD: () => doReview(1), KeyL: () => doReview(1),
+    Digit2: () => doReview(2), KeyW: () => doReview(2), KeyK: () => doReview(2),
+    Digit3: () => doReview(3), KeyS: () => doReview(3), KeyJ: () => doReview(3),
+    Digit4: () => doReview(4), KeyA: () => doReview(4), KeyH: () => doReview(4),
+    Digit5: () => doDelete(),  KeyT: () => doDelete(),  KeyM: () => doDelete(),
     Escape: () => closeDialog(),
   };
 
@@ -584,8 +530,7 @@ function main() {
       if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyF") {
         e.preventDefault();
         e.stopPropagation();
-        if (dialog) closeDialog();
-        else openDialog();
+        if (dialog) closeDialog(); else openDialog();
         return;
       }
       if (!dialog || state.phase !== "reviewing") return;
