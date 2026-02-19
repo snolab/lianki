@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.5.3
+// @version     2.5.4
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation
 // @run-at      document-end
@@ -17,7 +17,7 @@
 // @connect     beta.lianki.com
 // ==/UserScript==
 
-if (window.self !== window.top) throw new Error("Lianki: skipping iframe");
+if (window.self !== window.top) return;
 globalThis.unload_Lianki?.();
 globalThis.unload_Lianki = main();
 
