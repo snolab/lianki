@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.5.1
+// @version     2.5.2
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation
 // @run-at      document-end
@@ -578,7 +578,7 @@ function main() {
   document.addEventListener(
     "keydown",
     (e) => {
-      if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyF") {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === "KeyF") {
         e.preventDefault();
         e.stopPropagation();
         if (dialog) closeDialog();
