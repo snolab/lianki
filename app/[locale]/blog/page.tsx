@@ -5,7 +5,7 @@ import matter from "gray-matter";
 
 export const revalidate = 3600;
 
-const LOCALES = ["en", "cn"];
+const LOCALES = ["en", "zh", "ja"];
 
 export async function generateStaticParams() {
   return LOCALES.map((locale) => ({ locale }));
@@ -13,8 +13,15 @@ export async function generateStaticParams() {
 
 const LOCALE_LABELS: Record<string, string> = {
   en: "English",
-  cn: "中文",
+  zh: "中文",
+  ja: "日本語",
 };
+
+function dateLocale(locale: string): string {
+  if (locale === "zh") return "zh-CN";
+  if (locale === "ja") return "ja-JP";
+  return "en-US";
+}
 
 type PostSummary = {
   slug: string;
@@ -46,7 +53,6 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
   if (!LOCALES.includes(locale)) notFound();
 
   const posts = await getPostSummaries(locale);
-  const otherLocale = locale === "en" ? "cn" : "en";
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-12">
@@ -57,12 +63,17 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
           </Link>
           <h1 className="text-3xl font-bold mt-2">Blog</h1>
         </div>
-        <Link
-          href={`/${otherLocale}/blog`}
-          className="text-sm px-3 py-1 border rounded hover:bg-gray-50"
-        >
-          {LOCALE_LABELS[otherLocale]}
-        </Link>
+        <div className="flex gap-2">
+          {LOCALES.filter((l) => l !== locale).map((l) => (
+            <Link
+              key={l}
+              href={`/${l}/blog`}
+              className="text-sm px-3 py-1 border rounded hover:bg-gray-50"
+            >
+              {LOCALE_LABELS[l]}
+            </Link>
+          ))}
+        </div>
       </div>
 
       <ul className="space-y-8">
@@ -71,7 +82,7 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
             <Link href={`/${locale}/blog/${post.slug}`} className="group block">
               <time className="text-sm text-gray-400">
                 {post.date
-                  ? new Date(post.date).toLocaleDateString(locale === "cn" ? "zh-CN" : "en-US", {
+                  ? new Date(post.date).toLocaleDateString(dateLocale(locale), {
                       year: "numeric",
                       month: "long",
                       day: "numeric",

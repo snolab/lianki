@@ -1,3 +1,5 @@
+import { withIntlayer } from "next-intlayer/server";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // We use oxlint instead of ESLint — skip Next.js's built-in lint pass
@@ -6,4 +8,4 @@ const nextConfig = {
   typescript: { ignoreBuildErrors: true },
 };
 
-export default nextConfig;
+export default withIntlayer(nextConfig);

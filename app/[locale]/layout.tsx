@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import { IntlayerServerProvider } from "next-intlayer/server";
 
-const LOCALE_LABELS: Record<string, string> = {
+// BCP47 lang tags for the HTML lang attribute
+const LANG_TAG: Record<string, string> = {
   en: "en",
-  cn: "zh-Hans",
+  zh: "zh-Hans",
+  ja: "ja",
 };
 
 export async function generateMetadata({
@@ -11,9 +14,7 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  return {
-    other: { "html-lang": LOCALE_LABELS[locale] ?? locale },
-  };
+  return { other: { "html-lang": LANG_TAG[locale] ?? locale } };
 }
 
 export default async function LocaleLayout({
@@ -24,11 +25,14 @@ export default async function LocaleLayout({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const lang = LOCALE_LABELS[locale] ?? locale;
+  const lang = LANG_TAG[locale] ?? locale;
 
   return (
-    <div lang={lang} className="min-h-screen">
-      {children}
-    </div>
+    // Override the root layout's locale provider with the URL locale
+    <IntlayerServerProvider locale={locale}>
+      <div lang={lang} className="min-h-screen">
+        {children}
+      </div>
+    </IntlayerServerProvider>
   );
 }

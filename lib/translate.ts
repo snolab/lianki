@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 const client = new Anthropic();
 
 const LOCALE_NAMES: Record<string, string> = {
+  zh: "Simplified Chinese",
   cn: "Simplified Chinese",
   ja: "Japanese",
   ko: "Korean",
