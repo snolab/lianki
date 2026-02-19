@@ -132,6 +132,16 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       await FSRSNotes.deleteOne({ url: note.url });
       return JSONR({ ok: true });
     },
+    "PATCH /api/fsrs/update-url(?:/|$|\\?)": async (req) => {
+      const { oldUrl, newUrl } = z
+        .object({ oldUrl: z.string(), newUrl: z.string() })
+        .parse(await req.json());
+      const result = await FSRSNotes.updateOne(
+        { url: normalizeUrl(oldUrl) },
+        { $set: { url: normalizeUrl(newUrl) } },
+      );
+      return JSONR({ ok: result.matchedCount > 0 });
+    },
     "GET /next": async () =>
       new Response(
         sflow(

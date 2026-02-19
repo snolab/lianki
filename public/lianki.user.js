@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.5.4
+// @version     2.5.5
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation
 // @run-at      document-end
@@ -548,6 +548,7 @@ function main() {
     }
 
     if (nextUrl && /^https?:\/\//.test(nextUrl) && !wouldHijackApp(nextUrl)) {
+      GM_setValue("lk:nav_intended", JSON.stringify({ url: nextUrl, ts: Date.now() }));
       location.href = nextUrl;
     } else {
       state.message = `${doneMessage} \u2014 All done!`;
@@ -600,6 +601,28 @@ function main() {
 
   // ── Mount ──────────────────────────────────────────────────────────────────
   fab = createFab();
+
+  // ── Redirect detection ─────────────────────────────────────────────────────
+  // If Lianki navigated to a URL but the site auto-redirected to a different
+  // one, update the card's stored URL to match the actual final location, then
+  // auto-open the review dialog so the session continues uninterrupted.
+  (async () => {
+    try {
+      const raw = GM_getValue("lk:nav_intended", "");
+      if (!raw) return;
+      const { url: intendedUrl, ts } = JSON.parse(raw);
+      if (Date.now() - ts > 30_000) return; // 30 s TTL — stale, ignore
+      GM_setValue("lk:nav_intended", ""); // consume so it only fires once
+      const actualUrl = normalizeUrl(location.href);
+      if (actualUrl === normalizeUrl(intendedUrl)) return; // no redirect happened
+      await api("/api/fsrs/update-url", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ oldUrl: intendedUrl, newUrl: actualUrl }),
+      });
+      openDialog();
+    } catch {}
+  })();
 
   // ── Cleanup ────────────────────────────────────────────────────────────────
   return () => {
