@@ -26,8 +26,8 @@ export default function LandingPage() {
             Supercharge Your Learning with Spaced Repetition
           </h2>
           <p className="text-lg mb-8 max-w-2xl mx-auto">
-            Lianki is a modern spaced repetition system designed for efficient
-            flashcard review and long-term memorization.
+            Lianki is a modern spaced repetition system designed for efficient flashcard review and
+            long-term memorization.
           </p>
           <a
             href="/list"
