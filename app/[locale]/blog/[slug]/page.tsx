@@ -1,13 +1,25 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Suspense } from "react";
-import { getPost, getRawPost, getAllSlugs, parsePost, type Post } from "@/lib/blog";
+import { getPost, getRawPost, getAllSlugs, parsePost, blogLocaleDir, type Post } from "@/lib/blog";
 import { translatePost } from "@/lib/translate";
 import { commitFile } from "@/lib/github-commit";
 
 export const revalidate = 3600;
 
-const LOCALES = ["en", "cn"];
+const LOCALES = ["en", "zh", "ja"];
+
+const LOCALE_LABELS: Record<string, string> = {
+  en: "English",
+  zh: "中文",
+  ja: "日本語",
+};
+
+function dateLocale(locale: string): string {
+  if (locale === "zh") return "zh-CN";
+  if (locale === "ja") return "ja-JP";
+  return "en-US";
+}
 
 export async function generateStaticParams() {
   const slugs = await getAllSlugs();
@@ -29,11 +41,10 @@ async function resolvePost(
   const translatedRaw = await translatePost(enRaw, locale);
 
   // Commit back non-blocking — don't await
-  commitFile(
-    `blog/${locale}/${slug}.md`,
-    translatedRaw,
-    `auto: translate ${slug} to ${locale}`,
-  ).catch((err) => console.error("commit translation failed:", err));
+  const dir = blogLocaleDir(locale);
+  commitFile(`blog/${dir}/${slug}.md`, translatedRaw, `auto: translate ${slug} to ${locale}`).catch(
+    (err) => console.error("commit translation failed:", err),
+  );
 
   return { post: parsePost(translatedRaw, slug), translated: true };
 }
@@ -72,7 +83,7 @@ async function PostContent({ locale, slug }: { locale: string; slug: string }) {
       <header className="mb-8">
         <time className="text-sm text-gray-400">
           {post.date
-            ? new Date(post.date).toLocaleDateString(locale === "cn" ? "zh-CN" : "en-US", {
+            ? new Date(post.date).toLocaleDateString(dateLocale(locale), {
                 year: "numeric",
                 month: "long",
                 day: "numeric",
@@ -116,20 +127,23 @@ export default async function BlogPostPage({
   const { locale, slug } = await params;
   if (!LOCALES.includes(locale)) notFound();
 
-  const otherLocale = locale === "en" ? "cn" : "en";
-
   return (
     <main className="max-w-2xl mx-auto px-4 py-12">
       <nav className="flex items-center justify-between mb-8 text-sm text-gray-500">
         <Link href={`/${locale}/blog`} className="hover:text-gray-700">
           ← Blog
         </Link>
-        <Link
-          href={`/${otherLocale}/blog/${slug}`}
-          className="px-3 py-1 border rounded hover:bg-gray-50"
-        >
-          {otherLocale === "cn" ? "中文" : "English"}
-        </Link>
+        <div className="flex gap-2">
+          {LOCALES.filter((l) => l !== locale).map((l) => (
+            <Link
+              key={l}
+              href={`/${l}/blog/${slug}`}
+              className="px-3 py-1 border rounded hover:bg-gray-50"
+            >
+              {LOCALE_LABELS[l]}
+            </Link>
+          ))}
+        </div>
       </nav>
 
       {/* Shell renders immediately; PostContent streams in when translation is ready */}

@@ -4,6 +4,12 @@ import { marked } from "marked";
 const REPO = "snomiao/lianki";
 const GITHUB_API = "https://api.github.com";
 
+// Map intlayer locale codes to blog directory names.
+// "zh" uses the legacy "cn" directory; all others match their locale code.
+export function blogLocaleDir(locale: string): string {
+  return locale === "zh" ? "cn" : locale;
+}
+
 function getBranch() {
   return process.env.VERCEL_GIT_COMMIT_REF ?? "main";
 }
@@ -28,7 +34,8 @@ export type PostMeta = {
 export type Post = PostMeta & { contentHtml: string };
 
 export async function getRawPost(locale: string, slug: string): Promise<string | null> {
-  const url = `${GITHUB_API}/repos/${REPO}/contents/blog/${locale}/${slug}.md?ref=${getBranch()}`;
+  const dir = blogLocaleDir(locale);
+  const url = `${GITHUB_API}/repos/${REPO}/contents/blog/${dir}/${slug}.md?ref=${getBranch()}`;
   const res = await fetch(url, { headers: ghHeaders(), next: { revalidate: 3600 } });
   if (!res.ok) return null;
   const { content } = (await res.json()) as { content: string };
