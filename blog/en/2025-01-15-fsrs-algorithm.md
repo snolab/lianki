@@ -57,9 +57,9 @@ The new interval is chosen so that retrievability at the next review date will b
 Lianki uses the [`ts-fsrs`](https://github.com/open-spaced-repetition/ts-fsrs) library. Here's the core of the review flow in `app/fsrs.ts`:
 
 ```typescript
-import { createEmptyCard, fsrs, generatorParameters } from "ts-fsrs";
+import { createEmptyCard, fsrs } from "ts-fsrs";
 
-const f = fsrs(generatorParameters({ enable_fuzz: true }));
+const f = fsrs();
 
 // When showing review options to the user:
 const schedulingCards = f.repeat(card, now);
@@ -99,7 +99,7 @@ Lianki doesn't expose these states directly in the UI — you just see the due d
 
 ## The Fuzz Factor
 
-Lianki enables `enable_fuzz: true` in the FSRS parameters. This adds a small random variation to intervals. Without it, if you add 50 cards on the same day and review them all as "Good", they'd all pile up on the exact same future date. Fuzz spreads them out slightly to prevent review avalanches.
+FSRS applies a small random variation to intervals by default. Without fuzz, if you add 50 cards on the same day and review them all as "Good", they'd all pile up on the exact same future date. Fuzz spreads them out slightly to prevent review avalanches.
 
 ## Prioritizing Japanese Content
 

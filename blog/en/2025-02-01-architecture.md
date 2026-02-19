@@ -1,11 +1,11 @@
 ---
-title: "Lianki's Architecture: Next.js 15 + MongoDB"
+title: "Lianki's Architecture: Next.js 16 + MongoDB"
 date: 2025-02-01
 tags: [architecture, nextjs, mongodb, typescript]
 summary: "A walkthrough of the tech stack, data model, and key design decisions in Lianki."
 ---
 
-# Lianki's Architecture: Next.js 15 + MongoDB
+# Lianki's Architecture: Next.js 16 + MongoDB
 
 This post walks through how Lianki is built: the stack choices, data model, API design, and a few implementation patterns that turned out to be useful.
 
@@ -13,7 +13,7 @@ This post walks through how Lianki is built: the stack choices, data model, API 
 
 | Layer | Technology |
 |-------|-----------|
-| Framework | Next.js 15 (App Router) |
+| Framework | Next.js 16 (App Router) |
 | Language | TypeScript 5 |
 | Runtime | Node.js 20 / Bun |
 | Database | MongoDB |
@@ -22,7 +22,7 @@ This post walks through how Lianki is built: the stack choices, data model, API 
 | Package manager | Bun |
 | Deploy | Vercel |
 
-Next.js 15 with App Router was chosen because it collapses frontend and API into one project, Vercel deployment is frictionless, and React Server Components reduce client bundle size for a mostly-read UI.
+Next.js 16 with App Router was chosen because it collapses frontend and API into one project, Vercel deployment is frictionless, and React Server Components reduce client bundle size for a mostly-read UI.
 
 MongoDB was chosen over a relational database because the primary document — an FSRS card — is a rich nested object that changes shape as the FSRS algorithm evolves. Fitting it into a rigid schema would mean repeated migrations. MongoDB lets the card object be stored as-is.
 

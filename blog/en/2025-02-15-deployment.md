@@ -69,12 +69,7 @@ Vercel's built-in GitHub integration works well for simple projects but has a li
 
 ## Vercel Project Setup
 
-The Vercel project is named `lianki`. Key IDs:
-
-```
-Project ID: prj_BoWb5ZrwLrYVyAxGb8a5XOs7i7gu
-Org ID:     team_0YVgkyqvak5X8lMl3zNBqIC7
-```
+The Vercel project is named `lianki`. The project ID and org ID are stored as `VERCEL_PROJECT_ID` and `VERCEL_ORG_ID` GitHub secrets — referenced by the deploy workflow but not hardcoded anywhere.
 
 DNS is managed through Cloudflare (`lia.ns.cloudflare.com`, `roan.ns.cloudflare.com`). Cloudflare sits in front of Vercel for `lianki.com`.
 
@@ -84,8 +79,8 @@ Every commit runs through Husky:
 
 ```sh
 # .husky/pre-commit
-bun fix   # oxlint --fix + oxfmt
-bunx @typescript/native-preview --noEmit
+bun fix          # oxlint --fix + oxfmt
+bun run typecheck  # tsgo --noEmit via @typescript/native-preview
 ```
 
 `bun fix` runs `oxlint` (linting) and `oxfmt` (formatting). `tsgo --noEmit` is the TypeScript type checker from `@typescript/native-preview`, which is significantly faster than `tsc` for large codebases.
@@ -112,9 +107,10 @@ EMAIL_FROM=dev@localhost
 A `.vercelignore` file keeps the deploy bundle small:
 
 ```
+archived/
 packages/
-*.test.ts
-*.spec.ts
+.husky/
+*.md
 ```
 
 The `packages/` submodule doesn't need to be deployed — its code is imported at build time and bundled into the output.

@@ -57,9 +57,9 @@ R(t) = e^(-t / S)
 Lianki 使用 [`ts-fsrs`](https://github.com/open-spaced-repetition/ts-fsrs) 库。以下是 `app/fsrs.ts` 中复习流程的核心代码：
 
 ```typescript
-import { createEmptyCard, fsrs, generatorParameters } from "ts-fsrs";
+import { createEmptyCard, fsrs } from "ts-fsrs";
 
-const f = fsrs(generatorParameters({ enable_fuzz: true }));
+const f = fsrs();
 
 // 向用户展示复习选项时：
 const schedulingCards = f.repeat(card, now);
@@ -99,7 +99,7 @@ Lianki 的 UI 不直接显示这些状态——你只会看到到期日期，到
 
 ## 模糊因子
 
-Lianki 启用了 `enable_fuzz: true` 参数，给间隔加入小幅随机波动。如果没有这个设置，同一天添加的 50 张卡片全部评"Good"后，会在完全相同的未来日期同时到期，造成复习"洪峰"。模糊因子会把它们略微打散。
+FSRS 默认对间隔加入小幅随机波动。如果没有模糊因子，同一天添加的 50 张卡片全部评"Good"后，会在完全相同的未来日期同时到期，造成复习"洪峰"。模糊因子会把它们略微打散。
 
 ## 日语内容优先
 
