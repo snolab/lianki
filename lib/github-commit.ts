@@ -1,9 +1,10 @@
 const REPO = "snomiao/lianki";
 const GITHUB_API = "https://api.github.com";
 
-// Vercel sets VERCEL_GIT_COMMIT_REF to the deployed branch (e.g. "main", "beta")
-function getBranch() {
-  return process.env.VERCEL_GIT_COMMIT_REF ?? "main";
+// Vercel sets VERCEL_GIT_COMMIT_REF to the deployed branch (e.g. "main", "beta").
+// Returns null when running locally — commits are skipped in that case.
+function getBranch(): string | null {
+  return process.env.VERCEL_GIT_COMMIT_REF ?? null;
 }
 
 function ghHeaders() {
@@ -17,8 +18,8 @@ function ghHeaders() {
   };
 }
 
-async function getFileSha(path: string): Promise<string | undefined> {
-  const url = `${GITHUB_API}/repos/${REPO}/contents/${path}?ref=${getBranch()}`;
+async function getFileSha(path: string, branch: string): Promise<string | undefined> {
+  const url = `${GITHUB_API}/repos/${REPO}/contents/${path}?ref=${branch}`;
   const res = await fetch(url, { headers: ghHeaders() });
   if (!res.ok) return undefined;
   const data = (await res.json()) as { sha: string };
@@ -26,13 +27,16 @@ async function getFileSha(path: string): Promise<string | undefined> {
 }
 
 export async function commitFile(path: string, content: string, message: string): Promise<void> {
-  const sha = await getFileSha(path);
+  const branch = getBranch();
+  if (!branch) return; // not on Vercel — skip commit
+
+  const sha = await getFileSha(path, branch);
   const url = `${GITHUB_API}/repos/${REPO}/contents/${path}`;
 
   const body: Record<string, string> = {
     message,
     content: Buffer.from(content).toString("base64"),
-    branch: getBranch(),
+    branch,
   };
   if (sha) body.sha = sha;
 
