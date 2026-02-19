@@ -7,7 +7,10 @@ export default function LandingPage() {
       <header className="py-4 px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Lianki</h1>
-          <nav>
+          <nav className="flex items-center gap-6">
+            <a href="/en/blog" className="text-lg font-medium hover:underline">
+              Blog
+            </a>
             <a href="/list" className="text-lg font-medium hover:underline">
               Go to App
             </a>
