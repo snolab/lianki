@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.5.0
+// @version     2.5.1
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation
 // @run-at      document-end
@@ -49,10 +49,23 @@ function main() {
       if (u.hostname.startsWith("m.")) u.hostname = "www." + u.hostname.slice(2);
       // Strip tracking & session params
       for (const p of [
-        "si", "pp", "feature", "ref", "source",
-        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-        "fbclid", "gclid", "mc_cid", "mc_eid", "igshid",
-      ]) u.searchParams.delete(p);
+        "si",
+        "pp",
+        "feature",
+        "ref",
+        "source",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_term",
+        "utm_content",
+        "fbclid",
+        "gclid",
+        "mc_cid",
+        "mc_eid",
+        "igshid",
+      ])
+        u.searchParams.delete(p);
       u.searchParams.sort();
       return u.toString();
     } catch {
@@ -132,8 +145,12 @@ function main() {
             text: () => Promise.resolve(resp.responseText),
           });
         },
-        onerror() { reject(new Error("Network error")); },
-        onabort() { reject(new Error("Request aborted")); },
+        onerror() {
+          reject(new Error("Network error"));
+        },
+        onabort() {
+          reject(new Error("Request aborted"));
+        },
       });
     });
   }
@@ -179,7 +196,8 @@ function main() {
     );
 
   const getOptions = (id) => api(`/api/fsrs/options?id=${encodeURIComponent(id)}`);
-  const submitReview = (id, rating) => api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}`);
+  const submitReview = (id, rating) =>
+    api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}`);
   const deleteNote = (id) => api(`/api/fsrs/delete?id=${encodeURIComponent(id)}`);
   const getNextUrl = () => api("/api/fsrs/next-url");
 
@@ -254,7 +272,9 @@ function main() {
       document.addEventListener("mouseup", onUp);
     });
 
-    el.addEventListener("click", () => { if (!dragged) openDialog(); });
+    el.addEventListener("click", () => {
+      if (!dragged) openDialog();
+    });
     document.body.appendChild(el);
     return el;
   }
@@ -316,7 +336,10 @@ function main() {
     titleSpan.textContent = "🔖 Lianki";
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "×";
-    closeBtn.setAttribute("style", `${btn("transparent")};color:#aaa;font-size:20px;padding:0 6px;line-height:1`);
+    closeBtn.setAttribute(
+      "style",
+      `${btn("transparent")};color:#aaa;font-size:20px;padding:0 6px;line-height:1`,
+    );
     closeBtn.addEventListener("click", closeDialog);
     header.appendChild(titleSpan);
     header.appendChild(closeBtn);
@@ -353,7 +376,12 @@ function main() {
       dialog.appendChild(errDiv);
 
       const btnRow = document.createElement("div");
-      Object.assign(btnRow.style, { display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" });
+      Object.assign(btnRow.style, {
+        display: "flex",
+        gap: "8px",
+        marginTop: "10px",
+        flexWrap: "wrap",
+      });
 
       const loginBtn = document.createElement("button");
       loginBtn.setAttribute("style", btn("#2a5f8f"));
@@ -376,7 +404,9 @@ function main() {
           ta.remove();
         });
         copyBtn.textContent = "Copied!";
-        setTimeout(() => { copyBtn.textContent = "Copy error"; }, 2000);
+        setTimeout(() => {
+          copyBtn.textContent = "Copy error";
+        }, 2000);
       });
       btnRow.appendChild(copyBtn);
       dialog.appendChild(btnRow);
@@ -394,7 +424,12 @@ function main() {
       dialog.appendChild(titleDiv);
 
       const btnRow = document.createElement("div");
-      Object.assign(btnRow.style, { display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "8px" });
+      Object.assign(btnRow.style, {
+        display: "flex",
+        gap: "8px",
+        flexWrap: "wrap",
+        marginBottom: "8px",
+      });
       for (const o of options) {
         const b = document.createElement("button");
         b.setAttribute("style", btn("#2a5f8f"));
@@ -442,7 +477,11 @@ function main() {
       .then((note) => {
         state.noteId = note._id;
         // Prefetch next URL in background while user reviews this card
-        getNextUrl().then(({ url: u }) => { prefetchedNextUrl = u; }).catch(() => {});
+        getNextUrl()
+          .then(({ url: u }) => {
+            prefetchedNextUrl = u;
+          })
+          .catch(() => {});
         return getOptions(note._id);
       })
       .then((data) => {
@@ -502,7 +541,9 @@ function main() {
     if (!nextUrl) {
       state.message = "Redirecting\u2026";
       renderDialog();
-      nextUrl = await getNextUrl().then((r) => r.url).catch(() => null);
+      nextUrl = await getNextUrl()
+        .then((r) => r.url)
+        .catch(() => null);
     }
 
     if (nextUrl && /^https?:\/\//.test(nextUrl) && !wouldHijackApp(nextUrl)) {
@@ -516,11 +557,21 @@ function main() {
 
   // ── Keyboard ───────────────────────────────────────────────────────────────
   const KEYS = {
-    Digit1: () => doReview(1), KeyD: () => doReview(1), KeyL: () => doReview(1),
-    Digit2: () => doReview(2), KeyW: () => doReview(2), KeyK: () => doReview(2),
-    Digit3: () => doReview(3), KeyS: () => doReview(3), KeyJ: () => doReview(3),
-    Digit4: () => doReview(4), KeyA: () => doReview(4), KeyH: () => doReview(4),
-    Digit5: () => doDelete(),  KeyT: () => doDelete(),  KeyM: () => doDelete(),
+    Digit1: () => doReview(1),
+    KeyD: () => doReview(1),
+    KeyL: () => doReview(1),
+    Digit2: () => doReview(2),
+    KeyW: () => doReview(2),
+    KeyK: () => doReview(2),
+    Digit3: () => doReview(3),
+    KeyS: () => doReview(3),
+    KeyJ: () => doReview(3),
+    Digit4: () => doReview(4),
+    KeyA: () => doReview(4),
+    KeyH: () => doReview(4),
+    Digit5: () => doDelete(),
+    KeyT: () => doDelete(),
+    KeyM: () => doDelete(),
     Escape: () => closeDialog(),
   };
 
@@ -530,7 +581,8 @@ function main() {
       if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyF") {
         e.preventDefault();
         e.stopPropagation();
-        if (dialog) closeDialog(); else openDialog();
+        if (dialog) closeDialog();
+        else openDialog();
         return;
       }
       if (!dialog || state.phase !== "reviewing") return;
