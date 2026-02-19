@@ -53,7 +53,7 @@ summary: "One sentence description."
 | ---- | ----- |
 | `2025-01-01-introduction.md` | What Lianki is and why it exists |
 | `2025-01-15-fsrs-algorithm.md` | How the FSRS scheduling algorithm works |
-| `2025-02-01-architecture.md` | Next.js 15 + MongoDB stack walkthrough |
+| `2025-02-01-architecture.md` | Next.js 16 + MongoDB stack walkthrough |
 | `2025-02-10-userscript.md` | The Tampermonkey userscript and browser integration |
 | `2025-02-15-deployment.md` | Vercel + GitHub Actions CI/CD setup |
 
@@ -62,7 +62,7 @@ summary: "One sentence description."
 - Production: https://www.lianki.com
 - Beta: https://beta.lianki.com
 - Repo: https://github.com/snomiao/lianki
-- Stack: Next.js 15, React 19, TypeScript, MongoDB, NextAuth.js v5, Tailwind CSS
+- Stack: Next.js 16, React 19, TypeScript, MongoDB, NextAuth.js v5, Tailwind CSS
 - Package manager: Bun
 - Algorithm: FSRS via `ts-fsrs` library
 - Auth: Email magic link, GitHub OAuth, Google OAuth

@@ -1,11 +1,11 @@
 ---
-title: "Lianki 的技术架构：Next.js 15 + MongoDB"
+title: "Lianki 的技术架构：Next.js 16 + MongoDB"
 date: 2025-02-01
 tags: [架构, nextjs, mongodb, typescript]
 summary: "Lianki 的技术栈、数据模型和关键设计决策详解。"
 ---
 
-# Lianki 的技术架构：Next.js 15 + MongoDB
+# Lianki 的技术架构：Next.js 16 + MongoDB
 
 本文介绍 Lianki 的构建方式：技术选型、数据模型、API 设计，以及一些在实践中被证明有效的实现模式。
 
@@ -13,7 +13,7 @@ summary: "Lianki 的技术栈、数据模型和关键设计决策详解。"
 
 | 层次 | 技术 |
 |------|------|
-| 框架 | Next.js 15（App Router） |
+| 框架 | Next.js 16（App Router） |
 | 语言 | TypeScript 5 |
 | 运行时 | Node.js 20 / Bun |
 | 数据库 | MongoDB |
@@ -22,7 +22,7 @@ summary: "Lianki 的技术栈、数据模型和关键设计决策详解。"
 | 包管理器 | Bun |
 | 部署 | Vercel |
 
-选择 Next.js 15 App Router，是因为它将前端和 API 整合进一个项目，Vercel 部署零摩擦，React Server Components 减少了以读为主的 UI 的客户端包体积。
+选择 Next.js 16 App Router，是因为它将前端和 API 整合进一个项目，Vercel 部署零摩擦，React Server Components 减少了以读为主的 UI 的客户端包体积。
 
 选择 MongoDB 而非关系型数据库，是因为核心文档——FSRS 卡片——是一个嵌套层次丰富的对象，且随着 FSRS 算法演进其结构可能变化。强行塞进固定 Schema 意味着频繁迁移。MongoDB 可以按原样存储卡片对象。
 
