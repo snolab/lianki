@@ -1,6 +1,10 @@
 const REPO = "snomiao/lianki";
-const BRANCH = "main";
 const GITHUB_API = "https://api.github.com";
+
+// Vercel sets VERCEL_GIT_COMMIT_REF to the deployed branch (e.g. "main", "beta")
+function getBranch() {
+  return process.env.VERCEL_GIT_COMMIT_REF ?? "main";
+}
 
 function ghHeaders() {
   const token = process.env.GITHUB_INTL_TOKEN;
@@ -14,7 +18,7 @@ function ghHeaders() {
 }
 
 async function getFileSha(path: string): Promise<string | undefined> {
-  const url = `${GITHUB_API}/repos/${REPO}/contents/${path}?ref=${BRANCH}`;
+  const url = `${GITHUB_API}/repos/${REPO}/contents/${path}?ref=${getBranch()}`;
   const res = await fetch(url, { headers: ghHeaders() });
   if (!res.ok) return undefined;
   const data = (await res.json()) as { sha: string };
@@ -28,7 +32,7 @@ export async function commitFile(path: string, content: string, message: string)
   const body: Record<string, string> = {
     message,
     content: Buffer.from(content).toString("base64"),
-    branch: BRANCH,
+    branch: getBranch(),
   };
   if (sha) body.sha = sha;
 

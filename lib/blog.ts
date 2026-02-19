@@ -2,8 +2,11 @@ import matter from "gray-matter";
 import { marked } from "marked";
 
 const REPO = "snomiao/lianki";
-const BRANCH = "main";
 const GITHUB_API = "https://api.github.com";
+
+function getBranch() {
+  return process.env.VERCEL_GIT_COMMIT_REF ?? "main";
+}
 
 function ghHeaders() {
   const token = process.env.GITHUB_INTL_TOKEN;
@@ -25,7 +28,7 @@ export type PostMeta = {
 export type Post = PostMeta & { contentHtml: string };
 
 export async function getRawPost(locale: string, slug: string): Promise<string | null> {
-  const url = `${GITHUB_API}/repos/${REPO}/contents/blog/${locale}/${slug}.md?ref=${BRANCH}`;
+  const url = `${GITHUB_API}/repos/${REPO}/contents/blog/${locale}/${slug}.md?ref=${getBranch()}`;
   const res = await fetch(url, { headers: ghHeaders(), next: { revalidate: 3600 } });
   if (!res.ok) return null;
   const { content } = (await res.json()) as { content: string };
@@ -50,7 +53,7 @@ export async function getPost(locale: string, slug: string): Promise<Post | null
 }
 
 export async function getAllSlugs(): Promise<string[]> {
-  const url = `${GITHUB_API}/repos/${REPO}/contents/blog/en?ref=${BRANCH}`;
+  const url = `${GITHUB_API}/repos/${REPO}/contents/blog/en?ref=${getBranch()}`;
   const res = await fetch(url, { headers: ghHeaders(), next: { revalidate: 3600 } });
   if (!res.ok) return [];
   const files = (await res.json()) as { name: string; type: string }[];
