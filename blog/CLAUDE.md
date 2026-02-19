@@ -2,21 +2,22 @@
 
 ## Purpose
 
-This folder contains blog posts about the Lianki project. Posts are written in Markdown and describe the technical and product decisions behind building Lianki — a spaced repetition app using the FSRS algorithm.
+This folder contains blog posts for Lianki users — explaining how to learn effectively, how spaced repetition works, and how to get the most out of Lianki. Written for normal users, not developers.
+
+Developer and infrastructure docs (architecture, deployment, CI/CD) live in `docs/` instead.
 
 ## Audience
 
-- Developers interested in Next.js, MongoDB, and TypeScript
-- People curious about spaced repetition and the FSRS algorithm
-- Potential Lianki users wanting to understand how it works
-- Open source contributors
+- Anyone learning a language, studying for exams, or building long-term knowledge
+- New Lianki users wanting to understand how it works
+- People curious about spaced repetition and why it's effective
 
 ## Style Guide
 
-- Write in first person, conversational but technically accurate
-- Include code snippets where they illustrate a point
-- No marketing fluff — be honest about tradeoffs and design decisions
-- Use concrete numbers and examples
+- Write for a general audience — assume no programming knowledge
+- Conversational tone, explain jargon when it appears
+- Focus on what the user gains, not how the code works
+- Use concrete examples from real learning scenarios
 - Keep posts focused on one topic each
 
 ## Directory Structure
@@ -52,10 +53,12 @@ summary: "One sentence description."
 | Slug | Topic |
 | ---- | ----- |
 | `2025-01-01-introduction.md` | What Lianki is and why it exists |
-| `2025-01-15-fsrs-algorithm.md` | How the FSRS scheduling algorithm works |
-| `2025-02-01-architecture.md` | Next.js 16 + MongoDB stack walkthrough |
-| `2025-02-10-userscript.md` | The Tampermonkey userscript and browser integration |
-| `2025-02-15-deployment.md` | Vercel + GitHub Actions CI/CD setup |
+| `2025-01-15-fsrs-algorithm.md` | How FSRS schedules your reviews |
+| `2025-02-10-userscript.md` | Installing and using the browser userscript |
+
+Dev/infra posts moved to `docs/`:
+- `docs/en/2025-02-01-architecture.md` — Next.js 16 + MongoDB stack
+- `docs/en/2025-02-15-deployment.md` — Vercel + GitHub Actions CI/CD
 
 ## Project Facts (keep accurate)
 
