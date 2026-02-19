@@ -43,12 +43,12 @@ R(t) = e^(-t / S)
 
 在 Lianki 中复习一张卡片时：
 
-| 评分 | 含义 | 效果 |
-|------|------|------|
-| Again（又忘了，1） | 忘记了 | 稳定性重置，卡片重回学习阶段 |
-| Hard（有点难，2） | 勉强想起 | 稳定性小幅提升，间隔较短 |
-| Good（还好，3） | 正确记起 | 稳定性正常提升 |
-| Easy（太简单，4） | 轻而易举 | 稳定性大幅提升，间隔较长 |
+| 评分               | 含义     | 效果                         |
+| ------------------ | -------- | ---------------------------- |
+| Again（又忘了，1） | 忘记了   | 稳定性重置，卡片重回学习阶段 |
+| Hard（有点难，2）  | 勉强想起 | 稳定性小幅提升，间隔较短     |
+| Good（还好，3）    | 正确记起 | 稳定性正常提升               |
+| Easy（太简单，4）  | 轻而易举 | 稳定性大幅提升，间隔较长     |
 
 下次复习时间的选取，使得届时可提取性约为 90%。
 
@@ -74,10 +74,7 @@ const schedulingCards = f.repeat(card, now);
 
 ```typescript
 const { card, log } = schedulingCards[rating];
-await collection.updateOne(
-  { url },
-  { $set: { card }, $push: { log } }
-);
+await collection.updateOne({ url }, { $set: { card }, $push: { log } });
 ```
 
 ## 卡片状态

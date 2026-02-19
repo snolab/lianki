@@ -63,6 +63,7 @@ Easy   →  3w
 ```
 
 Keyboard shortcuts work during review:
+
 - `1` / `D` / `L` — Again
 - `2` / `W` / `K` — Hard
 - `3` / `S` / `J` — Good
@@ -76,13 +77,13 @@ After rating, the API redirects to the next due card or returns `{"done": true}`
 
 The dialog is a simple state machine:
 
-| State | What's shown |
-|-------|-------------|
-| `idle` | Nothing |
-| `adding` | Spinner, "Adding…" |
-| `reviewing` | Four rating buttons with due dates |
-| `reviewed` | "Done!" message, auto-close countdown |
-| `error` | Error message with login/retry link |
+| State       | What's shown                          |
+| ----------- | ------------------------------------- |
+| `idle`      | Nothing                               |
+| `adding`    | Spinner, "Adding…"                    |
+| `reviewing` | Four rating buttons with due dates    |
+| `reviewed`  | "Done!" message, auto-close countdown |
+| `error`     | Error message with login/retry link   |
 
 Error detection is JSON-based: if the API returns `{"error": "not authenticated"}`, the dialog shows a login link. This avoids trying to parse HTML error pages.
 
@@ -105,9 +106,18 @@ function normalizeUrl(raw) {
   }
 
   // Strip tracking parameters
-  ["utm_source", "utm_medium", "utm_campaign", "utm_term",
-   "utm_content", "fbclid", "gclid", "ref", "_ga",
-   /* ... and more */ ].forEach(p => url.searchParams.delete(p));
+  [
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+    "fbclid",
+    "gclid",
+    "ref",
+    "_ga",
+    /* ... and more */
+  ].forEach((p) => url.searchParams.delete(p));
 
   return url.toString();
 }
@@ -122,11 +132,11 @@ Some mobile apps register themselves as URL handlers for their domain. On Androi
 The script has a blocklist of known hijacking domains:
 
 ```javascript
-const APP_HIJACKING_DOMAINS = ["zhihu.com", /* ... */];
+const APP_HIJACKING_DOMAINS = ["zhihu.com" /* ... */];
 
 function wouldHijack(url) {
   const { hostname } = new URL(url);
-  return APP_HIJACKING_DOMAINS.some(d => hostname.endsWith(d));
+  return APP_HIJACKING_DOMAINS.some((d) => hostname.endsWith(d));
 }
 ```
 
@@ -137,8 +147,7 @@ Cards from these domains are still reviewed, but the auto-redirect behavior is s
 The script checks for updates automatically. Every API response from `lianki.com` includes an `x-lianki-version` header. If the version doesn't match the script's current version, the update dialog appears:
 
 ```javascript
-const serverVersion = response.responseHeaders
-  .match(/x-lianki-version: (.+)/)?.[1];
+const serverVersion = response.responseHeaders.match(/x-lianki-version: (.+)/)?.[1];
 if (serverVersion && serverVersion !== GM_info.script.version) {
   showUpdateDialog(serverVersion);
 }

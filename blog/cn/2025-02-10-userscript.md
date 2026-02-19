@@ -63,6 +63,7 @@ Easy   →  3周
 ```
 
 复习时键盘快捷键同样有效：
+
 - `1` / `D` / `L` — Again
 - `2` / `W` / `K` — Hard
 - `3` / `S` / `J` — Good
@@ -76,13 +77,13 @@ Easy   →  3周
 
 对话框是一个简单的状态机：
 
-| 状态 | 显示内容 |
-|------|---------|
-| `idle` | 无 |
-| `adding` | 加载动画，"添加中…" |
-| `reviewing` | 四个评分按钮及到期时间 |
-| `reviewed` | "完成！"消息，倒计时自动关闭 |
-| `error` | 错误消息，附登录/重试链接 |
+| 状态        | 显示内容                     |
+| ----------- | ---------------------------- |
+| `idle`      | 无                           |
+| `adding`    | 加载动画，"添加中…"          |
+| `reviewing` | 四个评分按钮及到期时间       |
+| `reviewed`  | "完成！"消息，倒计时自动关闭 |
+| `error`     | 错误消息，附登录/重试链接    |
 
 错误检测基于 JSON：如果 API 返回 `{"error": "not authenticated"}`，对话框显示登录链接，避免去解析 HTML 错误页面。
 
@@ -105,9 +106,18 @@ function normalizeUrl(raw) {
   }
 
   // 去除追踪参数
-  ["utm_source", "utm_medium", "utm_campaign", "utm_term",
-   "utm_content", "fbclid", "gclid", "ref", "_ga",
-   /* 更多... */ ].forEach(p => url.searchParams.delete(p));
+  [
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+    "fbclid",
+    "gclid",
+    "ref",
+    "_ga",
+    /* 更多... */
+  ].forEach((p) => url.searchParams.delete(p));
 
   return url.toString();
 }
@@ -122,11 +132,11 @@ function normalizeUrl(raw) {
 脚本内置了已知劫持域名黑名单：
 
 ```javascript
-const APP_HIJACKING_DOMAINS = ["zhihu.com", /* ... */];
+const APP_HIJACKING_DOMAINS = ["zhihu.com" /* ... */];
 
 function wouldHijack(url) {
   const { hostname } = new URL(url);
-  return APP_HIJACKING_DOMAINS.some(d => hostname.endsWith(d));
+  return APP_HIJACKING_DOMAINS.some((d) => hostname.endsWith(d));
 }
 ```
 
@@ -137,8 +147,7 @@ function wouldHijack(url) {
 脚本会自动检查更新。`lianki.com` 的每个 API 响应都包含 `x-lianki-version` 响应头。若版本与脚本当前版本不符，则弹出更新提示：
 
 ```javascript
-const serverVersion = response.responseHeaders
-  .match(/x-lianki-version: (.+)/)?.[1];
+const serverVersion = response.responseHeaders.match(/x-lianki-version: (.+)/)?.[1];
 if (serverVersion && serverVersion !== GM_info.script.version) {
   showUpdateDialog(serverVersion);
 }

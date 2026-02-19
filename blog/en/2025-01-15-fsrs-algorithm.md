@@ -43,12 +43,12 @@ Where `t` is time elapsed and `S` is stability. Higher stability means slower de
 
 When you review a card in Lianki:
 
-| Rating | Meaning | Effect |
-|--------|---------|--------|
-| Again (1) | Forgot it | Stability resets, card re-enters learning phase |
-| Hard (2) | Remembered with difficulty | Small stability increase, shorter interval |
-| Good (3) | Remembered correctly | Normal stability increase |
-| Easy (4) | Too easy | Large stability increase, longer interval |
+| Rating    | Meaning                    | Effect                                          |
+| --------- | -------------------------- | ----------------------------------------------- |
+| Again (1) | Forgot it                  | Stability resets, card re-enters learning phase |
+| Hard (2)  | Remembered with difficulty | Small stability increase, shorter interval      |
+| Good (3)  | Remembered correctly       | Normal stability increase                       |
+| Easy (4)  | Too easy                   | Large stability increase, longer interval       |
 
 The new interval is chosen so that retrievability at the next review date will be approximately 90%.
 
@@ -74,10 +74,7 @@ When the user picks a rating, `/api/fsrs/review/:rating` applies the chosen sche
 
 ```typescript
 const { card, log } = schedulingCards[rating];
-await collection.updateOne(
-  { url },
-  { $set: { card }, $push: { log } }
-);
+await collection.updateOne({ url }, { $set: { card }, $push: { log } });
 ```
 
 ## Card States

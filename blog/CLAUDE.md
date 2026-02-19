@@ -50,13 +50,14 @@ summary: "One sentence description."
 
 ## Post Index
 
-| Slug | Topic |
-| ---- | ----- |
-| `2025-01-01-introduction.md` | What Lianki is and why it exists |
-| `2025-01-15-fsrs-algorithm.md` | How FSRS schedules your reviews |
-| `2025-02-10-userscript.md` | Installing and using the browser userscript |
+| Slug                           | Topic                                       |
+| ------------------------------ | ------------------------------------------- |
+| `2025-01-01-introduction.md`   | What Lianki is and why it exists            |
+| `2025-01-15-fsrs-algorithm.md` | How FSRS schedules your reviews             |
+| `2025-02-10-userscript.md`     | Installing and using the browser userscript |
 
 Dev/infra posts moved to `docs/`:
+
 - `docs/en/2025-02-01-architecture.md` — Next.js 16 + MongoDB stack
 - `docs/en/2025-02-15-deployment.md` — Vercel + GitHub Actions CI/CD
 
