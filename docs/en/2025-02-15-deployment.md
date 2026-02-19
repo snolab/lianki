@@ -11,9 +11,9 @@ Lianki runs on Vercel with a two-branch setup: `main` goes to production, `beta`
 
 ## Branch Strategy
 
-| Branch | URL | Purpose |
-|--------|-----|---------|
-| `main` | https://www.lianki.com | Production |
+| Branch | URL                     | Purpose           |
+| ------ | ----------------------- | ----------------- |
+| `main` | https://www.lianki.com  | Production        |
 | `beta` | https://beta.lianki.com | Staging / preview |
 
 Feature work happens on topic branches, merged into `beta` for testing, then into `main` for release. The old domain `fsrsnext.snomiao.com` sends 308 redirects to `www.lianki.com` — kept alive for existing links.

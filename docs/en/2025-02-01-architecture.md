@@ -11,16 +11,16 @@ This post walks through how Lianki is built: the stack choices, data model, API 
 
 ## Stack Overview
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | Next.js 16 (App Router) |
-| Language | TypeScript 5 |
-| Runtime | Node.js 20 / Bun |
-| Database | MongoDB |
-| Auth | NextAuth.js v5 |
-| Styling | Tailwind CSS |
-| Package manager | Bun |
-| Deploy | Vercel |
+| Layer           | Technology              |
+| --------------- | ----------------------- |
+| Framework       | Next.js 16 (App Router) |
+| Language        | TypeScript 5            |
+| Runtime         | Node.js 20 / Bun        |
+| Database        | MongoDB                 |
+| Auth            | NextAuth.js v5          |
+| Styling         | Tailwind CSS            |
+| Package manager | Bun                     |
+| Deploy          | Vercel                  |
 
 Next.js 16 with App Router was chosen because it collapses frontend and API into one project, Vercel deployment is frictionless, and React Server Components reduce client bundle size for a mostly-read UI.
 
@@ -34,10 +34,10 @@ A single document looks like:
 
 ```typescript
 type FSRSNote = {
-  url: string;           // Normalized URL — the unique key
-  title?: string;        // Page title at time of saving
-  card: Card;            // Full FSRS card state
-  log?: CardLogItem[];   // Review history (pushed on each review)
+  url: string; // Normalized URL — the unique key
+  title?: string; // Page title at time of saving
+  card: Card; // Full FSRS card state
+  log?: CardLogItem[]; // Review history (pushed on each review)
 };
 ```
 
@@ -100,9 +100,7 @@ Card queries use the `sflow` library for streaming instead of loading all docume
 ```typescript
 import { sflow } from "sflow";
 
-const notes = await sflow(
-  collection.find({ "card.due": { $lte: now } }).sort({ "card.due": 1 })
-)
+const notes = await sflow(collection.find({ "card.due": { $lte: now } }).sort({ "card.due": 1 }))
   .take(50)
   .toArray();
 ```
