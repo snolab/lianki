@@ -3,8 +3,8 @@ const BRANCH = "main";
 const GITHUB_API = "https://api.github.com";
 
 function ghHeaders() {
-  const token = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
-  if (!token) throw new Error("GITHUB_PERSONAL_ACCESS_TOKEN not set");
+  const token = process.env.GITHUB_INTL_TOKEN;
+  if (!token) throw new Error("GITHUB_INTL_TOKEN not set");
   return {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",

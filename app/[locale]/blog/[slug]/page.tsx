@@ -14,7 +14,10 @@ export async function generateStaticParams() {
   return LOCALES.flatMap((locale) => slugs.map((slug) => ({ locale, slug })));
 }
 
-async function resolvePost(locale: string, slug: string): Promise<{ post: Post; translated: boolean }> {
+async function resolvePost(
+  locale: string,
+  slug: string,
+): Promise<{ post: Post; translated: boolean }> {
   const existing = await getPost(locale, slug);
   if (existing) return { post: existing, translated: false };
 
@@ -26,9 +29,11 @@ async function resolvePost(locale: string, slug: string): Promise<{ post: Post; 
   const translatedRaw = await translatePost(enRaw, locale);
 
   // Commit back non-blocking — don't await
-  commitFile(`blog/${locale}/${slug}.md`, translatedRaw, `auto: translate ${slug} to ${locale}`).catch(
-    (err) => console.error("commit translation failed:", err),
-  );
+  commitFile(
+    `blog/${locale}/${slug}.md`,
+    translatedRaw,
+    `auto: translate ${slug} to ${locale}`,
+  ).catch((err) => console.error("commit translation failed:", err));
 
   return { post: parsePost(translatedRaw, slug), translated: true };
 }
@@ -45,7 +50,11 @@ function PostSkeleton() {
       <div className="space-y-3 mt-8">
         {[...Array(8)].map((_, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
-          <div key={i} className="h-4 bg-gray-100 rounded" style={{ width: `${85 + (i % 3) * 7}%` }} />
+          <div
+            key={i}
+            className="h-4 bg-gray-100 rounded"
+            style={{ width: `${85 + (i % 3) * 7}%` }}
+          />
         ))}
       </div>
       <p className="text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded mt-6">
@@ -74,7 +83,10 @@ async function PostContent({ locale, slug }: { locale: string; slug: string }) {
         {post.tags.length > 0 && (
           <div className="flex gap-2 mt-3 flex-wrap">
             {post.tags.map((tag) => (
-              <span key={tag} className="text-xs px-2 py-0.5 bg-gray-100 rounded-full text-gray-600">
+              <span
+                key={tag}
+                className="text-xs px-2 py-0.5 bg-gray-100 rounded-full text-gray-600"
+              >
                 {tag}
               </span>
             ))}
@@ -112,7 +124,10 @@ export default async function BlogPostPage({
         <Link href={`/${locale}/blog`} className="hover:text-gray-700">
           ← Blog
         </Link>
-        <Link href={`/${otherLocale}/blog/${slug}`} className="px-3 py-1 border rounded hover:bg-gray-50">
+        <Link
+          href={`/${otherLocale}/blog/${slug}`}
+          className="px-3 py-1 border rounded hover:bg-gray-50"
+        >
           {otherLocale === "cn" ? "中文" : "English"}
         </Link>
       </nav>
