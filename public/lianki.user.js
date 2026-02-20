@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_info
 // @version     2.10.2
-// @author      snomiao@gmail.com
+// @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . to control video speed with difficulty markers.
 // @run-at      document-end
 // @downloadURL https://www.lianki.com/lianki.user.js
