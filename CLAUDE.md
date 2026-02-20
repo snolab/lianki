@@ -63,6 +63,28 @@ Credentials (`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`) are shared between `fsrsne
 
 ## Workflow Reminders
 
+### PR Workflow (beta → main)
+
+**Standard workflow for merging features:**
+
+1. Develop on `beta` branch
+2. Create PR to `main` and enable auto-merge:
+   ```bash
+   gh pr create --title "feat: description" --body "..." --base main
+   gh pr merge <PR_NUMBER> --auto --squash
+   ```
+3. **ALWAYS rebase beta onto main after PR merges:**
+   ```bash
+   git fetch origin && git rebase origin/main
+   git push -f origin beta
+   ```
+
+**Why auto-rebase after PR merge:**
+- Keeps beta in sync with main
+- Prevents conflicts on next PR
+- Git automatically drops commits already in main (via squash merge)
+- Ensures clean branch history
+
 ### After Every Push
 
 **ALWAYS check CI/deployment status immediately after pushing:**
