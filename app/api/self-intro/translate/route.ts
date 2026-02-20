@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
-export const runtime = "edge";
-
 const QUESTION_TEMPLATES: Record<string, string> = {
   name: "My name is {answer}.",
   from: "I am from {answer}.",
