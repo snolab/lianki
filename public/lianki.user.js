@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.7.1
+// @version     2.7.2
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . to control video speed with difficulty markers.
 // @run-at      document-end
@@ -684,30 +684,40 @@ function main() {
     const v = vs.filter((e) => !e.paused)[0];
     if (!v) return vs[0]?.click();
 
-    if (dt !== 0) v.currentTime += dt;
-    if (speedMultiplier !== 1) {
-      v.playbackRate *= speedMultiplier;
-
-      // Record speed marker
+    // Helper to merge nearby markers (within 2 seconds)
+    const mergeNearbyMarkers = (time) => {
+      if (speedMultiplier === 1) return; // Only merge when speed is being adjusted
       if (!videoSpeedMaps.has(v)) videoSpeedMaps.set(v, new Map());
       const speedMap = videoSpeedMaps.get(v);
-
-      // Merge nearby markers (within 2 seconds)
-      const currentTime = v.currentTime;
       const MERGE_THRESHOLD = 2.0; // seconds
       for (const [existingTime] of speedMap) {
-        if (Math.abs(currentTime - existingTime) < MERGE_THRESHOLD) {
+        if (Math.abs(time - existingTime) < MERGE_THRESHOLD) {
           speedMap.delete(existingTime);
           console.log(
-            `[Lianki] Merged marker: ${renderTime(existingTime)} → ${renderTime(currentTime)}`,
+            `[Lianki] Merged marker: ${renderTime(existingTime)} @ ${renderTime(time)}`,
           );
         }
       }
+    };
 
-      // Add new marker
-      speedMap.set(currentTime, v.playbackRate);
+    // Merge at original position BEFORE time adjustment
+    mergeNearbyMarkers(v.currentTime);
+
+    if (dt !== 0) v.currentTime += dt;
+
+    // Merge at destination position AFTER time adjustment
+    mergeNearbyMarkers(v.currentTime);
+
+    if (speedMultiplier !== 1) {
+      v.playbackRate *= speedMultiplier;
+
+      // Speed map already initialized by mergeNearbyMarkers
+      const speedMap = videoSpeedMaps.get(v);
+
+      // Add new marker at final position
+      speedMap.set(v.currentTime, v.playbackRate);
       console.log(
-        `[Lianki] Speed marker: ${renderTime(currentTime)} → ${renderSpeed(v.playbackRate)}`,
+        `[Lianki] Speed marker: ${renderTime(v.currentTime)} → ${renderSpeed(v.playbackRate)}`,
       );
     }
 
