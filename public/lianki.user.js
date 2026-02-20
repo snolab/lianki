@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.8.0
+// @version     2.9.0
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . to control video speed with difficulty markers.
 // @run-at      document-end
@@ -483,6 +483,11 @@ function main() {
             prefetchedNextUrl = data.url;
           })
           .catch(() => {});
+        // Use options from add-card response if available (optimization)
+        if (note.options) {
+          return { options: note.options };
+        }
+        // Fallback for older API versions
         return getOptions(note._id);
       })
       .then((data) => {
@@ -509,7 +514,11 @@ function main() {
   async function doReview(rating) {
     if (state.phase !== "reviewing" || !state.noteId) return;
     try {
-      await submitReview(state.noteId, rating);
+      const result = await submitReview(state.noteId, rating);
+      // Use nextUrl from review response if available (optimization)
+      if (result.nextUrl) {
+        prefetchedNextUrl = result.nextUrl;
+      }
       const opt = state.options.find((o) => Number(o.rating) === rating);
       await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
     } catch (err) {

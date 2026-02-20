@@ -126,7 +126,19 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         (await getQueryNote(req, options)) ?? DIE("note not found"),
         rating as Grade,
       );
-      return JSONR({ ok: true, due: dueMs(reviewedCard.card.due) });
+
+      // Include next URL in response to save an API call
+      const nextNote = await FSRSNotes.findOne(
+        { "card.due": { $lte: new Date() } },
+        { sort: { "card.due": 1 } },
+      );
+
+      return JSONR({
+        ok: true,
+        due: dueMs(reviewedCard.card.due),
+        nextUrl: nextNote?.url ?? null,
+        nextTitle: nextNote?.title ?? null,
+      });
     },
     "GET /api/fsrs/delete(?:/|$|\\?)": async (req, opt) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
@@ -435,7 +447,18 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     const { url, title } = zAddNote.parse(input);
     const resp = await saveNote({ url, title: title ?? undefined });
     console.log({ resp });
-    return resp;
+
+    // Include review options in response to save an API call
+    const repeatRecord = fsrs().repeat(resp.card, new Date());
+    const options = ([Rating.Again, Rating.Hard, Rating.Good, Rating.Easy] as const).map(
+      (rating, i) => ({
+        rating,
+        label: ["Again", "Hard", "Good", "Easy"][i],
+        due: dueMs(repeatRecord[rating].card.due),
+      }),
+    );
+
+    return { ...resp, options };
   }
   async function saveQueryNote(req: Request, options?: { params?: Record<string, string> }) {
     const params = getParams(req, options);
