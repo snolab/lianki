@@ -7,6 +7,7 @@ import { authEmail, authUser } from "../signInEmail";
 import { getCachedHeatmapData } from "../lib/heatmap-cache";
 import ActivityHeatmap from "./components/ActivityHeatmap";
 import DeleteButton from "./components/DeleteButton";
+import RefreshHeatmapButton from "./components/RefreshHeatmapButton";
 export const dynamic = "force-dynamic";
 /**
  * @author: snomiao <snomiao@gmail.com>
@@ -58,7 +59,10 @@ export default async function HomePage() {
         <Suspense>{FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })}</Suspense>
       </p>
       <section className="my-8 px-4">
-        <h2 className="text-xl font-semibold mb-4">Learning Activity</h2>
+        <div className="flex items-center mb-4">
+          <h2 className="text-xl font-semibold">Learning Activity</h2>
+          <RefreshHeatmapButton />
+        </div>
         <Suspense
           fallback={<div className="h-32 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-md" />}
         >
