@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.10.3
+// @version     2.11.0
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -90,6 +90,7 @@ function main() {
   let fab = null;
   let dialog = null;
   let prefetchedNextUrl = null; // populated while user reads current card
+  let prefetchLink = null; // <link rel="prefetch"> element for next page
 
   // ── Auto-update ────────────────────────────────────────────────────────────
   const CURRENT_VERSION = GM_info?.script?.version ?? "0.0.0";
@@ -214,6 +215,25 @@ function main() {
     } catch {
       return false;
     }
+  }
+
+  // Prefetch next page for faster navigation
+  function prefetchNextPage(pageUrl) {
+    if (!pageUrl) return;
+
+    // Remove old prefetch link if exists
+    if (prefetchLink) {
+      prefetchLink.remove();
+      prefetchLink = null;
+    }
+
+    // Create and append new prefetch link
+    prefetchLink = document.createElement("link");
+    prefetchLink.rel = "prefetch";
+    prefetchLink.href = pageUrl;
+    prefetchLink.as = "document";
+    document.head.appendChild(prefetchLink);
+    console.log("[Lianki] Prefetching next page:", pageUrl);
   }
 
   // ── FAB ────────────────────────────────────────────────────────────────────
@@ -481,6 +501,7 @@ function main() {
         getNextUrl()
           .then((data) => {
             prefetchedNextUrl = data.url;
+            if (data.url) prefetchNextPage(data.url);
           })
           .catch(() => {});
         // Use options from add-card response if available (optimization)
@@ -508,6 +529,12 @@ function main() {
     dialog.remove();
     dialog = null;
     state = { phase: "idle", noteId: null, options: null, error: null, message: null };
+
+    // Clean up prefetch link when closing dialog
+    if (prefetchLink) {
+      prefetchLink.remove();
+      prefetchLink = null;
+    }
   }
 
   // ── Review actions ─────────────────────────────────────────────────────────
@@ -518,6 +545,7 @@ function main() {
       // Use nextUrl from review response if available (optimization)
       if (result.nextUrl) {
         prefetchedNextUrl = result.nextUrl;
+        prefetchNextPage(result.nextUrl);
       }
       const opt = state.options.find((o) => Number(o.rating) === rating);
       await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
@@ -556,6 +584,7 @@ function main() {
       nextUrl = data.url;
       nextTitle = data.title;
       if (nextUrl) {
+        prefetchNextPage(nextUrl);
         state.message = `Redirecting to:\n${nextTitle || nextUrl}`;
         renderDialog();
       }
