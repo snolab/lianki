@@ -167,7 +167,7 @@ export default function PolyglotPage() {
       setMatrix((prev) => ({
         ...prev,
         [questionId]: {
-          ...prev[questionId],
+          ...(prev[questionId] || {}),
           [langCode]: {
             question: translatedQuestion,
             answer: translatedAnswer,
