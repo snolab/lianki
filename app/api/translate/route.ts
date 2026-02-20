@@ -2,6 +2,7 @@ import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { NextRequest } from "next/server";
 import { getRawPost } from "@/lib/blog";
+import { commitFile } from "@/lib/github-commit";
 
 export const maxDuration = 60;
 
@@ -57,5 +58,38 @@ export async function GET(request: NextRequest) {
     prompt: `Translate the following markdown blog post to ${targetLanguage}:\n\n${englishRaw}`,
   });
 
-  return result.toTextStreamResponse();
+  // Create a custom stream that collects the full text and commits after streaming
+  const { textStream } = result;
+  const encoder = new TextEncoder();
+  let fullText = "";
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const chunk of textStream) {
+          fullText += chunk;
+          controller.enqueue(encoder.encode(chunk));
+        }
+
+        // Stream completed - now commit to GitHub (server-side)
+        const dir = locale === "zh" ? "cn" : locale;
+        const filePath = `blog/${dir}/${slug}.md`;
+
+        console.log(`[auto-commit] Starting commit: ${filePath}`);
+        await commitFile(filePath, fullText, `auto: translate ${slug} to ${locale}`);
+        console.log(`[auto-commit] ✓ Success: ${filePath}`);
+      } catch (error) {
+        console.error(`[auto-commit] ✗ Error:`, error);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-cache",
+    },
+  });
 }

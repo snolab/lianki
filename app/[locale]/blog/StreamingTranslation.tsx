@@ -40,26 +40,7 @@ export function StreamingTranslation({ locale, slug }: StreamingTranslationProps
 
           if (done) {
             setIsStreaming(false);
-
-            // Commit the translated markdown back to the repo (non-blocking, server-side)
-            console.log(`[auto-commit] Starting commit for ${locale}/${slug}`);
-            fetch("/api/commit-translation", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ slug, locale, content: fullText }),
-            })
-              .then((res) => res.json())
-              .then((data) => {
-                if (data.success) {
-                  console.log(`[auto-commit] ✓ Success: ${data.filePath}`);
-                } else {
-                  console.error(`[auto-commit] ✗ Failed:`, data.error);
-                }
-              })
-              .catch((err) => {
-                console.error(`[auto-commit] ✗ Network error:`, err);
-              });
-
+            // Auto-commit happens server-side in /api/translate after streaming completes
             break;
           }
 
