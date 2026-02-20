@@ -6,6 +6,7 @@ import { getFSRSNotesCollection } from "../getFSRSNotesCollection";
 import { authEmail, authUser } from "../signInEmail";
 import { getCachedHeatmapData } from "../lib/heatmap-cache";
 import ActivityHeatmap from "./components/ActivityHeatmap";
+import DeleteButton from "./components/DeleteButton";
 export const dynamic = "force-dynamic";
 /**
  * @author: snomiao <snomiao@gmail.com>
@@ -101,6 +102,7 @@ export default async function HomePage() {
                 return (
                   <li key={note._id.toString()}>
                     {due} <a href={url}>{title || url}</a>
+                    <DeleteButton url={url} title={title} />
                   </li>
                 );
               })
