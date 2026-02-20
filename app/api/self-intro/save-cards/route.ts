@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
     // Create a card for each sentence
     for (const [questionId, data] of Object.entries(sentences)) {
-      const { text, audioUrl } = data as { text: string; audioUrl: string | null };
+      const { text } = data as { text: string; audioUrl: string | null };
 
       // Create a unique URL for this self-intro card
       const url = `lianki://self-intro/${language}/${questionId}/${Date.now()}`;

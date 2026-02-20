@@ -5,7 +5,7 @@ export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   try {
-    const { text, language, voice, speed } = await req.json();
+    const { text, voice, speed } = await req.json();
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
