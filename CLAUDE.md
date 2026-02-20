@@ -80,6 +80,7 @@ Credentials (`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`) are shared between `fsrsne
    ```
 
 **Why auto-rebase after PR merge:**
+
 - Keeps beta in sync with main
 - Prevents conflicts on next PR
 - Git automatically drops commits already in main (via squash merge)
