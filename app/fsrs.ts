@@ -190,7 +190,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
               (logitem, i) =>
                 `<a href="/review/${i + 1}/?${new URLSearchParams({
                   id: note._id.toString(),
-                }).toString()}" rel="noopener noreferrer" accessKey='${i + 1
+                }).toString()}" rel="noopener noreferrer" accessKey='${
+                  i + 1
                 }'>${["Again", "Hard", "Good", "Easy"][i]} ${dueMs(
                   (logitem as RecordLogItem).card.due,
                 )}</a>`,
@@ -232,7 +233,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
           sflow(`<br/>`),
           sflow(
-            `Reviewing <a target="_blank" href="${note.url}">${(note.title?.replace(/$/, " - ") ?? "") + note.url
+            `Reviewing <a target="_blank" href="${note.url}">${
+              (note.title?.replace(/$/, " - ") ?? "") + note.url
             }</a>`,
           ),
           // sflow(
@@ -325,7 +327,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     "GET /delete-confirm(?:/|$|\\?)": async (req, opt) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("fail to find note");
       return HTMLR(
-        `Are you sure you want to delete <a href="${note.url}">${note.url
+        `Are you sure you want to delete <a href="${note.url}">${
+          note.url
         }</a>?<br/><a href="/delete/?${new URLSearchParams({
           // url: note.url,
           id: note._id.toString(),
@@ -436,11 +439,11 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       {
         $match: id
           ? (function () {
-            // const _id = { $objectId: id };
-            // const _id = new ObjectId(id);
-            // const _id = bsonId(  id );
-            return { _id: id };
-          })()
+              // const _id = { $objectId: id };
+              // const _id = new ObjectId(id);
+              // const _id = bsonId(  id );
+              return { _id: id };
+            })()
           : url
             ? { url }
             : DIE("no query"),

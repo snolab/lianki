@@ -487,76 +487,79 @@ export default function PolyglotPage() {
                             </button>
                           )}
                         </td>
-                      {selectedLanguages.map((lang) => {
-                        const cellData = matrix[question.id]?.[lang.code];
-                        const cellKey = `${question.id}-${lang.code}`;
-                        const rowKey = `row-${question.id}`;
-                        const isGenerating = generatingCell === cellKey || generatingCell === rowKey;
+                        {selectedLanguages.map((lang) => {
+                          const cellData = matrix[question.id]?.[lang.code];
+                          const cellKey = `${question.id}-${lang.code}`;
+                          const rowKey = `row-${question.id}`;
+                          const isGenerating =
+                            generatingCell === cellKey || generatingCell === rowKey;
 
-                        return (
-                          <td
-                            key={lang.code}
-                            className="border border-gray-300 dark:border-gray-700 p-3"
-                          >
-                            {isGenerating ? (
-                              <div className="text-center text-gray-500">Generating...</div>
-                            ) : cellData ? (
-                              <div className="space-y-2">
-                                <div className="flex items-start gap-2">
-                                  <div className="flex-1">
-                                    <div className="text-xs text-gray-500 mb-1">Q:</div>
-                                    <div className="text-sm">{cellData.question}</div>
+                          return (
+                            <td
+                              key={lang.code}
+                              className="border border-gray-300 dark:border-gray-700 p-3"
+                            >
+                              {isGenerating ? (
+                                <div className="text-center text-gray-500">Generating...</div>
+                              ) : cellData ? (
+                                <div className="space-y-2">
+                                  <div className="flex items-start gap-2">
+                                    <div className="flex-1">
+                                      <div className="text-xs text-gray-500 mb-1">Q:</div>
+                                      <div className="text-sm">{cellData.question}</div>
+                                    </div>
+                                    {cellData.questionAudioUrl && (
+                                      <button
+                                        onClick={() => {
+                                          const audio = new Audio(cellData.questionAudioUrl!);
+                                          audio.play();
+                                        }}
+                                        className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded text-xs hover:bg-blue-200 dark:hover:bg-blue-800"
+                                      >
+                                        ▶ Q
+                                      </button>
+                                    )}
                                   </div>
-                                  {cellData.questionAudioUrl && (
-                                    <button
-                                      onClick={() => {
-                                        const audio = new Audio(cellData.questionAudioUrl!);
-                                        audio.play();
-                                      }}
-                                      className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded text-xs hover:bg-blue-200 dark:hover:bg-blue-800"
-                                    >
-                                      ▶ Q
-                                    </button>
-                                  )}
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <div className="flex-1">
-                                    <div className="text-xs text-gray-500 mb-1">A:</div>
-                                    <div className="text-sm font-semibold">{cellData.answer}</div>
+                                  <div className="flex items-start gap-2">
+                                    <div className="flex-1">
+                                      <div className="text-xs text-gray-500 mb-1">A:</div>
+                                      <div className="text-sm font-semibold">{cellData.answer}</div>
+                                    </div>
+                                    {cellData.answerAudioUrl && (
+                                      <button
+                                        onClick={() => {
+                                          const audio = new Audio(cellData.answerAudioUrl!);
+                                          audio.play();
+                                        }}
+                                        className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded text-xs hover:bg-green-200 dark:hover:bg-green-800"
+                                      >
+                                        ▶ A
+                                      </button>
+                                    )}
                                   </div>
-                                  {cellData.answerAudioUrl && (
-                                    <button
-                                      onClick={() => {
-                                        const audio = new Audio(cellData.answerAudioUrl!);
-                                        audio.play();
-                                      }}
-                                      className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded text-xs hover:bg-green-200 dark:hover:bg-green-800"
-                                    >
-                                      ▶ A
-                                    </button>
-                                  )}
+                                  <button
+                                    onClick={() => generateCell(question.id, lang.code)}
+                                    className="text-xs text-gray-500 hover:underline"
+                                  >
+                                    Regenerate
+                                  </button>
                                 </div>
+                              ) : answers[question.id]?.trim() ? (
                                 <button
                                   onClick={() => generateCell(question.id, lang.code)}
-                                  className="text-xs text-gray-500 hover:underline"
+                                  className="w-full py-2 text-sm bg-gray-100 dark:bg-gray-800 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
                                 >
-                                  Regenerate
+                                  Generate
                                 </button>
-                              </div>
-                            ) : answers[question.id]?.trim() ? (
-                              <button
-                                onClick={() => generateCell(question.id, lang.code)}
-                                className="w-full py-2 text-sm bg-gray-100 dark:bg-gray-800 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-                              >
-                                Generate
-                              </button>
-                            ) : (
-                              <div className="text-center text-gray-400 text-sm">Answer first</div>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
+                              ) : (
+                                <div className="text-center text-gray-400 text-sm">
+                                  Answer first
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
                     );
                   })}
                 </tbody>
