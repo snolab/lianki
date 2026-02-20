@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.11.0
+// @version     2.12.0
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -671,6 +671,47 @@ function main() {
 
   // ── Mount ──────────────────────────────────────────────────────────────────
   fab = createFab();
+
+  // ── /next route handler ────────────────────────────────────────────────────
+  // When visiting lianki.com/next, fetch next card URL and redirect to it
+  (async () => {
+    const currentUrl = new URL(location.href);
+    if (!currentUrl.hostname.includes("lianki.com")) return;
+    if (!currentUrl.pathname.startsWith("/next")) return;
+
+    console.log("[Lianki] /next route detected, fetching next card...");
+    try {
+      const data = await getNextUrl();
+      if (data.url && /^https?:\/\//.test(data.url)) {
+        console.log("[Lianki] Redirecting to next card:", data.url);
+        // Store intended URL for redirect detection
+        GM_setValue("lk:nav_intended", JSON.stringify({ url: data.url, ts: Date.now() }));
+        location.href = data.url;
+      } else {
+        console.log("[Lianki] No more cards to review!");
+        document.body.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:system-ui;text-align:center;padding:20px">
+            <div>
+              <h1 style="font-size:48px;margin:0">🎉</h1>
+              <h2 style="margin:20px 0 10px">All Done!</h2>
+              <p style="color:#666;margin:0">No more cards to review. Great job!</p>
+            </div>
+          </div>
+        `;
+      }
+    } catch (err) {
+      console.error("[Lianki] Failed to fetch next card:", err);
+      document.body.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:system-ui;text-align:center;padding:20px">
+          <div>
+            <h2 style="margin:20px 0 10px">Error</h2>
+            <p style="color:#666;margin:0">${err.message}</p>
+            <p style="margin-top:20px"><a href="/list">Go to List</a></p>
+          </div>
+        </div>
+      `;
+    }
+  })();
 
   // ── Redirect detection ─────────────────────────────────────────────────────
   // If Lianki navigated to a URL but the site auto-redirected to a different
