@@ -1,62 +1,52 @@
-// import { DrizzleAdapter } from "@auth/drizzle-adapter";
-import { MongoDBAdapter } from "@auth/mongodb-adapter";
-// import PostgresAdapter from "@auth/pg-adapter";
-// import { Pool } from "@neondatabase/serverless";
+import { betterAuth } from "better-auth";
+import { mongodbAdapter } from "better-auth/adapters/mongodb";
+import { nextCookies } from "better-auth/next-js";
+import { magicLink } from "better-auth/plugins";
+import nodemailer from "nodemailer";
+import { db, mongoClient } from "./app/db";
 
-import NextAuth from "next-auth";
-import { mongoClient } from "./app/db";
-import { authConfig } from "./auth.config";
+export const auth = betterAuth({
+  secret: process.env.AUTH_SECRET,
+  baseURL: process.env.BETTER_AUTH_URL ?? process.env.NEXTAUTH_URL,
 
-declare module "next-auth" {
-  interface User {
-    password?: string;
-  }
-  interface Session {
-    user: {
-      id: string;
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
-    };
-  }
-}
-export const { handlers, signIn, signOut, auth } = NextAuth(() => {
-  // const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  return {
-    adapter: MongoDBAdapter(mongoClient),
-    // adapter: DrizzleAdapter(db),
-    // adapter: PostgresAdapter(pool),
-    // pages: {
-    //   // signIn: '/auth/signin',
-    //   // signOut: '/auth/signout',
-    //   // error: '/auth/error',
-    //   // verifyRequest: '/auth/verify-request',
-    //   // newUser: '/auth/new-user'
-    // },
-    // callbacks: {
-    //   jwt: async ({ token, user }) => {
-    //     if (user) {
-    //       token.id = user.id;
-    //     }
-    //     return token;
-    //   },
-    // },
-    callbacks: {
-      jwt({ token, user }) {
-        if (user) {
-          // User is available during sign-in
-          token.id = user.id;
+  database: mongodbAdapter(db, { client: mongoClient }),
+
+  socialProviders: {
+    ...(process.env.AUTH_GITHUB_SECRET
+      ? {
+          github: {
+            clientId: process.env.AUTH_GITHUB_ID as string,
+            clientSecret: process.env.AUTH_GITHUB_SECRET as string,
+          },
         }
-        return token;
-      },
-      session({ session, token }) {
-        session.user.id = token.id as string;
-        return session;
-      },
-    },
+      : {}),
+    ...(process.env.AUTH_GOOGLE_SECRET
+      ? {
+          google: {
+            clientId: process.env.AUTH_GOOGLE_ID as string,
+            clientSecret: process.env.AUTH_GOOGLE_SECRET as string,
+          },
+        }
+      : {}),
+  },
 
-    session: { strategy: "jwt" },
-    // force JWT session with a database
-    ...authConfig,
-  };
+  plugins: [
+    ...(process.env.EMAIL_SERVER
+      ? [
+          magicLink({
+            sendMagicLink: async ({ email, url }) => {
+              const transport = nodemailer.createTransport(process.env.EMAIL_SERVER!);
+              await transport.sendMail({
+                from: process.env.EMAIL_FROM,
+                to: email,
+                subject: "Sign in to Lianki",
+                text: `Sign in to Lianki: ${url}`,
+                html: `<a href="${url}">Sign in to Lianki</a>`,
+              });
+            },
+          }),
+        ]
+      : []),
+    nextCookies(), // must be last — handles Set-Cookie in server actions
+  ],
 });

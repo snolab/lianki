@@ -34,7 +34,7 @@ export default async function HomePage() {
                     <a>{email}</a>
                   </li>
                   <li>
-                    <a href="/api/auth/signout">Sign out</a>
+                    <a href="/auth/logout">Sign out</a>
                   </li>
                 </ul>
               </details>
