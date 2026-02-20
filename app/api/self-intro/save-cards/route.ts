@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
             },
           },
         },
-        { upsert: true, returnDocument: "after" }
+        { upsert: true, returnDocument: "after" },
       );
 
       cards.push(result);
@@ -49,13 +49,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       cardsCreated: cards.length,
-      message: `${cards.length} self-introduction cards saved successfully!`
+      message: `${cards.length} self-introduction cards saved successfully!`,
     });
   } catch (error) {
     console.error("Save cards error:", error);
-    return NextResponse.json(
-      { error: "Failed to save cards" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to save cards" }, { status: 500 });
   }
 }

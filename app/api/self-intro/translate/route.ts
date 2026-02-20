@@ -31,10 +31,7 @@ export async function POST(req: NextRequest) {
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json(
-        { error: "OpenAI API key not configured" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 });
     }
 
     const openai = new OpenAI({ apiKey });
@@ -68,9 +65,6 @@ If the target language is the same as the input, just return it as is.`,
     return NextResponse.json({ translatedText });
   } catch (error) {
     console.error("Translation error:", error);
-    return NextResponse.json(
-      { error: "Failed to translate" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to translate" }, { status: 500 });
   }
 }

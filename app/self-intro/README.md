@@ -27,6 +27,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 ### Voice Customization (Advanced Options)
 
 Users can customize:
+
 - **Voice**: Choose from 6 OpenAI voices (nova, alloy, echo, fable, onyx, shimmer)
 - **Speech Rate**: Adjust from 0.25x (slow) to 2.0x (fast)
 - **Gender**: Filter voices by gender (male, female, neutral)
@@ -47,9 +48,11 @@ Users can customize:
 ## API Endpoints
 
 ### POST `/api/self-intro/translate`
+
 Translates user answers to target language.
 
 **Request:**
+
 ```json
 {
   "answer": "Shanghai, China",
@@ -59,6 +62,7 @@ Translates user answers to target language.
 ```
 
 **Response:**
+
 ```json
 {
   "translatedText": "私は中国の上海出身です。"
@@ -66,9 +70,11 @@ Translates user answers to target language.
 ```
 
 ### POST `/api/self-intro/tts`
+
 Generates audio from translated text.
 
 **Request:**
+
 ```json
 {
   "text": "私は中国の上海出身です。",
@@ -81,9 +87,11 @@ Generates audio from translated text.
 **Response:** MP3 audio file (binary)
 
 ### POST `/api/self-intro/save-cards`
+
 Saves generated sentences as Lianki flashcards.
 
 **Request:**
+
 ```json
 {
   "language": "ja-JP",
@@ -101,6 +109,7 @@ Saves generated sentences as Lianki flashcards.
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,

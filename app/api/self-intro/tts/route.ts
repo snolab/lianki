@@ -9,10 +9,7 @@ export async function POST(req: NextRequest) {
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json(
-        { error: "OpenAI API key not configured" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 });
     }
 
     const openai = new OpenAI({ apiKey });
@@ -34,9 +31,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("TTS error:", error);
-    return NextResponse.json(
-      { error: "Failed to generate audio" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to generate audio" }, { status: 500 });
   }
 }
