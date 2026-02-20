@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.9.0
+// @version     2.10.0
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . to control video speed with difficulty markers.
 // @run-at      document-end
@@ -454,7 +454,7 @@ function main() {
       const hints = document.createElement("div");
       Object.assign(hints.style, { marginTop: "14px", opacity: ".4", fontSize: "11px" });
       hints.textContent =
-        "A/H=Easy \u00b7 S/J=Good \u00b7 W/K=Hard \u00b7 D/L=Again \u00b7 T/M=Delete \u00b7 Esc=Close";
+        "A/H=Easy \u00b7 S/J=Good \u00b7 W/K=Hard \u00b7 D/L=Again \u00b7 T/M=Delete \u00b7 Esc=Close \u00b7 Media Keys: Next=Good, Prev=Again";
       dialog.appendChild(hints);
     } else if (phase === "reviewed") {
       const msgDiv = document.createElement("div");
@@ -613,6 +613,32 @@ function main() {
     },
     { signal },
   );
+
+  // ── Media Keys ─────────────────────────────────────────────────────────────
+  // Support hardware media keys (headphones, keyboards, etc.)
+  // nexttrack = Good (3), previoustrack = Again (1)
+  (() => {
+    let vcid = null;
+    document.addEventListener("visibilitychange", trackHandler, { signal });
+    function trackHandler() {
+      const cb = () => {
+        if (!navigator.mediaSession) return;
+        navigator.mediaSession.setActionHandler("nexttrack", () => {
+          if (state.phase === "reviewing") doReview(3); // Good
+        });
+        navigator.mediaSession.setActionHandler("previoustrack", () => {
+          if (state.phase === "reviewing") doReview(1); // Again
+        });
+      };
+      if (document.visibilityState === "hidden") {
+        vcid = void clearInterval(vcid);
+      } else {
+        cb();
+        vcid ??= setInterval(cb, 1000);
+      }
+    }
+    trackHandler();
+  })();
 
   // ── Mount ──────────────────────────────────────────────────────────────────
   fab = createFab();
