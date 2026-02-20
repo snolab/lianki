@@ -8,6 +8,9 @@ import { getCachedHeatmapData } from "../lib/heatmap-cache";
 import ActivityHeatmap from "./components/ActivityHeatmap";
 import DeleteButton from "./components/DeleteButton";
 import RefreshHeatmapButton from "./components/RefreshHeatmapButton";
+import { getIntlayer } from "intlayer";
+import { getLocale } from "next-intlayer/server";
+
 export const dynamic = "force-dynamic";
 /**
  * @author: snomiao <snomiao@gmail.com>
@@ -16,64 +19,101 @@ export default async function HomePage() {
   const email = await authEmail();
   const user = await authUser();
   const FSRSNotes = getFSRSNotesCollection(email);
+  const locale = await getLocale();
+  const { appName, nav } = getIntlayer("landing-page", locale);
+
   return (
-    <div>
-      <nav>
-        <ul>
-          <li>
-            <a href="./lianki.user.js">Install user script</a>
-          </li>
-          <li>
-            <summary>
-              <span>
-                {user.image && <Image className="w-4 h-4" alt="avater" src={user.image} />}
-                <a>{user.name}</a>
-              </span>
-              <details>
-                <ul>
-                  <li>
-                    <a href="/profile">Profile</a>
-                  </li>
-                  <li>
-                    <a>{email}</a>
-                  </li>
-                  <li>
-                    <a href="/auth/logout">Sign out</a>
-                  </li>
-                </ul>
-              </details>
-            </summary>
-          </li>
-        </ul>
-      </nav>
-      <div>
-        <a href="/next" className="btn" accessKey="1">
-          Next card
-        </a>
-      </div>
-      <p>
-        Total cards: <Suspense>{FSRSNotes.countDocuments({})}</Suspense>
-      </p>
-      <p>
-        Due cards:{" "}
-        <Suspense>{FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })}</Suspense>
-      </p>
-      <section className="my-8 px-4">
-        <div className="flex items-center mb-4">
-          <h2 className="text-xl font-semibold">Learning Activity</h2>
-          <RefreshHeatmapButton />
+    <div className="flex flex-col min-h-screen">
+      {/* Header */}
+      <header className="py-4 px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between">
+          <a href="/" className="text-2xl font-bold hover:underline">
+            {appName}
+          </a>
+          <nav className="flex items-center gap-6">
+            <a href="/en/blog" className="text-lg font-medium hover:underline">
+              {nav.blog}
+            </a>
+            <a href="/polyglot" className="text-lg font-medium hover:underline">
+              Polyglot
+            </a>
+            <a href="./lianki.user.js" className="text-lg font-medium hover:underline">
+              Install
+            </a>
+            <div className="relative group">
+              <button className="flex items-center gap-2 text-lg font-medium hover:underline">
+                {user.image && (
+                  <Image
+                    className="w-6 h-6 rounded-full"
+                    alt="avatar"
+                    src={user.image}
+                    width={24}
+                    height={24}
+                  />
+                )}
+                <span>{user.name}</span>
+              </button>
+              <div className="hidden group-hover:block absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-10">
+                <a
+                  href="/profile"
+                  className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  Profile
+                </a>
+                <div className="block px-4 py-2 text-sm text-gray-500">{email}</div>
+                <a
+                  href="/auth/logout"
+                  className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  Sign out
+                </a>
+              </div>
+            </div>
+          </nav>
         </div>
-        <Suspense
-          fallback={<div className="h-32 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-md" />}
-        >
-          <HeatmapSection />
-        </Suspense>
-      </section>
-      <ul>
-        <Suspense>
-          <Cards />
-        </Suspense>
-      </ul>
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-grow px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-6">
+            <a
+              href="/next"
+              className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700"
+              accessKey="1"
+            >
+              Next card
+            </a>
+          </div>
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <p className="text-lg">
+              Total cards: <Suspense>{FSRSNotes.countDocuments({})}</Suspense>
+            </p>
+            <p className="text-lg">
+              Due cards:{" "}
+              <Suspense>{FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })}</Suspense>
+            </p>
+          </div>
+          <section className="my-8">
+            <div className="flex items-center mb-4">
+              <h2 className="text-xl font-semibold">Learning Activity</h2>
+              <RefreshHeatmapButton />
+            </div>
+            <Suspense
+              fallback={
+                <div className="h-32 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-md" />
+              }
+            >
+              <HeatmapSection />
+            </Suspense>
+          </section>
+          <ul className="space-y-2">
+            <Suspense>
+              <Cards />
+            </Suspense>
+          </ul>
+        </div>
+      </main>
     </div>
   );
   async function HeatmapSection() {
