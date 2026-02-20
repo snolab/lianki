@@ -20,7 +20,7 @@ export default async function LandingPage() {
               Polyglot
             </a>
             <a href="/list" className="text-lg font-medium hover:underline">
-              {nav.goToApp}
+              {nav.learn}
             </a>
           </nav>
         </div>
