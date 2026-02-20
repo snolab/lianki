@@ -1,188 +1,128 @@
 # Lianki
 
-A modern spaced repetition learning system built with Next.js 15, implementing the FSRS (Free Spaced Repetition System) algorithm for efficient flashcard review and memorization.
+**Turn any webpage into a flashcard you'll actually remember.**
+
+Lianki is a spaced repetition learning system that helps you retain what you read online. Instead of bookmarking pages you'll never revisit, Lianki schedules them for review using the scientifically-proven FSRS algorithm — showing you content right before you'd forget it.
+
+🌐 **Try it now:** [www.lianki.com](https://www.lianki.com)
+
+## What is Spaced Repetition?
+
+Spaced repetition is a learning technique where you review information at increasing intervals. When you remember something easily, Lianki shows it to you less often. When you struggle, it comes back sooner. This builds long-term memory with minimal effort.
+
+Apps like Anki have proven this works — but Lianki removes the friction. No card creation, no formatting, no templates. The webpage itself is the card.
 
 ## Features
 
-- Spaced repetition learning using the FSRS algorithm
-- Multi-user authentication (Email, GitHub, Google OAuth)
-- Keyboard shortcuts for quick reviews (1-5 for ratings, HJKL/ASDT navigation)
-- Browser integration via userscript (Tampermonkey/Violentmonkey)
-- Automatic card scheduling based on difficulty
-- Multilingual support (English, Chinese, Japanese)
-- AI-powered blog post auto-translation (powered by OpenAI GPT-4o)
-- Review tracking and statistics
+- **One-Click Card Creation** — Press `Alt+F` on any page to add it to your review queue
+- **FSRS Algorithm** — Modern spaced repetition (better than SM-2/Anki's old algorithm)
+- **Inline Reviews** — Review cards without leaving your current page
+- **Keyboard-Driven** — Rate your recall with `1-4`, navigate with `HJKL` or `ASDT`
+- **Automatic Scheduling** — Cards appear when you're about to forget them
+- **Cross-Device Sync** — Sign in with Google, GitHub, or email
+- **GitHub-Style Heatmap** — Track your daily review streaks
+- **Multilingual** — English, Chinese, Japanese support
 
-## Live Demo
+## How It Works
 
-https://www.lianki.com/
+### 1. Install the Userscript
 
-## Tech Stack
+Lianki uses a browser userscript (Tampermonkey/Violentmonkey) to add a floating button on every page you visit.
 
-- **Framework**: Next.js 15 with App Router
-- **Language**: TypeScript
-- **Database**: MongoDB with NextAuth adapter
-- **Authentication**: NextAuth.js v5 (Email, GitHub, Google)
-- **UI**: Tailwind CSS
-- **FSRS Algorithm**: ts-fsrs
-- **Runtime**: Bun (package manager)
+1. Install [Tampermonkey](https://www.tampermonkey.net/) (Chrome/Edge/Safari) or [Violentmonkey](https://violentmonkey.github.io/) (Firefox/Chrome)
+2. Visit [lianki.com/lianki.user.js](https://www.lianki.com/lianki.user.js) to install the script
+3. You'll see a small Lianki button on every webpage
 
-## Prerequisites
+### 2. Add Cards
 
-- Node.js 20+ or Bun
-- MongoDB instance (local or cloud)
-- (Optional) SMTP server for email authentication
-- (Optional) GitHub/Google OAuth credentials
+**Add current page:**
+- Press `Alt+F` OR click the Lianki button
+- Lianki saves the URL and page title automatically
 
-## Getting Started
+**Bulk add multiple URLs:**
+1. Copy URLs (one per line)
+2. Press `Alt+Shift+V`
+3. Lianki creates a card for each URL
 
-### 1. Clone the repository
+### 3. Review Cards
 
-```bash
-git clone <repository-url>
-cd lianki
-```
+1. Visit [lianki.com](https://www.lianki.com) and click "Next card"
+2. Read/watch the content again
+3. Rate your recall:
+   - **`1` (Again)** — Forgot it completely
+   - **`2` (Hard)** — Remembered with difficulty
+   - **`3` (Good)** — Remembered correctly
+   - **`4` (Easy)** — Too easy, knew it cold
+   - **`5` (Delete)** — Remove this card
 
-### 2. Install dependencies
+FSRS calculates the optimal next review time based on your rating. Rate something "Easy" and you won't see it again for weeks. Rate it "Again" and it comes back tomorrow.
 
-```bash
-bun install
-# or
-npm install
-```
+### Keyboard Shortcuts
 
-### 3. Set up environment variables
+**During Review:**
+- `1-4` — Rate recall (Again/Hard/Good/Easy)
+- `5` — Delete card
+- `HJKL` — Vim-style navigation (Easy/Good/Again/Delete)
+- `ASDT` — Alternative navigation (Easy/Good/Again/Delete)
 
-Copy the example environment file and configure it:
+**Video Speed Control (via Media Keys):**
+- `Next Track` — Speed up playback + mark as easier
+- `Previous Track` — Rewind 3s + slow down playback
 
-```bash
-cp .env.example .env
-```
+**Adding Cards:**
+- `Alt+F` — Add current page
+- `Alt+V` — Add URL from clipboard
+- `Alt+Shift+V` — Bulk add multiple URLs
 
-Edit `.env` and fill in your values:
+## Who Is This For?
 
-```env
-# Required
-MONGODB_URI=mongodb://localhost:27017/lianki
-AUTH_SECRET=<generate with: openssl rand -base64 32>
+- **Language learners** — Loop through articles, videos, and lessons until vocabulary sticks
+- **Developers** — Keep documentation, blog posts, and tutorials fresh in memory
+- **Students** — Review lecture notes, papers, and reading assignments systematically
+- **Researchers** — Retain key papers and resources over time
+- **Anyone tired of Anki's friction** — No manual card creation, just save the link
 
-# Optional - Email Authentication
-EMAIL_SERVER=smtp://user:password@smtp.example.com:587
-EMAIL_FROM=noreply@yourdomain.com
+## Example Workflow: Learning Japanese with jpdb.io
 
-# Optional - OAuth Providers
-AUTH_GITHUB_ID=your-github-client-id
-AUTH_GITHUB_SECRET=your-github-client-secret
-AUTH_GOOGLE_ID=your-google-client-id
-AUTH_GOOGLE_SECRET=your-google-client-secret
+1. Add `jpdb.io/review` as a Lianki card
+2. Add anime episodes, manga chapters, or articles as separate cards
+3. Lianki schedules both vocabulary reviews (jpdb) and content (anime/manga)
+4. Watch an episode → review it in Lianki → study new words on jpdb
+5. Next time the episode comes up, you'll know more vocabulary
 
-# Optional - Blog Auto-Translation (AI-powered)
-OPENAI_API_KEY=sk-proj-your-openai-api-key
-```
+The content gets easier with each loop. See the full workflow in our [blog post](https://www.lianki.com/en/blog/2025-02-20-jpdb-lianki-workflow).
 
-### 4. Run the development server
+## FAQ
 
-```bash
-bun dev
-# or
-npm run dev
-```
+**Q: How is this different from Anki?**
+A: Lianki is optimized for reviewing web content (articles, videos, manga readers), not isolated facts. No card creation needed — one hotkey saves any page. Anki excels at drilling individual words/concepts; Lianki excels at looping through materials that teach you those concepts.
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+**Q: What algorithm does Lianki use?**
+A: FSRS (Free Spaced Repetition System), the same modern algorithm used by Anki's latest versions. It's more accurate than the old SM-2 algorithm from the 1980s. Read more in our [FSRS algorithm blog post](https://www.lianki.com/en/blog/2025-01-15-fsrs-algorithm).
 
-## Usage
+**Q: Does it work offline?**
+A: No. Lianki requires an internet connection to sync cards and reviews.
 
-### Adding Cards
+**Q: Is it free?**
+A: Yes, Lianki is free to use.
 
-1. **Via Web Interface**: Navigate to `/add-note` and paste a URL with optional title
-2. **Via Userscript**: Install the userscript from `/lianki.user.js` and use:
-   - `Alt+F`: Add current page
-   - `Alt+V`: Add from clipboard
-   - `Alt+Shift+V`: Bulk add multiple URLs
+**Q: Can I export my cards?**
+A: Not yet, but export functionality is planned.
 
-### Reviewing Cards
+## Learn More
 
-1. Click "Next card" on the homepage or navigate to `/next`
-2. Review the card content
-3. Rate your recall using keyboard shortcuts:
-   - `1` or `H` or `A`: Again (forgot)
-   - `2` or `J` or `S`: Hard (difficult to recall)
-   - `3` or `K` or `D`: Good (correct recall)
-   - `4` or `L` or `T`: Easy (very easy recall)
-   - `5`: Delete card
+📝 **Blog Posts:**
+- [What is Lianki?](https://www.lianki.com/en/blog/2025-01-01-introduction)
+- [How FSRS Schedules Your Reviews](https://www.lianki.com/en/blog/2025-01-15-fsrs-algorithm)
+- [Japanese Learning Workflow with jpdb.io](https://www.lianki.com/en/blog/2025-02-20-jpdb-lianki-workflow)
 
-### Card Management
-
-- View all cards on the homepage
-- See total and due card counts
-- Delete individual cards via the delete button
-- Review and close window automatically after rating
-
-## API Routes
-
-- `/api/fsrs/next` - Get next due card
-- `/api/fsrs/all` - Open all due cards
-- `/api/fsrs/repeat?url=<url>` - Preview card
-- `/api/fsrs/review/:rating?url=<url>` - Submit review
-- `/api/fsrs/delete?url=<url>` - Delete card
-
-## Development
-
-### Code Quality
-
-```bash
-# Run linting and formatting
-bun fix
-
-# Build for production
-bun build
-```
-
-### Git Hooks
-
-The project uses Husky for pre-commit hooks. The hook runs `bun fix` automatically before each commit.
-
-## Deployment
-
-### Vercel (Recommended)
-
-1. Push your code to GitHub
-2. Import the project in Vercel
-3. Add environment variables in Vercel dashboard
-4. Deploy
-
-### Docker
-
-```bash
-docker-compose up
-```
-
-## Project Structure
-
-```
-├── app/
-│   ├── page.tsx              # Homepage with card list
-│   ├── fsrs.ts               # Core FSRS handler logic
-│   ├── db.ts                 # MongoDB client setup
-│   ├── api/                  # API routes
-│   │   ├── fsrs/             # FSRS API endpoints
-│   │   └── auth/             # NextAuth routes
-│   └── [routes]/             # Page routes
-├── auth.ts                   # NextAuth configuration
-├── auth.config.ts            # Auth providers config
-├── public/
-│   └── lianki.user.js        # Tampermonkey userscript
-└── .env.example              # Environment variables template
-```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-[Add your license here]
+🛠️ **For Developers:**
+See [DEVELOPMENT.md](./DEVELOPMENT.md) for technical documentation, API routes, and contribution guidelines.
 
 ## Author
 
 snomiao <snomiao@gmail.com>
+
+## License
+
+MIT
