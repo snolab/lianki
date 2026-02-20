@@ -32,7 +32,7 @@ FSRS uses your rating to calculate the next review interval. Rate something "Eas
 
 Lianki works best for:
 
-- Language learners — especially Japanese/JLPT content, which Lianki prioritizes by default
+- Language learners
 - Developers keeping up with documentation, blog posts, or spec pages
 - Researchers and students with a reading list they actually need to retain
 - Anyone who's tried Anki and given up because card creation is too much work

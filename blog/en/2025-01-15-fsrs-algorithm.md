@@ -98,10 +98,6 @@ Lianki doesn't expose these states directly in the UI — you just see the due d
 
 FSRS applies a small random variation to intervals by default. Without fuzz, if you add 50 cards on the same day and review them all as "Good", they'd all pile up on the exact same future date. Fuzz spreads them out slightly to prevent review avalanches.
 
-## Prioritizing Japanese Content
-
-Lianki's `/api/fsrs/next` route has a small heuristic: it checks if any due cards have URLs matching Japanese/JLPT content patterns and prioritizes those. This is a manual tweak for the original use case (Japanese study), not part of FSRS itself. If you're not studying Japanese, all your due cards are served in due-date order regardless.
-
 ## Default Parameters
 
 Lianki uses the default FSRS parameters from `ts-fsrs`. FSRS v5 supports per-user parameter optimization using review history, but Lianki hasn't implemented that yet — it's a planned feature. The default parameters are trained on a large dataset of real flashcard reviews and work well for most people.

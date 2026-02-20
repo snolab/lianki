@@ -178,16 +178,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     },
     "GET /next": async () =>
       new Response(
-        sflow(
-          FSRSNotes.find(
-            {
-              "card.due": { $lte: new Date() },
-              url: /brainstorm|JLPT|japanese|n2|n1|n3/i,
-            },
-            { sort: { "card.due": 1 } },
-          ),
-          FSRSNotes.find({ "card.due": { $lte: new Date() } }, { sort: { "card.due": 1 } }),
-        )
+        sflow(FSRSNotes.find({ "card.due": { $lte: new Date() } }, { sort: { "card.due": 1 } }))
           .limit(1)
           .map((note) => {
             const url = JSON.stringify(note.url);

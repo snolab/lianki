@@ -45,10 +45,6 @@ Lianki uses the **DSR model** (Difficulty, Stability, Retrievability) to schedul
 
 Cards get scheduled when you're about to forget them — maximizing retention while minimizing review time.
 
-### Japanese Content Prioritization
-
-Lianki has a built-in heuristic that automatically prioritizes cards with Japanese/JLPT-related URLs when showing you the next due card. This means your Japanese reviews float to the top of your queue.
-
 ## The Workflow: jpdb.io + Lianki
 
 Here's the magic combination: **Add `https://jpdb.io/review` as a Lianki card.**
