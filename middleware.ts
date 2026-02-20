@@ -24,8 +24,9 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(`${pathname}/blog`, request.url));
   }
 
-  // Skip intlayer middleware for blog paths (they have their own [locale] handling)
-  if (pathname.match(/^\/(en|zh|ja)\/blog/)) {
+  // Skip intlayer middleware for routes with explicit locale prefixes
+  // (prevents redirect loop: /blog → /en/blog → /blog)
+  if (pathname.match(/^\/(en|zh|ja)\//)) {
     return NextResponse.next();
   }
 
