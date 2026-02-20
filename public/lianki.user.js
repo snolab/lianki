@@ -6,9 +6,9 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.10.2
+// @version     2.10.3
 // @author      lianki.com
-// @description Lianki spaced repetition — inline review without page navigation. Press , or . to control video speed with difficulty markers.
+// @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
 // @downloadURL https://www.lianki.com/lianki.user.js
 // @updateURL   https://www.lianki.com/lianki.meta.js
@@ -454,7 +454,7 @@ function main() {
       const hints = document.createElement("div");
       Object.assign(hints.style, { marginTop: "14px", opacity: ".4", fontSize: "11px" });
       hints.textContent =
-        "A/H=Easy \u00b7 S/J=Good \u00b7 W/K=Hard \u00b7 D/L=Again \u00b7 T/M=Delete \u00b7 Esc=Close \u00b7 Media Keys: Next=Good, Prev=Again";
+        "A/H=Easy \u00b7 S/J=Good \u00b7 W/K=Hard \u00b7 D/L=Again \u00b7 T/M=Delete \u00b7 Esc=Close";
       dialog.appendChild(hints);
     } else if (phase === "reviewed") {
       const msgDiv = document.createElement("div");
@@ -616,7 +616,7 @@ function main() {
 
   // ── Media Keys ─────────────────────────────────────────────────────────────
   // Support hardware media keys (headphones, keyboards, etc.)
-  // nexttrack = Good (3), previoustrack = Again (1)
+  // nexttrack = faster (1.2x), previoustrack = slower + rewind (-3s, 0.7x)
   (() => {
     let vcid = null;
     document.addEventListener("visibilitychange", trackHandler, { signal });
@@ -624,10 +624,10 @@ function main() {
       const cb = () => {
         if (!navigator.mediaSession) return;
         navigator.mediaSession.setActionHandler("nexttrack", () => {
-          if (state.phase === "reviewing") doReview(3); // Good
+          pardon(0, 1.2); // Faster
         });
         navigator.mediaSession.setActionHandler("previoustrack", () => {
-          if (state.phase === "reviewing") doReview(1); // Again
+          pardon(-3, 0.7); // Rewind 3s and slower
         });
       };
       if (document.visibilityState === "hidden") {
@@ -800,7 +800,7 @@ function main() {
       if (["INPUT", "TEXTAREA"].includes(document?.activeElement?.tagName)) return;
 
       if (e.code === "Comma") {
-        if (await pardon(-3, 0.8)) {
+        if (await pardon(-3, 0.7)) {
           e.preventDefault();
           e.stopPropagation();
         }
@@ -980,7 +980,7 @@ function main() {
     };
 
     container.append(
-      makeBtn("⏪ Pardon", () => pardon(-3, 0.8)),
+      makeBtn("⏪ Pardon", () => pardon(-3, 0.7)),
       makeBtn("⏩ Faster", () => pardon(0, 1.2)),
     );
 
