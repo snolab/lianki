@@ -6,12 +6,12 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.5.6
-// @author      snomiao@gmail.com
-// @description Lianki spaced repetition — inline review without page navigation
+// @version     2.11.0
+// @author      lianki.com
+// @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
 // @downloadURL https://www.lianki.com/lianki.user.js
-// @updateURL   https://www.lianki.com/lianki.user.js
+// @updateURL   https://www.lianki.com/lianki.meta.js
 // @connect     lianki.com
 // @connect     www.lianki.com
 // @connect     beta.lianki.com
@@ -90,6 +90,7 @@ function main() {
   let fab = null;
   let dialog = null;
   let prefetchedNextUrl = null; // populated while user reads current card
+  let prefetchLink = null; // <link rel="prefetch"> element for next page
 
   // ── Auto-update ────────────────────────────────────────────────────────────
   const CURRENT_VERSION = GM_info?.script?.version ?? "0.0.0";
@@ -214,6 +215,25 @@ function main() {
     } catch {
       return false;
     }
+  }
+
+  // Prefetch next page for faster navigation
+  function prefetchNextPage(pageUrl) {
+    if (!pageUrl) return;
+
+    // Remove old prefetch link if exists
+    if (prefetchLink) {
+      prefetchLink.remove();
+      prefetchLink = null;
+    }
+
+    // Create and append new prefetch link
+    prefetchLink = document.createElement("link");
+    prefetchLink.rel = "prefetch";
+    prefetchLink.href = pageUrl;
+    prefetchLink.as = "document";
+    document.head.appendChild(prefetchLink);
+    console.log("[Lianki] Prefetching next page:", pageUrl);
   }
 
   // ── FAB ────────────────────────────────────────────────────────────────────
@@ -481,8 +501,14 @@ function main() {
         getNextUrl()
           .then((data) => {
             prefetchedNextUrl = data.url;
+            if (data.url) prefetchNextPage(data.url);
           })
           .catch(() => {});
+        // Use options from add-card response if available (optimization)
+        if (note.options) {
+          return { options: note.options };
+        }
+        // Fallback for older API versions
         return getOptions(note._id);
       })
       .then((data) => {
@@ -503,13 +529,24 @@ function main() {
     dialog.remove();
     dialog = null;
     state = { phase: "idle", noteId: null, options: null, error: null, message: null };
+
+    // Clean up prefetch link when closing dialog
+    if (prefetchLink) {
+      prefetchLink.remove();
+      prefetchLink = null;
+    }
   }
 
   // ── Review actions ─────────────────────────────────────────────────────────
   async function doReview(rating) {
     if (state.phase !== "reviewing" || !state.noteId) return;
     try {
-      await submitReview(state.noteId, rating);
+      const result = await submitReview(state.noteId, rating);
+      // Use nextUrl from review response if available (optimization)
+      if (result.nextUrl) {
+        prefetchedNextUrl = result.nextUrl;
+        prefetchNextPage(result.nextUrl);
+      }
       const opt = state.options.find((o) => Number(o.rating) === rating);
       await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
     } catch (err) {
@@ -547,12 +584,14 @@ function main() {
       nextUrl = data.url;
       nextTitle = data.title;
       if (nextUrl) {
+        prefetchNextPage(nextUrl);
         state.message = `Redirecting to:\n${nextTitle || nextUrl}`;
         renderDialog();
       }
     }
 
     if (nextUrl && /^https?:\/\//.test(nextUrl) && !wouldHijackApp(nextUrl)) {
+      console.log("[Lianki] Storing intended URL:", nextUrl);
       GM_setValue("lk:nav_intended", JSON.stringify({ url: nextUrl, ts: Date.now() }));
       location.href = nextUrl;
     } else {
@@ -604,6 +643,32 @@ function main() {
     { signal },
   );
 
+  // ── Media Keys ─────────────────────────────────────────────────────────────
+  // Support hardware media keys (headphones, keyboards, etc.)
+  // nexttrack = faster (1.2x), previoustrack = slower + rewind (-3s, 0.7x)
+  (() => {
+    let vcid = null;
+    document.addEventListener("visibilitychange", trackHandler, { signal });
+    function trackHandler() {
+      const cb = () => {
+        if (!navigator.mediaSession) return;
+        navigator.mediaSession.setActionHandler("nexttrack", () => {
+          pardon(0, 1.2); // Faster
+        });
+        navigator.mediaSession.setActionHandler("previoustrack", () => {
+          pardon(-3, 0.7); // Rewind 3s and slower
+        });
+      };
+      if (document.visibilityState === "hidden") {
+        vcid = void clearInterval(vcid);
+      } else {
+        cb();
+        vcid ??= setInterval(cb, 1000);
+      }
+    }
+    trackHandler();
+  })();
+
   // ── Mount ──────────────────────────────────────────────────────────────────
   fab = createFab();
 
@@ -617,16 +682,408 @@ function main() {
       if (!raw) return;
       const { url: intendedUrl, ts } = JSON.parse(raw);
       if (Date.now() - ts > 30_000) return; // 30 s TTL — stale, ignore
-      GM_setValue("lk:nav_intended", ""); // consume so it only fires once
       const actualUrl = normalizeUrl(location.href);
-      if (actualUrl === normalizeUrl(intendedUrl)) return; // no redirect happened
-      await api("/api/fsrs/update-url", {
+      if (actualUrl === normalizeUrl(intendedUrl)) {
+        GM_setValue("lk:nav_intended", ""); // no redirect, clear it
+        return;
+      }
+
+      console.log("[Lianki] Redirect detected:", intendedUrl, "→", actualUrl);
+
+      // Ask user if they want to update the card URL
+      const confirmed = confirm(
+        `This page redirected from:\n${intendedUrl}\n\n` +
+          `To:\n${actualUrl}\n\n` +
+          `Update the card to point to the new URL?`,
+      );
+
+      if (!confirmed) {
+        console.log("[Lianki] User declined URL update");
+        GM_setValue("lk:nav_intended", ""); // user declined, clear it
+        return;
+      }
+
+      const result = await api("/api/fsrs/update-url", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ oldUrl: intendedUrl, newUrl: actualUrl }),
       });
+      console.log("[Lianki] Card URL updated:", result);
+      GM_setValue("lk:nav_intended", ""); // only clear after success
       openDialog();
-    } catch {}
+    } catch (err) {
+      console.error("[Lianki] Failed to update card URL:", err);
+      // Don't clear GM_setValue - retry on next page load
+    }
+  })();
+
+  // ── Video Speed Control (Pardon) ───────────────────────────────────────────
+  // Press , (slower) or . (faster) to adjust video speed. Speed adjustments are
+  // remembered as "difficulty markers" and auto-applied during playback.
+
+  const $$ = (sel) => [...document.querySelectorAll(sel)];
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const renderTime = (t) =>
+    [(t / 3600) | 0, ((t / 60) | 0) % 60, (t % 60) | 0]
+      .map((e) => e.toString().padStart(2, "0"))
+      .join(":");
+  const renderSpeed = (s) => "x" + s.toFixed(2);
+
+  function centerTooltip(textContent) {
+    const el = document.createElement("div");
+    el.textContent = textContent;
+    el.style.cssText =
+      "position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); " +
+      "background: #0008; color: white; padding: 0.5rem; border-radius: 1rem; " +
+      "z-index: 2147483647; pointer-events: none;";
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 500);
+  }
+
+  // Speed map: WeakMap<videoElement, Map<timestamp, speed>>
+  const videoSpeedMaps = new WeakMap();
+
+  // GM_setValue cache helpers for persistent storage
+  const markerCacheKey = (url) => `lk:markers:${normalizeUrl(url)}`;
+
+  function loadLocalMarkers(url) {
+    try {
+      const raw = GM_getValue(markerCacheKey(url), "");
+      if (!raw) return { markers: {}, lastSync: 0, dirty: false };
+      return JSON.parse(raw);
+    } catch {
+      return { markers: {}, lastSync: 0, dirty: false };
+    }
+  }
+
+  function saveLocalMarkers(url, markers, dirty = true) {
+    const cache = {
+      markers,
+      lastSync: dirty ? loadLocalMarkers(url).lastSync : Date.now(),
+      dirty,
+    };
+    GM_setValue(markerCacheKey(url), JSON.stringify(cache));
+  }
+
+  async function pardon(dt = 0, speedMultiplier = 1, wait = 0) {
+    const vs = $$("video,audio");
+    const v = vs.filter((e) => !e.paused)[0];
+    if (!v) return vs[0]?.click();
+
+    // Helper to merge nearby markers (within 2 seconds)
+    const mergeNearbyMarkers = (time) => {
+      if (speedMultiplier === 1) return; // Only merge when speed is being adjusted
+      if (!videoSpeedMaps.has(v)) videoSpeedMaps.set(v, new Map());
+      const speedMap = videoSpeedMaps.get(v);
+      const MERGE_THRESHOLD = 2.0; // seconds
+      for (const [existingTime] of speedMap) {
+        if (Math.abs(time - existingTime) < MERGE_THRESHOLD) {
+          speedMap.delete(existingTime);
+          console.log(`[Lianki] Merged marker: ${renderTime(existingTime)} @ ${renderTime(time)}`);
+        }
+      }
+    };
+
+    // Merge at original position BEFORE time adjustment
+    mergeNearbyMarkers(v.currentTime);
+
+    if (dt !== 0) v.currentTime += dt;
+
+    // Merge at destination position AFTER time adjustment
+    mergeNearbyMarkers(v.currentTime);
+
+    if (speedMultiplier !== 1) {
+      v.playbackRate *= speedMultiplier;
+
+      // Speed map already initialized by mergeNearbyMarkers
+      const speedMap = videoSpeedMaps.get(v);
+
+      // Add new marker at final position
+      speedMap.set(v.currentTime, v.playbackRate);
+      console.log(
+        `[Lianki] Speed marker: ${renderTime(v.currentTime)} → ${renderSpeed(v.playbackRate)}`,
+      );
+
+      // Save to local cache (GM_setValue)
+      const url = normalizeUrl(location.href);
+      const markers = Object.fromEntries(speedMap);
+      saveLocalMarkers(url, markers, true); // dirty = true
+    }
+
+    centerTooltip(
+      (dt < 0 ? "<-" : "->") + " " + renderTime(v.currentTime) + " " + renderSpeed(v.playbackRate),
+    );
+
+    if (wait) await sleep(wait);
+    return true;
+  }
+
+  // Keyboard shortcuts for video speed control
+  window.addEventListener(
+    "keydown",
+    async (e) => {
+      // Skip if Lianki dialog is open or in input fields
+      if (dialog) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (document?.activeElement?.isContentEditable) return;
+      if (["INPUT", "TEXTAREA"].includes(document?.activeElement?.tagName)) return;
+
+      if (e.code === "Comma") {
+        if (await pardon(-3, 0.7)) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+      if (e.code === "Period") {
+        if (await pardon(0, 1.2)) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+    },
+    { capture: true },
+  );
+
+  // Auto-adjust speed at marked timestamps
+  function setupVideoSpeedTracking(video) {
+    const url = normalizeUrl(location.href);
+
+    // Load markers from DB → GM_setValue → WeakMap
+    (async () => {
+      try {
+        const local = loadLocalMarkers(url);
+
+        // Always fetch from DB for cross-device sync
+        const { markers } = await api(`/api/fsrs/speed-markers?url=${encodeURIComponent(url)}`);
+
+        // Merge: server wins for conflicts, use latest
+        const merged = { ...local.markers, ...markers };
+
+        // Save to local cache
+        saveLocalMarkers(url, merged, false); // not dirty, just synced
+
+        // Load into WeakMap for this video
+        if (!videoSpeedMaps.has(video)) videoSpeedMaps.set(video, new Map());
+        const speedMap = videoSpeedMaps.get(video);
+        for (const [timestamp, speed] of Object.entries(merged)) {
+          speedMap.set(parseFloat(timestamp), speed);
+        }
+
+        console.log(`[Lianki] Loaded ${Object.keys(merged).length} speed markers for ${url}`);
+      } catch (err) {
+        console.error("[Lianki] Failed to load speed markers:", err);
+        // Fall back to local cache
+        const local = loadLocalMarkers(url);
+        if (!videoSpeedMaps.has(video)) videoSpeedMaps.set(video, new Map());
+        const speedMap = videoSpeedMaps.get(video);
+        for (const [timestamp, speed] of Object.entries(local.markers)) {
+          speedMap.set(parseFloat(timestamp), speed);
+        }
+      }
+    })();
+
+    let lastCheckedTime = 0;
+
+    video.addEventListener("timeupdate", () => {
+      const speedMap = videoSpeedMaps.get(video);
+      if (!speedMap || speedMap.size === 0) return;
+
+      const currentTime = video.currentTime;
+      const threshold = 0.5; // 500ms window
+
+      // Only check if we've moved significantly (avoid spam)
+      if (Math.abs(currentTime - lastCheckedTime) < 0.3) return;
+      lastCheckedTime = currentTime;
+
+      // Find nearest marker
+      for (const [markedTime, targetSpeed] of speedMap) {
+        if (Math.abs(currentTime - markedTime) < threshold) {
+          if (Math.abs(video.playbackRate - targetSpeed) > 0.01) {
+            video.playbackRate = targetSpeed;
+            centerTooltip(`Auto-speed: ${renderSpeed(targetSpeed)} @ ${renderTime(markedTime)}`);
+            console.log(
+              `[Lianki] Auto-adjusted to ${renderSpeed(targetSpeed)} at ${renderTime(currentTime)}`,
+            );
+          }
+          break; // Only apply one marker per check
+        }
+      }
+    });
+  }
+
+  // Detect and track all video/audio elements
+  function observeVideos() {
+    const tracked = new WeakSet();
+
+    const trackVideo = (v) => {
+      if (tracked.has(v)) return;
+      tracked.add(v);
+      setupVideoSpeedTracking(v);
+    };
+
+    // Track existing videos
+    $$("video,audio").forEach(trackVideo);
+
+    // Track future videos
+    const observer = new MutationObserver(() => {
+      $$("video,audio").forEach(trackVideo);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  observeVideos();
+
+  // Periodic sync to DB (every 30s)
+  setInterval(async () => {
+    try {
+      const url = normalizeUrl(location.href);
+      const cache = loadLocalMarkers(url);
+
+      if (!cache.dirty) return; // No changes to sync
+
+      console.log(`[Lianki] Syncing ${Object.keys(cache.markers).length} markers to DB...`);
+
+      await api("/api/fsrs/speed-markers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url, markers: cache.markers }),
+      });
+
+      // Mark as synced
+      saveLocalMarkers(url, cache.markers, false); // dirty = false
+      console.log("[Lianki] Sync complete");
+    } catch (err) {
+      console.error("[Lianki] Sync failed:", err);
+      // Keep dirty flag, will retry in 30s
+    }
+  }, 30_000); // 30 seconds
+
+  // Mobile floating buttons (draggable, touch devices)
+  (function createTouchUI() {
+    const container = document.createElement("div");
+    container.style.cssText = [
+      "position:fixed",
+      "bottom:80px",
+      "left:50%",
+      "transform:translateX(-50%)",
+      "display:flex",
+      "gap:12px",
+      "z-index:2147483647",
+      "user-select:none",
+      "touch-action:none",
+    ].join(";");
+
+    let isDrag = false,
+      dragging = false;
+    let startX = 0,
+      startY = 0,
+      startLeft = 0,
+      startTop = 0;
+
+    const makeBtn = (text, action) => {
+      const btn = document.createElement("button");
+      btn.textContent = text;
+      btn.style.cssText = [
+        "padding:14px 24px",
+        "border-radius:999px",
+        "border:none",
+        "background:rgba(0,0,0,0.55)",
+        "color:white",
+        "font-size:17px",
+        "font-weight:bold",
+        "cursor:pointer",
+        "touch-action:manipulation",
+        "backdrop-filter:blur(6px)",
+        "-webkit-backdrop-filter:blur(6px)",
+        "box-shadow:0 2px 12px rgba(0,0,0,0.3)",
+      ].join(";");
+      btn.addEventListener("click", (e) => {
+        if (isDrag) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        action();
+      });
+      return btn;
+    };
+
+    container.append(
+      makeBtn("⏪ Pardon", () => pardon(-3, 0.7)),
+      makeBtn("⏩ Faster", () => pardon(0, 1.2)),
+    );
+
+    const initDrag = (clientX, clientY) => {
+      isDrag = false;
+      dragging = true;
+      const r = container.getBoundingClientRect();
+      startX = clientX;
+      startY = clientY;
+      startLeft = r.left;
+      startTop = r.top;
+      container.style.transform = "none";
+      container.style.bottom = "auto";
+      container.style.left = startLeft + "px";
+      container.style.top = startTop + "px";
+    };
+    const moveDrag = (clientX, clientY) => {
+      if (!dragging) return;
+      const dx = clientX - startX,
+        dy = clientY - startY;
+      if (!isDrag && Math.abs(dx) + Math.abs(dy) > 6) {
+        isDrag = true;
+        // Snap so the container centre sits exactly under the finger/cursor.
+        const r = container.getBoundingClientRect();
+        startLeft = clientX - r.width / 2;
+        startTop = clientY - r.height / 2;
+        startX = clientX;
+        startY = clientY;
+      }
+      if (isDrag) {
+        container.style.left = startLeft + (clientX - startX) + "px";
+        container.style.top = startTop + (clientY - startY) + "px";
+      }
+    };
+    const stopDrag = () => {
+      dragging = false;
+    };
+
+    container.addEventListener(
+      "touchstart",
+      (e) => initDrag(e.touches[0].clientX, e.touches[0].clientY),
+      { passive: true },
+    );
+    container.addEventListener(
+      "touchmove",
+      (e) => {
+        if (dragging) {
+          e.preventDefault();
+          moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      },
+      { passive: false },
+    );
+    container.addEventListener("touchend", stopDrag, { passive: true });
+    container.addEventListener("mousedown", (e) => {
+      initDrag(e.clientX, e.clientY);
+      const onMove = (e) => moveDrag(e.clientX, e.clientY);
+      const onUp = () => {
+        stopDrag();
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+
+    const show = () => {
+      container.style.display = "flex";
+    };
+    const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    container.style.display = isTouchDevice ? "flex" : "none";
+    if (!isTouchDevice) document.addEventListener("touchstart", show, { once: true });
+
+    document.body.appendChild(container);
   })();
 
   // ── Cleanup ────────────────────────────────────────────────────────────────

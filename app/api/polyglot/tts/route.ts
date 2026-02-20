@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { authEmail } from "@/app/signInEmail";
 
-export const runtime = "edge";
-
 export async function POST(req: NextRequest) {
   try {
     await authEmail(); // Require authentication

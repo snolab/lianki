@@ -185,8 +185,92 @@ export default function PolyglotPage() {
   };
 
   const generateRow = async (questionId: string) => {
-    for (const lang of selectedLanguages) {
-      await generateCell(questionId, lang.code);
+    const question = questions.find((q) => q.id === questionId);
+    const answer = answers[questionId];
+    if (!question || !answer?.trim()) return;
+
+    // Mark row as generating
+    const rowKey = `row-${questionId}`;
+    setGeneratingCell(rowKey);
+
+    try {
+      // Generate all translations in parallel
+      const cellPromises = selectedLanguages.map(async (lang) => {
+        try {
+          // Translate question and answer
+          const translationResponse = await fetch("/api/polyglot/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              question: question.text,
+              answer,
+              targetLanguage: lang.code,
+              sourceLanguage: motherTongue?.code || "en-US",
+            }),
+          });
+
+          const { translatedQuestion, translatedAnswer } = await translationResponse.json();
+
+          // Generate TTS for question
+          const questionAudioResponse = await fetch("/api/polyglot/tts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: translatedQuestion,
+              language: lang.code,
+            }),
+          });
+          const questionBlob = await questionAudioResponse.blob();
+          const questionAudioUrl = URL.createObjectURL(questionBlob);
+
+          // Generate TTS for answer
+          const answerAudioResponse = await fetch("/api/polyglot/tts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: translatedAnswer,
+              language: lang.code,
+            }),
+          });
+          const answerBlob = await answerAudioResponse.blob();
+          const answerAudioUrl = URL.createObjectURL(answerBlob);
+
+          return {
+            langCode: lang.code,
+            data: {
+              question: translatedQuestion,
+              answer: translatedAnswer,
+              questionAudioUrl,
+              answerAudioUrl,
+            },
+          };
+        } catch (error) {
+          console.error(`Error generating cell for ${lang.code}:`, error);
+          return null;
+        }
+      });
+
+      // Wait for all cells to be generated
+      const results = await Promise.all(cellPromises);
+
+      // Update matrix with all new cells in a single state update
+      setMatrix((prev) => {
+        const newRow: CellData = { ...prev[questionId] };
+        results.forEach((result) => {
+          if (result) {
+            newRow[result.langCode] = result.data;
+          }
+        });
+        return {
+          ...prev,
+          [questionId]: newRow,
+        };
+      });
+    } catch (error) {
+      console.error("Error generating row:", error);
+      alert("Failed to generate row. Please try again.");
+    } finally {
+      setGeneratingCell(null);
     }
   };
 
@@ -376,98 +460,108 @@ export default function PolyglotPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {categoryQuestions.map((question) => (
-                    <tr key={question.id}>
-                      <td className="border border-gray-300 dark:border-gray-700 p-3 bg-white dark:bg-gray-900 sticky left-0 z-10">
-                        <div className="font-semibold mb-2">{question.text}</div>
-                        <input
-                          type="text"
-                          placeholder={`Answer in ${motherTongue?.nativeName}...`}
-                          value={answers[question.id] || ""}
-                          onChange={(e) =>
-                            setAnswers((prev) => ({ ...prev, [question.id]: e.target.value }))
-                          }
-                          className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-600 text-sm"
-                        />
-                        {answers[question.id]?.trim() && (
-                          <button
-                            onClick={() => generateRow(question.id)}
-                            className="mt-2 text-sm text-blue-600 hover:underline"
-                          >
-                            Generate Row
-                          </button>
-                        )}
-                      </td>
-                      {selectedLanguages.map((lang) => {
-                        const cellData = matrix[question.id]?.[lang.code];
-                        const cellKey = `${question.id}-${lang.code}`;
-                        const isGenerating = generatingCell === cellKey;
+                  {categoryQuestions.map((question) => {
+                    const rowKey = `row-${question.id}`;
+                    const isRowGenerating = generatingCell === rowKey;
 
-                        return (
-                          <td
-                            key={lang.code}
-                            className="border border-gray-300 dark:border-gray-700 p-3"
-                          >
-                            {isGenerating ? (
-                              <div className="text-center text-gray-500">Generating...</div>
-                            ) : cellData ? (
-                              <div className="space-y-2">
-                                <div className="flex items-start gap-2">
-                                  <div className="flex-1">
-                                    <div className="text-xs text-gray-500 mb-1">Q:</div>
-                                    <div className="text-sm">{cellData.question}</div>
+                    return (
+                      <tr key={question.id}>
+                        <td className="border border-gray-300 dark:border-gray-700 p-3 bg-white dark:bg-gray-900 sticky left-0 z-10">
+                          <div className="font-semibold mb-2">{question.text}</div>
+                          <input
+                            type="text"
+                            placeholder={`Answer in ${motherTongue?.nativeName}...`}
+                            value={answers[question.id] || ""}
+                            onChange={(e) =>
+                              setAnswers((prev) => ({ ...prev, [question.id]: e.target.value }))
+                            }
+                            className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-600 text-sm"
+                          />
+                          {answers[question.id]?.trim() && (
+                            <button
+                              onClick={() => generateRow(question.id)}
+                              disabled={isRowGenerating}
+                              className="mt-2 text-sm text-blue-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {isRowGenerating ? "Generating..." : "Generate Row"}
+                            </button>
+                          )}
+                        </td>
+                        {selectedLanguages.map((lang) => {
+                          const cellData = matrix[question.id]?.[lang.code];
+                          const cellKey = `${question.id}-${lang.code}`;
+                          const rowKey = `row-${question.id}`;
+                          const isGenerating =
+                            generatingCell === cellKey || generatingCell === rowKey;
+
+                          return (
+                            <td
+                              key={lang.code}
+                              className="border border-gray-300 dark:border-gray-700 p-3"
+                            >
+                              {isGenerating ? (
+                                <div className="text-center text-gray-500">Generating...</div>
+                              ) : cellData ? (
+                                <div className="space-y-2">
+                                  <div className="flex items-start gap-2">
+                                    <div className="flex-1">
+                                      <div className="text-xs text-gray-500 mb-1">Q:</div>
+                                      <div className="text-sm">{cellData.question}</div>
+                                    </div>
+                                    {cellData.questionAudioUrl && (
+                                      <button
+                                        onClick={() => {
+                                          const audio = new Audio(cellData.questionAudioUrl!);
+                                          audio.play();
+                                        }}
+                                        className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded text-xs hover:bg-blue-200 dark:hover:bg-blue-800"
+                                      >
+                                        ▶ Q
+                                      </button>
+                                    )}
                                   </div>
-                                  {cellData.questionAudioUrl && (
-                                    <button
-                                      onClick={() => {
-                                        const audio = new Audio(cellData.questionAudioUrl!);
-                                        audio.play();
-                                      }}
-                                      className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded text-xs hover:bg-blue-200 dark:hover:bg-blue-800"
-                                    >
-                                      ▶ Q
-                                    </button>
-                                  )}
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <div className="flex-1">
-                                    <div className="text-xs text-gray-500 mb-1">A:</div>
-                                    <div className="text-sm font-semibold">{cellData.answer}</div>
+                                  <div className="flex items-start gap-2">
+                                    <div className="flex-1">
+                                      <div className="text-xs text-gray-500 mb-1">A:</div>
+                                      <div className="text-sm font-semibold">{cellData.answer}</div>
+                                    </div>
+                                    {cellData.answerAudioUrl && (
+                                      <button
+                                        onClick={() => {
+                                          const audio = new Audio(cellData.answerAudioUrl!);
+                                          audio.play();
+                                        }}
+                                        className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded text-xs hover:bg-green-200 dark:hover:bg-green-800"
+                                      >
+                                        ▶ A
+                                      </button>
+                                    )}
                                   </div>
-                                  {cellData.answerAudioUrl && (
-                                    <button
-                                      onClick={() => {
-                                        const audio = new Audio(cellData.answerAudioUrl!);
-                                        audio.play();
-                                      }}
-                                      className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded text-xs hover:bg-green-200 dark:hover:bg-green-800"
-                                    >
-                                      ▶ A
-                                    </button>
-                                  )}
+                                  <button
+                                    onClick={() => generateCell(question.id, lang.code)}
+                                    className="text-xs text-gray-500 hover:underline"
+                                  >
+                                    Regenerate
+                                  </button>
                                 </div>
+                              ) : answers[question.id]?.trim() ? (
                                 <button
                                   onClick={() => generateCell(question.id, lang.code)}
-                                  className="text-xs text-gray-500 hover:underline"
+                                  className="w-full py-2 text-sm bg-gray-100 dark:bg-gray-800 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
                                 >
-                                  Regenerate
+                                  Generate
                                 </button>
-                              </div>
-                            ) : answers[question.id]?.trim() ? (
-                              <button
-                                onClick={() => generateCell(question.id, lang.code)}
-                                className="w-full py-2 text-sm bg-gray-100 dark:bg-gray-800 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-                              >
-                                Generate
-                              </button>
-                            ) : (
-                              <div className="text-center text-gray-400 text-sm">Answer first</div>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
+                              ) : (
+                                <div className="text-center text-gray-400 text-sm">
+                                  Answer first
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

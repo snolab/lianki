@@ -1,9 +1,10 @@
 import { auth } from "@/auth";
+import { headers } from "next/headers";
 import { authUser } from "../signInEmail";
 
 export default async function ProfilePage() {
   const user = await authUser();
-  const session = await auth();
+  const session = await auth.api.getSession({ headers: await headers() });
 
   return (
     <div>

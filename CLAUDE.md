@@ -11,7 +11,7 @@ Spaced repetition app (FSRS algorithm) built with Next.js 15. Renamed from FSRSN
 
 ## Stack
 
-- **Framework**: Next.js 15 App Router, TypeScript
+- **Framework**: Next.js 16 App Router (Turbopack), TypeScript
 - **Package manager**: Bun
 - **Database**: MongoDB (env: `MONGODB_URI`)
 - **Auth**: NextAuth.js v5 — Email, GitHub, Google OAuth
@@ -60,3 +60,37 @@ Credentials (`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`) are shared between `fsrsne
 
 - `https://lianki.com/api/auth/callback/google`
 - `https://www.lianki.com/api/auth/callback/google`
+
+## Workflow Reminders
+
+### After Every Push
+
+**ALWAYS check CI/deployment status immediately after pushing:**
+
+```bash
+# Check GitHub Actions CI status
+gh run list --branch main --limit 5
+
+# Check Vercel deployment status
+vercel ls | head -20
+
+# Inspect failed deployment
+vercel inspect <deployment-url>
+
+# Check what's live in production
+curl -s https://www.lianki.com/lianki.user.js | grep '@version'
+```
+
+**Common failure modes:**
+
+- Vercel build fails (check logs with `vercel logs <url>`)
+- Edge runtime incompatibility (e.g., Node.js `crypto` module not available)
+- TypeScript errors (enable type checking in build)
+- Missing environment variables
+
+**If deployment fails:**
+
+1. Check build logs via Vercel dashboard or CLI
+2. Fix the issue locally
+3. Test build with `bun run build`
+4. Push fix and verify deployment succeeds

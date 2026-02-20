@@ -24,6 +24,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(`${pathname}/blog`, request.url));
   }
 
+  // Skip intlayer middleware for routes with explicit locale prefixes
+  // (prevents redirect loop: /blog → /en/blog → /blog)
+  if (pathname.match(/^\/(en|zh|ja)\//)) {
+    return NextResponse.next();
+  }
+
   // Intlayer: detect locale from Accept-Language / cookie, set locale cookie (noPrefix mode)
   return intlayerMiddleware(request);
 }

@@ -28,6 +28,7 @@ export type FSRSNote = {
   url: string;
   title?: string;
   card: Card;
+  speedMarkers?: Record<number, number>; // {timestamp: speed}
 };
 
 // export const runtime = "edge";
@@ -125,7 +126,19 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         (await getQueryNote(req, options)) ?? DIE("note not found"),
         rating as Grade,
       );
-      return JSONR({ ok: true, due: dueMs(reviewedCard.card.due) });
+
+      // Include next URL in response to save an API call
+      const nextNote = await FSRSNotes.findOne(
+        { "card.due": { $lte: new Date() } },
+        { sort: { "card.due": 1 } },
+      );
+
+      return JSONR({
+        ok: true,
+        due: dueMs(reviewedCard.card.due),
+        nextUrl: nextNote?.url ?? null,
+        nextTitle: nextNote?.title ?? null,
+      });
     },
     "GET /api/fsrs/delete(?:/|$|\\?)": async (req, opt) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
@@ -141,6 +154,27 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         { $set: { url: normalizeUrl(newUrl) } },
       );
       return JSONR({ ok: result.matchedCount > 0 });
+    },
+    "POST /api/fsrs/speed-markers(?:/|$|\\?)": async (req) => {
+      const { url, markers } = z
+        .object({
+          url: z.string(),
+          markers: z.record(z.number(), z.number()),
+        })
+        .parse(await req.json());
+      const normalized = normalizeUrl(url);
+      await FSRSNotes.updateOne(
+        { url: normalized },
+        { $set: { speedMarkers: markers } },
+        { upsert: true },
+      );
+      return JSONR({ ok: true });
+    },
+    "GET /api/fsrs/speed-markers(?:/|$|\\?)": async (req, opts) => {
+      const { url } = getParams(req, opts);
+      const normalized = normalizeUrl(url);
+      const note = await FSRSNotes.findOne({ url: normalized });
+      return JSONR({ markers: note?.speedMarkers ?? {} });
     },
     "GET /next": async () =>
       new Response(
@@ -392,6 +426,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       { $set: { card }, $push: { log } },
       { returnDocument: "after", upsert: true },
     ))!;
+    // TODO: Add cache invalidation for heatmap after review
+    // The cache will auto-revalidate every hour (see heatmap-cache.ts)
   }
 
   async function JSONR<T>(data: T | Promise<T>) {
@@ -413,7 +449,18 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     const { url, title } = zAddNote.parse(input);
     const resp = await saveNote({ url, title: title ?? undefined });
     console.log({ resp });
-    return resp;
+
+    // Include review options in response to save an API call
+    const repeatRecord = fsrs().repeat(resp.card, new Date());
+    const options = ([Rating.Again, Rating.Hard, Rating.Good, Rating.Easy] as const).map(
+      (rating, i) => ({
+        rating,
+        label: ["Again", "Hard", "Good", "Easy"][i],
+        due: dueMs(repeatRecord[rating].card.due),
+      }),
+    );
+
+    return { ...resp, options };
   }
   async function saveQueryNote(req: Request, options?: { params?: Record<string, string> }) {
     const params = getParams(req, options);

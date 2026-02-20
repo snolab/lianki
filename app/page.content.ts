@@ -7,7 +7,7 @@ const landingContent = {
 
     nav: {
       blog: t({ en: "Blog", zh: "博客", ja: "ブログ" }),
-      goToApp: t({ en: "Go to App", zh: "进入应用", ja: "アプリへ" }),
+      learn: t({ en: "Learn", zh: "学习", ja: "学ぶ" }),
     },
 
     hero: {
