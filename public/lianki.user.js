@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.7.2
+// @version     2.8.0
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . to control video speed with difficulty markers.
 // @run-at      document-end
@@ -679,6 +679,28 @@ function main() {
   // Speed map: WeakMap<videoElement, Map<timestamp, speed>>
   const videoSpeedMaps = new WeakMap();
 
+  // GM_setValue cache helpers for persistent storage
+  const markerCacheKey = (url) => `lk:markers:${normalizeUrl(url)}`;
+
+  function loadLocalMarkers(url) {
+    try {
+      const raw = GM_getValue(markerCacheKey(url), "");
+      if (!raw) return { markers: {}, lastSync: 0, dirty: false };
+      return JSON.parse(raw);
+    } catch {
+      return { markers: {}, lastSync: 0, dirty: false };
+    }
+  }
+
+  function saveLocalMarkers(url, markers, dirty = true) {
+    const cache = {
+      markers,
+      lastSync: dirty ? loadLocalMarkers(url).lastSync : Date.now(),
+      dirty,
+    };
+    GM_setValue(markerCacheKey(url), JSON.stringify(cache));
+  }
+
   async function pardon(dt = 0, speedMultiplier = 1, wait = 0) {
     const vs = $$("video,audio");
     const v = vs.filter((e) => !e.paused)[0];
@@ -693,9 +715,7 @@ function main() {
       for (const [existingTime] of speedMap) {
         if (Math.abs(time - existingTime) < MERGE_THRESHOLD) {
           speedMap.delete(existingTime);
-          console.log(
-            `[Lianki] Merged marker: ${renderTime(existingTime)} @ ${renderTime(time)}`,
-          );
+          console.log(`[Lianki] Merged marker: ${renderTime(existingTime)} @ ${renderTime(time)}`);
         }
       }
     };
@@ -719,6 +739,11 @@ function main() {
       console.log(
         `[Lianki] Speed marker: ${renderTime(v.currentTime)} → ${renderSpeed(v.playbackRate)}`,
       );
+
+      // Save to local cache (GM_setValue)
+      const url = normalizeUrl(location.href);
+      const markers = Object.fromEntries(speedMap);
+      saveLocalMarkers(url, markers, true); // dirty = true
     }
 
     centerTooltip(
@@ -757,6 +782,42 @@ function main() {
 
   // Auto-adjust speed at marked timestamps
   function setupVideoSpeedTracking(video) {
+    const url = normalizeUrl(location.href);
+
+    // Load markers from DB → GM_setValue → WeakMap
+    (async () => {
+      try {
+        const local = loadLocalMarkers(url);
+
+        // Always fetch from DB for cross-device sync
+        const { markers } = await api(`/api/fsrs/speed-markers?url=${encodeURIComponent(url)}`);
+
+        // Merge: server wins for conflicts, use latest
+        const merged = { ...local.markers, ...markers };
+
+        // Save to local cache
+        saveLocalMarkers(url, merged, false); // not dirty, just synced
+
+        // Load into WeakMap for this video
+        if (!videoSpeedMaps.has(video)) videoSpeedMaps.set(video, new Map());
+        const speedMap = videoSpeedMaps.get(video);
+        for (const [timestamp, speed] of Object.entries(merged)) {
+          speedMap.set(parseFloat(timestamp), speed);
+        }
+
+        console.log(`[Lianki] Loaded ${Object.keys(merged).length} speed markers for ${url}`);
+      } catch (err) {
+        console.error("[Lianki] Failed to load speed markers:", err);
+        // Fall back to local cache
+        const local = loadLocalMarkers(url);
+        if (!videoSpeedMaps.has(video)) videoSpeedMaps.set(video, new Map());
+        const speedMap = videoSpeedMaps.get(video);
+        for (const [timestamp, speed] of Object.entries(local.markers)) {
+          speedMap.set(parseFloat(timestamp), speed);
+        }
+      }
+    })();
+
     let lastCheckedTime = 0;
 
     video.addEventListener("timeupdate", () => {
@@ -807,6 +868,31 @@ function main() {
   }
 
   observeVideos();
+
+  // Periodic sync to DB (every 30s)
+  setInterval(async () => {
+    try {
+      const url = normalizeUrl(location.href);
+      const cache = loadLocalMarkers(url);
+
+      if (!cache.dirty) return; // No changes to sync
+
+      console.log(`[Lianki] Syncing ${Object.keys(cache.markers).length} markers to DB...`);
+
+      await api("/api/fsrs/speed-markers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url, markers: cache.markers }),
+      });
+
+      // Mark as synced
+      saveLocalMarkers(url, cache.markers, false); // dirty = false
+      console.log("[Lianki] Sync complete");
+    } catch (err) {
+      console.error("[Lianki] Sync failed:", err);
+      // Keep dirty flag, will retry in 30s
+    }
+  }, 30_000); // 30 seconds
 
   // Mobile floating buttons (draggable, touch devices)
   (function createTouchUI() {

@@ -28,6 +28,7 @@ export type FSRSNote = {
   url: string;
   title?: string;
   card: Card;
+  speedMarkers?: Record<number, number>; // {timestamp: speed}
 };
 
 // export const runtime = "edge";
@@ -141,6 +142,27 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         { $set: { url: normalizeUrl(newUrl) } },
       );
       return JSONR({ ok: result.matchedCount > 0 });
+    },
+    "POST /api/fsrs/speed-markers(?:/|$|\\?)": async (req) => {
+      const { url, markers } = z
+        .object({
+          url: z.string(),
+          markers: z.record(z.number(), z.number()),
+        })
+        .parse(await req.json());
+      const normalized = normalizeUrl(url);
+      await FSRSNotes.updateOne(
+        { url: normalized },
+        { $set: { speedMarkers: markers } },
+        { upsert: true },
+      );
+      return JSONR({ ok: true });
+    },
+    "GET /api/fsrs/speed-markers(?:/|$|\\?)": async (req, opts) => {
+      const { url } = getParams(req, opts);
+      const normalized = normalizeUrl(url);
+      const note = await FSRSNotes.findOne({ url: normalized });
+      return JSONR({ markers: note?.speedMarkers ?? {} });
     },
     "GET /next": async () =>
       new Response(
