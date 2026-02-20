@@ -76,9 +76,14 @@ export function StreamingTranslation({ locale, slug }: StreamingTranslationProps
     );
   }
 
+  // Strip markdown code fence if present (API returns ```markdown\n...\n```)
+  const cleanedContent = content
+    .replace(/^```markdown\s*\n?/, "") // Remove opening fence
+    .replace(/\n?```\s*$/, ""); // Remove closing fence
+
   return (
     <div className="streaming-translation">
-      <Streamdown>{content}</Streamdown>
+      <Streamdown>{cleanedContent}</Streamdown>
       {isStreaming && (
         <span className="inline-block w-2 h-5 bg-blue-600 animate-pulse ml-1">▊</span>
       )}

@@ -21,7 +21,7 @@ If you're learning Japanese, you're probably familiar with the challenge of bala
 
 **Modern ML-based SRS**: Instead of the old SM-2 algorithm from the 1980s, jpdb uses a machine-learning approach that handles lapses and irregular reviews more intelligently.
 
-**Custom Kanji Keywords**: Similar to Heisig's *Remembering the Kanji*, but with manually curated, better keywords for thousands of kanji.
+**Custom Kanji Keywords**: Similar to Heisig's _Remembering the Kanji_, but with manually curated, better keywords for thousands of kanji.
 
 ## What Does Lianki Provide?
 
@@ -85,7 +85,7 @@ Here's the magic combination: **Add `https://jpdb.io/review` as a Lianki card.**
 
 **Frictionless Integration**: Because jpdb.io/review is just another card in your Lianki queue, you don't need to context-switch between tools or maintain separate study schedules.
 
-**Gamification**: Both systems use SRS, but Lianki's inline review UI and keyboard shortcuts make the *process* of reviewing feel more fluid and game-like.
+**Gamification**: Both systems use SRS, but Lianki's inline review UI and keyboard shortcuts make the _process_ of reviewing feel more fluid and game-like.
 
 ## Advanced Tips
 
@@ -128,7 +128,7 @@ You can absolutely use Anki for this! But Lianki offers some advantages for imme
 - **URL-based cards**: Designed for web content (articles, videos, manga readers), not isolated facts
 - **Browser integration**: No need to copy/paste — one hotkey adds any page
 - **Lightweight**: No desktop app to install, works everywhere via userscript
-- **Content-first**: Optimized for reviewing *materials* (that teach you vocabulary) rather than individual words
+- **Content-first**: Optimized for reviewing _materials_ (that teach you vocabulary) rather than individual words
 
 jpdb handles the word-level drilling. Lianki handles the content-level repetition. Together, they cover both bases.
 

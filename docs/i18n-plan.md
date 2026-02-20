@@ -19,23 +19,23 @@
 
 Top 15 most spoken languages by total speakers (native + second-language):
 
-| # | Language | Locale Code | Script Direction | Notes |
-|---|----------|-------------|-----------------|-------|
-| 1 | English | `en` | LTR | Default / source language |
-| 2 | Mandarin Chinese | `zh` | LTR | Simplified; `lang="zh-Hans"` on `<html>` |
-| 3 | Hindi | `hi` | LTR | Devanagari script |
-| 4 | Spanish | `es` | LTR | |
-| 5 | French | `fr` | LTR | |
-| 6 | Standard Arabic | `ar` | **RTL** | Requires `dir="rtl"` + mirrored layout |
-| 7 | Bengali | `bn` | LTR | |
-| 8 | Portuguese | `pt` | LTR | Brazilian (`pt-BR`) is the dominant online variant |
-| 9 | Russian | `ru` | LTR | Cyrillic script |
-| 10 | Urdu | `ur` | **RTL** | Naskh script; shares vocabulary with Hindi |
-| 11 | Indonesian | `id` | LTR | Latin script; mutually intelligible with Malay |
-| 12 | German | `de` | LTR | |
-| 13 | Japanese | `ja` | LTR (horizontal) | CJK; may need CJK font fallbacks |
-| 14 | Swahili | `sw` | LTR | Lingua franca of East/Central Africa |
-| 15 | Marathi | `mr` | LTR | Devanagari script (same as Hindi) |
+| #   | Language         | Locale Code | Script Direction | Notes                                              |
+| --- | ---------------- | ----------- | ---------------- | -------------------------------------------------- |
+| 1   | English          | `en`        | LTR              | Default / source language                          |
+| 2   | Mandarin Chinese | `zh`        | LTR              | Simplified; `lang="zh-Hans"` on `<html>`           |
+| 3   | Hindi            | `hi`        | LTR              | Devanagari script                                  |
+| 4   | Spanish          | `es`        | LTR              |                                                    |
+| 5   | French           | `fr`        | LTR              |                                                    |
+| 6   | Standard Arabic  | `ar`        | **RTL**          | Requires `dir="rtl"` + mirrored layout             |
+| 7   | Bengali          | `bn`        | LTR              |                                                    |
+| 8   | Portuguese       | `pt`        | LTR              | Brazilian (`pt-BR`) is the dominant online variant |
+| 9   | Russian          | `ru`        | LTR              | Cyrillic script                                    |
+| 10  | Urdu             | `ur`        | **RTL**          | Naskh script; shares vocabulary with Hindi         |
+| 11  | Indonesian       | `id`        | LTR              | Latin script; mutually intelligible with Malay     |
+| 12  | German           | `de`        | LTR              |                                                    |
+| 13  | Japanese         | `ja`        | LTR (horizontal) | CJK; may need CJK font fallbacks                   |
+| 14  | Swahili          | `sw`        | LTR              | Lingua franca of East/Central Africa               |
+| 15  | Marathi          | `mr`        | LTR              | Devanagari script (same as Hindi)                  |
 
 **RTL languages:** Arabic (`ar`) and Urdu (`ur`) require `dir="rtl"` on the `<html>` element and mirrored Tailwind utilities (`rtl:` variant prefix).
 
@@ -47,34 +47,38 @@ Four candidates evaluated for Next.js 15 App Router:
 
 ### 2.1 Comparison Table
 
-| Criterion | **Intlayer** ✅ | **next-intl** | **i18next + react-i18next** | **Paraglide JS (inlang)** |
-|-----------|--------------|--------------|---------------------------|--------------------------|
-| **Status** | **Currently installed** | Alternative option | Alternative option | Alternative option |
-| **TypeScript safety** | Excellent — inline `t()` with full autocomplete; type-safe content objects | Excellent — `useTranslations` infers keys via TS plugin | Good — types provided; needs codegen for key inference | Excellent — compiler generates typed functions |
+| Criterion                    | **Intlayer** ✅                                                                  | **next-intl**                                                         | **i18next + react-i18next**                                  | **Paraglide JS (inlang)**                              |
+| ---------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------ |
+| **Status**                   | **Currently installed**                                                          | Alternative option                                                    | Alternative option                                           | Alternative option                                     |
+| **TypeScript safety**        | Excellent — inline `t()` with full autocomplete; type-safe content objects       | Excellent — `useTranslations` infers keys via TS plugin               | Good — types provided; needs codegen for key inference       | Excellent — compiler generates typed functions         |
 | **App Router / RSC support** | First-class — `getIntlayer()` works in RSC; `useIntlayer()` in Client Components | First-class — `getTranslations` for RSC; `useTranslations` for Client | Limited — client-only; RSC requires `createInstance` wrapper | Good — generated functions work in both RSC and Client |
-| **Bundle size** | ~15 kB gzip | ~13 kB gzip | ~33 kB gzip | Near-zero (compile-time) |
-| **Content authoring** | Inline TypeScript — translations live in `.content.ts` files next to components | External JSON — `messages/[locale].json` | External JSON — flexible structure | External files — generates functions |
-| **Locale-aware routing** | Built-in middleware + `IntlayerServerProvider` | Built-in `createMiddleware` + locale-aware `Link` | None built-in | None built-in |
-| **Translator tooling** | Intlayer Editor (VS Code extension) + export to JSON/CSV | Works with any JSON editor; Crowdin/Lokalise adapters | Best-in-class integrations | Inlang Editor (VS Code + web IDE) |
-| **Pluralization / ICU** | Full ICU MessageFormat support | Full ICU MessageFormat built-in | Full ICU via `i18next-icu` plugin | Basic plurals; ICU via plugin |
-| **Ecosystem maturity** | Newer; growing; strong Next.js focus | Actively maintained; strong Next.js focus | Most widely used; long track record | Newer; smaller community |
-| **Learning curve** | Low — inline `t()` pattern is intuitive | Low for Next.js developers | Moderate — broad API surface | Low for simple cases |
+| **Bundle size**              | ~15 kB gzip                                                                      | ~13 kB gzip                                                           | ~33 kB gzip                                                  | Near-zero (compile-time)                               |
+| **Content authoring**        | Inline TypeScript — translations live in `.content.ts` files next to components  | External JSON — `messages/[locale].json`                              | External JSON — flexible structure                           | External files — generates functions                   |
+| **Locale-aware routing**     | Built-in middleware + `IntlayerServerProvider`                                   | Built-in `createMiddleware` + locale-aware `Link`                     | None built-in                                                | None built-in                                          |
+| **Translator tooling**       | Intlayer Editor (VS Code extension) + export to JSON/CSV                         | Works with any JSON editor; Crowdin/Lokalise adapters                 | Best-in-class integrations                                   | Inlang Editor (VS Code + web IDE)                      |
+| **Pluralization / ICU**      | Full ICU MessageFormat support                                                   | Full ICU MessageFormat built-in                                       | Full ICU via `i18next-icu` plugin                            | Basic plurals; ICU via plugin                          |
+| **Ecosystem maturity**       | Newer; growing; strong Next.js focus                                             | Actively maintained; strong Next.js focus                             | Most widely used; long track record                          | Newer; smaller community                               |
+| **Learning curve**           | Low — inline `t()` pattern is intuitive                                          | Low for Next.js developers                                            | Moderate — broad API surface                                 | Low for simple cases                                   |
 
 ### 2.2 Pros / Cons Summary
 
 **Intlayer** (currently installed)
+
 - Pros: TypeScript-first; translations live next to components (`.content.ts` files); excellent autocomplete; RSC + Client Component support out of the box; already integrated with blog.
 - Cons: Smaller ecosystem than i18next/next-intl; exporting for translators requires extra tooling; harder for non-developers to contribute translations directly.
 
 **next-intl**
+
 - Pros: Minimal boilerplate for App Router; best RSC/Server Action ergonomics; JSON-based (easier for translators); `createMiddleware` handles locale routing; well-documented.
 - Cons: Slightly smaller ecosystem than i18next; TS key inference requires plugin setup; requires migration from existing Intlayer setup.
 
 **i18next + react-i18next**
+
 - Pros: Largest ecosystem; most translator platform integrations; battle-tested in enterprise apps; flexible for non-Next.js code.
 - Cons: Heaviest bundle; client-side by default (RSC support is awkward); no routing helpers; requires migration from Intlayer.
 
 **Paraglide JS**
+
 - Pros: Zero-cost runtime; best dead-code elimination; fully type-safe without plugins; inlang Editor for translators.
 - Cons: Smaller community; fewer docs for complex interpolation; no built-in routing; unfamiliar function-based API; requires migration.
 
@@ -87,6 +91,7 @@ Four candidates evaluated for Next.js 15 App Router:
 **Recommendation: Continue with Intlayer and expand to 15 locales**
 
 Rationale:
+
 - Intlayer is already integrated and working well for the landing page and blog.
 - The inline `.content.ts` pattern provides excellent TypeScript autocomplete and keeps translations close to components.
 - Expanding from 3→15 locales requires only updating `intlayer.config.ts` and adding translation keys to existing `.content.ts` files.
@@ -163,15 +168,28 @@ lianki/
 ### 4.3 Key Configuration Files (Intlayer)
 
 **`intlayer.config.ts`** (UPDATE: expand locale list)
+
 ```ts
 import type { IntlayerConfig } from "intlayer";
 
 const config: IntlayerConfig = {
   internationalization: {
     locales: [
-      "en", "zh", "hi", "es", "fr", "ar",
-      "bn", "pt", "ru", "ur", "id", "de",
-      "ja", "sw", "mr",
+      "en",
+      "zh",
+      "hi",
+      "es",
+      "fr",
+      "ar",
+      "bn",
+      "pt",
+      "ru",
+      "ur",
+      "id",
+      "de",
+      "ja",
+      "sw",
+      "mr",
     ],
     defaultLocale: "en",
   },
@@ -185,15 +203,28 @@ export default config;
 ```
 
 **`middleware.ts`** (UPDATE: add RTL handling)
+
 ```ts
 import { intlayerMiddleware } from "next-intlayer/middleware";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const BLOG_LOCALES = [
-  "en", "zh", "hi", "es", "fr", "ar",
-  "bn", "pt", "ru", "ur", "id", "de",
-  "ja", "sw", "mr",
+  "en",
+  "zh",
+  "hi",
+  "es",
+  "fr",
+  "ar",
+  "bn",
+  "pt",
+  "ru",
+  "ur",
+  "id",
+  "de",
+  "ja",
+  "sw",
+  "mr",
 ];
 const DEFAULT_LOCALE = "en";
 
@@ -226,6 +257,7 @@ export const config = {
 ```
 
 **`app/[locale]/layout.tsx`** (UPDATE: add RTL + expand lang map)
+
 ```tsx
 import type { Metadata } from "next";
 import { IntlayerServerProvider } from "next-intlayer/server";
@@ -282,6 +314,7 @@ export default async function LocaleLayout({
 ```
 
 **Example: `app/[locale]/page.content.ts`** (Intlayer translation pattern)
+
 ```ts
 import { t, type DeclarationContent } from "intlayer";
 
@@ -307,6 +340,7 @@ export default landingContent;
 ```
 
 **Usage in Server Component** (`app/[locale]/page.tsx`)
+
 ```tsx
 import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
@@ -319,6 +353,7 @@ export default async function Page() {
 ```
 
 **Usage in Client Component** (`app/[locale]/components/ContactForm.tsx`)
+
 ```tsx
 "use client";
 import { useIntlayer } from "next-intlayer";
@@ -432,17 +467,17 @@ All user-facing strings organized by page/component. Listed here as a reference 
 
 ### String Count by Page
 
-| Page / Component | Strings |
-|-----------------|---------|
-| Landing (`page.tsx`) | 15 |
-| Contact form (`ContactForm.tsx`) | 16 |
-| List page (`list/page.tsx`) | 4 |
-| Add-note page | 1 |
-| Profile page | 7 |
-| Logout page | 1 |
-| Common / nav | 7 |
-| Metadata | 2 |
-| **Total** | **~53** |
+| Page / Component                 | Strings |
+| -------------------------------- | ------- |
+| Landing (`page.tsx`)             | 15      |
+| Contact form (`ContactForm.tsx`) | 16      |
+| List page (`list/page.tsx`)      | 4       |
+| Add-note page                    | 1       |
+| Profile page                     | 7       |
+| Logout page                      | 1       |
+| Common / nav                     | 7       |
+| Metadata                         | 2       |
+| **Total**                        | **~53** |
 
 ---
 
@@ -451,31 +486,40 @@ All user-facing strings organized by page/component. Listed here as a reference 
 Steps are ordered by dependency. Each is a discrete, independently mergeable unit.
 
 ### Step 1 — Install next-intl
+
 ```bash
 bun add next-intl
 ```
 
 ### Step 2 — Create i18n configuration
+
 Create `i18n/routing.ts` with the full 15-locale list (see Section 4.2).
 Create `i18n/request.ts` with `getRequestConfig` (see Section 4.2).
 
 ### Step 3 — Create the English source message file
+
 Create `messages/en.json` using the string inventory from Section 5. This is the canonical source.
 
 ### Step 4 — Update `next.config.mjs`
+
 Wrap the export with `createNextIntlPlugin("./i18n/request.ts")`.
 
 ### Step 5 — Replace `middleware.ts`
+
 Replace the current file with the next-intl `createMiddleware` version (see Section 4.2). Preserve the `/blog → /en/blog` redirect logic.
 
 ### Step 6 — Create `app/[locale]/layout.tsx`
+
 Create the full locale layout with `<html lang>`, `dir`, `<body>`, and `<NextIntlClientProvider>`. Import `globals.css` here (remove from root layout).
 
 ### Step 7 — Simplify root `app/layout.tsx`
+
 Remove `<html>` and `<body>` — they now live in the locale layout. Reduce to a fragment wrapper.
 
 ### Step 8 — Move routes under `app/[locale]/`
+
 Move each page to its locale-prefixed path:
+
 - `app/page.tsx` → `app/[locale]/page.tsx`
 - `app/list/page.tsx` → `app/[locale]/list/page.tsx`
 - `app/add-note/page.tsx` → `app/[locale]/add-note/page.tsx`
@@ -483,6 +527,7 @@ Move each page to its locale-prefixed path:
 - `app/auth/logout/page.tsx` → `app/[locale]/auth/logout/page.tsx`
 
 ### Step 9 — Translate Server Components
+
 In each RSC page, replace hardcoded strings with `getTranslations`:
 
 ```tsx
@@ -495,6 +540,7 @@ export default async function LandingPage() {
 ```
 
 ### Step 10 — Translate Client Components
+
 In `ContactForm.tsx`, use `useTranslations`:
 
 ```tsx
@@ -508,6 +554,7 @@ export default function ContactForm() {
 ```
 
 ### Step 11 — Update all internal links
+
 Replace bare `href="/list"` etc. with next-intl's locale-aware `Link` and `redirect`:
 
 ```tsx
@@ -516,31 +563,41 @@ import { Link } from "@/i18n/routing"; // locale-prefixed automatically
 ```
 
 ### Step 12 — Add locale-aware metadata per page
+
 In each page's `generateMetadata`, use translated strings and hreflang alternates (see Section 8).
 
 ### Step 13 — Add RTL CSS support
+
 In `tailwind.config.ts`, ensure the `rtl:` variant is enabled (Tailwind v3 includes it by default when content paths are set). Add any custom RTL overrides to `app/globals.css`.
 
 ### Step 14 — Add locale switcher UI component
+
 Create `app/[locale]/components/LocaleSwitcher.tsx`. Render locale links in the landing page header and the list page nav. On locale change, set the `NEXT_LOCALE` cookie and navigate.
 
 ### Step 15 — Bootstrap machine translations
+
 Run `scripts/translate-messages.ts` (using DeepL API for European languages and Japanese; Google Cloud Translation for South/Southeast Asian languages and Swahili) to generate initial `messages/[locale].json` for all 14 non-English locales.
 
 ### Step 16 — Add CI translation completeness check
+
 Create `scripts/check-translations.ts` — fails the build if any locale JSON is missing keys present in `en.json`. Wire into `package.json` scripts and GitHub Actions.
 
 ### Step 17 — Update sitemap
+
 Create or update `app/sitemap.ts` to include all locale variants of every route (see Section 8).
 
 ### Step 18 — Verify TypeScript
+
 ```bash
 bun typecheck
 ```
+
 Resolve any type errors introduced by the `params: Promise<{ locale: string }>` pattern.
 
 ### Step 19 — Smoke test all 15 locales
+
 Run `bun dev` and verify:
+
 - `/en/`, `/zh/`, `/ar/`, `/ur/` load correctly
 - RTL layout is applied for Arabic and Urdu
 - Locale switcher navigates correctly and persists the cookie
@@ -558,6 +615,7 @@ Use automated translation to generate all 14 non-English locale files from `mess
 **Google Cloud Translation** (preferred for): `zh`, `hi`, `bn`, `ur`, `ar`, `sw`, `mr`
 
 Script approach (`scripts/translate-messages.ts`):
+
 1. Read `messages/en.json`
 2. For each target locale, call the appropriate API
 3. Write output to `messages/[locale].json`
@@ -567,13 +625,13 @@ Script approach (`scripts/translate-messages.ts`):
 
 Prioritize by expected traffic and SRS tool adoption:
 
-| Priority | Locales | Rationale |
-|----------|---------|-----------|
-| High | `zh`, `ja` | Large diaspora + highest Anki/SRS usage |
-| High | `es`, `de`, `fr`, `pt` | Large, tech-literate audiences |
-| Medium | `hi`, `id`, `ru` | Large populations with growing SRS interest |
-| Medium | `ar`, `ur` | RTL complexity requires layout review |
-| Lower | `bn`, `sw`, `mr` | Lower expected traffic initially |
+| Priority | Locales                | Rationale                                   |
+| -------- | ---------------------- | ------------------------------------------- |
+| High     | `zh`, `ja`             | Large diaspora + highest Anki/SRS usage     |
+| High     | `es`, `de`, `fr`, `pt` | Large, tech-literate audiences              |
+| Medium   | `hi`, `id`, `ru`       | Large populations with growing SRS interest |
+| Medium   | `ar`, `ur`             | RTL complexity requires layout review       |
+| Lower    | `bn`, `sw`, `mr`       | Lower expected traffic initially            |
 
 ### Phase 3 — Community Contributions
 
@@ -615,6 +673,7 @@ return {
 ### Per-Locale Metadata
 
 Each locale's JSON should include a translated `meta.description`. Example `messages/zh.json`:
+
 ```json
 {
   "meta": {
@@ -623,6 +682,7 @@ Each locale's JSON should include a translated `meta.description`. Example `mess
   }
 }
 ```
+
 Translated descriptions improve click-through rates in non-English search results.
 
 ### XML Sitemap
@@ -642,7 +702,7 @@ export default function sitemap() {
       lastModified: new Date(),
       changeFrequency: "weekly" as const,
       priority: route === "/" ? 1.0 : 0.8,
-    }))
+    })),
   );
 }
 ```
