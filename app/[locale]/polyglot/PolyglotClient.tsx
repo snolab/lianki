@@ -210,7 +210,7 @@ export default function PolyglotClient() {
       setMatrix((prev) => ({
         ...prev,
         [questionId]: {
-          ...prev[questionId],
+          ...(prev[questionId] || {}),
           [langCode]: {
             question: translatedQuestion,
             answer: translatedAnswer,
