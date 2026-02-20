@@ -16,8 +16,8 @@ export default async function LandingPage() {
             <a href="/en/blog" className="text-lg font-medium hover:underline">
               {nav.blog}
             </a>
-            <a href="/self-intro" className="text-lg font-medium hover:underline">
-              Self-Intro
+            <a href="/polyglot" className="text-lg font-medium hover:underline">
+              Polyglot
             </a>
             <a href="/list" className="text-lg font-medium hover:underline">
               {nav.goToApp}
