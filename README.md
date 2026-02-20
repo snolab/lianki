@@ -9,7 +9,8 @@ A modern spaced repetition learning system built with Next.js 15, implementing t
 - Keyboard shortcuts for quick reviews (1-5 for ratings, HJKL/ASDT navigation)
 - Browser integration via userscript (Tampermonkey/Violentmonkey)
 - Automatic card scheduling based on difficulty
-- Japanese/JLPT content prioritization
+- Multilingual support (English, Chinese, Japanese)
+- AI-powered blog post auto-translation (powered by OpenAI GPT-4o)
 - Review tracking and statistics
 
 ## Live Demo
@@ -74,6 +75,9 @@ AUTH_GITHUB_ID=your-github-client-id
 AUTH_GITHUB_SECRET=your-github-client-secret
 AUTH_GOOGLE_ID=your-google-client-id
 AUTH_GOOGLE_SECRET=your-google-client-secret
+
+# Optional - Blog Auto-Translation (AI-powered)
+OPENAI_API_KEY=sk-proj-your-openai-api-key
 ```
 
 ### 4. Run the development server

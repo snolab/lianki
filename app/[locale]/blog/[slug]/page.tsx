@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Suspense } from "react";
-import { getPost, getRawPost, getAllSlugs, parsePost, blogLocaleDir, type Post } from "@/lib/blog";
-import { translatePost } from "@/lib/translate";
-import { commitFile } from "@/lib/github-commit";
+import { getPost, getRawPost, getAllSlugs } from "@/lib/blog";
+import { StreamingTranslation } from "../StreamingTranslation";
 
 export const revalidate = 3600;
 
@@ -24,29 +23,6 @@ function dateLocale(locale: string): string {
 export async function generateStaticParams() {
   const slugs = await getAllSlugs();
   return LOCALES.flatMap((locale) => slugs.map((slug) => ({ locale, slug })));
-}
-
-async function resolvePost(
-  locale: string,
-  slug: string,
-): Promise<{ post: Post; translated: boolean }> {
-  const existing = await getPost(locale, slug);
-  if (existing) return { post: existing, translated: false };
-
-  if (locale === "en") notFound();
-
-  const enRaw = await getRawPost("en", slug);
-  if (!enRaw) notFound();
-
-  const translatedRaw = await translatePost(enRaw, locale);
-
-  // Commit back non-blocking — don't await
-  const dir = blogLocaleDir(locale);
-  commitFile(`blog/${dir}/${slug}.md`, translatedRaw, `auto: translate ${slug} to ${locale}`).catch(
-    (err) => console.error("commit translation failed:", err),
-  );
-
-  return { post: parsePost(translatedRaw, slug), translated: true };
 }
 
 function PostSkeleton() {
@@ -76,47 +52,95 @@ function PostSkeleton() {
 }
 
 async function PostContent({ locale, slug }: { locale: string; slug: string }) {
-  const { post, translated } = await resolvePost(locale, slug);
+  // For English, render directly (no translation needed)
+  if (locale === "en") {
+    const post = await getPost("en", slug);
+    if (!post) notFound();
 
-  return (
-    <article>
-      <header className="mb-8">
-        <time className="text-sm text-gray-400">
-          {post.date
-            ? new Date(post.date).toLocaleDateString(dateLocale(locale), {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })
-            : ""}
-        </time>
-        <h1 className="text-3xl font-bold mt-2">{post.title}</h1>
-        {post.tags.length > 0 && (
-          <div className="flex gap-2 mt-3 flex-wrap">
-            {post.tags.map((tag) => (
-              <span
-                key={tag}
-                className="text-xs px-2 py-0.5 bg-gray-100 rounded-full text-gray-600"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-        {translated && (
-          <p className="mt-3 text-xs text-amber-600 bg-amber-50 px-3 py-1 rounded">
-            Auto-translated · Committed to repo for future visits
+    return (
+      <article>
+        <header className="mb-8">
+          <time className="text-sm text-gray-400">
+            {post.date
+              ? new Date(post.date).toLocaleDateString(dateLocale(locale), {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })
+              : ""}
+          </time>
+          <h1 className="text-3xl font-bold mt-2">{post.title}</h1>
+          {post.tags.length > 0 && (
+            <div className="flex gap-2 mt-3 flex-wrap">
+              {post.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="text-xs px-2 py-0.5 bg-gray-100 rounded-full text-gray-600"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </header>
+
+        <div
+          className="prose prose-gray max-w-none"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted markdown
+          dangerouslySetInnerHTML={{ __html: post.contentHtml }}
+        />
+      </article>
+    );
+  }
+
+  // For other locales, check if committed translation exists
+  const committed = await getPost(locale, slug);
+  if (committed) {
+    return (
+      <article>
+        <header className="mb-8">
+          <time className="text-sm text-gray-400">
+            {committed.date
+              ? new Date(committed.date).toLocaleDateString(dateLocale(locale), {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })
+              : ""}
+          </time>
+          <h1 className="text-3xl font-bold mt-2">{committed.title}</h1>
+          {committed.tags.length > 0 && (
+            <div className="flex gap-2 mt-3 flex-wrap">
+              {committed.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="text-xs px-2 py-0.5 bg-gray-100 rounded-full text-gray-600"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+          <p className="mt-3 text-xs text-green-600 bg-green-50 px-3 py-1 rounded">
+            Previously translated · Loaded from cache
           </p>
-        )}
-      </header>
+        </header>
 
-      <div
-        className="prose prose-gray max-w-none"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted markdown
-        dangerouslySetInnerHTML={{ __html: post.contentHtml }}
-      />
-    </article>
-  );
+        <div
+          className="prose prose-gray max-w-none"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted markdown
+          dangerouslySetInnerHTML={{ __html: committed.contentHtml }}
+        />
+      </article>
+    );
+  }
+
+  // Ensure English source exists
+  const english = await getRawPost("en", slug);
+  if (!english) notFound();
+
+  // Stream the translation to the client
+  return <StreamingTranslation locale={locale} slug={slug} />;
 }
 
 export default async function BlogPostPage({

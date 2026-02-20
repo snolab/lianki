@@ -1,0 +1,87 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Streamdown } from "streamdown";
+import { commitFile } from "@/lib/github-commit";
+import { blogLocaleDir } from "@/lib/blog";
+
+interface StreamingTranslationProps {
+  locale: string;
+  slug: string;
+}
+
+export function StreamingTranslation({ locale, slug }: StreamingTranslationProps) {
+  const [content, setContent] = useState("");
+  const [isStreaming, setIsStreaming] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchStream = async () => {
+      try {
+        const response = await fetch(`/api/translate?slug=${slug}&locale=${locale}`);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          setError(`Translation failed: ${errorText}`);
+          setIsStreaming(false);
+          return;
+        }
+
+        if (!response.body) {
+          setError("No response body");
+          setIsStreaming(false);
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            setIsStreaming(false);
+
+            // Commit the translated markdown back to the repo (non-blocking)
+            const dir = blogLocaleDir(locale);
+            commitFile(
+              `blog/${dir}/${slug}.md`,
+              fullText,
+              `auto: translate ${slug} to ${locale}`,
+            ).catch((err) => console.error("commit translation failed:", err));
+
+            break;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+          fullText += chunk;
+          setContent(fullText);
+        }
+      } catch (err) {
+        console.error("Streaming error:", err);
+        setError(err instanceof Error ? err.message : "Unknown error");
+        setIsStreaming(false);
+      }
+    };
+
+    fetchStream();
+  }, [locale, slug]);
+
+  if (error) {
+    return (
+      <div className="text-red-600 bg-red-50 px-4 py-3 rounded">
+        <strong>Translation Error:</strong> {error}
+      </div>
+    );
+  }
+
+  return (
+    <div className="streaming-translation">
+      <Streamdown>{content}</Streamdown>
+      {isStreaming && (
+        <span className="inline-block w-2 h-5 bg-blue-600 animate-pulse ml-1">▊</span>
+      )}
+    </div>
+  );
+}
