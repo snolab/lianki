@@ -27,3 +27,11 @@ export const DELETE = async (req: Request) => {
     return new Response("sth wrong", { status: 500 });
   });
 };
+export const PATCH = async (req: Request) => {
+  const session = (await auth()) ?? (await signIn());
+  const email = session?.user?.email ?? DIE("");
+  return await fsrsHandler(req, email).catch((error) => {
+    console.error(error);
+    return new Response("sth wrong", { status: 500 });
+  });
+};
