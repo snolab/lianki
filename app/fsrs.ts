@@ -101,7 +101,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         { "card.due": { $lte: new Date() } },
         { sort: { "card.due": 1 } },
       );
-      return JSONR({ url: note?.url ?? null });
+      return JSONR({ url: note?.url ?? null, title: note?.title ?? null });
     },
     "GET /api/fsrs/review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (
       req,

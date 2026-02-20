@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.5.5
+// @version     2.5.6
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation
 // @run-at      document-end
@@ -479,8 +479,8 @@ function main() {
         state.noteId = note._id;
         // Prefetch next URL in background while user reviews this card
         getNextUrl()
-          .then(({ url: u }) => {
-            prefetchedNextUrl = u;
+          .then((data) => {
+            prefetchedNextUrl = data.url;
           })
           .catch(() => {});
         return getOptions(note._id);
@@ -537,14 +537,19 @@ function main() {
 
     // Use prefetched URL if already ready — redirect is instant, no spinner
     let nextUrl = prefetchedNextUrl;
+    let nextTitle = null;
     prefetchedNextUrl = null;
 
     if (!nextUrl) {
-      state.message = "Redirecting\u2026";
+      state.message = "Loading next card\u2026";
       renderDialog();
-      nextUrl = await getNextUrl()
-        .then((r) => r.url)
-        .catch(() => null);
+      const data = await getNextUrl().catch(() => ({ url: null, title: null }));
+      nextUrl = data.url;
+      nextTitle = data.title;
+      if (nextUrl) {
+        state.message = `Redirecting to:\n${nextTitle || nextUrl}`;
+        renderDialog();
+      }
     }
 
     if (nextUrl && /^https?:\/\//.test(nextUrl) && !wouldHijackApp(nextUrl)) {
