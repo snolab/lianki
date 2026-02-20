@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.13.1
+// @version     2.14.0
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -559,8 +559,13 @@ function main() {
   async function doDelete() {
     if (state.phase !== "reviewing" || !state.noteId) return;
     try {
-      await deleteNote(state.noteId);
+      const result = await deleteNote(state.noteId);
       gmCacheInvalidate(noteKey(normalizeUrl(location.href)));
+      // Use nextUrl from delete response if available (optimization)
+      if (result.nextUrl) {
+        prefetchedNextUrl = result.nextUrl;
+        prefetchNextPage(result.nextUrl);
+      }
       await afterReview("Deleted!");
     } catch (err) {
       state.phase = "error";

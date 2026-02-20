@@ -143,7 +143,18 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     "GET /api/fsrs/delete(?:/|$|\\?)": async (req, opt) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
       await FSRSNotes.deleteOne({ url: note.url });
-      return JSONR({ ok: true });
+
+      // Include next URL in response to save an API call
+      const nextNote = await FSRSNotes.findOne(
+        { "card.due": { $lte: new Date() } },
+        { sort: { "card.due": 1 } },
+      );
+
+      return JSONR({
+        ok: true,
+        nextUrl: nextNote?.url ?? null,
+        nextTitle: nextNote?.title ?? null,
+      });
     },
     "PATCH /api/fsrs/update-url(?:/|$|\\?)": async (req) => {
       const { oldUrl, newUrl } = z
