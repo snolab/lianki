@@ -414,6 +414,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       { $set: { card }, $push: { log } },
       { returnDocument: "after", upsert: true },
     ))!;
+    // TODO: Add cache invalidation for heatmap after review
+    // The cache will auto-revalidate every hour (see heatmap-cache.ts)
   }
 
   async function JSONR<T>(data: T | Promise<T>) {
