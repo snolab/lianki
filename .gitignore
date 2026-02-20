@@ -43,3 +43,4 @@ solve*.ts
 *.tsbuildinfo
 next-env.d.ts
 .vercel
+tmp/

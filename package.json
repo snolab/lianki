@@ -17,7 +17,9 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.30",
     "@auth/mongodb-adapter": "^3.7.0",
+    "ai": "^6.0.95",
     "bson": "^6.8.0",
     "dotenv": "^16.4.5",
     "enhanced-ms": "^3.0.0",
@@ -36,6 +38,7 @@
     "react": "19",
     "react-dom": "19",
     "sflow": "^1.27.0",
+    "streamdown": "^2.3.0",
     "ts-fsrs": "^4.4.1",
     "zod": "^3.23.8"
   },
