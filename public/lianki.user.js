@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.13.0
+// @version     2.13.1
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -684,8 +684,8 @@ function main() {
       if (!raw) return;
       const { url: intendedUrl, ts } = JSON.parse(raw);
       if (Date.now() - ts > 30_000) return; // 30 s TTL — stale, ignore
-      const actualUrl = normalizeUrl(location.href);
-      if (actualUrl === normalizeUrl(intendedUrl)) {
+      const actualUrl = location.href;
+      if (normalizeUrl(actualUrl) === normalizeUrl(intendedUrl)) {
         GM_setValue("lk:nav_intended", ""); // no redirect, clear it
         return;
       }
@@ -722,22 +722,28 @@ function main() {
   // Check on page load
   checkRedirect();
 
-  // Monitor pushState/replaceState for SPA redirects
-  const originalPushState = history.pushState;
-  const originalReplaceState = history.replaceState;
+  // Monitor URL changes for SPA redirects
+  if ("navigation" in window) {
+    // Modern Navigation API (Chrome 102+, Edge 102+)
+    navigation.addEventListener("navigatesuccess", () => checkRedirect(), { signal });
+  } else {
+    // Fallback: wrap history methods for older browsers
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
 
-  history.pushState = function (...args) {
-    originalPushState.apply(this, args);
-    setTimeout(checkRedirect, 100); // Delay to let URL settle
-  };
+    history.pushState = function (...args) {
+      originalPushState.apply(this, args);
+      setTimeout(checkRedirect, 100);
+    };
 
-  history.replaceState = function (...args) {
-    originalReplaceState.apply(this, args);
-    setTimeout(checkRedirect, 100); // Delay to let URL settle
-  };
+    history.replaceState = function (...args) {
+      originalReplaceState.apply(this, args);
+      setTimeout(checkRedirect, 100);
+    };
 
-  // Also listen to popstate (back/forward buttons)
-  window.addEventListener("popstate", () => setTimeout(checkRedirect, 100), { signal });
+    // Also listen to popstate (back/forward buttons)
+    window.addEventListener("popstate", () => setTimeout(checkRedirect, 100), { signal });
+  }
 
   // ── Video Speed Control (Pardon) ───────────────────────────────────────────
   // Press , (slower) or . (faster) to adjust video speed. Speed adjustments are
