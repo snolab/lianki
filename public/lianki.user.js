@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.7.0
+// @version     2.7.1
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . to control video speed with difficulty markers.
 // @run-at      document-end
@@ -691,9 +691,23 @@ function main() {
       // Record speed marker
       if (!videoSpeedMaps.has(v)) videoSpeedMaps.set(v, new Map());
       const speedMap = videoSpeedMaps.get(v);
-      speedMap.set(v.currentTime, v.playbackRate);
+
+      // Merge nearby markers (within 2 seconds)
+      const currentTime = v.currentTime;
+      const MERGE_THRESHOLD = 2.0; // seconds
+      for (const [existingTime] of speedMap) {
+        if (Math.abs(currentTime - existingTime) < MERGE_THRESHOLD) {
+          speedMap.delete(existingTime);
+          console.log(
+            `[Lianki] Merged marker: ${renderTime(existingTime)} → ${renderTime(currentTime)}`,
+          );
+        }
+      }
+
+      // Add new marker
+      speedMap.set(currentTime, v.playbackRate);
       console.log(
-        `[Lianki] Speed marker: ${renderTime(v.currentTime)} → ${renderSpeed(v.playbackRate)}`,
+        `[Lianki] Speed marker: ${renderTime(currentTime)} → ${renderSpeed(v.playbackRate)}`,
       );
     }
 
