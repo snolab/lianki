@@ -55,7 +55,11 @@ const DEFAULT_QUESTIONS: Question[] = [
   { id: "q16", text: "What kind of music do you like?", category: "Interests & Preferences" },
   { id: "q17", text: "What is your favorite food?", category: "Interests & Preferences" },
   { id: "q18", text: "Do you like sports?", category: "Interests & Preferences" },
-  { id: "q19", text: "What is your favorite movie or TV show?", category: "Interests & Preferences" },
+  {
+    id: "q19",
+    text: "What is your favorite movie or TV show?",
+    category: "Interests & Preferences",
+  },
   { id: "q20", text: "Do you like traveling?", category: "Interests & Preferences" },
 
   // Language Learning
@@ -257,9 +261,7 @@ export default function PolyglotPage() {
           </div>
 
           <div className="mb-8">
-            <h2 className="text-2xl font-semibold mb-4">
-              Select Target Languages (1 or more)
-            </h2>
+            <h2 className="text-2xl font-semibold mb-4">Select Target Languages (1 or more)</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {LANGUAGES.filter((l) => l.code !== motherTongue?.code).map((lang) => (
                 <button
@@ -459,9 +461,7 @@ export default function PolyglotPage() {
                                 Generate
                               </button>
                             ) : (
-                              <div className="text-center text-gray-400 text-sm">
-                                Answer first
-                              </div>
+                              <div className="text-center text-gray-400 text-sm">Answer first</div>
                             )}
                           </td>
                         );
@@ -478,11 +478,8 @@ export default function PolyglotPage() {
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 shadow-lg">
           <div className="max-w-7xl mx-auto flex items-center gap-4">
             <div className="text-sm text-gray-600 dark:text-gray-400">
-              {Object.values(matrix).reduce(
-                (sum, row) => sum + Object.keys(row).length,
-                0,
-              )}{" "}
-              cells generated
+              {Object.values(matrix).reduce((sum, row) => sum + Object.keys(row).length, 0)} cells
+              generated
             </div>
             <button
               onClick={saveToCards}

@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
     const email = await authEmail();
     const FSRSNotes = getFSRSNotesCollection(email);
 
-    const { matrix, questions } = await req.json();
+    const { matrix } = await req.json();
 
     const cards = [];
 

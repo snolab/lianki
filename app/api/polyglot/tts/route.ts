@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
   try {
     await authEmail(); // Require authentication
 
-    const { text, language } = await req.json();
+    const { text } = await req.json();
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
