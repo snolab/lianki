@@ -1,6 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 
-const client = new Anthropic();
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 const LOCALE_NAMES: Record<string, string> = {
   zh: "Simplified Chinese",
@@ -9,17 +11,33 @@ const LOCALE_NAMES: Record<string, string> = {
   ko: "Korean",
   fr: "French",
   de: "German",
+  hi: "Hindi",
+  es: "Spanish",
+  ar: "Arabic",
+  bn: "Bengali",
+  pt: "Portuguese",
+  ru: "Russian",
+  ur: "Urdu",
+  id: "Indonesian",
+  sw: "Swahili",
+  mr: "Marathi",
 };
 
 export async function translatePost(rawMarkdown: string, targetLocale: string): Promise<string> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY environment variable is not configured");
+  }
+
   const targetLanguage = LOCALE_NAMES[targetLocale] ?? targetLocale;
 
-  // .stream() starts immediately and .finalText() resolves when done
-  return client.messages
-    .stream({
-      model: "claude-opus-4-5-20251101",
-      max_tokens: 8192,
-      system: `You are a professional technical translator. Translate markdown blog posts accurately while:
+  const response = await client.chat.completions.create({
+    model: "gpt-4o",
+    max_tokens: 8192,
+    temperature: 0.3,
+    messages: [
+      {
+        role: "system",
+        content: `You are a professional technical translator. Translate markdown blog posts accurately while:
 - Preserving ALL markdown formatting (headers, bold, italic, lists, tables, code blocks)
 - Preserving ALL code snippets exactly as-is (do not translate code inside backticks or code fences)
 - Translating frontmatter fields: title, summary, and tags (translate tag text but keep array structure)
@@ -27,12 +45,18 @@ export async function translatePost(rawMarkdown: string, targetLocale: string): 
 - Keeping the date field unchanged
 - Preserving all URLs and links unchanged
 - Outputting ONLY the translated markdown, no commentary`,
-      messages: [
-        {
-          role: "user",
-          content: `Translate the following markdown blog post to ${targetLanguage}:\n\n${rawMarkdown}`,
-        },
-      ],
-    })
-    .finalText();
+      },
+      {
+        role: "user",
+        content: `Translate the following markdown blog post to ${targetLanguage}:\n\n${rawMarkdown}`,
+      },
+    ],
+  });
+
+  const translated = response.choices[0]?.message?.content;
+  if (!translated) {
+    throw new Error("OpenAI returned empty translation");
+  }
+
+  return translated;
 }
