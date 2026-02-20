@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.5.6
+// @version     2.6.0
 // @author      snomiao@gmail.com
 // @description Lianki spaced repetition — inline review without page navigation
 // @run-at      document-end
@@ -553,6 +553,7 @@ function main() {
     }
 
     if (nextUrl && /^https?:\/\//.test(nextUrl) && !wouldHijackApp(nextUrl)) {
+      console.log("[Lianki] Storing intended URL:", nextUrl);
       GM_setValue("lk:nav_intended", JSON.stringify({ url: nextUrl, ts: Date.now() }));
       location.href = nextUrl;
     } else {
@@ -617,16 +618,39 @@ function main() {
       if (!raw) return;
       const { url: intendedUrl, ts } = JSON.parse(raw);
       if (Date.now() - ts > 30_000) return; // 30 s TTL — stale, ignore
-      GM_setValue("lk:nav_intended", ""); // consume so it only fires once
       const actualUrl = normalizeUrl(location.href);
-      if (actualUrl === normalizeUrl(intendedUrl)) return; // no redirect happened
-      await api("/api/fsrs/update-url", {
+      if (actualUrl === normalizeUrl(intendedUrl)) {
+        GM_setValue("lk:nav_intended", ""); // no redirect, clear it
+        return;
+      }
+
+      console.log("[Lianki] Redirect detected:", intendedUrl, "→", actualUrl);
+
+      // Ask user if they want to update the card URL
+      const confirmed = confirm(
+        `This page redirected from:\n${intendedUrl}\n\n` +
+          `To:\n${actualUrl}\n\n` +
+          `Update the card to point to the new URL?`,
+      );
+
+      if (!confirmed) {
+        console.log("[Lianki] User declined URL update");
+        GM_setValue("lk:nav_intended", ""); // user declined, clear it
+        return;
+      }
+
+      const result = await api("/api/fsrs/update-url", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ oldUrl: intendedUrl, newUrl: actualUrl }),
       });
+      console.log("[Lianki] Card URL updated:", result);
+      GM_setValue("lk:nav_intended", ""); // only clear after success
       openDialog();
-    } catch {}
+    } catch (err) {
+      console.error("[Lianki] Failed to update card URL:", err);
+      // Don't clear GM_setValue - retry on next page load
+    }
   })();
 
   // ── Cleanup ────────────────────────────────────────────────────────────────
