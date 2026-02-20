@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.12.1
+// @version     2.13.0
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -676,7 +676,9 @@ function main() {
   // If Lianki navigated to a URL but the site auto-redirected to a different
   // one, update the card's stored URL to match the actual final location, then
   // auto-open the review dialog so the session continues uninterrupted.
-  (async () => {
+  // Also handles pushState/replaceState URL changes.
+
+  async function checkRedirect() {
     try {
       const raw = GM_getValue("lk:nav_intended", "");
       if (!raw) return;
@@ -715,7 +717,27 @@ function main() {
       console.error("[Lianki] Failed to update card URL:", err);
       // Don't clear GM_setValue - retry on next page load
     }
-  })();
+  }
+
+  // Check on page load
+  checkRedirect();
+
+  // Monitor pushState/replaceState for SPA redirects
+  const originalPushState = history.pushState;
+  const originalReplaceState = history.replaceState;
+
+  history.pushState = function (...args) {
+    originalPushState.apply(this, args);
+    setTimeout(checkRedirect, 100); // Delay to let URL settle
+  };
+
+  history.replaceState = function (...args) {
+    originalReplaceState.apply(this, args);
+    setTimeout(checkRedirect, 100); // Delay to let URL settle
+  };
+
+  // Also listen to popstate (back/forward buttons)
+  window.addEventListener("popstate", () => setTimeout(checkRedirect, 100), { signal });
 
   // ── Video Speed Control (Pardon) ───────────────────────────────────────────
   // Press , (slower) or . (faster) to adjust video speed. Speed adjustments are
