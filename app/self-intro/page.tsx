@@ -89,12 +89,15 @@ export default function SelfIntroPage() {
   const [generatedSentences, setGeneratedSentences] = useState<
     Record<string, { text: string; audioUrl: string | null }>
   >({});
+  const [editingText, setEditingText] = useState<Record<string, string>>({});
+  const [isEditing, setIsEditing] = useState<Record<string, boolean>>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
     voice: "nova",
     speed: 1.0,
   });
   const [isGenerating, setIsGenerating] = useState(false);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const currentQuestion = QUESTIONS[currentQuestionIndex];
@@ -102,6 +105,22 @@ export default function SelfIntroPage() {
   const handleLanguageSelect = (language: Language) => {
     setSelectedLanguage(language);
     setStep("interview");
+  };
+
+  const generateVoice = async (text: string) => {
+    const audioResponse = await fetch("/api/self-intro/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,
+        language: selectedLanguage!.code,
+        voice: voiceSettings.voice,
+        speed: voiceSettings.speed,
+      }),
+    });
+
+    const audioBlob = await audioResponse.blob();
+    return URL.createObjectURL(audioBlob);
   };
 
   const handleAnswerSubmit = async () => {
@@ -124,36 +143,48 @@ export default function SelfIntroPage() {
       const { translatedText } = await response.json();
 
       // Generate audio
-      const audioResponse = await fetch("/api/self-intro/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: translatedText,
-          language: selectedLanguage!.code,
-          voice: voiceSettings.voice,
-          speed: voiceSettings.speed,
-        }),
-      });
-
-      const audioBlob = await audioResponse.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
+      const audioUrl = await generateVoice(translatedText);
 
       setGeneratedSentences((prev) => ({
         ...prev,
         [currentQuestion.id]: { text: translatedText, audioUrl },
       }));
-
-      // Move to next question or review
-      if (currentQuestionIndex < QUESTIONS.length - 1) {
-        setCurrentQuestionIndex(currentQuestionIndex + 1);
-      } else {
-        setStep("review");
-      }
     } catch (error) {
       console.error("Error generating:", error);
       alert("Failed to generate. Please try again.");
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleRegenerateVoice = async (questionId: string) => {
+    const text = editingText[questionId] || generatedSentences[questionId]?.text;
+    if (!text) return;
+
+    setRegeneratingId(questionId);
+    try {
+      const audioUrl = await generateVoice(text);
+
+      setGeneratedSentences((prev) => ({
+        ...prev,
+        [questionId]: { text, audioUrl },
+      }));
+
+      setIsEditing((prev) => ({ ...prev, [questionId]: false }));
+      setEditingText((prev) => ({ ...prev, [questionId]: "" }));
+    } catch (error) {
+      console.error("Error regenerating:", error);
+      alert("Failed to regenerate voice. Please try again.");
+    } finally {
+      setRegeneratingId(null);
+    }
+  };
+
+  const handleNextQuestion = () => {
+    if (currentQuestionIndex < QUESTIONS.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+    } else {
+      setStep("review");
     }
   };
 
@@ -254,14 +285,80 @@ export default function SelfIntroPage() {
 
             {generatedSentences[currentQuestion.id] && (
               <div className="mb-4 p-4 bg-green-50 dark:bg-green-900 rounded-lg">
-                <p className="font-semibold mb-2">Generated:</p>
-                <p className="mb-2">{generatedSentences[currentQuestion.id].text}</p>
-                {generatedSentences[currentQuestion.id].audioUrl && (
-                  <audio
-                    controls
-                    src={generatedSentences[currentQuestion.id].audioUrl!}
-                    className="w-full"
-                  />
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-semibold">Generated:</p>
+                  {!isEditing[currentQuestion.id] && (
+                    <button
+                      onClick={() =>
+                        setIsEditing((prev) => ({ ...prev, [currentQuestion.id]: true }))
+                      }
+                      className="text-sm text-blue-600 hover:underline"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+
+                {isEditing[currentQuestion.id] ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={
+                        editingText[currentQuestion.id] ??
+                        generatedSentences[currentQuestion.id].text
+                      }
+                      onChange={(e) =>
+                        setEditingText((prev) => ({
+                          ...prev,
+                          [currentQuestion.id]: e.target.value,
+                        }))
+                      }
+                      className="w-full p-2 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                      rows={3}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleRegenerateVoice(currentQuestion.id)}
+                        disabled={regeneratingId === currentQuestion.id}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {regeneratingId === currentQuestion.id
+                          ? "Regenerating..."
+                          : "Regenerate Voice"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsEditing((prev) => ({ ...prev, [currentQuestion.id]: false }));
+                          setEditingText((prev) => ({ ...prev, [currentQuestion.id]: "" }));
+                        }}
+                        className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="mb-2">{generatedSentences[currentQuestion.id].text}</p>
+                    {generatedSentences[currentQuestion.id].audioUrl && (
+                      <div className="space-y-2">
+                        <audio
+                          controls
+                          autoPlay
+                          src={generatedSentences[currentQuestion.id].audioUrl!}
+                          className="w-full"
+                        />
+                        <button
+                          onClick={() => handleRegenerateVoice(currentQuestion.id)}
+                          disabled={regeneratingId === currentQuestion.id}
+                          className="text-sm text-blue-600 hover:underline disabled:opacity-50"
+                        >
+                          {regeneratingId === currentQuestion.id
+                            ? "Regenerating..."
+                            : "Regenerate Voice"}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -326,15 +423,89 @@ export default function SelfIntroPage() {
                   Back
                 </button>
               )}
-              <button
-                onClick={handleAnswerSubmit}
-                disabled={!answers[currentQuestion.id]?.trim() || isGenerating}
-                className="flex-1 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isGenerating ? "Generating..." : "Next"}
-              </button>
+              {!generatedSentences[currentQuestion.id] ? (
+                <button
+                  onClick={handleAnswerSubmit}
+                  disabled={!answers[currentQuestion.id]?.trim() || isGenerating}
+                  className="flex-1 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isGenerating ? "Generating..." : "Generate"}
+                </button>
+              ) : (
+                <button
+                  onClick={handleNextQuestion}
+                  className="flex-1 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  {currentQuestionIndex < QUESTIONS.length - 1 ? "Next Question" : "Review All"}
+                </button>
+              )}
             </div>
           </div>
+
+          {/* Previously Generated Sentences */}
+          {Object.keys(generatedSentences).length > 0 && (
+            <div className="mt-8">
+              <h3 className="text-xl font-semibold mb-4">Your Self-Introduction So Far:</h3>
+              <div className="space-y-4">
+                {QUESTIONS.filter((q) => generatedSentences[q.id]).map((q) => {
+                  const sentence = generatedSentences[q.id];
+                  const isCurrentQuestion = q.id === currentQuestion.id;
+                  if (isCurrentQuestion) return null; // Don't show current question here
+
+                  return (
+                    <div key={q.id} className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{q.question}</p>
+                      {isEditing[q.id] ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editingText[q.id] ?? sentence.text}
+                            onChange={(e) =>
+                              setEditingText((prev) => ({ ...prev, [q.id]: e.target.value }))
+                            }
+                            className="w-full p-2 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                            rows={2}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleRegenerateVoice(q.id)}
+                              disabled={regeneratingId === q.id}
+                              className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              {regeneratingId === q.id ? "Regenerating..." : "Save & Regenerate"}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setIsEditing((prev) => ({ ...prev, [q.id]: false }));
+                                setEditingText((prev) => ({ ...prev, [q.id]: "" }));
+                              }}
+                              className="px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-start justify-between mb-2">
+                            <p className="text-lg flex-1">{sentence.text}</p>
+                            <button
+                              onClick={() => setIsEditing((prev) => ({ ...prev, [q.id]: true }))}
+                              className="text-sm text-blue-600 hover:underline ml-2"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                          {sentence.audioUrl && (
+                            <audio controls src={sentence.audioUrl} className="w-full" />
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -351,13 +522,66 @@ export default function SelfIntroPage() {
               if (!sentence) return null;
               return (
                 <div key={q.id} className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-                  <h3 className="font-semibold text-lg mb-2">{q.question}</h3>
-                  <p className="text-gray-600 dark:text-gray-400 mb-2">
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className="font-semibold text-lg">{q.question}</h3>
+                    {!isEditing[q.id] && (
+                      <button
+                        onClick={() => setIsEditing((prev) => ({ ...prev, [q.id]: true }))}
+                        className="text-sm text-blue-600 hover:underline"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-gray-600 dark:text-gray-400 mb-4">
                     Your answer: {answers[q.id]}
                   </p>
-                  <p className="text-xl mb-4">{sentence.text}</p>
-                  {sentence.audioUrl && (
-                    <audio controls src={sentence.audioUrl} className="w-full" />
+
+                  {isEditing[q.id] ? (
+                    <div className="space-y-3">
+                      <textarea
+                        value={editingText[q.id] ?? sentence.text}
+                        onChange={(e) =>
+                          setEditingText((prev) => ({ ...prev, [q.id]: e.target.value }))
+                        }
+                        className="w-full p-3 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 text-lg"
+                        rows={3}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleRegenerateVoice(q.id)}
+                          disabled={regeneratingId === q.id}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {regeneratingId === q.id ? "Regenerating..." : "Save & Regenerate Voice"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsEditing((prev) => ({ ...prev, [q.id]: false }));
+                            setEditingText((prev) => ({ ...prev, [q.id]: "" }));
+                          }}
+                          className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-xl mb-4">{sentence.text}</p>
+                      {sentence.audioUrl && (
+                        <div className="space-y-2">
+                          <audio controls src={sentence.audioUrl} className="w-full" />
+                          <button
+                            onClick={() => handleRegenerateVoice(q.id)}
+                            disabled={regeneratingId === q.id}
+                            className="text-sm text-blue-600 hover:underline disabled:opacity-50"
+                          >
+                            {regeneratingId === q.id ? "Regenerating..." : "Regenerate Voice"}
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               );
@@ -371,7 +595,7 @@ export default function SelfIntroPage() {
               }}
               className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              Start Over
+              Edit Answers
             </button>
             <button
               onClick={handleSaveToCards}
