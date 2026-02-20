@@ -77,9 +77,11 @@ export function StreamingTranslation({ locale, slug }: StreamingTranslationProps
   }
 
   // Strip markdown code fence if present (API returns ```markdown\n...\n```)
+  // Also strip frontmatter (YAML between --- markers)
   const cleanedContent = content
     .replace(/^```markdown\s*\n?/, "") // Remove opening fence
-    .replace(/\n?```\s*$/, ""); // Remove closing fence
+    .replace(/\n?```\s*$/, "") // Remove closing fence
+    .replace(/^---\s*\n[\s\S]*?\n---\s*\n/, ""); // Remove frontmatter
 
   return (
     <div className="streaming-translation">
