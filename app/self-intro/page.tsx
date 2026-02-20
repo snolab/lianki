@@ -453,13 +453,8 @@ export default function SelfIntroPage() {
                   if (isCurrentQuestion) return null; // Don't show current question here
 
                   return (
-                    <div
-                      key={q.id}
-                      className="bg-white dark:bg-gray-800 rounded-lg shadow p-4"
-                    >
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                        {q.question}
-                      </p>
+                    <div key={q.id} className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{q.question}</p>
                       {isEditing[q.id] ? (
                         <div className="space-y-2">
                           <textarea
@@ -558,9 +553,7 @@ export default function SelfIntroPage() {
                           disabled={regeneratingId === q.id}
                           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                         >
-                          {regeneratingId === q.id
-                            ? "Regenerating..."
-                            : "Save & Regenerate Voice"}
+                          {regeneratingId === q.id ? "Regenerating..." : "Save & Regenerate Voice"}
                         </button>
                         <button
                           onClick={() => {
