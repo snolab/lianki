@@ -59,9 +59,7 @@ export default async function HomePage() {
       <section className="my-8 px-4">
         <h2 className="text-xl font-semibold mb-4">Learning Activity</h2>
         <Suspense
-          fallback={
-            <div className="h-32 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-md" />
-          }
+          fallback={<div className="h-32 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-md" />}
         >
           <HeatmapSection />
         </Suspense>
@@ -81,9 +79,7 @@ export default async function HomePage() {
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
     oneYearAgo.setHours(0, 0, 0, 0);
 
-    return (
-      <ActivityHeatmap data={heatmapData} startDate={oneYearAgo} endDate={new Date()} />
-    );
+    return <ActivityHeatmap data={heatmapData} startDate={oneYearAgo} endDate={new Date()} />;
   }
   async function Cards({ page = 0, size = 100 }) {
     const email = await authEmail();
