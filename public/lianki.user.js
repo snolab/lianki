@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.14.0
+// @version     2.14.2
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -236,68 +236,146 @@ function main() {
     console.log("[Lianki] Prefetching next page:", pageUrl);
   }
 
-  // ── FAB ────────────────────────────────────────────────────────────────────
-  function createFab() {
-    const el = document.createElement("button");
-    el.textContent = "🔖";
-    el.title = "Lianki (Alt+F)";
-    Object.assign(el.style, {
+  // ── UI: combined FAB + speed controls ─────────────────────────────────────
+  function createUI() {
+    const container = document.createElement("div");
+    Object.assign(container.style, {
       position: "fixed",
       zIndex: "2147483647",
-      width: "44px",
-      height: "44px",
-      borderRadius: "50%",
-      border: "none",
-      background: "rgba(30,30,30,0.85)",
-      fontSize: "20px",
-      cursor: "pointer",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+      display: "flex",
+      gap: "6px",
+      alignItems: "center",
       userSelect: "none",
+      touchAction: "none",
     });
 
-    try {
-      const saved = JSON.parse(GM_getValue("lianki_pos", "null"));
-      if (saved) {
-        el.style.left = saved.x + "px";
-        el.style.top = saved.y + "px";
-      } else {
-        el.style.right = "20px";
-        el.style.bottom = "20px";
-      }
-    } catch {
-      el.style.right = "20px";
-      el.style.bottom = "20px";
-    }
+    let isDragged = false;
+    const PILL = "padding:10px 14px;border-radius:999px;font-size:15px;font-weight:bold;";
+    const CIRCLE = "width:44px;height:44px;border-radius:50%;font-size:20px;";
+    const BASE =
+      "border:none;cursor:pointer;background:rgba(20,20,20,0.82);color:#eee;" +
+      "box-shadow:0 2px 8px rgba(0,0,0,0.4);touch-action:manipulation;" +
+      "backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);";
+    const makeBtn = (text, title, action, shape) => {
+      const b = document.createElement("button");
+      b.textContent = text;
+      b.title = title;
+      b.style.cssText = BASE + shape;
+      b.addEventListener("click", (e) => {
+        if (isDragged) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        action();
+      });
+      return b;
+    };
 
-    let dragged = false;
-    el.addEventListener("mousedown", (e) => {
-      dragged = false;
-      const ox = e.clientX - el.getBoundingClientRect().left;
-      const oy = e.clientY - el.getBoundingClientRect().top;
-      const onMove = (e2) => {
-        dragged = true;
-        el.style.right = "auto";
-        el.style.bottom = "auto";
-        el.style.left = e2.clientX - ox + "px";
-        el.style.top = e2.clientY - oy + "px";
-      };
-      const onUp = () => {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
+    container.append(
+      makeBtn("⏪", "Slower (,)", () => pardon(-3, 0.7), PILL),
+      makeBtn("🔖", "Lianki (Alt+F)", () => (dialog ? closeDialog() : openDialog()), CIRCLE),
+      makeBtn("⏩", "Faster (.)", () => pardon(0, 1.2), PILL),
+    );
+
+    let dragging = false;
+    let startX = 0,
+      startY = 0,
+      startLeft = 0,
+      startTop = 0;
+
+    const initDrag = (clientX, clientY) => {
+      isDragged = false;
+      dragging = true;
+      const r = container.getBoundingClientRect();
+      startX = clientX;
+      startY = clientY;
+      startLeft = r.left;
+      startTop = r.top;
+      container.style.right = "auto";
+      container.style.bottom = "auto";
+      container.style.left = startLeft + "px";
+      container.style.top = startTop + "px";
+    };
+    const moveDrag = (clientX, clientY) => {
+      if (!dragging) return;
+      const dx = clientX - startX,
+        dy = clientY - startY;
+      if (!isDragged && Math.abs(dx) + Math.abs(dy) > 6) {
+        isDragged = true;
+        const r = container.getBoundingClientRect();
+        startLeft = clientX - r.width / 2;
+        startTop = clientY - r.height / 2;
+        startX = clientX;
+        startY = clientY;
+      }
+      if (isDragged) {
+        const r = container.getBoundingClientRect();
+        const newLeft = startLeft + (clientX - startX);
+        const newTop = startTop + (clientY - startY);
+        container.style.left = Math.max(0, Math.min(window.innerWidth - r.width, newLeft)) + "px";
+        container.style.top = Math.max(0, Math.min(window.innerHeight - r.height, newTop)) + "px";
+      }
+    };
+    const stopDrag = () => {
+      if (isDragged) {
         GM_setValue(
           "lianki_pos",
-          JSON.stringify({ x: parseInt(el.style.left), y: parseInt(el.style.top) }),
+          JSON.stringify({ x: parseInt(container.style.left), y: parseInt(container.style.top) }),
         );
+      }
+      dragging = false;
+    };
+
+    container.addEventListener(
+      "touchstart",
+      (e) => initDrag(e.touches[0].clientX, e.touches[0].clientY),
+      { passive: true },
+    );
+    container.addEventListener(
+      "touchmove",
+      (e) => {
+        if (dragging) {
+          e.preventDefault();
+          moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      },
+      { passive: false },
+    );
+    container.addEventListener("touchend", stopDrag, { passive: true });
+    container.addEventListener("mousedown", (e) => {
+      initDrag(e.clientX, e.clientY);
+      const onMove = (ev) => moveDrag(ev.clientX, ev.clientY);
+      const onUp = () => {
+        stopDrag();
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
       };
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     });
 
-    el.addEventListener("click", () => {
-      if (!dragged) openDialog();
-    });
-    document.body.appendChild(el);
-    return el;
+    document.body.appendChild(container);
+    // Load saved position after mount so getBoundingClientRect gives real width
+    try {
+      const saved = JSON.parse(GM_getValue("lianki_pos", "null"));
+      if (saved) {
+        const r = container.getBoundingClientRect();
+        const x = Math.max(0, Math.min(window.innerWidth - r.width, saved.x));
+        const y = Math.max(0, Math.min(window.innerHeight - r.height, saved.y));
+        container.style.right = "auto";
+        container.style.bottom = "auto";
+        container.style.left = x + "px";
+        container.style.top = y + "px";
+      } else {
+        container.style.right = "12px";
+        container.style.bottom = "20px";
+      }
+    } catch {
+      container.style.right = "12px";
+      container.style.bottom = "20px";
+    }
+    return container;
   }
 
   // ── Dialog ─────────────────────────────────────────────────────────────────
@@ -324,7 +402,9 @@ function main() {
       borderRadius: "12px",
       padding: "20px 24px",
       minWidth: "320px",
-      maxWidth: "480px",
+      maxWidth: "min(480px, 90vw)",
+      maxHeight: "90vh",
+      overflowY: "auto",
       boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
       fontFamily: "system-ui,sans-serif",
       fontSize: "14px",
@@ -675,7 +755,7 @@ function main() {
   })();
 
   // ── Mount ──────────────────────────────────────────────────────────────────
-  fab = createFab();
+  fab = createUI();
 
   // ── Redirect detection ─────────────────────────────────────────────────────
   // If Lianki navigated to a URL but the site auto-redirected to a different
@@ -990,134 +1070,6 @@ function main() {
       // Keep dirty flag, will retry in 30s
     }
   }, 30_000); // 30 seconds
-
-  // Mobile floating buttons (draggable, touch devices)
-  (function createTouchUI() {
-    const container = document.createElement("div");
-    container.style.cssText = [
-      "position:fixed",
-      "bottom:80px",
-      "left:50%",
-      "transform:translateX(-50%)",
-      "display:flex",
-      "gap:12px",
-      "z-index:2147483647",
-      "user-select:none",
-      "touch-action:none",
-    ].join(";");
-
-    let isDrag = false,
-      dragging = false;
-    let startX = 0,
-      startY = 0,
-      startLeft = 0,
-      startTop = 0;
-
-    const makeBtn = (text, action) => {
-      const btn = document.createElement("button");
-      btn.textContent = text;
-      btn.style.cssText = [
-        "padding:14px 24px",
-        "border-radius:999px",
-        "border:none",
-        "background:rgba(0,0,0,0.55)",
-        "color:white",
-        "font-size:17px",
-        "font-weight:bold",
-        "cursor:pointer",
-        "touch-action:manipulation",
-        "backdrop-filter:blur(6px)",
-        "-webkit-backdrop-filter:blur(6px)",
-        "box-shadow:0 2px 12px rgba(0,0,0,0.3)",
-      ].join(";");
-      btn.addEventListener("click", (e) => {
-        if (isDrag) {
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
-        action();
-      });
-      return btn;
-    };
-
-    container.append(
-      makeBtn("⏪ Pardon", () => pardon(-3, 0.7)),
-      makeBtn("⏩ Faster", () => pardon(0, 1.2)),
-    );
-
-    const initDrag = (clientX, clientY) => {
-      isDrag = false;
-      dragging = true;
-      const r = container.getBoundingClientRect();
-      startX = clientX;
-      startY = clientY;
-      startLeft = r.left;
-      startTop = r.top;
-      container.style.transform = "none";
-      container.style.bottom = "auto";
-      container.style.left = startLeft + "px";
-      container.style.top = startTop + "px";
-    };
-    const moveDrag = (clientX, clientY) => {
-      if (!dragging) return;
-      const dx = clientX - startX,
-        dy = clientY - startY;
-      if (!isDrag && Math.abs(dx) + Math.abs(dy) > 6) {
-        isDrag = true;
-        // Snap so the container centre sits exactly under the finger/cursor.
-        const r = container.getBoundingClientRect();
-        startLeft = clientX - r.width / 2;
-        startTop = clientY - r.height / 2;
-        startX = clientX;
-        startY = clientY;
-      }
-      if (isDrag) {
-        container.style.left = startLeft + (clientX - startX) + "px";
-        container.style.top = startTop + (clientY - startY) + "px";
-      }
-    };
-    const stopDrag = () => {
-      dragging = false;
-    };
-
-    container.addEventListener(
-      "touchstart",
-      (e) => initDrag(e.touches[0].clientX, e.touches[0].clientY),
-      { passive: true },
-    );
-    container.addEventListener(
-      "touchmove",
-      (e) => {
-        if (dragging) {
-          e.preventDefault();
-          moveDrag(e.touches[0].clientX, e.touches[0].clientY);
-        }
-      },
-      { passive: false },
-    );
-    container.addEventListener("touchend", stopDrag, { passive: true });
-    container.addEventListener("mousedown", (e) => {
-      initDrag(e.clientX, e.clientY);
-      const onMove = (e) => moveDrag(e.clientX, e.clientY);
-      const onUp = () => {
-        stopDrag();
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-      };
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-    });
-
-    const show = () => {
-      container.style.display = "flex";
-    };
-    const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
-    container.style.display = isTouchDevice ? "flex" : "none";
-    if (!isTouchDevice) document.addEventListener("touchstart", show, { once: true });
-
-    document.body.appendChild(container);
-  })();
 
   // ── Cleanup ────────────────────────────────────────────────────────────────
   return () => {
