@@ -97,11 +97,19 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         ),
       });
     },
-    "GET /api/fsrs/next-url(?:/|$|\\?)": async () => {
-      const note = await FSRSNotes.findOne(
-        { "card.due": { $lte: new Date() } },
-        { sort: { "card.due": 1 } },
-      );
+    "GET /api/fsrs/next-url(?:/|$|\\?)": async (req) => {
+      const url = new URL(req.url, "http://localhost");
+      const excludeDomains = url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
+
+      const query: any = { "card.due": { $lte: new Date() } };
+      if (excludeDomains.length > 0) {
+        // Exclude cards matching any of the domains
+        query.url = {
+          $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
+        };
+      }
+
+      const note = await FSRSNotes.findOne(query, { sort: { "card.due": 1 } });
       return JSONR({ url: note?.url ?? null, title: note?.title ?? null });
     },
     "GET /api/fsrs/review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (
@@ -128,10 +136,17 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       );
 
       // Include next URL in response to save an API call
-      const nextNote = await FSRSNotes.findOne(
-        { "card.due": { $lte: new Date() } },
-        { sort: { "card.due": 1 } },
-      );
+      const url = new URL(req.url, "http://localhost");
+      const excludeDomains = url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
+
+      const nextQuery: any = { "card.due": { $lte: new Date() } };
+      if (excludeDomains.length > 0) {
+        nextQuery.url = {
+          $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
+        };
+      }
+
+      const nextNote = await FSRSNotes.findOne(nextQuery, { sort: { "card.due": 1 } });
 
       return JSONR({
         ok: true,
@@ -145,10 +160,17 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       await FSRSNotes.deleteOne({ url: note.url });
 
       // Include next URL in response to save an API call
-      const nextNote = await FSRSNotes.findOne(
-        { "card.due": { $lte: new Date() } },
-        { sort: { "card.due": 1 } },
-      );
+      const url = new URL(req.url, "http://localhost");
+      const excludeDomains = url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
+
+      const nextQuery: any = { "card.due": { $lte: new Date() } };
+      if (excludeDomains.length > 0) {
+        nextQuery.url = {
+          $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
+        };
+      }
+
+      const nextNote = await FSRSNotes.findOne(nextQuery, { sort: { "card.due": 1 } });
 
       return JSONR({
         ok: true,

@@ -100,6 +100,7 @@ bun build
 ### Git Hooks
 
 The project uses Husky for pre-commit hooks:
+
 - Runs `oxlint --fix` and `oxfmt` automatically
 - Runs TypeScript type checking
 - Auto-syncs `lianki.meta.js` from `lianki.user.js` metadata
@@ -187,11 +188,13 @@ docker-compose up
 The Tampermonkey/Violentmonkey userscript is in `public/lianki.user.js`.
 
 **Version Bumping Rules:**
+
 - The pre-commit hook checks if `lianki.user.js` was modified
 - If modified, you MUST bump the `@version` field
 - The metadata file `lianki.meta.js` is auto-synced from the userscript header
 
 **Key Features:**
+
 - Inline review UI without page navigation
 - Keyboard shortcuts (1-4 for ratings, 5 for delete)
 - Alt+F to add current page
@@ -207,6 +210,7 @@ Blog posts live in `blog/en/` and `blog/zh/` (or `blog/cn/`).
 **File Naming:** `YYYY-MM-DD-slug.md`
 
 **Frontmatter:**
+
 ```markdown
 ---
 title: "Post Title"
@@ -217,6 +221,7 @@ summary: "One sentence description."
 ```
 
 **Auto-Translation:**
+
 - Powered by OpenAI GPT-4o
 - Streaming translation UI in `/[locale]/blog` pages
 - Auto-commits to GitHub via `GITHUB_INTL_TOKEN`

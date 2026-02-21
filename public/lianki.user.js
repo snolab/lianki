@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.15.0
+// @version     2.16.0
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -204,11 +204,18 @@ function main() {
       }),
     );
 
+  // Build excludeDomains query param for filtering next card
+  const buildExcludeDomainsParam = () => {
+    if (!isMobile) return "";
+    return `&excludeDomains=${MOBILE_APP_DOMAINS.join(",")}`;
+  };
+
   const getOptions = (id) => api(`/api/fsrs/options?id=${encodeURIComponent(id)}`);
   const submitReview = (id, rating) =>
-    api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}`);
-  const deleteNote = (id) => api(`/api/fsrs/delete?id=${encodeURIComponent(id)}`);
-  const getNextUrl = () => api("/api/fsrs/next-url");
+    api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
+  const deleteNote = (id) =>
+    api(`/api/fsrs/delete?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
+  const getNextUrl = () => api(`/api/fsrs/next-url?${buildExcludeDomainsParam().slice(1)}`);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const btn = (bg, extra = "") =>
@@ -706,12 +713,14 @@ function main() {
       }
     }
 
-    if (nextUrl && /^https?:\/\//.test(nextUrl) && !wouldHijackApp(nextUrl)) {
+    if (nextUrl && /^https?:\/\//.test(nextUrl)) {
+      // Normal navigation to next card (backend already filtered hijacking domains)
       console.log("[Lianki] Storing intended URL:", nextUrl);
       GM_setValue("lk:nav_intended", JSON.stringify({ url: nextUrl, ts: Date.now() }));
       location.href = nextUrl;
     } else {
-      state.message = `${doneMessage} \u2014 All done!`;
+      // No more cards or invalid URL
+      state.message = `${doneMessage} — All done!`;
       renderDialog();
       setTimeout(closeDialog, 2000);
     }

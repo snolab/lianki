@@ -1,7 +1,7 @@
 # Lianki
 
 **Turn any webpage into a flashcard you'll actually remember.**
-
+；
 Lianki is a spaced repetition learning system that helps you retain what you read online. Instead of bookmarking pages you'll never revisit, Lianki schedules them for review using the scientifically-proven FSRS algorithm — showing you content right before you'd forget it.
 
 🌐 **Try it now:** [www.lianki.com](https://www.lianki.com)
@@ -36,10 +36,12 @@ Lianki uses a browser userscript (Tampermonkey/Violentmonkey) to add a floating 
 ### 2. Add Cards
 
 **Add current page:**
+
 - Press `Alt+F` OR click the Lianki button
 - Lianki saves the URL and page title automatically
 
 **Bulk add multiple URLs:**
+
 1. Copy URLs (one per line)
 2. Press `Alt+Shift+V`
 3. Lianki creates a card for each URL
@@ -60,16 +62,19 @@ FSRS calculates the optimal next review time based on your rating. Rate somethin
 ### Keyboard Shortcuts
 
 **During Review:**
+
 - `1-4` — Rate recall (Again/Hard/Good/Easy)
 - `5` — Delete card
 - `HJKL` — Vim-style navigation (Easy/Good/Again/Delete)
 - `ASDT` — Alternative navigation (Easy/Good/Again/Delete)
 
 **Video Speed Control (via Media Keys):**
+
 - `Next Track` — Speed up playback + mark as easier
 - `Previous Track` — Rewind 3s + slow down playback
 
 **Adding Cards:**
+
 - `Alt+F` — Add current page
 - `Alt+V` — Add URL from clipboard
 - `Alt+Shift+V` — Bulk add multiple URLs
@@ -112,6 +117,7 @@ A: Not yet, but export functionality is planned.
 ## Learn More
 
 📝 **Blog Posts:**
+
 - [What is Lianki?](https://www.lianki.com/en/blog/2025-01-01-introduction)
 - [How FSRS Schedules Your Reviews](https://www.lianki.com/en/blog/2025-01-15-fsrs-algorithm)
 - [Japanese Learning Workflow with jpdb.io](https://www.lianki.com/en/blog/2025-02-20-jpdb-lianki-workflow)
