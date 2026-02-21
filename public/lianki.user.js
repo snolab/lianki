@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.14.2
+// @version     2.15.0
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -117,10 +117,13 @@ function main() {
   // header bug that throws on strict mobile environments.
   function gmFetch(url, opts = {}) {
     return new Promise((resolve, reject) => {
+      const token = GM_getValue("lk:token", "");
+      const headers = { ...(opts.headers || {}) };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       GM_xmlhttpRequest({
         method: (opts.method || "GET").toUpperCase(),
         url: String(url),
-        headers: opts.headers || {},
+        headers,
         data: opts.body ?? undefined,
         withCredentials: opts.credentials === "include",
         onload(resp) {
@@ -141,7 +144,10 @@ function main() {
                 return Promise.resolve(JSON.parse(resp.responseText));
               } catch {
                 const preview = resp.responseText.slice(0, 120).replace(/\s+/g, " ").trim();
-                return Promise.reject(new Error(`Login required (got: ${preview})`));
+                const err = new Error(`Login required (got: ${preview})`);
+                err.details = resp.responseText.slice(0, 2000);
+                err.statusCode = resp.status;
+                return Promise.reject(err);
               }
             },
             text: () => Promise.resolve(resp.responseText),
@@ -160,6 +166,7 @@ function main() {
   // ── API ────────────────────────────────────────────────────────────────────
   const api = (path, opts = {}) =>
     gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
+      if (r.status === 401) throw new Error("Login required");
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       checkVersion(r);
       return r.json();
@@ -490,12 +497,33 @@ function main() {
       loginBtn.addEventListener("click", () => window.open(ORIGIN, "_blank"));
       btnRow.appendChild(loginBtn);
 
+      const tokenBtn = document.createElement("button");
+      tokenBtn.setAttribute("style", btn("#3a6f3f"));
+      tokenBtn.textContent = "Set API Token";
+      tokenBtn.addEventListener("click", () => {
+        const token = prompt(
+          `Paste your Lianki API token.\n\nGenerate one at: ${ORIGIN}/list\n\n(Needed for Safari/Stay where cookies don't work)`,
+        );
+        if (!token) return;
+        GM_setValue("lk:token", token.trim());
+        closeDialog();
+        openDialog(); // retry with token
+      });
+      btnRow.appendChild(tokenBtn);
+
       const copyBtn = document.createElement("button");
       copyBtn.setAttribute("style", btn("#444"));
       copyBtn.textContent = "Copy error";
       copyBtn.addEventListener("click", () => {
-        const text = `Error: ${error}`;
-        (navigator.clipboard?.writeText(text) ?? Promise.reject()).catch(() => {
+        const parts = [
+          `Error: ${error}`,
+          `Page: ${location.href}`,
+          `Origin: ${ORIGIN}`,
+          `Version: ${CURRENT_VERSION}`,
+        ];
+        if (state.errorDetails) parts.push(`\nResponse:\n${state.errorDetails}`);
+        const text = parts.join("\n");
+        navigator.clipboard?.writeText(text).catch(() => {
           const ta = document.createElement("textarea");
           ta.value = text;
           ta.style.cssText = "position:fixed;opacity:0";
@@ -599,6 +627,7 @@ function main() {
       .catch((err) => {
         state.phase = "error";
         state.error = err.message;
+        state.errorDetails = err.details ?? null;
         renderDialog();
       });
   }
@@ -632,6 +661,7 @@ function main() {
     } catch (err) {
       state.phase = "error";
       state.error = err.message;
+      state.errorDetails = err.details ?? null;
       renderDialog();
     }
   }
@@ -650,6 +680,7 @@ function main() {
     } catch (err) {
       state.phase = "error";
       state.error = err.message;
+      state.errorDetails = err.details ?? null;
       renderDialog();
     }
   }
