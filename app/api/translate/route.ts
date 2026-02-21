@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
         const filePath = `blog/${dir}/${slug}.md`;
 
         console.log(`[auto-commit] Starting commit: ${filePath}`);
-        await commitFile(filePath, fullText, `auto: translate ${slug} to ${locale}`);
+        await commitFile(filePath, fullText, `auto: translate ${slug} to ${locale} [skip ci]`);
         console.log(`[auto-commit] ✓ Success: ${filePath}`);
       } catch (error) {
         console.error(`[auto-commit] ✗ Error:`, error);

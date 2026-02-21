@@ -35,8 +35,18 @@ export type Post = PostMeta & { contentHtml: string };
 
 export async function getRawPost(locale: string, slug: string): Promise<string | null> {
   const dir = blogLocaleDir(locale);
-  const url = `${GITHUB_API}/repos/${REPO}/contents/blog/${dir}/${slug}.md?ref=${getBranch()}`;
-  const res = await fetch(url, { headers: ghHeaders(), next: { revalidate: 3600 } });
+  const branch = getBranch();
+
+  // Try current deployed branch first
+  let url = `${GITHUB_API}/repos/${REPO}/contents/blog/${dir}/${slug}.md?ref=${branch}`;
+  let res = await fetch(url, { headers: ghHeaders(), next: { revalidate: 60 } });
+
+  // If not found and not already on main, try main branch (for [skip ci] commits)
+  if (!res.ok && branch !== "main") {
+    url = `${GITHUB_API}/repos/${REPO}/contents/blog/${dir}/${slug}.md?ref=main`;
+    res = await fetch(url, { headers: ghHeaders(), next: { revalidate: 60 } });
+  }
+
   if (!res.ok) return null;
   const { content } = (await res.json()) as { content: string };
   return Buffer.from(content, "base64").toString("utf-8");
