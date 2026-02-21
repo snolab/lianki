@@ -1,6 +1,7 @@
 import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
 import ContactForm from "./ContactForm";
+import { LanguageSwitcher } from "./components/LanguageSwitcher";
 
 export default async function LandingPage() {
   const locale = await getLocale();
@@ -22,6 +23,7 @@ export default async function LandingPage() {
             <a href="/list" className="text-lg font-medium hover:underline">
               {nav.learn}
             </a>
+            <LanguageSwitcher />
           </nav>
         </div>
       </header>

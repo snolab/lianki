@@ -10,6 +10,7 @@ import DeleteButton from "./components/DeleteButton";
 import RefreshHeatmapButton from "./components/RefreshHeatmapButton";
 import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
 
 export const dynamic = "force-dynamic";
 /**
@@ -40,6 +41,7 @@ export default async function HomePage() {
             <a href="./lianki.user.js" className="text-lg font-medium hover:underline">
               Install
             </a>
+            <LanguageSwitcher />
             <div className="relative group">
               <button className="flex items-center gap-2 text-lg font-medium hover:underline">
                 {user.image && (
