@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.16.0
+// @version     2.16.1
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -118,7 +118,7 @@ function main() {
   function gmFetch(url, opts = {}) {
     return new Promise((resolve, reject) => {
       const token = GM_getValue("lk:token", "");
-      const headers = { ...(opts.headers || {}) };
+      const headers = { ...opts.headers };
       if (token) headers["Authorization"] = `Bearer ${token}`;
       GM_xmlhttpRequest({
         method: (opts.method || "GET").toUpperCase(),
@@ -220,16 +220,6 @@ function main() {
   // ── Helpers ────────────────────────────────────────────────────────────────
   const btn = (bg, extra = "") =>
     `background:${bg};color:#eee;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;min-width:60px;${extra}`;
-
-  function wouldHijackApp(url) {
-    if (!isMobile) return false;
-    try {
-      const h = new URL(url).hostname;
-      return MOBILE_APP_DOMAINS.some((d) => h === d || h.endsWith("." + d));
-    } catch {
-      return false;
-    }
-  }
 
   // Prefetch next page for faster navigation
   function prefetchNextPage(pageUrl) {

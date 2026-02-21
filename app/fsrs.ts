@@ -99,7 +99,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     },
     "GET /api/fsrs/next-url(?:/|$|\\?)": async (req) => {
       const url = new URL(req.url, "http://localhost");
-      const excludeDomains = url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
+      const excludeDomains =
+        url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
 
       const query: any = { "card.due": { $lte: new Date() } };
       if (excludeDomains.length > 0) {
@@ -137,7 +138,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
       // Include next URL in response to save an API call
       const url = new URL(req.url, "http://localhost");
-      const excludeDomains = url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
+      const excludeDomains =
+        url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
 
       const nextQuery: any = { "card.due": { $lte: new Date() } };
       if (excludeDomains.length > 0) {
@@ -161,7 +163,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
       // Include next URL in response to save an API call
       const url = new URL(req.url, "http://localhost");
-      const excludeDomains = url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
+      const excludeDomains =
+        url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
 
       const nextQuery: any = { "card.due": { $lte: new Date() } };
       if (excludeDomains.length > 0) {
