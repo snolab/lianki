@@ -107,21 +107,39 @@ export default function PreferencesPage() {
           )}
         </div>
 
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newDomain}
-            onChange={(e) => setNewDomain(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addDomain()}
-            placeholder="example.com"
-            className="flex-1 bg-gray-800 border border-gray-700 rounded px-4 py-2"
-          />
-          <button
-            onClick={addDomain}
-            className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-medium"
-          >
-            Add Domain
-          </button>
+        <div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newDomain}
+              onChange={(e) => setNewDomain(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addDomain()}
+              placeholder="example.com"
+              className="flex-1 bg-gray-800 border border-gray-700 rounded px-4 py-2"
+            />
+            <button
+              onClick={addDomain}
+              className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-medium"
+            >
+              Add Domain
+            </button>
+          </div>
+          <div className="mt-2 flex gap-2 items-center">
+            <span className="text-sm text-gray-500">Suggestions:</span>
+            {["zhihu.com", "twitter.com", "reddit.com"]
+              .filter((domain) => !mobileExcludeDomains.includes(domain))
+              .map((domain) => (
+                <button
+                  key={domain}
+                  onClick={() => {
+                    setMobileExcludeDomains([...mobileExcludeDomains, domain]);
+                  }}
+                  className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1 rounded-full"
+                >
+                  + {domain}
+                </button>
+              ))}
+          </div>
         </div>
       </section>
 
