@@ -27,7 +27,6 @@
     "enhanced-ms": "^3.0.0",
     "gray-matter": "^4.0.3",
     "intlayer": "^8.1.2",
-    "keyv": "^5.6.0",
     "keyv-github": "^1.2.0",
     "marked": "^17.0.3",
     "mongodb": "^6.9.0",
