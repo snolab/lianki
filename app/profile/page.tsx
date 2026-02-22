@@ -28,7 +28,12 @@ export default async function ProfilePage() {
         <pre>{JSON.stringify(session, null, 2)}</pre>
       </div>
       <div>
-        <a href="/list">Back to Home</a>
+        <a href="/preferences" className="text-blue-500 hover:text-blue-600 mr-4">
+          Edit Preferences
+        </a>
+        <a href="/list" className="text-blue-500 hover:text-blue-600">
+          Back to Home
+        </a>
       </div>
     </div>
   );

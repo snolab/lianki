@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.17.0
+// @version     2.18.0
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -81,9 +81,35 @@ function main() {
   const { signal } = ac;
 
   // ── Constants ──────────────────────────────────────────────────────────────
-  // Domains that hijack navigation to their native app on mobile
-  const MOBILE_APP_DOMAINS = ["zhihu.com"];
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
+  // User preferences (loaded from API)
+  let userPreferences = {
+    mobileExcludeDomains: ["zhihu.com"], // default
+    reviewPriorities: [],
+  };
+
+  // Load preferences on startup
+  (async function loadPreferences() {
+    try {
+      const cached = GM_getValue("lk:preferences", "");
+      if (cached) {
+        const { data, ts } = JSON.parse(cached);
+        // Use cached if less than 1 hour old
+        if (Date.now() - ts < 60 * 60 * 1000) {
+          userPreferences = data;
+          return;
+        }
+      }
+
+      // Fetch fresh preferences
+      const prefs = await api("/api/preferences");
+      userPreferences = prefs;
+      GM_setValue("lk:preferences", JSON.stringify({ data: prefs, ts: Date.now() }));
+    } catch (err) {
+      console.log("[Lianki] Failed to load preferences, using defaults:", err);
+    }
+  })();
 
   // ── State ──────────────────────────────────────────────────────────────────
   let state = {
@@ -215,7 +241,9 @@ function main() {
   // Build excludeDomains query param for filtering next card
   const buildExcludeDomainsParam = () => {
     if (!isMobile) return "";
-    return `&excludeDomains=${MOBILE_APP_DOMAINS.join(",")}`;
+    const domains = userPreferences.mobileExcludeDomains || [];
+    if (domains.length === 0) return "";
+    return `&excludeDomains=${domains.join(",")}`;
   };
 
   const saveNotes = (id, notes) =>

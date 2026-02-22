@@ -63,6 +63,12 @@ export default async function HomePage() {
                 >
                   Profile
                 </a>
+                <a
+                  href="/preferences"
+                  className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  Preferences
+                </a>
                 <div className="block px-4 py-2 text-sm text-gray-500">{email}</div>
                 <a
                   href="/auth/logout"
