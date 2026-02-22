@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.18.3
+// @version     2.18.4
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -124,6 +124,7 @@ function main() {
   let dialog = null;
   let prefetchedNextUrl = null; // populated while user reads current card
   let prefetchLink = null; // <link rel="prefetch"> element for next page
+  let videoObserver = null; // MutationObserver for video presence
 
   // ── Auto-update ────────────────────────────────────────────────────────────
   const CURRENT_VERSION = GM_info?.script?.version ?? "0.0.0";
@@ -317,11 +318,29 @@ function main() {
       return b;
     };
 
-    container.append(
-      makeBtn("⏪", "Slower (,)", () => pardon(-3, 0.7), PILL),
-      makeBtn("🔖", "Lianki (Alt+F)", () => (dialog ? closeDialog() : openDialog()), CIRCLE),
-      makeBtn("⏩", "Faster (.)", () => pardon(0, 1.2), PILL),
-    );
+    const slowerBtn = makeBtn("⏪", "Slower (,)", () => pardon(-3, 0.7), PILL);
+    const liankiBtn = makeBtn("🔖", "Lianki (Alt+F)", () => (dialog ? closeDialog() : openDialog()), CIRCLE);
+    const fasterBtn = makeBtn("⏩", "Faster (.)", () => pardon(0, 1.2), PILL);
+
+    container.append(slowerBtn, liankiBtn, fasterBtn);
+
+    // Hide/show video control buttons based on video presence
+    const updateVideoButtonVisibility = () => {
+      const hasVideo = document.querySelector("video,audio") !== null;
+      const display = hasVideo ? "" : "none";
+      slowerBtn.style.display = display;
+      fasterBtn.style.display = display;
+    };
+
+    // Initial check
+    updateVideoButtonVisibility();
+
+    // Watch for video elements being added/removed
+    videoObserver = new MutationObserver(updateVideoButtonVisibility);
+    videoObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
 
     let dragging = false;
     let startX = 0,
@@ -1204,6 +1223,7 @@ function main() {
   return () => {
     ac.abort();
     closeDialog();
+    videoObserver?.disconnect();
     fab?.remove();
     fab = null;
   };
