@@ -78,13 +78,13 @@ export default function PreferencesPage() {
 
       {/* Mobile Exclude Domains */}
       <section className="mb-10">
-        <h2 className="text-2xl font-semibold mb-4">Mobile App Domain Filters</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-white">Mobile App Domain Filters</h2>
         <p className="text-gray-400 mb-4">
           Domains to exclude from review queue on mobile devices (prevents app hijacking).
         </p>
 
-        <div className="bg-gray-800 rounded-lg p-6 mb-4">
-          <h3 className="text-lg font-medium mb-3">Current Filters</h3>
+        <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6 mb-4">
+          <h3 className="text-lg font-medium mb-3 text-gray-200">Current Filters</h3>
           {mobileExcludeDomains.length === 0 ? (
             <p className="text-gray-500">No domains filtered</p>
           ) : (
@@ -92,12 +92,12 @@ export default function PreferencesPage() {
               {mobileExcludeDomains.map((domain) => (
                 <li
                   key={domain}
-                  className="flex items-center justify-between bg-gray-700 rounded px-4 py-2"
+                  className="flex items-center justify-between bg-gray-800/50 border border-gray-700 rounded px-4 py-2"
                 >
-                  <span className="font-mono">{domain}</span>
+                  <span className="font-mono text-gray-200">{domain}</span>
                   <button
                     onClick={() => removeDomain(domain)}
-                    className="text-red-400 hover:text-red-500"
+                    className="text-red-400 hover:text-red-300 transition-colors"
                   >
                     Remove
                   </button>
@@ -115,17 +115,17 @@ export default function PreferencesPage() {
               onChange={(e) => setNewDomain(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addDomain()}
               placeholder="example.com"
-              className="flex-1 bg-gray-800 border border-gray-700 rounded px-4 py-2"
+              className="flex-1 bg-gray-900 border border-gray-700 rounded px-4 py-2 text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
             <button
               onClick={addDomain}
-              className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-medium"
+              className="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded font-medium text-white transition-colors"
             >
               Add Domain
             </button>
           </div>
-          <div className="mt-2 flex gap-2 items-center">
-            <span className="text-sm text-gray-500">Suggestions:</span>
+          <div className="mt-3 flex gap-2 items-center flex-wrap">
+            <span className="text-sm text-gray-400">Suggestions:</span>
             {["zhihu.com", "twitter.com", "reddit.com"]
               .filter((domain) => !mobileExcludeDomains.includes(domain))
               .map((domain) => (
@@ -134,7 +134,7 @@ export default function PreferencesPage() {
                   onClick={() => {
                     setMobileExcludeDomains([...mobileExcludeDomains, domain]);
                   }}
-                  className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1 rounded-full"
+                  className="text-xs bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 px-3 py-1 rounded-full transition-colors"
                 >
                   + {domain}
                 </button>
