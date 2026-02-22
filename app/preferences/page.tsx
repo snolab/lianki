@@ -108,22 +108,54 @@ export default function PreferencesPage() {
         </div>
 
         <div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newDomain}
-              onChange={(e) => setNewDomain(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addDomain()}
-              placeholder="example.com"
-              className="flex-1 bg-gray-900 border border-gray-700 rounded px-4 py-2 text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            />
-            <button
-              onClick={addDomain}
-              className="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded font-medium text-white transition-colors"
-            >
-              Add Domain
-            </button>
+          {/* Tags Input */}
+          <div
+            className="min-h-[120px] bg-gray-900 border border-gray-700 rounded px-3 py-2 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 cursor-text"
+            onClick={(e) => {
+              if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === "DIV") {
+                document.getElementById("domain-input")?.focus();
+              }
+            }}
+          >
+            <div className="flex flex-wrap gap-2 items-start">
+              {mobileExcludeDomains.map((domain) => (
+                <span
+                  key={domain}
+                  className="inline-flex items-center gap-1 bg-blue-600/20 border border-blue-500/30 text-blue-400 px-3 py-1 rounded-full text-sm"
+                >
+                  <span className="font-mono">{domain}</span>
+                  <button
+                    onClick={() => removeDomain(domain)}
+                    className="hover:text-blue-300 transition-colors ml-1"
+                    aria-label={`Remove ${domain}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <input
+                id="domain-input"
+                type="text"
+                value={newDomain}
+                onChange={(e) => setNewDomain(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    addDomain();
+                  } else if (e.key === "Backspace" && !newDomain && mobileExcludeDomains.length > 0) {
+                    // Remove last domain on backspace if input is empty
+                    removeDomain(mobileExcludeDomains[mobileExcludeDomains.length - 1]);
+                  }
+                }}
+                placeholder={
+                  mobileExcludeDomains.length === 0 ? "Type domain and press Enter..." : ""
+                }
+                className="flex-1 min-w-[200px] bg-transparent border-none outline-none text-gray-200 placeholder-gray-500 py-1"
+              />
+            </div>
           </div>
+
+          {/* Suggestions */}
           <div className="mt-3 flex gap-2 items-center flex-wrap">
             <span className="text-sm text-gray-400">Suggestions:</span>
             {["zhihu.com", "twitter.com", "reddit.com"]
