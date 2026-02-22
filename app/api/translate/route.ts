@@ -2,8 +2,6 @@ import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { NextRequest } from "next/server";
 import { getRawPost } from "@/lib/blog";
-import { commitFile } from "@/lib/github-commit";
-import Keyv from "keyv";
 import KeyvGitHub from "keyv-github";
 import { Octokit } from "octokit";
 
@@ -27,18 +25,16 @@ const LOCALE_NAMES: Record<string, string> = {
   ko: "Korean",
 };
 
-// Initialize cache with GitHub adapter
-function getCache() {
+// Initialize GitHub cache
+function getGitHubCache() {
   const token = process.env.GITHUB_INTL_TOKEN;
   if (!token) return null;
 
-  const store = new KeyvGitHub("https://github.com/snomiao/lianki/tree/main", {
+  return new KeyvGitHub("https://github.com/snomiao/lianki/tree/main", {
     client: new Octokit({ auth: token }),
-    prefix: ".cache/translations/",
+    prefix: "blog/",
     suffix: ".md",
   });
-
-  return new Keyv({ store });
 }
 
 // Stream cached text with chunks to simulate streaming
@@ -78,26 +74,43 @@ export async function GET(request: NextRequest) {
     return new Response("Post not found", { status: 404 });
   }
 
-  // Check cache first
-  const cache = getCache();
-  const cacheKey = `translate:${locale}:${slug}`;
+  // Multi-layer cache: filesystem → GitHub → LLM translation
+  const ghCache = getGitHubCache();
+  const dir = locale === "zh" ? "cn" : locale;
+  const cacheKey = `${dir}/${slug}`;
 
-  if (cache) {
+  // Layer 1: Check filesystem (fastest - already committed)
+  const fsPost = await getRawPost(locale, slug);
+  if (fsPost) {
+    console.log(`[fs] ✓ Hit: blog/${cacheKey}.md`);
+    return new Response(await streamCachedText(fsPost), {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Cache-Status": "HIT-FS",
+      },
+    });
+  }
+  console.log(`[fs] ✗ Miss: blog/${cacheKey}.md`);
+
+  // Layer 2: Check GitHub cache (medium - not yet committed to main)
+  if (ghCache) {
     try {
-      const cached = await cache.get<string>(cacheKey);
-      if (cached) {
-        console.log(`[cache] ✓ Hit: ${cacheKey}`);
-        return new Response(await streamCachedText(cached), {
-          headers: {
-            "Content-Type": "text/plain; charset=utf-8",
-            "X-Cache-Status": "HIT",
-          },
-        });
+      const ghData = await ghCache.get<string>(cacheKey);
+      if (ghData) {
+        const content = typeof ghData === "string" ? ghData : ghData.value;
+        if (content) {
+          console.log(`[gh-cache] ✓ Hit: ${cacheKey}`);
+          return new Response(await streamCachedText(content), {
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8",
+              "X-Cache-Status": "HIT-GH",
+            },
+          });
+        }
       }
-      console.log(`[cache] ✗ Miss: ${cacheKey}`);
+      console.log(`[gh-cache] ✗ Miss: ${cacheKey}`);
     } catch (error) {
-      console.error(`[cache] Error reading cache:`, error);
-      // Continue to translation if cache fails
+      console.error(`[gh-cache] Error:`, error);
     }
   }
 
@@ -129,22 +142,15 @@ export async function GET(request: NextRequest) {
           controller.enqueue(encoder.encode(chunk));
         }
 
-        // Stream completed - cache, then commit to GitHub
-        if (cache) {
+        // Stream completed - save to GitHub (which commits to blog/)
+        if (ghCache) {
           try {
-            await cache.set(cacheKey, fullText);
-            console.log(`[cache] ✓ Saved: ${cacheKey}`);
+            await ghCache.set(cacheKey, fullText);
+            console.log(`[gh-cache] ✓ Saved: blog/${cacheKey}.md`);
           } catch (error) {
-            console.error(`[cache] ✗ Error saving:`, error);
+            console.error(`[gh-cache] ✗ Error saving:`, error);
           }
         }
-
-        const dir = locale === "zh" ? "cn" : locale;
-        const filePath = `blog/${dir}/${slug}.md`;
-
-        console.log(`[auto-commit] Starting commit: ${filePath}`);
-        await commitFile(filePath, fullText, `auto: translate ${slug} to ${locale} [skip ci]`);
-        console.log(`[auto-commit] ✓ Success: ${filePath}`);
       } catch (error) {
         console.error(`[auto-commit] ✗ Error:`, error);
       } finally {

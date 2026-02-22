@@ -75,7 +75,9 @@ export function StreamingTranslation({ locale, slug }: StreamingTranslationProps
 
   return (
     <div className="streaming-translation">
-      <Streamdown>{cleanedContent}</Streamdown>
+      <Streamdown animated caret="block">
+        {cleanedContent}
+      </Streamdown>
       {isStreaming && (
         <span className="inline-block w-2 h-5 bg-blue-600 animate-pulse ml-1">▊</span>
       )}
