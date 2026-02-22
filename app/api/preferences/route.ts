@@ -18,12 +18,12 @@ export async function GET() {
     // Return default preferences if none exist
     if (!prefs) {
       return NextResponse.json({
-        mobileExcludeDomains: ["zhihu.com"],
+        mobileExcludeDomains: [],
       });
     }
 
     return NextResponse.json({
-      mobileExcludeDomains: prefs.mobileExcludeDomains || ["zhihu.com"],
+      mobileExcludeDomains: prefs.mobileExcludeDomains || [],
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
     const preferences: Partial<UserPreferences> = {
       userId: user.id,
-      mobileExcludeDomains: body.mobileExcludeDomains || ["zhihu.com"],
+      mobileExcludeDomains: body.mobileExcludeDomains || [],
       updatedAt: new Date(),
     };
 
