@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.18.4
+// @version     2.19.0
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -289,24 +289,35 @@ function main() {
       position: "fixed",
       zIndex: "2147483647",
       display: "flex",
-      gap: "6px",
+      gap: "0",
       alignItems: "center",
       userSelect: "none",
       touchAction: "none",
+      background: "rgba(20,20,20,0.82)",
+      borderRadius: "999px",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+      backdropFilter: "blur(6px)",
+      WebkitBackdropFilter: "blur(6px)",
+      overflow: "hidden",
     });
 
     let isDragged = false;
-    const PILL = "padding:10px 14px;border-radius:999px;font-size:15px;font-weight:bold;";
-    const CIRCLE = "width:44px;height:44px;border-radius:50%;font-size:20px;";
-    const BASE =
-      "border:none;cursor:pointer;background:rgba(20,20,20,0.82);color:#eee;" +
-      "box-shadow:0 2px 8px rgba(0,0,0,0.4);touch-action:manipulation;" +
-      "backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);";
-    const makeBtn = (text, title, action, shape) => {
+    const BTN_BASE =
+      "border:none;cursor:pointer;background:transparent;color:#eee;" +
+      "padding:10px 14px;font-size:15px;font-weight:bold;touch-action:manipulation;" +
+      "transition:background 0.2s;";
+    const BTN_HOVER = "background:rgba(255,255,255,0.1);";
+    const makeBtn = (text, title, action) => {
       const b = document.createElement("button");
       b.textContent = text;
       b.title = title;
-      b.style.cssText = BASE + shape;
+      b.style.cssText = BTN_BASE;
+      b.addEventListener("mouseenter", () => {
+        if (!isDragged) b.style.background = "rgba(255,255,255,0.1)";
+      });
+      b.addEventListener("mouseleave", () => {
+        b.style.background = "transparent";
+      });
       b.addEventListener("click", (e) => {
         if (isDragged) {
           e.preventDefault();
@@ -318,11 +329,19 @@ function main() {
       return b;
     };
 
-    const slowerBtn = makeBtn("⏪", "Slower (,)", () => pardon(-3, 0.7), PILL);
-    const liankiBtn = makeBtn("🔖", "Lianki (Alt+F)", () => (dialog ? closeDialog() : openDialog()), CIRCLE);
-    const fasterBtn = makeBtn("⏩", "Faster (.)", () => pardon(0, 1.2), PILL);
+    const slowerBtn = makeBtn("⏪", "Slower (,)", () => pardon(-3, 0.7));
+    const liankiBtn = makeBtn("🔖", "Lianki (Alt+F)", () => (dialog ? closeDialog() : openDialog()));
+    const fasterBtn = makeBtn("⏩", "Faster (.)", () => pardon(0, 1.2));
 
-    container.append(slowerBtn, liankiBtn, fasterBtn);
+    // Add separators between buttons
+    const makeSeparator = () => {
+      const sep = document.createElement("div");
+      sep.style.cssText =
+        "width:1px;height:24px;background:rgba(255,255,255,0.15);align-self:center;";
+      return sep;
+    };
+
+    container.append(slowerBtn, makeSeparator(), liankiBtn, makeSeparator(), fasterBtn);
 
     // Hide/show video control buttons based on video presence
     const updateVideoButtonVisibility = () => {
@@ -330,6 +349,54 @@ function main() {
       const display = hasVideo ? "" : "none";
       slowerBtn.style.display = display;
       fasterBtn.style.display = display;
+      // Also hide separators when video buttons are hidden
+      const separators = container.querySelectorAll("div");
+      if (hasVideo) {
+        separators[0].style.display = "";
+        separators[1].style.display = "";
+      } else {
+        separators[0].style.display = "none";
+        separators[1].style.display = "none";
+      }
+    };
+
+    // Update border radius based on edge proximity
+    const EDGE_THRESHOLD = 5; // pixels from edge to remove radius
+    const updateBorderRadius = () => {
+      const r = container.getBoundingClientRect();
+      const atLeft = r.left <= EDGE_THRESHOLD;
+      const atRight = r.right >= window.innerWidth - EDGE_THRESHOLD;
+      const atTop = r.top <= EDGE_THRESHOLD;
+      const atBottom = r.bottom >= window.innerHeight - EDGE_THRESHOLD;
+
+      let radius = "999px";
+      if (atLeft && atTop) radius = "0 999px 999px 0"; // top-left corner
+      else if (atRight && atTop) radius = "999px 0 0 999px"; // top-right corner
+      else if (atLeft && atBottom) radius = "0 999px 999px 0"; // bottom-left corner
+      else if (atRight && atBottom) radius = "999px 0 0 999px"; // bottom-right corner
+      else if (atLeft) radius = "0 999px 999px 0"; // left edge
+      else if (atRight) radius = "999px 0 0 999px"; // right edge
+      else if (atTop) radius = "0 0 999px 999px"; // top edge
+      else if (atBottom) radius = "999px 999px 0 0"; // bottom edge
+
+      container.style.borderRadius = radius;
+    };
+
+    // Constrain position within screen bounds
+    const constrainPosition = () => {
+      const r = container.getBoundingClientRect();
+      const currentLeft = parseInt(container.style.left) || r.left;
+      const currentTop = parseInt(container.style.top) || r.top;
+      const newLeft = Math.max(0, Math.min(window.innerWidth - r.width, currentLeft));
+      const newTop = Math.max(0, Math.min(window.innerHeight - r.height, currentTop));
+
+      if (newLeft !== currentLeft || newTop !== currentTop) {
+        container.style.right = "auto";
+        container.style.bottom = "auto";
+        container.style.left = newLeft + "px";
+        container.style.top = newTop + "px";
+      }
+      updateBorderRadius();
     };
 
     // Initial check
@@ -341,6 +408,9 @@ function main() {
       childList: true,
       subtree: true,
     });
+
+    // Handle window resize
+    window.addEventListener("resize", constrainPosition, { signal });
 
     let dragging = false;
     let startX = 0,
@@ -379,6 +449,7 @@ function main() {
         const newTop = startTop + (clientY - startY);
         container.style.left = Math.max(0, Math.min(window.innerWidth - r.width, newLeft)) + "px";
         container.style.top = Math.max(0, Math.min(window.innerHeight - r.height, newTop)) + "px";
+        updateBorderRadius();
       }
     };
     const stopDrag = () => {
@@ -387,6 +458,7 @@ function main() {
           "lianki_pos",
           JSON.stringify({ x: parseInt(container.style.left), y: parseInt(container.style.top) }),
         );
+        updateBorderRadius();
       }
       dragging = false;
     };
@@ -439,6 +511,10 @@ function main() {
       container.style.right = "12px";
       container.style.bottom = "20px";
     }
+
+    // Set initial border radius based on position
+    updateBorderRadius();
+
     return container;
   }
 
