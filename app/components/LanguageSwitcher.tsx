@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLocale } from "next-intlayer";
+import { Locales } from "intlayer";
 
 type Language = {
   code: string;
@@ -9,25 +10,25 @@ type Language = {
   nativeName: string;
 };
 
-// Available languages (currently configured: en, zh, ja)
+// Available languages using Intlayer's Locales constants
 // Extend this list as more languages are added to intlayer.config.ts
 const LANGUAGES: Language[] = [
-  { code: "en", name: "English", nativeName: "English" },
-  { code: "zh", name: "Chinese (Simplified)", nativeName: "简体中文" },
-  { code: "ja", name: "Japanese", nativeName: "日本語" },
-  { code: "hi", name: "Hindi", nativeName: "हिन्दी" },
-  { code: "es", name: "Spanish", nativeName: "Español" },
-  { code: "fr", name: "French", nativeName: "Français" },
-  { code: "ar", name: "Arabic", nativeName: "العربية" },
-  { code: "bn", name: "Bengali", nativeName: "বাংলা" },
-  { code: "pt", name: "Portuguese", nativeName: "Português" },
-  { code: "ru", name: "Russian", nativeName: "Русский" },
-  { code: "ur", name: "Urdu", nativeName: "اردو" },
-  { code: "id", name: "Indonesian", nativeName: "Bahasa Indonesia" },
-  { code: "de", name: "German", nativeName: "Deutsch" },
-  { code: "sw", name: "Swahili", nativeName: "Kiswahili" },
-  { code: "mr", name: "Marathi", nativeName: "मराठी" },
-  { code: "ko", name: "Korean", nativeName: "한국어" },
+  { code: Locales.ENGLISH, name: "English", nativeName: "English" },
+  { code: Locales.CHINESE_SIMPLIFIED, name: "Chinese (Simplified)", nativeName: "简体中文" },
+  { code: Locales.JAPANESE, name: "Japanese", nativeName: "日本語" },
+  { code: Locales.HINDI, name: "Hindi", nativeName: "हिन्दी" },
+  { code: Locales.SPANISH, name: "Spanish", nativeName: "Español" },
+  { code: Locales.FRENCH, name: "French", nativeName: "Français" },
+  { code: Locales.ARABIC, name: "Arabic", nativeName: "العربية" },
+  { code: Locales.BENGALI, name: "Bengali", nativeName: "বাংলা" },
+  { code: Locales.PORTUGUESE, name: "Portuguese", nativeName: "Português" },
+  { code: Locales.RUSSIAN, name: "Russian", nativeName: "Русский" },
+  { code: Locales.URDU, name: "Urdu", nativeName: "اردو" },
+  { code: Locales.INDONESIAN, name: "Indonesian", nativeName: "Bahasa Indonesia" },
+  { code: Locales.GERMAN, name: "German", nativeName: "Deutsch" },
+  { code: Locales.SWAHILI, name: "Swahili", nativeName: "Kiswahili" },
+  { code: Locales.MARATHI, name: "Marathi", nativeName: "मराठी" },
+  { code: Locales.KOREAN, name: "Korean", nativeName: "한국어" },
 ];
 
 export function LanguageSwitcher() {

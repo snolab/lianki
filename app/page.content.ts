@@ -1,4 +1,4 @@
-import { t, type DeclarationContent } from "intlayer";
+import { Dictionary, t } from "intlayer";
 
 const landingContent = {
   key: "landing-page",
@@ -85,6 +85,6 @@ const landingContent = {
       brand: t({ en: "Lianki", zh: "炼記", ja: "煉記" }),
     },
   },
-} satisfies DeclarationContent;
+} satisfies Dictionary;
 
 export default landingContent;
