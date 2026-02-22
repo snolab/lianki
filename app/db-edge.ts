@@ -7,7 +7,7 @@ const endpoint = "/api/mongodb-relay";
 const uri =
   process.env.VERCEL_URL?.replace(/.*/, (s) => `https://${s}${endpoint}`) ??
   process.env.MONGODB_RELAY_ORIGIN?.replace(/.*/, (s) => s + endpoint) ??
-  DIE("Missing MONGODB_RELAY_URI");
+  (process.env.VERCEL ? DIE("Missing MONGODB_RELAY_URI") : "http://localhost:3000/api/mongodb-relay");
 
 export const mongoClient = (g.mongodbClient ??= new RelayMongoClient(
   uri,
