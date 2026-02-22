@@ -2,33 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLocale } from "next-intlayer";
-
-type Language = {
-  code: string;
-  name: string;
-  nativeName: string;
-};
-
-// Available languages (currently configured: en, zh, ja)
-// Extend this list as more languages are added to intlayer.config.ts
-const LANGUAGES: Language[] = [
-  { code: "en", name: "English", nativeName: "English" },
-  { code: "zh", name: "Chinese (Simplified)", nativeName: "简体中文" },
-  { code: "ja", name: "Japanese", nativeName: "日本語" },
-  { code: "hi", name: "Hindi", nativeName: "हिन्दी" },
-  { code: "es", name: "Spanish", nativeName: "Español" },
-  { code: "fr", name: "French", nativeName: "Français" },
-  { code: "ar", name: "Arabic", nativeName: "العربية" },
-  { code: "bn", name: "Bengali", nativeName: "বাংলা" },
-  { code: "pt", name: "Portuguese", nativeName: "Português" },
-  { code: "ru", name: "Russian", nativeName: "Русский" },
-  { code: "ur", name: "Urdu", nativeName: "اردو" },
-  { code: "id", name: "Indonesian", nativeName: "Bahasa Indonesia" },
-  { code: "de", name: "German", nativeName: "Deutsch" },
-  { code: "sw", name: "Swahili", nativeName: "Kiswahili" },
-  { code: "mr", name: "Marathi", nativeName: "मराठी" },
-  { code: "ko", name: "Korean", nativeName: "한국어" },
-];
+import { LANGUAGES, isSupportedLocale } from "@/lib/constants";
 
 export function LanguageSwitcher() {
   const [isOpen, setIsOpen] = useState(false);
@@ -49,7 +23,7 @@ export function LanguageSwitcher() {
     setIsOpen(false);
   };
 
-  const isSupported = (code: string) => code === "en" || code === "zh" || code === "ja";
+  const isSupported = isSupportedLocale;
 
   return (
     <>

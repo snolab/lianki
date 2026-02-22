@@ -1,27 +1,9 @@
 import OpenAI from "openai";
+import { LOCALE_NAMES } from "@/lib/constants";
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-
-const LOCALE_NAMES: Record<string, string> = {
-  zh: "Simplified Chinese",
-  cn: "Simplified Chinese",
-  ja: "Japanese",
-  ko: "Korean",
-  fr: "French",
-  de: "German",
-  hi: "Hindi",
-  es: "Spanish",
-  ar: "Arabic",
-  bn: "Bengali",
-  pt: "Portuguese",
-  ru: "Russian",
-  ur: "Urdu",
-  id: "Indonesian",
-  sw: "Swahili",
-  mr: "Marathi",
-};
 
 export async function translatePost(rawMarkdown: string, targetLocale: string): Promise<string> {
   if (!process.env.OPENAI_API_KEY) {

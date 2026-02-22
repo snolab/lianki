@@ -1,9 +1,7 @@
 import { intlayerMiddleware } from "next-intlayer/middleware";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-
-const BLOG_LOCALES = ["en", "zh", "ja"];
-const DEFAULT_LOCALE = "en";
+import { BLOG_LOCALES, DEFAULT_LOCALE } from "@/lib/constants";
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -20,7 +18,7 @@ export function middleware(request: NextRequest) {
 
   // Redirect bare locale paths to blog index
   const bare = pathname.slice(1);
-  if (BLOG_LOCALES.includes(bare) && pathname.split("/").length === 2) {
+  if ((BLOG_LOCALES as readonly string[]).includes(bare) && pathname.split("/").length === 2) {
     return NextResponse.redirect(new URL(`${pathname}/blog`, request.url));
   }
 

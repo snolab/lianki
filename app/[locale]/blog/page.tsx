@@ -2,25 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAllSlugs, getRawPost } from "@/lib/blog";
 import matter from "gray-matter";
+import { BLOG_LOCALES, LOCALE_LABELS, getDateLocale, isSupportedLocale } from "@/lib/constants";
 
 export const revalidate = 3600;
 
-const LOCALES = ["en", "zh", "ja"];
-
 export async function generateStaticParams() {
-  return LOCALES.map((locale) => ({ locale }));
-}
-
-const LOCALE_LABELS: Record<string, string> = {
-  en: "English",
-  zh: "中文",
-  ja: "日本語",
-};
-
-function dateLocale(locale: string): string {
-  if (locale === "zh") return "zh-CN";
-  if (locale === "ja") return "ja-JP";
-  return "en-US";
+  return BLOG_LOCALES.map((locale) => ({ locale }));
 }
 
 type PostSummary = {
@@ -50,7 +37,7 @@ async function getPostSummaries(locale: string): Promise<PostSummary[]> {
 
 export default async function BlogIndexPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
-  if (!LOCALES.includes(locale)) notFound();
+  if (!isSupportedLocale(locale)) notFound();
 
   const posts = await getPostSummaries(locale);
 
@@ -64,7 +51,7 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
           <h1 className="text-3xl font-bold mt-2">Blog</h1>
         </div>
         <div className="flex gap-2">
-          {LOCALES.filter((l) => l !== locale).map((l) => (
+          {BLOG_LOCALES.filter((l) => l !== locale).map((l) => (
             <Link
               key={l}
               href={`/${l}/blog`}
@@ -82,7 +69,7 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
             <Link href={`/${locale}/blog/${post.slug}`} className="group block">
               <time className="text-sm text-gray-400">
                 {post.date
-                  ? new Date(post.date).toLocaleDateString(dateLocale(locale), {
+                  ? new Date(post.date).toLocaleDateString(getDateLocale(locale), {
                       year: "numeric",
                       month: "long",
                       day: "numeric",
