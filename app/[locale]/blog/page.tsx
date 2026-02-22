@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getAllSlugs, getRawPost } from "@/lib/blog";
+import { getAllSlugs, getRawPostWithFallback } from "@/lib/blog";
 import matter from "gray-matter";
 import { BLOG_LOCALES, LOCALE_LABELS, getDateLocale, isSupportedLocale } from "@/lib/constants";
 
@@ -21,7 +21,7 @@ async function getPostSummaries(locale: string): Promise<PostSummary[]> {
   const slugs = await getAllSlugs();
   const results = await Promise.all(
     slugs.map(async (slug) => {
-      const raw = (await getRawPost(locale, slug)) ?? (await getRawPost("en", slug));
+      const raw = await getRawPostWithFallback(locale, slug);
       if (!raw) return null;
       const { data } = matter(raw);
       return {

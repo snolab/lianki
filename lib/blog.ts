@@ -28,18 +28,21 @@ export async function getRawPost(locale: string, slug: string): Promise<string |
     const content = await fs.readFile(filePath, "utf-8");
     return content;
   } catch {
-    // Fallback to English if locale version doesn't exist
-    if (locale !== "en") {
-      const fallbackPath = path.join(process.cwd(), "blog", "en", `${slug}.md`);
-      try {
-        const content = await fs.readFile(fallbackPath, "utf-8");
-        return content;
-      } catch {
-        return null;
-      }
-    }
     return null;
   }
+}
+
+// Get raw post with English fallback (for blog index summaries)
+export async function getRawPostWithFallback(locale: string, slug: string): Promise<string | null> {
+  const localePost = await getRawPost(locale, slug);
+  if (localePost) return localePost;
+
+  // Fallback to English if locale version doesn't exist
+  if (locale !== "en") {
+    return await getRawPost("en", slug);
+  }
+
+  return null;
 }
 
 export function parsePost(raw: string, slug: string): Post {
