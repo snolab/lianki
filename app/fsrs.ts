@@ -28,6 +28,7 @@ export type FSRSNote = {
   url: string;
   title?: string;
   card: Card;
+  notes?: string; // User notes, max 128 chars
   speedMarkers?: Record<number, number>; // {timestamp: speed}
 };
 
@@ -180,6 +181,12 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         nextUrl: nextNote?.url ?? null,
         nextTitle: nextNote?.title ?? null,
       });
+    },
+    "PATCH /api/fsrs/notes(?:/|$|\\?)": async (req, opt) => {
+      const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
+      const { notes } = z.object({ notes: z.string().max(128) }).parse(await req.json());
+      await FSRSNotes.updateOne({ url: note.url }, { $set: { notes } });
+      return JSONR({ ok: true });
     },
     "PATCH /api/fsrs/update-url(?:/|$|\\?)": async (req) => {
       const { oldUrl, newUrl } = z
@@ -487,7 +494,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       }),
     );
 
-    return { ...resp, options };
+    return { ...resp, options, notes: resp.notes ?? "" };
   }
   async function saveQueryNote(req: Request, options?: { params?: Record<string, string> }) {
     const params = getParams(req, options);

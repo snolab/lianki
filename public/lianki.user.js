@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.16.1
+// @version     2.17.0
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -86,7 +86,15 @@ function main() {
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
   // ── State ──────────────────────────────────────────────────────────────────
-  let state = { phase: "idle", noteId: null, options: null, error: null, message: null };
+  let state = {
+    phase: "idle",
+    noteId: null,
+    options: null,
+    error: null,
+    message: null,
+    notes: "",
+    notesSynced: true,
+  };
   let fab = null;
   let dialog = null;
   let prefetchedNextUrl = null; // populated while user reads current card
@@ -210,6 +218,12 @@ function main() {
     return `&excludeDomains=${MOBILE_APP_DOMAINS.join(",")}`;
   };
 
+  const saveNotes = (id, notes) =>
+    api(`/api/fsrs/notes?id=${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ notes }),
+    });
   const getOptions = (id) => api(`/api/fsrs/options?id=${encodeURIComponent(id)}`);
   const submitReview = (id, rating) =>
     api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
@@ -581,6 +595,62 @@ function main() {
       hints.textContent =
         "A/H=Easy \u00b7 S/J=Good \u00b7 W/K=Hard \u00b7 D/L=Again \u00b7 T/M=Delete \u00b7 Esc=Close";
       dialog.appendChild(hints);
+
+      // Notes input
+      const notesRow = document.createElement("div");
+      Object.assign(notesRow.style, { marginTop: "10px", position: "relative" });
+
+      const notesInput = document.createElement("input");
+      notesInput.type = "text";
+      notesInput.maxLength = 128;
+      notesInput.placeholder = "Notes\u2026";
+      notesInput.value = state.notes;
+      notesInput.tabIndex = -1; // Don't auto-focus (preserve hotkeys)
+      Object.assign(notesInput.style, {
+        width: "100%",
+        boxSizing: "border-box",
+        background: "#222",
+        color: "#ddd",
+        border: "1px solid #444",
+        borderRadius: "6px",
+        padding: "6px 28px 6px 8px",
+        fontSize: "12px",
+        outline: "none",
+      });
+
+      const syncIndicator = document.createElement("span");
+      Object.assign(syncIndicator.style, {
+        position: "absolute",
+        right: "8px",
+        top: "50%",
+        transform: "translateY(-50%)",
+        fontSize: "13px",
+        opacity: ".7",
+        pointerEvents: "none",
+      });
+      syncIndicator.textContent = state.notesSynced ? "\u2713" : "\u22ef";
+
+      let notesTimer = null;
+      notesInput.addEventListener("input", () => {
+        const val = notesInput.value.slice(0, 128);
+        state.notes = val;
+        state.notesSynced = false;
+        syncIndicator.textContent = "\u22ef"; // ellipsis = pending
+        clearTimeout(notesTimer);
+        notesTimer = setTimeout(async () => {
+          try {
+            await saveNotes(state.noteId, val);
+            state.notesSynced = true;
+            syncIndicator.textContent = "\u2713"; // checkmark = synced
+          } catch {
+            syncIndicator.textContent = "\u2717"; // cross = error
+          }
+        }, 1000);
+      });
+
+      notesRow.appendChild(notesInput);
+      notesRow.appendChild(syncIndicator);
+      dialog.appendChild(notesRow);
     } else if (phase === "reviewed") {
       const msgDiv = document.createElement("div");
       Object.assign(msgDiv.style, { color: "#6f6", fontSize: "15px" });
@@ -602,6 +672,8 @@ function main() {
     addNote(url, document.title)
       .then((note) => {
         state.noteId = note._id;
+        state.notes = note.notes ?? "";
+        state.notesSynced = true;
         // Prefetch next URL in background while user reviews this card
         getNextUrl()
           .then((data) => {

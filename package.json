@@ -12,7 +12,7 @@
     "dev": "next dev",
     "build": "next build --turbopack",
     "start": "next start",
-    "fix": "oxlint --fix --ignore-pattern 'packages/**' && oxfmt .",
+    "fix": "oxlint --fix --ignore-pattern 'packages/**' && oxfmt '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**'",
     "typecheck": "tsgo --noEmit",
     "prepare": "husky"
   },
