@@ -25,4 +25,29 @@ if git diff --cached --name-only | grep -q "public/lianki.user.js"; then
   ' > public/lianki.meta.js
   git add public/lianki.meta.js
   echo "✓ lianki.meta.js synced and staged"
+
+  # Sync lianki.user.js to pardon submodule
+  echo "Syncing lianki.user.js to pardon-could-you-say-it-again submodule..."
+  PARDON_DIR="packages/pardon-could-you-say-it-again"
+  if [ -d "$PARDON_DIR" ]; then
+    # Copy the staged version to pardon repo
+    git show :public/lianki.user.js 2>/dev/null > "$PARDON_DIR/lianki.user.js"
+
+    # Commit in submodule if there are changes
+    cd "$PARDON_DIR"
+    if ! git diff --quiet lianki.user.js; then
+      git add lianki.user.js
+      VERSION=$(grep -m1 '@version' lianki.user.js | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+      git commit -m "sync: update lianki.user.js to v$VERSION" || true
+      echo "✓ lianki.user.js synced to pardon submodule (v$VERSION)"
+    else
+      echo "✓ lianki.user.js already up to date in pardon submodule"
+    fi
+    cd - > /dev/null
+
+    # Stage the submodule update in main repo
+    git add "$PARDON_DIR"
+  else
+    echo "⚠ Warning: pardon submodule not found at $PARDON_DIR"
+  fi
 fi
