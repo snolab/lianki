@@ -108,9 +108,6 @@ async function PostContent({ locale, slug }: { locale: string; slug: string }) {
               ))}
             </div>
           )}
-          <p className="mt-3 text-xs text-green-600 bg-green-50 px-3 py-1 rounded">
-            Previously translated · Loaded from cache
-          </p>
         </header>
 
         <div
