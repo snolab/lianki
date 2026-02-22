@@ -2,28 +2,11 @@ import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { NextRequest } from "next/server";
 import { getRawPost } from "@/lib/blog";
+import { LOCALE_NAMES } from "@/lib/constants";
 import KeyvGitHub from "keyv-github";
 import { Octokit } from "octokit";
 
 export const maxDuration = 60;
-
-const LOCALE_NAMES: Record<string, string> = {
-  zh: "Simplified Chinese",
-  ja: "Japanese",
-  hi: "Hindi",
-  es: "Spanish",
-  fr: "French",
-  ar: "Arabic",
-  bn: "Bengali",
-  pt: "Portuguese",
-  ru: "Russian",
-  ur: "Urdu",
-  id: "Indonesian",
-  de: "German",
-  sw: "Swahili",
-  mr: "Marathi",
-  ko: "Korean",
-};
 
 // Initialize GitHub cache
 function getGitHubCache() {
@@ -37,23 +20,6 @@ function getGitHubCache() {
   });
 }
 
-// Stream cached text with chunks to simulate streaming
-async function streamCachedText(cachedText: string): Promise<ReadableStream> {
-  const encoder = new TextEncoder();
-  const chunkSize = 50; // chars per chunk
-
-  return new ReadableStream({
-    async start(controller) {
-      for (let i = 0; i < cachedText.length; i += chunkSize) {
-        const chunk = cachedText.slice(i, i + chunkSize);
-        controller.enqueue(encoder.encode(chunk));
-        // Small delay to simulate streaming
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-      controller.close();
-    },
-  });
-}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -83,7 +49,7 @@ export async function GET(request: NextRequest) {
   const fsPost = await getRawPost(locale, slug);
   if (fsPost) {
     console.log(`[fs] ✓ Hit: blog/${cacheKey}.md`);
-    return new Response(await streamCachedText(fsPost), {
+    return new Response(fsPost, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "X-Cache-Status": "HIT-FS",
@@ -100,7 +66,7 @@ export async function GET(request: NextRequest) {
         const content = typeof ghData === "string" ? ghData : ghData.value;
         if (content) {
           console.log(`[gh-cache] ✓ Hit: ${cacheKey}`);
-          return new Response(await streamCachedText(content), {
+          return new Response(content, {
             headers: {
               "Content-Type": "text/plain; charset=utf-8",
               "X-Cache-Status": "HIT-GH",
