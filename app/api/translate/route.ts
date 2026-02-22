@@ -3,6 +3,9 @@ import { openai } from "@ai-sdk/openai";
 import { NextRequest } from "next/server";
 import { getRawPost } from "@/lib/blog";
 import { commitFile } from "@/lib/github-commit";
+import Keyv from "keyv";
+import KeyvGitHub from "keyv-github";
+import { Octokit } from "octokit";
 
 export const maxDuration = 60;
 
@@ -24,6 +27,38 @@ const LOCALE_NAMES: Record<string, string> = {
   ko: "Korean",
 };
 
+// Initialize cache with GitHub adapter
+function getCache() {
+  const token = process.env.GITHUB_INTL_TOKEN;
+  if (!token) return null;
+
+  const store = new KeyvGitHub("https://github.com/snomiao/lianki/tree/main", {
+    client: new Octokit({ auth: token }),
+    prefix: ".cache/translations/",
+    suffix: ".md",
+  });
+
+  return new Keyv({ store });
+}
+
+// Stream cached text with chunks to simulate streaming
+async function streamCachedText(cachedText: string): Promise<ReadableStream> {
+  const encoder = new TextEncoder();
+  const chunkSize = 50; // chars per chunk
+
+  return new ReadableStream({
+    async start(controller) {
+      for (let i = 0; i < cachedText.length; i += chunkSize) {
+        const chunk = cachedText.slice(i, i + chunkSize);
+        controller.enqueue(encoder.encode(chunk));
+        // Small delay to simulate streaming
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      controller.close();
+    },
+  });
+}
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const slug = searchParams.get("slug");
@@ -41,6 +76,29 @@ export async function GET(request: NextRequest) {
   const englishRaw = await getRawPost("en", slug);
   if (!englishRaw) {
     return new Response("Post not found", { status: 404 });
+  }
+
+  // Check cache first
+  const cache = getCache();
+  const cacheKey = `translate:${locale}:${slug}`;
+
+  if (cache) {
+    try {
+      const cached = await cache.get<string>(cacheKey);
+      if (cached) {
+        console.log(`[cache] ✓ Hit: ${cacheKey}`);
+        return new Response(await streamCachedText(cached), {
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "X-Cache-Status": "HIT",
+          },
+        });
+      }
+      console.log(`[cache] ✗ Miss: ${cacheKey}`);
+    } catch (error) {
+      console.error(`[cache] Error reading cache:`, error);
+      // Continue to translation if cache fails
+    }
   }
 
   const targetLanguage = LOCALE_NAMES[locale] ?? locale;
@@ -71,7 +129,16 @@ export async function GET(request: NextRequest) {
           controller.enqueue(encoder.encode(chunk));
         }
 
-        // Stream completed - now commit to GitHub (server-side)
+        // Stream completed - cache, then commit to GitHub
+        if (cache) {
+          try {
+            await cache.set(cacheKey, fullText);
+            console.log(`[cache] ✓ Saved: ${cacheKey}`);
+          } catch (error) {
+            console.error(`[cache] ✗ Error saving:`, error);
+          }
+        }
+
         const dir = locale === "zh" ? "cn" : locale;
         const filePath = `blog/${dir}/${slug}.md`;
 
@@ -90,6 +157,7 @@ export async function GET(request: NextRequest) {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-cache",
+      "X-Cache-Status": "MISS",
     },
   });
 }
