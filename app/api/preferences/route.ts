@@ -7,7 +7,6 @@ const Preferences = db.collection("preferences");
 export interface UserPreferences {
   userId: string;
   mobileExcludeDomains: string[];
-  reviewPriorities: Array<{ pattern: string; priority: number }>;
   updatedAt: Date;
 }
 
@@ -20,13 +19,11 @@ export async function GET() {
     if (!prefs) {
       return NextResponse.json({
         mobileExcludeDomains: ["zhihu.com"],
-        reviewPriorities: [],
       });
     }
 
     return NextResponse.json({
       mobileExcludeDomains: prefs.mobileExcludeDomains || ["zhihu.com"],
-      reviewPriorities: prefs.reviewPriorities || [],
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -41,15 +38,10 @@ export async function POST(req: NextRequest) {
     const preferences: Partial<UserPreferences> = {
       userId: user.id,
       mobileExcludeDomains: body.mobileExcludeDomains || ["zhihu.com"],
-      reviewPriorities: body.reviewPriorities || [],
       updatedAt: new Date(),
     };
 
-    await Preferences.updateOne(
-      { userId: user.id },
-      { $set: preferences },
-      { upsert: true },
-    );
+    await Preferences.updateOne({ userId: user.id }, { $set: preferences }, { upsert: true });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
