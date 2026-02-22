@@ -26,25 +26,8 @@ function error(msg: string) {
 }
 
 // Run linting and type checking
-log("Running linters and type checking...");
 try {
-  // Get list of staged files before formatting
-  const stagedBeforeFormat = exec("git diff --cached --name-only")
-    .trim()
-    .split("\n")
-    .filter(Boolean);
-
-  exec("bun fix");
-  exec("bun run typecheck");
-
-  // Auto-stage formatting changes for files that were already staged
-  const modifiedFiles = exec("git diff --name-only").trim().split("\n").filter(Boolean);
-  const filesToRestage = modifiedFiles.filter((f) => stagedBeforeFormat.includes(f));
-
-  if (filesToRestage.length > 0) {
-    exec(`git add ${filesToRestage.join(" ")}`);
-    log(`Auto-staged formatting changes: ${filesToRestage.join(", ")}`);
-  }
+  exec("bash scripts/lint-and-format.sh");
 } catch (err) {
   error("Linting or type checking failed");
 }
