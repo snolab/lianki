@@ -3,26 +3,13 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { getPost, getRawPost, getAllSlugs } from "@/lib/blog";
 import { StreamingTranslation } from "../StreamingTranslation";
+import { BLOG_LOCALES, LOCALE_LABELS, getDateLocale, isSupportedLocale } from "@/lib/constants";
 
 export const revalidate = 3600;
 
-const LOCALES = ["en", "zh", "ja"];
-
-const LOCALE_LABELS: Record<string, string> = {
-  en: "English",
-  zh: "中文",
-  ja: "日本語",
-};
-
-function dateLocale(locale: string): string {
-  if (locale === "zh") return "zh-CN";
-  if (locale === "ja") return "ja-JP";
-  return "en-US";
-}
-
 export async function generateStaticParams() {
   const slugs = await getAllSlugs();
-  return LOCALES.flatMap((locale) => slugs.map((slug) => ({ locale, slug })));
+  return BLOG_LOCALES.flatMap((locale) => slugs.map((slug) => ({ locale, slug })));
 }
 
 function PostSkeleton() {
@@ -62,7 +49,7 @@ async function PostContent({ locale, slug }: { locale: string; slug: string }) {
         <header className="mb-8">
           <time className="text-sm text-gray-400">
             {post.date
-              ? new Date(post.date).toLocaleDateString(dateLocale(locale), {
+              ? new Date(post.date).toLocaleDateString(getDateLocale(locale), {
                   year: "numeric",
                   month: "long",
                   day: "numeric",
@@ -101,7 +88,7 @@ async function PostContent({ locale, slug }: { locale: string; slug: string }) {
         <header className="mb-8">
           <time className="text-sm text-gray-400">
             {committed.date
-              ? new Date(committed.date).toLocaleDateString(dateLocale(locale), {
+              ? new Date(committed.date).toLocaleDateString(getDateLocale(locale), {
                   year: "numeric",
                   month: "long",
                   day: "numeric",
@@ -149,7 +136,7 @@ export default async function BlogPostPage({
   params: Promise<{ locale: string; slug: string }>;
 }) {
   const { locale, slug } = await params;
-  if (!LOCALES.includes(locale)) notFound();
+  if (!isSupportedLocale(locale)) notFound();
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-12">
@@ -158,7 +145,7 @@ export default async function BlogPostPage({
           ← Blog
         </Link>
         <div className="flex gap-2">
-          {LOCALES.filter((l) => l !== locale).map((l) => (
+          {BLOG_LOCALES.filter((l) => l !== locale).map((l) => (
             <Link
               key={l}
               href={`/${l}/blog/${slug}`}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { DOMAIN_SUGGESTIONS } from "@/lib/constants";
 
 export default function PreferencesPage() {
   const router = useRouter();
@@ -142,7 +143,11 @@ export default function PreferencesPage() {
                   if (e.key === "Enter" || e.key === ",") {
                     e.preventDefault();
                     addDomain();
-                  } else if (e.key === "Backspace" && !newDomain && mobileExcludeDomains.length > 0) {
+                  } else if (
+                    e.key === "Backspace" &&
+                    !newDomain &&
+                    mobileExcludeDomains.length > 0
+                  ) {
                     // Remove last domain on backspace if input is empty
                     removeDomain(mobileExcludeDomains[mobileExcludeDomains.length - 1]);
                   }
@@ -158,9 +163,8 @@ export default function PreferencesPage() {
           {/* Suggestions */}
           <div className="mt-3 flex gap-2 items-center flex-wrap">
             <span className="text-sm text-gray-400">Suggestions:</span>
-            {["zhihu.com", "twitter.com", "reddit.com"]
-              .filter((domain) => !mobileExcludeDomains.includes(domain))
-              .map((domain) => (
+            {DOMAIN_SUGGESTIONS.filter((domain) => !mobileExcludeDomains.includes(domain)).map(
+              (domain) => (
                 <button
                   key={domain}
                   onClick={() => {
@@ -170,7 +174,8 @@ export default function PreferencesPage() {
                 >
                   + {domain}
                 </button>
-              ))}
+              ),
+            )}
           </div>
         </div>
       </section>
