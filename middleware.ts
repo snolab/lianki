@@ -24,7 +24,7 @@ export function middleware(request: NextRequest) {
 
   // Skip intlayer middleware for routes with explicit locale prefixes
   // (prevents redirect loop: /blog → /en/blog → /blog)
-  if (pathname.match(/^\/(en|zh|ja)\//)) {
+  if (pathname.match(/^\/(en|zh|ja|ko)\//)) {
     return NextResponse.next();
   }
 

@@ -3,7 +3,7 @@
  */
 
 // Supported locales for blog/i18n routes
-export const BLOG_LOCALES = ["en", "zh", "ja"] as const;
+export const BLOG_LOCALES = ["en", "zh", "ja", "ko"] as const;
 export type BlogLocale = (typeof BLOG_LOCALES)[number];
 
 export const DEFAULT_LOCALE: BlogLocale = "en";
@@ -18,6 +18,7 @@ export const LOCALE_LABELS: Record<string, string> = {
   en: "English",
   zh: "中文",
   ja: "日本語",
+  ko: "한국어",
 };
 
 // BCP47 lang tags for HTML lang attribute
@@ -25,12 +26,14 @@ export const LANG_TAGS: Record<string, string> = {
   en: "en",
   zh: "zh-Hans",
   ja: "ja",
+  ko: "ko",
 };
 
 // Maps locale code to date locale for formatting
 export function getDateLocale(locale: string): string {
   if (locale === "zh") return "zh-CN";
   if (locale === "ja") return "ja-JP";
+  if (locale === "ko") return "ko-KR";
   return "en-US";
 }
 

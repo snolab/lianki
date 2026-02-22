@@ -5,7 +5,8 @@ const config: IntlayerConfig = {
     // en: English (default)
     // zh: Chinese Simplified (existing blog/cn/ files mapped via blogLocaleDir)
     // ja: Japanese
-    locales: ["en", "zh", "ja"],
+    // ko: Korean
+    locales: ["en", "zh", "ja", "ko"],
     defaultLocale: "en",
   },
   routing: {
