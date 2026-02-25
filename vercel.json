@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "name": "lianki",
+  "framework": "nextjs",
+  "buildCommand": "bun run build",
+  "installCommand": "bun install",
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "beta": true
+    }
+  }
+}
