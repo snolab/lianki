@@ -10,9 +10,9 @@ const config: IntlayerConfig = {
     defaultLocale: "en",
   },
   routing: {
-    // No URL prefix changes — locale detected from cookie / Accept-Language header.
-    // Blog pages already carry locale in their [locale] URL segment and pass it explicitly.
-    mode: "no-prefix",
+    // Use URL prefixes for all locales including default (/en/, /zh/, /ja/, /ko/)
+    // Blog pages already carry locale in their [locale] URL segment and are handled separately
+    mode: "prefix-all",
   },
   ai: {
     provider: "openai",

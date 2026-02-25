@@ -6,11 +6,6 @@ import { BLOG_LOCALES, DEFAULT_LOCALE } from "@/lib/constants";
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Redirect /blog/* → /en/blog/*
-  if (pathname === "/blog" || pathname.startsWith("/blog/")) {
-    return NextResponse.redirect(new URL(`/${DEFAULT_LOCALE}${pathname}`, request.url));
-  }
-
   // Redirect legacy /cn/* → /zh/*
   if (pathname === "/cn" || pathname.startsWith("/cn/")) {
     return NextResponse.redirect(new URL(pathname.replace(/^\/cn/, "/zh"), request.url));
@@ -22,13 +17,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(`${pathname}/blog`, request.url));
   }
 
-  // Skip intlayer middleware for routes with explicit locale prefixes
-  // (prevents redirect loop: /blog → /en/blog → /blog)
-  if (pathname.match(/^\/(en|zh|ja|ko)\//)) {
-    return NextResponse.next();
-  }
-
-  // Intlayer: detect locale from Accept-Language / cookie, set locale cookie (noPrefix mode)
+  // Intlayer middleware: adds locale prefix to all routes, handles locale detection
+  // This will redirect / → /en/, /list → /en/list, etc.
   return intlayerMiddleware(request);
 }
 
