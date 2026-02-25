@@ -88,7 +88,7 @@ export default async function LandingPage() {
         <section className="py-12 px-4 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto text-center">
             <h3 className="text-3xl font-bold mb-8">{howItWorks.title}</h3>
-            <ol className="list-decimal list-inside text-left max-w-lg mx-auto">
+            <ol className="list-decimal list-inside max-w-lg mx-auto">
               <li className="mb-4">
                 <a href="/lianki.user.js" className="text-blue-600 hover:underline">
                   {howItWorks.installLink}
