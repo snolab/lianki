@@ -96,7 +96,6 @@ export function getDateLocale(locale: string): string {
 // Full language names for translation API
 export const LOCALE_NAMES: Record<string, string> = {
   zh: "Simplified Chinese",
-  cn: "Simplified Chinese",
   ja: "Japanese",
   ko: "Korean",
   fr: "French",

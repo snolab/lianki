@@ -41,8 +41,7 @@ export async function GET(request: NextRequest) {
 
   // Multi-layer cache: filesystem → GitHub → LLM translation
   const ghCache = getGitHubCache();
-  const dir = locale === "zh" ? "cn" : locale;
-  const cacheKey = `${dir}/${slug}`;
+  const cacheKey = `${locale}/${slug}`;
 
   // Layer 1: Check filesystem (fastest - already committed)
   const fsPost = await getRawPost(locale, slug);

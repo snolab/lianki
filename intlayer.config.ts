@@ -5,7 +5,7 @@ const config: IntlayerConfig = {
     // Top 16 languages by number of speakers
     locales: [
       "en", // English
-      "zh", // Chinese (Simplified)
+      "zh", // Chinese Simplified
       "hi", // Hindi
       "es", // Spanish
       "fr", // French
