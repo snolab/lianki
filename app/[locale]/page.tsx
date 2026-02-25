@@ -3,17 +3,32 @@ import { getLocale } from "next-intlayer/server";
 import Link from "next/link";
 import ContactForm from "../ContactForm";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
-import { readFileSync } from "fs";
-import { join } from "path";
 
 export default async function LandingPage() {
   const locale = await getLocale();
   const { appName, nav, hero, features, howItWorks, footer } = getIntlayer("landing-page", locale);
+  const rawContact = getIntlayer("contact-form", locale);
 
-  // Read contact form translations directly from dictionary file
-  const dictPath = join(process.cwd(), ".intlayer", "dictionary", "contact-form.json");
-  const dict = JSON.parse(readFileSync(dictPath, "utf-8"));
-  const contactContent = dict.content.translation[locale];
+  // Create plain object to ensure proper serialization to client component
+  const contactContent = {
+    title: rawContact.title,
+    nameLabel: rawContact.nameLabel,
+    namePlaceholder: rawContact.namePlaceholder,
+    emailLabel: rawContact.emailLabel,
+    emailPlaceholder: rawContact.emailPlaceholder,
+    phoneLabel: rawContact.phoneLabel,
+    phonePlaceholder: rawContact.phonePlaceholder,
+    messageLabel: rawContact.messageLabel,
+    messagePlaceholder: rawContact.messagePlaceholder,
+    optional: rawContact.optional,
+    template1: rawContact.template1,
+    template2: rawContact.template2,
+    template3: rawContact.template3,
+    sendButton: rawContact.sendButton,
+    sending: rawContact.sending,
+    successMessage: rawContact.successMessage,
+    errorMessage: rawContact.errorMessage,
+  } as const;
 
   return (
     <div className="flex flex-col min-h-screen">
