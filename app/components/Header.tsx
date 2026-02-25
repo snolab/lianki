@@ -24,7 +24,10 @@ export function Header({ locale, appName, blogLabel, learnLabel, user }: HeaderP
     <header className="py-4 px-4 sm:px-6 lg:px-8 border-b border-gray-200 dark:border-gray-800">
       <div className="flex items-center justify-between max-w-7xl mx-auto">
         {/* Site Logo */}
-        <Link href={`/${locale}`} className="text-2xl font-bold hover:opacity-80 transition-opacity">
+        <Link
+          href={`/${locale}`}
+          className="text-2xl font-bold hover:opacity-80 transition-opacity"
+        >
           {appName}
         </Link>
 

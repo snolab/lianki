@@ -22,10 +22,6 @@ export function LanguageSwitcher() {
   }, []);
 
   const handleLanguageSelect = (code: string) => {
-    console.log("[LanguageSwitcher] Starting language switch to:", code);
-    console.log("[LanguageSwitcher] Current pathname:", pathname);
-    console.log("[LanguageSwitcher] Current locale:", currentLocale);
-
     // Set locale cookie for intlayer middleware (expires in 1 year)
     const expires = new Date();
     expires.setFullYear(expires.getFullYear() + 1);
@@ -37,13 +33,8 @@ export function LanguageSwitcher() {
       `/${code}`,
     );
 
-    console.log("[LanguageSwitcher] Computed newPath:", newPath);
-    console.log("[LanguageSwitcher] window.location.href before:", window.location.href);
-
     // Use window.location.href for hard navigation to ensure middleware processes the locale change
     window.location.href = newPath;
-
-    console.log("[LanguageSwitcher] Navigation initiated");
   };
 
   const isSupported = isSupportedLocale;

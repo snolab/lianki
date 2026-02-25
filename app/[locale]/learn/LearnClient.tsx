@@ -116,7 +116,10 @@ export default function LearnClient({ locale }: LearnClientProps) {
       }
 
       const data = await response.json();
-      setMessage({ type: "success", text: `Successfully imported ${data.count} videos from playlist` });
+      setMessage({
+        type: "success",
+        text: `Successfully imported ${data.count} videos from playlist`,
+      });
       setYoutubeUrl("");
     } catch (error: any) {
       setMessage({ type: "error", text: error.message || "Failed to import from YouTube" });
@@ -159,8 +162,8 @@ export default function LearnClient({ locale }: LearnClientProps) {
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-3xl font-bold mb-4">Import Learning Materials</h1>
       <p className="text-gray-600 dark:text-gray-400 mb-8">
-        Start learning by importing materials from recommended lists, YouTube playlists, or custom URL
-        lists.
+        Start learning by importing materials from recommended lists, YouTube playlists, or custom
+        URL lists.
       </p>
 
       {/* Message Display */}
