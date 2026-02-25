@@ -10,8 +10,13 @@ interface CommittedTranslationProps {
 }
 
 export function CommittedTranslation({ content, locale }: CommittedTranslationProps) {
+  // Strip markdown code fence if present (LLM sometimes wraps in ```markdown...```)
+  const cleanedContent = content
+    .replace(/^```markdown\s*\n?/, "") // Remove opening fence
+    .replace(/\n?```\s*$/, ""); // Remove closing fence
+
   // Parse frontmatter
-  const { data, content: markdown } = matter(content);
+  const { data, content: markdown } = matter(cleanedContent);
 
   return (
     <article>

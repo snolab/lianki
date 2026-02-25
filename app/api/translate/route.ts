@@ -110,7 +110,12 @@ export async function GET(request: NextRequest) {
         // Stream completed - save to GitHub (which commits to blog/)
         if (ghCache) {
           try {
-            await ghCache.set(cacheKey, fullText);
+            // Clean the text before saving (strip markdown code fence if LLM added it)
+            const cleanedText = fullText
+              .replace(/^```markdown\s*\n?/, "") // Remove opening fence
+              .replace(/\n?```\s*$/, ""); // Remove closing fence
+
+            await ghCache.set(cacheKey, cleanedText);
             console.log(`[gh-cache] ✓ Saved: blog/${cacheKey}.md`);
           } catch (error) {
             console.error(`[gh-cache] ✗ Error saving:`, error);

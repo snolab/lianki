@@ -159,21 +159,10 @@ export default async function BlogPostPage({
 
       {/* Main Content */}
       <main className="flex-grow max-w-2xl mx-auto px-4 py-12 w-full">
-        <nav className="flex items-center justify-between mb-8 text-sm text-gray-500">
+        <nav className="mb-8 text-sm text-gray-500">
           <Link href={`/${locale}/blog`} className="hover:text-gray-700">
             ← Blog
           </Link>
-          <div className="flex gap-2">
-            {BLOG_LOCALES.filter((l) => l !== locale).map((l) => (
-              <Link
-                key={l}
-                href={`/${l}/blog/${slug}`}
-                className="px-3 py-1 border rounded hover:bg-gray-50"
-              >
-                {LOCALE_LABELS[l]}
-              </Link>
-            ))}
-          </div>
         </nav>
 
         {/* Shell renders immediately; PostContent streams in when translation is ready */}
