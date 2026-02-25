@@ -1,7 +1,8 @@
 import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
-import ContactForm from "./ContactForm";
-import { LanguageSwitcher } from "./components/LanguageSwitcher";
+import Link from "next/link";
+import ContactForm from "../ContactForm";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
 
 export default async function LandingPage() {
   const locale = await getLocale();
@@ -14,15 +15,15 @@ export default async function LandingPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">{appName}</h1>
           <nav className="flex items-center gap-6">
-            <a href="/en/blog" className="text-lg font-medium hover:underline">
+            <Link href={`/${locale}/blog`} className="text-lg font-medium hover:underline">
               {nav.blog}
-            </a>
-            <a href="/polyglot" className="text-lg font-medium hover:underline">
+            </Link>
+            <Link href={`/${locale}/polyglot`} className="text-lg font-medium hover:underline">
               Polyglot
-            </a>
-            <a href="/list" className="text-lg font-medium hover:underline">
+            </Link>
+            <Link href={`/${locale}/list`} className="text-lg font-medium hover:underline">
               {nav.learn}
-            </a>
+            </Link>
             <LanguageSwitcher />
           </nav>
         </div>
@@ -34,12 +35,12 @@ export default async function LandingPage() {
         <section className="py-12 px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-4xl font-bold mb-4">{hero.title}</h2>
           <p className="text-lg mb-8 max-w-2xl mx-auto">{hero.description}</p>
-          <a
-            href="/list"
+          <Link
+            href={`/${locale}/list`}
             className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700"
           >
             {hero.cta}
-          </a>
+          </Link>
         </section>
 
         {/* Features Section */}

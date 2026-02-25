@@ -1,10 +1,12 @@
 import { auth } from "@/auth";
 import { headers } from "next/headers";
-import { authUser } from "../signInEmail";
+import { authUser } from "@/app/signInEmail";
+import { getLocale } from "next-intlayer/server";
 
 export default async function ProfilePage() {
   const user = await authUser();
   const session = await auth.api.getSession({ headers: await headers() });
+  const locale = await getLocale();
 
   return (
     <div>
@@ -28,10 +30,10 @@ export default async function ProfilePage() {
         <pre>{JSON.stringify(session, null, 2)}</pre>
       </div>
       <div>
-        <a href="/preferences" className="text-blue-500 hover:text-blue-600 mr-4">
+        <a href={`/${locale}/preferences`} className="text-blue-500 hover:text-blue-600 mr-4">
           Edit Preferences
         </a>
-        <a href="/list" className="text-blue-500 hover:text-blue-600">
+        <a href={`/${locale}/list`} className="text-blue-500 hover:text-blue-600">
           Back to Home
         </a>
       </div>

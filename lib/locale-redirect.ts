@@ -11,7 +11,7 @@ import { redirect as nextRedirect } from "next/navigation";
  * For special routes that shouldn't have locale prefix:
  *   localeRedirect("/api/auth/signin", false);
  */
-export async function localeRedirect(path: string, addLocale = true) {
+export async function localeRedirect(path: string, addLocale = true): Promise<never> {
   // Don't add locale for special routes
   if (
     path.startsWith("/api") ||

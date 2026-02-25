@@ -1,16 +1,16 @@
 import Image from "next/image";
 import { Suspense } from "react";
 import sflow from "sflow";
-import { ems } from "../ems";
-import { getFSRSNotesCollection } from "../getFSRSNotesCollection";
-import { authEmail, authUser } from "../signInEmail";
-import { getCachedHeatmapData } from "../lib/heatmap-cache";
+import { ems } from "@/app/ems";
+import { getFSRSNotesCollection } from "@/app/getFSRSNotesCollection";
+import { authEmail, authUser } from "@/app/signInEmail";
+import { getCachedHeatmapData } from "@/app/lib/heatmap-cache";
 import ActivityHeatmap from "./components/ActivityHeatmap";
 import DeleteButton from "./components/DeleteButton";
 import RefreshHeatmapButton from "./components/RefreshHeatmapButton";
 import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
-import { LanguageSwitcher } from "../components/LanguageSwitcher";
+import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
 import TokenManager from "./components/TokenManager";
 
 export const dynamic = "force-dynamic";
@@ -29,14 +29,14 @@ export default async function HomePage() {
       {/* Header */}
       <header className="py-4 px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between">
-          <a href="/" className="text-2xl font-bold hover:underline">
+          <a href={`/${locale}`} className="text-2xl font-bold hover:underline">
             {appName}
           </a>
           <nav className="flex items-center gap-6">
-            <a href="/en/blog" className="text-lg font-medium hover:underline">
+            <a href={`/${locale}/blog`} className="text-lg font-medium hover:underline">
               {nav.blog}
             </a>
-            <a href="/polyglot" className="text-lg font-medium hover:underline">
+            <a href={`/${locale}/polyglot`} className="text-lg font-medium hover:underline">
               Polyglot
             </a>
             <a href="./lianki.user.js" className="text-lg font-medium hover:underline">
@@ -58,19 +58,19 @@ export default async function HomePage() {
               </button>
               <div className="hidden group-hover:block absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-10">
                 <a
-                  href="/profile"
+                  href={`/${locale}/profile`}
                   className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   Profile
                 </a>
                 <a
-                  href="/preferences"
+                  href={`/${locale}/preferences`}
                   className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   Preferences
                 </a>
                 <a
-                  href="/membership"
+                  href={`/${locale}/membership`}
                   className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   Membership

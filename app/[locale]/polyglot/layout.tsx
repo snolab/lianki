@@ -1,19 +1,20 @@
 import { authUser } from "@/app/signInEmail";
 import { getUserMembership } from "@/lib/membership";
-import { redirect } from "next/navigation";
+import { localeRedirect } from "@/lib/locale-redirect";
 import Link from "next/link";
 import { useIntlayer } from "next-intlayer/server";
+import { getLocale } from "next-intlayer/server";
 
 export default async function PolyglotLayout({ children }: { children: React.ReactNode }) {
   const content = useIntlayer("polyglot-layout");
+  const locale = await getLocale();
 
-  let user;
-  try {
-    user = await authUser();
-  } catch (error) {
-    // Not logged in, redirect to sign-in
-    redirect("/sign-in");
-  }
+  // Get authenticated user or redirect to sign-in
+  const user = await authUser().catch(() => {
+    localeRedirect("/sign-in");
+    // This line is unreachable, but needed for TypeScript
+    return null as never;
+  });
 
   const membership = await getUserMembership(user.id);
   const hasAccess = membership.tier === "pro" || membership.tier === "trial";
@@ -32,13 +33,13 @@ export default async function PolyglotLayout({ children }: { children: React.Rea
             </p>
             <div className="space-y-3">
               <Link
-                href="/membership"
+                href={`/${locale}/membership`}
                 className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
               >
                 {content.accessDenied.upgradeToPro.value}
               </Link>
               <Link
-                href="/list"
+                href={`/${locale}/list`}
                 className="block w-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-semibold py-3 px-6 rounded-lg transition-colors"
               >
                 {content.accessDenied.backToHome.value}
@@ -56,7 +57,7 @@ export default async function PolyglotLayout({ children }: { children: React.Rea
       {membership.tier === "trial" && membership.trialEndsAt && (
         <div className="bg-yellow-500 text-black px-4 py-2 text-center text-sm font-medium">
           {content.banner.trialExpires.value} {membership.trialEndsAt.toLocaleDateString()} —{" "}
-          <Link href="/membership" className="underline">
+          <Link href={`/${locale}/membership`} className="underline">
             {content.banner.upgradeToPro.value}
           </Link>
         </div>

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { FSRSNote } from "../fsrs";
+import { FSRSNote } from "@/app/fsrs";
 
 /**
  *

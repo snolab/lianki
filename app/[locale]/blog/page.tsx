@@ -45,7 +45,7 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
     <main className="max-w-2xl mx-auto px-4 py-12">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <Link href="/" className="text-sm text-gray-500 hover:text-gray-700">
+          <Link href={`/${locale}`} className="text-sm text-gray-500 hover:text-gray-700">
             ← Lianki
           </Link>
           <h1 className="text-3xl font-bold mt-2">Blog</h1>

@@ -1,7 +1,7 @@
 import { intlayerMiddleware } from "next-intlayer/middleware";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { BLOG_LOCALES, DEFAULT_LOCALE } from "@/lib/constants";
+import { BLOG_LOCALES } from "@/lib/constants";
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
