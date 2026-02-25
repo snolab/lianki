@@ -1,14 +1,10 @@
 "use client";
 
 import { useState } from "react";
-
-const TEMPLATES = [
-  "I want to learn a language faster",
-  "I want to learn an instrument faster",
-  "I want to learn skills faster",
-];
+import { useIntlayer } from "next-intlayer";
 
 export default function ContactForm() {
+  const content = useIntlayer("contact-form");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -35,19 +31,21 @@ export default function ContactForm() {
     }
   }
 
+  const templates = [content.template1, content.template2, content.template3];
+
   return (
     <section className="py-12 px-4 sm:px-6 lg:px-8 bg-gray-100 dark:bg-gray-900">
       <div className="max-w-xl mx-auto">
-        <h3 className="text-3xl font-bold text-center mb-8">Contact Us</h3>
+        <h3 className="text-3xl font-bold text-center mb-8">{content.title}</h3>
         {status === "success" ? (
           <p className="text-center text-green-600 dark:text-green-400 font-medium">
-            Message sent! We&apos;ll get back to you soon.
+            {content.successMessage}
           </p>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div>
               <label className="block text-sm font-medium mb-1" htmlFor="contact-name">
-                Name <span className="text-red-500">*</span>
+                {content.nameLabel} <span className="text-red-500">*</span>
               </label>
               <input
                 id="contact-name"
@@ -56,13 +54,13 @@ export default function ContactForm() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Your name"
+                placeholder={content.namePlaceholder}
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium mb-1" htmlFor="contact-email">
-                Email <span className="text-red-500">*</span>
+                {content.emailLabel} <span className="text-red-500">*</span>
               </label>
               <input
                 id="contact-email"
@@ -71,13 +69,13 @@ export default function ContactForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="you@example.com"
+                placeholder={content.emailPlaceholder}
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium mb-1" htmlFor="contact-phone">
-                Phone <span className="text-gray-400">(optional)</span>
+                {content.phoneLabel} <span className="text-gray-400">{content.optional}</span>
               </label>
               <input
                 id="contact-phone"
@@ -85,16 +83,16 @@ export default function ContactForm() {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="+1 234 567 8900"
+                placeholder={content.phonePlaceholder}
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium mb-1" htmlFor="contact-message">
-                Message <span className="text-gray-400">(optional)</span>
+                {content.messageLabel} <span className="text-gray-400">{content.optional}</span>
               </label>
               <div className="flex flex-wrap gap-2 mb-2">
-                {TEMPLATES.map((t) => (
+                {templates.map((t) => (
                   <button
                     key={t}
                     type="button"
@@ -111,20 +109,18 @@ export default function ContactForm() {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Tell us what you'd like to learn..."
+                placeholder={content.messagePlaceholder}
               />
             </div>
 
-            {status === "error" && (
-              <p className="text-red-500 text-sm">Something went wrong. Please try again.</p>
-            )}
+            {status === "error" && <p className="text-red-500 text-sm">{content.errorMessage}</p>}
 
             <button
               type="submit"
               disabled={status === "loading"}
               className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
             >
-              {status === "loading" ? "Sending..." : "Send Message"}
+              {status === "loading" ? content.sending : content.sendButton}
             </button>
           </form>
         )}

@@ -19,7 +19,7 @@ export default async function LandingPage() {
               {nav.blog}
             </Link>
             <Link href={`/${locale}/polyglot`} className="text-lg font-medium hover:underline">
-              Polyglot
+              {nav.polyglot}
             </Link>
             <Link href={`/${locale}/list`} className="text-lg font-medium hover:underline">
               {nav.learn}
