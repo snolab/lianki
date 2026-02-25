@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.19.0
+// @version     2.19.1
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -88,8 +88,8 @@ function main() {
     mobileExcludeDomains: [], // default: no filters
   };
 
-  // Load preferences on startup
-  (async function loadPreferences() {
+  // Load preferences on startup (called after api() is defined)
+  async function loadPreferences() {
     try {
       const cached = GM_getValue("lk:preferences", "");
       if (cached) {
@@ -108,7 +108,7 @@ function main() {
     } catch (err) {
       console.log("[Lianki] Failed to load preferences, using defaults:", err);
     }
-  })();
+  }
 
   // ── State ──────────────────────────────────────────────────────────────────
   let state = {
@@ -330,7 +330,9 @@ function main() {
     };
 
     const slowerBtn = makeBtn("⏪", "Slower (,)", () => pardon(-3, 0.7));
-    const liankiBtn = makeBtn("🔖", "Lianki (Alt+F)", () => (dialog ? closeDialog() : openDialog()));
+    const liankiBtn = makeBtn("🔖", "Lianki (Alt+F)", () =>
+      dialog ? closeDialog() : openDialog(),
+    );
     const fasterBtn = makeBtn("⏩", "Faster (.)", () => pardon(0, 1.2));
 
     // Add separators between buttons
@@ -370,13 +372,20 @@ function main() {
       const atBottom = r.bottom >= window.innerHeight - EDGE_THRESHOLD;
 
       let radius = "999px";
-      if (atLeft && atTop) radius = "0 999px 999px 0"; // top-left corner
-      else if (atRight && atTop) radius = "999px 0 0 999px"; // top-right corner
-      else if (atLeft && atBottom) radius = "0 999px 999px 0"; // bottom-left corner
-      else if (atRight && atBottom) radius = "999px 0 0 999px"; // bottom-right corner
-      else if (atLeft) radius = "0 999px 999px 0"; // left edge
-      else if (atRight) radius = "999px 0 0 999px"; // right edge
-      else if (atTop) radius = "0 0 999px 999px"; // top edge
+      if (atLeft && atTop)
+        radius = "0 999px 999px 0"; // top-left corner
+      else if (atRight && atTop)
+        radius = "999px 0 0 999px"; // top-right corner
+      else if (atLeft && atBottom)
+        radius = "0 999px 999px 0"; // bottom-left corner
+      else if (atRight && atBottom)
+        radius = "999px 0 0 999px"; // bottom-right corner
+      else if (atLeft)
+        radius = "0 999px 999px 0"; // left edge
+      else if (atRight)
+        radius = "999px 0 0 999px"; // right edge
+      else if (atTop)
+        radius = "0 0 999px 999px"; // top edge
       else if (atBottom) radius = "999px 999px 0 0"; // bottom edge
 
       container.style.borderRadius = radius;
@@ -979,6 +988,9 @@ function main() {
   })();
 
   // ── Mount ──────────────────────────────────────────────────────────────────
+  // Load preferences (async, non-blocking)
+  loadPreferences();
+
   fab = createUI();
 
   // ── Redirect detection ─────────────────────────────────────────────────────
