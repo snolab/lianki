@@ -15,7 +15,6 @@ export default function MembershipPage() {
   const router = useRouter();
   const [membership, setMembership] = useState<MembershipInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [startingTrial, setStartingTrial] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -42,29 +41,6 @@ export default function MembershipPage() {
     }
   }
 
-  async function handleStartTrial() {
-    setStartingTrial(true);
-    setError("");
-    try {
-      const res = await fetch("/api/membership/start-trial", {
-        method: "POST",
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to start trial");
-      }
-
-      // Refresh membership info
-      await fetchMembership();
-      alert(data.message);
-    } catch (error: any) {
-      setError(error.message);
-    } finally {
-      setStartingTrial(false);
-    }
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -81,8 +57,6 @@ export default function MembershipPage() {
     );
   }
 
-  const canStartTrial = membership.tier === "free" && !membership.trialEndsAt;
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
       <div className="max-w-4xl mx-auto">
@@ -96,6 +70,22 @@ export default function MembershipPage() {
         </div>
 
         <h1 className="text-4xl font-bold mb-8 text-gray-900 dark:text-white">Membership</h1>
+
+        {/* 90-day trial notice */}
+        <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">🎁</span>
+            <div>
+              <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-1">
+                New User Benefit
+              </h3>
+              <p className="text-blue-800 dark:text-blue-300 text-sm">
+                Every new user gets <strong>90 days of Pro access</strong> automatically! Enjoy all
+                premium features including Polyglot language learning.
+              </p>
+            </div>
+          </div>
+        </div>
 
         {error && (
           <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-red-800 dark:text-red-200">
@@ -131,14 +121,10 @@ export default function MembershipPage() {
             </div>
           </div>
 
-          {canStartTrial && (
-            <button
-              onClick={handleStartTrial}
-              disabled={startingTrial}
-              className="mt-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-            >
-              {startingTrial ? "Starting Trial..." : "Start 7-Day Free Trial"}
-            </button>
+          {membership.tier === "free" && (
+            <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+              Your 90-day trial has expired. Upgrade to Pro to continue using premium features.
+            </div>
           )}
         </div>
 

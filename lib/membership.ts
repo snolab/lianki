@@ -17,12 +17,40 @@ export interface UserMembership {
 
 /**
  * Get user's current membership status
+ * Automatically grants 90-day trial to new users
  */
 export async function getUserMembership(userId: string): Promise<UserMembership> {
   const user = await Users.findOne({ id: userId });
 
   if (!user) {
     throw new Error("User not found");
+  }
+
+  // Auto-grant 90-day trial to users who don't have one
+  if (!user.trialEndsAt && !user.proEndsAt) {
+    const trialEndsAt = new Date();
+    trialEndsAt.setDate(trialEndsAt.getDate() + 90);
+
+    await Users.updateOne(
+      { id: userId },
+      {
+        $set: {
+          trialEndsAt,
+          updatedAt: new Date(),
+        },
+      },
+    );
+
+    // Return the newly granted trial
+    return {
+      userId: user.id,
+      email: user.email,
+      tier: "trial",
+      trialEndsAt,
+      proEndsAt: undefined,
+      createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
+      updatedAt: new Date(),
+    };
   }
 
   const now = new Date();
@@ -71,11 +99,11 @@ export async function requireProAccess() {
 }
 
 /**
- * Start a trial for a user (7 days)
+ * Start a trial for a user (90 days)
  */
 export async function startTrial(userId: string): Promise<void> {
   const trialEndsAt = new Date();
-  trialEndsAt.setDate(trialEndsAt.getDate() + 7);
+  trialEndsAt.setDate(trialEndsAt.getDate() + 90);
 
   await Users.updateOne(
     { id: userId },

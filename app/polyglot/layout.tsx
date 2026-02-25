@@ -25,7 +25,8 @@ export default async function PolyglotLayout({ children }: { children: React.Rea
               Pro Membership Required
             </h1>
             <p className="text-gray-600 dark:text-gray-400 mb-6">
-              The Polyglot feature is available for Pro and Trial members only.
+              The Polyglot feature is available for Pro members. New users get 90 days free trial
+              automatically.
             </p>
             <div className="space-y-3">
               <Link

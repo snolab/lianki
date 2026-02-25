@@ -21,7 +21,7 @@ export async function POST() {
 
     return NextResponse.json({
       success: true,
-      message: "Trial started! You now have 7 days of Pro access.",
+      message: "Trial started! You now have 90 days of Pro access.",
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
