@@ -1,13 +1,14 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getAllSlugs, getRawPostWithFallback } from "@/lib/blog";
+import { getAllSlugs, getRawPostWithFallback, getRawPost } from "@/lib/blog";
 import matter from "gray-matter";
 import { BLOG_LOCALES, LOCALE_LABELS, getDateLocale, isSupportedLocale } from "@/lib/constants";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import { getIntlayer } from "intlayer";
 import { Header } from "@/app/components/Header";
 import { authUser } from "@/app/signInEmail";
+import OpenAI from "openai";
 
 export const revalidate = 3600;
 
@@ -36,18 +37,81 @@ type PostSummary = {
   summary: string;
 };
 
+async function translateText(text: string, targetLocale: string): Promise<string> {
+  if (!process.env.OPENAI_API_KEY) return text;
+
+  try {
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const languageName = LOCALE_LABELS[targetLocale as keyof typeof LOCALE_LABELS] || targetLocale;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a translator. Translate the given text to ${languageName}. Only return the translated text, nothing else.`,
+        },
+        {
+          role: "user",
+          content: text,
+        },
+      ],
+      temperature: 0.3,
+    });
+
+    return response.choices[0]?.message?.content?.trim() || text;
+  } catch (error) {
+    console.error("Translation error:", error);
+    return text;
+  }
+}
+
 async function getPostSummaries(locale: string): Promise<PostSummary[]> {
   const slugs = await getAllSlugs();
   const results = await Promise.all(
     slugs.map(async (slug) => {
-      const raw = await getRawPostWithFallback(locale, slug);
-      if (!raw) return null;
-      const { data } = matter(raw);
+      // Check if localized version exists
+      const localizedRaw = await getRawPost(locale, slug);
+
+      if (localizedRaw) {
+        // Use localized version
+        const { data } = matter(localizedRaw);
+        return {
+          slug,
+          title: data.title ?? slug,
+          date: data.date ?? "",
+          summary: data.summary ?? "",
+        };
+      }
+
+      // Fallback to English and translate
+      const englishRaw = await getRawPost("en", slug);
+      if (!englishRaw) return null;
+
+      const { data } = matter(englishRaw);
+      const title = data.title ?? slug;
+      const summary = data.summary ?? "";
+
+      // Translate title and summary if not English
+      if (locale !== "en") {
+        const [translatedTitle, translatedSummary] = await Promise.all([
+          translateText(title, locale),
+          translateText(summary, locale),
+        ]);
+
+        return {
+          slug,
+          title: translatedTitle,
+          date: data.date ?? "",
+          summary: translatedSummary,
+        };
+      }
+
       return {
         slug,
-        title: data.title ?? slug,
+        title,
         date: data.date ?? "",
-        summary: data.summary ?? "",
+        summary,
       };
     }),
   );
