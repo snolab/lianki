@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { IntlayerServerProvider } from "next-intlayer/server";
-import { LANG_TAGS } from "@/lib/constants";
+import { LANG_TAGS, isRTLLocale } from "@/lib/constants";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import { IntlayerClientProvider } from "../IntlayerClientProvider";
 
@@ -26,12 +26,13 @@ export default async function LocaleLayout({
 }) {
   const { locale } = await params;
   const lang = LANG_TAGS[locale] ?? locale;
+  const dir = isRTLLocale(locale) ? "rtl" : "ltr";
 
   return (
     // Override the root layout's locale provider with the URL locale
     <IntlayerServerProvider locale={locale}>
       <IntlayerClientProvider locale={locale}>
-        <div lang={lang} className="min-h-screen">
+        <div lang={lang} dir={dir} className="min-h-screen">
           {children}
         </div>
       </IntlayerClientProvider>

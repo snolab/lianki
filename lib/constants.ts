@@ -139,5 +139,13 @@ export const LANGUAGES: Language[] = [
   { code: "ko", name: "Korean", nativeName: "한국어" },
 ];
 
+// RTL (Right-to-Left) languages
+export const RTL_LOCALES = ["ar", "ur"] as const;
+
+// Check if a locale uses RTL text direction
+export function isRTLLocale(locale: string): boolean {
+  return RTL_LOCALES.includes(locale as (typeof RTL_LOCALES)[number]);
+}
+
 // Domain suggestions for mobile exclude filters
 export const DOMAIN_SUGGESTIONS = ["zhihu.com", "twitter.com", "reddit.com"];

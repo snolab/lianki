@@ -37,7 +37,8 @@ export default function LearnClient({ locale }: LearnClientProps) {
     {
       id: "japanese-beginner",
       title: "Japanese for Beginners",
-      description: "Curated learning materials for Japanese beginners - from hiragana to basic conversations",
+      description:
+        "Curated learning materials for Japanese beginners - from hiragana to basic conversations",
       blogSlug: "2026-02-25-japanese-beginner-materials",
       tags: ["Japanese", "Beginner", "N5"],
     },
@@ -150,7 +151,8 @@ export default function LearnClient({ locale }: LearnClientProps) {
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-3xl font-bold mb-4">Import Learning Materials</h1>
       <p className="text-gray-600 dark:text-gray-400 mb-8">
-        Start learning by importing materials from recommended lists{youtubeAvailable ? ", YouTube playlists," : ""} or custom URL lists.
+        Start learning by importing materials from recommended lists
+        {youtubeAvailable ? ", YouTube playlists," : ""} or custom URL lists.
       </p>
 
       {/* Message Display */}
