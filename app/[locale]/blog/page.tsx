@@ -1,13 +1,28 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getAllSlugs, getRawPostWithFallback } from "@/lib/blog";
 import matter from "gray-matter";
 import { BLOG_LOCALES, LOCALE_LABELS, getDateLocale, isSupportedLocale } from "@/lib/constants";
+import { generateHreflangMetadata } from "@/lib/hreflang";
 
 export const revalidate = 3600;
 
 export async function generateStaticParams() {
   return BLOG_LOCALES.map((locale) => ({ locale }));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  return {
+    title: "Lianki Blog - Learn about spaced repetition and FSRS",
+    description: "Articles about spaced repetition learning, FSRS algorithm, and effective study techniques",
+    ...generateHreflangMetadata(locale, "/blog"),
+  };
 }
 
 type PostSummary = {

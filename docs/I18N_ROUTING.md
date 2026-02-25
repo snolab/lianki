@@ -197,7 +197,60 @@ The middleware handles automatic redirection, so existing links without locale p
 2. Navigation components (header, footer, menus)
 3. Individual page links
 
+## SEO and Hreflang Tags
+
+All pages include proper hreflang tags for SEO, following Google's best practices for multilingual websites.
+
+### How Hreflang Works
+
+Each page automatically generates hreflang links in the `<head>` that tell search engines about language variations:
+
+```html
+<link rel="canonical" href="https://www.lianki.com/en/list" />
+<link rel="alternate" hreflang="en" href="https://www.lianki.com/en/list" />
+<link rel="alternate" hreflang="zh-Hans" href="https://www.lianki.com/zh/list" />
+<link rel="alternate" hreflang="ja" href="https://www.lianki.com/ja/list" />
+<link rel="alternate" hreflang="ko" href="https://www.lianki.com/ko/list" />
+<link rel="alternate" hreflang="x-default" href="https://www.lianki.com/en/list" />
+```
+
+### Adding Hreflang to New Pages
+
+Use the `generateHreflangMetadata` helper function in your page's `generateMetadata`:
+
+```tsx
+import type { Metadata } from "next";
+import { generateHreflangMetadata } from "@/lib/hreflang";
+import { getLocale } from "next-intlayer/server";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return {
+    title: "My Page Title",
+    description: "My page description",
+    ...generateHreflangMetadata(locale, "/my-page"),
+  };
+}
+```
+
+For dynamic pages with slugs:
+
+```tsx
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string; slug: string }>;
+}): Promise<Metadata> {
+  const { locale, slug } = await params;
+  return {
+    title: `${slug} - Lianki`,
+    ...generateHreflangMetadata(locale, `/blog/${slug}`),
+  };
+}
+```
+
 ## Learn More
 
+- [Google SEO: Multi-regional and multilingual sites](https://developers.google.com/search/docs/specialty/international/managing-multi-regional-sites)
 - [Intlayer Documentation](https://intlayer.org/doc/concept/routing)
 - [Next.js i18n Routing](https://nextjs.org/docs/app/building-your-application/routing/internationalization)

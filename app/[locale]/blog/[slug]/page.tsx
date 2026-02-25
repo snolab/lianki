@@ -1,15 +1,42 @@
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { getPost, getRawPost, getAllSlugs } from "@/lib/blog";
 import { StreamingTranslation } from "../StreamingTranslation";
 import { BLOG_LOCALES, LOCALE_LABELS, getDateLocale, isSupportedLocale } from "@/lib/constants";
+import { generateHreflangMetadata } from "@/lib/hreflang";
+import matter from "gray-matter";
 
 export const revalidate = 3600;
 
 export async function generateStaticParams() {
   const slugs = await getAllSlugs();
   return BLOG_LOCALES.flatMap((locale) => slugs.map((slug) => ({ locale, slug })));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string; slug: string }>;
+}): Promise<Metadata> {
+  const { locale, slug } = await params;
+
+  // Try to get the post to extract title and description
+  const raw = await getRawPost("en", slug); // Always use English source for metadata
+  if (!raw) {
+    return {
+      title: "Blog Post - Lianki",
+      ...generateHreflangMetadata(locale, `/blog/${slug}`),
+    };
+  }
+
+  const { data } = matter(raw);
+  return {
+    title: `${data.title || slug} - Lianki Blog`,
+    description: data.summary || data.description || "Read this article on the Lianki blog",
+    ...generateHreflangMetadata(locale, `/blog/${slug}`),
+  };
 }
 
 function PostSkeleton() {

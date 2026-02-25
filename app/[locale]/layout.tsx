@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IntlayerServerProvider } from "next-intlayer/server";
 import { LANG_TAGS } from "@/lib/constants";
+import { generateHreflangMetadata } from "@/lib/hreflang";
 
 export async function generateMetadata({
   params,
@@ -8,7 +9,11 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  return { other: { "html-lang": LANG_TAGS[locale] ?? locale } };
+
+  return {
+    ...generateHreflangMetadata(locale, "/"),
+    other: { "html-lang": LANG_TAGS[locale] ?? locale },
+  };
 }
 
 export default async function LocaleLayout({

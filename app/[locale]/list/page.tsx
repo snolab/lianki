@@ -1,4 +1,5 @@
 import Image from "next/image";
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import sflow from "sflow";
 import { ems } from "@/app/ems";
@@ -12,8 +13,18 @@ import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
 import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
 import TokenManager from "./components/TokenManager";
+import { generateHreflangMetadata } from "@/lib/hreflang";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return {
+    title: "Lianki - Learning Dashboard",
+    description: "Manage your flashcards and track your learning progress",
+    ...generateHreflangMetadata(locale, "/list"),
+  };
+}
 /**
  * @author: snomiao <snomiao@gmail.com>
  */
