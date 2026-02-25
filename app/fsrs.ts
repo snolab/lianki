@@ -10,7 +10,15 @@ import type { WithId } from "mongodb";
 import DIE from "phpdie";
 import { values } from "rambda";
 import { sflow, TextEncoderStream } from "sflow";
-import { type Card, createEmptyCard, fsrs, type Grade, Rating, RecordLogItem } from "ts-fsrs";
+import {
+  type Card,
+  createEmptyCard,
+  fsrs,
+  type Grade,
+  Rating,
+  RecordLogItem,
+  type ReviewLog,
+} from "ts-fsrs";
 import { z } from "zod";
 import { ems } from "./ems";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
@@ -28,6 +36,7 @@ export type FSRSNote = {
   url: string;
   title?: string;
   card: Card;
+  log?: ReviewLog[]; // Review history
   notes?: string; // User notes, max 128 chars
   speedMarkers?: Record<number, number>; // {timestamp: speed}
 };
