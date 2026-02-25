@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DOMAIN_SUGGESTIONS } from "@/lib/constants";
+import TokenManager from "../list/components/TokenManager";
 
 export default function PreferencesPage() {
   const router = useRouter();
@@ -179,6 +180,9 @@ export default function PreferencesPage() {
           </div>
         </div>
       </section>
+
+      {/* API Tokens */}
+      <TokenManager />
 
       {/* Save Button */}
       <div className="flex gap-4">
