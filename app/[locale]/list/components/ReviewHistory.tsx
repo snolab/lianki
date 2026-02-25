@@ -78,7 +78,8 @@ export function ReviewHistory({ logs = [] }: ReviewHistoryProps) {
                       {RATING_NAMES[log.rating as keyof typeof RATING_NAMES]}
                     </span>
                     <span className="text-gray-500 dark:text-gray-400">
-                      {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {date.toLocaleDateString()}{" "}
+                      {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </div>
                 );

@@ -3,34 +3,17 @@ import { getLocale } from "next-intlayer/server";
 import Link from "next/link";
 import ContactForm from "../ContactForm";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 export default async function LandingPage() {
   const locale = await getLocale();
   const { appName, nav, hero, features, howItWorks, footer } = getIntlayer("landing-page", locale);
-  const contactData = getIntlayer("contact-form", locale);
 
-  // Force evaluation to plain values by using JSON parse/stringify
-  const contactContent = JSON.parse(
-    JSON.stringify({
-      title: contactData.title,
-      nameLabel: contactData.nameLabel,
-      namePlaceholder: contactData.namePlaceholder,
-      emailLabel: contactData.emailLabel,
-      emailPlaceholder: contactData.emailPlaceholder,
-      phoneLabel: contactData.phoneLabel,
-      phonePlaceholder: contactData.phonePlaceholder,
-      messageLabel: contactData.messageLabel,
-      messagePlaceholder: contactData.messagePlaceholder,
-      optional: contactData.optional,
-      template1: contactData.template1,
-      template2: contactData.template2,
-      template3: contactData.template3,
-      sendButton: contactData.sendButton,
-      sending: contactData.sending,
-      successMessage: contactData.successMessage,
-      errorMessage: contactData.errorMessage,
-    }),
-  );
+  // Read contact form translations directly from dictionary file
+  const dictPath = join(process.cwd(), ".intlayer", "dictionary", "contact-form.json");
+  const dict = JSON.parse(readFileSync(dictPath, "utf-8"));
+  const contactContent = dict.content.translation[locale];
 
   return (
     <div className="flex flex-col min-h-screen">
