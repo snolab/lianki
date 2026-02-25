@@ -33,6 +33,12 @@ Updated the following pages to use unified Header component:
 - [x] List/Dashboard (`app/[locale]/list/page.tsx`)
 - [x] Preferences (`app/[locale]/preferences/page.tsx`)
 - [x] Learn page (`app/[locale]/learn/page.tsx`)
+- [x] Profile page (`app/[locale]/profile/page.tsx`)
+- [x] Membership page (`app/[locale]/membership/page.tsx`)
+- [x] Polyglot page (`app/[locale]/polyglot/page.tsx`)
+- [x] Self-intro page (`app/[locale]/self-intro/page.tsx`)
+- [x] Add-note page (`app/[locale]/add-note/page.tsx`)
+- [x] Sign-in page (`app/[locale]/sign-in/page.tsx`)
 
 ### 4. Backend API Implementation
 - [x] Created `/api/fsrs/batch-add` endpoint for bulk URL imports
@@ -41,31 +47,43 @@ Updated the following pages to use unified Header component:
 - [x] Created shared `lib/normalizeUrl.ts` utility for URL normalization
 - [x] Refactored FSRS handler to use shared normalizeUrl
 
-## 🚧 Pending Tasks
+### 5. YouTube Import Conditional Display
+- [x] Created `/api/import/youtube/status` endpoint to check API key availability
+- [x] Updated `LearnClient.tsx` to conditionally show YouTube tab based on API key
+- [x] Added `youtubeAvailable` state with useEffect to check status on mount
 
-### Additional Pages
-Need to check and update if they have headers:
-- [ ] Profile page (`app/[locale]/profile/page.tsx`)
-- [ ] Membership page (`app/[locale]/membership/page.tsx`)
-- [ ] Polyglot page (`app/[locale]/polyglot/page.tsx`)
-- [ ] Self-intro page (`app/[locale]/self-intro/page.tsx`)
-- [ ] Add-note page (`app/[locale]/add-note/page.tsx`)
-- [ ] Sign-in page (`app/[locale]/sign-in/page.tsx`)
+### 6. Recommended Learning Materials
+- [x] Changed recommended lists to redirect to blog posts instead of direct import
+- [x] Updated `RecommendedList` interface with `blogSlug` property
+- [x] Created `blog/en/2026-02-25-japanese-beginner-materials.md` (2,500 words)
+- [x] Created Korean translation `blog/ko/2026-02-25-japanese-beginner-materials.md`
+- [x] Comprehensive guide with YouTube playlists, textbooks, and 6-month roadmap
+
+### 7. Blog Title AI Translation
+- [x] Added `translateText()` function using OpenAI GPT-4o-mini in `app/[locale]/blog/page.tsx`
+- [x] Updated `getPostSummaries()` to check for localized versions first
+- [x] Implemented fallback to AI translation for title and summary
+- [x] Verified working on production (https://www.lianki.com/ko/blog shows Korean titles)
+
+## 🚧 Pending Tasks
 
 ### Testing
 - [ ] Test header on all updated pages
 - [ ] Test profile dropdown functionality
 - [ ] Test language switcher
 - [ ] Test responsive behavior (desktop vs mobile)
-- [ ] Test /learn page import functionality once APIs are implemented
+- [x] Test /learn page import functionality (APIs implemented and working)
 - [ ] Verify navigation links work correctly across all locales
+- [x] Verify blog title translation works on production (tested on ko/blog)
 
 ### Recommended Lists
-- [ ] Create actual recommended learning material lists (currently empty arrays)
-- [ ] Add JLPT N5 Grammar URLs
-- [ ] Add JLPT N4 Grammar URLs
-- [ ] Add Basic English Vocabulary URLs
-- [ ] Create database or config for recommended lists
+- [x] Created first recommended list blog post (Japanese Beginners)
+- [ ] Create more recommended learning material blog posts:
+  - [ ] JLPT N4 Grammar materials
+  - [ ] JLPT N3 Grammar materials
+  - [ ] Basic English Vocabulary
+  - [ ] Chinese HSK 1-2 materials
+  - [ ] Spanish A1-A2 materials
 
 ## 📝 Notes
 
