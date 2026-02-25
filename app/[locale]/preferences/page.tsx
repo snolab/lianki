@@ -2,15 +2,27 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { DOMAIN_SUGGESTIONS } from "@/lib/constants";
 import TokenManager from "../list/components/TokenManager";
+
+type FilterType = "domain" | "title" | "url";
+
+interface FilterPattern {
+  id: string;
+  type: FilterType;
+  pattern: string;
+  isRegex: boolean;
+  enabled: boolean;
+  createdAt: string;
+}
 
 export default function PreferencesPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [mobileExcludeDomains, setMobileExcludeDomains] = useState<string[]>([]);
-  const [newDomain, setNewDomain] = useState("");
+  const [patterns, setPatterns] = useState<FilterPattern[]>([]);
+  const [newPattern, setNewPattern] = useState("");
+  const [newType, setNewType] = useState<FilterType>("domain");
+  const [isRegex, setIsRegex] = useState(false);
 
   useEffect(() => {
     fetchPreferences();
@@ -21,7 +33,7 @@ export default function PreferencesPage() {
       const res = await fetch("/api/preferences");
       if (!res.ok) throw new Error("Failed to fetch preferences");
       const data = await res.json();
-      setMobileExcludeDomains(data.mobileExcludeDomains || []);
+      setPatterns(data.mobileExcludePatterns || []);
     } catch (error) {
       console.error("Error fetching preferences:", error);
       alert("Failed to load preferences");
@@ -37,7 +49,7 @@ export default function PreferencesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mobileExcludeDomains,
+          mobileExcludePatterns: patterns,
         }),
       });
       if (!res.ok) throw new Error("Failed to save preferences");
@@ -50,18 +62,54 @@ export default function PreferencesPage() {
     }
   }
 
-  function addDomain() {
-    if (!newDomain.trim()) return;
-    if (mobileExcludeDomains.includes(newDomain.trim())) {
-      alert("Domain already exists");
-      return;
+  function addPattern() {
+    if (!newPattern.trim()) return;
+
+    // Validate regex if enabled
+    if (isRegex) {
+      try {
+        new RegExp(newPattern);
+      } catch (e) {
+        alert("Invalid regex pattern");
+        return;
+      }
     }
-    setMobileExcludeDomains([...mobileExcludeDomains, newDomain.trim()]);
-    setNewDomain("");
+
+    const pattern: FilterPattern = {
+      id: crypto.randomUUID(),
+      type: newType,
+      pattern: newPattern.trim(),
+      isRegex,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    setPatterns([...patterns, pattern]);
+    setNewPattern("");
+    setIsRegex(false);
   }
 
-  function removeDomain(domain: string) {
-    setMobileExcludeDomains(mobileExcludeDomains.filter((d) => d !== domain));
+  function removePattern(id: string) {
+    setPatterns(patterns.filter((p) => p.id !== id));
+  }
+
+  function togglePattern(id: string) {
+    setPatterns(patterns.map((p) => (p.id === id ? { ...p, enabled: !p.enabled } : p)));
+  }
+
+  function getPatternExamples(type: FilterType, isRegex: boolean): string {
+    if (isRegex) {
+      return {
+        domain: "e.g., .*\\.zhihu\\.com (all zhihu subdomains)",
+        title: "e.g., [0-9]+ (titles containing numbers)",
+        url: "e.g., /watch\\?v= (YouTube videos)",
+      }[type];
+    }
+    return {
+      domain: "e.g., zhihu.com, twitter.com",
+      title: 'e.g., "draft", "todo" (matches titles containing these words)',
+      url: 'e.g., "/admin", "?debug=" (matches URLs containing these)',
+    }[type];
   }
 
   if (loading) {
@@ -78,28 +126,60 @@ export default function PreferencesPage() {
 
       <h1 className="text-3xl font-bold mb-8">Preferences</h1>
 
-      {/* Mobile Exclude Domains */}
+      {/* Mobile Exclude Patterns */}
       <section className="mb-10">
-        <h2 className="text-2xl font-semibold mb-4 text-white">Mobile App Domain Filters</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-white">Mobile Review Filters</h2>
         <p className="text-gray-400 mb-4">
-          Domains to exclude from review queue on mobile devices (prevents app hijacking).
+          Filter cards from your mobile review queue by domain, title, or URL pattern. Useful for
+          preventing app hijacking or excluding certain types of content on mobile.
         </p>
 
+        {/* Current Patterns */}
         <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6 mb-4">
-          <h3 className="text-lg font-medium mb-3 text-gray-200">Current Filters</h3>
-          {mobileExcludeDomains.length === 0 ? (
-            <p className="text-gray-500">No domains filtered</p>
+          <h3 className="text-lg font-medium mb-3 text-gray-200">Active Filters</h3>
+          {patterns.length === 0 ? (
+            <p className="text-gray-500">No filters configured</p>
           ) : (
             <ul className="space-y-2">
-              {mobileExcludeDomains.map((domain) => (
+              {patterns.map((pattern) => (
                 <li
-                  key={domain}
-                  className="flex items-center justify-between bg-gray-800/50 border border-gray-700 rounded px-4 py-2"
+                  key={pattern.id}
+                  className={`flex items-center justify-between gap-4 bg-gray-800/50 border rounded px-4 py-3 ${
+                    pattern.enabled ? "border-gray-700" : "border-gray-800 opacity-50"
+                  }`}
                 >
-                  <span className="font-mono text-gray-200">{domain}</span>
+                  <div className="flex items-center gap-3 flex-1">
+                    <input
+                      type="checkbox"
+                      checked={pattern.enabled}
+                      onChange={() => togglePattern(pattern.id)}
+                      className="w-4 h-4 rounded"
+                    />
+                    <div className="flex-1">
+                      <div className="font-mono text-sm text-gray-200">{pattern.pattern}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded ${
+                            pattern.type === "domain"
+                              ? "bg-blue-900/30 text-blue-400"
+                              : pattern.type === "title"
+                                ? "bg-green-900/30 text-green-400"
+                                : "bg-purple-900/30 text-purple-400"
+                          }`}
+                        >
+                          {pattern.type}
+                        </span>
+                        {pattern.isRegex && (
+                          <span className="ml-2 inline-block px-2 py-0.5 rounded bg-orange-900/30 text-orange-400">
+                            regex
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                   <button
-                    onClick={() => removeDomain(domain)}
-                    className="text-red-400 hover:text-red-300 transition-colors"
+                    onClick={() => removePattern(pattern.id)}
+                    className="text-red-400 hover:text-red-300 transition-colors text-sm shrink-0"
                   >
                     Remove
                   </button>
@@ -109,75 +189,97 @@ export default function PreferencesPage() {
           )}
         </div>
 
-        <div>
-          {/* Tags Input */}
-          <div
-            className="min-h-[120px] bg-gray-900 border border-gray-700 rounded px-3 py-2 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 cursor-text"
-            onClick={(e) => {
-              if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === "DIV") {
-                document.getElementById("domain-input")?.focus();
-              }
-            }}
-          >
-            <div className="flex flex-wrap gap-2 items-start">
-              {mobileExcludeDomains.map((domain) => (
-                <span
-                  key={domain}
-                  className="inline-flex items-center gap-1 bg-blue-600/20 border border-blue-500/30 text-blue-400 px-3 py-1 rounded-full text-sm"
+        {/* Add New Pattern */}
+        <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
+          <h3 className="text-lg font-medium mb-4 text-gray-200">Add Filter Pattern</h3>
+
+          {/* Filter Type */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2 text-gray-300">Filter Type</label>
+            <div className="flex gap-3">
+              {(["domain", "title", "url"] as FilterType[]).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setNewType(type)}
+                  className={`px-4 py-2 rounded transition-colors ${
+                    newType === type
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                  }`}
                 >
-                  <span className="font-mono">{domain}</span>
-                  <button
-                    onClick={() => removeDomain(domain)}
-                    className="hover:text-blue-300 transition-colors ml-1"
-                    aria-label={`Remove ${domain}`}
-                  >
-                    ×
-                  </button>
-                </span>
+                  {type.charAt(0).toUpperCase() + type.slice(1)}
+                </button>
               ))}
-              <input
-                id="domain-input"
-                type="text"
-                value={newDomain}
-                onChange={(e) => setNewDomain(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === ",") {
-                    e.preventDefault();
-                    addDomain();
-                  } else if (
-                    e.key === "Backspace" &&
-                    !newDomain &&
-                    mobileExcludeDomains.length > 0
-                  ) {
-                    // Remove last domain on backspace if input is empty
-                    removeDomain(mobileExcludeDomains[mobileExcludeDomains.length - 1]);
-                  }
-                }}
-                placeholder={
-                  mobileExcludeDomains.length === 0 ? "Type domain and press Enter..." : ""
-                }
-                className="flex-1 min-w-[200px] bg-transparent border-none outline-none text-gray-200 placeholder-gray-500 py-1"
-              />
             </div>
           </div>
 
-          {/* Suggestions */}
-          <div className="mt-3 flex gap-2 items-center flex-wrap">
-            <span className="text-sm text-gray-400">Suggestions:</span>
-            {DOMAIN_SUGGESTIONS.filter((domain) => !mobileExcludeDomains.includes(domain)).map(
-              (domain) => (
-                <button
-                  key={domain}
-                  onClick={() => {
-                    setMobileExcludeDomains([...mobileExcludeDomains, domain]);
-                  }}
-                  className="text-xs bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 px-3 py-1 rounded-full transition-colors"
-                >
-                  + {domain}
-                </button>
-              ),
-            )}
+          {/* Pattern Input */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2 text-gray-300">Pattern</label>
+            <input
+              type="text"
+              value={newPattern}
+              onChange={(e) => setNewPattern(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addPattern();
+                }
+              }}
+              placeholder={`Enter ${newType} pattern...`}
+              className="w-full bg-gray-800 border border-gray-700 rounded px-4 py-2 text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+            />
+            <p className="text-xs text-gray-500 mt-2">{getPatternExamples(newType, isRegex)}</p>
           </div>
+
+          {/* Regex Checkbox */}
+          <div className="mb-4">
+            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isRegex}
+                onChange={(e) => setIsRegex(e.target.checked)}
+                className="w-4 h-4 rounded"
+              />
+              <span>Use Regular Expression (regex)</span>
+            </label>
+            <p className="text-xs text-gray-500 mt-1 ml-6">
+              Enable this to use regex patterns for advanced matching
+            </p>
+          </div>
+
+          {/* Add Button */}
+          <button
+            onClick={addPattern}
+            disabled={!newPattern.trim()}
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 px-6 py-2 rounded transition-colors"
+          >
+            Add Filter
+          </button>
+        </div>
+
+        {/* Help Text */}
+        <div className="mt-4 p-4 bg-blue-900/20 border border-blue-800/30 rounded-lg">
+          <h4 className="text-sm font-semibold mb-2 text-blue-300">How Filtering Works</h4>
+          <ul className="text-xs text-gray-400 space-y-1">
+            <li>
+              <strong>Domain:</strong> Matches the hostname (e.g., "zhihu.com" blocks all Zhihu
+              pages)
+            </li>
+            <li>
+              <strong>Title:</strong> Matches card title text (e.g., "draft" blocks cards with
+              "draft" in title)
+            </li>
+            <li>
+              <strong>URL:</strong> Matches the full URL (e.g., "/admin" blocks all admin pages)
+            </li>
+            <li>
+              <strong>Regex:</strong> Use .* for wildcards, ^ for start, $ for end, | for OR, etc.
+            </li>
+            <li>
+              • Disabled filters are saved but won't be applied (toggle checkbox to enable/disable)
+            </li>
+          </ul>
         </div>
       </section>
 
