@@ -13,7 +13,7 @@ interface HeaderProps {
   user?: {
     name: string;
     email: string;
-    image?: string;
+    image?: string | null;
   } | null;
 }
 
@@ -70,7 +70,9 @@ export function Header({ locale, appName, blogLabel, learnLabel, user }: HeaderP
                   />
                 )}
                 {/* Show username on desktop, hide on mobile */}
-                <span className="hidden md:inline">{user.name}</span>
+                <span className="hidden md:inline min-w-[80px] max-w-[120px] truncate">
+                  {user.name}
+                </span>
                 {/* Dropdown arrow */}
                 <svg
                   className={`w-4 h-4 transition-transform ${isProfileOpen ? "rotate-180" : ""}`}
