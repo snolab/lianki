@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { LANG_TAGS } from "@/lib/constants";
+import { LANG_TAGS, BLOG_LOCALES } from "@/lib/constants";
 
-const LOCALES = ["en", "zh", "ja", "ko"] as const;
+const LOCALES = BLOG_LOCALES;
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "https://www.lianki.com";
 
 /**
