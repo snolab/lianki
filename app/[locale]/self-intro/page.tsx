@@ -12,7 +12,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
   return {
     title: "Self-Introduction Practice - Lianki",
-    description: "Create personalized self-introduction scripts in your target language with AI-generated audio",
+    description:
+      "Create personalized self-introduction scripts in your target language with AI-generated audio",
     ...generateHreflangMetadata(locale, "/self-intro"),
   };
 }
