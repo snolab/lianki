@@ -2,8 +2,25 @@
  * Centralized constants for the Lianki application
  */
 
-// Supported locales for blog/i18n routes
-export const BLOG_LOCALES = ["en", "zh", "ja", "ko"] as const;
+// Supported locales for blog/i18n routes (top 16 languages by speakers)
+export const BLOG_LOCALES = [
+  "en", // English
+  "zh", // Chinese (Simplified)
+  "hi", // Hindi
+  "es", // Spanish
+  "fr", // French
+  "ar", // Arabic
+  "bn", // Bengali
+  "pt", // Portuguese
+  "ru", // Russian
+  "ur", // Urdu
+  "id", // Indonesian
+  "de", // German
+  "ja", // Japanese
+  "sw", // Swahili
+  "mr", // Marathi
+  "ko", // Korean
+] as const;
 export type BlogLocale = (typeof BLOG_LOCALES)[number];
 
 export const DEFAULT_LOCALE: BlogLocale = "en";
@@ -16,8 +33,20 @@ export function isSupportedLocale(locale: string): locale is BlogLocale {
 // Locale labels for UI display (native names)
 export const LOCALE_LABELS: Record<string, string> = {
   en: "English",
-  zh: "中文",
+  zh: "简体中文",
+  hi: "हिन्दी",
+  es: "Español",
+  fr: "Français",
+  ar: "العربية",
+  bn: "বাংলা",
+  pt: "Português",
+  ru: "Русский",
+  ur: "اردو",
+  id: "Bahasa Indonesia",
+  de: "Deutsch",
   ja: "日本語",
+  sw: "Kiswahili",
+  mr: "मराठी",
   ko: "한국어",
 };
 
@@ -25,16 +54,43 @@ export const LOCALE_LABELS: Record<string, string> = {
 export const LANG_TAGS: Record<string, string> = {
   en: "en",
   zh: "zh-Hans",
+  hi: "hi",
+  es: "es",
+  fr: "fr",
+  ar: "ar",
+  bn: "bn",
+  pt: "pt",
+  ru: "ru",
+  ur: "ur",
+  id: "id",
+  de: "de",
   ja: "ja",
+  sw: "sw",
+  mr: "mr",
   ko: "ko",
 };
 
 // Maps locale code to date locale for formatting
 export function getDateLocale(locale: string): string {
-  if (locale === "zh") return "zh-CN";
-  if (locale === "ja") return "ja-JP";
-  if (locale === "ko") return "ko-KR";
-  return "en-US";
+  const dateLocaleMap: Record<string, string> = {
+    en: "en-US",
+    zh: "zh-CN",
+    hi: "hi-IN",
+    es: "es-ES",
+    fr: "fr-FR",
+    ar: "ar-SA",
+    bn: "bn-BD",
+    pt: "pt-PT",
+    ru: "ru-RU",
+    ur: "ur-PK",
+    id: "id-ID",
+    de: "de-DE",
+    ja: "ja-JP",
+    sw: "sw-KE",
+    mr: "mr-IN",
+    ko: "ko-KR",
+  };
+  return dateLocaleMap[locale] || "en-US";
 }
 
 // Full language names for translation API

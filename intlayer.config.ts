@@ -2,11 +2,25 @@ import type { IntlayerConfig } from "intlayer";
 
 const config: IntlayerConfig = {
   internationalization: {
-    // en: English (default)
-    // zh: Chinese Simplified (existing blog/cn/ files mapped via blogLocaleDir) // TODO: lets mv blogfile from cn to zh to keep consistants
-    // ja: Japanese
-    // ko: Korean
-    locales: ["en", "zh", "ja", "ko"],
+    // Top 16 languages by number of speakers
+    locales: [
+      "en", // English
+      "zh", // Chinese (Simplified)
+      "hi", // Hindi
+      "es", // Spanish
+      "fr", // French
+      "ar", // Arabic
+      "bn", // Bengali
+      "pt", // Portuguese
+      "ru", // Russian
+      "ur", // Urdu
+      "id", // Indonesian
+      "de", // German
+      "ja", // Japanese
+      "sw", // Swahili
+      "mr", // Marathi
+      "ko", // Korean
+    ],
     defaultLocale: "en",
   },
   routing: {
