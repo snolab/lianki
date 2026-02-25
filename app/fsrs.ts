@@ -22,6 +22,7 @@ import {
 import { z } from "zod";
 import { ems } from "./ems";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
+import { normalizeUrl } from "@/lib/normalizeUrl";
 
 const LIANKI_USERSCRIPT_VERSION = (() => {
   try {
@@ -93,6 +94,28 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       ),
     "GET /add(?:/|$|\\?)": async (req, options) => JSONR(saveQueryNote(req, options)),
     "POST /api/fsrs/add/?$": async (req) => JSONR(saveQueryNoteByJSONData(req)),
+    "POST /api/fsrs/batch-add/?$": async (req) => {
+      const zBatchAddNote = z.object({
+        urls: z.array(z.string()),
+      });
+      const input = await req.json();
+      const { urls } = zBatchAddNote.parse(input);
+
+      // Save all URLs in parallel
+      const results = await Promise.allSettled(
+        urls.map((url) => saveNote({ url })),
+      );
+
+      const successful = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.filter((r) => r.status === "rejected").length;
+
+      return JSONR({
+        success: true,
+        count: successful,
+        failed,
+        total: urls.length,
+      });
+    },
     "GET /api/fsrs/options(?:/|$|\\?)": async (req, options) => {
       const note = (await getQueryNote(req, options)) ?? DIE("note not found");
       const repeatRecord = fsrs().repeat(note.card, new Date());
@@ -553,44 +576,6 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       url: params.url ?? DIE(new Error("url not found in query", { cause: params })),
       title: params.title,
     };
-  }
-
-  function normalizeUrl(href: string): string {
-    try {
-      const u = new URL(href);
-      // YouTube: youtu.be/ID → youtube.com/watch?v=ID
-      if (u.hostname === "youtu.be") {
-        const id = u.pathname.slice(1);
-        u.hostname = "www.youtube.com";
-        u.pathname = "/watch";
-        u.searchParams.set("v", id);
-      }
-      // Strip mobile subdomain (m.youtube.com → www.youtube.com)
-      if (u.hostname.startsWith("m.")) u.hostname = "www." + u.hostname.slice(2);
-      // Strip tracking & session params
-      for (const p of [
-        "si",
-        "pp",
-        "feature",
-        "ref",
-        "source",
-        "utm_source",
-        "utm_medium",
-        "utm_campaign",
-        "utm_term",
-        "utm_content",
-        "fbclid",
-        "gclid",
-        "mc_cid",
-        "mc_eid",
-        "igshid",
-      ])
-        u.searchParams.delete(p);
-      u.searchParams.sort();
-      return u.toString();
-    } catch {
-      return href;
-    }
   }
 
   async function saveNote({ url, title }: { url: string; title?: string }) {
