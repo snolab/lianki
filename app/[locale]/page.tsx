@@ -7,6 +7,7 @@ import { LanguageSwitcher } from "../components/LanguageSwitcher";
 export default async function LandingPage() {
   const locale = await getLocale();
   const { appName, nav, hero, features, howItWorks, footer } = getIntlayer("landing-page", locale);
+  const contactContent = getIntlayer("contact-form", locale);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -83,7 +84,7 @@ export default async function LandingPage() {
         </section>
 
         {/* Contact Section */}
-        <ContactForm />
+        <ContactForm content={contactContent} />
       </main>
 
       {/* Footer */}

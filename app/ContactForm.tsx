@@ -1,10 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { useIntlayer } from "next-intlayer";
 
-export default function ContactForm() {
-  const content = useIntlayer("contact-form");
+type ContactFormContent = {
+  title: string;
+  nameLabel: string;
+  namePlaceholder: string;
+  emailLabel: string;
+  emailPlaceholder: string;
+  phoneLabel: string;
+  phonePlaceholder: string;
+  messageLabel: string;
+  messagePlaceholder: string;
+  optional: string;
+  template1: string;
+  template2: string;
+  template3: string;
+  sendButton: string;
+  sending: string;
+  successMessage: string;
+  errorMessage: string;
+};
+
+export default function ContactForm({ content }: { content: ContactFormContent }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
