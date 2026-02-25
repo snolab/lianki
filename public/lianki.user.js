@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.19.2
+// @version     2.19.3
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -975,6 +975,7 @@ function main() {
       if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === "KeyF") {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         if (dialog) closeDialog();
         else openDialog();
         return;
@@ -985,10 +986,11 @@ function main() {
       if (action) {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         action();
       }
     },
-    { signal },
+    { capture: true, signal },
   );
 
   // ── Media Keys ─────────────────────────────────────────────────────────────
