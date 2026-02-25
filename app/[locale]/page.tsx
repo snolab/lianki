@@ -2,7 +2,8 @@ import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
 import Link from "next/link";
 import ContactForm from "../ContactForm";
-import { LanguageSwitcher } from "../components/LanguageSwitcher";
+import { Header } from "../components/Header";
+import { authUser } from "../signInEmail";
 
 export default async function LandingPage() {
   const locale = await getLocale();
@@ -30,26 +31,23 @@ export default async function LandingPage() {
     errorMessage: rawContact.errorMessage,
   } as const;
 
+  // Try to get user if logged in (optional)
+  let user = null;
+  try {
+    user = await authUser();
+  } catch (e) {
+    // User not logged in, that's ok for landing page
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Header */}
-      <header className="py-4 px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">{appName}</h1>
-          <nav className="flex items-center gap-6">
-            <Link href={`/${locale}/blog`} className="text-lg font-medium hover:underline">
-              {nav.blog}
-            </Link>
-            <Link href={`/${locale}/polyglot`} className="text-lg font-medium hover:underline">
-              {nav.polyglot}
-            </Link>
-            <Link href={`/${locale}/list`} className="text-lg font-medium hover:underline">
-              {nav.learn}
-            </Link>
-            <LanguageSwitcher />
-          </nav>
-        </div>
-      </header>
+      <Header
+        locale={locale}
+        appName={appName}
+        blogLabel={nav.blog}
+        learnLabel={nav.learn}
+        user={user}
+      />
 
       {/* Main Content */}
       <main className="flex-grow">
