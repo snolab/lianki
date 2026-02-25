@@ -21,9 +21,12 @@ async function sleep(ms) {
 async function test() {
   console.log("🧪 Starting E2E Offline-First Sync Test\n");
 
+  const isCI = process.env.CI || !process.env.DISPLAY;
+  console.log(`Mode: ${isCI ? "headless (CI)" : "headed (local)"}\n`);
+
   const browser = await chromium.launch({
-    headless: false,
-    slowMo: 500,
+    headless: isCI ? true : false,
+    slowMo: isCI ? 100 : 500,
   });
 
   const context = await browser.newContext();
@@ -326,9 +329,11 @@ async function test() {
     console.error(error.stack);
     throw error;
   } finally {
-    // Keep browser open for manual inspection
-    console.log("\n👀 Browser will stay open for 10 seconds for inspection...");
-    await sleep(10000);
+    // Keep browser open for manual inspection (only in headed mode)
+    if (!isCI) {
+      console.log("\n👀 Browser will stay open for 10 seconds for inspection...");
+      await sleep(10000);
+    }
     await browser.close();
   }
 }
