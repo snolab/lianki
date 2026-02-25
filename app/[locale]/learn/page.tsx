@@ -1,22 +1,25 @@
 import type { Metadata } from "next";
+import { authEmail, authUser } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import { Header } from "@/app/components/Header";
-import SignInClient from "./SignInClient";
+import LearnClient from "./LearnClient";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
   return {
-    title: "Sign In - Lianki",
-    description: "Sign in to Lianki to start your spaced repetition learning journey",
-    ...generateHreflangMetadata(locale, "/sign-in"),
+    title: "Learn - Lianki",
+    description: "Import materials from recommended lists, YouTube playlists, or custom URLs",
+    ...generateHreflangMetadata(locale, "/learn"),
   };
 }
 
-export default async function SignInPage() {
+export default async function LearnPage() {
+  const email = await authEmail();
+  const user = await authUser();
   const locale = await getLocale();
   const { appName, nav } = getIntlayer("landing-page", locale);
 
@@ -27,11 +30,11 @@ export default async function SignInPage() {
         appName={appName}
         blogLabel={nav.blog}
         learnLabel={nav.learn}
-        user={null}
+        user={user}
       />
 
       <main className="flex-grow">
-        <SignInClient />
+        <LearnClient locale={locale} />
       </main>
     </div>
   );

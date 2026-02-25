@@ -1,12 +1,14 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getAllSlugs, getRawPostWithFallback } from "@/lib/blog";
+import { getAllSlugs, getRawPostWithFallback, getRawPost } from "@/lib/blog";
 import matter from "gray-matter";
 import { BLOG_LOCALES, LOCALE_LABELS, getDateLocale, isSupportedLocale } from "@/lib/constants";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import { getIntlayer } from "intlayer";
-import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
+import { Header } from "@/app/components/Header";
+import { authUser } from "@/app/signInEmail";
+import OpenAI from "openai";
 
 export const revalidate = 3600;
 
@@ -35,18 +37,81 @@ type PostSummary = {
   summary: string;
 };
 
+async function translateText(text: string, targetLocale: string): Promise<string> {
+  if (!process.env.OPENAI_API_KEY) return text;
+
+  try {
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const languageName = LOCALE_LABELS[targetLocale as keyof typeof LOCALE_LABELS] || targetLocale;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a translator. Translate the given text to ${languageName}. Only return the translated text, nothing else.`,
+        },
+        {
+          role: "user",
+          content: text,
+        },
+      ],
+      temperature: 0.3,
+    });
+
+    return response.choices[0]?.message?.content?.trim() || text;
+  } catch (error) {
+    console.error("Translation error:", error);
+    return text;
+  }
+}
+
 async function getPostSummaries(locale: string): Promise<PostSummary[]> {
   const slugs = await getAllSlugs();
   const results = await Promise.all(
     slugs.map(async (slug) => {
-      const raw = await getRawPostWithFallback(locale, slug);
-      if (!raw) return null;
-      const { data } = matter(raw);
+      // Check if localized version exists
+      const localizedRaw = await getRawPost(locale, slug);
+
+      if (localizedRaw) {
+        // Use localized version
+        const { data } = matter(localizedRaw);
+        return {
+          slug,
+          title: data.title ?? slug,
+          date: data.date ?? "",
+          summary: data.summary ?? "",
+        };
+      }
+
+      // Fallback to English and translate
+      const englishRaw = await getRawPost("en", slug);
+      if (!englishRaw) return null;
+
+      const { data } = matter(englishRaw);
+      const title = data.title ?? slug;
+      const summary = data.summary ?? "";
+
+      // Translate title and summary if not English
+      if (locale !== "en") {
+        const [translatedTitle, translatedSummary] = await Promise.all([
+          translateText(title, locale),
+          translateText(summary, locale),
+        ]);
+
+        return {
+          slug,
+          title: translatedTitle,
+          date: data.date ?? "",
+          summary: translatedSummary,
+        };
+      }
+
       return {
         slug,
-        title: data.title ?? slug,
+        title,
         date: data.date ?? "",
-        summary: data.summary ?? "",
+        summary,
       };
     }),
   );
@@ -60,28 +125,23 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
   const posts = await getPostSummaries(locale);
   const { appName, nav } = getIntlayer("landing-page", locale);
 
+  // Try to get user if logged in (optional)
+  let user = null;
+  try {
+    user = await authUser();
+  } catch (e) {
+    // User not logged in, that's ok
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Header */}
-      <header className="py-4 px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between">
-          <Link href={`/${locale}`} className="text-2xl font-bold hover:underline">
-            {appName}
-          </Link>
-          <nav className="flex items-center gap-6">
-            <Link href={`/${locale}/blog`} className="text-lg font-medium hover:underline">
-              {nav.blog}
-            </Link>
-            <Link href={`/${locale}/polyglot`} className="text-lg font-medium hover:underline">
-              Polyglot
-            </Link>
-            <Link href={`/${locale}/list`} className="text-lg font-medium hover:underline">
-              {nav.learn}
-            </Link>
-            <LanguageSwitcher />
-          </nav>
-        </div>
-      </header>
+      <Header
+        locale={locale}
+        appName={appName}
+        blogLabel={nav.blog}
+        learnLabel={nav.learn}
+        user={user}
+      />
 
       {/* Main Content */}
       <main className="flex-grow max-w-2xl mx-auto px-4 py-12 w-full">

@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.19.1
+// @version     2.19.3
 // @author      lianki.com
 // @description Lianki spaced repetition — inline review without page navigation. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -261,7 +261,7 @@ function main() {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const btn = (bg, extra = "") =>
-    `background:${bg};color:#eee;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;min-width:60px;${extra}`;
+    `all:initial;display:inline-block;box-sizing:border-box;background:${bg};color:#eee;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;font-family:system-ui,sans-serif;min-width:60px;line-height:1.5;text-align:center;${extra}`;
 
   // Prefetch next page for faster navigation
   function prefetchNextPage(pageUrl) {
@@ -529,8 +529,23 @@ function main() {
 
   // ── Dialog ─────────────────────────────────────────────────────────────────
   function mountDialog() {
+    // Create shadow host for complete CSS isolation
+    const shadowHost = document.createElement("div");
+    shadowHost.style.cssText = "all: initial; position: fixed; z-index: 2147483647;";
+
+    const shadow = shadowHost.attachShadow({ mode: "open" });
+
+    // Add base reset styles in shadow DOM
+    const styleReset = document.createElement("style");
+    styleReset.textContent = `
+      * { all: initial; box-sizing: border-box; }
+      *:before, *:after { all: initial; box-sizing: border-box; }
+    `;
+    shadow.appendChild(styleReset);
+
     const backdrop = document.createElement("div");
     Object.assign(backdrop.style, {
+      all: "initial",
       position: "fixed",
       inset: "0",
       background: "rgba(0,0,0,0.45)",
@@ -541,6 +556,7 @@ function main() {
     const el = document.createElement("div");
     el.tabIndex = -1;
     Object.assign(el.style, {
+      all: "initial",
       position: "fixed",
       zIndex: "2147483646",
       top: "50%",
@@ -559,11 +575,15 @@ function main() {
       fontSize: "14px",
       outline: "none",
       lineHeight: "1.5",
+      boxSizing: "border-box",
     });
 
-    document.body.appendChild(backdrop);
-    document.body.appendChild(el);
+    shadow.appendChild(backdrop);
+    shadow.appendChild(el);
+    document.body.appendChild(shadowHost);
+
     el._backdrop = backdrop;
+    el._shadowHost = shadowHost;
     return el;
   }
 
@@ -572,6 +592,15 @@ function main() {
     const { phase, options, error, message } = state;
 
     while (dialog.lastChild) dialog.removeChild(dialog.lastChild);
+
+    // Add global style reset for all child elements
+    const globalStyle = document.createElement("style");
+    globalStyle.textContent = `
+      * { font-family: system-ui, sans-serif; box-sizing: border-box; }
+      div, span, button, a { all: revert; }
+      button { cursor: pointer; }
+    `;
+    dialog.appendChild(globalStyle);
 
     // Header
     const header = document.createElement("div");
@@ -835,6 +864,7 @@ function main() {
   function closeDialog() {
     if (!dialog) return;
     dialog._backdrop?.remove();
+    dialog._shadowHost?.remove();
     dialog.remove();
     dialog = null;
     state = { phase: "idle", noteId: null, options: null, error: null, message: null };
@@ -945,6 +975,7 @@ function main() {
       if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === "KeyF") {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         if (dialog) closeDialog();
         else openDialog();
         return;
@@ -955,10 +986,11 @@ function main() {
       if (action) {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         action();
       }
     },
-    { signal },
+    { capture: true, signal },
   );
 
   // ── Media Keys ─────────────────────────────────────────────────────────────

@@ -32,8 +32,9 @@ export function LanguageSwitcher() {
       /^\/(en|zh|hi|es|fr|ar|bn|pt|ru|ur|id|de|ja|sw|mr|ko)/,
       `/${code}`,
     );
-    router.push(newPath);
-    setIsOpen(false);
+
+    // Use window.location.href for hard navigation to ensure middleware processes the locale change
+    window.location.href = newPath;
   };
 
   const isSupported = isSupportedLocale;
