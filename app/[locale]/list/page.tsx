@@ -9,6 +9,7 @@ import { getCachedHeatmapData } from "@/app/lib/heatmap-cache";
 import ActivityHeatmap from "./components/ActivityHeatmap";
 import DeleteButton from "./components/DeleteButton";
 import RefreshHeatmapButton from "./components/RefreshHeatmapButton";
+import { ReviewHistory } from "./components/ReviewHistory";
 import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
 import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
@@ -168,9 +169,10 @@ export default async function HomePage() {
                 const due = dueMs(note.card.due);
                 const title = note.title;
                 const url = note.url;
+                const logs = note.log || [];
                 return (
                   <li key={note._id.toString()}>
-                    {due} <a href={url}>{title || url}</a>
+                    {due} <ReviewHistory logs={logs} /> <a href={url}>{title || url}</a>
                     <DeleteButton url={url} title={title} />
                   </li>
                 );
