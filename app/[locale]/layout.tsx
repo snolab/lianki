@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { IntlayerServerProvider } from "next-intlayer/server";
 import { LANG_TAGS } from "@/lib/constants";
 import { generateHreflangMetadata } from "@/lib/hreflang";
+import { IntlayerClientProvider } from "../IntlayerClientProvider";
 
 export async function generateMetadata({
   params,
@@ -29,9 +30,11 @@ export default async function LocaleLayout({
   return (
     // Override the root layout's locale provider with the URL locale
     <IntlayerServerProvider locale={locale}>
-      <div lang={lang} className="min-h-screen">
-        {children}
-      </div>
+      <IntlayerClientProvider locale={locale}>
+        <div lang={lang} className="min-h-screen">
+          {children}
+        </div>
+      </IntlayerClientProvider>
     </IntlayerServerProvider>
   );
 }
