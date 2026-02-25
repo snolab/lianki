@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface LearnClientProps {
   locale: string;
@@ -12,7 +12,7 @@ interface RecommendedList {
   id: string;
   title: string;
   description: string;
-  urls: string[];
+  blogSlug?: string; // Link to blog post instead of URLs
   tags: string[];
 }
 
@@ -22,29 +22,24 @@ export default function LearnClient({ locale }: LearnClientProps) {
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [youtubeAvailable, setYoutubeAvailable] = useState(false);
 
-  // Example recommended lists
+  // Check if YouTube API is available
+  useEffect(() => {
+    fetch("/api/import/youtube/status")
+      .then((res) => res.json())
+      .then((data) => setYoutubeAvailable(data.available))
+      .catch(() => setYoutubeAvailable(false));
+  }, []);
+
+  // Recommended learning material lists
   const recommendedLists: RecommendedList[] = [
     {
-      id: "jlpt-n5-grammar",
-      title: "JLPT N5 Grammar",
-      description: "Essential grammar points for JLPT N5",
-      urls: [],
-      tags: ["Japanese", "JLPT", "Grammar"],
-    },
-    {
-      id: "jlpt-n4-grammar",
-      title: "JLPT N4 Grammar",
-      description: "Grammar points for JLPT N4 level",
-      urls: [],
-      tags: ["Japanese", "JLPT", "Grammar"],
-    },
-    {
-      id: "basic-english",
-      title: "Basic English Vocabulary",
-      description: "Common English words and phrases for beginners",
-      urls: [],
-      tags: ["English", "Vocabulary"],
+      id: "japanese-beginner",
+      title: "Japanese for Beginners",
+      description: "Curated learning materials for Japanese beginners - from hiragana to basic conversations",
+      blogSlug: "2026-02-25-japanese-beginner-materials",
+      tags: ["Japanese", "Beginner", "N5"],
     },
   ];
 
@@ -128,17 +123,10 @@ export default function LearnClient({ locale }: LearnClientProps) {
     }
   }
 
-  async function handleImportRecommended(list: RecommendedList) {
-    setLoading(true);
-    setMessage(null);
-
-    try {
-      await importUrls(list.urls);
-      setMessage({ type: "success", text: `Successfully imported ${list.title}` });
-    } catch (error: any) {
-      setMessage({ type: "error", text: error.message || "Failed to import recommended list" });
-    } finally {
-      setLoading(false);
+  function handleViewRecommended(list: RecommendedList) {
+    // Redirect to blog post with recommended materials
+    if (list.blogSlug) {
+      window.location.href = `/${locale}/blog/${list.blogSlug}`;
     }
   }
 
@@ -162,8 +150,7 @@ export default function LearnClient({ locale }: LearnClientProps) {
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-3xl font-bold mb-4">Import Learning Materials</h1>
       <p className="text-gray-600 dark:text-gray-400 mb-8">
-        Start learning by importing materials from recommended lists, YouTube playlists, or custom
-        URL lists.
+        Start learning by importing materials from recommended lists{youtubeAvailable ? ", YouTube playlists," : ""} or custom URL lists.
       </p>
 
       {/* Message Display */}
@@ -201,16 +188,18 @@ export default function LearnClient({ locale }: LearnClientProps) {
         >
           Custom URL List
         </button>
-        <button
-          onClick={() => setActiveTab("youtube")}
-          className={`px-6 py-3 font-medium border-b-2 transition-colors ${
-            activeTab === "youtube"
-              ? "border-blue-600 text-blue-600"
-              : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-          }`}
-        >
-          YouTube Playlist
-        </button>
+        {youtubeAvailable && (
+          <button
+            onClick={() => setActiveTab("youtube")}
+            className={`px-6 py-3 font-medium border-b-2 transition-colors ${
+              activeTab === "youtube"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+            }`}
+          >
+            YouTube Playlist
+          </button>
+        )}
       </div>
 
       {/* Tab Content */}
@@ -238,11 +227,10 @@ export default function LearnClient({ locale }: LearnClientProps) {
                   </div>
                 </div>
                 <button
-                  onClick={() => handleImportRecommended(list)}
-                  disabled={loading}
-                  className="ml-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                  onClick={() => handleViewRecommended(list)}
+                  className="ml-4 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
                 >
-                  {loading ? "Importing..." : "Import"}
+                  View Materials →
                 </button>
               </div>
             </div>
