@@ -34,12 +34,14 @@ Updated the following pages to use unified Header component:
 - [x] Preferences (`app/[locale]/preferences/page.tsx`)
 - [x] Learn page (`app/[locale]/learn/page.tsx`)
 
-## 🚧 Pending Tasks
+### 4. Backend API Implementation
+- [x] Created `/api/fsrs/batch-add` endpoint for bulk URL imports
+- [x] Created `/api/import/youtube` endpoint for YouTube playlist import
+- [x] Implemented YouTube Data API integration (requires `YOUTUBE_API_KEY` env var)
+- [x] Created shared `lib/normalizeUrl.ts` utility for URL normalization
+- [x] Refactored FSRS handler to use shared normalizeUrl
 
-### API Implementation
-- [ ] Create `/api/fsrs/batch-add` endpoint for bulk URL imports
-- [ ] Create `/api/import/youtube` endpoint for YouTube playlist import
-- [ ] Implement YouTube Data API integration (requires API key)
+## 🚧 Pending Tasks
 
 ### Additional Pages
 Need to check and update if they have headers:
