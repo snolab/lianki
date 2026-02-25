@@ -16,14 +16,9 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(pathname.replace(/^\/cn/, "/zh"), request.url));
   }
 
-  // Redirect bare locale paths to blog index
-  const bare = pathname.slice(1);
-  if ((BLOG_LOCALES as readonly string[]).includes(bare) && pathname.split("/").length === 2) {
-    return NextResponse.redirect(new URL(`${pathname}/blog`, request.url));
-  }
-
   // Intlayer middleware: adds locale prefix to all routes, handles locale detection
   // This will redirect / → /en/, /list → /en/list, etc.
+  // Locale root paths (e.g., /ko/) will render the landing page at app/[locale]/page.tsx
   return intlayerMiddleware(request);
 }
 
