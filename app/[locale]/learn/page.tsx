@@ -2,22 +2,22 @@ import type { Metadata } from "next";
 import { authEmail, authUser } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
-import { Header } from "@/app/components/Header";
 import { generateHreflangMetadata } from "@/lib/hreflang";
-import PreferencesClient from "./PreferencesClient";
+import { Header } from "@/app/components/Header";
+import LearnClient from "./LearnClient";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
   return {
-    title: "Preferences - Lianki",
-    description: "Configure your Lianki preferences and settings",
-    ...generateHreflangMetadata(locale, "/preferences"),
+    title: "Learn - Lianki",
+    description: "Import materials from recommended lists, YouTube playlists, or custom URLs",
+    ...generateHreflangMetadata(locale, "/learn"),
   };
 }
 
-export default async function PreferencesPage() {
+export default async function LearnPage() {
   const email = await authEmail();
   const user = await authUser();
   const locale = await getLocale();
@@ -33,9 +33,8 @@ export default async function PreferencesPage() {
         user={user}
       />
 
-      {/* Main Content */}
       <main className="flex-grow">
-        <PreferencesClient />
+        <LearnClient locale={locale} />
       </main>
     </div>
   );

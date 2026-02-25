@@ -9,7 +9,8 @@ import { BLOG_LOCALES, LOCALE_LABELS, getDateLocale, isSupportedLocale } from "@
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import matter from "gray-matter";
 import { getIntlayer } from "intlayer";
-import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
+import { Header } from "@/app/components/Header";
+import { authUser } from "@/app/signInEmail";
 
 export const revalidate = 3600;
 
@@ -134,28 +135,23 @@ export default async function BlogPostPage({
 
   const { appName, nav } = getIntlayer("landing-page", locale);
 
+  // Try to get user if logged in (optional)
+  let user = null;
+  try {
+    user = await authUser();
+  } catch (e) {
+    // User not logged in, that's ok
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Header */}
-      <header className="py-4 px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between">
-          <Link href={`/${locale}`} className="text-2xl font-bold hover:underline">
-            {appName}
-          </Link>
-          <nav className="flex items-center gap-6">
-            <Link href={`/${locale}/blog`} className="text-lg font-medium hover:underline">
-              {nav.blog}
-            </Link>
-            <Link href={`/${locale}/polyglot`} className="text-lg font-medium hover:underline">
-              Polyglot
-            </Link>
-            <Link href={`/${locale}/list`} className="text-lg font-medium hover:underline">
-              {nav.learn}
-            </Link>
-            <LanguageSwitcher />
-          </nav>
-        </div>
-      </header>
+      <Header
+        locale={locale}
+        appName={appName}
+        blogLabel={nav.blog}
+        learnLabel={nav.learn}
+        user={user}
+      />
 
       {/* Main Content */}
       <main className="flex-grow max-w-2xl mx-auto px-4 py-12 w-full">
