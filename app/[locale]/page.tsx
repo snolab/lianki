@@ -9,26 +9,28 @@ export default async function LandingPage() {
   const { appName, nav, hero, features, howItWorks, footer } = getIntlayer("landing-page", locale);
   const contactData = getIntlayer("contact-form", locale);
 
-  // Ensure all values are serializable strings for SSR using template literals
-  const contactContent = {
-    title: `${contactData.title}`,
-    nameLabel: `${contactData.nameLabel}`,
-    namePlaceholder: `${contactData.namePlaceholder}`,
-    emailLabel: `${contactData.emailLabel}`,
-    emailPlaceholder: `${contactData.emailPlaceholder}`,
-    phoneLabel: `${contactData.phoneLabel}`,
-    phonePlaceholder: `${contactData.phonePlaceholder}`,
-    messageLabel: `${contactData.messageLabel}`,
-    messagePlaceholder: `${contactData.messagePlaceholder}`,
-    optional: `${contactData.optional}`,
-    template1: `${contactData.template1}`,
-    template2: `${contactData.template2}`,
-    template3: `${contactData.template3}`,
-    sendButton: `${contactData.sendButton}`,
-    sending: `${contactData.sending}`,
-    successMessage: `${contactData.successMessage}`,
-    errorMessage: `${contactData.errorMessage}`,
-  };
+  // Force evaluation to plain values by using JSON parse/stringify
+  const contactContent = JSON.parse(
+    JSON.stringify({
+      title: contactData.title,
+      nameLabel: contactData.nameLabel,
+      namePlaceholder: contactData.namePlaceholder,
+      emailLabel: contactData.emailLabel,
+      emailPlaceholder: contactData.emailPlaceholder,
+      phoneLabel: contactData.phoneLabel,
+      phonePlaceholder: contactData.phonePlaceholder,
+      messageLabel: contactData.messageLabel,
+      messagePlaceholder: contactData.messagePlaceholder,
+      optional: contactData.optional,
+      template1: contactData.template1,
+      template2: contactData.template2,
+      template3: contactData.template3,
+      sendButton: contactData.sendButton,
+      sending: contactData.sending,
+      successMessage: contactData.successMessage,
+      errorMessage: contactData.errorMessage,
+    }),
+  );
 
   return (
     <div className="flex flex-col min-h-screen">
