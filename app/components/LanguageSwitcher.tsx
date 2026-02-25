@@ -22,8 +22,16 @@ export function LanguageSwitcher() {
   }, []);
 
   const handleLanguageSelect = (code: string) => {
+    // Set locale cookie for intlayer middleware (expires in 1 year)
+    const expires = new Date();
+    expires.setFullYear(expires.getFullYear() + 1);
+    document.cookie = `NEXT_LOCALE=${code}; path=/; expires=${expires.toUTCString()}; SameSite=Lax`;
+
     // Replace current locale in pathname with new locale
-    const newPath = pathname.replace(/^\/(en|zh|ja|ko)/, `/${code}`);
+    const newPath = pathname.replace(
+      /^\/(en|zh|hi|es|fr|ar|bn|pt|ru|ur|id|de|ja|sw|mr|ko)/,
+      `/${code}`,
+    );
     router.push(newPath);
     setIsOpen(false);
   };
