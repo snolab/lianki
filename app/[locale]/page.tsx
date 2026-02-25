@@ -7,7 +7,28 @@ import { LanguageSwitcher } from "../components/LanguageSwitcher";
 export default async function LandingPage() {
   const locale = await getLocale();
   const { appName, nav, hero, features, howItWorks, footer } = getIntlayer("landing-page", locale);
-  const contactContent = getIntlayer("contact-form", locale);
+  const contactData = getIntlayer("contact-form", locale);
+
+  // Ensure all values are serializable strings for SSR
+  const contactContent = {
+    title: String(contactData.title),
+    nameLabel: String(contactData.nameLabel),
+    namePlaceholder: String(contactData.namePlaceholder),
+    emailLabel: String(contactData.emailLabel),
+    emailPlaceholder: String(contactData.emailPlaceholder),
+    phoneLabel: String(contactData.phoneLabel),
+    phonePlaceholder: String(contactData.phonePlaceholder),
+    messageLabel: String(contactData.messageLabel),
+    messagePlaceholder: String(contactData.messagePlaceholder),
+    optional: String(contactData.optional),
+    template1: String(contactData.template1),
+    template2: String(contactData.template2),
+    template3: String(contactData.template3),
+    sendButton: String(contactData.sendButton),
+    sending: String(contactData.sending),
+    successMessage: String(contactData.successMessage),
+    errorMessage: String(contactData.errorMessage),
+  };
 
   return (
     <div className="flex flex-col min-h-screen">
