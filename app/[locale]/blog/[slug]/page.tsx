@@ -7,6 +7,8 @@ import { StreamingTranslation } from "../StreamingTranslation";
 import { BLOG_LOCALES, LOCALE_LABELS, getDateLocale, isSupportedLocale } from "@/lib/constants";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import matter from "gray-matter";
+import { getIntlayer } from "intlayer";
+import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
 
 export const revalidate = 3600;
 
@@ -162,29 +164,55 @@ export default async function BlogPostPage({
   const { locale, slug } = await params;
   if (!isSupportedLocale(locale)) notFound();
 
-  return (
-    <main className="max-w-2xl mx-auto px-4 py-12">
-      <nav className="flex items-center justify-between mb-8 text-sm text-gray-500">
-        <Link href={`/${locale}/blog`} className="hover:text-gray-700">
-          ← Blog
-        </Link>
-        <div className="flex gap-2">
-          {BLOG_LOCALES.filter((l) => l !== locale).map((l) => (
-            <Link
-              key={l}
-              href={`/${l}/blog/${slug}`}
-              className="px-3 py-1 border rounded hover:bg-gray-50"
-            >
-              {LOCALE_LABELS[l]}
-            </Link>
-          ))}
-        </div>
-      </nav>
+  const { appName, nav } = getIntlayer("landing-page", locale);
 
-      {/* Shell renders immediately; PostContent streams in when translation is ready */}
-      <Suspense fallback={<PostSkeleton />}>
-        <PostContent locale={locale} slug={slug} />
-      </Suspense>
-    </main>
+  return (
+    <div className="flex flex-col min-h-screen">
+      {/* Header */}
+      <header className="py-4 px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between">
+          <Link href={`/${locale}`} className="text-2xl font-bold hover:underline">
+            {appName}
+          </Link>
+          <nav className="flex items-center gap-6">
+            <Link href={`/${locale}/blog`} className="text-lg font-medium hover:underline">
+              {nav.blog}
+            </Link>
+            <Link href={`/${locale}/polyglot`} className="text-lg font-medium hover:underline">
+              Polyglot
+            </Link>
+            <Link href={`/${locale}/list`} className="text-lg font-medium hover:underline">
+              {nav.learn}
+            </Link>
+            <LanguageSwitcher />
+          </nav>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-grow max-w-2xl mx-auto px-4 py-12 w-full">
+        <nav className="flex items-center justify-between mb-8 text-sm text-gray-500">
+          <Link href={`/${locale}/blog`} className="hover:text-gray-700">
+            ← Blog
+          </Link>
+          <div className="flex gap-2">
+            {BLOG_LOCALES.filter((l) => l !== locale).map((l) => (
+              <Link
+                key={l}
+                href={`/${l}/blog/${slug}`}
+                className="px-3 py-1 border rounded hover:bg-gray-50"
+              >
+                {LOCALE_LABELS[l]}
+              </Link>
+            ))}
+          </div>
+        </nav>
+
+        {/* Shell renders immediately; PostContent streams in when translation is ready */}
+        <Suspense fallback={<PostSkeleton />}>
+          <PostContent locale={locale} slug={slug} />
+        </Suspense>
+      </main>
+    </div>
   );
 }

@@ -5,6 +5,8 @@ import { getAllSlugs, getRawPostWithFallback } from "@/lib/blog";
 import matter from "gray-matter";
 import { BLOG_LOCALES, LOCALE_LABELS, getDateLocale, isSupportedLocale } from "@/lib/constants";
 import { generateHreflangMetadata } from "@/lib/hreflang";
+import { getIntlayer } from "intlayer";
+import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
 
 export const revalidate = 3600;
 
@@ -20,7 +22,8 @@ export async function generateMetadata({
   const { locale } = await params;
   return {
     title: "Lianki Blog - Learn about spaced repetition and FSRS",
-    description: "Articles about spaced repetition learning, FSRS algorithm, and effective study techniques",
+    description:
+      "Articles about spaced repetition learning, FSRS algorithm, and effective study techniques",
     ...generateHreflangMetadata(locale, "/blog"),
   };
 }
@@ -55,48 +58,55 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
   if (!isSupportedLocale(locale)) notFound();
 
   const posts = await getPostSummaries(locale);
+  const { appName, nav } = getIntlayer("landing-page", locale);
 
   return (
-    <main className="max-w-2xl mx-auto px-4 py-12">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <Link href={`/${locale}`} className="text-sm text-gray-500 hover:text-gray-700">
-            ← Lianki
+    <div className="flex flex-col min-h-screen">
+      {/* Header */}
+      <header className="py-4 px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between">
+          <Link href={`/${locale}`} className="text-2xl font-bold hover:underline">
+            {appName}
           </Link>
-          <h1 className="text-3xl font-bold mt-2">Blog</h1>
-        </div>
-        <div className="flex gap-2">
-          {BLOG_LOCALES.filter((l) => l !== locale).map((l) => (
-            <Link
-              key={l}
-              href={`/${l}/blog`}
-              className="text-sm px-3 py-1 border rounded hover:bg-gray-50"
-            >
-              {LOCALE_LABELS[l]}
+          <nav className="flex items-center gap-6">
+            <Link href={`/${locale}/blog`} className="text-lg font-medium hover:underline">
+              {nav.blog}
             </Link>
-          ))}
+            <Link href={`/${locale}/polyglot`} className="text-lg font-medium hover:underline">
+              Polyglot
+            </Link>
+            <Link href={`/${locale}/list`} className="text-lg font-medium hover:underline">
+              {nav.learn}
+            </Link>
+            <LanguageSwitcher />
+          </nav>
         </div>
-      </div>
+      </header>
 
-      <ul className="space-y-8">
-        {posts.map((post) => (
-          <li key={post.slug}>
-            <Link href={`/${locale}/blog/${post.slug}`} className="group block">
-              <time className="text-sm text-gray-400">
-                {post.date
-                  ? new Date(post.date).toLocaleDateString(getDateLocale(locale), {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })
-                  : ""}
-              </time>
-              <h2 className="text-xl font-semibold group-hover:text-blue-600 mt-1">{post.title}</h2>
-              <p className="text-gray-600 mt-1 text-sm">{post.summary}</p>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </main>
+      {/* Main Content */}
+      <main className="flex-grow max-w-2xl mx-auto px-4 py-12 w-full">
+        <h1 className="text-3xl font-bold mb-8">Blog</h1>
+
+        <ul className="space-y-8">
+          {posts.map((post) => (
+            <li key={post.slug}>
+              <Link href={`/${locale}/blog/${post.slug}`} className="group block">
+                <time className="text-sm text-gray-400">
+                  {post.date
+                    ? new Date(post.date).toLocaleDateString(getDateLocale(locale), {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })
+                    : ""}
+                </time>
+                <h2 className="text-xl font-semibold group-hover:text-blue-600 mt-1">{post.title}</h2>
+                <p className="text-gray-600 mt-1 text-sm">{post.summary}</p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </main>
+    </div>
   );
 }
