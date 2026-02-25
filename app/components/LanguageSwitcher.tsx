@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useLocale } from "next-intlayer";
+import { usePathname, useRouter } from "next/navigation";
 import { LANGUAGES, isSupportedLocale } from "@/lib/constants";
 
 export function LanguageSwitcher() {
   const [isOpen, setIsOpen] = useState(false);
   const [browserLangs, setBrowserLangs] = useState<string[]>([]);
-  const { locale: currentLocale, setLocale } = useLocale();
+  const { locale: currentLocale } = useLocale();
+  const pathname = usePathname();
+  const router = useRouter();
 
   // Get browser's preferred languages
   useEffect(() => {
@@ -19,7 +22,9 @@ export function LanguageSwitcher() {
   }, []);
 
   const handleLanguageSelect = (code: string) => {
-    setLocale(code);
+    // Replace current locale in pathname with new locale
+    const newPath = pathname.replace(/^\/(en|zh|ja|ko)/, `/${code}`);
+    router.push(newPath);
     setIsOpen(false);
   };
 

@@ -126,6 +126,7 @@ export default async function MyPage() {
 The following routes don't get locale prefixes:
 - API routes: `/api/*`
 - Auth routes: `/auth/*`
+- Special redirects: `/next` (redirects to `/api/fsrs/next`)
 - Static files: `/_next/*`, `/favicon.ico`, `/*.user.js`
 
 ## Blog Routes
@@ -139,7 +140,7 @@ These routes work seamlessly with the new system.
 
 ## Language Switcher
 
-To implement a language switcher:
+The language switcher must use `useRouter` and `usePathname` to navigate to the new locale URL:
 
 ```tsx
 "use client";
@@ -148,18 +149,18 @@ import { usePathname, useRouter } from "next/navigation";
 import { BLOG_LOCALES } from "@/lib/constants";
 
 export function LanguageSwitcher() {
-  const locale = useLocale();
+  const { locale: currentLocale } = useLocale();
   const pathname = usePathname();
   const router = useRouter();
 
   const switchLocale = (newLocale: string) => {
-    // Replace current locale in pathname
+    // Replace current locale in pathname with new locale
     const newPath = pathname.replace(/^\/(en|zh|ja|ko)/, `/${newLocale}`);
     router.push(newPath);
   };
 
   return (
-    <select value={locale.locale} onChange={(e) => switchLocale(e.target.value)}>
+    <select value={currentLocale} onChange={(e) => switchLocale(e.target.value)}>
       {BLOG_LOCALES.map((l) => (
         <option key={l} value={l}>
           {l.toUpperCase()}
@@ -169,6 +170,8 @@ export function LanguageSwitcher() {
   );
 }
 ```
+
+**Important:** Do NOT use `setLocale()` from `useLocale()` as it only changes the locale state without navigating to the new URL. You must use `router.push()` to navigate to the URL with the new locale prefix.
 
 ## Testing
 

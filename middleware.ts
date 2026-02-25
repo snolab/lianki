@@ -6,6 +6,11 @@ import { BLOG_LOCALES } from "@/lib/constants";
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Special routes that don't need locale prefix
+  if (pathname === "/next") {
+    return NextResponse.next();
+  }
+
   // Redirect legacy /cn/* → /zh/*
   if (pathname === "/cn" || pathname.startsWith("/cn/")) {
     return NextResponse.redirect(new URL(pathname.replace(/^\/cn/, "/zh"), request.url));
