@@ -9,25 +9,25 @@ export default async function LandingPage() {
   const { appName, nav, hero, features, howItWorks, footer } = getIntlayer("landing-page", locale);
   const contactData = getIntlayer("contact-form", locale);
 
-  // Ensure all values are serializable strings for SSR
+  // Ensure all values are serializable strings for SSR using template literals
   const contactContent = {
-    title: String(contactData.title),
-    nameLabel: String(contactData.nameLabel),
-    namePlaceholder: String(contactData.namePlaceholder),
-    emailLabel: String(contactData.emailLabel),
-    emailPlaceholder: String(contactData.emailPlaceholder),
-    phoneLabel: String(contactData.phoneLabel),
-    phonePlaceholder: String(contactData.phonePlaceholder),
-    messageLabel: String(contactData.messageLabel),
-    messagePlaceholder: String(contactData.messagePlaceholder),
-    optional: String(contactData.optional),
-    template1: String(contactData.template1),
-    template2: String(contactData.template2),
-    template3: String(contactData.template3),
-    sendButton: String(contactData.sendButton),
-    sending: String(contactData.sending),
-    successMessage: String(contactData.successMessage),
-    errorMessage: String(contactData.errorMessage),
+    title: `${contactData.title}`,
+    nameLabel: `${contactData.nameLabel}`,
+    namePlaceholder: `${contactData.namePlaceholder}`,
+    emailLabel: `${contactData.emailLabel}`,
+    emailPlaceholder: `${contactData.emailPlaceholder}`,
+    phoneLabel: `${contactData.phoneLabel}`,
+    phonePlaceholder: `${contactData.phonePlaceholder}`,
+    messageLabel: `${contactData.messageLabel}`,
+    messagePlaceholder: `${contactData.messagePlaceholder}`,
+    optional: `${contactData.optional}`,
+    template1: `${contactData.template1}`,
+    template2: `${contactData.template2}`,
+    template3: `${contactData.template3}`,
+    sendButton: `${contactData.sendButton}`,
+    sending: `${contactData.sending}`,
+    successMessage: `${contactData.successMessage}`,
+    errorMessage: `${contactData.errorMessage}`,
   };
 
   return (
