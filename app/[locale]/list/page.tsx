@@ -12,7 +12,6 @@ import RefreshHeatmapButton from "./components/RefreshHeatmapButton";
 import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
 import { LanguageSwitcher } from "@/app/components/LanguageSwitcher";
-import TokenManager from "./components/TokenManager";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 
 export const dynamic = "force-dynamic";
@@ -133,7 +132,6 @@ export default async function HomePage() {
               <HeatmapSection />
             </Suspense>
           </section>
-          <TokenManager />
           <ul className="space-y-2">
             <Suspense>
               <Cards />
