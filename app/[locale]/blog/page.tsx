@@ -100,7 +100,9 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
                       })
                     : ""}
                 </time>
-                <h2 className="text-xl font-semibold group-hover:text-blue-600 mt-1">{post.title}</h2>
+                <h2 className="text-xl font-semibold group-hover:text-blue-600 mt-1">
+                  {post.title}
+                </h2>
                 <p className="text-gray-600 mt-1 text-sm">{post.summary}</p>
               </Link>
             </li>

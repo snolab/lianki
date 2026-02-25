@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { getPost, getRawPost, getAllSlugs } from "@/lib/blog";
 import { StreamingTranslation } from "../StreamingTranslation";
+import { CommittedTranslation } from "../CommittedTranslation";
 import { BLOG_LOCALES, LOCALE_LABELS, getDateLocale, isSupportedLocale } from "@/lib/constants";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import matter from "gray-matter";
@@ -110,42 +111,9 @@ async function PostContent({ locale, slug }: { locale: string; slug: string }) {
   }
 
   // For other locales, check if committed translation exists
-  const committed = await getPost(locale, slug);
-  if (committed) {
-    return (
-      <article>
-        <header className="mb-8">
-          <time className="text-sm text-gray-400">
-            {committed.date
-              ? new Date(committed.date).toLocaleDateString(getDateLocale(locale), {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })
-              : ""}
-          </time>
-          <h1 className="text-3xl font-bold mt-2">{committed.title}</h1>
-          {committed.tags.length > 0 && (
-            <div className="flex gap-2 mt-3 flex-wrap">
-              {committed.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="text-xs px-2 py-0.5 bg-gray-100 rounded-full text-gray-600"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
-        </header>
-
-        <div
-          className="prose prose-gray max-w-none"
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted markdown
-          dangerouslySetInnerHTML={{ __html: committed.contentHtml }}
-        />
-      </article>
-    );
+  const committedRaw = await getRawPost(locale, slug);
+  if (committedRaw) {
+    return <CommittedTranslation content={committedRaw} locale={locale} />;
   }
 
   // Ensure English source exists
