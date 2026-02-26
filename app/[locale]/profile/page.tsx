@@ -33,7 +33,8 @@ export default async function ProfilePage() {
           </p>
           {user.image && (
             <p>
-              <strong>Avatar:</strong> <img src={user.image} alt="User avatar" className="mt-2 w-32 h-32 rounded-full" />
+              <strong>Avatar:</strong>{" "}
+              <img src={user.image} alt="User avatar" className="mt-2 w-32 h-32 rounded-full" />
             </p>
           )}
         </div>

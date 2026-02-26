@@ -14,7 +14,10 @@
     "start": "next start",
     "fix": "oxlint --fix --ignore-pattern 'packages/**' && oxfmt '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**'",
     "typecheck": "tsgo --noEmit",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:e2e": "node tests/e2e-offline-sync.spec.mjs",
+    "test:e2e:prod": "LIANKI_URL=https://www.lianki.com node tests/e2e-offline-sync.spec.mjs",
+    "test:e2e:preview": "LIANKI_URL=https://lianki-git-sno-sync-snomiao.vercel.app node tests/e2e-offline-sync.spec.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.30",

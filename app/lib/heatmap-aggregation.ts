@@ -1,7 +1,9 @@
 import type { HeatmapData } from "@/types/heatmap";
 import { getFSRSNotesCollection } from "../getFSRSNotesCollection";
+import DIE from "phpdie";
 
 export async function aggregateReviewActivity(email?: string): Promise<HeatmapData> {
+  if (!email) DIE("aggregateReviewActivity called without email - unauthenticated user");
   const FSRSNotes = getFSRSNotesCollection(email);
 
   const oneYearAgo = new Date();
