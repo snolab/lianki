@@ -10,11 +10,13 @@ export default async function PolyglotLayout({ children }: { children: React.Rea
   const locale = await getLocale();
 
   // Get authenticated user or redirect to sign-in
-  const user = await authUser().catch(() => {
+  let user;
+  try {
+    user = await authUser();
+  } catch {
     localeRedirect("/sign-in");
-    // This line is unreachable, but needed for TypeScript
-    return null as never;
-  });
+    return null; // TypeScript: unreachable, but needed
+  }
 
   const membership = await getUserMembership(user.id);
   const hasAccess = membership.tier === "pro" || membership.tier === "trial";
