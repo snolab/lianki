@@ -18,9 +18,10 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
+  const { metadata } = getIntlayer("list-page", locale);
   return {
-    title: "Lianki - Learning Dashboard",
-    description: "Manage your flashcards and track your learning progress",
+    title: metadata.title,
+    description: metadata.description,
     ...generateHreflangMetadata(locale, "/list"),
   };
 }
@@ -33,6 +34,7 @@ export default async function HomePage() {
   const FSRSNotes = getFSRSNotesCollection(email);
   const locale = await getLocale();
   const { appName, nav } = getIntlayer("landing-page", locale);
+  const { nextCard, totalCards, dueCards, learningActivity } = getIntlayer("list-page", locale);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -53,21 +55,21 @@ export default async function HomePage() {
               className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700"
               accessKey="1"
             >
-              Next card
+              {nextCard}
             </a>
           </div>
           <div className="grid grid-cols-2 gap-4 mb-6">
             <p className="text-lg">
-              Total cards: <Suspense>{FSRSNotes.countDocuments({})}</Suspense>
+              {totalCards} <Suspense>{FSRSNotes.countDocuments({})}</Suspense>
             </p>
             <p className="text-lg">
-              Due cards:{" "}
+              {dueCards}{" "}
               <Suspense>{FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })}</Suspense>
             </p>
           </div>
           <section className="my-8">
             <div className="flex items-center mb-4">
-              <h2 className="text-xl font-semibold">Learning Activity</h2>
+              <h2 className="text-xl font-semibold">{learningActivity}</h2>
               <RefreshHeatmapButton />
             </div>
             <Suspense
