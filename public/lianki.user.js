@@ -548,7 +548,7 @@ function main() {
       all: "initial",
       position: "fixed",
       inset: "0",
-      background: "rgba(0,0,0,0.45)",
+      background: "rgba(0,0,0,0.75)",
       zIndex: "2147483645",
     });
     backdrop.addEventListener("click", closeDialog);
