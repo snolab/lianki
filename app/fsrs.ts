@@ -10,10 +10,19 @@ import type { WithId } from "mongodb";
 import DIE from "phpdie";
 import { values } from "rambda";
 import { sflow, TextEncoderStream } from "sflow";
-import { type Card, createEmptyCard, fsrs, type Grade, Rating, RecordLogItem } from "ts-fsrs";
+import {
+  type Card,
+  createEmptyCard,
+  fsrs,
+  type Grade,
+  Rating,
+  RecordLogItem,
+  type ReviewLog,
+} from "ts-fsrs";
 import { z } from "zod";
 import { ems } from "./ems";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
+import { normalizeUrl } from "@/lib/normalizeUrl";
 
 const LIANKI_USERSCRIPT_VERSION = (() => {
   try {
@@ -24,11 +33,55 @@ const LIANKI_USERSCRIPT_VERSION = (() => {
   }
 })();
 
+// ── HLC (Hybrid Logical Clock) Helpers ──────────────────────────────────────
+
+/**
+ * Compare two HLC timestamps
+ * Returns: < 0 if a < b, 0 if equal, > 0 if a > b
+ */
+function compareHLC(a: HLC | undefined, b: HLC | undefined): number {
+  if (!a) return -1;
+  if (!b) return 1;
+  if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+  if (a.counter !== b.counter) return a.counter - b.counter;
+  return a.deviceId.localeCompare(b.deviceId);
+}
+
+/**
+ * Generate new HLC timestamp for server
+ */
+function newServerHLC(lastHLC?: HLC | null): HLC {
+  const now = Date.now();
+  const deviceId = "server";
+
+  if (!lastHLC || now > lastHLC.timestamp) {
+    return { timestamp: now, counter: 0, deviceId };
+  }
+
+  // Same timestamp - increment counter
+  return {
+    timestamp: lastHLC.timestamp,
+    counter: lastHLC.counter + 1,
+    deviceId,
+  };
+}
+
+// Hybrid Logical Clock for CRDT sync
+export type HLC = {
+  timestamp: number; // Physical clock (Date.now())
+  counter: number; // Logical counter for same timestamp
+  deviceId: string; // Device/session identifier
+};
+
 export type FSRSNote = {
   url: string;
   title?: string;
   card: Card;
+  log?: ReviewLog[]; // Review history
+  notes?: string; // User notes, max 128 chars
   speedMarkers?: Record<number, number>; // {timestamp: speed}
+  hlc?: HLC; // Hybrid Logical Clock for sync
+  deviceId?: string; // Last device that modified (legacy field)
 };
 
 // export const runtime = "edge";
@@ -83,6 +136,53 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       ),
     "GET /add(?:/|$|\\?)": async (req, options) => JSONR(saveQueryNote(req, options)),
     "POST /api/fsrs/add/?$": async (req) => JSONR(saveQueryNoteByJSONData(req)),
+    "POST /api/fsrs/batch-add/?$": async (req) => {
+      const zBatchAddNote = z.object({
+        urls: z.array(z.string()),
+      });
+      const input = await req.json();
+      const { urls } = zBatchAddNote.parse(input);
+
+      // Save all URLs in parallel
+      const results = await Promise.allSettled(urls.map((url) => saveNote({ url })));
+
+      const successful = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.filter((r) => r.status === "rejected").length;
+
+      return JSONR({
+        success: true,
+        count: successful,
+        failed,
+        total: urls.length,
+      });
+    },
+    "GET /api/fsrs/due(?:/|$|\\?)": async (req) => {
+      const url = new URL(req.url, "http://localhost");
+      const limit = parseInt(url.searchParams.get("limit") ?? "10", 10);
+      const excludeDomains =
+        url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
+
+      const query: any = { "card.due": { $lte: new Date() } };
+      if (excludeDomains.length > 0) {
+        query.url = {
+          $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
+        };
+      }
+
+      const cards = await FSRSNotes.find(query, { sort: { "card.due": 1 }, limit }).toArray();
+
+      return JSONR({
+        cards: cards.map((note) => ({
+          _id: note._id.toString(),
+          url: note.url,
+          title: note.title,
+          card: note.card,
+          log: note.log,
+          notes: note.notes,
+          hlc: note.hlc || newServerHLC(),
+        })),
+      });
+    },
     "GET /api/fsrs/options(?:/|$|\\?)": async (req, options) => {
       const note = (await getQueryNote(req, options)) ?? DIE("note not found");
       const repeatRecord = fsrs().repeat(note.card, new Date());
@@ -97,11 +197,20 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         ),
       });
     },
-    "GET /api/fsrs/next-url(?:/|$|\\?)": async () => {
-      const note = await FSRSNotes.findOne(
-        { "card.due": { $lte: new Date() } },
-        { sort: { "card.due": 1 } },
-      );
+    "GET /api/fsrs/next-url(?:/|$|\\?)": async (req) => {
+      const url = new URL(req.url, "http://localhost");
+      const excludeDomains =
+        url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
+
+      const query: any = { "card.due": { $lte: new Date() } };
+      if (excludeDomains.length > 0) {
+        // Exclude cards matching any of the domains
+        query.url = {
+          $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
+        };
+      }
+
+      const note = await FSRSNotes.findOne(query, { sort: { "card.due": 1 } });
       return JSONR({ url: note?.url ?? null, title: note?.title ?? null });
     },
     "GET /api/fsrs/review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (
@@ -128,10 +237,18 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       );
 
       // Include next URL in response to save an API call
-      const nextNote = await FSRSNotes.findOne(
-        { "card.due": { $lte: new Date() } },
-        { sort: { "card.due": 1 } },
-      );
+      const url = new URL(req.url, "http://localhost");
+      const excludeDomains =
+        url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
+
+      const nextQuery: any = { "card.due": { $lte: new Date() } };
+      if (excludeDomains.length > 0) {
+        nextQuery.url = {
+          $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
+        };
+      }
+
+      const nextNote = await FSRSNotes.findOne(nextQuery, { sort: { "card.due": 1 } });
 
       return JSONR({
         ok: true,
@@ -140,9 +257,120 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         nextTitle: nextNote?.title ?? null,
       });
     },
+    "POST /api/fsrs/review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (
+      req,
+      options,
+    ) => {
+      const params = getParams(req, options);
+      const rating =
+        (
+          {
+            "1": Rating.Again,
+            again: Rating.Again,
+            "2": Rating.Hard,
+            hard: Rating.Hard,
+            "3": Rating.Good,
+            good: Rating.Good,
+            "4": Rating.Easy,
+            easy: Rating.Easy,
+          } as Record<string, Rating>
+        )[params.rating] ?? DIE("unknown rating: " + String(params.rating));
+
+      const note = (await getQueryNote(req, options)) ?? DIE("note not found");
+
+      // Parse client HLC if provided
+      const zReviewBody = z.object({
+        hlc: z
+          .object({
+            timestamp: z.number(),
+            counter: z.number(),
+            deviceId: z.string(),
+          })
+          .optional(),
+      });
+
+      let clientHLC: HLC | undefined;
+      try {
+        const body = await req.json();
+        const parsed = zReviewBody.parse(body);
+        clientHLC = parsed.hlc;
+      } catch {
+        // Body is optional, continue without HLC
+      }
+
+      // Check for conflicts
+      if (clientHLC && note.hlc) {
+        const comparison = compareHLC(clientHLC, note.hlc);
+        if (comparison < 0) {
+          // Client HLC is older than server - reject update
+          return JSONR(
+            {
+              ok: false,
+              error: "conflict",
+              message: "Server has newer version",
+              serverHLC: note.hlc,
+              card: note.card,
+              log: note.log,
+            },
+            409,
+          );
+        }
+      }
+
+      const reviewedCard = await reviewed(note, rating as Grade, clientHLC);
+
+      // Include next URL in response to save an API call
+      const url = new URL(req.url, "http://localhost");
+      const excludeDomains =
+        url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
+
+      const nextQuery: any = { "card.due": { $lte: new Date() } };
+      if (excludeDomains.length > 0) {
+        nextQuery.url = {
+          $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
+        };
+      }
+
+      const nextNote = await FSRSNotes.findOne(nextQuery, { sort: { "card.due": 1 } });
+
+      return JSONR({
+        ok: true,
+        due: dueMs(reviewedCard.card.due),
+        card: reviewedCard.card,
+        log: reviewedCard.log,
+        hlc: reviewedCard.hlc,
+        nextUrl: nextNote?.url ?? null,
+        nextTitle: nextNote?.title ?? null,
+      });
+    },
     "GET /api/fsrs/delete(?:/|$|\\?)": async (req, opt) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
       await FSRSNotes.deleteOne({ url: note.url });
+
+      // Include next URL in response to save an API call
+      const url = new URL(req.url, "http://localhost");
+      const excludeDomains =
+        url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
+
+      const nextQuery: any = { "card.due": { $lte: new Date() } };
+      if (excludeDomains.length > 0) {
+        nextQuery.url = {
+          $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
+        };
+      }
+
+      const nextNote = await FSRSNotes.findOne(nextQuery, { sort: { "card.due": 1 } });
+
+      return JSONR({
+        ok: true,
+        nextUrl: nextNote?.url ?? null,
+        nextTitle: nextNote?.title ?? null,
+      });
+    },
+    "PATCH /api/fsrs/notes(?:/|$|\\?)": async (req, opt) => {
+      const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
+      const { notes } = z.object({ notes: z.string().max(128) }).parse(await req.json());
+      await FSRSNotes.updateOne({ url: note.url }, { $set: { notes } });
       return JSONR({ ok: true });
     },
     "PATCH /api/fsrs/update-url(?:/|$|\\?)": async (req) => {
@@ -409,20 +637,32 @@ export const fsrsHandler = async (req: Request, email?: string) => {
   //   });
   // }
 
-  async function reviewed(note: FSRSNote, grade: Grade) {
+  async function reviewed(note: FSRSNote, grade: Grade, clientHLC?: HLC) {
     const { card, log } = fsrs().repeat(note.card, new Date())[grade];
     const url = note.url;
+
+    // Generate new server HLC
+    const newHLC = clientHLC
+      ? {
+          // Use client HLC if newer
+          timestamp: Math.max(clientHLC.timestamp, Date.now()),
+          counter: clientHLC.timestamp >= Date.now() ? clientHLC.counter + 1 : 0,
+          deviceId: clientHLC.deviceId,
+        }
+      : newServerHLC(note.hlc);
+
     return (await FSRSNotes.findOneAndUpdate(
       { url },
-      { $set: { card }, $push: { log } },
+      { $set: { card, hlc: newHLC }, $push: { log } },
       { returnDocument: "after", upsert: true },
     ))!;
     // TODO: Add cache invalidation for heatmap after review
     // The cache will auto-revalidate every hour (see heatmap-cache.ts)
   }
 
-  async function JSONR<T>(data: T | Promise<T>) {
+  async function JSONR<T>(data: T | Promise<T>, status: number = 200) {
     return new Response(JSON.stringify(await data), {
+      status,
       headers: {
         "content-type": "application/json",
         "x-lianki-version": LIANKI_USERSCRIPT_VERSION,
@@ -451,7 +691,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       }),
     );
 
-    return { ...resp, options };
+    return { ...resp, options, notes: resp.notes ?? "" };
   }
   async function saveQueryNote(req: Request, options?: { params?: Record<string, string> }) {
     const params = getParams(req, options);
@@ -503,51 +743,13 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     };
   }
 
-  function normalizeUrl(href: string): string {
-    try {
-      const u = new URL(href);
-      // YouTube: youtu.be/ID → youtube.com/watch?v=ID
-      if (u.hostname === "youtu.be") {
-        const id = u.pathname.slice(1);
-        u.hostname = "www.youtube.com";
-        u.pathname = "/watch";
-        u.searchParams.set("v", id);
-      }
-      // Strip mobile subdomain (m.youtube.com → www.youtube.com)
-      if (u.hostname.startsWith("m.")) u.hostname = "www." + u.hostname.slice(2);
-      // Strip tracking & session params
-      for (const p of [
-        "si",
-        "pp",
-        "feature",
-        "ref",
-        "source",
-        "utm_source",
-        "utm_medium",
-        "utm_campaign",
-        "utm_term",
-        "utm_content",
-        "fbclid",
-        "gclid",
-        "mc_cid",
-        "mc_eid",
-        "igshid",
-      ])
-        u.searchParams.delete(p);
-      u.searchParams.sort();
-      return u.toString();
-    } catch {
-      return href;
-    }
-  }
-
   async function saveNote({ url, title }: { url: string; title?: string }) {
     const normalized = normalizeUrl(url);
     return (
       (await FSRSNotes.findOneAndUpdate(
         { url: normalized },
         {
-          $setOnInsert: { card: createEmptyCard(), url: normalized },
+          $setOnInsert: { card: createEmptyCard(), url: normalized, hlc: newServerHLC() },
           $set: { ...(title && { title }) },
         },
         { upsert: true, returnDocument: "after" },

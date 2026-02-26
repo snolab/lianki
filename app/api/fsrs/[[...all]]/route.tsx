@@ -1,32 +1,19 @@
 import { fsrsHandler } from "@/app/fsrs";
-import { authEmail } from "@/app/signInEmail";
+import { authEmailOrToken } from "@/lib/authEmailOrToken";
+
 export const dynamic = "force-dynamic";
 // export const runtime = 'edge'
-export const GET = async (req: Request) => {
-  const email = await authEmail();
-  return await fsrsHandler(req, email).catch((error) => {
+
+const handle = async (req: Request) => {
+  const email = await authEmailOrToken(req);
+  if (!email) return Response.json({ error: "Login required" }, { status: 401 });
+  return fsrsHandler(req, email).catch((error) => {
     console.error(error);
     return new Response("sth wrong", { status: 500 });
   });
 };
-export const POST = async (req: Request) => {
-  const email = await authEmail();
-  return await fsrsHandler(req, email).catch((error) => {
-    console.error(error);
-    return new Response("sth wrong", { status: 500 });
-  });
-};
-export const DELETE = async (req: Request) => {
-  const email = await authEmail();
-  return await fsrsHandler(req, email).catch((error) => {
-    console.error(error);
-    return new Response("sth wrong", { status: 500 });
-  });
-};
-export const PATCH = async (req: Request) => {
-  const email = await authEmail();
-  return await fsrsHandler(req, email).catch((error) => {
-    console.error(error);
-    return new Response("sth wrong", { status: 500 });
-  });
-};
+
+export const GET = handle;
+export const POST = handle;
+export const DELETE = handle;
+export const PATCH = handle;

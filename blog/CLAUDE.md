@@ -26,10 +26,11 @@ Developer and infrastructure docs (architecture, deployment, CI/CD) live in `doc
 blog/
   CLAUDE.md          — this file
   en/                — English posts
-  cn/                — Chinese posts (同 slug，中文内容)
+  zh/                — Chinese posts (同 slug，中文内容)
+  ja/, ko/, hi/...   — Other language posts (16 languages total)
 ```
 
-Each language folder uses the same filenames. When adding a new post, create it in both `en/` and `cn/`.
+Each language folder uses the same filenames. When adding a new post, create it in `en/` first, then translations are auto-generated via LLM streaming.
 
 ## File Naming
 

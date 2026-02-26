@@ -1,28 +1,46 @@
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { getPost, getRawPost, getAllSlugs } from "@/lib/blog";
 import { StreamingTranslation } from "../StreamingTranslation";
+import { CommittedTranslation } from "../CommittedTranslation";
+import { BLOG_LOCALES, LOCALE_LABELS, getDateLocale, isSupportedLocale } from "@/lib/constants";
+import { generateHreflangMetadata } from "@/lib/hreflang";
+import matter from "gray-matter";
+import { getIntlayer } from "intlayer";
+import { Header } from "@/app/components/Header";
+import { authUser } from "@/app/signInEmail";
 
 export const revalidate = 3600;
 
-const LOCALES = ["en", "zh", "ja"];
-
-const LOCALE_LABELS: Record<string, string> = {
-  en: "English",
-  zh: "中文",
-  ja: "日本語",
-};
-
-function dateLocale(locale: string): string {
-  if (locale === "zh") return "zh-CN";
-  if (locale === "ja") return "ja-JP";
-  return "en-US";
-}
-
 export async function generateStaticParams() {
   const slugs = await getAllSlugs();
-  return LOCALES.flatMap((locale) => slugs.map((slug) => ({ locale, slug })));
+  return BLOG_LOCALES.flatMap((locale) => slugs.map((slug) => ({ locale, slug })));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string; slug: string }>;
+}): Promise<Metadata> {
+  const { locale, slug } = await params;
+
+  // Try to get the post to extract title and description
+  const raw = await getRawPost("en", slug); // Always use English source for metadata
+  if (!raw) {
+    return {
+      title: "Blog Post - Lianki",
+      ...generateHreflangMetadata(locale, `/blog/${slug}`),
+    };
+  }
+
+  const { data } = matter(raw);
+  return {
+    title: `${data.title || slug} - Lianki Blog`,
+    description: data.summary || data.description || "Read this article on the Lianki blog",
+    ...generateHreflangMetadata(locale, `/blog/${slug}`),
+  };
 }
 
 function PostSkeleton() {
@@ -62,7 +80,7 @@ async function PostContent({ locale, slug }: { locale: string; slug: string }) {
         <header className="mb-8">
           <time className="text-sm text-gray-400">
             {post.date
-              ? new Date(post.date).toLocaleDateString(dateLocale(locale), {
+              ? new Date(post.date).toLocaleDateString(getDateLocale(locale), {
                   year: "numeric",
                   month: "long",
                   day: "numeric",
@@ -94,45 +112,9 @@ async function PostContent({ locale, slug }: { locale: string; slug: string }) {
   }
 
   // For other locales, check if committed translation exists
-  const committed = await getPost(locale, slug);
-  if (committed) {
-    return (
-      <article>
-        <header className="mb-8">
-          <time className="text-sm text-gray-400">
-            {committed.date
-              ? new Date(committed.date).toLocaleDateString(dateLocale(locale), {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })
-              : ""}
-          </time>
-          <h1 className="text-3xl font-bold mt-2">{committed.title}</h1>
-          {committed.tags.length > 0 && (
-            <div className="flex gap-2 mt-3 flex-wrap">
-              {committed.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="text-xs px-2 py-0.5 bg-gray-100 rounded-full text-gray-600"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
-          <p className="mt-3 text-xs text-green-600 bg-green-50 px-3 py-1 rounded">
-            Previously translated · Loaded from cache
-          </p>
-        </header>
-
-        <div
-          className="prose prose-gray max-w-none"
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted markdown
-          dangerouslySetInnerHTML={{ __html: committed.contentHtml }}
-        />
-      </article>
-    );
+  const committedRaw = await getRawPost(locale, slug);
+  if (committedRaw) {
+    return <CommittedTranslation content={committedRaw} locale={locale} />;
   }
 
   // Ensure English source exists
@@ -149,31 +131,41 @@ export default async function BlogPostPage({
   params: Promise<{ locale: string; slug: string }>;
 }) {
   const { locale, slug } = await params;
-  if (!LOCALES.includes(locale)) notFound();
+  if (!isSupportedLocale(locale)) notFound();
+
+  const { appName, nav } = getIntlayer("landing-page", locale);
+
+  // Try to get user if logged in (optional)
+  let user = null;
+  try {
+    user = await authUser();
+  } catch (e) {
+    // User not logged in, that's ok
+  }
 
   return (
-    <main className="max-w-2xl mx-auto px-4 py-12">
-      <nav className="flex items-center justify-between mb-8 text-sm text-gray-500">
-        <Link href={`/${locale}/blog`} className="hover:text-gray-700">
-          ← Blog
-        </Link>
-        <div className="flex gap-2">
-          {LOCALES.filter((l) => l !== locale).map((l) => (
-            <Link
-              key={l}
-              href={`/${l}/blog/${slug}`}
-              className="px-3 py-1 border rounded hover:bg-gray-50"
-            >
-              {LOCALE_LABELS[l]}
-            </Link>
-          ))}
-        </div>
-      </nav>
+    <div className="flex flex-col min-h-screen">
+      <Header
+        locale={locale}
+        appName={appName}
+        blogLabel={nav.blog}
+        learnLabel={nav.learn}
+        user={user}
+      />
 
-      {/* Shell renders immediately; PostContent streams in when translation is ready */}
-      <Suspense fallback={<PostSkeleton />}>
-        <PostContent locale={locale} slug={slug} />
-      </Suspense>
-    </main>
+      {/* Main Content */}
+      <main className="flex-grow max-w-2xl mx-auto px-4 py-12 w-full">
+        <nav className="mb-8 text-sm text-gray-500">
+          <Link href={`/${locale}/blog`} className="hover:text-gray-700">
+            ← Blog
+          </Link>
+        </nav>
+
+        {/* Shell renders immediately; PostContent streams in when translation is ready */}
+        <Suspense fallback={<PostSkeleton />}>
+          <PostContent locale={locale} slug={slug} />
+        </Suspense>
+      </main>
+    </div>
   );
 }

@@ -1,16 +1,14 @@
 import { intlayerMiddleware } from "next-intlayer/middleware";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-
-const BLOG_LOCALES = ["en", "zh", "ja"];
-const DEFAULT_LOCALE = "en";
+import { BLOG_LOCALES } from "@/lib/constants";
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Redirect /blog/* → /en/blog/*
-  if (pathname === "/blog" || pathname.startsWith("/blog/")) {
-    return NextResponse.redirect(new URL(`/${DEFAULT_LOCALE}${pathname}`, request.url));
+  // Special routes that don't need locale prefix
+  if (pathname === "/next") {
+    return NextResponse.next();
   }
 
   // Redirect legacy /cn/* → /zh/*
@@ -18,19 +16,9 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(pathname.replace(/^\/cn/, "/zh"), request.url));
   }
 
-  // Redirect bare locale paths to blog index
-  const bare = pathname.slice(1);
-  if (BLOG_LOCALES.includes(bare) && pathname.split("/").length === 2) {
-    return NextResponse.redirect(new URL(`${pathname}/blog`, request.url));
-  }
-
-  // Skip intlayer middleware for routes with explicit locale prefixes
-  // (prevents redirect loop: /blog → /en/blog → /blog)
-  if (pathname.match(/^\/(en|zh|ja)\//)) {
-    return NextResponse.next();
-  }
-
-  // Intlayer: detect locale from Accept-Language / cookie, set locale cookie (noPrefix mode)
+  // Intlayer middleware: adds locale prefix to all routes, handles locale detection
+  // This will redirect / → /en/, /list → /en/list, etc.
+  // Locale root paths (e.g., /ko/) will render the landing page at app/[locale]/page.tsx
   return intlayerMiddleware(request);
 }
 

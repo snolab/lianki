@@ -2,27 +2,23 @@ import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { NextRequest } from "next/server";
 import { getRawPost } from "@/lib/blog";
-import { commitFile } from "@/lib/github-commit";
+import { LOCALE_NAMES } from "@/lib/constants";
+import KeyvGitHub from "keyv-github";
+import { Octokit } from "octokit";
 
 export const maxDuration = 60;
 
-const LOCALE_NAMES: Record<string, string> = {
-  zh: "Simplified Chinese",
-  ja: "Japanese",
-  hi: "Hindi",
-  es: "Spanish",
-  fr: "French",
-  ar: "Arabic",
-  bn: "Bengali",
-  pt: "Portuguese",
-  ru: "Russian",
-  ur: "Urdu",
-  id: "Indonesian",
-  de: "German",
-  sw: "Swahili",
-  mr: "Marathi",
-  ko: "Korean",
-};
+// Initialize GitHub cache
+function getGitHubCache() {
+  const token = process.env.GITHUB_INTL_TOKEN;
+  if (!token) return null;
+
+  return new KeyvGitHub("https://github.com/snomiao/lianki/tree/main", {
+    client: new Octokit({ auth: token }),
+    prefix: "blog/",
+    suffix: ".md",
+  });
+}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -41,6 +37,45 @@ export async function GET(request: NextRequest) {
   const englishRaw = await getRawPost("en", slug);
   if (!englishRaw) {
     return new Response("Post not found", { status: 404 });
+  }
+
+  // Multi-layer cache: filesystem → GitHub → LLM translation
+  const ghCache = getGitHubCache();
+  const cacheKey = `${locale}/${slug}`;
+
+  // Layer 1: Check filesystem (fastest - already committed)
+  const fsPost = await getRawPost(locale, slug);
+  if (fsPost) {
+    console.log(`[fs] ✓ Hit: blog/${cacheKey}.md`);
+    return new Response(fsPost, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Cache-Status": "HIT-FS",
+      },
+    });
+  }
+  console.log(`[fs] ✗ Miss: blog/${cacheKey}.md`);
+
+  // Layer 2: Check GitHub cache (medium - not yet committed to main)
+  if (ghCache) {
+    try {
+      const ghData = await ghCache.get<string>(cacheKey);
+      if (ghData) {
+        const content = typeof ghData === "string" ? ghData : ghData.value;
+        if (content) {
+          console.log(`[gh-cache] ✓ Hit: ${cacheKey}`);
+          return new Response(content, {
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8",
+              "X-Cache-Status": "HIT-GH",
+            },
+          });
+        }
+      }
+      console.log(`[gh-cache] ✗ Miss: ${cacheKey}`);
+    } catch (error) {
+      console.error(`[gh-cache] Error:`, error);
+    }
   }
 
   const targetLanguage = LOCALE_NAMES[locale] ?? locale;
@@ -71,13 +106,20 @@ export async function GET(request: NextRequest) {
           controller.enqueue(encoder.encode(chunk));
         }
 
-        // Stream completed - now commit to GitHub (server-side)
-        const dir = locale === "zh" ? "cn" : locale;
-        const filePath = `blog/${dir}/${slug}.md`;
+        // Stream completed - save to GitHub (which commits to blog/)
+        if (ghCache) {
+          try {
+            // Clean the text before saving (strip markdown code fence if LLM added it)
+            const cleanedText = fullText
+              .replace(/^```markdown\s*\n?/, "") // Remove opening fence
+              .replace(/\n?```\s*$/, ""); // Remove closing fence
 
-        console.log(`[auto-commit] Starting commit: ${filePath}`);
-        await commitFile(filePath, fullText, `auto: translate ${slug} to ${locale}`);
-        console.log(`[auto-commit] ✓ Success: ${filePath}`);
+            await ghCache.set(cacheKey, cleanedText);
+            console.log(`[gh-cache] ✓ Saved: blog/${cacheKey}.md`);
+          } catch (error) {
+            console.error(`[gh-cache] ✗ Error saving:`, error);
+          }
+        }
       } catch (error) {
         console.error(`[auto-commit] ✗ Error:`, error);
       } finally {
@@ -90,6 +132,7 @@ export async function GET(request: NextRequest) {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-cache",
+      "X-Cache-Status": "MISS",
     },
   });
 }
