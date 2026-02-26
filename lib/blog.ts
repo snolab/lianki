@@ -4,9 +4,8 @@ import fs from "fs/promises";
 import path from "path";
 
 // Map intlayer locale codes to blog directory names.
-// "zh" uses the legacy "cn" directory; all others match their locale code.
 export function blogLocaleDir(locale: string): string {
-  return locale === "zh" ? "cn" : locale;
+  return locale;
 }
 
 export type PostMeta = {
