@@ -413,4 +413,32 @@ Lianki是**开源**的，仅请求必要的权限：
 遇到问题？我们在这里帮助您：
 
 - 🐛 **报告错误**：[GitHub Issues](https://github.com/snomiao/lianki/issues)
-- 💬 **提出问题**：[GitHub Discussions](https://
+- 💬 **提出问题**：[GitHub Discussions](https://github.com/snomiao/lianki/discussions)
+- 📧 **联系我们**：通过[联系表单](https://www.lianki.com/contact)
+- 📖 **文档**：[Lianki Docs](https://www.lianki.com)
+
+---
+
+## 总结
+
+通过正确的浏览器设置，在Android上使用Lianki非常简单：
+
+1. ✅ **安装Firefox for Android**（推荐）或Kiwi浏览器
+2. ✅ **添加Violentmonkey或Tampermonkey**扩展
+3. ✅ **从lianki.com安装Lianki用户脚本**
+4. ✅ **开始随时随地复习卡片！**
+
+移动体验与桌面功能完全一致，您可以在Android设备上使用。祝学习愉快！ 🎓📱
+
+---
+
+## 来源
+
+本指南使用以下来源进行研究（2026年2月）：
+
+- [适用于Firefox Android的Violentmonkey](https://addons.mozilla.org/en-US/android/addon/violentmonkey/)
+- [适用于Firefox Android的Tampermonkey](https://addons.mozilla.org/en-US/android/addon/tampermonkey/)
+- [Tampermonkey FAQ - Android支持](https://www.tampermonkey.net/faq.php?locale=en)
+- [Firefox for Android支持Tampermonkey](https://www.ghacks.net/2023/02/19/firefox-for-android-adds-tampermonkey-support/)
+- [使用Violentmonkey在Android上运行用户脚本](https://www.androidauthority.com/userscripts-android-firefox-violentmonkey-3610727/)
+- [2025年Kiwi浏览器状态](https://www.quetta.net/blog/the-best-alternatives-to
