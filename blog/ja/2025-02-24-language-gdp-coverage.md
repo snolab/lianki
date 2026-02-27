@@ -211,4 +211,47 @@ if (ctx) {
 **このチャートが示すもの:**
 
 - **急激な初期の上昇:** 最初の数言語が大きなリターンを提供
-- **減少するリターン:** 約10言語以
+- **減少するリターン:** 約10言語以降、追加言語は2%未満のカバー率を追加
+- **長いテール:** GDPの最後の4%は数千の言語に分散
+
+---
+
+## GDPカバー率のマイルストーン
+
+主要なGDPカバー率の目標を達成するためには次のようになります。
+
+<div style="margin: 2rem 0;">
+<canvas id="milestonesChart" style="max-height: 300px;"></canvas>
+</div>
+
+<script>
+const milestonesCtx = document.getElementById('milestonesChart');
+if (milestonesCtx) {
+  new Chart(milestonesCtx, {
+    type: 'bar',
+    data: {
+      labels: ['50%', '75%', '90%', '95%'],
+      datasets: [{
+        label: 'Languages Required',
+        data: [2, 7, 16, 27],
+        backgroundColor: [
+          'rgba(34, 197, 94, 0.8)',
+          'rgba(59, 130, 246, 0.8)',
+          'rgba(249, 115, 22, 0.8)',
+          'rgba(239, 68, 68, 0.8)'
+        ],
+        borderColor: [
+          'rgb(34, 197, 94)',
+          'rgb(59, 130, 246)',
+          'rgb(249, 115, 22)',
+          'rgb(239, 68, 68)'
+        ],
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        title: {
+          display
