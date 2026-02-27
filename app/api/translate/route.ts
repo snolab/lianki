@@ -8,6 +8,15 @@ import { Octokit } from "octokit";
 
 export const maxDuration = 60;
 
+const LOCK_TIMEOUT_MS = 120_000; // 2 minutes - if lock is older, assume stale
+const PARTIAL_SAVE_INTERVAL = 1000; // Save every 1000 characters
+
+interface CacheMetadata {
+  status: "in-progress" | "complete";
+  timestamp: number;
+  lastSaveLength?: number;
+}
+
 // Initialize GitHub cache
 function getGitHubCache() {
   const token = process.env.GITHUB_INTL_TOKEN;
@@ -42,6 +51,7 @@ export async function GET(request: NextRequest) {
   // Multi-layer cache: filesystem → GitHub → LLM translation
   const ghCache = getGitHubCache();
   const cacheKey = `${locale}/${slug}`;
+  const lockKey = `${cacheKey}.lock`;
 
   // Layer 1: Check filesystem (fastest - already committed)
   const fsPost = await getRawPost(locale, slug);
@@ -76,6 +86,43 @@ export async function GET(request: NextRequest) {
     } catch (error) {
       console.error(`[gh-cache] Error:`, error);
     }
+
+    // Check if translation is already in progress
+    try {
+      const lockData = await ghCache.get<CacheMetadata>(lockKey);
+      if (lockData) {
+        const lock = typeof lockData === "object" ? lockData : JSON.parse(lockData as string);
+        const age = Date.now() - lock.timestamp;
+
+        if (age < LOCK_TIMEOUT_MS && lock.status === "in-progress") {
+          console.log(`[lock] Translation already in progress (${Math.round(age / 1000)}s old)`);
+          return new Response("Translation in progress, please retry in a few seconds", {
+            status: 503,
+            headers: {
+              "Retry-After": "5",
+              "X-Translation-Status": "in-progress",
+            },
+          });
+        } else if (age >= LOCK_TIMEOUT_MS) {
+          console.log(`[lock] Stale lock detected (${Math.round(age / 1000)}s old), clearing`);
+          await ghCache.delete(lockKey);
+        }
+      }
+    } catch (error) {
+      console.error(`[lock] Error checking lock:`, error);
+    }
+
+    // Set lock before starting translation
+    try {
+      const metadata: CacheMetadata = {
+        status: "in-progress",
+        timestamp: Date.now(),
+      };
+      await ghCache.set(lockKey, JSON.stringify(metadata));
+      console.log(`[lock] ✓ Acquired lock for ${cacheKey}`);
+    } catch (error) {
+      console.error(`[lock] ✗ Error setting lock:`, error);
+    }
   }
 
   const targetLanguage = LOCALE_NAMES[locale] ?? locale;
@@ -93,10 +140,11 @@ export async function GET(request: NextRequest) {
     prompt: `Translate the following markdown blog post to ${targetLanguage}:\n\n${englishRaw}`,
   });
 
-  // Create a custom stream that collects the full text and commits after streaming
+  // Create a custom stream that collects the full text and saves progressively
   const { textStream } = result;
   const encoder = new TextEncoder();
   let fullText = "";
+  let lastSaveLength = 0;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -104,9 +152,24 @@ export async function GET(request: NextRequest) {
         for await (const chunk of textStream) {
           fullText += chunk;
           controller.enqueue(encoder.encode(chunk));
+
+          // Save partial progress periodically to handle interrupted streams
+          if (ghCache && fullText.length - lastSaveLength >= PARTIAL_SAVE_INTERVAL) {
+            try {
+              const cleanedText = fullText
+                .replace(/^```markdown\s*\n?/, "")
+                .replace(/\n?```\s*$/, "");
+
+              await ghCache.set(cacheKey, cleanedText);
+              lastSaveLength = fullText.length;
+              console.log(`[gh-cache] ✓ Saved partial (${fullText.length} chars): ${cacheKey}`);
+            } catch (error) {
+              console.error(`[gh-cache] ✗ Error saving partial:`, error);
+            }
+          }
         }
 
-        // Stream completed - save to GitHub (which commits to blog/)
+        // Stream completed - save final version and mark complete
         if (ghCache) {
           try {
             // Clean the text before saving (strip markdown code fence if LLM added it)
@@ -115,15 +178,48 @@ export async function GET(request: NextRequest) {
               .replace(/\n?```\s*$/, ""); // Remove closing fence
 
             await ghCache.set(cacheKey, cleanedText);
-            console.log(`[gh-cache] ✓ Saved: blog/${cacheKey}.md`);
+            console.log(`[gh-cache] ✓ Saved complete (${fullText.length} chars): blog/${cacheKey}.md`);
+
+            // Remove lock to indicate completion
+            await ghCache.delete(lockKey);
+            console.log(`[lock] ✓ Released lock for ${cacheKey}`);
           } catch (error) {
-            console.error(`[gh-cache] ✗ Error saving:`, error);
+            console.error(`[gh-cache] ✗ Error saving final:`, error);
           }
         }
       } catch (error) {
-        console.error(`[auto-commit] ✗ Error:`, error);
+        console.error(`[stream] ✗ Error during streaming:`, error);
+
+        // Clean up lock on error
+        if (ghCache) {
+          try {
+            await ghCache.delete(lockKey);
+            console.log(`[lock] ✓ Released lock after error`);
+          } catch (lockError) {
+            console.error(`[lock] ✗ Error releasing lock:`, lockError);
+          }
+        }
+        throw error;
       } finally {
         controller.close();
+      }
+    },
+
+    // Handle client disconnection
+    cancel() {
+      console.log(`[stream] Client disconnected, saving partial content`);
+      if (ghCache && fullText.length > 0) {
+        const cleanedText = fullText
+          .replace(/^```markdown\s*\n?/, "")
+          .replace(/\n?```\s*$/, "");
+
+        ghCache.set(cacheKey, cleanedText)
+          .then(() => {
+            console.log(`[gh-cache] ✓ Saved partial after disconnect (${fullText.length} chars)`);
+            return ghCache.delete(lockKey);
+          })
+          .then(() => console.log(`[lock] ✓ Released lock after disconnect`))
+          .catch((error) => console.error(`[gh-cache] ✗ Error in cancel:`, error));
       }
     },
   });
