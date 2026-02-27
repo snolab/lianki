@@ -92,4 +92,48 @@ Lianki是一个现代间隔重复系统，基于[FSRS算法](https://github.com/
 ### 设置（5分钟）
 
 1. **安装Language Reactor**
-   从[Chrome Web Store](https://chromewebstore.google.com/detail/language-reactor/hoombieeljmmljlkjmnheibnpciblicm)获取。适用于Chrome、Edge
+   从[Chrome Web Store](https://chromewebstore.google.com/detail/language-reactor/hoombieeljmmljlkjmnheibnpciblicm)获取。适用于Chrome、Edge及其他Chromium浏览器。
+
+2. **安装Lianki用户脚本**
+   访问[lianki.com/lianki.user.js](https://www.lianki.com/lianki.user.js)，通过Tampermonkey或Violentmonkey安装（用于运行用户脚本的免费浏览器扩展）。
+
+3. **注册Lianki**
+   访问[lianki.com](https://www.lianki.com)创建一个免费账户（通过电子邮件、GitHub或Google登录）。
+
+### 核心循环
+
+**步骤1：找到适合你水平的内容**
+
+- 打开YouTube，在你的目标语言中搜索频道
+- 查找以口语为导向的内容：视频博客、烹饪教程、采访、解释性视频
+- 选择看起来有趣的内容——理想情况下，你已经理解70-80%的内容
+- 专业提示：擅长解释的YouTubers（技术评论、操作视频、教育内容）使用的语言比娱乐节目更清晰
+
+**步骤2：用Language Reactor观看**
+
+- 开启双字幕（目标语言+你的母语）
+- 正常观看视频，当遇到生词时使用弹出词典
+- 将想要记住的单词保存到Language Reactor的词汇列表中
+- 用Language Reactor的控件循环播放困难的句子直到弄明白
+
+**步骤3：将视频添加到Lianki**
+
+- 完成视频后，在YouTube页面上按`Alt+F`
+- Lianki创建带有视频URL的卡片
+- 评估你理解的程度：`1`（几乎没有），`2`（挣扎），`3`（良好），`4`（简单）
+- Lianki使用FSRS安排你何时再次观看
+
+**步骤4：以间隔重复复习**
+
+- 几天或几周后（取决于你的评级），Lianki提醒你重看视频
+- 打开你的Lianki复习队列在[lianki.com](https://www.lianki.com)
+- 点击卡片→带回到YouTube视频
+- 再次用Language Reactor观看（也许这次稍微隐藏字幕）
+- 注意第二次观看时你理解了多少
+- 再次评估你的回忆→Lianki调整下次复习的间隔
+
+**步骤5：将词汇导出到Lianki（专业用户）**
+
+如果你有Language Reactor Pro：
+- 导出保存的词汇列表连同上下文
+- 为关键词汇项创建个别的
