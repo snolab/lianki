@@ -74,4 +74,31 @@ Liankiは、[FSRSアルゴリズム](https://github.com/open-spaced-repetition/f
 
 **URLベースのカード**：Netflixのエピソード、YouTubeビデオ、記事、マンガリーダーをワンキー（`Alt+F`）でフラッシュカードに追加できます。LiankiはURLを保存し、レビューの時に再度その体験に戻ります。
 
-**ブラウザベースのワークフロー**：[Liankiユーザースクリプト](https://www.lianki.com/lianki.user.js)（Tampermonkey/Violentmonkey）をインストールして、現在のページを離れずにカードをレビューします
+**ブラウザベースのワークフロー**：[Liankiユーザースクリプト](https://www.lianki.com/lianki.user.js)（Tampermonkey/Violentmonkey）をインストールして、現在のページを離れずにカードをレビューします。レビューUIは、視聴中のコンテンツの上に直接オーバーレイされます。
+
+**キーボード駆動の速度**：`1-4`（再度/難しい/良い/簡単）や`HJKL`/`ASDT`でリコールを評価します。メディアキーでナビゲート。マウスは不要で、コンテキスト切り替えも必要ありません。
+
+**ループ**：孤立した語彙をドリルする代わりに、エピソード、記事、ビデオ全体をループします。コンテンツを再訪するたびに、より多くを理解します。FSRSアルゴリズムは、ちょうど最適な間隔でのレビューを確保します（早すぎず、忘れる前に）。
+
+## ワークフロー：Language Reactor + Lianki
+
+これらのツールを組み合わせて、言語学習のスーパー・パワーに変える方法は次の通りです：
+
+### セットアップ（5分）
+
+1. **Language Reactorをインストールする**
+   [Chromeウェブストア](https://chromewebstore.google.com/detail/language-reactor/hoombieeljmmljlkjmnheibnpciblicm)から入手します。Chrome、Edge、その他のChromiumブラウザで動作します。
+
+2. **Liankiユーザースクリプトをインストールする**
+   [lianki.com/lianki.user.js](https://www.lianki.com/lianki.user.js)にアクセスして、TampermonkeyまたはViolentmonkey（無料ブラウザ拡張機能）経由でインストールします。
+
+3. **Liankiにサインアップする**
+   [lianki.com](https://www.lianki.com)にアクセスして無料アカウントを作成します（メール、GitHub、またはGoogleサインイン）。
+
+### 基本ループ
+
+**ステップ1：自分のレベルのコンテンツを探す**
+
+- Netflixを開き、Language Reactorの[カタログ](https://www.languagereactor.com/catalogue/netflix)を閲覧
+- 言語と難易度（初級、中級、上級）でフィルタリング
+- 既に70〜80％理解できる、興味のあるコンテンツ
