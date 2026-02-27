@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
   const ghCache = getGitHubCache();
   const cacheKey = `${locale}/${slug}`;
   const lockKey = `${cacheKey}.lock`;
+  let partialTranslation: CachedTranslation | null = null; // For continuation
 
   // Layer 1: Check filesystem (fastest - already committed)
   const fsPost = await getRawPost(locale, slug);
@@ -103,12 +104,32 @@ export async function GET(request: NextRequest) {
         if (cached && cached.content) {
           const age = Date.now() - cached.timestamp;
 
-          // Reject old partial translations
+          // Handle partial translations
           if (cached.status === "partial") {
             if (age > PARTIAL_MAX_AGE_MS) {
-              console.log(`[gh-cache] ✗ Partial too old (${Math.round(age / 1000)}s), retranslating`);
-              await ghCache.delete(cacheKey);
+              // Old partial - check if lock is gone (no active translation)
+              const lockData = await ghCache.get<CacheMetadata>(lockKey);
+              const lockAge = lockData ? Date.now() - (typeof lockData === "object" ? lockData : JSON.parse(lockData as string)).timestamp : Infinity;
+
+              if (!lockData || lockAge >= LOCK_TIMEOUT_MS) {
+                // No active translation, continue from partial
+                console.log(`[gh-cache] ↻ Continuing from partial (${cached.translatedLength}/${cached.sourceLength} chars, ${Math.round((cached.translatedLength / cached.sourceLength) * 100)}%)`);
+                partialTranslation = cached;
+                // Delete stale lock if present
+                if (lockData) await ghCache.delete(lockKey);
+              } else {
+                // Active translation in progress
+                console.log(`[gh-cache] ⏳ Translation in progress (${cached.translatedLength}/${cached.sourceLength} chars)`);
+                return new Response("Translation in progress (partial cached)", {
+                  status: 503,
+                  headers: {
+                    "Retry-After": "10",
+                    "X-Translation-Status": "partial",
+                  },
+                });
+              }
             } else {
+              // Recent partial, likely being actively translated
               console.log(`[gh-cache] ⏳ Partial in progress (${cached.translatedLength}/${cached.sourceLength} chars)`);
               return new Response("Translation in progress (partial cached)", {
                 status: 503,
@@ -185,6 +206,57 @@ export async function GET(request: NextRequest) {
 
   const targetLanguage = LOCALE_NAMES[locale] ?? locale;
 
+  // Determine if we're continuing from a partial translation
+  let translationPrompt: string;
+  let initialContent = "";
+
+  if (partialTranslation) {
+    // Continue from partial - estimate where we left off in the source
+    const completionRatio = partialTranslation.translatedLength / partialTranslation.sourceLength;
+    const estimatedSourcePosition = Math.floor(englishRaw.length * completionRatio);
+
+    // Find a good break point (paragraph or section boundary)
+    let breakPoint = estimatedSourcePosition;
+    const searchWindow = Math.min(500, englishRaw.length - estimatedSourcePosition);
+    const searchStart = Math.max(0, estimatedSourcePosition - 200);
+    const searchText = englishRaw.substring(searchStart, estimatedSourcePosition + searchWindow);
+
+    // Look for paragraph breaks or markdown headers
+    const breakPatterns = [/\n\n##+ /g, /\n\n/g];
+    for (const pattern of breakPatterns) {
+      const matches = [...searchText.matchAll(pattern)];
+      if (matches.length > 0) {
+        // Find closest match to estimated position
+        const targetPos = estimatedSourcePosition - searchStart;
+        const closest = matches.reduce((prev, curr) =>
+          Math.abs(curr.index! - targetPos) < Math.abs(prev.index! - targetPos) ? curr : prev
+        );
+        breakPoint = searchStart + closest.index! + closest[0].length;
+        break;
+      }
+    }
+
+    const remainingEnglish = englishRaw.substring(breakPoint);
+    initialContent = partialTranslation.content;
+
+    console.log(`[continuation] Resuming from ${Math.round(completionRatio * 100)}% (${breakPoint}/${englishRaw.length} chars)`);
+
+    translationPrompt = `You are continuing a translation that was interrupted. Here is the partial translation so far:
+
+---PARTIAL TRANSLATION (${targetLanguage})---
+${partialTranslation.content}
+---END PARTIAL TRANSLATION---
+
+Please continue translating the remaining content below to ${targetLanguage}, maintaining the same style, terminology, and formatting. Start immediately with the translation, no commentary:
+
+---REMAINING ENGLISH TEXT---
+${remainingEnglish}
+---END REMAINING TEXT---`;
+  } else {
+    // Fresh translation
+    translationPrompt = `Translate the following markdown blog post to ${targetLanguage}:\n\n${englishRaw}`;
+  }
+
   const result = streamText({
     model: openai("gpt-4o"),
     system: `You are a professional technical translator. Translate markdown blog posts accurately while:
@@ -195,18 +267,23 @@ export async function GET(request: NextRequest) {
 - Keeping the date field unchanged
 - Preserving all URLs and links unchanged
 - Outputting ONLY the translated markdown, no commentary`,
-    prompt: `Translate the following markdown blog post to ${targetLanguage}:\n\n${englishRaw}`,
+    prompt: translationPrompt,
   });
 
   // Create a custom stream that collects the full text and saves progressively
   const { textStream } = result;
   const encoder = new TextEncoder();
-  let fullText = "";
-  let lastSaveLength = 0;
+  let fullText = initialContent; // Start with partial content if continuing
+  let lastSaveLength = initialContent.length;
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        // If continuing from partial, send the initial content first
+        if (initialContent) {
+          controller.enqueue(encoder.encode(initialContent));
+        }
+
         for await (const chunk of textStream) {
           fullText += chunk;
           controller.enqueue(encoder.encode(chunk));
