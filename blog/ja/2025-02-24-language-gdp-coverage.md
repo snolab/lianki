@@ -254,4 +254,56 @@ if (milestonesCtx) {
       maintainAspectRatio: true,
       plugins: {
         title: {
-          display
+          display: true,
+          text: 'Languages Required for GDP Coverage Milestones',
+          font: { size: 16, weight: 'bold' }
+        },
+        legend: {
+          display: false
+        }
+      },
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'GDP Coverage Target',
+            font: { size: 14 }
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Number of Languages',
+            font: { size: 14 }
+          },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+}
+</script>
+
+### マイルストーン言語
+
+**50% カバー (2言語):**
+- 英語 + 中国語
+
+**75% カバー (7言語):**
+- 英語、中国語、スペイン語、ドイツ語、日本語、ヒンディー語、フランス語
+
+**90% カバー (16言語):**
+- プラス: イタリア語、ポルトガル語、韓国語、ロシア語、アラビア語、トルコ語、オランダ語、インドネシア語、ポーランド語
+
+**95% カバー (27言語):**
+- プラス: スウェーデン語、タイ語、ベンガル語、ベトナム語、ヘブライ語、ペルシア語、ウルドゥー語、フィリピン語、ルーマニア語、ノルウェー語、チェコ語
+
+---
+
+## なぜ英語が支配するのか
+
+英語が世界のGDPの35%を占める理由は単に話者数だけではなく、**どの経済が英語を使っているか**にあります。
+
+- **アメリカだけで**: $30.62T （世界GDPの26%）
+- **イギリス:** $3.96T
+- **カナダ:**
