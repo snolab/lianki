@@ -67,4 +67,41 @@ tags: ["安卓", "移动设备", "安装", "用户脚本", "tampermonkey", "viol
 1. 打开Android设备上的**Google Play商店**
 2. 搜索“**Firefox浏览器**”
 3. 安装**Firefox浏览器**（由Mozilla提供）
-4. 打
+4. 打开Firefox并完成初始设置
+
+### 步骤2：安装用户脚本管理器
+
+选择Tampermonkey或Violentmonkey之一：
+
+#### 选项A：Violentmonkey（开源，轻量级）
+
+1. 在Android上打开Firefox
+2. 点击**菜单按钮**（三个点）→ **附加组件**
+3. 搜索“**Violentmonkey**”
+4. 点击**Violentmonkey** → **添加到Firefox**
+5. 点击**添加**以确认安装
+
+**直接链接**：[适用于Firefox Android的Violentmonkey](https://addons.mozilla.org/en-US/android/addon/violentmonkey/)
+
+#### 选项B：Tampermonkey（功能丰富）
+
+1. 在Android上打开Firefox
+2. 点击**菜单按钮**（三个点）→ **附加组件**
+3. 搜索“**Tampermonkey**”
+4. 点击**Tampermonkey** → **添加到Firefox**
+5. 点击**添加**以确认
+
+**直接链接**：[适用于Firefox Android的Tampermonkey](https://addons.mozilla.org/en-US/android/addon/tampermonkey/)
+
+**选择哪个？**
+- **Violentmonkey**：[速度更快、开源、界面更简单](https://www.androidauthority.com/userscripts-android-firefox-violentmonkey-3610727/)
+- **Tampermonkey**：[更多功能、云同步、更适合高级用户](https://www.ghacks.net/2023/02/19/firefox-for-android-adds-tampermonkey-support/)
+
+### 步骤3：安装Lianki用户脚本
+
+1. 在Firefox中访问：**https://www.lianki.com/lianki.user.js**
+2. 您的用户脚本管理器会自动检测到脚本
+3. 提示时点击**安装**
+4. 确认安装
+
+**✅ 成功！** Lianki
