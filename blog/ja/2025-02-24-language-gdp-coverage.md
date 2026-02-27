@@ -166,3 +166,49 @@ if (ctx) {
           display: false
         },
         tooltip: {
+          callbacks: {
+            title: function(context) {
+              const index = context[0].dataIndex;
+              return cumulativeData.languages[index];
+            },
+            label: function(context) {
+              return context.parsed.y.toFixed(2) + '% of global GDP';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Number of Languages',
+            font: { size: 14 }
+          },
+          grid: {
+            display: false
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Cumulative GDP Coverage (%)',
+            font: { size: 14 }
+          },
+          beginAtZero: true,
+          max: 100,
+          ticks: {
+            callback: function(value) {
+              return value + '%';
+            }
+          }
+        }
+      }
+    }
+  });
+}
+</script>
+
+**このチャートが示すもの:**
+
+- **急激な初期の上昇:** 最初の数言語が大きなリターンを提供
+- **減少するリターン:** 約10言語以
