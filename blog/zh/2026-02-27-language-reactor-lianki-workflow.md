@@ -65,4 +65,31 @@ Language Reactor添加了以下控制：
 
 **为什么YouTube胜过电影**：YouTuber对着镜头说话，发音更清晰，自然地重复关键词，并一步一步解释概念。相比之下，一个在嘈杂餐厅场景中含糊的电影台词，博主每次都赢得理解。
 
-根据语言习得研究，这种以沉浸式学习
+根据语言习得研究，这种以沉浸式学习为基础的方法比传统学习方法能带来更好的记忆、更自然的发音和更快的整体进步。
+
+## Lianki能带来什么？
+
+Language Reactor解决了**输入**问题——它为你提供了理解的优秀内容和脚手架。但仅仅理解一次并不意味着你会记住。这就是**Lianki**的用武之地。
+
+Lianki是一个现代间隔重复系统，基于[FSRS算法](https://github.com/open-spaced-repetition/fsrs4anki)构建——这是Anki 23.10+中使用的算法，被誉为比旧的SM-2系统更准确。FSRS使用一个复杂的记忆模型（难度、稳定性、可检索性）在最佳时刻安排复习——就在你快要遗忘之前。
+
+### 为什么选择Lianki用于视频内容？
+
+与传统的闪卡应用不同，Lianki是为**基于内容的学习**而设计的：
+
+**基于URL的卡片**：用一个热键（`Alt+F`）添加任何网页——YouTube视频、文章、Netflix剧集、漫画阅读器——为一个闪卡。Lianki存储URL，当需要复习时，你会再次访问整个体验。
+
+**以浏览器为先的工作流程**：安装[Lianki用户脚本](https://www.lianki.com/lianki.user.js)（Tampermonkey/Violentmonkey）并在当前页面进行复习。复习UI直接覆盖在你正在观看的内容上。
+
+**键盘驱动的速度**：用`1-4`（重试/困难/良好/简单）或`HJKL`/`ASDT`评估你的记忆召回。用媒体键导航。无需鼠标，无需转换上下文。
+
+**循环**：不是孤立地钻研词汇，而是循环整集、文章和视频。每次重温内容时，你理解更多。FSRS算法确保你在完美的间隔中复习——不太早（浪费时间），也不太晚（忘记所有）。
+
+## 工作流程：Language Reactor + Lianki
+
+以下是如何将这些工具结合成一个语言学习超级力量：
+
+### 设置（5分钟）
+
+1. **安装Language Reactor**
+   从[Chrome Web Store](https://chromewebstore.google.com/detail/language-reactor/hoombieeljmmljlkjmnheibnpciblicm)获取。适用于Chrome、Edge
