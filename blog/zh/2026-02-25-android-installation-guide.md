@@ -299,4 +299,58 @@ Kiwi浏览器需要为扩展启用开发者模式：
 
 ### 哪个用户脚本管理器更适合Android？
 
-**Violentmonkey**
+**Violentmonkey**推荐给大多数用户：
+- 轻量快速
+- [开源且透明](https://www.androidauthority.com/userscripts-android-firefox-violentmonkey-3610727/)
+- 在移动设备上效果良好
+- 免费无限制
+
+**Tampermonkey**更适合需要以下功能的人：
+- 跨设备云同步
+- 高级脚本管理功能
+- 具备语法高亮的编辑器
+
+### 我可以在Android上使用Chrome吗？
+
+**不能。** Android版Google Chrome不支持扩展或用户脚本。您必须使用Firefox、Kiwi或其他具有扩展支持的基于Chromium的浏览器。
+
+### 浮动按钮会影响网站吗？
+
+Lianki浮动按钮使用**Shadow DOM**（自v2.19.2起）完全隔离于页面CSS。它不会影响网站功能，并在所有站点上保持一致外观。
+
+### 如何在Android上更新Lianki脚本？
+
+用户脚本管理器会自动检查更新：
+
+**Violentmonkey**：
+1. 点击扩展图标
+2. 点击**仪表板**
+3. 找到Lianki → 点击**⋮** → **检查更新**
+
+**Tampermonkey**：
+1. 点击扩展图标
+2. 点击**仪表板**
+3. 更新自动检查（可配置间隔）
+
+或从https://www.lianki.com/lianki.user.js手动重新安装
+
+### 我可以在Android上使用多个用户脚本吗？
+
+**可以！** Tampermonkey和Violentmonkey都支持多个用户脚本。您可以将Lianki与其他脚本一起安装，例如：
+- Dark Reader（网站深色模式）
+- 绕过付费墙
+- YouTube改进
+- Reddit增强
+
+### 在移动设备上使用用户脚本数据安全吗？
+
+**是的**，遵循最佳实践时：
+- ✅ 仅安装来自**可信来源**的脚本（如lianki.com）
+- ✅ 安装前查看脚本权限
+- ✅ 使用**开源**管理器（Violentmonkey）
+- ✅ 保持脚本更新到最新版本
+- ⚠️ 避免从未知站点安装随机脚本
+
+Lianki是**开源**的，仅请求必要的权限：
+- 访问所有网站（从任何页面添加卡片）
+- 连接到lianki.com服务器（用于同步
