@@ -204,8 +204,7 @@ Regardless of browser/manager combination:
    ```
 
 2. **Start Review**:
-   - Tap "**Next card**" button
-   - Or visit: `https://www.lianki.com/next`
+   - Tap "**Next card**" button to begin reviewing
 
 3. **Review with Touch**:
    - Tap buttons: **Again** / **Hard** / **Good** / **Easy**

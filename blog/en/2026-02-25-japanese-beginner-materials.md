@@ -30,8 +30,8 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
   - Free comprehensive guide with mnemonics
 - [Real Kana](https://realkana.com/)
   - Interactive practice tool
-- [Hiragana Quest](https://hiragana-quest.com/)
-  - Gamified learning
+- [Kana Pro](https://kana.pro/)
+  - Modern interactive kana trainer
 
 **Pro Tip for Lianki:** After watching the hiragana videos, add them to your review queue. Review each character daily until you can read fluently (usually 1-2 weeks of practice).
 
@@ -79,9 +79,9 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
 ### Core Vocabulary Lists
 
 **JLPT N5 Vocabulary (~800 words):**
-- [JLPT N5 Vocabulary List](https://jlptstudy.net/n5/?cat=1)
+- [JLPT Sensei N5 Vocabulary](https://jlptsensei.com/jlpt-n5-vocabulary-list/)
   - Core 800 words for N5
-  - Organized by category
+  - Organized by category with examples
 - [Anki N5 Deck](https://ankiweb.net/shared/info/1679429599)
   - Pre-made flashcard deck
   - Can import URLs into Lianki
@@ -111,9 +111,9 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
   - Slow, clear Japanese
   - Visual context
   - Perfect for beginners
-- [Japanese Immersion with Asami](https://www.youtube.com/c/JapaneseImmersionwithAsami)
+- [Speak Japanese Naturally](https://www.youtube.com/@SpeakJapaneseNaturally)
   - Natural but clear speech
-  - Subtitled content
+  - Subtitled content for learners
 
 **Story-Based Learning:**
 - [Nihongo con Teppei](https://nihongoconteppei.com/)
