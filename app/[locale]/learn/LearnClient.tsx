@@ -35,12 +35,12 @@ export default function LearnClient({ locale }: LearnClientProps) {
   // Recommended learning material lists
   const recommendedLists: RecommendedList[] = [
     {
-      id: "japanese-beginner",
-      title: "Japanese for Beginners",
+      id: "language-reactor",
+      title: "Language Reactor + Lianki Workflow",
       description:
-        "Curated learning materials for Japanese beginners - from hiragana to basic conversations",
-      blogSlug: "2026-02-25-japanese-beginner-materials",
-      tags: ["Japanese", "Beginner", "N5"],
+        "Turn YouTube and Netflix into your language school - learn any language through comprehensible input with dual subtitles and spaced repetition",
+      blogSlug: "2026-02-27-language-reactor-lianki-workflow",
+      tags: ["Language Reactor", "YouTube", "Netflix", "Workflow"],
     },
   ];
 
