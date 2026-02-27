@@ -414,10 +414,9 @@ Now that you have Lianki installed on Android:
 
 Having trouble? We're here to help:
 
-- 🐛 **Report bugs**: [GitHub Issues](https://github.com/snomiao/lianki/issues)
-- 💬 **Ask questions**: [GitHub Discussions](https://github.com/snomiao/lianki/discussions)
 - 📧 **Contact us**: Via the [contact form](https://www.lianki.com/contact)
 - 📖 **Documentation**: [Lianki Docs](https://www.lianki.com)
+- 💬 **Community**: Join our language learning community for tips and support
 
 ---
 
