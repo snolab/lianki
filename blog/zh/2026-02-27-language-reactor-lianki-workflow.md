@@ -216,3 +216,38 @@ Language Reactor在YouTube上效果极佳。将整个频道作为卡片添加：
 **内容为主 vs. 单词为主**
 Anki是以单词为主：你在复习孤立的词汇卡片。Lianki是以内容为主：你在复习完整的体验（剧集、视频、文章）。词汇被嵌入在那些体验中。
 
+**无缝集成**
+一个热键（`Alt+F`）添加任何页面。无需复制粘贴URL，无需手动创建卡片。复习直接覆盖在内容上——无需切换应用。
+
+**轻便&便携**
+无需安装桌面应用。通过用户脚本在任何地方运行。自动跨设备同步。
+
+**基于URL的哲学**
+Lianki专为网络设计。如果你通过在线内容（YouTube、文章、流媒体平台、漫画阅读器）学习，Lianki会在你所在的位置与你相遇。
+
+那就是说，**你可以同时使用**：Anki用于导出Language Reactor的词汇项和Lianki用于循环源内容。它们相辅相成。
+
+## 结论：观看即学习
+
+语言学习的未来不在于教科书或孤立的闪卡——而是可接近的沉浸式体验。Language Reactor消除了寻找和理解原生内容的障碍。Lianki确保你不仅一次理解到位，而是通过科学优化的间隔反复循环，直到它被永久编码在你的记忆中。
+
+一起，它们将你的YouTube订阅变成个性化的导师，每个视频变成一节课，你的娱乐时间变成一天中最有效的学习时间。Netflix和其他平台也适用，但**YouTube的口语导向内容——视频博客、教程、采访——为语言学习者提供了最清晰、最可理解的输入**。
+
+### 今天开始
+
+1. 在Chrome上安装[Language Reactor](https://chromewebstore.google.com/detail/language-reactor/hoombieeljmmljlkjmnheibnpciblicm)
+2. 安装[Lianki用户脚本](https://www.lianki.com/lianki.user.js)（Tampermonkey/Violentmonkey）
+3. 在[lianki.com](https://www.lianki.com)注册
+4. 找一个你感兴趣的目标语言YouTube频道（烹饪、科技、旅行——任何令你感兴趣的）
+5. 用双字幕观看视频
+6. 按`Alt+F`将其添加到Lianki
+7. 在Lianki提醒你时返回
+
+就是这样。你现在正在用智能方式学习语言——通过做你已经喜欢的事情，同时运用记忆科学。
+
+从YouTube开始，因为它提供了最清晰的语音和最可理解的输入。建立一个坚实的基础后再扩展到Netflix剧集和电影。
+
+祝学习愉快！🎬🧠
+
+---
+
