@@ -6,15 +6,24 @@ import { LOCALE_NAMES } from "@/lib/constants";
 import KeyvGitHub from "keyv-github";
 import { Octokit } from "octokit";
 
-export const maxDuration = 60;
+export const maxDuration = 300; // 5 minutes for long translations
 
 const LOCK_TIMEOUT_MS = 120_000; // 2 minutes - if lock is older, assume stale
 const PARTIAL_SAVE_INTERVAL = 1000; // Save every 1000 characters
+const PARTIAL_MAX_AGE_MS = 300_000; // 5 minutes - reject old partials
 
 interface CacheMetadata {
   status: "in-progress" | "complete";
   timestamp: number;
   lastSaveLength?: number;
+}
+
+interface CachedTranslation {
+  content: string;
+  status: "complete" | "partial";
+  timestamp: number;
+  sourceLength: number;
+  translatedLength: number;
 }
 
 // Initialize GitHub cache
@@ -67,20 +76,68 @@ export async function GET(request: NextRequest) {
   }
   console.log(`[fs] ✗ Miss: blog/${cacheKey}.md`);
 
-  // Layer 2: Check GitHub cache (medium - not yet committed to main)
+  // Layer 2: Check GitHub cache with validation (medium - not yet committed to main)
   if (ghCache) {
     try {
-      const ghData = await ghCache.get<string>(cacheKey);
+      const ghData = await ghCache.get<CachedTranslation | string>(cacheKey);
       if (ghData) {
-        const content = typeof ghData === "string" ? ghData : ghData.value;
-        if (content) {
-          console.log(`[gh-cache] ✓ Hit: ${cacheKey}`);
-          return new Response(content, {
-            headers: {
-              "Content-Type": "text/plain; charset=utf-8",
-              "X-Cache-Status": "HIT-GH",
-            },
-          });
+        // Try to parse as structured CachedTranslation first
+        let cached: CachedTranslation | null = null;
+        if (typeof ghData === "string") {
+          try {
+            cached = JSON.parse(ghData);
+          } catch {
+            // Legacy format: plain string, assume complete
+            console.log(`[gh-cache] ✓ Hit (legacy format): ${cacheKey}`);
+            return new Response(ghData, {
+              headers: {
+                "Content-Type": "text/plain; charset=utf-8",
+                "X-Cache-Status": "HIT-GH",
+              },
+            });
+          }
+        } else {
+          cached = ghData as CachedTranslation;
+        }
+
+        if (cached && cached.content) {
+          const age = Date.now() - cached.timestamp;
+
+          // Reject old partial translations
+          if (cached.status === "partial") {
+            if (age > PARTIAL_MAX_AGE_MS) {
+              console.log(`[gh-cache] ✗ Partial too old (${Math.round(age / 1000)}s), retranslating`);
+              await ghCache.delete(cacheKey);
+            } else {
+              console.log(`[gh-cache] ⏳ Partial in progress (${cached.translatedLength}/${cached.sourceLength} chars)`);
+              return new Response("Translation in progress (partial cached)", {
+                status: 503,
+                headers: {
+                  "Retry-After": "10",
+                  "X-Translation-Status": "partial",
+                },
+              });
+            }
+          } else if (cached.status === "complete") {
+            // Validate complete translation isn't suspiciously short
+            const minExpected = englishRaw.length * 0.5; // At least 50% of source
+            if (cached.translatedLength < minExpected) {
+              console.warn(
+                `[gh-cache] ✗ Suspiciously short (${cached.translatedLength}/${englishRaw.length}), retranslating`
+              );
+              await ghCache.delete(cacheKey);
+            } else {
+              console.log(
+                `[gh-cache] ✓ Hit (complete): ${cacheKey} (${cached.translatedLength} chars)`
+              );
+              return new Response(cached.content, {
+                headers: {
+                  "Content-Type": "text/plain; charset=utf-8",
+                  "X-Cache-Status": "HIT-GH",
+                },
+              });
+            }
+          }
         }
       }
       console.log(`[gh-cache] ✗ Miss: ${cacheKey}`);
@@ -161,9 +218,19 @@ export async function GET(request: NextRequest) {
                 .replace(/^```markdown\s*\n?/, "")
                 .replace(/\n?```\s*$/, "");
 
-              await ghCache.set(cacheKey, cleanedText);
+              const partial: CachedTranslation = {
+                content: cleanedText,
+                status: "partial",
+                timestamp: Date.now(),
+                sourceLength: englishRaw.length,
+                translatedLength: cleanedText.length,
+              };
+
+              await ghCache.set(cacheKey, JSON.stringify(partial));
               lastSaveLength = fullText.length;
-              console.log(`[gh-cache] ✓ Saved partial (${fullText.length} chars): ${cacheKey}`);
+              console.log(
+                `[gh-cache] ✓ Saved partial (${fullText.length}/${englishRaw.length} chars): ${cacheKey}`
+              );
             } catch (error) {
               console.error(`[gh-cache] ✗ Error saving partial:`, error);
             }
@@ -178,8 +245,18 @@ export async function GET(request: NextRequest) {
               .replace(/^```markdown\s*\n?/, "") // Remove opening fence
               .replace(/\n?```\s*$/, ""); // Remove closing fence
 
-            await ghCache.set(cacheKey, cleanedText);
-            console.log(`[gh-cache] ✓ Saved complete (${fullText.length} chars): blog/${cacheKey}.md`);
+            const complete: CachedTranslation = {
+              content: cleanedText,
+              status: "complete",
+              timestamp: Date.now(),
+              sourceLength: englishRaw.length,
+              translatedLength: cleanedText.length,
+            };
+
+            await ghCache.set(cacheKey, JSON.stringify(complete));
+            console.log(
+              `[gh-cache] ✓ Saved complete (${fullText.length}/${englishRaw.length} chars): blog/${cacheKey}.md`
+            );
 
             // Remove lock to indicate completion
             await ghCache.delete(lockKey);
@@ -214,9 +291,20 @@ export async function GET(request: NextRequest) {
           .replace(/^```markdown\s*\n?/, "")
           .replace(/\n?```\s*$/, "");
 
-        ghCache.set(cacheKey, cleanedText)
+        const partial: CachedTranslation = {
+          content: cleanedText,
+          status: "partial",
+          timestamp: Date.now(),
+          sourceLength: englishRaw.length,
+          translatedLength: cleanedText.length,
+        };
+
+        ghCache
+          .set(cacheKey, JSON.stringify(partial))
           .then(() => {
-            console.log(`[gh-cache] ✓ Saved partial after disconnect (${fullText.length} chars)`);
+            console.log(
+              `[gh-cache] ✓ Saved partial after disconnect (${fullText.length}/${englishRaw.length} chars)`
+            );
             return ghCache.delete(lockKey);
           })
           .then(() => console.log(`[lock] ✓ Released lock after disconnect`))
