@@ -7,6 +7,8 @@ summary: "A walkthrough of the FSRS algorithm and how Lianki uses it to schedule
 
 # How FSRS Schedules Your Reviews
 
+*Posted January 15, 2025 by [lianki.com](https://www.lianki.com)*
+
 Lianki uses FSRS — the Free Spaced Repetition System — to decide when you should review each card. This post explains what FSRS is, how it compares to older algorithms, and how it's implemented in Lianki.
 
 ## Why Not SM-2?
@@ -101,3 +103,7 @@ FSRS applies a small random variation to intervals by default. Without fuzz, if 
 ## Default Parameters
 
 Lianki uses the default FSRS parameters from `ts-fsrs`. FSRS v5 supports per-user parameter optimization using review history, but Lianki hasn't implemented that yet — it's a planned feature. The default parameters are trained on a large dataset of real flashcard reviews and work well for most people.
+
+---
+
+**License**: This work is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). You are free to share and adapt this content with attribution.

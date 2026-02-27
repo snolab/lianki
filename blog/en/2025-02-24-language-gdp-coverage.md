@@ -7,6 +7,8 @@ summary: "Discover how learning just a few languages can unlock most of the worl
 
 # The Power Law of Languages: How 7 Languages Cover 75% of Global GDP
 
+*Posted February 24, 2025 by [lianki.com](https://www.lianki.com)*
+
 If you're learning languages for economic opportunity, you might wonder: **How many languages do I need to access most of the global economy?**
 
 The answer is surprisingly few. This data-driven analysis reveals the **power law distribution** of languages by economic value, showing that a small number of languages provide access to most global GDP.
@@ -532,3 +534,7 @@ Whether you're targeting the "big 5" or exploring languages for personal enrichm
 ---
 
 *Want to learn more about strategic language learning? Check out our [Polyglot Mode](/en/polyglot) feature for AI-powered multi-language learning.*
+
+---
+
+**License**: This work is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). You are free to share and adapt this content with attribution.

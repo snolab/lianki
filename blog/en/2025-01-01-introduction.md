@@ -7,6 +7,8 @@ summary: "Lianki is a spaced repetition app that turns any webpage into a flashc
 
 # What is Lianki?
 
+*Posted January 01, 2025 by [lianki.com](https://www.lianki.com)*
+
 Lianki is a spaced repetition app. The name comes from 链接 (liànjiē) — Chinese for "link" — because the core idea is simple: you save a link, and Lianki schedules when you should revisit it so you actually remember what was on that page.
 
 ## The Problem
@@ -46,3 +48,7 @@ The userscript also normalizes URLs automatically. If you save a YouTube video f
 ## Get Started
 
 Lianki is free at [www.lianki.com](https://www.lianki.com). Sign in with Google, GitHub, or email.
+
+---
+
+**License**: This work is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). You are free to share and adapt this content with attribution.

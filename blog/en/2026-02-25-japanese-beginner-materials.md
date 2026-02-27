@@ -7,6 +7,8 @@ summary: "Comprehensive guide to the best Japanese learning materials for beginn
 
 # Japanese Learning Materials for Beginners: A Complete Guide
 
+*Posted February 25, 2026 by [lianki.com](https://www.lianki.com)*
+
 Starting to learn Japanese can feel overwhelming with so many resources available. This guide will walk you through the best materials for absolute beginners to early intermediate learners, organized by learning stage and resource type.
 
 ## Stage 1: The Writing Systems (Weeks 1-2)
@@ -271,3 +273,7 @@ Remember: Learning Japanese is a marathon, not a sprint. Use Lianki to make sure
 **Ready to start?** Head to the [Learn page](/learn) to import your first materials, or install the [Lianki userscript](/lianki.user.js) to quickly add videos as you discover them.
 
 頑張ってください！(Good luck!)
+
+---
+
+**License**: This work is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). You are free to share and adapt this content with attribution.

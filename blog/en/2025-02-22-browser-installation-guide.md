@@ -7,6 +7,8 @@ summary: "Step-by-step guide to install Lianki on Chrome/Edge desktop browsers u
 
 # Installing Lianki on Desktop Browsers: Complete Setup Guide
 
+*Posted February 22, 2025 by [lianki.com](https://www.lianki.com)*
+
 Lianki works through a userscript that runs in your browser, adding a floating button to every page you visit. To use it, you'll need two things:
 
 1. **A userscript manager extension** (ScriptCat, Violentmonkey, or Tampermonkey)
@@ -276,3 +278,7 @@ The privacy tradeoff is that Tampermonkey includes some telemetry (update checks
 4. **Start learning**: Press Alt+F to add your first card!
 
 You're now ready to use Lianki for spaced repetition learning. Every page you want to remember is just one keyboard shortcut away.
+
+---
+
+**License**: This work is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). You are free to share and adapt this content with attribution.

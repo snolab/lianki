@@ -7,6 +7,8 @@ summary: "Step-by-step guide to install Lianki on iPhone and iPad using Userscri
 
 # Installing Lianki on iOS: Complete Guide for iPhone and iPad
 
+*Posted February 23, 2025 by [lianki.com](https://www.lianki.com)*
+
 Lianki works on iPhone and iPad through userscript managers — apps that run userscripts in Safari or other browsers. This guide shows you the easiest way to get started.
 
 **Recommended for most users**: The **Userscripts** app (free, open source, actively maintained).
@@ -626,3 +628,7 @@ Choose based on your needs:
 **Alternative**: Download Gear Browser for a one-step all-in-one solution (no extension setup needed).
 
 You're now ready to use Lianki for spaced repetition learning on iOS!
+
+---
+
+**License**: This work is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). You are free to share and adapt this content with attribution.

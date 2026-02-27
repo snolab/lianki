@@ -7,6 +7,8 @@ summary: "How the Lianki Tampermonkey userscript works: the floating button, inl
 
 # The Lianki Userscript: Browser Integration with Tampermonkey
 
+*Posted February 10, 2025 by [lianki.com](https://www.lianki.com)*
+
 The core of Lianki's UX is a Tampermonkey/Violentmonkey userscript (`lianki.user.js`). It puts a floating button on every page you visit. One shortcut adds the current page to your review queue. Reviews happen inline, without leaving the page.
 
 ## Installation
@@ -160,3 +162,7 @@ This avoids relying on Tampermonkey's built-in update check schedule, which can 
 Extensions require separate review and publication for each browser (Chrome Web Store, Firefox Add-ons, etc.). Userscripts work across all browsers that support Tampermonkey or Violentmonkey, which covers Chrome, Firefox, Safari (via Userscripts app), and Edge. Updating an extension goes through a review queue. Updating a userscript is just pushing a new file to the same URL — Tampermonkey checks for updates automatically.
 
 The tradeoff is that the userscript requires users to already have Tampermonkey installed. For the target audience (developers and power users), this is rarely a barrier.
+
+---
+
+**License**: This work is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). You are free to share and adapt this content with attribution.

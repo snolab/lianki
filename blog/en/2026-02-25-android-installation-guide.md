@@ -8,6 +8,8 @@ tags: ["android", "mobile", "installation", "userscript", "tampermonkey", "viole
 
 # How to Use Lianki on Android: Complete Installation Guide
 
+*Posted February 25, 2026 by [lianki.com](https://www.lianki.com)*
+
 Want to use Lianki's spaced repetition system on your Android phone or tablet? This comprehensive guide will show you how to install and use the Lianki userscript on Android devices.
 
 ## Table of Contents
@@ -449,3 +451,7 @@ This guide was researched using the following sources (February 2026):
 ---
 
 *Last updated: February 25, 2026*
+
+---
+
+**License**: This work is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). You are free to share and adapt this content with attribution.
