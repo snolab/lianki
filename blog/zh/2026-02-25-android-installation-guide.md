@@ -104,4 +104,62 @@ tags: ["安卓", "移动设备", "安装", "用户脚本", "tampermonkey", "viol
 3. 提示时点击**安装**
 4. 确认安装
 
-**✅ 成功！** Lianki
+**✅ 成功！** Lianki现在已安装在Android上的Firefox上。
+
+---
+
+## 方法2：Kiwi浏览器
+
+⚠️ **注意**：截至2025年，Kiwi浏览器已不再维护。建议使用Firefox以获得更好的可靠性。
+
+### 步骤1：安装Kiwi浏览器
+
+1. 打开**Google Play商店**
+2. 搜索“**Kiwi浏览器**”
+3. 安装**Kiwi Browser - Fast & Quiet**
+4. 打开Kiwi浏览器
+
+### 步骤2：启用开发者模式
+
+Kiwi浏览器需要为扩展启用开发者模式：
+
+1. 在Kiwi浏览器中，地址栏输入：`chrome://extensions/`
+2. 点击**菜单**（右上角的三个点）
+3. 启用**开发者模式**
+
+### 步骤3：安装ViolentMonkey
+
+1. 在Kiwi浏览器中访问：[Chrome网上应用店](https://chrome.google.com/webstore/category/extensions)
+2. 搜索“**Violentmonkey**”
+3. 点击**添加到Chrome**
+4. 确认安装
+
+**为什么不在Kiwi上使用Tampermonkey？**
+[ViolentMonkey在Kiwi浏览器上效果更好](https://yunharla.wixsite.com/softwaremmm/post/user-scripting-in-browser-in-android)，而Tampermonkey存在兼容性问题。
+
+### 步骤4：安装Lianki用户脚本
+
+1. 访问：**https://www.lianki.com/lianki.user.js**
+2. ViolentMonkey将提示您安装
+3. 点击**确认安装**
+
+---
+
+## 安装Lianki用户脚本
+
+无论浏览器/管理器组合如何：
+
+### 安装步骤
+
+1. **前往Lianki**：
+   ```
+   https://www.lianki.com/lianki.user.js
+   ```
+
+2. **自动检测**：
+   - 您的用户脚本管理器会检测到脚本
+   - 会出现一个弹出窗口要求安装
+
+3. **查看权限**：
+   - 脚本需要访问`*://*/*`（所有网站）以便从任何页面添加卡片
+   - 连接
