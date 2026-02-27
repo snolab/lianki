@@ -1701,11 +1701,11 @@ function main() {
       return b;
     };
 
-    const slowerBtn = makeBtn("⏪", "Slower (,)", () => pardon(-3, 0.7));
+    const slowerBtn = makeBtn("⏪", "Slower (,/v)", () => pardon(-3, 0.7));
     const liankiBtn = makeBtn("🔖", "Lianki (Alt+F)", () =>
       dialog ? closeDialog() : openDialog(),
     );
-    const fasterBtn = makeBtn("⏩", "Faster (.)", () => pardon(0, 1.2));
+    const fasterBtn = makeBtn("⏩", "Faster (./b)", () => pardon(0, 1.2));
 
     // Add separators between buttons
     const makeSeparator = () => {
@@ -2471,7 +2471,7 @@ function main() {
   }
 
   // ── Video Speed Control (Pardon) ───────────────────────────────────────────
-  // Press , (slower) or . (faster) to adjust video speed. Speed adjustments are
+  // Press , or v (slower) / . or b (faster) to adjust video speed. Speed adjustments are
   // remembered as "difficulty markers" and auto-applied during playback.
 
   const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -2581,13 +2581,13 @@ function main() {
       if (document?.activeElement?.isContentEditable) return;
       if (["INPUT", "TEXTAREA"].includes(document?.activeElement?.tagName)) return;
 
-      if (e.code === "Comma") {
+      if (e.code === "Comma" || e.code === "KeyV") {
         if (await pardon(-3, 0.7)) {
           e.preventDefault();
           e.stopPropagation();
         }
       }
-      if (e.code === "Period") {
+      if (e.code === "Period" || e.code === "KeyB") {
         if (await pardon(0, 1.2)) {
           e.preventDefault();
           e.stopPropagation();
