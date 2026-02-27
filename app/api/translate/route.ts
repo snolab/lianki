@@ -26,6 +26,7 @@ function getGitHubCache() {
     client: new Octokit({ auth: token }),
     prefix: "blog/",
     suffix: ".md",
+    msg: (key: string) => `docs: update blog/${key}.md [skip ci]`,
   });
 }
 
