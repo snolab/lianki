@@ -441,4 +441,11 @@ Lianki是**开源**的，仅请求必要的权限：
 - [Tampermonkey FAQ - Android支持](https://www.tampermonkey.net/faq.php?locale=en)
 - [Firefox for Android支持Tampermonkey](https://www.ghacks.net/2023/02/19/firefox-for-android-adds-tampermonkey-support/)
 - [使用Violentmonkey在Android上运行用户脚本](https://www.androidauthority.com/userscripts-android-firefox-violentmonkey-3610727/)
-- [2025年Kiwi浏览器状态](https://www.quetta.net/blog/the-best-alternatives-to
+- [2025年Kiwi浏览器状态](https://www.quetta.net/blog/the-best-alternatives-to-kiwi-browser)
+- [适用于Kiwi浏览器的ViolentMonkey指南](https://yunharla.wixsite.com/softwaremmm/post/user-scripting-in-browser-in-android)
+- [适用于Android的Tampermonkey - OpenUserJS](https://openuserjs.org/about/Tampermonkey-for-Android)
+- [2026年最佳Tampermonkey替代方案](https://alternativeto.net/software/tampermonkey/)
+
+---
+
+*最后更新：2026年2月25日*
