@@ -132,9 +132,7 @@ export default function PreferencesClient() {
       {/* Mobile Exclude Patterns */}
       <section className="mb-10">
         <h2 className="text-2xl font-semibold mb-4 text-white">{mobileFilters.heading}</h2>
-        <p className="text-gray-400 mb-4">
-          {mobileFilters.description}
-        </p>
+        <p className="text-gray-400 mb-4">{mobileFilters.description}</p>
 
         {/* Current Patterns */}
         <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6 mb-4">
@@ -197,7 +195,9 @@ export default function PreferencesClient() {
 
           {/* Filter Type */}
           <div className="mb-4">
-            <label className="block text-sm font-medium mb-2 text-gray-300">{mobileFilters.filterType}</label>
+            <label className="block text-sm font-medium mb-2 text-gray-300">
+              {mobileFilters.filterType}
+            </label>
             <div className="flex gap-3">
               {(["domain", "title", "url"] as FilterType[]).map((type) => (
                 <button
@@ -217,7 +217,9 @@ export default function PreferencesClient() {
 
           {/* Pattern Input */}
           <div className="mb-4">
-            <label className="block text-sm font-medium mb-2 text-gray-300">{mobileFilters.patternLabel}</label>
+            <label className="block text-sm font-medium mb-2 text-gray-300">
+              {mobileFilters.patternLabel}
+            </label>
             <input
               type="text"
               value={newPattern}
@@ -245,9 +247,7 @@ export default function PreferencesClient() {
               />
               <span>{mobileFilters.useRegex}</span>
             </label>
-            <p className="text-xs text-gray-500 mt-1 ml-6">
-              {mobileFilters.regexHelp}
-            </p>
+            <p className="text-xs text-gray-500 mt-1 ml-6">{mobileFilters.regexHelp}</p>
           </div>
 
           {/* Add Button */}
@@ -264,21 +264,11 @@ export default function PreferencesClient() {
         <div className="mt-4 p-4 bg-blue-900/20 border border-blue-800/30 rounded-lg">
           <h4 className="text-sm font-semibold mb-2 text-blue-300">{mobileFilters.howItWorks}</h4>
           <ul className="text-xs text-gray-400 space-y-1">
-            <li>
-              {mobileFilters.helpDomain}
-            </li>
-            <li>
-              {mobileFilters.helpTitle}
-            </li>
-            <li>
-              {mobileFilters.helpUrl}
-            </li>
-            <li>
-              {mobileFilters.helpRegex}
-            </li>
-            <li>
-              • {mobileFilters.helpDisabled}
-            </li>
+            <li>{mobileFilters.helpDomain}</li>
+            <li>{mobileFilters.helpTitle}</li>
+            <li>{mobileFilters.helpUrl}</li>
+            <li>{mobileFilters.helpRegex}</li>
+            <li>• {mobileFilters.helpDisabled}</li>
           </ul>
         </div>
       </section>
