@@ -36,4 +36,35 @@ tags: ["安卓", "移动设备", "安装", "用户脚本", "tampermonkey", "viol
 
 | 浏览器 | 用户脚本管理器 | 状态 | 推荐 |
 |---------|-------------------|--------|----------------|
-| **Firefox for Android** | Tampermonkey, Violentmon
+| **Firefox for Android** | Tampermonkey, Violentmonkey | ✅ 完全支持 | **推荐** |
+| **Kiwi浏览器** | Violentmonkey（旧版） | ⚠️ 限制支持 | 替代方案 |
+| **Yandex浏览器** | Tampermonkey | ⚠️ 限制 | 不推荐 |
+
+### 为什么推荐Firefox
+
+[Firefox for Android](https://www.mozilla.org/firefox/browsers/mobile/android/)是最可靠的选择，因为：
+
+- ✅ **官方扩展支持**：对[Tampermonkey](https://addons.mozilla.org/en-US/android/addon/tampermonkey/)和[Violentmonkey](https://addons.mozilla.org/en-US/android/addon/violentmonkey/)的原生支持
+- ✅ **积极维护**：Mozilla定期更新
+- ✅ **无需变通方法**：扩展可开箱即用
+- ✅ **更好的隐私**：开源且注重隐私
+- ✅ **稳定性能**：可靠的用户脚本执行
+
+### Kiwi浏览器的考虑
+
+[Kiwi浏览器](https://kiwibrowser.com/)因支持Chrome扩展而受欢迎，但也有限制：
+
+- ⚠️ **已停用**：自2025年1月以来[官方不再维护](https://www.quetta.net/blog/the-best-alternatives-to-kiwi-browser)
+- ⚠️ **需要变通方法**：Tampermonkey需要开发者模式
+- ⚠️ **最佳搭配ViolentMonkey**：[Kiwi推荐的扩展](https://yunharla.wixsite.com/softwaremmm/post/user-scripting-in-browser-in-android)
+
+---
+
+## 方法1：Firefox for Android（推荐）
+
+### 步骤1：安装Firefox for Android
+
+1. 打开Android设备上的**Google Play商店**
+2. 搜索“**Firefox浏览器**”
+3. 安装**Firefox浏览器**（由Mozilla提供）
+4. 打
