@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useIntlayer } from "next-intlayer";
 import { FSRSNote } from "@/app/fsrs";
 
 /**
@@ -7,6 +8,7 @@ import { FSRSNote } from "@/app/fsrs";
  * @author: snomiao <snomiao@gmail.com>
  */
 export default function AddNoteClient() {
+  const { adding } = useIntlayer("add-note-page");
   // read url from url's hash, once
   const sp = new URLSearchParams(globalThis.location?.hash?.slice(1) ?? "");
   const url = sp.get("url");
@@ -39,7 +41,9 @@ export default function AddNoteClient() {
 
   return (
     <>
-      <>Adding... {url}</>
+      <>
+        {adding} {url}
+      </>
       <br />
       {resp && <pre>{JSON.stringify(resp, null, 2)}</pre>}
     </>

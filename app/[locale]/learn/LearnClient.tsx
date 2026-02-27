@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useIntlayer } from "next-intlayer";
 
 interface LearnClientProps {
   locale: string;
@@ -17,6 +18,19 @@ interface RecommendedList {
 }
 
 export default function LearnClient({ locale }: LearnClientProps) {
+  const {
+    heading,
+    subtitle,
+    subtitleYoutube,
+    subtitleEnd,
+    tabs,
+    recommended,
+    customUrl: customUrlContent,
+    youtube: youtubeContent,
+    errors,
+    success,
+  } = useIntlayer("learn-page");
+
   const [activeTab, setActiveTab] = useState<ImportSource>("recommended");
   const [customUrl, setCustomUrl] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
@@ -46,7 +60,7 @@ export default function LearnClient({ locale }: LearnClientProps) {
 
   async function handleImportFromUrl() {
     if (!customUrl.trim()) {
-      setMessage({ type: "error", text: "Please enter a URL" });
+      setMessage({ type: "error", text: errors.pleaseEnterUrl });
       return;
     }
 
@@ -56,7 +70,7 @@ export default function LearnClient({ locale }: LearnClientProps) {
     try {
       // Fetch the .txt file
       const response = await fetch(customUrl);
-      if (!response.ok) throw new Error("Failed to fetch URL list");
+      if (!response.ok) throw new Error(errors.failedToFetchUrlList);
 
       const text = await response.text();
       const urls = text
@@ -65,15 +79,15 @@ export default function LearnClient({ locale }: LearnClientProps) {
         .filter((line) => line && (line.startsWith("http://") || line.startsWith("https://")));
 
       if (urls.length === 0) {
-        throw new Error("No valid URLs found in the file");
+        throw new Error(errors.noValidUrlsFound);
       }
 
       // Import URLs into the system
       await importUrls(urls);
-      setMessage({ type: "success", text: `Successfully imported ${urls.length} URLs` });
+      setMessage({ type: "success", text: success.importedUrls.replace("{count}", urls.length.toString()) });
       setCustomUrl("");
     } catch (error: any) {
-      setMessage({ type: "error", text: error.message || "Failed to import from URL" });
+      setMessage({ type: "error", text: error.message || errors.failedToImportFromUrl });
     } finally {
       setLoading(false);
     }
@@ -81,7 +95,7 @@ export default function LearnClient({ locale }: LearnClientProps) {
 
   async function handleImportFromYouTube() {
     if (!youtubeUrl.trim()) {
-      setMessage({ type: "error", text: "Please enter a YouTube playlist URL" });
+      setMessage({ type: "error", text: errors.pleaseEnterYoutubeUrl });
       return;
     }
 
@@ -94,7 +108,7 @@ export default function LearnClient({ locale }: LearnClientProps) {
         youtubeUrl.match(/[&?]list=([^&]+)/) || youtubeUrl.match(/playlist\?list=([^&]+)/);
 
       if (!playlistIdMatch) {
-        throw new Error("Invalid YouTube playlist URL");
+        throw new Error(errors.invalidYoutubeUrl);
       }
 
       const playlistId = playlistIdMatch[1];
@@ -108,17 +122,17 @@ export default function LearnClient({ locale }: LearnClientProps) {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || "Failed to import YouTube playlist");
+        throw new Error(error.message || errors.failedToImportYoutubePlaylist);
       }
 
       const data = await response.json();
       setMessage({
         type: "success",
-        text: `Successfully imported ${data.count} videos from playlist`,
+        text: success.importedVideos.replace("{count}", data.count.toString()),
       });
       setYoutubeUrl("");
     } catch (error: any) {
-      setMessage({ type: "error", text: error.message || "Failed to import from YouTube" });
+      setMessage({ type: "error", text: error.message || errors.failedToImportFromYoutube });
     } finally {
       setLoading(false);
     }
@@ -141,7 +155,7 @@ export default function LearnClient({ locale }: LearnClientProps) {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.message || "Failed to import URLs");
+      throw new Error(error.message || errors.failedToImportUrls);
     }
 
     return response.json();
@@ -149,10 +163,10 @@ export default function LearnClient({ locale }: LearnClientProps) {
 
   return (
     <div className="max-w-4xl mx-auto p-8">
-      <h1 className="text-3xl font-bold mb-4">Import Learning Materials</h1>
+      <h1 className="text-3xl font-bold mb-4">{heading}</h1>
       <p className="text-gray-600 dark:text-gray-400 mb-8">
-        Start learning by importing materials from recommended lists
-        {youtubeAvailable ? ", YouTube playlists," : ""} or custom URL lists.
+        {subtitle}
+        {youtubeAvailable ? subtitleYoutube : ""}{subtitleEnd}
       </p>
 
       {/* Message Display */}
@@ -178,7 +192,7 @@ export default function LearnClient({ locale }: LearnClientProps) {
               : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
           }`}
         >
-          Recommended Lists
+          {tabs.recommended}
         </button>
         <button
           onClick={() => setActiveTab("url")}
@@ -188,7 +202,7 @@ export default function LearnClient({ locale }: LearnClientProps) {
               : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
           }`}
         >
-          Custom URL List
+          {tabs.customUrl}
         </button>
         {youtubeAvailable && (
           <button
@@ -199,7 +213,7 @@ export default function LearnClient({ locale }: LearnClientProps) {
                 : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
             }`}
           >
-            YouTube Playlist
+            {tabs.youtube}
           </button>
         )}
       </div>
@@ -207,7 +221,7 @@ export default function LearnClient({ locale }: LearnClientProps) {
       {/* Tab Content */}
       {activeTab === "recommended" && (
         <div className="space-y-4">
-          <h2 className="text-2xl font-semibold mb-4">Recommended Learning Materials</h2>
+          <h2 className="text-2xl font-semibold mb-4">{recommended.heading}</h2>
           {recommendedLists.map((list) => (
             <div
               key={list.id}
@@ -232,7 +246,7 @@ export default function LearnClient({ locale }: LearnClientProps) {
                   onClick={() => handleViewRecommended(list)}
                   className="ml-4 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
                 >
-                  View Materials →
+                  {recommended.viewButton}
                 </button>
               </div>
             </div>
@@ -242,14 +256,13 @@ export default function LearnClient({ locale }: LearnClientProps) {
 
       {activeTab === "url" && (
         <div>
-          <h2 className="text-2xl font-semibold mb-4">Import from Custom URL List</h2>
+          <h2 className="text-2xl font-semibold mb-4">{customUrlContent.heading}</h2>
           <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Enter a URL to a .txt file containing one URL per line. Each URL will be added to your
-            learning queue.
+            {customUrlContent.description}
           </p>
 
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
-            <label className="block text-sm font-medium mb-2">Text File URL</label>
+            <label className="block text-sm font-medium mb-2">{customUrlContent.label}</label>
             <input
               type="url"
               value={customUrl}
@@ -260,12 +273,12 @@ export default function LearnClient({ locale }: LearnClientProps) {
                   handleImportFromUrl();
                 }
               }}
-              placeholder="https://example.com/urls.txt"
+              placeholder={customUrlContent.placeholder}
               className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded px-4 py-2 mb-4 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
             />
 
             <div className="bg-gray-50 dark:bg-gray-900 rounded p-4 mb-4">
-              <p className="text-sm font-medium mb-2">Example file format:</p>
+              <p className="text-sm font-medium mb-2">{customUrlContent.exampleLabel}</p>
               <pre className="text-xs text-gray-600 dark:text-gray-400">
                 https://example.com/article1{"\n"}
                 https://example.com/article2{"\n"}
@@ -278,7 +291,7 @@ export default function LearnClient({ locale }: LearnClientProps) {
               disabled={loading || !customUrl.trim()}
               className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg font-medium transition-colors"
             >
-              {loading ? "Importing..." : "Import URLs"}
+              {loading ? customUrlContent.importing : customUrlContent.importButton}
             </button>
           </div>
         </div>
@@ -286,14 +299,13 @@ export default function LearnClient({ locale }: LearnClientProps) {
 
       {activeTab === "youtube" && (
         <div>
-          <h2 className="text-2xl font-semibold mb-4">Import from YouTube Playlist</h2>
+          <h2 className="text-2xl font-semibold mb-4">{youtubeContent.heading}</h2>
           <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Enter a YouTube playlist URL. All videos in the playlist will be added to your learning
-            queue.
+            {youtubeContent.description}
           </p>
 
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
-            <label className="block text-sm font-medium mb-2">YouTube Playlist URL</label>
+            <label className="block text-sm font-medium mb-2">{youtubeContent.label}</label>
             <input
               type="url"
               value={youtubeUrl}
@@ -304,17 +316,17 @@ export default function LearnClient({ locale }: LearnClientProps) {
                   handleImportFromYouTube();
                 }
               }}
-              placeholder="https://www.youtube.com/playlist?list=PLxxx..."
+              placeholder={youtubeContent.placeholder}
               className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded px-4 py-2 mb-4 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
             />
 
             <div className="bg-gray-50 dark:bg-gray-900 rounded p-4 mb-4">
-              <p className="text-sm font-medium mb-2">Example:</p>
+              <p className="text-sm font-medium mb-2">{youtubeContent.exampleLabel}</p>
               <p className="text-xs text-gray-600 dark:text-gray-400">
                 https://www.youtube.com/watch?v=OA3O1jOCnN4&list=PLCLBHbUvkRGo5AJwrulwhBmrit0-5TiXT
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
-                (JLPT N4 Grammar playlist)
+                {youtubeContent.exampleNote}
               </p>
             </div>
 
@@ -323,7 +335,7 @@ export default function LearnClient({ locale }: LearnClientProps) {
               disabled={loading || !youtubeUrl.trim()}
               className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg font-medium transition-colors"
             >
-              {loading ? "Importing..." : "Import Playlist"}
+              {loading ? youtubeContent.importing : youtubeContent.importButton}
             </button>
           </div>
         </div>

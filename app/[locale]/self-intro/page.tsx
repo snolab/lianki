@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
+  const { metadata } = getIntlayer("self-intro-page", locale);
   return {
-    title: "Self-Introduction Practice - Lianki",
-    description:
-      "Create personalized self-introduction scripts in your target language with AI-generated audio",
+    title: metadata.title,
+    description: metadata.description,
     ...generateHreflangMetadata(locale, "/self-intro"),
   };
 }

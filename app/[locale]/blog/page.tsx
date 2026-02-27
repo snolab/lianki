@@ -22,10 +22,10 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
+  const { metadata } = getIntlayer("blog-page", locale);
   return {
-    title: "Lianki Blog - Learn about spaced repetition and FSRS",
-    description:
-      "Articles about spaced repetition learning, FSRS algorithm, and effective study techniques",
+    title: metadata.title,
+    description: metadata.description,
     ...generateHreflangMetadata(locale, "/blog"),
   };
 }
@@ -124,6 +124,7 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
 
   const posts = await getPostSummaries(locale);
   const { appName, nav } = getIntlayer("landing-page", locale);
+  const { heading } = getIntlayer("blog-page", locale);
 
   // Try to get user if logged in (optional)
   let user = null;
@@ -145,7 +146,7 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
 
       {/* Main Content */}
       <main className="flex-grow max-w-2xl mx-auto px-4 py-12 w-full">
-        <h1 className="text-3xl font-bold mb-8">Blog</h1>
+        <h1 className="text-3xl font-bold mb-8">{heading}</h1>
 
         <ul className="space-y-8">
           {posts.map((post) => (

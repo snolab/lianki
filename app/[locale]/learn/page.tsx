@@ -10,9 +10,10 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
+  const { metadata } = getIntlayer("learn-page", locale);
   return {
-    title: "Learn - Lianki",
-    description: "Import materials from recommended lists, YouTube playlists, or custom URLs",
+    title: metadata.title,
+    description: metadata.description,
     ...generateHreflangMetadata(locale, "/learn"),
   };
 }

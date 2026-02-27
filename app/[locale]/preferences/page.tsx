@@ -10,9 +10,10 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
+  const { metadata } = getIntlayer("preferences-page", locale);
   return {
-    title: "Preferences - Lianki",
-    description: "Configure your Lianki preferences and settings",
+    title: metadata.title,
+    description: metadata.description,
     ...generateHreflangMetadata(locale, "/preferences"),
   };
 }

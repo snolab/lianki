@@ -2,10 +2,20 @@
 import { Turnstile } from "@marsidev/react-turnstile";
 import type { TurnstileInstance } from "@marsidev/react-turnstile";
 import { useRef, useState, useTransition } from "react";
+import { useIntlayer } from "next-intlayer";
 import { authClient } from "@/lib/auth-client";
 import { sendMagicLinkAction } from "./actions";
 
 export default function SignInClient() {
+  const {
+    heading,
+    signInWithGithub,
+    signInWithGoogle,
+    checkEmail,
+    emailPlaceholder,
+    sending,
+    sendSignInLink,
+  } = useIntlayer("sign-in-page");
   const turnstileRef = useRef<TurnstileInstance | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [email, setEmail] = useState("");
@@ -31,30 +41,30 @@ export default function SignInClient() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen gap-6">
-      <h1 className="text-2xl font-bold">Sign in to Lianki</h1>
+      <h1 className="text-2xl font-bold">{heading}</h1>
 
       <button
         onClick={() => authClient.signIn.social({ provider: "github", callbackURL: "/list" })}
         className="px-6 py-2 bg-gray-900 text-white rounded hover:bg-gray-700"
       >
-        Sign in with GitHub
+        {signInWithGithub}
       </button>
 
       <button
         onClick={() => authClient.signIn.social({ provider: "google", callbackURL: "/list" })}
         className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
       >
-        Sign in with Google
+        {signInWithGoogle}
       </button>
 
       {sent ? (
-        <p>Check your email for a sign-in link.</p>
+        <p>{checkEmail}</p>
       ) : (
         <form onSubmit={handleEmail} className="flex flex-col gap-3 items-center">
           <input
             type="email"
             required
-            placeholder="Email"
+            placeholder={emailPlaceholder}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="border px-3 py-2 rounded"
@@ -76,7 +86,7 @@ export default function SignInClient() {
             disabled={isPending || !token}
             className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
           >
-            {isPending ? "Sending…" : "Send sign-in link"}
+            {isPending ? sending : sendSignInLink}
           </button>
         </form>
       )}

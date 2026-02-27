@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useIntlayer } from "next-intlayer";
 
 type Language = {
   code: string;
@@ -82,6 +83,8 @@ const OPENAI_VOICES = [
 ];
 
 export default function SelfIntroClient() {
+  const { selectLanguage, interview, review, errors, success } = useIntlayer("self-intro-page");
+
   const [step, setStep] = useState<"select-language" | "interview" | "review">("select-language");
   const [selectedLanguage, setSelectedLanguage] = useState<Language | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -151,7 +154,7 @@ export default function SelfIntroClient() {
       }));
     } catch (error) {
       console.error("Error generating:", error);
-      alert("Failed to generate. Please try again.");
+      alert(errors.failedToGenerate);
     } finally {
       setIsGenerating(false);
     }
@@ -174,7 +177,7 @@ export default function SelfIntroClient() {
       setEditingText((prev) => ({ ...prev, [questionId]: "" }));
     } catch (error) {
       console.error("Error regenerating:", error);
-      alert("Failed to regenerate voice. Please try again.");
+      alert(errors.failedToRegenerateVoice);
     } finally {
       setRegeneratingId(null);
     }
@@ -199,11 +202,11 @@ export default function SelfIntroClient() {
           sentences: generatedSentences,
         }),
       });
-      alert("Self-introduction cards saved successfully!");
+      alert(success.cardsSaved);
       window.location.href = "/list";
     } catch (error) {
       console.error("Error saving:", error);
-      alert("Failed to save cards. Please try again.");
+      alert(errors.failedToSaveCards);
     } finally {
       setIsSaving(false);
     }
@@ -213,9 +216,9 @@ export default function SelfIntroClient() {
     return (
       <div className="min-h-screen p-8">
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-4xl font-bold mb-4">Create Your Self-Introduction</h1>
+          <h1 className="text-4xl font-bold mb-4">{selectLanguage.heading}</h1>
           <p className="text-lg mb-8">
-            Choose the language you want to learn to introduce yourself in:
+            {selectLanguage.description}
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {LANGUAGES.map((lang) => (
@@ -241,13 +244,15 @@ export default function SelfIntroClient() {
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-2xl font-bold">
-                Learning: {selectedLanguage!.nativeName} ({selectedLanguage!.name})
+                {interview.learning
+                  .replace("{lang}", selectedLanguage!.nativeName)
+                  .replace("{name}", selectedLanguage!.name)}
               </h2>
               <button
                 onClick={() => setStep("select-language")}
                 className="text-blue-600 hover:underline"
               >
-                Change Language
+                {interview.changeLanguage}
               </button>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
@@ -257,7 +262,9 @@ export default function SelfIntroClient() {
               />
             </div>
             <p className="text-sm text-gray-600 mt-2">
-              Question {currentQuestionIndex + 1} of {QUESTIONS.length}
+              {interview.questionProgress
+                .replace("{current}", (currentQuestionIndex + 1).toString())
+                .replace("{total}", QUESTIONS.length.toString())}
             </p>
           </div>
 
@@ -278,7 +285,7 @@ export default function SelfIntroClient() {
 
             <details className="mb-4">
               <summary className="cursor-pointer text-blue-600 hover:underline mb-2">
-                Show example
+                {interview.showExample}
               </summary>
               <p className="text-gray-600 dark:text-gray-400 italic">{currentQuestion.example}</p>
             </details>
@@ -286,7 +293,7 @@ export default function SelfIntroClient() {
             {generatedSentences[currentQuestion.id] && (
               <div className="mb-4 p-4 bg-green-50 dark:bg-green-900 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="font-semibold">Generated:</p>
+                  <p className="font-semibold">{interview.generated}</p>
                   {!isEditing[currentQuestion.id] && (
                     <button
                       onClick={() =>
@@ -294,7 +301,7 @@ export default function SelfIntroClient() {
                       }
                       className="text-sm text-blue-600 hover:underline"
                     >
-                      Edit
+                      {interview.edit}
                     </button>
                   )}
                 </div>
@@ -322,8 +329,8 @@ export default function SelfIntroClient() {
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                       >
                         {regeneratingId === currentQuestion.id
-                          ? "Regenerating..."
-                          : "Regenerate Voice"}
+                          ? interview.regenerating
+                          : interview.regenerateVoice}
                       </button>
                       <button
                         onClick={() => {
@@ -332,7 +339,7 @@ export default function SelfIntroClient() {
                         }}
                         className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
                       >
-                        Cancel
+                        {interview.cancel}
                       </button>
                     </div>
                   </div>
@@ -353,8 +360,8 @@ export default function SelfIntroClient() {
                           className="text-sm text-blue-600 hover:underline disabled:opacity-50"
                         >
                           {regeneratingId === currentQuestion.id
-                            ? "Regenerating..."
-                            : "Regenerate Voice"}
+                            ? interview.regenerating
+                            : interview.regenerateVoice}
                         </button>
                       </div>
                     )}
@@ -368,12 +375,12 @@ export default function SelfIntroClient() {
                 onClick={() => setShowAdvanced(!showAdvanced)}
                 className="text-sm text-gray-600 hover:underline"
               >
-                {showAdvanced ? "Hide" : "Show"} Advanced Options
+                {showAdvanced ? interview.hideAdvanced : interview.showAdvanced}
               </button>
               {showAdvanced && (
                 <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg space-y-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2">Voice</label>
+                    <label className="block text-sm font-medium mb-2">{interview.voice}</label>
                     <select
                       value={voiceSettings.voice}
                       onChange={(e) =>
@@ -390,7 +397,7 @@ export default function SelfIntroClient() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-2">
-                      Speech Rate: {voiceSettings.speed}x
+                      {interview.speechRate.replace("{speed}", voiceSettings.speed.toString())}
                     </label>
                     <input
                       type="range"
@@ -404,9 +411,9 @@ export default function SelfIntroClient() {
                       className="w-full"
                     />
                     <div className="flex justify-between text-xs text-gray-500 mt-1">
-                      <span>Slow (0.25x)</span>
-                      <span>Normal (1.0x)</span>
-                      <span>Fast (2.0x)</span>
+                      <span>{interview.slow}</span>
+                      <span>{interview.normal}</span>
+                      <span>{interview.fast}</span>
                     </div>
                   </div>
                 </div>
@@ -420,7 +427,7 @@ export default function SelfIntroClient() {
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
                   disabled={isGenerating}
                 >
-                  Back
+                  {interview.back}
                 </button>
               )}
               {!generatedSentences[currentQuestion.id] ? (
@@ -429,14 +436,14 @@ export default function SelfIntroClient() {
                   disabled={!answers[currentQuestion.id]?.trim() || isGenerating}
                   className="flex-1 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isGenerating ? "Generating..." : "Generate"}
+                  {isGenerating ? interview.generating : interview.generate}
                 </button>
               ) : (
                 <button
                   onClick={handleNextQuestion}
                   className="flex-1 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
-                  {currentQuestionIndex < QUESTIONS.length - 1 ? "Next Question" : "Review All"}
+                  {currentQuestionIndex < QUESTIONS.length - 1 ? interview.nextQuestion : interview.reviewAll}
                 </button>
               )}
             </div>
@@ -445,7 +452,7 @@ export default function SelfIntroClient() {
           {/* Previously Generated Sentences */}
           {Object.keys(generatedSentences).length > 0 && (
             <div className="mt-8">
-              <h3 className="text-xl font-semibold mb-4">Your Self-Introduction So Far:</h3>
+              <h3 className="text-xl font-semibold mb-4">{interview.yourSelfIntro}</h3>
               <div className="space-y-4">
                 {QUESTIONS.filter((q) => generatedSentences[q.id]).map((q) => {
                   const sentence = generatedSentences[q.id];
@@ -471,7 +478,7 @@ export default function SelfIntroClient() {
                               disabled={regeneratingId === q.id}
                               className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                             >
-                              {regeneratingId === q.id ? "Regenerating..." : "Save & Regenerate"}
+                              {regeneratingId === q.id ? interview.regenerating : interview.saveAndRegenerate}
                             </button>
                             <button
                               onClick={() => {
@@ -480,7 +487,7 @@ export default function SelfIntroClient() {
                               }}
                               className="px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
                             >
-                              Cancel
+                              {interview.cancel}
                             </button>
                           </div>
                         </div>
@@ -492,7 +499,7 @@ export default function SelfIntroClient() {
                               onClick={() => setIsEditing((prev) => ({ ...prev, [q.id]: true }))}
                               className="text-sm text-blue-600 hover:underline ml-2"
                             >
-                              Edit
+                              {interview.edit}
                             </button>
                           </div>
                           {sentence.audioUrl && (
@@ -515,7 +522,7 @@ export default function SelfIntroClient() {
     return (
       <div className="min-h-screen p-8">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl font-bold mb-8">Review Your Self-Introduction</h2>
+          <h2 className="text-3xl font-bold mb-8">{review.heading}</h2>
           <div className="space-y-6 mb-8">
             {QUESTIONS.map((q) => {
               const sentence = generatedSentences[q.id];
@@ -529,12 +536,12 @@ export default function SelfIntroClient() {
                         onClick={() => setIsEditing((prev) => ({ ...prev, [q.id]: true }))}
                         className="text-sm text-blue-600 hover:underline"
                       >
-                        Edit
+                        {review.editAnswers}
                       </button>
                     )}
                   </div>
                   <p className="text-gray-600 dark:text-gray-400 mb-4">
-                    Your answer: {answers[q.id]}
+                    {review.yourAnswer.replace("{answer}", answers[q.id])}
                   </p>
 
                   {isEditing[q.id] ? (
@@ -553,7 +560,7 @@ export default function SelfIntroClient() {
                           disabled={regeneratingId === q.id}
                           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                         >
-                          {regeneratingId === q.id ? "Regenerating..." : "Save & Regenerate Voice"}
+                          {regeneratingId === q.id ? interview.regenerating : review.saveAndRegenerateVoice}
                         </button>
                         <button
                           onClick={() => {
@@ -562,7 +569,7 @@ export default function SelfIntroClient() {
                           }}
                           className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
                         >
-                          Cancel
+                          {interview.cancel}
                         </button>
                       </div>
                     </div>
@@ -577,7 +584,7 @@ export default function SelfIntroClient() {
                             disabled={regeneratingId === q.id}
                             className="text-sm text-blue-600 hover:underline disabled:opacity-50"
                           >
-                            {regeneratingId === q.id ? "Regenerating..." : "Regenerate Voice"}
+                            {regeneratingId === q.id ? interview.regenerating : interview.regenerateVoice}
                           </button>
                         </div>
                       )}
@@ -595,14 +602,14 @@ export default function SelfIntroClient() {
               }}
               className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              Edit Answers
+              {review.editAnswers}
             </button>
             <button
               onClick={handleSaveToCards}
               disabled={isSaving}
               className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
-              {isSaving ? "Saving..." : "Save to Lianki Cards"}
+              {isSaving ? review.saving : review.saveToCards}
             </button>
           </div>
         </div>

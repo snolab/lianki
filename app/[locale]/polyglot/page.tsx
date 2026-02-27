@@ -10,9 +10,10 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
+  const { metadata } = getIntlayer("polyglot-page", locale);
   return {
-    title: "Polyglot Matrix - Lianki",
-    description: "Learn to answer common questions in multiple languages simultaneously",
+    title: metadata.title,
+    description: metadata.description,
     ...generateHreflangMetadata(locale, "/polyglot"),
   };
 }

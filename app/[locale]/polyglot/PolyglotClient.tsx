@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useIntlayer } from "next-intlayer";
 
 type Language = {
   code: string;
@@ -87,6 +88,35 @@ type TranslatedContent = {
 type CellData = Record<string, TranslatedContent>; // langCode -> content
 
 export default function PolyglotClient() {
+  const {
+    heading,
+    description,
+    selectMotherTongue,
+    selectTargetLanguages,
+    continueToQuestions,
+    motherTongueLabel,
+    generateAll: generateAllText,
+    changeLanguages: changeLanguagesText,
+    addQuestionPlaceholder,
+    addQuestion: addQuestionText,
+    questionYourAnswer,
+    answerInLanguage,
+    generating: generatingText,
+    generateRow: generateRowText,
+    questionLabel,
+    answerLabel,
+    playQuestion: playQuestionText,
+    playAnswer: playAnswerText,
+    regenerate: regenerateText,
+    generate: generateText,
+    answerFirst: answerFirstText,
+    cellsGenerated,
+    saving: savingText,
+    saveToCards: saveToCardsText,
+    errors,
+    categories,
+  } = useIntlayer("polyglot-page");
+
   const [isSaving, setIsSaving] = useState(false);
   const [motherTongue, setMotherTongue] = useState<Language | null>(null);
   const [selectedLanguages, setSelectedLanguages] = useState<Language[]>([]);
@@ -103,6 +133,19 @@ export default function PolyglotClient() {
     } else {
       setSelectedLanguages([...selectedLanguages, lang]);
     }
+  };
+
+  const getCategoryTranslation = (category: string): string => {
+    const categoryMap: Record<string, string> = {
+      "Basic Introduction": categories.basicIntroduction,
+      "Daily Life": categories.dailyLife,
+      "Family & Relationships": categories.familyRelationships,
+      "Interests & Preferences": categories.interestsPreferences,
+      "Language Learning": categories.languageLearning,
+      "Future & Goals": categories.futureGoals,
+      "Custom": categories.custom,
+    };
+    return categoryMap[category] || category;
   };
 
   const addCustomQuestion = () => {
@@ -178,7 +221,7 @@ export default function PolyglotClient() {
       }));
     } catch (error) {
       console.error("Error generating cell:", error);
-      alert("Failed to generate translation. Please try again.");
+      alert(errors.failedToGenerate);
     } finally {
       setGeneratingCell(null);
     }
@@ -268,7 +311,7 @@ export default function PolyglotClient() {
       });
     } catch (error) {
       console.error("Error generating row:", error);
-      alert("Failed to generate row. Please try again.");
+      alert(errors.failedToGenerateRow);
     } finally {
       setGeneratingCell(null);
     }
@@ -297,11 +340,11 @@ export default function PolyglotClient() {
       if (!response.ok) {
         const error = await response.json();
         if (response.status === 401) {
-          alert("Please sign in to save cards");
+          alert(errors.signInRequired);
           window.location.href = "/api/auth/signin";
           return;
         }
-        throw new Error(error.error || "Failed to save");
+        throw new Error(error.error || errors.failedToSave);
       }
 
       const result = await response.json();
@@ -309,7 +352,7 @@ export default function PolyglotClient() {
       window.location.href = "/list";
     } catch (error) {
       console.error("Error saving:", error);
-      alert("Failed to save cards. Please try again.");
+      alert(errors.failedToSave);
     } finally {
       setIsSaving(false);
     }
@@ -319,13 +362,13 @@ export default function PolyglotClient() {
     return (
       <div className="min-h-screen p-8">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-4xl font-bold mb-4">Polyglot Matrix</h1>
+          <h1 className="text-4xl font-bold mb-4">{heading}</h1>
           <p className="text-lg mb-8">
-            Learn to answer common questions in multiple languages simultaneously
+            {description}
           </p>
 
           <div className="mb-8">
-            <h2 className="text-2xl font-semibold mb-4">Select Your Mother Tongue</h2>
+            <h2 className="text-2xl font-semibold mb-4">{selectMotherTongue}</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {LANGUAGES.map((lang) => (
                 <button
@@ -345,7 +388,7 @@ export default function PolyglotClient() {
           </div>
 
           <div className="mb-8">
-            <h2 className="text-2xl font-semibold mb-4">Select Target Languages (1 or more)</h2>
+            <h2 className="text-2xl font-semibold mb-4">{selectTargetLanguages}</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {LANGUAGES.filter((l) => l.code !== motherTongue?.code).map((lang) => (
                 <button
@@ -369,7 +412,7 @@ export default function PolyglotClient() {
             disabled={!motherTongue || selectedLanguages.length === 0}
             className="w-full py-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-lg font-semibold"
           >
-            Continue to Questions ({selectedLanguages.length} languages selected)
+            {continueToQuestions.replace("{count}", selectedLanguages.length.toString())}
           </button>
         </div>
       </div>
@@ -390,10 +433,11 @@ export default function PolyglotClient() {
       <div className="max-w-full mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold">Polyglot Matrix</h1>
+            <h1 className="text-3xl font-bold">{heading}</h1>
             <p className="text-gray-600 dark:text-gray-400">
-              Mother tongue: {motherTongue?.nativeName} → Learning:{" "}
-              {selectedLanguages.map((l) => l.nativeName).join(", ")}
+              {motherTongueLabel
+                .replace("{lang}", motherTongue?.nativeName || "")
+                .replace("{langs}", selectedLanguages.map((l) => l.nativeName).join(", "))}
             </p>
           </div>
           <div className="flex gap-2">
@@ -401,13 +445,13 @@ export default function PolyglotClient() {
               onClick={generateAll}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
             >
-              Generate All
+              {generateAllText}
             </button>
             <button
               onClick={() => setShowLanguageSelector(true)}
               className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              Change Languages
+              {changeLanguagesText}
             </button>
           </div>
         </div>
@@ -417,7 +461,7 @@ export default function PolyglotClient() {
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="Add your own question..."
+              placeholder={addQuestionPlaceholder}
               value={customQuestion}
               onChange={(e) => setCustomQuestion(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addCustomQuestion()}
@@ -427,7 +471,7 @@ export default function PolyglotClient() {
               onClick={addCustomQuestion}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
-              Add Question
+              {addQuestionText}
             </button>
           </div>
         </div>
@@ -437,13 +481,13 @@ export default function PolyglotClient() {
           {Object.entries(groupedQuestions).map(([category, categoryQuestions]) => (
             <div key={category} className="mb-8">
               <h2 className="text-xl font-bold mb-3 sticky left-0 bg-white dark:bg-gray-900 py-2">
-                {category}
+                {getCategoryTranslation(category)}
               </h2>
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
                     <th className="border border-gray-300 dark:border-gray-700 p-2 bg-gray-100 dark:bg-gray-800 sticky left-0 z-10 min-w-[300px]">
-                      Question / Your Answer
+                      {questionYourAnswer}
                     </th>
                     {selectedLanguages.map((lang) => (
                       <th
@@ -470,7 +514,7 @@ export default function PolyglotClient() {
                           <div className="font-semibold mb-2">{question.text}</div>
                           <input
                             type="text"
-                            placeholder={`Answer in ${motherTongue?.nativeName}...`}
+                            placeholder={answerInLanguage.replace("{lang}", motherTongue?.nativeName || "")}
                             value={answers[question.id] || ""}
                             onChange={(e) =>
                               setAnswers((prev) => ({ ...prev, [question.id]: e.target.value }))
@@ -483,7 +527,7 @@ export default function PolyglotClient() {
                               disabled={isRowGenerating}
                               className="mt-2 text-sm text-blue-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              {isRowGenerating ? "Generating..." : "Generate Row"}
+                              {isRowGenerating ? generatingText : generateRowText}
                             </button>
                           )}
                         </td>
@@ -500,12 +544,12 @@ export default function PolyglotClient() {
                               className="border border-gray-300 dark:border-gray-700 p-3"
                             >
                               {isGenerating ? (
-                                <div className="text-center text-gray-500">Generating...</div>
+                                <div className="text-center text-gray-500">{generatingText}</div>
                               ) : cellData ? (
                                 <div className="space-y-2">
                                   <div className="flex items-start gap-2">
                                     <div className="flex-1">
-                                      <div className="text-xs text-gray-500 mb-1">Q:</div>
+                                      <div className="text-xs text-gray-500 mb-1">{questionLabel}</div>
                                       <div className="text-sm">{cellData.question}</div>
                                     </div>
                                     {cellData.questionAudioUrl && (
@@ -516,13 +560,13 @@ export default function PolyglotClient() {
                                         }}
                                         className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded text-xs hover:bg-blue-200 dark:hover:bg-blue-800"
                                       >
-                                        ▶ Q
+                                        {playQuestionText}
                                       </button>
                                     )}
                                   </div>
                                   <div className="flex items-start gap-2">
                                     <div className="flex-1">
-                                      <div className="text-xs text-gray-500 mb-1">A:</div>
+                                      <div className="text-xs text-gray-500 mb-1">{answerLabel}</div>
                                       <div className="text-sm font-semibold">{cellData.answer}</div>
                                     </div>
                                     {cellData.answerAudioUrl && (
@@ -533,7 +577,7 @@ export default function PolyglotClient() {
                                         }}
                                         className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded text-xs hover:bg-green-200 dark:hover:bg-green-800"
                                       >
-                                        ▶ A
+                                        {playAnswerText}
                                       </button>
                                     )}
                                   </div>
@@ -541,7 +585,7 @@ export default function PolyglotClient() {
                                     onClick={() => generateCell(question.id, lang.code)}
                                     className="text-xs text-gray-500 hover:underline"
                                   >
-                                    Regenerate
+                                    {regenerateText}
                                   </button>
                                 </div>
                               ) : answers[question.id]?.trim() ? (
@@ -549,11 +593,11 @@ export default function PolyglotClient() {
                                   onClick={() => generateCell(question.id, lang.code)}
                                   className="w-full py-2 text-sm bg-gray-100 dark:bg-gray-800 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
                                 >
-                                  Generate
+                                  {generateText}
                                 </button>
                               ) : (
                                 <div className="text-center text-gray-400 text-sm">
-                                  Answer first
+                                  {answerFirstText}
                                 </div>
                               )}
                             </td>
@@ -572,15 +616,14 @@ export default function PolyglotClient() {
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 shadow-lg">
           <div className="max-w-7xl mx-auto flex items-center gap-4">
             <div className="text-sm text-gray-600 dark:text-gray-400">
-              {Object.values(matrix).reduce((sum, row) => sum + Object.keys(row).length, 0)} cells
-              generated
+              {cellsGenerated.replace("{count}", Object.values(matrix).reduce((sum, row) => sum + Object.keys(row).length, 0).toString())}
             </div>
             <button
               onClick={saveToCards}
               disabled={isSaving || Object.keys(matrix).length === 0}
               className="flex-1 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSaving ? "Saving..." : "Save to Lianki Cards"}
+              {isSaving ? savingText : saveToCardsText}
             </button>
           </div>
         </div>
