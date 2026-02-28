@@ -518,22 +518,31 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     // click btns
     "GET /review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (req, options) => {
       const params = getParams(req, options);
-      const rating =
-        {
-          "1": Rating.Again,
-          again: Rating.Again,
-          "2": Rating.Hard,
-          hard: Rating.Hard,
-          "3": Rating.Good,
-          good: Rating.Good,
-          "4": Rating.Easy,
-          easy: Rating.Easy,
-        }[params.rating] ?? DIE("unknown rating: " + String(params.rating));
+      const rating = {
+        "1": Rating.Again,
+        again: Rating.Again,
+        "2": Rating.Hard,
+        hard: Rating.Hard,
+        "3": Rating.Good,
+        good: Rating.Good,
+        "4": Rating.Easy,
+        easy: Rating.Easy,
+      }[params.rating];
 
-      const reviewdCard = await reviewed(
-        (await getQueryNote(req, options)) ?? DIE("fail to find note"),
-        rating as Grade,
-      );
+      if (rating === undefined) {
+        throw new Error(
+          `Invalid rating parameter: ${params.rating}. Expected 1-4 or again/hard/good/easy.`
+        );
+      }
+
+      const note = await getQueryNote(req, options);
+      if (!note) {
+        const params = getParams(req, options);
+        throw new Error(
+          `Failed to find note for review. Provided params: ${JSON.stringify(params)}`
+        );
+      }
+      const reviewdCard = await reviewed(note, rating as Grade);
       const due = dueMs(reviewdCard.card.due);
       return HTMLR(
         sflow(
@@ -551,22 +560,31 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       options,
     ) => {
       const params = getParams(req, options);
-      const rating =
-        {
-          "1": Rating.Again,
-          again: Rating.Again,
-          "2": Rating.Hard,
-          hard: Rating.Hard,
-          "3": Rating.Good,
-          good: Rating.Good,
-          "4": Rating.Easy,
-          easy: Rating.Easy,
-        }[params.rating] ?? DIE("unknown rating: " + String(params.rating));
+      const rating = {
+        "1": Rating.Again,
+        again: Rating.Again,
+        "2": Rating.Hard,
+        hard: Rating.Hard,
+        "3": Rating.Good,
+        good: Rating.Good,
+        "4": Rating.Easy,
+        easy: Rating.Easy,
+      }[params.rating];
 
-      const reviewdCard = await reviewed(
-        (await getQueryNote(req, options)) ?? DIE("fail to find note"),
-        rating as Grade,
-      );
+      if (rating === undefined) {
+        throw new Error(
+          `Invalid rating parameter: ${params.rating}. Expected 1-4 or again/hard/good/easy.`
+        );
+      }
+
+      const note = await getQueryNote(req, options);
+      if (!note) {
+        const params = getParams(req, options);
+        throw new Error(
+          `Failed to find note for review. Provided params: ${JSON.stringify(params)}`
+        );
+      }
+      const reviewdCard = await reviewed(note, rating as Grade);
       const due = dueMs(reviewdCard.card.due);
       return HTMLR(
         sflow(
@@ -653,18 +671,34 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         }
       : newServerHLC(note.hlc);
 
-    const result = await FSRSNotes.findOneAndUpdate(
-      { url },
-      { $set: { card, hlc: newHLC }, $push: { log } },
-      { returnDocument: "after", upsert: true },
-    );
+    let result;
+    try {
+      result = await FSRSNotes.findOneAndUpdate(
+        { url },
+        { $set: { card, hlc: newHLC }, $push: { log } },
+        { returnDocument: "after", upsert: true },
+      );
+    } catch (err) {
+      throw new Error(`Database update failed for review: ${url}`, { cause: err });
+    }
+
+    if (!result) {
+      throw new Error(
+        `Failed to update note after review (null result). URL: ${url}, Email: ${email || "none"}`
+      );
+    }
 
     // Invalidate heatmap cache after review
     if (email) {
-      revalidateTag(getHeatmapCacheTag(email), "default");
+      try {
+        revalidateTag(getHeatmapCacheTag(email), "default");
+      } catch (err) {
+        // Log but don't fail the review on cache invalidation errors
+        console.warn(`Failed to invalidate heatmap cache for ${email}:`, err);
+      }
     }
 
-    return result!;
+    return result;
   }
 
   async function JSONR<T>(data: T | Promise<T>, status: number = 200) {
@@ -719,21 +753,26 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     const params = getParams(req, options);
     const url = params["url"];
     const id = params["id"];
-    return (await FSRSNotes.aggregate([
-      { $set: { _id: { $toString: "$_id" } } },
-      {
-        $match: id
-          ? (function () {
-              // const _id = { $objectId: id };
-              // const _id = new ObjectId(id);
-              // const _id = bsonId(  id );
-              return { _id: id };
-            })()
-          : url
-            ? { url }
-            : DIE("no query"),
-      },
-    ]).next()) as WithId<FSRSNote>;
+
+    if (!id && !url) {
+      throw new Error(
+        `Missing required parameter: either 'id' or 'url' must be provided. Received params: ${JSON.stringify(params)}`
+      );
+    }
+
+    try {
+      return (await FSRSNotes.aggregate([
+        { $set: { _id: { $toString: "$_id" } } },
+        {
+          $match: id ? { _id: id } : { url: url! },
+        },
+      ]).next()) as WithId<FSRSNote>;
+    } catch (err) {
+      throw new Error(
+        `Database query failed. ID: ${id || "none"}, URL: ${url || "none"}`,
+        { cause: err }
+      );
+    }
   }
   function getParams(req: Request, options: { params?: Record<string, string> } | undefined) {
     return Object.fromEntries([
@@ -744,24 +783,46 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
   function getQuery(req: Request, options: { params?: Record<string, string> } | undefined) {
     const params = getParams(req, options);
+    if (!params.url) {
+      throw new Error(
+        `Missing required parameter 'url'. Received params: ${JSON.stringify(params)}`
+      );
+    }
     return {
-      url: params.url ?? DIE(new Error("url not found in query", { cause: params })),
+      url: params.url,
       title: params.title,
     };
   }
 
   async function saveNote({ url, title }: { url: string; title?: string }) {
-    const normalized = normalizeUrl(url);
-    return (
-      (await FSRSNotes.findOneAndUpdate(
+    let normalized;
+    try {
+      normalized = normalizeUrl(url);
+    } catch (err) {
+      throw new Error(`Failed to normalize URL: ${url}`, { cause: err });
+    }
+
+    let result;
+    try {
+      result = await FSRSNotes.findOneAndUpdate(
         { url: normalized },
         {
           $setOnInsert: { card: createEmptyCard(), url: normalized, hlc: newServerHLC() },
           $set: { ...(title && { title }) },
         },
         { upsert: true, returnDocument: "after" },
-      )) ?? DIE("fail to find or create note")
-    );
+      );
+    } catch (err) {
+      throw new Error(`Database operation failed for saveNote: ${normalized}`, { cause: err });
+    }
+
+    if (!result) {
+      throw new Error(
+        `Failed to find or create note (null result). URL: ${normalized}, Title: ${title || "none"}`
+      );
+    }
+
+    return result;
   }
 
   const url = new URL(req.url, "http://localhost");
