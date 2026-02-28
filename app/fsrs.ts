@@ -20,8 +20,10 @@ import {
   type ReviewLog,
 } from "ts-fsrs";
 import { z } from "zod";
+import { revalidateTag } from "next/cache";
 import { ems } from "./ems";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
+import { getHeatmapCacheTag } from "./lib/heatmap-cache";
 import { normalizeUrl } from "@/lib/normalizeUrl";
 
 const LIANKI_USERSCRIPT_VERSION = (() => {
@@ -651,13 +653,18 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         }
       : newServerHLC(note.hlc);
 
-    return (await FSRSNotes.findOneAndUpdate(
+    const result = await FSRSNotes.findOneAndUpdate(
       { url },
       { $set: { card, hlc: newHLC }, $push: { log } },
       { returnDocument: "after", upsert: true },
-    ))!;
-    // TODO: Add cache invalidation for heatmap after review
-    // The cache will auto-revalidate every hour (see heatmap-cache.ts)
+    );
+
+    // Invalidate heatmap cache after review
+    if (email) {
+      revalidateTag(getHeatmapCacheTag(email), "default");
+    }
+
+    return result!;
   }
 
   async function JSONR<T>(data: T | Promise<T>, status: number = 200) {
