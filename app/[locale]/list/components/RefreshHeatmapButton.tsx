@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useIntlayer } from "next-intlayer";
+import { invalidateHeatmapCache } from "../actions";
 
 export default function RefreshHeatmapButton() {
   const { refresh, refreshing, refreshHeatmapTitle } = useIntlayer("list-page");
@@ -12,7 +13,9 @@ export default function RefreshHeatmapButton() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      // Trigger server component refresh to fetch fresh data
+      // Invalidate the heatmap cache to force fresh data fetch
+      await invalidateHeatmapCache();
+      // Trigger server component refresh to re-render with fresh data
       router.refresh();
       // Give it a moment to refresh
       await new Promise((resolve) => setTimeout(resolve, 1000));
