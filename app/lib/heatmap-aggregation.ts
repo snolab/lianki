@@ -16,7 +16,7 @@ export async function aggregateReviewActivity(email?: string): Promise<HeatmapDa
     },
     {
       $match: {
-        "log.log.review": { $gte: oneYearAgo },
+        "log.review": { $gte: oneYearAgo },
       },
     },
     {
