@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Globe3D from "./Globe3D";
 
 type Language = {
   code: string;
@@ -323,6 +324,13 @@ export default function PolyglotPage() {
           <p className="text-lg mb-8">
             Learn to answer common questions in multiple languages simultaneously
           </p>
+
+          {/* Globe visualization */}
+          {selectedLanguages.length > 0 && (
+            <div className="mb-8 flex justify-center">
+              <Globe3D selectedLanguages={selectedLanguages} />
+            </div>
+          )}
 
           <div className="mb-8">
             <h2 className="text-2xl font-semibold mb-4">Select Your Mother Tongue</h2>
