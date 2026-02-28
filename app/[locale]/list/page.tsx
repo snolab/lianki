@@ -119,7 +119,10 @@ export default async function HomePage() {
                 const logs = note.log || [];
                 return (
                   <li key={note._id.toString()} className="break-words overflow-hidden">
-                    {due} <ReviewHistory logs={logs} /> <a href={url} className="break-all">{title || url}</a>
+                    {due} <ReviewHistory logs={logs} />{" "}
+                    <a href={url} className="break-all">
+                      {title || url}
+                    </a>
                     <DeleteButton url={url} title={title} />
                   </li>
                 );
