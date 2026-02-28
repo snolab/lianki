@@ -4,6 +4,7 @@
   "framework": "nextjs",
   "buildCommand": "bun run build",
   "installCommand": "bun install",
+  "ignoreCommand": "git log -1 --pretty=%B | grep -qE '\\[skip ci\\]|\\[skip deploy\\]' && exit 0 || exit 1",
   "git": {
     "deploymentEnabled": {
       "main": true,
