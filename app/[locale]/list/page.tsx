@@ -80,7 +80,7 @@ export default async function HomePage() {
               <HeatmapSection />
             </Suspense>
           </section>
-          <ul className="space-y-2">
+          <ul className="space-y-2 overflow-x-hidden">
             <Suspense>
               <Cards />
             </Suspense>
@@ -118,8 +118,8 @@ export default async function HomePage() {
                 const url = note.url;
                 const logs = note.log || [];
                 return (
-                  <li key={note._id.toString()}>
-                    {due} <ReviewHistory logs={logs} /> <a href={url}>{title || url}</a>
+                  <li key={note._id.toString()} className="break-words overflow-hidden">
+                    {due} <ReviewHistory logs={logs} /> <a href={url} className="break-all">{title || url}</a>
                     <DeleteButton url={url} title={title} />
                   </li>
                 );
