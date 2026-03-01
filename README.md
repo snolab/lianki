@@ -14,13 +14,15 @@ Apps like Anki have proven this works — but Lianki removes the friction. No ca
 
 ## Features
 
+- **Guest Mode** — Use Lianki without signing up! All data stored locally in your browser
 - **One-Click Card Creation** — Press `Alt+F` on any page to add it to your review queue
 - **FSRS Algorithm** — Modern spaced repetition (better than SM-2/Anki's old algorithm)
+- **Offline-First** — Cards work fully offline with IndexedDB storage
 - **Inline Reviews** — Review cards without leaving your current page
 - **Keyboard-Driven** — Rate your recall with `1-4`, navigate with `HJKL` or `ASDT`
 - **Automatic Scheduling** — Cards appear when you're about to forget them
-- **Cross-Device Sync** — Sign in with Google, GitHub, or email
-- **GitHub-Style Heatmap** — Track your daily review streaks
+- **Optional Cloud Sync** — Sign in with Google, GitHub, email, or password to sync across devices
+- **GitHub-Style Heatmap** — Track your daily review streaks (cloud users)
 - **Multilingual** — English, Chinese, Japanese support
 
 ## How It Works
@@ -106,7 +108,7 @@ A: Lianki is optimized for reviewing web content (articles, videos, manga reader
 A: FSRS (Free Spaced Repetition System), the same modern algorithm used by Anki's latest versions. It's more accurate than the old SM-2 algorithm from the 1980s. Read more in our [FSRS algorithm blog post](https://www.lianki.com/en/blog/2025-01-15-fsrs-algorithm).
 
 **Q: Does it work offline?**
-A: No. Lianki requires an internet connection to sync cards and reviews.
+A: Yes! Guest mode works fully offline using IndexedDB in your browser. Your cards and reviews are stored locally. Sign in to sync across devices and access your cards from any browser.
 
 **Q: Is it free?**
 A: Yes, Lianki is free to use.

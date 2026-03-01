@@ -29,6 +29,7 @@
     "enhanced-ms": "^3.0.0",
     "globe.gl": "^2.45.0",
     "gray-matter": "^4.0.3",
+    "idb": "^8.0.3",
     "intlayer": "^8.1.2",
     "keyv-github": "^1.3.0",
     "marked": "^17.0.3",
