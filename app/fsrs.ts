@@ -14,6 +14,7 @@ import {
   type Card,
   createEmptyCard,
   fsrs,
+  generatorParameters,
   type Grade,
   Rating,
   RecordLogItem,
@@ -94,13 +95,22 @@ export type FSRSNote = {
 //   // // const note = {url: url, card: createEmptyCard()}
 //   // //   console.log(createEmptyCard())
 //   // const note = await saveNote({ url });
-//   // console.log(fsrs().repeat(note.card, new Date())[4]);
+//   // console.log(fsrsConfig.repeat(note.card, new Date())[4]);
 //   console.log(renderToString("hello"));
 // }
 
 // migrate
 
 // "FSRSNotes","FSRSNotes@670cb38bd6d5a0afbbf199ba"
+
+// Configure FSRS with fuzz enabled to prevent review bunching
+// Fuzz adds small random variations (±2.5% by default) to scheduled intervals
+// This prevents cards added on the same day from all being due at the exact same time
+const fsrsConfig = fsrs(
+  generatorParameters({
+    enable_fuzz: true, // Explicitly enable fuzz (default is true, but making it explicit)
+  })
+);
 
 export const fsrsHandler = async (req: Request, email?: string) => {
   // console.log({ userId });
@@ -187,7 +197,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     },
     "GET /api/fsrs/options(?:/|$|\\?)": async (req, options) => {
       const note = (await getQueryNote(req, options)) ?? DIE("note not found");
-      const repeatRecord = fsrs().repeat(note.card, new Date());
+      const repeatRecord = fsrsConfig.repeat(note.card, new Date());
       return JSONR({
         id: (note as WithId<FSRSNote> & { _id: string })._id.toString(),
         options: ([Rating.Again, Rating.Hard, Rating.Good, Rating.Easy] as const).map(
@@ -440,7 +450,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           sflow(`<script>document.title = ${JSON.stringify(doctitle)};</script>`),
 
           sflow(`<br/>`),
-          sflow(values(fsrs().repeat(note.card, new Date())))
+          sflow(values(fsrsConfig.repeat(note.card, new Date())))
             .map(
               (logitem, i) =>
                 `<a href="/review/${i + 1}/?${new URLSearchParams({
@@ -658,7 +668,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
   // }
 
   async function reviewed(note: FSRSNote, grade: Grade, clientHLC?: HLC) {
-    const { card, log } = fsrs().repeat(note.card, new Date())[grade];
+    const { card, log } = fsrsConfig.repeat(note.card, new Date())[grade];
     const url = note.url;
 
     // Generate new server HLC
@@ -723,7 +733,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     console.log({ resp });
 
     // Include review options in response to save an API call
-    const repeatRecord = fsrs().repeat(resp.card, new Date());
+    const repeatRecord = fsrsConfig.repeat(resp.card, new Date());
     const options = ([Rating.Again, Rating.Hard, Rating.Good, Rating.Easy] as const).map(
       (rating, i) => ({
         rating,
