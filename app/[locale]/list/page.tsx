@@ -9,6 +9,7 @@ import ActivityHeatmap from "./components/ActivityHeatmap";
 import DeleteButton from "./components/DeleteButton";
 import RefreshHeatmapButton from "./components/RefreshHeatmapButton";
 import { ReviewHistory } from "./components/ReviewHistory";
+import UserscriptInstallButton from "./components/UserscriptInstallButton";
 import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
 import { Header } from "@/app/components/Header";
@@ -49,14 +50,15 @@ export default async function HomePage() {
       {/* Main Content */}
       <main className="flex-grow px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <div className="mb-6">
+          <div className="mb-6 flex gap-4">
             <a
-              href="/next"
+              href={`/${locale}/next`}
               className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700"
               accessKey="1"
             >
               {nextCard}
             </a>
+            <UserscriptInstallButton locale={locale} />
           </div>
           <div className="grid grid-cols-2 gap-4 mb-6">
             <p className="text-lg">

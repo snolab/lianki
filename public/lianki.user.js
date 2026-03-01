@@ -1394,6 +1394,9 @@ class LocalFSRS {
 }
 
 function main() {
+  // Set global marker so web UI knows userscript is installed
+  window.LIANKI_USERSCRIPT_INSTALLED = true;
+
   // ── Origin ─────────────────────────────────────────────────────────────────
   // Auto-detected from @downloadURL so beta.lianki.com works too.
   // Normalize bare lianki.com → www.lianki.com: __Host- cookies bind to exact hostname.
