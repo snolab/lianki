@@ -14,6 +14,7 @@ import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
 import { Header } from "@/app/components/Header";
 import { generateHreflangMetadata } from "@/lib/hreflang";
+import GuestListClient from "./components/GuestListClient";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +31,39 @@ export async function generateMetadata(): Promise<Metadata> {
  * @author: snomiao <snomiao@gmail.com>
  */
 export default async function HomePage() {
-  const email = await authEmail();
-  const user = await authUser();
-  const FSRSNotes = getFSRSNotesCollection(email);
+  // Make auth optional for guest mode
+  let email: string | null = null;
+  let user = null;
+  try {
+    email = await authEmail();
+    user = await authUser();
+  } catch (e) {
+    // Guest mode - will use IndexedDB
+  }
+
   const locale = await getLocale();
+  const { appName, nav } = getIntlayer("landing-page", locale);
+  const { nextCard, totalCards, dueCards, learningActivity } = getIntlayer("list-page", locale);
+
+  // If logged in, use server-side data
+  if (email) {
+    return <LoggedInView email={email} user={user} locale={locale} />;
+  }
+
+  // Guest mode - use client-side IndexedDB
+  return <GuestView locale={locale} appName={appName} nav={nav} />;
+}
+
+async function LoggedInView({
+  email,
+  user,
+  locale,
+}: {
+  email: string;
+  user: any;
+  locale: string;
+}) {
+  const FSRSNotes = getFSRSNotesCollection(email);
   const { appName, nav } = getIntlayer("landing-page", locale);
   const { nextCard, totalCards, dueCards, learningActivity } = getIntlayer("list-page", locale);
 
@@ -151,4 +181,30 @@ function dueMs(due: Date) {
     shortFormat: true,
     roundUp: true,
   });
+}
+
+function GuestView({ locale, appName, nav }: { locale: string; appName: string; nav: any }) {
+  const { nextCard } = getIntlayer("list-page", locale);
+
+  return (
+    <div className="flex flex-col min-h-screen">
+      <Header locale={locale} appName={appName} blogLabel={nav.blog} learnLabel={nav.learn} user={null} />
+
+      <main className="flex-grow px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-6">
+            <a
+              href="/next"
+              className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700"
+              accessKey="1"
+            >
+              {nextCard}
+            </a>
+          </div>
+
+          <GuestListClient locale={locale} />
+        </div>
+      </main>
+    </div>
+  );
 }
