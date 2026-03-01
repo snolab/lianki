@@ -24,7 +24,7 @@ export async function aggregateReviewActivity(email?: string): Promise<HeatmapDa
         _id: {
           $dateToString: {
             format: "%Y-%m-%d",
-            date: "$log.log.review",
+            date: "$log.review",
           },
         },
         count: { $sum: 1 },
