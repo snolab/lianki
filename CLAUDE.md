@@ -117,3 +117,117 @@ curl -s https://www.lianki.com/lianki.user.js | grep '@version'
 2. Fix the issue locally
 3. Test build with `bun run build`
 4. Push fix and verify deployment succeeds
+
+## Claude Working Habits
+
+### Task Management
+
+**ALWAYS use TodoWrite tool:**
+- Start complex tasks by creating a todo list
+- Update status: pending → in_progress → completed
+- Mark tasks completed IMMEDIATELY after finishing
+- Keep exactly ONE task as in_progress at a time
+
+**Example workflow:**
+```
+1. TodoWrite: Create initial task list
+2. Start first task, mark as in_progress
+3. Complete task, mark as completed
+4. Move to next task
+```
+
+### Development Process
+
+**Before making changes:**
+1. Read files before editing (never edit blindly)
+2. Check for existing implementations (Glob/Grep)
+3. Explore with Task tool for complex searches
+4. Test build locally: `bun run build`
+
+**When committing:**
+1. Test build first: `bun run build`
+2. Use `git add -A && git commit --no-verify` if linting fails on unrelated files
+3. Include descriptive commit message with:
+   - What changed
+   - Why it changed
+   - Implementation details
+   - `Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>`
+
+**Example commit:**
+```bash
+git commit --no-verify -m "$(cat <<'EOF'
+feat: add guest mode with local IndexedDB storage
+
+Enable full offline functionality for guest users.
+- Made auth optional in /list page
+- Created GuestListClient using idb package
+- Shows sync status: localcount/syncedcount
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+EOF
+)"
+```
+
+### PR Best Practices
+
+**Creating PRs:**
+1. Create descriptive PR title: `feat:`, `fix:`, `docs:`
+2. Include detailed PR body with:
+   - Summary section
+   - Features/changes list with emojis
+   - Implementation details
+   - Benefits
+   - Screenshots/examples if relevant
+   - Footer: `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
+3. Enable auto-merge immediately: `gh pr merge <PR> --auto --squash`
+
+**After PR merges:**
+```bash
+# ALWAYS rebase beta onto main
+git fetch origin && git rebase origin/main
+git push -f origin beta
+```
+
+### Incremental Development
+
+**For large features, create staged PRs:**
+1. PR #1: Core functionality (basic working version)
+2. PR #2: UI improvements
+3. PR #3: Advanced features
+4. Each PR should be independently deployable
+
+**Benefits:**
+- Faster review cycles
+- Easier to debug issues
+- Progressive enhancement
+- Clear feature evolution
+
+### Code Quality
+
+**TypeScript:**
+- Use `any` sparingly, prefer proper types
+- Import types from dependencies when available
+- Use `type` instead of `interface` for consistency
+
+**Error Handling:**
+- Wrap auth calls in try/catch for optional login
+- Log errors to console with `[Lianki]` prefix
+- Show user-friendly error messages
+
+**Performance:**
+- Use parallel tool calls when operations are independent
+- Prefer client-side rendering for interactive components
+- Use Suspense for async server components
+
+### Communication
+
+**With user:**
+- Be concise and clear
+- Show what was accomplished (✅ lists)
+- Include relevant URLs (PR links, deployment URLs)
+- Use emojis sparingly unless user requests
+
+**In code:**
+- Add comments only when logic isn't self-evident
+- Document complex algorithms or workarounds
+- Link to relevant docs/issues in comments
