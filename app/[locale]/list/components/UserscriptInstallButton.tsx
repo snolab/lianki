@@ -27,25 +27,26 @@ export default function UserscriptInstallButton({ locale }: { locale: string }) 
     return null;
   }
 
-  const installText = {
-    en: "Install Userscript",
-    ja: "ユーザースクリプトをインストール",
-    zh: "安装用户脚本",
-    ko: "유저스크립트 설치",
-    es: "Instalar Userscript",
-    fr: "Installer le Userscript",
-    de: "Userscript installieren",
-    ru: "Установить пользовательский скрипт",
-    ar: "تثبيت البرنامج النصي",
-    hi: "यूज़रस्क्रिप्ट इंस्टॉल करें",
-    bn: "ইউজারস্ক্রিপ্ট ইনস্টল করুন",
-    pt: "Instalar Userscript",
-    id: "Instal Userscript",
-    tr: "Userscript'i Yükle",
-    ur: "یوزرسکرپٹ انسٹال کریں",
-    sw: "Sakinisha Userscript",
-    mr: "यूझरस्क्रिप्ट स्थापित करा",
-  }[locale] || "Install Userscript";
+  const installText =
+    {
+      en: "Install Userscript",
+      ja: "ユーザースクリプトをインストール",
+      zh: "安装用户脚本",
+      ko: "유저스크립트 설치",
+      es: "Instalar Userscript",
+      fr: "Installer le Userscript",
+      de: "Userscript installieren",
+      ru: "Установить пользовательский скрипт",
+      ar: "تثبيت البرنامج النصي",
+      hi: "यूज़रस्क्रिप्ट इंस्टॉल करें",
+      bn: "ইউজারস্ক্রিপ্ট ইনস্টল করুন",
+      pt: "Instalar Userscript",
+      id: "Instal Userscript",
+      tr: "Userscript'i Yükle",
+      ur: "یوزرسکرپٹ انسٹال کریں",
+      sw: "Sakinisha Userscript",
+      mr: "यूझरस्क्रिप्ट स्थापित करा",
+    }[locale] || "Install Userscript";
 
   return (
     <a

@@ -35,7 +35,7 @@ const handle = async (req: Request) => {
           details: String(error),
         }),
       },
-      { status: 500 }
+      { status: 500 },
     );
   });
 };

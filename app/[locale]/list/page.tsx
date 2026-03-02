@@ -54,15 +54,7 @@ export default async function HomePage() {
   return <GuestView locale={locale} appName={appName} nav={nav} />;
 }
 
-async function LoggedInView({
-  email,
-  user,
-  locale,
-}: {
-  email: string;
-  user: any;
-  locale: string;
-}) {
+async function LoggedInView({ email, user, locale }: { email: string; user: any; locale: string }) {
   const FSRSNotes = getFSRSNotesCollection(email);
   const { appName, nav } = getIntlayer("landing-page", locale);
   const { nextCard, totalCards, dueCards, learningActivity } = getIntlayer("list-page", locale);
@@ -188,7 +180,13 @@ function GuestView({ locale, appName, nav }: { locale: string; appName: string; 
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Header locale={locale} appName={appName} blogLabel={nav.blog} learnLabel={nav.learn} user={null} />
+      <Header
+        locale={locale}
+        appName={appName}
+        blogLabel={nav.blog}
+        learnLabel={nav.learn}
+        user={null}
+      />
 
       <main className="flex-grow px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">

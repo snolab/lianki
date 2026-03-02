@@ -154,12 +154,7 @@ export default function GuestListClient({ locale }: { locale: string }) {
             </p>
           </div>
           <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               {syncPercentage === 100 ? (
                 <path
                   strokeLinecap="round"
@@ -179,9 +174,7 @@ export default function GuestListClient({ locale }: { locale: string }) {
             <span className="font-mono font-bold">
               {localCount}/{syncedCount}
             </span>
-            {syncPercentage < 100 && (
-              <span className="text-xs">({syncPercentage}% synced)</span>
-            )}
+            {syncPercentage < 100 && <span className="text-xs">({syncPercentage}% synced)</span>}
           </div>
         </div>
       </div>

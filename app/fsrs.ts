@@ -109,7 +109,7 @@ export type FSRSNote = {
 const fsrsConfig = fsrs(
   generatorParameters({
     enable_fuzz: true, // Explicitly enable fuzz (default is true, but making it explicit)
-  })
+  }),
 );
 
 export const fsrsHandler = async (req: Request, email?: string) => {

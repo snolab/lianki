@@ -8,9 +8,7 @@ import { db, mongoClient } from "./app/db";
 export const auth = betterAuth({
   secret: process.env.AUTH_SECRET,
   baseURL:
-    process.env.BETTER_AUTH_BASE_URL ??
-    process.env.BETTER_AUTH_URL ??
-    process.env.NEXTAUTH_URL,
+    process.env.BETTER_AUTH_BASE_URL ?? process.env.BETTER_AUTH_URL ?? process.env.NEXTAUTH_URL,
 
   database: mongodbAdapter(db, { client: mongoClient }),
 
