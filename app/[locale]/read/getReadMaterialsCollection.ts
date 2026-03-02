@@ -22,6 +22,10 @@ export function getReadMaterialsBucket() {
   return new GridFSBucket(db, { bucketName: "readMaterialsContent" });
 }
 
+export function getTTSVoiceCacheBucket() {
+  return new GridFSBucket(db, { bucketName: "ttsVoiceCache" });
+}
+
 export async function saveReadMaterial(
   userId: string,
   title: string,

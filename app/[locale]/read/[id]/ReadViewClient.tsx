@@ -32,6 +32,11 @@ export function ReadViewClient({
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1000);
   const [loading, setLoading] = useState(true);
+  const [enableTTS, setEnableTTS] = useState(false);
+  const [ttsVoice, setTtsVoice] = useState<
+    "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer"
+  >("shimmer");
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
 
   // Load material
   useEffect(() => {
@@ -59,6 +64,9 @@ export function ReadViewClient({
   useEffect(() => {
     if (!isPlaying || !material) return;
 
+    // If TTS is enabled, don't auto-advance - let audio control it
+    if (enableTTS) return;
+
     const timer = setInterval(() => {
       setCurrentLine((prev) => {
         if (prev >= material.lines.length - 1) {
@@ -70,7 +78,43 @@ export function ReadViewClient({
     }, playbackSpeed);
 
     return () => clearInterval(timer);
-  }, [isPlaying, material, playbackSpeed]);
+  }, [isPlaying, material, playbackSpeed, enableTTS]);
+
+  // TTS playback
+  useEffect(() => {
+    if (!enableTTS || !material || !isPlaying) {
+      audioElement?.pause();
+      return;
+    }
+
+    const text = material.lines[currentLine];
+    const audio = new Audio(
+      `/api/tts?${new URLSearchParams({ text, voice: ttsVoice }).toString()}`,
+    );
+
+    let isMounted = true;
+
+    audio.play().catch((err) => console.error("TTS playback error:", err));
+
+    audio.onended = () => {
+      if (!isMounted) return;
+      setCurrentLine((prev) => {
+        if (prev >= material.lines.length - 1) {
+          setIsPlaying(false);
+          return prev;
+        }
+        return prev + 1;
+      });
+    };
+
+    setAudioElement(audio);
+
+    return () => {
+      isMounted = false;
+      audio.pause();
+      audio.src = "";
+    };
+  }, [enableTTS, material, currentLine, isPlaying, ttsVoice]);
 
   // Keyboard navigation
   const handleKeyDown = useCallback(
@@ -167,19 +211,56 @@ export function ReadViewClient({
         >
           Reset
         </button>
+
+        {/* TTS Toggle */}
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600 dark:text-gray-400">Speed:</label>
-          <select
-            value={playbackSpeed}
-            onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
-            className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
-          >
-            <option value={2000}>Slow (2s)</option>
-            <option value={1000}>Normal (1s)</option>
-            <option value={500}>Fast (0.5s)</option>
-            <option value={250}>Very Fast (0.25s)</option>
-          </select>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={enableTTS}
+              onChange={(e) => setEnableTTS(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-gray-600 dark:text-gray-400">Enable TTS</span>
+          </label>
         </div>
+
+        {/* TTS Voice Selection */}
+        {enableTTS && (
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600 dark:text-gray-400">Voice:</label>
+            <select
+              value={ttsVoice}
+              onChange={(e) => setTtsVoice(e.target.value as any)}
+              className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
+            >
+              <option value="alloy">Alloy</option>
+              <option value="echo">Echo</option>
+              <option value="fable">Fable</option>
+              <option value="onyx">Onyx</option>
+              <option value="nova">Nova</option>
+              <option value="shimmer">Shimmer</option>
+            </select>
+          </div>
+        )}
+
+        {/* Speed (only when TTS is disabled) */}
+        {!enableTTS && (
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600 dark:text-gray-400">Speed:</label>
+            <select
+              value={playbackSpeed}
+              onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
+              className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
+            >
+              <option value={2000}>Slow (2s)</option>
+              <option value={1000}>Normal (1s)</option>
+              <option value={500}>Fast (0.5s)</option>
+              <option value={250}>Very Fast (0.25s)</option>
+            </select>
+          </div>
+        )}
+
         <div className="hidden sm:block ml-auto text-sm text-gray-500 dark:text-gray-400">
           Keys: j/k navigate, Space play/pause
         </div>
