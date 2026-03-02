@@ -540,18 +540,10 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       }[params.rating];
 
       if (rating === undefined) {
-        throw new Error(
-          `Invalid rating parameter: ${params.rating}. Expected 1-4 or again/hard/good/easy.`
-        );
+        DIE("unknown rating: " + String(params.rating));
       }
 
-      const note = await getQueryNote(req, options);
-      if (!note) {
-        const params = getParams(req, options);
-        throw new Error(
-          `Failed to find note for review. Provided params: ${JSON.stringify(params)}`
-        );
-      }
+      const note = (await getQueryNote(req, options)) ?? DIE("note not found");
       const reviewdCard = await reviewed(note, rating as Grade);
       const due = dueMs(reviewdCard.card.due);
       return HTMLR(
@@ -582,18 +574,10 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       }[params.rating];
 
       if (rating === undefined) {
-        throw new Error(
-          `Invalid rating parameter: ${params.rating}. Expected 1-4 or again/hard/good/easy.`
-        );
+        DIE("unknown rating: " + String(params.rating));
       }
 
-      const note = await getQueryNote(req, options);
-      if (!note) {
-        const params = getParams(req, options);
-        throw new Error(
-          `Failed to find note for review. Provided params: ${JSON.stringify(params)}`
-        );
-      }
+      const note = (await getQueryNote(req, options)) ?? DIE("note not found");
       const reviewdCard = await reviewed(note, rating as Grade);
       const due = dueMs(reviewdCard.card.due);
       return HTMLR(
@@ -689,13 +673,11 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         { returnDocument: "after", upsert: true },
       );
     } catch (err) {
-      throw new Error(`Database update failed for review: ${url}`, { cause: err });
+      DIE(`Database update failed for review: ${url}`);
     }
 
     if (!result) {
-      throw new Error(
-        `Failed to update note after review (null result). URL: ${url}, Email: ${email || "none"}`
-      );
+      DIE(`Failed to update note after review. URL: ${url}`);
     }
 
     // Invalidate heatmap cache after review
@@ -765,9 +747,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     const id = params["id"];
 
     if (!id && !url) {
-      throw new Error(
-        `Missing required parameter: either 'id' or 'url' must be provided. Received params: ${JSON.stringify(params)}`
-      );
+      DIE("no query");
     }
 
     try {
@@ -778,10 +758,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         },
       ]).next()) as WithId<FSRSNote>;
     } catch (err) {
-      throw new Error(
-        `Database query failed. ID: ${id || "none"}, URL: ${url || "none"}`,
-        { cause: err }
-      );
+      DIE(`Database query failed. ID: ${id || "none"}, URL: ${url || "none"}`);
     }
   }
   function getParams(req: Request, options: { params?: Record<string, string> } | undefined) {
@@ -794,9 +771,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
   function getQuery(req: Request, options: { params?: Record<string, string> } | undefined) {
     const params = getParams(req, options);
     if (!params.url) {
-      throw new Error(
-        `Missing required parameter 'url'. Received params: ${JSON.stringify(params)}`
-      );
+      DIE("no url");
     }
     return {
       url: params.url,
@@ -809,7 +784,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     try {
       normalized = normalizeUrl(url);
     } catch (err) {
-      throw new Error(`Failed to normalize URL: ${url}`, { cause: err });
+      DIE(`Failed to normalize URL: ${url}`);
     }
 
     let result;
@@ -823,13 +798,11 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         { upsert: true, returnDocument: "after" },
       );
     } catch (err) {
-      throw new Error(`Database operation failed for saveNote: ${normalized}`, { cause: err });
+      DIE(`Database operation failed for saveNote: ${normalized}`);
     }
 
     if (!result) {
-      throw new Error(
-        `Failed to find or create note (null result). URL: ${normalized}, Title: ${title || "none"}`
-      );
+      DIE(`Failed to save note: ${normalized}`);
     }
 
     return result;
