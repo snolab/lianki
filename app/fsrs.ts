@@ -673,7 +673,11 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         { returnDocument: "after", upsert: true },
       );
     } catch (err) {
-      DIE(`Database update failed for review: ${url}`);
+      DIE(
+        new Error(`Database update failed for review: ${url}`, {
+          cause: err,
+        }),
+      );
     }
 
     if (!result) {

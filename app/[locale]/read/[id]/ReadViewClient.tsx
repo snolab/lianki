@@ -88,13 +88,25 @@ export function ReadViewClient({
     }
 
     const text = material.lines[currentLine];
-    const audio = new Audio(
-      `/api/tts?${new URLSearchParams({ text, voice: ttsVoice }).toString()}`,
-    );
-
+    const audio = new Audio();
     let isMounted = true;
 
-    audio.play().catch((err) => console.error("TTS playback error:", err));
+    // Use POST for TTS to avoid leaking text in URL
+    fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voice: ttsVoice }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`TTS request failed: ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => {
+        if (!isMounted) return;
+        audio.src = URL.createObjectURL(blob);
+        audio.play().catch((err) => console.error("TTS playback error:", err));
+      })
+      .catch((err) => console.error("TTS fetch error:", err));
 
     audio.onended = () => {
       if (!isMounted) return;
@@ -112,6 +124,9 @@ export function ReadViewClient({
     return () => {
       isMounted = false;
       audio.pause();
+      if (audio.src.startsWith("blob:")) {
+        URL.revokeObjectURL(audio.src);
+      }
       audio.src = "";
     };
   }, [enableTTS, material, currentLine, isPlaying, ttsVoice]);
