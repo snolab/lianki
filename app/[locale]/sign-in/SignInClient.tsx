@@ -155,7 +155,7 @@ export default function SignInClient() {
             <input
               type="email"
               required
-              placeholder={String(emailPlaceholder)}
+              placeholder={emailPlaceholder.value}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full border px-3 py-2 rounded dark:bg-gray-800 dark:border-gray-600"
@@ -196,7 +196,7 @@ export default function SignInClient() {
             <input
               type="email"
               required
-              placeholder={String(emailPlaceholder)}
+              placeholder={emailPlaceholder.value}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full border px-3 py-2 rounded dark:bg-gray-800 dark:border-gray-600"
