@@ -6,7 +6,7 @@
 // @grant       GM_setValue
 // @grant       GM_getValue
 // @grant       GM_info
-// @version     2.20.0
+// @version     2.20.1
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1052,12 +1052,11 @@ globalThis.unload_Lianki = main();
       return W0(K, (X) => Q.push(X.key)).then(() => Q);
     });
   }
+  // Expose LiankiDeps globally
+  if (typeof window !== "undefined") {
+    window.LiankiDeps = Y0;
+  }
 })();
-
-// Expose LiankiDeps globally
-if (typeof window !== "undefined") {
-  window.LiankiDeps = Y0;
-}
 
 /**
  * Offline-First Core for Lianki Userscript

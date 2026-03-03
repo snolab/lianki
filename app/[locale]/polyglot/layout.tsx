@@ -18,7 +18,12 @@ export default async function PolyglotLayout({ children }: { children: React.Rea
     return null; // TypeScript: unreachable, but needed
   }
 
-  const membership = await getUserMembership(user.id);
+  let membership;
+  try {
+    membership = await getUserMembership(user.id);
+  } catch {
+    membership = { tier: "free" as const };
+  }
   const hasAccess = membership.tier === "pro" || membership.tier === "trial";
 
   if (!hasAccess) {

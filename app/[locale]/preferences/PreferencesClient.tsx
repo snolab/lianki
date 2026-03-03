@@ -230,7 +230,7 @@ export default function PreferencesClient() {
                   addPattern();
                 }
               }}
-              placeholder={mobileFilters.patternPlaceholder.replace("{type}", newType)}
+              placeholder={String(mobileFilters.patternPlaceholder).replace("{type}", newType)}
               className="w-full bg-gray-800 border border-gray-700 rounded px-4 py-2 text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
             />
             <p className="text-xs text-gray-500 mt-2">{getPatternExamples(newType, isRegex)}</p>

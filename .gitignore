@@ -47,3 +47,5 @@ solve*.ts
 next-env.d.ts
 .vercel
 tmp/
+
+.logs

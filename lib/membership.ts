@@ -1,7 +1,13 @@
+import type { Document, Filter } from "mongodb";
 import { db } from "@/app/db";
 import { authUser } from "@/app/signInEmail";
 
-const Users = db.collection("user");
+// better-auth stores users with _id as a string (not ObjectId)
+const Users = db.collection<Document & { _id: string }>("user");
+
+function userFilter(userId: string): Filter<Document & { _id: string }> {
+  return { $or: [{ _id: userId }, { id: userId }] } as Filter<Document & { _id: string }>;
+}
 
 export type MembershipTier = "free" | "trial" | "pro";
 
@@ -20,7 +26,8 @@ export interface UserMembership {
  * Automatically grants 90-day trial to new users
  */
 export async function getUserMembership(userId: string): Promise<UserMembership> {
-  const user = await Users.findOne({ id: userId });
+  // better-auth mongodbAdapter stores users with _id as the document ID
+  const user = await Users.findOne(userFilter(userId));
 
   if (!user) {
     throw new Error("User not found");
@@ -31,15 +38,12 @@ export async function getUserMembership(userId: string): Promise<UserMembership>
     const trialEndsAt = new Date();
     trialEndsAt.setDate(trialEndsAt.getDate() + 90);
 
-    await Users.updateOne(
-      { id: userId },
-      {
-        $set: {
-          trialEndsAt,
-          updatedAt: new Date(),
-        },
+    await Users.updateOne(userFilter(userId), {
+      $set: {
+        trialEndsAt,
+        updatedAt: new Date(),
       },
-    );
+    });
 
     // Return the newly granted trial
     return {
@@ -106,7 +110,7 @@ export async function startTrial(userId: string): Promise<void> {
   trialEndsAt.setDate(trialEndsAt.getDate() + 90);
 
   await Users.updateOne(
-    { id: userId },
+    { $or: [{ _id: userId }, { id: userId }] },
     {
       $set: {
         trialEndsAt,
@@ -124,7 +128,7 @@ export async function grantProMembership(userId: string, durationDays: number): 
   proEndsAt.setDate(proEndsAt.getDate() + durationDays);
 
   await Users.updateOne(
-    { id: userId },
+    { $or: [{ _id: userId }, { id: userId }] },
     {
       $set: {
         proEndsAt,

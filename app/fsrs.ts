@@ -425,7 +425,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
             const q = new URLSearchParams({
               id: note._id.toString(),
             }).toString();
-            return `window.open(${url}); location.href='/repeat/?${q}'`;
+            return `window.open(${url}); location.href='/api/fsrs/repeat/?${q}'`;
           })
           .onFlush((c) =>
             c.enqueue("window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')"),

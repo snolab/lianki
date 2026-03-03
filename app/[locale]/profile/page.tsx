@@ -52,7 +52,32 @@ export default async function ProfilePage() {
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
           <h2 className="text-2xl font-semibold mb-4">{sessionDetails}</h2>
-          <pre className="text-sm overflow-x-auto">{JSON.stringify(session, null, 2)}</pre>
+          <pre className="text-sm overflow-x-auto">
+            {JSON.stringify(
+              {
+                session: session?.session
+                  ? {
+                      expiresAt: session.session.expiresAt,
+                      createdAt: session.session.createdAt,
+                      updatedAt: session.session.updatedAt,
+                      // token and ipAddress intentionally omitted
+                    }
+                  : null,
+                user: session?.user
+                  ? {
+                      name: session.user.name,
+                      email: session.user.email,
+                      emailVerified: session.user.emailVerified,
+                      createdAt: session.user.createdAt,
+                      updatedAt: session.user.updatedAt,
+                      id: session.user.id,
+                    }
+                  : null,
+              },
+              null,
+              2,
+            )}
+          </pre>
         </div>
         <div className="flex gap-4">
           <a href={`/${locale}/preferences`} className="text-blue-500 hover:text-blue-600">
