@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
-import { authUser } from "@/app/signInEmail";
+import { auth } from "@/auth";
+import { headers } from "next/headers";
 import { getUserMembership } from "@/lib/membership";
 
 export async function GET() {
-  try {
-    const user = await authUser();
-    const membership = await getUserMembership(user.id);
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
+  try {
+    const membership = await getUserMembership(session.user.id);
     return NextResponse.json({
       tier: membership.tier,
       trialEndsAt: membership.trialEndsAt?.toISOString(),
