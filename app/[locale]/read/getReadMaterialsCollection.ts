@@ -14,12 +14,16 @@ export interface ReadMaterial {
 
 const GRIDFS_THRESHOLD = 32 * 1024; // 32KB
 
-export function getReadMaterialsCollection(userId: string) {
+export function getReadMaterialsCollection(_userId: string) {
   return db.collection<ReadMaterial>("readMaterials");
 }
 
 export function getReadMaterialsBucket() {
   return new GridFSBucket(db, { bucketName: "readMaterialsContent" });
+}
+
+export function getTTSVoiceCacheBucket() {
+  return new GridFSBucket(db, { bucketName: "ttsVoiceCache" });
 }
 
 export async function saveReadMaterial(
@@ -40,8 +44,8 @@ export async function saveReadMaterial(
     updatedAt: now,
   };
 
-  // Use GridFS for large content
-  if (content.length >= GRIDFS_THRESHOLD) {
+  // Use GridFS for large content (measure size in UTF-8 bytes)
+  if (Buffer.byteLength(content, "utf8") >= GRIDFS_THRESHOLD) {
     const uploadStream = bucket.openUploadStream(`${userId}-${Date.now()}.txt`, {
       metadata: { userId, title },
     });
