@@ -25,6 +25,39 @@ function error(msg: string) {
   process.exit(1);
 }
 
+// Scan staged files for secrets (API keys, tokens)
+const SECRET_PATTERNS = [
+  /sk-proj-[A-Za-z0-9_-]{20,}/, // OpenAI key
+  /sk-[A-Za-z0-9]{40,}/, // OpenAI legacy key
+  /ghp_[A-Za-z0-9]{36,}/, // GitHub PAT classic
+  /github_pat_[A-Za-z0-9_]{10,}/, // GitHub PAT fine-grained
+  /AKIA[0-9A-Z]{16}/, // AWS access key
+  /AIza[0-9A-Za-z\-_]{35}/, // Google API key
+];
+
+const stagedForSecretScan = exec("git diff --cached --name-only --diff-filter=ACM").trim();
+if (stagedForSecretScan) {
+  for (const file of stagedForSecretScan.split("\n").filter(Boolean)) {
+    // Skip binary files and lock files
+    if (/\.(png|jpg|gif|ico|woff|ttf|lock|lockb)$/.test(file)) continue;
+    let content: string;
+    try {
+      content = exec(`git show ":${file}"`);
+    } catch {
+      continue;
+    }
+    for (const pattern of SECRET_PATTERNS) {
+      const match = content.match(pattern);
+      if (match) {
+        error(
+          `🚨 Possible secret detected in ${file}: matches pattern ${pattern}\nRemove it before committing.`,
+        );
+      }
+    }
+  }
+  log("✓ No secrets detected in staged files");
+}
+
 // Run linting and type checking
 try {
   exec("bash scripts/lint-and-format.sh");

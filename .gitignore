@@ -33,6 +33,10 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+.env.production
+.env.development
+.env.test
+.env.staging
 
 # backup and temporary files
 *_bak.ts

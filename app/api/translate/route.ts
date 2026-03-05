@@ -2,11 +2,14 @@ import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { NextRequest } from "next/server";
 import { getRawPost } from "@/lib/blog";
-import { LOCALE_NAMES } from "@/lib/constants";
+import { BLOG_LOCALES, LOCALE_NAMES } from "@/lib/constants";
 import KeyvGitHub from "keyv-github";
 import { Octokit } from "octokit";
 
 export const maxDuration = 60;
+
+// Max source content size to translate (prevent huge posts burning tokens)
+const MAX_SOURCE_LENGTH = 50_000;
 
 const LOCK_TIMEOUT_MS = 120_000; // 2 minutes - if lock is older, assume stale
 const PARTIAL_SAVE_INTERVAL = 1000; // Save every 1000 characters
@@ -39,6 +42,20 @@ export async function GET(request: NextRequest) {
     return new Response("Missing slug or locale", { status: 400 });
   }
 
+  // Validate locale against allowlist
+  if (!BLOG_LOCALES.includes(locale as (typeof BLOG_LOCALES)[number])) {
+    return new Response("Unsupported locale", { status: 400 });
+  }
+  // Refuse requests to translate English to English
+  if (locale === "en") {
+    return new Response("Cannot translate to source locale", { status: 400 });
+  }
+
+  // Validate slug format (alphanumeric, hyphens only)
+  if (!/^[a-z0-9-]+$/.test(slug)) {
+    return new Response("Invalid slug", { status: 400 });
+  }
+
   if (!process.env.OPENAI_API_KEY) {
     return new Response("OPENAI_API_KEY not configured", { status: 500 });
   }
@@ -47,6 +64,11 @@ export async function GET(request: NextRequest) {
   const englishRaw = await getRawPost("en", slug);
   if (!englishRaw) {
     return new Response("Post not found", { status: 404 });
+  }
+
+  // Prevent translating unreasonably large posts
+  if (englishRaw.length > MAX_SOURCE_LENGTH) {
+    return new Response("Source post too large to translate", { status: 413 });
   }
 
   // Multi-layer cache: filesystem → GitHub → LLM translation
