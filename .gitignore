@@ -52,4 +52,4 @@ next-env.d.ts
 .vercel
 tmp/
 
-.logs
+.logstest-results/
