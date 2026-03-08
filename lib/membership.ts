@@ -1,6 +1,5 @@
 import type { Document, Filter } from "mongodb";
 import { db } from "@/app/db";
-import { authUser } from "@/app/signInEmail";
 
 // better-auth stores users with _id as a string (not ObjectId)
 const Users = db.collection<Document & { _id: string }>("user");
@@ -81,28 +80,6 @@ export async function getUserMembership(userId: string): Promise<UserMembership>
 }
 
 /**
- * Check if user has access to pro features
- */
-export async function hasProAccess(userId: string): Promise<boolean> {
-  const membership = await getUserMembership(userId);
-  return membership.tier === "pro" || membership.tier === "trial";
-}
-
-/**
- * Require pro access, redirect if not authorized
- */
-export async function requireProAccess() {
-  const user = await authUser();
-  const hasAccess = await hasProAccess(user.id);
-
-  if (!hasAccess) {
-    throw new Error("Pro membership required");
-  }
-
-  return user;
-}
-
-/**
  * Start a trial for a user (90 days)
  */
 export async function startTrial(userId: string): Promise<void> {
@@ -120,20 +97,3 @@ export async function startTrial(userId: string): Promise<void> {
   );
 }
 
-/**
- * Grant pro membership to a user
- */
-export async function grantProMembership(userId: string, durationDays: number): Promise<void> {
-  const proEndsAt = new Date();
-  proEndsAt.setDate(proEndsAt.getDate() + durationDays);
-
-  await Users.updateOne(
-    { $or: [{ _id: userId }, { id: userId }] },
-    {
-      $set: {
-        proEndsAt,
-        updatedAt: new Date(),
-      },
-    },
-  );
-}

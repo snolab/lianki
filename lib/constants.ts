@@ -23,8 +23,6 @@ export const BLOG_LOCALES = [
 ] as const;
 export type BlogLocale = (typeof BLOG_LOCALES)[number];
 
-export const DEFAULT_LOCALE: BlogLocale = "en";
-
 // Check if a locale is supported
 export function isSupportedLocale(locale: string): locale is BlogLocale {
   return BLOG_LOCALES.includes(locale as BlogLocale);
@@ -147,5 +145,3 @@ export function isRTLLocale(locale: string): boolean {
   return RTL_LOCALES.includes(locale as (typeof RTL_LOCALES)[number]);
 }
 
-// Domain suggestions for mobile exclude filters
-export const DOMAIN_SUGGESTIONS = ["zhihu.com", "twitter.com", "reddit.com"];
