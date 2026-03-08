@@ -1,0 +1,16 @@
+{
+  "name": "Lianki",
+  "short_name": "Lianki",
+  "description": "Spaced repetition learning with the FSRS algorithm",
+  "start_url": "/en/list",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "256x256",
+      "type": "image/x-icon"
+    }
+  ]
+}

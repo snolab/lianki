@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.0
+// @version     2.21.1
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1255,6 +1255,51 @@ class GMQueueStorage {
 }
 
 // ============================================================================
+// GM→IndexedDB Sync (runs on lianki.com to expose cached cards to site UI)
+// ============================================================================
+
+async function syncToSiteDB() {
+  const cs = new GMCardStorage();
+  const index = cs._index();
+  if (!index.length) return;
+  try {
+    const db = await new Promise((resolve, reject) => {
+      const req = indexedDB.open("lianki-keyval", 1);
+      req.onupgradeneeded = (e) => e.target.result.createObjectStore("keyval");
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror = (e) => reject(e.target.error);
+    });
+    const tx = db.transaction("keyval", "readwrite");
+    const store = tx.objectStore("keyval");
+    for (const entry of index) {
+      const raw = GM_getValue(CARD_PREFIX + entry.hash, "");
+      if (!raw) continue;
+      const { note, hlc, dirty } = JSON.parse(raw);
+      if (!note?.card) continue;
+      store.put(
+        {
+          url: note.url || entry.url,
+          title: note.title || note.url || entry.url,
+          card: note.card,
+          log: note.log || [],
+          hlc: hlc || note.hlc,
+          synced: !dirty,
+        },
+        "card:" + (note.url || entry.url),
+      );
+    }
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror = (e) => reject(e.target.error);
+    });
+    db.close();
+    console.log(`[Lianki] Synced ${index.length} cards to site IndexedDB`);
+  } catch (err) {
+    console.error("[Lianki] syncToSiteDB failed:", err);
+  }
+}
+
+// ============================================================================
 // Local FSRS Calculations (using bundled ts-fsrs)
 // ============================================================================
 
@@ -1416,8 +1461,11 @@ function main() {
     }
   }
 
-  // Skip running on the Lianki app itself
-  if (location.hostname === new URL(ORIGIN).hostname) return () => {};
+  // On the Lianki site itself: sync GM cards to IndexedDB for offline display, then exit
+  if (location.hostname === new URL(ORIGIN).hostname) {
+    setTimeout(() => syncToSiteDB(), 500);
+    return () => {};
+  }
 
   const ac = new AbortController();
   const { signal } = ac;

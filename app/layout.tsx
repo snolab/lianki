@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { IntlayerServerProvider } from "next-intlayer/server";
 import { cookies, headers } from "next/headers";
+import { ServiceWorkerRegistration } from "./components/ServiceWorkerRegistration";
 
 export const metadata: Metadata = {
   title: "Lianki",
   description: "Spaced repetition learning with the FSRS algorithm",
+  manifest: "/manifest.json",
 };
 
 async function getRootLocale() {
@@ -23,7 +25,10 @@ export default async function RootLayout({
   return (
     <html lang={locale}>
       <body>
-        <IntlayerServerProvider locale={locale}>{children}</IntlayerServerProvider>
+        <IntlayerServerProvider locale={locale}>
+          <ServiceWorkerRegistration />
+          {children}
+        </IntlayerServerProvider>
       </body>
     </html>
   );
