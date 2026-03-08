@@ -5,8 +5,9 @@
 // @grant       GM_xmlhttpRequest
 // @grant       GM_setValue
 // @grant       GM_getValue
+// @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.20.1
+// @version     2.21.0
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1063,7 +1064,7 @@ globalThis.unload_Lianki = main();
  *
  * This file contains:
  * - Hybrid Logical Clock (HLC) implementation
- * - IndexedDB storage layer
+ * - GM_setValue storage layer (LDF eviction, 2000 card cap)
  * - Local FSRS calculations
  * - Background sync mechanism
  */
@@ -1129,179 +1130,127 @@ function getOrCreateDeviceId() {
 }
 
 // ============================================================================
-// IndexedDB Storage Layer (using bundled idb-keyval)
+// GM_setValue Storage Layer
 // ============================================================================
 
-/**
- * Initialize IndexedDB stores
- * Returns { cardStore, configStore, queueStore }
- */
-function initStores() {
-  const { createStore } = window.LiankiDeps;
+// ── GM_setValue Storage Layer ────────────────────────────────────────────────
 
-  return {
-    cardStore: createStore("lianki-cards", "cards"),
-    configStore: createStore("lianki-config", "config"),
-    queueStore: createStore("lianki-queue", "queue"),
-  };
+const CARD_PREFIX = "lk:c:";
+const INDEX_KEY = "lk:card-index";
+const MAX_CARDS = 2000;
+
+function hashUrl(url) {
+  let h = 5381;
+  for (let i = 0; i < url.length; i++) h = (((h << 5) + h) ^ url.charCodeAt(i)) >>> 0;
+  return h.toString(16).padStart(8, "0");
 }
 
-/**
- * @typedef {Object} CachedCard
- * @property {Object} note - FSRSNote
- * @property {HLC} hlc - Hybrid Logical Clock
- * @property {boolean} dirty - Has pending server sync
- */
-
-/**
- * Card storage helpers
- */
-class CardStorage {
-  constructor(stores, deviceId) {
-    this.stores = stores;
-    this.deviceId = deviceId;
-    const { get, set, keys, del } = window.LiankiDeps;
-    this.get = get;
-    this.set = set;
-    this.keys = keys;
-    this.del = del;
+class GMCardStorage {
+  _index() {
+    return JSON.parse(GM_getValue(INDEX_KEY, "[]"));
+  }
+  _saveIndex(idx) {
+    GM_setValue(INDEX_KEY, JSON.stringify(idx));
   }
 
-  async getCard(url) {
-    return await this.get(url, this.stores.cardStore);
+  getCard(url) {
+    const raw = GM_getValue(CARD_PREFIX + hashUrl(url), "");
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    return c._url === url ? c : null; // hash collision guard
   }
 
-  async setCard(url, note, hlc = null, dirty = false) {
-    const cachedCard = {
-      note,
-      hlc: hlc || newHLC(this.deviceId, null),
-      dirty,
-    };
-    await this.set(url, cachedCard, this.stores.cardStore);
-    return cachedCard;
-  }
-
-  async deleteCard(url) {
-    await this.del(url, this.stores.cardStore);
-  }
-
-  async getAllCards() {
-    const urls = await this.keys(this.stores.cardStore);
-    const cards = [];
-
-    for (const url of urls) {
-      const card = await this.getCard(url);
-      if (card) cards.push({ url, ...card });
+  setCard(url, note, hlc, dirty = false) {
+    const hash = hashUrl(url);
+    const key = CARD_PREFIX + hash;
+    let idx = this._index();
+    const pos = idx.findIndex((e) => e.url === url);
+    const entry = { url, due: note.card.due, hash };
+    if (pos >= 0) {
+      idx[pos] = entry;
+    } else {
+      if (idx.length >= MAX_CARDS) {
+        // LDF: evict furthest due
+        const maxI = idx.reduce(
+          (mi, e, i, a) => (new Date(e.due) > new Date(a[mi].due) ? i : mi),
+          0,
+        );
+        GM_deleteValue(CARD_PREFIX + idx[maxI].hash);
+        idx.splice(maxI, 1);
+      }
+      idx.push(entry);
     }
-
-    return cards;
+    this._saveIndex(idx);
+    GM_setValue(key, JSON.stringify({ _url: url, note, hlc, dirty }));
   }
 
-  async getDueCards(limit = 10) {
-    const all = await this.getAllCards();
+  deleteCard(url) {
+    GM_deleteValue(CARD_PREFIX + hashUrl(url));
+    this._saveIndex(this._index().filter((e) => e.url !== url));
+  }
+
+  getAllCards() {
+    return this._index()
+      .map((e) => {
+        const raw = GM_getValue(CARD_PREFIX + e.hash, "");
+        return raw ? { url: e.url, ...JSON.parse(raw) } : null;
+      })
+      .filter(Boolean);
+  }
+
+  getDueCards(limit = 10) {
     const now = new Date();
-
-    // Filter due cards
-    const due = all.filter((c) => new Date(c.note.card.due) <= now);
-
-    // Sort by due date (earliest first)
-    due.sort((a, b) => new Date(a.note.card.due) - new Date(b.note.card.due));
-
-    return due.slice(0, limit);
+    return this._index()
+      .filter((e) => new Date(e.due) <= now)
+      .sort((a, b) => new Date(a.due) - new Date(b.due))
+      .slice(0, limit)
+      .map((e) => {
+        const raw = GM_getValue(CARD_PREFIX + e.hash, "");
+        return raw ? { url: e.url, ...JSON.parse(raw) } : null;
+      })
+      .filter(Boolean);
   }
 }
 
-/**
- * Config storage
- */
-class ConfigStorage {
-  constructor(stores) {
-    this.stores = stores;
-    const { get, set } = window.LiankiDeps;
-    this.get = get;
-    this.set = set;
+class GMConfigStorage {
+  getConfig() {
+    const cfg = JSON.parse(GM_getValue("lk:config", "{}"));
+    if (!cfg.lastSyncHLC) cfg.lastSyncHLC = null;
+    if (!cfg.lastSyncTime) cfg.lastSyncTime = 0;
+    return cfg;
   }
-
-  async getConfig() {
-    let config = await this.get("config", this.stores.configStore);
-
-    if (!config) {
-      config = {
-        fsrsParams: null,
-        deviceId: getOrCreateDeviceId(),
-        lastSyncHLC: null,
-        lastSyncTime: 0,
-      };
-      await this.setConfig(config);
-    }
-
-    return config;
+  setConfig(cfg) {
+    GM_setValue("lk:config", JSON.stringify(cfg));
   }
-
-  async setConfig(config) {
-    await this.set("config", config, this.stores.configStore);
-  }
-
-  async updateLastSync(hlc) {
-    const config = await this.getConfig();
-    config.lastSyncHLC = hlc;
-    config.lastSyncTime = Date.now();
-    await this.setConfig(config);
+  updateLastSync(hlc) {
+    this.setConfig({ ...this.getConfig(), lastSyncHLC: hlc, lastSyncTime: Date.now() });
   }
 }
 
-/**
- * Sync queue storage
- */
-class QueueStorage {
-  constructor(stores) {
-    this.stores = stores;
-    const { get, set, keys, del } = window.LiankiDeps;
-    this.get = get;
-    this.set = set;
-    this.keys = keys;
-    this.del = del;
+class GMQueueStorage {
+  getQueue() {
+    return JSON.parse(GM_getValue("lk:queue", "[]"));
   }
-
-  async addToQueue(action, data, hlc) {
-    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const item = {
-      id,
+  addToQueue(action, data, hlc) {
+    const q = this.getQueue();
+    q.push({
+      id: Date.now() + Math.random(),
       action,
       data,
       hlc,
       retries: 0,
       createdAt: Date.now(),
-    };
-
-    await this.set(id, item, this.stores.queueStore);
-    return id;
+    });
+    GM_setValue("lk:queue", JSON.stringify(q));
   }
-
-  async getQueue() {
-    const queueKeys = await this.keys(this.stores.queueStore);
-    const queue = [];
-
-    for (const key of queueKeys) {
-      const item = await this.get(key, this.stores.queueStore);
-      if (item) queue.push(item);
-    }
-
-    // Sort by HLC (oldest first)
-    queue.sort((a, b) => compareHLC(a.hlc, b.hlc));
-
-    return queue;
+  removeFromQueue(id) {
+    GM_setValue("lk:queue", JSON.stringify(this.getQueue().filter((e) => e.id !== id)));
   }
-
-  async removeFromQueue(id) {
-    await this.del(id, this.stores.queueStore);
-  }
-
-  async updateQueueItem(id, updates) {
-    const item = await this.get(id, this.stores.queueStore);
-    if (item) {
-      await this.set(id, { ...item, ...updates }, this.stores.queueStore);
-    }
+  updateQueueItem(id, updates) {
+    GM_setValue(
+      "lk:queue",
+      JSON.stringify(this.getQueue().map((e) => (e.id === id ? { ...e, ...updates } : e))),
+    );
   }
 }
 
@@ -1328,24 +1277,28 @@ class LocalFSRS {
     return [
       {
         rating: 1,
+        label: "Again",
         card: scheduleInfo[this.Rating.Again].card,
         log: scheduleInfo[this.Rating.Again].log,
         due: this.formatDue(scheduleInfo[this.Rating.Again].card.due),
       },
       {
         rating: 2,
+        label: "Hard",
         card: scheduleInfo[this.Rating.Hard].card,
         log: scheduleInfo[this.Rating.Hard].log,
         due: this.formatDue(scheduleInfo[this.Rating.Hard].card.due),
       },
       {
         rating: 3,
+        label: "Good",
         card: scheduleInfo[this.Rating.Good].card,
         log: scheduleInfo[this.Rating.Good].log,
         due: this.formatDue(scheduleInfo[this.Rating.Good].card.due),
       },
       {
         rating: 4,
+        label: "Easy",
         card: scheduleInfo[this.Rating.Easy].card,
         log: scheduleInfo[this.Rating.Easy].log,
         due: this.formatDue(scheduleInfo[this.Rating.Easy].card.due),
@@ -1373,6 +1326,21 @@ class LocalFSRS {
 
     const diffYears = Math.round(diffDays / 365);
     return `${diffYears}y`;
+  }
+
+  newCard() {
+    const now = new Date();
+    return {
+      due: now,
+      stability: 0,
+      difficulty: 0,
+      elapsed_days: 0,
+      scheduled_days: 0,
+      reps: 0,
+      lapses: 0,
+      state: 0, // State.New
+      last_review: now,
+    };
   }
 
   /**
@@ -1574,7 +1542,11 @@ function main() {
   // ── API ────────────────────────────────────────────────────────────────────
   const api = (path, opts = {}) =>
     gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
-      if (r.status === 401) throw new Error("Login required");
+      if (r.status === 401) {
+        const e = new Error("Login required");
+        e.status = 401;
+        throw e;
+      }
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       checkVersion(r);
       return r.json();
@@ -2722,7 +2694,7 @@ function main() {
    * Offline-First Integration for lianki.user.js
    *
    * This code is inserted into main() to wire up offline functionality.
-   * It modifies openDialog() and doReview() to use IndexedDB cache.
+   * It modifies openDialog() and doReview() to use GM_setValue cache.
    */
 
   // ── Offline Storage Initialization ──────────────────────────────────────────
@@ -2732,16 +2704,15 @@ function main() {
   let syncInProgress = false;
   let syncTimer = null;
 
-  // Initialize offline storage
-  async function initOfflineStorage() {
+  // Initialize offline storage (GM_setValue is synchronous — always ready)
+  function initOfflineStorage() {
     try {
-      const stores = initStores();
-      cardStorage = new CardStorage(stores, deviceId);
-      configStorage = new ConfigStorage(stores);
-      queueStorage = new QueueStorage(stores);
+      cardStorage = new GMCardStorage();
+      configStorage = new GMConfigStorage();
+      queueStorage = new GMQueueStorage();
 
       // Load FSRS parameters
-      const config = await configStorage.getConfig();
+      const config = configStorage.getConfig();
       localFSRS = new LocalFSRS(config.fsrsParams);
 
       offlineReady = true;
@@ -2771,10 +2742,10 @@ function main() {
 
     const url = normalizeUrl(location.href);
 
-    // Offline-first: Check IndexedDB cache
+    // Offline-first: Check GM cache
     if (offlineReady) {
       try {
-        const cachedCard = await cardStorage.getCard(url);
+        const cachedCard = cardStorage.getCard(url);
 
         if (cachedCard) {
           console.log("[Lianki] Using cached card");
@@ -2814,7 +2785,7 @@ function main() {
         // Save to cache
         if (offlineReady) {
           try {
-            await cardStorage.setCard(url, note);
+            cardStorage.setCard(url, note, null);
           } catch (err) {
             console.error("[Lianki] Failed to cache card:", err);
           }
@@ -2847,6 +2818,31 @@ function main() {
         renderDialog();
       })
       .catch((err) => {
+        // Guest mode: 401 → create local-only card
+        if (
+          offlineReady &&
+          (err?.status === 401 ||
+            String(err?.message).includes("401") ||
+            String(err?.message).toLowerCase().includes("unauthorized"))
+        ) {
+          const localNote = {
+            _id: "local:" + hashUrl(url),
+            url,
+            title: document.title,
+            card: localFSRS.newCard(),
+            notes: "",
+            hlc: newHLC(deviceId, null),
+          };
+          cardStorage.setCard(url, localNote, localNote.hlc, true);
+          queueStorage.addToQueue("add", { url, title: document.title }, localNote.hlc);
+          state.noteId = localNote._id;
+          state.notes = "";
+          state.notesSynced = false;
+          state.phase = "reviewing";
+          state.options = localFSRS.calculateOptions(localNote.card);
+          renderDialog();
+          return;
+        }
         state.phase = "error";
         state.error = err.message;
         state.errorDetails = err.details ?? null;
@@ -2864,7 +2860,7 @@ function main() {
     // Offline-first: Update locally
     if (offlineReady) {
       try {
-        const cachedCard = await cardStorage.getCard(url);
+        const cachedCard = cardStorage.getCard(url);
 
         if (cachedCard && localFSRS) {
           console.log("[Lianki] Applying review locally");
@@ -2879,10 +2875,10 @@ function main() {
 
           // Update HLC
           const newHlc = newHLC(deviceId, cachedCard.hlc);
-          await cardStorage.setCard(url, cachedCard.note, newHlc, true); // dirty = true
+          cardStorage.setCard(url, cachedCard.note, newHlc, true); // dirty = true
 
           // Queue for server sync
-          await queueStorage.addToQueue(
+          queueStorage.addToQueue(
             "review",
             {
               url,
@@ -2914,11 +2910,11 @@ function main() {
       // Update cache if available
       if (offlineReady && result.card) {
         try {
-          const cachedCard = await cardStorage.getCard(url);
+          const cachedCard = cardStorage.getCard(url);
           if (cachedCard) {
             cachedCard.note.card = result.card;
             cachedCard.note.log = result.log || cachedCard.note.log;
-            await cardStorage.setCard(url, cachedCard.note, result.hlc);
+            cardStorage.setCard(url, cachedCard.note, result.hlc);
           }
         } catch (err) {
           console.error("[Lianki] Failed to update cache:", err);
@@ -2970,7 +2966,7 @@ function main() {
     syncInProgress = true;
 
     try {
-      const queue = await queueStorage.getQueue();
+      const queue = queueStorage.getQueue();
 
       if (queue.length === 0) {
         syncInProgress = false;
@@ -2983,7 +2979,7 @@ function main() {
       for (const item of queue) {
         try {
           await syncQueueItem(item);
-          await queueStorage.removeFromQueue(item.id);
+          queueStorage.removeFromQueue(item.id);
           console.log(`[Lianki] Synced: ${item.action} ${item.data.url || item.data.noteId}`);
         } catch (err) {
           console.error(`[Lianki] Sync failed for ${item.id}:`, err);
@@ -2993,15 +2989,15 @@ function main() {
 
           if (item.retries > 5) {
             console.warn(`[Lianki] Dropping ${item.id} after 5 retries`);
-            await queueStorage.removeFromQueue(item.id);
+            queueStorage.removeFromQueue(item.id);
           } else {
-            await queueStorage.updateQueueItem(item.id, { retries: item.retries });
+            queueStorage.updateQueueItem(item.id, { retries: item.retries });
           }
         }
       }
 
       // Update last sync time
-      await configStorage.updateLastSync(newHLC(deviceId, null));
+      configStorage.updateLastSync(newHLC(deviceId, null));
 
       console.log("[Lianki] Sync complete");
     } finally {
@@ -3050,11 +3046,11 @@ function main() {
       for (const note of dueCards) {
         try {
           const url = note.url;
-          const existing = await cardStorage.getCard(url);
+          const existing = cardStorage.getCard(url);
 
           // Update if server version is newer or doesn't exist
           if (!existing || compareHLC(note.hlc, existing.hlc) > 0) {
-            await cardStorage.setCard(
+            cardStorage.setCard(
               url,
               note,
               note.hlc || newHLC("server", null),
@@ -3076,7 +3072,7 @@ function main() {
     if (!offlineReady) return;
 
     try {
-      const dueCards = await cardStorage.getDueCards(1);
+      const dueCards = cardStorage.getDueCards(1);
       if (dueCards.length > 0 && dueCards[0].url !== location.href) {
         prefetchNextPage(dueCards[0].url);
       }
@@ -3104,8 +3100,8 @@ function main() {
         gap: "4px",
       });
 
-      (async () => {
-        const queue = await queueStorage.getQueue();
+      (() => {
+        const queue = queueStorage.getQueue();
         const queueCount = queue.length;
 
         if (!navigator.onLine) {
@@ -3124,11 +3120,9 @@ function main() {
   };
 
   // ── Initialize on startup ────────────────────────────────────────────────────
-  // Call after api() is defined
+  // GM_setValue is synchronous — call directly after api() is defined
   setTimeout(() => {
-    initOfflineStorage().catch((err) => {
-      console.error("[Lianki] Offline initialization failed:", err);
-    });
+    initOfflineStorage();
   }, 100);
 
   return () => {
