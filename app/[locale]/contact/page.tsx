@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
 import { getIntlayer } from "intlayer";
-import { locale as getLocale } from "next-intlayer/server";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import { Header } from "@/app/components/Header";
 import ContactForm from "@/app/ContactForm";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const locale = getLocale;
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
   const { title } = getIntlayer("contact-form", locale);
   return {
     title: title,
@@ -17,8 +20,8 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default async function ContactPage() {
-  const locale = getLocale;
+export default async function ContactPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   const { appName, nav } = getIntlayer("landing-page", locale);
   const content = getIntlayer("contact-form", locale);
 

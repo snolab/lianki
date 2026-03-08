@@ -96,4 +96,3 @@ export async function startTrial(userId: string): Promise<void> {
     },
   );
 }
-

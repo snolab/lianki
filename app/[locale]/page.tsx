@@ -1,12 +1,11 @@
 import { getIntlayer } from "intlayer";
-import { locale as getLocale } from "next-intlayer/server";
 import Link from "next/link";
 import ContactForm from "../ContactForm";
 import { Header } from "../components/Header";
 import { authUser } from "../signInEmail";
 
-export default async function LandingPage() {
-  const locale = getLocale;
+export default async function LandingPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   const { appName, nav, hero, features, howItWorks, footer } = getIntlayer("landing-page", locale);
   const rawContact = getIntlayer("contact-form", locale);
 

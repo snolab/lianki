@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
 import { authEmail, authUser } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
-import { locale as getLocale } from "next-intlayer/server";
 import { Header } from "@/app/components/Header";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import PreferencesClient from "./PreferencesClient";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const locale = getLocale;
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
   const { metadata } = getIntlayer("preferences-page", locale);
   return {
     title: metadata.title,
@@ -18,10 +21,10 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default async function PreferencesPage() {
+export default async function PreferencesPage({ params }: { params: Promise<{ locale: string }> }) {
   const email = await authEmail();
   const user = await authUser();
-  const locale = getLocale;
+  const { locale } = await params;
   const { appName, nav } = getIntlayer("landing-page", locale);
 
   return (

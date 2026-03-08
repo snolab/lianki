@@ -144,4 +144,3 @@ export const RTL_LOCALES = ["ar", "ur"] as const;
 export function isRTLLocale(locale: string): boolean {
   return RTL_LOCALES.includes(locale as (typeof RTL_LOCALES)[number]);
 }
-

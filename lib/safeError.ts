@@ -16,7 +16,10 @@ const SECRET_REPLACEMENTS: RegExp[] = [
 ];
 
 function redactSecrets(input: string): string {
-  return SECRET_REPLACEMENTS.reduce((value, pattern) => value.replace(pattern, "[REDACTED]"), input);
+  return SECRET_REPLACEMENTS.reduce(
+    (value, pattern) => value.replace(pattern, "[REDACTED]"),
+    input,
+  );
 }
 
 function trimMessage(input: string, maxLength = 500): string {

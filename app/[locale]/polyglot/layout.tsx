@@ -3,11 +3,16 @@ import { getUserMembership } from "@/lib/membership";
 import { localeRedirect } from "@/lib/locale-redirect";
 import Link from "next/link";
 import { useIntlayer } from "next-intlayer/server";
-import { locale as getLocale } from "next-intlayer/server";
 
-export default async function PolyglotLayout({ children }: { children: React.ReactNode }) {
+export default async function PolyglotLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: Promise<{ locale: string }>;
+}) {
   const content = useIntlayer("polyglot-layout");
-  const locale = getLocale;
+  const { locale } = await params;
 
   // Get authenticated user or redirect to sign-in
   let user;

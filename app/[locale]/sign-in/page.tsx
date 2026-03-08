@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
 import { getIntlayer } from "intlayer";
-import { locale as getLocale } from "next-intlayer/server";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import { Header } from "@/app/components/Header";
 import SignInClient from "./SignInClient";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const locale = getLocale;
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
   const { metadata } = getIntlayer("sign-in-page", locale);
   return {
     title: metadata.title,
@@ -17,8 +20,8 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default async function SignInPage() {
-  const locale = getLocale;
+export default async function SignInPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   const { appName, nav } = getIntlayer("landing-page", locale);
 
   return (
