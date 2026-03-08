@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useIntlayer } from "next-intlayer";
 import { ems } from "@/app/ems";
+import { SyncStatusBanner } from "./SyncStatusBanner";
 
 type FSRSCard = {
   url: string;
@@ -37,7 +38,6 @@ export default function GuestListClient({ locale }: { locale: string }) {
   const { totalCards, dueCards, learningActivity } = useIntlayer("list-page");
   const [cards, setCards] = useState<FSRSCard[]>([]);
   const [localCount, setLocalCount] = useState(0);
-  const [syncedCount, setSyncedCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -56,13 +56,12 @@ export default function GuestListClient({ locale }: { locale: string }) {
       const allKeys = await cardStore.getAllKeys();
 
       const cardData: FSRSCard[] = [];
-      let synced = 0;
 
       for (const key of allKeys) {
         if (typeof key === "string" && key.startsWith("card:")) {
           const value = await cardStore.get(key);
           if (value) {
-            const card = {
+            cardData.push({
               ...value,
               card: {
                 ...value.card,
@@ -74,9 +73,7 @@ export default function GuestListClient({ locale }: { locale: string }) {
                 due: new Date(l.due),
                 review: new Date(l.review),
               })),
-            };
-            cardData.push(card);
-            if (card.synced) synced++;
+            });
           }
         }
       }
@@ -86,7 +83,6 @@ export default function GuestListClient({ locale }: { locale: string }) {
 
       setCards(cardData);
       setLocalCount(cardData.length);
-      setSyncedCount(synced);
       setLoading(false);
     } catch (err) {
       console.error("[Lianki] Failed to load cards from IndexedDB:", err);
@@ -131,48 +127,25 @@ export default function GuestListClient({ locale }: { locale: string }) {
   }
 
   const dueCount = cards.filter((c) => c.card.due <= new Date()).length;
-  const syncPercentage = localCount > 0 ? Math.round((syncedCount / localCount) * 100) : 0;
 
   return (
     <div className="space-y-6">
-      {/* Sync Status Banner */}
+      {/* Sync Status Banner — guest: Script → Local only */}
       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h3 className="text-blue-800 dark:text-blue-200 font-semibold mb-1">
               Guest Mode - Local Storage
             </h3>
             <p className="text-blue-700 dark:text-blue-300 text-sm">
-              Your cards are stored locally in your browser.{" "}
+              Your cards are stored locally.{" "}
               <a href="/sign-in" className="underline font-semibold">
                 Sign in
               </a>{" "}
               to sync across devices.
             </p>
           </div>
-          <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              {syncPercentage === 100 ? (
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              ) : (
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-                />
-              )}
-            </svg>
-            <span className="font-mono font-bold">
-              {localCount}/{syncedCount}
-            </span>
-            {syncPercentage < 100 && <span className="text-xs">({syncPercentage}% synced)</span>}
-          </div>
+          <SyncStatusBanner />
         </div>
       </div>
 

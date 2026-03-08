@@ -1288,6 +1288,7 @@ async function syncToSiteDB() {
         "card:" + (note.url || entry.url),
       );
     }
+    store.put(index.length, "meta:gm-count");
     await new Promise((resolve, reject) => {
       tx.oncomplete = resolve;
       tx.onerror = (e) => reject(e.target.error);

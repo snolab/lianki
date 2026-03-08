@@ -14,6 +14,7 @@ import { getIntlayer } from "intlayer";
 import { Header } from "@/app/components/Header";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import GuestListClient from "./components/GuestListClient";
+import { SyncStatusBanner } from "./components/SyncStatusBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -82,6 +83,11 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
               {nextCard}
             </a>
             <UserscriptInstallButton locale={locale} />
+          </div>
+          <div className="mb-6">
+            <Suspense fallback={<SyncStatusBanner mongoCount={null} />}>
+              <LoggedInSyncStatus email={email} />
+            </Suspense>
           </div>
           <div className="grid grid-cols-2 gap-4 mb-6">
             <p className="text-lg">
@@ -169,6 +175,12 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
     );
   }
 }
+async function LoggedInSyncStatus({ email }: { email: string }) {
+  const FSRSNotes = getFSRSNotesCollection(email);
+  const mongoCount = await FSRSNotes.countDocuments({});
+  return <SyncStatusBanner mongoCount={mongoCount} />;
+}
+
 function dueMs(due: Date) {
   return ems(+due - +new Date(), "short") ?? "0s";
 }
