@@ -52,7 +52,7 @@ async function setup(page: Page, apiMock: ApiMock = { status: 401 }) {
     };
     (window as any).GM_info = {
       script: {
-        version: "2.21.0",
+        version: "2.21.1",
         downloadURL: "https://www.lianki.com/lianki.user.js",
       },
     };
@@ -171,8 +171,8 @@ async function gmJSON(page: Page, key: string): Promise<unknown> {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 test.describe("Userscript integrity (static analysis)", () => {
-  test("@version is 2.21.0", () => {
-    expect(SCRIPT_CONTENT).toMatch(/@version\s+2\.21\.0/);
+  test("@version is 2.21.1", () => {
+    expect(SCRIPT_CONTENT).toMatch(/@version\s+2\.21\.1/);
   });
 
   test("grants GM_deleteValue", () => {

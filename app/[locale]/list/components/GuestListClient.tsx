@@ -49,7 +49,11 @@ export default function GuestListClient({ locale }: { locale: string }) {
     try {
       // Access the IndexedDB stores created by the userscript
       const { openDB } = await import("idb");
-      const db = await openDB("lianki-keyval", 1);
+      const db = await openDB("lianki-keyval", 1, {
+        upgrade(db) {
+          if (!db.objectStoreNames.contains("keyval")) db.createObjectStore("keyval");
+        },
+      });
 
       // Try to get all cards
       const cardStore = db.transaction("keyval", "readonly").objectStore("keyval");

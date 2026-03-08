@@ -176,9 +176,13 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
   }
 }
 async function LoggedInSyncStatus({ email }: { email: string }) {
-  const FSRSNotes = getFSRSNotesCollection(email);
-  const mongoCount = await FSRSNotes.countDocuments({});
-  return <SyncStatusBanner mongoCount={mongoCount} />;
+  try {
+    const FSRSNotes = getFSRSNotesCollection(email);
+    const mongoCount = await FSRSNotes.countDocuments({});
+    return <SyncStatusBanner mongoCount={mongoCount} />;
+  } catch {
+    return <SyncStatusBanner />;
+  }
 }
 
 function dueMs(due: Date) {
