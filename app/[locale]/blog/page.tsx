@@ -9,6 +9,7 @@ import { getIntlayer } from "intlayer";
 import { Header } from "@/app/components/Header";
 import { authUser } from "@/app/signInEmail";
 import OpenAI from "openai";
+import { logSanitizedError } from "@/lib/safeError";
 
 export const revalidate = 3600;
 
@@ -61,12 +62,15 @@ async function translateText(text: string, targetLocale: string): Promise<string
 
     return response.choices[0]?.message?.content?.trim() || text;
   } catch (error) {
-    console.error("Translation error:", error);
+    logSanitizedError("blog.index.translate", error, { targetLocale });
     return text;
   }
 }
 
-async function getPostSummaries(locale: string): Promise<PostSummary[]> {
+async function getPostSummaries(
+  locale: string,
+  allowLiveTranslation: boolean,
+): Promise<PostSummary[]> {
   const slugs = await getAllSlugs();
   const results = await Promise.all(
     slugs.map(async (slug) => {
@@ -93,7 +97,7 @@ async function getPostSummaries(locale: string): Promise<PostSummary[]> {
       const summary = data.summary ?? "";
 
       // Translate title and summary if not English
-      if (locale !== "en") {
+      if (locale !== "en" && allowLiveTranslation) {
         const [translatedTitle, translatedSummary] = await Promise.all([
           translateText(title, locale),
           translateText(summary, locale),
@@ -122,7 +126,6 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
   const { locale } = await params;
   if (!isSupportedLocale(locale)) notFound();
 
-  const posts = await getPostSummaries(locale);
   const { appName, nav } = getIntlayer("landing-page", locale);
   const { heading } = getIntlayer("blog-page", locale);
 
@@ -133,6 +136,7 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
   } catch (e) {
     // User not logged in, that's ok
   }
+  const posts = await getPostSummaries(locale, Boolean(user));
 
   return (
     <div className="flex flex-col min-h-screen">

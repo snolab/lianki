@@ -1,11 +1,11 @@
 import { getIntlayer } from "intlayer";
-import { getLocale } from "next-intlayer/server";
+import { locale as getLocale } from "next-intlayer/server";
 import { Header } from "@/app/components/Header";
 import { authUser } from "@/app/signInEmail";
 import { ReadListClient } from "./ReadListClient";
 
 export default async function ReadPage() {
-  const locale = await getLocale();
+  const locale = getLocale;
   const { appName, nav } = getIntlayer("landing-page", locale);
 
   let user = null;

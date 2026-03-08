@@ -11,7 +11,7 @@ import RefreshHeatmapButton from "./components/RefreshHeatmapButton";
 import { ReviewHistory } from "./components/ReviewHistory";
 import UserscriptInstallButton from "./components/UserscriptInstallButton";
 import { getIntlayer } from "intlayer";
-import { getLocale } from "next-intlayer/server";
+import { locale as getLocale } from "next-intlayer/server";
 import { Header } from "@/app/components/Header";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import GuestListClient from "./components/GuestListClient";
@@ -19,7 +19,7 @@ import GuestListClient from "./components/GuestListClient";
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const locale = await getLocale();
+  const locale = getLocale;
   const { metadata } = getIntlayer("list-page", locale);
   return {
     title: metadata.title,
@@ -41,7 +41,7 @@ export default async function HomePage() {
     // Guest mode - will use IndexedDB
   }
 
-  const locale = await getLocale();
+  const locale = getLocale;
   const { appName, nav } = getIntlayer("landing-page", locale);
   const { nextCard, totalCards, dueCards, learningActivity } = getIntlayer("list-page", locale);
 
@@ -169,10 +169,7 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
   }
 }
 function dueMs(due: Date) {
-  return ems(+due - +new Date(), {
-    shortFormat: true,
-    roundUp: true,
-  });
+  return ems(+due - +new Date(), "short") ?? "0s";
 }
 
 function GuestView({ locale, appName, nav }: { locale: string; appName: string; nav: any }) {

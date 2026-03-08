@@ -1,4 +1,4 @@
-import { getLocale } from "next-intlayer/server";
+import { locale as getLocale } from "next-intlayer/server";
 import { redirect as nextRedirect } from "next/navigation";
 
 /**
@@ -33,6 +33,6 @@ export async function localeRedirect(path: string, addLocale = true): Promise<ne
   }
 
   // Get current locale and add prefix
-  const locale = await getLocale();
+  const locale = getLocale;
   return nextRedirect(`/${locale}${path}`);
 }

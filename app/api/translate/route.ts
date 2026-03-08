@@ -5,6 +5,9 @@ import { getRawPost } from "@/lib/blog";
 import { BLOG_LOCALES, LOCALE_NAMES } from "@/lib/constants";
 import KeyvGitHub from "keyv-github";
 import { Octokit } from "octokit";
+import { authEmailOrToken } from "@/lib/authEmailOrToken";
+import { checkRateLimit } from "@/lib/rateLimit";
+import { logSanitizedError } from "@/lib/safeError";
 
 export const maxDuration = 60;
 
@@ -13,6 +16,8 @@ const MAX_SOURCE_LENGTH = 50_000;
 
 const LOCK_TIMEOUT_MS = 120_000; // 2 minutes - if lock is older, assume stale
 const PARTIAL_SAVE_INTERVAL = 1000; // Save every 1000 characters
+const RATE_LIMIT_WINDOW_MS = 10 * 60_000; // 10 minutes
+const RATE_LIMIT_MAX_REQUESTS = 8;
 
 interface CacheMetadata {
   status: "in-progress" | "complete";
@@ -54,6 +59,24 @@ export async function GET(request: NextRequest) {
   // Validate slug format (alphanumeric, hyphens only)
   if (!/^[a-z0-9-]+$/.test(slug)) {
     return new Response("Invalid slug", { status: 400 });
+  }
+
+  const requesterEmail = await authEmailOrToken(request);
+  if (!requesterEmail) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const rateLimit = checkRateLimit(`blog-translate:${requesterEmail}`, {
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    max: RATE_LIMIT_MAX_REQUESTS,
+  });
+  if (!rateLimit.allowed) {
+    return new Response("Too Many Requests", {
+      status: 429,
+      headers: {
+        "Retry-After": String(Math.ceil(rateLimit.retryAfterMs / 1000)),
+      },
+    });
   }
 
   if (!process.env.OPENAI_API_KEY) {
@@ -107,7 +130,7 @@ export async function GET(request: NextRequest) {
       }
       console.log(`[gh-cache] ✗ Miss: ${cacheKey}`);
     } catch (error) {
-      console.error(`[gh-cache] Error:`, error);
+      logSanitizedError("translate.gh-cache.get", error, { cacheKey });
     }
 
     // Check if translation is already in progress
@@ -132,7 +155,7 @@ export async function GET(request: NextRequest) {
         }
       }
     } catch (error) {
-      console.error(`[lock] Error checking lock:`, error);
+      logSanitizedError("translate.lock.check", error, { lockKey });
     }
 
     // Set lock before starting translation
@@ -144,7 +167,7 @@ export async function GET(request: NextRequest) {
       await ghCache.set(lockKey, JSON.stringify(metadata));
       console.log(`[lock] ✓ Acquired lock for ${cacheKey}`);
     } catch (error) {
-      console.error(`[lock] ✗ Error setting lock:`, error);
+      logSanitizedError("translate.lock.set", error, { lockKey });
     }
   }
 
@@ -187,7 +210,7 @@ export async function GET(request: NextRequest) {
               lastSaveLength = fullText.length;
               console.log(`[gh-cache] ✓ Saved partial (${fullText.length} chars): ${cacheKey}`);
             } catch (error) {
-              console.error(`[gh-cache] ✗ Error saving partial:`, error);
+              logSanitizedError("translate.gh-cache.partial-save", error, { cacheKey });
             }
           }
         }
@@ -209,11 +232,11 @@ export async function GET(request: NextRequest) {
             await ghCache.delete(lockKey);
             console.log(`[lock] ✓ Released lock for ${cacheKey}`);
           } catch (error) {
-            console.error(`[gh-cache] ✗ Error saving final:`, error);
+            logSanitizedError("translate.gh-cache.final-save", error, { cacheKey });
           }
         }
       } catch (error) {
-        console.error(`[stream] ✗ Error during streaming:`, error);
+        logSanitizedError("translate.stream", error, { cacheKey });
 
         // Clean up lock on error
         if (ghCache) {
@@ -221,7 +244,7 @@ export async function GET(request: NextRequest) {
             await ghCache.delete(lockKey);
             console.log(`[lock] ✓ Released lock after error`);
           } catch (lockError) {
-            console.error(`[lock] ✗ Error releasing lock:`, lockError);
+            logSanitizedError("translate.lock.release-after-error", lockError, { lockKey });
           }
         }
         throw error;
@@ -243,7 +266,7 @@ export async function GET(request: NextRequest) {
             return ghCache.delete(lockKey);
           })
           .then(() => console.log(`[lock] ✓ Released lock after disconnect`))
-          .catch((error) => console.error(`[gh-cache] ✗ Error in cancel:`, error));
+          .catch((error) => logSanitizedError("translate.cancel", error, { cacheKey, lockKey }));
       }
     },
   });

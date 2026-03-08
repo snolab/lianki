@@ -32,7 +32,7 @@ Run this command to automatically translate missing keys:
 
 ```bash
 # Set your OpenAI API key
-export OPENAI_API_KEY=sk-your-key-here
+export OPENAI_API_KEY=your-openai-key-here
 
 # Generate translations for all missing keys
 npx intlayer fill

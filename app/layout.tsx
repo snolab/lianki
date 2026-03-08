@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { IntlayerServerProvider } from "next-intlayer/server";
-import { getLocale } from "next-intlayer/server";
+import { locale as getLocale } from "next-intlayer/server";
 
 export const metadata: Metadata = {
   title: "Lianki",
@@ -13,7 +13,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const locale = await getLocale();
+  const locale = getLocale;
   return (
     <html lang={locale}>
       <body>

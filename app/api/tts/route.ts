@@ -5,8 +5,12 @@ import crypto from "crypto";
 import { getTTSVoiceCacheBucket } from "@/app/[locale]/read/getReadMaterialsCollection";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
+import { checkRateLimit } from "@/lib/rateLimit";
+import { logSanitizedError } from "@/lib/safeError";
 
 const MAX_TEXT_LENGTH = 4096; // OpenAI's limit
+const RATE_LIMIT_WINDOW_MS = 10 * 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 60;
 
 const ALLOWED_VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"] as const;
 type Voice = (typeof ALLOWED_VOICES)[number];
@@ -19,6 +23,23 @@ export const POST = async (req: NextRequest) => {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const requester = session.user.email ?? session.user.id;
+
+  const rateLimit = checkRateLimit(`tts:${requester}`, {
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    max: RATE_LIMIT_MAX_REQUESTS,
+  });
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please retry later." },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(Math.ceil(rateLimit.retryAfterMs / 1000)),
+        },
+      },
+    );
   }
 
   let body: any;
@@ -58,7 +79,7 @@ export const POST = async (req: NextRequest) => {
     );
   }
 
-  console.log("TTS request:", { text: text.substring(0, 50), voice, model });
+  console.log("TTS request:", { textLength: text.length, voice, model });
 
   // Generate cache key based on text, voice, and model
   const cacheKey = crypto.createHash("sha256").update(`${model}:${voice}:${text}`).digest("hex");
@@ -86,13 +107,16 @@ export const POST = async (req: NextRequest) => {
     // No cached file found, proceed to generate
     console.log("TTS cache miss:", cacheKey);
   } catch (err) {
-    console.error("TTS cache lookup error:", err);
+    logSanitizedError("tts.cache.lookup", err, { requester });
     // Continue to generate even if cache lookup fails
   }
 
   // Generate new audio with OpenAI
   console.log("Generating TTS with OpenAI...");
-  const openai = new OpenAI();
+  if (!process.env.OPENAI_API_KEY) {
+    return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 });
+  }
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   let response;
   try {
@@ -102,7 +126,7 @@ export const POST = async (req: NextRequest) => {
       input: text,
     });
   } catch (err) {
-    console.error("OpenAI TTS error:", err);
+    logSanitizedError("tts.openai.generate", err, { requester });
     return NextResponse.json({ error: "Failed to generate speech" }, { status: 500 });
   }
 
@@ -132,7 +156,7 @@ export const POST = async (req: NextRequest) => {
 
     console.log("TTS cached:", cacheKey);
   } catch (err) {
-    console.error("Failed to cache TTS audio:", err);
+    logSanitizedError("tts.cache.save", err, { requester, cacheKey });
     // Continue even if caching fails
   }
 

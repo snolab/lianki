@@ -20,7 +20,13 @@ export function StreamingTranslation({ locale, slug }: StreamingTranslationProps
 
         if (!response.ok) {
           const errorText = await response.text();
-          setError(`Translation failed: ${errorText}`);
+          if (response.status === 401) {
+            setError("Sign in required to generate translation");
+          } else if (response.status === 429) {
+            setError("Rate limit reached. Please retry in a few minutes.");
+          } else {
+            setError(`Translation failed: ${errorText}`);
+          }
           setIsStreaming(false);
           return;
         }

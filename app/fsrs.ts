@@ -8,7 +8,6 @@ import { join } from "path";
 import type { WithId } from "mongodb";
 // import { ObjectId } from "bson";
 import DIE from "phpdie";
-import { values } from "rambda";
 import { sflow, TextEncoderStream } from "sflow";
 import {
   type Card,
@@ -450,7 +449,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           sflow(`<script>document.title = ${JSON.stringify(doctitle)};</script>`),
 
           sflow(`<br/>`),
-          sflow(values(fsrsConfig.repeat(note.card, new Date())))
+          sflow(Object.values(fsrsConfig.repeat(note.card, new Date())))
             .map(
               (logitem, i) =>
                 `<a href="/review/${i + 1}/?${new URLSearchParams({
@@ -829,8 +828,5 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 };
 
 function dueMs(due: Date) {
-  return ems(+due - +new Date(), {
-    shortFormat: true,
-    roundUp: true,
-  });
+  return ems(+due - +new Date(), "short") ?? "0s";
 }

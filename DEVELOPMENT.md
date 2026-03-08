@@ -65,7 +65,7 @@ AUTH_GOOGLE_ID=your-google-client-id
 AUTH_GOOGLE_SECRET=your-google-client-secret
 
 # Optional - Blog Auto-Translation (AI-powered)
-OPENAI_API_KEY=sk-proj-your-openai-api-key
+OPENAI_API_KEY=your-openai-api-key
 GITHUB_INTL_TOKEN=your-github-token-for-auto-commits
 ```
 

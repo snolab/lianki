@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { authEmail } from "@/app/signInEmail";
+import { auth } from "@/auth";
+import { headers } from "next/headers";
+import { checkRateLimit } from "@/lib/rateLimit";
+import { logSanitizedError } from "@/lib/safeError";
 
 const QUESTION_TEMPLATES: Record<string, string> = {
   name: "My name is {answer}.",
@@ -25,10 +28,32 @@ const LANGUAGE_NAMES: Record<string, string> = {
 };
 
 const MAX_ANSWER_LENGTH = 200;
+const RATE_LIMIT_WINDOW_MS = 10 * 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 40;
 
 export async function POST(req: NextRequest) {
   try {
-    await authEmail(); // Require authentication
+    const session = await auth.api.getSession({ headers: await headers() });
+    const email = session?.user?.email;
+    if (!email) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
+    const rateLimit = checkRateLimit(`self-intro-translate:${email}`, {
+      windowMs: RATE_LIMIT_WINDOW_MS,
+      max: RATE_LIMIT_MAX_REQUESTS,
+    });
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please retry later." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.ceil(rateLimit.retryAfterMs / 1000)),
+          },
+        },
+      );
+    }
 
     const { answer, questionId, targetLanguage } = await req.json();
 
@@ -81,10 +106,7 @@ If the target language is the same as the input, just return it as is.`,
 
     return NextResponse.json({ translatedText });
   } catch (error) {
-    console.error("Translation error:", error);
-    if ((error as Error).message?.includes("email")) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    }
+    logSanitizedError("self-intro.translate", error);
     return NextResponse.json({ error: "Failed to translate" }, { status: 500 });
   }
 }

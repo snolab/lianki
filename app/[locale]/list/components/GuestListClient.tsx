@@ -96,10 +96,7 @@ export default function GuestListClient({ locale }: { locale: string }) {
   }
 
   function dueMs(due: Date) {
-    return ems(+due - +new Date(), {
-      shortFormat: true,
-      roundUp: true,
-    });
+    return ems(+due - +new Date(), "short") ?? "0s";
   }
 
   if (loading) {

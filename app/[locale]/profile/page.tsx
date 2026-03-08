@@ -1,14 +1,14 @@
 import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { authUser } from "@/app/signInEmail";
-import { getLocale } from "next-intlayer/server";
+import { locale as getLocale } from "next-intlayer/server";
 import { getIntlayer } from "intlayer";
 import { Header } from "@/app/components/Header";
 
 export default async function ProfilePage() {
   const user = await authUser();
   const session = await auth.api.getSession({ headers: await headers() });
-  const locale = await getLocale();
+  const locale = getLocale;
   const { appName, nav } = getIntlayer("landing-page", locale);
   const {
     heading,

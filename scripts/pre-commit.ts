@@ -27,12 +27,15 @@ function error(msg: string) {
 
 // Scan staged files for secrets (API keys, tokens)
 const SECRET_PATTERNS = [
-  /sk-proj-[A-Za-z0-9_-]{20,}/, // OpenAI key
-  /sk-[A-Za-z0-9]{40,}/, // OpenAI legacy key
+  /sk-[A-Za-z0-9_-]{20,}/, // OpenAI API key family
   /ghp_[A-Za-z0-9]{36,}/, // GitHub PAT classic
-  /github_pat_[A-Za-z0-9_]{10,}/, // GitHub PAT fine-grained
+  /github_pat_[A-Za-z0-9_]{20,}/, // GitHub PAT fine-grained
+  /vlt_[A-Za-z0-9]{20,}/, // Vercel token
+  /npm_[A-Za-z0-9]{36}/, // npm access token
   /AKIA[0-9A-Z]{16}/, // AWS access key
   /AIza[0-9A-Za-z\-_]{35}/, // Google API key
+  /xox[baprs]-[A-Za-z0-9-]{10,}/, // Slack tokens
+  /-----BEGIN (?:RSA|OPENSSH|EC|DSA) PRIVATE KEY-----/, // PEM private key
 ];
 
 const stagedForSecretScan = exec("git diff --cached --name-only --diff-filter=ACM").trim();

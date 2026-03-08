@@ -1,14 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { authEmail } from "@/app/signInEmail";
+import { auth } from "@/auth";
+import { headers } from "next/headers";
+import { checkRateLimit } from "@/lib/rateLimit";
+import { logSanitizedError } from "@/lib/safeError";
 
 const MAX_TEXT_LENGTH = 500;
 const ALLOWED_VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"] as const;
 type Voice = (typeof ALLOWED_VOICES)[number];
+const RATE_LIMIT_WINDOW_MS = 10 * 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 40;
 
 export async function POST(req: NextRequest) {
   try {
-    await authEmail(); // Require authentication
+    const session = await auth.api.getSession({ headers: await headers() });
+    const email = session?.user?.email;
+    if (!email) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
+    const rateLimit = checkRateLimit(`self-intro-tts:${email}`, {
+      windowMs: RATE_LIMIT_WINDOW_MS,
+      max: RATE_LIMIT_MAX_REQUESTS,
+    });
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please retry later." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.ceil(rateLimit.retryAfterMs / 1000)),
+          },
+        },
+      );
+    }
 
     const { text, voice = "nova", speed = 1.0 } = await req.json();
 
@@ -52,10 +77,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("TTS error:", error);
-    if ((error as Error).message?.includes("email")) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    }
+    logSanitizedError("self-intro.tts", error);
     return NextResponse.json({ error: "Failed to generate audio" }, { status: 500 });
   }
 }

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { authUser } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
-import { getLocale } from "next-intlayer/server";
+import { locale as getLocale } from "next-intlayer/server";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import { Header } from "@/app/components/Header";
 import MembershipClient from "./MembershipClient";
@@ -9,7 +9,7 @@ import MembershipClient from "./MembershipClient";
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const locale = await getLocale();
+  const locale = getLocale;
   return {
     title: "Membership - Lianki",
     description: "Manage your Lianki membership and view available features",
@@ -18,7 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function MembershipPage() {
-  const locale = await getLocale();
+  const locale = getLocale;
   const { appName, nav } = getIntlayer("landing-page", locale);
 
   // Try to get user if logged in
