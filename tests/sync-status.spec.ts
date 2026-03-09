@@ -35,7 +35,11 @@ async function readAllIDB(page: Page): Promise<Record<string, unknown>> {
       req.onerror = () => reject(req.error);
       req.onsuccess = () => {
         const db = (req as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains("keyval")) { db.close(); resolve({}); return; }
+        if (!db.objectStoreNames.contains("keyval")) {
+          db.close();
+          resolve({});
+          return;
+        }
         const tx = db.transaction("keyval", "readonly");
         const store = tx.objectStore("keyval");
         const keysReq = store.getAllKeys();
@@ -44,7 +48,10 @@ async function readAllIDB(page: Page): Promise<Record<string, unknown>> {
           for (const key of keysReq.result) {
             await new Promise<void>((res) => {
               const r = store.get(key);
-              r.onsuccess = () => { result[key as string] = r.result; res(); };
+              r.onsuccess = () => {
+                result[key as string] = r.result;
+                res();
+              };
             });
           }
           db.close();
@@ -60,58 +67,64 @@ async function seedIDB(
   page: Page,
   cards: { url: string; title: string; card: object; log?: object[]; synced?: boolean }[],
 ) {
-  await page.evaluate((cards) => {
-    return new Promise<void>((resolve, reject) => {
-      // Check current DB version first, so we can bump it to force upgrade if needed
-      const probe = indexedDB.open("lianki-keyval");
-      probe.onerror = () => reject(probe.error);
-      probe.onsuccess = () => {
-        const curVer = probe.result.version;
-        probe.result.close();
+  await page.evaluate(
+    (cards) => {
+      return new Promise<void>((resolve, reject) => {
+        // Check current DB version first, so we can bump it to force upgrade if needed
+        const probe = indexedDB.open("lianki-keyval");
+        probe.onerror = () => reject(probe.error);
+        probe.onsuccess = () => {
+          const curVer = probe.result.version;
+          probe.result.close();
 
-        // Open at current version (upgrade only fires if store is missing)
-        const req = indexedDB.open("lianki-keyval", curVer);
-        req.onupgradeneeded = (e) => {
-          const db = (e.target as IDBOpenDBRequest).result;
-          if (!db.objectStoreNames.contains("keyval")) db.createObjectStore("keyval");
+          // Open at current version (upgrade only fires if store is missing)
+          const req = indexedDB.open("lianki-keyval", curVer);
+          req.onupgradeneeded = (e) => {
+            const db = (e.target as IDBOpenDBRequest).result;
+            if (!db.objectStoreNames.contains("keyval")) db.createObjectStore("keyval");
+          };
+          req.onerror = () => reject(req.error);
+          req.onsuccess = () => {
+            const db = (req as IDBOpenDBRequest).result;
+            if (!db.objectStoreNames.contains("keyval")) {
+              db.close();
+              // Bump version to create store
+              const req2 = indexedDB.open("lianki-keyval", curVer + 1);
+              req2.onupgradeneeded = (e) => {
+                const db2 = (e.target as IDBOpenDBRequest).result;
+                if (!db2.objectStoreNames.contains("keyval")) db2.createObjectStore("keyval");
+              };
+              req2.onerror = () => reject(req2.error);
+              req2.onsuccess = () => {
+                const db2 = (req2 as IDBOpenDBRequest).result;
+                writeCards(db2, cards, resolve, reject);
+              };
+              return;
+            }
+            writeCards(db, cards, resolve, reject);
+          };
         };
-        req.onerror = () => reject(req.error);
-        req.onsuccess = () => {
-          const db = (req as IDBOpenDBRequest).result;
-          if (!db.objectStoreNames.contains("keyval")) {
+
+        function writeCards(
+          db: IDBDatabase,
+          cards: { url: string; [k: string]: unknown }[],
+          resolve: () => void,
+          reject: (e: unknown) => void,
+        ) {
+          const tx = db.transaction("keyval", "readwrite");
+          const store = tx.objectStore("keyval");
+          for (const c of cards) store.put(c, `card:${c.url}`);
+          store.put(cards.length, "meta:gm-count");
+          tx.oncomplete = () => {
             db.close();
-            // Bump version to create store
-            const req2 = indexedDB.open("lianki-keyval", curVer + 1);
-            req2.onupgradeneeded = (e) => {
-              const db2 = (e.target as IDBOpenDBRequest).result;
-              if (!db2.objectStoreNames.contains("keyval")) db2.createObjectStore("keyval");
-            };
-            req2.onerror = () => reject(req2.error);
-            req2.onsuccess = () => {
-              const db2 = (req2 as IDBOpenDBRequest).result;
-              writeCards(db2, cards, resolve, reject);
-            };
-            return;
-          }
-          writeCards(db, cards, resolve, reject);
-        };
-      };
-
-      function writeCards(
-        db: IDBDatabase,
-        cards: { url: string; [k: string]: unknown }[],
-        resolve: () => void,
-        reject: (e: unknown) => void,
-      ) {
-        const tx = db.transaction("keyval", "readwrite");
-        const store = tx.objectStore("keyval");
-        for (const c of cards) store.put(c, `card:${c.url}`);
-        store.put(cards.length, "meta:gm-count");
-        tx.oncomplete = () => { db.close(); resolve(); };
-        tx.onerror = () => reject(tx.error);
-      }
-    });
-  }, cards as Parameters<typeof seedIDB>[1]);
+            resolve();
+          };
+          tx.onerror = () => reject(tx.error);
+        }
+      });
+    },
+    cards as Parameters<typeof seedIDB>[1],
+  );
 }
 
 /** The core syncToSiteDB logic extracted for in-page evaluation (mirrors the userscript) */
@@ -164,7 +177,16 @@ function makeGMCard(url: string, title: string, dirty = true) {
       _id: `local:${Math.random().toString(36).slice(2)}`,
       url,
       title,
-      card: { due, stability: 1, difficulty: 5, elapsed_days: 0, scheduled_days: 1, reps: 0, lapses: 0, state: 0 },
+      card: {
+        due,
+        stability: 1,
+        difficulty: 5,
+        elapsed_days: 0,
+        scheduled_days: 1,
+        reps: 0,
+        lapses: 0,
+        state: 0,
+      },
       log: [],
     },
     hlc: "test-hlc",
@@ -182,7 +204,13 @@ function hashUrl(url: string): string {
 /** Seed window.__gm with N cards and return the URLs */
 async function seedGM(page: Page, cards: { url: string; title: string; dirty?: boolean }[]) {
   await page.evaluate(
-    ({ cards, hashFn }: { cards: { url: string; title: string; dirty?: boolean }[]; hashFn: string }) => {
+    ({
+      cards,
+      hashFn,
+    }: {
+      cards: { url: string; title: string; dirty?: boolean }[];
+      hashFn: string;
+    }) => {
       const hash: (u: string) => string = new Function(`return (${hashFn})`)();
       const CARD_PREFIX = "lk:c:";
       const INDEX_KEY = "lk:card-index";
@@ -190,9 +218,27 @@ async function seedGM(page: Page, cards: { url: string; title: string; dirty?: b
       for (const c of cards) {
         const due = new Date(Date.now() + 86_400_000).toISOString();
         const h = hash(c.url);
-        const entry = { _url: c.url, note: { _id: "local:x", url: c.url, title: c.title,
-          card: { due, stability: 1, difficulty: 5, elapsed_days: 0, scheduled_days: 1, reps: 0, lapses: 0, state: 0 },
-          log: [] }, hlc: "hlc", dirty: c.dirty !== false };
+        const entry = {
+          _url: c.url,
+          note: {
+            _id: "local:x",
+            url: c.url,
+            title: c.title,
+            card: {
+              due,
+              stability: 1,
+              difficulty: 5,
+              elapsed_days: 0,
+              scheduled_days: 1,
+              reps: 0,
+              lapses: 0,
+              state: 0,
+            },
+            log: [],
+          },
+          hlc: "hlc",
+          dirty: c.dirty !== false,
+        };
         (window as any).GM_setValue(CARD_PREFIX + h, JSON.stringify(entry));
         index.push({ url: c.url, due, hash: h });
       }
@@ -239,7 +285,9 @@ test.describe("syncToSiteDB: GM storage → IndexedDB", () => {
     await page.addInitScript(() => {
       (window as any).__gm = {} as Record<string, string>;
       (window as any).GM_getValue = (k: string, d: unknown = "") => (window as any).__gm[k] ?? d;
-      (window as any).GM_setValue = (k: string, v: unknown) => { (window as any).__gm[k] = v; };
+      (window as any).GM_setValue = (k: string, v: unknown) => {
+        (window as any).__gm[k] = v;
+      };
     });
     // about:blank blocks IDB — use a real https origin for IndexedDB access
     await page.goto(`${BASE}/en/`);
@@ -249,7 +297,11 @@ test.describe("syncToSiteDB: GM storage → IndexedDB", () => {
     await setupGMPage(page);
     await seedGM(page, [{ url: "https://example.com/page-a", title: "Page A" }]);
 
-    const written = await page.evaluate(new Function(`return async () => { ${SYNC_FN}; return runSyncToSiteDB(); }`)() as () => Promise<number>);
+    const written = await page.evaluate(
+      new Function(
+        `return async () => { ${SYNC_FN}; return runSyncToSiteDB(); }`,
+      )() as () => Promise<number>,
+    );
     expect(written).toBe(1);
 
     const idb = await readAllIDB(page);
@@ -266,7 +318,11 @@ test.describe("syncToSiteDB: GM storage → IndexedDB", () => {
       { url: "https://example.com/dirty", title: "Dirty", dirty: true },
     ]);
 
-    await page.evaluate(new Function(`return async () => { ${SYNC_FN}; return runSyncToSiteDB(); }`)() as () => Promise<number>);
+    await page.evaluate(
+      new Function(
+        `return async () => { ${SYNC_FN}; return runSyncToSiteDB(); }`,
+      )() as () => Promise<number>,
+    );
 
     const idb = await readAllIDB(page);
     expect((idb["card:https://example.com/clean"] as any).synced).toBe(true);
@@ -281,7 +337,11 @@ test.describe("syncToSiteDB: GM storage → IndexedDB", () => {
       { url: "https://a.com/3", title: "Three" },
     ]);
 
-    await page.evaluate(new Function(`return async () => { ${SYNC_FN}; return runSyncToSiteDB(); }`)() as () => Promise<number>);
+    await page.evaluate(
+      new Function(
+        `return async () => { ${SYNC_FN}; return runSyncToSiteDB(); }`,
+      )() as () => Promise<number>,
+    );
 
     const idb = await readAllIDB(page);
     expect(idb["meta:gm-count"]).toBe(3);
@@ -291,7 +351,11 @@ test.describe("syncToSiteDB: GM storage → IndexedDB", () => {
     await setupGMPage(page);
     // No seedGM call → empty index
 
-    const written = await page.evaluate(new Function(`return async () => { ${SYNC_FN}; return runSyncToSiteDB(); }`)() as () => Promise<number>);
+    const written = await page.evaluate(
+      new Function(
+        `return async () => { ${SYNC_FN}; return runSyncToSiteDB(); }`,
+      )() as () => Promise<number>,
+    );
     expect(written).toBe(0);
 
     const idb = await readAllIDB(page);
@@ -303,7 +367,9 @@ test.describe("syncToSiteDB: GM storage → IndexedDB", () => {
     await setupGMPage(page);
     await seedGM(page, [{ url: "https://example.com/idempotent", title: "Old Title" }]);
 
-    const syncFn = new Function(`return async () => { ${SYNC_FN}; return runSyncToSiteDB(); }`)() as () => Promise<number>;
+    const syncFn = new Function(
+      `return async () => { ${SYNC_FN}; return runSyncToSiteDB(); }`,
+    )() as () => Promise<number>;
 
     // First sync
     await page.evaluate(syncFn);
@@ -388,7 +454,9 @@ test.describe("SyncStatusBanner reads counts from pre-seeded IDB", () => {
     await page.addInitScript(() => {
       (window as any).__gm = {} as Record<string, string>;
       (window as any).GM_getValue = (k: string, d: unknown = "") => (window as any).__gm[k] ?? d;
-      (window as any).GM_setValue = (k: string, v: unknown) => { (window as any).__gm[k] = v; };
+      (window as any).GM_setValue = (k: string, v: unknown) => {
+        (window as any).__gm[k] = v;
+      };
     });
     await page.goto(`${BASE}/en/`);
 
@@ -400,7 +468,9 @@ test.describe("SyncStatusBanner reads counts from pre-seeded IDB", () => {
 
     // Run syncToSiteDB to populate IDB
     const written = await page.evaluate(
-      new Function(`return async () => { ${SYNC_FN}; return runSyncToSiteDB(); }`)() as () => Promise<number>,
+      new Function(
+        `return async () => { ${SYNC_FN}; return runSyncToSiteDB(); }`,
+      )() as () => Promise<number>,
     );
     expect(written).toBe(2);
 

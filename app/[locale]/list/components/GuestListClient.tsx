@@ -120,7 +120,7 @@ export default function GuestListClient({ locale }: { locale: string }) {
               Lianki userscript
             </a>{" "}
             to use offline mode, or{" "}
-            <a href="/sign-in" className="underline font-semibold">
+            <a href={`/${locale}/sign-in`} className="underline font-semibold">
               sign in
             </a>{" "}
             to sync across devices.
@@ -143,7 +143,7 @@ export default function GuestListClient({ locale }: { locale: string }) {
             </h3>
             <p className="text-blue-700 dark:text-blue-300 text-sm">
               Your cards are stored locally.{" "}
-              <a href="/sign-in" className="underline font-semibold">
+              <a href={`/${locale}/sign-in`} className="underline font-semibold">
                 Sign in
               </a>{" "}
               to sync across devices.

@@ -16,10 +16,11 @@ export async function GET() {
       trialEndsAt: membership.trialEndsAt?.toISOString(),
       proEndsAt: membership.proEndsAt?.toISOString(),
     });
-  } catch (error: any) {
-    if (error.message === "User not found") {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === "User not found") {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

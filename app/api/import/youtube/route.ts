@@ -110,11 +110,9 @@ export async function POST(req: NextRequest) {
       total: videoUrls.length,
       message: `Successfully imported ${successful} videos from YouTube playlist`,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("YouTube import error:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to import YouTube playlist" },
-      { status: 500 },
-    );
+    const message = error instanceof Error ? error.message : "Failed to import YouTube playlist";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

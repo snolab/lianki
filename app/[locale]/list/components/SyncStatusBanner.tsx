@@ -28,7 +28,7 @@ export function SyncStatusBanner({ mongoCount }: Props) {
         const { openDB } = await import("idb");
         const db = await openDB("lianki-keyval", 1, {
           upgrade(db) {
-            db.createObjectStore("keyval");
+            if (!db.objectStoreNames.contains("keyval")) db.createObjectStore("keyval");
           },
         });
         const tx = db.transaction("keyval", "readonly");
@@ -36,7 +36,9 @@ export function SyncStatusBanner({ mongoCount }: Props) {
         const [allKeys, gm] = await Promise.all([store.getAllKeys(), store.get("meta:gm-count")]);
         await tx.done;
         db.close();
-        setIdbCount(allKeys.filter((k) => typeof k === "string" && (k as string).startsWith("card:")).length);
+        setIdbCount(
+          allKeys.filter((k) => typeof k === "string" && (k as string).startsWith("card:")).length,
+        );
         setGmCount(typeof gm === "number" ? gm : null);
       } catch {
         setIdbCount(0);

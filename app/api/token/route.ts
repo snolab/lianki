@@ -31,6 +31,7 @@ export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return Response.json({ error: "missing id" }, { status: 400 });
+  if (!ObjectId.isValid(id)) return Response.json({ error: "invalid id" }, { status: 400 });
   const col = getApiTokensCollection();
   await col.deleteOne({ _id: new ObjectId(id), email });
   return Response.json({ ok: true });

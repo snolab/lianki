@@ -7,6 +7,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Name and email are required" }, { status: 400 });
   }
 
+  const MAX_LEN = 2000;
+  if (
+    String(name).length > MAX_LEN ||
+    String(email).length > MAX_LEN ||
+    String(phone || "").length > MAX_LEN ||
+    String(message || "").length > MAX_LEN
+  ) {
+    return NextResponse.json({ error: "Input too long" }, { status: 400 });
+  }
+
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
   if (!webhookUrl) {
     return NextResponse.json({ error: "Webhook not configured" }, { status: 500 });
