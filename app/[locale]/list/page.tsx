@@ -121,6 +121,7 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
     </div>
   );
   async function HeatmapSection() {
+    const email = await authEmail();
     const heatmapData = await getCachedHeatmapData(email);
 
     const oneYearAgo = new Date();
@@ -130,6 +131,8 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
     return <ActivityHeatmap data={heatmapData} startDate={oneYearAgo} endDate={new Date()} />;
   }
   async function Cards({ page = 0, size = 100 }) {
+    const email = await authEmail();
+    const FSRSNotes = getFSRSNotesCollection(email);
     return (
       <>
         <Suspense>
