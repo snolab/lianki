@@ -103,7 +103,6 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
               </Suspense>
             </p>
           </div>
-          {/* Temporarily disabled for debugging */}
           <section className="my-8">
             <div className="flex items-center mb-4">
               <h2 className="text-xl font-semibold">{learningActivity}</h2>
@@ -112,7 +111,9 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
             <div className="h-32 bg-gray-100 dark:bg-gray-800 rounded-md" />
           </section>
           <ul className="space-y-2 overflow-x-hidden">
-            <li className="text-gray-500">Loading cards...</li>
+            <Suspense>
+              <Cards />
+            </Suspense>
           </ul>
         </div>
       </main>
