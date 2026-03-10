@@ -91,11 +91,16 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
           </div>
           <div className="grid grid-cols-2 gap-4 mb-6">
             <p className="text-lg">
-              {totalCards} <Suspense>{FSRSNotes.countDocuments({})}</Suspense>
+              {totalCards}{" "}
+              <Suspense>
+                <TotalCount email={email} />
+              </Suspense>
             </p>
             <p className="text-lg">
               {dueCards}{" "}
-              <Suspense>{FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })}</Suspense>
+              <Suspense>
+                <DueCount email={email} />
+              </Suspense>
             </p>
           </div>
           <section className="my-8">
@@ -133,48 +138,49 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
   async function Cards({ page = 0, size = 100 }) {
     const email = await authEmail();
     const FSRSNotes = getFSRSNotesCollection(email);
+    const list = await sflow(
+      FSRSNotes.find({}, { sort: { "card.due": 1 } })
+        .skip(page * size)
+        .limit(size),
+    )
+      .map((note) => {
+        const due = dueMs(note.card.due);
+        const title = note.title;
+        const url = note.url;
+        const logs = note.log || [];
+        return (
+          <li key={note._id.toString()} className="break-words overflow-hidden">
+            {due} <ReviewHistory logs={logs} />{" "}
+            <a href={url} className="break-all">
+              {title || url}
+            </a>
+            <DeleteButton url={url} title={title} />
+          </li>
+        );
+      })
+      .toArray();
+
+    if (!list.length) return null;
     return (
       <>
+        {list}
         <Suspense>
-          {(async function () {
-            // "use server";
-            return sflow(
-              FSRSNotes.find({}, { sort: { "card.due": 1 } })
-                .skip(page * size)
-                .limit(size),
-            )
-              .map((note) => {
-                const due = dueMs(note.card.due);
-                const title = note.title;
-                const url = note.url;
-                const logs = note.log || [];
-                return (
-                  <li key={note._id.toString()} className="break-words overflow-hidden">
-                    {due} <ReviewHistory logs={logs} />{" "}
-                    <a href={url} className="break-all">
-                      {title || url}
-                    </a>
-                    <DeleteButton url={url} title={title} />
-                  </li>
-                );
-              })
-              .toArray();
-          })().then((list) => {
-            if (!list.length) return <></>;
-            return (
-              <>
-                {list}
-                <Suspense>
-                  <Cards page={page + 1} />
-                </Suspense>
-              </>
-            );
-          })}
+          <Cards page={page + 1} />
         </Suspense>
       </>
     );
   }
 }
+async function TotalCount({ email }: { email: string }) {
+  const FSRSNotes = getFSRSNotesCollection(email);
+  return <>{await FSRSNotes.countDocuments({})}</>;
+}
+
+async function DueCount({ email }: { email: string }) {
+  const FSRSNotes = getFSRSNotesCollection(email);
+  return <>{await FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })}</>;
+}
+
 async function LoggedInSyncStatus({ email }: { email: string }) {
   try {
     const FSRSNotes = getFSRSNotesCollection(email);
