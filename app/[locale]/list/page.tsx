@@ -108,7 +108,13 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
               <h2 className="text-xl font-semibold">{learningActivity}</h2>
               <RefreshHeatmapButton />
             </div>
-            <div className="h-32 bg-gray-100 dark:bg-gray-800 rounded-md" />
+            <Suspense
+              fallback={
+                <div className="h-32 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-md" />
+              }
+            >
+              <HeatmapSection />
+            </Suspense>
           </section>
           <ul className="space-y-2 overflow-x-hidden">
             <Suspense>
@@ -141,7 +147,12 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
         const due = dueMs(note.card.due);
         const title = note.title;
         const url = note.url;
-        const logs = note.log || [];
+        // Serialize Date objects in logs — Dates are not transferable across RSC→client boundary
+        const logs = (note.log || []).map((l) => ({
+          ...l,
+          due: l.due instanceof Date ? l.due.toISOString() : l.due,
+          review: l.review instanceof Date ? l.review.toISOString() : l.review,
+        }));
         return (
           <li key={note._id.toString()} className="break-words overflow-hidden">
             {due} <ReviewHistory logs={logs} />{" "}

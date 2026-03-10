@@ -1,10 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import type { ReviewLog } from "ts-fsrs";
+
+// Serializable version of ReviewLog — dates may be Date objects or ISO strings
+type SerializedReviewLog = {
+  rating: number;
+  state: number;
+  due: Date | string;
+  review: Date | string;
+  stability: number;
+  difficulty: number;
+  elapsed_days: number;
+  last_elapsed_days: number;
+  scheduled_days: number;
+  learning_steps?: number;
+};
 
 type ReviewHistoryProps = {
-  logs?: ReviewLog[];
+  logs?: SerializedReviewLog[];
 };
 
 const RATING_COLORS = {
