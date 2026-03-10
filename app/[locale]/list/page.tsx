@@ -103,23 +103,16 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
               </Suspense>
             </p>
           </div>
+          {/* Temporarily disabled for debugging */}
           <section className="my-8">
             <div className="flex items-center mb-4">
               <h2 className="text-xl font-semibold">{learningActivity}</h2>
               <RefreshHeatmapButton />
             </div>
-            <Suspense
-              fallback={
-                <div className="h-32 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-md" />
-              }
-            >
-              <HeatmapSection />
-            </Suspense>
+            <div className="h-32 bg-gray-100 dark:bg-gray-800 rounded-md" />
           </section>
           <ul className="space-y-2 overflow-x-hidden">
-            <Suspense>
-              <Cards />
-            </Suspense>
+            <li className="text-gray-500">Loading cards...</li>
           </ul>
         </div>
       </main>
