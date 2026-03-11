@@ -45,7 +45,6 @@ export default async function HomePage({ params }: Props) {
   }
 
   const { appName, nav } = getIntlayer("landing-page", locale);
-  const { nextCard, totalCards, dueCards, learningActivity } = getIntlayer("list-page", locale);
 
   // If logged in, use server-side data
   if (email) {
@@ -57,7 +56,6 @@ export default async function HomePage({ params }: Props) {
 }
 
 async function LoggedInView({ email, user, locale }: { email: string; user: any; locale: string }) {
-  const FSRSNotes = getFSRSNotesCollection(email);
   const { appName, nav } = getIntlayer("landing-page", locale);
   const { nextCard, totalCards, dueCards, learningActivity } = getIntlayer("list-page", locale);
 
@@ -217,7 +215,7 @@ function GuestView({ locale, appName, nav }: { locale: string; appName: string; 
         <div className="max-w-6xl mx-auto">
           <div className="mb-6">
             <a
-              href="/next"
+              href={`/${locale}/next`}
               className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700"
               accessKey="1"
             >
