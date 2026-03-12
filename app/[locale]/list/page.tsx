@@ -137,12 +137,12 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
     const email = await authEmail();
     const FSRSNotes = getFSRSNotesCollection(email);
     const list = await sflow(
-      FSRSNotes.find({}, { sort: { "card.due": 1 } })
+      FSRSNotes.find({ "card.due": { $exists: true } }, { sort: { "card.due": 1 } })
         .skip(page * size)
         .limit(size),
     )
       .map((note) => {
-        const due = dueMs(note.card.due);
+        const due = note.card?.due ? dueMs(note.card.due) : "?";
         const title = note.title;
         const url = note.url;
         // Serialize Date objects in logs — Dates are not transferable across RSC→client boundary
