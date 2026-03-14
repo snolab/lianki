@@ -16,7 +16,8 @@
     "test:prod": "LIANKI_URL=https://www.lianki.com playwright test",
     "test:e2e": "node tests/e2e-offline-sync.spec.mjs",
     "test:e2e:prod": "LIANKI_URL=https://www.lianki.com node tests/e2e-offline-sync.spec.mjs",
-    "test:e2e:preview": "LIANKI_URL=https://lianki-git-sno-sync-snomiao.vercel.app node tests/e2e-offline-sync.spec.mjs"
+    "test:e2e:preview": "LIANKI_URL=https://lianki-git-sno-sync-snomiao.vercel.app node tests/e2e-offline-sync.spec.mjs",
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.41",
@@ -50,6 +51,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
+    "@secretlint/secretlint-rule-preset-recommend": "^11.3.1",
     "@types/node": "^25.3.5",
     "@types/nodemailer": "^7.0.11",
     "@types/react": "^19.2.14",
@@ -62,7 +64,9 @@
     "playwright": "^1.58.2",
     "postcss": "^8.5.8",
     "postcss-load-config": "^6.0.1",
+    "secretlint": "^11.3.1",
     "tailwindcss": "^4.2.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
   }
 }
