@@ -176,18 +176,10 @@ vercel logs https://www.lianki.com
 
 ### Development Process
 
-**Before making changes:**
-
-1. Read files before editing (never edit blindly)
-2. Check for existing implementations (Glob/Grep)
-3. Explore with Task tool for complex searches
-4. Test build locally: `bun run build`
-
 **When committing:**
 
-1. Test build first: `bun run build`
-2. **NEVER use `--no-verify`** — the pre-commit hook syncs `lianki.meta.js`, checks for secrets, and runs lint. Bypassing it causes drift and broken auto-updates.
-3. If lint fails, fix the lint errors first, then commit.
+1. **NEVER use `--no-verify`** — the pre-commit hook syncs `lianki.meta.js`, checks for secrets, runs lint, and builds. Bypassing it causes drift and broken auto-updates.
+2. If lint/build fails, fix the errors first, then commit.
 4. Include descriptive commit message with:
    - What changed
    - Why it changed

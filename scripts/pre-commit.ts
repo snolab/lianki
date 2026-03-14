@@ -68,6 +68,13 @@ try {
   error("Linting or type checking failed");
 }
 
+// Run build to catch type/compile errors before commit
+try {
+  exec("bun run build");
+} catch (err) {
+  error("Build failed — fix errors before committing");
+}
+
 // Check if lianki.user.js has staged changes
 const stagedFiles = exec("git diff --cached --name-only").trim();
 if (!stagedFiles.includes("public/lianki.user.js")) {
