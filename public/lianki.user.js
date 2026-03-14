@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.3
+// @version     2.21.4
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -2239,6 +2239,27 @@ function main() {
       msgDiv.textContent = message;
       dialog.appendChild(msgDiv);
     }
+
+    // Sync status indicator (offline mode)
+    if (offlineReady) {
+      const indicator = document.createElement("div");
+      Object.assign(indicator.style, {
+        position: "absolute",
+        top: "8px",
+        right: "8px",
+        fontSize: "11px",
+        opacity: "0.6",
+        display: "flex",
+        alignItems: "center",
+        gap: "4px",
+      });
+      const queue = queueStorage.getQueue();
+      if (!navigator.onLine) indicator.textContent = "📴 Offline";
+      else if (syncInProgress) indicator.textContent = "🔄 Syncing...";
+      else if (queue.length > 0) indicator.textContent = `⏳ ${queue.length}`;
+      else indicator.textContent = "✓";
+      dialog.appendChild(indicator);
+    }
   }
 
   // ── Open / Close ───────────────────────────────────────────────────────────
@@ -3156,44 +3177,6 @@ function main() {
       console.error("[Lianki] Failed to prefetch next cached card:", err);
     }
   }
-
-  // ── Render Sync Status ───────────────────────────────────────────────────────
-  const _originalRenderDialog = renderDialog;
-  renderDialog = function renderDialogWithSync() {
-    _originalRenderDialog();
-
-    // Add sync status indicator
-    if (dialog && offlineReady) {
-      const indicator = document.createElement("div");
-      Object.assign(indicator.style, {
-        position: "absolute",
-        top: "8px",
-        right: "8px",
-        fontSize: "11px",
-        opacity: "0.6",
-        display: "flex",
-        alignItems: "center",
-        gap: "4px",
-      });
-
-      (() => {
-        const queue = queueStorage.getQueue();
-        const queueCount = queue.length;
-
-        if (!navigator.onLine) {
-          indicator.textContent = "📴 Offline";
-        } else if (syncInProgress) {
-          indicator.textContent = "🔄 Syncing...";
-        } else if (queueCount > 0) {
-          indicator.textContent = `⏳ ${queueCount}`;
-        } else {
-          indicator.textContent = "✓";
-        }
-
-        dialog.appendChild(indicator);
-      })();
-    }
-  };
 
   // ── Initialize on startup ────────────────────────────────────────────────────
   // GM_setValue is synchronous — call directly after api() is defined

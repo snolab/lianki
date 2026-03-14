@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.3
+// @version     2.21.4
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -18,7 +18,5 @@
 // @connect     beta.lianki.com
 // ==/UserScript==
 
-// This is a metadata-only file for Tampermonkey/Violentmonkey update checks.
-// See lianki.user.js for the full implementation.
-
-void 0; // Meta file - no executable code needed
+// Metadata-only file for Tampermonkey/Violentmonkey update checks.
+void 0;
