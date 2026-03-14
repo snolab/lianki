@@ -118,6 +118,39 @@ curl -s https://www.lianki.com/lianki.user.js | grep '@version'
 3. Test build with `bun run build`
 4. Push fix and verify deployment succeeds
 
+### QA Process — ALWAYS do this after deploying
+
+**After every deployment, QA using both remote Chrome AND Vercel logs together:**
+
+1. **Navigate in remote Chrome** to the affected page(s):
+   ```
+   browser_navigate → https://www.lianki.com/<path>
+   browser_snapshot → check for errors / error boundaries
+   ```
+
+2. **Stream Vercel logs in background** while triggering requests:
+   ```bash
+   vercel logs https://www.lianki.com 2>&1 | head -80
+   # Run in background so Chrome can trigger requests simultaneously
+   ```
+
+3. **Correlate digest → real error**: Production Next.js hides error messages — only a digest is shown in the UI. The real error message appears in Vercel runtime logs. Match the digest in the log output to confirm the root cause.
+
+4. **If still failing after a fix**: The digest will change between deployments if the error changed. A repeated digest means the same error persists (not a CDN issue — deploy is live).
+
+**Example QA flow:**
+```
+browser_navigate /ja/list
+→ sees "Digest: 2183905591"
+
+vercel logs https://www.lianki.com
+→ "[Lianki] Cards error: TypeError: Expected a positive number"
+→ digest: '2183905591'  ← confirms match
+
+→ fix dueMs() to handle negative diff
+→ redeploy → browser_navigate again → page loads ✅
+```
+
 ## Claude Working Habits
 
 ### Task Management
