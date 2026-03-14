@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.2
+// @version     2.21.3
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1656,7 +1656,7 @@ function main() {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const btn = (bg, extra = "") =>
-    `all:initial;display:inline-block;box-sizing:border-box;background:${bg};color:#eee;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;font-family:system-ui,sans-serif;min-width:60px;line-height:1.5;text-align:center;${extra}`;
+    `all:initial;display:inline-block;box-sizing:border-box;background:${bg};color:${bg === "transparent" ? "var(--lk-fg)" : "#eee"};border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;font-family:system-ui,sans-serif;min-width:60px;line-height:1.5;text-align:center;${extra}`;
 
   // Prefetch next page for faster navigation
   function prefetchNextPage(pageUrl) {
@@ -1936,6 +1936,28 @@ function main() {
       * { all: initial; box-sizing: border-box; }
       *:before, *:after { all: initial; box-sizing: border-box; }
       style { display: none !important; }
+      :host {
+        --lk-bg: #1e1e1e;
+        --lk-fg: #eeeeee;
+        --lk-shadow: 0 8px 32px rgba(0,0,0,0.6);
+        --lk-input-bg: #222222;
+        --lk-input-fg: #dddddd;
+        --lk-input-border: #444444;
+        --lk-muted: #aaaaaa;
+        --lk-backdrop: rgba(0,0,0,0.75);
+      }
+      @media (prefers-color-scheme: light) {
+        :host {
+          --lk-bg: #ffffff;
+          --lk-fg: #111111;
+          --lk-shadow: 0 8px 32px rgba(0,0,0,0.15);
+          --lk-input-bg: #f0f0f0;
+          --lk-input-fg: #333333;
+          --lk-input-border: #cccccc;
+          --lk-muted: #666666;
+          --lk-backdrop: rgba(0,0,0,0.5);
+        }
+      }
     `;
     shadow.appendChild(styleReset);
 
@@ -1944,7 +1966,7 @@ function main() {
       all: "initial",
       position: "fixed",
       inset: "0",
-      background: "rgba(0,0,0,0.75)",
+      background: "var(--lk-backdrop)",
       zIndex: "2147483645",
     });
     backdrop.addEventListener("click", closeDialog);
@@ -1958,15 +1980,15 @@ function main() {
       top: "50%",
       left: "50%",
       transform: "translate(-50%,-50%)",
-      background: "#1e1e1e",
-      color: "#eee",
+      background: "var(--lk-bg)",
+      color: "var(--lk-fg)",
       borderRadius: "12px",
       padding: "20px 24px",
       minWidth: "320px",
       maxWidth: "min(480px, 90vw)",
       maxHeight: "90vh",
       overflowY: "auto",
-      boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+      boxShadow: "var(--lk-shadow)",
       fontFamily: "system-ui,sans-serif",
       fontSize: "14px",
       outline: "none",
@@ -2013,7 +2035,7 @@ function main() {
     closeBtn.textContent = "×";
     closeBtn.setAttribute(
       "style",
-      `${btn("transparent")};color:#aaa;font-size:20px;padding:0 6px;line-height:1`,
+      `${btn("transparent")};color:var(--lk-muted);font-size:20px;padding:0 6px;line-height:1`,
     );
     closeBtn.addEventListener("click", closeDialog);
     header.appendChild(titleSpan);
@@ -2039,7 +2061,7 @@ function main() {
       spinRow.appendChild(spinner);
       spinRow.appendChild(document.createTextNode("Adding note\u2026"));
       const urlDiv = document.createElement("div");
-      Object.assign(urlDiv.style, { color: "#888", fontSize: "12px", wordBreak: "break-all" });
+      Object.assign(urlDiv.style, { color: "var(--lk-muted)", fontSize: "12px", wordBreak: "break-all" });
       urlDiv.textContent = normalizeUrl(location.href);
       wrap.appendChild(spinRow);
       wrap.appendChild(urlDiv);
@@ -2165,9 +2187,9 @@ function main() {
       Object.assign(notesInput.style, {
         width: "100%",
         boxSizing: "border-box",
-        background: "#222",
-        color: "#ddd",
-        border: "1px solid #444",
+        background: "var(--lk-input-bg)",
+        color: "var(--lk-input-fg)",
+        border: "1px solid var(--lk-input-border)",
         borderRadius: "6px",
         padding: "6px 28px 6px 8px",
         fontSize: "12px",
@@ -2209,7 +2231,7 @@ function main() {
       dialog.appendChild(notesRow);
     } else if (phase === "reviewed") {
       const msgDiv = document.createElement("div");
-      Object.assign(msgDiv.style, { color: "#6f6", fontSize: "15px" });
+      Object.assign(msgDiv.style, { color: "#44bb44", fontSize: "15px" });
       msgDiv.textContent = message;
       dialog.appendChild(msgDiv);
     }
