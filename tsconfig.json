@@ -31,5 +31,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "archived", "tmp"]
+  "exclude": ["node_modules", "archived", "tmp", "src/lianki.user.ts"]
 }

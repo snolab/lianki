@@ -9,9 +9,17 @@ const DIE = (msg: string): never => {
   process.exit(1);
 };
 
-// Only runs when lianki.user.js is staged
+// Build userscript from TS source if staged
 const staged = run("git diff --cached --name-only").trim();
-if (!staged.includes("public/lianki.user.js")) process.exit(0);
+if (staged.includes("src/lianki.user.ts")) {
+  execSync("bun run build:userscript", { stdio: "inherit" });
+  run("git add public/lianki.user.js");
+  console.log("✓ userscript built from src/lianki.user.ts");
+}
+
+// Only continue if public/lianki.user.js is staged
+const stagedAfterBuild = run("git diff --cached --name-only").trim();
+if (!stagedAfterBuild.includes("public/lianki.user.js")) process.exit(0);
 
 const getVersion = (ref: string) =>
   run(`git show ${ref}`).match(/@version\s+([0-9]+\.[0-9]+\.[0-9]+)/)?.[1] ?? null;
