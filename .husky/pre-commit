@@ -1,1 +1,5 @@
+bunx lint-staged
+bun run typecheck
+bun run build
+bun run test:unit
 bun scripts/pre-commit.ts

@@ -4,26 +4,14 @@ import { writeFileSync, existsSync } from "fs";
 import { join } from "path";
 
 const run = (cmd: string) => execSync(cmd, { encoding: "utf-8" });
-const sh = (cmd: string) => execSync(cmd, { stdio: "inherit" });
 const die = (msg: string) => {
   console.error(msg);
   process.exit(1);
 };
 
-// Secrets scan + lint + format (lint-staged handles file selection and re-staging)
-sh("bunx lint-staged");
-
-// Type check, build, unit tests
-sh("bun run typecheck");
-sh("bun run build");
-sh("bun run test:unit");
-
-// Sync lianki.user.js → lianki.meta.js + pardon submodule
+// Only runs when lianki.user.js is staged
 const staged = run("git diff --cached --name-only").trim();
-if (!staged.includes("public/lianki.user.js")) {
-  console.log("✅ Pre-commit passed!");
-  process.exit(0);
-}
+if (!staged.includes("public/lianki.user.js")) process.exit(0);
 
 const getVersion = (ref: string) =>
   run(`git show ${ref}`).match(/@version\s+([0-9]+\.[0-9]+\.[0-9]+)/)?.[1] ?? null;
@@ -57,5 +45,3 @@ if (existsSync(PARDON)) {
   run(`git add ${PARDON}`);
   console.log("✓ pardon submodule synced");
 }
-
-console.log("✅ Pre-commit passed!");
