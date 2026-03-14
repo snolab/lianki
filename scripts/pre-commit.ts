@@ -10,29 +10,8 @@ const die = (msg: string) => {
   process.exit(1);
 };
 
-// Secrets scan
-const stagedFiles = run("git diff --cached --name-only --diff-filter=ACM")
-  .trim()
-  .split("\n")
-  .filter((f) => f && !/\.(png|jpg|gif|ico|woff|ttf|lock|lockb)$/.test(f));
-if (stagedFiles.length) {
-  try {
-    sh(`bunx secretlint ${stagedFiles.map((f) => `"${f}"`).join(" ")}`);
-  } catch {
-    die("🚨 Secrets detected — remove them before committing");
-  }
-}
-console.log("✓ No secrets");
-
-// Lint + format, re-stage auto-fixed files
-const stagedBeforeFix = run("git diff --cached --name-only").trim();
-sh("bun fix");
-for (const file of stagedBeforeFix.split("\n").filter(Boolean)) {
-  if (existsSync(file) && run("git diff --name-only").includes(file)) {
-    run(`git add "${file}"`);
-    console.log(`Auto-staged: ${file}`);
-  }
-}
+// Secrets scan + lint + format (lint-staged handles file selection and re-staging)
+sh("bunx lint-staged");
 
 // Type check, build, unit tests
 sh("bun run typecheck");
