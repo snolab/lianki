@@ -3,34 +3,30 @@ import { execSync } from "child_process";
 import { writeFileSync, existsSync } from "fs";
 import { join } from "path";
 
-const ROOT = process.cwd();
 const run = (cmd: string) => execSync(cmd, { encoding: "utf-8" });
+const sh = (cmd: string) => execSync(cmd, { stdio: "inherit" });
 const die = (msg: string) => {
   console.error(msg);
   process.exit(1);
 };
 
-// ── Secrets scan (secretlint) ─────────────────────────────────────────────────
+// Secrets scan
 const stagedFiles = run("git diff --cached --name-only --diff-filter=ACM")
   .trim()
   .split("\n")
   .filter((f) => f && !/\.(png|jpg|gif|ico|woff|ttf|lock|lockb)$/.test(f));
 if (stagedFiles.length) {
   try {
-    run(`bunx secretlint ${stagedFiles.map((f) => `"${f}"`).join(" ")}`);
+    sh(`bunx secretlint ${stagedFiles.map((f) => `"${f}"`).join(" ")}`);
   } catch {
     die("🚨 Secrets detected — remove them before committing");
   }
 }
 console.log("✓ No secrets");
 
-// ── Lint + format, re-stage auto-fixed files ──────────────────────────────────
+// Lint + format, re-stage auto-fixed files
 const stagedBeforeFix = run("git diff --cached --name-only").trim();
-try {
-  run("bun fix");
-} catch {
-  die("Lint/format failed");
-}
+sh("bun fix");
 for (const file of stagedBeforeFix.split("\n").filter(Boolean)) {
   if (existsSync(file) && run("git diff --name-only").includes(file)) {
     run(`git add "${file}"`);
@@ -38,28 +34,12 @@ for (const file of stagedBeforeFix.split("\n").filter(Boolean)) {
   }
 }
 
-// ── Type check ────────────────────────────────────────────────────────────────
-try {
-  run("bun run typecheck");
-} catch {
-  die("Type check failed");
-}
+// Type check, build, unit tests
+sh("bun run typecheck");
+sh("bun run build");
+sh("bun run test:unit");
 
-// ── Build ─────────────────────────────────────────────────────────────────────
-try {
-  run("bun run build");
-} catch {
-  die("Build failed");
-}
-
-// ── Unit tests ────────────────────────────────────────────────────────────────
-try {
-  run("bun run test:unit");
-} catch {
-  die("Unit tests failed");
-}
-
-// ── Sync lianki.user.js → lianki.meta.js + pardon submodule ──────────────────
+// Sync lianki.user.js → lianki.meta.js + pardon submodule
 const staged = run("git diff --cached --name-only").trim();
 if (!staged.includes("public/lianki.user.js")) {
   console.log("✅ Pre-commit passed!");
@@ -76,31 +56,15 @@ if (stagedVersion === headVersion)
 console.log(`Version: ${headVersion} → ${stagedVersion}`);
 
 const userScript = run("git show :public/lianki.user.js");
-const metaLines: string[] = [];
-let inMeta = false;
-for (const line of userScript.split("\n")) {
-  if (line === "// ==UserScript==") {
-    inMeta = true;
-    metaLines.push(line);
-    continue;
-  }
-  if (line === "// ==/UserScript==") {
-    metaLines.push(
-      line,
-      "",
-      "// Metadata-only file for Tampermonkey/Violentmonkey update checks.",
-      "void 0;",
-    );
-    inMeta = false;
-    continue;
-  }
-  if (inMeta) metaLines.push(line);
-}
-writeFileSync(join(ROOT, "public/lianki.meta.js"), metaLines.join("\n"));
+const metaBlock = userScript.match(/(\/\/ ==UserScript==[\s\S]*?\/\/ ==\/UserScript==)/)?.[1] ?? "";
+writeFileSync(
+  "public/lianki.meta.js",
+  `${metaBlock}\n\n// Metadata-only file for Tampermonkey/Violentmonkey update checks.\nvoid 0;\n`,
+);
 run("git add public/lianki.meta.js");
 console.log("✓ lianki.meta.js synced");
 
-const PARDON = join(ROOT, "packages/pardon-could-you-say-it-again");
+const PARDON = join(process.cwd(), "packages/pardon-could-you-say-it-again");
 if (existsSync(PARDON)) {
   writeFileSync(join(PARDON, "lianki.user.js"), userScript);
   try {
@@ -112,7 +76,7 @@ if (existsSync(PARDON)) {
     /* ignore submodule commit errors */
   }
   run(`git add ${PARDON}`);
-  console.log(`✓ pardon submodule synced`);
+  console.log("✓ pardon submodule synced");
 }
 
 console.log("✅ Pre-commit passed!");
