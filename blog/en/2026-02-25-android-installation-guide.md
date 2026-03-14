@@ -3,12 +3,22 @@ title: "How to Use Lianki on Android: Complete Installation Guide"
 description: "Step-by-step tutorial for installing and using Lianki userscript on Android phones and tablets with Firefox, Kiwi Browser, or other supported browsers"
 date: 2026-02-25
 author: Lianki Team
-tags: ["android", "mobile", "installation", "userscript", "tampermonkey", "violentmonkey", "firefox", "tutorial"]
+tags:
+  [
+    "android",
+    "mobile",
+    "installation",
+    "userscript",
+    "tampermonkey",
+    "violentmonkey",
+    "firefox",
+    "tutorial",
+  ]
 ---
 
 # How to Use Lianki on Android: Complete Installation Guide
 
-*Posted February 25, 2026 by [lianki.com](https://www.lianki.com)*
+_Posted February 25, 2026 by [lianki.com](https://www.lianki.com)_
 
 Want to use Lianki's spaced repetition system on your Android phone or tablet? This comprehensive guide will show you how to install and use the Lianki userscript on Android devices.
 
@@ -36,11 +46,11 @@ Using Lianki on your Android device offers several advantages:
 
 Android browsers that support userscript managers in 2026:
 
-| Browser | Userscript Manager | Status | Recommendation |
-|---------|-------------------|--------|----------------|
+| Browser                 | Userscript Manager          | Status             | Recommendation  |
+| ----------------------- | --------------------------- | ------------------ | --------------- |
 | **Firefox for Android** | Tampermonkey, Violentmonkey | ✅ Fully supported | **Recommended** |
-| **Kiwi Browser** | Violentmonkey (Legacy) | ⚠️ Limited support | Alternative |
-| **Yandex Browser** | Tampermonkey | ⚠️ Limited | Not recommended |
+| **Kiwi Browser**        | Violentmonkey (Legacy)      | ⚠️ Limited support | Alternative     |
+| **Yandex Browser**      | Tampermonkey                | ⚠️ Limited         | Not recommended |
 
 ### Why Firefox is Recommended
 
@@ -96,6 +106,7 @@ Choose either Tampermonkey or Violentmonkey:
 **Direct link**: [Tampermonkey for Firefox Android](https://addons.mozilla.org/en-US/android/addon/tampermonkey/)
 
 **Which to choose?**
+
 - **Violentmonkey**: [Faster, open-source, simpler interface](https://www.androidauthority.com/userscripts-android-firefox-violentmonkey-3610727/)
 - **Tampermonkey**: [More features, cloud sync, better for power users](https://www.ghacks.net/2023/02/19/firefox-for-android-adds-tampermonkey-support/)
 
@@ -154,6 +165,7 @@ Regardless of browser/manager combination:
 ### Installation Steps
 
 1. **Navigate to Lianki**:
+
    ```
    https://www.lianki.com/lianki.user.js
    ```
@@ -199,6 +211,7 @@ Regardless of browser/manager combination:
 ### Reviewing Cards
 
 1. **Visit Lianki Dashboard**:
+
    ```
    https://www.lianki.com/list
    ```
@@ -232,11 +245,13 @@ Regardless of browser/manager combination:
 **Problem**: Userscript manager extension not visible
 
 **Firefox Solution**:
+
 1. Tap menu (⋮) → **Add-ons**
 2. Check that Tampermonkey/Violentmonkey is **enabled**
 3. Restart Firefox if needed
 
 **Kiwi Solution**:
+
 1. Go to `chrome://extensions/`
 2. Verify **Developer mode** is enabled
 3. Check extension is enabled
@@ -246,6 +261,7 @@ Regardless of browser/manager combination:
 **Problem**: Lianki doesn't appear on pages
 
 **Solutions**:
+
 1. Open userscript manager
 2. Find "Lianki" in script list
 3. Ensure it's **enabled** (toggle switch)
@@ -257,6 +273,7 @@ Regardless of browser/manager combination:
 **Problem**: Can't find Lianki button on pages
 
 **Solutions**:
+
 1. Try scrolling - button may be below fold
 2. Use Alt+F keyboard shortcut (if available)
 3. Access through userscript manager icon
@@ -267,6 +284,7 @@ Regardless of browser/manager combination:
 **Problem**: Can't sign in to Lianki
 
 **Solutions**:
+
 1. Clear browser cache and cookies
 2. Try signing in at https://www.lianki.com first
 3. Use Email magic link instead of OAuth on mobile
@@ -277,6 +295,7 @@ Regardless of browser/manager combination:
 **Problem**: Cards don't sync between desktop and mobile
 
 **Solutions**:
+
 1. Verify you're signed in with the same account
 2. Check internet connection
 3. Force refresh on mobile: Pull down on `/list` page
@@ -289,6 +308,7 @@ Regardless of browser/manager combination:
 ### Does Lianki work offline on Android?
 
 **Partially**. Once logged in:
+
 - ✅ Installed userscript works offline
 - ✅ Can review cards already loaded
 - ❌ Cannot sync new cards without internet
@@ -301,12 +321,14 @@ Regardless of browser/manager combination:
 ### Which userscript manager is better for Android?
 
 **Violentmonkey** is recommended for most users:
+
 - Lightweight and fast
 - [Open source and transparent](https://www.androidauthority.com/userscripts-android-firefox-violentmonkey-3610727/)
 - Works well on mobile devices
 - Free with no limitations
 
 **Tampermonkey** is better if you need:
+
 - Cloud sync across devices
 - Advanced script management features
 - Editor with syntax highlighting
@@ -324,11 +346,13 @@ The Lianki floating button uses **Shadow DOM** (as of v2.19.2) to completely iso
 Userscript managers check for updates automatically:
 
 **Violentmonkey**:
+
 1. Tap extension icon
 2. Tap **Dashboard**
 3. Find Lianki → tap **⋮** → **Check for updates**
 
 **Tampermonkey**:
+
 1. Tap extension icon
 2. Tap **Dashboard**
 3. Updates check automatically (configurable interval)
@@ -338,6 +362,7 @@ Or manually reinstall from https://www.lianki.com/lianki.user.js
 ### Can I use multiple userscripts on Android?
 
 **Yes!** Both Tampermonkey and Violentmonkey support multiple userscripts. You can install Lianki alongside other scripts like:
+
 - Dark Reader (dark mode for websites)
 - Bypass Paywalls
 - YouTube improvements
@@ -346,6 +371,7 @@ Or manually reinstall from https://www.lianki.com/lianki.user.js
 ### Is my data safe using userscripts on mobile?
 
 **Yes**, when following best practices:
+
 - ✅ Only install scripts from **trusted sources** (like lianki.com)
 - ✅ Review script permissions before installing
 - ✅ Use **open-source** managers (Violentmonkey)
@@ -353,12 +379,14 @@ Or manually reinstall from https://www.lianki.com/lianki.user.js
 - ⚠️ Avoid installing random scripts from unknown sites
 
 Lianki is **open source** and only requests necessary permissions:
+
 - Access to all websites (to add cards from any page)
 - Connection to lianki.com servers (for sync)
 
 ### Does Lianki drain battery on Android?
 
 **Minimal impact**. The userscript only runs when:
+
 - You actively browse pages (for the floating button)
 - You open the Lianki dialog
 
@@ -448,7 +476,7 @@ This guide was researched using the following sources (February 2026):
 
 ---
 
-*Last updated: February 25, 2026*
+_Last updated: February 25, 2026_
 
 ---
 

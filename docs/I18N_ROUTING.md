@@ -30,6 +30,7 @@ The intlayer middleware automatically redirects non-localized URLs to the user's
 - `/membership` → `/zh/membership` (if user's locale is Chinese)
 
 Locale detection is based on:
+
 1. Existing locale cookie
 2. Accept-Language header from browser
 3. Default locale (en) as fallback
@@ -97,6 +98,7 @@ export default async function MyPage() {
 ### Accessing Current Locale
 
 **Client Components:**
+
 ```tsx
 "use client";
 import { useLocale } from "next-intlayer";
@@ -110,6 +112,7 @@ export default function MyComponent() {
 ```
 
 **Server Components:**
+
 ```tsx
 import { getLocale } from "next-intlayer/server";
 
@@ -124,6 +127,7 @@ export default async function MyPage() {
 ## Special Routes (No Locale Prefix)
 
 The following routes don't get locale prefixes:
+
 - API routes: `/api/*`
 - Auth routes: `/auth/*`
 - Special redirects: `/next` (redirects to `/api/fsrs/next`)
@@ -132,6 +136,7 @@ The following routes don't get locale prefixes:
 ## Blog Routes
 
 Blog pages already had locale-based routing using `[locale]` dynamic segments:
+
 - `/en/blog` - English blog index
 - `/zh/blog/my-post` - Chinese blog post
 - `/ja/blog` - Japanese blog index
@@ -176,6 +181,7 @@ export function LanguageSwitcher() {
 ## Testing
 
 To test different locales:
+
 1. Visit `/zh/list` directly for Chinese
 2. Visit `/ja/membership` directly for Japanese
 3. Visit `/ko/profile` directly for Korean

@@ -34,11 +34,11 @@ tags: ["安卓", "移动设备", "安装", "用户脚本", "tampermonkey", "viol
 
 2026年支持用户脚本管理器的Android浏览器：
 
-| 浏览器 | 用户脚本管理器 | 状态 | 推荐 |
-|---------|-------------------|--------|----------------|
+| 浏览器                  | 用户脚本管理器              | 状态        | 推荐     |
+| ----------------------- | --------------------------- | ----------- | -------- |
 | **Firefox for Android** | Tampermonkey, Violentmonkey | ✅ 完全支持 | **推荐** |
-| **Kiwi浏览器** | Violentmonkey（旧版） | ⚠️ 限制支持 | 替代方案 |
-| **Yandex浏览器** | Tampermonkey | ⚠️ 限制 | 不推荐 |
+| **Kiwi浏览器**          | Violentmonkey（旧版）       | ⚠️ 限制支持 | 替代方案 |
+| **Yandex浏览器**        | Tampermonkey                | ⚠️ 限制     | 不推荐   |
 
 ### 为什么推荐Firefox
 
@@ -94,6 +94,7 @@ tags: ["安卓", "移动设备", "安装", "用户脚本", "tampermonkey", "viol
 **直接链接**：[适用于Firefox Android的Tampermonkey](https://addons.mozilla.org/en-US/android/addon/tampermonkey/)
 
 **选择哪个？**
+
 - **Violentmonkey**：[速度更快、开源、界面更简单](https://www.androidauthority.com/userscripts-android-firefox-violentmonkey-3610727/)
 - **Tampermonkey**：[更多功能、云同步、更适合高级用户](https://www.ghacks.net/2023/02/19/firefox-for-android-adds-tampermonkey-support/)
 
@@ -152,6 +153,7 @@ Kiwi浏览器需要为扩展启用开发者模式：
 ### 安装步骤
 
 1. **前往Lianki**：
+
    ```
    https://www.lianki.com/lianki.user.js
    ```
@@ -197,6 +199,7 @@ Kiwi浏览器需要为扩展启用开发者模式：
 ### 复习卡片
 
 1. **访问Lianki仪表盘**：
+
    ```
    https://www.lianki.com/list
    ```
@@ -231,11 +234,13 @@ Kiwi浏览器需要为扩展启用开发者模式：
 **问题**：用户脚本管理器扩展不可见
 
 **Firefox解决方案**：
+
 1. 点击菜单（⋮）→ **附加组件**
 2. 确认Tampermonkey/Violentmonkey已**启用**
 3. 如有必要，重启Firefox
 
 **Kiwi解决方案**：
+
 1. 进入`chrome://extensions/`
 2. 验证**开发者模式**已启用
 3. 确认扩展已启用
@@ -245,6 +250,7 @@ Kiwi浏览器需要为扩展启用开发者模式：
 **问题**：Lianki未出现在页面上
 
 **解决方案**：
+
 1. 打开用户脚本管理器
 2. 在脚本列表中找到“Lianki”
 3. 确保它**已启用**（切换开关）
@@ -256,6 +262,7 @@ Kiwi浏览器需要为扩展启用开发者模式：
 **问题**：找不到页面上的Lianki按钮
 
 **解决方案**：
+
 1. 尝试滚动 - 按钮可能在折叠的下面
 2. 使用Alt+F快捷键（如果可用）
 3. 通过用户脚本管理器图标访问
@@ -266,6 +273,7 @@ Kiwi浏览器需要为扩展启用开发者模式：
 **问题**：无法登录Lianki
 
 **解决方案**：
+
 1. 清除浏览器缓存和Cookies
 2. 尝试先在https://www.lianki.com登录
 3. 使用电子邮件魔法链接而不是移动OAuth
@@ -276,6 +284,7 @@ Kiwi浏览器需要为扩展启用开发者模式：
 **问题**：卡片不能在桌面和移动设备间同步
 
 **解决方案**：
+
 1. 确认您使用相同的帐户登录
 2. 检查网络连接
 3. 强制刷新移动设备：在`/list`页面下拉
@@ -288,6 +297,7 @@ Kiwi浏览器需要为扩展启用开发者模式：
 ### Lianki在Android上是否离线工作？
 
 **部分支持**。登录后：
+
 - ✅ 已安装的用户脚本离线工作
 - ✅ 可以复习已加载的卡片
 - ❌ 无法在没有网络的情况下同步新卡片
@@ -300,12 +310,14 @@ Kiwi浏览器需要为扩展启用开发者模式：
 ### 哪个用户脚本管理器更适合Android？
 
 **Violentmonkey**推荐给大多数用户：
+
 - 轻量快速
 - [开源且透明](https://www.androidauthority.com/userscripts-android-firefox-violentmonkey-3610727/)
 - 在移动设备上效果良好
 - 免费无限制
 
 **Tampermonkey**更适合需要以下功能的人：
+
 - 跨设备云同步
 - 高级脚本管理功能
 - 具备语法高亮的编辑器
@@ -323,11 +335,13 @@ Lianki浮动按钮使用**Shadow DOM**（自v2.19.2起）完全隔离于页面CS
 用户脚本管理器会自动检查更新：
 
 **Violentmonkey**：
+
 1. 点击扩展图标
 2. 点击**仪表板**
 3. 找到Lianki → 点击**⋮** → **检查更新**
 
 **Tampermonkey**：
+
 1. 点击扩展图标
 2. 点击**仪表板**
 3. 更新自动检查（可配置间隔）
@@ -337,6 +351,7 @@ Lianki浮动按钮使用**Shadow DOM**（自v2.19.2起）完全隔离于页面CS
 ### 我可以在Android上使用多个用户脚本吗？
 
 **可以！** Tampermonkey和Violentmonkey都支持多个用户脚本。您可以将Lianki与其他脚本一起安装，例如：
+
 - Dark Reader（网站深色模式）
 - 绕过付费墙
 - YouTube改进
@@ -345,6 +360,7 @@ Lianki浮动按钮使用**Shadow DOM**（自v2.19.2起）完全隔离于页面CS
 ### 在移动设备上使用用户脚本数据安全吗？
 
 **是的**，遵循最佳实践时：
+
 - ✅ 仅安装来自**可信来源**的脚本（如lianki.com）
 - ✅ 安装前查看脚本权限
 - ✅ 使用**开源**管理器（Violentmonkey）
@@ -352,12 +368,14 @@ Lianki浮动按钮使用**Shadow DOM**（自v2.19.2起）完全隔离于页面CS
 - ⚠️ 避免从未知站点安装随机脚本
 
 Lianki是**开源**的，仅请求必要的权限：
+
 - 访问所有网站（从任何页面添加卡片）
 - 连接到lianki.com服务器（用于同步）
 
 ### Lianki会消耗Android设备的电池吗？
 
 **影响很小**。这款用户脚本仅在以下情况下运行：
+
 - 您主动浏览页面（用于浮动按钮）
 - 您打开Lianki对话框时
 
@@ -448,7 +466,7 @@ Lianki是**开源**的，仅请求必要的权限：
 
 ---
 
-*最后更新：2026年2月25日*
+_最后更新：2026年2月25日_
 
 ---
 

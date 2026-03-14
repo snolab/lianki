@@ -9,6 +9,7 @@ Successfully implemented full offline-first review capability with CRDT synchron
 ### ✅ Client-Side (Userscript v2.20.0)
 
 **Bundle Size**: 99KB (+53KB from 46KB)
+
 - `ts-fsrs`: Local FSRS calculations
 - `idb-keyval`: IndexedDB storage
 - Hybrid Logical Clock: CRDT sync
@@ -16,6 +17,7 @@ Successfully implemented full offline-first review capability with CRDT synchron
 - Integration: 400 lines of offline-first review flow
 
 **Key Features**:
+
 1. **Instant Reviews** - 50ms vs 500ms (10x faster!)
 2. **Offline Capability** - Full review functionality without internet
 3. **Smart Prefetch** - Auto-cache 20 due cards on startup
@@ -24,6 +26,7 @@ Successfully implemented full offline-first review capability with CRDT synchron
 6. **Sync Status** - Visual indicator in dialog (✓, ⏳, 📴)
 
 **Architecture**:
+
 ```javascript
 IndexedDB Stores:
 ├── cards       - Full deck with HLC timestamps
@@ -40,16 +43,17 @@ Review Flow:
 ### ✅ Server-Side (API Updates)
 
 **New Types**:
+
 ```typescript
 type HLC = {
-  timestamp: number;  // Physical clock
-  counter: number;    // Logical counter
-  deviceId: string;   // Device identifier
+  timestamp: number; // Physical clock
+  counter: number; // Logical counter
+  deviceId: string; // Device identifier
 };
 
 type FSRSNote = {
   // ... existing fields
-  hlc?: HLC;          // CRDT timestamp
+  hlc?: HLC; // CRDT timestamp
 };
 ```
 
@@ -69,6 +73,7 @@ type FSRSNote = {
    - Used for offline sync
 
 **Conflict Resolution**:
+
 ```typescript
 if (clientHLC < serverHLC) {
   return 409 Conflict {
@@ -81,6 +86,7 @@ if (clientHLC < serverHLC) {
 ```
 
 **Modified Functions**:
+
 - `reviewed()` - Saves HLC with card updates
 - `saveNote()` - Initializes HLC for new cards
 - `compareHLC()` - Deterministic conflict resolution
@@ -123,6 +129,7 @@ app/fsrs.ts
 ## Testing Checklist
 
 ### ✅ Unit Tests (Automated)
+
 - [x] HLC comparison (timestamp > counter > deviceId)
 - [x] HLC generation (increment counter on same timestamp)
 - [x] IndexedDB CRUD operations
@@ -132,6 +139,7 @@ app/fsrs.ts
 ### 🔲 Integration Tests (Manual)
 
 #### Offline Review Flow
+
 1. [ ] Load page with internet
 2. [ ] Open dialog → card loads from API
 3. [ ] Disconnect internet
@@ -141,6 +149,7 @@ app/fsrs.ts
 7. [ ] Verify card state on server matches
 
 #### Prefetch
+
 1. [ ] Complete review
 2. [ ] Check IndexedDB → should have 20 due cards
 3. [ ] Open any prefetched card → instant review
@@ -148,6 +157,7 @@ app/fsrs.ts
 5. [ ] Review 5 more cards → all instant
 
 #### Conflict Resolution
+
 1. [ ] Device A: Review card (online)
 2. [ ] Device B: Review same card (offline)
 3. [ ] Device B: Reconnect
@@ -155,12 +165,14 @@ app/fsrs.ts
 5. [ ] Check: Both devices see same final state
 
 #### Sync Status Indicator
+
 1. [ ] Online + synced → "✓"
 2. [ ] Online + pending → "⏳ 3"
 3. [ ] Offline → "📴 Offline"
 4. [ ] Syncing → "🔄 Syncing..."
 
 #### Error Handling
+
 1. [ ] Server 500 error → retries (max 5)
 2. [ ] Server 409 conflict → fetches latest
 3. [ ] Network timeout → queues for later
@@ -202,6 +214,7 @@ app/fsrs.ts
 ## Migration Notes
 
 ### Existing Users
+
 - First load will initialize IndexedDB
 - Generates unique deviceId (UUID)
 - Fetches FSRS parameters from server
@@ -209,12 +222,14 @@ app/fsrs.ts
 - Existing cards work normally (HLC generated on first update)
 
 ### Backward Compatibility
+
 - Old userscript still works (no breaking changes)
 - GET endpoints unchanged (HLC optional)
 - POST endpoints accept body but don't require it
 - Server generates HLC if client doesn't provide
 
 ### Database Migration
+
 - HLC field is optional in FSRSNote
 - Existing cards get HLC on first update
 - No manual migration required
@@ -222,6 +237,7 @@ app/fsrs.ts
 ## Deployment Steps
 
 ### 1. Server Deployment
+
 ```bash
 # Already deployed on sno-sync branch
 git checkout sno-sync
@@ -230,6 +246,7 @@ git pull
 ```
 
 ### 2. Userscript Release
+
 ```bash
 # Version 2.20.0 is ready
 # Users get auto-update notification
@@ -237,6 +254,7 @@ git pull
 ```
 
 ### 3. Monitoring
+
 - Check error logs for sync failures
 - Monitor 409 Conflict rate (should be <1%)
 - Track IndexedDB quota usage
@@ -245,17 +263,20 @@ git pull
 ## Success Metrics
 
 **Performance**:
+
 - ✅ Review latency: 500ms → 50ms (10x faster)
 - ✅ Offline reviews: 0% → 100% capability
 - ✅ Network requests: -50% (prefetch + cache)
 
 **User Experience**:
+
 - ⏱️ Instant review feedback
 - 📴 Train/plane/subway usage
 - 🔄 Seamless cross-device sync
 - ⚡ No loading spinners
 
 **Technical**:
+
 - 🎯 CRDT conflict resolution (HLC)
 - 💾 IndexedDB full deck cache
 - 🔄 Background sync with retry

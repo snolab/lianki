@@ -27,6 +27,7 @@ Hover over any word in the subtitles to see an instant definition, pronunciation
 
 **Precision Video Controls**
 Language Reactor adds controls that let you:
+
 - Jump between subtitle segments with one click
 - Loop difficult sentences automatically
 - Slow down playback without distorting audio
@@ -34,6 +35,7 @@ Language Reactor adds controls that let you:
 
 **Platform Support**
 The extension works with:
+
 - **YouTube**: Thousands of channels with automatic subtitle support—the best platform for comprehensible input
 - **Netflix & streaming**: Full dual-subtitle support for shows and movies
 - **Web content**: Import articles and ebooks with machine translation
@@ -135,6 +137,7 @@ Here's how to combine these tools into a language learning superpower:
 **Step 5: Export Vocabulary to Lianki (Pro Users)**
 
 If you have Language Reactor Pro:
+
 - Export your saved vocabulary list with context
 - Create individual Lianki cards for key vocabulary items
 - Add the exported sentences as URL cards (if they link to specific timestamps)
@@ -158,6 +161,7 @@ This workflow leverages two of the most proven techniques in cognitive science:
 **Create Video Series**
 
 Instead of adding individual videos, add entire series or playlists:
+
 - Watch a 3-5 video series from the same YouTuber
 - Add all URLs to Lianki in one batch (`Alt+Shift+V` for bulk add)
 - When Lianki schedules them, rewatch the series to reinforce topic-specific vocabulary
@@ -179,6 +183,7 @@ Lianki's FSRS scheduling naturally spaces these viewings out at optimal interval
 **Track Your Heatmap**
 
 Lianki shows a GitHub-style activity heatmap on your homepage. Each review day becomes a green square. Use this to:
+
 - Maintain study streaks
 - Visualize your learning momentum
 - Spot patterns (do you review more on weekends?)
@@ -186,6 +191,7 @@ Lianki shows a GitHub-style activity heatmap on your homepage. Each review day b
 **Add YouTube Channels**
 
 Language Reactor works beautifully on YouTube. Add entire channels as cards:
+
 - Find a YouTuber who speaks your target language clearly
 - Add their most recent video URL as a Lianki card
 - When you review, watch a new video from that channel
@@ -267,6 +273,7 @@ Happy learning! 🎬🧠
 - [Memorix - Language Learning with FSRS Spaced Repetition](https://memorix.app/)
 
 **Further Reading on Lianki**:
+
 - [What is Lianki?](https://www.lianki.com/en/blog/2025-01-01-introduction)
 - [How FSRS Schedules Your Reviews](https://www.lianki.com/en/blog/2025-01-15-fsrs-algorithm)
 - [Installing the Lianki Userscript](https://www.lianki.com/en/blog/2025-02-10-userscript)

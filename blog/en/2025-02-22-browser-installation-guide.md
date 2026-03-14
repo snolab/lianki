@@ -7,7 +7,7 @@ summary: "Step-by-step guide to install Lianki on Chrome/Edge desktop browsers u
 
 # Installing Lianki on Desktop Browsers: Complete Setup Guide
 
-*Posted February 22, 2025 by [lianki.com](https://www.lianki.com)*
+_Posted February 22, 2025 by [lianki.com](https://www.lianki.com)_
 
 Lianki works through a userscript that runs in your browser, adding a floating button to every page you visit. To use it, you'll need two things:
 
@@ -41,11 +41,13 @@ We recommend them in this order:
 ### Option A: ScriptCat (Recommended)
 
 **Chrome users:**
+
 1. Open the [ScriptCat page on Chrome Web Store](https://chrome.google.com/webstore/detail/scriptcat/ndcooeababalnlpkfedmmbbbgkljhpjf)
 2. Click **Add to Chrome**
 3. Click **Add extension** in the popup
 
 **Edge users:**
+
 1. Open the [ScriptCat page on Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/scriptcat/liilgpjgabokdklappibcjfablkpcekh)
 2. Click **Get**
 3. Click **Add extension** in the popup
@@ -55,11 +57,13 @@ After installation, you'll see a cat icon (🐱) in your browser toolbar.
 ### Option B: Violentmonkey
 
 **Chrome users:**
+
 1. Open the [Violentmonkey page on Chrome Web Store](https://chrome.google.com/webstore/detail/violentmonkey/jinjaccalgkegednnccohejagnlnfdag)
 2. Click **Add to Chrome**
 3. Click **Add extension** in the popup
 
 **Edge users:**
+
 1. Open the [Violentmonkey page on Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/violentmonkey/eeagobfjdenkkddmbclomhiblgggliao)
 2. Click **Get**
 3. Click **Add extension** in the popup
@@ -69,11 +73,13 @@ After installation, you'll see a monkey icon in your browser toolbar.
 ### Option C: Tampermonkey
 
 **Chrome users:**
+
 1. Open the [Tampermonkey page on Chrome Web Store](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
 2. Click **Add to Chrome**
 3. Click **Add extension** in the popup
 
 **Edge users:**
+
 1. Open the [Tampermonkey page on Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
 2. Click **Get**
 3. Click **Add extension** in the popup
@@ -141,39 +147,46 @@ If you see the floating button, congratulations! Lianki is installed and working
 ### I don't see the floating button
 
 **Check if the userscript manager is enabled:**
+
 - Look for the ScriptCat/Violentmonkey/Tampermonkey icon in your browser toolbar
 - Click it and make sure the extension is active (not paused)
 
 **Check if the script is installed:**
+
 - Click the userscript manager icon
 - Open the dashboard or settings
 - Look for "Lianki" in your installed scripts list
 - Make sure it's enabled (toggle should be on)
 
 **Check if you're on an HTTPS page:**
+
 - The Lianki script only runs on `https://*` URLs
 - It won't work on `http://` pages or local files (`file://`)
 - Try visiting https://www.wikipedia.org to test
 
 **Check browser permissions:**
+
 - Some browsers block extensions on certain pages (browser settings, extension store pages)
 - Try a regular website like Wikipedia or GitHub
 
 ### The script is installed but not working
 
 **Clear browser cache:**
+
 1. Press `Ctrl+Shift+Delete` (Windows/Linux) or `Cmd+Shift+Delete` (Mac)
 2. Select "Cached images and files"
 3. Click "Clear data"
 4. Reload the page
 
 **Reinstall the script:**
+
 1. Open your userscript manager dashboard
 2. Find "Lianki" in the list
 3. Delete/remove it
 4. Reinstall from [Greasy Fork](https://greasyfork.org/ja/scripts/567089-lianki)
 
 **Check for script conflicts:**
+
 - If you have many userscripts installed, try disabling others temporarily
 - Some scripts may conflict with Lianki's floating button
 
@@ -182,6 +195,7 @@ If you see the floating button, congratulations! Lianki is installed and working
 This means you're not logged in to Lianki.
 
 **Solution:**
+
 1. Open [https://www.lianki.com](https://www.lianki.com) in a new tab
 2. Sign in with your account (email, GitHub, or Google)
 3. Return to the page where you want to add a card
@@ -192,6 +206,7 @@ The userscript uses cookies to authenticate, so make sure your browser allows co
 ### Updates aren't working
 
 **Manual update check:**
+
 1. Open your userscript manager dashboard
 2. Find the "Lianki" script
 3. Look for a "Check for updates" button or option
@@ -215,6 +230,7 @@ Now that Lianki is installed, here's how to use it:
 ### Reviewing Cards
 
 When a card is due for review:
+
 1. Visit the card's URL (or Lianki will auto-redirect you)
 2. The floating button will **glow** to indicate a review is due
 3. Click it to open the review dialog

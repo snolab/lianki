@@ -7,7 +7,7 @@ summary: "A walkthrough of the FSRS algorithm and how Lianki uses it to schedule
 
 # How FSRS Schedules Your Reviews
 
-*Posted January 15, 2025 by [lianki.com](https://www.lianki.com)*
+_Posted January 15, 2025 by [lianki.com](https://www.lianki.com)_
 
 Lianki uses FSRS — the Free Spaced Repetition System — to decide when you should review each card. This post explains what FSRS is, how it compares to older algorithms, and how it's implemented in Lianki.
 

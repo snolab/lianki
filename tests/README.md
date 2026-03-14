@@ -39,6 +39,7 @@ bun test:e2e:preview
 - `LIANKI_URL` - Target Lianki instance (default: https://www.lianki.com)
 
 Example:
+
 ```bash
 LIANKI_URL=http://localhost:3000 bun test:e2e
 ```
@@ -106,12 +107,14 @@ LIANKI_URL=http://localhost:3000 bun test:e2e
 ## Test Architecture
 
 ### Browser Setup
+
 - **Engine**: Playwright Chromium
 - **Mode**: Non-headless with slowMo for visibility
 - **Context**: Isolated context per test run
 - **Network**: Controlled via `context.setOffline()`
 
 ### Test Data
+
 - **Test URL**: https://en.wikipedia.org/wiki/Spaced_repetition
 - **Test Card**: Wikipedia article on spaced repetition
 - **Expected Results**: Card cached with HLC, offline review works
@@ -129,7 +132,7 @@ LIANKI_URL=http://localhost:3000 bun test:e2e
 ### Test Template
 
 ```javascript
-console.log('🧪 Test N: Description...');
+console.log("🧪 Test N: Description...");
 
 // Perform actions
 await page.doSomething();
@@ -143,7 +146,7 @@ const result = await page.evaluate(() => {
 console.log(`  ✓ Verified: ${result}`);
 
 if (!result) {
-  throw new Error('Test failed');
+  throw new Error("Test failed");
 }
 ```
 
@@ -158,19 +161,22 @@ if (!result) {
 ## Debugging Tests
 
 ### View Browser
+
 ```bash
 # Browser stays open for 10 seconds after tests
 bun test:e2e
 ```
 
 ### Enable Verbose Logging
+
 ```javascript
-page.on('console', msg => {
-  console.log('PAGE LOG:', msg.text());
+page.on("console", (msg) => {
+  console.log("PAGE LOG:", msg.text());
 });
 ```
 
 ### Check IndexedDB Manually
+
 1. Open DevTools (F12)
 2. Go to Application → IndexedDB
 3. Inspect `lianki-cards`, `lianki-config`, `lianki-queue`
@@ -178,16 +184,19 @@ page.on('console', msg => {
 ### Common Issues
 
 **Issue**: "Card not cached"
+
 - Check console for "[Lianki] Offline storage initialized"
 - Verify userscript loaded correctly
 - Check IndexedDB permissions
 
 **Issue**: "Offline review failed"
+
 - Verify network is actually offline (`context.setOffline(true)`)
 - Check if card was cached before going offline
 - Review console logs for errors
 
 **Issue**: "Background sync never completes"
+
 - Ensure network is back online
 - Wait longer (sync interval is 30s)
 - Check sync queue for errors

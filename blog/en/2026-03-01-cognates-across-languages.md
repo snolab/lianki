@@ -7,7 +7,7 @@ summary: "Discover how recognizing cognates—words that share common origins—
 
 # Cognates: Same-Origin Words Across Languages
 
-*Posted March 01, 2026 by [lianki.com](https://www.lianki.com)*
+_Posted March 01, 2026 by [lianki.com](https://www.lianki.com)_
 
 When learning a new language, you might notice familiar-looking words that mean the same thing as in your native language. These aren't coincidences—they're **cognates**, words in different languages that share a common etymological origin. Understanding cognates can dramatically accelerate vocabulary acquisition and help you spot patterns across languages.
 
@@ -16,6 +16,7 @@ When learning a new language, you might notice familiar-looking words that mean 
 Cognates are words in two or more languages that have a common origin and similar meanings. They evolved from the same ancestral word and maintained their core meaning across different language branches.
 
 For example:
+
 - **English**: "mother"
 - **German**: "Mutter"
 - **Spanish**: "madre"
@@ -31,6 +32,7 @@ All these words descended from Proto-Indo-European **"méh₂tēr"**, the ancien
 Words that look similar and mean the same thing in both languages.
 
 **English ↔ Spanish:**
+
 - animal → animal
 - music → música
 - hospital → hospital
@@ -38,6 +40,7 @@ Words that look similar and mean the same thing in both languages.
 - telephone → teléfono
 
 **English ↔ German:**
+
 - hand → Hand
 - finger → Finger
 - garden → Garten
@@ -49,11 +52,13 @@ Words that look similar and mean the same thing in both languages.
 Words that look similar but have different meanings. These are traps for language learners.
 
 **English ↔ Spanish:**
+
 - **embarazada** (Spanish) ≠ embarrassed → means "pregnant"
 - **éxito** (Spanish) ≠ exit → means "success"
 - **actual** (Spanish) ≠ actual → means "current"
 
 **English ↔ German:**
+
 - **Gift** (German) ≠ gift → means "poison"
 - **Chef** (German) ≠ chef → means "boss"
 - **also** (German) ≠ also → means "therefore"
@@ -63,6 +68,7 @@ Words that look similar but have different meanings. These are traps for languag
 Words that share origins but have diverged in meaning or usage.
 
 **English ↔ French:**
+
 - **demand** (English) / **demander** (French) — "demand" vs "to ask"
 - **library** (English) / **librairie** (French) — "library" vs "bookstore"
 
@@ -74,13 +80,13 @@ The largest language family, connecting languages from India to Iceland.
 
 **Numbers 1-10 in Indo-European languages:**
 
-| English | German | Dutch | Spanish | French | Italian | Russian | Hindi |
-|---------|--------|-------|---------|--------|---------|---------|-------|
-| one | eins | een | uno | un | uno | один (odin) | एक (ek) |
-| two | zwei | twee | dos | deux | due | два (dva) | दो (do) |
-| three | drei | drie | tres | trois | tre | три (tri) | तीन (tīn) |
-| four | vier | vier | cuatro | quatre | quattro | четыре (chetyre) | चार (chār) |
-| five | fünf | vijf | cinco | cinq | cinque | пять (pyat') | पाँच (pānch) |
+| English | German | Dutch | Spanish | French | Italian | Russian          | Hindi        |
+| ------- | ------ | ----- | ------- | ------ | ------- | ---------------- | ------------ |
+| one     | eins   | een   | uno     | un     | uno     | один (odin)      | एक (ek)      |
+| two     | zwei   | twee  | dos     | deux   | due     | два (dva)        | दो (do)      |
+| three   | drei   | drie  | tres    | trois  | tre     | три (tri)        | तीन (tīn)    |
+| four    | vier   | vier  | cuatro  | quatre | quattro | четыре (chetyre) | चार (chār)   |
+| five    | fünf   | vijf  | cinco   | cinq   | cinque  | пять (pyat')     | पाँच (pānch) |
 
 Notice the patterns? The shared ancestry reveals itself through sound similarities.
 
@@ -200,11 +206,13 @@ When you're using Lianki to learn vocabulary, recognizing cognates makes review 
 ### Example Card Setup
 
 **Front (URL):**
+
 ```
 https://en.wiktionary.org/wiki/teléfono
 ```
 
 **Note field:**
+
 ```
 Cognate cluster:
 🇬🇧 telephone (English)
@@ -228,10 +236,10 @@ Linguists discovered systematic sound changes that occurred during language evol
 Explains why Germanic languages differ from other Indo-European languages:
 
 | PIE | Latin | Germanic (English) |
-|-----|-------|--------------------|
-| p | pater | father |
-| t | tres | three |
-| k | cord- | heart |
+| --- | ----- | ------------------ |
+| p   | pater | father             |
+| t   | tres  | three              |
+| k   | cord- | heart              |
 
 ### Great Vowel Shift (English)
 
@@ -247,6 +255,7 @@ This is why English spelling is inconsistent—it fossilized before the vowel sh
 ### 1. Build a Cognate List for Your Target Language
 
 Create a spreadsheet or document listing:
+
 - English word
 - Target language cognate
 - Other language cognates you know
@@ -262,6 +271,7 @@ Instead of memorizing individual words, learn the transformation rules:
 ### 3. Use Etymology Dictionaries
 
 Resources:
+
 - **Wiktionary** — Free, multilingual etymology info
 - **Online Etymology Dictionary** — English word origins
 - **Etymonline** — Deep etymology research
@@ -277,29 +287,29 @@ Both are useful for learning, but borrowings are usually more recent and maintai
 
 ### English → Spanish
 
-| Pattern | English | Spanish | Rule |
-|---------|---------|---------|------|
-| -tion | nation | nación | Add accent |
-| -ty | reality | realidad | -ty → -dad |
-| ph- | photo | foto | ph → f |
-| -ous | famous | famoso | -ous → -oso |
+| Pattern | English | Spanish  | Rule        |
+| ------- | ------- | -------- | ----------- |
+| -tion   | nation  | nación   | Add accent  |
+| -ty     | reality | realidad | -ty → -dad  |
+| ph-     | photo   | foto     | ph → f      |
+| -ous    | famous  | famoso   | -ous → -oso |
 
 ### English → German
 
-| Pattern | English | German | Rule |
-|---------|---------|--------|------|
-| t | water | Wasser | Germanic t/d variation |
-| p | pepper | Pfeffer | p → pf |
-| d | day | Tag | d → t |
-| th | three | drei | th → d |
+| Pattern | English | German  | Rule                   |
+| ------- | ------- | ------- | ---------------------- |
+| t       | water   | Wasser  | Germanic t/d variation |
+| p       | pepper  | Pfeffer | p → pf                 |
+| d       | day     | Tag     | d → t                  |
+| th      | three   | drei    | th → d                 |
 
 ### English → French
 
-| Pattern | English | French | Rule |
-|---------|---------|--------|------|
-| -tion | information | information | Identical |
-| s- | state | état | Lost initial s |
-| -ous | famous | fameux | -ous → -eux |
+| Pattern | English     | French      | Rule           |
+| ------- | ----------- | ----------- | -------------- |
+| -tion   | information | information | Identical      |
+| s-      | state       | état        | Lost initial s |
+| -ous    | famous      | fameux      | -ous → -eux    |
 
 ## Conclusion
 
@@ -310,7 +320,7 @@ Cognates are one of the most powerful tools in a language learner's arsenal. By 
 - Gain cultural insights
 - Make educated guesses about unknown words
 
-The next time you encounter an unfamiliar word in your target language, ask yourself: *Does this look like anything in English or other languages I know?* Chances are, you've just discovered another cognate—and expanded your vocabulary without even trying.
+The next time you encounter an unfamiliar word in your target language, ask yourself: _Does this look like anything in English or other languages I know?_ Chances are, you've just discovered another cognate—and expanded your vocabulary without even trying.
 
 Use Lianki to review cognate clusters together. When your brain sees these patterns repeatedly through spaced repetition, the connections become automatic. You'll start spotting cognates instinctively, turning every new word into a puzzle piece that fits into your existing knowledge.
 

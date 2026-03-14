@@ -7,7 +7,7 @@ summary: "Lianki is a spaced repetition app that turns any webpage into a flashc
 
 # What is Lianki?
 
-*Posted January 01, 2025 by [lianki.com](https://www.lianki.com)*
+_Posted January 01, 2025 by [lianki.com](https://www.lianki.com)_
 
 Lianki is a spaced repetition app. The name comes from 链接 (liànjiē) — Chinese for "link" — because the core idea is simple: you save a link, and Lianki schedules when you should revisit it so you actually remember what was on that page.
 

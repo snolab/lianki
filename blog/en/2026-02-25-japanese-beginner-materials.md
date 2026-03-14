@@ -7,7 +7,7 @@ summary: "Comprehensive guide to the best Japanese learning materials for beginn
 
 # Japanese Learning Materials for Beginners: A Complete Guide
 
-*Posted February 25, 2026 by [lianki.com](https://www.lianki.com)*
+_Posted February 25, 2026 by [lianki.com](https://www.lianki.com)_
 
 Starting to learn Japanese can feel overwhelming with so many resources available. This guide will walk you through the best materials for absolute beginners to early intermediate learners, organized by learning stage and resource type.
 
@@ -18,6 +18,7 @@ Starting to learn Japanese can feel overwhelming with so many resources availabl
 Before diving into grammar or vocabulary, you need to master the two phonetic writing systems.
 
 **YouTube Channels:**
+
 - [Learn Japanese with JapanesePod101.com - Hiragana Series](https://www.youtube.com/playlist?list=PLPSfPyOOcp3TNofiuTW5_S6l-qGrGHqUm)
   - Complete hiragana lessons with stroke order
   - ~30 minutes total watch time
@@ -26,6 +27,7 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
   - Mnemonics for memorization
 
 **Practice Tools:**
+
 - [Tofugu's Hiragana Guide](https://www.tofugu.com/japanese/learn-hiragana/)
   - Free comprehensive guide with mnemonics
 - [Real Kana](https://realkana.com/)
@@ -40,6 +42,7 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
 ### JLPT N5 Grammar (Beginner Level)
 
 **YouTube Playlists:**
+
 - [Japanese Ammo with Misa - Absolute Beginner](https://www.youtube.com/playlist?list=PLd5-Wp_4WsPU89IkN4v9lI_pEWBRyO_fu)
   - 40+ comprehensive grammar lessons
   - Clear explanations with examples
@@ -52,6 +55,7 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
   - Practical sentence patterns
 
 **Textbooks:**
+
 - **Genki I** (with workbook)
   - Industry standard textbook
   - Structured lessons with dialogues
@@ -65,6 +69,7 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
   - Excellent reference material
 
 **Practice Websites:**
+
 - [Bunpro](https://bunpro.jp/)
   - SRS for grammar points
   - Integrates with Lianki workflow
@@ -79,6 +84,7 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
 ### Core Vocabulary Lists
 
 **JLPT N5 Vocabulary (~800 words):**
+
 - [JLPT Sensei N5 Vocabulary](https://jlptsensei.com/jlpt-n5-vocabulary-list/)
   - Core 800 words for N5
   - Organized by category with examples
@@ -87,6 +93,7 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
   - Can import URLs into Lianki
 
 **Frequency Lists:**
+
 - [Core 2000 Japanese Words](https://iknow.jp/content/japanese)
   - Most common words by frequency
   - Natural learning order
@@ -95,6 +102,7 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
   - Free up to level 3
 
 **YouTube Vocabulary:**
+
 - [JapanesePod101 - Must-Know Vocabulary](https://www.youtube.com/playlist?list=PLPSfPyOOcp3Qi8f9iG5M8qRvxjCTmP-Ed)
   - Common words and phrases
   - Native pronunciation
@@ -107,6 +115,7 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
 ### Beginner-Friendly Content
 
 **Graded Listeners:**
+
 - [Comprehensible Japanese - Complete Beginner](https://www.youtube.com/c/ComprehensibleJapanese)
   - Slow, clear Japanese
   - Visual context
@@ -116,6 +125,7 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
   - Subtitled content for learners
 
 **Story-Based Learning:**
+
 - [Nihongo con Teppei](https://nihongoconteppei.com/)
   - Beginner podcast
   - Short daily episodes
@@ -125,6 +135,7 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
   - Levels 0-5 for beginners
 
 **Easy News:**
+
 - [NHK News Web Easy](https://www3.nhk.or.jp/news/easy/)
   - News in simple Japanese
   - Furigana (reading aids)
@@ -135,6 +146,7 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
 ### Conversation Resources
 
 **YouTube Conversation Practice:**
+
 - [JapanesePod101 - Survival Phrases](https://www.youtube.com/playlist?list=PLPSfPyOOcp3QUPcJPHb4sOVVRn36EfI3Z)
   - Essential phrases
   - Situation-based learning
@@ -143,6 +155,7 @@ Before diving into grammar or vocabulary, you need to master the two phonetic wr
   - Common expressions
 
 **Practice Partners:**
+
 - [HelloTalk](https://www.hellotalk.com/)
   - Language exchange app
   - Free text/voice chat
@@ -180,6 +193,7 @@ If you have YouTube API configured, you can import entire playlists at once from
 
 **Custom Lists:**
 Create a text file with URLs (one per line) and import from the Learn page:
+
 ```
 https://www.youtube.com/watch?v=VIDEO1
 https://www.youtube.com/watch?v=VIDEO2
@@ -191,17 +205,20 @@ Browse YouTube and use Alt+F on any video you want to review later.
 ## Recommended Learning Path
 
 ### Month 1: Foundation
+
 - Week 1-2: Hiragana and Katakana
 - Week 3-4: Basic grammar (Genki Ch 1-3 or equivalent)
 - Daily: 10 new vocabulary words
 
 ### Month 2-3: Building Blocks
+
 - Grammar: Genki Ch 4-8 or equivalent
 - Vocabulary: 10-15 words per day
 - Listening: Start with Comprehensible Japanese
 - Target: JLPT N5 level
 
 ### Month 4-6: Consolidation
+
 - Grammar: Genki Ch 9-12 or equivalent
 - Start reading NHK Easy News
 - Begin speaking practice with HelloTalk
@@ -233,7 +250,8 @@ Browse YouTube and use Alt+F on any video you want to review later.
 ## What's Next?
 
 After completing these beginner materials (roughly 3-6 months), you'll be ready for:
-- Intermediate resources (N4/N3 level) - *coming in future blog post*
+
+- Intermediate resources (N4/N3 level) - _coming in future blog post_
 - Native content with subtitles
 - Conversation practice with tutors
 - Reading manga and light novels
@@ -241,17 +259,20 @@ After completing these beginner materials (roughly 3-6 months), you'll be ready 
 ## Additional Resources
 
 **Apps to Complement Lianki:**
+
 - **Takoboto** - Offline dictionary
 - **Kanji Study** - Kanji writing practice
 - **Drops** - Visual vocabulary builder
 - **Bunpo** - Grammar reference app
 
 **Communities:**
+
 - r/LearnJapanese on Reddit
 - Japanese StackExchange
 - Discord: English-Japanese Language Exchange
 
 **Track Your Progress:**
+
 - Take practice JLPT N5 tests every 2-3 months
 - Keep a learning journal
 - Use Lianki's heatmap to visualize your study streak
@@ -263,6 +284,7 @@ After completing these beginner materials (roughly 3-6 months), you'll be ready 
 Pick 2-3 resources from this list and start with them. Don't try to use everything at once - it's better to use a few resources consistently than to jump between many.
 
 **Quick Start for Complete Beginners:**
+
 1. Learn hiragana this week (use Tofugu's guide + Real Kana)
 2. Start Japanese Ammo with Misa's Absolute Beginner playlist
 3. Add videos to Lianki and review daily

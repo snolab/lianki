@@ -30,6 +30,7 @@ The offline-first functionality has been **fully implemented and code-verified**
 **Size**: 103,578 bytes (~104KB, +53KB from v2.19.3)
 
 Verified components present:
+
 - ✓ Version 2.20.0 metadata
 - ✓ IndexedDB implementation (6 references)
 - ✓ HLC (Hybrid Logical Clock) for CRDT (3 references)
@@ -54,6 +55,7 @@ Verified components present:
 **File**: `app/fsrs.ts`
 
 Verified endpoints and features:
+
 - ✓ HLC type definitions (timestamp, counter, deviceId)
 - ✓ `compareHLC()` function (2 references)
 - ✓ `GET /api/fsrs/due?limit=N` (prefetch endpoint)
@@ -66,11 +68,14 @@ Verified endpoints and features:
 if (clientHLC && note.hlc) {
   const comparison = compareHLC(clientHLC, note.hlc);
   if (comparison < 0) {
-    return JSONR({
-      ok: false,
-      error: "conflict",
-      serverHLC: note.hlc,
-    }, 409);
+    return JSONR(
+      {
+        ok: false,
+        error: "conflict",
+        serverHLC: note.hlc,
+      },
+      409,
+    );
   }
 }
 ```
@@ -78,6 +83,7 @@ if (clientHLC && note.hlc) {
 ### ✅ Test Infrastructure
 
 Created comprehensive test files:
+
 - `tests/e2e-offline-sync.spec.mjs` (7 test scenarios)
 - `tests/beta-test.spec.mjs` (8 comprehensive tests + readiness assessment)
 - `tests/README.md` (complete testing documentation)
@@ -170,16 +176,19 @@ The following critical tests **must be run** before production:
 ## Deployment Status
 
 ### Production (www.lianki.com)
+
 - **Status**: ✅ Accessible
 - **Version**: 2.19.3 (old version, no offline-first)
 - **File Size**: 48,790 bytes (~49KB)
 
 ### Beta (beta.lianki.com)
+
 - **Status**: ❌ Not accessible (404)
 - **Expected Version**: 2.20.0
 - **Expected File Size**: ~104KB
 
 ### Beta Preview (Vercel)
+
 - **Status**: ❌ Requires authentication (401)
 - **URL**: https://lianki-git-beta-snomiao.vercel.app
 
@@ -195,6 +204,7 @@ The following critical tests **must be run** before production:
    - Option C: Provide authentication credentials for Vercel preview
 
 2. **Run Comprehensive Beta Tests** (CRITICAL)
+
    ```bash
    # Once deployment is accessible:
    node tests/beta-test.spec.mjs
@@ -249,6 +259,7 @@ The following critical tests **must be run** before production:
 **Current Status**: 🟡 **BLOCKED - AWAITING BETA DEPLOYMENT ACCESS**
 
 **Required Actions**:
+
 1. Fix beta.lianki.com deployment (DNS or Vercel config)
 2. Run `tests/beta-test.spec.mjs` against live deployment
 3. Monitor beta for 1-2 days
@@ -262,6 +273,7 @@ The following critical tests **must be run** before production:
 ## Test Artifacts
 
 ### Created Files
+
 - `tests/e2e-offline-sync.spec.mjs` - E2E test suite (7 scenarios)
 - `tests/beta-test.spec.mjs` - Comprehensive beta test (8 tests + assessment)
 - `tests/README.md` - Complete testing documentation
@@ -271,6 +283,7 @@ The following critical tests **must be run** before production:
 - `docs/offline-first-implementation.md` - Implementation guide
 
 ### Test Commands
+
 ```bash
 # Local dev server tests
 LIANKI_URL=http://localhost:3000 node tests/e2e-offline-sync.spec.mjs

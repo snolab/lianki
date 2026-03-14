@@ -1,268 +1,299 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lianki Offline-First Manual Test</title>
-  <style>
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      max-width: 800px;
-      margin: 40px auto;
-      padding: 0 20px;
-      line-height: 1.6;
-    }
-    h1 { color: #333; }
-    .status {
-      padding: 15px;
-      margin: 10px 0;
-      border-radius: 5px;
-      font-weight: bold;
-    }
-    .success { background: #d4edda; color: #155724; }
-    .error { background: #f8d7da; color: #721c24; }
-    .info { background: #d1ecf1; color: #0c5460; }
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-      margin: 10px 5px;
-      cursor: pointer;
-      border: none;
-      border-radius: 5px;
-      background: #007bff;
-      color: white;
-    }
-    button:hover { background: #0056b3; }
-    pre {
-      background: #f5f5f5;
-      padding: 15px;
-      border-radius: 5px;
-      overflow-x: auto;
-    }
-    #log {
-      max-height: 400px;
-      overflow-y: auto;
-    }
-  </style>
-</head>
-<body>
-  <h1>🧪 Lianki Offline-First Manual Test</h1>
-
-  <div class="status info">
-    <strong>Test Page URL:</strong> <code id="currentUrl"></code>
-  </div>
-
-  <h2>Test Controls</h2>
-  <button onclick="testOfflineStorage()">1. Test Offline Storage Init</button>
-  <button onclick="testAddCard()">2. Add Card (Alt+F)</button>
-  <button onclick="testCachedCards()">3. Check Cached Cards</button>
-  <button onclick="testGoOffline()">4. Go Offline & Review</button>
-  <button onclick="clearLog()">Clear Log</button>
-
-  <h2>Test Results</h2>
-  <div id="results"></div>
-
-  <h2>Console Log</h2>
-  <pre id="log"></pre>
-
-  <script>
-    // Stub GM_* functions for testing
-    window.GM_setValue = async (key, value) => {
-      localStorage.setItem('gm_' + key, JSON.stringify(value));
-    };
-    window.GM_getValue = async (key, defaultValue) => {
-      const val = localStorage.getItem('gm_' + key);
-      return val ? JSON.parse(val) : defaultValue;
-    };
-    window.GM_xmlhttpRequest = (details) => {
-      return fetch(details.url, {
-        method: details.method || 'GET',
-        headers: details.headers || {},
-        body: details.data,
-      }).then(async (response) => {
-        const responseText = await response.text();
-        if (response.ok && details.onload) {
-          details.onload({ status: response.status, responseText });
-        } else if (details.onerror) {
-          details.onerror({ status: response.status, responseText });
-        }
-      }).catch((err) => {
-        if (details.onerror) details.onerror(err);
-      });
-    };
-    window.GM_info = {
-      script: {
-        name: 'Lianki Manual Test',
-        version: '2.20.0'
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lianki Offline-First Manual Test</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 0 20px;
+        line-height: 1.6;
       }
-    };
+      h1 {
+        color: #333;
+      }
+      .status {
+        padding: 15px;
+        margin: 10px 0;
+        border-radius: 5px;
+        font-weight: bold;
+      }
+      .success {
+        background: #d4edda;
+        color: #155724;
+      }
+      .error {
+        background: #f8d7da;
+        color: #721c24;
+      }
+      .info {
+        background: #d1ecf1;
+        color: #0c5460;
+      }
+      button {
+        padding: 10px 20px;
+        font-size: 16px;
+        margin: 10px 5px;
+        cursor: pointer;
+        border: none;
+        border-radius: 5px;
+        background: #007bff;
+        color: white;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+      pre {
+        background: #f5f5f5;
+        padding: 15px;
+        border-radius: 5px;
+        overflow-x: auto;
+      }
+      #log {
+        max-height: 400px;
+        overflow-y: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🧪 Lianki Offline-First Manual Test</h1>
 
-    // Override console.log to capture in UI
-    const originalLog = console.log;
-    const logElement = document.getElementById('log');
-    console.log = function(...args) {
-      originalLog.apply(console, args);
-      const message = args.map(arg =>
-        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-      ).join(' ');
-      logElement.textContent += message + '\n';
-      logElement.scrollTop = logElement.scrollHeight;
-    };
+    <div class="status info"><strong>Test Page URL:</strong> <code id="currentUrl"></code></div>
 
-    // Display current URL
-    document.getElementById('currentUrl').textContent = window.location.href;
+    <h2>Test Controls</h2>
+    <button onclick="testOfflineStorage()">1. Test Offline Storage Init</button>
+    <button onclick="testAddCard()">2. Add Card (Alt+F)</button>
+    <button onclick="testCachedCards()">3. Check Cached Cards</button>
+    <button onclick="testGoOffline()">4. Go Offline & Review</button>
+    <button onclick="clearLog()">Clear Log</button>
 
-    // Load userscript
-    console.log('Loading Lianki userscript v2.20.0...');
-    const script = document.createElement('script');
-    script.src = 'http://localhost:3000/lianki.user.js';
-    script.onload = () => {
-      console.log('✓ Userscript loaded successfully');
-      setTimeout(() => {
-        showResult('Userscript Loaded', 'v2.20.0 loaded with offline-first support', 'success');
-      }, 1000);
-    };
-    script.onerror = () => {
-      console.error('✗ Failed to load userscript');
-      showResult('Userscript Error', 'Failed to load from localhost:3000', 'error');
-    };
-    document.head.appendChild(script);
+    <h2>Test Results</h2>
+    <div id="results"></div>
 
-    function showResult(title, message, type = 'info') {
-      const results = document.getElementById('results');
-      results.innerHTML += `<div class="status ${type}"><strong>${title}:</strong> ${message}</div>`;
-    }
+    <h2>Console Log</h2>
+    <pre id="log"></pre>
 
-    function clearLog() {
-      logElement.textContent = '';
-    }
+    <script>
+      // Stub GM_* functions for testing
+      window.GM_setValue = async (key, value) => {
+        localStorage.setItem("gm_" + key, JSON.stringify(value));
+      };
+      window.GM_getValue = async (key, defaultValue) => {
+        const val = localStorage.getItem("gm_" + key);
+        return val ? JSON.parse(val) : defaultValue;
+      };
+      window.GM_xmlhttpRequest = (details) => {
+        return fetch(details.url, {
+          method: details.method || "GET",
+          headers: details.headers || {},
+          body: details.data,
+        })
+          .then(async (response) => {
+            const responseText = await response.text();
+            if (response.ok && details.onload) {
+              details.onload({ status: response.status, responseText });
+            } else if (details.onerror) {
+              details.onerror({ status: response.status, responseText });
+            }
+          })
+          .catch((err) => {
+            if (details.onerror) details.onerror(err);
+          });
+      };
+      window.GM_info = {
+        script: {
+          name: "Lianki Manual Test",
+          version: "2.20.0",
+        },
+      };
 
-    async function testOfflineStorage() {
-      console.log('\n=== Testing Offline Storage ===');
+      // Override console.log to capture in UI
+      const originalLog = console.log;
+      const logElement = document.getElementById("log");
+      console.log = function (...args) {
+        originalLog.apply(console, args);
+        const message = args
+          .map((arg) => (typeof arg === "object" ? JSON.stringify(arg, null, 2) : String(arg)))
+          .join(" ");
+        logElement.textContent += message + "\n";
+        logElement.scrollTop = logElement.scrollHeight;
+      };
 
-      try {
-        // Check if IndexedDB stores exist
-        const dbs = await window.indexedDB.databases();
-        const liankiDBs = dbs.filter(db => db.name?.includes('lianki'));
+      // Display current URL
+      document.getElementById("currentUrl").textContent = window.location.href;
 
-        console.log('IndexedDB databases:', liankiDBs.map(db => db.name));
+      // Load userscript
+      console.log("Loading Lianki userscript v2.20.0...");
+      const script = document.createElement("script");
+      script.src = "http://localhost:3000/lianki.user.js";
+      script.onload = () => {
+        console.log("✓ Userscript loaded successfully");
+        setTimeout(() => {
+          showResult("Userscript Loaded", "v2.20.0 loaded with offline-first support", "success");
+        }, 1000);
+      };
+      script.onerror = () => {
+        console.error("✗ Failed to load userscript");
+        showResult("Userscript Error", "Failed to load from localhost:3000", "error");
+      };
+      document.head.appendChild(script);
 
-        if (liankiDBs.length > 0) {
-          showResult('Offline Storage', `Found ${liankiDBs.length} Lianki database(s)`, 'success');
+      function showResult(title, message, type = "info") {
+        const results = document.getElementById("results");
+        results.innerHTML += `<div class="status ${type}"><strong>${title}:</strong> ${message}</div>`;
+      }
 
-          // Check each store
-          for (const dbInfo of liankiDBs) {
-            const db = await new Promise((resolve, reject) => {
-              const request = indexedDB.open(dbInfo.name);
-              request.onsuccess = () => resolve(request.result);
-              request.onerror = () => reject(request.error);
-            });
+      function clearLog() {
+        logElement.textContent = "";
+      }
 
-            console.log(`Database "${dbInfo.name}" stores:`, Array.from(db.objectStoreNames));
-            db.close();
+      async function testOfflineStorage() {
+        console.log("\n=== Testing Offline Storage ===");
+
+        try {
+          // Check if IndexedDB stores exist
+          const dbs = await window.indexedDB.databases();
+          const liankiDBs = dbs.filter((db) => db.name?.includes("lianki"));
+
+          console.log(
+            "IndexedDB databases:",
+            liankiDBs.map((db) => db.name),
+          );
+
+          if (liankiDBs.length > 0) {
+            showResult(
+              "Offline Storage",
+              `Found ${liankiDBs.length} Lianki database(s)`,
+              "success",
+            );
+
+            // Check each store
+            for (const dbInfo of liankiDBs) {
+              const db = await new Promise((resolve, reject) => {
+                const request = indexedDB.open(dbInfo.name);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+              });
+
+              console.log(`Database "${dbInfo.name}" stores:`, Array.from(db.objectStoreNames));
+              db.close();
+            }
+          } else {
+            showResult(
+              "Offline Storage",
+              "No Lianki databases found (not initialized yet)",
+              "error",
+            );
           }
-        } else {
-          showResult('Offline Storage', 'No Lianki databases found (not initialized yet)', 'error');
+        } catch (err) {
+          console.error("Error checking storage:", err);
+          showResult("Offline Storage", err.message, "error");
         }
-      } catch (err) {
-        console.error('Error checking storage:', err);
-        showResult('Offline Storage', err.message, 'error');
       }
-    }
 
-    async function testAddCard() {
-      console.log('\n=== Testing Add Card (Alt+F) ===');
+      async function testAddCard() {
+        console.log("\n=== Testing Add Card (Alt+F) ===");
 
-      // Simulate Alt+F keypress
-      const event = new KeyboardEvent('keydown', {
-        key: 'f',
-        keyCode: 70,
-        code: 'KeyF',
-        altKey: true,
-        bubbles: true
-      });
-      document.dispatchEvent(event);
+        // Simulate Alt+F keypress
+        const event = new KeyboardEvent("keydown", {
+          key: "f",
+          keyCode: 70,
+          code: "KeyF",
+          altKey: true,
+          bubbles: true,
+        });
+        document.dispatchEvent(event);
 
-      // Wait for dialog
-      setTimeout(() => {
-        const dialogs = document.querySelectorAll('[style*="position: fixed"][style*="z-index"]');
-        if (dialogs.length > 0) {
-          console.log('✓ Dialog opened');
-          showResult('Add Card', 'Dialog opened successfully (Alt+F works)', 'success');
-        } else {
-          console.log('✗ Dialog not found');
-          showResult('Add Card', 'Dialog did not open (check console for errors)', 'error');
+        // Wait for dialog
+        setTimeout(() => {
+          const dialogs = document.querySelectorAll('[style*="position: fixed"][style*="z-index"]');
+          if (dialogs.length > 0) {
+            console.log("✓ Dialog opened");
+            showResult("Add Card", "Dialog opened successfully (Alt+F works)", "success");
+          } else {
+            console.log("✗ Dialog not found");
+            showResult("Add Card", "Dialog did not open (check console for errors)", "error");
+          }
+        }, 1000);
+      }
+
+      async function testCachedCards() {
+        console.log("\n=== Testing Cached Cards ===");
+
+        try {
+          const db = await new Promise((resolve, reject) => {
+            const request = indexedDB.open("lianki-cards");
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+
+          const tx = db.transaction(["cards"], "readonly");
+          const store = tx.objectStore("cards");
+
+          const count = await new Promise((resolve, reject) => {
+            const request = store.count();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+
+          const allKeys = await new Promise((resolve, reject) => {
+            const request = store.getAllKeys();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+
+          console.log(`Found ${count} cached card(s)`);
+          console.log("Card URLs:", allKeys);
+
+          db.close();
+
+          if (count > 0) {
+            showResult("Cached Cards", `${count} card(s) cached in IndexedDB`, "success");
+          } else {
+            showResult("Cached Cards", "No cards cached yet (add a card first)", "info");
+          }
+        } catch (err) {
+          console.error("Error checking cache:", err);
+          showResult("Cached Cards", err.message, "error");
         }
-      }, 1000);
-    }
+      }
 
-    async function testCachedCards() {
-      console.log('\n=== Testing Cached Cards ===');
+      async function testGoOffline() {
+        console.log("\n=== Testing Offline Review ===");
 
-      try {
-        const db = await new Promise((resolve, reject) => {
-          const request = indexedDB.open('lianki-cards');
-          request.onsuccess = () => resolve(request.result);
-          request.onerror = () => reject(request.error);
-        });
+        // Note: Can't actually disconnect network in browser
+        showResult(
+          "Offline Test",
+          'Use DevTools (F12) → Network tab → "Offline" to simulate',
+          "info",
+        );
 
-        const tx = db.transaction(['cards'], 'readonly');
-        const store = tx.objectStore('cards');
+        console.log("Steps to test offline:");
+        console.log("1. Add a card (Alt+F)");
+        console.log("2. Open DevTools (F12)");
+        console.log("3. Go to Network tab");
+        console.log('4. Select "Offline" from dropdown');
+        console.log("5. Press Alt+F again");
+        console.log("6. Card should load from cache instantly");
+      }
 
-        const count = await new Promise((resolve, reject) => {
-          const request = store.count();
-          request.onsuccess = () => resolve(request.result);
-          request.onerror = () => reject(request.error);
-        });
-
-        const allKeys = await new Promise((resolve, reject) => {
-          const request = store.getAllKeys();
-          request.onsuccess = () => resolve(request.result);
-          request.onerror = () => reject(request.error);
-        });
-
-        console.log(`Found ${count} cached card(s)`);
-        console.log('Card URLs:', allKeys);
-
-        db.close();
-
-        if (count > 0) {
-          showResult('Cached Cards', `${count} card(s) cached in IndexedDB`, 'success');
-        } else {
-          showResult('Cached Cards', 'No cards cached yet (add a card first)', 'info');
+      // Listen for Lianki logs
+      const originalConsoleLog = console.log;
+      console.log = function (...args) {
+        const message = args.join(" ");
+        if (message.includes("[Lianki]")) {
+          showResult("Lianki Log", message, "info");
         }
-      } catch (err) {
-        console.error('Error checking cache:', err);
-        showResult('Cached Cards', err.message, 'error');
-      }
-    }
-
-    async function testGoOffline() {
-      console.log('\n=== Testing Offline Review ===');
-
-      // Note: Can't actually disconnect network in browser
-      showResult('Offline Test', 'Use DevTools (F12) → Network tab → "Offline" to simulate', 'info');
-
-      console.log('Steps to test offline:');
-      console.log('1. Add a card (Alt+F)');
-      console.log('2. Open DevTools (F12)');
-      console.log('3. Go to Network tab');
-      console.log('4. Select "Offline" from dropdown');
-      console.log('5. Press Alt+F again');
-      console.log('6. Card should load from cache instantly');
-    }
-
-    // Listen for Lianki logs
-    const originalConsoleLog = console.log;
-    console.log = function(...args) {
-      const message = args.join(' ');
-      if (message.includes('[Lianki]')) {
-        showResult('Lianki Log', message, 'info');
-      }
-      originalConsoleLog.apply(console, args);
-      logElement.textContent += message + '\n';
-      logElement.scrollTop = logElement.scrollHeight;
-    };
-  </script>
-</body>
+        originalConsoleLog.apply(console, args);
+        logElement.textContent += message + "\n";
+        logElement.scrollTop = logElement.scrollHeight;
+      };
+    </script>
+  </body>
 </html>

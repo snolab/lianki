@@ -7,7 +7,7 @@ summary: "Learn how to integrate jpdb.io vocabulary reviews into your Lianki spa
 
 # Supercharge Your Japanese Learning: Combining jpdb.io with Lianki
 
-*Posted February 20, 2025 by [lianki.com](https://www.lianki.com)*
+_Posted February 20, 2025 by [lianki.com](https://www.lianki.com)_
 
 If you're learning Japanese, you're probably familiar with the challenge of balancing vocabulary acquisition with immersion in native content. Today, I want to share a powerful workflow that combines two excellent tools: [jpdb.io](https://jpdb.io) for vocabulary building and Lianki for spaced repetition of your learning materials.
 

@@ -2061,7 +2061,11 @@ function main() {
       spinRow.appendChild(spinner);
       spinRow.appendChild(document.createTextNode("Adding note\u2026"));
       const urlDiv = document.createElement("div");
-      Object.assign(urlDiv.style, { color: "var(--lk-muted)", fontSize: "12px", wordBreak: "break-all" });
+      Object.assign(urlDiv.style, {
+        color: "var(--lk-muted)",
+        fontSize: "12px",
+        wordBreak: "break-all",
+      });
       urlDiv.textContent = normalizeUrl(location.href);
       wrap.appendChild(spinRow);
       wrap.appendChild(urlDiv);

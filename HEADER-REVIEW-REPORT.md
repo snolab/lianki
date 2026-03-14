@@ -1,4 +1,5 @@
 # Unified Header Review Report
+
 **Date:** 2026-02-26
 **Testing Method:** Playwright headless browser (Chromium)
 **Base URL:** https://www.lianki.com
@@ -17,6 +18,7 @@
 All the following pages successfully render with the unified header:
 
 #### 1. Landing Page (`/en`)
+
 - ✅ Header exists
 - ✅ Logo/App Name: "Lianki"
 - ✅ Learn button: "Learn"
@@ -25,43 +27,52 @@ All the following pages successfully render with the unified header:
 - ✅ Sign in link: "Sign in"
 
 #### 2. Blog Index (`/en/blog`)
+
 - ✅ Header exists
 - ✅ All navigation elements present
 - ✅ Responsive layout working
 
 #### 3. Blog Post Detail (`/en/blog/2025-01-01-introduction`)
+
 - ✅ Header exists
 - ✅ All navigation elements present
 - ✅ Consistent with other pages
 
 #### 4. Learn Page (`/en/learn`)
+
 - ✅ Header exists
 - ✅ All navigation elements present
 - ✅ Import functionality accessible
 
 #### 5. Dashboard (`/en/list`)
+
 - ✅ Header exists (redirects to sign-in when not authenticated)
 - ✅ Navigation working correctly
 
 #### 6. Profile (`/en/profile`)
+
 - ✅ Header exists (redirects to sign-in when not authenticated)
 - ✅ Proper auth handling
 
 #### 7. Membership (`/en/membership`)
+
 - ✅ Header exists
 - ✅ All navigation elements present
 - ✅ Client component wrapper working
 
 #### 8. Preferences (`/en/preferences`)
+
 - ✅ Header exists (redirects to sign-in when not authenticated)
 - ✅ Auth flow working correctly
 
 #### 9. Self-Introduction (`/en/self-intro`)
+
 - ✅ Header exists
 - ✅ All navigation elements present
 - ✅ Client component wrapper working
 
 #### 10. Sign In (`/en/sign-in`)
+
 - ✅ Header exists
 - ✅ All navigation elements present
 - ✅ User shows as null (not logged in)
@@ -69,9 +80,11 @@ All the following pages successfully render with the unified header:
 ### ❌ Failed Page (1/11)
 
 #### Polyglot Matrix (`/en/polyglot`)
+
 **Status:** Runtime Error (Error digest: 2777046805)
 
 **Analysis:**
+
 - Server-side rendering includes Header component in JSX structure
 - Metadata and hreflang links render correctly
 - Client-side hydration fails, preventing header from displaying
@@ -79,12 +92,15 @@ All the following pages successfully render with the unified header:
 - **Root cause:** The error occurs during client-side rendering, not server-side
 
 **HTML Evidence:**
+
 ```
 "$L11",null,{"locale":"en","appName":"Lianki","blogLabel":"Blog","learnLabel":"Learn","user":null}
 ```
+
 This shows Header is in the structure but fails to render.
 
 **Recommendation:**
+
 - Debug PolyglotClient component for client-side errors
 - Check browser console for specific error message
 - Likely a hydration mismatch or undefined variable issue
@@ -94,6 +110,7 @@ This shows Header is in the structure but fails to render.
 All passing pages correctly implement:
 
 ✅ **Navigation Elements:**
+
 - App name/logo (links to home)
 - Learn button (links to /learn)
 - Blog button (links to /blog)
@@ -101,11 +118,13 @@ All passing pages correctly implement:
 - Profile dropdown OR Sign in link
 
 ✅ **Responsive Design:**
+
 - Desktop: Avatar + username
 - Mobile: Avatar only
 - Proper flex layout and spacing
 
 ✅ **SEO & Accessibility:**
+
 - Proper metadata on all pages
 - Hreflang links for all locales
 - Semantic HTML structure
@@ -113,6 +132,7 @@ All passing pages correctly implement:
 ## Screenshot Gallery
 
 Screenshots saved in `./screenshots/`:
+
 1. landing-page.png (62 KB)
 2. blog-index.png (81 KB)
 3. blog-post.png (102 KB)
@@ -129,6 +149,7 @@ Screenshots saved in `./screenshots/`:
 ### Server/Client Split Pattern (Used for all client-heavy pages)
 
 **Server Component (`page.tsx`):**
+
 ```typescript
 export default async function PageName() {
   const locale = await getLocale();
@@ -148,6 +169,7 @@ export default async function PageName() {
 ```
 
 **Client Component (`*Client.tsx`):**
+
 - Contains original page logic
 - "use client" directive
 - Interactive features preserved
@@ -155,6 +177,7 @@ export default async function PageName() {
 ## Browser Compatibility
 
 Tested with:
+
 - **Browser:** Chromium (Playwright)
 - **Viewport:** 1280x720
 - **User Agent:** Chrome 120.0
@@ -172,6 +195,7 @@ Tested with:
 The unified header implementation is **91% complete** (10/11 pages working).
 
 **Next Steps:**
+
 1. ✅ Fix PolyglotClient runtime error
 2. ✅ Verify all 11 pages render correctly
 3. ✅ Test across multiple locales (en, ko, ja, zh, etc.)

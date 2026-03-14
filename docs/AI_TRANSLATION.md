@@ -86,6 +86,7 @@ export default myContent;
 2. Use in your component:
 
 **Client Component:**
+
 ```tsx
 "use client";
 import { useIntlayer } from "next-intlayer";
@@ -97,6 +98,7 @@ export default function MyComponent() {
 ```
 
 **Server Component:**
+
 ```tsx
 import { useIntlayer } from "next-intlayer/server";
 

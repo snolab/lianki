@@ -7,7 +7,7 @@ summary: "How the Lianki Tampermonkey userscript works: the floating button, inl
 
 # The Lianki Userscript: Browser Integration with Tampermonkey
 
-*Posted February 10, 2025 by [lianki.com](https://www.lianki.com)*
+_Posted February 10, 2025 by [lianki.com](https://www.lianki.com)_
 
 The core of Lianki's UX is a Tampermonkey/Violentmonkey userscript (`lianki.user.js`). It puts a floating button on every page you visit. One shortcut adds the current page to your review queue. Reviews happen inline, without leaving the page.
 

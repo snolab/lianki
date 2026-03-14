@@ -10,14 +10,17 @@
 ### What We Found
 
 1. **✓ DNS Configuration: WORKING**
+
    ```bash
    $ getent hosts beta.lianki.com
    64.29.17.1  973a3d7061d8fc14.vercel-dns-017.com beta.lianki.com
    ```
+
    - DNS resolves correctly to Vercel servers
    - Same infrastructure as www.lianki.com
 
 2. **✓ vercel.json Configuration: CORRECT**
+
    ```json
    {
      "git": {
@@ -28,21 +31,26 @@
      }
    }
    ```
+
    - Beta branch deployment is enabled
 
 3. **✓ Beta Branch: UP TO DATE**
+
    ```bash
    $ git log origin/beta --oneline -1
    122f6cb feat: Offline-First Sync with IndexedDB and CRDT (v2.20.0) (#60)
    ```
+
    - PR #60 merged 35 minutes ago (2026-02-26 00:05:15 UTC)
    - Contains v2.20.0 offline-first code
 
 4. **❌ Beta Deployment: OUTDATED (8 days old)**
+
    ```bash
    $ vercel inspect lianki-git-beta-snomiao.vercel.app
    created: Tue Feb 17 2026 20:04:38 GMT+0000 (8d ago)
    ```
+
    - Last beta deployment is from Feb 17 (before offline-first merge)
    - Current URL: https://lianki-git-beta-snomiao.vercel.app
    - Status: ❌ 401 Unauthorized (Deployment Protection enabled)
@@ -98,6 +106,7 @@
    - This will make beta.lianki.com always point to the latest beta branch deployment
 
 2. **Verify Domain Configuration**
+
    ```bash
    # Should return 200 and v2.20.0
    curl -I https://beta.lianki.com/lianki.user.js
@@ -111,12 +120,14 @@
      - **Option 3**: Keep protection, use Vercel CLI with auth token for tests
 
 **Pros:**
+
 - ✓ Permanent solution
 - ✓ beta.lianki.com always shows latest beta branch
 - ✓ No manual deployment needed
 - ✓ Matches production setup
 
 **Cons:**
+
 - ⚠️ Requires Vercel dashboard access
 
 **Time:** 5 minutes
@@ -161,11 +172,13 @@ jobs:
 ```
 
 **Pros:**
+
 - ✓ Automated deployment on push to beta
 - ✓ Can customize build process
 - ✓ Visible in GitHub Actions tab
 
 **Cons:**
+
 - ⚠️ Requires workflow creation and testing
 - ⚠️ More complex than dashboard config
 
@@ -178,12 +191,14 @@ jobs:
 **Steps:**
 
 1. **Checkout beta branch**
+
    ```bash
    git checkout beta
    git pull origin beta
    ```
 
 2. **Deploy to production** (will be accessible at beta.lianki.com if domain is configured)
+
    ```bash
    vercel --prod --scope team_0YVgkyqvak5X8lMl3zNBqIC7
    ```
@@ -195,10 +210,12 @@ jobs:
    ```
 
 **Pros:**
+
 - ✓ Quick temporary fix
 - ✓ Can test immediately
 
 **Cons:**
+
 - ⚠️ Manual process (not automated)
 - ⚠️ Need to repeat for every beta update
 - ⚠️ Won't work if domain not configured
@@ -219,6 +236,7 @@ jobs:
    - Click "Save"
 
 3. **Test Preview URL**
+
    ```bash
    # Now should return 200 instead of 401
    curl -I https://lianki-git-beta-snomiao.vercel.app/lianki.user.js
@@ -230,11 +248,13 @@ jobs:
    ```
 
 **Pros:**
+
 - ✓ Fastest solution (1 minute)
 - ✓ Allows immediate testing
 - ✓ Works with existing preview URLs
 
 **Cons:**
+
 - ⚠️ Makes ALL deployments public (including dev branches)
 - ⚠️ Security concern if repo has sensitive code
 - ⚠️ Still testing 8-day-old deployment (not v2.20.0)
@@ -246,15 +266,16 @@ jobs:
 ## Recommended Approach
 
 **For immediate testing:**
+
 1. **Option A** (Add domain via dashboard) - 5 minutes
    - This is the proper long-term solution
    - Matches your production setup
    - Enables automated testing
 
-**If dashboard access is difficult:**
-2. **Option C** (Manual CLI deployment) + **Option D** (Disable protection)
-   - Quick workaround to test v2.20.0
-   - Can be replaced with Option A later
+**If dashboard access is difficult:** 2. **Option C** (Manual CLI deployment) + **Option D** (Disable protection)
+
+- Quick workaround to test v2.20.0
+- Can be replaced with Option A later
 
 ---
 
@@ -312,6 +333,7 @@ node tests/beta-test.spec.mjs
 ```
 
 **Expected output:**
+
 ```
 🧪 Starting Beta Testing for v2.20.0
 
@@ -368,6 +390,7 @@ Add beta.lianki.com domain in Vercel dashboard and assign to beta branch.
 ### Why Deployment Protection Blocks Testing
 
 Vercel's "Deployment Protection" feature requires authentication for:
+
 - All preview deployments (`*.vercel.app` URLs)
 - Git branch deployments (`lianki-git-*-snomiao.vercel.app`)
 - Unless domain is explicitly in "Standard Protection" bypass list
@@ -377,6 +400,7 @@ Vercel's "Deployment Protection" feature requires authentication for:
 **Our situation**: Blocks automated E2E testing of beta environment
 
 **Solutions**:
+
 1. Disable protection entirely (quick but less secure)
 2. Add beta.lianki.com to bypass list (better)
 3. Use production deployment for beta branch (best)
@@ -384,6 +408,7 @@ Vercel's "Deployment Protection" feature requires authentication for:
 ### Why Git Branch Deployments Don't Auto-Update
 
 Vercel's git integration behavior:
+
 - `main` branch → Deploys to production domains (www.lianki.com)
 - Other branches → Deploy to preview URLs (`lianki-git-BRANCH-*.vercel.app`)
 - Preview URLs are NOT automatically updated on push

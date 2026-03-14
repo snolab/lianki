@@ -20,6 +20,7 @@ Out of 119 URLs extracted from English blog posts in `/blog/en/`, **95 are valid
 These pages genuinely don't exist and need to be updated or removed:
 
 #### File: `2026-02-25-android-installation-guide.md`
+
 - **URL:** `https://www.lianki.com/contact`
 - **Status:** HTTP 404
 - **Action:** Create contact page or remove link
@@ -29,6 +30,7 @@ These pages genuinely don't exist and need to be updated or removed:
 - **Action:** Fix URL or remove link
 
 #### File: `2026-02-25-japanese-beginner-materials.md`
+
 - **URL:** `https://jlptstudy.net/n5/?cat=1`
 - **Status:** HTTP 404
 - **Action:** Find alternative resource or update URL
@@ -42,6 +44,7 @@ These pages genuinely don't exist and need to be updated or removed:
 ### 2. Site Appears Down (1 URL) ⚠️
 
 #### File: `2026-02-25-japanese-beginner-materials.md`
+
 - **URL:** `https://hiragana-quest.com/`
 - **Status:** Connection timeout
 - **Action:** Site appears to be permanently offline - consider removing or finding alternative
@@ -53,16 +56,19 @@ These pages genuinely don't exist and need to be updated or removed:
 These block automated requests but are likely valid when accessed by browsers:
 
 #### File: `2025-02-20-jpdb-lianki-workflow.md`
+
 - **URL:** `https://www.patreon.com/jpdb`
 - **Status:** HTTP 403
 - **Note:** Patreon has anti-bot protection; URL is likely valid
 
 #### File: `2026-02-25-android-installation-guide.md`
+
 - **URL:** `https://alternativeto.net/software/tampermonkey/`
 - **Status:** HTTP 403
 - **Note:** AlternativeTo blocks curl; URL is likely valid
 
 #### File: `2026-02-27-language-reactor-lianki-workflow.md`
+
 - **URL:** `https://www.classcentral.com/report/review-language-reactor/`
 - **Status:** HTTP 403
 - **Note:** Class Central blocks automated requests; URL is likely valid
@@ -72,6 +78,7 @@ These block automated requests but are likely valid when accessed by browsers:
 ### 4. HTTP 406 Not Acceptable (1 URL)
 
 #### File: `2026-02-27-language-reactor-lianki-workflow.md`
+
 - **URL:** `https://ltl-school.com/language-reactor/`
 - **Status:** HTTP 406
 - **Action:** Verify URL manually; may require specific headers
@@ -148,4 +155,3 @@ These are artifacts from regex extraction of markdown syntax and can be ignored:
 3. Manually verify ltl-school.com URL in browser
 4. Consider adding URL validation to CI/CD pipeline
 5. Clean up markdown formatting to avoid backticks in URLs
-

@@ -43,10 +43,10 @@
 
 ```typescript
 type HLC = {
-  timestamp: number,  // Physical clock (Date.now())
-  counter: number,    // Logical counter for same timestamp
-  deviceId: string    // Device identifier
-}
+  timestamp: number; // Physical clock (Date.now())
+  counter: number; // Logical counter for same timestamp
+  deviceId: string; // Device identifier
+};
 
 // HLC comparison: timestamp > counter > deviceId
 function compareHLC(a: HLC, b: HLC): number {
@@ -69,6 +69,7 @@ function newHLC(deviceId: string, lastHLC: HLC | null): HLC {
 ### Dependencies
 
 **Bundle additions** (~70KB total):
+
 - `ts-fsrs` (~50KB) - FSRS algorithm implementation
 - `idb-keyval` (~1KB) - Lightweight IndexedDB wrapper
 - HLC implementation (~2KB) - Custom CRDT logic
@@ -79,11 +80,11 @@ function newHLC(deviceId: string, lastHLC: HLC | null): HLC {
 
 ```javascript
 // Using idb-keyval for simplicity
-import { createStore, get, set, keys, del } from 'idb-keyval';
+import { createStore, get, set, keys, del } from "idb-keyval";
 
-const cardStore = createStore('lianki-cards', 'cards');
-const configStore = createStore('lianki-config', 'config');
-const queueStore = createStore('lianki-queue', 'queue');
+const cardStore = createStore("lianki-cards", "cards");
+const configStore = createStore("lianki-config", "config");
+const queueStore = createStore("lianki-queue", "queue");
 
 // Helpers
 async function getCard(url) {
@@ -96,7 +97,7 @@ async function setCard(url, card) {
 
 async function getAllCards() {
   const urls = await keys(cardStore);
-  return Promise.all(urls.map(url => getCard(url)));
+  return Promise.all(urls.map((url) => getCard(url)));
 }
 ```
 
@@ -105,21 +106,21 @@ async function getAllCards() {
 ```javascript
 // Minified ts-fsrs bundle (inline in userscript)
 // Generated via: bun build --minify --target=browser
-import { fsrs, generatorParameters, Rating } from 'ts-fsrs';
+import { fsrs, generatorParameters, Rating } from "ts-fsrs";
 
 // Initialize FSRS scheduler
 let fsrsScheduler = null;
 let fsrsParams = null;
 
 async function initFSRS() {
-  const config = await get('config', configStore);
+  const config = await get("config", configStore);
   fsrsParams = config?.fsrsParams || generatorParameters({});
   fsrsScheduler = fsrs(fsrsParams);
 }
 
 // Calculate review options locally
 function calculateOptions(card) {
-  if (!fsrsScheduler) throw new Error('FSRS not initialized');
+  if (!fsrsScheduler) throw new Error("FSRS not initialized");
 
   const now = new Date();
   return [
@@ -143,16 +144,16 @@ async function openDialog() {
   if (cardData) {
     // Card exists locally - instant review!
     state.noteId = cardData.note._id;
-    state.phase = 'reviewing';
+    state.phase = "reviewing";
     state.options = calculateOptions(cardData.note.card);
     renderDialog();
 
     // Background: ensure server has latest
-    queueAction('sync', { url });
+    queueAction("sync", { url });
     tryBackgroundSync();
   } else {
     // Card not cached - fetch from server
-    state.phase = 'loading';
+    state.phase = "loading";
     renderDialog();
 
     try {
@@ -163,16 +164,16 @@ async function openDialog() {
       await setCard(url, {
         note,
         hlc,
-        dirty: false
+        dirty: false,
       });
 
       // Calculate locally
       state.noteId = note._id;
-      state.phase = 'reviewing';
+      state.phase = "reviewing";
       state.options = calculateOptions(note.card);
       renderDialog();
     } catch (err) {
-      state.phase = 'error';
+      state.phase = "error";
       state.error = err.message;
       renderDialog();
     }
@@ -187,7 +188,7 @@ async function openDialog() {
 
 ```javascript
 async function doReview(rating) {
-  if (state.phase !== 'reviewing' || !state.noteId) return;
+  if (state.phase !== "reviewing" || !state.noteId) return;
 
   const url = normalizeUrl(location.href);
   const cardData = await getCard(url);
@@ -211,11 +212,11 @@ async function doReview(rating) {
   await setCard(url, cardData);
 
   // Queue server sync
-  await queueAction('review', {
+  await queueAction("review", {
     url,
     noteId: state.noteId,
     rating,
-    hlc: cardData.hlc
+    hlc: cardData.hlc,
   });
 
   // Instant feedback!
@@ -236,7 +237,7 @@ let syncRetryTimeout = null;
 async function tryBackgroundSync() {
   if (syncInProgress) return;
   if (!navigator.onLine) {
-    console.log('[Lianki] Offline - will sync when online');
+    console.log("[Lianki] Offline - will sync when online");
     return;
   }
 
@@ -245,9 +246,7 @@ async function tryBackgroundSync() {
   try {
     // Get all queued actions
     const queueKeys = await keys(queueStore);
-    const queue = await Promise.all(
-      queueKeys.map(k => get(k, queueStore))
-    );
+    const queue = await Promise.all(queueKeys.map((k) => get(k, queueStore)));
 
     if (queue.length === 0) {
       syncInProgress = false;
@@ -260,7 +259,7 @@ async function tryBackgroundSync() {
         await syncAction(action);
         await del(action.id, queueStore);
       } catch (err) {
-        console.error('[Lianki] Sync failed:', err);
+        console.error("[Lianki] Sync failed:", err);
         action.retries = (action.retries || 0) + 1;
 
         if (action.retries > 5) {
@@ -274,10 +273,9 @@ async function tryBackgroundSync() {
     }
 
     // Update last sync time
-    const config = await get('config', configStore);
+    const config = await get("config", configStore);
     config.lastSyncTime = Date.now();
-    await set('config', config, configStore);
-
+    await set("config", config, configStore);
   } finally {
     syncInProgress = false;
   }
@@ -292,19 +290,22 @@ async function tryBackgroundSync() {
 // Sync single action to server
 async function syncAction(action) {
   switch (action.action) {
-    case 'review':
-      await api(`/api/fsrs/review/${action.data.rating}/?id=${encodeURIComponent(action.data.noteId)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ hlc: action.hlc })
-      });
+    case "review":
+      await api(
+        `/api/fsrs/review/${action.data.rating}/?id=${encodeURIComponent(action.data.noteId)}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ hlc: action.hlc }),
+        },
+      );
       break;
 
-    case 'add':
+    case "add":
       await addNote(action.data.url, action.data.title);
       break;
 
-    case 'delete':
+    case "delete":
       await deleteNote(action.data.noteId);
       break;
   }
@@ -317,7 +318,7 @@ async function syncAction(action) {
 async function prefetchDueCards() {
   try {
     // Fetch next 10 due cards from server
-    const response = await api('/api/fsrs/due?limit=10');
+    const response = await api("/api/fsrs/due?limit=10");
     const dueCards = response.cards || [];
 
     // Save to IndexedDB
@@ -328,15 +329,15 @@ async function prefetchDueCards() {
         // Server version is newer
         await setCard(note.url, {
           note,
-          hlc: note.hlc || newHLC('server', null),
-          dirty: false
+          hlc: note.hlc || newHLC("server", null),
+          dirty: false,
         });
       }
     }
 
     console.log(`[Lianki] Prefetched ${dueCards.length} due cards`);
   } catch (err) {
-    console.error('[Lianki] Prefetch failed:', err);
+    console.error("[Lianki] Prefetch failed:", err);
   }
 }
 ```
@@ -377,6 +378,7 @@ function renderSyncStatus() {
 ### New API Endpoints
 
 **GET /api/fsrs/due?limit=10**
+
 ```typescript
 // Returns next N due cards with HLC timestamps
 {
@@ -385,10 +387,11 @@ function renderSyncStatus() {
 ```
 
 **POST /api/fsrs/review/:rating**
+
 ```typescript
 // Accept HLC in body for conflict resolution
 body: {
-  hlc: HLC
+  hlc: HLC;
 }
 
 // Server compares HLC:
@@ -398,6 +401,7 @@ body: {
 ```
 
 **GET /api/fsrs/sync**
+
 ```typescript
 // Full sync endpoint
 query: { since: timestamp }
@@ -416,9 +420,9 @@ query: { since: timestamp }
 // Add HLC to FSRSNote
 type FSRSNote = {
   // ... existing fields
-  hlc?: HLC,           // Hybrid Logical Clock
-  deviceId?: string    // Last device that modified
-}
+  hlc?: HLC; // Hybrid Logical Clock
+  deviceId?: string; // Last device that modified
+};
 ```
 
 ## Testing Plan
@@ -451,6 +455,7 @@ type FSRSNote = {
 **After**: ~120KB (+70KB)
 
 Breakdown:
+
 - ts-fsrs: 50KB
 - idb-keyval: 1KB
 - HLC + sync logic: 10KB
@@ -461,6 +466,7 @@ Still acceptable for userscript loaded once and cached by extension.
 ## Migration
 
 **First load with new version**:
+
 1. Initialize IndexedDB stores
 2. Generate deviceId (UUID)
 3. Fetch user's FSRS parameters
@@ -468,6 +474,7 @@ Still acceptable for userscript loaded once and cached by extension.
 5. Set lastSyncTime
 
 **Backward compatibility**:
+
 - Old API endpoints still work
 - HLC is optional (server generates if missing)
 - Graceful degradation if IndexedDB unavailable
@@ -475,11 +482,13 @@ Still acceptable for userscript loaded once and cached by extension.
 ## Performance Gains
 
 **Before** (network-dependent):
+
 - Open dialog: ~500ms (network round-trip)
 - Review card: ~500ms (network round-trip)
 - Total: ~1000ms per review
 
 **After** (offline-first):
+
 - Open dialog: ~50ms (IndexedDB read)
 - Review card: ~50ms (local calculation + queue)
 - Total: ~100ms per review

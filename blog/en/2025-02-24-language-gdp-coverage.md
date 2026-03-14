@@ -7,7 +7,7 @@ summary: "Discover how learning just a few languages can unlock most of the worl
 
 # The Power Law of Languages: How 7 Languages Cover 75% of Global GDP
 
-*Posted February 24, 2025 by [lianki.com](https://www.lianki.com)*
+_Posted February 24, 2025 by [lianki.com](https://www.lianki.com)_
 
 If you're learning languages for economic opportunity, you might wonder: **How many languages do I need to access most of the global economy?**
 
@@ -289,15 +289,19 @@ if (milestonesCtx) {
 ### The Milestone Languages
 
 **50% coverage (2 languages):**
+
 - English + Chinese
 
 **75% coverage (7 languages):**
+
 - English, Chinese, Spanish, German, Japanese, Hindi, French
 
 **90% coverage (16 languages):**
+
 - Add: Italian, Portuguese, Korean, Russian, Arabic, Turkish, Dutch, Indonesian, Polish
 
 **95% coverage (27 languages):**
+
 - Add: Swedish, Thai, Bengali, Vietnamese, Hebrew, Persian, Urdu, Filipino, Romanian, Norwegian, Czech
 
 ---
@@ -312,6 +316,7 @@ English's 35% share of global GDP isn't just about the number of speakers—it's
 - **Australia**: $1.83T
 
 The United States' economic dominance drives English to the top. For comparison:
+
 - **China** (Mandarin): $19.40T
 - **Japan** (Japanese): $4.28T
 - **Germany** (German): $5.01T
@@ -323,6 +328,7 @@ The United States' economic dominance drives English to the top. For comparison:
 Chinese (Mandarin) is unique as the only language besides English to exceed 15% of global GDP. This is almost entirely driven by China's massive economy ($19.40T).
 
 **Why Chinese is critical for polyglots:**
+
 - Second-largest single market
 - Growing consumer economy
 - Increasing international business influence
@@ -335,17 +341,20 @@ Chinese (Mandarin) is unique as the only language besides English to exceed 15% 
 Languages often cluster around regional economies. Here's how the major regions break down:
 
 ### Europe (Multiple Languages)
+
 - **Combined GDP**: ~$25T (21% of world)
 - **Key languages**: German ($6.58T), French ($3.36T), Italian ($2.54T), Spanish (European portion: $1.89T)
 - **Insight**: European business often requires 2-3 languages for regional coverage
 
 ### Americas (2 Languages Dominate)
+
 - **English**: $32.9T (USA + Canada)
 - **Spanish**: $5.58T (Mexico, Latin America)
 - **Portuguese**: $2.26T (Brazil)
 - **Combined**: $40.74T (35% of world GDP)
 
 ### Asia (Highly Diverse)
+
 - **Chinese**: $20.71T
 - **Japanese**: $4.28T
 - **Hindi**: $4.13T
@@ -360,6 +369,7 @@ Languages often cluster around regional economies. Here's how the major regions 
 ### For Business and Career
 
 **High ROI Languages** (each opens 2%+ of global economy):
+
 1. **English** (35.2%) — Non-negotiable for international business
 2. **Chinese** (17.7%) — Gateway to world's second-largest economy
 3. **Spanish** (6.4%) — Access to Latin America + Spain
@@ -369,6 +379,7 @@ Languages often cluster around regional economies. Here's how the major regions 
 7. **French** (2.9%) — France + African francophone markets
 
 **Efficient Combinations:**
+
 - **English + Chinese** = 53% coverage with 2 languages
 - **English + Chinese + Spanish** = 59% coverage with 3 languages
 - **English + Chinese + Spanish + German** = 65% coverage with 4 languages
@@ -376,12 +387,14 @@ Languages often cluster around regional economies. Here's how the major regions 
 ### For Cultural Enrichment
 
 Economic value isn't everything! Many languages with smaller GDP footprints offer:
+
 - Rich cultural heritage
 - Access to unique literature and media
 - Regional importance
 - Personal connections
 
 **Examples:**
+
 - **Bengali**: 265M speakers, rich literary tradition (0.41% of GDP)
 - **Swahili**: Growing pan-African lingua franca (0.56% of GDP)
 - **Thai**: Major ASEAN economy and culture (0.48% of GDP)
@@ -396,6 +409,7 @@ This data is a perfect example of the **Pareto Principle** (80/20 rule):
 - **Top 7% of languages** (top 3 out of ~40) cover **59% of global GDP**
 
 In practice, this means:
+
 - Learning **2-3 languages strategically** can unlock most economic opportunities
 - Additional languages offer **diminishing marginal returns** economically
 - After ~10 languages, you're adding less than 1% per language
@@ -407,6 +421,7 @@ In practice, this means:
 ### Data Collection
 
 This analysis uses:
+
 - **GDP data**: IMF World Economic Outlook (October 2025)
 - **Total world GDP**: $117.2 trillion (2025 projection)
 - **Countries analyzed**: 195+ countries with available GDP data
@@ -423,12 +438,14 @@ Countries were assigned to their primary **business/economic language**, not nec
 ### Limitations
 
 **This analysis simplifies:**
+
 - Many countries are multilingual (India uses English + Hindi in business)
 - Colonial languages often dominate business despite local languages being more spoken
 - Diaspora speakers not counted (e.g., Spanish speakers in USA)
 - Language proficiency levels not considered
 
 **Not measured:**
+
 - Second language speakers
 - Language learning difficulty
 - Cultural or political importance
@@ -533,7 +550,7 @@ Whether you're targeting the "big 5" or exploring languages for personal enrichm
 
 ---
 
-*Want to learn more about strategic language learning? Check out our [Polyglot Mode](/en/polyglot) feature for AI-powered multi-language learning.*
+_Want to learn more about strategic language learning? Check out our [Polyglot Mode](/en/polyglot) feature for AI-powered multi-language learning._
 
 ---
 

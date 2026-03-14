@@ -7,7 +7,7 @@ summary: "Step-by-step guide to install Lianki on iPhone and iPad using Userscri
 
 # Installing Lianki on iOS: Complete Guide for iPhone and iPad
 
-*Posted February 23, 2025 by [lianki.com](https://www.lianki.com)*
+_Posted February 23, 2025 by [lianki.com](https://www.lianki.com)_
 
 Lianki works on iPhone and iPad through userscript managers — apps that run userscripts in Safari or other browsers. This guide shows you the easiest way to get started.
 
@@ -206,16 +206,19 @@ While we recommend the Userscripts app for most users, here are other options:
 **Best for**: Users who want ad blocking, bookmark sync, or advanced features
 
 **Pros**:
+
 - Free and open source
 - Cross-device sync (iPhone, iPad, Mac)
 - Built-in ad blocking
 - Actively maintained
 
 **Cons**:
+
 - Slightly more complex setup
 - More features = steeper learning curve
 
 **Installation**:
+
 1. Download "Stay 2 - Userscript Manager" from App Store
 2. Enable in Settings > Safari > Extensions
 3. Import the Lianki script from Greasy Fork or stayfork.app
@@ -225,16 +228,19 @@ While we recommend the Userscripts app for most users, here are other options:
 **Best for**: Users who want a single browser with built-in userscript support (no Safari extension needed)
 
 **Pros**:
+
 - Built-in userscript engine (no extension setup)
 - 2026 v7.0 update: Supports desktop browser extensions from Chrome/Edge/Firefox
 - No need to manage Safari extensions
 - Free
 
 **Cons**:
+
 - Must use Gear Browser instead of Safari
 - Loses some iOS Safari integration
 
 **Installation**:
+
 1. Download "Gear Browser - Userscript" from App Store
 2. Open Gear Browser
 3. Install Lianki userscript from Greasy Fork
@@ -415,17 +421,17 @@ If you have an external keyboard connected to your iPad (or using on-screen keyb
 
 Still deciding between Userscripts (Safari extension) and Gear Browser (standalone)?
 
-| Feature | Userscripts (Safari Ext.) | Gear Browser |
-|---------|---------------------------|--------------|
-| **Price** | Free | Free |
-| **Browser** | Safari (default iOS browser) | Gear Browser |
-| **Setup Complexity** | Moderate (enable extension) | Easy (built-in) |
-| **iOS Integration** | Full (uses Safari) | Limited (separate browser) |
-| **Script Management** | In Userscripts app | In browser settings |
-| **Works Offline** | Yes | Yes |
-| **iCloud Sync** | Yes (scripts sync) | No |
-| **Other Extensions** | Safari content blockers work | Built-in ad blocking |
-| **Desktop Extensions** | No | Yes (v7.0+: Chrome/Edge/Firefox) |
+| Feature                | Userscripts (Safari Ext.)    | Gear Browser                     |
+| ---------------------- | ---------------------------- | -------------------------------- |
+| **Price**              | Free                         | Free                             |
+| **Browser**            | Safari (default iOS browser) | Gear Browser                     |
+| **Setup Complexity**   | Moderate (enable extension)  | Easy (built-in)                  |
+| **iOS Integration**    | Full (uses Safari)           | Limited (separate browser)       |
+| **Script Management**  | In Userscripts app           | In browser settings              |
+| **Works Offline**      | Yes                          | Yes                              |
+| **iCloud Sync**        | Yes (scripts sync)           | No                               |
+| **Other Extensions**   | Safari content blockers work | Built-in ad blocking             |
+| **Desktop Extensions** | No                           | Yes (v7.0+: Chrome/Edge/Firefox) |
 
 **Recommendation**:
 
@@ -458,6 +464,7 @@ Here's a complete list of all available userscript managers for iOS as of 2026.
 - **Requirements**: iOS 15.1+
 
 **Pros**:
+
 - Free and open source
 - Automatic setup on first launch
 - Three difficulty modes (Novice, Beginner, Advanced)
@@ -466,6 +473,7 @@ Here's a complete list of all available userscript managers for iOS as of 2026.
 - No tracking or ads
 
 **Cons**:
+
 - No built-in script editor on iOS (editing requires macOS or manual file editing)
 - iCloud sync can be finicky on iOS 18+ (requires "keep downloaded" setting)
 
@@ -481,6 +489,7 @@ Here's a complete list of all available userscript managers for iOS as of 2026.
 - **Requirements**: iOS 15.0+
 
 **Pros**:
+
 - Free and open source
 - Cross-device bookmark sync
 - Ad blocking support (AdGuard, uBlock Origin compatible)
@@ -489,6 +498,7 @@ Here's a complete list of all available userscript managers for iOS as of 2026.
 - Modern "Liquid Glass style" UI
 
 **Cons**:
+
 - More features = more complex
 - Steeper learning curve than Userscripts
 
@@ -504,6 +514,7 @@ Here's a complete list of all available userscript managers for iOS as of 2026.
 - **Requirements**: iOS 15.0+
 
 **Pros**:
+
 - Most famous userscript manager (desktop version widely used)
 - Excellent script compatibility
 - Built-in sync across devices
@@ -511,6 +522,7 @@ Here's a complete list of all available userscript managers for iOS as of 2026.
 - Compatible with Apple Vision Pro
 
 **Cons**:
+
 - Paid app ($2.99)
 - Relatively new on iOS (launched late 2024)
 
@@ -525,10 +537,12 @@ Here's a complete list of all available userscript managers for iOS as of 2026.
 - **Requirements**: iOS, iPadOS, macOS
 
 **Pros**:
+
 - Works across Apple platforms
 - Safari-focused
 
 **Cons**:
+
 - Less popular than Userscripts or Stay
 - Fewer features than competitors
 - Paid
@@ -547,6 +561,7 @@ Here's a complete list of all available userscript managers for iOS as of 2026.
 - **Requirements**: iOS
 
 **Pros**:
+
 - Built-in userscript engine (no Safari extension needed)
 - **NEW in v7.0**: Supports desktop browser extensions (Chrome, Edge, Firefox)
 - High-performance extension engine
@@ -556,6 +571,7 @@ Here's a complete list of all available userscript managers for iOS as of 2026.
 - Free
 
 **Cons**:
+
 - Must use Gear Browser instead of Safari
 - Loses Safari-specific iOS integrations
 - May have different script compatibility than Safari-based managers
@@ -572,11 +588,13 @@ Here's a complete list of all available userscript managers for iOS as of 2026.
 - **Rating**: 4.6/5
 
 **Pros**:
+
 - Built-in Tampermonkey script support
 - Fast browsing (marketed as "8x speed")
 - Cheap ($0.99)
 
 **Cons**:
+
 - Paid (though inexpensive)
 - Must use Alook instead of Safari
 - Less popular than other options
@@ -588,14 +606,14 @@ Here's a complete list of all available userscript managers for iOS as of 2026.
 
 ### Comparison Table
 
-| App | Type | Price | Update | Ease | Features |
-|-----|------|-------|--------|------|----------|
-| **Userscripts** | Safari ext. | Free | Feb 2026 | ⭐⭐⭐⭐⭐ | Basic |
-| **Stay 2** | Safari ext. | Free | 2026 | ⭐⭐⭐⭐ | Advanced |
-| **Tampermonkey** | Safari ext. | $2.99 | 2024+ | ⭐⭐⭐⭐ | Premium |
-| **Macaque** | Safari ext. | Paid | N/A | ⭐⭐⭐ | Basic |
-| **Gear Browser** | Browser | Free | v7.0 2026 | ⭐⭐⭐⭐ | Advanced |
-| **Alook Browser** | Browser | $0.99 | N/A | ⭐⭐⭐ | Basic |
+| App               | Type        | Price | Update    | Ease       | Features |
+| ----------------- | ----------- | ----- | --------- | ---------- | -------- |
+| **Userscripts**   | Safari ext. | Free  | Feb 2026  | ⭐⭐⭐⭐⭐ | Basic    |
+| **Stay 2**        | Safari ext. | Free  | 2026      | ⭐⭐⭐⭐   | Advanced |
+| **Tampermonkey**  | Safari ext. | $2.99 | 2024+     | ⭐⭐⭐⭐   | Premium  |
+| **Macaque**       | Safari ext. | Paid  | N/A       | ⭐⭐⭐     | Basic    |
+| **Gear Browser**  | Browser     | Free  | v7.0 2026 | ⭐⭐⭐⭐   | Advanced |
+| **Alook Browser** | Browser     | $0.99 | N/A       | ⭐⭐⭐     | Basic    |
 
 ---
 
@@ -606,6 +624,7 @@ Here's a complete list of all available userscript managers for iOS as of 2026.
 3. **Stay 2** (advanced features, ad blocking, free)
 
 Choose based on your needs:
+
 - **Just want Lianki to work on Safari?** → Userscripts
 - **Want desktop browser extensions on iOS?** → Gear Browser
 - **Want ad blocking + advanced features?** → Stay 2
