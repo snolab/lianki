@@ -111,6 +111,24 @@ const fsrsConfig = fsrs(
   }),
 );
 
+function nextDueQuery(req: Request) {
+  const url = new URL(req.url, "http://localhost");
+  const excludeDomains =
+    url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
+  const query: any = {
+    "card.due": { $lte: new Date() },
+    url: { $exists: true, $ne: null },
+  };
+  if (excludeDomains.length > 0) {
+    query.url = {
+      $exists: true,
+      $ne: null,
+      $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
+    };
+  }
+  return query;
+}
+
 export const fsrsHandler = async (req: Request, email?: string) => {
   // console.log({ userId });
   // await db.collection("FSRSNotes").rename("FSRSNotes@670cb38bd6d5a0afbbf199ba");
@@ -209,19 +227,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       });
     },
     "GET /api/fsrs/next-url(?:/|$|\\?)": async (req) => {
-      const url = new URL(req.url, "http://localhost");
-      const excludeDomains =
-        url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
-
-      const query: any = { "card.due": { $lte: new Date() } };
-      if (excludeDomains.length > 0) {
-        // Exclude cards matching any of the domains
-        query.url = {
-          $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
-        };
-      }
-
-      const note = await FSRSNotes.findOne(query, { sort: { "card.due": 1 } });
+      const note = await FSRSNotes.findOne(nextDueQuery(req), { sort: { "card.due": 1 } });
       return JSONR({ url: note?.url ?? null, title: note?.title ?? null });
     },
     "GET /api/fsrs/review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (
@@ -247,19 +253,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         rating as Grade,
       );
 
-      // Include next URL in response to save an API call
-      const url = new URL(req.url, "http://localhost");
-      const excludeDomains =
-        url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
-
-      const nextQuery: any = { "card.due": { $lte: new Date() } };
-      if (excludeDomains.length > 0) {
-        nextQuery.url = {
-          $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
-        };
-      }
-
-      const nextNote = await FSRSNotes.findOne(nextQuery, { sort: { "card.due": 1 } });
+      const nextNote = await FSRSNotes.findOne(nextDueQuery(req), { sort: { "card.due": 1 } });
 
       return JSONR({
         ok: true,
@@ -330,19 +324,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
       const reviewedCard = await reviewed(note, rating as Grade, clientHLC);
 
-      // Include next URL in response to save an API call
-      const url = new URL(req.url, "http://localhost");
-      const excludeDomains =
-        url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
-
-      const nextQuery: any = { "card.due": { $lte: new Date() } };
-      if (excludeDomains.length > 0) {
-        nextQuery.url = {
-          $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
-        };
-      }
-
-      const nextNote = await FSRSNotes.findOne(nextQuery, { sort: { "card.due": 1 } });
+      const nextNote = await FSRSNotes.findOne(nextDueQuery(req), { sort: { "card.due": 1 } });
 
       return JSONR({
         ok: true,
@@ -358,19 +340,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
       await FSRSNotes.deleteOne({ url: note.url });
 
-      // Include next URL in response to save an API call
-      const url = new URL(req.url, "http://localhost");
-      const excludeDomains =
-        url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
-
-      const nextQuery: any = { "card.due": { $lte: new Date() } };
-      if (excludeDomains.length > 0) {
-        nextQuery.url = {
-          $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
-        };
-      }
-
-      const nextNote = await FSRSNotes.findOne(nextQuery, { sort: { "card.due": 1 } });
+      const nextNote = await FSRSNotes.findOne(nextDueQuery(req), { sort: { "card.due": 1 } });
 
       return JSONR({
         ok: true,
