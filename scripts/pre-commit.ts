@@ -4,7 +4,7 @@ import { writeFileSync, existsSync } from "fs";
 import { join } from "path";
 
 const run = (cmd: string) => execSync(cmd, { encoding: "utf-8" });
-const die = (msg: string) => {
+const DIE = (msg: string): never => {
   console.error(msg);
   process.exit(1);
 };
@@ -19,7 +19,7 @@ const getVersion = (ref: string) =>
 const stagedVersion = getVersion(":public/lianki.user.js");
 const headVersion = getVersion("HEAD:public/lianki.user.js");
 if (stagedVersion === headVersion)
-  die(`lianki.user.js changed but @version (${stagedVersion}) not bumped`);
+  DIE(`lianki.user.js changed but @version (${stagedVersion}) not bumped`);
 console.log(`Version: ${headVersion} → ${stagedVersion}`);
 
 const userScript = run("git show :public/lianki.user.js");

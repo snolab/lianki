@@ -113,8 +113,7 @@ const fsrsConfig = fsrs(
 
 function nextDueQuery(req: Request) {
   const url = new URL(req.url, "http://localhost");
-  const excludeDomains =
-    url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
+  const excludeDomains = url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
   const query: any = {
     "card.due": { $lte: new Date() },
     url: { $exists: true, $ne: null },
