@@ -145,11 +145,19 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
         const due = note.card?.due ? dueMs(note.card.due) : "?";
         const title = note.title;
         const url = note.url;
-        // Serialize Date objects in logs — Dates are not transferable across RSC→client boundary
+        // Explicitly pick only serializable fields — avoid spreading BSON types (ObjectId, Binary)
+        // that may appear on subdocuments and are not transferable across the RSC→client boundary
         const logs = (note.log || []).map((l) => ({
-          ...l,
-          due: l.due instanceof Date ? l.due.toISOString() : l.due,
-          review: l.review instanceof Date ? l.review.toISOString() : l.review,
+          rating: l.rating,
+          state: l.state,
+          due: l.due instanceof Date ? l.due.toISOString() : String(l.due ?? ""),
+          review: l.review instanceof Date ? l.review.toISOString() : String(l.review ?? ""),
+          stability: l.stability,
+          difficulty: l.difficulty,
+          elapsed_days: l.elapsed_days,
+          last_elapsed_days: l.last_elapsed_days,
+          scheduled_days: l.scheduled_days,
+          learning_steps: l.learning_steps,
         }));
         return (
           <li key={note._id.toString()} className="break-words overflow-hidden">
