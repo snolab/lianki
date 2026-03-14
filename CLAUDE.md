@@ -123,12 +123,14 @@ curl -s https://www.lianki.com/lianki.user.js | grep '@version'
 **After every deployment, QA using both remote Chrome AND Vercel logs together:**
 
 1. **Navigate in remote Chrome** to the affected page(s):
+
    ```
    browser_navigate → https://www.lianki.com/<path>
    browser_snapshot → check for errors / error boundaries
    ```
 
 2. **Stream Vercel logs in background** while triggering requests:
+
    ```bash
    vercel logs https://www.lianki.com 2>&1 | head -80
    # Run in background so Chrome can trigger requests simultaneously
@@ -139,6 +141,7 @@ curl -s https://www.lianki.com/lianki.user.js | grep '@version'
 4. **If still failing after a fix**: The digest will change between deployments if the error changed. A repeated digest means the same error persists (not a CDN issue — deploy is live).
 
 **Example QA flow:**
+
 ```
 browser_navigate /ja/list
 → sees "Digest: 2183905591"
@@ -156,12 +159,14 @@ vercel logs https://www.lianki.com
 ### Task Management
 
 **ALWAYS use TodoWrite tool:**
+
 - Start complex tasks by creating a todo list
 - Update status: pending → in_progress → completed
 - Mark tasks completed IMMEDIATELY after finishing
 - Keep exactly ONE task as in_progress at a time
 
 **Example workflow:**
+
 ```
 1. TodoWrite: Create initial task list
 2. Start first task, mark as in_progress
@@ -172,23 +177,27 @@ vercel logs https://www.lianki.com
 ### Development Process
 
 **Before making changes:**
+
 1. Read files before editing (never edit blindly)
 2. Check for existing implementations (Glob/Grep)
 3. Explore with Task tool for complex searches
 4. Test build locally: `bun run build`
 
 **When committing:**
+
 1. Test build first: `bun run build`
-2. Use `git add -A && git commit --no-verify` if linting fails on unrelated files
-3. Include descriptive commit message with:
+2. **NEVER use `--no-verify`** — the pre-commit hook syncs `lianki.meta.js`, checks for secrets, and runs lint. Bypassing it causes drift and broken auto-updates.
+3. If lint fails, fix the lint errors first, then commit.
+4. Include descriptive commit message with:
    - What changed
    - Why it changed
    - Implementation details
-   - `Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>`
+   - `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
 
 **Example commit:**
+
 ```bash
-git commit --no-verify -m "$(cat <<'EOF'
+git commit -m "$(cat <<'EOF'
 feat: add guest mode with local IndexedDB storage
 
 Enable full offline functionality for guest users.
@@ -196,7 +205,7 @@ Enable full offline functionality for guest users.
 - Created GuestListClient using idb package
 - Shows sync status: localcount/syncedcount
 
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -204,6 +213,7 @@ EOF
 ### PR Best Practices
 
 **Creating PRs:**
+
 1. Create descriptive PR title: `feat:`, `fix:`, `docs:`
 2. Include detailed PR body with:
    - Summary section
@@ -215,6 +225,7 @@ EOF
 3. Enable auto-merge immediately: `gh pr merge <PR> --auto --squash`
 
 **After PR merges:**
+
 ```bash
 # ALWAYS rebase beta onto main
 git fetch origin && git rebase origin/main
@@ -224,12 +235,14 @@ git push -f origin beta
 ### Incremental Development
 
 **For large features, create staged PRs:**
+
 1. PR #1: Core functionality (basic working version)
 2. PR #2: UI improvements
 3. PR #3: Advanced features
 4. Each PR should be independently deployable
 
 **Benefits:**
+
 - Faster review cycles
 - Easier to debug issues
 - Progressive enhancement
@@ -238,16 +251,19 @@ git push -f origin beta
 ### Code Quality
 
 **TypeScript:**
+
 - Use `any` sparingly, prefer proper types
 - Import types from dependencies when available
 - Use `type` instead of `interface` for consistency
 
 **Error Handling:**
+
 - Wrap auth calls in try/catch for optional login
 - Log errors to console with `[Lianki]` prefix
 - Show user-friendly error messages
 
 **Performance:**
+
 - Use parallel tool calls when operations are independent
 - Prefer client-side rendering for interactive components
 - Use Suspense for async server components
@@ -255,12 +271,14 @@ git push -f origin beta
 ### Communication
 
 **With user:**
+
 - Be concise and clear
 - Show what was accomplished (✅ lists)
 - Include relevant URLs (PR links, deployment URLs)
 - Use emojis sparingly unless user requests
 
 **In code:**
+
 - Add comments only when logic isn't self-evident
 - Document complex algorithms or workarounds
 - Link to relevant docs/issues in comments
