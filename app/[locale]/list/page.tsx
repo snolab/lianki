@@ -134,6 +134,7 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
     return <ActivityHeatmap data={heatmapData} startDate={oneYearAgo} endDate={new Date()} />;
   }
   async function Cards({ page = 0, size = 100 }) {
+    try {
     const email = await authEmail();
     const FSRSNotes = getFSRSNotesCollection(email);
     const list = await sflow(
@@ -180,6 +181,10 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
         </Suspense>
       </>
     );
+    } catch (err) {
+      console.error("[Lianki] Cards error:", err);
+      throw err;
+    }
   }
 }
 async function TotalCount({ email }: { email: string }) {
