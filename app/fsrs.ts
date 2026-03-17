@@ -794,5 +794,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 };
 
 function dueMs(due: Date) {
-  return ems(+due - +new Date(), "short") ?? "0s";
+  const ms = +due - +new Date();
+  if (ms < 0) return `-${ems(-ms, "short") ?? "0s"}`;
+  return ems(ms, "short") ?? "0s";
 }
