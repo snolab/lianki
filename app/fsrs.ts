@@ -89,7 +89,7 @@ const fsrsConfig = fsrs(
   }),
 );
 
-const RATING_MAP: Record<string, Rating> = {
+const RATING_MAP: Record<string, Grade> = {
   "1": Rating.Again,
   again: Rating.Again,
   "2": Rating.Hard,
@@ -222,7 +222,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const rating = RATING_MAP[params.rating] ?? DIE("unknown rating: " + String(params.rating));
       const reviewedCard = await reviewed(
         (await getQueryNote(req, options)) ?? DIE("note not found"),
-        rating as Grade,
+        rating,
       );
 
       const nextNote = await FSRSNotes.findOne(nextDueQuery(req), { sort: { "card.due": 1 } });
@@ -282,7 +282,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         }
       }
 
-      const reviewedCard = await reviewed(note, rating as Grade, clientHLC);
+      const reviewedCard = await reviewed(note, rating, clientHLC);
 
       const nextNote = await FSRSNotes.findOne(nextDueQuery(req), { sort: { "card.due": 1 } });
 
@@ -456,7 +456,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const rating = RATING_MAP[params.rating] ?? DIE("unknown rating: " + String(params.rating));
 
       const note = (await getQueryNote(req, options)) ?? DIE("note not found");
-      const reviewdCard = await reviewed(note, rating as Grade);
+      const reviewdCard = await reviewed(note, rating);
       const due = dueMs(reviewdCard.card.due);
       return HTMLR(
         sflow(
@@ -477,7 +477,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const rating = RATING_MAP[params.rating] ?? DIE("unknown rating: " + String(params.rating));
 
       const note = (await getQueryNote(req, options)) ?? DIE("note not found");
-      const reviewdCard = await reviewed(note, rating as Grade);
+      const reviewdCard = await reviewed(note, rating);
       const due = dueMs(reviewdCard.card.due);
       return HTMLR(
         sflow(

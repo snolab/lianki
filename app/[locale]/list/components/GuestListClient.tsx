@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useIntlayer } from "next-intlayer";
-import { ems } from "@/app/ems";
+import { dueMs } from "@/app/ems";
 import { SyncStatusBanner } from "./SyncStatusBanner";
 
 type FSRSCard = {
@@ -93,10 +93,6 @@ export default function GuestListClient({ locale }: { locale: string }) {
       setError("Failed to load local cards. Please make sure the userscript is installed.");
       setLoading(false);
     }
-  }
-
-  function dueMs(due: Date) {
-    return ems(+due - +new Date(), "short") ?? "0s";
   }
 
   if (loading) {
