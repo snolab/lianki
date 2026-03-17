@@ -405,7 +405,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         { headers: { "content-type": "text/html" } },
       ),
     // preview repeats
-    "GET /repeat(?:/|$|\\?)": async (req, opt) => {
+    "GET /api/fsrs/repeat(?:/|$|\\?)": async (req, opt) => {
       const note = (await saveQueryNote(req, opt)) ?? DIE("note not found");
       const search = new URLSearchParams({
         id: note._id.toString(),
@@ -421,9 +421,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           sflow(Object.values(fsrsConfig.repeat(note.card, new Date())))
             .map(
               (logitem, i) =>
-                `<a href="/review/${i + 1}/?${new URLSearchParams({
-                  id: note._id.toString(),
-                }).toString()}" rel="noopener noreferrer" accessKey='${
+                `<a href="javascript:review(${i + 1})" rel="noopener noreferrer" accessKey='${
                   i + 1
                 }'>${["Again", "Hard", "Good", "Easy"][i]} ${dueMs(
                   (logitem as RecordLogItem).card.due,
@@ -440,27 +438,35 @@ export const fsrsHandler = async (req: Request, email?: string) => {
               1,2,3,4,5 = again, hard, good, easy, delete <br/>
             </div>
             <script>
+            async function review(rating) {
+              await fetch('/api/fsrs/review/' + rating + '/?${search}');
+              location.href = '/api/fsrs/next';
+            }
+            async function deleteCard() {
+              await fetch('/api/fsrs/delete/?${search}');
+              location.href = '/api/fsrs/next';
+            }
             addEventListener('keydown', (e) => {
               if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
               // no modifier keys
               if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-              if (e.code === 'Digit1') location.href = '/review-and-close/1/?${search}';
-              if (e.code === 'Digit2') location.href = '/review-and-close/2/?${search}';
-              if (e.code === 'Digit3') location.href = '/review-and-close/3/?${search}';
-              if (e.code === 'Digit4') location.href = '/review-and-close/4/?${search}';
-              if (e.code === 'Digit5') location.href = '/delete-and-close/?${search}';
+              if (e.code === 'Digit1') review(1);
+              if (e.code === 'Digit2') review(2);
+              if (e.code === 'Digit3') review(3);
+              if (e.code === 'Digit4') review(4);
+              if (e.code === 'Digit5') deleteCard();
 
               // asdt = easy, good, again, delete
-              if (e.code === 'KeyA') location.href = '/review/4/?${search}';
-              if (e.code === 'KeyS') location.href = '/review/3/?${search}';
-              if (e.code === 'KeyD') location.href = '/review/1/?${search}';
-              if (e.code === 'KeyT') location.href = '/delete/?${search}';
+              if (e.code === 'KeyA') review(4);
+              if (e.code === 'KeyS') review(3);
+              if (e.code === 'KeyD') review(1);
+              if (e.code === 'KeyT') deleteCard();
 
               // hjlm = easy, good, again, delete
-              if (e.code === 'KeyH') location.href = '/review-and-close/4/?${search}';
-              if (e.code === 'KeyJ') location.href = '/review-and-close/3/?${search}';
-              if (e.code === 'KeyL') location.href = '/review-and-close/1/?${search}';
-              if (e.code === 'KeyM') location.href = '/delete-and-close/?${search}';
+              if (e.code === 'KeyH') review(4);
+              if (e.code === 'KeyJ') review(3);
+              if (e.code === 'KeyL') review(1);
+              if (e.code === 'KeyM') deleteCard();
             });
           </script>`),
 
@@ -470,17 +476,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
               (note.title?.replace(/$/, " - ") ?? "") + note.url
             }</a>`,
           ),
-          // sflow(
-          //   `<a href="/delete-confirm/?url=${encodeURIComponent(
-          //     note.url
-          //   )}">DELETE NOTE</a>`
-          // ),
           sflow("<br/>"),
-          sflow(
-            `<a href="/delete/?${new URLSearchParams({
-              id: note._id.toString(),
-            }).toString()}" accessKey='5'> DELETE </a>`,
-          ),
+          sflow(`<a href="javascript:deleteCard()" accessKey='5'> DELETE </a>`),
 
           sflow("<br/>"),
           sflow("Due cards:"),
