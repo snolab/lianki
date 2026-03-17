@@ -384,7 +384,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const note = await FSRSNotes.findOne({ url: normalized });
       return JSONR({ markers: note?.speedMarkers ?? {} });
     },
-    "GET /api/fsrs/next": async () =>
+    "GET /api/fsrs/next(?:/|\\?|$)": async () =>
       new Response(
         sflow(FSRSNotes.find({ "card.due": { $lte: new Date() } }, { sort: { "card.due": 1 } }))
           .limit(1)
