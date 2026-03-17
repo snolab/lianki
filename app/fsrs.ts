@@ -1,12 +1,6 @@
-// import { bsonId } from 'bsonid';
-// var ObjectId = require("bson-objectid");
-
-// import { renderToString } from "react-dom/server";
-// import { ObjectId } from "mongodb";
 import { readFileSync } from "fs";
 import { join } from "path";
 import type { WithId } from "mongodb";
-// import { ObjectId } from "bson";
 import DIE from "phpdie";
 import { sflow, TextEncoderStream } from "sflow";
 import {
@@ -21,7 +15,7 @@ import {
 } from "ts-fsrs";
 import { z } from "zod";
 import { revalidateTag } from "next/cache";
-import { ems } from "./ems";
+import { dueMs } from "./ems";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
 import { getHeatmapCacheTag } from "./lib/heatmap-cache";
 import { normalizeUrl } from "@/lib/normalizeUrl";
@@ -86,22 +80,6 @@ export type FSRSNote = {
   deviceId?: string; // Last device that modified (legacy field)
 };
 
-// export const runtime = "edge";
-// if (import.meta.main) {
-//   // // 2024-08-19 easy https://www.youtube.com/watch?v=iWbKrq-oEJo&list=TLPQMTkwODIwMjSoskG2PYr69Q&index=18
-//   // const url =
-//   //   "https://www.youtube.com/watch?v=iWbKrq-oEJo&list=TLPQMTkwODIwMjSoskG2PYr69Q&index=18";
-//   // // const note = {url: url, card: createEmptyCard()}
-//   // //   console.log(createEmptyCard())
-//   // const note = await saveNote({ url });
-//   // console.log(fsrsConfig.repeat(note.card, new Date())[4]);
-//   console.log(renderToString("hello"));
-// }
-
-// migrate
-
-// "FSRSNotes","FSRSNotes@670cb38bd6d5a0afbbf199ba"
-
 // Configure FSRS with fuzz enabled to prevent review bunching
 // Fuzz adds small random variations (±2.5% by default) to scheduled intervals
 // This prevents cards added on the same day from all being due at the exact same time
@@ -110,6 +88,17 @@ const fsrsConfig = fsrs(
     enable_fuzz: true, // Explicitly enable fuzz (default is true, but making it explicit)
   }),
 );
+
+const RATING_MAP: Record<string, Rating> = {
+  "1": Rating.Again,
+  again: Rating.Again,
+  "2": Rating.Hard,
+  hard: Rating.Hard,
+  "3": Rating.Good,
+  good: Rating.Good,
+  "4": Rating.Easy,
+  easy: Rating.Easy,
+};
 
 function nextDueQuery(req: Request) {
   const url = new URL(req.url, "http://localhost");
@@ -129,8 +118,6 @@ function nextDueQuery(req: Request) {
 }
 
 export const fsrsHandler = async (req: Request, email?: string) => {
-  // console.log({ userId });
-  // await db.collection("FSRSNotes").rename("FSRSNotes@670cb38bd6d5a0afbbf199ba");
   const FSRSNotes = getFSRSNotesCollection(email);
 
   type RegexRoutes = Record<
@@ -157,8 +144,6 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           .onFlush((c) =>
             c.enqueue("window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')"),
           )
-          // .map((script) => `<script>${script}</script>`)
-          // .forEach(() => sleep(1000))
           .join("\n"),
         { headers: { "content-type": "text/html" } },
       ),
@@ -234,19 +219,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       options,
     ) => {
       const params = getParams(req, options);
-      const rating =
-        (
-          {
-            "1": Rating.Again,
-            again: Rating.Again,
-            "2": Rating.Hard,
-            hard: Rating.Hard,
-            "3": Rating.Good,
-            good: Rating.Good,
-            "4": Rating.Easy,
-            easy: Rating.Easy,
-          } as Record<string, Rating>
-        )[params.rating] ?? DIE("unknown rating: " + String(params.rating));
+      const rating = RATING_MAP[params.rating] ?? DIE("unknown rating: " + String(params.rating));
       const reviewedCard = await reviewed(
         (await getQueryNote(req, options)) ?? DIE("note not found"),
         rating as Grade,
@@ -266,19 +239,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       options,
     ) => {
       const params = getParams(req, options);
-      const rating =
-        (
-          {
-            "1": Rating.Again,
-            again: Rating.Again,
-            "2": Rating.Hard,
-            hard: Rating.Hard,
-            "3": Rating.Good,
-            good: Rating.Good,
-            "4": Rating.Easy,
-            easy: Rating.Easy,
-          } as Record<string, Rating>
-        )[params.rating] ?? DIE("unknown rating: " + String(params.rating));
+      const rating = RATING_MAP[params.rating] ?? DIE("unknown rating: " + String(params.rating));
 
       const note = (await getQueryNote(req, options)) ?? DIE("note not found");
 
@@ -399,7 +360,6 @@ export const fsrsHandler = async (req: Request, email?: string) => {
             c.enqueue("window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')"),
           )
           .map((script) => `<script>${script}</script>`)
-          // .forEach(() => sleep(1000))
           .join("\n")
           .by(new TextEncoderStream()),
         { headers: { "content-type": "text/html" } },
@@ -493,20 +453,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     // click btns
     "GET /review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (req, options) => {
       const params = getParams(req, options);
-      const rating = {
-        "1": Rating.Again,
-        again: Rating.Again,
-        "2": Rating.Hard,
-        hard: Rating.Hard,
-        "3": Rating.Good,
-        good: Rating.Good,
-        "4": Rating.Easy,
-        easy: Rating.Easy,
-      }[params.rating];
-
-      if (rating === undefined) {
-        DIE("unknown rating: " + String(params.rating));
-      }
+      const rating = RATING_MAP[params.rating] ?? DIE("unknown rating: " + String(params.rating));
 
       const note = (await getQueryNote(req, options)) ?? DIE("note not found");
       const reviewdCard = await reviewed(note, rating as Grade);
@@ -527,20 +474,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       options,
     ) => {
       const params = getParams(req, options);
-      const rating = {
-        "1": Rating.Again,
-        again: Rating.Again,
-        "2": Rating.Hard,
-        hard: Rating.Hard,
-        "3": Rating.Good,
-        good: Rating.Good,
-        "4": Rating.Easy,
-        easy: Rating.Easy,
-      }[params.rating];
-
-      if (rating === undefined) {
-        DIE("unknown rating: " + String(params.rating));
-      }
+      const rating = RATING_MAP[params.rating] ?? DIE("unknown rating: " + String(params.rating));
 
       const note = (await getQueryNote(req, options)) ?? DIE("note not found");
       const reviewdCard = await reviewed(note, rating as Grade);
@@ -569,7 +503,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     },
     "GET /delete(?:/|$|\\?)": async (req, opt) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("fail to find note");
-      console.log(await FSRSNotes.deleteOne({ url: note.url }));
+      await FSRSNotes.deleteOne({ url: note.url });
       return HTMLR(
         // `<script>window.open('/next', 'fsrs-reviewing');</script>\n`
         `<script>window.close();</script>\n`, // list mode
@@ -577,7 +511,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     },
     "GET /delete-and-close(?:/|$|\\?)": async (req, opt) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("fail to find note");
-      console.log(await FSRSNotes.deleteOne({ url: note.url }));
+      await FSRSNotes.deleteOne({ url: note.url });
       return HTMLR(`<script>window.close();</script>\n`);
     },
   };
@@ -610,11 +544,6 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       headers: { "content-type": "text/html; charset=utf-8" },
     });
   }
-  // function JSXR(el: ReactNode): Response | PromiseLike<Response> {
-  //   return new Response(renderToString(el), {
-  //     headers: { "content-type": "text/html" },
-  //   });
-  // }
 
   async function reviewed(note: FSRSNote, grade: Grade, clientHLC?: HLC) {
     const { card, log } = fsrsConfig.repeat(note.card, new Date())[grade];
@@ -677,11 +606,8 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       title: z.string().optional().nullable(),
     });
     const input = await req.json();
-    // const zUpdateNote = z.object({ id: z.string() });
-    console.log({ input });
     const { url, title } = zAddNote.parse(input);
     const resp = await saveNote({ url, title: title ?? undefined });
-    console.log({ resp });
 
     // Include review options in response to save an API call
     const repeatRecord = fsrsConfig.repeat(resp.card, new Date());
@@ -699,9 +625,6 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     const params = getParams(req, options);
     if (params.id) {
       const id = params.id;
-      // const _id = new ObjectId(id);
-      // const _id = bsonId(  id );
-      // const _id = { $objectId: id };
       return await FSRSNotes.aggregate([
         { $set: { _id: { $toString: "$_id" } } },
         { $match: { _id: id } },
@@ -792,9 +715,3 @@ export const fsrsHandler = async (req: Request, email?: string) => {
   }
   return new Response("404", { status: 404 });
 };
-
-function dueMs(due: Date) {
-  const ms = +due - +new Date();
-  if (ms < 0) return `-${ems(-ms, "short") ?? "0s"}`;
-  return ems(ms, "short") ?? "0s";
-}

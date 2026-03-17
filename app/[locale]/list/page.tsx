@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import sflow from "sflow";
-import { ems } from "@/app/ems";
+import { dueMs } from "@/app/ems";
 import { getFSRSNotesCollection } from "@/app/getFSRSNotesCollection";
 import { authEmail, authUser } from "@/app/signInEmail";
 import { getCachedHeatmapData } from "@/app/lib/heatmap-cache";
@@ -200,12 +200,6 @@ async function LoggedInSyncStatus({ email }: { email: string }) {
   } catch {
     return <SyncStatusBanner />;
   }
-}
-
-function dueMs(due: Date) {
-  const diff = +due - +new Date();
-  if (diff < 0) return `-${ems(-diff, "short") ?? "0s"}`;
-  return ems(diff, "short") ?? "0s";
 }
 
 function GuestView({ locale, appName, nav }: { locale: string; appName: string; nav: any }) {
