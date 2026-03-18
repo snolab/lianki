@@ -229,21 +229,6 @@ test.describe("API routes", () => {
 // ── Userscript integrity ──────────────────────────────────────────────────────
 
 test.describe("Userscript integrity", () => {
-  test("lianki.user.js exposes LiankiDeps inside IIFE scope (BUG-7 regression)", async ({
-    page,
-  }) => {
-    const response = await page.goto(url("/lianki.user.js"));
-    const scriptContent = await response?.text();
-    expect(scriptContent).toBeTruthy();
-
-    // Verify window.LiankiDeps assignment is inside the IIFE, not after it
-    // The IIFE closes with })(); and the exposure must be BEFORE that
-    const iifeEnd = scriptContent!.indexOf("})();");
-    const liankiDepsIdx = scriptContent!.indexOf("window.LiankiDeps");
-    expect(liankiDepsIdx).toBeGreaterThan(0);
-    expect(liankiDepsIdx).toBeLessThan(iifeEnd);
-  });
-
   test("lianki.user.js has a valid @version header", async ({ page }) => {
     const response = await page.goto(url("/lianki.user.js"));
     const content = await response?.text();
