@@ -13,3 +13,9 @@ export async function authUser() {
   if (!session?.user) redirect("/sign-in");
   return session.user;
 }
+
+/** For API routes: returns null instead of redirecting when unauthenticated. */
+export async function authUserOrNull() {
+  const session = await auth.api.getSession({ headers: await headers() });
+  return session?.user ?? null;
+}

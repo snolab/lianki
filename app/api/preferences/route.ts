@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/app/db";
-import { authUser } from "@/app/signInEmail";
+import { authUserOrNull } from "@/app/signInEmail";
 
 const Preferences = db.collection("preferences");
 
@@ -24,7 +24,8 @@ export interface UserPreferences {
 
 export async function GET() {
   try {
-    const user = await authUser();
+    const user = await authUserOrNull();
+    if (!user) return NextResponse.json({ error: "Login required" }, { status: 401 });
     const prefs = await Preferences.findOne({ userId: user.id });
 
     // Return default preferences if none exist
@@ -62,7 +63,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await authUser();
+    const user = await authUserOrNull();
+    if (!user) return NextResponse.json({ error: "Login required" }, { status: 401 });
     const body = await req.json();
 
     const preferences: Partial<UserPreferences> = {
