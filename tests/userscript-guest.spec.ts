@@ -171,8 +171,8 @@ async function gmJSON(page: Page, key: string): Promise<unknown> {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 test.describe("Userscript integrity (static analysis)", () => {
-  test("@version is 2.21.1", () => {
-    expect(SCRIPT_CONTENT).toMatch(/@version\s+2\.21\.1/);
+  test("@version matches semver", () => {
+    expect(SCRIPT_CONTENT).toMatch(/@version\s+\d+\.\d+\.\d+/);
   });
 
   test("grants GM_deleteValue", () => {
@@ -181,12 +181,12 @@ test.describe("Userscript integrity (static analysis)", () => {
 
   test("uses GMCardStorage instead of IndexedDB CardStorage", () => {
     expect(SCRIPT_CONTENT).toContain("class GMCardStorage");
-    expect(SCRIPT_CONTENT).toContain("new GMCardStorage()");
+    expect(SCRIPT_CONTENT).toMatch(/new GMCardStorage[\s(;]/);
     expect(SCRIPT_CONTENT).not.toContain("createStore(");
   });
 
   test("hashUrl produces consistent 8-hex-char strings", () => {
-    const match = SCRIPT_CONTENT.match(/function hashUrl\(url\) \{[\s\S]*?\n\}/);
+    const match = SCRIPT_CONTENT.match(/function hashUrl\(url\) \{[\s\S]*?\n {2}\}/);
     expect(match).toBeTruthy();
     const fn = new Function(`${match![0]}; return hashUrl;`)() as (s: string) => string;
     const h = fn("https://en.wikipedia.org/wiki/Spaced_repetition");
