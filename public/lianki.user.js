@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.5
+// @version     2.21.6
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -18,21 +18,20 @@
 // @connect     beta.lianki.com
 // ==/UserScript==
 (() => {
-
   // node_modules/ts-fsrs/dist/index.mjs
   var State = /* @__PURE__ */ ((State2) => {
-    State2[State2["New"] = 0] = "New";
-    State2[State2["Learning"] = 1] = "Learning";
-    State2[State2["Review"] = 2] = "Review";
-    State2[State2["Relearning"] = 3] = "Relearning";
+    State2[(State2["New"] = 0)] = "New";
+    State2[(State2["Learning"] = 1)] = "Learning";
+    State2[(State2["Review"] = 2)] = "Review";
+    State2[(State2["Relearning"] = 3)] = "Relearning";
     return State2;
   })(State || {});
   var Rating = /* @__PURE__ */ ((Rating2) => {
-    Rating2[Rating2["Manual"] = 0] = "Manual";
-    Rating2[Rating2["Again"] = 1] = "Again";
-    Rating2[Rating2["Hard"] = 2] = "Hard";
-    Rating2[Rating2["Good"] = 3] = "Good";
-    Rating2[Rating2["Easy"] = 4] = "Easy";
+    Rating2[(Rating2["Manual"] = 0)] = "Manual";
+    Rating2[(Rating2["Again"] = 1)] = "Again";
+    Rating2[(Rating2["Hard"] = 2)] = "Hard";
+    Rating2[(Rating2["Good"] = 3)] = "Good";
+    Rating2[(Rating2["Easy"] = 4)] = "Easy";
     return Rating2;
   })(Rating || {});
 
@@ -42,7 +41,7 @@
         ...card,
         state: TypeConvert.state(card.state),
         due: TypeConvert.time(card.due),
-        last_review: card.last_review ? TypeConvert.time(card.last_review) : undefined
+        last_review: card.last_review ? TypeConvert.time(card.last_review) : undefined,
       };
     }
     static rating(value) {
@@ -75,7 +74,11 @@
     }
     static time(value) {
       const date = new Date(value);
-      if (typeof value === "object" && value !== null && !Number.isNaN(Date.parse(value) || +date)) {
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        !Number.isNaN(Date.parse(value) || +date)
+      ) {
         return date;
       } else if (typeof value === "string") {
         const timestamp = Date.parse(value);
@@ -95,24 +98,28 @@
         due: TypeConvert.time(log.due),
         rating: TypeConvert.rating(log.rating),
         state: TypeConvert.state(log.state),
-        review: TypeConvert.time(log.review)
+        review: TypeConvert.time(log.review),
       };
     }
   }
-  Date.prototype.scheduler = function(t, isDay) {
+  Date.prototype.scheduler = function (t, isDay) {
     return date_scheduler(this, t, isDay);
   };
-  Date.prototype.diff = function(pre, unit) {
+  Date.prototype.diff = function (pre, unit) {
     return date_diff(this, pre, unit);
   };
-  Date.prototype.format = function() {
+  Date.prototype.format = function () {
     return formatDate(this);
   };
-  Date.prototype.dueFormat = function(last_review, unit, timeUnit) {
+  Date.prototype.dueFormat = function (last_review, unit, timeUnit) {
     return show_diff_message(this, last_review, unit, timeUnit);
   };
   function date_scheduler(now, t, isDay) {
-    return new Date(isDay ? TypeConvert.time(now).getTime() + t * 24 * 60 * 60 * 1000 : TypeConvert.time(now).getTime() + t * 60 * 1000);
+    return new Date(
+      isDay
+        ? TypeConvert.time(now).getTime() + t * 24 * 60 * 60 * 1000
+        : TypeConvert.time(now).getTime() + t * 60 * 1000,
+    );
   }
   function date_diff(now, pre, unit) {
     if (!now || !pre) {
@@ -154,7 +161,7 @@
     let diff = due.getTime() - last_review.getTime();
     let i = 0;
     diff /= 1000;
-    for (i = 0;i < TIMEUNIT.length; i++) {
+    for (i = 0; i < TIMEUNIT.length; i++) {
       if (diff < TIMEUNIT[i]) {
         break;
       } else {
@@ -163,28 +170,23 @@
     }
     return `${Math.floor(diff)}${unit ? timeUnit[i] : ""}`;
   }
-  var Grades = Object.freeze([
-    Rating.Again,
-    Rating.Hard,
-    Rating.Good,
-    Rating.Easy
-  ]);
+  var Grades = Object.freeze([Rating.Again, Rating.Hard, Rating.Good, Rating.Easy]);
   var FUZZ_RANGES = [
     {
       start: 2.5,
       end: 7,
-      factor: 0.15
+      factor: 0.15,
     },
     {
       start: 7,
       end: 20,
-      factor: 0.1
+      factor: 0.1,
     },
     {
       start: 20,
       end: Infinity,
-      factor: 0.05
-    }
+      factor: 0.05,
+    },
   ];
   function get_fuzz_range(interval, elapsed_days, maximum_interval) {
     let delta = 1;
@@ -226,18 +228,19 @@
     }
   };
   var BasicLearningStepsStrategy = (params, state, cur_step) => {
-    const learning_steps = state === State.Relearning || state === State.Review ? params.relearning_steps : params.learning_steps;
+    const learning_steps =
+      state === State.Relearning || state === State.Review
+        ? params.relearning_steps
+        : params.learning_steps;
     const steps_length = learning_steps.length;
-    if (steps_length === 0 || cur_step >= steps_length)
-      return {};
+    if (steps_length === 0 || cur_step >= steps_length) return {};
     const firstStep = learning_steps[0];
     const toMinutes = ConvertStepUnitToMinutes;
     const getAgainInterval = () => {
       return toMinutes(firstStep);
     };
     const getHardInterval = () => {
-      if (steps_length === 1)
-        return Math.round(toMinutes(firstStep) * 1.5);
+      if (steps_length === 1) return Math.round(toMinutes(firstStep) * 1.5);
       const nextStep = learning_steps[1];
       return Math.round((toMinutes(firstStep) + toMinutes(nextStep)) / 2);
     };
@@ -256,17 +259,17 @@
     if (state === State.Review) {
       result[Rating.Again] = {
         scheduled_minutes: toMinutes(step_info),
-        next_step: 0
+        next_step: 0,
       };
       return result;
     } else {
       result[Rating.Again] = {
         scheduled_minutes: getAgainInterval(),
-        next_step: 0
+        next_step: 0,
       };
       result[Rating.Hard] = {
         scheduled_minutes: getHardInterval(),
-        next_step: cur_step
+        next_step: cur_step,
       };
       const next_info = getStepInfo(cur_step + 1);
       if (next_info) {
@@ -274,7 +277,7 @@
         if (nextMin) {
           result[Rating.Good] = {
             scheduled_minutes: Math.round(nextMin),
-            next_step: cur_step + 1
+            next_step: cur_step + 1,
           };
         }
       }
@@ -298,7 +301,7 @@
     last;
     current;
     review_time;
-    next = /* @__PURE__ */ new Map;
+    next = /* @__PURE__ */ new Map();
     algorithm;
     strategies;
     elapsed_days = 0;
@@ -340,7 +343,7 @@
         [Rating.Hard]: this.review(Rating.Hard),
         [Rating.Good]: this.review(Rating.Good),
         [Rating.Easy]: this.review(Rating.Easy),
-        [Symbol.iterator]: this.previewIterator.bind(this)
+        [Symbol.iterator]: this.previewIterator.bind(this),
       };
     }
     *previewIterator() {
@@ -378,7 +381,7 @@
         last_elapsed_days: elapsed_days,
         scheduled_days: this.current.scheduled_days,
         learning_steps: this.current.learning_steps,
-        review: this.review_time
+        review: this.review_time,
       };
     }
   }
@@ -394,17 +397,13 @@
       this.s0 = mash(" ");
       this.s1 = mash(" ");
       this.s2 = mash(" ");
-      if (seed == null)
-        seed = Date.now();
+      if (seed == null) seed = Date.now();
       this.s0 -= mash(seed);
-      if (this.s0 < 0)
-        this.s0 += 1;
+      if (this.s0 < 0) this.s0 += 1;
       this.s1 -= mash(seed);
-      if (this.s1 < 0)
-        this.s1 += 1;
+      if (this.s1 < 0) this.s1 += 1;
       this.s2 -= mash(seed);
-      if (this.s2 < 0)
-        this.s2 += 1;
+      if (this.s2 < 0) this.s2 += 1;
     }
     next() {
       const t = 2091639 * this.s0 + this.c * 0.00000000023283064365386963;
@@ -425,7 +424,7 @@
         c: this.c,
         s0: this.s0,
         s1: this.s1,
-        s2: this.s2
+        s2: this.s2,
       };
     }
   }
@@ -433,7 +432,7 @@
     let n = 4022871197;
     return function mash(data) {
       data = String(data);
-      for (let i = 0;i < data.length; i++) {
+      for (let i = 0; i < data.length; i++) {
         n += data.charCodeAt(i);
         let h = 0.02519603282416938 * n;
         n = h >>> 0;
@@ -449,8 +448,8 @@
   function alea(seed) {
     const xg = new Alea(seed);
     const prng = () => xg.next();
-    prng.int32 = () => xg.next() * 4294967296 | 0;
-    prng.double = () => prng() + (prng() * 2097152 | 0) * 0.00000000000000011102230246251565;
+    prng.int32 = () => (xg.next() * 4294967296) | 0;
+    prng.double = () => prng() + ((prng() * 2097152) | 0) * 0.00000000000000011102230246251565;
     prng.state = () => xg.state;
     prng.importState = (state) => {
       xg.state = state;
@@ -463,13 +462,8 @@
   var default_maximum_interval = 36500;
   var default_enable_fuzz = false;
   var default_enable_short_term = true;
-  var default_learning_steps = Object.freeze([
-    "1m",
-    "10m"
-  ]);
-  var default_relearning_steps = Object.freeze([
-    "10m"
-  ]);
+  var default_learning_steps = Object.freeze(["1m", "10m"]);
+  var default_relearning_steps = Object.freeze(["10m"]);
   var FSRSVersion = `v${version} using FSRS-6.0`;
   var S_MIN = 0.001;
   var INIT_S_MAX = 100;
@@ -496,7 +490,7 @@
     0.5425,
     0.0912,
     0.0658,
-    FSRS6_DEFAULT_DECAY
+    FSRS6_DEFAULT_DECAY,
   ]);
   var W17_W18_Ceiling = 2;
   var CLAMP_PARAMETERS = (w17_w18_ceiling, enable_short_term = default_enable_short_term) => [
@@ -519,22 +513,32 @@
     [1, 6],
     [0, w17_w18_ceiling],
     [0, w17_w18_ceiling],
-    [
-      enable_short_term ? 0.01 : 0,
-      0.8
-    ],
-    [0.1, 0.8]
+    [enable_short_term ? 0.01 : 0, 0.8],
+    [0.1, 0.8],
   ];
-  var clipParameters = (parameters, numRelearningSteps, enableShortTerm = default_enable_short_term) => {
+  var clipParameters = (
+    parameters,
+    numRelearningSteps,
+    enableShortTerm = default_enable_short_term,
+  ) => {
     let w17_w18_ceiling = W17_W18_Ceiling;
     if (Math.max(0, numRelearningSteps) > 1) {
-      const value = -(Math.log(parameters[11]) + Math.log(Math.pow(2, parameters[13]) - 1) + parameters[14] * 0.3) / numRelearningSteps;
+      const value =
+        -(
+          Math.log(parameters[11]) +
+          Math.log(Math.pow(2, parameters[13]) - 1) +
+          parameters[14] * 0.3
+        ) / numRelearningSteps;
       w17_w18_ceiling = clamp(+value.toFixed(8), 0.01, 2);
     }
     const clip = CLAMP_PARAMETERS(w17_w18_ceiling, enableShortTerm).slice(0, parameters.length);
     return clip.map(([min, max], index) => clamp(parameters[index] || 0, min, max));
   };
-  var migrateParameters = (parameters, numRelearningSteps = 0, enableShortTerm = default_enable_short_term) => {
+  var migrateParameters = (
+    parameters,
+    numRelearningSteps = 0,
+    enableShortTerm = default_enable_short_term,
+  ) => {
     if (parameters === undefined) {
       return [...default_w];
     }
@@ -543,7 +547,10 @@
         return clipParameters(Array.from(parameters), numRelearningSteps, enableShortTerm);
       case 19:
         console.debug("[FSRS-6]auto fill w from 19 to 21 length");
-        return clipParameters(Array.from(parameters), numRelearningSteps, enableShortTerm).concat([0, FSRS5_DEFAULT_DECAY]);
+        return clipParameters(Array.from(parameters), numRelearningSteps, enableShortTerm).concat([
+          0,
+          FSRS5_DEFAULT_DECAY,
+        ]);
       case 17: {
         const w = clipParameters(Array.from(parameters), numRelearningSteps, enableShortTerm);
         w[4] = +(w[5] * 2 + w[4]).toFixed(8);
@@ -558,8 +565,12 @@
     }
   };
   var generatorParameters = (props) => {
-    const learning_steps = Array.isArray(props?.learning_steps) ? props.learning_steps : default_learning_steps;
-    const relearning_steps = Array.isArray(props?.relearning_steps) ? props.relearning_steps : default_relearning_steps;
+    const learning_steps = Array.isArray(props?.learning_steps)
+      ? props.learning_steps
+      : default_learning_steps;
+    const relearning_steps = Array.isArray(props?.relearning_steps)
+      ? props.relearning_steps
+      : default_relearning_steps;
     const enable_short_term = props?.enable_short_term ?? default_enable_short_term;
     const w = migrateParameters(props?.w, relearning_steps.length, enable_short_term);
     return {
@@ -569,12 +580,12 @@
       enable_fuzz: props?.enable_fuzz ?? default_enable_fuzz,
       enable_short_term,
       learning_steps,
-      relearning_steps
+      relearning_steps,
     };
   };
   function createEmptyCard(now, afterHandler) {
     const emptyCard = {
-      due: now ? TypeConvert.time(now) : /* @__PURE__ */ new Date,
+      due: now ? TypeConvert.time(now) : /* @__PURE__ */ new Date(),
       stability: 0,
       difficulty: 0,
       elapsed_days: 0,
@@ -583,7 +594,7 @@
       lapses: 0,
       learning_steps: 0,
       state: State.New,
-      last_review: undefined
+      last_review: undefined,
     };
     if (afterHandler && typeof afterHandler === "function") {
       return afterHandler(emptyCard);
@@ -598,7 +609,7 @@
   };
   function forgetting_curve(decayOrParams, elapsed_days, stability) {
     const { decay, factor } = computeDecayFactor(decayOrParams);
-    return +Math.pow(1 + factor * elapsed_days / stability, decay).toFixed(8);
+    return +Math.pow(1 + (factor * elapsed_days) / stability, decay).toFixed(8);
   }
 
   class FSRSAlgorithm {
@@ -632,17 +643,23 @@
     params_handler_proxy() {
       const _this = this;
       return {
-        set: function(target, prop, value) {
+        set: function (target, prop, value) {
           if (prop === "request_retention" && Number.isFinite(value)) {
             _this.intervalModifier = _this.calculate_interval_modifier(Number(value));
           } else if (prop === "w") {
-            value = migrateParameters(value, target.relearning_steps.length, target.enable_short_term);
+            value = migrateParameters(
+              value,
+              target.relearning_steps.length,
+              target.enable_short_term,
+            );
             _this.forgetting_curve = forgetting_curve.bind(this, value);
-            _this.intervalModifier = _this.calculate_interval_modifier(Number(target.request_retention));
+            _this.intervalModifier = _this.calculate_interval_modifier(
+              Number(target.request_retention),
+            );
           }
           Reflect.set(target, prop, value);
           return true;
-        }
+        },
       };
     }
     update_parameters(params) {
@@ -660,19 +677,21 @@
       return +d.toFixed(8);
     }
     apply_fuzz(ivl, elapsed_days) {
-      if (!this.param.enable_fuzz || ivl < 2.5)
-        return Math.round(ivl);
+      if (!this.param.enable_fuzz || ivl < 2.5) return Math.round(ivl);
       const generator = alea(this._seed);
       const fuzz_factor = generator();
       const { min_ivl, max_ivl } = get_fuzz_range(ivl, elapsed_days, this.param.maximum_interval);
       return Math.floor(fuzz_factor * (max_ivl - min_ivl + 1) + min_ivl);
     }
     next_interval(s, elapsed_days) {
-      const newInterval = Math.min(Math.max(1, Math.round(s * this.intervalModifier)), this.param.maximum_interval);
+      const newInterval = Math.min(
+        Math.max(1, Math.round(s * this.intervalModifier)),
+        this.param.maximum_interval,
+      );
       return this.apply_fuzz(newInterval, elapsed_days);
     }
     linear_damping(delta_d, old_d) {
-      return +(delta_d * (10 - old_d) / 9).toFixed(8);
+      return +((delta_d * (10 - old_d)) / 9).toFixed(8);
     }
     next_difficulty(d, g) {
       const delta_d = -this.param.w[6] * (g - 3);
@@ -685,13 +704,32 @@
     next_recall_stability(d, s, r, g) {
       const hard_penalty = Rating.Hard === g ? this.param.w[15] : 1;
       const easy_bound = Rating.Easy === g ? this.param.w[16] : 1;
-      return +clamp(s * (1 + Math.exp(this.param.w[8]) * (11 - d) * Math.pow(s, -this.param.w[9]) * (Math.exp((1 - r) * this.param.w[10]) - 1) * hard_penalty * easy_bound), S_MIN, 36500).toFixed(8);
+      return +clamp(
+        s *
+          (1 +
+            Math.exp(this.param.w[8]) *
+              (11 - d) *
+              Math.pow(s, -this.param.w[9]) *
+              (Math.exp((1 - r) * this.param.w[10]) - 1) *
+              hard_penalty *
+              easy_bound),
+        S_MIN,
+        36500,
+      ).toFixed(8);
     }
     next_forget_stability(d, s, r) {
-      return +clamp(this.param.w[11] * Math.pow(d, -this.param.w[12]) * (Math.pow(s + 1, this.param.w[13]) - 1) * Math.exp((1 - r) * this.param.w[14]), S_MIN, 36500).toFixed(8);
+      return +clamp(
+        this.param.w[11] *
+          Math.pow(d, -this.param.w[12]) *
+          (Math.pow(s + 1, this.param.w[13]) - 1) *
+          Math.exp((1 - r) * this.param.w[14]),
+        S_MIN,
+        36500,
+      ).toFixed(8);
     }
     next_short_term_stability(s, g) {
-      const sinc = Math.pow(s, -this.param.w[19]) * Math.exp(this.param.w[17] * (g - 3 + this.param.w[18]));
+      const sinc =
+        Math.pow(s, -this.param.w[19]) * Math.exp(this.param.w[17] * (g - 3 + this.param.w[18]));
       const maskedSinc = g >= 3 ? Math.max(sinc, 1) : sinc;
       return +clamp(s * maskedSinc, S_MIN, 36500).toFixed(8);
     }
@@ -699,7 +737,7 @@
     next_state(memory_state, t, g) {
       const { difficulty: d, stability: s } = memory_state ?? {
         difficulty: 0,
-        stability: 0
+        stability: 0,
       };
       if (t < 0) {
         throw new Error(`Invalid delta_t "${t}"`);
@@ -710,13 +748,13 @@
       if (d === 0 && s === 0) {
         return {
           difficulty: clamp(this.init_difficulty(g), 1, 10),
-          stability: this.init_stability(g)
+          stability: this.init_stability(g),
         };
       }
       if (g === 0) {
         return {
           difficulty: d,
-          stability: s
+          stability: s,
         };
       }
       if (d < 1 || s < S_MIN) {
@@ -760,12 +798,18 @@
     getLearningInfo(card, grade) {
       const parameters = this.algorithm.parameters;
       card.learning_steps = card.learning_steps || 0;
-      const steps_strategy = this.learningStepsStrategy(parameters, card.state, this.current.state === State.Learning && grade !== Rating.Again && grade !== Rating.Hard ? card.learning_steps + 1 : card.learning_steps);
+      const steps_strategy = this.learningStepsStrategy(
+        parameters,
+        card.state,
+        this.current.state === State.Learning && grade !== Rating.Again && grade !== Rating.Hard
+          ? card.learning_steps + 1
+          : card.learning_steps,
+      );
       const scheduled_minutes = Math.max(0, steps_strategy[grade]?.scheduled_minutes ?? 0);
       const next_steps = Math.max(0, steps_strategy[grade]?.next_step ?? 0);
       return {
         scheduled_minutes,
-        next_steps
+        next_steps,
       };
     }
     applyLearningSteps(nextCard, grade, to_state) {
@@ -800,7 +844,7 @@
       this.applyLearningSteps(next, grade, State.Learning);
       const item = {
         card: next,
-        log: this.buildLog(grade)
+        log: this.buildLog(grade),
       };
       this.next.set(grade, item);
       return item;
@@ -817,7 +861,7 @@
       this.applyLearningSteps(next, grade, state);
       const item = {
         card: next,
-        log: this.buildLog(grade)
+        log: this.buildLog(grade),
       };
       this.next.set(grade, item);
       return item;
@@ -834,26 +878,34 @@
       const next_hard = TypeConvert.card(this.current);
       const next_good = TypeConvert.card(this.current);
       const next_easy = TypeConvert.card(this.current);
-      this.next_ds(next_again, next_hard, next_good, next_easy, difficulty, stability, retrievability);
+      this.next_ds(
+        next_again,
+        next_hard,
+        next_good,
+        next_easy,
+        difficulty,
+        stability,
+        retrievability,
+      );
       this.next_interval(next_hard, next_good, next_easy, interval);
       this.next_state(next_hard, next_good, next_easy);
       this.applyLearningSteps(next_again, Rating.Again, State.Relearning);
       next_again.lapses += 1;
       const item_again = {
         card: next_again,
-        log: this.buildLog(Rating.Again)
+        log: this.buildLog(Rating.Again),
       };
       const item_hard = {
         card: next_hard,
-        log: super.buildLog(Rating.Hard)
+        log: super.buildLog(Rating.Hard),
       };
       const item_good = {
         card: next_good,
-        log: super.buildLog(Rating.Good)
+        log: super.buildLog(Rating.Good),
       };
       const item_easy = {
         card: next_easy,
-        log: super.buildLog(Rating.Easy)
+        log: super.buildLog(Rating.Easy),
       };
       this.next.set(Rating.Again, item_again);
       this.next.set(Rating.Hard, item_hard);
@@ -863,15 +915,35 @@
     }
     next_ds(next_again, next_hard, next_good, next_easy, difficulty, stability, retrievability) {
       next_again.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Again);
-      const nextSMin = stability / Math.exp(this.algorithm.parameters.w[17] * this.algorithm.parameters.w[18]);
-      const s_after_fail = this.algorithm.next_forget_stability(difficulty, stability, retrievability);
+      const nextSMin =
+        stability / Math.exp(this.algorithm.parameters.w[17] * this.algorithm.parameters.w[18]);
+      const s_after_fail = this.algorithm.next_forget_stability(
+        difficulty,
+        stability,
+        retrievability,
+      );
       next_again.stability = clamp(+nextSMin.toFixed(8), S_MIN, s_after_fail);
       next_hard.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Hard);
-      next_hard.stability = this.algorithm.next_recall_stability(difficulty, stability, retrievability, Rating.Hard);
+      next_hard.stability = this.algorithm.next_recall_stability(
+        difficulty,
+        stability,
+        retrievability,
+        Rating.Hard,
+      );
       next_good.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Good);
-      next_good.stability = this.algorithm.next_recall_stability(difficulty, stability, retrievability, Rating.Good);
+      next_good.stability = this.algorithm.next_recall_stability(
+        difficulty,
+        stability,
+        retrievability,
+        Rating.Good,
+      );
       next_easy.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Easy);
-      next_easy.stability = this.algorithm.next_recall_stability(difficulty, stability, retrievability, Rating.Easy);
+      next_easy.stability = this.algorithm.next_recall_stability(
+        difficulty,
+        stability,
+        retrievability,
+        Rating.Easy,
+      );
     }
     next_interval(next_hard, next_good, next_easy, interval) {
       let hard_interval, good_interval;
@@ -879,7 +951,10 @@
       good_interval = this.algorithm.next_interval(next_good.stability, interval);
       hard_interval = Math.min(hard_interval, good_interval);
       good_interval = Math.max(good_interval, hard_interval + 1);
-      const easy_interval = Math.max(this.algorithm.next_interval(next_easy.stability, interval), good_interval + 1);
+      const easy_interval = Math.max(
+        this.algorithm.next_interval(next_easy.stability, interval),
+        good_interval + 1,
+      );
       next_hard.scheduled_days = hard_interval;
       next_hard.due = date_scheduler(this.review_time, hard_interval, true);
       next_good.scheduled_days = good_interval;
@@ -941,7 +1016,15 @@
       const next_hard = TypeConvert.card(this.current);
       const next_good = TypeConvert.card(this.current);
       const next_easy = TypeConvert.card(this.current);
-      this.next_ds(next_again, next_hard, next_good, next_easy, difficulty, stability, retrievability);
+      this.next_ds(
+        next_again,
+        next_hard,
+        next_good,
+        next_easy,
+        difficulty,
+        stability,
+        retrievability,
+      );
       this.next_interval(next_again, next_hard, next_good, next_easy, interval);
       this.next_state(next_again, next_hard, next_good, next_easy);
       next_again.lapses += 1;
@@ -950,14 +1033,33 @@
     }
     next_ds(next_again, next_hard, next_good, next_easy, difficulty, stability, retrievability) {
       next_again.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Again);
-      const s_after_fail = this.algorithm.next_forget_stability(difficulty, stability, retrievability);
+      const s_after_fail = this.algorithm.next_forget_stability(
+        difficulty,
+        stability,
+        retrievability,
+      );
       next_again.stability = clamp(stability, S_MIN, s_after_fail);
       next_hard.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Hard);
-      next_hard.stability = this.algorithm.next_recall_stability(difficulty, stability, retrievability, Rating.Hard);
+      next_hard.stability = this.algorithm.next_recall_stability(
+        difficulty,
+        stability,
+        retrievability,
+        Rating.Hard,
+      );
       next_good.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Good);
-      next_good.stability = this.algorithm.next_recall_stability(difficulty, stability, retrievability, Rating.Good);
+      next_good.stability = this.algorithm.next_recall_stability(
+        difficulty,
+        stability,
+        retrievability,
+        Rating.Good,
+      );
       next_easy.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Easy);
-      next_easy.stability = this.algorithm.next_recall_stability(difficulty, stability, retrievability, Rating.Easy);
+      next_easy.stability = this.algorithm.next_recall_stability(
+        difficulty,
+        stability,
+        retrievability,
+        Rating.Easy,
+      );
     }
     next_interval(next_again, next_hard, next_good, next_easy, interval) {
       let again_interval, hard_interval, good_interval, easy_interval;
@@ -991,19 +1093,19 @@
     update_next(next_again, next_hard, next_good, next_easy) {
       const item_again = {
         card: next_again,
-        log: this.buildLog(Rating.Again)
+        log: this.buildLog(Rating.Again),
       };
       const item_hard = {
         card: next_hard,
-        log: super.buildLog(Rating.Hard)
+        log: super.buildLog(Rating.Hard),
       };
       const item_good = {
         card: next_good,
-        log: super.buildLog(Rating.Good)
+        log: super.buildLog(Rating.Good),
       };
       const item_easy = {
         card: next_easy,
-        log: super.buildLog(Rating.Easy)
+        log: super.buildLog(Rating.Easy),
       };
       this.next.set(Rating.Again, item_again);
       this.next.set(Rating.Hard, item_hard);
@@ -1037,7 +1139,7 @@
           last_elapsed_days: card.elapsed_days,
           scheduled_days: card.scheduled_days,
           learning_steps: card.learning_steps,
-          review: reviewed
+          review: reviewed,
         };
         next_card = createEmptyCard(reviewed);
         next_card.last_review = reviewed;
@@ -1056,7 +1158,7 @@
           last_elapsed_days: card.elapsed_days,
           scheduled_days: card.scheduled_days,
           learning_steps: card.learning_steps,
-          review: reviewed
+          review: reviewed,
         };
         next_card = {
           ...card,
@@ -1067,7 +1169,7 @@
           difficulty: difficulty || card.difficulty,
           elapsed_days,
           scheduled_days,
-          reps: card.reps + 1
+          reps: card.reps + 1,
         };
       }
       return { card: next_card, log };
@@ -1083,7 +1185,15 @@
           if (cur_card.state !== State.New && cur_card.last_review) {
             interval = date_diff(review.review, cur_card.last_review, "days");
           }
-          item = this.handleManualRating(cur_card, review.state, review.review, interval, review.stability, review.difficulty, review.due ? TypeConvert.time(review.due) : undefined);
+          item = this.handleManualRating(
+            cur_card,
+            review.state,
+            review.review,
+            interval,
+            review.stability,
+            review.difficulty,
+            review.due ? TypeConvert.time(review.due) : undefined,
+          );
         } else {
           item = this.replay(cur_card, review.review, review.rating);
         }
@@ -1102,12 +1212,20 @@
         return null;
       }
       cur_card.scheduled_days = date_diff(reschedule_card.due, cur_card.due, "days");
-      return this.handleManualRating(cur_card, reschedule_card.state, TypeConvert.time(now), log.elapsed_days, update_memory ? reschedule_card.stability : undefined, update_memory ? reschedule_card.difficulty : undefined, reschedule_card.due);
+      return this.handleManualRating(
+        cur_card,
+        reschedule_card.state,
+        TypeConvert.time(now),
+        log.elapsed_days,
+        update_memory ? reschedule_card.stability : undefined,
+        update_memory ? reschedule_card.difficulty : undefined,
+        reschedule_card.due,
+      );
     }
   }
 
   class FSRS extends FSRSAlgorithm {
-    strategyHandler = /* @__PURE__ */ new Map;
+    strategyHandler = /* @__PURE__ */ new Map();
     Scheduler;
     constructor(param) {
       super(param);
@@ -1117,19 +1235,25 @@
     params_handler_proxy() {
       const _this = this;
       return {
-        set: function(target, prop, value) {
+        set: function (target, prop, value) {
           if (prop === "request_retention" && Number.isFinite(value)) {
             _this.intervalModifier = _this.calculate_interval_modifier(Number(value));
           } else if (prop === "enable_short_term") {
             _this.Scheduler = value === true ? BasicScheduler : LongTermScheduler;
           } else if (prop === "w") {
-            value = migrateParameters(value, target.relearning_steps.length, target.enable_short_term);
+            value = migrateParameters(
+              value,
+              target.relearning_steps.length,
+              target.enable_short_term,
+            );
             _this.forgetting_curve = forgetting_curve.bind(this, value);
-            _this.intervalModifier = _this.calculate_interval_modifier(Number(target.request_retention));
+            _this.intervalModifier = _this.calculate_interval_modifier(
+              Number(target.request_retention),
+            );
           }
           Reflect.set(target, prop, value);
           return true;
-        }
+        },
       };
     }
     useStrategy(mode, handler) {
@@ -1174,9 +1298,15 @@
     }
     get_retrievability(card, now, format = true) {
       const processedCard = TypeConvert.card(card);
-      now = now ? TypeConvert.time(now) : /* @__PURE__ */ new Date;
-      const t = processedCard.state !== State.New ? Math.max(date_diff(now, processedCard.last_review, "days"), 0) : 0;
-      const r = processedCard.state !== State.New ? this.forgetting_curve(t, +processedCard.stability.toFixed(8)) : 0;
+      now = now ? TypeConvert.time(now) : /* @__PURE__ */ new Date();
+      const t =
+        processedCard.state !== State.New
+          ? Math.max(date_diff(now, processedCard.last_review, "days"), 0)
+          : 0;
+      const r =
+        processedCard.state !== State.New
+          ? this.forgetting_curve(t, +processedCard.stability.toFixed(8))
+          : 0;
       return format ? `${(r * 100).toFixed(2)}%` : r;
     }
     rollback(card, log, afterHandler) {
@@ -1199,7 +1329,9 @@
         case State.Review:
           last_due = processedLog.review;
           last_review = processedLog.due;
-          last_lapses = processedCard.lapses - (processedLog.rating === Rating.Again && processedLog.state === State.Review ? 1 : 0);
+          last_lapses =
+            processedCard.lapses -
+            (processedLog.rating === Rating.Again && processedLog.state === State.Review ? 1 : 0);
           break;
       }
       const prevCard = {
@@ -1213,7 +1345,7 @@
         lapses: Math.max(0, last_lapses),
         learning_steps: processedLog.learning_steps,
         state: processedLog.state,
-        last_review
+        last_review,
       };
       if (afterHandler && typeof afterHandler === "function") {
         return afterHandler(prevCard);
@@ -1224,7 +1356,8 @@
     forget(card, now, reset_count = false, afterHandler) {
       const processedCard = TypeConvert.card(card);
       now = TypeConvert.time(now);
-      const scheduled_days = processedCard.state === State.New ? 0 : date_diff(now, processedCard.due, "days");
+      const scheduled_days =
+        processedCard.state === State.New ? 0 : date_diff(now, processedCard.due, "days");
       const forget_log = {
         rating: Rating.Manual,
         state: processedCard.state,
@@ -1235,7 +1368,7 @@
         last_elapsed_days: processedCard.elapsed_days,
         scheduled_days,
         learning_steps: processedCard.learning_steps,
-        review: now
+        review: now,
       };
       const forget_card = {
         ...processedCard,
@@ -1248,7 +1381,7 @@
         lapses: reset_count ? 0 : processedCard.lapses,
         learning_steps: 0,
         state: State.New,
-        last_review: processedCard.last_review
+        last_review: processedCard.last_review,
       };
       const recordLogItem = { card: forget_card, log: forget_log };
       if (afterHandler && typeof afterHandler === "function") {
@@ -1262,8 +1395,8 @@
         recordLogHandler,
         reviewsOrderBy,
         skipManual = true,
-        now = /* @__PURE__ */ new Date,
-        update_memory_state: updateMemoryState = false
+        now = /* @__PURE__ */ new Date(),
+        update_memory_state: updateMemoryState = false,
       } = options;
       if (reviewsOrderBy && typeof reviewsOrderBy === "function") {
         reviews.sort(reviewsOrderBy);
@@ -1272,19 +1405,27 @@
         reviews = reviews.filter((review) => review.rating !== Rating.Manual);
       }
       const rescheduleSvc = new Reschedule(this);
-      const collections = rescheduleSvc.reschedule(options.first_card || createEmptyCard(), reviews);
+      const collections = rescheduleSvc.reschedule(
+        options.first_card || createEmptyCard(),
+        reviews,
+      );
       const len = collections.length;
       const cur_card = TypeConvert.card(current_card);
-      const manual_item = rescheduleSvc.calculateManualRecord(cur_card, now, len ? collections[len - 1] : undefined, updateMemoryState);
+      const manual_item = rescheduleSvc.calculateManualRecord(
+        cur_card,
+        now,
+        len ? collections[len - 1] : undefined,
+        updateMemoryState,
+      );
       if (recordLogHandler && typeof recordLogHandler === "function") {
         return {
           collections: collections.map(recordLogHandler),
-          reschedule_item: manual_item ? recordLogHandler(manual_item) : null
+          reschedule_item: manual_item ? recordLogHandler(manual_item) : null,
         };
       }
       return {
         collections,
-        reschedule_item: manual_item
+        reschedule_item: manual_item,
       };
     }
   }
@@ -1298,14 +1439,10 @@
     globalThis.unload_Lianki = main();
   }
   function compareHLC(a, b) {
-    if (!a)
-      return -1;
-    if (!b)
-      return 1;
-    if (a.timestamp !== b.timestamp)
-      return a.timestamp - b.timestamp;
-    if (a.counter !== b.counter)
-      return a.counter - b.counter;
+    if (!a) return -1;
+    if (!b) return 1;
+    if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+    if (a.counter !== b.counter) return a.counter - b.counter;
     return a.deviceId.localeCompare(b.deviceId);
   }
   function newHLC(deviceId, lastHLC = null) {
@@ -1316,15 +1453,15 @@
     return {
       timestamp: lastHLC.timestamp,
       counter: lastHLC.counter + 1,
-      deviceId
+      deviceId,
     };
   }
   function getOrCreateDeviceId() {
     let deviceId = GM_getValue("lk:deviceId", "");
     if (!deviceId) {
       deviceId = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-        const r = Math.random() * 16 | 0;
-        const v = c === "x" ? r : r & 3 | 8;
+        const r = (Math.random() * 16) | 0;
+        const v = c === "x" ? r : (r & 3) | 8;
         return v.toString(16);
       });
       GM_setValue("lk:deviceId", deviceId);
@@ -1336,8 +1473,7 @@
   var MAX_CARDS = 2000;
   function hashUrl(url) {
     let h = 5381;
-    for (let i = 0;i < url.length; i++)
-      h = ((h << 5) + h ^ url.charCodeAt(i)) >>> 0;
+    for (let i = 0; i < url.length; i++) h = (((h << 5) + h) ^ url.charCodeAt(i)) >>> 0;
     return h.toString(16).padStart(8, "0");
   }
 
@@ -1350,8 +1486,7 @@
     }
     getCard(url) {
       const raw = GM_getValue(CARD_PREFIX + hashUrl(url), "");
-      if (!raw)
-        return null;
+      if (!raw) return null;
       const c = JSON.parse(raw);
       return c._url === url ? c : null;
     }
@@ -1365,7 +1500,10 @@
         idx[pos] = entry;
       } else {
         if (idx.length >= MAX_CARDS) {
-          const maxI = idx.reduce((mi, e, i, a) => new Date(e.due) > new Date(a[mi].due) ? i : mi, 0);
+          const maxI = idx.reduce(
+            (mi, e, i, a) => (new Date(e.due) > new Date(a[mi].due) ? i : mi),
+            0,
+          );
           GM_deleteValue(CARD_PREFIX + idx[maxI].hash);
           idx.splice(maxI, 1);
         }
@@ -1379,27 +1517,32 @@
       this._saveIndex(this._index().filter((e) => e.url !== url));
     }
     getAllCards() {
-      return this._index().map((e) => {
-        const raw = GM_getValue(CARD_PREFIX + e.hash, "");
-        return raw ? { url: e.url, ...JSON.parse(raw) } : null;
-      }).filter(Boolean);
+      return this._index()
+        .map((e) => {
+          const raw = GM_getValue(CARD_PREFIX + e.hash, "");
+          return raw ? { url: e.url, ...JSON.parse(raw) } : null;
+        })
+        .filter(Boolean);
     }
     getDueCards(limit = 10) {
-      const now = new Date;
-      return this._index().filter((e) => new Date(e.due) <= now).sort((a, b) => new Date(a.due) - new Date(b.due)).slice(0, limit).map((e) => {
-        const raw = GM_getValue(CARD_PREFIX + e.hash, "");
-        return raw ? { url: e.url, ...JSON.parse(raw) } : null;
-      }).filter(Boolean);
+      const now = new Date();
+      return this._index()
+        .filter((e) => new Date(e.due) <= now)
+        .sort((a, b) => new Date(a.due) - new Date(b.due))
+        .slice(0, limit)
+        .map((e) => {
+          const raw = GM_getValue(CARD_PREFIX + e.hash, "");
+          return raw ? { url: e.url, ...JSON.parse(raw) } : null;
+        })
+        .filter(Boolean);
     }
   }
 
   class GMConfigStorage {
     getConfig() {
       const cfg = JSON.parse(GM_getValue("lk:config", "{}"));
-      if (!cfg.lastSyncHLC)
-        cfg.lastSyncHLC = null;
-      if (!cfg.lastSyncTime)
-        cfg.lastSyncTime = 0;
+      if (!cfg.lastSyncHLC) cfg.lastSyncHLC = null;
+      if (!cfg.lastSyncTime) cfg.lastSyncTime = 0;
       return cfg;
     }
     setConfig(cfg) {
@@ -1422,7 +1565,7 @@
         data,
         hlc,
         retries: 0,
-        createdAt: Date.now()
+        createdAt: Date.now(),
       });
       GM_setValue("lk:queue", JSON.stringify(q));
     }
@@ -1430,14 +1573,16 @@
       GM_setValue("lk:queue", JSON.stringify(this.getQueue().filter((e) => e.id !== id)));
     }
     updateQueueItem(id, updates) {
-      GM_setValue("lk:queue", JSON.stringify(this.getQueue().map((e) => e.id === id ? { ...e, ...updates } : e)));
+      GM_setValue(
+        "lk:queue",
+        JSON.stringify(this.getQueue().map((e) => (e.id === id ? { ...e, ...updates } : e))),
+      );
     }
   }
   async function syncToSiteDB() {
-    const cs = new GMCardStorage;
+    const cs = new GMCardStorage();
     const index = cs._index();
-    if (!index.length)
-      return;
+    if (!index.length) return;
     try {
       const db = await new Promise((resolve, reject) => {
         const req = indexedDB.open("lianki-keyval", 1);
@@ -1449,19 +1594,20 @@
       const store = tx.objectStore("keyval");
       for (const entry of index) {
         const raw = GM_getValue(CARD_PREFIX + entry.hash, "");
-        if (!raw)
-          continue;
+        if (!raw) continue;
         const { note, hlc, dirty } = JSON.parse(raw);
-        if (!note?.card)
-          continue;
-        store.put({
-          url: note.url || entry.url,
-          title: note.title || note.url || entry.url,
-          card: note.card,
-          log: note.log || [],
-          hlc: hlc || note.hlc,
-          synced: !dirty
-        }, "card:" + (note.url || entry.url));
+        if (!note?.card) continue;
+        store.put(
+          {
+            url: note.url || entry.url,
+            title: note.title || note.url || entry.url,
+            card: note.card,
+            log: note.log || [],
+            hlc: hlc || note.hlc,
+            synced: !dirty,
+          },
+          "card:" + (note.url || entry.url),
+        );
       }
       store.put(index.length, "meta:gm-count");
       await new Promise((resolve, reject) => {
@@ -1481,7 +1627,7 @@
       this.params = params || generatorParameters({});
       this.scheduler = fsrs(this.params);
     }
-    calculateOptions(card, now = new Date) {
+    calculateOptions(card, now = new Date()) {
       const scheduleInfo = this.scheduler.repeat(card, now);
       return [
         {
@@ -1489,53 +1635,48 @@
           label: "Again",
           card: scheduleInfo[this.Rating.Again].card,
           log: scheduleInfo[this.Rating.Again].log,
-          due: this.formatDue(scheduleInfo[this.Rating.Again].card.due)
+          due: this.formatDue(scheduleInfo[this.Rating.Again].card.due),
         },
         {
           rating: 2,
           label: "Hard",
           card: scheduleInfo[this.Rating.Hard].card,
           log: scheduleInfo[this.Rating.Hard].log,
-          due: this.formatDue(scheduleInfo[this.Rating.Hard].card.due)
+          due: this.formatDue(scheduleInfo[this.Rating.Hard].card.due),
         },
         {
           rating: 3,
           label: "Good",
           card: scheduleInfo[this.Rating.Good].card,
           log: scheduleInfo[this.Rating.Good].log,
-          due: this.formatDue(scheduleInfo[this.Rating.Good].card.due)
+          due: this.formatDue(scheduleInfo[this.Rating.Good].card.due),
         },
         {
           rating: 4,
           label: "Easy",
           card: scheduleInfo[this.Rating.Easy].card,
           log: scheduleInfo[this.Rating.Easy].log,
-          due: this.formatDue(scheduleInfo[this.Rating.Easy].card.due)
-        }
+          due: this.formatDue(scheduleInfo[this.Rating.Easy].card.due),
+        },
       ];
     }
     formatDue(dueDate) {
-      const now = new Date;
+      const now = new Date();
       const diffMs = new Date(dueDate) - now;
       const diffMins = Math.round(diffMs / 60000);
       const diffHours = Math.round(diffMs / 3600000);
       const diffDays = Math.round(diffMs / 86400000);
-      if (diffMins < 1)
-        return "now";
-      if (diffMins < 60)
-        return `${diffMins}m`;
-      if (diffHours < 24)
-        return `${diffHours}h`;
-      if (diffDays < 30)
-        return `${diffDays}d`;
+      if (diffMins < 1) return "now";
+      if (diffMins < 60) return `${diffMins}m`;
+      if (diffHours < 24) return `${diffHours}h`;
+      if (diffDays < 30) return `${diffDays}d`;
       const diffMonths = Math.round(diffDays / 30);
-      if (diffMonths < 12)
-        return `${diffMonths}mo`;
+      if (diffMonths < 12) return `${diffMonths}mo`;
       const diffYears = Math.round(diffDays / 365);
       return `${diffYears}y`;
     }
     newCard() {
-      const now = new Date;
+      const now = new Date();
       return {
         due: now,
         stability: 0,
@@ -1545,17 +1686,17 @@
         reps: 0,
         lapses: 0,
         state: 0,
-        last_review: now
+        last_review: now,
       };
     }
-    applyReview(card, rating, now = new Date) {
+    applyReview(card, rating, now = new Date()) {
       const scheduleInfo = this.scheduler.repeat(card, now);
       const ratingKey = [
         this.Rating.Manual,
         this.Rating.Again,
         this.Rating.Hard,
         this.Rating.Good,
-        this.Rating.Easy
+        this.Rating.Easy,
       ][rating];
       return scheduleInfo[ratingKey];
     }
@@ -1565,8 +1706,7 @@
     const ORIGIN = (() => {
       try {
         const u = new URL(GM_info?.script?.downloadURL || "");
-        if (u.hostname === "lianki.com")
-          u.hostname = "www.lianki.com";
+        if (u.hostname === "lianki.com") u.hostname = "www.lianki.com";
         return u.origin;
       } catch {
         return "https://www.lianki.com";
@@ -1581,8 +1721,7 @@
           u.pathname = "/watch";
           u.searchParams.set("v", id);
         }
-        if (u.hostname.startsWith("m."))
-          u.hostname = "www." + u.hostname.slice(2);
+        if (u.hostname.startsWith("m.")) u.hostname = "www." + u.hostname.slice(2);
         for (const p of [
           "si",
           "pp",
@@ -1598,7 +1737,7 @@
           "gclid",
           "mc_cid",
           "mc_eid",
-          "igshid"
+          "igshid",
         ])
           u.searchParams.delete(p);
         u.searchParams.sort();
@@ -1611,11 +1750,11 @@
       setTimeout(() => syncToSiteDB(), 500);
       return () => {};
     }
-    const ac = new AbortController;
+    const ac = new AbortController();
     const { signal } = ac;
     const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
     let userPreferences = {
-      mobileExcludeDomains: []
+      mobileExcludeDomains: [],
     };
     async function loadPreferences() {
       try {
@@ -1641,7 +1780,7 @@
       error: null,
       message: null,
       notes: "",
-      notesSynced: true
+      notesSynced: true,
     };
     let fab = null;
     let dialog = null;
@@ -1657,8 +1796,7 @@
       return aa !== ba ? aa > ba : ab !== bb ? ab > bb : ac2 > bc;
     }
     function checkVersion(r) {
-      if (updatePrompted)
-        return;
+      if (updatePrompted) return;
       const sv = r.headers.get("x-lianki-version");
       if (sv && isNewerVersion(sv, CURRENT_VERSION)) {
         updatePrompted = true;
@@ -1669,8 +1807,7 @@
       return new Promise((resolve, reject) => {
         const token = GM_getValue("lk:token", "");
         const headers = { ...opts.headers };
-        if (token)
-          headers["Authorization"] = `Bearer ${token}`;
+        if (token) headers["Authorization"] = `Bearer ${token}`;
         GM_xmlhttpRequest({
           method: (opts.method || "GET").toUpperCase(),
           url: String(url),
@@ -1684,8 +1821,7 @@
               const i = line.indexOf(": ");
               if (i > 0) {
                 const name = line.slice(0, i).toLowerCase();
-                if (name !== "set-cookie")
-                  hdrs[name] = line.slice(i + 2);
+                if (name !== "set-cookie") hdrs[name] = line.slice(i + 2);
               }
             }
             resolve({
@@ -1703,7 +1839,7 @@
                   return Promise.reject(err);
                 }
               },
-              text: () => Promise.resolve(resp.responseText)
+              text: () => Promise.resolve(resp.responseText),
             });
           },
           onerror() {
@@ -1711,28 +1847,27 @@
           },
           onabort() {
             reject(new Error("Request aborted"));
-          }
+          },
         });
       });
     }
-    const api = (path, opts = {}) => gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
-      if (r.status === 401) {
-        const e = new Error("Login required");
-        e.status = 401;
-        throw e;
-      }
-      if (!r.ok)
-        throw new Error(`HTTP ${r.status}`);
-      checkVersion(r);
-      return r.json();
-    });
+    const api = (path, opts = {}) =>
+      gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
+        if (r.status === 401) {
+          const e = new Error("Login required");
+          e.status = 401;
+          throw e;
+        }
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        checkVersion(r);
+        return r.json();
+      });
     function gmCache(key, ttlMs, fn) {
       try {
         const raw = GM_getValue(key);
         if (raw) {
           const { v, exp } = JSON.parse(raw);
-          if (Date.now() < exp)
-            return Promise.resolve(v);
+          if (Date.now() < exp) return Promise.resolve(v);
         }
       } catch {}
       return fn().then((v) => {
@@ -1744,32 +1879,36 @@
       GM_setValue(key, "");
     }
     const noteKey = (url) => `lk:note:${url}`;
-    const addNote = (url, title) => gmCache(noteKey(url), 10 * 60 * 1000, () => api("/api/fsrs/add", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url, title })
-    }));
+    const addNote = (url, title) =>
+      gmCache(noteKey(url), 10 * 60 * 1000, () =>
+        api("/api/fsrs/add", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ url, title }),
+        }),
+      );
     const buildExcludeDomainsParam = () => {
-      if (!isMobile)
-        return "";
+      if (!isMobile) return "";
       const domains = userPreferences.mobileExcludeDomains || [];
-      if (domains.length === 0)
-        return "";
+      if (domains.length === 0) return "";
       return `&excludeDomains=${domains.join(",")}`;
     };
-    const saveNotes = (id, notes) => api(`/api/fsrs/notes?id=${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ notes })
-    });
+    const saveNotes = (id, notes) =>
+      api(`/api/fsrs/notes?id=${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ notes }),
+      });
     const getOptions = (id) => api(`/api/fsrs/options?id=${encodeURIComponent(id)}`);
-    const submitReview = (id, rating) => api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
-    const deleteNote = (id) => api(`/api/fsrs/delete?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
+    const submitReview = (id, rating) =>
+      api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
+    const deleteNote = (id) =>
+      api(`/api/fsrs/delete?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
     const getNextUrl = () => api(`/api/fsrs/next-url?${buildExcludeDomainsParam().slice(1)}`);
-    const btn = (bg, extra = "") => `all:initial;display:inline-block;box-sizing:border-box;background:${bg};color:${bg === "transparent" ? "var(--lk-fg)" : "#eee"};border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;font-family:system-ui,sans-serif;min-width:60px;line-height:1.5;text-align:center;${extra}`;
+    const btn = (bg, extra = "") =>
+      `all:initial;display:inline-block;box-sizing:border-box;background:${bg};color:${bg === "transparent" ? "var(--lk-fg)" : "#eee"};border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;font-family:system-ui,sans-serif;min-width:60px;line-height:1.5;text-align:center;${extra}`;
     function prefetchNextPage(pageUrl) {
-      if (!pageUrl)
-        return;
+      if (!pageUrl) return;
       if (prefetchLink) {
         prefetchLink.remove();
         prefetchLink = null;
@@ -1796,10 +1935,13 @@
         boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
         backdropFilter: "blur(6px)",
         WebkitBackdropFilter: "blur(6px)",
-        overflow: "hidden"
+        overflow: "hidden",
       });
       let isDragged = false;
-      const BTN_BASE = "border:none;cursor:pointer;background:transparent;color:#eee;" + "padding:10px 14px;font-size:15px;font-weight:bold;touch-action:manipulation;" + "transition:background 0.2s;";
+      const BTN_BASE =
+        "border:none;cursor:pointer;background:transparent;color:#eee;" +
+        "padding:10px 14px;font-size:15px;font-weight:bold;touch-action:manipulation;" +
+        "transition:background 0.2s;";
       const BTN_HOVER = "background:rgba(255,255,255,0.1);";
       const makeBtn = (text, title, action) => {
         const b = document.createElement("button");
@@ -1807,8 +1949,7 @@
         b.title = title;
         b.style.cssText = BTN_BASE;
         b.addEventListener("mouseenter", () => {
-          if (!isDragged)
-            b.style.background = "rgba(255,255,255,0.1)";
+          if (!isDragged) b.style.background = "rgba(255,255,255,0.1)";
         });
         b.addEventListener("mouseleave", () => {
           b.style.background = "transparent";
@@ -1824,11 +1965,14 @@
         return b;
       };
       const slowerBtn = makeBtn("⏪", "Slower (,/v)", () => pardon(-3, 0.7));
-      const liankiBtn = makeBtn("\uD83D\uDD16", "Lianki (Alt+F)", () => dialog ? closeDialog() : openDialog());
+      const liankiBtn = makeBtn("\uD83D\uDD16", "Lianki (Alt+F)", () =>
+        dialog ? closeDialog() : openDialog(),
+      );
       const fasterBtn = makeBtn("⏩", "Faster (./b)", () => pardon(0, 1.2));
       const makeSeparator = () => {
         const sep = document.createElement("div");
-        sep.style.cssText = "width:1px;height:24px;background:rgba(255,255,255,0.15);align-self:center;";
+        sep.style.cssText =
+          "width:1px;height:24px;background:rgba(255,255,255,0.15);align-self:center;";
         return sep;
       };
       container.append(slowerBtn, makeSeparator(), liankiBtn, makeSeparator(), fasterBtn);
@@ -1854,22 +1998,14 @@
         const atTop = r.top <= EDGE_THRESHOLD;
         const atBottom = r.bottom >= window.innerHeight - EDGE_THRESHOLD;
         let radius = "999px";
-        if (atLeft && atTop)
-          radius = "0 999px 999px 0";
-        else if (atRight && atTop)
-          radius = "999px 0 0 999px";
-        else if (atLeft && atBottom)
-          radius = "0 999px 999px 0";
-        else if (atRight && atBottom)
-          radius = "999px 0 0 999px";
-        else if (atLeft)
-          radius = "0 999px 999px 0";
-        else if (atRight)
-          radius = "999px 0 0 999px";
-        else if (atTop)
-          radius = "0 0 999px 999px";
-        else if (atBottom)
-          radius = "999px 999px 0 0";
+        if (atLeft && atTop) radius = "0 999px 999px 0";
+        else if (atRight && atTop) radius = "999px 0 0 999px";
+        else if (atLeft && atBottom) radius = "0 999px 999px 0";
+        else if (atRight && atBottom) radius = "999px 0 0 999px";
+        else if (atLeft) radius = "0 999px 999px 0";
+        else if (atRight) radius = "999px 0 0 999px";
+        else if (atTop) radius = "0 0 999px 999px";
+        else if (atBottom) radius = "999px 999px 0 0";
         container.style.borderRadius = radius;
       };
       const constrainPosition = () => {
@@ -1890,11 +2026,14 @@
       videoObserver = new MutationObserver(updateVideoButtonVisibility);
       videoObserver.observe(document.body, {
         childList: true,
-        subtree: true
+        subtree: true,
       });
       window.addEventListener("resize", constrainPosition, { signal });
       let dragging = false;
-      let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+      let startX = 0,
+        startY = 0,
+        startLeft = 0,
+        startTop = 0;
       const initDrag = (clientX, clientY) => {
         isDragged = false;
         dragging = true;
@@ -1909,9 +2048,9 @@
         container.style.top = startTop + "px";
       };
       const moveDrag = (clientX, clientY) => {
-        if (!dragging)
-          return;
-        const dx = clientX - startX, dy = clientY - startY;
+        if (!dragging) return;
+        const dx = clientX - startX,
+          dy = clientY - startY;
         if (!isDragged && Math.abs(dx) + Math.abs(dy) > 6) {
           isDragged = true;
           const r = container.getBoundingClientRect();
@@ -1931,18 +2070,29 @@
       };
       const stopDrag = () => {
         if (isDragged) {
-          GM_setValue("lianki_pos", JSON.stringify({ x: parseInt(container.style.left), y: parseInt(container.style.top) }));
+          GM_setValue(
+            "lianki_pos",
+            JSON.stringify({ x: parseInt(container.style.left), y: parseInt(container.style.top) }),
+          );
           updateBorderRadius();
         }
         dragging = false;
       };
-      container.addEventListener("touchstart", (e) => initDrag(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
-      container.addEventListener("touchmove", (e) => {
-        if (dragging) {
-          e.preventDefault();
-          moveDrag(e.touches[0].clientX, e.touches[0].clientY);
-        }
-      }, { passive: false });
+      container.addEventListener(
+        "touchstart",
+        (e) => initDrag(e.touches[0].clientX, e.touches[0].clientY),
+        { passive: true },
+      );
+      container.addEventListener(
+        "touchmove",
+        (e) => {
+          if (dragging) {
+            e.preventDefault();
+            moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+          }
+        },
+        { passive: false },
+      );
       container.addEventListener("touchend", stopDrag, { passive: true });
       container.addEventListener("mousedown", (e) => {
         initDrag(e.clientX, e.clientY);
@@ -2016,7 +2166,7 @@
         position: "fixed",
         inset: "0",
         background: "var(--lk-backdrop)",
-        zIndex: "2147483645"
+        zIndex: "2147483645",
       });
       backdrop.addEventListener("click", closeDialog);
       const el = document.createElement("div");
@@ -2041,7 +2191,7 @@
         fontSize: "14px",
         outline: "none",
         lineHeight: "1.5",
-        boxSizing: "border-box"
+        boxSizing: "border-box",
       });
       shadow.appendChild(backdrop);
       shadow.appendChild(el);
@@ -2051,11 +2201,9 @@
       return el;
     }
     function renderDialog() {
-      if (!dialog)
-        return;
+      if (!dialog) return;
       const { phase, options, error, message } = state;
-      while (dialog.lastChild)
-        dialog.removeChild(dialog.lastChild);
+      while (dialog.lastChild) dialog.removeChild(dialog.lastChild);
       const globalStyle = document.createElement("style");
       globalStyle.textContent = `
       * { font-family: system-ui, sans-serif; box-sizing: border-box; }
@@ -2068,21 +2216,28 @@
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        marginBottom: "16px"
+        marginBottom: "16px",
       });
       const titleSpan = document.createElement("span");
       Object.assign(titleSpan.style, { fontWeight: "700", fontSize: "16px" });
       titleSpan.textContent = "\uD83D\uDD16 Lianki";
       const closeBtn = document.createElement("button");
       closeBtn.textContent = "×";
-      closeBtn.setAttribute("style", `${btn("transparent")};color:var(--lk-muted);font-size:20px;padding:0 6px;line-height:1`);
+      closeBtn.setAttribute(
+        "style",
+        `${btn("transparent")};color:var(--lk-muted);font-size:20px;padding:0 6px;line-height:1`,
+      );
       closeBtn.addEventListener("click", closeDialog);
       header.appendChild(titleSpan);
       header.appendChild(closeBtn);
       dialog.appendChild(header);
       if (phase === "adding") {
         const styleEl = document.createElement("style");
-        styleEl.textContent = "@keyframes lk-spin{to{transform:rotate(360deg)}}" + ".lk-spinner{display:inline-block;width:20px;height:20px;" + "border:3px solid #555;border-top-color:#7eb8f7;border-radius:50%;" + "animation:lk-spin 0.8s linear infinite;vertical-align:middle;margin-right:8px}";
+        styleEl.textContent =
+          "@keyframes lk-spin{to{transform:rotate(360deg)}}" +
+          ".lk-spinner{display:inline-block;width:20px;height:20px;" +
+          "border:3px solid #555;border-top-color:#7eb8f7;border-radius:50%;" +
+          "animation:lk-spin 0.8s linear infinite;vertical-align:middle;margin-right:8px}";
         dialog.appendChild(styleEl);
         const wrap = document.createElement("div");
         Object.assign(wrap.style, { display: "flex", flexDirection: "column", gap: "10px" });
@@ -2096,7 +2251,7 @@
         Object.assign(urlDiv.style, {
           color: "var(--lk-muted)",
           fontSize: "12px",
-          wordBreak: "break-all"
+          wordBreak: "break-all",
         });
         urlDiv.textContent = normalizeUrl(location.href);
         wrap.appendChild(spinRow);
@@ -2112,7 +2267,7 @@
           display: "flex",
           gap: "8px",
           marginTop: "10px",
-          flexWrap: "wrap"
+          flexWrap: "wrap",
         });
         const loginBtn = document.createElement("button");
         loginBtn.setAttribute("style", btn("#2a5f8f"));
@@ -2128,8 +2283,7 @@
 Generate one at: ${ORIGIN}/list
 
 (Needed for Safari/Stay where cookies don't work)`);
-          if (!token)
-            return;
+          if (!token) return;
           GM_setValue("lk:token", token.trim());
           closeDialog();
           openDialog();
@@ -2143,7 +2297,7 @@ Generate one at: ${ORIGIN}/list
             `Error: ${error}`,
             `Page: ${location.href}`,
             `Origin: ${ORIGIN}`,
-            `Version: ${CURRENT_VERSION}`
+            `Version: ${CURRENT_VERSION}`,
           ];
           if (state.errorDetails)
             parts.push(`
@@ -2173,7 +2327,7 @@ ${state.errorDetails}`);
           marginBottom: "12px",
           wordBreak: "break-all",
           fontSize: "13px",
-          opacity: ".8"
+          opacity: ".8",
         });
         const bold = document.createElement("b");
         bold.textContent = document.title || location.href;
@@ -2184,7 +2338,7 @@ ${state.errorDetails}`);
           display: "flex",
           gap: "8px",
           flexWrap: "wrap",
-          marginBottom: "8px"
+          marginBottom: "8px",
         });
         for (const o of options) {
           const b = document.createElement("button");
@@ -2225,7 +2379,7 @@ ${state.errorDetails}`);
           borderRadius: "6px",
           padding: "6px 28px 6px 8px",
           fontSize: "12px",
-          outline: "none"
+          outline: "none",
         });
         const syncIndicator = document.createElement("span");
         Object.assign(syncIndicator.style, {
@@ -2235,7 +2389,7 @@ ${state.errorDetails}`);
           transform: "translateY(-50%)",
           fontSize: "13px",
           opacity: ".7",
-          pointerEvents: "none"
+          pointerEvents: "none",
         });
         syncIndicator.textContent = state.notesSynced ? "✓" : "⋯";
         let notesTimer = null;
@@ -2274,56 +2428,54 @@ ${state.errorDetails}`);
           opacity: "0.6",
           display: "flex",
           alignItems: "center",
-          gap: "4px"
+          gap: "4px",
         });
         const queue = queueStorage.getQueue();
-        if (!navigator.onLine)
-          indicator.textContent = "\uD83D\uDCF4 Offline";
-        else if (syncInProgress)
-          indicator.textContent = "\uD83D\uDD04 Syncing...";
-        else if (queue.length > 0)
-          indicator.textContent = `⏳ ${queue.length}`;
-        else
-          indicator.textContent = "✓";
+        if (!navigator.onLine) indicator.textContent = "\uD83D\uDCF4 Offline";
+        else if (syncInProgress) indicator.textContent = "\uD83D\uDD04 Syncing...";
+        else if (queue.length > 0) indicator.textContent = `⏳ ${queue.length}`;
+        else indicator.textContent = "✓";
         dialog.appendChild(indicator);
       }
     }
     function openDialog() {
-      if (dialog)
-        return;
+      if (dialog) return;
       dialog = mountDialog();
       state = { phase: "adding", noteId: null, options: null, error: null, message: null };
       prefetchedNextUrl = null;
       renderDialog();
       dialog.focus();
       const url = normalizeUrl(location.href);
-      addNote(url, document.title).then((note) => {
-        state.noteId = note._id;
-        state.notes = note.notes ?? "";
-        state.notesSynced = true;
-        getNextUrl().then((data) => {
-          prefetchedNextUrl = data.url;
-          if (data.url)
-            prefetchNextPage(data.url);
-        }).catch(() => {});
-        if (note.options) {
-          return { options: note.options };
-        }
-        return getOptions(note._id);
-      }).then((data) => {
-        state.phase = "reviewing";
-        state.options = data.options;
-        renderDialog();
-      }).catch((err) => {
-        state.phase = "error";
-        state.error = err.message;
-        state.errorDetails = err.details ?? null;
-        renderDialog();
-      });
+      addNote(url, document.title)
+        .then((note) => {
+          state.noteId = note._id;
+          state.notes = note.notes ?? "";
+          state.notesSynced = true;
+          getNextUrl()
+            .then((data) => {
+              prefetchedNextUrl = data.url;
+              if (data.url) prefetchNextPage(data.url);
+            })
+            .catch(() => {});
+          if (note.options) {
+            return { options: note.options };
+          }
+          return getOptions(note._id);
+        })
+        .then((data) => {
+          state.phase = "reviewing";
+          state.options = data.options;
+          renderDialog();
+        })
+        .catch((err) => {
+          state.phase = "error";
+          state.error = err.message;
+          state.errorDetails = err.details ?? null;
+          renderDialog();
+        });
     }
     function closeDialog() {
-      if (!dialog)
-        return;
+      if (!dialog) return;
       dialog._backdrop?.remove();
       dialog._shadowHost?.remove();
       dialog.remove();
@@ -2335,14 +2487,11 @@ ${state.errorDetails}`);
       }
     }
     async function doReview(rating) {
-      if (state.phase !== "reviewing" || !state.noteId)
-        return;
+      if (state.phase !== "reviewing" || !state.noteId) return;
       try {
         const result = await submitReview(state.noteId, rating);
-        if (result.nextUrl) {
-          prefetchedNextUrl = result.nextUrl;
-          prefetchNextPage(result.nextUrl);
-        }
+        prefetchedNextUrl = result.nextUrl ?? null;
+        if (result.nextUrl) prefetchNextPage(result.nextUrl);
         const opt = state.options.find((o) => Number(o.rating) === rating);
         await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
       } catch (err) {
@@ -2353,15 +2502,12 @@ ${state.errorDetails}`);
       }
     }
     async function doDelete() {
-      if (state.phase !== "reviewing" || !state.noteId)
-        return;
+      if (state.phase !== "reviewing" || !state.noteId) return;
       try {
         const result = await deleteNote(state.noteId);
         gmCacheInvalidate(noteKey(normalizeUrl(location.href)));
-        if (result.nextUrl) {
-          prefetchedNextUrl = result.nextUrl;
-          prefetchNextPage(result.nextUrl);
-        }
+        prefetchedNextUrl = result.nextUrl ?? null;
+        if (result.nextUrl) prefetchNextPage(result.nextUrl);
         await afterReview("Deleted!");
       } catch (err) {
         state.phase = "error";
@@ -2414,38 +2560,37 @@ ${nextTitle || nextUrl}`;
       Digit5: () => doDelete(),
       KeyT: () => doDelete(),
       KeyM: () => doDelete(),
-      Escape: () => closeDialog()
+      Escape: () => closeDialog(),
     };
-    document.addEventListener("keydown", (e) => {
-      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === "KeyF") {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        if (dialog)
-          closeDialog();
-        else
-          openDialog();
-        return;
-      }
-      if (!dialog || state.phase !== "reviewing")
-        return;
-      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey)
-        return;
-      const action = KEYS[e.code];
-      if (action) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        action();
-      }
-    }, { capture: true, signal });
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === "KeyF") {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (dialog) closeDialog();
+          else openDialog();
+          return;
+        }
+        if (!dialog || state.phase !== "reviewing") return;
+        if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        const action = KEYS[e.code];
+        if (action) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          action();
+        }
+      },
+      { capture: true, signal },
+    );
     (() => {
       let vcid = null;
       document.addEventListener("visibilitychange", trackHandler, { signal });
       function trackHandler() {
         const cb = () => {
-          if (!navigator.mediaSession)
-            return;
+          if (!navigator.mediaSession) return;
           navigator.mediaSession.setActionHandler("nexttrack", () => {
             pardon(0, 1.2);
           });
@@ -2467,24 +2612,26 @@ ${nextTitle || nextUrl}`;
     async function checkRedirect() {
       try {
         const raw = GM_getValue("lk:nav_intended", "");
-        if (!raw)
-          return;
+        if (!raw) return;
         const { url: intendedUrl, ts } = JSON.parse(raw);
-        if (Date.now() - ts > 30000)
-          return;
+        if (Date.now() - ts > 30000) return;
         const actualUrl = location.href;
         if (normalizeUrl(actualUrl) === normalizeUrl(intendedUrl)) {
           GM_setValue("lk:nav_intended", "");
           return;
         }
         console.log("[Lianki] Redirect detected:", intendedUrl, "→", actualUrl);
-        const confirmed = confirm(`This page redirected from:
+        const confirmed = confirm(
+          `This page redirected from:
 ${intendedUrl}
 
-` + `To:
+` +
+            `To:
 ${actualUrl}
 
-` + `Update the card to point to the new URL?`);
+` +
+            `Update the card to point to the new URL?`,
+        );
         if (!confirmed) {
           console.log("[Lianki] User declined URL update");
           GM_setValue("lk:nav_intended", "");
@@ -2493,7 +2640,7 @@ ${actualUrl}
         const result = await api("/api/fsrs/update-url", {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ oldUrl: intendedUrl, newUrl: actualUrl })
+          body: JSON.stringify({ oldUrl: intendedUrl, newUrl: actualUrl }),
         });
         console.log("[Lianki] Card URL updated:", result);
         GM_setValue("lk:nav_intended", "");
@@ -2508,11 +2655,11 @@ ${actualUrl}
     } else {
       const originalPushState = history.pushState;
       const originalReplaceState = history.replaceState;
-      history.pushState = function(...args) {
+      history.pushState = function (...args) {
         originalPushState.apply(this, args);
         setTimeout(checkRedirect, 100);
       };
-      history.replaceState = function(...args) {
+      history.replaceState = function (...args) {
         originalReplaceState.apply(this, args);
         setTimeout(checkRedirect, 100);
       };
@@ -2520,22 +2667,27 @@ ${actualUrl}
     }
     const $$ = (sel) => [...document.querySelectorAll(sel)];
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-    const renderTime = (t) => [t / 3600 | 0, (t / 60 | 0) % 60, t % 60 | 0].map((e) => e.toString().padStart(2, "0")).join(":");
+    const renderTime = (t) =>
+      [(t / 3600) | 0, ((t / 60) | 0) % 60, (t % 60) | 0]
+        .map((e) => e.toString().padStart(2, "0"))
+        .join(":");
     const renderSpeed = (s) => "x" + s.toFixed(2);
     function centerTooltip(textContent) {
       const el = document.createElement("div");
       el.textContent = textContent;
-      el.style.cssText = "position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); " + "background: #0008; color: white; padding: 0.5rem; border-radius: 1rem; " + "z-index: 2147483647; pointer-events: none;";
+      el.style.cssText =
+        "position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); " +
+        "background: #0008; color: white; padding: 0.5rem; border-radius: 1rem; " +
+        "z-index: 2147483647; pointer-events: none;";
       document.body.appendChild(el);
       setTimeout(() => el.remove(), 500);
     }
-    const videoSpeedMaps = new WeakMap;
+    const videoSpeedMaps = new WeakMap();
     const markerCacheKey = (url) => `lk:markers:${normalizeUrl(url)}`;
     function loadLocalMarkers(url) {
       try {
         const raw = GM_getValue(markerCacheKey(url), "");
-        if (!raw)
-          return { markers: {}, lastSync: 0, dirty: false };
+        if (!raw) return { markers: {}, lastSync: 0, dirty: false };
         return JSON.parse(raw);
       } catch {
         return { markers: {}, lastSync: 0, dirty: false };
@@ -2545,69 +2697,74 @@ ${actualUrl}
       const cache = {
         markers,
         lastSync: dirty ? loadLocalMarkers(url).lastSync : Date.now(),
-        dirty
+        dirty,
       };
       GM_setValue(markerCacheKey(url), JSON.stringify(cache));
     }
     async function pardon(dt = 0, speedMultiplier = 1, wait = 0) {
       const vs = $$("video,audio");
       const v = vs.filter((e) => !e.paused)[0];
-      if (!v)
-        return vs[0]?.click();
+      if (!v) return vs[0]?.click();
       const mergeNearbyMarkers = (time) => {
-        if (speedMultiplier === 1)
-          return;
-        if (!videoSpeedMaps.has(v))
-          videoSpeedMaps.set(v, new Map);
+        if (speedMultiplier === 1) return;
+        if (!videoSpeedMaps.has(v)) videoSpeedMaps.set(v, new Map());
         const speedMap = videoSpeedMaps.get(v);
         const MERGE_THRESHOLD = 2;
         for (const [existingTime] of speedMap) {
           if (Math.abs(time - existingTime) < MERGE_THRESHOLD) {
             speedMap.delete(existingTime);
-            console.log(`[Lianki] Merged marker: ${renderTime(existingTime)} @ ${renderTime(time)}`);
+            console.log(
+              `[Lianki] Merged marker: ${renderTime(existingTime)} @ ${renderTime(time)}`,
+            );
           }
         }
       };
       mergeNearbyMarkers(v.currentTime);
-      if (dt !== 0)
-        v.currentTime += dt;
+      if (dt !== 0) v.currentTime += dt;
       mergeNearbyMarkers(v.currentTime);
       if (speedMultiplier !== 1) {
         v.playbackRate *= speedMultiplier;
         const speedMap = videoSpeedMaps.get(v);
         speedMap.set(v.currentTime, v.playbackRate);
-        console.log(`[Lianki] Speed marker: ${renderTime(v.currentTime)} → ${renderSpeed(v.playbackRate)}`);
+        console.log(
+          `[Lianki] Speed marker: ${renderTime(v.currentTime)} → ${renderSpeed(v.playbackRate)}`,
+        );
         const url = normalizeUrl(location.href);
         const markers = Object.fromEntries(speedMap);
         saveLocalMarkers(url, markers, true);
       }
-      centerTooltip((dt < 0 ? "<-" : "->") + " " + renderTime(v.currentTime) + " " + renderSpeed(v.playbackRate));
-      if (wait)
-        await sleep(wait);
+      centerTooltip(
+        (dt < 0 ? "<-" : "->") +
+          " " +
+          renderTime(v.currentTime) +
+          " " +
+          renderSpeed(v.playbackRate),
+      );
+      if (wait) await sleep(wait);
       return true;
     }
-    window.addEventListener("keydown", async (e) => {
-      if (dialog)
-        return;
-      if (e.altKey || e.ctrlKey || e.metaKey)
-        return;
-      if (document?.activeElement?.isContentEditable)
-        return;
-      if (["INPUT", "TEXTAREA"].includes(document?.activeElement?.tagName))
-        return;
-      if (e.code === "Comma" || e.code === "KeyV") {
-        if (await pardon(-3, 0.7)) {
-          e.preventDefault();
-          e.stopPropagation();
+    window.addEventListener(
+      "keydown",
+      async (e) => {
+        if (dialog) return;
+        if (e.altKey || e.ctrlKey || e.metaKey) return;
+        if (document?.activeElement?.isContentEditable) return;
+        if (["INPUT", "TEXTAREA"].includes(document?.activeElement?.tagName)) return;
+        if (e.code === "Comma" || e.code === "KeyV") {
+          if (await pardon(-3, 0.7)) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
         }
-      }
-      if (e.code === "Period" || e.code === "KeyB") {
-        if (await pardon(0, 1.2)) {
-          e.preventDefault();
-          e.stopPropagation();
+        if (e.code === "Period" || e.code === "KeyB") {
+          if (await pardon(0, 1.2)) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
         }
-      }
-    }, { capture: true });
+      },
+      { capture: true },
+    );
     function setupVideoSpeedTracking(video) {
       const url = normalizeUrl(location.href);
       (async () => {
@@ -2616,8 +2773,7 @@ ${actualUrl}
           const { markers } = await api(`/api/fsrs/speed-markers?url=${encodeURIComponent(url)}`);
           const merged = { ...local.markers, ...markers };
           saveLocalMarkers(url, merged, false);
-          if (!videoSpeedMaps.has(video))
-            videoSpeedMaps.set(video, new Map);
+          if (!videoSpeedMaps.has(video)) videoSpeedMaps.set(video, new Map());
           const speedMap = videoSpeedMaps.get(video);
           for (const [timestamp, speed] of Object.entries(merged)) {
             speedMap.set(parseFloat(timestamp), speed);
@@ -2626,8 +2782,7 @@ ${actualUrl}
         } catch (err) {
           console.error("[Lianki] Failed to load speed markers:", err);
           const local = loadLocalMarkers(url);
-          if (!videoSpeedMaps.has(video))
-            videoSpeedMaps.set(video, new Map);
+          if (!videoSpeedMaps.has(video)) videoSpeedMaps.set(video, new Map());
           const speedMap = videoSpeedMaps.get(video);
           for (const [timestamp, speed] of Object.entries(local.markers)) {
             speedMap.set(parseFloat(timestamp), speed);
@@ -2637,19 +2792,19 @@ ${actualUrl}
       let lastCheckedTime = 0;
       video.addEventListener("timeupdate", () => {
         const speedMap = videoSpeedMaps.get(video);
-        if (!speedMap || speedMap.size === 0)
-          return;
+        if (!speedMap || speedMap.size === 0) return;
         const currentTime = video.currentTime;
         const threshold = 0.5;
-        if (Math.abs(currentTime - lastCheckedTime) < 0.3)
-          return;
+        if (Math.abs(currentTime - lastCheckedTime) < 0.3) return;
         lastCheckedTime = currentTime;
         for (const [markedTime, targetSpeed] of speedMap) {
           if (Math.abs(currentTime - markedTime) < threshold) {
             if (Math.abs(video.playbackRate - targetSpeed) > 0.01) {
               video.playbackRate = targetSpeed;
               centerTooltip(`Auto-speed: ${renderSpeed(targetSpeed)} @ ${renderTime(markedTime)}`);
-              console.log(`[Lianki] Auto-adjusted to ${renderSpeed(targetSpeed)} at ${renderTime(currentTime)}`);
+              console.log(
+                `[Lianki] Auto-adjusted to ${renderSpeed(targetSpeed)} at ${renderTime(currentTime)}`,
+              );
             }
             break;
           }
@@ -2657,10 +2812,9 @@ ${actualUrl}
       });
     }
     function observeVideos() {
-      const tracked = new WeakSet;
+      const tracked = new WeakSet();
       const trackVideo = (v) => {
-        if (tracked.has(v))
-          return;
+        if (tracked.has(v)) return;
         tracked.add(v);
         setupVideoSpeedTracking(v);
       };
@@ -2675,13 +2829,12 @@ ${actualUrl}
       try {
         const url = normalizeUrl(location.href);
         const cache = loadLocalMarkers(url);
-        if (!cache.dirty)
-          return;
+        if (!cache.dirty) return;
         console.log(`[Lianki] Syncing ${Object.keys(cache.markers).length} markers to DB...`);
         await api("/api/fsrs/speed-markers", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ url, markers: cache.markers })
+          body: JSON.stringify({ url, markers: cache.markers }),
         });
         saveLocalMarkers(url, cache.markers, false);
         console.log("[Lianki] Sync complete");
@@ -2696,9 +2849,9 @@ ${actualUrl}
     let syncTimer = null;
     function initOfflineStorage() {
       try {
-        cardStorage = new GMCardStorage;
-        configStorage = new GMConfigStorage;
-        queueStorage = new GMQueueStorage;
+        cardStorage = new GMCardStorage();
+        configStorage = new GMConfigStorage();
+        queueStorage = new GMQueueStorage();
         const config = configStorage.getConfig();
         localFSRS = new LocalFSRS(config.fsrsParams);
         offlineReady = true;
@@ -2711,8 +2864,7 @@ ${actualUrl}
     }
     const _originalOpenDialog = openDialog;
     openDialog = async function openDialogOffline() {
-      if (dialog)
-        return;
+      if (dialog) return;
       dialog = mountDialog();
       state = { phase: "adding", noteId: null, options: null, error: null, message: null };
       prefetchedNextUrl = null;
@@ -2741,63 +2893,71 @@ ${actualUrl}
           console.error("[Lianki] Cache check failed:", err);
         }
       }
-      addNote(url, document.title).then(async (note) => {
-        state.noteId = note._id;
-        state.notes = note.notes ?? "";
-        state.notesSynced = true;
-        if (offlineReady) {
-          try {
-            cardStorage.setCard(url, note, null);
-          } catch (err) {
-            console.error("[Lianki] Failed to cache card:", err);
+      addNote(url, document.title)
+        .then(async (note) => {
+          state.noteId = note._id;
+          state.notes = note.notes ?? "";
+          state.notesSynced = true;
+          if (offlineReady) {
+            try {
+              cardStorage.setCard(url, note, null);
+            } catch (err) {
+              console.error("[Lianki] Failed to cache card:", err);
+            }
           }
-        }
-        getNextUrl().then((data) => {
-          prefetchedNextUrl = data.url;
-          if (data.url)
-            prefetchNextPage(data.url);
-        }).catch(() => {});
-        if (note.options) {
-          return { options: note.options };
-        }
-        if (offlineReady && localFSRS) {
-          return { options: localFSRS.calculateOptions(note.card) };
-        }
-        return getOptions(note._id);
-      }).then((data) => {
-        state.phase = "reviewing";
-        state.options = data.options;
-        renderDialog();
-      }).catch((err) => {
-        if (offlineReady && (err?.status === 401 || String(err?.message).includes("401") || String(err?.message).toLowerCase().includes("unauthorized"))) {
-          const localNote = {
-            _id: "local:" + hashUrl(url),
-            url,
-            title: document.title,
-            card: localFSRS.newCard(),
-            notes: "",
-            hlc: newHLC(deviceId, null)
-          };
-          cardStorage.setCard(url, localNote, localNote.hlc, true);
-          queueStorage.addToQueue("add", { url, title: document.title }, localNote.hlc);
-          state.noteId = localNote._id;
-          state.notes = "";
-          state.notesSynced = false;
+          getNextUrl()
+            .then((data) => {
+              prefetchedNextUrl = data.url;
+              if (data.url) prefetchNextPage(data.url);
+            })
+            .catch(() => {});
+          if (note.options) {
+            return { options: note.options };
+          }
+          if (offlineReady && localFSRS) {
+            return { options: localFSRS.calculateOptions(note.card) };
+          }
+          return getOptions(note._id);
+        })
+        .then((data) => {
           state.phase = "reviewing";
-          state.options = localFSRS.calculateOptions(localNote.card);
+          state.options = data.options;
           renderDialog();
-          return;
-        }
-        state.phase = "error";
-        state.error = err.message;
-        state.errorDetails = err.details ?? null;
-        renderDialog();
-      });
+        })
+        .catch((err) => {
+          if (
+            offlineReady &&
+            (err?.status === 401 ||
+              String(err?.message).includes("401") ||
+              String(err?.message).toLowerCase().includes("unauthorized"))
+          ) {
+            const localNote = {
+              _id: "local:" + hashUrl(url),
+              url,
+              title: document.title,
+              card: localFSRS.newCard(),
+              notes: "",
+              hlc: newHLC(deviceId, null),
+            };
+            cardStorage.setCard(url, localNote, localNote.hlc, true);
+            queueStorage.addToQueue("add", { url, title: document.title }, localNote.hlc);
+            state.noteId = localNote._id;
+            state.notes = "";
+            state.notesSynced = false;
+            state.phase = "reviewing";
+            state.options = localFSRS.calculateOptions(localNote.card);
+            renderDialog();
+            return;
+          }
+          state.phase = "error";
+          state.error = err.message;
+          state.errorDetails = err.details ?? null;
+          renderDialog();
+        });
     };
     const _originalDoReview = doReview;
     doReview = async function doReviewOffline(rating) {
-      if (state.phase !== "reviewing" || !state.noteId)
-        return;
+      if (state.phase !== "reviewing" || !state.noteId) return;
       const url = normalizeUrl(location.href);
       if (offlineReady) {
         try {
@@ -2810,11 +2970,15 @@ ${actualUrl}
             cachedCard.note.log.push(reviewResult.log);
             const newHlc = newHLC(deviceId, cachedCard.hlc);
             cardStorage.setCard(url, cachedCard.note, newHlc, true);
-            queueStorage.addToQueue("review", {
-              url,
-              noteId: state.noteId,
-              rating
-            }, newHlc);
+            queueStorage.addToQueue(
+              "review",
+              {
+                url,
+                noteId: state.noteId,
+                rating,
+              },
+              newHlc,
+            );
             const opt = state.options.find((o) => Number(o.rating) === rating);
             await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
             tryBackgroundSync();
@@ -2838,10 +3002,8 @@ ${actualUrl}
             console.error("[Lianki] Failed to update cache:", err);
           }
         }
-        if (result.nextUrl) {
-          prefetchedNextUrl = result.nextUrl;
-          prefetchNextPage(result.nextUrl);
-        }
+        prefetchedNextUrl = result.nextUrl ?? null;
+        if (result.nextUrl) prefetchNextPage(result.nextUrl);
         const opt = state.options.find((o) => Number(o.rating) === rating);
         await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
       } catch (err) {
@@ -2864,8 +3026,7 @@ ${actualUrl}
       setTimeout(() => tryBackgroundSync(), 5000);
     }
     async function tryBackgroundSync() {
-      if (syncInProgress || !offlineReady)
-        return;
+      if (syncInProgress || !offlineReady) return;
       if (!navigator.onLine) {
         console.log("[Lianki] Offline - will sync when online");
         return;
@@ -2903,11 +3064,14 @@ ${actualUrl}
     async function syncQueueItem(item) {
       switch (item.action) {
         case "review":
-          await api(`/api/fsrs/review/${item.data.rating}/?id=${encodeURIComponent(item.data.noteId)}`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ hlc: item.hlc })
-          });
+          await api(
+            `/api/fsrs/review/${item.data.rating}/?id=${encodeURIComponent(item.data.noteId)}`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ hlc: item.hlc }),
+            },
+          );
           break;
         case "add":
           await addNote(item.data.url, item.data.title);
@@ -2921,8 +3085,7 @@ ${actualUrl}
       }
     }
     async function prefetchDueCards() {
-      if (!offlineReady || !navigator.onLine)
-        return;
+      if (!offlineReady || !navigator.onLine) return;
       try {
         console.log("[Lianki] Prefetching due cards...");
         const response = await api("/api/fsrs/due?limit=20");
@@ -2944,8 +3107,7 @@ ${actualUrl}
       }
     }
     async function prefetchNextCachedCard() {
-      if (!offlineReady)
-        return;
+      if (!offlineReady) return;
       try {
         const dueCards = cardStorage.getDueCards(1);
         if (dueCards.length > 0 && dueCards[0].url !== location.href) {

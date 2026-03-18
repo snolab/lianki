@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.5
+// @version     2.21.6
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1294,11 +1294,9 @@ function main() {
     if (state.phase !== "reviewing" || !state.noteId) return;
     try {
       const result = await submitReview(state.noteId, rating);
-      // Use nextUrl from review response if available (optimization)
-      if (result.nextUrl) {
-        prefetchedNextUrl = result.nextUrl;
-        prefetchNextPage(result.nextUrl);
-      }
+      // Always update from server (even null) to prevent stale value re-navigating to current card
+      prefetchedNextUrl = result.nextUrl ?? null;
+      if (result.nextUrl) prefetchNextPage(result.nextUrl);
       const opt = state.options.find((o) => Number(o.rating) === rating);
       await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
     } catch (err) {
@@ -1314,11 +1312,9 @@ function main() {
     try {
       const result = await deleteNote(state.noteId);
       gmCacheInvalidate(noteKey(normalizeUrl(location.href)));
-      // Use nextUrl from delete response if available (optimization)
-      if (result.nextUrl) {
-        prefetchedNextUrl = result.nextUrl;
-        prefetchNextPage(result.nextUrl);
-      }
+      // Always update from server (even null) to prevent stale value re-navigating to current card
+      prefetchedNextUrl = result.nextUrl ?? null;
+      if (result.nextUrl) prefetchNextPage(result.nextUrl);
       await afterReview("Deleted!");
     } catch (err) {
       state.phase = "error";
@@ -1988,11 +1984,9 @@ function main() {
         }
       }
 
-      // Use nextUrl from review response if available (optimization)
-      if (result.nextUrl) {
-        prefetchedNextUrl = result.nextUrl;
-        prefetchNextPage(result.nextUrl);
-      }
+      // Always update from server (even null) to prevent stale value re-navigating to current card
+      prefetchedNextUrl = result.nextUrl ?? null;
+      if (result.nextUrl) prefetchNextPage(result.nextUrl);
 
       const opt = state.options.find((o) => Number(o.rating) === rating);
       await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
