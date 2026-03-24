@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.7
+// @version     2.21.8
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -2095,18 +2095,19 @@
       );
       container.addEventListener("touchend", stopDrag, { passive: true });
       container.addEventListener("pointerdown", (e) => {
-        container.setPointerCapture(e.pointerId);
         initDrag(e.clientX, e.clientY);
         const onMove = (ev) => moveDrag(ev.clientX, ev.clientY);
         const onUp = () => {
           stopDrag();
-          container.removeEventListener("pointermove", onMove);
-          container.removeEventListener("pointerup", onUp);
-          container.removeEventListener("pointercancel", onUp);
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+          window.removeEventListener("pointerup", onUp);
+          window.removeEventListener("pointercancel", onUp);
         };
-        container.addEventListener("pointermove", onMove);
-        container.addEventListener("pointerup", onUp);
-        container.addEventListener("pointercancel", onUp);
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
       });
       document.body.appendChild(container);
       try {
