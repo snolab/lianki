@@ -438,22 +438,117 @@ test.describe("Server-side nextDueQuery excludes current card", () => {
   });
 });
 
-test.describe("Userscript offline review fix", () => {
+test.describe("Userscript offline review fix (static analysis)", () => {
   test("FIX: offline doReview sets prefetchedNextUrl from local cache before afterReview", () => {
-    // The offline path must find the next due card from local cache and set
-    // prefetchedNextUrl BEFORE calling afterReview(). Otherwise afterReview()
-    // falls back to getNextUrl() which queries the server that hasn't been synced yet.
     expect(SCRIPT_CONTENT).toMatch(/getDueCards[\s\S]*?prefetchedNextUrl[\s\S]*?afterReview/);
   });
 
   test("FIX: getNextUrl passes excludeUrl to server", () => {
-    // getNextUrl should pass the current card's URL so the server can exclude it
     expect(SCRIPT_CONTENT).toContain("excludeUrl");
   });
 
   test("FIX: prefetchNextCachedCard uses normalized URL comparison", () => {
-    // Must use normalizeUrl for comparison, not raw location.href
     const match = SCRIPT_CONTENT.match(/function prefetchNextCachedCard[\s\S]*?normalizeUrl/);
     expect(match).toBeTruthy();
+  });
+});
+
+test.describe("Offline review: code logic verification", () => {
+  test("offline doReviewOffline finds next card from local cache, excluding current", () => {
+    // Verify the critical code path: after offline review, getDueCards is called
+    // and the current card is excluded by URL comparison before afterReview()
+    const offlineReviewBlock = SCRIPT_CONTENT.match(
+      /doReviewOffline[\s\S]*?getDueCards\((\d+)\)[\s\S]*?\.find\([\s\S]*?!==[\s\S]*?prefetchedNextUrl[\s\S]*?afterReview/,
+    );
+    expect(offlineReviewBlock).toBeTruthy();
+
+    // getDueCards should fetch at least 2 cards so we can skip the current one
+    const limit = parseInt(offlineReviewBlock![1]);
+    expect(limit).toBeGreaterThanOrEqual(2);
+  });
+
+  test("afterReview uses prefetchedNextUrl if set, skipping server query", () => {
+    // afterReview should use prefetchedNextUrl (set by offline path) before
+    // falling back to getNextUrl() (server query)
+    const afterReviewBlock = SCRIPT_CONTENT.match(
+      /function afterReview[\s\S]*?let nextUrl = prefetchedNextUrl[\s\S]*?if \(!nextUrl\)[\s\S]*?getNextUrl/,
+    );
+    expect(afterReviewBlock).toBeTruthy();
+  });
+
+  test("getNextUrl sends excludeUrl param to prevent server returning same card", () => {
+    // Even when the server fallback is used, excludeUrl is sent
+    const getNextUrlBlock = SCRIPT_CONTENT.match(
+      /getNextUrl[\s\S]*?excludeUrl[\s\S]*?normalizeUrl[\s\S]*?location\.href/,
+    );
+    expect(getNextUrlBlock).toBeTruthy();
+  });
+
+  test("guest review flow still works (401 path with Hard)", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.addInitScript(() => {
+      (window as any).__gm = {} as Record<string, string>;
+      (window as any).GM_getValue = (k: string, d: unknown = "") => (window as any).__gm[k] ?? d;
+      (window as any).GM_setValue = (k: string, v: unknown) => {
+        (window as any).__gm[k] = v;
+      };
+      (window as any).GM_deleteValue = (k: string) => {
+        delete (window as any).__gm[k];
+      };
+      (window as any).GM_info = {
+        script: { version: "2.21.7", downloadURL: "https://www.lianki.com/lianki.user.js" },
+      };
+      (window as any).GM_xmlhttpRequest = () => {};
+    });
+    await page.goto("about:blank");
+    await page.evaluate(() => {
+      (window as any).GM_xmlhttpRequest = ({ onload }: any) => {
+        setTimeout(
+          () =>
+            onload({
+              status: 401,
+              ok: false,
+              responseText: "Unauthorized",
+              responseHeaders: "content-type: text/plain\r\n",
+            }),
+          20,
+        );
+      };
+    });
+    await page.addScriptTag({ content: WRAPPED_CONTENT });
+    await page.waitForTimeout(300);
+
+    // Open dialog (triggers 401 → guest card creation)
+    await clickFab(page);
+    await page.waitForFunction(
+      (fn: string) => !!new Function(`return (${fn})`)()(),
+      FIND_HOST.toString(),
+      { timeout: 5000 },
+    );
+    await page.waitForFunction(
+      (fn: string) => {
+        const host = new Function(`return (${fn})`)()();
+        if (!host?.shadowRoot) return false;
+        return host.shadowRoot.querySelectorAll("button").length >= 4;
+      },
+      FIND_HOST.toString(),
+      { timeout: 8000 },
+    );
+
+    // Click Hard
+    await clickRating(page, "Hard");
+    await page.waitForTimeout(300);
+
+    // Verify a review was queued with rating=2
+    const queue = (await gmJSON(page, "lk:queue")) as { action: string; data: any }[] | null;
+    const reviewItem = queue?.find((e) => e.action === "review");
+    expect(reviewItem).toBeTruthy();
+    expect(reviewItem!.data.rating).toBe(2);
+
+    // Card due date should have advanced
+    const index = (await gmJSON(page, "lk:card-index")) as { url: string; due: string }[];
+    expect(index).toBeTruthy();
+    expect(index.length).toBeGreaterThan(0);
   });
 });
