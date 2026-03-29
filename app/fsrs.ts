@@ -16,6 +16,7 @@ import {
 import { z } from "zod";
 import { revalidateTag } from "next/cache";
 import { dueMs } from "./ems";
+import { buildNextDueQuery, compareHLC, type HLC, newServerHLC, RATING_MAP } from "./fsrs-helpers";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
 import { getHeatmapCacheTag } from "./lib/heatmap-cache";
 import { normalizeUrl } from "@/lib/normalizeUrl";
@@ -29,45 +30,7 @@ const LIANKI_USERSCRIPT_VERSION = (() => {
   }
 })();
 
-// ── HLC (Hybrid Logical Clock) Helpers ──────────────────────────────────────
-
-/**
- * Compare two HLC timestamps
- * Returns: < 0 if a < b, 0 if equal, > 0 if a > b
- */
-function compareHLC(a: HLC | undefined, b: HLC | undefined): number {
-  if (!a) return -1;
-  if (!b) return 1;
-  if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
-  if (a.counter !== b.counter) return a.counter - b.counter;
-  return a.deviceId.localeCompare(b.deviceId);
-}
-
-/**
- * Generate new HLC timestamp for server
- */
-function newServerHLC(lastHLC?: HLC | null): HLC {
-  const now = Date.now();
-  const deviceId = "server";
-
-  if (!lastHLC || now > lastHLC.timestamp) {
-    return { timestamp: now, counter: 0, deviceId };
-  }
-
-  // Same timestamp - increment counter
-  return {
-    timestamp: lastHLC.timestamp,
-    counter: lastHLC.counter + 1,
-    deviceId,
-  };
-}
-
-// Hybrid Logical Clock for CRDT sync
-export type HLC = {
-  timestamp: number; // Physical clock (Date.now())
-  counter: number; // Logical counter for same timestamp
-  deviceId: string; // Device/session identifier
-};
+export type { HLC } from "./fsrs-helpers";
 
 export type FSRSNote = {
   url: string;
@@ -89,32 +52,10 @@ const fsrsConfig = fsrs(
   }),
 );
 
-const RATING_MAP: Record<string, Grade> = {
-  "1": Rating.Again,
-  again: Rating.Again,
-  "2": Rating.Hard,
-  hard: Rating.Hard,
-  "3": Rating.Good,
-  good: Rating.Good,
-  "4": Rating.Easy,
-  easy: Rating.Easy,
-};
-
-function nextDueQuery(req: Request) {
+function nextDueQuery(req: Request, excludeUrl?: string) {
   const url = new URL(req.url, "http://localhost");
   const excludeDomains = url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
-  const query: any = {
-    "card.due": { $lte: new Date() },
-    url: { $exists: true, $ne: null },
-  };
-  if (excludeDomains.length > 0) {
-    query.url = {
-      $exists: true,
-      $ne: null,
-      $not: new RegExp(excludeDomains.map((d) => d.replace(/\./g, "\\.")).join("|")),
-    };
-  }
-  return query;
+  return buildNextDueQuery(excludeDomains, excludeUrl);
 }
 
 export const fsrsHandler = async (req: Request, email?: string) => {
@@ -220,12 +161,12 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     ) => {
       const params = getParams(req, options);
       const rating = RATING_MAP[params.rating] ?? DIE("unknown rating: " + String(params.rating));
-      const reviewedCard = await reviewed(
-        (await getQueryNote(req, options)) ?? DIE("note not found"),
-        rating,
-      );
+      const note = (await getQueryNote(req, options)) ?? DIE("note not found");
+      const reviewedCard = await reviewed(note, rating);
 
-      const nextNote = await FSRSNotes.findOne(nextDueQuery(req), { sort: { "card.due": 1 } });
+      const nextNote = await FSRSNotes.findOne(nextDueQuery(req, note.url), {
+        sort: { "card.due": 1 },
+      });
 
       return JSONR({
         ok: true,
@@ -284,7 +225,9 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
       const reviewedCard = await reviewed(note, rating, clientHLC);
 
-      const nextNote = await FSRSNotes.findOne(nextDueQuery(req), { sort: { "card.due": 1 } });
+      const nextNote = await FSRSNotes.findOne(nextDueQuery(req, note.url), {
+        sort: { "card.due": 1 },
+      });
 
       return JSONR({
         ok: true,
