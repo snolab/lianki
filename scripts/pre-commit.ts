@@ -13,6 +13,7 @@ const staged = () => run("git diff --cached --name-only").trim();
 // Build userscript from TS source if staged
 if (staged().includes("src/lianki.user.ts")) {
   execSync("bun run build:userscript", { stdio: "inherit" });
+  execSync("oxfmt public/lianki.user.js", { stdio: "inherit" });
   run("git add public/lianki.user.js");
 }
 if (!staged().includes("public/lianki.user.js")) process.exit(0);

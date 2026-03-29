@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.7
+// @version     2.21.8
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1312,12 +1312,48 @@ function main() {
 
   async function doDelete() {
     if (state.phase !== "reviewing" || !state.noteId) return;
+    const url = normalizeUrl(location.href);
     try {
-      const result = await deleteNote(state.noteId);
-      gmCacheInvalidate(noteKey(normalizeUrl(location.href)));
-      // Always update from server (even null) to prevent stale value re-navigating to current card
-      prefetchedNextUrl = result.nextUrl ?? null;
-      if (result.nextUrl) prefetchNextPage(result.nextUrl);
+      // Delete from local cache first
+      if (offlineReady) {
+        try {
+          cardStorage.deleteCard(url);
+        } catch (e) {
+          console.error("[Lianki] Local delete failed:", e);
+        }
+      }
+      gmCacheInvalidate(noteKey(url));
+
+      // Find next card from local cache before server call
+      if (offlineReady) {
+        try {
+          const dueCards = cardStorage.getDueCards(2);
+          const nextCard = dueCards.find((c) => c.url !== url);
+          prefetchedNextUrl = nextCard?.url ?? null;
+          if (prefetchedNextUrl) prefetchNextPage(prefetchedNextUrl);
+        } catch (e) {
+          prefetchedNextUrl = null;
+        }
+      }
+
+      // Try server delete (may fail for local-only cards — that's OK)
+      if (!state.noteId.startsWith("local:")) {
+        try {
+          const result = await deleteNote(state.noteId);
+          // Server response overrides local prefetch if available
+          if (result.nextUrl) {
+            prefetchedNextUrl = result.nextUrl;
+            prefetchNextPage(result.nextUrl);
+          }
+        } catch (err) {
+          console.error("[Lianki] Server delete failed:", err);
+          // Continue — local delete already succeeded
+        }
+      } else if (offlineReady) {
+        // Queue delete for background sync
+        queueStorage.addToQueue("delete", { url, noteId: state.noteId }, newHLC(deviceId));
+      }
+
       await afterReview("Deleted!");
     } catch (err) {
       state.phase = "error";
