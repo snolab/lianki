@@ -429,4 +429,31 @@ test.describe("Server-side nextDueQuery excludes current card", () => {
     // FIX: now passes note.url to exclude the just-reviewed card
     expect(findOneArgs).toContain("note.url");
   });
+
+  test("FIX: nextDueQuery reads excludeUrl from query param for next-url endpoint", () => {
+    const fsrsSource = readFileSync(join(process.cwd(), "app/fsrs.ts"), "utf-8");
+
+    // nextDueQuery should read excludeUrl from searchParams
+    expect(fsrsSource).toContain('searchParams.get("excludeUrl")');
+  });
+});
+
+test.describe("Userscript offline review fix", () => {
+  test("FIX: offline doReview sets prefetchedNextUrl from local cache before afterReview", () => {
+    // The offline path must find the next due card from local cache and set
+    // prefetchedNextUrl BEFORE calling afterReview(). Otherwise afterReview()
+    // falls back to getNextUrl() which queries the server that hasn't been synced yet.
+    expect(SCRIPT_CONTENT).toMatch(/getDueCards[\s\S]*?prefetchedNextUrl[\s\S]*?afterReview/);
+  });
+
+  test("FIX: getNextUrl passes excludeUrl to server", () => {
+    // getNextUrl should pass the current card's URL so the server can exclude it
+    expect(SCRIPT_CONTENT).toContain("excludeUrl");
+  });
+
+  test("FIX: prefetchNextCachedCard uses normalized URL comparison", () => {
+    // Must use normalizeUrl for comparison, not raw location.href
+    const match = SCRIPT_CONTENT.match(/function prefetchNextCachedCard[\s\S]*?normalizeUrl/);
+    expect(match).toBeTruthy();
+  });
 });

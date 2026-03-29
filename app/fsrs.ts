@@ -55,7 +55,9 @@ const fsrsConfig = fsrs(
 function nextDueQuery(req: Request, excludeUrl?: string) {
   const url = new URL(req.url, "http://localhost");
   const excludeDomains = url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
-  return buildNextDueQuery(excludeDomains, excludeUrl);
+  // Allow excludeUrl from query param as fallback (used by next-url endpoint)
+  const exclude = excludeUrl ?? url.searchParams.get("excludeUrl") ?? undefined;
+  return buildNextDueQuery(excludeDomains, exclude);
 }
 
 export const fsrsHandler = async (req: Request, email?: string) => {

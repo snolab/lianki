@@ -18,7 +18,7 @@
     "test:e2e:prod": "LIANKI_URL=https://www.lianki.com node tests/e2e-offline-sync.spec.mjs",
     "test:e2e:preview": "LIANKI_URL=https://lianki-git-sno-sync-snomiao.vercel.app node tests/e2e-offline-sync.spec.mjs",
     "test:unit": "vitest run",
-    "build:userscript": "bunx userbuild src/lianki.user.ts -- --outdir=public --format=iife"
+    "build:userscript": "bunx --bun userbuild src/lianki.user.ts --outdir=public --format=iife"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.41",

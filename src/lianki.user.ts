@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.6
+// @version     2.21.7
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -622,7 +622,10 @@ function main() {
     api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
   const deleteNote = (id) =>
     api(`/api/fsrs/delete?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
-  const getNextUrl = () => api(`/api/fsrs/next-url?${buildExcludeDomainsParam().slice(1)}`);
+  const getNextUrl = () => {
+    const excludeUrl = `&excludeUrl=${encodeURIComponent(normalizeUrl(location.href))}`;
+    return api(`/api/fsrs/next-url?${buildExcludeDomainsParam().slice(1)}${excludeUrl}`);
+  };
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const btn = (bg, extra = "") =>
@@ -1951,6 +1954,19 @@ function main() {
             newHlc,
           );
 
+          // Find next due card from local cache (excluding the just-reviewed card)
+          // Must set prefetchedNextUrl BEFORE afterReview(), because the server
+          // hasn't received this review yet and would return the same card.
+          try {
+            const dueCards = cardStorage.getDueCards(2);
+            const normalizedCurrent = normalizeUrl(location.href);
+            const nextCard = dueCards.find((c) => c.url !== url && c.url !== normalizedCurrent);
+            prefetchedNextUrl = nextCard?.url ?? null;
+            if (prefetchedNextUrl) prefetchNextPage(prefetchedNextUrl);
+          } catch (e) {
+            prefetchedNextUrl = null;
+          }
+
           // Instant feedback!
           const opt = state.options.find((o) => Number(o.rating) === rating);
           await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
@@ -2133,9 +2149,11 @@ function main() {
     if (!offlineReady) return;
 
     try {
-      const dueCards = cardStorage.getDueCards(1);
-      if (dueCards.length > 0 && dueCards[0].url !== location.href) {
-        prefetchNextPage(dueCards[0].url);
+      const dueCards = cardStorage.getDueCards(2);
+      const normalizedCurrent = normalizeUrl(location.href);
+      const nextCard = dueCards.find((c) => c.url !== normalizedCurrent);
+      if (nextCard) {
+        prefetchNextPage(nextCard.url);
       }
     } catch (err) {
       console.error("[Lianki] Failed to prefetch next cached card:", err);
