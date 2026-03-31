@@ -7,7 +7,8 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.8
+// @grant       GM_registerMenuCommand
+// @version     2.21.9
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -2640,6 +2641,18 @@ ${nextTitle || nextUrl}`;
     })();
     loadPreferences();
     fab = createUI();
+    const isCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
+    const savedVisible = GM_getValue("lianki_bar_visible", null);
+    let barVisible = savedVisible !== null ? savedVisible : isCoarsePointer;
+    const applyBarVisibility = () => {
+      fab.style.display = barVisible ? "flex" : "none";
+    };
+    applyBarVisibility();
+    GM_registerMenuCommand(barVisible ? "Hide Lianki Bar" : "Show Lianki Bar", () => {
+      barVisible = !barVisible;
+      GM_setValue("lianki_bar_visible", barVisible);
+      applyBarVisibility();
+    });
     async function checkRedirect() {
       try {
         const raw = GM_getValue("lk:nav_intended", "");
