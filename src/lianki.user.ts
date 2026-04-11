@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.8
+// @version     2.21.10
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -918,6 +918,8 @@ function main() {
         --lk-input-border: #444444;
         --lk-muted: #aaaaaa;
         --lk-backdrop: rgba(0,0,0,0.75);
+        --lk-error: #ff8a80;
+        --lk-success: #69f0ae;
       }
       @media (prefers-color-scheme: light) {
         :host {
@@ -929,6 +931,8 @@ function main() {
           --lk-input-border: #cccccc;
           --lk-muted: #666666;
           --lk-backdrop: rgba(0,0,0,0.5);
+          --lk-error: #b71c1c;
+          --lk-success: #1b5e20;
         }
       }
     `;
@@ -1045,7 +1049,7 @@ function main() {
       dialog.appendChild(wrap);
     } else if (phase === "error") {
       const errDiv = document.createElement("div");
-      errDiv.style.color = "#f77";
+      errDiv.style.color = "var(--lk-error)";
       errDiv.textContent = `Error: ${error}`;
       dialog.appendChild(errDiv);
 
@@ -1131,7 +1135,7 @@ function main() {
         b.appendChild(document.createTextNode(o.label));
         b.appendChild(document.createElement("br"));
         const small = document.createElement("small");
-        Object.assign(small.style, { opacity: ".7", fontSize: "11px" });
+        Object.assign(small.style, { color: "rgba(255,255,255,0.9)", fontSize: "11px" });
         small.textContent = o.due;
         b.appendChild(small);
         b.addEventListener("click", () => doReview(Number(o.rating)));
@@ -1146,7 +1150,7 @@ function main() {
       dialog.appendChild(deleteBtn);
 
       const hints = document.createElement("div");
-      Object.assign(hints.style, { marginTop: "14px", opacity: ".4", fontSize: "11px" });
+      Object.assign(hints.style, { marginTop: "14px", opacity: ".6", fontSize: "11px" });
       hints.textContent =
         "A/H=Easy \u00b7 S/J=Good \u00b7 W/K=Hard \u00b7 D/L=Again \u00b7 T/M=Delete \u00b7 Esc=Close";
       dialog.appendChild(hints);
@@ -1208,7 +1212,7 @@ function main() {
       dialog.appendChild(notesRow);
     } else if (phase === "reviewed") {
       const msgDiv = document.createElement("div");
-      Object.assign(msgDiv.style, { color: "#44bb44", fontSize: "15px" });
+      Object.assign(msgDiv.style, { color: "var(--lk-success)", fontSize: "15px" });
       msgDiv.textContent = message;
       dialog.appendChild(msgDiv);
     }
