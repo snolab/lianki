@@ -41,6 +41,14 @@ export function Header({ locale, appName, blogLabel, learnLabel, user }: HeaderP
             {learnLabel}
           </Link>
 
+          {/* Import Button */}
+          <Link
+            href={`/${locale}/import`}
+            className="text-base md:text-lg font-medium hover:underline"
+          >
+            Import
+          </Link>
+
           {/* Blog Button */}
           <Link
             href={`/${locale}/blog`}
