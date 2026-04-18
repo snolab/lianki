@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.10
+// @version     2.21.11
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1891,7 +1891,7 @@ function main() {
         // Save to cache
         if (offlineReady) {
           try {
-            cardStorage.setCard(url, note, null);
+            cardStorage.setCard(url, note, note.hlc ?? newHLC(deviceId, null));
           } catch (err) {
             console.error("[Lianki] Failed to cache card:", err);
           }
