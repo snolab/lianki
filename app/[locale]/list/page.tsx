@@ -15,6 +15,7 @@ import { Header } from "@/app/components/Header";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import GuestListClient from "./components/GuestListClient";
 import { SyncStatusBanner } from "./components/SyncStatusBanner";
+import { HotkeyHelp } from "@/app/components/HotkeyHelp";
 
 export const dynamic = "force-dynamic";
 
@@ -121,6 +122,7 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
           </ul>
         </div>
       </main>
+      <HotkeyHelp />
     </div>
   );
   async function HeatmapSection() {
