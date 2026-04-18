@@ -30,6 +30,7 @@
     "better-auth": "^1.5.4",
     "bson": "^7.2.0",
     "enhanced-ms": "^4.2.0",
+    "furigana-sewer": "^0.0.3",
     "globe.gl": "^2.45.0",
     "gray-matter": "^4.0.3",
     "idb": "^8.0.3",
