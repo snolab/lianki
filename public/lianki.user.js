@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.11
+// @version     2.21.12
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -3107,8 +3107,8 @@ ${actualUrl}
     }
     async function syncQueueItem(item) {
       switch (item.action) {
-        case "review":
-          await api(
+        case "review": {
+          const result = await api(
             `/api/fsrs/review/${item.data.rating}/?id=${encodeURIComponent(item.data.noteId)}`,
             {
               method: "POST",
@@ -3116,10 +3116,26 @@ ${actualUrl}
               body: JSON.stringify({ hlc: item.hlc }),
             },
           );
+          if (item.data.url) {
+            const cached = cardStorage.getCard(item.data.url);
+            if (cached) {
+              if (result?.card) cached.note.card = result.card;
+              cardStorage.setCard(item.data.url, cached.note, result?.hlc ?? item.hlc, false);
+            }
+          }
           break;
-        case "add":
-          await addNote(item.data.url, item.data.title);
+        }
+        case "add": {
+          const addResult = await addNote(item.data.url, item.data.title);
+          if (addResult && item.data.url) {
+            const cached = cardStorage.getCard(item.data.url);
+            if (cached) {
+              if (addResult._id) cached.note._id = addResult._id;
+              cardStorage.setCard(item.data.url, cached.note, addResult.hlc ?? item.hlc, false);
+            }
+          }
           break;
+        }
         case "delete":
           await deleteNote(item.data.noteId);
           break;
