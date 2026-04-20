@@ -2,14 +2,14 @@
 @config "../tailwind.config.ts";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: oklch(0.09 0 0);
+    --foreground: oklch(0.945 0 0);
   }
 }
 
@@ -32,5 +32,5 @@ ruby {
 
 ruby rt {
   font-size: 0.6em;
-  color: var(--color-gray-500, #6b7280);
+  color: var(--color-gray-500, oklch(0.556 0.013 264.5));
 }
