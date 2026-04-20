@@ -40,6 +40,8 @@ export default async function SelfIntroPage({ params }: { params: Promise<{ loca
         appName={appName}
         blogLabel={nav.blog}
         learnLabel={nav.learn}
+        importLabel={nav.import}
+        aiVocabLabel={nav.aiVocab}
         user={user}
       />
 

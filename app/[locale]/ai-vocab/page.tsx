@@ -39,6 +39,8 @@ export default async function AiVocabPage({ params }: { params: Promise<{ locale
         appName={appName}
         blogLabel={nav.blog}
         learnLabel={nav.learn}
+        importLabel={nav.import}
+        aiVocabLabel={nav.aiVocab}
         user={user}
       />
       <main className="flex-grow">

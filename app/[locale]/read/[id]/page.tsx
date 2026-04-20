@@ -25,6 +25,8 @@ export default async function ReadMaterialPage({
         appName={appName}
         blogLabel={nav.blog}
         learnLabel={nav.learn}
+        importLabel={nav.import}
+        aiVocabLabel={nav.aiVocab}
         user={user}
       />
       <main className="flex-grow px-4 sm:px-6 lg:px-8 py-8">

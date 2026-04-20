@@ -39,6 +39,8 @@ export default async function MembershipPage({ params }: { params: Promise<{ loc
         appName={appName}
         blogLabel={nav.blog}
         learnLabel={nav.learn}
+        importLabel={nav.import}
+        aiVocabLabel={nav.aiVocab}
         user={user}
       />
 

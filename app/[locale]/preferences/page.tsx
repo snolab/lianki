@@ -34,6 +34,8 @@ export default async function PreferencesPage({ params }: { params: Promise<{ lo
         appName={appName}
         blogLabel={nav.blog}
         learnLabel={nav.learn}
+        importLabel={nav.import}
+        aiVocabLabel={nav.aiVocab}
         user={user}
       />
 

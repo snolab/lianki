@@ -145,6 +145,8 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
         appName={appName}
         blogLabel={nav.blog}
         learnLabel={nav.learn}
+        importLabel={nav.import}
+        aiVocabLabel={nav.aiVocab}
         user={user}
       />
 

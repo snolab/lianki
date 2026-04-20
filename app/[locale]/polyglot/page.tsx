@@ -40,6 +40,8 @@ export default async function PolyglotPage({ params }: { params: Promise<{ local
         appName={appName}
         blogLabel={nav.blog}
         learnLabel={nav.learn}
+        importLabel={nav.import}
+        aiVocabLabel={nav.aiVocab}
         user={user}
       />
 

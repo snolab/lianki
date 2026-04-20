@@ -67,6 +67,8 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
         appName={appName}
         blogLabel={nav.blog}
         learnLabel={nav.learn}
+        importLabel={nav.import}
+        aiVocabLabel={nav.aiVocab}
         user={user}
       />
 
@@ -214,6 +216,8 @@ function GuestView({ locale, appName, nav }: { locale: string; appName: string; 
         appName={appName}
         blogLabel={nav.blog}
         learnLabel={nav.learn}
+        importLabel={nav.import}
+        aiVocabLabel={nav.aiVocab}
         user={null}
       />
 

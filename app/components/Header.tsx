@@ -10,6 +10,8 @@ interface HeaderProps {
   appName: string;
   blogLabel: string;
   learnLabel: string;
+  importLabel: string;
+  aiVocabLabel: string;
   user?: {
     name: string;
     email: string;
@@ -17,7 +19,15 @@ interface HeaderProps {
   } | null;
 }
 
-export function Header({ locale, appName, blogLabel, learnLabel, user }: HeaderProps) {
+export function Header({
+  locale,
+  appName,
+  blogLabel,
+  learnLabel,
+  importLabel,
+  aiVocabLabel,
+  user,
+}: HeaderProps) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   return (
@@ -46,7 +56,7 @@ export function Header({ locale, appName, blogLabel, learnLabel, user }: HeaderP
             href={`/${locale}/import`}
             className="text-base md:text-lg font-medium hover:underline"
           >
-            Import
+            {importLabel}
           </Link>
 
           {/* AI Vocab Button */}
@@ -54,7 +64,7 @@ export function Header({ locale, appName, blogLabel, learnLabel, user }: HeaderP
             href={`/${locale}/ai-vocab`}
             className="text-base md:text-lg font-medium hover:underline"
           >
-            AI Vocab
+            {aiVocabLabel}
           </Link>
 
           {/* Blog Button */}
