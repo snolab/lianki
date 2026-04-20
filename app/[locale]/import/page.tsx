@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
 import { authUser } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
-import { getLocale } from "next-intlayer/server";
-import type { Locale } from "intlayer";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import { Header } from "@/app/components/Header";
 import ImportClient from "./ImportClient";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const locale = await getLocale();
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
   return {
     title: "Import Anki Deck — Lianki",
     description: "Import your existing Anki flashcard decks (.apkg files) into Lianki.",
@@ -18,19 +20,26 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default async function ImportPage() {
-  const locale = await getLocale();
-  const { appName, nav } = getIntlayer("landing-page", locale as Locale);
-  const { title, description, dropzone, maxSize, uploading, importButton } = getIntlayer(
-    "import-page",
-    locale as Locale
-  );
+export default async function ImportPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  const { appName, nav } = getIntlayer("landing-page", locale);
+  const {
+    title,
+    description,
+    dropzone,
+    maxSize,
+    importButton,
+    parsing,
+    syncing,
+    importComplete,
+    viewDashboard,
+  } = getIntlayer("import-page", locale);
 
   let user = null;
   try {
     user = await authUser();
   } catch {
-    // not logged in
+    // User not logged in
   }
 
   return (
@@ -42,6 +51,12 @@ export default async function ImportPage() {
         learnLabel={nav.learn}
         importLabel={nav.import}
         aiVocabLabel={nav.aiVocab}
+        signInLabel={nav.signIn}
+        dashboardLabel={nav.dashboard}
+        profileLabel={nav.profile}
+        preferencesLabel={nav.preferences}
+        membershipLabel={nav.membership}
+        signOutLabel={nav.signOut}
         user={user}
       />
       <main className="flex-grow">
@@ -50,8 +65,11 @@ export default async function ImportPage() {
           description={description}
           dropzone={dropzone}
           maxSize={maxSize}
-          uploading={uploading}
           importButton={importButton}
+          parsing={parsing}
+          syncing={syncing}
+          importComplete={importComplete}
+          viewDashboard={viewDashboard}
         />
       </main>
     </div>

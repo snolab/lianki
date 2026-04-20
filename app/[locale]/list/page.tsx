@@ -65,8 +65,6 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
       <Header
         locale={locale}
         appName={appName}
-        importLabel={nav.import}
-        aiVocabLabel={nav.aiVocab}
         blogLabel={nav.blog}
         learnLabel={nav.learn}
         importLabel={nav.import}

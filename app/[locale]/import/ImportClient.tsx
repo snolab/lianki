@@ -110,7 +110,29 @@ async function syncBatches(
   return { imported, skipped };
 }
 
-export default function ImportClient() {
+interface ImportClientProps {
+  title: string;
+  description: string;
+  dropzone: string;
+  maxSize: string;
+  importButton: string;
+  parsing: string;
+  syncing: string;
+  importComplete: string;
+  viewDashboard: string;
+}
+
+export default function ImportClient({
+  title,
+  description,
+  dropzone,
+  maxSize,
+  importButton,
+  parsing,
+  syncing,
+  importComplete,
+  viewDashboard,
+}: ImportClientProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [stage, setStage] = useState<Stage>("idle");
@@ -175,10 +197,8 @@ export default function ImportClient() {
   return (
     <div className="min-h-screen p-8">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-4xl font-bold mb-4">Import Anki Deck</h1>
-        <p className="text-lg mb-8 text-gray-600 dark:text-gray-400">
-          Upload an .apkg file to import your Anki flashcards into Lianki
-        </p>
+        <h1 className="text-4xl font-bold mb-4">{title}</h1>
+        <p className="text-lg mb-8 text-gray-600 dark:text-gray-400">{description}</p>
 
         {/* Drop zone */}
         <div
@@ -219,10 +239,8 @@ export default function ImportClient() {
             </div>
           ) : (
             <div>
-              <div className="text-lg text-gray-500 mb-2">
-                Drop your .apkg file here or click to browse
-              </div>
-              <div className="text-sm text-gray-400">Max 100MB</div>
+              <div className="text-lg text-gray-500 mb-2">{dropzone}</div>
+              <div className="text-sm text-gray-400">{maxSize}</div>
             </div>
           )}
         </div>
@@ -233,7 +251,7 @@ export default function ImportClient() {
             onClick={handleImport}
             className="w-full mt-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
           >
-            Import Deck
+            {importButton}
           </button>
         )}
 
@@ -241,7 +259,7 @@ export default function ImportClient() {
         {stage === "parsing" && (
           <div className="mt-6">
             <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
-              <span>Parsing deck…</span>
+              <span>{parsing}</span>
               <span>
                 {parseProgress.done} / {parseProgress.total || "?"}
               </span>
@@ -259,7 +277,7 @@ export default function ImportClient() {
         {stage === "syncing" && (
           <div className="mt-6">
             <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
-              <span>Syncing to cloud…</span>
+              <span>{syncing}</span>
               <span>
                 {syncProgress.done} / {syncProgress.total}
               </span>
@@ -317,7 +335,7 @@ export default function ImportClient() {
         {result && stage === "done" && (
           <div className="mt-4 p-6 bg-green-50 dark:bg-green-900/20 rounded-lg">
             <h2 className="text-xl font-semibold text-green-700 dark:text-green-400 mb-2">
-              Import Complete
+              {importComplete}
             </h2>
             <div className="space-y-1 text-sm">
               <div>
@@ -331,7 +349,7 @@ export default function ImportClient() {
               href="/list"
               className="inline-block mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
             >
-              View Dashboard
+              {viewDashboard}
             </a>
           </div>
         )}
