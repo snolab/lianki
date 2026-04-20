@@ -36,6 +36,12 @@ export default async function LearnPage({ params }: { params: Promise<{ locale: 
         learnLabel={nav.learn}
         importLabel={nav.import}
         aiVocabLabel={nav.aiVocab}
+        signInLabel={nav.signIn}
+        dashboardLabel={nav.dashboard}
+        profileLabel={nav.profile}
+        preferencesLabel={nav.preferences}
+        membershipLabel={nav.membership}
+        signOutLabel={nav.signOut}
         user={user}
       />
 
