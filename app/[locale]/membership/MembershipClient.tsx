@@ -190,7 +190,12 @@ export default function MembershipClient() {
               </li>
             </ul>
             <div className="mt-6 text-center">
-              <div className="text-sm opacity-75">{features.pro.contactUs.value}</div>
+              <a
+                href="/contact"
+                className="inline-block bg-white text-blue-600 font-semibold px-6 py-2 rounded-lg hover:bg-blue-50 transition-colors"
+              >
+                {features.pro.contactUs.value}
+              </a>
             </div>
           </div>
         </div>
