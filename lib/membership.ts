@@ -1,11 +1,20 @@
 import type { Document, Filter } from "mongodb";
+import { ObjectId } from "mongodb";
 import { db } from "@/app/db";
 
-// better-auth stores users with _id as a string (not ObjectId)
-const Users = db.collection<Document & { _id: string }>("user");
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Users = db.collection<any>("user");
 
-function userFilter(userId: string): Filter<Document & { _id: string }> {
-  return { $or: [{ _id: userId }, { id: userId }] } as Filter<Document & { _id: string }>;
+function userFilter(userId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const candidates: any[] = [{ _id: userId }, { id: userId }];
+  // also try ObjectId in case _id was stored as ObjectId
+  try {
+    candidates.push({ _id: new ObjectId(userId) });
+  } catch {
+    // not a valid ObjectId string, skip
+  }
+  return { $or: candidates };
 }
 
 export type MembershipTier = "free" | "trial" | "pro";
