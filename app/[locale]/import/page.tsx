@@ -1,18 +1,15 @@
 import type { Metadata } from "next";
 import { authUser } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
+import { getLocale } from "next-intlayer/server";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import { Header } from "@/app/components/Header";
 import ImportClient from "./ImportClient";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ locale: string }>;
-}): Promise<Metadata> {
-  const { locale } = await params;
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
   return {
     title: "Import Anki Deck — Lianki",
     description: "Import your existing Anki flashcard decks (.apkg files) into Lianki.",
@@ -20,15 +17,15 @@ export async function generateMetadata({
   };
 }
 
-export default async function ImportPage({ params }: { params: Promise<{ locale: string }> }) {
-  const { locale } = await params;
+export default async function ImportPage() {
+  const locale = await getLocale();
   const { appName, nav } = getIntlayer("landing-page", locale);
 
   let user = null;
   try {
     user = await authUser();
   } catch {
-    // User not logged in
+    // not logged in
   }
 
   return (
@@ -40,12 +37,6 @@ export default async function ImportPage({ params }: { params: Promise<{ locale:
         learnLabel={nav.learn}
         importLabel={nav.import}
         aiVocabLabel={nav.aiVocab}
-        signInLabel={nav.signIn}
-        dashboardLabel={nav.dashboard}
-        profileLabel={nav.profile}
-        preferencesLabel={nav.preferences}
-        membershipLabel={nav.membership}
-        signOutLabel={nav.signOut}
         user={user}
       />
       <main className="flex-grow">

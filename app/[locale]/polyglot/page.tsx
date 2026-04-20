@@ -38,6 +38,8 @@ export default async function PolyglotPage({ params }: { params: Promise<{ local
       <Header
         locale={locale}
         appName={appName}
+        importLabel={nav.import}
+        aiVocabLabel={nav.aiVocab}
         blogLabel={nav.blog}
         learnLabel={nav.learn}
         importLabel={nav.import}

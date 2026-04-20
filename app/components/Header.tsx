@@ -10,14 +10,8 @@ interface HeaderProps {
   appName: string;
   blogLabel: string;
   learnLabel: string;
-  importLabel: string;
-  aiVocabLabel: string;
-  signInLabel: string;
-  dashboardLabel: string;
-  profileLabel: string;
-  preferencesLabel: string;
-  membershipLabel: string;
-  signOutLabel: string;
+  importLabel?: string;
+  aiVocabLabel?: string;
   user?: {
     name: string;
     email: string;
@@ -32,12 +26,6 @@ export function Header({
   learnLabel,
   importLabel,
   aiVocabLabel,
-  signInLabel,
-  dashboardLabel,
-  profileLabel,
-  preferencesLabel,
-  membershipLabel,
-  signOutLabel,
   user,
 }: HeaderProps) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -64,20 +52,24 @@ export function Header({
           </Link>
 
           {/* Import Button */}
-          <Link
-            href={`/${locale}/import`}
-            className="text-base md:text-lg font-medium hover:underline"
-          >
-            {importLabel}
-          </Link>
+          {importLabel && (
+            <Link
+              href={`/${locale}/import`}
+              className="text-base md:text-lg font-medium hover:underline"
+            >
+              {importLabel}
+            </Link>
+          )}
 
           {/* AI Vocab Button */}
-          <Link
-            href={`/${locale}/ai-vocab`}
-            className="text-base md:text-lg font-medium hover:underline"
-          >
-            {aiVocabLabel}
-          </Link>
+          {aiVocabLabel && (
+            <Link
+              href={`/${locale}/ai-vocab`}
+              className="text-base md:text-lg font-medium hover:underline"
+            >
+              {aiVocabLabel}
+            </Link>
+          )}
 
           {/* Blog Button */}
           <Link
@@ -137,32 +129,32 @@ export function Header({
                     href={`/${locale}/list`}
                     className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
-                    {dashboardLabel}
+                    Dashboard
                   </Link>
                   <Link
                     href={`/${locale}/profile`}
                     className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
-                    {profileLabel}
+                    Profile
                   </Link>
                   <Link
                     href={`/${locale}/preferences`}
                     className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
-                    {preferencesLabel}
+                    Preferences
                   </Link>
                   <Link
                     href={`/${locale}/membership`}
                     className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
-                    {membershipLabel}
+                    Membership
                   </Link>
                   <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
                     <Link
                       href="/auth/logout"
                       className="block px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
                     >
-                      {signOutLabel}
+                      Sign out
                     </Link>
                   </div>
                 </div>
@@ -173,7 +165,7 @@ export function Header({
               href={`/${locale}/sign-in`}
               className="text-base md:text-lg font-medium hover:underline"
             >
-              {signInLabel}
+              Sign in
             </Link>
           )}
         </nav>

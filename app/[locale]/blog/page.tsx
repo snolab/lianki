@@ -143,6 +143,8 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
       <Header
         locale={locale}
         appName={appName}
+        importLabel={nav.import}
+        aiVocabLabel={nav.aiVocab}
         blogLabel={nav.blog}
         learnLabel={nav.learn}
         importLabel={nav.import}

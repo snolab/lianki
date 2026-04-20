@@ -1,35 +1,31 @@
 import type { Metadata } from "next";
 import { authUser } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
+import { getLocale } from "next-intlayer/server";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import { Header } from "@/app/components/Header";
 import AiVocabClient from "./AiVocabClient";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ locale: string }>;
-}): Promise<Metadata> {
-  const { locale } = await params;
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
   return {
     title: "AI Vocabulary Practice — Lianki",
-    description:
-      "Practice vocabulary with AI-generated sentences. Get contextual example sentences for any word in your target language.",
+    description: "Learn vocabulary with AI-generated contextual sentences",
     ...generateHreflangMetadata(locale, "/ai-vocab"),
   };
 }
 
-export default async function AiVocabPage({ params }: { params: Promise<{ locale: string }> }) {
-  const { locale } = await params;
+export default async function AiVocabPage() {
+  const locale = await getLocale();
   const { appName, nav } = getIntlayer("landing-page", locale);
 
   let user = null;
   try {
     user = await authUser();
   } catch {
-    // User not logged in
+    // not logged in
   }
 
   return (
@@ -41,16 +37,10 @@ export default async function AiVocabPage({ params }: { params: Promise<{ locale
         learnLabel={nav.learn}
         importLabel={nav.import}
         aiVocabLabel={nav.aiVocab}
-        signInLabel={nav.signIn}
-        dashboardLabel={nav.dashboard}
-        profileLabel={nav.profile}
-        preferencesLabel={nav.preferences}
-        membershipLabel={nav.membership}
-        signOutLabel={nav.signOut}
         user={user}
       />
       <main className="flex-grow">
-        <AiVocabClient />
+        <AiVocabClient locale={locale} />
       </main>
     </div>
   );

@@ -43,6 +43,8 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
       <Header
         locale={locale}
         appName={appName}
+        importLabel={nav.import}
+        aiVocabLabel={nav.aiVocab}
         blogLabel={nav.blog}
         learnLabel={nav.learn}
         importLabel={nav.import}
