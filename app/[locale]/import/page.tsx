@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { authUser } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
+import type { Locale } from "intlayer";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import { Header } from "@/app/components/Header";
 import ImportClient from "./ImportClient";
@@ -19,7 +20,11 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ImportPage() {
   const locale = await getLocale();
-  const { appName, nav } = getIntlayer("landing-page", locale);
+  const { appName, nav } = getIntlayer("landing-page", locale as Locale);
+  const { title, description, dropzone, maxSize, uploading, importButton } = getIntlayer(
+    "import-page",
+    locale as Locale
+  );
 
   let user = null;
   try {
@@ -40,7 +45,14 @@ export default async function ImportPage() {
         user={user}
       />
       <main className="flex-grow">
-        <ImportClient />
+        <ImportClient
+          title={title}
+          description={description}
+          dropzone={dropzone}
+          maxSize={maxSize}
+          uploading={uploading}
+          importButton={importButton}
+        />
       </main>
     </div>
   );

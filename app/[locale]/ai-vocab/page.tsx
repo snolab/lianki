@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { authUser } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
 import { getLocale } from "next-intlayer/server";
+import type { Locale } from "intlayer";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import { Header } from "@/app/components/Header";
 import AiVocabClient from "./AiVocabClient";
@@ -19,7 +20,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function AiVocabPage() {
   const locale = await getLocale();
-  const { appName, nav } = getIntlayer("landing-page", locale);
+  const { appName, nav } = getIntlayer("landing-page", locale as Locale);
+  const { title, description, selectLanguage } = getIntlayer("ai-vocab-page", locale as Locale);
 
   let user = null;
   try {
@@ -40,7 +42,12 @@ export default async function AiVocabPage() {
         user={user}
       />
       <main className="flex-grow">
-        <AiVocabClient locale={locale} />
+        <AiVocabClient
+          locale={locale}
+          title={title}
+          description={description}
+          selectLanguage={selectLanguage}
+        />
       </main>
     </div>
   );

@@ -1,6 +1,5 @@
 "use client";
 
-import { useIntlayer } from "next-intlayer";
 import { useRouter } from "next/navigation";
 
 const LANGUAGES = [
@@ -20,10 +19,12 @@ const LANGUAGES = [
 
 interface AiVocabClientProps {
   locale: string;
+  title: string;
+  description: string;
+  selectLanguage: string;
 }
 
-export default function AiVocabClient({ locale }: AiVocabClientProps) {
-  const { title, description, selectLanguage } = useIntlayer("ai-vocab-page");
+export default function AiVocabClient({ locale, title, description, selectLanguage }: AiVocabClientProps) {
   const router = useRouter();
 
   function handleSelectLanguage(langCode: string) {
