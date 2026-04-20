@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import JSZip from "jszip";
+import { authClient } from "@/lib/auth-client";
 
 type ParsedNote = {
   url: string;
@@ -9,7 +10,7 @@ type ParsedNote = {
   notes: string;
 };
 
-type Stage = "idle" | "parsing" | "syncing" | "done" | "error";
+type Stage = "idle" | "parsing" | "syncing" | "done" | "error" | "auth";
 
 async function parseApkgInBrowser(
   file: File,
@@ -161,11 +162,11 @@ export default function ImportClient() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Import failed";
       if (msg === "auth") {
-        setError("Please sign in to import decks");
+        setStage("auth");
       } else {
         setError(msg);
+        setStage("error");
       }
-      setStage("error");
     }
   };
 
@@ -268,6 +269,39 @@ export default function ImportClient() {
                 className="bg-green-500 h-2 rounded-full transition-all"
                 style={{ width: `${pct(syncProgress.done, syncProgress.total)}%` }}
               />
+            </div>
+          </div>
+        )}
+
+        {/* Auth required — show sign-in tiles */}
+        {stage === "auth" && (
+          <div className="mt-6 p-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg">
+            <p className="text-yellow-800 dark:text-yellow-200 font-medium mb-4">
+              Sign in to save your imported cards to the cloud.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() =>
+                  authClient.signIn.social({
+                    provider: "github",
+                    callbackURL: window.location.pathname,
+                  })
+                }
+                className="w-full px-6 py-2 bg-gray-900 text-white rounded hover:bg-gray-700 font-medium"
+              >
+                Sign in with GitHub
+              </button>
+              <button
+                onClick={() =>
+                  authClient.signIn.social({
+                    provider: "google",
+                    callbackURL: window.location.pathname,
+                  })
+                }
+                className="w-full px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+              >
+                Sign in with Google
+              </button>
             </div>
           </div>
         )}
