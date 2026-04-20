@@ -1,22 +1,127 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import JSZip from "jszip";
 
-type ImportResult = {
-  success: boolean;
-  imported: number;
-  skipped: number;
-  deckName: string;
-  totalNotes: number;
-  message: string;
+type ParsedNote = {
+  url: string;
+  title: string;
+  notes: string;
 };
+
+type Stage = "idle" | "parsing" | "syncing" | "done" | "error";
+
+async function parseApkgInBrowser(
+  file: File,
+  onProgress: (parsed: number, total: number) => void,
+): Promise<{ deckName: string; notes: ParsedNote[] }> {
+  const buffer = await file.arrayBuffer();
+  const zip = await JSZip.loadAsync(buffer);
+
+  const dbFileName = zip.file("collection.anki21")
+    ? "collection.anki21"
+    : zip.file("collection.anki2")
+      ? "collection.anki2"
+      : null;
+  if (!dbFileName) throw new Error("Invalid APKG file: no collection database found");
+
+  const dbData = await zip.file(dbFileName)!.async("uint8array");
+
+  // dynamically import sql.js (browser build) to avoid SSR issues
+  const initSqlJs = (await import("sql.js")).default;
+  const SQL = await initSqlJs({ locateFile: () => "/sql-wasm.wasm" });
+  const db = new SQL.Database(dbData);
+
+  try {
+    const colResult = db.exec("SELECT models, decks FROM col LIMIT 1");
+    if (!colResult.length) throw new Error("Invalid APKG: empty col table");
+
+    const modelsJson = JSON.parse(colResult[0].values[0][0] as string);
+    const decksJson = JSON.parse(colResult[0].values[0][1] as string);
+
+    const deckEntries = Object.values(decksJson) as Array<{ name: string }>;
+    const mainDeck = deckEntries.find((d) => d.name !== "Default") || deckEntries[0];
+    const deckName = mainDeck?.name || "Imported Deck";
+
+    const modelMap = new Map<string, { name: string; fields: string[] }>();
+    for (const [mid, model] of Object.entries(modelsJson) as Array<[string, any]>) {
+      const fields = (model.flds as Array<{ name: string }>).map((f) => f.name);
+      modelMap.set(mid, { name: model.name, fields });
+    }
+
+    const notesResult = db.exec("SELECT id, mid, flds, tags FROM notes");
+    if (!notesResult.length) return { deckName, notes: [] };
+
+    const rows = notesResult[0].values;
+    const notes: ParsedNote[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      const [id, mid, flds, tags] = rows[i];
+      const model = modelMap.get(String(mid));
+      if (!model) continue;
+
+      const fieldValues = (flds as string).split("\x1f");
+      const fields: Record<string, string> = {};
+      for (let j = 0; j < model.fields.length; j++) {
+        fields[model.fields[j]] = fieldValues[j] || "";
+      }
+      const title = Object.values(fields).slice(0, 2).join(" — ").slice(0, 200);
+
+      notes.push({
+        url: `lianki://anki-import/${encodeURIComponent(deckName)}/${id}`,
+        title,
+        notes: `[anki] ${model.name}${(tags as string).trim() ? " | " + (tags as string).trim() : ""}`,
+      });
+
+      if (i % 50 === 0) onProgress(i, rows.length);
+    }
+    onProgress(rows.length, rows.length);
+    return { deckName, notes };
+  } finally {
+    db.close();
+  }
+}
+
+const BATCH_SIZE = 50;
+
+async function syncBatches(
+  notes: ParsedNote[],
+  onProgress: (synced: number, total: number) => void,
+): Promise<{ imported: number; skipped: number }> {
+  let imported = 0;
+  let skipped = 0;
+
+  for (let i = 0; i < notes.length; i += BATCH_SIZE) {
+    const batch = notes.slice(i, i + BATCH_SIZE);
+    const res = await fetch("/api/import/anki-client", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ cards: batch }),
+    });
+    if (!res.ok) {
+      if (res.status === 401) throw new Error("auth");
+      throw new Error((await res.json()).error || "Sync failed");
+    }
+    const data = await res.json();
+    imported += data.imported;
+    skipped += data.skipped;
+    onProgress(Math.min(i + BATCH_SIZE, notes.length), notes.length);
+  }
+  return { imported, skipped };
+}
 
 export default function ImportClient() {
   const [file, setFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [result, setResult] = useState<ImportResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [stage, setStage] = useState<Stage>("idle");
+  const [parseProgress, setParseProgress] = useState({ done: 0, total: 0 });
+  const [syncProgress, setSyncProgress] = useState({ done: 0, total: 0 });
+  const [result, setResult] = useState<{
+    deckName: string;
+    imported: number;
+    skipped: number;
+    total: number;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback((f: File) => {
@@ -27,40 +132,44 @@ export default function ImportClient() {
     setFile(f);
     setError(null);
     setResult(null);
+    setStage("idle");
   }, []);
 
-  const handleUpload = async () => {
+  const handleImport = async () => {
     if (!file) return;
-    setIsUploading(true);
     setError(null);
+    setResult(null);
+    setStage("parsing");
+    setParseProgress({ done: 0, total: 0 });
+    setSyncProgress({ done: 0, total: 0 });
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      const { deckName, notes } = await parseApkgInBrowser(file, (done, total) =>
+        setParseProgress({ done, total }),
+      );
 
-      const res = await fetch("/api/import/anki", {
-        method: "POST",
-        body: formData,
-      });
+      setStage("syncing");
+      setSyncProgress({ done: 0, total: notes.length });
 
-      const data = await res.json();
+      const { imported, skipped } = await syncBatches(notes, (done, total) =>
+        setSyncProgress({ done, total }),
+      );
 
-      if (!res.ok) {
-        if (res.status === 401) {
-          setError("Please sign in to import decks");
-          return;
-        }
-        throw new Error(data.error || "Import failed");
-      }
-
-      setResult(data);
+      setResult({ deckName, imported, skipped, total: notes.length });
+      setStage("done");
       setFile(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
-    } finally {
-      setIsUploading(false);
+      const msg = err instanceof Error ? err.message : "Import failed";
+      if (msg === "auth") {
+        setError("Please sign in to import decks");
+      } else {
+        setError(msg);
+      }
+      setStage("error");
     }
   };
+
+  const pct = (done: number, total: number) => (total > 0 ? Math.round((done / total) * 100) : 0);
 
   return (
     <div className="min-h-screen p-8">
@@ -100,7 +209,6 @@ export default function ImportClient() {
               if (f) handleFile(f);
             }}
           />
-
           {file ? (
             <div>
               <div className="text-lg font-medium">{file.name}</div>
@@ -118,15 +226,50 @@ export default function ImportClient() {
           )}
         </div>
 
-        {/* Upload button */}
-        {file && (
+        {/* Import button */}
+        {file && stage === "idle" && (
           <button
-            onClick={handleUpload}
-            disabled={isUploading}
-            className="w-full mt-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+            onClick={handleImport}
+            className="w-full mt-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
           >
-            {isUploading ? "Importing..." : "Import Deck"}
+            Import Deck
           </button>
+        )}
+
+        {/* Parsing progress */}
+        {stage === "parsing" && (
+          <div className="mt-6">
+            <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
+              <span>Parsing deck…</span>
+              <span>
+                {parseProgress.done} / {parseProgress.total || "?"}
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+              <div
+                className="bg-blue-500 h-2 rounded-full transition-all"
+                style={{ width: `${pct(parseProgress.done, parseProgress.total)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Sync progress */}
+        {stage === "syncing" && (
+          <div className="mt-6">
+            <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
+              <span>Syncing to cloud…</span>
+              <span>
+                {syncProgress.done} / {syncProgress.total}
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+              <div
+                className="bg-green-500 h-2 rounded-full transition-all"
+                style={{ width: `${pct(syncProgress.done, syncProgress.total)}%` }}
+              />
+            </div>
+          </div>
         )}
 
         {/* Error */}
@@ -137,7 +280,7 @@ export default function ImportClient() {
         )}
 
         {/* Result */}
-        {result && (
+        {result && stage === "done" && (
           <div className="mt-4 p-6 bg-green-50 dark:bg-green-900/20 rounded-lg">
             <h2 className="text-xl font-semibold text-green-700 dark:text-green-400 mb-2">
               Import Complete
@@ -148,7 +291,7 @@ export default function ImportClient() {
               </div>
               <div>Imported: {result.imported} cards</div>
               {result.skipped > 0 && <div>Skipped: {result.skipped} (already existed)</div>}
-              <div>Total notes in deck: {result.totalNotes}</div>
+              <div>Total notes in deck: {result.total}</div>
             </div>
             <a
               href="/list"
