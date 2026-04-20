@@ -1,5 +1,9 @@
 # Lianki — Claude Project Notes
 
+## Rules
+
+- **NEVER use `git push --force`** under any circumstances. Always use regular `git push`. If histories diverge, ask the user how to proceed.
+
 ## Project
 
 Spaced repetition app (FSRS algorithm) built with Next.js 16. Renamed from FSRSNext → Lianki.
