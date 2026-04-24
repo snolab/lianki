@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.12
+// @version     2.21.13
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1470,7 +1470,9 @@
   }
   var CARD_PREFIX = "lk:c:";
   var INDEX_KEY = "lk:card-index";
+  var DELETED_KEY = "lk:deleted-urls";
   var MAX_CARDS = 2000;
+  var MAX_DELETED = 500;
   function hashUrl(url) {
     let h = 5381;
     for (let i = 0; i < url.length; i++) h = (((h << 5) + h) ^ url.charCodeAt(i)) >>> 0;
@@ -1515,6 +1517,21 @@
     deleteCard(url) {
       GM_deleteValue(CARD_PREFIX + hashUrl(url));
       this._saveIndex(this._index().filter((e) => e.url !== url));
+      // Track deleted URL to prevent auto-recreation on next visit
+      const deleted = JSON.parse(GM_getValue(DELETED_KEY, "[]"));
+      if (!deleted.includes(url)) {
+        deleted.unshift(url);
+        if (deleted.length > MAX_DELETED) deleted.length = MAX_DELETED;
+        GM_setValue(DELETED_KEY, JSON.stringify(deleted));
+      }
+    }
+    isDeleted(url) {
+      const deleted = JSON.parse(GM_getValue(DELETED_KEY, "[]"));
+      return deleted.includes(url);
+    }
+    undelete(url) {
+      const deleted = JSON.parse(GM_getValue(DELETED_KEY, "[]"));
+      GM_setValue(DELETED_KEY, JSON.stringify(deleted.filter((u) => u !== url)));
     }
     getAllCards() {
       return this._index()
@@ -2264,6 +2281,41 @@
         wrap.appendChild(spinRow);
         wrap.appendChild(urlDiv);
         dialog.appendChild(wrap);
+      } else if (phase === "deleted") {
+        const msg = document.createElement("div");
+        Object.assign(msg.style, {
+          fontSize: "14px",
+          color: "var(--lk-muted)",
+          marginBottom: "12px",
+        });
+        msg.textContent = "This card was previously deleted.";
+        dialog.appendChild(msg);
+        const readdBtn = document.createElement("button");
+        readdBtn.setAttribute("style", btn("#2a5f2a"));
+        readdBtn.textContent = "Re-add card";
+        readdBtn.addEventListener("click", () => {
+          cardStorage.undelete(normalizeUrl(location.href));
+          state = { phase: "adding", noteId: null, options: null, error: null, message: null };
+          renderDialog();
+          const url = normalizeUrl(location.href);
+          addNote(url, document.title)
+            .then(async (note) => {
+              state.noteId = note._id;
+              state.notes = note.notes ?? "";
+              state.notesSynced = true;
+              cardStorage.setCard(url, note, note.hlc ?? newHLC(deviceId, null));
+              state.phase = "reviewing";
+              state.options =
+                note.options ?? (localFSRS ? localFSRS.calculateOptions(note.card) : []);
+              renderDialog();
+            })
+            .catch((err) => {
+              state.phase = "error";
+              state.error = err.message;
+              renderDialog();
+            });
+        });
+        dialog.appendChild(readdBtn);
       } else if (phase === "error") {
         const errDiv = document.createElement("div");
         errDiv.style.color = "var(--lk-error)";
@@ -2927,6 +2979,13 @@ ${actualUrl}
         } catch (err) {
           console.error("[Lianki] Cache check failed:", err);
         }
+      }
+      // Block auto-recreation of previously deleted cards
+      if (offlineReady && cardStorage.isDeleted(url)) {
+        state.phase = "deleted";
+        state.message = "This card was previously deleted.";
+        renderDialog();
+        return;
       }
       addNote(url, document.title)
         .then(async (note) => {
