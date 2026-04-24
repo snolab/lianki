@@ -15,6 +15,14 @@ const nextConfig = {
       },
     ],
   },
+  // Serve userscript as text/plain so browsers navigate to it (required for
+  // Tampermonkey/Violentmonkey to intercept and show the install dialog)
+  headers: async () => [
+    {
+      source: "/:file(.*\\.user\\.js)",
+      headers: [{ key: "Content-Type", value: "text/plain; charset=utf-8" }],
+    },
+  ],
 };
 
 export default withIntlayer(nextConfig);
