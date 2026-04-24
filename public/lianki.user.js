@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.13
+// @version     2.21.14
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -2608,6 +2608,8 @@ ${state.errorDetails}`);
       let nextUrl = prefetchedNextUrl;
       let nextTitle = null;
       prefetchedNextUrl = null;
+      // Skip deleted URLs in the prefetched next
+      if (nextUrl && offlineReady && cardStorage.isDeleted(nextUrl)) nextUrl = null;
       if (!nextUrl) {
         state.message = "Loading next card…";
         renderDialog();
@@ -3212,6 +3214,7 @@ ${actualUrl}
         for (const note of dueCards) {
           try {
             const url = note.url;
+            if (cardStorage.isDeleted(url)) continue;
             const existing = cardStorage.getCard(url);
             if (!existing || compareHLC(note.hlc, existing.hlc) > 0) {
               cardStorage.setCard(url, note, note.hlc || newHLC("server", null), false);
@@ -3230,7 +3233,9 @@ ${actualUrl}
       try {
         const dueCards = cardStorage.getDueCards(2);
         const normalizedCurrent = normalizeUrl(location.href);
-        const nextCard = dueCards.find((c) => c.url !== normalizedCurrent);
+        const nextCard = dueCards.find(
+          (c) => c.url !== normalizedCurrent && !cardStorage.isDeleted(c.url),
+        );
         if (nextCard) {
           prefetchNextPage(nextCard.url);
         }
