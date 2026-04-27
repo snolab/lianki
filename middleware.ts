@@ -7,11 +7,6 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = request.headers.get("host");
 
-  // Redirect userscript files to Cloudflare Pages (no Vercel cache)
-  if (pathname === "/lianki.user.js" || pathname === "/lianki.meta.js") {
-    return NextResponse.redirect(`https://lianki.pages.dev${pathname}`, 302);
-  }
-
   // Redirect beta.lianki.com → Vercel beta preview URL
   if (host === "beta.lianki.com") {
     const previewUrl = new URL(request.url);

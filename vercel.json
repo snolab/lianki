@@ -5,6 +5,16 @@
   "buildCommand": "bun run build",
   "installCommand": "bun install",
   "ignoreCommand": "git log -1 --pretty=%B | grep -qE '\\[skip ci\\]|\\[skip deploy\\]' && exit 0 || exit 1",
+  "headers": [
+    {
+      "source": "/lianki.user.js",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
+    },
+    {
+      "source": "/lianki.meta.js",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
+    }
+  ],
   "git": {
     "deploymentEnabled": {
       "main": true,
