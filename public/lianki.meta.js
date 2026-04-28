@@ -7,12 +7,12 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.14
+// @version     2.23.2
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
-// @downloadURL https://www.lianki.com/lianki.user.js
-// @updateURL   https://www.lianki.com/lianki.meta.js
+// @downloadURL https://lianki.pages.dev/lianki.user.js
+// @updateURL   https://lianki.pages.dev/lianki.meta.js
 // @connect     lianki.com
 // @connect     www.lianki.com
 // @connect     beta.lianki.com

@@ -7,12 +7,12 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.21.14
+// @version     2.23.2
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
-// @downloadURL https://www.lianki.com/lianki.user.js
-// @updateURL   https://www.lianki.com/lianki.meta.js
+// @downloadURL https://lianki.pages.dev/lianki.user.js
+// @updateURL   https://lianki.pages.dev/lianki.meta.js
 // @connect     lianki.com
 // @connect     www.lianki.com
 // @connect     beta.lianki.com
@@ -1470,9 +1470,7 @@
   }
   var CARD_PREFIX = "lk:c:";
   var INDEX_KEY = "lk:card-index";
-  var DELETED_KEY = "lk:deleted-urls";
   var MAX_CARDS = 2000;
-  var MAX_DELETED = 500;
   function hashUrl(url) {
     let h = 5381;
     for (let i = 0; i < url.length; i++) h = (((h << 5) + h) ^ url.charCodeAt(i)) >>> 0;
@@ -1517,21 +1515,6 @@
     deleteCard(url) {
       GM_deleteValue(CARD_PREFIX + hashUrl(url));
       this._saveIndex(this._index().filter((e) => e.url !== url));
-      // Track deleted URL to prevent auto-recreation on next visit
-      const deleted = JSON.parse(GM_getValue(DELETED_KEY, "[]"));
-      if (!deleted.includes(url)) {
-        deleted.unshift(url);
-        if (deleted.length > MAX_DELETED) deleted.length = MAX_DELETED;
-        GM_setValue(DELETED_KEY, JSON.stringify(deleted));
-      }
-    }
-    isDeleted(url) {
-      const deleted = JSON.parse(GM_getValue(DELETED_KEY, "[]"));
-      return deleted.includes(url);
-    }
-    undelete(url) {
-      const deleted = JSON.parse(GM_getValue(DELETED_KEY, "[]"));
-      GM_setValue(DELETED_KEY, JSON.stringify(deleted.filter((u) => u !== url)));
     }
     getAllCards() {
       return this._index()
@@ -1922,6 +1905,30 @@
     const deleteNote = (id) =>
       api(`/api/fsrs/delete?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
     const getNextUrl = () => {
+      if (offlineReady) {
+        try {
+          const currentUrl = normalizeUrl(location.href);
+          const excludeDomains = isMobile ? userPreferences.mobileExcludeDomains || [] : [];
+          const dueCards = cardStorage.getDueCards(20);
+          const next = dueCards.find((c) => {
+            if (c.url === currentUrl) return false;
+            if (excludeDomains.length > 0) {
+              try {
+                const host = new URL(c.url).hostname;
+                if (excludeDomains.some((d) => host === d || host.endsWith("." + d))) return false;
+              } catch {}
+            }
+            return true;
+          });
+          if (next) {
+            const title = next.note?.title ?? null;
+            return Promise.resolve({ url: next.url, title });
+          }
+          return Promise.resolve({ url: null, title: null });
+        } catch (e) {
+          console.warn("[Lianki] Local getNextUrl failed, falling back to server:", e);
+        }
+      }
       const excludeUrl = `&excludeUrl=${encodeURIComponent(normalizeUrl(location.href))}`;
       return api(`/api/fsrs/next-url?${buildExcludeDomainsParam().slice(1)}${excludeUrl}`);
     };
@@ -2165,8 +2172,6 @@
         --lk-input-border: #444444;
         --lk-muted: #aaaaaa;
         --lk-backdrop: rgba(0,0,0,0.75);
-        --lk-error: #ff8a80;
-        --lk-success: #69f0ae;
       }
       @media (prefers-color-scheme: light) {
         :host {
@@ -2178,8 +2183,6 @@
           --lk-input-border: #cccccc;
           --lk-muted: #666666;
           --lk-backdrop: rgba(0,0,0,0.5);
-          --lk-error: #b71c1c;
-          --lk-success: #1b5e20;
         }
       }
     `;
@@ -2281,44 +2284,9 @@
         wrap.appendChild(spinRow);
         wrap.appendChild(urlDiv);
         dialog.appendChild(wrap);
-      } else if (phase === "deleted") {
-        const msg = document.createElement("div");
-        Object.assign(msg.style, {
-          fontSize: "14px",
-          color: "var(--lk-muted)",
-          marginBottom: "12px",
-        });
-        msg.textContent = "This card was previously deleted.";
-        dialog.appendChild(msg);
-        const readdBtn = document.createElement("button");
-        readdBtn.setAttribute("style", btn("#2a5f2a"));
-        readdBtn.textContent = "Re-add card";
-        readdBtn.addEventListener("click", () => {
-          cardStorage.undelete(normalizeUrl(location.href));
-          state = { phase: "adding", noteId: null, options: null, error: null, message: null };
-          renderDialog();
-          const url = normalizeUrl(location.href);
-          addNote(url, document.title)
-            .then(async (note) => {
-              state.noteId = note._id;
-              state.notes = note.notes ?? "";
-              state.notesSynced = true;
-              cardStorage.setCard(url, note, note.hlc ?? newHLC(deviceId, null));
-              state.phase = "reviewing";
-              state.options =
-                note.options ?? (localFSRS ? localFSRS.calculateOptions(note.card) : []);
-              renderDialog();
-            })
-            .catch((err) => {
-              state.phase = "error";
-              state.error = err.message;
-              renderDialog();
-            });
-        });
-        dialog.appendChild(readdBtn);
       } else if (phase === "error") {
         const errDiv = document.createElement("div");
-        errDiv.style.color = "var(--lk-error)";
+        errDiv.style.color = "#f77";
         errDiv.textContent = `Error: ${error}`;
         dialog.appendChild(errDiv);
         const btnRow = document.createElement("div");
@@ -2405,7 +2373,7 @@ ${state.errorDetails}`);
           b.appendChild(document.createTextNode(o.label));
           b.appendChild(document.createElement("br"));
           const small = document.createElement("small");
-          Object.assign(small.style, { color: "rgba(255,255,255,0.9)", fontSize: "11px" });
+          Object.assign(small.style, { opacity: ".7", fontSize: "11px" });
           small.textContent = o.due;
           b.appendChild(small);
           b.addEventListener("click", () => doReview(Number(o.rating)));
@@ -2418,7 +2386,7 @@ ${state.errorDetails}`);
         deleteBtn.addEventListener("click", doDelete);
         dialog.appendChild(deleteBtn);
         const hints = document.createElement("div");
-        Object.assign(hints.style, { marginTop: "14px", opacity: ".6", fontSize: "11px" });
+        Object.assign(hints.style, { marginTop: "14px", opacity: ".4", fontSize: "11px" });
         hints.textContent = "A/H=Easy · S/J=Good · W/K=Hard · D/L=Again · T/M=Delete · Esc=Close";
         dialog.appendChild(hints);
         const notesRow = document.createElement("div");
@@ -2473,7 +2441,7 @@ ${state.errorDetails}`);
         dialog.appendChild(notesRow);
       } else if (phase === "reviewed") {
         const msgDiv = document.createElement("div");
-        Object.assign(msgDiv.style, { color: "var(--lk-success)", fontSize: "15px" });
+        Object.assign(msgDiv.style, { color: "#44bb44", fontSize: "15px" });
         msgDiv.textContent = message;
         dialog.appendChild(msgDiv);
       }
@@ -2608,8 +2576,6 @@ ${state.errorDetails}`);
       let nextUrl = prefetchedNextUrl;
       let nextTitle = null;
       prefetchedNextUrl = null;
-      // Skip deleted URLs in the prefetched next
-      if (nextUrl && offlineReady && cardStorage.isDeleted(nextUrl)) nextUrl = null;
       if (!nextUrl) {
         state.message = "Loading next card…";
         renderDialog();
@@ -2624,6 +2590,9 @@ ${nextTitle || nextUrl}`;
         }
       }
       if (nextUrl && /^https?:\/\//.test(nextUrl)) {
+        state.message = `Redirecting to:
+${nextTitle || nextUrl}`;
+        renderDialog();
         console.log("[Lianki] Storing intended URL:", nextUrl);
         GM_setValue("lk:nav_intended", JSON.stringify({ url: nextUrl, ts: Date.now() }));
         location.href = nextUrl;
@@ -2982,13 +2951,6 @@ ${actualUrl}
           console.error("[Lianki] Cache check failed:", err);
         }
       }
-      // Block auto-recreation of previously deleted cards
-      if (offlineReady && cardStorage.isDeleted(url)) {
-        state.phase = "deleted";
-        state.message = "This card was previously deleted.";
-        renderDialog();
-        return;
-      }
       addNote(url, document.title)
         .then(async (note) => {
           state.noteId = note._id;
@@ -2996,7 +2958,7 @@ ${actualUrl}
           state.notesSynced = true;
           if (offlineReady) {
             try {
-              cardStorage.setCard(url, note, note.hlc ?? newHLC(deviceId, null));
+              cardStorage.setCard(url, note, null);
             } catch (err) {
               console.error("[Lianki] Failed to cache card:", err);
             }
@@ -3168,8 +3130,8 @@ ${actualUrl}
     }
     async function syncQueueItem(item) {
       switch (item.action) {
-        case "review": {
-          const result = await api(
+        case "review":
+          await api(
             `/api/fsrs/review/${item.data.rating}/?id=${encodeURIComponent(item.data.noteId)}`,
             {
               method: "POST",
@@ -3177,26 +3139,10 @@ ${actualUrl}
               body: JSON.stringify({ hlc: item.hlc }),
             },
           );
-          if (item.data.url) {
-            const cached = cardStorage.getCard(item.data.url);
-            if (cached) {
-              if (result?.card) cached.note.card = result.card;
-              cardStorage.setCard(item.data.url, cached.note, result?.hlc ?? item.hlc, false);
-            }
-          }
           break;
-        }
-        case "add": {
-          const addResult = await addNote(item.data.url, item.data.title);
-          if (addResult && item.data.url) {
-            const cached = cardStorage.getCard(item.data.url);
-            if (cached) {
-              if (addResult._id) cached.note._id = addResult._id;
-              cardStorage.setCard(item.data.url, cached.note, addResult.hlc ?? item.hlc, false);
-            }
-          }
+        case "add":
+          await addNote(item.data.url, item.data.title);
           break;
-        }
         case "delete":
           await deleteNote(item.data.noteId);
           break;
@@ -3214,7 +3160,6 @@ ${actualUrl}
         for (const note of dueCards) {
           try {
             const url = note.url;
-            if (cardStorage.isDeleted(url)) continue;
             const existing = cardStorage.getCard(url);
             if (!existing || compareHLC(note.hlc, existing.hlc) > 0) {
               cardStorage.setCard(url, note, note.hlc || newHLC("server", null), false);
@@ -3233,9 +3178,7 @@ ${actualUrl}
       try {
         const dueCards = cardStorage.getDueCards(2);
         const normalizedCurrent = normalizeUrl(location.href);
-        const nextCard = dueCards.find(
-          (c) => c.url !== normalizedCurrent && !cardStorage.isDeleted(c.url),
-        );
+        const nextCard = dueCards.find((c) => c.url !== normalizedCurrent);
         if (nextCard) {
           prefetchNextPage(nextCard.url);
         }
