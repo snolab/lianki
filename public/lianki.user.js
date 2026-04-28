@@ -7,7 +7,8 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.3
+// @grant       unsafeWindow
+// @version     2.23.4
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1616,9 +1617,26 @@
       });
       db.close();
       console.log(`[Lianki] Synced ${index.length} cards to site IndexedDB`);
+      exposeDebugStorage();
     } catch (err) {
       console.error("[Lianki] syncToSiteDB failed:", err);
     }
+  }
+
+  function exposeDebugStorage() {
+    const cs = new GMCardStorage();
+    const index = cs._index();
+    const cards = index.map((e) => {
+      const raw = GM_getValue(CARD_PREFIX + e.hash, "");
+      return raw ? { ...e, ...JSON.parse(raw) } : e;
+    });
+    unsafeWindow.__liankiStorage = {
+      cards,
+      preferences: JSON.parse(GM_getValue("lk:preferences", "null")),
+      config: JSON.parse(GM_getValue("lk:config", "null")),
+      queue: JSON.parse(GM_getValue("lk:queue", "[]")),
+      deviceId: GM_getValue("lk:deviceId", ""),
+    };
   }
 
   class LocalFSRS {
