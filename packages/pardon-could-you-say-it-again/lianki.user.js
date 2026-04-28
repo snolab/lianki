@@ -8,7 +8,7 @@
 // @grant       GM_deleteValue
 // @grant       GM_info
 // @grant       unsafeWindow
-// @version     2.23.5
+// @version     2.23.6
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1629,13 +1629,17 @@
       const raw = GM_getValue(CARD_PREFIX + e.hash, "");
       return raw ? { ...e, ...JSON.parse(raw) } : e;
     });
-    unsafeWindow.__liankiStorage = {
+    const data = {
       cards,
       preferences: JSON.parse(GM_getValue("lk:preferences", "null")),
       config: JSON.parse(GM_getValue("lk:config", "null")),
       queue: JSON.parse(GM_getValue("lk:queue", "[]")),
       deviceId: GM_getValue("lk:deviceId", ""),
     };
+    const s = document.createElement("script");
+    s.textContent = `window.__liankiStorage = ${JSON.stringify(data)};`;
+    document.head.appendChild(s);
+    s.remove();
   }
 
   class LocalFSRS {
