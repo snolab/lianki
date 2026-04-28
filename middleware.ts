@@ -7,6 +7,13 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = request.headers.get("host");
 
+  // Redirect www.lianki.com → lianki.com (canonical domain)
+  if (host === "www.lianki.com") {
+    const canonicalUrl = new URL(request.url);
+    canonicalUrl.host = "lianki.com";
+    return NextResponse.redirect(canonicalUrl, 308);
+  }
+
   // Redirect beta.lianki.com → Vercel beta preview URL
   if (host === "beta.lianki.com") {
     const previewUrl = new URL(request.url);
