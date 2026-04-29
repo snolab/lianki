@@ -216,13 +216,45 @@ export default function GuestListClient({ locale }: { locale: string }) {
                 )}
                 <button
                   className="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs px-1"
-                  title="Delete card"
+                  title="Delete this card"
                   onClick={() => {
                     document.dispatchEvent(new CustomEvent("__lianki-delete", { detail: { url } }));
                     setCards((prev) => prev.filter((c) => c.url !== url));
                   }}
                 >
                   🗑
+                </button>
+                <button
+                  className="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs px-1"
+                  title={`Delete all cards from ${(() => {
+                    try {
+                      return new URL(url).hostname;
+                    } catch {
+                      return url;
+                    }
+                  })()}`}
+                  onClick={() => {
+                    let domain: string;
+                    try {
+                      domain = new URL(url).hostname;
+                    } catch {
+                      return;
+                    }
+                    document.dispatchEvent(
+                      new CustomEvent("__lianki-delete-domain", { detail: { domain } }),
+                    );
+                    setCards((prev) =>
+                      prev.filter((c) => {
+                        try {
+                          return new URL(c.url).hostname !== domain;
+                        } catch {
+                          return true;
+                        }
+                      }),
+                    );
+                  }}
+                >
+                  🗑🌐
                 </button>
               </li>
             );
