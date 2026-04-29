@@ -26,7 +26,6 @@
     "@ai-sdk/openai": "^3.0.41",
     "@marsidev/react-turnstile": "^1.4.2",
     "@tailwindcss/postcss": "^4.2.1",
-    "@types/d3": "^7.4.3",
     "ai": "^6.0.116",
     "better-auth": "^1.5.4",
     "bson": "^7.2.0",
@@ -60,6 +59,7 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",
     "@playwright/test": "^1.58.2",
+    "@types/d3": "^7.4.3",
     "@secretlint/secretlint-rule-preset-recommend": "^11.3.1",
     "@storybook/addon-a11y": "^10.3.5",
     "@storybook/html": "^10.3.5",

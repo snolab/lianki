@@ -123,29 +123,30 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
             <ul className="space-y-1">
               {goals.map((goal) => (
                 <li key={String(goal._id)}>
-                  <button
-                    onClick={() => loadProgress(goal)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors group ${
+                  <div
+                    className={`flex items-start px-3 py-2 rounded-lg text-sm transition-colors group ${
                       String(selectedGoal?._id) === String(goal._id)
                         ? "bg-blue-50 text-blue-700 font-medium"
                         : "hover:bg-gray-100 text-gray-700"
                     }`}
                   >
-                    <div className="flex justify-between items-start">
-                      <span className="flex-1 truncate">{goal.topic}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteGoal(goal);
-                        }}
-                        className="ml-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs"
-                        title="Delete"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    <div className="text-xs text-gray-400 mt-0.5">{goal.nodes.length} steps</div>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => loadProgress(goal)}
+                      className="flex-1 min-w-0 text-left"
+                    >
+                      <div className="truncate">{goal.topic}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">{goal.nodes.length} steps</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteGoal(goal)}
+                      className="ml-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs shrink-0"
+                      title="Delete"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

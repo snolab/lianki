@@ -13,6 +13,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!email) return new NextResponse("Unauthorized", { status: 401 });
 
   const { id } = await params;
+  if (!ObjectId.isValid(id)) return new NextResponse("Invalid id", { status: 400 });
+
   const goalsCollection = getRoadmapGoalsCollection(email);
   const goal = await goalsCollection.findOne({ _id: new ObjectId(id) });
   if (!goal) return new NextResponse("Not found", { status: 404 });
@@ -22,20 +24,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     .find({}, { projection: { url: 1, title: 1, "card.state": 1, "card.stability": 1 } })
     .toArray();
 
-  const nodeProgress: RoadmapNodeProgress[] = goal.nodes.map((node) => {
-    const matchingNotes = allNotes.filter((note) => {
-      const text = `${note.url} ${note.title ?? ""}`.toLowerCase();
-      return node.keywords.some((kw) => text.includes(kw.toLowerCase()));
-    });
+  // Precompute lowercase keywords per node and lowercase text per note for O(notes + nodes*keywords)
+  const normalizedNodes = goal.nodes.map((node) => ({
+    ...node,
+    normalizedKeywords: node.keywords.map((kw) => kw.toLowerCase()),
+  }));
+  const nodeCounts = normalizedNodes.map(() => ({ totalCards: 0, matureCards: 0 }));
 
-    const matureNotes = matchingNotes.filter(
-      (note) => note.card.state === State.Review && note.card.stability >= MATURE_STABILITY_DAYS,
-    );
+  for (const note of allNotes) {
+    const text = `${note.url} ${note.title ?? ""}`.toLowerCase();
+    const isMature =
+      note.card.state === State.Review && note.card.stability >= MATURE_STABILITY_DAYS;
 
-    const totalCards = matchingNotes.length;
-    const matureCards = matureNotes.length;
+    for (let i = 0; i < normalizedNodes.length; i++) {
+      if (normalizedNodes[i].normalizedKeywords.some((kw) => text.includes(kw))) {
+        nodeCounts[i].totalCards += 1;
+        if (isMature) nodeCounts[i].matureCards += 1;
+      }
+    }
+  }
+
+  const nodeProgress: RoadmapNodeProgress[] = goal.nodes.map((node, i) => {
+    const { totalCards, matureCards } = nodeCounts[i];
     const maturityRate = totalCards === 0 ? 0 : matureCards / totalCards;
-
     return { ...node, totalCards, matureCards, maturityRate };
   });
 

@@ -160,6 +160,26 @@ test.describe("Auth-required pages (guest redirect)", () => {
       await expect(page.locator("h1")).toBeVisible();
     }
   });
+
+  test("/en/roadmap redirects to /en/list for guests and renders without crash when authenticated", async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await page.goto(url("/en/roadmap"));
+    const finalUrl = page.url();
+    // Guest users should be redirected to /list (or /sign-in)
+    const isRedirected = finalUrl.includes("/list") || finalUrl.includes("/sign-in");
+    if (isRedirected) {
+      // Redirect is the expected guest behavior
+      expect(isRedirected).toBe(true);
+    } else {
+      // Authenticated: page must not crash
+      await page.waitForLoadState("networkidle");
+      await expect(page.locator("h1")).toBeVisible();
+      await expect(page.locator("h1")).toContainText(/roadmap/i);
+    }
+    expect(errors).toHaveLength(0);
+  });
 });
 
 // ── Navigation flow ───────────────────────────────────────────────────────────

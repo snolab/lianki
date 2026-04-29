@@ -1,8 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { ObjectId } from "mongodb";
 import { authEmailOrToken } from "@/lib/authEmailOrToken";
 import { getRoadmapGoalsCollection } from "@/app/getRoadmapGoalsCollection";
 import type { RoadmapGoal } from "@/types/roadmap";
-import { ObjectId } from "mongodb";
+
+const RoadmapNodeSchema = z.object({
+  id: z.string(),
+  title: z.string().max(100),
+  description: z.string().max(200),
+  keywords: z.array(z.string().max(50)).min(1).max(8),
+  order: z.number().int().min(0),
+});
+
+const SaveRoadmapSchema = z.object({
+  topic: z.string().min(1).max(500),
+  nodes: z.array(RoadmapNodeSchema).min(1).max(20),
+});
 
 export async function GET(request: NextRequest) {
   const email = await authEmailOrToken(request);
@@ -17,12 +31,11 @@ export async function POST(request: NextRequest) {
   const email = await authEmailOrToken(request);
   if (!email) return new NextResponse("Unauthorized", { status: 401 });
 
-  const body = await request.json();
-  const { topic, nodes } = body;
-
-  if (!topic || !nodes || !Array.isArray(nodes)) {
-    return new NextResponse("Invalid body", { status: 400 });
+  const parsed = SaveRoadmapSchema.safeParse(await request.json());
+  if (!parsed.success) {
+    return new NextResponse(parsed.error.message, { status: 400 });
   }
+  const { topic, nodes } = parsed.data;
 
   const collection = getRoadmapGoalsCollection(email);
   const now = new Date();
@@ -39,6 +52,7 @@ export async function DELETE(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
   if (!id) return new NextResponse("Missing id", { status: 400 });
+  if (!ObjectId.isValid(id)) return new NextResponse("Invalid id", { status: 400 });
 
   const collection = getRoadmapGoalsCollection(email);
   await collection.deleteOne({ _id: new ObjectId(id) });
