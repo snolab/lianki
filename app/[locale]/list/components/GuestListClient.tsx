@@ -85,7 +85,23 @@ export default function GuestListClient({ locale }: { locale: string }) {
       // Sort by due date
       cardData.sort((a, b) => +a.card.due - +b.card.due);
 
-      setCards(cardData);
+      // Filter out cards queued for deletion (userscript processes queue on next load)
+      const deleteQueue: { url?: string; domain?: string }[] = JSON.parse(
+        localStorage.getItem("__lianki_delete_queue") || "[]",
+      );
+      const filtered = cardData.filter((c) => {
+        for (const q of deleteQueue) {
+          if (q.url && c.url === q.url) return false;
+          if (q.domain) {
+            try {
+              if (new URL(c.url).hostname === q.domain) return false;
+            } catch {}
+          }
+        }
+        return true;
+      });
+
+      setCards(filtered);
       setLocalCount(cardData.length);
       setLoading(false);
     } catch (err) {
@@ -218,8 +234,9 @@ export default function GuestListClient({ locale }: { locale: string }) {
                   className="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs px-1"
                   title="Delete this card"
                   onClick={() => {
-                    const dbgEl = document.getElementById("__lianki-debug");
-                    if (dbgEl) dbgEl.dataset.deleteUrl = url;
+                    const q = JSON.parse(localStorage.getItem("__lianki_delete_queue") || "[]");
+                    q.push({ url });
+                    localStorage.setItem("__lianki_delete_queue", JSON.stringify(q));
                     setCards((prev) => prev.filter((c) => c.url !== url));
                   }}
                 >
@@ -241,8 +258,9 @@ export default function GuestListClient({ locale }: { locale: string }) {
                     } catch {
                       return;
                     }
-                    const dbgEl = document.getElementById("__lianki-debug");
-                    if (dbgEl) dbgEl.dataset.deleteDomain = domain;
+                    const q = JSON.parse(localStorage.getItem("__lianki_delete_queue") || "[]");
+                    q.push({ domain });
+                    localStorage.setItem("__lianki_delete_queue", JSON.stringify(q));
                     setCards((prev) =>
                       prev.filter((c) => {
                         try {

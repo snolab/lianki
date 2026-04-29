@@ -8,7 +8,7 @@
 // @grant       GM_deleteValue
 // @grant       GM_info
 // @grant       unsafeWindow
-// @version     2.23.11
+// @version     2.23.12
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1622,6 +1622,35 @@
     }
   }
 
+  function processDeleteQueue() {
+    const cs = new GMCardStorage();
+    try {
+      const queue = JSON.parse(unsafeWindow.localStorage.getItem("__lianki_delete_queue") || "[]");
+      if (!queue.length) return;
+      unsafeWindow.localStorage.removeItem("__lianki_delete_queue");
+      for (const { url, domain } of queue) {
+        if (url) {
+          cs.deleteCard(url);
+          console.log("[Lianki] Deleted url:", url);
+        }
+        if (domain) {
+          const toDelete = cs._index().filter((e) => {
+            try {
+              return new URL(e.url).hostname === domain;
+            } catch {
+              return false;
+            }
+          });
+          toDelete.forEach((e) => cs.deleteCard(e.url));
+          console.log("[Lianki] Deleted", toDelete.length, "cards for domain:", domain);
+        }
+      }
+      exposeDebugStorage();
+    } catch (e) {
+      console.error("[Lianki] processDeleteQueue error:", e);
+    }
+  }
+
   function exposeDebugStorage() {
     const cs = new GMCardStorage();
     const index = cs._index();
@@ -1644,33 +1673,6 @@
       document.body.appendChild(el);
     }
     el.dataset.storage = JSON.stringify(data);
-    if (!el._liankiObserver) {
-      el._liankiObserver = new MutationObserver(() => {
-        const url = el.dataset.deleteUrl;
-        const domain = el.dataset.deleteDomain;
-        if (url) {
-          el.removeAttribute("data-delete-url");
-          new GMCardStorage().deleteCard(url);
-          exposeDebugStorage();
-          console.log("[Lianki] Deleted from GM storage:", url);
-        }
-        if (domain) {
-          el.removeAttribute("data-delete-domain");
-          const cs = new GMCardStorage();
-          const toDelete = cs._index().filter((e) => {
-            try {
-              return new URL(e.url).hostname === domain;
-            } catch {
-              return false;
-            }
-          });
-          toDelete.forEach((e) => cs.deleteCard(e.url));
-          exposeDebugStorage();
-          console.log("[Lianki] Deleted", toDelete.length, "cards for domain:", domain);
-        }
-      });
-      el._liankiObserver.observe(el, { attributes: true });
-    }
   }
 
   class LocalFSRS {
@@ -1802,6 +1804,7 @@
     }
     if (location.hostname === new URL(ORIGIN).hostname) {
       setTimeout(() => {
+        processDeleteQueue();
         syncToSiteDB();
         exposeDebugStorage();
       }, 500);
