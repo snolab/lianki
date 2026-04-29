@@ -18,6 +18,7 @@ interface HeaderProps {
   preferencesLabel: string;
   membershipLabel: string;
   signOutLabel: string;
+  roadmapLabel?: string;
   user?: {
     name: string;
     email: string;
@@ -38,6 +39,7 @@ export function Header({
   preferencesLabel,
   membershipLabel,
   signOutLabel,
+  roadmapLabel,
   user,
 }: HeaderProps) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -78,6 +80,16 @@ export function Header({
           >
             {aiVocabLabel}
           </Link>
+
+          {/* Roadmap Button */}
+          {roadmapLabel && (
+            <Link
+              href={`/${locale}/roadmap`}
+              className="text-base md:text-lg font-medium hover:underline"
+            >
+              {roadmapLabel}
+            </Link>
+          )}
 
           {/* Blog Button */}
           <Link
