@@ -31,7 +31,13 @@ export async function POST(request: NextRequest) {
   const email = await authEmailOrToken(request);
   if (!email) return new NextResponse("Unauthorized", { status: 401 });
 
-  const parsed = SaveRoadmapSchema.safeParse(await request.json());
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return new NextResponse("Invalid JSON", { status: 400 });
+  }
+  const parsed = SaveRoadmapSchema.safeParse(body);
   if (!parsed.success) {
     return new NextResponse(parsed.error.message, { status: 400 });
   }
