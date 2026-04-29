@@ -8,7 +8,7 @@
 // @grant       GM_deleteValue
 // @grant       GM_info
 // @grant       unsafeWindow
-// @version     2.23.8
+// @version     2.23.9
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1644,6 +1644,17 @@
       document.body.appendChild(el);
     }
     el.dataset.storage = JSON.stringify(data);
+    document.addEventListener(
+      "__lianki-delete",
+      (e) => {
+        const url = e.detail?.url;
+        if (!url) return;
+        new GMCardStorage().deleteCard(url);
+        exposeDebugStorage();
+        console.log("[Lianki] Deleted from GM storage:", url);
+      },
+      { once: false },
+    );
   }
 
   class LocalFSRS {
