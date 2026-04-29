@@ -8,7 +8,7 @@
 // @grant       GM_deleteValue
 // @grant       GM_info
 // @grant       unsafeWindow
-// @version     2.23.10
+// @version     2.23.11
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1644,36 +1644,33 @@
       document.body.appendChild(el);
     }
     el.dataset.storage = JSON.stringify(data);
-    document.addEventListener(
-      "__lianki-delete",
-      (e) => {
-        const url = e.detail?.url;
-        if (!url) return;
-        new GMCardStorage().deleteCard(url);
-        exposeDebugStorage();
-        console.log("[Lianki] Deleted from GM storage:", url);
-      },
-      { once: false },
-    );
-    document.addEventListener(
-      "__lianki-delete-domain",
-      (e) => {
-        const domain = e.detail?.domain;
-        if (!domain) return;
-        const cs = new GMCardStorage();
-        const toDelete = cs._index().filter((entry) => {
-          try {
-            return new URL(entry.url).hostname === domain;
-          } catch {
-            return false;
-          }
-        });
-        toDelete.forEach((entry) => cs.deleteCard(entry.url));
-        exposeDebugStorage();
-        console.log("[Lianki] Deleted", toDelete.length, "cards for domain:", domain);
-      },
-      { once: false },
-    );
+    if (!el._liankiObserver) {
+      el._liankiObserver = new MutationObserver(() => {
+        const url = el.dataset.deleteUrl;
+        const domain = el.dataset.deleteDomain;
+        if (url) {
+          el.removeAttribute("data-delete-url");
+          new GMCardStorage().deleteCard(url);
+          exposeDebugStorage();
+          console.log("[Lianki] Deleted from GM storage:", url);
+        }
+        if (domain) {
+          el.removeAttribute("data-delete-domain");
+          const cs = new GMCardStorage();
+          const toDelete = cs._index().filter((e) => {
+            try {
+              return new URL(e.url).hostname === domain;
+            } catch {
+              return false;
+            }
+          });
+          toDelete.forEach((e) => cs.deleteCard(e.url));
+          exposeDebugStorage();
+          console.log("[Lianki] Deleted", toDelete.length, "cards for domain:", domain);
+        }
+      });
+      el._liankiObserver.observe(el, { attributes: true });
+    }
   }
 
   class LocalFSRS {

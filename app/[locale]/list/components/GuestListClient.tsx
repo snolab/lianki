@@ -218,7 +218,8 @@ export default function GuestListClient({ locale }: { locale: string }) {
                   className="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs px-1"
                   title="Delete this card"
                   onClick={() => {
-                    document.dispatchEvent(new CustomEvent("__lianki-delete", { detail: { url } }));
+                    const dbgEl = document.getElementById("__lianki-debug");
+                    if (dbgEl) dbgEl.dataset.deleteUrl = url;
                     setCards((prev) => prev.filter((c) => c.url !== url));
                   }}
                 >
@@ -240,9 +241,8 @@ export default function GuestListClient({ locale }: { locale: string }) {
                     } catch {
                       return;
                     }
-                    document.dispatchEvent(
-                      new CustomEvent("__lianki-delete-domain", { detail: { domain } }),
-                    );
+                    const dbgEl = document.getElementById("__lianki-debug");
+                    if (dbgEl) dbgEl.dataset.deleteDomain = domain;
                     setCards((prev) =>
                       prev.filter((c) => {
                         try {
