@@ -8,12 +8,22 @@ export type RoadmapNode = {
   order: number;
 };
 
+// DB document shape (MongoDB)
 export type RoadmapGoal = {
   _id?: ObjectId;
   topic: string;
   nodes: RoadmapNode[];
   createdAt: Date;
   updatedAt: Date;
+};
+
+// JSON-serialized shape sent to/from API clients
+export type RoadmapGoalDTO = {
+  _id?: string;
+  topic: string;
+  nodes: RoadmapNode[];
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type RoadmapNodeProgress = RoadmapNode & {
@@ -23,7 +33,7 @@ export type RoadmapNodeProgress = RoadmapNode & {
 };
 
 export type RoadmapProgress = {
-  goal: RoadmapGoal;
+  goal: RoadmapGoalDTO;
   nodes: RoadmapNodeProgress[];
   overallMaturityRate: number;
 };

@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import dynamic from "next/dynamic";
-import type { RoadmapGoal } from "@/types/roadmap";
+import type { RoadmapGoalDTO as RoadmapGoal } from "@/types/roadmap";
 import type { RoadmapProgress } from "@/types/roadmap";
 
 const RoadmapD3 = dynamic(() => import("./RoadmapD3"), { ssr: false });
