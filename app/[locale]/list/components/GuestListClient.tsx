@@ -214,6 +214,16 @@ export default function GuestListClient({ locale }: { locale: string }) {
                     💾
                   </span>
                 )}
+                <button
+                  className="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs px-1"
+                  title="Delete card"
+                  onClick={() => {
+                    document.dispatchEvent(new CustomEvent("__lianki-delete", { detail: { url } }));
+                    setCards((prev) => prev.filter((c) => c.url !== url));
+                  }}
+                >
+                  🗑
+                </button>
               </li>
             );
           })
