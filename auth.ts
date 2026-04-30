@@ -9,6 +9,9 @@ export const auth = betterAuth({
   secret: process.env.AUTH_SECRET,
   baseURL:
     process.env.BETTER_AUTH_BASE_URL ?? process.env.BETTER_AUTH_URL ?? process.env.NEXTAUTH_URL,
+  // Allow both www and non-www since Vercel canonicalizes to lianki.com (non-www)
+  // but BETTER_AUTH_BASE_URL may be set to www.lianki.com
+  trustedOrigins: ["https://lianki.com", "https://www.lianki.com"],
 
   database: mongodbAdapter(db, { client: mongoClient }),
 
