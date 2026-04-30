@@ -160,6 +160,23 @@ test.describe("Auth-required pages (guest redirect)", () => {
       await expect(page.locator("h1")).toBeVisible();
     }
   });
+
+  test("/en/roadmap redirects unauthenticated users away", async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.goto(url("/en/roadmap"));
+    const finalUrl = page.url();
+    // Guest must be redirected to /list or /sign-in — never stay on /roadmap
+    expect(finalUrl.includes("/list") || finalUrl.includes("/sign-in")).toBe(true);
+    expect(errors).toHaveLength(0);
+  });
+
+  test("/en/roadmap does not 500 on unauthenticated access", async ({ page }) => {
+    const response = await page.goto(url("/en/roadmap"));
+    // Must not throw a 500 server error regardless of auth state
+    expect(response?.status()).not.toBe(500);
+    const crashMessage = page.locator("text=/Application error/i");
+    await expect(crashMessage).not.toBeVisible();
+  });
 });
 
 // ── Navigation flow ───────────────────────────────────────────────────────────

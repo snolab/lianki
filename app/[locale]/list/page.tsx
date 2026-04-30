@@ -69,6 +69,7 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
         learnLabel={nav.learn}
         importLabel={nav.import}
         aiVocabLabel={nav.aiVocab}
+        roadmapLabel={nav.roadmap}
         signInLabel={nav.signIn}
         dashboardLabel={nav.dashboard}
         profileLabel={nav.profile}
