@@ -7,13 +7,12 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @grant       unsafeWindow
-// @version     2.23.13
+// @version     2.23.14
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
-// @downloadURL https://lianki.pages.dev/lianki.user.js
-// @updateURL   https://lianki.pages.dev/lianki.meta.js
+// @downloadURL https://www.lianki.com/lianki.user.js
+// @updateURL   https://www.lianki.com/lianki.meta.js
 // @connect     lianki.com
 // @connect     www.lianki.com
 // @connect     beta.lianki.com
@@ -1622,59 +1621,6 @@
     }
   }
 
-  function processDeleteQueue() {
-    const cs = new GMCardStorage();
-    try {
-      const queue = JSON.parse(unsafeWindow.localStorage.getItem("__lianki_delete_queue") || "[]");
-      if (!queue.length) return;
-      unsafeWindow.localStorage.removeItem("__lianki_delete_queue");
-      for (const { url, domain } of queue) {
-        if (url) {
-          cs.deleteCard(url);
-          console.log("[Lianki] Deleted url:", url);
-        }
-        if (domain) {
-          const toDelete = cs._index().filter((e) => {
-            try {
-              return new URL(e.url).hostname === domain;
-            } catch {
-              return false;
-            }
-          });
-          toDelete.forEach((e) => cs.deleteCard(e.url));
-          console.log("[Lianki] Deleted", toDelete.length, "cards for domain:", domain);
-        }
-      }
-      exposeDebugStorage();
-    } catch (e) {
-      console.error("[Lianki] processDeleteQueue error:", e);
-    }
-  }
-
-  function exposeDebugStorage() {
-    const cs = new GMCardStorage();
-    const index = cs._index();
-    const cards = index.map((e) => {
-      const raw = GM_getValue(CARD_PREFIX + e.hash, "");
-      return raw ? { ...e, ...JSON.parse(raw) } : e;
-    });
-    const data = {
-      cards,
-      preferences: JSON.parse(GM_getValue("lk:preferences", "null")),
-      config: JSON.parse(GM_getValue("lk:config", "null")),
-      queue: JSON.parse(GM_getValue("lk:queue", "[]")),
-      deviceId: GM_getValue("lk:deviceId", ""),
-    };
-    let el = document.getElementById("__lianki-debug");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "__lianki-debug";
-      el.style.display = "none";
-      document.body.appendChild(el);
-    }
-    el.dataset.storage = JSON.stringify(data);
-  }
-
   class LocalFSRS {
     constructor(params = null) {
       this.Rating = Rating;
@@ -1760,12 +1706,10 @@
     const ORIGIN = (() => {
       try {
         const u = new URL(GM_info?.script?.downloadURL || "");
-        if (u.hostname === "lianki.pages.dev") return "https://lianki.com";
-        if (u.hostname === "lianki.com" || u.hostname === "www.lianki.com")
-          return "https://lianki.com";
+        if (u.hostname === "lianki.com") u.hostname = "www.lianki.com";
         return u.origin;
       } catch {
-        return "https://lianki.com";
+        return "https://www.lianki.com";
       }
     })();
     function normalizeUrl(href) {
@@ -1778,6 +1722,8 @@
           u.searchParams.set("v", id);
         }
         if (u.hostname.startsWith("m.")) u.hostname = "www." + u.hostname.slice(2);
+        if (u.hostname.endsWith("youtube.com") && u.pathname === "/watch")
+          u.searchParams.delete("index");
         for (const p of [
           "si",
           "pp",
@@ -1794,7 +1740,6 @@
           "mc_cid",
           "mc_eid",
           "igshid",
-          "themeRefresh",
         ])
           u.searchParams.delete(p);
         u.searchParams.sort();
@@ -1804,11 +1749,7 @@
       }
     }
     if (location.hostname === new URL(ORIGIN).hostname) {
-      setTimeout(() => {
-        processDeleteQueue();
-        syncToSiteDB();
-        exposeDebugStorage();
-      }, 500);
+      setTimeout(() => syncToSiteDB(), 500);
       return () => {};
     }
     const ac = new AbortController();
@@ -1966,30 +1907,6 @@
     const deleteNote = (id) =>
       api(`/api/fsrs/delete?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
     const getNextUrl = () => {
-      if (offlineReady) {
-        try {
-          const currentUrl = normalizeUrl(location.href);
-          const excludeDomains = isMobile ? userPreferences.mobileExcludeDomains || [] : [];
-          const dueCards = cardStorage.getDueCards(20);
-          const next = dueCards.find((c) => {
-            if (c.url === currentUrl) return false;
-            if (excludeDomains.length > 0) {
-              try {
-                const host = new URL(c.url).hostname;
-                if (excludeDomains.some((d) => host === d || host.endsWith("." + d))) return false;
-              } catch {}
-            }
-            return true;
-          });
-          if (next) {
-            const title = next.note?.title ?? null;
-            return Promise.resolve({ url: next.url, title });
-          }
-          return Promise.resolve({ url: null, title: null });
-        } catch (e) {
-          console.warn("[Lianki] Local getNextUrl failed, falling back to server:", e);
-        }
-      }
       const excludeUrl = `&excludeUrl=${encodeURIComponent(normalizeUrl(location.href))}`;
       return api(`/api/fsrs/next-url?${buildExcludeDomainsParam().slice(1)}${excludeUrl}`);
     };
@@ -2233,6 +2150,8 @@
         --lk-input-border: #444444;
         --lk-muted: #aaaaaa;
         --lk-backdrop: rgba(0,0,0,0.75);
+        --lk-error: #ff8a80;
+        --lk-success: #69f0ae;
       }
       @media (prefers-color-scheme: light) {
         :host {
@@ -2244,6 +2163,8 @@
           --lk-input-border: #cccccc;
           --lk-muted: #666666;
           --lk-backdrop: rgba(0,0,0,0.5);
+          --lk-error: #b71c1c;
+          --lk-success: #1b5e20;
         }
       }
     `;
@@ -2347,7 +2268,7 @@
         dialog.appendChild(wrap);
       } else if (phase === "error") {
         const errDiv = document.createElement("div");
-        errDiv.style.color = "#f77";
+        errDiv.style.color = "var(--lk-error)";
         errDiv.textContent = `Error: ${error}`;
         dialog.appendChild(errDiv);
         const btnRow = document.createElement("div");
@@ -2434,7 +2355,7 @@ ${state.errorDetails}`);
           b.appendChild(document.createTextNode(o.label));
           b.appendChild(document.createElement("br"));
           const small = document.createElement("small");
-          Object.assign(small.style, { opacity: ".7", fontSize: "11px" });
+          Object.assign(small.style, { color: "rgba(255,255,255,0.9)", fontSize: "11px" });
           small.textContent = o.due;
           b.appendChild(small);
           b.addEventListener("click", () => doReview(Number(o.rating)));
@@ -2447,7 +2368,7 @@ ${state.errorDetails}`);
         deleteBtn.addEventListener("click", doDelete);
         dialog.appendChild(deleteBtn);
         const hints = document.createElement("div");
-        Object.assign(hints.style, { marginTop: "14px", opacity: ".4", fontSize: "11px" });
+        Object.assign(hints.style, { marginTop: "14px", opacity: ".6", fontSize: "11px" });
         hints.textContent = "A/H=Easy · S/J=Good · W/K=Hard · D/L=Again · T/M=Delete · Esc=Close";
         dialog.appendChild(hints);
         const notesRow = document.createElement("div");
@@ -2502,7 +2423,7 @@ ${state.errorDetails}`);
         dialog.appendChild(notesRow);
       } else if (phase === "reviewed") {
         const msgDiv = document.createElement("div");
-        Object.assign(msgDiv.style, { color: "#44bb44", fontSize: "15px" });
+        Object.assign(msgDiv.style, { color: "var(--lk-success)", fontSize: "15px" });
         msgDiv.textContent = message;
         dialog.appendChild(msgDiv);
       }
@@ -2651,9 +2572,6 @@ ${nextTitle || nextUrl}`;
         }
       }
       if (nextUrl && /^https?:\/\//.test(nextUrl)) {
-        state.message = `Redirecting to:
-${nextTitle || nextUrl}`;
-        renderDialog();
         console.log("[Lianki] Storing intended URL:", nextUrl);
         GM_setValue("lk:nav_intended", JSON.stringify({ url: nextUrl, ts: Date.now() }));
         location.href = nextUrl;
@@ -2681,7 +2599,7 @@ ${nextTitle || nextUrl}`;
       KeyM: () => doDelete(),
       Escape: () => closeDialog(),
     };
-    window.addEventListener(
+    document.addEventListener(
       "keydown",
       (e) => {
         if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === "KeyF") {
@@ -3019,7 +2937,7 @@ ${actualUrl}
           state.notesSynced = true;
           if (offlineReady) {
             try {
-              cardStorage.setCard(url, note, null);
+              cardStorage.setCard(url, note, note.hlc ?? newHLC(deviceId, null));
             } catch (err) {
               console.error("[Lianki] Failed to cache card:", err);
             }
@@ -3191,8 +3109,8 @@ ${actualUrl}
     }
     async function syncQueueItem(item) {
       switch (item.action) {
-        case "review":
-          await api(
+        case "review": {
+          const result = await api(
             `/api/fsrs/review/${item.data.rating}/?id=${encodeURIComponent(item.data.noteId)}`,
             {
               method: "POST",
@@ -3200,10 +3118,26 @@ ${actualUrl}
               body: JSON.stringify({ hlc: item.hlc }),
             },
           );
+          if (item.data.url) {
+            const cached = cardStorage.getCard(item.data.url);
+            if (cached) {
+              if (result?.card) cached.note.card = result.card;
+              cardStorage.setCard(item.data.url, cached.note, result?.hlc ?? item.hlc, false);
+            }
+          }
           break;
-        case "add":
-          await addNote(item.data.url, item.data.title);
+        }
+        case "add": {
+          const addResult = await addNote(item.data.url, item.data.title);
+          if (addResult && item.data.url) {
+            const cached = cardStorage.getCard(item.data.url);
+            if (cached) {
+              if (addResult._id) cached.note._id = addResult._id;
+              cardStorage.setCard(item.data.url, cached.note, addResult.hlc ?? item.hlc, false);
+            }
+          }
           break;
+        }
         case "delete":
           await deleteNote(item.data.noteId);
           break;

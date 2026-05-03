@@ -68,4 +68,18 @@ describe("normalizeUrl", () => {
   it("handles m. subdomain on non-YouTube domains", () => {
     expect(normalizeUrl("https://m.example.com/page")).toBe("https://www.example.com/page");
   });
+
+  it("strips index param from YouTube watch URLs", () => {
+    expect(
+      normalizeUrl(
+        "https://www.youtube.com/watch?v=__Cu2nwgAjA&list=PLnazreCxpqRlvlt5Pf4qn4bUoua5nU2Im&index=3",
+      ),
+    ).toBe("https://www.youtube.com/watch?list=PLnazreCxpqRlvlt5Pf4qn4bUoua5nU2Im&v=__Cu2nwgAjA");
+  });
+
+  it("does not strip index from non-YouTube URLs", () => {
+    expect(normalizeUrl("https://example.com/page?index=3")).toBe(
+      "https://example.com/page?index=3",
+    );
+  });
 });
