@@ -7,6 +7,13 @@ type Props = {
   mongoCount?: number | null;
 };
 
+type UserscriptStatus = {
+  version: string;
+  cardCount: number;
+  dueCount: number;
+  lastSync: number;
+};
+
 function Box({ icon, label, count }: { icon: string; label: string; count: number | null }) {
   return (
     <div className="flex flex-col items-center border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 min-w-[64px] text-center">
@@ -17,12 +24,33 @@ function Box({ icon, label, count }: { icon: string; label: string; count: numbe
   );
 }
 
+function UserscriptBox({ status }: { status: UserscriptStatus | null }) {
+  if (!status) return null;
+  return (
+    <div
+      className="flex flex-col items-center border border-blue-300 dark:border-blue-700 rounded-md px-3 py-2 min-w-[64px] text-center"
+      title={`Last sync: ${new Date(status.lastSync).toLocaleString()}`}
+    >
+      <span className="text-lg leading-none mb-0.5">🧩</span>
+      <span className="text-xs text-gray-500 dark:text-gray-400">Extension</span>
+      <span className="font-mono font-bold text-sm">v{status.version}</span>
+      <span className="text-xs text-gray-400">{status.cardCount} cards</span>
+    </div>
+  );
+}
+
 export function SyncStatusBanner({ mongoCount }: Props) {
   const [gmCount, setGmCount] = useState<number | null>(null);
   const [idbCount, setIdbCount] = useState<number | null>(null);
+  const [userscript, setUserscript] = useState<UserscriptStatus | null>(null);
   const isGuest = mongoCount == null;
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem("lk:status");
+      if (raw) setUserscript(JSON.parse(raw));
+    } catch {}
+
     (async () => {
       try {
         const { openDB } = await import("idb");
@@ -48,6 +76,8 @@ export function SyncStatusBanner({ mongoCount }: Props) {
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
+      <UserscriptBox status={userscript} />
+      {userscript && <span className="text-gray-400 text-lg">→</span>}
       <Box icon="💾" label="Script" count={gmCount} />
       <span className="text-gray-400 text-lg">→</span>
       <Box icon="🗂️" label="Local" count={idbCount} />

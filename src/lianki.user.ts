@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.15
+// @version     2.23.16
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -233,6 +233,17 @@ class GMQueueStorage {
 async function syncToSiteDB() {
   const cs = new GMCardStorage();
   const index = cs._index();
+  const now = new Date();
+  const dueCount = index.filter((e) => new Date(e.due) <= now).length;
+  localStorage.setItem(
+    "lk:status",
+    JSON.stringify({
+      version: GM_info?.script?.version ?? "?",
+      cardCount: index.length,
+      dueCount,
+      lastSync: Date.now(),
+    }),
+  );
   if (!index.length) return;
   try {
     const db = await new Promise((resolve, reject) => {
@@ -1091,20 +1102,6 @@ function main() {
       loginBtn.textContent = "Login to Lianki";
       loginBtn.addEventListener("click", () => window.open(ORIGIN, "_blank"));
       btnRow.appendChild(loginBtn);
-
-      const tokenBtn = document.createElement("button");
-      tokenBtn.setAttribute("style", btn("#3a6f3f"));
-      tokenBtn.textContent = "Set API Token";
-      tokenBtn.addEventListener("click", () => {
-        const token = prompt(
-          `Paste your Lianki API token.\n\nGenerate one at: ${ORIGIN}/list\n\n(Needed for Safari/Stay where cookies don't work)`,
-        );
-        if (!token) return;
-        GM_setValue("lk:token", token.trim());
-        closeDialog();
-        openDialog(); // retry with token
-      });
-      btnRow.appendChild(tokenBtn);
 
       const copyBtn = document.createElement("button");
       copyBtn.setAttribute("style", btn("#444"));
