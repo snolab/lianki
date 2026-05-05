@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.14
+// @version     2.23.15
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -569,7 +569,18 @@ function main() {
         e.status = 401;
         throw e;
       }
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (!r.ok) {
+        const status = r.status;
+        return r
+          .json()
+          .catch(() => null)
+          .then((body) => {
+            const e = new Error(`HTTP ${status}`);
+            if (body?.errorId) e.details = `Error ID: ${body.errorId}`;
+            else if (body?.error) e.details = body.error;
+            throw e;
+          });
+      }
       checkVersion(r);
       return r.json();
     });
@@ -1055,6 +1066,17 @@ function main() {
       errDiv.style.color = "var(--lk-error)";
       errDiv.textContent = `Error: ${error}`;
       dialog.appendChild(errDiv);
+      if (state.errorDetails) {
+        const detailDiv = document.createElement("div");
+        Object.assign(detailDiv.style, {
+          fontSize: "11px",
+          color: "var(--lk-muted)",
+          marginTop: "4px",
+          wordBreak: "break-all",
+        });
+        detailDiv.textContent = state.errorDetails;
+        dialog.appendChild(detailDiv);
+      }
 
       const btnRow = document.createElement("div");
       Object.assign(btnRow.style, {
