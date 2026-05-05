@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { Suspense } from "react";
 import sflow from "sflow";
 import { dueMs } from "@/app/ems";
@@ -18,6 +20,15 @@ import { SyncStatusBanner } from "./components/SyncStatusBanner";
 import { HotkeyHelp } from "@/app/components/HotkeyHelp";
 
 export const dynamic = "force-dynamic";
+
+function getLatestUserscriptVersion(): string {
+  try {
+    const meta = readFileSync(join(process.cwd(), "public/lianki.meta.js"), "utf8");
+    return meta.match(/@version\s+(\S+)/)?.[1] ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
 
 type Props = { params: Promise<{ locale: string }> };
 
@@ -47,16 +58,28 @@ export default async function HomePage({ params }: Props) {
 
   const { appName, nav } = getIntlayer("landing-page", locale);
 
+  const latestVersion = getLatestUserscriptVersion();
+
   // If logged in, use server-side data
   if (email) {
-    return <LoggedInView email={email} user={user} locale={locale} />;
+    return <LoggedInView email={email} user={user} locale={locale} latestVersion={latestVersion} />;
   }
 
   // Guest mode - use client-side IndexedDB
-  return <GuestView locale={locale} appName={appName} nav={nav} />;
+  return <GuestView locale={locale} appName={appName} nav={nav} latestVersion={latestVersion} />;
 }
 
-async function LoggedInView({ email, user, locale }: { email: string; user: any; locale: string }) {
+async function LoggedInView({
+  email,
+  user,
+  locale,
+  latestVersion,
+}: {
+  email: string;
+  user: any;
+  locale: string;
+  latestVersion: string;
+}) {
   const { appName, nav } = getIntlayer("landing-page", locale);
   const { nextCard, totalCards, dueCards, learningActivity } = getIntlayer("list-page", locale);
 
@@ -90,7 +113,7 @@ async function LoggedInView({ email, user, locale }: { email: string; user: any;
             >
               {nextCard}
             </a>
-            <UserscriptInstallButton locale={locale} />
+            <UserscriptInstallButton locale={locale} latestVersion={latestVersion} />
           </div>
           <div className="mb-6">
             <Suspense fallback={<SyncStatusBanner mongoCount={null} />}>
@@ -213,7 +236,17 @@ async function LoggedInSyncStatus({ email }: { email: string }) {
   }
 }
 
-function GuestView({ locale, appName, nav }: { locale: string; appName: string; nav: any }) {
+function GuestView({
+  locale,
+  appName,
+  nav,
+  latestVersion,
+}: {
+  locale: string;
+  appName: string;
+  nav: any;
+  latestVersion: string;
+}) {
   const { nextCard } = getIntlayer("list-page", locale);
 
   return (
@@ -236,7 +269,7 @@ function GuestView({ locale, appName, nav }: { locale: string; appName: string; 
 
       <main className="flex-grow px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <div className="mb-6">
+          <div className="mb-6 flex gap-4">
             <a
               href={`/${locale}/next`}
               className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700"
@@ -244,6 +277,7 @@ function GuestView({ locale, appName, nav }: { locale: string; appName: string; 
             >
               {nextCard}
             </a>
+            <UserscriptInstallButton locale={locale} latestVersion={latestVersion} />
           </div>
 
           <GuestListClient locale={locale} />
