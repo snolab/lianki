@@ -4,6 +4,7 @@ import { getIntlayer } from "intlayer";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import { Header } from "@/app/components/Header";
 import ImportClient from "./ImportClient";
+import YamlImportSection from "./YamlImportSection";
 
 export const dynamic = "force-dynamic";
 
@@ -60,17 +61,20 @@ export default async function ImportPage({ params }: { params: Promise<{ locale:
         user={user}
       />
       <main className="flex-grow">
-        <ImportClient
-          title={title}
-          description={description}
-          dropzone={dropzone}
-          maxSize={maxSize}
-          importButton={importButton}
-          parsing={parsing}
-          syncing={syncing}
-          importComplete={importComplete}
-          viewDashboard={viewDashboard}
-        />
+        <div className="max-w-2xl mx-auto px-8 pb-16">
+          <ImportClient
+            title={title}
+            description={description}
+            dropzone={dropzone}
+            maxSize={maxSize}
+            importButton={importButton}
+            parsing={parsing}
+            syncing={syncing}
+            importComplete={importComplete}
+            viewDashboard={viewDashboard}
+          />
+          <YamlImportSection />
+        </div>
       </main>
     </div>
   );

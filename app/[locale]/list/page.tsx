@@ -105,7 +105,7 @@ async function LoggedInView({
       {/* Main Content */}
       <main className="flex-grow px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <div className="mb-6 flex gap-4">
+          <div className="mb-6 flex gap-4 flex-wrap">
             <a
               href={`/${locale}/next`}
               className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700"
@@ -114,6 +114,12 @@ async function LoggedInView({
               {nextCard}
             </a>
             <UserscriptInstallButton locale={locale} latestVersion={latestVersion} />
+            <a
+              href="/api/export/yaml"
+              className="border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-medium py-3 px-6 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              Export YAML
+            </a>
           </div>
           <div className="mb-6">
             <Suspense fallback={<SyncStatusBanner mongoCount={null} />}>
