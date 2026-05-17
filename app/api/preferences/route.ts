@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/app/db";
 import { authUserOrNull } from "@/app/signInEmail";
+import { dbBackend, getD1 } from "@/lib/d1";
+import { PreferencesD1Repo } from "@/lib/repos/d1Repos";
 
 const Preferences = db.collection("preferences");
 
@@ -26,6 +28,12 @@ export async function GET() {
   try {
     const user = await authUserOrNull();
     if (!user) return NextResponse.json({ error: "Login required" }, { status: 401 });
+
+    if (dbBackend() === "d1") {
+      const prefs = await new PreferencesD1Repo(getD1(), user.id).get();
+      return NextResponse.json({ mobileExcludePatterns: prefs?.mobileExcludePatterns ?? [] });
+    }
+
     const prefs = await Preferences.findOne({ userId: user.id });
 
     // Return default preferences if none exist
@@ -66,10 +74,16 @@ export async function POST(req: NextRequest) {
     const user = await authUserOrNull();
     if (!user) return NextResponse.json({ error: "Login required" }, { status: 401 });
     const body = await req.json();
+    const patterns: FilterPattern[] = body.mobileExcludePatterns || [];
+
+    if (dbBackend() === "d1") {
+      await new PreferencesD1Repo(getD1(), user.id).set(patterns);
+      return NextResponse.json({ success: true });
+    }
 
     const preferences: Partial<UserPreferences> = {
       userId: user.id,
-      mobileExcludePatterns: body.mobileExcludePatterns || [],
+      mobileExcludePatterns: patterns,
       updatedAt: new Date(),
     };
 
