@@ -10,6 +10,14 @@ const nextConfig = {
       },
     ];
   },
+  // @better-auth/kysely-adapter eagerly imports `node:sqlite` (for a dialect
+  // Lianki never uses — D1 mode uses kysely-d1). node:sqlite is unavailable in
+  // the Workers runtime and unbundlable by Turbopack, so alias it to a stub.
+  turbopack: {
+    resolveAlias: {
+      "node:sqlite": "./lib/stubs/node-sqlite.js",
+    },
+  },
   // We use oxlint instead of ESLint — skip Next.js's built-in lint pass
   eslint: { ignoreDuringBuilds: true },
   // Type-checking is handled by the IDE / tsc --noEmit; skip during build
