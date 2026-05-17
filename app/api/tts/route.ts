@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { Readable } from "stream";
 import crypto from "crypto";
-import { getTTSVoiceCacheBucket } from "@/app/[locale]/read/getReadMaterialsCollection";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { logSanitizedError } from "@/lib/safeError";
+import { getCachedTTS, putCachedTTS } from "@/lib/ttsCache";
 
 const MAX_TEXT_LENGTH = 4096; // OpenAI's limit
 const RATE_LIMIT_WINDOW_MS = 10 * 60_000;
@@ -84,27 +83,18 @@ export const POST = async (req: NextRequest) => {
   // Generate cache key based on text, voice, and model
   const cacheKey = crypto.createHash("sha256").update(`${model}:${voice}:${text}`).digest("hex");
 
-  const bucket = getTTSVoiceCacheBucket();
-
   // Try to find cached audio
   try {
-    const files = await bucket.find({ filename: cacheKey }).limit(1).toArray();
-    if (files.length > 0) {
+    const cached = await getCachedTTS(cacheKey);
+    if (cached) {
       console.log("TTS cache hit:", cacheKey);
-      const downloadStream = bucket.openDownloadStreamByName(cacheKey);
-      const chunks: Buffer[] = [];
-      for await (const chunk of downloadStream) {
-        chunks.push(chunk);
-      }
-      const audioBuffer = Buffer.concat(chunks);
-      return new Response(audioBuffer, {
+      return new Response(Buffer.from(cached), {
         headers: {
           "Content-Type": "audio/mpeg",
           "Cache-Control": "private, max-age=86400",
         },
       });
     }
-    // No cached file found, proceed to generate
     console.log("TTS cache miss:", cacheKey);
   } catch (err) {
     logSanitizedError("tts.cache.lookup", err, { requester });
@@ -133,27 +123,15 @@ export const POST = async (req: NextRequest) => {
   // Convert response to buffer
   const audioBuffer = Buffer.from(await response.arrayBuffer());
 
-  // Cache the audio in GridFS
+  // Cache the audio (R2 or GridFS depending on DB_BACKEND)
   try {
-    const uploadStream = bucket.openUploadStream(cacheKey, {
-      metadata: {
-        model,
-        voice,
-        textHash: cacheKey,
-        textLength: text.length,
-        createdAt: new Date(),
-      },
+    await putCachedTTS(cacheKey, audioBuffer, {
+      model,
+      voice,
+      textHash: cacheKey,
+      textLength: text.length,
+      createdAt: new Date().toISOString(),
     });
-
-    // Convert buffer to readable stream for GridFS
-    const readable = Readable.from(audioBuffer);
-    readable.pipe(uploadStream);
-
-    await new Promise((resolve, reject) => {
-      uploadStream.on("finish", resolve);
-      uploadStream.on("error", reject);
-    });
-
     console.log("TTS cached:", cacheKey);
   } catch (err) {
     logSanitizedError("tts.cache.save", err, { requester, cacheKey });
