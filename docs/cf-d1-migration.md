@@ -92,20 +92,25 @@ intact until cutover.
 
 ### 2a. Wire API routes to the D1 repos
 
-Branch each data route on `dbBackend()`:
+Branch each data route on `dbBackend()`; the D1 binding is request-scoped, so
+call `getD1()` inside the handler.
 
-- `app/api/preferences/route.ts` — **DONE** (`PreferencesD1Repo`). This is the
-  reference pattern for the rest.
-- `app/fsrs.ts` + `app/api/fsrs/[[...all]]` — **TODO**. The FSRS handler. Use
-  `FsrsNotesD1Repo` (get/getById/list/due/count/upsert/delete/updateUrl). The
-  HLC conflict logic is backend-agnostic; only the data calls change. `id`
-  lookups now resolve via the `fsrs_notes.id` column.
-- `app/api/roadmap/*` — **TODO** — `RoadmapGoalsD1Repo`.
-- `app/api/token/route.ts` + `lib/getApiTokensCollection.ts` — **TODO** —
-  `ApiTokensD1Repo`.
-- `app/api/export/yaml` + `app/api/import/yaml` — **TODO** — point at the repos.
-
-The D1 binding is request-scoped: call `getD1()` inside the handler.
+- `app/api/preferences/route.ts` — **DONE** (`PreferencesD1Repo`).
+- `app/api/export/yaml` + `app/api/import/yaml` — **DONE** (all repos).
+- `app/api/token/route.ts` — **DONE** (`ApiTokensD1Repo`; the token_hash is the
+  D1 id).
+- `app/api/roadmap/route.ts` — **DONE** (`RoadmapGoalsD1Repo`).
+- `app/fsrs.ts` + `app/api/fsrs/[[...all]]` — **TODO**. The FSRS handler is a
+  ~660-line closure built around a MongoDB collection (`find`/`findOne`/
+  `findOneAndUpdate` with `$set`/`$push`/`$setOnInsert`/`aggregate`). Wiring it
+  to D1 means refactoring the handler's data calls onto `FsrsNotesD1Repo`
+  (get/getById/list/due/count/upsert/delete/updateUrl — all present). The HLC
+  conflict logic and FSRS scheduling are backend-agnostic; only the data calls
+  change. `id` lookups resolve via the `fsrs_notes.id` column. This is the
+  largest remaining wiring task and should be verified against a real D1
+  instance (Phase 1) since the review path is the app's core flow.
+- `app/api/roadmap/[id]/progress` and `app/api/roadmap/generate` — **TODO** —
+  these read roadmap goals + fsrs notes; wire alongside the FSRS handler.
 
 ### 2b. Swap better-auth to D1 — DONE
 
@@ -203,7 +208,7 @@ Keep the Vercel deployment live but idle for a few days as the instant rollback.
 | --- | --- |
 | 0 — Foundation | DONE (committed, tested) |
 | 1 — Provision CF | needs Cloudflare account access |
-| 2 — Code wiring | auth swap DONE; preferences route DONE; fsrs/roadmap/token/yaml routes, R2, userscript TODO |
+| 2 — Code wiring | auth swap DONE; preferences/export/import/token/roadmap routes DONE; FSRS handler, R2, userscript TODO |
 | 3 — Data migration | script ready; run after Phase 2 |
 | 4 — Preview deploy + QA | pending |
 | 5 — DNS cutover | pending |
