@@ -67,7 +67,10 @@ CREATE INDEX IF NOT EXISTS idx_verification_identifier ON verification(identifie
 -- ── App: fsrs_notes ──────────────────────────────────────────────────────────
 -- Replaces the per-user MongoDB collections `FSRSNotes@{email}`.
 -- card / log / speedMarkers / hlc are stored as JSON TEXT.
+-- `id` carries the MongoDB _id across migration (UUID for notes created later),
+-- so the userscript's id-based lookups keep working unchanged.
 CREATE TABLE IF NOT EXISTS fsrs_notes (
+  id            TEXT NOT NULL UNIQUE,
   user_id       TEXT NOT NULL,
   url           TEXT NOT NULL,
   title         TEXT,
@@ -81,6 +84,7 @@ CREATE TABLE IF NOT EXISTS fsrs_notes (
   PRIMARY KEY (user_id, url)
 );
 CREATE INDEX IF NOT EXISTS idx_fsrs_notes_due ON fsrs_notes(user_id, card_due);
+CREATE INDEX IF NOT EXISTS idx_fsrs_notes_id ON fsrs_notes(id);
 
 -- ── App: roadmap_goals ───────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS roadmap_goals (

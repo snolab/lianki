@@ -84,6 +84,7 @@ export function verificationRow(doc: Doc): Record<string, unknown> {
 export function fsrsNoteRow(userId: string, doc: Doc): Record<string, unknown> {
   const card = (doc.card ?? {}) as Doc;
   return {
+    id: idOf(doc),
     user_id: userId,
     url: doc.url,
     title: doc.title ?? null,

@@ -101,6 +101,25 @@ describe("FsrsNotesD1Repo", () => {
     expect(await repo.getByUrl("https://example.com/new")).not.toBeNull();
   });
 
+  test("upsert returns a stable id; getById finds the note", async () => {
+    const repo = new FsrsNotesD1Repo(d1 as unknown as D1Like, USER);
+    const id = await repo.upsert(makeNote("https://example.com/a"));
+    expect(typeof id).toBe("string");
+    const byId = await repo.getById(id);
+    expect(byId!.url).toBe("https://example.com/a");
+    expect(byId!.id).toBe(id);
+    // id is preserved across updates
+    const id2 = await repo.upsert(makeNote("https://example.com/a", { title: "Updated" }));
+    expect(id2).toBe(id);
+  });
+
+  test("upsert honours an explicit id (migration case)", async () => {
+    const repo = new FsrsNotesD1Repo(d1 as unknown as D1Like, USER);
+    const id = await repo.upsert(makeNote("https://example.com/a"), "mongo-objectid-123");
+    expect(id).toBe("mongo-objectid-123");
+    expect((await repo.getById("mongo-objectid-123"))!.url).toBe("https://example.com/a");
+  });
+
   test("notes are isolated per user", async () => {
     const repoA = new FsrsNotesD1Repo(d1 as unknown as D1Like, "user-a");
     const repoB = new FsrsNotesD1Repo(d1 as unknown as D1Like, "user-b");
