@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lianki",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-05-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  // D1 database binding. `database_id` is filled in after `wrangler d1 create lianki`.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lianki",
+      "database_id": "REPLACE_AFTER_wrangler_d1_create",
+      "migrations_dir": "db/migrations"
+    }
+  ],
+  // R2 bucket for TTS audio cache and readMaterials binary content (replaces MongoDB GridFS).
+  "r2_buckets": [
+    {
+      "binding": "BLOBS",
+      "bucket_name": "lianki-blobs"
+    }
+  ]
+}

@@ -14,6 +14,10 @@
 /.next/
 /out/
 
+# cloudflare / opennext
+/.open-next/
+.wrangler/
+
 # intlayer
 /.intlayer/
 

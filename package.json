@@ -42,7 +42,7 @@
     "marked": "^17.0.4",
     "mongodb": "^7.1.0",
     "mongodb-rest-relay": "^1.12.0",
-    "next": "^16.1.6",
+    "next": "16.2.6",
     "next-intlayer": "^8.2.3",
     "nodemailer": "^8.0.1",
     "octokit": "^5.0.5",
@@ -60,6 +60,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",
+    "@opennextjs/cloudflare": "^1.19.10",
     "@playwright/test": "^1.58.2",
     "@secretlint/secretlint-rule-preset-recommend": "^11.3.1",
     "@storybook/addon-a11y": "^10.3.5",
@@ -86,7 +87,8 @@
     "storybook": "^10.3.5",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.0",
+    "wrangler": "^4.92.0"
   },
   "lint-staged": {
     "**/*": "secretlint",
