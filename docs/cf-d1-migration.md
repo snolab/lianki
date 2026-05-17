@@ -100,17 +100,12 @@ call `getD1()` inside the handler.
 - `app/api/token/route.ts` — **DONE** (`ApiTokensD1Repo`; the token_hash is the
   D1 id).
 - `app/api/roadmap/route.ts` — **DONE** (`RoadmapGoalsD1Repo`).
-- `app/fsrs.ts` + `app/api/fsrs/[[...all]]` — **TODO**. The FSRS handler is a
-  ~660-line closure built around a MongoDB collection (`find`/`findOne`/
-  `findOneAndUpdate` with `$set`/`$push`/`$setOnInsert`/`aggregate`). Wiring it
-  to D1 means refactoring the handler's data calls onto `FsrsNotesD1Repo`
-  (get/getById/list/due/count/upsert/delete/updateUrl — all present). The HLC
-  conflict logic and FSRS scheduling are backend-agnostic; only the data calls
-  change. `id` lookups resolve via the `fsrs_notes.id` column. This is the
-  largest remaining wiring task and should be verified against a real D1
-  instance (Phase 1) since the review path is the app's core flow.
+- `app/fsrs.ts` + `app/api/fsrs/[[...all]]` — **DONE**. `app/fsrsNotesD1Collection.ts`
+  is a shim implementing the MongoDB Collection subset the handler uses, backed
+  by `FsrsNotesD1Repo`; the handler body is unchanged (one line picks the
+  collection by `DB_BACKEND`). Covered by `unit/fsrs-d1-collection.test.ts`.
 - `app/api/roadmap/[id]/progress` and `app/api/roadmap/generate` — **TODO** —
-  these read roadmap goals + fsrs notes; wire alongside the FSRS handler.
+  these read roadmap goals + fsrs notes; wire alongside the rest.
 
 ### 2b. Swap better-auth to D1 — DONE
 
@@ -124,16 +119,21 @@ call sites unchanged. `trialEndsAt`/`proEndsAt` stay out-of-band in
 the Kysely D1 adapter and diff against `0001_init.sql`, in case better-auth
 1.5.4 expects different columns/types.
 
-### 2c. Move GridFS blobs to R2
+### 2c. Move GridFS blobs to R2 — DONE
 
-Rewrite to use the `BLOBS` R2 binding instead of MongoDB GridFS:
+- `app/api/tts/route.ts` — TTS audio cache via `lib/ttsCache.ts` (R2 / GridFS).
+  `app/api/polyglot/tts` does not cache, so it needed no change.
+- `app/[locale]/read/getReadMaterialsCollection.ts` — save/get/delete/list/getById
+  branch on `dbBackend()`; D1 mode stores metadata in `read_materials` and large
+  content in R2 (`read/{id}`).
 
-- `app/api/tts/route.ts`, `app/api/polyglot/tts/route.ts` — TTS audio cache.
-- `app/[locale]/read/getReadMaterialsCollection.ts` — readMaterials content;
-  metadata moves to the `read_materials` D1 table, large content to R2 keyed
-  by `r2_key`.
+Note: the migration script does **not** copy GridFS blobs into R2. The TTS cache
+regenerates on demand; the single existing readMaterials doc, if needed, can be
+re-added after cutover.
 
-### 2d. Remove the IndexedDB mirror
+### 2d. Remove the IndexedDB mirror — TODO (deferred, non-blocking)
+
+Best done after cutover is stable (does not block the D1 migration):
 
 - Delete `syncToSiteDB()` from `src/lianki.user.ts` (keep the GM_setValue cache).
 - Drop IndexedDB reads in `GuestListClient.tsx` / `SyncStatusBanner.tsx`;
@@ -149,35 +149,36 @@ Rewrite to use the `BLOBS` R2 binding instead of MongoDB GridFS:
 
 ---
 
-## Phase 3 — Migrate the data (USER, after Phase 2)
+## Phase 3 — Migrate the data — DONE (re-runnable)
+
+The D1 `lianki` database (SNOLAB account) already has the schema applied and a
+first data load (6 users, 1609 notes, 3 api tokens). To refresh it before
+cutover, re-run — `INSERT OR REPLACE` makes this idempotent:
 
 ```bash
 # dry run — prints row counts, writes nothing
-bun scripts/migrate-mongo-to-d1.ts --dry-run
+bun --env-file=.env.local scripts/migrate-mongo-to-d1.ts --dry-run
 
-# generate the SQL, then load it
-bun scripts/migrate-mongo-to-d1.ts --out=db/migration-data.sql
-wrangler d1 execute lianki --remote --file=db/migration-data.sql
+# regenerate the SQL (real user data — kept out of git under tmp/) and load it
+bun --env-file=.env.local scripts/migrate-mongo-to-d1.ts --out=tmp/migration-data.sql
+wrangler d1 execute lianki --remote --file=tmp/migration-data.sql --yes
 ```
-
-Resolve any `orphan FSRSNotes/RoadmapGoals` warnings (cards under an email with
-no matching `user` record) before cutover.
-
-GridFS → R2: covered once 2c lands — TTS cache can also just be left to
-regenerate on demand.
 
 ---
 
 ## Phase 4 — Deploy to a CF preview & QA (USER)
+
+First set the Worker secrets (mirror `.env.local`), then build and deploy:
 
 ```bash
 DB_BACKEND=d1 bunx opennextjs-cloudflare build
 wrangler deploy   # default *.workers.dev URL — no DNS change yet
 ```
 
-QA on the preview URL: email + GitHub + Google sign-in, card review, due list,
-import/export YAML, roadmap, TTS, read. Add the preview URL to the Google/GitHub
-OAuth callback allow-lists for testing.
+The Worker also needs `DB_BACKEND=d1` set as a plain var (wrangler.jsonc `vars`
+or the dashboard). QA on the preview URL: email + GitHub + Google sign-in, card
+review, due list, import/export YAML, roadmap, TTS, read. Add the preview URL to
+the Google/GitHub OAuth callback allow-lists for testing.
 
 ---
 
@@ -207,11 +208,12 @@ Keep the Vercel deployment live but idle for a few days as the instant rollback.
 | Phase | State |
 | --- | --- |
 | 0 — Foundation | DONE (committed, tested) |
-| 1 — Provision CF | needs Cloudflare account access |
-| 2 — Code wiring | auth swap DONE; preferences/export/import/token/roadmap routes DONE; FSRS handler, R2, userscript TODO |
-| 3 — Data migration | script ready; run after Phase 2 |
-| 4 — Preview deploy + QA | pending |
+| 1 — Provision CF | DONE — D1 `lianki` + R2 `lianki-blobs` created, schema applied |
+| 2 — Code wiring | DONE — auth, FSRS handler, all data routes, R2. Only the IndexedDB-mirror cleanup (2d) is deferred. |
+| 3 — Data migration | DONE — first load done (6 users, 1609 notes); re-runnable |
+| 4 — Preview deploy + QA | pending — needs Worker secrets, then deploy |
 | 5 — DNS cutover | pending |
 
-The build (`bun run build`) and OpenNext build pass with all Phase 2 work so
-far; the D1 code paths are unverified until a D1 instance exists (Phase 1).
+The build (`bun run build`) and OpenNext build pass. The D1 code paths are
+exercised by unit tests against SQLite but not yet verified on a live Worker —
+Phase 4 (preview deploy) is the verification step.
