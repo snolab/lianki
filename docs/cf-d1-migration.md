@@ -85,40 +85,39 @@ wrangler d1 execute lianki --remote --file=db/migrations/0001_init.sql
 
 ---
 
-## Phase 2 — Remaining code work (NOT yet done)
+## Phase 2 — Code work
 
-These are application-wiring changes. Each is gated on `dbBackend() === "d1"`
-so the MongoDB path stays intact until cutover.
+Each change is gated on `dbBackend() === "d1"` so the MongoDB path stays
+intact until cutover.
 
 ### 2a. Wire API routes to the D1 repos
 
 Branch each data route on `dbBackend()`:
 
-- `app/fsrs.ts` + `app/api/fsrs/[[...all]]` — the FSRS handler. Use
-  `FsrsNotesD1Repo` for get/list/due/count/upsert/delete/updateUrl. The HLC
-  conflict logic is backend-agnostic; only the read/write calls change.
-- `app/api/roadmap/*` — `RoadmapGoalsD1Repo`.
-- `app/api/preferences/route.ts` — `PreferencesD1Repo`.
-- `app/api/token/route.ts` + `lib/getApiTokensCollection.ts` — `ApiTokensD1Repo`.
-- `app/api/export/yaml` + `app/api/import/yaml` — already backend-agnostic in
-  shape; point them at the repos.
+- `app/api/preferences/route.ts` — **DONE** (`PreferencesD1Repo`). This is the
+  reference pattern for the rest.
+- `app/fsrs.ts` + `app/api/fsrs/[[...all]]` — **TODO**. The FSRS handler. Use
+  `FsrsNotesD1Repo` (get/getById/list/due/count/upsert/delete/updateUrl). The
+  HLC conflict logic is backend-agnostic; only the data calls change. `id`
+  lookups now resolve via the `fsrs_notes.id` column.
+- `app/api/roadmap/*` — **TODO** — `RoadmapGoalsD1Repo`.
+- `app/api/token/route.ts` + `lib/getApiTokensCollection.ts` — **TODO** —
+  `ApiTokensD1Repo`.
+- `app/api/export/yaml` + `app/api/import/yaml` — **TODO** — point at the repos.
 
-The D1 binding is request-scoped: call `getD1()` inside the handler, not at
-module load.
+The D1 binding is request-scoped: call `getD1()` inside the handler.
 
-### 2b. Swap better-auth to D1
+### 2b. Swap better-auth to D1 — DONE
 
-`auth.ts` currently builds `betterAuth()` at module load with `mongodbAdapter`.
-D1 bindings only exist per-request, so `auth` must become request-scoped:
+`auth.ts` now exposes `getAuth()`, which builds the better-auth instance per
+`DB_BACKEND`: D1 mode uses `kysely-d1`'s `D1Dialect` + `kyselyAdapter`, built
+lazily (request-scoped binding). A lazy `Proxy` keeps existing `import { auth }`
+call sites unchanged. `trialEndsAt`/`proEndsAt` stay out-of-band in
+`lib/membership.ts`.
 
-- Add `kysely-d1` (`D1Dialect`). Build `new Kysely({ dialect: new D1Dialect({
-  database: getD1() }) })` and pass via `kyselyAdapter(db, { type: "sqlite" })`.
-- Wrap `auth` in a function/cache keyed off the request context, or use
-  `@opennextjs/cloudflare`'s context to lazily construct it.
-- Carry `trialEndsAt` / `proEndsAt` as better-auth `user.additionalFields`.
-- **Verify the auth schema:** run `bunx @better-auth/cli generate` against the
-  Kysely D1 adapter and diff against `0001_init.sql`. Adjust the migration if
-  better-auth 1.5.4 expects different columns/types.
+**Still verify before cutover:** run `bunx @better-auth/cli generate` against
+the Kysely D1 adapter and diff against `0001_init.sql`, in case better-auth
+1.5.4 expects different columns/types.
 
 ### 2c. Move GridFS blobs to R2
 
@@ -204,7 +203,10 @@ Keep the Vercel deployment live but idle for a few days as the instant rollback.
 | --- | --- |
 | 0 — Foundation | DONE (committed, tested) |
 | 1 — Provision CF | needs Cloudflare account access |
-| 2 — Code wiring | not started |
+| 2 — Code wiring | auth swap DONE; preferences route DONE; fsrs/roadmap/token/yaml routes, R2, userscript TODO |
 | 3 — Data migration | script ready; run after Phase 2 |
 | 4 — Preview deploy + QA | pending |
 | 5 — DNS cutover | pending |
+
+The build (`bun run build`) and OpenNext build pass with all Phase 2 work so
+far; the D1 code paths are unverified until a D1 instance exists (Phase 1).
