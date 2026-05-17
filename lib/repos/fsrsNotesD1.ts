@@ -7,7 +7,7 @@ export type StoredNote = FSRSNote & { id: string };
 
 type Row = {
   id: string;
-  user_id: string;
+  email: string;
   url: string;
   title: string | null;
   card: string;
@@ -35,33 +35,36 @@ function rowToNote(row: Row): StoredNote {
   return { ...(restoreNoteFromExport(raw) as unknown as FSRSNote), id: row.id };
 }
 
-/** D1-backed access to one user's FSRS notes (replaces MongoDB `FSRSNotes@{email}`). */
+/**
+ * D1-backed access to one user's FSRS notes (replaces MongoDB `FSRSNotes@{email}`).
+ * Keyed by `email`, matching the per-email MongoDB collection model.
+ */
 export class FsrsNotesD1Repo {
   constructor(
     private readonly db: D1Like,
-    private readonly userId: string,
+    private readonly email: string,
   ) {}
 
   async getByUrl(url: string): Promise<StoredNote | null> {
     const row = await this.db
-      .prepare("SELECT * FROM fsrs_notes WHERE user_id = ? AND url = ?")
-      .bind(this.userId, url)
+      .prepare("SELECT * FROM fsrs_notes WHERE email = ? AND url = ?")
+      .bind(this.email, url)
       .first<Row>();
     return row ? rowToNote(row) : null;
   }
 
   async getById(id: string): Promise<StoredNote | null> {
     const row = await this.db
-      .prepare("SELECT * FROM fsrs_notes WHERE user_id = ? AND id = ?")
-      .bind(this.userId, id)
+      .prepare("SELECT * FROM fsrs_notes WHERE email = ? AND id = ?")
+      .bind(this.email, id)
       .first<Row>();
     return row ? rowToNote(row) : null;
   }
 
   async listAll(): Promise<StoredNote[]> {
     const { results } = await this.db
-      .prepare("SELECT * FROM fsrs_notes WHERE user_id = ? ORDER BY card_due")
-      .bind(this.userId)
+      .prepare("SELECT * FROM fsrs_notes WHERE email = ? ORDER BY card_due")
+      .bind(this.email)
       .all<Row>();
     return results.map(rowToNote);
   }
@@ -69,54 +72,54 @@ export class FsrsNotesD1Repo {
   async listDue(now: Date, limit: number): Promise<StoredNote[]> {
     const { results } = await this.db
       .prepare(
-        "SELECT * FROM fsrs_notes WHERE user_id = ? AND card_due <= ? ORDER BY card_due LIMIT ?",
+        "SELECT * FROM fsrs_notes WHERE email = ? AND card_due <= ? ORDER BY card_due LIMIT ?",
       )
-      .bind(this.userId, now.toISOString(), limit)
+      .bind(this.email, now.toISOString(), limit)
       .all<Row>();
     return results.map(rowToNote);
   }
 
   async countAll(): Promise<number> {
     const row = await this.db
-      .prepare("SELECT COUNT(*) AS c FROM fsrs_notes WHERE user_id = ?")
-      .bind(this.userId)
+      .prepare("SELECT COUNT(*) AS c FROM fsrs_notes WHERE email = ?")
+      .bind(this.email)
       .first<{ c: number }>();
     return row?.c ?? 0;
   }
 
   async countDue(now: Date): Promise<number> {
     const row = await this.db
-      .prepare("SELECT COUNT(*) AS c FROM fsrs_notes WHERE user_id = ? AND card_due <= ?")
-      .bind(this.userId, now.toISOString())
+      .prepare("SELECT COUNT(*) AS c FROM fsrs_notes WHERE email = ? AND card_due <= ?")
+      .bind(this.email, now.toISOString())
       .first<{ c: number }>();
     return row?.c ?? 0;
   }
 
   /**
-   * Insert or replace the note keyed by (user_id, url). Returns the note id.
+   * Insert or replace the note keyed by (email, url). Returns the note id.
    * Reuses an existing row's id, or the passed id, or a fresh UUID. The id
    * never changes on update (ON CONFLICT leaves it untouched).
    */
   async upsert(note: FSRSNote, id?: string): Promise<string> {
     const existing = await this.db
-      .prepare("SELECT id FROM fsrs_notes WHERE user_id = ? AND url = ?")
-      .bind(this.userId, note.url)
+      .prepare("SELECT id FROM fsrs_notes WHERE email = ? AND url = ?")
+      .bind(this.email, note.url)
       .first<{ id: string }>();
     const noteId = existing?.id ?? id ?? crypto.randomUUID();
     const cardDue = new Date(note.card.due).toISOString();
     await this.db
       .prepare(
         `INSERT INTO fsrs_notes
-           (id, user_id, url, title, card, log, notes, speed_markers, hlc, device_id, card_due)
+           (id, email, url, title, card, log, notes, speed_markers, hlc, device_id, card_due)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(user_id, url) DO UPDATE SET
+         ON CONFLICT(email, url) DO UPDATE SET
            title = excluded.title, card = excluded.card, log = excluded.log,
            notes = excluded.notes, speed_markers = excluded.speed_markers,
            hlc = excluded.hlc, device_id = excluded.device_id, card_due = excluded.card_due`,
       )
       .bind(
         noteId,
-        this.userId,
+        this.email,
         note.url,
         note.title ?? null,
         JSON.stringify(note.card),
@@ -133,15 +136,15 @@ export class FsrsNotesD1Repo {
 
   async delete(url: string): Promise<void> {
     await this.db
-      .prepare("DELETE FROM fsrs_notes WHERE user_id = ? AND url = ?")
-      .bind(this.userId, url)
+      .prepare("DELETE FROM fsrs_notes WHERE email = ? AND url = ?")
+      .bind(this.email, url)
       .run();
   }
 
   async updateUrl(oldUrl: string, newUrl: string): Promise<void> {
     await this.db
-      .prepare("UPDATE fsrs_notes SET url = ? WHERE user_id = ? AND url = ?")
-      .bind(newUrl, this.userId, oldUrl)
+      .prepare("UPDATE fsrs_notes SET url = ? WHERE email = ? AND url = ?")
+      .bind(newUrl, this.email, oldUrl)
       .run();
   }
 }

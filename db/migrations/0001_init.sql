@@ -66,12 +66,13 @@ CREATE INDEX IF NOT EXISTS idx_verification_identifier ON verification(identifie
 
 -- ── App: fsrs_notes ──────────────────────────────────────────────────────────
 -- Replaces the per-user MongoDB collections `FSRSNotes@{email}`.
--- card / log / speedMarkers / hlc are stored as JSON TEXT.
+-- Keyed by `email` to match the MongoDB model exactly (collections were named
+-- per-email). card / log / speedMarkers / hlc are stored as JSON TEXT.
 -- `id` carries the MongoDB _id across migration (UUID for notes created later),
 -- so the userscript's id-based lookups keep working unchanged.
 CREATE TABLE IF NOT EXISTS fsrs_notes (
   id            TEXT NOT NULL UNIQUE,
-  user_id       TEXT NOT NULL,
+  email         TEXT NOT NULL,
   url           TEXT NOT NULL,
   title         TEXT,
   card          TEXT NOT NULL,            -- JSON: ts-fsrs Card
@@ -81,22 +82,23 @@ CREATE TABLE IF NOT EXISTS fsrs_notes (
   hlc           TEXT,                     -- JSON: HLC
   device_id     TEXT,
   card_due      TEXT NOT NULL,            -- denormalized card.due for due-query indexing
-  PRIMARY KEY (user_id, url)
+  PRIMARY KEY (email, url)
 );
-CREATE INDEX IF NOT EXISTS idx_fsrs_notes_due ON fsrs_notes(user_id, card_due);
+CREATE INDEX IF NOT EXISTS idx_fsrs_notes_due ON fsrs_notes(email, card_due);
 CREATE INDEX IF NOT EXISTS idx_fsrs_notes_id ON fsrs_notes(id);
 
 -- ── App: roadmap_goals ───────────────────────────────────────────────────────
+-- Keyed by `email` to match the MongoDB `RoadmapGoals@{email}` model.
 CREATE TABLE IF NOT EXISTS roadmap_goals (
   id         TEXT PRIMARY KEY NOT NULL,
-  user_id    TEXT NOT NULL,
+  email      TEXT NOT NULL,
   topic      TEXT NOT NULL,
   nodes      TEXT NOT NULL DEFAULT '[]',  -- JSON: RoadmapNode[]
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_roadmap_goals_user ON roadmap_goals(user_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_roadmap_goals_user_topic ON roadmap_goals(user_id, topic);
+CREATE INDEX IF NOT EXISTS idx_roadmap_goals_email ON roadmap_goals(email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_roadmap_goals_email_topic ON roadmap_goals(email, topic);
 
 -- ── App: preferences ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS preferences (

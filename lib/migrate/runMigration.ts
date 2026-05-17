@@ -12,7 +12,6 @@ import {
   roadmapGoalRow,
   preferenceRow,
   apiTokenRow,
-  idOf,
 } from "./mappers";
 
 type Doc = Record<string, unknown>;
@@ -36,14 +35,7 @@ export async function generateMigrationSql(db: Db): Promise<MigrationResult> {
   }
 
   // ── auth tables ────────────────────────────────────────────────────────────
-  const users = await db.collection("user").find({}).toArray();
-  emit("user", users.map(userRow));
-
-  const idByEmail = new Map<string, string>();
-  for (const u of users) {
-    if (typeof u.email === "string") idByEmail.set(u.email, idOf(u));
-  }
-
+  emit("user", (await db.collection("user").find({}).toArray()).map(userRow));
   emit("session", (await db.collection("session").find({}).toArray()).map(sessionRow));
   emit("account", (await db.collection("account").find({}).toArray()).map(accountRow));
   emit(
@@ -51,21 +43,19 @@ export async function generateMigrationSql(db: Db): Promise<MigrationResult> {
     (await db.collection("verification").find({}).toArray()).map(verificationRow),
   );
 
-  // ── per-user app collections ───────────────────────────────────────────────
+  // ── per-user app collections (keyed by the email in the collection name) ───
   const collections = await db.listCollections().toArray();
 
   const noteRows: Doc[] = [];
   for (const c of collections) {
     if (!c.name.startsWith("FSRSNotes@")) continue;
     const email = c.name.slice("FSRSNotes@".length);
-    const userId = idByEmail.get(email);
-    if (!userId) {
-      const n = await db.collection(c.name).countDocuments();
-      warnings.push(`orphan FSRSNotes for unknown user ${email} (${n} notes skipped)`);
+    if (!email) {
+      warnings.push(`skipped FSRSNotes collection with empty email suffix: ${c.name}`);
       continue;
     }
     for (const d of await db.collection(c.name).find({}).toArray()) {
-      noteRows.push(fsrsNoteRow(userId, d));
+      noteRows.push(fsrsNoteRow(email, d));
     }
   }
   emit("fsrs_notes", noteRows);
@@ -74,13 +64,12 @@ export async function generateMigrationSql(db: Db): Promise<MigrationResult> {
   for (const c of collections) {
     if (!c.name.startsWith("RoadmapGoals@")) continue;
     const email = c.name.slice("RoadmapGoals@".length);
-    const userId = idByEmail.get(email);
-    if (!userId) {
-      warnings.push(`orphan RoadmapGoals for unknown user ${email} (skipped)`);
+    if (!email) {
+      warnings.push(`skipped RoadmapGoals collection with empty email suffix: ${c.name}`);
       continue;
     }
     for (const d of await db.collection(c.name).find({}).toArray()) {
-      goalRows.push(roadmapGoalRow(userId, d));
+      goalRows.push(roadmapGoalRow(email, d));
     }
   }
   emit("roadmap_goals", goalRows);

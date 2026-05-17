@@ -155,11 +155,12 @@ describe("generateMigrationSql (Mongo -> D1 end to end)", () => {
     expect(counts.user).toBe(1);
     expect(counts.session).toBe(1);
     expect(counts.account).toBe(1);
-    expect(counts.fsrs_notes).toBe(1);
+    // alice's note + the ghost note — both keyed by email, so neither is dropped
+    expect(counts.fsrs_notes).toBe(2);
     expect(counts.roadmap_goals).toBe(1);
     expect(counts.preferences).toBe(1);
     expect(counts.api_tokens).toBe(1);
-    expect(warnings.some((w) => w.includes("ghost@nowhere.com"))).toBe(true);
+    expect(warnings).toHaveLength(0);
 
     // apply schema + generated data into a fresh in-memory D1
     const d1 = createTestD1(SCHEMA);
@@ -172,17 +173,19 @@ describe("generateMigrationSql (Mongo -> D1 end to end)", () => {
     expect(user!.emailVerified).toBe(1);
     expect(user!.trialEndsAt).toBe("2026-08-01T00:00:00.000Z");
 
-    // fsrs note — mapped to user_id u1, dates restored on read
-    const notes = new FsrsNotesD1Repo(db, "u1");
+    // fsrs note — keyed by email, dates restored on read
+    const notes = new FsrsNotesD1Repo(db, "alice@example.com");
     expect(await notes.countAll()).toBe(1);
     const note = await notes.getByUrl("https://example.com/page");
     expect(note!.title).toBe("A page");
     expect(note!.notes).toBe("note's text");
     expect(note!.card.due).toBeInstanceOf(Date);
     expect(note!.card.reps).toBe(2);
+    // the ghost collection migrated under its own email key
+    expect(await new FsrsNotesD1Repo(db, "ghost@nowhere.com").countAll()).toBe(1);
 
     // roadmap goal
-    const goals = await new RoadmapGoalsD1Repo(db, "u1").listAll();
+    const goals = await new RoadmapGoalsD1Repo(db, "alice@example.com").listAll();
     expect(goals).toHaveLength(1);
     expect(goals[0].topic).toBe("Japanese");
     expect(goals[0].nodes).toHaveLength(1);

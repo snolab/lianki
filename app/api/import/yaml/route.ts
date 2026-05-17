@@ -6,6 +6,12 @@ import { db } from "@/app/db";
 import { getFSRSNotesCollection } from "@/app/getFSRSNotesCollection";
 import { getRoadmapGoalsCollection } from "@/app/getRoadmapGoalsCollection";
 import { restoreNoteFromExport, restoreGoalFromExport, EXPORT_VERSION } from "@/lib/yaml-export";
+import { dbBackend, getD1 } from "@/lib/d1";
+import { FsrsNotesD1Repo } from "@/lib/repos/fsrsNotesD1";
+import { RoadmapGoalsD1Repo, PreferencesD1Repo } from "@/lib/repos/d1Repos";
+import type { FSRSNote } from "@/app/fsrs";
+import type { RoadmapGoal } from "@/types/roadmap";
+import type { FilterPattern } from "@/app/api/preferences/route";
 
 const zExport = z.object({
   version: z.string(),
@@ -55,38 +61,61 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: `Unsupported version: ${data.version}` }, { status: 400 });
   }
 
-  const FSRSNotes = getFSRSNotesCollection(email);
-  const RoadmapGoals = getRoadmapGoalsCollection(email);
-  const Preferences = db.collection("preferences");
-
   let notesUpserted = 0;
-  for (const raw of data.fsrsNotes) {
-    if (typeof raw.url !== "string" || !raw.url) continue;
-    const note = restoreNoteFromExport(raw);
-    await FSRSNotes.replaceOne({ url: raw.url }, note as any, { upsert: true });
-    notesUpserted++;
-  }
-
   let goalsUpserted = 0;
-  for (const raw of data.roadmapGoals) {
-    if (typeof raw.topic !== "string" || !raw.topic) continue;
-    const goal = restoreGoalFromExport(raw);
-    await RoadmapGoals.replaceOne({ topic: raw.topic }, goal as any, { upsert: true });
-    goalsUpserted++;
-  }
 
-  if (data.preferences) {
-    await Preferences.updateOne(
-      { userId },
-      {
-        $set: {
-          userId,
-          mobileExcludePatterns: data.preferences.mobileExcludePatterns ?? [],
-          updatedAt: new Date(),
+  if (dbBackend() === "d1") {
+    const d1 = getD1();
+    const notesRepo = new FsrsNotesD1Repo(d1, email);
+    for (const raw of data.fsrsNotes) {
+      if (typeof raw.url !== "string" || !raw.url) continue;
+      const note = restoreNoteFromExport(raw) as unknown as FSRSNote;
+      const id = typeof raw.id === "string" ? raw.id : undefined;
+      await notesRepo.upsert(note, id);
+      notesUpserted++;
+    }
+    const goalsRepo = new RoadmapGoalsD1Repo(d1, email);
+    for (const raw of data.roadmapGoals) {
+      if (typeof raw.topic !== "string" || !raw.topic) continue;
+      const goal = restoreGoalFromExport(raw) as unknown as RoadmapGoal & { id?: string };
+      await goalsRepo.upsertByTopic(goal);
+      goalsUpserted++;
+    }
+    if (data.preferences) {
+      await new PreferencesD1Repo(d1, userId).set(
+        (data.preferences.mobileExcludePatterns ?? []) as FilterPattern[],
+      );
+    }
+  } else {
+    const FSRSNotes = getFSRSNotesCollection(email);
+    const RoadmapGoals = getRoadmapGoalsCollection(email);
+    const Preferences = db.collection("preferences");
+
+    for (const raw of data.fsrsNotes) {
+      if (typeof raw.url !== "string" || !raw.url) continue;
+      const note = restoreNoteFromExport(raw);
+      await FSRSNotes.replaceOne({ url: raw.url }, note as any, { upsert: true });
+      notesUpserted++;
+    }
+    for (const raw of data.roadmapGoals) {
+      if (typeof raw.topic !== "string" || !raw.topic) continue;
+      const goal = restoreGoalFromExport(raw);
+      await RoadmapGoals.replaceOne({ topic: raw.topic }, goal as any, { upsert: true });
+      goalsUpserted++;
+    }
+    if (data.preferences) {
+      await Preferences.updateOne(
+        { userId },
+        {
+          $set: {
+            userId,
+            mobileExcludePatterns: data.preferences.mobileExcludePatterns ?? [],
+            updatedAt: new Date(),
+          },
         },
-      },
-      { upsert: true },
-    );
+        { upsert: true },
+      );
+    }
   }
 
   return Response.json({

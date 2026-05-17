@@ -7,7 +7,7 @@ import type { ApiToken } from "@/lib/getApiTokensCollection";
 
 type GoalRow = {
   id: string;
-  user_id: string;
+  email: string;
   topic: string;
   nodes: string;
   created_at: string;
@@ -20,52 +20,53 @@ function rowToGoal(row: GoalRow): RoadmapGoalWithId {
   return {
     id: row.id,
     topic: row.topic,
+    // row.email is the partition key, not part of the RoadmapGoal shape
     nodes: JSON.parse(row.nodes || "[]"),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
 }
 
-/** D1-backed access to one user's roadmap goals. */
+/** D1-backed access to one user's roadmap goals. Keyed by `email`. */
 export class RoadmapGoalsD1Repo {
   constructor(
     private readonly db: D1Like,
-    private readonly userId: string,
+    private readonly email: string,
   ) {}
 
   async listAll(): Promise<RoadmapGoalWithId[]> {
     const { results } = await this.db
-      .prepare("SELECT * FROM roadmap_goals WHERE user_id = ? ORDER BY created_at")
-      .bind(this.userId)
+      .prepare("SELECT * FROM roadmap_goals WHERE email = ? ORDER BY created_at")
+      .bind(this.email)
       .all<GoalRow>();
     return results.map(rowToGoal);
   }
 
   async getById(id: string): Promise<RoadmapGoalWithId | null> {
     const row = await this.db
-      .prepare("SELECT * FROM roadmap_goals WHERE user_id = ? AND id = ?")
-      .bind(this.userId, id)
+      .prepare("SELECT * FROM roadmap_goals WHERE email = ? AND id = ?")
+      .bind(this.email, id)
       .first<GoalRow>();
     return row ? rowToGoal(row) : null;
   }
 
-  /** Insert or replace keyed by (user_id, topic). Returns the row id. */
+  /** Insert or replace keyed by (email, topic). Returns the row id. */
   async upsertByTopic(goal: RoadmapGoal & { id?: string }): Promise<string> {
     const existing = await this.db
-      .prepare("SELECT id FROM roadmap_goals WHERE user_id = ? AND topic = ?")
-      .bind(this.userId, goal.topic)
+      .prepare("SELECT id FROM roadmap_goals WHERE email = ? AND topic = ?")
+      .bind(this.email, goal.topic)
       .first<{ id: string }>();
     const id = existing?.id ?? goal.id ?? crypto.randomUUID();
     await this.db
       .prepare(
-        `INSERT INTO roadmap_goals (id, user_id, topic, nodes, created_at, updated_at)
+        `INSERT INTO roadmap_goals (id, email, topic, nodes, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            topic = excluded.topic, nodes = excluded.nodes, updated_at = excluded.updated_at`,
       )
       .bind(
         id,
-        this.userId,
+        this.email,
         goal.topic,
         JSON.stringify(goal.nodes ?? []),
         new Date(goal.createdAt).toISOString(),
@@ -77,8 +78,8 @@ export class RoadmapGoalsD1Repo {
 
   async delete(id: string): Promise<void> {
     await this.db
-      .prepare("DELETE FROM roadmap_goals WHERE user_id = ? AND id = ?")
-      .bind(this.userId, id)
+      .prepare("DELETE FROM roadmap_goals WHERE email = ? AND id = ?")
+      .bind(this.email, id)
       .run();
   }
 }

@@ -81,11 +81,11 @@ export function verificationRow(doc: Doc): Record<string, unknown> {
 
 // ── app tables ───────────────────────────────────────────────────────────────
 
-export function fsrsNoteRow(userId: string, doc: Doc): Record<string, unknown> {
+export function fsrsNoteRow(email: string, doc: Doc): Record<string, unknown> {
   const card = (doc.card ?? {}) as Doc;
   return {
     id: idOf(doc),
-    user_id: userId,
+    email,
     url: doc.url,
     title: doc.title ?? null,
     card: doc.card ?? {},
@@ -98,10 +98,10 @@ export function fsrsNoteRow(userId: string, doc: Doc): Record<string, unknown> {
   };
 }
 
-export function roadmapGoalRow(userId: string, doc: Doc): Record<string, unknown> {
+export function roadmapGoalRow(email: string, doc: Doc): Record<string, unknown> {
   return {
     id: idOf(doc),
-    user_id: userId,
+    email,
     topic: doc.topic,
     nodes: doc.nodes ?? [],
     created_at: isoOrNow(doc.createdAt),

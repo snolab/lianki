@@ -4,6 +4,9 @@ import { db } from "@/app/db";
 import { getFSRSNotesCollection } from "@/app/getFSRSNotesCollection";
 import { getRoadmapGoalsCollection } from "@/app/getRoadmapGoalsCollection";
 import { serializeNoteForExport, serializeGoalForExport, EXPORT_VERSION } from "@/lib/yaml-export";
+import { dbBackend, getD1 } from "@/lib/d1";
+import { FsrsNotesD1Repo } from "@/lib/repos/fsrsNotesD1";
+import { RoadmapGoalsD1Repo, PreferencesD1Repo } from "@/lib/repos/d1Repos";
 
 export async function GET() {
   const user = await authUserOrNull();
@@ -12,21 +15,38 @@ export async function GET() {
   }
   const { email, id: userId } = user;
 
-  const [notes, goals, prefs] = await Promise.all([
-    getFSRSNotesCollection(email).find({}).toArray(),
-    getRoadmapGoalsCollection(email).find({}).toArray(),
-    db.collection("preferences").findOne({ userId }),
-  ]);
+  let notes: Record<string, unknown>[];
+  let goals: Record<string, unknown>[];
+  let mobileExcludePatterns: unknown[];
+
+  if (dbBackend() === "d1") {
+    const d1 = getD1();
+    const [d1Notes, d1Goals, prefs] = await Promise.all([
+      new FsrsNotesD1Repo(d1, email).listAll(),
+      new RoadmapGoalsD1Repo(d1, email).listAll(),
+      new PreferencesD1Repo(d1, userId).get(),
+    ]);
+    notes = d1Notes as unknown as Record<string, unknown>[];
+    goals = d1Goals as unknown as Record<string, unknown>[];
+    mobileExcludePatterns = prefs?.mobileExcludePatterns ?? [];
+  } else {
+    const [mNotes, mGoals, prefs] = await Promise.all([
+      getFSRSNotesCollection(email).find({}).toArray(),
+      getRoadmapGoalsCollection(email).find({}).toArray(),
+      db.collection("preferences").findOne({ userId }),
+    ]);
+    notes = mNotes as unknown as Record<string, unknown>[];
+    goals = mGoals as unknown as Record<string, unknown>[];
+    mobileExcludePatterns = prefs?.mobileExcludePatterns ?? [];
+  }
 
   const data = {
     version: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     email,
-    fsrsNotes: notes.map((n) => serializeNoteForExport(n as unknown as Record<string, unknown>)),
-    roadmapGoals: goals.map((g) => serializeGoalForExport(g as unknown as Record<string, unknown>)),
-    preferences: {
-      mobileExcludePatterns: prefs?.mobileExcludePatterns ?? [],
-    },
+    fsrsNotes: notes.map((n) => serializeNoteForExport(n)),
+    roadmapGoals: goals.map((g) => serializeGoalForExport(g)),
+    preferences: { mobileExcludePatterns },
   };
 
   const yaml = stringify(data);
