@@ -8,6 +8,11 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  // The deployed Worker uses the D1 backend; local `next dev` stays on mongodb
+  // via .env.local.
+  "vars": {
+    "DB_BACKEND": "d1"
+  },
   // D1 database (SNOLAB account). Bound as `DB` — see lib/d1/index.ts.
   "d1_databases": [
     {
