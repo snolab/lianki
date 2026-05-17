@@ -8,16 +8,17 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
-  // D1 database binding. `database_id` is filled in after `wrangler d1 create lianki`.
+  // D1 database (SNOLAB account). Bound as `DB` — see lib/d1/index.ts.
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "lianki",
-      "database_id": "REPLACE_AFTER_wrangler_d1_create",
+      "database_id": "a2c6b8cf-8a94-4cdc-99fd-bbbf6b679f4c",
       "migrations_dir": "db/migrations"
     }
   ],
-  // R2 bucket for TTS audio cache and readMaterials binary content (replaces MongoDB GridFS).
+  // R2 bucket for TTS audio cache and readMaterials content (replaces GridFS).
+  // Bound as `BLOBS` — see lib/d1/index.ts.
   "r2_buckets": [
     {
       "binding": "BLOBS",
