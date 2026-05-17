@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { join } from "path";
-import type { WithId } from "mongodb";
+import type { Collection, WithId } from "mongodb";
 import DIE from "phpdie";
 import { sflow, TextEncoderStream } from "sflow";
 import {
@@ -20,6 +20,20 @@ import { buildNextDueQuery, compareHLC, type HLC, newServerHLC, RATING_MAP } fro
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
 import { getHeatmapCacheTag } from "./lib/heatmap-cache";
 import { normalizeUrl } from "@/lib/normalizeUrl";
+import { dbBackend, getD1 } from "@/lib/d1";
+import { D1FsrsCollection } from "./fsrsNotesD1Collection";
+
+/**
+ * The FSRS notes collection for the active backend. In D1 mode this is a shim
+ * exposing the MongoDB Collection methods the handler uses; the handler body
+ * is backend-agnostic.
+ */
+function getFsrsNotes(email?: string): Collection<FSRSNote> {
+  if (dbBackend() === "d1") {
+    return new D1FsrsCollection(getD1(), email ?? "") as unknown as Collection<FSRSNote>;
+  }
+  return getFSRSNotesCollection(email);
+}
 
 const LIANKI_USERSCRIPT_VERSION = (() => {
   try {
@@ -61,7 +75,7 @@ function nextDueQuery(req: Request, excludeUrl?: string) {
 }
 
 export const fsrsHandler = async (req: Request, email?: string) => {
-  const FSRSNotes = getFSRSNotesCollection(email);
+  const FSRSNotes = getFsrsNotes(email);
 
   type RegexRoutes = Record<
     string,
