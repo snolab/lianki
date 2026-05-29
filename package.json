@@ -39,7 +39,7 @@
     "intlayer": "^8.2.3",
     "jszip": "^3.10.1",
     "keyv-github": "^1.5.1",
-    "kysely": "0.28.11",
+    "kysely": "0.28.17",
     "kysely-d1": "^0.4.0",
     "marked": "^17.0.4",
     "mongodb": "^7.1.0",
