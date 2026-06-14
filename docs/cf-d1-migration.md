@@ -104,8 +104,12 @@ call `getD1()` inside the handler.
   is a shim implementing the MongoDB Collection subset the handler uses, backed
   by `FsrsNotesD1Repo`; the handler body is unchanged (one line picks the
   collection by `DB_BACKEND`). Covered by `unit/fsrs-d1-collection.test.ts`.
-- `app/api/roadmap/[id]/progress` and `app/api/roadmap/generate` — **TODO** —
-  these read roadmap goals + fsrs notes; wire alongside the rest.
+- `app/api/roadmap/[id]/progress` — **DONE**. Branches on `dbBackend()`:
+  `RoadmapGoalsD1Repo.getById` + the `D1FsrsCollection` shim in D1 mode (the
+  `ObjectId.isValid` guard only runs for MongoDB, since D1 ids are UUIDs).
+- `app/api/roadmap/generate` — **N/A**. It only calls the OpenAI model and
+  returns the generated nodes to the client; it reads/writes no DB, so it needs
+  no backend branch.
 
 ### 2b. Swap better-auth to D1 — DONE
 
@@ -209,7 +213,7 @@ Keep the Vercel deployment live but idle for a few days as the instant rollback.
 | --- | --- |
 | 0 — Foundation | DONE (committed, tested) |
 | 1 — Provision CF | DONE — D1 `lianki` + R2 `lianki-blobs` created, schema applied |
-| 2 — Code wiring | DONE — auth, FSRS handler, all data routes, R2. Only the IndexedDB-mirror cleanup (2d) is deferred. |
+| 2 — Code wiring | DONE — auth, FSRS handler, all data routes (incl. roadmap progress), R2. Only the IndexedDB-mirror cleanup (2d) and the 2e Workers fixups remain. |
 | 3 — Data migration | DONE — first load done (6 users, 1609 notes); re-runnable |
 | 4 — Preview deploy + QA | pending — needs Worker secrets, then deploy |
 | 5 — DNS cutover | pending |

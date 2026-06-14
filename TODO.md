@@ -1,3 +1,52 @@
+# Lianki TODO
+
+## Local dev & QA (2026-05-30)
+
+### ✅ Done
+
+- [x] Full app runnable locally with **no external services** —
+      `cp .env.local.example .env.local && bun run dev:db && bun run dev`
+- [x] `bun run dev:db` — local MongoDB single-node **replica set** on :27018
+      (`scripts/dev-mongo.mjs`; replica set required because better-auth uses
+      transactions)
+- [x] Dev-only email+password auth in `auth.ts`, gated on
+      `NODE_ENV !== production && DEV_EMAIL_PASSWORD_AUTH=1` (can never enable in
+      prod); auto-signup on first sign-in; `http://localhost:3000` trusted origin
+- [x] `.env.local.example` committed template (does **not** touch the existing
+      `.env.local`, which holds real Atlas secrets)
+- [x] `bun run qa:api` — 30-check authed API flow (signup, add/review×4/due/
+      next-url/options, batch-add, notes, rename, speed-markers, HLC→409,
+      roadmap save+list+progress incl. 404/400, prefs, export, token, delete,
+      auth guard) — **30/30 passing**
+- [x] `bun run qa:ui` — Playwright sign-in → dashboard → roadmap — **passing**
+- [x] DEVELOPMENT.md quick-start + local-QA section
+
+### 🚧 Next
+
+- [ ] Commit the above on a machine with Node ≥22.12 (husky `vitest` step fails
+      on this sandbox's Node 22.5.1 only; do **not** use `--no-verify`)
+- [ ] Optional: add a `qa:api`/`qa:ui` smoke step to CI against a dev server
+
+## Cloudflare + D1 migration (see `docs/cf-d1-migration.md`)
+
+### ✅ Done
+
+- [x] Phase 2a — `app/api/roadmap/[id]/progress` wired to D1/Mongo backends
+      (verified via `qa:api`); `roadmap/generate` confirmed N/A (no DB access)
+- [x] `unit/mongo-crud.test.ts` — 18-case CRUD + HLC matrix for `fsrsHandler`
+- [x] `vitest.config.ts` — ESM-safe `@` path alias
+
+### 🚧 Remaining
+
+- [ ] Phase 2b — verify better-auth Kysely-D1 schema vs `0001_init.sql`
+      (`bunx @better-auth/cli generate`)
+- [ ] Phase 2d — remove the IndexedDB site mirror (deferred, non-blocking)
+- [ ] Phase 2e — confirm `fs.readFileSync(process.cwd()…)` works on Workers;
+      repoint the hardcoded Vercel beta URL in `middleware.ts`
+- [ ] Phase 4/5 (USER) — preview deploy + QA, then DNS cutover
+
+---
+
 # Unified Header Implementation Progress
 
 ## ✅ Completed Tasks

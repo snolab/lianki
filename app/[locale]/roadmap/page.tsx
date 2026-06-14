@@ -7,6 +7,8 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { redirect } from "next/navigation";
 import RoadmapClient from "./components/RoadmapClient";
 import { getRoadmapGoalsCollection } from "@/app/getRoadmapGoalsCollection";
+import { dbBackend, getD1 } from "@/lib/d1";
+import { RoadmapGoalsD1Repo } from "@/lib/repos/d1Repos";
 
 export const dynamic = "force-dynamic";
 
@@ -31,8 +33,17 @@ export default async function RoadmapPage({ params }: Props) {
   }
 
   const email = user.email;
-  const collection = getRoadmapGoalsCollection(email);
-  const goals = await collection.find({}).sort({ updatedAt: -1 }).toArray();
+  // Mirror /api/roadmap GET: on D1, list via the repo and expose `_id` (= id) so
+  // RoadmapClient treats both backends the same. The mongo driver is stubbed in
+  // the Cloudflare build, so the direct collection path 500s on D1.
+  let goals;
+  if (dbBackend() === "d1") {
+    const d1Goals = await new RoadmapGoalsD1Repo(getD1(), email).listAll();
+    d1Goals.sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
+    goals = d1Goals.map((g) => ({ ...g, _id: g.id }));
+  } else {
+    goals = await getRoadmapGoalsCollection(email).find({}).sort({ updatedAt: -1 }).toArray();
+  }
   const serialized = JSON.parse(JSON.stringify(goals));
 
   return (

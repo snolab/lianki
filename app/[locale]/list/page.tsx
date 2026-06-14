@@ -4,7 +4,7 @@ import { join } from "path";
 import { Suspense } from "react";
 import sflow from "sflow";
 import { dueMs } from "@/app/ems";
-import { getFSRSNotesCollection } from "@/app/getFSRSNotesCollection";
+import { getNotesCollection } from "@/app/lib/getNotesCollection";
 import { authEmail, authUser } from "@/app/signInEmail";
 import { getCachedHeatmapData } from "@/app/lib/heatmap-cache";
 import ActivityHeatmap from "./components/ActivityHeatmap";
@@ -175,7 +175,7 @@ async function LoggedInView({
   }
   async function Cards({ page = 0, size = 100 }) {
     const email = await authEmail();
-    const FSRSNotes = getFSRSNotesCollection(email);
+    const FSRSNotes = getNotesCollection(email);
     const list = await sflow(
       FSRSNotes.find({ "card.due": { $exists: true } }, { sort: { "card.due": 1 } })
         .skip(page * size)
@@ -223,18 +223,18 @@ async function LoggedInView({
   }
 }
 async function TotalCount({ email }: { email: string }) {
-  const FSRSNotes = getFSRSNotesCollection(email);
+  const FSRSNotes = getNotesCollection(email);
   return <>{await FSRSNotes.countDocuments({})}</>;
 }
 
 async function DueCount({ email }: { email: string }) {
-  const FSRSNotes = getFSRSNotesCollection(email);
+  const FSRSNotes = getNotesCollection(email);
   return <>{await FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } })}</>;
 }
 
 async function LoggedInSyncStatus({ email }: { email: string }) {
   try {
-    const FSRSNotes = getFSRSNotesCollection(email);
+    const FSRSNotes = getNotesCollection(email);
     const mongoCount = await FSRSNotes.countDocuments({});
     return <SyncStatusBanner mongoCount={mongoCount} />;
   } catch {
