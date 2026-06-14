@@ -52,11 +52,17 @@ log(`✓ dashboard loaded: ${await page.title()}`);
 await page.goto(`${BASE}/en/roadmap`, { waitUntil: "networkidle" });
 log(`✓ roadmap loaded: ${await page.title()}`);
 
-// 6. Console errors (ignore benign RSC prefetch aborts / 404 favicon)
+// 6. Console errors (ignore benign RSC prefetch aborts / 404 favicon / the
+// Turnstile widget complaining about a missing sitekey — it gates only the
+// magic-link button, not the password path this QA uses, and is undefined in
+// any env without NEXT_PUBLIC_TURNSTILE_SITE_KEY configured, e.g. CI).
 if (badResponses.length)
   log(`  4xx/5xx responses observed:\n    - ${badResponses.join("\n    - ")}`);
 const real = errs.filter(
-  (e) => !/ERR_ABORTED|_rsc=|favicon|Failed to load resource.*40[01]/.test(e),
+  (e) =>
+    !/ERR_ABORTED|_rsc=|favicon|Failed to load resource.*40[01]|Cloudflare Turnstile.*sitekey/.test(
+      e,
+    ),
 );
 if (real.length) {
   log(`✗ console errors:\n  - ${real.slice(0, 8).join("\n  - ")}`);
