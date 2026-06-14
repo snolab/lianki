@@ -1,0 +1,12 @@
+# Local-only Worker vars for `wrangler dev` (the D1/Workers QA path).
+# Copy to `.dev.vars` (gitignored). `bun run qa:all` auto-creates it if absent.
+#
+# NOTE: the OpenNext build is a *production* Next build, so NODE_ENV is
+# "production" at runtime. We force it to "development" here so auth.ts enables
+# the dev email+password sign-in the QA scripts use. The deployed Worker never
+# sees this file, so production stays passwordless (magic link + OAuth).
+NODE_ENV=development
+DB_BACKEND=d1
+DEV_EMAIL_PASSWORD_AUTH=1
+AUTH_SECRET=dev-qa-secret-not-for-production
+BETTER_AUTH_BASE_URL=http://localhost:3000

@@ -1,0 +1,59 @@
+name: CI
+
+# Mirrors the local git hooks (see DEVELOPMENT.md):
+#   - `unit`        ≈ pre-commit fast checks (typecheck + unit + coverage)
+#   - `integration` ≈ pre-push `bun run qa:all` (OpenNext build → wrangler dev on
+#                      local D1 → API + UI + sync + userscript suites)
+on:
+  push:
+    branches: [main, beta]
+  pull_request:
+    branches: [main, beta]
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  unit:
+    name: Typecheck + unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # Node ≥ 22.12 is required: the D1 unit suites use node:sqlite, and
+      # test:unit runs vitest under Node (not Bun) for that reason.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Unit tests + coverage
+        run: bun run test:unit -- --coverage
+
+  integration:
+    name: qa:all (D1/Workers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # Browsers + system deps for the Playwright UI/sync/userscript suites.
+      - name: Install Playwright chromium
+        run: bunx playwright install --with-deps chromium
+      # Builds the OpenNext Worker, applies migrations to local (Miniflare) D1,
+      # boots `wrangler dev` and runs all four suites. No Cloudflare account
+      # needed — wrangler runs D1/R2 locally.
+      - name: qa:all
+        run: bun run qa:all

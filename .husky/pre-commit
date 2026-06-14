@@ -1,5 +1,7 @@
+# Fast, per-commit checks (static + unit). The heavier integration suites and
+# the build run in pre-push via `bun run qa:all`. Never use --no-verify (see
+# CLAUDE.md) — this hook also syncs the userscript meta + version.
 bunx lint-staged
 bun run typecheck
-bun run build
 bun run test:unit -- --coverage
 bun scripts/pre-commit.ts

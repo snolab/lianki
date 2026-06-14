@@ -41,6 +41,8 @@ yarn-error.log*
 .env.development
 .env.test
 .env.staging
+# wrangler dev local secrets (used by `bun run qa:all`) — keep .dev.vars.example
+.dev.vars
 
 # backup and temporary files
 *_bak.ts

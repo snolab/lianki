@@ -57,26 +57,54 @@ export class D1FsrsCollection {
   }
 
   private async candidates(query: AnyQuery): Promise<StoredNote[]> {
-    // Start from the smallest superset we can: due-only when the query filters
-    // by card.due, otherwise every note.
-    const all = query["card.due"]
-      ? await this.repo.listDue(new Date(), Number.MAX_SAFE_INTEGER)
-      : await this.repo.listAll();
+    // Start from the smallest superset we can: the due-only list when the query
+    // bounds card.due with `$lte`, otherwise every note. Note `$exists` (used by
+    // the list page to mean "all notes") must NOT take the due path — that would
+    // drop not-yet-due cards. applyQuery re-applies any `$lte` precisely.
+    const dueCond = query["card.due"] as { $lte?: Date } | undefined;
+    const all =
+      dueCond?.$lte != null
+        ? await this.repo.listDue(new Date(dueCond.$lte), Number.MAX_SAFE_INTEGER)
+        : await this.repo.listAll();
     return applyQuery(all, query);
   }
 
-  find(query: AnyQuery = {}, options: { limit?: number } = {}) {
-    const rowsPromise = this.candidates(query).then((rows) => {
-      const limited = options.limit != null ? rows.slice(0, options.limit) : rows;
-      return limited.map(toDoc);
-    });
-    // listAll/listDue already return rows ordered by card_due ascending.
-    return {
-      toArray: () => rowsPromise,
+  // Chainable cursor covering the handler's `.toArray()` plus the list page's
+  // `.sort({ "card.due": ±1 }).skip(n).limit(n)` usage. Rows arrive card_due
+  // ascending from the repo; we reverse/slice in memory to match.
+  find(query: AnyQuery = {}, options: { limit?: number; sort?: Record<string, 1 | -1> } = {}) {
+    let skipN = 0;
+    let limitN = options.limit;
+    let sortDir: 1 | -1 = (options.sort?.["card.due"] as 1 | -1) ?? 1;
+
+    const compute = () =>
+      this.candidates(query).then((rows) => {
+        let docs = rows.map(toDoc); // candidates() yields card_due ascending
+        if (sortDir === -1) docs = docs.reverse();
+        if (skipN) docs = docs.slice(skipN);
+        if (limitN != null) docs = docs.slice(0, limitN);
+        return docs;
+      });
+
+    const cursor = {
+      sort(spec: Record<string, 1 | -1>) {
+        if (spec?.["card.due"] != null) sortDir = spec["card.due"];
+        return cursor;
+      },
+      skip(n: number) {
+        skipN = n;
+        return cursor;
+      },
+      limit(n: number) {
+        limitN = n;
+        return cursor;
+      },
+      toArray: () => compute(),
       async *[Symbol.asyncIterator]() {
-        for (const r of await rowsPromise) yield r;
+        for (const r of await compute()) yield r;
       },
     };
+    return cursor;
   }
 
   async findOne(query: AnyQuery): Promise<FsrsDoc | null> {

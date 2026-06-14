@@ -1,0 +1,7 @@
+# Full integration gate before code leaves the machine: builds the OpenNext
+# Worker, boots `wrangler dev` on local D1, and runs the API + UI + sync +
+# userscript suites against the real deployed backend path. See scripts/qa/qa-all.mjs.
+#
+# Skip in an emergency with `git push --no-verify` ONLY if you understand the
+# risk — CI runs the same `qa:all`, so a skip just defers the failure.
+bun run qa:all

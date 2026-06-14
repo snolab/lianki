@@ -2,6 +2,74 @@
 
 This guide is for developers who want to run, modify, or contribute to Lianki.
 
+## Quick start — full local app + QA (no external services)
+
+```bash
+bun install
+cp .env.local.example .env.local      # defaults work out of the box
+bun run dev:db                        # terminal 1 — local MongoDB replica set (:27018)
+bun run dev                           # terminal 2 — Next.js (:3000)
+```
+
+Open http://localhost:3000 → **Sign in** → enter any email + password →
+**Continue** → **Sign in**. In dev, email+password auth is enabled and
+auto-creates the account on first sign-in, so you land on the dashboard with no
+OAuth, SMTP, or Cloudflare/Turnstile setup. See `.env.local.example` for knobs.
+
+**Why it works with nothing external:**
+
+- **Auth** — production is passwordless (magic link + GitHub/Google). `auth.ts`
+  enables email+password **only** when `NODE_ENV !== production` **and**
+  `DEV_EMAIL_PASSWORD_AUTH=1`, so it can never be on in the deployed app.
+- **Database** — `bun run dev:db` runs a single-node **replica set** via
+  `mongodb-memory-server` (a replica set is required: better-auth uses
+  transactions). It matches the example `MONGODB_URI` (`...?replicaSet=rs0`).
+- **Turnstile** — only the magic-link button uses it; the dev password path
+  does not, so no CAPTCHA is needed.
+
+### QA the full user flow locally
+
+With both servers running:
+
+```bash
+bun run qa:api    # authed API flow: signup, add/review(×4)/due/next-url,
+                  # HLC 409 conflict, roadmap save + progress, prefs, export,
+                  # speed-markers, token, delete, auth guard. 30 checks.
+bun run qa:ui     # browser flow: sign-in form → password → dashboard → roadmap.
+```
+
+Both target `http://localhost:3000` (override with `QA_BASE`) and use throwaway
+`qa+<timestamp>@lianki.test` accounts. The API script sends an `Origin` header
+(better-auth rejects writes without a trusted origin — browsers send it
+automatically).
+
+### QA the **deployed D1/Workers path** — `bun run qa:all`
+
+`bun run dev` runs the MongoDB backend. The deployed Worker runs `DB_BACKEND=d1`
+(better-auth **and** app data both on Cloudflare D1). To test that real path
+locally — no MongoDB, no cloud — one command does everything:
+
+```bash
+bun run qa:all                 # build + migrate + serve + 4 suites
+bun run qa:all -- --no-build   # reuse the last .open-next build (fast iterate)
+bun run qa:all -- --keep       # leave `wrangler dev` up after the suites
+```
+
+It (1) builds the OpenNext Worker (`CF_BUILD=1 DB_BACKEND=d1`), (2) applies
+`db/migrations/*.sql` to the **local** Miniflare D1 (`wrangler d1 migrations
+apply lianki --local`), (3) boots `wrangler dev` on `:3000` (matching
+`auth.ts` `trustedOrigins`), then runs all four layers against the live Worker —
+**API** (`qa-api`), **UI** (`qa-ui`), **sync** (`db-sync-matrix`), **userscript**
+(`userscript-guest`) — and tears the server down. Non-zero exit on any failure.
+
+Local Worker secrets come from `.dev.vars` (gitignored; auto-created from
+`.dev.vars.example` on first run). It sets `NODE_ENV=development` so the dev
+email+password gate is on — the deployed Worker never sees this file, so
+production stays passwordless.
+
+Prereqs: `bun install`, Playwright chromium (`bunx playwright install chromium`),
+and **Node ≥ 22.12** (older Node mishandles `node:sqlite` null rows).
+
 ## Tech Stack
 
 - **Framework**: Next.js 16 with App Router (Turbopack)
@@ -99,12 +167,23 @@ bun build
 
 ### Git Hooks
 
-The project uses Husky for pre-commit hooks:
+The project uses Husky, split by speed:
 
-- Runs `oxlint --fix` and `oxfmt` automatically
-- Runs TypeScript type checking
-- Auto-syncs `lianki.meta.js` from `lianki.user.js` metadata
-- Validates userscript version bump
+**`pre-commit`** (fast, every commit):
+
+- `oxlint --fix` + `oxfmt` (via lint-staged) and secretlint
+- TypeScript type checking
+- Unit tests with coverage (`bun run test:unit -- --coverage`)
+- Auto-syncs `lianki.meta.js` + validates the userscript `@version` bump
+
+**`pre-push`** (full integration, before sharing):
+
+- `bun run qa:all` — builds the OpenNext Worker and runs the API/UI/sync/
+  userscript suites against `wrangler dev` on local D1 (see the qa:all section
+  above). CI runs the same command, so a `--no-verify` skip only defers failure.
+
+Never use `--no-verify` (CLAUDE.md hard rule) — it skips the userscript meta
+sync and secret scan.
 
 ## Project Structure
 
