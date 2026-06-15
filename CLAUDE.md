@@ -53,9 +53,12 @@ Credentials (`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`) are shared between `fsrsne
 gh pr create --title "feat: description" --body "..." --base main
 gh pr merge <PR_NUMBER> --auto --squash
 
-# After PR merges, always rebase beta:
+# After PR merges, fast-forward beta to main. beta carries no commits of its
+# own, so rebasing onto main is always a fast-forward and a regular push works
+# (no -f — see the NEVER-force-push rule above). If the push is ever rejected as
+# non-fast-forward, beta has diverged: stop and ask, don't force.
 git fetch origin && git rebase origin/main
-git push -f origin beta
+git push origin beta
 ```
 
 ## QA Process — after every deploy
