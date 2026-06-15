@@ -43,7 +43,7 @@
     "intlayer": "^8.2.3",
     "jszip": "^3.10.1",
     "keyv-github": "^1.5.1",
-    "kysely": "0.28.11",
+    "kysely": "0.28.17",
     "kysely-d1": "^0.4.0",
     "marked": "^17.0.4",
     "mongodb": "^7.1.0",
@@ -96,6 +96,9 @@
     "typescript": "^5.9.3",
     "vitest": "^4.1.0",
     "wrangler": "^4.92.0"
+  },
+  "overrides": {
+    "kysely": "0.28.17"
   },
   "lint-staged": {
     "**/*": "secretlint",
