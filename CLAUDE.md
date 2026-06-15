@@ -61,6 +61,13 @@ git fetch origin && git rebase origin/main
 git push origin beta
 ```
 
+## CI & Auto-Merge
+
+- **CI** (`.github/workflows/ci.yml`, on PRs/pushes to `main`/`beta`): two jobs — `Typecheck + unit` and `qa:all (D1/Workers)` (`bun run qa:all`). Node 22 (for `node:sqlite`); wrangler runs D1 locally so no Cloudflare secrets are needed.
+- **`main` is branch-protected**: both checks are required and `enforce_admins` is on (admins are gated too), so nothing merges to `main` until CI is green. Emergency override: `gh api --method DELETE repos/snolab/lianki/branches/main/protection/enforce_admins`.
+- **Auto-merge**: `gh pr merge <N> --auto --squash` waits for both required checks, then merges. The repo's "Allow auto-merge" setting must be ON (it is).
+  - **Gotcha**: if that setting is OFF, `--auto` returns exit 0 but silently does nothing. Confirm it armed with `gh pr view <N> --json autoMergeRequest` (should be non-null). With no required checks, `--auto` merges *immediately* — which is why protection must stay in place.
+
 ## QA Process — after every deploy
 
 Use remote Chrome AND Vercel logs together:
