@@ -4,4 +4,22 @@
 #
 # Skip in an emergency with `git push --no-verify` ONLY if you understand the
 # risk — CI runs the same `qa:all`, so a skip just defers the failure.
+#
+# Skip automatically when the push only DELETES remote refs — there is nothing
+# to build or test, and qa:all is a multi-minute build. git feeds one line per
+# ref on stdin: "<local_ref> <local_sha> <remote_ref> <remote_sha>"; a deletion
+# has an all-zero <local_sha>.
+saw_ref=0
+only_deletes=1
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+  saw_ref=1
+  case "$local_sha" in
+  *[!0]*) only_deletes=0 ;; # any non-zero char ⇒ a real ref update, not a delete
+  esac
+done
+if [ "$saw_ref" = "1" ] && [ "$only_deletes" = "1" ]; then
+  echo "pre-push: deletion-only push — skipping qa:all"
+  exit 0
+fi
+
 bun run qa:all

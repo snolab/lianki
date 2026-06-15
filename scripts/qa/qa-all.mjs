@@ -83,12 +83,23 @@ step("D1 migrate (local)", "bunx", ["wrangler", "d1", "migrations", "apply", "li
 
 // ── 3. Boot `wrangler dev` on :PORT (port 3000 matches auth.ts trustedOrigins) ─
 log(`wrangler dev on :${PORT}`);
+let stopped = false;
 const server = spawn("bunx", ["wrangler", "dev", "--port", String(PORT), "--local"], {
-  stdio: ["ignore", "inherit", "inherit"],
+  stdio: ["ignore", "inherit", "pipe"],
   env: { ...process.env, DB_BACKEND: "d1" },
 });
 
-let stopped = false;
+// Forward wrangler's stderr, but once we've asked it to stop, drop the workerd
+// shutdown noise (broken pipe / connection reset on SIGTERM) so a clean run
+// doesn't end in a wall of scary-looking-but-harmless errors.
+const TEARDOWN_NOISE =
+  /Broken pipe|Connection reset|Network connection lost|getCaughtExceptionAsKj/;
+server.stderr.on("data", (chunk) => {
+  const text = chunk.toString();
+  if (stopped && TEARDOWN_NOISE.test(text)) return;
+  process.stderr.write(text);
+});
+
 const stopServer = () => {
   if (stopped) return;
   stopped = true;
