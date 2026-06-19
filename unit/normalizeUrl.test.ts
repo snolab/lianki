@@ -24,6 +24,16 @@ describe("normalizeUrl", () => {
     expect(normalized).toBe("https://example.com/page?foo=bar");
   });
 
+  it("strips theme param so display preference doesn't fork the card URL", () => {
+    expect(normalizeUrl("https://www.zhihu.com/question/23857983?theme=dark")).toBe(
+      "https://www.zhihu.com/question/23857983",
+    );
+    // both variants must normalize to the same identity
+    expect(normalizeUrl("https://www.zhihu.com/question/23857983?theme=dark")).toBe(
+      normalizeUrl("https://www.zhihu.com/question/23857983"),
+    );
+  });
+
   it("strips si param from YouTube", () => {
     const url = "https://www.youtube.com/watch?v=abc&si=tracking123";
     expect(normalizeUrl(url)).toBe("https://www.youtube.com/watch?v=abc");
@@ -50,6 +60,7 @@ describe("normalizeUrl", () => {
       "feature",
       "ref",
       "source",
+      "theme",
       "utm_source",
       "utm_medium",
       "utm_campaign",

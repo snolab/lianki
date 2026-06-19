@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.16
+// @version     2.23.17
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -420,13 +420,14 @@ function main() {
       // Strip YouTube playlist position (index changes when playlist is reordered)
       if (u.hostname.endsWith("youtube.com") && u.pathname === "/watch")
         u.searchParams.delete("index");
-      // Strip tracking & session params
+      // Strip tracking, session & display-preference params
       for (const p of [
         "si",
         "pp",
         "feature",
         "ref",
         "source",
+        "theme",
         "utm_source",
         "utm_medium",
         "utm_campaign",
