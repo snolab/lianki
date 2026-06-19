@@ -150,6 +150,12 @@ const suites = [
     ["playwright", "test", "tests/userscript-guest.spec.ts"],
     { LIANKI_URL: BASE },
   ],
+  [
+    "USERSCRIPT (redirect)",
+    "bunx",
+    ["playwright", "test", "tests/userscript-redirect.spec.ts"],
+    { LIANKI_URL: BASE },
+  ],
 ];
 
 const results = [];
