@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.16
+// @version     2.23.17
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1741,6 +1741,7 @@
           "feature",
           "ref",
           "source",
+          "theme",
           "utm_source",
           "utm_medium",
           "utm_campaign",
