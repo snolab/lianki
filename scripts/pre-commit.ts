@@ -33,9 +33,12 @@ writeFileSync(
 );
 run("git add public/lianki.meta.js");
 
-// Sync pardon submodule
+// Sync pardon submodule — only when it's initialized as its OWN git repo.
+// The directory exists even for an uninitialized submodule; without the .git
+// check, `git -C PARDON commit` walks up and hijacks the MAIN repo's commit
+// (consuming the developer's staged changes + message). See issue #90.
 const PARDON = join(process.cwd(), "packages/pardon-could-you-say-it-again");
-if (existsSync(PARDON)) {
+if (existsSync(join(PARDON, ".git"))) {
   writeFileSync(join(PARDON, "lianki.user.js"), userScript);
   try {
     if (run(`git -C ${PARDON} diff lianki.user.js`).trim()) {
@@ -44,4 +47,6 @@ if (existsSync(PARDON)) {
     }
   } catch {}
   run(`git add ${PARDON}`);
+} else if (existsSync(PARDON)) {
+  console.warn(`Skipping pardon sync: ${PARDON} is not an initialized submodule`);
 }
