@@ -56,8 +56,18 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       # Browsers + system deps for the Playwright UI/sync/userscript suites.
+      # cdn.playwright.dev occasionally stalls mid-download (chromium zip),
+      # which would otherwise hang the job until the 30-min timeout. Cap each
+      # attempt and retry so a flaky CDN self-heals.
       - name: Install Playwright chromium
-        run: bunx playwright install --with-deps chromium
+        run: |
+          for i in 1 2 3 4; do
+            timeout 240 bunx playwright install --with-deps chromium && exit 0
+            echo "::warning::Playwright install attempt $i stalled/failed; retrying"
+            sleep 15
+          done
+          echo "::error::Playwright install failed after 4 attempts"
+          exit 1
       # Builds the OpenNext Worker, applies migrations to local (Miniflare) D1,
       # boots `wrangler dev` and runs all five suites. No Cloudflare account
       # needed — wrangler runs D1/R2 locally.
