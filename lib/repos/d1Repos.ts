@@ -158,3 +158,36 @@ export class ApiTokensD1Repo {
     await this.db.prepare("DELETE FROM api_tokens WHERE token_hash = ?").bind(tokenHash).run();
   }
 }
+
+// ── Membership (better-auth `user` table) ──────────────────────────────────────
+
+/** Raw membership fields as stored on the `user` table (dates are ISO strings). */
+export type UserMembershipRow = {
+  id: string;
+  email: string;
+  trialEndsAt: string | null;
+  proEndsAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+/** D1-backed access to the membership fields on the better-auth `user` table. */
+export class MembershipD1Repo {
+  constructor(private readonly db: D1Like) {}
+
+  async getUser(userId: string): Promise<UserMembershipRow | null> {
+    return await this.db
+      .prepare(
+        "SELECT id, email, trialEndsAt, proEndsAt, createdAt, updatedAt FROM user WHERE id = ?",
+      )
+      .bind(userId)
+      .first<UserMembershipRow>();
+  }
+
+  async setTrial(userId: string, trialEndsAt: Date): Promise<void> {
+    await this.db
+      .prepare("UPDATE user SET trialEndsAt = ?, updatedAt = ? WHERE id = ?")
+      .bind(trialEndsAt.toISOString(), new Date().toISOString(), userId)
+      .run();
+  }
+}
