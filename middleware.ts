@@ -14,13 +14,6 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(canonicalUrl, 308);
   }
 
-  // Redirect beta.lianki.com → Vercel beta preview URL
-  if (host === "beta.lianki.com") {
-    const previewUrl = new URL(request.url);
-    previewUrl.host = "lianki-git-beta-snomiao.vercel.app";
-    return NextResponse.redirect(previewUrl, 308);
-  }
-
   // Special routes that don't need locale prefix
   if (pathname === "/next") {
     return NextResponse.next();

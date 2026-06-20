@@ -61,3 +61,6 @@ tmp/
 .logstest-results/
 .logs/
 test-results/
+
+# Claude Code local settings (per-machine)
+.claude/settings.local.json
