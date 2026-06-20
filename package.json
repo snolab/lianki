@@ -50,7 +50,6 @@
     "kysely-d1": "^0.4.0",
     "marked": "^17.0.4",
     "mongodb": "^7.1.0",
-    "mongodb-rest-relay": "^1.12.0",
     "next": "16.2.6",
     "next-intlayer": "^8.2.3",
     "nodemailer": "^8.0.1",
