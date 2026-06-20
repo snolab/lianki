@@ -43,6 +43,15 @@ jobs:
     name: qa:all (D1/Workers)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Run inside the official Playwright image: chromium (+ all OS deps) is baked
+    # in, so the job never downloads a browser at runtime from cdn.playwright.dev
+    # → Google Cloud Storage — an egress path that has stalled for hours on
+    # Actions runners while being healthy everywhere else. The image also ships
+    # Node 24, satisfying the node:sqlite requirement. Pin the tag to the repo's
+    # Playwright version (package.json @playwright/test) so the preinstalled
+    # browser build matches what the tests expect.
+    container:
+      image: mcr.microsoft.com/playwright:v1.58.2-noble
     # Cloudflare's "always passes" test sitekey, inlined into the build so the
     # Turnstile widget renders without a real key (it gates only the magic-link
     # button; qa:all uses the dev password path). https://developers.cloudflare.com/turnstile/troubleshooting/testing/
@@ -50,24 +59,11 @@ jobs:
       NEXT_PUBLIC_TURNSTILE_SITE_KEY: "1x00000000000000000000AA"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
+      # No setup-node: the Playwright image already provides Node 24.
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      # Browsers + system deps for the Playwright UI/sync/userscript suites.
-      # cdn.playwright.dev occasionally stalls mid-download (chromium zip),
-      # which would otherwise hang the job until the 30-min timeout. Cap each
-      # attempt and retry so a flaky CDN self-heals.
-      - name: Install Playwright chromium
-        run: |
-          for i in 1 2 3 4; do
-            timeout 240 bunx playwright install --with-deps chromium && exit 0
-            echo "::warning::Playwright install attempt $i stalled/failed; retrying"
-            sleep 15
-          done
-          echo "::error::Playwright install failed after 4 attempts"
-          exit 1
+      # No "playwright install" — browsers live in the image at
+      # $PLAYWRIGHT_BROWSERS_PATH (/ms-playwright); chromium-1208 matches v1.58.2.
       # Builds the OpenNext Worker, applies migrations to local (Miniflare) D1,
       # boots `wrangler dev` and runs all five suites. No Cloudflare account
       # needed — wrangler runs D1/R2 locally.
