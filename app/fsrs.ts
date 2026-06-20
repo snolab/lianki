@@ -28,7 +28,8 @@ import { D1FsrsCollection } from "./fsrsNotesD1Collection";
  * exposing the MongoDB Collection methods the handler uses; the handler body
  * is backend-agnostic.
  */
-function getFsrsNotes(email?: string): Collection<FSRSNote> {
+/** FSRS notes collection for the active DB backend (D1 shim or MongoDB). */
+export function getFsrsNotes(email?: string): Collection<FSRSNote> {
   if (dbBackend() === "d1") {
     return new D1FsrsCollection(getD1(), email ?? "") as unknown as Collection<FSRSNote>;
   }

@@ -12,8 +12,7 @@
 
 import { createHmac, timingSafeEqual } from "crypto";
 import { createEmptyCard } from "ts-fsrs";
-import { db } from "@/app/db";
-import { getFSRSNotesCollection } from "@/app/getFSRSNotesCollection";
+import { getFsrsNotes } from "@/app/fsrs";
 import { normalizeUrl } from "@/lib/normalizeUrl";
 
 export const dynamic = "force-dynamic";
@@ -54,14 +53,16 @@ async function saveNoteForEmail(email: string, url: string, title?: string) {
   } catch {
     return; // skip un-normalizable URLs
   }
-  const col = getFSRSNotesCollection(email);
-  await col.updateOne(
+  // Backend-aware (MongoDB or D1) upsert by normalized URL, matching the save
+  // path in app/fsrs.ts (findOneAndUpdate so the D1 shim's $setOnInsert applies).
+  const col = getFsrsNotes(email);
+  await col.findOneAndUpdate(
     { url: normalized },
     {
       $setOnInsert: { card: createEmptyCard(), url: normalized },
       $set: { ...(title && { title }) },
     },
-    { upsert: true },
+    { upsert: true, returnDocument: "after" },
   );
 }
 
@@ -105,17 +106,13 @@ export async function POST(req: Request) {
     await Promise.allSettled(urls.map((url) => saveNoteForEmail(BOT_EMAIL, url)));
   }
 
-  // Log to MongoDB for diagnostics (optional, non-blocking)
-  try {
-    await db.collection("SlackBotEvents").insertOne({
-      ts: event.ts,
-      channel: event.channel,
-      urlsAdded: urls,
-      email: BOT_EMAIL || null,
-      createdAt: new Date(),
-    });
-  } catch {
-    // non-fatal
+  // Diagnostic log (visible via `wrangler tail` / platform logs). Previously
+  // written to a MongoDB "SlackBotEvents" collection that nothing ever read;
+  // dropped during the D1 migration rather than ported (no consumer).
+  if (urls.length) {
+    console.log(
+      `[slack] ts=${event.ts} channel=${event.channel} urlsAdded=${urls.length} email=${BOT_EMAIL || "none"}`,
+    );
   }
 
   return Response.json({ ok: true });
