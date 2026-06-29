@@ -1,7 +1,7 @@
 import { Hono } from "hono";
+import { getAuth, type AuthEnv } from "./auth";
 
-type Bindings = {
-  DB: D1Database;
+type Bindings = AuthEnv & {
   BLOBS: R2Bucket;
   ASSETS: Fetcher;
   DB_BACKEND: string;
@@ -9,7 +9,11 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-// Proves the D1 binding works from the CF-native worker (read-only count).
+// better-auth — framework-agnostic handler mounted on Hono (magic link + OAuth,
+// session/cookies). Reuses the migrated D1 auth tables.
+app.on(["GET", "POST"], "/api/auth/*", (c) => getAuth(c.env).handler(c.req.raw));
+
+// Health/D1 sanity check.
 app.get("/api/health", async (c) => {
   try {
     const row = await c.env.DB.prepare("SELECT count(*) AS notes FROM fsrs_notes").first<{
