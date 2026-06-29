@@ -64,3 +64,6 @@ test-results/
 
 # Claude Code local settings (per-machine)
 .claude/settings.local.json
+
+# rech/Playwright browser snapshots (may contain sensitive page content)
+.playwright-cli-multi-tab/

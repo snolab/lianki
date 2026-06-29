@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Phase 1 scaffold — a separate Worker ("lianki-cf"), isolated from the
+  // production "lianki" Worker. Proves the CF-native stack fits the free plan.
+  "name": "lianki-cf",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2025-05-05",
+  "compatibility_flags": ["nodejs_compat"],
+  // React SPA served from Workers Static Assets (NOT counted against the 3 MiB
+  // worker-script size limit — the whole reason this fits the free plan).
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "vars": {
+    "DB_BACKEND": "d1"
+  },
+  // Same D1/R2 as production (read-only health check here).
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lianki",
+      "database_id": "a2c6b8cf-8a94-4cdc-99fd-bbbf6b679f4c"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BLOBS",
+      "bucket_name": "lianki-blobs"
+    }
+  ]
+}
