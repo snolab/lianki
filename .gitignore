@@ -67,3 +67,5 @@ test-results/
 
 # Agent worktrees (git worktree add .wt-<name>)
 .wt-*/
+# rech/Playwright browser snapshots (may contain sensitive page content)
+.playwright-cli-multi-tab/
