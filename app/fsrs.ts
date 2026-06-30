@@ -47,16 +47,11 @@ const LIANKI_USERSCRIPT_VERSION = (() => {
 
 export type { HLC } from "./fsrs-helpers";
 
-export type FSRSNote = {
-  url: string;
-  title?: string;
-  card: Card;
-  log?: ReviewLog[]; // Review history
-  notes?: string; // User notes, max 128 chars
-  speedMarkers?: Record<number, number>; // {timestamp: speed}
-  hlc?: HLC; // Hybrid Logical Clock for sync
-  deviceId?: string; // Last device that modified (legacy field)
-};
+// FSRSNote moved to lib/core/fsrsNote.ts (Next-free) for reuse by the D1 repos
+// and the CF-native worker; imported for local use + re-exported so existing
+// imports keep working.
+import type { FSRSNote } from "@/lib/core/fsrsNote";
+export type { FSRSNote };
 
 // Configure FSRS with fuzz enabled to prevent review bunching
 // Fuzz adds small random variations (±2.5% by default) to scheduled intervals

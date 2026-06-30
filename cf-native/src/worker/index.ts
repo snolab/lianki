@@ -1,5 +1,8 @@
 import { Hono } from "hono";
 import { getAuth, type AuthEnv } from "./auth";
+import type { D1Like } from "@/lib/d1/types";
+import { normalizeUrl } from "@/lib/normalizeUrl";
+import { FsrsNotesD1Repo } from "@/lib/repos/fsrsNotesD1";
 
 type Bindings = AuthEnv & {
   BLOBS: R2Bucket;
@@ -23,6 +26,18 @@ app.get("/api/health", async (c) => {
   } catch (e) {
     return c.json({ ok: false, error: String(e) }, 500);
   }
+});
+
+// Proof that the extracted shared core is importable + runs on the worker:
+// reuses lib/normalizeUrl + lib/repos/fsrsNotesD1 (Next/Mongo-free) against D1.
+app.get("/api/core-check", async (c) => {
+  const email = c.req.query("email") ?? "";
+  const repo = new FsrsNotesD1Repo(c.env.DB as unknown as D1Like, email);
+  return c.json({
+    ok: true,
+    normalizeUrl: normalizeUrl("https://www.zhihu.com/question/1?theme=dark&utm_source=x"),
+    repoCountForEmail: email ? await repo.countAll() : null,
+  });
 });
 
 // Non-/api requests fall through to Static Assets (SPA fallback handled by
