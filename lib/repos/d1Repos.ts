@@ -1,7 +1,7 @@
 import type { D1Like } from "@/lib/d1/types";
 import type { RoadmapGoal } from "@/types/roadmap";
-import type { FilterPattern } from "@/app/api/preferences/route";
-import type { ApiToken } from "@/lib/getApiTokensCollection";
+import type { FilterPattern } from "@/lib/core/preferences";
+import type { ApiToken } from "@/lib/core/apiToken";
 
 // ── Roadmap goals ────────────────────────────────────────────────────────────
 

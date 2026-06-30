@@ -1,5 +1,3 @@
-import type { ObjectId } from "mongodb";
-
 export type RoadmapNode = {
   id: string;
   title: string;
@@ -8,9 +6,10 @@ export type RoadmapNode = {
   order: number;
 };
 
-// DB document shape (MongoDB)
+// DB document shape (MongoDB). `_id` is structurally typed (ObjectId satisfies
+// it) so this stays MongoDB-import-free and reusable by the CF-native worker.
 export type RoadmapGoal = {
-  _id?: ObjectId;
+  _id?: { toString(): string };
   topic: string;
   nodes: RoadmapNode[];
   createdAt: Date;
