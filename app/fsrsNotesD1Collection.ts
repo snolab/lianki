@@ -8,7 +8,7 @@
 import { createEmptyCard, type Card, type ReviewLog } from "ts-fsrs";
 import type { D1Like } from "@/lib/d1/types";
 import { FsrsNotesD1Repo, type StoredNote } from "@/lib/repos/fsrsNotesD1";
-import type { FSRSNote } from "./fsrs";
+import type { FSRSNote } from "@/lib/core/fsrsNote";
 import type { HLC } from "./fsrs-helpers";
 
 /** Document shape the handler expects — FSRSNote plus a string `_id`. */

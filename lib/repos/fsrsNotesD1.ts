@@ -1,4 +1,4 @@
-import type { FSRSNote } from "@/app/fsrs";
+import type { FSRSNote } from "@/lib/core/fsrsNote";
 import type { D1Like } from "@/lib/d1/types";
 import { restoreNoteFromExport } from "@/lib/yaml-export";
 
