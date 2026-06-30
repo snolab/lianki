@@ -3,6 +3,7 @@ import type { D1Like } from "@/lib/d1/types";
 import { getAuth, type AuthEnv } from "./auth";
 import { mountFsrs } from "./fsrs";
 import { mountDataRoutes } from "./data-routes";
+import { mountReadProgress } from "./read-progress";
 
 type Bindings = AuthEnv & {
   DB: D1Like;
@@ -20,6 +21,8 @@ app.on(["GET", "POST"], "/api/auth/*", (c) => getAuth(c.env).handler(c.req.raw))
 mountFsrs(app);
 // Data routes: token, preferences, membership, roadmap, export.
 mountDataRoutes(app);
+// Read materials (D1 + R2) and roadmap node progress.
+mountReadProgress(app);
 
 // Health/D1 sanity check.
 app.get("/api/health", async (c) => {
