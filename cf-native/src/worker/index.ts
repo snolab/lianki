@@ -4,6 +4,7 @@ import { getAuth, type AuthEnv } from "./auth";
 import { mountFsrs } from "./fsrs";
 import { mountDataRoutes } from "./data-routes";
 import { mountReadProgress } from "./read-progress";
+import { mountAiRoutes } from "./ai";
 
 type Bindings = AuthEnv & {
   DB: D1Like;
@@ -23,6 +24,8 @@ mountFsrs(app);
 mountDataRoutes(app);
 // Read materials (D1 + R2) and roadmap node progress.
 mountReadProgress(app);
+// AI vocab routes (OpenAI via fetch).
+mountAiRoutes(app);
 
 // Health/D1 sanity check.
 app.get("/api/health", async (c) => {
