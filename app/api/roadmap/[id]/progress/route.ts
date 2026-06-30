@@ -8,13 +8,13 @@ import { D1FsrsCollection } from "@/app/fsrsNotesD1Collection";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { RoadmapGoalsD1Repo } from "@/lib/repos/d1Repos";
 import type { RoadmapNode, RoadmapNodeProgress } from "@/types/roadmap";
-import type { ObjectId as ObjectIdType } from "mongodb";
 
 const MATURE_STABILITY_DAYS = 21;
 
 // MongoDB goals carry an ObjectId `_id`; D1 goals a string `id` we surface as
-// `_id` for response parity. Only `nodes` feeds the maturity computation.
-type GoalLike = { _id?: ObjectIdType | string; nodes: RoadmapNode[] };
+// `_id` for response parity. Structural `_id` type (ObjectId and string both
+// satisfy it). Only `nodes` feeds the maturity computation.
+type GoalLike = { _id?: { toString(): string }; nodes: RoadmapNode[] };
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const email = await authEmailOrToken(request);

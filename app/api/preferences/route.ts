@@ -6,16 +6,11 @@ import { PreferencesD1Repo } from "@/lib/repos/d1Repos";
 
 const Preferences = db.collection("preferences");
 
-export type FilterType = "domain" | "title" | "url";
-
-export interface FilterPattern {
-  id: string;
-  type: FilterType;
-  pattern: string;
-  isRegex: boolean;
-  enabled: boolean;
-  createdAt: string;
-}
+// FilterType/FilterPattern moved to lib/core/preferences.ts (Next-free) for reuse
+// by the D1 repos / CF-native worker; re-exported here so existing imports keep
+// working.
+import type { FilterType, FilterPattern } from "@/lib/core/preferences";
+export type { FilterType, FilterPattern };
 
 export interface UserPreferences {
   userId: string;
