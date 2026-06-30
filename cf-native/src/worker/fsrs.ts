@@ -1,36 +1,20 @@
-import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import { createEmptyCard, fsrs, generatorParameters, Rating, type Grade } from "ts-fsrs";
-import type { D1Like } from "@/lib/d1/types";
 import { FsrsNotesD1Repo, type StoredNote } from "@/lib/repos/fsrsNotesD1";
-import { ApiTokensD1Repo } from "@/lib/repos/d1Repos";
 import { RATING_MAP, newServerHLC, compareHLC, type HLC } from "@/app/fsrs-helpers";
 import { normalizeUrl } from "@/lib/normalizeUrl";
 import { dueMs } from "@/app/ems";
-import { getAuth, type AuthEnv } from "./auth";
+import { resolveEmail, type Env } from "./session";
 
 // Faithful CF-native port of the userscript's FSRS API (app/fsrs.ts), built on
 // the reused shared core (FsrsNotesD1Repo, fsrs-helpers, normalizeUrl, ems) —
 // no Next/Mongo. Same FSRS scheduling, HLC conflict handling, and next-due rules.
 
-type Bindings = AuthEnv & { DB: D1Like };
-type Ctx = { env: Bindings; req: { raw: Request } };
+type Ctx = { env: Env; req: { raw: Request } };
 
 const fsrsConfig = fsrs(generatorParameters({ enable_fuzz: true }));
 const LABELS = ["Again", "Hard", "Good", "Easy"] as const;
 const GRADES = [Rating.Again, Rating.Hard, Rating.Good, Rating.Easy] as const;
-
-/** Resolve the caller's email from a Bearer API token, else the session cookie. */
-async function resolveEmail(env: Bindings, req: Request): Promise<string | null> {
-  const authz = req.headers.get("authorization");
-  if (authz?.startsWith("Bearer ")) {
-    const hash = createHash("sha256").update(authz.slice(7)).digest("hex");
-    const email = await new ApiTokensD1Repo(env.DB).emailByHash(hash);
-    if (email) return email;
-  }
-  const session = await getAuth(env).api.getSession({ headers: req.headers });
-  return session?.user?.email ?? null;
-}
 
 function reviewOptions(card: StoredNote["card"]) {
   const rep = fsrsConfig.repeat(card, new Date());
