@@ -5,6 +5,7 @@ import { mountFsrs } from "./fsrs";
 import { mountDataRoutes } from "./data-routes";
 import { mountReadProgress } from "./read-progress";
 import { mountAiRoutes } from "./ai";
+import { mountImportRoutes } from "./import";
 
 type Bindings = AuthEnv & {
   DB: D1Like;
@@ -26,6 +27,8 @@ mountDataRoutes(app);
 mountReadProgress(app);
 // AI vocab routes (OpenAI via fetch).
 mountAiRoutes(app);
+// Import routes (yaml restore, youtube, anki-client).
+mountImportRoutes(app);
 
 // Health/D1 sanity check.
 app.get("/api/health", async (c) => {
