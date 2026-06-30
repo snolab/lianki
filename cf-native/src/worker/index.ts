@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { D1Like } from "@/lib/d1/types";
 import { getAuth, type AuthEnv } from "./auth";
 import { mountFsrs } from "./fsrs";
+import { mountDataRoutes } from "./data-routes";
 
 type Bindings = AuthEnv & {
   DB: D1Like;
@@ -17,6 +18,8 @@ app.on(["GET", "POST"], "/api/auth/*", (c) => getAuth(c.env).handler(c.req.raw))
 
 // FSRS core API (the userscript's endpoints), ported onto the reused shared core.
 mountFsrs(app);
+// Data routes: token, preferences, membership, roadmap, export.
+mountDataRoutes(app);
 
 // Health/D1 sanity check.
 app.get("/api/health", async (c) => {
