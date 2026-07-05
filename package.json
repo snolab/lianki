@@ -33,6 +33,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.41",
     "@marsidev/react-turnstile": "^1.4.2",
+    "@better-auth/kysely-adapter": "^1.5.4",
     "@tailwindcss/postcss": "^4.2.1",
     "ai": "^6.0.116",
     "better-auth": "^1.5.4",
@@ -68,6 +69,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",
+    "dotenv": "^17.3.1",
     "@cloudflare/workers-types": "^4.20260517.1",
     "@opennextjs/cloudflare": "^1.19.10",
     "@playwright/test": "^1.58.2",
