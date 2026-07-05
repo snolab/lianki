@@ -101,9 +101,5 @@
   },
   "overrides": {
     "kysely": "0.28.17"
-  },
-  "lint-staged": {
-    "**/*": "secretlint",
-    "**/*.{ts,tsx,js,jsx,mjs,cjs}": ["oxlint --fix --ignore-pattern 'packages/**'", "oxfmt"]
   }
 }
