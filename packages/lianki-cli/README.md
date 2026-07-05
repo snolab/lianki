@@ -1,8 +1,8 @@
 # lianki
 
 Command-line client for [Lianki](https://lianki.com) — an FSRS spaced-repetition
-app. Built for **agents and scripts**: zero dependencies, non-interactive auth,
-and every data command prints the server's JSON verbatim to stdout.
+app. Built for **agents and scripts**: non-interactive auth, and every data
+command prints the server's JSON verbatim to stdout.
 
 ```bash
 npx lianki help
@@ -68,4 +68,4 @@ Defaults to `https://www.lianki.com`.
 
 ## Requirements
 
-Node ≥ 18 (uses the built-in global `fetch`). No other dependencies.
+Node ≥ 18 (uses the built-in global `fetch`). Only runtime dependency: `yargs`.

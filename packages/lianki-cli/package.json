@@ -1,15 +1,18 @@
 {
   "name": "lianki",
   "version": "0.1.0",
-  "description": "Command-line client for Lianki (FSRS spaced-repetition) — agent-friendly, zero dependencies.",
+  "description": "Command-line client for Lianki (FSRS spaced-repetition) — agent-friendly.",
   "type": "module",
   "bin": {
-    "lianki": "./lianki.mjs"
+    "lianki": "lianki.mjs"
   },
   "files": [
     "lianki.mjs",
     "README.md"
   ],
+  "dependencies": {
+    "yargs": "^17.7.2"
+  },
   "engines": {
     "node": ">=18"
   },
