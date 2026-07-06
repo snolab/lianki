@@ -4,6 +4,7 @@ import { HomePage } from "./pages/HomePage";
 import { DuePage } from "./pages/DuePage";
 import { ReviewPage } from "./pages/ReviewPage";
 import { AddPage } from "./pages/AddPage";
+import { DataPage } from "./pages/DataPage";
 
 // The routed app, exported so it can be mounted both standalone (apps/web
 // main.tsx) and by the apps/api Worker's client bundle (single-origin serving).
@@ -16,6 +17,7 @@ export function Root() {
           <Route path="add" element={<AddPage />} />
           <Route path="review" element={<ReviewPage />} />
           <Route path="due" element={<DuePage />} />
+          <Route path="data" element={<DataPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
