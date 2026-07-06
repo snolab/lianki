@@ -4,6 +4,10 @@
 import { installGmShim, loadGmCache } from "./gm-shim";
 
 async function boot() {
+  // Benign marker: lets pages / tests detect the extension is present and its
+  // content script executed (the isolated world still shares document with the
+  // page). Set before async work so it's observable immediately.
+  document.documentElement.dataset.liankiExt = "loaded";
   installGmShim();
   await loadGmCache();
   // The Tampermonkey userscript is authored as an IIFE that runs on load and
