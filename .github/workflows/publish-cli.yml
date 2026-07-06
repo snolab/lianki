@@ -22,15 +22,18 @@ jobs:
         working-directory: packages/lianki-cli
     steps:
       - uses: actions/checkout@v4
-      # NOTE: no `registry-url` — it makes setup-node write an .npmrc with a
-      # placeholder NODE_AUTH_TOKEN, which npm would use instead of doing the
-      # OIDC token exchange (causing a 404 on publish). Leaving it out lets npm's
-      # trusted-publishing OIDC flow run. Default registry is registry.npmjs.org.
+      # No `registry-url`: it makes setup-node write an .npmrc with a placeholder
+      # NODE_AUTH_TOKEN that npm would use instead of the OIDC exchange. Node 24
+      # already bundles npm 11.x; we still force npm@latest to guarantee the
+      # OIDC-trusted-publishing threshold (>= 11.5.1). Default registry is npmjs.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      # OIDC trusted publishing needs npm >= 11.5.1; pin a known-good recent npm.
-      - run: npm install -g npm@latest
+          node-version: 24
+      - name: Ensure npm supports OIDC trusted publishing
+        run: |
+          npm install -g npm@latest
+          hash -r
+          echo "node: $(node -v)  npm: $(npm -v)"
       - name: Verify version matches the tag
         if: startsWith(github.ref, 'refs/tags/lianki-cli-v')
         run: |
@@ -42,4 +45,4 @@ jobs:
           fi
       # No NODE_AUTH_TOKEN: with a configured Trusted Publisher, npm exchanges
       # the GitHub OIDC token for a short-lived publish credential automatically.
-      - run: npm publish --access public --provenance
+      - run: npm publish --access public --provenance --loglevel=verbose
