@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { cloudflare } from "@cloudflare/vite-plugin";
+import { intlayerPlugin } from "vite-intlayer";
 import { fileURLToPath } from "node:url";
 
 // `@` resolves to the repo root so this Worker can import the shared,
@@ -8,7 +9,7 @@ import { fileURLToPath } from "node:url";
 // Next app uses, single source of truth. Extracted shared code lives in
 // @lianki/core.
 export default defineConfig({
-  plugins: [react(), cloudflare()],
+  plugins: [react(), cloudflare(), intlayerPlugin()],
   resolve: {
     alias: {
       "@lianki/web": fileURLToPath(new URL("../web/src/Root.tsx", import.meta.url)),
