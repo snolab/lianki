@@ -33,8 +33,13 @@ test("MV3 content script loads and runs in Chromium", async () => {
     });
     const page = await context.newPage();
     await page.goto("https://example.com/", { waitUntil: "domcontentloaded" });
-    // Wait for the content script to stamp its marker.
+    // Content script executed (stamped on boot).
     await expect(page.locator("html")).toHaveAttribute("data-lianki-ext", "loaded", {
+      timeout: 10_000,
+    });
+    // And the async chrome.storage preload completed — proves the GM cache read
+    // path works in a real extension, not just that the script started.
+    await expect(page.locator("html")).toHaveAttribute("data-lianki-ready", "1", {
       timeout: 10_000,
     });
   } finally {
