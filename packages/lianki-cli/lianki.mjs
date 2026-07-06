@@ -14,10 +14,13 @@
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
+import { createRequire } from "node:module";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
-const VERSION = "0.1.0";
+// Read version from our own package.json (npm always ships it) so `--version`
+// never drifts from the published version.
+const VERSION = createRequire(import.meta.url)("./package.json").version;
 const DEFAULT_API = "https://www.lianki.com";
 
 // ── config file (token + optional api base) ──────────────────────────────────
