@@ -19,6 +19,7 @@ export function App() {
         </Link>
         <nav style={{ display: "flex", gap: "0.75rem" }}>
           <Link to="/">Home</Link>
+          <Link to="/review">Review</Link>
           <Link to="/due">Due</Link>
         </nav>
       </header>
