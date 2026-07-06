@@ -2,6 +2,16 @@ import { withIntlayer } from "next-intlayer/server";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Internal workspace package shipping TypeScript source (@lianki/core).
+  transpilePackages: ["@lianki/core"],
+  async headers() {
+    return [
+      {
+        source: "/:file(lianki.user.js|lianki.meta.js)",
+        headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
+      },
+    ];
+  },
   // @better-auth/kysely-adapter eagerly imports `node:sqlite` (for a dialect
   // Lianki never uses — D1 mode uses kysely-d1). node:sqlite is unavailable in
   // the Workers runtime and unbundlable by Turbopack, so alias it to a stub.
