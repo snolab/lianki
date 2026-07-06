@@ -1,11 +1,12 @@
 {
-  "name": "main",
+  "name": "lianki-monorepo",
   "version": "0.1.0",
   "private": true,
   "engines": {
     "node": ">=22.12"
   },
   "workspaces": [
+    "apps/*",
     "packages/*"
   ],
   "scripts": {
