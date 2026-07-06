@@ -10,6 +10,7 @@ export default defineConfig({
   plugins: [react(), cloudflare()],
   resolve: {
     alias: {
+      "@lianki/core": fileURLToPath(new URL("../packages/core/src/index.ts", import.meta.url)),
       "@": fileURLToPath(new URL("..", import.meta.url)),
     },
   },
