@@ -30,9 +30,10 @@ Deployed + verified end-to-end on `lianki-cf.snomiao.workers.dev`.
   landing route into `dist/index.html` (serves the build, renders "/" in headless
   Chromium via `scripts/prerender.mjs`, injects the static #root) — works for the
   standalone build. **WIP:** prerendering the apps/api *combined* client build
-  (the deployed path) — its Cloudflare-plugin client didn't render in the static
-  prerender context; needs debugging before wiring into `apps/api` deploy. Blog
-  SSG is separate.
+  (the deployed path) — in the @cloudflare/vite-plugin build intlayer emits the dictionary as a
+  separate dynamic chunk that suspends the routed page, so the nav shell renders
+  but the home content doesn't prerender. Fix needs a Suspense/eager-dictionary
+  tweak before wiring into `apps/api` deploy. Blog SSG is separate.
 - Polish: styling/design-system pass, error/empty states, offline sync UI, and
   any long-tail Next components not covered by the pages above.
 
