@@ -1,9 +1,14 @@
 name: Publish CLI
 
-# Publishes packages/lianki-cli (npm package `lianki`) via npm Trusted
-# Publishing (OIDC) — no NPM_TOKEN secret. Requires a Trusted Publisher to be
-# configured for the `lianki` package on npmjs.com pointing at this repo +
-# workflow. Trigger by pushing a tag like `lianki-cli-v0.1.1`, or manually.
+# Publishes packages/lianki-cli (npm package `lianki`) on `lianki-cli-v*` tags.
+#
+# Auth: an npm automation/granular token in the NPM_TOKEN secret (bypasses 2FA).
+# We would prefer tokenless OIDC Trusted Publishing, but npm binds a package's
+# trusted-publisher owner to the npm account's own GitHub identity (`snomiao`),
+# while this repo lives under the `snolab` org — so the OIDC exchange fails
+# ("package not found"). Until that org-linkage is resolved, publish via token.
+# `--provenance` still uses the GitHub OIDC id-token to sign a sigstore
+# provenance attestation, independent of the publish credential.
 on:
   push:
     tags:
@@ -12,7 +17,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # required for OIDC trusted publishing + provenance
+  id-token: write # for --provenance signing (sigstore)
 
 jobs:
   publish:
@@ -22,15 +27,11 @@ jobs:
         working-directory: packages/lianki-cli
     steps:
       - uses: actions/checkout@v4
-      # No `registry-url`: it makes setup-node write an .npmrc with a placeholder
-      # NODE_AUTH_TOKEN that npm would use instead of the OIDC exchange. Node 24
-      # already bundles npm 11.x; we still force npm@latest to guarantee the
-      # OIDC-trusted-publishing threshold (>= 11.5.1). Default registry is npmjs.
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Ensure npm supports OIDC trusted publishing
-        run: |
+          registry-url: "https://registry.npmjs.org"
+      - run: |
           npm install -g npm@latest
           hash -r
           echo "node: $(node -v)  npm: $(npm -v)"
@@ -43,6 +44,6 @@ jobs:
             echo "::error::package.json version ($pkg_version) != tag ($tag_version)"
             exit 1
           fi
-      # No NODE_AUTH_TOKEN: with a configured Trusted Publisher, npm exchanges
-      # the GitHub OIDC token for a short-lived publish credential automatically.
-      - run: npm publish --access public --provenance --loglevel=verbose
+      - run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
