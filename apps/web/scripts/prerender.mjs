@@ -60,8 +60,10 @@ try {
 
   const browser = await chromium.launch();
   const page = await browser.newPage();
-  await page.goto(origin + "/", { waitUntil: "networkidle" });
-  await page.waitForSelector("#root h1", { timeout: 10_000 });
+  // "load" not "networkidle": useSession's fetch to the SPA-fallback keeps the
+  // network busy, so networkidle can hang. Wait for the rendered <h1> instead.
+  await page.goto(origin + "/", { waitUntil: "load" });
+  await page.waitForSelector("#root h1", { timeout: 15_000 });
   const rootHtml = await page.$eval("#root", (el) => el.innerHTML);
   await browser.close();
 
