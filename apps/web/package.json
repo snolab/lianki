@@ -14,8 +14,10 @@
   },
   "dependencies": {
     "@lianki/core": "workspace:*",
+    "intlayer": "8.2.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-intlayer": "8.2.3",
     "react-router-dom": "^7.1.1"
   },
   "devDependencies": {
@@ -23,6 +25,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "vite-intlayer": "8.2.3"
   }
 }

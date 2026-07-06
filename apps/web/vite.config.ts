@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { intlayerPlugin } from "vite-intlayer";
 import { fileURLToPath } from "node:url";
 
 // Standalone Vite + React SPA (the website). Shares framework-neutral code via
@@ -10,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const API_ORIGIN = process.env.VITE_API_ORIGIN || "https://www.lianki.com";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), intlayerPlugin()],
   resolve: {
     alias: {
       "@lianki/core": fileURLToPath(new URL("../../packages/core/src/index.ts", import.meta.url)),
