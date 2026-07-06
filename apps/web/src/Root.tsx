@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { IntlayerProvider } from "react-intlayer";
 import { App } from "./App";
+import "./index.css";
 import { HomePage } from "./pages/HomePage";
 import { DuePage } from "./pages/DuePage";
 import { ReviewPage } from "./pages/ReviewPage";
