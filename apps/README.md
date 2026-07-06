@@ -6,12 +6,13 @@ root `lib/` (drained into `packages/core` over time).
 
 Planned (incremental — see the restructure plan):
 
-| App          | Purpose                                   | Source today            |
+| App          | Purpose                                   | Status                  |
 | ------------ | ----------------------------------------- | ----------------------- |
-| `apps/api`   | Hono API Worker (Cloudflare)              | `cf-native/src/worker`  |
-| `apps/web`   | Vite + React SPA (the website)            | (new; ported from Next) |
-| `apps/web-next` | Existing Next.js app (kept until DNS cutover) | repo root          |
+| `apps/api`   | Hono API Worker (Cloudflare, `lianki-cf`) | **moved** from cf-native |
+| `apps/web`   | Vite + React SPA (the website)            | planned (ported from Next) |
+| `apps/web-next` | Existing Next.js app (kept until DNS cutover) | still at repo root  |
 
-Nothing has been moved here yet — this directory exists so the `apps/*` Bun
-workspace glob has a home. The current Next.js app still runs from the repo root
-and production (on `main`) is untouched.
+`apps/api` is the former `cf-native` worker, now a workspace member sharing the
+root lockfile; it still deploys as the isolated `lianki-cf` Worker via its own
+`wrangler.jsonc`. The Next.js app still runs from the repo root and production
+(on `main`) is untouched.
