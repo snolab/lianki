@@ -1,6 +1,6 @@
 {
   "name": "lianki",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Command-line client for Lianki (FSRS spaced-repetition) — agent-friendly.",
   "type": "module",
   "bin": {
