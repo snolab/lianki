@@ -1,0 +1,42 @@
+name: Publish CLI
+
+# Publishes packages/lianki-cli (npm package `lianki`) via npm Trusted
+# Publishing (OIDC) — no NPM_TOKEN secret. Requires a Trusted Publisher to be
+# configured for the `lianki` package on npmjs.com pointing at this repo +
+# workflow. Trigger by pushing a tag like `lianki-cli-v0.1.1`, or manually.
+on:
+  push:
+    tags:
+      - "lianki-cli-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # required for OIDC trusted publishing + provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/lianki-cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+      # OIDC trusted publishing needs npm >= 11.5.1; pin a known-good recent npm.
+      - run: npm install -g npm@latest
+      - name: Verify version matches the tag
+        if: startsWith(github.ref, 'refs/tags/lianki-cli-v')
+        run: |
+          pkg_version=$(node -p "require('./package.json').version")
+          tag_version="${GITHUB_REF_NAME#lianki-cli-v}"
+          if [ "$pkg_version" != "$tag_version" ]; then
+            echo "::error::package.json version ($pkg_version) != tag ($tag_version)"
+            exit 1
+          fi
+      # No NODE_AUTH_TOKEN: with a configured Trusted Publisher, npm exchanges
+      # the GitHub OIDC token for a short-lived publish credential automatically.
+      - run: npm publish --access public --provenance
