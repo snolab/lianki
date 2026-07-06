@@ -10,6 +10,9 @@ async function boot() {
   document.documentElement.dataset.liankiExt = "loaded";
   installGmShim();
   await loadGmCache();
+  // Readiness marker: set only after the async chrome.storage read completes, so
+  // pages/tests can tell GM_getValue is now serving real cached values.
+  document.documentElement.dataset.liankiReady = "1";
   // The Tampermonkey userscript is authored as an IIFE that runs on load and
   // reads the GM_* globals installed above. Reuse it as the single source of
   // truth for behaviour (one core, two targets). Dynamic import so it executes
