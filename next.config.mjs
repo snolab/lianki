@@ -2,6 +2,8 @@ import { withIntlayer } from "next-intlayer/server";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Internal workspace package shipping TypeScript source (@lianki/core).
+  transpilePackages: ["@lianki/core"],
   async headers() {
     return [
       {

@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 export default defineConfig({
   resolve: {
     alias: {
+      "@lianki/core": fileURLToPath(new URL("./packages/core/src/index.ts", import.meta.url)),
       "@": fileURLToPath(new URL(".", import.meta.url)),
     },
   },
@@ -12,7 +13,13 @@ export default defineConfig({
     passWithNoTests: true,
     coverage: {
       provider: "v8",
-      include: ["app/fsrs-helpers.ts", "app/ems.ts", "lib/normalizeUrl.ts"],
+      include: [
+        "app/fsrs-helpers.ts",
+        "app/ems.ts",
+        "packages/core/src/normalizeUrl.ts",
+        "packages/core/src/hlc.ts",
+        "packages/core/src/rating.ts",
+      ],
       thresholds: {
         lines: 90,
         functions: 90,
