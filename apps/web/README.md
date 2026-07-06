@@ -26,7 +26,13 @@ Deployed + verified end-to-end on `lianki-cf.snomiao.workers.dev`.
 - **i18n:** the Next app uses `next-intlayer`; port to `react-intlayer` +
   `vite-intlayer`. This is the flagged de-risk — the dictionary build on Vite
   needs its own validation pass (not yet done; do it deliberately, not rushed).
-- **SEO:** landing + blog need prerender/SSG (this SPA is client-only).
+- **SEO:** meta/OG tags are in index.html. `bun run build:ssg` prerenders the
+  landing route into `dist/index.html` (serves the build, renders "/" in headless
+  Chromium via `scripts/prerender.mjs`, injects the static #root) — works for the
+  standalone build. **WIP:** prerendering the apps/api *combined* client build
+  (the deployed path) — its Cloudflare-plugin client didn't render in the static
+  prerender context; needs debugging before wiring into `apps/api` deploy. Blog
+  SSG is separate.
 - Polish: styling/design-system pass, error/empty states, offline sync UI, and
   any long-tail Next components not covered by the pages above.
 
