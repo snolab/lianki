@@ -9,7 +9,7 @@ existing Tampermonkey userscript (`src/lianki.user.ts`).
   that runs the same userscript logic behind a GM→Chrome adapter.
 
 ```bash
-bun --cwd packages/ext run build   # → dist/ (manifest.json + content.js)
+bun run --filter='@lianki/ext' build   # → dist/ (manifest.json + content.js)
 # Load unpacked: chrome://extensions → Developer mode → Load unpacked → dist/
 ```
 
