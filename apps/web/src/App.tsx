@@ -24,6 +24,7 @@ export function App() {
           <Link to="/add">Add</Link>
           <Link to="/review">Review</Link>
           <Link to="/due">Due</Link>
+          <Link to="/data">Data</Link>
         </nav>
         <span style={{ marginLeft: "auto", fontSize: "0.9rem", color: "#666" }}>
           {loading ? "…" : user ? user.email : <a href="/api/auth/sign-in">Sign in</a>}
