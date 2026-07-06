@@ -29,14 +29,26 @@ async. `src/content.ts` preloads the store into a sync cache (`loadGmCache`)
 **before** dynamically importing the userscript, so `GM_getValue` reads
 synchronously from the cache.
 
-## Status — scaffold (needs browser validation)
+## Testing
 
-The build is green and produces a loadable extension, but it has **not** been
-verified in a real Chrome yet. To validate: load `dist/` unpacked, sign in on
-lianki.com, and confirm token storage (chrome.storage), card add/review
-(GM_xmlhttpRequest → fetch), and the userscript UI all work. Likely follow-ups:
-extension icons, an options/popup page, and possibly a background service worker
-if any GM_xmlhttpRequest call needs to bypass page CSP.
+Two layers, both automated:
+
+- **Unit (no browser, CI):** `unit/gm-shim.test.ts` mocks `chrome.storage` +
+  `fetch` and asserts the adapter — sync `GM_getValue` from the preloaded cache,
+  write-through, delete, and `GM_xmlhttpRequest`→fetch onload/onerror. Runs with
+  `bun run test:unit`.
+- **Integration (real Chromium):** `tests/extension.spec.ts` builds `dist/`,
+  loads it unpacked into Chromium via Playwright, navigates to a matched page,
+  and asserts the content script ran (it stamps `<html data-lianki-ext="loaded">`).
+  Run it with:
+
+  ```bash
+  bun run test:ext           # builds + xvfb-run playwright (headless needs a display)
+  ```
+
+Still worth a manual pass before shipping: sign in on lianki.com and confirm
+token storage, card add/review, and the userscript UI in a real profile. Likely
+follow-ups: extension icons and an options/popup page.
 
 ## Roadmap — shared core
 
