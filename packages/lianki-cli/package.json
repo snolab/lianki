@@ -1,6 +1,6 @@
 {
   "name": "lianki",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Command-line client for Lianki (FSRS spaced-repetition) — agent-friendly.",
   "type": "module",
   "bin": {
@@ -28,11 +28,11 @@
   "homepage": "https://lianki.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/snomiao/lianki.git",
+    "url": "git+https://github.com/snolab/lianki.git",
     "directory": "packages/lianki-cli"
   },
   "bugs": {
-    "url": "https://github.com/snomiao/lianki/issues"
+    "url": "https://github.com/snolab/lianki/issues"
   },
   "author": "snomiao <snomiao@gmail.com>",
   "license": "MIT"
