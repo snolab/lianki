@@ -27,6 +27,7 @@ export function App() {
           <Link to="/data">Data</Link>
           <Link to="/read">Read</Link>
           <Link to="/roadmap">Roadmap</Link>
+          <Link to="/ai">AI</Link>
           <Link to="/settings">Settings</Link>
         </nav>
         <span style={{ marginLeft: "auto", fontSize: "0.9rem", color: "#666" }}>
