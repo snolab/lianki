@@ -5,8 +5,8 @@ frontend as part of the Cloudflare-native migration. Shares framework-neutral
 code via `@lianki/core`.
 
 ```bash
-bun --cwd apps/web run dev     # http://localhost:5173, /api proxied to VITE_API_ORIGIN
-bun --cwd apps/web run build
+bun run --filter='@lianki/web' dev     # http://localhost:5173, /api proxied to VITE_API_ORIGIN
+bun run --filter='@lianki/web' build
 ```
 
 ## Status — feature pages ported
@@ -36,5 +36,6 @@ Deployed + verified end-to-end on `lianki-cf.snomiao.workers.dev`.
 mountable `Root`; `apps/api`'s client bundle (`src/client/main.tsx`) mounts it,
 so `apps/api`'s Vite/@cloudflare build ships this app as Workers Static Assets
 and the `lianki-cf` Worker serves it (with `/api/*` handled by the same Worker).
-Run `bun --cwd apps/api run dev` to serve web + api together; `bun --cwd apps/web
-run dev` still runs the SPA standalone against a proxied API.
+Run `bun run --filter='lianki-cf' dev` to serve web + api together;
+`bun run --filter='@lianki/web' dev` still runs the SPA standalone against a
+proxied API.
