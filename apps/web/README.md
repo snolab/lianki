@@ -9,22 +9,26 @@ bun --cwd apps/web run dev     # http://localhost:5173, /api proxied to VITE_API
 bun --cwd apps/web run build
 ```
 
-## Status — shell
+## Status — feature pages ported
 
-This is a **shell**, not full parity yet. Proven so far:
+Vite + React 19 + `react-router-dom`. Pages (all session-authed against the
+Worker API, typed via `@lianki/core` where shared):
 
-- Vite + React 19 + `react-router-dom` (nested routes under an `<App/>` shell).
-- A real data page (`/due`) calling `/api/fsrs/due` and rendering results, typed
-  with the shared `FSRSNote` from `@lianki/core`.
-- Dev `/api` proxy to a Lianki API origin (`VITE_API_ORIGIN`, default prod).
+`/` home · `/add` add card · `/review` FSRS review loop (1–4 keys) · `/due`
+due list · `/data` YAML export/import · `/read` read materials (paginated) ·
+`/roadmap` learning goals · `/ai` AI sentence generator · `/settings` mobile
+exclude patterns. Session-aware nav via better-auth `get-session`.
 
-## Roadmap to parity
+Deployed + verified end-to-end on `lianki-cf.snomiao.workers.dev`.
 
-- Port the ~36 client components from the Next app (`app/[locale]/…`).
+## Remaining to full parity
+
 - **i18n:** the Next app uses `next-intlayer`; port to `react-intlayer` +
-  `vite-intlayer` (a known de-risk — validate the dictionary build on Vite).
-- **Auth:** wire better-auth client (session cookie is already sent).
-- **SEO:** landing + blog need prerender/SSG (Vite SPA is client-only).
+  `vite-intlayer`. This is the flagged de-risk — the dictionary build on Vite
+  needs its own validation pass (not yet done; do it deliberately, not rushed).
+- **SEO:** landing + blog need prerender/SSG (this SPA is client-only).
+- Polish: styling/design-system pass, error/empty states, offline sync UI, and
+  any long-tail Next components not covered by the pages above.
 
 ## Serve topology — decided & wired
 
