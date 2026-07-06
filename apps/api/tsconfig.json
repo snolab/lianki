@@ -12,7 +12,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["../../*"],
-      "@lianki/core": ["../../packages/core/src/index.ts"]
+      "@lianki/core": ["../../packages/core/src/index.ts"],
+      "@lianki/web": ["../web/src/Root.tsx"]
     }
   },
   "include": ["src", "vite.config.ts"]
