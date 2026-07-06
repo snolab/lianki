@@ -22,10 +22,13 @@ jobs:
         working-directory: packages/lianki-cli
     steps:
       - uses: actions/checkout@v4
+      # NOTE: no `registry-url` — it makes setup-node write an .npmrc with a
+      # placeholder NODE_AUTH_TOKEN, which npm would use instead of doing the
+      # OIDC token exchange (causing a 404 on publish). Leaving it out lets npm's
+      # trusted-publishing OIDC flow run. Default registry is registry.npmjs.org.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: "https://registry.npmjs.org"
       # OIDC trusted publishing needs npm >= 11.5.1; pin a known-good recent npm.
       - run: npm install -g npm@latest
       - name: Verify version matches the tag
