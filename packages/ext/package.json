@@ -1,0 +1,8 @@
+{
+  "name": "@lianki/ext",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/content.ts --outdir=dist --target=browser --minify && cp manifest.json dist/manifest.json"
+  }
+}

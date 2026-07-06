@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Lianki",
+  "description": "Spaced-repetition (FSRS) for the pages you read and watch.",
+  "version": "2.23.17",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://lianki.com/*",
+    "https://www.lianki.com/*",
+    "https://beta.lianki.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": { "default_title": "Lianki" }
+}
