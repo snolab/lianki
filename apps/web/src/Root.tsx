@@ -8,6 +8,7 @@ import { DataPage } from "./pages/DataPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { RoadmapPage } from "./pages/RoadmapPage";
 import { ReadPage } from "./pages/ReadPage";
+import { AiPage } from "./pages/AiPage";
 
 // The routed app, exported so it can be mounted both standalone (apps/web
 // main.tsx) and by the apps/api Worker's client bundle (single-origin serving).
@@ -24,6 +25,7 @@ export function Root() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="roadmap" element={<RoadmapPage />} />
           <Route path="read" element={<ReadPage />} />
+          <Route path="ai" element={<AiPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
