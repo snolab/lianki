@@ -26,14 +26,11 @@ This is a **shell**, not full parity yet. Proven so far:
 - **Auth:** wire better-auth client (session cookie is already sent).
 - **SEO:** landing + blog need prerender/SSG (Vite SPA is client-only).
 
-## Open decision — serve topology
+## Serve topology — decided & wired
 
-Two options for production; not yet chosen:
-
-1. **apps/api serves this build** — the `lianki-cf` Worker points its Static
-   Assets binding at `apps/web/dist`. Single origin, no CORS, one deploy. (Matches
-   the combined Worker pattern apps/api already uses for its own client stub.)
-2. **Separate deploy** — web deploys independently (Pages/Worker) and calls the
-   api Worker cross-origin (needs CORS).
-
-Option 1 is the CF-idiomatic default; confirm before wiring the prod build.
+**apps/api serves this SPA (single origin, no CORS).** `@lianki/web` exports a
+mountable `Root`; `apps/api`'s client bundle (`src/client/main.tsx`) mounts it,
+so `apps/api`'s Vite/@cloudflare build ships this app as Workers Static Assets
+and the `lianki-cf` Worker serves it (with `/api/*` handled by the same Worker).
+Run `bun --cwd apps/api run dev` to serve web + api together; `bun --cwd apps/web
+run dev` still runs the SPA standalone against a proxied API.
