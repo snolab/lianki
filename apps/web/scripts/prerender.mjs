@@ -10,8 +10,8 @@
 //   node ../web/scripts/prerender.mjs dist/client   (apps/api's client build)
 
 import { createServer } from "node:http";
-import { readFile, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join, extname, resolve } from "node:path";
+import { readFile, readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { join, extname, resolve, dirname } from "node:path";
 import { chromium } from "playwright";
 
 const distDir = resolve(process.argv[2] || "dist");
@@ -70,28 +70,51 @@ try {
   page.on("requestfailed", (r) =>
     pageErrors.push(`requestfailed ${r.url()} — ${r.failure()?.errorText}`),
   );
-  // "load" not "networkidle": useSession's fetch to the SPA-fallback keeps the
-  // network busy, so networkidle can hang. Wait for the rendered <h1> instead.
-  await page.goto(origin + "/", { waitUntil: "load" });
-  try {
-    await page.waitForSelector("#root h1", { timeout: 15_000 });
-  } catch (e) {
-    const rootNow = await page.$eval("#root", (el) => el.innerHTML).catch(() => "(no #root)");
-    console.error("prerender: home <h1> never rendered. Client errors:");
-    for (const err of pageErrors.slice(0, 8)) console.error("  •", err.slice(0, 240));
-    console.error("prerender: #root at timeout (first 600 chars):\n", rootNow.slice(0, 600));
-    throw e;
-  }
-  const rootHtml = await page.$eval("#root", (el) => el.innerHTML);
-  await browser.close();
+  const template = readFileSync(indexPath, "utf8");
 
-  const html = readFileSync(indexPath, "utf8");
-  const injected = html.replace(
-    /(<div id="root">)[\s\S]*?(<\/div>)/,
-    (_m, open, closeTag) => open + rootHtml + closeTag,
-  );
-  writeFileSync(indexPath, injected);
-  console.log(`prerender: injected ${rootHtml.length} chars into ${indexPath}`);
+  // Render one route and return its #root HTML. "load" not "networkidle":
+  // useSession's fetch to the SPA-fallback keeps the network busy.
+  async function renderRoute(route) {
+    await page.goto(origin + route, { waitUntil: "load" });
+    try {
+      await page.waitForSelector("#root h1", { timeout: 15_000 });
+    } catch (e) {
+      const rootNow = await page.$eval("#root", (el) => el.innerHTML).catch(() => "(no #root)");
+      console.error(`prerender: ${route} <h1> never rendered. Client errors:`);
+      for (const err of pageErrors.slice(0, 8)) console.error("  •", err.slice(0, 240));
+      console.error("prerender: #root at timeout (first 600 chars):\n", rootNow.slice(0, 600));
+      throw e;
+    }
+    return page.$eval("#root", (el) => el.innerHTML);
+  }
+
+  function writeRoute(route, rootHtml) {
+    const html = template.replace(
+      /(<div id="root">)[\s\S]*?(<\/div>)/,
+      (_m, open, closeTag) => open + rootHtml + closeTag,
+    );
+    // "/" → index.html; "/blog/x" → blog/x/index.html (Workers Static Assets).
+    const out = route === "/" ? indexPath : join(distDir, route.replace(/^\//, ""), "index.html");
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, html);
+    console.log(`prerender: ${route} → ${out} (${rootHtml.length} chars)`);
+  }
+
+  // Landing first (also proves the home i18n path).
+  writeRoute("/", await renderRoute("/"));
+  // Blog index + every post link it exposes (crawlable static HTML per post).
+  const blogRoot = await renderRoute("/blog");
+  writeRoute("/blog", blogRoot);
+  const postRoutes = [
+    ...new Set(
+      (
+        await page.$$eval('#root a[href^="/blog/"]', (as) => as.map((a) => a.getAttribute("href")))
+      ).filter(Boolean),
+    ),
+  ];
+  for (const route of postRoutes) writeRoute(route, await renderRoute(route));
+  console.log(`prerender: ${postRoutes.length} blog posts prerendered`);
+  await browser.close();
 } catch (e) {
   console.error("prerender failed:", e);
   exitCode = 1;
