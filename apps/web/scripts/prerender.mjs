@@ -60,10 +60,28 @@ try {
 
   const browser = await chromium.launch();
   const page = await browser.newPage();
+  // Surface client-side failures — otherwise a suspended/erroring render just
+  // looks like a selector timeout.
+  const pageErrors = [];
+  page.on("pageerror", (e) => pageErrors.push(String(e)));
+  page.on("console", (m) => {
+    if (m.type() === "error") pageErrors.push("console.error: " + m.text());
+  });
+  page.on("requestfailed", (r) =>
+    pageErrors.push(`requestfailed ${r.url()} — ${r.failure()?.errorText}`),
+  );
   // "load" not "networkidle": useSession's fetch to the SPA-fallback keeps the
   // network busy, so networkidle can hang. Wait for the rendered <h1> instead.
   await page.goto(origin + "/", { waitUntil: "load" });
-  await page.waitForSelector("#root h1", { timeout: 15_000 });
+  try {
+    await page.waitForSelector("#root h1", { timeout: 15_000 });
+  } catch (e) {
+    const rootNow = await page.$eval("#root", (el) => el.innerHTML).catch(() => "(no #root)");
+    console.error("prerender: home <h1> never rendered. Client errors:");
+    for (const err of pageErrors.slice(0, 8)) console.error("  •", err.slice(0, 240));
+    console.error("prerender: #root at timeout (first 600 chars):\n", rootNow.slice(0, 600));
+    throw e;
+  }
   const rootHtml = await page.$eval("#root", (el) => el.innerHTML);
   await browser.close();
 

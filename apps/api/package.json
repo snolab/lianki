@@ -5,8 +5,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "deploy": "vite build && wrangler deploy",
-    "preview": "vite preview"
+    "deploy": "vite build && node ../web/scripts/prerender.mjs dist/client && wrangler deploy",
+    "preview": "vite preview",
+    "build:ssg": "vite build && node ../web/scripts/prerender.mjs dist/client"
   },
   "dependencies": {
     "@lianki/web": "workspace:*",
