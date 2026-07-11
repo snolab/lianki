@@ -108,6 +108,7 @@
       "name": "@lianki/web",
       "dependencies": {
         "@lianki/core": "workspace:*",
+        "better-auth": "^1.5.4",
         "intlayer": "8.2.3",
         "react": "^19.2.4",
         "react-dom": "^19.2.4",
