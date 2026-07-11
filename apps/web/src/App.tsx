@@ -29,9 +29,11 @@ export function App() {
           <Link to="/roadmap">Roadmap</Link>
           <Link to="/ai">AI</Link>
           <Link to="/settings">Settings</Link>
+          <Link to="/profile">Profile</Link>
+          <Link to="/contact">Contact</Link>
         </nav>
         <span style={{ marginLeft: "auto", fontSize: "0.9rem", color: "#666" }}>
-          {loading ? "…" : user ? user.email : <a href="/api/auth/sign-in">Sign in</a>}
+          {loading ? "…" : user ? user.email : <Link to="/signin">Sign in</Link>}
         </span>
       </header>
       <main>
