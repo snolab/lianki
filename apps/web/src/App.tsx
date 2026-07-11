@@ -28,6 +28,8 @@ export function App() {
           <Link to="/read">Read</Link>
           <Link to="/roadmap">Roadmap</Link>
           <Link to="/ai">AI</Link>
+          <Link to="/polyglot">Polyglot</Link>
+          <Link to="/self-intro">Self-intro</Link>
           <Link to="/settings">Settings</Link>
           <Link to="/profile">Profile</Link>
           <Link to="/contact">Contact</Link>
