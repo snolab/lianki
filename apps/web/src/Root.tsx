@@ -14,6 +14,8 @@ import { AiPage } from "./pages/AiPage";
 import { ContactPage } from "./pages/ContactPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { SignInPage } from "./pages/SignInPage";
+import { PolyglotPage } from "./pages/PolyglotPage";
+import { SelfIntroPage } from "./pages/SelfIntroPage";
 
 // The routed app, exported so it can be mounted both standalone (apps/web
 // main.tsx) and by the apps/api Worker's client bundle (single-origin serving).
@@ -35,6 +37,8 @@ export function Root() {
             <Route path="profile" element={<ProfilePage />} />
             <Route path="contact" element={<ContactPage />} />
             <Route path="signin" element={<SignInPage />} />
+            <Route path="polyglot" element={<PolyglotPage />} />
+            <Route path="self-intro" element={<SelfIntroPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
