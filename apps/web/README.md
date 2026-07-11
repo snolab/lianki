@@ -28,12 +28,13 @@ Deployed + verified end-to-end on `lianki-cf.snomiao.workers.dev`.
   needs its own validation pass (not yet done; do it deliberately, not rushed).
 - **SEO:** meta/OG tags are in index.html. `bun run build:ssg` prerenders the
   landing route into `dist/index.html` (serves the build, renders "/" in headless
-  Chromium via `scripts/prerender.mjs`, injects the static #root) — works for the
-  standalone build. **WIP:** prerendering the apps/api *combined* client build
-  (the deployed path) — in the @cloudflare/vite-plugin build intlayer emits the dictionary as a
-  separate dynamic chunk that suspends the routed page, so the nav shell renders
-  but the home content doesn't prerender. Fix needs a Suspense/eager-dictionary
-  tweak before wiring into `apps/api` deploy. Blog SSG is separate.
+  Chromium via `scripts/prerender.mjs`, injects the static #root). Wired into
+  `apps/api` too (`build:ssg` + `deploy`), so the deployed landing page ships
+  static content. Blog SSG is separate.
+  - _Note:_ the combined apps/api build needs `intlayer` `build.optimize:false`
+    + an `@intlayer/dictionaries-entry` alias — the babel call-site optimization
+    can't reach `@lianki/web`'s cross-package `useIntlayer` calls, which
+    otherwise render blank content (fixed).
 - Polish: styling/design-system pass, error/empty states, offline sync UI, and
   any long-tail Next components not covered by the pages above.
 

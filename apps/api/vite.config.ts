@@ -11,7 +11,18 @@ import { fileURLToPath } from "node:url";
 export default defineConfig({
   plugins: [react(), cloudflare(), intlayerPlugin()],
   resolve: {
+    // Single instance of React + intlayer so the IntlayerProvider context (from
+    // @lianki/web's Root) is the same one useIntlayer reads — otherwise the
+    // dictionary lookup returns empty and home renders a blank <h1>.
+    dedupe: ["react", "react-dom", "react-intlayer", "intlayer"],
     alias: {
+      // vite-intlayer aliases @intlayer/dictionaries-entry to the generated
+      // registry, but that alias doesn't reach @cloudflare/vite-plugin's client
+      // environment — so useIntlayer fell back to the empty stub (blank home
+      // title). Point it at the generated registry explicitly.
+      "@intlayer/dictionaries-entry": fileURLToPath(
+        new URL("./.intlayer/main/dictionaries.mjs", import.meta.url),
+      ),
       "@lianki/web": fileURLToPath(new URL("../web/src/Root.tsx", import.meta.url)),
       "@lianki/core": fileURLToPath(new URL("../../packages/core/src/index.ts", import.meta.url)),
       "@": fileURLToPath(new URL("../..", import.meta.url)),
