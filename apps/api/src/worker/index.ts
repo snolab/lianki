@@ -6,6 +6,10 @@ import { mountDataRoutes } from "./data-routes";
 import { mountReadProgress } from "./read-progress";
 import { mountAiRoutes } from "./ai";
 import { mountImportRoutes } from "./import";
+import { mountMiscRoutes } from "./misc";
+import { mountContentRoutes } from "./content";
+import { mountPolyglotRoutes } from "./polyglot";
+import { mountSelfIntroRoutes } from "./self-intro";
 
 type Bindings = AuthEnv & {
   DB: D1Like;
@@ -29,6 +33,14 @@ mountReadProgress(app);
 mountAiRoutes(app);
 // Import routes (yaml restore, youtube, anki-client).
 mountImportRoutes(app);
+// Contact form + Slack events webhook.
+mountMiscRoutes(app);
+// Content routes (blog translate stream, tts, roadmap generate).
+mountContentRoutes(app);
+// Polyglot routes (translate, tts, save-cards).
+mountPolyglotRoutes(app);
+// Self-intro routes (translate, tts, save-cards).
+mountSelfIntroRoutes(app);
 
 // Health/D1 sanity check.
 app.get("/api/health", async (c) => {
