@@ -54,8 +54,18 @@ app.get("/api/health", async (c) => {
   }
 });
 
-// Non-/api requests fall through to Static Assets (SPA fallback handled by
-// not_found_handling="single-page-application").
-app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
+// Non-/api requests fall through to Static Assets. On Workers this uses
+// not_found_handling="single-page-application"; on Pages (no such config) we
+// do the SPA fallback explicitly: a 404 for an extension-less, non-/api path
+// serves index.html so client-side routes resolve.
+app.all("*", async (c) => {
+  const res = await c.env.ASSETS.fetch(c.req.raw);
+  const { pathname } = new URL(c.req.url);
+  if (res.status === 404 && !pathname.startsWith("/api/") && !/\.[a-z0-9]+$/i.test(pathname)) {
+    const index = await c.env.ASSETS.fetch(new Request(new URL("/", c.req.url)));
+    if (index.ok) return new Response(index.body, { status: 200, headers: index.headers });
+  }
+  return res;
+});
 
 export default app;
