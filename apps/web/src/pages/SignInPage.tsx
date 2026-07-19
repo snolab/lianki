@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { authClient } from "../lib/auth";
+import { ensureDeviceToken } from "../lib/api";
 
 // Sign-in: magic-link (email) + social OAuth. All paths key off the email as the
 // unique identity, so signing in with Google/GitHub or a magic link for the same
@@ -49,6 +50,18 @@ export function SignInPage() {
         <button onClick={social("google")}>Continue with Google</button>
         <button onClick={social("github")}>Continue with GitHub</button>
       </div>
+      <hr style={{ margin: "1.25rem 0", border: 0, borderTop: "1px solid var(--border)" }} />
+      <p style={{ color: "var(--muted)", fontSize: "0.9rem" }}>
+        No account needed — get a device token; add email later to sync across devices.
+      </p>
+      <button
+        onClick={async () => {
+          await ensureDeviceToken();
+          window.location.href = "/";
+        }}
+      >
+        Use without an account
+      </button>
     </section>
   );
 }
