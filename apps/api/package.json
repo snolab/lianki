@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "deploy": "vite build && node ../web/scripts/prerender.mjs dist/client && wrangler deploy",
+    "build": "rm -rf dist .intlayer node_modules/.vite ../../node_modules/.vite && vite build",
+    "deploy": "rm -rf dist .intlayer node_modules/.vite ../../node_modules/.vite && vite build && node ../web/scripts/prerender.mjs dist/client && wrangler deploy",
     "preview": "vite preview",
     "build:ssg": "vite build && node ../web/scripts/prerender.mjs dist/client"
   },
