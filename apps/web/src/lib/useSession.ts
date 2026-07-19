@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 
-// Minimal better-auth session hook. Hits the framework-agnostic better-auth
-// endpoint the Worker mounts at /api/auth/*. Returns the signed-in user (or null)
-// and a loading flag. A fuller port would use better-auth's React client.
-export type SessionUser = { id: string; email: string; name?: string };
+// Identity hook. Uses /api/me, which resolves BOTH a better-auth session cookie
+// (Google/GitHub/magic-link) and a device/API token (Bearer) — so a user with
+// only a device token still shows as signed in.
+export type SessionUser = { id?: string; email: string; name?: string; device?: boolean };
 
 export function useSession() {
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -11,13 +11,14 @@ export function useSession() {
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/auth/get-session", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { user?: SessionUser } | null) => {
-        if (alive) setUser(data?.user ?? null);
-      })
-      .catch(() => alive && setUser(null))
-      .finally(() => alive && setLoading(false));
+    import("./api").then(({ api }) =>
+      api<{ user?: SessionUser }>("/api/me")
+        .then((data) => {
+          if (alive) setUser(data?.user ?? null);
+        })
+        .catch(() => alive && setUser(null))
+        .finally(() => alive && setLoading(false)),
+    );
     return () => {
       alive = false;
     };
