@@ -1,0 +1,42 @@
+name: Migrate Mongo → D1
+
+# Runs the read-only Mongo export + loads it into the production D1.
+# Runs from GitHub Actions because Atlas isn't reachable from every dev
+# environment (and this doubles as a clean-egress connectivity test).
+#
+# Trigger: touch .github/migrate-trigger and push to cf-native
+# (workflow_dispatch requires the file on the default branch; push works here).
+on:
+  push:
+    branches: [cf-native]
+    paths: [".github/migrate-trigger"]
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Export MongoDB → SQL (read-only against Mongo)
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: bun scripts/migrate-mongo-to-d1.ts --out=db/migration-data.sql
+      - name: Apply schema + data to remote D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        working-directory: apps/api
+        run: |
+          bunx wrangler d1 execute lianki --remote -y --file=../../db/migrations/0001_init.sql
+          bunx wrangler d1 execute lianki --remote -y --file=../../db/migration-data.sql
+      - name: Verify D1 row counts
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        working-directory: apps/api
+        run: |
+          bunx wrangler d1 execute lianki --remote -y --json --command \
+            "SELECT (SELECT count(*) FROM user) users,(SELECT count(*) FROM fsrs_notes) notes,(SELECT count(*) FROM roadmap_goals) roadmaps,(SELECT count(*) FROM read_materials) reads,(SELECT count(*) FROM preferences) prefs,(SELECT count(*) FROM api_tokens) tokens"
