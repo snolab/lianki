@@ -72,6 +72,26 @@ export function mountDataRoutes(app: Hono<any>) {
     });
     return c.json({ token }); // shown only once
   });
+
+  // Device token — mint a token bound to a synthetic identity, NO sign-in.
+  // Makes a Google/email account optional: the token *is* the user (email is a
+  // stable device pseudo-address derived from the token hash). OAuth users can
+  // still sign in normally; a device user can later be linked by re-using its
+  // token while signed in (future work).
+  app.post("/api/token/device", async (c: any) => {
+    const { name = "Device" } = await c.req.json().catch(() => ({}));
+    const token = "lk_" + randomBytes(32).toString("hex");
+    const hash = sha256(token);
+    const email = `device-${hash.slice(0, 24)}@device.lianki`;
+    await new ApiTokensD1Repo(c.env.DB).insert({
+      tokenHash: hash,
+      email,
+      name,
+      createdAt: new Date(),
+    });
+    return c.json({ token, email });
+  });
+
   app.delete("/api/token", async (c: any) => {
     const email = await resolveEmail(c.env, c.req.raw);
     if (!email) return c.json({ error: "Login required" }, 401);
@@ -81,6 +101,14 @@ export function mountDataRoutes(app: Hono<any>) {
     if ((await repo.emailByHash(id)) !== email) return c.json({ error: "not found" }, 404);
     await repo.delete(id);
     return c.json({ ok: true });
+  });
+
+  // Current identity for session OR token (device) users — the SPA uses this
+  // instead of better-auth's session-only get-session so token users show up.
+  app.get("/api/me", async (c: any) => {
+    const email = await resolveEmail(c.env, c.req.raw);
+    if (!email) return c.json({ user: null });
+    return c.json({ user: { email, device: email.endsWith("@device.lianki") } });
   });
 
   // ── Preferences (session-authed, keyed by user id) ───────────────────────────
