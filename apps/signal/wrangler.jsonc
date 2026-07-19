@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lianki-signal",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-05-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [{ "name": "SIGNAL", "class_name": "SignalRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SignalRoom"] }]
+  // Custom domain s.lianki.com is attached after first deploy (dashboard or
+  // `wrangler deploy` + a route), see apps/signal/README.md.
+}

@@ -25,6 +25,7 @@ export function App() {
           <Link to="/review">Review</Link>
           <Link to="/due">Due</Link>
           <Link to="/data">Data</Link>
+          <Link to="/sync">Sync</Link>
           <Link to="/read">Read</Link>
           <Link to="/roadmap">Roadmap</Link>
           <Link to="/ai">AI</Link>
