@@ -23,7 +23,9 @@ jobs:
       - name: Export MongoDB → SQL (read-only against Mongo)
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
-        run: bun scripts/migrate-mongo-to-d1.ts --out=db/migration-data.sql
+        # Node (tsx), NOT bun: Bun's TLS mishandles SNI to Atlas ("cert does not
+        # contain a DNS name") — same code connects fine under Node.
+        run: npx -y tsx scripts/migrate-mongo-to-d1.ts --out=db/migration-data.sql
       - name: Apply schema + data to remote D1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

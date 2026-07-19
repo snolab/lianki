@@ -14,7 +14,7 @@
 
 import { writeFileSync } from "fs";
 import { MongoClient } from "mongodb";
-import { generateMigrationSql } from "@/lib/migrate/runMigration";
+import { generateMigrationSql } from "../lib/migrate/runMigration";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
