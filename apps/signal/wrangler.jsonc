@@ -8,7 +8,6 @@
   "durable_objects": {
     "bindings": [{ "name": "SIGNAL", "class_name": "SignalRoom" }]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SignalRoom"] }]
-  // Custom domain s.lianki.com is attached after first deploy (dashboard or
-  // `wrangler deploy` + a route), see apps/signal/README.md.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SignalRoom"] }],
+  "routes": [{ "pattern": "s.lianki.com", "custom_domain": true }]
 }
