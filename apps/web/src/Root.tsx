@@ -18,6 +18,7 @@ import { PolyglotPage } from "./pages/PolyglotPage";
 import { SelfIntroPage } from "./pages/SelfIntroPage";
 import { BlogListPage } from "./pages/BlogListPage";
 import { BlogPostPage } from "./pages/BlogPostPage";
+import { SyncPage } from "./pages/SyncPage";
 
 // The routed app, exported so it can be mounted both standalone (apps/web
 // main.tsx) and by the apps/api Worker's client bundle (single-origin serving).
@@ -43,6 +44,7 @@ export function Root() {
             <Route path="self-intro" element={<SelfIntroPage />} />
             <Route path="blog" element={<BlogListPage />} />
             <Route path="blog/:slug" element={<BlogPostPage />} />
+            <Route path="sync" element={<SyncPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
