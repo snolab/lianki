@@ -17,7 +17,10 @@ const isStaged = (path: string) => staged().includes(path);
 // Build userscript from TS source if staged
 if (isStaged("src/lianki.user.ts")) {
   execSync("bun run build:userscript", { stdio: "inherit" });
-  execSync("oxfmt public/lianki.user.js", { stdio: "inherit" });
+  // bunx, not bare `oxfmt`: the binary lives in node_modules/.bin and is not on
+  // PATH inside the git hook's shell, so a bare call fails with status 127 and
+  // blocks every commit that touches the userscript.
+  execSync("bunx oxfmt public/lianki.user.js", { stdio: "inherit" });
   run("git add public/lianki.user.js");
 }
 if (!isStaged("public/lianki.user.js")) process.exit(0);

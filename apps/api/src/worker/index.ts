@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { D1Like } from "@/lib/d1/types";
 import { getAuth, type AuthEnv } from "./auth";
 import { mountFsrs } from "./fsrs";
+import { mountWatch } from "./watch";
 import { mountDataRoutes } from "./data-routes";
 import { mountReadProgress } from "./read-progress";
 import { mountAiRoutes } from "./ai";
@@ -25,6 +26,8 @@ app.on(["GET", "POST"], "/api/auth/*", (c) => getAuth(c.env).handler(c.req.raw))
 
 // FSRS core API (the userscript's endpoints), ported onto the reused shared core.
 mountFsrs(app);
+// Per-video watch time (language-input hours) — tracked, not scheduled.
+mountWatch(app);
 // Data routes: token, preferences, membership, roadmap, export.
 mountDataRoutes(app);
 // Read materials (D1 + R2) and roadmap node progress.
