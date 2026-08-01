@@ -201,4 +201,115 @@ export function mountFsrs(app: Hono<any>) {
       return c.json({ ok: true, nextUrl: next?.url ?? null, nextTitle: next?.title ?? null });
     }),
   );
+
+  // Review options for one note, by id or url. The userscript's getOptions()
+  // calls this on every dialog open.
+  app.get(
+    "/api/fsrs/options",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    auth(async (c: any, repo) => {
+      const id = c.req.query("id");
+      const url = c.req.query("url");
+      const note = id
+        ? await repo.getById(id)
+        : url
+          ? await repo.getByUrl(normalizeUrl(url))
+          : null;
+      if (!note) return c.json({ error: "note not found" }, 404);
+      return c.json({ id: note.id, _id: note.id, options: reviewOptions(note.card) });
+    }),
+  );
+
+  // Existence check used by the offline sync queue to confirm a card reached the
+  // server. It called /api/fsrs/get, which was implemented on NO backend — so
+  // that queue step has been 404ing for everyone. Implemented rather than
+  // rerouted: a liveness probe should not have to compute FSRS scheduling.
+  app.get(
+    "/api/fsrs/get",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    auth(async (c: any, repo) => {
+      const url = c.req.query("url");
+      if (!url) return c.json({ error: "no url" }, 400);
+      const note = await repo.getByUrl(normalizeUrl(url));
+      if (!note) return c.json({ error: "note not found" }, 404);
+      return c.json({ _id: note.id, url: note.url, title: note.title ?? null, card: note.card });
+    }),
+  );
+
+  // Bulk add (the userscript's Alt+Shift+V paste-a-list flow).
+  app.post(
+    "/api/fsrs/batch-add",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    auth(async (c: any, repo) => {
+      const body = await c.req.json().catch(() => null);
+      const urls = Array.isArray(body?.urls) ? body.urls.filter(Boolean).slice(0, 500) : null;
+      if (!urls) return c.json({ error: "urls must be an array" }, 400);
+      const results = await Promise.allSettled(urls.map((u: string) => saveNote(repo, u)));
+      const count = results.filter((r) => r.status === "fulfilled").length;
+      return c.json({ success: true, count, failed: results.length - count, total: urls.length });
+    }),
+  );
+
+  // Speed markers — {timestamp: playbackRate}, stored on the note itself.
+  //
+  // These were missing from this worker while app/fsrs.ts had them, so after the
+  // cf-native cutover the userscript's 30 s marker sync would have 404'd and
+  // markers would have silently stopped leaving the browser — taking the
+  // difficulty heatmap's cross-device data with them.
+  app.get(
+    "/api/fsrs/speed-markers",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    auth(async (c: any, repo) => {
+      const url = c.req.query("url");
+      if (!url) return c.json({ error: "no url" }, 400);
+      const note = await repo.getByUrl(normalizeUrl(url));
+      return c.json({ markers: note?.speedMarkers ?? {} });
+    }),
+  );
+
+  app.post(
+    "/api/fsrs/speed-markers",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    auth(async (c: any, repo) => {
+      const body = await c.req.json().catch(() => null);
+      const url = typeof body?.url === "string" ? body.url : "";
+      if (!url) return c.json({ error: "no url" }, 400);
+
+      // Keep only sane {seconds: rate} pairs — this is client-supplied and lands
+      // in a JSON column that the player later trusts to set playbackRate.
+      const markers: Record<string, number> = {};
+      for (const [t, rate] of Object.entries(body?.markers ?? {}).slice(0, 2000)) {
+        const time = Number(t);
+        const r = Number(rate);
+        if (Number.isFinite(time) && time >= 0 && Number.isFinite(r) && r > 0 && r <= 16)
+          markers[String(time)] = r;
+      }
+
+      // Upsert: the Mongo route used { upsert: true }, so marking speeds on a
+      // page you have not carded yet still persists. saveNote creates on demand.
+      const note = await saveNote(repo, url);
+      const { id, ...rest } = note;
+      await repo.upsert({ ...rest, speedMarkers: markers }, id);
+      return c.json({ ok: true });
+    }),
+  );
+
+  // Note text (max 128 chars) — the review dialog's notes box. Also absent here
+  // while present in app/fsrs.ts.
+  app.patch(
+    "/api/fsrs/notes",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    auth(async (c: any, repo) => {
+      const body = await c.req.json().catch(() => null);
+      const url = c.req.query("url") ?? body?.url;
+      if (!url) return c.json({ error: "no url" }, 400);
+      if (typeof body?.notes !== "string" || body.notes.length > 128)
+        return c.json({ error: "notes must be a string of at most 128 chars" }, 400);
+      const note = await repo.getByUrl(normalizeUrl(url));
+      if (!note) return c.json({ error: "note not found" }, 404);
+      const { id, ...rest } = note;
+      await repo.upsert({ ...rest, notes: body.notes }, id);
+      return c.json({ ok: true });
+    }),
+  );
 }

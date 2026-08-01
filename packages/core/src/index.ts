@@ -7,3 +7,6 @@ export * from "./rating";
 export * from "./fsrsNote";
 export * from "./preferences";
 export * from "./apiToken";
+export * from "./watchStats";
+export * from "./difficulty";
+export * from "./youtubeLang";

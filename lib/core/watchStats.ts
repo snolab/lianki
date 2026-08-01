@@ -1,0 +1,20 @@
+// Moved to @lianki/core. Re-exported for back-compat.
+export {
+  COV_BUCKET_S,
+  COV_MAX_BUCKETS,
+  coverageBuckets,
+  coverageCount,
+  decodeCoverage,
+  emptyWatchStats,
+  encodeCoverage,
+  localDayKey,
+  markCoverage,
+  mergeCoverage,
+  mergeWatchStats,
+  newCoverage,
+  parseWatchStats,
+  summarizeWatch,
+  type DeviceWatch,
+  type WatchStats,
+  type WatchSummary,
+} from "@lianki/core";
