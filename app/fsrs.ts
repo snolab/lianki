@@ -24,6 +24,8 @@ import {
   RATING_MAP,
 } from "./fsrs-helpers";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
+import { getWatchStatsStore } from "./getWatchStatsStore";
+import { sanitizeWatchStats, summarizeWatch } from "@lianki/core";
 import { getHeatmapCacheTag } from "./lib/heatmap-cache";
 import { normalizeUrl } from "@/lib/normalizeUrl";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -168,6 +170,15 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           }),
         ),
       });
+    },
+    // Existence probe for the offline sync queue. The userscript has always
+    // called this; it was never implemented on any backend, so that queue step
+    // silently 404'd for every user.
+    "GET /api/fsrs/get(?:/|$|\\?)": async (req, opts) => {
+      const { url } = getParams(req, opts);
+      const note = await FSRSNotes.findOne({ url: normalizeUrl(url) });
+      if (!note) return JSONR({ error: "note not found" }, 404);
+      return JSONR({ _id: note._id.toString(), url: note.url, title: note.title ?? null });
     },
     "GET /api/fsrs/next-url(?:/|$|\\?)": async (req) => {
       const note = await FSRSNotes.findOne(nextDueQuery(req), { sort: NEXT_DUE_SORT });
@@ -366,6 +377,37 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const normalized = normalizeUrl(url);
       const note = await FSRSNotes.findOne({ url: normalized });
       return JSONR({ markers: note?.speedMarkers ?? {} });
+    },
+    // Per-video watch time. Stored apart from the note (see getWatchStatsStore)
+    // so merely playing a video never enqueues a review card.
+    "POST /api/fsrs/watch(?:/|$|\\?)": async (req) => {
+      const body = await req.json().catch(() => null);
+      const { url, title, stats } = z
+        .object({
+          url: z.string(),
+          title: z.string().max(512).optional().nullable(),
+          stats: z.unknown().optional(),
+        })
+        .parse(body);
+      const row = await getWatchStatsStore(email).merge(
+        normalizeUrl(url),
+        sanitizeWatchStats(stats),
+        title ?? undefined,
+      );
+      return JSONR({ ok: true, stats: row.stats, summary: summarizeWatch(row.stats) });
+    },
+    "GET /api/fsrs/watch/overview(?:/|$|\\?)": async (req, opts) => {
+      const { top } = getParams(req, opts);
+      const limit = Math.min(100, parseInt(top ?? "20", 10) || 20);
+      return JSONR(await getWatchStatsStore(email).overview(limit));
+    },
+    "GET /api/fsrs/watch(?:/|$|\\?)": async (req, opts) => {
+      const { url } = getParams(req, opts);
+      const row = await getWatchStatsStore(email).getByUrl(normalizeUrl(url));
+      return JSONR({
+        stats: row?.stats ?? { v: 1, by: {} },
+        summary: summarizeWatch(row?.stats),
+      });
     },
     "GET /api/fsrs/next(?:/|\\?|$)": async () =>
       new Response(
