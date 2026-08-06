@@ -1,6 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { testSchema } from "@/lib/d1/testSchema";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { MongoClient } from "mongodb";
 import { sqlLiteral, buildInsert } from "@/lib/migrate/sqlGen";
@@ -10,7 +9,7 @@ import type { D1Like } from "@/lib/d1/types";
 import { FsrsNotesD1Repo } from "@/lib/repos/fsrsNotesD1";
 import { RoadmapGoalsD1Repo, PreferencesD1Repo, ApiTokensD1Repo } from "@/lib/repos/d1Repos";
 
-const SCHEMA = readFileSync(join(process.cwd(), "db/migrations/0001_init.sql"), "utf8");
+const SCHEMA = testSchema();
 
 // ── sqlGen unit tests ────────────────────────────────────────────────────────
 

@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.0
+// @version     2.24.1
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1781,11 +1781,12 @@
         })
         .filter(Boolean);
     }
-    getDueCards(limit = 10) {
+    getDueCards(limit = 10, order = "newest") {
       const now = new Date();
+      const dir = order === "newest" ? -1 : 1;
       return this._index()
         .filter((e) => !e.del && new Date(e.due) <= now)
-        .sort((a, b) => new Date(b.due) - new Date(a.due))
+        .sort((a, b) => dir * (new Date(a.due) - new Date(b.due)))
         .slice(0, limit)
         .map((e) => {
           const raw = GM_getValue(CARD_PREFIX + e.hash, "");
@@ -2072,6 +2073,7 @@
     let userPreferences = {
       mobileExcludePatterns: [],
     };
+    const reviewOrder = () => (userPreferences?.reviewOrder === "oldest" ? "oldest" : "newest");
     async function loadPreferences() {
       try {
         const cached = GM_getValue("lk:preferences", "");
@@ -2181,10 +2183,10 @@
             .json()
             .catch(() => null)
             .then((body) => {
-              const e = new Error(`HTTP ${status} — ${what}`);
+              const detail = body?.errorId ? `Error ID: ${body.errorId}` : body?.error;
+              const e = new Error(`HTTP ${status} — ${what}${detail ? ` — ${detail}` : ""}`);
               e.status = status;
-              if (body?.errorId) e.details = `Error ID: ${body.errorId}`;
-              else if (body?.error) e.details = body.error;
+              if (detail) e.details = detail;
               throw e;
             });
         }
@@ -2865,7 +2867,7 @@ ${state.errorDetails}`);
         gmCacheInvalidate(noteKey(url));
         if (offlineReady) {
           try {
-            const dueCards = cardStorage.getDueCards(2);
+            const dueCards = cardStorage.getDueCards(2, reviewOrder());
             const nextCard = dueCards.find((c) => c.url !== url);
             prefetchedNextUrl = nextCard?.url ?? null;
             if (prefetchedNextUrl) prefetchNextPage(prefetchedNextUrl);
@@ -3799,7 +3801,7 @@ ${actualUrl}
               newHlc,
             );
             try {
-              const dueCards = cardStorage.getDueCards(2);
+              const dueCards = cardStorage.getDueCards(2, reviewOrder());
               const normalizedCurrent = normalizeUrl(location.href);
               const nextCard = dueCards.find((c) => c.url !== url && c.url !== normalizedCurrent);
               prefetchedNextUrl = nextCard?.url ?? null;
@@ -3972,7 +3974,7 @@ ${actualUrl}
     async function prefetchNextCachedCard() {
       if (!offlineReady) return;
       try {
-        const dueCards = cardStorage.getDueCards(2);
+        const dueCards = cardStorage.getDueCards(2, reviewOrder());
         const normalizedCurrent = normalizeUrl(location.href);
         const nextCard = dueCards.find((c) => c.url !== normalizedCurrent);
         if (nextCard) {

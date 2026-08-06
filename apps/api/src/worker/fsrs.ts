@@ -4,7 +4,9 @@ import { FsrsNotesD1Repo, type StoredNote } from "@/lib/repos/fsrsNotesD1";
 import { RATING_MAP, newServerHLC, compareHLC, type HLC } from "@/app/fsrs-helpers";
 import { normalizeUrl } from "@/lib/normalizeUrl";
 import { dueMs } from "@/app/ems";
-import { resolveEmail, type Env } from "./session";
+import { resolveEmail, resolveUser, type Env } from "./session";
+import { PreferencesD1Repo } from "@/lib/repos/d1Repos";
+import { DEFAULT_REVIEW_ORDER, type ReviewOrder } from "@lianki/core";
 
 // Faithful CF-native port of the userscript's FSRS API (app/fsrs.ts), built on
 // the reused shared core (FsrsNotesD1Repo, fsrs-helpers, normalizeUrl, ems) —
@@ -47,8 +49,9 @@ async function nextDue(
   repo: FsrsNotesD1Repo,
   excludeUrl?: string,
   excludeDomains: string[] = [],
+  order: ReviewOrder = DEFAULT_REVIEW_ORDER,
 ): Promise<StoredNote | null> {
-  const due = await repo.listDue(new Date(), 50);
+  const due = await repo.listDue(new Date(), 50, order);
   return (
     due.find((n) => n.url !== excludeUrl && !excludeDomains.some((d) => d && n.url.includes(d))) ??
     null
@@ -74,6 +77,17 @@ export function mountFsrs(app: Hono<any>) {
       return handler(c, new FsrsNotesD1Repo(c.env.DB, email));
     };
 
+  /** The user's next-card order. Preferences are keyed by user id, not email. */
+  const orderFor = async (c: any): Promise<ReviewOrder> => {
+    try {
+      const user = await resolveUser(c.env, c.req.raw);
+      if (!user?.id) return DEFAULT_REVIEW_ORDER;
+      return await new PreferencesD1Repo(c.env.DB, user.id).reviewOrder();
+    } catch {
+      return DEFAULT_REVIEW_ORDER; // never let a preference lookup break reviewing
+    }
+  };
+
   app.post(
     "/api/fsrs/add",
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,7 +108,7 @@ export function mountFsrs(app: Hono<any>) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     auth(async (c: any, repo) => {
       const limit = parseInt(c.req.query("limit") ?? "10", 10);
-      const cards = await repo.listDue(new Date(), limit);
+      const cards = await repo.listDue(new Date(), limit, await orderFor(c));
       return c.json({
         cards: cards.map((n) => ({
           _id: n.id,
@@ -116,6 +130,7 @@ export function mountFsrs(app: Hono<any>) {
         repo,
         c.req.query("excludeUrl") ?? undefined,
         c.req.query("excludeDomains")?.split(",").filter(Boolean) ?? [],
+        await orderFor(c),
       );
       return c.json({ url: note?.url ?? null, title: note?.title ?? null });
     });
@@ -166,7 +181,7 @@ export function mountFsrs(app: Hono<any>) {
       const newLog = [...(note.log ?? []), log];
       await repo.upsert({ ...noteData, card, hlc: newHLC, log: newLog }, id);
 
-      const next = await nextDue(repo, note.url);
+      const next = await nextDue(repo, note.url, [], await orderFor(c));
       return c.json({
         ok: true,
         due: dueMs(card.due),
@@ -197,7 +212,7 @@ export function mountFsrs(app: Hono<any>) {
       const url = c.req.query("url");
       if (!url) return c.json({ error: "no url" }, 400);
       await repo.delete(normalizeUrl(url));
-      const next = await nextDue(repo, normalizeUrl(url));
+      const next = await nextDue(repo, normalizeUrl(url), [], await orderFor(c));
       return c.json({ ok: true, nextUrl: next?.url ?? null, nextTitle: next?.title ?? null });
     }),
   );
