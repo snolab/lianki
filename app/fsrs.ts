@@ -20,12 +20,21 @@ import {
   compareHLC,
   type HLC,
   newServerHLC,
-  NEXT_DUE_SORT,
   RATING_MAP,
 } from "./fsrs-helpers";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
 import { getWatchStatsStore } from "./getWatchStatsStore";
-import { sanitizeWatchStats, summarizeWatch } from "@lianki/core";
+import {
+  asReviewOrder,
+  DEFAULT_REVIEW_ORDER,
+  reviewOrderMongo,
+  sanitizeWatchStats,
+  summarizeWatch,
+  type ReviewOrder,
+} from "@lianki/core";
+import { authUserOrNull } from "./signInEmail";
+import { PreferencesD1Repo } from "@/lib/repos/d1Repos";
+import { db as mongoDb } from "./db";
 import { getHeatmapCacheTag } from "./lib/heatmap-cache";
 import { normalizeUrl } from "@/lib/normalizeUrl";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -70,6 +79,24 @@ const fsrsConfig = fsrs(
   }),
 );
 
+/**
+ * The signed-in user's next-card order. Preferences are keyed by user id while
+ * the FSRS handler works in emails, so this resolves the user separately.
+ * Any failure yields the historical order — a preference lookup must never be
+ * able to block reviewing.
+ */
+async function getReviewOrder(): Promise<ReviewOrder> {
+  try {
+    const user = await authUserOrNull();
+    if (!user?.id) return DEFAULT_REVIEW_ORDER;
+    if (dbBackend() === "d1") return await new PreferencesD1Repo(getD1(), user.id).reviewOrder();
+    const prefs = await mongoDb.collection("preferences").findOne({ userId: user.id });
+    return asReviewOrder(prefs?.reviewOrder);
+  } catch {
+    return DEFAULT_REVIEW_ORDER;
+  }
+}
+
 function nextDueQuery(req: Request, excludeUrl?: string) {
   const url = new URL(req.url, "http://localhost");
   const excludeDomains = url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
@@ -80,6 +107,15 @@ function nextDueQuery(req: Request, excludeUrl?: string) {
 
 export const fsrsHandler = async (req: Request, email?: string) => {
   const FSRSNotes = getFsrsNotes(email);
+
+  // Next-card order preference. Resolved once per request and reused, so every
+  // "what comes next" decision in this handler agrees. Failure falls back to the
+  // historical order rather than breaking review.
+  let _order: 1 | -1 | null = null;
+  const dueSort = async (): Promise<{ "card.due": 1 | -1 }> => {
+    if (_order === null) _order = reviewOrderMongo(await getReviewOrder());
+    return { "card.due": _order };
+  };
 
   type RegexRoutes = Record<
     string,
@@ -143,7 +179,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         };
       }
 
-      const cards = await FSRSNotes.find(query, { sort: { "card.due": 1 }, limit }).toArray();
+      const cards = await FSRSNotes.find(query, { sort: await dueSort(), limit }).toArray();
 
       return JSONR({
         cards: cards.map((note) => ({
@@ -181,7 +217,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       return JSONR({ _id: note._id.toString(), url: note.url, title: note.title ?? null });
     },
     "GET /api/fsrs/next-url(?:/|$|\\?)": async (req) => {
-      const note = await FSRSNotes.findOne(nextDueQuery(req), { sort: NEXT_DUE_SORT });
+      const note = await FSRSNotes.findOne(nextDueQuery(req), { sort: await dueSort() });
       return JSONR({ url: note?.url ?? null, title: note?.title ?? null });
     },
     "GET /api/fsrs/review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (
@@ -194,7 +230,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const reviewedCard = await reviewed(note, rating);
 
       const nextNote = await FSRSNotes.findOne(nextDueQuery(req, note.url), {
-        sort: NEXT_DUE_SORT,
+        sort: await dueSort(),
       });
 
       return JSONR({
@@ -255,7 +291,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const reviewedCard = await reviewed(note, rating, clientHLC);
 
       const nextNote = await FSRSNotes.findOne(nextDueQuery(req, note.url), {
-        sort: NEXT_DUE_SORT,
+        sort: await dueSort(),
       });
 
       return JSONR({
@@ -272,7 +308,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
       await FSRSNotes.deleteOne({ url: note.url });
 
-      const nextNote = await FSRSNotes.findOne(nextDueQuery(req), { sort: NEXT_DUE_SORT });
+      const nextNote = await FSRSNotes.findOne(nextDueQuery(req), { sort: await dueSort() });
 
       return JSONR({
         ok: true,
@@ -411,7 +447,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     },
     "GET /api/fsrs/next(?:/|\\?|$)": async () =>
       new Response(
-        sflow(FSRSNotes.find({ "card.due": { $lte: new Date() } }, { sort: NEXT_DUE_SORT }))
+        sflow(FSRSNotes.find({ "card.due": { $lte: new Date() } }, { sort: await dueSort() }))
           .limit(1)
           .map((note) => {
             const url = JSON.stringify(note.url);

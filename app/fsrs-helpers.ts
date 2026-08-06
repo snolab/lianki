@@ -9,22 +9,14 @@ export { compareHLC, newServerHLC, RATING_MAP, type HLC } from "@lianki/core";
  * @param excludeDomains - comma-separated domain list from query params
  * @param excludeUrl - URL of the just-reviewed card to exclude from results
  */
-/**
- * Order used to pick the NEXT card to review: most recently due first.
- *
- * Everything here is already filtered to `card.due <= now`, so descending means
- * "the card that came due most recently" — freshly-due cards are studied while
- * they are still fresh, and a long backlog sits at the back instead of gating
- * everything behind the oldest item.
- *
- * The trade-off is real: with a backlog that never empties, the oldest cards are
- * never reached. Flip to 1 here to go back to oldest-first; this constant is the
- * only place that decides it.
- *
- * Listing endpoints (`/all`, the list page, the debug dump) keep their own
- * ascending order — they show everything, so the head of the list is cosmetic.
- */
-export const NEXT_DUE_SORT = { "card.due": -1 } as const;
+// The order used to pick the NEXT card is no longer a constant: it is the
+// per-user `reviewOrder` preference, resolved once per request by dueSort() in
+// app/fsrs.ts and mapped by reviewOrderMongo/reviewOrderSql. What everyone who
+// never chooses gets — and why — is documented on DEFAULT_REVIEW_ORDER in
+// packages/core/src/preferences.ts.
+//
+// Listing endpoints (`/all`, the list page, the debug dump) keep their own
+// ascending order — they show everything, so the head of the list is cosmetic.
 
 export function buildNextDueQuery(excludeDomains: string[], excludeUrl?: string) {
   const query: any = {
