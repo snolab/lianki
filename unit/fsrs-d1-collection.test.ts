@@ -1,13 +1,12 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { testSchema } from "@/lib/d1/testSchema";
 import { createEmptyCard, type ReviewLog } from "ts-fsrs";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import type { D1Like } from "@/lib/d1/types";
 import { D1FsrsCollection } from "@/app/fsrsNotesD1Collection";
 import { newServerHLC } from "@/app/fsrs-helpers";
 
-const SCHEMA = readFileSync(join(process.cwd(), "db/migrations/0001_init.sql"), "utf8");
+const SCHEMA = testSchema();
 const EMAIL = "user@example.com";
 
 let col: D1FsrsCollection;

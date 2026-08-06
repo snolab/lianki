@@ -1,6 +1,5 @@
 import { describe, expect, test, beforeEach } from "vitest";
-import { readFileSync, readdirSync } from "fs";
-import { join } from "path";
+import { testSchema } from "@/lib/d1/testSchema";
 import {
   COV_BUCKET_S,
   COV_MAX_BUCKETS,
@@ -287,11 +286,7 @@ test("localDayKey formats as YYYY-MM-DD", () => {
 
 // ── D1 repo ──────────────────────────────────────────────────────────────────
 
-const SCHEMA = readdirSync(join(process.cwd(), "db/migrations"))
-  .filter((f) => f.endsWith(".sql"))
-  .sort()
-  .map((f) => readFileSync(join(process.cwd(), "db/migrations", f), "utf8"))
-  .join("\n");
+const SCHEMA = testSchema();
 const USER = "watcher@example.com";
 
 describe("WatchStatsD1Repo", () => {

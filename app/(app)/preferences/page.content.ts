@@ -77,6 +77,49 @@ const preferencesPageContent = {
       sw: "Mapendeleo",
       mr: "प्राधान्ये",
     }),
+    reviewOrder: {
+      heading: t({
+        en: "Next card order",
+        zh: "下一张卡片顺序",
+        ja: "次のカードの順番",
+        ko: "다음 카드 순서",
+      }),
+      description: t({
+        en: "Which due card to show next. Both options only ever show cards that are already due — this changes the order within them, never schedules anything early.",
+        zh: "接下来显示哪张到期卡片。两种方式都只显示已到期的卡片——这只改变顺序，绝不会提前安排复习。",
+        ja: "次に表示する期限切れカードの選び方です。どちらも既に期限が来たカードだけを対象にし、順番を変えるだけで前倒しはしません。",
+        ko: "다음에 표시할 만기 카드를 고릅니다. 두 방식 모두 이미 만기된 카드만 대상으로 하며, 순서만 바꿀 뿐 앞당겨 예약하지 않습니다.",
+      }),
+      oldest: {
+        label: t({
+          en: "Most overdue first",
+          zh: "最久未复习优先",
+          ja: "期限切れが古い順",
+          ko: "가장 오래 밀린 것부터",
+        }),
+        hint: t({
+          en: "Classic spaced repetition — works through the backlog.",
+          zh: "经典间隔重复——优先清理积压。",
+          ja: "従来の間隔反復。たまった分から片づけます。",
+          ko: "고전적인 간격 반복 — 밀린 것부터 처리합니다.",
+        }),
+      },
+      newest: {
+        label: t({
+          en: "Just came due first",
+          zh: "刚到期优先",
+          ja: "期限が来たばかり順",
+          ko: "방금 만기된 것부터",
+        }),
+        hint: t({
+          en: "Freshest first — review what you saw most recently before the backlog.",
+          zh: "最新优先——先复习最近看过的，再处理积压。",
+          ja: "新しい順。最近見たものを、たまった分より先に復習します。",
+          ko: "최신 우선 — 최근에 본 것을 밀린 것보다 먼저 복습합니다.",
+        }),
+      },
+    },
+
     mobileFilters: {
       heading: t({
         en: "Mobile Review Filters",
