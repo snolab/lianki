@@ -59,17 +59,64 @@ function Heatmap({ days }: { days: Record<string, number> }) {
   );
 }
 
+/**
+ * "ja" → "Japanese", in the reader's own locale.
+ *
+ * Raw BCP-47 tags are unreadable as a stat — "how many hours of ja" is not a
+ * question anyone asks. Falls back to the tag when the runtime lacks
+ * DisplayNames or the tag is unknown, which is better than showing nothing.
+ */
+function languageName(tag: string | null): string | null {
+  if (!tag) return null;
+  try {
+    return (
+      new Intl.DisplayNames(navigator.languages as string[], { type: "language" }).of(tag) ?? tag
+    );
+  } catch {
+    return tag;
+  }
+}
+
 export default function StatsClient() {
   const c = useIntlayer("stats-page");
   const [data, setData] = useState<WatchOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [identifying, setIdentifying] = useState(false);
+  const [identifyMsg, setIdentifyMsg] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = () =>
     fetch("/api/fsrs/watch/overview?top=20")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then(setData)
       .catch((e) => setError(String(e.message ?? e)));
+
+  useEffect(() => {
+    load();
   }, []);
+
+  /** Videos whose language is still unknown — what the backfill would act on. */
+  const unlabelled = data?.languages.find((l) => !l.lang)?.videos ?? 0;
+
+  async function identify() {
+    setIdentifying(true);
+    setIdentifyMsg(null);
+    try {
+      const r = await fetch("/api/fsrs/watch/enrich", { method: "POST" });
+      const body = await r.json().catch(() => ({}));
+      // 501 means the server has no YOUTUBE_API_KEY. Say that plainly rather
+      // than "failed" — it is a deployment gap the user can actually fix.
+      if (r.status === 501) setIdentifyMsg(String(c.needsApiKey));
+      else if (!r.ok) setIdentifyMsg(`HTTP ${r.status}${body?.error ? ` — ${body.error}` : ""}`);
+      else {
+        setIdentifyMsg(`${c.identified}: ${body.labelled ?? 0}/${body.checked ?? 0}`);
+        await load();
+      }
+    } catch (e) {
+      setIdentifyMsg(String((e as Error).message ?? e));
+    } finally {
+      setIdentifying(false);
+    }
+  }
 
   if (error) return <p className="p-8 text-red-400">{error}</p>;
   if (!data) return <p className="p-8 opacity-60">…</p>;
@@ -111,19 +158,49 @@ export default function StatsClient() {
             <h2 className="text-sm font-medium opacity-80">{c.byLanguage}</h2>
             {data.languages.map((l) => (
               <div key={l.lang || "?"} className="flex items-center gap-3 text-sm">
-                <span className="w-20 shrink-0 opacity-80">{l.lang || c.unknownLanguage}</span>
+                <span className="w-28 shrink-0 opacity-80" title={l.lang || undefined}>
+                  {languageName(l.lang) ?? c.unknownLanguage}
+                </span>
                 <div className="flex-1 h-2 rounded bg-white/5 overflow-hidden">
                   <div
                     className="h-full rounded"
                     style={{
                       width: `${data.totalWall ? (l.wall / data.totalWall) * 100 : 0}%`,
-                      background: "oklch(0.68 0.15 150)",
+                      // Unlabelled is grey, not green: it is an absence of data,
+                      // not a language you have studied.
+                      background: l.lang ? "oklch(0.68 0.15 150)" : "oklch(0.55 0.02 250)",
                     }}
                   />
                 </div>
-                <span className="tabular-nums opacity-70 w-14 text-right">{hours(l.wall)}h</span>
+                <span className="tabular-nums opacity-40 text-xs w-14 text-right">
+                  {l.videos} {c.videosShort}
+                </span>
+                <span className="tabular-nums opacity-80 w-16 text-right font-medium">
+                  {hours(l.wall)}h
+                </span>
               </div>
             ))}
+
+            {/*
+              An unlabelled pile is the expected first state, not a failure: the
+              audio language lives in ytInitialPlayerResponse, which neither a
+              userscript sandbox nor an MV3 isolated content script can read. The
+              server-side YouTube Data API is the only reliable source — so offer
+              that action here instead of leaving an unexplained grey bar.
+            */}
+            {unlabelled > 0 && (
+              <div className="mt-3 rounded-lg bg-white/5 p-3 text-xs space-y-2">
+                <p className="opacity-70 leading-relaxed">{c.unlabelledExplainer}</p>
+                <button
+                  onClick={identify}
+                  disabled={identifying}
+                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40"
+                >
+                  {identifying ? c.identifying : c.identifyLanguages}
+                </button>
+                {identifyMsg && <p className="opacity-60">{identifyMsg}</p>}
+              </div>
+            )}
           </section>
 
           <section className="space-y-2">
