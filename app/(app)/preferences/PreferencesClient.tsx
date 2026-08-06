@@ -1,5 +1,7 @@
 "use client";
 
+import { asReviewOrder, DEFAULT_REVIEW_ORDER, type ReviewOrder } from "@lianki/core";
+
 import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import TokenManager from "../list/components/TokenManager";
@@ -24,6 +26,7 @@ export default function PreferencesClient() {
     errors,
     success,
     examples,
+    reviewOrder: reviewOrderUi,
   } = useIntlayer("preferences-page");
 
   const [loading, setLoading] = useState(true);
@@ -32,6 +35,7 @@ export default function PreferencesClient() {
   const [newPattern, setNewPattern] = useState("");
   const [newType, setNewType] = useState<FilterType>("domain");
   const [isRegex, setIsRegex] = useState(false);
+  const [reviewOrder, setReviewOrder] = useState<ReviewOrder>(DEFAULT_REVIEW_ORDER);
 
   useEffect(() => {
     fetchPreferences();
@@ -43,6 +47,7 @@ export default function PreferencesClient() {
       if (!res.ok) throw new Error(errors.failedToFetch);
       const data = await res.json();
       setPatterns(data.mobileExcludePatterns || []);
+      setReviewOrder(asReviewOrder(data.reviewOrder));
     } catch (error) {
       console.error("Error fetching preferences:", error);
       alert(errors.failedToLoad);
@@ -59,6 +64,7 @@ export default function PreferencesClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mobileExcludePatterns: patterns,
+          reviewOrder,
         }),
       });
       if (!res.ok) throw new Error(errors.failedToSave);
@@ -128,6 +134,32 @@ export default function PreferencesClient() {
   return (
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-3xl font-bold mb-8">{heading}</h1>
+
+      {/* Next-card order */}
+      <section className="mb-10">
+        <h2 className="text-2xl font-semibold mb-4 text-white">{reviewOrderUi.heading}</h2>
+        <p className="text-gray-400 mb-4">{reviewOrderUi.description}</p>
+        <div className="space-y-2">
+          {(["oldest", "newest"] as const).map((opt) => (
+            <label
+              key={opt}
+              className="flex items-start gap-3 p-3 rounded-lg bg-white/5 cursor-pointer hover:bg-white/10"
+            >
+              <input
+                type="radio"
+                name="reviewOrder"
+                className="mt-1"
+                checked={reviewOrder === opt}
+                onChange={() => setReviewOrder(opt)}
+              />
+              <span>
+                <span className="block font-medium">{reviewOrderUi[opt].label}</span>
+                <span className="block text-sm text-gray-400">{reviewOrderUi[opt].hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </section>
 
       {/* Mobile Exclude Patterns */}
       <section className="mb-10">

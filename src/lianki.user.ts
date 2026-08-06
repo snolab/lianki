@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.0
+// @version     2.24.1
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -319,6 +319,7 @@ class GMCardStorage {
   }
 
   /**
+<<<<<<< HEAD
    * Due cards in the order they should be served.
    *
    * Cards on `preferOrigin` come first, then most recently due — the same rule
@@ -332,6 +333,23 @@ class GMCardStorage {
     return this._index()
       .filter((e) => !e.del && new Date(e.due) <= now)
       .sort((a, b) => onOrigin(b) - onOrigin(a) || new Date(b.due) - new Date(a.due))
+=======
+   * Cards already due, in the user's chosen order.
+   *
+   * Must match the server's ordering: if the offline store disagreed, the next
+   * card would change depending on whether you happened to be online.
+   */
+  getDueCards(limit = 10, order = "newest") {
+    const now = new Date();
+    // `!e.del` skips tombstones: a deleted card must not come back as due.
+    // `dir` is the user's reviewOrder — the same preference the server applies,
+    // because offline and online must agree or which card you get depends on
+    // connectivity.
+    const dir = order === "newest" ? -1 : 1;
+    return this._index()
+      .filter((e) => !e.del && new Date(e.due) <= now)
+      .sort((a, b) => dir * (new Date(a.due) - new Date(b.due)))
+>>>>>>> 93d1159 (feat(review): choose next-card order — most-overdue or just-came-due)
       .slice(0, limit)
       .map((e) => {
         const raw = GM_getValue(CARD_PREFIX + e.hash, "");
@@ -714,6 +732,9 @@ function main() {
   };
 
   // Load preferences on startup (called after api() is defined)
+  /** Next-card order from the cached preferences; defaults to the classic order. */
+  const reviewOrder = () => (userPreferences?.reviewOrder === "oldest" ? "oldest" : "newest");
+
   async function loadPreferences() {
     try {
       const cached = GM_getValue("lk:preferences", "");
@@ -847,15 +868,22 @@ function main() {
           .json()
           .catch(() => null)
           .then((body) => {
-            const e = new Error(`HTTP ${status} — ${what}`);
-            // Callers need the status and body to tell a permanent failure from
-            // a transient one. Without these only 401 carried a status, so the
-            // sync queue could not distinguish "will never succeed" from "try
-            // again later" and retried both — see tryBackgroundSync.
+            // Fold the server's own explanation into the message, not just onto
+            // a side property. Production Next hides the real error behind a
+            // digest/errorId, and that id is the ONLY way to find it in the
+            // runtime logs — but it lived on `details`, which the console and
+            // the error reporter never printed. A 500 was therefore reported as
+            // a bare status with the one piece of correlating information
+            // silently dropped.
+            const detail = body?.errorId ? `Error ID: ${body.errorId}` : body?.error;
+            const e = new Error(`HTTP ${status} — ${what}${detail ? ` — ${detail}` : ""}`);
+            // `status` and `body` let callers tell a permanent failure from a
+            // transient one. Without them only 401 carried a status, so the sync
+            // queue could not distinguish "will never succeed" from "try again
+            // later" and retried both — see tryBackgroundSync.
             e.status = status;
             e.body = body;
-            if (body?.errorId) e.details = `Error ID: ${body.errorId}`;
-            else if (body?.error) e.details = body.error;
+            if (detail) e.details = detail;
             throw e;
           });
       }
@@ -1658,7 +1686,11 @@ function main() {
       // Find next card from local cache before server call
       if (offlineReady) {
         try {
+<<<<<<< HEAD
           const dueCards = cardStorage.getDueCards(2, location.origin);
+=======
+          const dueCards = cardStorage.getDueCards(2, reviewOrder());
+>>>>>>> 93d1159 (feat(review): choose next-card order — most-overdue or just-came-due)
           const nextCard = dueCards.find((c) => c.url !== url);
           prefetchedNextUrl = nextCard?.url ?? null;
           if (prefetchedNextUrl) prefetchNextPage(prefetchedNextUrl);
@@ -3038,7 +3070,11 @@ function main() {
           // Must set prefetchedNextUrl BEFORE afterReview(), because the server
           // hasn't received this review yet and would return the same card.
           try {
+<<<<<<< HEAD
             const dueCards = cardStorage.getDueCards(2, location.origin);
+=======
+            const dueCards = cardStorage.getDueCards(2, reviewOrder());
+>>>>>>> 93d1159 (feat(review): choose next-card order — most-overdue or just-came-due)
             const normalizedCurrent = normalizeUrl(location.href);
             const nextCard = dueCards.find((c) => c.url !== url && c.url !== normalizedCurrent);
             prefetchedNextUrl = nextCard?.url ?? null;
@@ -3338,7 +3374,11 @@ function main() {
     if (!offlineReady) return;
 
     try {
+<<<<<<< HEAD
       const dueCards = cardStorage.getDueCards(2, location.origin);
+=======
+      const dueCards = cardStorage.getDueCards(2, reviewOrder());
+>>>>>>> 93d1159 (feat(review): choose next-card order — most-overdue or just-came-due)
       const normalizedCurrent = normalizeUrl(location.href);
       const nextCard = dueCards.find((c) => c.url !== normalizedCurrent);
       if (nextCard) {

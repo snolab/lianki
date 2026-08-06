@@ -1,6 +1,7 @@
 import type { FSRSNote } from "@/lib/core/fsrsNote";
 import type { D1Like } from "@/lib/d1/types";
 import { restoreNoteFromExport } from "@/lib/yaml-export";
+import { DEFAULT_REVIEW_ORDER, reviewOrderSql, type ReviewOrder } from "@lianki/core";
 
 /** A note as stored in D1 — carries the stable `id` (migrated MongoDB _id). */
 export type StoredNote = FSRSNote & { id: string };
@@ -106,10 +107,24 @@ export class FsrsNotesD1Repo {
     return results.map(rowToNote);
   }
 
-  async listDue(now: Date, limit: number): Promise<StoredNote[]> {
+  /**
+   * Cards already due, ordered by the user preference.
+   *
+   * The direction MUST be applied in SQL, not after fetching: callers take the
+   * first N, so reversing in JS would hand back the N-th oldest rather than the
+   * newest-due — the LIMIT has already discarded the other end.
+   *
+   * Safe to interpolate: reviewOrderSql only ever returns the literals ASC/DESC.
+   */
+  async listDue(
+    now: Date,
+    limit: number,
+    order: ReviewOrder = DEFAULT_REVIEW_ORDER,
+  ): Promise<StoredNote[]> {
     const { results } = await this.db
       .prepare(
-        "SELECT * FROM fsrs_notes WHERE email = ? AND card_due <= ? ORDER BY card_due LIMIT ?",
+        `SELECT * FROM fsrs_notes WHERE email = ? AND card_due <= ?
+          ORDER BY card_due ${reviewOrderSql(order)} LIMIT ?`,
       )
       .bind(this.email, now.toISOString(), limit)
       .all<Row>();

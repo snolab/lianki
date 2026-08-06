@@ -20,13 +20,22 @@ import {
   compareHLC,
   type HLC,
   newServerHLC,
-  NEXT_DUE_SORT,
   sameOriginQuery,
   RATING_MAP,
 } from "./fsrs-helpers";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
 import { getWatchStatsStore } from "./getWatchStatsStore";
-import { sanitizeWatchStats, summarizeWatch } from "@lianki/core";
+import {
+  asReviewOrder,
+  DEFAULT_REVIEW_ORDER,
+  reviewOrderMongo,
+  sanitizeWatchStats,
+  summarizeWatch,
+  type ReviewOrder,
+} from "@lianki/core";
+import { authUserOrNull } from "./signInEmail";
+import { PreferencesD1Repo } from "@/lib/repos/d1Repos";
+import { db as mongoDb } from "./db";
 import { getHeatmapCacheTag } from "./lib/heatmap-cache";
 import { normalizeUrl } from "@/lib/normalizeUrl";
 import { probeReachability } from "@/lib/probe";
@@ -74,6 +83,24 @@ const fsrsConfig = fsrs(
   }),
 );
 
+/**
+ * The signed-in user's next-card order. Preferences are keyed by user id while
+ * the FSRS handler works in emails, so this resolves the user separately.
+ * Any failure yields the historical order — a preference lookup must never be
+ * able to block reviewing.
+ */
+async function getReviewOrder(): Promise<ReviewOrder> {
+  try {
+    const user = await authUserOrNull();
+    if (!user?.id) return DEFAULT_REVIEW_ORDER;
+    if (dbBackend() === "d1") return await new PreferencesD1Repo(getD1(), user.id).reviewOrder();
+    const prefs = await mongoDb.collection("preferences").findOne({ userId: user.id });
+    return asReviewOrder(prefs?.reviewOrder);
+  } catch {
+    return DEFAULT_REVIEW_ORDER;
+  }
+}
+
 function nextDueQuery(req: Request, excludeUrl?: string) {
   const url = new URL(req.url, "http://localhost");
   const excludeDomains = url.searchParams.get("excludeDomains")?.split(",").filter(Boolean) ?? [];
@@ -85,6 +112,15 @@ function nextDueQuery(req: Request, excludeUrl?: string) {
 export const fsrsHandler = async (req: Request, email?: string) => {
   const FSRSNotes = getFsrsNotes(email);
 
+  // Next-card order preference. Resolved once per request and reused, so every
+  // "what comes next" decision in this handler agrees. Failure falls back to the
+  // historical order rather than breaking review.
+  let _order: 1 | -1 | null = null;
+  const dueSort = async (): Promise<{ "card.due": 1 | -1 }> => {
+    if (_order === null) _order = reviewOrderMongo(await getReviewOrder());
+    return { "card.due": _order };
+  };
+
   /**
    * The next card to review, preferring the origin the user is already on.
    *
@@ -94,18 +130,23 @@ export const fsrsHandler = async (req: Request, email?: string) => {
    * served first: a same-origin hop is a cheap navigation and no context switch
    * for the reader, and FSRS is indifferent to the order due cards are cleared
    * in. It is a preference, not a filter: with that origin drained the plain
-   * most-recently-due pick takes over, so nobody gets trapped on one site.
+   * due pick takes over, so nobody gets trapped on one site.
+   *
+   * Within each step the user's own reviewOrder decides which end of the due
+   * pile to take — the two preferences compose: same origin first, then their
+   * chosen order inside it.
    */
   async function findNextDue(req: Request, current?: string) {
     const base = nextDueQuery(req, current);
+    const sort = await dueSort();
     const origin = originOf(
       current ?? new URL(req.url, "http://localhost").searchParams.get("excludeUrl"),
     );
     if (origin) {
-      const same = await FSRSNotes.findOne(sameOriginQuery(base, origin), { sort: NEXT_DUE_SORT });
+      const same = await FSRSNotes.findOne(sameOriginQuery(base, origin), { sort });
       if (same) return same;
     }
-    return FSRSNotes.findOne(base, { sort: NEXT_DUE_SORT });
+    return FSRSNotes.findOne(base, { sort });
   }
 
   type RegexRoutes = Record<
@@ -170,7 +211,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         };
       }
 
-      const cards = await FSRSNotes.find(query, { sort: { "card.due": 1 }, limit }).toArray();
+      const cards = await FSRSNotes.find(query, { sort: await dueSort(), limit }).toArray();
 
       return JSONR({
         cards: cards.map((note) => ({
@@ -446,7 +487,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     },
     "GET /api/fsrs/next(?:/|\\?|$)": async () =>
       new Response(
-        sflow(FSRSNotes.find({ "card.due": { $lte: new Date() } }, { sort: NEXT_DUE_SORT }))
+        sflow(FSRSNotes.find({ "card.due": { $lte: new Date() } }, { sort: await dueSort() }))
           .limit(1)
           .map((note) => {
             const url = JSON.stringify(note.url);

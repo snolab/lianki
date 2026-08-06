@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { asReviewOrder, DEFAULT_REVIEW_ORDER } from "@lianki/core";
 import { Hono } from "hono";
 import { z } from "zod";
 import { stringify } from "yaml";
@@ -116,13 +117,21 @@ export function mountDataRoutes(app: Hono<any>) {
     const user = await resolveUser(c.env, c.req.raw);
     if (!user) return c.json({ error: "Login required" }, 401);
     const prefs = await new PreferencesD1Repo(c.env.DB, user.id).get();
-    return c.json({ mobileExcludePatterns: prefs?.mobileExcludePatterns ?? [] });
+    return c.json({
+      mobileExcludePatterns: prefs?.mobileExcludePatterns ?? [],
+      reviewOrder: prefs?.reviewOrder ?? DEFAULT_REVIEW_ORDER,
+    });
   });
   app.post("/api/preferences", async (c: any) => {
     const user = await resolveUser(c.env, c.req.raw);
     if (!user) return c.json({ error: "Login required" }, 401);
     const body = await c.req.json();
-    await new PreferencesD1Repo(c.env.DB, user.id).set(body.mobileExcludePatterns ?? []);
+    // undefined (not defaulted) when absent, so a patterns-only save preserves
+    // whatever order the user chose elsewhere.
+    await new PreferencesD1Repo(c.env.DB, user.id).set(
+      body.mobileExcludePatterns ?? [],
+      body.reviewOrder === undefined ? undefined : asReviewOrder(body.reviewOrder),
+    );
     return c.json({ success: true });
   });
 
