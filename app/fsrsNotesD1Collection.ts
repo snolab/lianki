@@ -184,6 +184,13 @@ export class D1FsrsCollection {
         await this.repo.upsert({ ...note, title: update.$set.title }, id);
         return toDoc({ ...existing, title: update.$set.title });
       }
+      // Backfill: legacy docs written before the card field existed (saveNote
+      // path — matches Mongo's `card: { $exists: false }` heal).
+      if (update.$set?.card && !existing.card) {
+        const { id, ...note } = existing;
+        await this.repo.upsert({ ...note, card: update.$set.card }, id);
+        return toDoc({ ...existing, card: update.$set.card });
+      }
       return toDoc(existing);
     }
     const note: FSRSNote = {

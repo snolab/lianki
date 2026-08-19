@@ -103,6 +103,20 @@ describe("D1FsrsCollection", () => {
     expect(again!.log).toHaveLength(2);
   });
 
+  test("findOneAndUpdate card backfill — $set.card never resets an existing card", async () => {
+    // saveNote's legacy-doc heal sends $set.card only when the doc has none;
+    // with a card present the update must be a no-op (state reset would lose
+    // all FSRS progress).
+    const due1 = new Date(Date.now() - 86_400_000);
+    const due2 = new Date(Date.now() + 3 * 86_400_000);
+    await seed("https://a.com", due1);
+    const updated = await col.findOneAndUpdate(
+      { url: "https://a.com" },
+      { $set: { card: cardDueAt(due2) } },
+    );
+    expect(updated!.card.due.getTime()).toBe(due1.getTime());
+  });
+
   test("updateOne — notes, rename url, and speedMarkers upsert", async () => {
     await seed("https://a.com", new Date());
 

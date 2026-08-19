@@ -657,6 +657,18 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       DIE(`Failed to save note: ${normalized}`);
     }
 
+    // $setOnInsert only applies on insert — a pre-existing document written
+    // before the card field existed comes back without one, and
+    // fsrsConfig.repeat(result.card) would crash reading 'state'. Heal it.
+    if (!result.card) {
+      const fixed = await FSRSNotes.findOneAndUpdate(
+        { url: normalized, card: { $exists: false } },
+        { $set: { card: createEmptyCard() } },
+        { returnDocument: "after" },
+      );
+      result = fixed ?? { ...result, card: createEmptyCard() };
+    }
+
     return result;
   }
 
