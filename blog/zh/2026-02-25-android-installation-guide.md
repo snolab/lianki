@@ -164,7 +164,7 @@ Kiwi浏览器需要为扩展启用开发者模式：
 
 3. **查看权限**：
    - 脚本需要访问`*://*/*`（所有网站）以便从任何页面添加卡片
-   - 连接到`lianki.com`，`www.lianki.com`，`beta.lianki.com`
+   - 连接到`lianki.com`和`www.lianki.com`
 
 4. **确认安装**：
    - 点击**安装**或**确认安装**

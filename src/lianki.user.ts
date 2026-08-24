@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.18
+// @version     2.23.19
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -15,7 +15,6 @@
 // @updateURL   https://lianki.com/lianki.meta.js
 // @connect     lianki.com
 // @connect     www.lianki.com
-// @connect     beta.lianki.com
 // ==/UserScript==
 
 import { fsrs, generatorParameters, Rating } from "ts-fsrs";
@@ -392,7 +391,7 @@ function main() {
   window.LIANKI_USERSCRIPT_INSTALLED = true;
 
   // ── Origin ─────────────────────────────────────────────────────────────────
-  // Auto-detected from @downloadURL so beta.lianki.com works too.
+  // Auto-detected from @downloadURL.
   // Normalize www.lianki.com → bare lianki.com: apex is the canonical host
   // (middleware.ts 308s www → apex), and session cookies bind to the exact
   // hostname the user logged in on. Copies installed before v2.23.18 carry the

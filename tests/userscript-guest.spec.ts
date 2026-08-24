@@ -199,8 +199,6 @@ test.describe("Userscript integrity (static analysis)", () => {
     // Copies installed before v2.23.18 carry the www URL — they must still reach apex.
     expect(originFor("https://www.lianki.com/lianki.user.js")).toBe("https://lianki.com");
     expect(originFor("https://lianki.com/lianki.user.js")).toBe("https://lianki.com");
-    // beta must be left alone.
-    expect(originFor("https://beta.lianki.com/lianki.user.js")).toBe("https://beta.lianki.com");
   });
 
   test("uses GMCardStorage instead of IndexedDB CardStorage", () => {
