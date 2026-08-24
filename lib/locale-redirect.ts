@@ -1,5 +1,6 @@
 import { locale as getLocale } from "next-intlayer/server";
 import { redirect as nextRedirect } from "next/navigation";
+import { appHref, isAppRoute } from "@/lib/app-locale";
 
 /**
  * Locale-aware redirect for server components
@@ -32,7 +33,12 @@ export async function localeRedirect(path: string, addLocale = true): Promise<ne
     return nextRedirect(path);
   }
 
-  // Get current locale and add prefix
   const locale = getLocale;
+
+  // App routes carry the locale in ?lang=; only blog and the landing page are prefixed.
+  if (isAppRoute(path)) {
+    return nextRedirect(appHref(path, locale));
+  }
+
   return nextRedirect(`/${locale}${path}`);
 }

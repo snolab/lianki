@@ -3,6 +3,7 @@ import Link from "next/link";
 import ContactForm from "../ContactForm";
 import { Header } from "../components/Header";
 import { authUser } from "../signInEmail";
+import { appHref } from "@/lib/app-locale";
 
 export default async function LandingPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -63,7 +64,7 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
           <h2 className="text-4xl font-bold mb-4">{hero.title}</h2>
           <p className="text-lg mb-8 max-w-2xl mx-auto">{hero.description}</p>
           <Link
-            href={`/${locale}/list`}
+            href={appHref("/list", locale)}
             className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700"
           >
             {hero.cta}

@@ -3,7 +3,7 @@
 
 import { Readable } from "stream";
 import { dbBackend, getBlobs } from "@/lib/d1";
-import { getTTSVoiceCacheBucket } from "@/app/[locale]/read/getReadMaterialsCollection";
+import { getTTSVoiceCacheBucket } from "@/lib/getReadMaterialsCollection";
 
 const R2_PREFIX = "tts/";
 
