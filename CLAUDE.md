@@ -10,7 +10,6 @@ Spaced repetition app (FSRS algorithm) built with Next.js 16. Renamed from FSRSN
 
 - Repo: https://github.com/snomiao/lianki
 - Production: https://lianki.com (Vercel, `main` branch)
-- Beta: https://beta.lianki.com (Vercel, `beta` branch)
 
 ## Stack
 
@@ -47,26 +46,31 @@ Credentials (`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`) are shared between `fsrsne
 - **NEVER use `--no-verify`** — the pre-commit hook syncs `lianki.meta.js`, scans secrets, lints, builds, and runs tests. Bypassing causes meta drift and broken userscript auto-updates.
 - Always bump `@version` in `lianki.user.js` when changing the userscript.
 
-## PR Workflow (beta → main)
+## Shipping to main
+
+Commit on `main`, then:
 
 ```bash
-gh pr create --title "feat: description" --body "..." --base main
-gh pr merge <PR_NUMBER> --auto --squash
-
-# After PR merges, fast-forward beta to main. beta carries no commits of its
-# own, so rebasing onto main is always a fast-forward and a regular push works
-# (no -f — see the NEVER-force-push rule above). If the push is ever rejected as
-# non-fast-forward, beta has diverged: stop and ask, don't force.
-git fetch origin && git rebase origin/main
-git push origin beta
+bun scripts/ship.ts
 ```
+
+It pushes HEAD to a `ship/<sha>` branch, opens a PR, arms auto-merge (squash), waits for the required checks, then syncs local `main` and deletes the branch. Everything lands on `main` — there is no `beta` branch.
+
+`main` cannot be pushed to directly: `enforce_admins` is on, so a direct `git push origin main` is rejected with `GH006 … 2 of 2 required status checks are expected` unless the pushed SHA already has green checks. The PR is what gets the checks run.
 
 ## CI & Auto-Merge
 
-- **CI** (`.github/workflows/ci.yml`, on PRs/pushes to `main`/`beta`): two jobs — `Typecheck + unit` and `qa:all (D1/Workers)` (`bun run qa:all`). Node 22 (for `node:sqlite`); wrangler runs D1 locally so no Cloudflare secrets are needed.
-- **`main` is branch-protected**: both checks are required and `enforce_admins` is on (admins are gated too), so nothing merges to `main` until CI is green. Emergency override: `gh api --method DELETE repos/snolab/lianki/branches/main/protection/enforce_admins`.
+- **CI** (`.github/workflows/ci.yml`, on PRs/pushes to `main`): two jobs — `Typecheck + unit` and `qa:all (D1/Workers)` (`bun run qa:all`). Node 24 (for `node:sqlite`); wrangler runs D1 locally so no Cloudflare secrets are needed.
+- **`main` protection is two mechanisms** — don't confuse them when debugging a rejected push:
+  - *Classic branch protection* holds the required checks (`Typecheck + unit`, `qa:all (D1/Workers)`), `strict: false`, `enforce_admins: true`, and **no** required PR reviews. Read it with `gh api repos/snolab/lianki/branches/main/protection`.
+  - *Ruleset `cipass`* (id 13053938) blocks deletion, force-push, and non-linear history. Read it with `gh api repos/snolab/lianki/rulesets/13053938`.
+  - Emergency override: `gh api --method DELETE repos/snolab/lianki/branches/main/protection/enforce_admins`.
 - **Auto-merge**: `gh pr merge <N> --auto --squash` waits for both required checks, then merges. The repo's "Allow auto-merge" setting must be ON (it is).
   - **Gotcha**: if that setting is OFF, `--auto` returns exit 0 but silently does nothing. Confirm it armed with `gh pr view <N> --json autoMergeRequest` (should be non-null). With no required checks, `--auto` merges *immediately* — which is why protection must stay in place.
+
+## Local git hazards
+
+- **Never `git reset --hard`** to move a branch — it silently destroys uncommitted work in the tree. Use `git reset --keep`, which moves HEAD but aborts rather than overwrite local modifications. `scripts/ship.ts` uses `--keep` for exactly this reason.
 
 ## QA Process — after every deploy
 

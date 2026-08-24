@@ -253,8 +253,7 @@ The project is configured for Vercel deployment:
    - `GITHUB_INTL_TOKEN`
 4. Deploy
 
-**Production**: https://www.lianki.com (deploys from `main` branch)
-**Beta**: https://beta.lianki.com (deploys from `beta` branch)
+**Production**: https://lianki.com (deploys from `main` branch)
 
 ### Docker
 
