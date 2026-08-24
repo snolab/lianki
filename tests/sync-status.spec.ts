@@ -398,14 +398,14 @@ test.describe("Guest /list page UI (no auth)", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test("shows 'Guest Mode - Local Storage' heading", async ({ page }) => {
-    await page.goto(`${BASE}/en/list`);
+    await page.goto(`${BASE}/list`);
     // Wait for client-side render
     await page.waitForSelector("text=Guest Mode", { timeout: 10_000 });
     await expect(page.getByText("Guest Mode - Local Storage")).toBeVisible();
   });
 
   test("shows Script and Local storage boxes but NO Cloud box", async ({ page }) => {
-    await page.goto(`${BASE}/en/list`);
+    await page.goto(`${BASE}/list`);
     // Wait for the SyncStatusBanner to appear (inside the success state of GuestListClient)
     await page.waitForSelector("text=Guest Mode - Local Storage", { timeout: 10_000 });
 
@@ -417,14 +417,14 @@ test.describe("Guest /list page UI (no auth)", () => {
   });
 
   test("shows 'Sign in' link inside the guest banner", async ({ page }) => {
-    await page.goto(`${BASE}/en/list`);
+    await page.goto(`${BASE}/list`);
     await page.waitForSelector("text=Sign in", { timeout: 10_000 });
     const signInLink = page.locator("text=Sign in").first();
     await expect(signInLink).toBeVisible();
   });
 
   test("shows empty state message when no cards in IDB", async ({ page }) => {
-    await page.goto(`${BASE}/en/list`);
+    await page.goto(`${BASE}/list`);
     // Wait for loading to finish
     await page.waitForSelector("text=No cards yet", { timeout: 10_000 }).catch(() => null);
     // Either shows "No cards yet" (empty IDB) or the card list
@@ -433,13 +433,13 @@ test.describe("Guest /list page UI (no auth)", () => {
     expect(body).not.toContain("Loading local cards...");
   });
 
-  test("/en/list page returns HTTP 200 as guest", async ({ page }) => {
-    const response = await page.goto(`${BASE}/en/list`);
+  test("/list page returns HTTP 200 as guest", async ({ page }) => {
+    const response = await page.goto(`${BASE}/list`);
     expect(response?.status()).toBe(200);
   });
 
-  test("no Application Error on /en/list as guest", async ({ page }) => {
-    await page.goto(`${BASE}/en/list`);
+  test("no Application Error on /list as guest", async ({ page }) => {
+    await page.goto(`${BASE}/list`);
     await expect(page.getByText(/Application error/i)).not.toBeVisible();
   });
 });
@@ -481,7 +481,7 @@ test.describe("SyncStatusBanner reads counts from pre-seeded IDB", () => {
     expect(idb["meta:gm-count"]).toBe(2);
 
     // Navigate to /list — the SyncStatusBanner should read these counts
-    await page.goto(`${BASE}/en/list`);
+    await page.goto(`${BASE}/list`);
     await page.waitForSelector("text=Guest Mode - Local Storage", { timeout: 10_000 });
 
     // Wait for the IDB read to complete (Script count should go from "…" to "2")

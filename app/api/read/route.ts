@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
-import {
-  saveReadMaterial,
-  listReadMaterials,
-} from "@/app/[locale]/read/getReadMaterialsCollection";
+import { saveReadMaterial, listReadMaterials } from "@/lib/getReadMaterialsCollection";
 
 // GET /api/read - List materials
 export async function GET(request: NextRequest) {

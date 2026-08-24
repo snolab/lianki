@@ -26,7 +26,8 @@ Spaced repetition app (FSRS algorithm) built with Next.js 16. Renamed from FSRSN
 | File                           | Purpose                               |
 | ------------------------------ | ------------------------------------- |
 | `app/page.tsx`                 | Landing page                          |
-| `app/[locale]/list/page.tsx`   | Note listing (main app)               |
+| `app/(app)/list/page.tsx`      | Note listing (main app)               |
+| `lib/app-locale.ts`            | `?lang=` locale helpers + APP_ROUTES  |
 | `app/fsrs.ts`                  | Core FSRS handler logic               |
 | `app/db.ts`                    | MongoDB client                        |
 | `auth.ts` / `auth.config.ts`   | NextAuth setup                        |

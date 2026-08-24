@@ -640,7 +640,7 @@ test.describe("Edge C: SyncStatusBanner shows counts from all layers", () => {
     await seedGMCards(page, cards);
     await page.evaluate(syncFn());
 
-    await page.goto(`${BASE}/en/list`);
+    await page.goto(`${BASE}/list`);
     await page.waitForSelector("text=Guest Mode - Local Storage", { timeout: 10_000 });
 
     await page.waitForFunction(

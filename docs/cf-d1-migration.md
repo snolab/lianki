@@ -127,7 +127,7 @@ the Kysely D1 adapter and diff against `0001_init.sql`, in case better-auth
 
 - `app/api/tts/route.ts` — TTS audio cache via `lib/ttsCache.ts` (R2 / GridFS).
   `app/api/polyglot/tts` does not cache, so it needed no change.
-- `app/[locale]/read/getReadMaterialsCollection.ts` — save/get/delete/list/getById
+- `lib/getReadMaterialsCollection.ts` — save/get/delete/list/getById
   branch on `dbBackend()`; D1 mode stores metadata in `read_materials` and large
   content in R2 (`read/{id}`).
 
@@ -146,7 +146,7 @@ Best done after cutover is stable (does not block the D1 migration):
 
 ### 2e. Fixups for the Workers runtime
 
-- `app/fsrs.ts` and `app/[locale]/list/page.tsx` read `public/lianki.*.js` via
+- `app/fsrs.ts` and `app/(app)/list/page.tsx` read `public/lianki.*.js` via
   `fs.readFileSync(process.cwd()…)`. Confirm this works under the Workers
   runtime; if not, inline the version string at build time.
 

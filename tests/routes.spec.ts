@@ -66,9 +66,9 @@ test.describe("Public pages", () => {
     expect(errors).toHaveLength(0);
   });
 
-  test("/en/contact renders contact form", async ({ page }) => {
+  test("/contact renders contact form", async ({ page }) => {
     const errors = collectErrors(page);
-    await page.goto(url("/en/contact"));
+    await page.goto(url("/contact"));
     await expect(page.locator("form, [role=form]")).toBeVisible();
     await expect(
       page.locator("button[type=submit], button").filter({ hasText: /send|submit/i }),
@@ -76,18 +76,16 @@ test.describe("Public pages", () => {
     expect(errors).toHaveLength(0);
   });
 
-  test("/en/sign-in renders sign-in form", async ({ page }) => {
+  test("/sign-in renders sign-in form", async ({ page }) => {
     const errors = collectErrors(page);
-    await page.goto(url("/en/sign-in"));
+    await page.goto(url("/sign-in"));
     await expect(page.locator("h1")).toBeVisible();
     await expect(page.locator("button").filter({ hasText: /GitHub/i })).toBeVisible();
     expect(errors).toHaveLength(0);
   });
 
-  test("/en/sign-in email placeholder is not [object Object] (BUG-6 regression)", async ({
-    page,
-  }) => {
-    await page.goto(url("/en/sign-in"));
+  test("/sign-in email placeholder is not [object Object] (BUG-6 regression)", async ({ page }) => {
+    await page.goto(url("/sign-in"));
     const emailInputs = page.locator('input[type="email"]');
     const count = await emailInputs.count();
     expect(count).toBeGreaterThan(0);
@@ -97,17 +95,17 @@ test.describe("Public pages", () => {
     }
   });
 
-  test("/en/self-intro renders language selector", async ({ page }) => {
+  test("/self-intro renders language selector", async ({ page }) => {
     const errors = collectErrors(page);
-    await page.goto(url("/en/self-intro"));
+    await page.goto(url("/self-intro"));
     await expect(page.locator("h1")).toBeVisible();
     await expect(page.locator("button").filter({ hasText: /Japanese|日本語/ })).toBeVisible();
     expect(errors).toHaveLength(0);
   });
 
-  test("/en/learn renders without server error", async ({ page }) => {
+  test("/learn renders without server error", async ({ page }) => {
     const errors = collectErrors(page);
-    const response = await page.goto(url("/en/learn"));
+    const response = await page.goto(url("/learn"));
     expect(response?.status()).toBe(200);
     // May redirect to sign-in for unauthenticated users, or show learn page
     const finalUrl = page.url();
@@ -121,9 +119,9 @@ test.describe("Public pages", () => {
 // ── Auth-required pages (guest behavior) ─────────────────────────────────────
 
 test.describe("Auth-required pages (guest redirect)", () => {
-  test("/en/preferences redirects or renders without crash", async ({ page }) => {
+  test("/preferences redirects or renders without crash", async ({ page }) => {
     const errors = collectErrors(page);
-    await page.goto(url("/en/preferences"));
+    await page.goto(url("/preferences"));
     // Either redirect to sign-in or render preferences
     const finalUrl = page.url();
     const isSignIn = finalUrl.includes("/sign-in");
@@ -136,9 +134,9 @@ test.describe("Auth-required pages (guest redirect)", () => {
     expect(errors).toHaveLength(0);
   });
 
-  test("/en/polyglot does not throw 500 server error", async ({ page }) => {
+  test("/polyglot does not throw 500 server error", async ({ page }) => {
     const errors = collectErrors(page);
-    const response = await page.goto(url("/en/polyglot"));
+    const response = await page.goto(url("/polyglot"));
     // BUG-2 regression: must not be 500
     expect(response?.status()).not.toBe(500);
     const crashMessage = page.locator("text=/Application error.*server-side/i");
@@ -146,14 +144,14 @@ test.describe("Auth-required pages (guest redirect)", () => {
     expect(errors).toHaveLength(0);
   });
 
-  test("/en/membership does not crash", async ({ page }) => {
-    await page.goto(url("/en/membership"));
+  test("/membership does not crash", async ({ page }) => {
+    await page.goto(url("/membership"));
     const crashMessage = page.locator("text=/Application error/i");
     await expect(crashMessage).not.toBeVisible();
   });
 
-  test("/en/profile renders or redirects", async ({ page }) => {
-    await page.goto(url("/en/profile"));
+  test("/profile renders or redirects", async ({ page }) => {
+    await page.goto(url("/profile"));
     // Either redirect to sign-in or render profile
     const finalUrl = page.url();
     if (!finalUrl.includes("/sign-in")) {
@@ -161,17 +159,17 @@ test.describe("Auth-required pages (guest redirect)", () => {
     }
   });
 
-  test("/en/roadmap redirects unauthenticated users away", async ({ page }) => {
+  test("/roadmap redirects unauthenticated users away", async ({ page }) => {
     const errors = collectErrors(page);
-    await page.goto(url("/en/roadmap"));
+    await page.goto(url("/roadmap"));
     const finalUrl = page.url();
     // Guest must be redirected to /list or /sign-in — never stay on /roadmap
     expect(finalUrl.includes("/list") || finalUrl.includes("/sign-in")).toBe(true);
     expect(errors).toHaveLength(0);
   });
 
-  test("/en/roadmap does not 500 on unauthenticated access", async ({ page }) => {
-    const response = await page.goto(url("/en/roadmap"));
+  test("/roadmap does not 500 on unauthenticated access", async ({ page }) => {
+    const response = await page.goto(url("/roadmap"));
     // Must not throw a 500 server error regardless of auth state
     expect(response?.status()).not.toBe(500);
     const crashMessage = page.locator("text=/Application error/i");
@@ -182,8 +180,8 @@ test.describe("Auth-required pages (guest redirect)", () => {
 // ── Navigation flow ───────────────────────────────────────────────────────────
 
 test.describe("Navigation flows", () => {
-  test("/en/next does not redirect to /repeat (BUG-1 regression)", async ({ page }) => {
-    const response = await page.goto(url("/en/next"));
+  test("/next does not redirect to /repeat (BUG-1 regression)", async ({ page }) => {
+    const response = await page.goto(url("/next"));
     // The page should not end up at a /repeat URL with 404
     await page.waitForTimeout(2000);
     const finalUrl = page.url();
@@ -194,8 +192,8 @@ test.describe("Navigation flows", () => {
     }
   });
 
-  test("/en/read renders read page (BUG-4 regression)", async ({ page }) => {
-    const response = await page.goto(url("/en/read"));
+  test("/read renders read page (BUG-4 regression)", async ({ page }) => {
+    const response = await page.goto(url("/read"));
     expect(response?.status()).not.toBe(404);
     // Should either show the read UI or redirect to sign-in
     const finalUrl = page.url();
@@ -259,10 +257,10 @@ test.describe("Route availability", () => {
   const knownGoodRoutes = [
     "/en",
     "/en/blog",
-    "/en/contact",
-    "/en/self-intro",
-    "/en/learn",
-    "/en/sign-in",
+    "/contact",
+    "/self-intro",
+    "/learn",
+    "/sign-in",
     "/en/blog/2025-01-01-introduction",
     "/en/blog/2025-01-15-fsrs-algorithm",
   ];

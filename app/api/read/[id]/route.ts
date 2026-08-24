@@ -5,7 +5,7 @@ import {
   getReadMaterialById,
   getReadMaterialContent,
   deleteReadMaterial,
-} from "@/app/[locale]/read/getReadMaterialsCollection";
+} from "@/lib/getReadMaterialsCollection";
 
 // GET /api/read/[id] - Get material by ID
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

@@ -17,7 +17,7 @@ const log = (s) => console.log(s);
 let ok = true;
 
 // 1. Sign-in page
-await page.goto(`${BASE}/en/sign-in`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/sign-in`, { waitUntil: "networkidle" });
 log(`✓ sign-in page loaded: ${await page.title()}`);
 
 // 2. Email → Continue
@@ -47,9 +47,9 @@ else {
 }
 
 // 5. Dashboard + roadmap render while logged in
-await page.goto(`${BASE}/en/list`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/list`, { waitUntil: "networkidle" });
 log(`✓ dashboard loaded: ${await page.title()}`);
-await page.goto(`${BASE}/en/roadmap`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/roadmap`, { waitUntil: "networkidle" });
 log(`✓ roadmap loaded: ${await page.title()}`);
 
 // 6. Console errors (ignore benign RSC prefetch aborts / 404 favicon / the

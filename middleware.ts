@@ -1,10 +1,27 @@
 import { intlayerMiddleware } from "next-intlayer/middleware";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { BLOG_LOCALES } from "@/lib/constants";
+import { isSupportedLocale } from "@/lib/constants";
+import {
+  DEFAULT_LOCALE,
+  LOCALE_HEADER,
+  LOCALE_PARAM,
+  isAppRoute,
+  localeFromAcceptLanguage,
+} from "@/lib/app-locale";
+
+function appRouteLocale(request: NextRequest): string {
+  const requested = request.nextUrl.searchParams.get(LOCALE_PARAM);
+  if (requested && isSupportedLocale(requested)) return requested;
+
+  const cookie = request.cookies.get(LOCALE_PARAM)?.value;
+  if (cookie && isSupportedLocale(cookie)) return cookie;
+
+  return localeFromAcceptLanguage(request.headers.get("accept-language"));
+}
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, searchParams } = request.nextUrl;
   const host = request.headers.get("host");
 
   // Redirect www.lianki.com → lianki.com (canonical domain)
@@ -14,19 +31,40 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(canonicalUrl, 308);
   }
 
-  // Special routes that don't need locale prefix
-  if (pathname === "/next") {
-    return NextResponse.next();
-  }
-
   // Redirect legacy /cn/* → /zh/*
   if (pathname === "/cn" || pathname.startsWith("/cn/")) {
     return NextResponse.redirect(new URL(pathname.replace(/^\/cn/, "/zh"), request.url));
   }
 
-  // Intlayer middleware: adds locale prefix to all routes, handles locale detection
-  // This will redirect / → /en/, /list → /en/list, etc.
-  // Locale root paths (e.g., /ko/) will render the landing page at app/[locale]/page.tsx
+  // Legacy prefixed app routes: /ja/list → /list?lang=ja
+  const [, maybeLocale, ...rest] = pathname.split("/");
+  const restPath = `/${rest.join("/")}`;
+  if (isSupportedLocale(maybeLocale) && rest.length > 0 && isAppRoute(restPath)) {
+    const target = new URL(restPath, request.url);
+    target.search = searchParams.toString();
+    if (maybeLocale !== DEFAULT_LOCALE) target.searchParams.set(LOCALE_PARAM, maybeLocale);
+    return NextResponse.redirect(target, 301);
+  }
+
+  if (pathname === "/next") {
+    return NextResponse.next();
+  }
+
+  // App routes carry the locale in ?lang=. Resolve it here and pass it down as a
+  // request header, because layouts cannot read searchParams.
+  if (isAppRoute(pathname)) {
+    const locale = appRouteLocale(request);
+    const headers = new Headers(request.headers);
+    headers.set(LOCALE_HEADER, locale);
+
+    const response = NextResponse.next({ request: { headers } });
+    if (searchParams.get(LOCALE_PARAM) === locale) {
+      response.cookies.set(LOCALE_PARAM, locale, { path: "/", sameSite: "lax" });
+    }
+    return response;
+  }
+
+  // Landing page and blog keep their /{locale}/ prefix.
   return intlayerMiddleware(request);
 }
 

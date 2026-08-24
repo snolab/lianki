@@ -2,6 +2,8 @@ import DIE from "phpdie";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { appHref } from "@/lib/app-locale";
+import { appLocale } from "@/lib/app-locale.server";
 
 export async function authEmail() {
   const user = await authUser();
@@ -10,7 +12,7 @@ export async function authEmail() {
 
 export async function authUser() {
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) redirect("/sign-in");
+  if (!session?.user) redirect(appHref("/sign-in", await appLocale()));
   return session.user;
 }
 

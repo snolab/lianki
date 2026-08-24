@@ -66,7 +66,7 @@
 
 ### 2. Learn Page Creation
 
-- [x] Created `/learn` route at `app/[locale]/learn/page.tsx`
+- [x] Created `/learn` route at `app/(app)/learn/page.tsx`
 - [x] Created `LearnClient.tsx` with three import methods:
   - Recommended lists (predefined learning materials)
   - Custom .txt URL import (one URL per line)
@@ -81,9 +81,9 @@ Updated the following pages to use unified Header component:
 - [x] Landing page (`app/[locale]/page.tsx`)
 - [x] Blog index (`app/[locale]/blog/page.tsx`)
 - [x] Blog post detail (`app/[locale]/blog/[slug]/page.tsx`)
-- [x] List/Dashboard (`app/[locale]/list/page.tsx`)
-- [x] Preferences (`app/[locale]/preferences/page.tsx`)
-- [x] Learn page (`app/[locale]/learn/page.tsx`)
+- [x] List/Dashboard (`app/(app)/list/page.tsx`)
+- [x] Preferences (`app/(app)/preferences/page.tsx`)
+- [x] Learn page (`app/(app)/learn/page.tsx`)
 
 ### 4. Backend API Implementation
 
@@ -99,12 +99,12 @@ Updated the following pages to use unified Header component:
 
 Need to check and update if they have headers:
 
-- [ ] Profile page (`app/[locale]/profile/page.tsx`)
-- [ ] Membership page (`app/[locale]/membership/page.tsx`)
-- [ ] Polyglot page (`app/[locale]/polyglot/page.tsx`)
-- [ ] Self-intro page (`app/[locale]/self-intro/page.tsx`)
-- [ ] Add-note page (`app/[locale]/add-note/page.tsx`)
-- [ ] Sign-in page (`app/[locale]/sign-in/page.tsx`)
+- [ ] Profile page (`app/(app)/profile/page.tsx`)
+- [ ] Membership page (`app/(app)/membership/page.tsx`)
+- [ ] Polyglot page (`app/(app)/polyglot/page.tsx`)
+- [ ] Self-intro page (`app/(app)/self-intro/page.tsx`)
+- [ ] Add-note page (`app/(app)/add-note/page.tsx`)
+- [ ] Sign-in page (`app/(app)/sign-in/page.tsx`)
 
 ### Testing
 
