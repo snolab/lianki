@@ -32,7 +32,17 @@ for (let i = 0; i < 30; i++) {
   execSync("sleep 5");
 }
 stream(`gh pr checks ${pr} --watch --required --interval 20`);
-if (run(`gh pr view ${pr} --json state --jq .state`) !== "MERGED") die(`#${pr} did not merge`);
+
+// Auto-merge lands a few seconds after the last check goes green.
+let merged = false;
+for (let i = 0; i < 40; i++) {
+  if (run(`gh pr view ${pr} --json state --jq .state`) === "MERGED") {
+    merged = true;
+    break;
+  }
+  execSync("sleep 5");
+}
+if (!merged) die(`#${pr} did not merge`);
 
 run("git fetch origin");
 stream("git reset --keep origin/main");
