@@ -176,7 +176,7 @@ Regardless of browser/manager combination:
 
 3. **Review Permissions**:
    - The script needs access to `*://*/*` (all websites) to add cards from any page
-   - Connects to `lianki.com`, `www.lianki.com`, `beta.lianki.com`
+   - Connects to `lianki.com` and `www.lianki.com`
 
 4. **Confirm Installation**:
    - Tap **Install** or **Confirm installation**

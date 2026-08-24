@@ -149,7 +149,6 @@ Best done after cutover is stable (does not block the D1 migration):
 - `app/fsrs.ts` and `app/[locale]/list/page.tsx` read `public/lianki.*.js` via
   `fs.readFileSync(process.cwd()…)`. Confirm this works under the Workers
   runtime; if not, inline the version string at build time.
-- `middleware.ts` hardcodes a Vercel beta URL — repoint at the CF preview.
 
 ---
 

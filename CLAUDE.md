@@ -54,7 +54,7 @@ Commit on `main`, then:
 bun scripts/ship.ts
 ```
 
-It pushes HEAD to a `ship/<sha>` branch, opens a PR, arms auto-merge (squash), waits for the required checks, then syncs local `main` and deletes the branch. Everything lands on `main` — there is no `beta` branch.
+It pushes HEAD to a `ship/<sha>` branch, opens a PR, arms auto-merge (squash), waits for the required checks, then syncs local `main` and deletes the branch. `main` is the only long-lived branch.
 
 `main` cannot be pushed to directly: `enforce_admins` is on, so a direct `git push origin main` is rejected with `GH006 … 2 of 2 required status checks are expected` unless the pushed SHA already has green checks. The PR is what gets the checks run.
 

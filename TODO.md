@@ -41,8 +41,7 @@
 - [ ] Phase 2b — verify better-auth Kysely-D1 schema vs `0001_init.sql`
       (`bunx @better-auth/cli generate`)
 - [ ] Phase 2d — remove the IndexedDB site mirror (deferred, non-blocking)
-- [ ] Phase 2e — confirm `fs.readFileSync(process.cwd()…)` works on Workers;
-      repoint the hardcoded Vercel beta URL in `middleware.ts`
+- [ ] Phase 2e — confirm `fs.readFileSync(process.cwd()…)` works on Workers
 - [ ] Phase 4/5 (USER) — preview deploy + QA, then DNS cutover
 
 ---
