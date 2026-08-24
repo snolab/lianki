@@ -430,8 +430,8 @@ Lianki是**开源**的，仅请求必要的权限：
 
 遇到问题？我们在这里帮助您：
 
-- 🐛 **报告错误**：[GitHub Issues](https://github.com/snomiao/lianki/issues)
-- 💬 **提出问题**：[GitHub Discussions](https://github.com/snomiao/lianki/discussions)
+- 🐛 **报告错误**：[GitHub Issues](https://github.com/snolab/lianki/issues)
+- 💬 **提出问题**：[GitHub Discussions](https://github.com/snolab/lianki/discussions)
 - 📧 **联系我们**：通过[联系表单](https://www.lianki.com/contact)
 - 📖 **文档**：[Lianki Docs](https://www.lianki.com)
 

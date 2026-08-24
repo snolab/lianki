@@ -30,7 +30,7 @@ function getGitHubCache() {
   const token = process.env.GITHUB_INTL_TOKEN;
   if (!token) return null;
 
-  return new KeyvGitHub("https://github.com/snomiao/lianki/tree/main", {
+  return new KeyvGitHub("https://github.com/snolab/lianki/tree/main", {
     client: new Octokit({ auth: token }),
     prefix: "blog/",
     suffix: ".md",

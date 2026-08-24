@@ -8,8 +8,15 @@
 
 Spaced repetition app (FSRS algorithm) built with Next.js 16. Renamed from FSRSNext → Lianki.
 
-- Repo: https://github.com/snomiao/lianki
+- Repo: https://github.com/snolab/lianki (public; this is `origin` and what deploys)
 - Production: https://lianki.com (Vercel, `main` branch)
+
+`snomiao/lianki` is a **different** repo — a private personal fork, description "Drafting",
+abandoned 2026-04-29. Same root commit, diverged 2026-03-29 at `9a20b3c`. Never target it with
+`gh api`: querying its branch protection returns a plan-gated 403 that reads like "protection is
+off", which is wrong and has already caused one bad assumption. It holds work that never landed
+here — local-first SQLite over OPFS, and a Cloudflare Pages userscript deploy. Fetchable via the
+`snomiao` remote: `git log snomiao/main ^origin/main`.
 
 ## Stack
 

@@ -65,7 +65,7 @@ Dev/infra posts moved to `docs/`:
 ## Project Facts (keep accurate)
 
 - Production: https://www.lianki.com
-- Repo: https://github.com/snomiao/lianki
+- Repo: https://github.com/snolab/lianki
 - Stack: Next.js 16, React 19, TypeScript, MongoDB, NextAuth.js v5, Tailwind CSS
 - Package manager: Bun
 - Algorithm: FSRS via `ts-fsrs` library
