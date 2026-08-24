@@ -23,6 +23,14 @@ stream(`gh pr merge ${pr} --auto --squash`);
 if (!run(`gh pr view ${pr} --json autoMergeRequest --jq .autoMergeRequest`))
   die(`auto-merge not armed on #${pr} — check the repo's "Allow auto-merge" setting`);
 
+// gh exits 1 if no required check has registered yet, so wait for them to appear.
+for (let i = 0; i < 30; i++) {
+  const checks = run(
+    `gh pr view ${pr} --json statusCheckRollup --jq '[.statusCheckRollup[]?.name] | length'`,
+  );
+  if (Number(checks) > 0) break;
+  execSync("sleep 5");
+}
 stream(`gh pr checks ${pr} --watch --required --interval 20`);
 if (run(`gh pr view ${pr} --json state --jq .state`) !== "MERGED") die(`#${pr} did not merge`);
 
