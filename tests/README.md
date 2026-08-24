@@ -36,7 +36,7 @@ bun test:e2e:preview
 
 ### Environment Variables
 
-- `LIANKI_URL` - Target Lianki instance (default: https://www.lianki.com)
+- `LIANKI_URL` - Target Lianki instance (default: https://lianki.com)
 
 Example:
 

@@ -18,7 +18,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { readFileSync } from "fs";
 import { join } from "path";
 
-const BASE = process.env.LIANKI_URL || "https://www.lianki.com";
+const BASE = process.env.LIANKI_URL || "https://lianki.com";
 const SCRIPT_CONTENT = readFileSync(join(process.cwd(), "public/lianki.user.js"), "utf-8");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

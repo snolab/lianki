@@ -10,7 +10,7 @@
 
 import { test, expect } from "@playwright/test";
 
-const BASE = process.env.LIANKI_URL || "https://www.lianki.com";
+const BASE = process.env.LIANKI_URL || "https://lianki.com";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

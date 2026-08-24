@@ -4,7 +4,7 @@
  */
 import { chromium } from "playwright";
 
-const BASE_URL = "https://www.lianki.com";
+const BASE_URL = "https://lianki.com";
 
 const PAGES_TO_TEST = [
   { path: "/en", name: "Landing Page" },

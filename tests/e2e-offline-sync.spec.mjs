@@ -11,7 +11,7 @@
 
 import { chromium } from "playwright";
 
-const ORIGIN = process.env.LIANKI_URL || "https://www.lianki.com";
+const ORIGIN = process.env.LIANKI_URL || "https://lianki.com";
 const TEST_URL = "https://en.wikipedia.org/wiki/Spaced_repetition";
 
 async function sleep(ms) {
