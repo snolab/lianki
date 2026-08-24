@@ -28,6 +28,7 @@
     "test:sync": "playwright test tests/db-sync-matrix.spec.ts",
     "build:userscript": "bunx --bun userbuild src/lianki.user.ts --outdir=public --format=iife",
     "ship": "bun scripts/ship.ts",
+    "dev:userscript": "vite --config vite.config.userscript.ts",
     "storybook": "storybook dev -p 6006",
     "build:storybook": "storybook build"
   },
@@ -97,6 +98,7 @@
     "storybook": "^10.3.5",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
+    "vite-plugin-monkey": "^8.1.0",
     "vitest": "^4.1.0",
     "wrangler": "^4.92.0"
   },
