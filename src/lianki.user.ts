@@ -7,12 +7,12 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.17
+// @version     2.23.18
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
-// @downloadURL https://www.lianki.com/lianki.user.js
-// @updateURL   https://www.lianki.com/lianki.meta.js
+// @downloadURL https://lianki.com/lianki.user.js
+// @updateURL   https://lianki.com/lianki.meta.js
 // @connect     lianki.com
 // @connect     www.lianki.com
 // @connect     beta.lianki.com
@@ -393,14 +393,17 @@ function main() {
 
   // ── Origin ─────────────────────────────────────────────────────────────────
   // Auto-detected from @downloadURL so beta.lianki.com works too.
-  // Normalize bare lianki.com → www.lianki.com: __Host- cookies bind to exact hostname.
+  // Normalize www.lianki.com → bare lianki.com: apex is the canonical host
+  // (middleware.ts 308s www → apex), and session cookies bind to the exact
+  // hostname the user logged in on. Copies installed before v2.23.18 carry the
+  // old www @downloadURL, so this rewrite repairs them without a reinstall.
   const ORIGIN = (() => {
     try {
       const u = new URL(GM_info?.script?.downloadURL || "");
-      if (u.hostname === "lianki.com") u.hostname = "www.lianki.com";
+      if (u.hostname === "www.lianki.com") u.hostname = "lianki.com";
       return u.origin;
     } catch {
-      return "https://www.lianki.com";
+      return "https://lianki.com";
     }
   })();
 
@@ -447,8 +450,10 @@ function main() {
     }
   }
 
-  // On the Lianki site itself: sync GM cards to IndexedDB for offline display, then exit
-  if (location.hostname === new URL(ORIGIN).hostname) {
+  // On the Lianki site itself: sync GM cards to IndexedDB for offline display, then exit.
+  // Match www too — it 308s to apex, but a stale tab can still be sitting on it.
+  const originHost = new URL(ORIGIN).hostname;
+  if (location.hostname === originHost || location.hostname === "www." + originHost) {
     setTimeout(() => syncToSiteDB(), 500);
     return () => {};
   }
