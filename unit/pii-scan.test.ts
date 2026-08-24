@@ -24,20 +24,19 @@ function scan(contents: string): { exitCode: number; output: string } {
   }
 }
 
-// Assembled at runtime, never written as literals: secretlint scans this file too
-// and would (correctly) fail the commit on a credential-shaped string.
-const j = (...parts: string[]) => parts.join("");
-
+// These fixtures are fake but credential-shaped by design, so this file is listed
+// in .secretlintignore. Without that, secretlint flags them and blocks every
+// commit that touches this test.
 describe("pii-scan catches", () => {
   it.each([
-    ["db-uri-with-password", j("mongodb+srv://", "admin", ":", "hunter2", "@db.example.net/x")],
-    ["aws-access-key", j("AKIA", "IOSFODNN7EXAMPLE")],
-    ["openai-key", j("sk-", "proj-", "abcdefghijklmnopqrstuvwxyz012345")],
-    ["github-token", j("ghp_", "a".repeat(36))],
-    ["google-api-key", j("AIza", "b".repeat(35))],
-    ["private-key", j("-----BEGIN ", "RSA PRIVATE KEY", "-----")],
+    ["db-uri-with-password", "mongodb+srv://admin:hunter2@cluster0.abcd.mongodb.net/lianki"],
+    ["aws-access-key", "AKIAIOSFODNN7EXAMPLE"],
+    ["openai-key", "sk-proj-abcdefghijklmnopqrstuvwxyz012345"],
+    ["github-token", `ghp_${"a".repeat(36)}`],
+    ["google-api-key", `AIza${"b".repeat(35)}`],
+    ["private-key", "-----BEGIN RSA PRIVATE KEY-----"],
     ["credit-card", "4111 1111 1111 1111"],
-    ["email", j("real.person", "@", "gmail.com")],
+    ["email", "real.person@gmail.com"],
     ["public-ip", "203.0.113.42"],
     ["phone-e164", "+1 415 555 0132"],
   ])("%s", (rule, sample) => {
