@@ -1,0 +1,28 @@
+name: Deploy userscript to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "public/lianki.user.js"
+      - "public/lianki.meta.js"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      # Use the wrangler pinned in package.json rather than a global `npm i -g
+      # wrangler`, so this deploys with the same version qa:all tests against.
+      - run: bun install --frozen-lockfile
+
+      - name: Deploy to Cloudflare Pages
+        run: bunx wrangler pages deploy public --project-name=lianki --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
