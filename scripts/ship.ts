@@ -1,0 +1,33 @@
+#!/usr/bin/env bun
+import { execSync } from "child_process";
+
+const run = (cmd: string) => execSync(cmd, { encoding: "utf-8" }).trim();
+const stream = (cmd: string) => execSync(cmd, { stdio: "inherit" });
+const die = (msg: string): never => {
+  console.error(`ship: ${msg}`);
+  process.exit(1);
+};
+
+if (run("git branch --show-current") !== "main") die("must be on main");
+
+run("git fetch origin");
+if (run("git rev-list --count origin/main..HEAD") === "0") die("no commits to ship");
+
+const branch = `ship/${run("git rev-parse --short HEAD")}`;
+run(`git branch -f ${branch} HEAD`);
+stream(`git push origin ${branch}`);
+stream(`gh pr create --base main --head ${branch} --fill`);
+
+const pr = run(`gh pr view ${branch} --json number --jq .number`);
+stream(`gh pr merge ${pr} --auto --squash`);
+if (!run(`gh pr view ${pr} --json autoMergeRequest --jq .autoMergeRequest`))
+  die(`auto-merge not armed on #${pr} — check the repo's "Allow auto-merge" setting`);
+
+stream(`gh pr checks ${pr} --watch --required --interval 20`);
+if (run(`gh pr view ${pr} --json state --jq .state`) !== "MERGED") die(`#${pr} did not merge`);
+
+run("git fetch origin");
+stream("git reset --keep origin/main");
+run(`git branch -D ${branch}`);
+stream(`git push origin --delete ${branch}`);
+console.log(`ship: #${pr} merged to main`);
