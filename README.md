@@ -4,7 +4,7 @@
 ；
 Lianki is a spaced repetition learning system that helps you retain what you read online. Instead of bookmarking pages you'll never revisit, Lianki schedules them for review using the scientifically-proven FSRS algorithm — showing you content right before you'd forget it.
 
-🌐 **Try it now:** [www.lianki.com](https://www.lianki.com)
+🌐 **Try it now:** [lianki.com](https://lianki.com)
 
 ## What is Spaced Repetition?
 
@@ -32,7 +32,7 @@ Apps like Anki have proven this works — but Lianki removes the friction. No ca
 Lianki uses a browser userscript (Tampermonkey/Violentmonkey) to add a floating button on every page you visit.
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) (Chrome/Edge/Safari) or [Violentmonkey](https://violentmonkey.github.io/) (Firefox/Chrome)
-2. Visit [lianki.com/lianki.user.js](https://www.lianki.com/lianki.user.js) to install the script
+2. Visit [lianki.com/lianki.user.js](https://lianki.com/lianki.user.js) to install the script
 3. You'll see a small Lianki button on every webpage
 
 ### 2. Add Cards
@@ -50,7 +50,7 @@ Lianki uses a browser userscript (Tampermonkey/Violentmonkey) to add a floating 
 
 ### 3. Review Cards
 
-1. Visit [lianki.com](https://www.lianki.com) and click "Next card"
+1. Visit [lianki.com](https://lianki.com) and click "Next card"
 2. Read/watch the content again
 3. Rate your recall:
    - **`1` (Again)** — Forgot it completely
@@ -97,7 +97,7 @@ FSRS calculates the optimal next review time based on your rating. Rate somethin
 4. Watch an episode → review it in Lianki → study new words on jpdb
 5. Next time the episode comes up, you'll know more vocabulary
 
-The content gets easier with each loop. See the full workflow in our [blog post](https://www.lianki.com/en/blog/2025-02-20-jpdb-lianki-workflow).
+The content gets easier with each loop. See the full workflow in our [blog post](https://lianki.com/en/blog/2025-02-20-jpdb-lianki-workflow).
 
 ## FAQ
 
@@ -105,7 +105,7 @@ The content gets easier with each loop. See the full workflow in our [blog post]
 A: Lianki is optimized for reviewing web content (articles, videos, manga readers), not isolated facts. No card creation needed — one hotkey saves any page. Anki excels at drilling individual words/concepts; Lianki excels at looping through materials that teach you those concepts.
 
 **Q: What algorithm does Lianki use?**
-A: FSRS (Free Spaced Repetition System), the same modern algorithm used by Anki's latest versions. It's more accurate than the old SM-2 algorithm from the 1980s. Read more in our [FSRS algorithm blog post](https://www.lianki.com/en/blog/2025-01-15-fsrs-algorithm).
+A: FSRS (Free Spaced Repetition System), the same modern algorithm used by Anki's latest versions. It's more accurate than the old SM-2 algorithm from the 1980s. Read more in our [FSRS algorithm blog post](https://lianki.com/en/blog/2025-01-15-fsrs-algorithm).
 
 **Q: Does it work offline?**
 A: Yes! Guest mode works fully offline using IndexedDB in your browser. Your cards and reviews are stored locally. Sign in to sync across devices and access your cards from any browser.
@@ -120,9 +120,9 @@ A: Not yet, but export functionality is planned.
 
 📝 **Blog Posts:**
 
-- [What is Lianki?](https://www.lianki.com/en/blog/2025-01-01-introduction)
-- [How FSRS Schedules Your Reviews](https://www.lianki.com/en/blog/2025-01-15-fsrs-algorithm)
-- [Japanese Learning Workflow with jpdb.io](https://www.lianki.com/en/blog/2025-02-20-jpdb-lianki-workflow)
+- [What is Lianki?](https://lianki.com/en/blog/2025-01-01-introduction)
+- [How FSRS Schedules Your Reviews](https://lianki.com/en/blog/2025-01-15-fsrs-algorithm)
+- [Japanese Learning Workflow with jpdb.io](https://lianki.com/en/blog/2025-02-20-jpdb-lianki-workflow)
 
 🛠️ **For Developers:**
 See [DEVELOPMENT.md](./DEVELOPMENT.md) for technical documentation, API routes, and contribution guidelines.

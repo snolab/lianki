@@ -179,6 +179,30 @@ test.describe("Userscript integrity (static analysis)", () => {
     expect(SCRIPT_CONTENT).toContain("@grant       GM_deleteValue");
   });
 
+  // apex is canonical (middleware.ts 308s www → apex). Pointing @downloadURL/@updateURL
+  // at www sends every install and update check through a cross-host redirect, and drove
+  // ORIGIN — and so every API call — to the redirecting host.
+  test("@downloadURL/@updateURL point at the canonical apex host, not www", () => {
+    expect(SCRIPT_CONTENT).toContain("@downloadURL https://lianki.com/lianki.user.js");
+    expect(SCRIPT_CONTENT).toContain("@updateURL   https://lianki.com/lianki.meta.js");
+  });
+
+  test("ORIGIN normalizes a legacy www @downloadURL down to apex", () => {
+    const originFor = (downloadURL: string) => {
+      const match = SCRIPT_CONTENT.match(/const ORIGIN = \(\(\) => \{[\s\S]*?\n {4}\}\)\(\);/);
+      expect(match).toBeTruthy();
+      return new Function(
+        "GM_info",
+        `${match![0].replace("const ORIGIN", "var ORIGIN")}; return ORIGIN;`,
+      )({ script: { downloadURL } }) as string;
+    };
+    // Copies installed before v2.23.18 carry the www URL — they must still reach apex.
+    expect(originFor("https://www.lianki.com/lianki.user.js")).toBe("https://lianki.com");
+    expect(originFor("https://lianki.com/lianki.user.js")).toBe("https://lianki.com");
+    // beta must be left alone.
+    expect(originFor("https://beta.lianki.com/lianki.user.js")).toBe("https://beta.lianki.com");
+  });
+
   test("uses GMCardStorage instead of IndexedDB CardStorage", () => {
     expect(SCRIPT_CONTENT).toContain("class GMCardStorage");
     expect(SCRIPT_CONTENT).toMatch(/new GMCardStorage[\s(;]/);

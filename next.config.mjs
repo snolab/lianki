@@ -2,14 +2,6 @@ import { withIntlayer } from "next-intlayer/server";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  async headers() {
-    return [
-      {
-        source: "/:file(lianki.user.js|lianki.meta.js)",
-        headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
-      },
-    ];
-  },
   // @better-auth/kysely-adapter eagerly imports `node:sqlite` (for a dialect
   // Lianki never uses — D1 mode uses kysely-d1). node:sqlite is unavailable in
   // the Workers runtime and unbundlable by Turbopack, so alias it to a stub.
@@ -36,8 +28,10 @@ const nextConfig = {
       },
     ],
   },
-  // Serve userscript with headers required for Tampermonkey/Violentmonkey install dialog.
+  // Serve userscript with headers required for Tampermonkey/Violentmonkey/ScriptCat install dialog.
   // Content-Disposition must not include filename= — some browsers trigger a download if it does.
+  // NOTE: this used to be a second `headers` key alongside an earlier one; the duplicate silently
+  // won and dropped the Cache-Control rule, so both rules now live here.
   headers: async () => [
     {
       source: "/:file(.*\\.user\\.js)",
@@ -45,6 +39,10 @@ const nextConfig = {
         { key: "Content-Type", value: "text/plain; charset=utf-8" },
         { key: "Content-Disposition", value: "inline" },
       ],
+    },
+    {
+      source: "/:file(lianki.user.js|lianki.meta.js)",
+      headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
     },
   ],
 };

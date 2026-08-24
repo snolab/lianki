@@ -9,7 +9,7 @@
 Spaced repetition app (FSRS algorithm) built with Next.js 16. Renamed from FSRSNext → Lianki.
 
 - Repo: https://github.com/snomiao/lianki
-- Production: https://www.lianki.com (Vercel, `main` branch)
+- Production: https://lianki.com (Vercel, `main` branch)
 - Beta: https://beta.lianki.com (Vercel, `beta` branch)
 
 ## Stack
@@ -39,8 +39,8 @@ Spaced repetition app (FSRS algorithm) built with Next.js 16. Renamed from FSRSN
 
 Credentials (`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`) are shared between `fsrsnext.snomiao.com` and `lianki.com`. Both domains must be in the Google Cloud Console OAuth client:
 
-- `https://lianki.com/api/auth/callback/google`
-- `https://www.lianki.com/api/auth/callback/google`
+- `https://lianki.com/api/auth/callback/google` (canonical)
+- `https://www.lianki.com/api/auth/callback/google` (keep registered — www still resolves and 308s to apex)
 
 ## Hard Rules
 
@@ -75,7 +75,7 @@ Use remote Chrome AND Vercel logs together:
 ```bash
 # 1. Navigate in remote Chrome, note any digest shown
 # 2. Stream logs to find the real error behind the digest:
-vercel logs https://www.lianki.com 2>&1 | head -80
+vercel logs https://lianki.com 2>&1 | head -80
 ```
 
 Production Next.js hides error messages — the UI shows a digest, the real error is in Vercel runtime logs. Match digest to confirm root cause. A repeated digest after redeploy means the same error persists.
