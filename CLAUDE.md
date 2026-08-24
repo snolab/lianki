@@ -8,7 +8,9 @@
 
 Spaced repetition app (FSRS algorithm) built with Next.js 16. Renamed from FSRSNext → Lianki.
 
-- Repo: https://github.com/snomiao/lianki
+- Repo: https://github.com/snolab/lianki — this is `origin`, and what deploys. Use this owner for
+  every `gh` / `gh api` call; a wrong owner returns a plan-gated 403 that misleadingly reads as
+  "branch protection is off".
 - Production: https://lianki.com (Vercel, `main` branch)
 
 ## Stack
