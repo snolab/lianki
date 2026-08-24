@@ -22,6 +22,7 @@ Spaced repetition app (FSRS algorithm) built with Next.js 16. Renamed from FSRSN
 - **UI**: Tailwind CSS (via `app/globals.css`)
 - **Linting/Formatting**: oxlint + oxfmt (both ignore `packages/`)
 - **Pre-commit**: `scripts/pre-commit.ts` — secretlint, bun fix, typecheck, build, vitest, userscript sync
+- **Secret scanning**: gitleaks (CI, full history) — `bun run scan:secrets` locally; config in `.gitleaks.toml`
 
 ## Key Files
 
