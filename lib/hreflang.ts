@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LANG_TAGS, BLOG_LOCALES } from "@/lib/constants";
 
 const LOCALES = BLOG_LOCALES;
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "https://www.lianki.com";
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "https://lianki.com";
 
 /**
  * Generate hreflang metadata for a page

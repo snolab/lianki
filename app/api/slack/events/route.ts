@@ -3,7 +3,7 @@
  *
  * Setup:
  *  1. Create a Slack App at https://api.slack.com/apps
- *  2. Enable "Event Subscriptions" → Request URL: https://www.lianki.com/api/slack/events
+ *  2. Enable "Event Subscriptions" → Request URL: https://lianki.com/api/slack/events
  *  3. Subscribe to bot events: message.channels
  *  4. Add env vars:
  *       SLACK_SIGNING_SECRET  — from Slack App > Basic Information > Signing Secret

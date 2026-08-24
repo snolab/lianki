@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const BASE_URL = process.env.LIANKI_URL || "https://www.lianki.com";
+const BASE_URL = process.env.LIANKI_URL || "https://lianki.com";
 
 export default defineConfig({
   testDir: "./tests",
