@@ -1,0 +1,13 @@
+# gitleaks config. Extends the maintained default ruleset rather than replacing it.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Build output and local agent logs are untracked; scanning them only reports noise."
+paths = [
+  '''^\.next/''',
+  '''^\.open-next/''',
+  '''^node_modules/''',
+  '''^\.agent-yes/''',
+  '''^bun\.lock$''',
+]

@@ -28,7 +28,7 @@
     "test:sync": "playwright test tests/db-sync-matrix.spec.ts",
     "build:userscript": "bunx --bun userbuild src/lianki.user.ts --outdir=public --format=iife",
     "ship": "bun scripts/ship.ts",
-    "pii-scan": "bun scripts/pii-scan.ts",
+    "scan:secrets": "gitleaks git . --no-banner --redact",
     "dev:userscript": "vite --config vite.config.userscript.ts",
     "storybook": "storybook dev -p 6006",
     "build:storybook": "storybook build"
