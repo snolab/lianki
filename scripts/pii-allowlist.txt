@@ -1,0 +1,13 @@
+# Literal substrings that are known-safe. One per line, # for comments.
+# Keep this short and justified — every entry is a hole in the scan.
+
+# Project contact + git identity already public in every commit's author field.
+snomiao@gmail.com
+noreply@anthropic.com
+noreply@github.com
+
+# Documentation placeholders.
+user:password@smtp.example.com
+noreply@yourdomain.com
+your-google-client-secret
+your-github-client-secret
