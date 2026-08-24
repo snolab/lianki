@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import { readFileSync } from "fs";
-import { join } from "path";
 import { Suspense } from "react";
 import sflow from "sflow";
 import { dueMs } from "@/app/ems";
@@ -20,17 +18,9 @@ import { SyncStatusBanner } from "./components/SyncStatusBanner";
 import { HotkeyHelp } from "@/app/components/HotkeyHelp";
 import { appHref } from "@/lib/app-locale";
 import { appLocale } from "@/lib/app-locale.server";
+import { LIANKI_USERSCRIPT_VERSION } from "@/lib/userscript-version";
 
 export const dynamic = "force-dynamic";
-
-function getLatestUserscriptVersion(): string {
-  try {
-    const meta = readFileSync(join(process.cwd(), "public/lianki.meta.js"), "utf8");
-    return meta.match(/@version\s+(\S+)/)?.[1] ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-}
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await appLocale();
@@ -58,7 +48,7 @@ export default async function HomePage() {
 
   const { appName, nav } = getIntlayer("landing-page", locale);
 
-  const latestVersion = getLatestUserscriptVersion();
+  const latestVersion = LIANKI_USERSCRIPT_VERSION;
 
   // If logged in, use server-side data
   if (email) {
