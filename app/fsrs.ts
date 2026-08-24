@@ -1,6 +1,5 @@
-import { readFileSync } from "fs";
-import { join } from "path";
 import type { Collection, WithId } from "mongodb";
+import { LIANKI_USERSCRIPT_VERSION } from "@/lib/userscript-version";
 import DIE from "phpdie";
 import { sflow, TextEncoderStream } from "sflow";
 import {
@@ -35,15 +34,6 @@ export function getFsrsNotes(email?: string): Collection<FSRSNote> {
   }
   return getFSRSNotesCollection(email);
 }
-
-const LIANKI_USERSCRIPT_VERSION = (() => {
-  try {
-    const src = readFileSync(join(process.cwd(), "public/lianki.user.js"), "utf8");
-    return src.match(/@version\s+([\d.]+)/)?.[1] ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-})();
 
 export type { HLC } from "./fsrs-helpers";
 
