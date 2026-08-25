@@ -95,17 +95,15 @@ if (clientHLC < serverHLC) {
 
 ### Created Files
 
-```
-public/
-├── lianki.user.js          (99KB, v2.20.0) - Offline-first userscript
-├── lianki.user.js.backup   (46KB, v2.19.3) - Original backup
-└── lianki-deps.bundle.js   (21KB) - ts-fsrs + idb-keyval bundle
+> **Superseded.** The hand-assembled build below is gone. The userscript is now
+> compiled from a single TypeScript source, `src/lianki.user.ts`, via
+> `bun run build:userscript`; `offline-core.js` and `offline-integration.js` are
+> modules inside that source. The sync design described above still applies.
 
-scripts/
-├── bundle-userscript-deps.ts    - Dependency bundler
-├── build-offline-userscript.ts  - Userscript assembler
-├── offline-core.js              - HLC, storage, FSRS logic
-└── offline-integration.js       - Review flow integration
+```
+src/lianki.user.ts               - Userscript source (HLC, storage, review flow)
+public/lianki.user.js            - Compiled output
+public/lianki.meta.js            - Metadata for update checks
 
 docs/
 ├── offline-first-plan.md        - Architecture design doc
