@@ -8,15 +8,19 @@ const die = (msg: string): never => {
   console.error(msg);
   process.exit(1);
 };
-const staged = () => run("git diff --cached --name-only").trim();
+// Whole paths, not substrings: `staged().includes("public/lianki.user.js")` also
+// matched public/lianki.user.js.backup, demanding a version bump for a file the
+// commit never touched.
+const staged = () => run("git diff --cached --name-only").trim().split("\n").filter(Boolean);
+const isStaged = (path: string) => staged().includes(path);
 
 // Build userscript from TS source if staged
-if (staged().includes("src/lianki.user.ts")) {
+if (isStaged("src/lianki.user.ts")) {
   execSync("bun run build:userscript", { stdio: "inherit" });
   execSync("oxfmt public/lianki.user.js", { stdio: "inherit" });
   run("git add public/lianki.user.js");
 }
-if (!staged().includes("public/lianki.user.js")) process.exit(0);
+if (!isStaged("public/lianki.user.js")) process.exit(0);
 
 // Version bump check
 const ver = (ref: string) => run(`git show ${ref}`).match(/@version\s+([\d.]+)/)?.[1] ?? null;

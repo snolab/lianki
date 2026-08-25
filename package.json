@@ -23,7 +23,6 @@
     "test:prod": "LIANKI_URL=https://lianki.com playwright test",
     "test:e2e": "node tests/e2e-offline-sync.spec.mjs",
     "test:e2e:prod": "LIANKI_URL=https://lianki.com node tests/e2e-offline-sync.spec.mjs",
-    "test:e2e:preview": "LIANKI_URL=https://lianki-git-sno-sync-snomiao.vercel.app node tests/e2e-offline-sync.spec.mjs",
     "test:unit": "NODE_OPTIONS=--experimental-sqlite node node_modules/.bin/vitest run",
     "test:sync": "playwright test tests/db-sync-matrix.spec.ts",
     "build:userscript": "bunx --bun userbuild src/lianki.user.ts --outdir=public --format=iife",
