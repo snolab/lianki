@@ -1,7 +1,4 @@
 import type { Metadata } from "next";
-import { getIntlayer } from "intlayer";
-import type { Locale } from "intlayer";
-import { Header } from "@/app/components/Header";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import { authUserOrNull } from "@/app/signInEmail";
 import { redirect } from "next/navigation";
@@ -25,7 +22,6 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RoadmapPage() {
   const locale = await appLocale();
-  const { appName, nav } = getIntlayer("landing-page", locale as Locale);
 
   const user = await authUserOrNull();
   if (!user?.email) {
@@ -47,26 +43,10 @@ export default async function RoadmapPage() {
   const serialized = JSON.parse(JSON.stringify(goals));
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header
-        locale={locale}
-        appName={appName}
-        blogLabel={nav.blog}
-        learnLabel={nav.learn}
-        importLabel={nav.import}
-        aiVocabLabel={nav.aiVocab}
-        roadmapLabel={nav.roadmap}
-        signInLabel={nav.signIn}
-        dashboardLabel={nav.dashboard}
-        profileLabel={nav.profile}
-        preferencesLabel={nav.preferences}
-        membershipLabel={nav.membership}
-        signOutLabel={nav.signOut}
-        user={user}
-      />
-      <main className="flex-grow">
+    <div className="flex flex-col">
+      <div className="flex-grow">
         <RoadmapClient locale={locale} initialGoals={serialized} />
-      </main>
+      </div>
     </div>
   );
 }

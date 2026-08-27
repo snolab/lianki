@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import { authUser } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
-import { Header } from "@/app/components/Header";
 import ImportClient from "./ImportClient";
 import YamlImportSection from "./YamlImportSection";
 import { appLocale } from "@/lib/app-locale.server";
+import { appHref } from "@/lib/app-locale";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +19,6 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ImportPage() {
   const locale = await appLocale();
-  const { appName, nav } = getIntlayer("landing-page", locale);
   const {
     title,
     description,
@@ -33,31 +31,9 @@ export default async function ImportPage() {
     viewDashboard,
   } = getIntlayer("import-page", locale);
 
-  let user = null;
-  try {
-    user = await authUser();
-  } catch {
-    // User not logged in
-  }
-
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header
-        locale={locale}
-        appName={appName}
-        blogLabel={nav.blog}
-        learnLabel={nav.learn}
-        importLabel={nav.import}
-        aiVocabLabel={nav.aiVocab}
-        signInLabel={nav.signIn}
-        dashboardLabel={nav.dashboard}
-        profileLabel={nav.profile}
-        preferencesLabel={nav.preferences}
-        membershipLabel={nav.membership}
-        signOutLabel={nav.signOut}
-        user={user}
-      />
-      <main className="flex-grow">
+    <div className="flex flex-col">
+      <div className="flex-grow">
         <div className="max-w-2xl mx-auto px-8 pb-16">
           <ImportClient
             title={title}
@@ -71,8 +47,14 @@ export default async function ImportPage() {
             viewDashboard={viewDashboard}
           />
           <YamlImportSection />
+          <p className="mt-8 text-sm text-gray-500 dark:text-gray-400">
+            Looking for exports, bulk delete or the storage overview?{" "}
+            <a href={appHref("/data", locale)} className="underline font-medium">
+              Full data tools →
+            </a>
+          </p>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

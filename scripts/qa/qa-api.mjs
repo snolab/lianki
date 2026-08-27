@@ -258,6 +258,137 @@ let goalId;
   rec("TOKEN list", list.status === 200, `HTTP ${list.status}`);
 }
 
+// ── DATA MANAGEMENT (/data) ──
+{
+  const r = await call("GET", "/api/fsrs/stats");
+  rec(
+    "DATA  stats reports backend + counts",
+    r.status === 200 &&
+      ["mongo", "d1"].includes(r.data?.backend) &&
+      typeof r.data?.notes === "number" &&
+      typeof r.data?.due === "number",
+    `HTTP ${r.status} backend=${r.data?.backend} notes=${r.data?.notes}`,
+  );
+}
+{
+  const r = await call("GET", "/api/fsrs/list?size=10");
+  rec(
+    "DATA  list returns rows + total",
+    r.status === 200 && Array.isArray(r.data?.rows) && typeof r.data?.total === "number",
+    `HTTP ${r.status} total=${r.data?.total}`,
+  );
+}
+{
+  // U1 was renamed to .../qa-renamed by the UPDATE section above.
+  const r = await call("GET", `/api/fsrs/list?q=${encodeURIComponent("qa-renamed")}`);
+  rec(
+    "DATA  list search narrows to one note",
+    r.status === 200 && r.data?.total === 1 && r.data.rows[0]?.url.endsWith("/qa-renamed"),
+    `HTTP ${r.status} total=${r.data?.total}`,
+  );
+}
+{
+  const r = await call("GET", "/api/fsrs/list?state=0");
+  const allNew = (r.data?.rows ?? []).every((row) => row.state === 0);
+  rec(
+    "DATA  list filters by card state",
+    r.status === 200 && allNew,
+    `HTTP ${r.status} n=${r.data?.rows?.length}`,
+  );
+}
+{
+  // A bare wildcard must be matched literally, not expanded — otherwise the
+  // search box silently stops filtering.
+  const r = await call("GET", "/api/fsrs/list?q=%25");
+  rec(
+    "DATA  list treats % as literal",
+    r.status === 200 && r.data?.total === 0,
+    `HTTP ${r.status}`,
+  );
+}
+{
+  const push = "https://example.com/qa-pushed";
+  const r = await call("POST", "/api/fsrs/bulk-upsert", {
+    notes: [
+      {
+        url: push,
+        title: "QA pushed",
+        card: {
+          due: new Date(Date.now() + 86400000).toISOString(),
+          stability: 0,
+          difficulty: 0,
+          elapsed_days: 0,
+          scheduled_days: 0,
+          reps: 0,
+          lapses: 0,
+          state: 0,
+        },
+        log: [],
+        hlc: { timestamp: Date.now(), counter: 0, deviceId: "qa" },
+      },
+    ],
+  });
+  rec(
+    "DATA  bulk-upsert inserts a new note",
+    r.status === 200 && r.data?.upserted === 1,
+    `HTTP ${r.status}`,
+  );
+
+  const again = await call("GET", `/api/fsrs/list?q=${encodeURIComponent("qa-pushed")}`);
+  rec("DATA  pushed note is listed", again.data?.total === 1, `total=${again.data?.total}`);
+
+  // Replaying the same push must be a no-op, not a rewrite.
+  const replay = await call("POST", "/api/fsrs/bulk-upsert", {
+    notes: [
+      {
+        url: push,
+        title: "QA pushed (stale)",
+        card: {
+          due: new Date().toISOString(),
+          stability: 0,
+          difficulty: 0,
+          elapsed_days: 0,
+          scheduled_days: 0,
+          reps: 0,
+          lapses: 0,
+          state: 0,
+        },
+        log: [],
+        hlc: { timestamp: 1, counter: 0, deviceId: "qa" },
+      },
+    ],
+  });
+  rec(
+    "DATA  bulk-upsert skips an older clock",
+    replay.status === 200 && replay.data?.upserted === 0 && replay.data?.conflicts === 1,
+    `upserted=${replay.data?.upserted} conflicts=${replay.data?.conflicts}`,
+  );
+
+  const del = await call("POST", "/api/fsrs/bulk-delete", { urls: [push] });
+  rec(
+    "DATA  bulk-delete removes it",
+    del.status === 200 && del.data?.deleted === 1,
+    `HTTP ${del.status}`,
+  );
+}
+{
+  const r = await call("POST", "/api/fsrs/bulk-delete", { all: true });
+  rec("DATA  bulk-delete all without confirm -> 400", r.status === 400, `HTTP ${r.status}`);
+}
+{
+  const r = await call("POST", "/api/fsrs/bulk-delete", {});
+  rec("DATA  bulk-delete with no target -> 400", r.status === 400, `HTTP ${r.status}`);
+}
+{
+  const saved = cookie;
+  cookie = "";
+  const list = await call("GET", "/api/fsrs/list");
+  const wipe = await call("POST", "/api/fsrs/bulk-delete", { all: true, confirm: "DELETE" });
+  cookie = saved;
+  rec("DATA  unauth list -> 401", list.status === 401, `HTTP ${list.status}`);
+  rec("DATA  unauth bulk-delete all -> 401", wipe.status === 401, `HTTP ${wipe.status}`);
+}
+
 // ── DELETE ──
 {
   const r = await call("GET", `/api/fsrs/delete?url=${encodeURIComponent(U2)}`);

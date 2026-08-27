@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import sflow from "sflow";
 import { dueMs } from "@/app/ems";
 import { getNotesCollection } from "@/app/lib/getNotesCollection";
-import { authEmail, authUser } from "@/app/signInEmail";
+import { authEmail } from "@/app/signInEmail";
 import { getCachedHeatmapData } from "@/app/lib/heatmap-cache";
 import ActivityHeatmap from "./components/ActivityHeatmap";
 import DeleteButton from "./components/DeleteButton";
@@ -11,7 +11,6 @@ import RefreshHeatmapButton from "./components/RefreshHeatmapButton";
 import { ReviewHistory } from "./components/ReviewHistory";
 import UserscriptInstallButton from "./components/UserscriptInstallButton";
 import { getIntlayer } from "intlayer";
-import { Header } from "@/app/components/Header";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import GuestListClient from "./components/GuestListClient";
 import { SyncStatusBanner } from "./components/SyncStatusBanner";
@@ -38,62 +37,38 @@ export default async function HomePage() {
   const locale = await appLocale();
   // Make auth optional for guest mode
   let email: string | null = null;
-  let user = null;
   try {
     email = await authEmail();
-    user = await authUser();
-  } catch (e) {
+  } catch {
     // Guest mode - will use IndexedDB
   }
-
-  const { appName, nav } = getIntlayer("landing-page", locale);
 
   const latestVersion = LIANKI_USERSCRIPT_VERSION;
 
   // If logged in, use server-side data
   if (email) {
-    return <LoggedInView email={email} user={user} locale={locale} latestVersion={latestVersion} />;
+    return <LoggedInView email={email} locale={locale} latestVersion={latestVersion} />;
   }
 
   // Guest mode - use client-side IndexedDB
-  return <GuestView locale={locale} appName={appName} nav={nav} latestVersion={latestVersion} />;
+  return <GuestView locale={locale} latestVersion={latestVersion} />;
 }
 
 async function LoggedInView({
   email,
-  user,
   locale,
   latestVersion,
 }: {
   email: string;
-  user: any;
   locale: string;
   latestVersion: string;
 }) {
-  const { appName, nav } = getIntlayer("landing-page", locale);
   const { nextCard, totalCards, dueCards, learningActivity } = getIntlayer("list-page", locale);
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header
-        locale={locale}
-        appName={appName}
-        blogLabel={nav.blog}
-        learnLabel={nav.learn}
-        importLabel={nav.import}
-        aiVocabLabel={nav.aiVocab}
-        roadmapLabel={nav.roadmap}
-        signInLabel={nav.signIn}
-        dashboardLabel={nav.dashboard}
-        profileLabel={nav.profile}
-        preferencesLabel={nav.preferences}
-        membershipLabel={nav.membership}
-        signOutLabel={nav.signOut}
-        user={user}
-      />
-
+    <div className="flex flex-col">
       {/* Main Content */}
-      <main className="flex-grow px-4 sm:px-6 lg:px-8">
+      <div className="px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="mb-6 flex gap-4 flex-wrap">
             <a
@@ -104,11 +79,13 @@ async function LoggedInView({
               {nextCard}
             </a>
             <UserscriptInstallButton locale={locale} latestVersion={latestVersion} />
+            {/* Export moved to /data, alongside import, bulk delete and the
+                three-store overview, so backup lives in one place. */}
             <a
-              href="/api/export/yaml"
+              href={appHref("/data", locale)}
               className="border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-medium py-3 px-6 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
             >
-              Export YAML
+              Manage data
             </a>
           </div>
           <div className="mb-6">
@@ -149,7 +126,7 @@ async function LoggedInView({
             </Suspense>
           </ul>
         </div>
-      </main>
+      </div>
       <HotkeyHelp />
     </div>
   );
@@ -232,38 +209,12 @@ async function LoggedInSyncStatus({ email }: { email: string }) {
   }
 }
 
-function GuestView({
-  locale,
-  appName,
-  nav,
-  latestVersion,
-}: {
-  locale: string;
-  appName: string;
-  nav: any;
-  latestVersion: string;
-}) {
+function GuestView({ locale, latestVersion }: { locale: string; latestVersion: string }) {
   const { nextCard } = getIntlayer("list-page", locale);
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header
-        locale={locale}
-        appName={appName}
-        blogLabel={nav.blog}
-        learnLabel={nav.learn}
-        importLabel={nav.import}
-        aiVocabLabel={nav.aiVocab}
-        signInLabel={nav.signIn}
-        dashboardLabel={nav.dashboard}
-        profileLabel={nav.profile}
-        preferencesLabel={nav.preferences}
-        membershipLabel={nav.membership}
-        signOutLabel={nav.signOut}
-        user={null}
-      />
-
-      <main className="flex-grow px-4 sm:px-6 lg:px-8">
+    <div className="flex flex-col">
+      <div className="px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="mb-6 flex gap-4">
             <a
@@ -278,7 +229,7 @@ function GuestView({
 
           <GuestListClient locale={locale} />
         </div>
-      </main>
+      </div>
     </div>
   );
 }
