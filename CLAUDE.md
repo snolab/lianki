@@ -21,7 +21,7 @@ Spaced repetition app (FSRS algorithm) built with Next.js 16. Renamed from FSRSN
 - **Auth**: NextAuth.js v5 — Email, GitHub, Google OAuth
 - **UI**: Tailwind CSS (via `app/globals.css`)
 - **Linting/Formatting**: oxlint + oxfmt (both ignore `packages/`)
-- **Pre-commit**: `scripts/pre-commit.ts` — secretlint, bun fix, typecheck, build, vitest, userscript sync
+- **Pre-commit**: `scripts/pre-commit.ts` — secretlint, bun fix, typecheck, build, `bun test`, userscript sync
 - **Secret scanning**: gitleaks (CI, full history) — `bun run scan:secrets` locally; config in `.gitleaks.toml`
 
 ## Key Files

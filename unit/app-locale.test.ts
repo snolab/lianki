@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { appHref, isAppRoute, localeFromAcceptLanguage, resolveLocale } from "@/lib/app-locale";
 
 describe("isAppRoute", () => {

@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";

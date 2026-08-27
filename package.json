@@ -23,7 +23,7 @@
     "test:prod": "LIANKI_URL=https://lianki.com playwright test",
     "test:e2e": "node tests/e2e-offline-sync.spec.mjs",
     "test:e2e:prod": "LIANKI_URL=https://lianki.com node tests/e2e-offline-sync.spec.mjs",
-    "test:unit": "NODE_OPTIONS=--experimental-sqlite node node_modules/.bin/vitest run",
+    "test:unit": "bun test",
     "test:sync": "playwright test tests/db-sync-matrix.spec.ts",
     "build:userscript": "bunx --bun userbuild src/lianki.user.ts --outdir=public --format=iife",
     "ship": "bun scripts/ship.ts",
@@ -77,6 +77,7 @@
     "@storybook/addon-a11y": "^10.3.5",
     "@storybook/html": "^10.3.5",
     "@storybook/html-vite": "^10.3.5",
+    "@types/bun": "^1.4.0",
     "@types/d3": "^7.4.3",
     "@types/node": "^25.3.5",
     "@types/nodemailer": "^7.0.11",
@@ -84,7 +85,6 @@
     "@types/react-dom": "^19.2.3",
     "@types/sql.js": "^1.4.11",
     "@typescript/native-preview": "^7.0.0-dev.20260308.1",
-    "@vitest/coverage-v8": "^4.1.2",
     "husky": "^9.1.7",
     "idb-keyval": "^6.2.2",
     "lint-staged": "^16.4.0",
@@ -99,7 +99,6 @@
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
     "vite-plugin-monkey": "^8.1.0",
-    "vitest": "^4.1.0",
     "wrangler": "^4.92.0"
   },
   "overrides": {

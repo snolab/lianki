@@ -1,0 +1,46 @@
+[test]
+# A bare `bun test` would otherwise sweep tests/*.spec.ts as well — those are
+# Playwright suites run by `bun run test`, and they cannot execute under the bun
+# test runner. Rooting here keeps `bun test` to the unit suites.
+root = "unit"
+
+coverage = true
+coverageSkipTestFiles = true
+
+# vitest gated coverage on an allowlist of three pure helpers at 90%. bun has no
+# allowlist — it reports every file the run loads — so the equivalent is stated
+# as its inverse: exclude what the suites merely pull in as a dependency, and
+# hold everything that remains to 90%.
+#
+# NOTE: bun applies this threshold PER FILE, not to the "All files" total, and
+# only the scalar form is honoured (a `{ line = …, function = … }` table parses
+# but is silently ignored — a gate that cannot fail). Both were verified by
+# setting a deliberately failing value and checking the exit code.
+coverageThreshold = 0.90
+
+# Loaded by the suites but not their target: I/O shims and DB adapters (covered
+# end-to-end by `bun run qa:all` instead), the FSRS route handler, and repos
+# exercised indirectly through it. Dropping an entry means that file must reach
+# 90% — which is the point: it should be a deliberate choice, not a drift.
+coveragePathIgnorePatterns = [
+  # Test scaffolding, not product code. coverageSkipTestFiles only skips files
+  # matching the test globs, and support modules deliberately do not.
+  # Must be a glob — a bare "unit/support/" silently matches nothing.
+  "unit/support/**",
+  "app/db.ts",
+  "app/fsrs.ts",
+  "app/fsrsNotesD1Collection.ts",
+  "app/getRoadmapGoalsCollection.ts",
+  "app/lib/heatmap-aggregation.ts",
+  "app/lib/heatmap-cache.ts",
+  "app/lib/notesAdmin.ts",
+  "lib/constants.ts",
+  "lib/d1/index.ts",
+  "lib/d1/testDb.ts",
+  "lib/membership.ts",
+  "lib/migrate/mappers.ts",
+  "lib/migrate/runMigration.ts",
+  "lib/rateLimit.ts",
+  "lib/repos/d1Repos.ts",
+  "lib/repos/fsrsNotesD1.ts",
+]
