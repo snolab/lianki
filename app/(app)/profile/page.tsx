@@ -2,7 +2,6 @@ import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { authUser } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
-import { Header } from "@/app/components/Header";
 import { appHref } from "@/lib/app-locale";
 import { appLocale } from "@/lib/app-locale.server";
 
@@ -10,7 +9,6 @@ export default async function ProfilePage() {
   const user = await authUser();
   const session = await auth.api.getSession({ headers: await headers() });
   const locale = await appLocale();
-  const { appName, nav } = getIntlayer("landing-page", locale);
   const {
     heading,
     userInformation,
@@ -25,24 +23,8 @@ export default async function ProfilePage() {
   } = getIntlayer("profile-page", locale);
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header
-        locale={locale}
-        appName={appName}
-        blogLabel={nav.blog}
-        learnLabel={nav.learn}
-        importLabel={nav.import}
-        aiVocabLabel={nav.aiVocab}
-        signInLabel={nav.signIn}
-        dashboardLabel={nav.dashboard}
-        profileLabel={nav.profile}
-        preferencesLabel={nav.preferences}
-        membershipLabel={nav.membership}
-        signOutLabel={nav.signOut}
-        user={user}
-      />
-
-      <main className="flex-grow max-w-4xl mx-auto px-4 py-12 w-full">
+    <div className="flex flex-col">
+      <div className="flex-grow max-w-4xl mx-auto px-4 py-12 w-full">
         <h1 className="text-3xl font-bold mb-8">{heading}</h1>
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
           <h2 className="text-2xl font-semibold mb-4">{userInformation}</h2>
@@ -96,7 +78,7 @@ export default async function ProfilePage() {
             {backToHome}
           </a>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

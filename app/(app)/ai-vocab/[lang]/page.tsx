@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
-import { authUser } from "@/app/signInEmail";
-import { getIntlayer } from "intlayer";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
-import { Header } from "@/app/components/Header";
 import AiVocabLangClient from "./AiVocabLangClient";
 import { appHref } from "@/lib/app-locale";
 import { appLocale } from "@/lib/app-locale.server";
+import { authUserOrNull } from "@/app/signInEmail";
 
 export const dynamic = "force-dynamic";
 
@@ -43,65 +41,28 @@ export async function generateMetadata({
 export default async function AiVocabLangPage({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
   const locale = await appLocale();
-  const { appName, nav } = getIntlayer("landing-page", locale);
 
   const langInfo = LANGUAGES[lang];
-
-  let user = null;
-  try {
-    user = await authUser();
-  } catch {
-    // User not logged in
-  }
+  const user = await authUserOrNull();
 
   if (!langInfo) {
     return (
-      <div className="flex flex-col min-h-screen">
-        <Header
-          locale={locale}
-          appName={appName}
-          blogLabel={nav.blog}
-          learnLabel={nav.learn}
-          importLabel={nav.import}
-          aiVocabLabel={nav.aiVocab}
-          signInLabel={nav.signIn}
-          dashboardLabel={nav.dashboard}
-          profileLabel={nav.profile}
-          preferencesLabel={nav.preferences}
-          membershipLabel={nav.membership}
-          signOutLabel={nav.signOut}
-          user={user}
-        />
-        <main className="flex-grow flex items-center justify-center">
+      <div className="flex flex-col">
+        <div className="flex items-center justify-center">
           <div className="text-center">
             <h1 className="text-2xl font-bold mb-4">Language not supported</h1>
             <a href={appHref("/ai-vocab", locale)} className="text-blue-500 hover:underline">
               ← Back to language selection
             </a>
           </div>
-        </main>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header
-        locale={locale}
-        appName={appName}
-        blogLabel={nav.blog}
-        learnLabel={nav.learn}
-        importLabel={nav.import}
-        aiVocabLabel={nav.aiVocab}
-        signInLabel={nav.signIn}
-        dashboardLabel={nav.dashboard}
-        profileLabel={nav.profile}
-        preferencesLabel={nav.preferences}
-        membershipLabel={nav.membership}
-        signOutLabel={nav.signOut}
-        user={user}
-      />
-      <main className="flex-grow">
+    <div className="flex flex-col">
+      <div>
         <AiVocabLangClient
           locale={locale}
           lang={lang}
@@ -109,7 +70,7 @@ export default async function AiVocabLangPage({ params }: { params: Promise<{ la
           langNativeName={langInfo.nativeName}
           isLoggedIn={!!user}
         />
-      </main>
+      </div>
     </div>
   );
 }

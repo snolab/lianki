@@ -8,6 +8,7 @@ export const APP_ROUTES = [
   "add-note",
   "ai-vocab",
   "contact",
+  "data",
   "import",
   "learn",
   "list",

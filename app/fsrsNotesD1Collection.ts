@@ -232,11 +232,14 @@ export class D1FsrsCollection {
       return { matchedCount: 1 };
     }
 
-    // notes update.
-    if (set.notes !== undefined) {
+    // Plain field patch (notes / title), as PATCH /api/fsrs/notes sends.
+    const patch: Partial<FSRSNote> = {};
+    if (set.notes !== undefined) patch.notes = set.notes;
+    if (set.title !== undefined) patch.title = set.title;
+    if (Object.keys(patch).length) {
       if (!existing) return { matchedCount: 0 };
       const { id, ...n } = existing;
-      await this.repo.upsert({ ...n, notes: set.notes }, id);
+      await this.repo.upsert({ ...n, ...patch }, id);
       return { matchedCount: 1 };
     }
 

@@ -19,6 +19,15 @@ import { buildNextDueQuery, compareHLC, type HLC, newServerHLC, RATING_MAP } fro
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
 import { getHeatmapCacheTag } from "./lib/heatmap-cache";
 import { normalizeUrl } from "@/lib/normalizeUrl";
+import { checkRateLimit } from "@/lib/rateLimit";
+import { restoreNoteFromExport } from "@/lib/yaml-export";
+import {
+  bulkDeleteNotes,
+  bulkUpsertNotes,
+  parseQueryOptions,
+  queryNotes,
+  storeStats,
+} from "./lib/notesAdmin";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { D1FsrsCollection } from "./fsrsNotesD1Collection";
 
@@ -258,10 +267,71 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         nextTitle: nextNote?.title ?? null,
       });
     },
+    // ── Data management (/data) ──────────────────────────────────────────
+    // Filtered, paged listing behind the data table.
+    "GET /api/fsrs/list(?:/|$|\\?)": async (req) => {
+      const email = requireEmail();
+      const params = new URL(req.url, "http://localhost").searchParams;
+      return JSONR(await queryNotes(email, parseQueryOptions(params)));
+    },
+    // Cloud-store counts for the three-store console.
+    "GET /api/fsrs/stats(?:/|$|\\?)": async () => JSONR(await storeStats(requireEmail())),
+    "POST /api/fsrs/bulk-delete/?$": async (req) => {
+      const email = requireEmail();
+      const input = z
+        .object({
+          urls: z.array(z.string()).max(1000).optional(),
+          all: z.boolean().optional(),
+          confirm: z.string().optional(),
+        })
+        .parse(await req.json());
+
+      // The typed confirmation is re-checked here, not just in the dialog: a
+      // wipe-everything endpoint must not be reachable by a bare POST.
+      if (input.all && input.confirm !== "DELETE") {
+        return JSONR({ error: 'confirm: "DELETE" required to delete all notes' }, 400);
+      }
+      if (!input.all && !input.urls?.length) {
+        return JSONR({ error: "urls or all is required" }, 400);
+      }
+      if (!allowMutation(`fsrs-bulk-delete:${email}`)) return tooManyRequests();
+
+      const result = await bulkDeleteNotes(email, {
+        urls: input.urls?.map((u) => normalizeUrl(u)),
+        all: input.all,
+      });
+      invalidateHeatmap(email);
+      return JSONR({ ok: true, ...result });
+    },
+    // Local (IndexedDB) → Cloud push. HLC-merged inside bulkUpsertNotes.
+    "POST /api/fsrs/bulk-upsert/?$": async (req) => {
+      const email = requireEmail();
+      const { notes } = z
+        .object({ notes: z.array(z.record(z.string(), z.unknown())).max(500) })
+        .parse(await req.json());
+      if (!allowMutation(`fsrs-bulk-upsert:${email}`)) return tooManyRequests();
+
+      const parsed = notes
+        .map((raw) => restoreNoteFromExport(raw) as unknown as FSRSNote)
+        .filter((n) => typeof n.url === "string" && n.url)
+        .map((n) => ({ ...n, url: normalizeUrl(n.url) }));
+
+      const result = await bulkUpsertNotes(email, parsed);
+      invalidateHeatmap(email);
+      return JSONR({ ok: true, ...result, received: notes.length });
+    },
     "PATCH /api/fsrs/notes(?:/|$|\\?)": async (req, opt) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
-      const { notes } = z.object({ notes: z.string().max(128) }).parse(await req.json());
-      await FSRSNotes.updateOne({ url: note.url }, { $set: { notes } });
+      // `notes` is the userscript's annotation field; `title` was previously
+      // only settable at save time, which left the data table with nothing to
+      // rename a card through. Both are optional so the userscript's existing
+      // `{ notes }` payload is unaffected.
+      const patch = z
+        .object({ notes: z.string().max(128).optional(), title: z.string().max(512).optional() })
+        .parse(await req.json());
+      const $set = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+      if (!Object.keys($set).length) return JSONR({ error: "nothing to update" }, 400);
+      await FSRSNotes.updateOne({ url: note.url }, { $set });
       return JSONR({ ok: true });
     },
     "PATCH /api/fsrs/update-url(?:/|$|\\?)": async (req) => {
@@ -539,6 +609,28 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     }
 
     return result;
+  }
+
+  /** Routes that write per-user data cannot run without an identified user. */
+  function requireEmail(): string {
+    return email || DIE("Login required");
+  }
+
+  function allowMutation(key: string): boolean {
+    return checkRateLimit(key, { windowMs: 60_000, max: 20 }).allowed;
+  }
+
+  async function tooManyRequests() {
+    return JSONR({ error: "Too many requests, try again shortly" }, 429);
+  }
+
+  /** Best-effort: a stale heatmap must never fail the mutation that caused it. */
+  function invalidateHeatmap(forEmail: string) {
+    try {
+      revalidateTag(getHeatmapCacheTag(forEmail), "default");
+    } catch (err) {
+      console.warn(`Failed to invalidate heatmap cache for ${forEmail}:`, err);
+    }
   }
 
   async function JSONR<T>(data: T | Promise<T>, status: number = 200) {

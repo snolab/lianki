@@ -1,43 +1,19 @@
-import { getIntlayer } from "intlayer";
 import { appLocale } from "@/lib/app-locale.server";
-import { Header } from "@/app/components/Header";
-import { authUser } from "@/app/signInEmail";
 import { ReadViewClient } from "./ReadViewClient";
+import { authUserOrNull } from "@/app/signInEmail";
 
 export default async function ReadMaterialPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const locale = await appLocale();
-  const { appName, nav } = getIntlayer("landing-page", locale);
-
-  let user = null;
-  try {
-    user = await authUser();
-  } catch {
-    // Guest mode
-  }
+  const user = await authUserOrNull();
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header
-        locale={locale}
-        appName={appName}
-        blogLabel={nav.blog}
-        learnLabel={nav.learn}
-        importLabel={nav.import}
-        aiVocabLabel={nav.aiVocab}
-        signInLabel={nav.signIn}
-        dashboardLabel={nav.dashboard}
-        profileLabel={nav.profile}
-        preferencesLabel={nav.preferences}
-        membershipLabel={nav.membership}
-        signOutLabel={nav.signOut}
-        user={user}
-      />
-      <main className="flex-grow px-4 sm:px-6 lg:px-8 py-8">
+    <div className="flex flex-col">
+      <div className="flex-grow px-4 sm:px-6 lg:px-8 py-8">
         <div className="max-w-4xl mx-auto">
           <ReadViewClient id={id} locale={locale} isLoggedIn={!!user} />
         </div>
-      </main>
+      </div>
     </div>
   );
 }
