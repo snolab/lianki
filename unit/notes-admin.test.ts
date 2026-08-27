@@ -9,7 +9,7 @@
  * Mongo filter there returns every row instead of erroring.
  */
 
-import { describe, test, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, test, expect, mock, beforeAll, afterAll, beforeEach } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { MongoMemoryServer } from "mongodb-memory-server";
@@ -19,19 +19,19 @@ import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import type { FSRSNote } from "@/app/fsrs";
 import type { HLC } from "@/app/fsrs-helpers";
 
-vi.mock("next/cache", () => ({
-  revalidateTag: vi.fn(),
-  unstable_cache: vi.fn((fn: () => unknown) => fn),
+mock.module("next/cache", () => ({
+  revalidateTag: mock(() => {}),
+  unstable_cache: mock((fn: () => unknown) => fn),
 }));
 
 let testCollection: Collection;
-vi.mock("@/app/getFSRSNotesCollection", () => ({
+mock.module("@/app/getFSRSNotesCollection", () => ({
   getFSRSNotesCollection: () => testCollection,
 }));
 
 let testD1: TestD1Database;
 let backend: "mongodb" | "d1" = "mongodb";
-vi.mock("@/lib/d1", () => ({
+mock.module("@/lib/d1", () => ({
   dbBackend: () => backend,
   getD1: () => testD1,
   getBlobs: () => {
@@ -40,18 +40,15 @@ vi.mock("@/lib/d1", () => ({
 }));
 
 let goalsCollection: Collection;
-vi.mock("@/app/getRoadmapGoalsCollection", () => ({
+mock.module("@/app/getRoadmapGoalsCollection", () => ({
   getRoadmapGoalsCollection: () => goalsCollection,
 }));
 
-import {
-  bulkDeleteNotes,
-  bulkUpsertNotes,
-  escapeLike,
-  parseQueryOptions,
-  queryNotes,
-  storeStats,
-} from "@/app/lib/notesAdmin";
+// Dynamic, and after the mock.module calls above: bun does not hoist module
+// mocks the way vitest does, so a static import here would bind the real
+// modules before the mocks were ever registered.
+const { bulkDeleteNotes, bulkUpsertNotes, escapeLike, parseQueryOptions, queryNotes, storeStats } =
+  await import("@/app/lib/notesAdmin");
 
 const SCHEMA = readFileSync(join(process.cwd(), "db/migrations/0001_init.sql"), "utf8");
 const EMAIL = "test@example.com";
@@ -119,7 +116,8 @@ async function seed(notes: FSRSNote[]) {
 
 // ── The shared contract ──────────────────────────────────────────────────────
 
-describe.each(BACKENDS)("notesAdmin (%s)", (which) => {
+// Spread: bun's describe.each takes a mutable array, and BACKENDS is `as const`.
+describe.each([...BACKENDS])("notesAdmin (%s)", (which) => {
   beforeEach(() => {
     backend = which;
   });

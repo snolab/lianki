@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { join } from "path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { LIANKI_USERSCRIPT_VERSION } from "@/lib/userscript-version";
 
 /**
@@ -10,8 +10,13 @@ import { LIANKI_USERSCRIPT_VERSION } from "@/lib/userscript-version";
  * Nothing at runtime can detect drift anymore, so pin it here instead.
  */
 describe("LIANKI_USERSCRIPT_VERSION", () => {
-  const versionIn = (file: string) =>
-    readFileSync(join(process.cwd(), file), "utf8").match(/@version\s+(\S+)/)?.[1];
+  const versionIn = (file: string): string => {
+    const found = readFileSync(join(process.cwd(), file), "utf8").match(/@version\s+(\S+)/)?.[1];
+    // Throw rather than return undefined: a file that lost its @version header
+    // should fail this guard outright, not compare equal to nothing.
+    if (!found) throw new Error(`no @version header found in ${file}`);
+    return found;
+  };
 
   it("matches the shipped userscript", () => {
     expect(LIANKI_USERSCRIPT_VERSION).toBe(versionIn("public/lianki.user.js"));

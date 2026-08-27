@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeAll, afterAll } from "vitest";
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { MongoMemoryServer } from "mongodb-memory-server";

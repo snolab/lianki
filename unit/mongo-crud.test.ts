@@ -8,24 +8,26 @@
  *   direct caller → MongoDB (CREATE, READ, UPDATE, DELETE, CONFLICT)
  */
 
-import { describe, test, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, test, expect, mock, beforeAll, afterAll, beforeEach } from "bun:test";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { MongoClient, type Collection } from "mongodb";
 
 // -- Mock Next.js cache (not available outside Next.js runtime) --
-vi.mock("next/cache", () => ({
-  revalidateTag: vi.fn(),
-  unstable_cache: vi.fn((fn: () => unknown) => fn),
+mock.module("next/cache", () => ({
+  revalidateTag: mock(() => {}),
+  unstable_cache: mock((fn: () => unknown) => fn),
 }));
 
 // -- Lazy reference so beforeAll can assign before any call --
 let testCollection: Collection;
-vi.mock("@/app/getFSRSNotesCollection", () => ({
+mock.module("@/app/getFSRSNotesCollection", () => ({
   getFSRSNotesCollection: () => testCollection,
 }));
 
-// Import AFTER mocks are registered
-import { fsrsHandler } from "@/app/fsrs";
+// Imported dynamically, AFTER the mocks are registered: bun does not hoist
+// mock.module the way vitest hoisted vi.mock, so a static import would bind the
+// real next/cache and getFSRSNotesCollection before either mock existed.
+const { fsrsHandler } = await import("@/app/fsrs");
 
 // ── Infra ──────────────────────────────────────────────────────────────────────
 

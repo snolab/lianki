@@ -37,12 +37,9 @@ jobs:
           ./gitleaks git . --no-banner --redact
         env:
           GITLEAKS_VERSION: 8.28.0
-      # Node ≥ 22.12 is required: the D1 unit suites use node:sqlite, and
-      # test:unit runs vitest under Node (not Bun) for that reason. We pin 24
-      # (current LTS); see .nvmrc + package.json engines.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
+      # No Node toolchain here: the unit suites run on `bun test`, and bun
+      # implements node:sqlite natively (no --experimental-sqlite flag). The
+      # integration job still needs Node, because wrangler requires it.
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - name: Typecheck

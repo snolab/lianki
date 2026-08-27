@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, setSystemTime, afterEach } from "bun:test";
 import {
   compareHLC,
   newServerHLC,
@@ -56,41 +56,39 @@ describe("compareHLC", () => {
 // ── newServerHLC ─────────────────────────────────────────────────────────────
 
 describe("newServerHLC", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
+  // Restore the real clock so a frozen time cannot leak into later files.
   afterEach(() => {
-    vi.useRealTimers();
+    setSystemTime();
   });
 
   it("returns a fresh HLC when no lastHLC is provided", () => {
-    vi.setSystemTime(5000);
+    setSystemTime(new Date(5000));
     const hlc = newServerHLC();
     expect(hlc).toEqual({ timestamp: 5000, counter: 0, deviceId: "server" });
   });
 
   it("returns a fresh HLC when lastHLC is null", () => {
-    vi.setSystemTime(5000);
+    setSystemTime(new Date(5000));
     const hlc = newServerHLC(null);
     expect(hlc).toEqual({ timestamp: 5000, counter: 0, deviceId: "server" });
   });
 
   it("returns a fresh HLC when now > lastHLC.timestamp", () => {
-    vi.setSystemTime(6000);
+    setSystemTime(new Date(6000));
     const last: HLC = { timestamp: 5000, counter: 3, deviceId: "client" };
     const hlc = newServerHLC(last);
     expect(hlc).toEqual({ timestamp: 6000, counter: 0, deviceId: "server" });
   });
 
   it("increments counter when now === lastHLC.timestamp", () => {
-    vi.setSystemTime(5000);
+    setSystemTime(new Date(5000));
     const last: HLC = { timestamp: 5000, counter: 2, deviceId: "client" };
     const hlc = newServerHLC(last);
     expect(hlc).toEqual({ timestamp: 5000, counter: 3, deviceId: "server" });
   });
 
   it("increments counter when now < lastHLC.timestamp (clock drift)", () => {
-    vi.setSystemTime(4000);
+    setSystemTime(new Date(4000));
     const last: HLC = { timestamp: 5000, counter: 0, deviceId: "client" };
     const hlc = newServerHLC(last);
     expect(hlc).toEqual({ timestamp: 5000, counter: 1, deviceId: "server" });
@@ -125,7 +123,8 @@ describe("RATING_MAP", () => {
 describe("buildNextDueQuery", () => {
   it("returns base query with no exclusions", () => {
     const query = buildNextDueQuery([]);
-    expect(query).toHaveProperty("card.due");
+    // Array form: "card.due" is a literal Mongo dotted key, not a nested path.
+    expect(query).toHaveProperty(["card.due"]);
     expect(query["card.due"]).toHaveProperty("$lte");
     expect(query.url).toEqual({ $exists: true, $ne: null });
   });

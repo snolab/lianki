@@ -23,8 +23,8 @@
 
 ### 🚧 Next
 
-- [ ] Commit the above on a machine with Node ≥22.12 (husky `vitest` step fails
-      on this sandbox's Node 22.5.1 only; do **not** use `--no-verify`)
+- [x] Resolved by migrating the unit suites from vitest to `bun test`: bun
+      implements `node:sqlite` natively, so committing no longer needs Node
 - [ ] Optional: add a `qa:api`/`qa:ui` smoke step to CI against a dev server
 
 ## Cloudflare + D1 migration (see `docs/cf-d1-migration.md`)
@@ -34,7 +34,7 @@
 - [x] Phase 2a — `app/api/roadmap/[id]/progress` wired to D1/Mongo backends
       (verified via `qa:api`); `roadmap/generate` confirmed N/A (no DB access)
 - [x] `unit/mongo-crud.test.ts` — 18-case CRUD + HLC matrix for `fsrsHandler`
-- [x] `vitest.config.ts` — ESM-safe `@` path alias
+- [x] `@` path alias — now resolved from `tsconfig.json` paths by bun directly
 
 ### 🚧 Remaining
 

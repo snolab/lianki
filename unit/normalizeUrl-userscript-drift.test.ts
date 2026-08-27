@@ -11,7 +11,7 @@
 
 import { readFileSync } from "fs";
 import { join } from "path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { normalizeUrl as libNormalizeUrl } from "../lib/normalizeUrl";
 
 /** Extract `function normalizeUrl(href) {...}` from the built userscript by brace-matching. */
