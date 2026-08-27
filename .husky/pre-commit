@@ -2,6 +2,13 @@
 # the build run in pre-push via `bun run qa:all`. Never use --no-verify (see
 # CLAUDE.md) — this hook also syncs the userscript meta + version.
 bunx lint-staged
+
+# Runs BEFORE typecheck and the tests, not after: this is the step that builds
+# the userscript from src/ and regenerates public/lianki.meta.js and
+# lib/userscript-version.ts. With it last, every @version bump failed its own
+# commit — unit/userscript-version.test.ts compares the generated constant
+# against the built script, and the constant had not been regenerated yet.
+bun scripts/pre-commit.ts
+
 bun run typecheck
 bun run test:unit -- --coverage
-bun scripts/pre-commit.ts

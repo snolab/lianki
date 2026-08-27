@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.19
+// @version     2.23.20
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -463,9 +463,15 @@ function main() {
   // ── Constants ──────────────────────────────────────────────────────────────
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
-  // User preferences (loaded from API)
+  // User preferences (loaded from API).
+  //
+  // The shape must match what GET /api/preferences actually returns, which is
+  // `{ mobileExcludePatterns }`. This used to declare the long-deprecated
+  // `mobileExcludeDomains`, which the API stopped sending — so it read back
+  // undefined and every filter the user configured on /preferences was silently
+  // dropped before it reached the server.
   let userPreferences = {
-    mobileExcludeDomains: [], // default: no filters
+    mobileExcludePatterns: [], // default: no filters
   };
 
   // Load preferences on startup (called after api() is defined)
@@ -633,12 +639,24 @@ function main() {
       }),
     );
 
-  // Build excludeDomains query param for filtering next card
+  // Build the excludeDomains query param used to filter the next card.
+  //
+  // The server matches these as plain substrings of the card URL, so `domain`
+  // and `url` patterns both map onto it. `title` patterns and `isRegex` cannot
+  // be expressed in this wire format — the server escapes what it receives —
+  // so they are skipped here rather than sent and silently mismatched. See the
+  // Backlog entry in TODO.md for carrying the full pattern set.
   const buildExcludeDomainsParam = () => {
     if (!isMobile) return "";
-    const domains = userPreferences.mobileExcludeDomains || [];
-    if (domains.length === 0) return "";
-    return `&excludeDomains=${domains.join(",")}`;
+    const patterns = userPreferences.mobileExcludePatterns || [];
+    const values = patterns
+      .filter((p) => p && p.enabled !== false && !p.isRegex)
+      .filter((p) => p.type === "domain" || p.type === "url")
+      .map((p) => String(p.pattern || "").trim())
+      // A comma would split into two bogus entries on the server side.
+      .filter((p) => p && !p.includes(","));
+    if (values.length === 0) return "";
+    return `&excludeDomains=${values.map(encodeURIComponent).join(",")}`;
   };
 
   const saveNotes = (id, notes) =>

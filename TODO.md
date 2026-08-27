@@ -27,6 +27,21 @@
       implements `node:sqlite` natively, so committing no longer needs Node
 - [ ] Optional: add a `qa:api`/`qa:ui` smoke step to CI against a dev server
 
+## Backlog
+
+- [ ] **a11y pass on `/preferences`** — checked against
+      https://lianki.com/preferences?lang=ja (i.e. verify it in a non-Latin,
+      non-default locale, not just `en`). Review `PreferencesClient.tsx`:
+      label/control association, keyboard operation of the pattern list,
+      focus handling after add/remove, `aria-live` for save status, and the
+      `alert()` error paths.
+- [ ] **`mobileExcludePatterns` never reaches the userscript** — `GET
+      /api/preferences` returns only `mobileExcludePatterns`, but
+      `buildExcludeDomainsParam()` in `src/lianki.user.ts` reads the legacy
+      `userPreferences.mobileExcludeDomains`, which the API no longer sends. It
+      is always `undefined`, so the param is always empty and the filters never
+      filter. Fix before building preference sync on top of it.
+
 ## Cloudflare + D1 migration (see `docs/cf-d1-migration.md`)
 
 ### ✅ Done
