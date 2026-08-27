@@ -8,25 +8,19 @@
  *   direct caller → MongoDB (CREATE, READ, UPDATE, DELETE, CONFLICT)
  */
 
-import { describe, test, expect, mock, beforeAll, afterAll, beforeEach } from "bun:test";
+import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { MongoClient, type Collection } from "mongodb";
 
-// -- Mock Next.js cache (not available outside Next.js runtime) --
-mock.module("next/cache", () => ({
-  revalidateTag: mock(() => {}),
-  unstable_cache: mock((fn: () => unknown) => fn),
-}));
+// Module mocks are registered once, by the shared holder — see the comment in
+// unit/support/testMocks.ts for why they cannot live in each file.
+import { useBackend, useNotesCollection } from "./support/testMocks";
 
-// -- Lazy reference so beforeAll can assign before any call --
 let testCollection: Collection;
-mock.module("@/app/getFSRSNotesCollection", () => ({
-  getFSRSNotesCollection: () => testCollection,
-}));
 
-// Imported dynamically, AFTER the mocks are registered: bun does not hoist
-// mock.module the way vitest hoisted vi.mock, so a static import would bind the
-// real next/cache and getFSRSNotesCollection before either mock existed.
+// Imported dynamically, AFTER ./support/testMocks has registered the mocks: bun
+// does not hoist mock.module the way vitest hoisted vi.mock, so a static import
+// would bind the real next/cache and getFSRSNotesCollection.
 const { fsrsHandler } = await import("@/app/fsrs");
 
 // ── Infra ──────────────────────────────────────────────────────────────────────
@@ -47,6 +41,10 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  // Re-assert this file's target on every test: another file may have pointed
+  // the shared mocks elsewhere (notably at the D1 backend) in between.
+  useNotesCollection(testCollection);
+  useBackend("mongodb");
   await testCollection.deleteMany({});
 });
 

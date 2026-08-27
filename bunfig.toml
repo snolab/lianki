@@ -23,6 +23,10 @@ coverageThreshold = 0.90
 # exercised indirectly through it. Dropping an entry means that file must reach
 # 90% — which is the point: it should be a deliberate choice, not a drift.
 coveragePathIgnorePatterns = [
+  # Test scaffolding, not product code. coverageSkipTestFiles only skips files
+  # matching the test globs, and support modules deliberately do not.
+  # Must be a glob — a bare "unit/support/" silently matches nothing.
+  "unit/support/**",
   "app/db.ts",
   "app/fsrs.ts",
   "app/fsrsNotesD1Collection.ts",

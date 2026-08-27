@@ -9,7 +9,7 @@
  * Mongo filter there returns every row instead of erroring.
  */
 
-import { describe, test, expect, mock, beforeAll, afterAll, beforeEach } from "bun:test";
+import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { MongoMemoryServer } from "mongodb-memory-server";
@@ -19,30 +19,14 @@ import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import type { FSRSNote } from "@/app/fsrs";
 import type { HLC } from "@/app/fsrs-helpers";
 
-mock.module("next/cache", () => ({
-  revalidateTag: mock(() => {}),
-  unstable_cache: mock((fn: () => unknown) => fn),
-}));
+// Module mocks are registered once, by the shared holder — see the comment in
+// unit/support/testMocks.ts for why they cannot live in each file.
+import { useBackend, useD1, useGoalsCollection, useNotesCollection } from "./support/testMocks";
 
 let testCollection: Collection;
-mock.module("@/app/getFSRSNotesCollection", () => ({
-  getFSRSNotesCollection: () => testCollection,
-}));
-
+let goalsCollection: Collection;
 let testD1: TestD1Database;
 let backend: "mongodb" | "d1" = "mongodb";
-mock.module("@/lib/d1", () => ({
-  dbBackend: () => backend,
-  getD1: () => testD1,
-  getBlobs: () => {
-    throw new Error("not used");
-  },
-}));
-
-let goalsCollection: Collection;
-mock.module("@/app/getRoadmapGoalsCollection", () => ({
-  getRoadmapGoalsCollection: () => goalsCollection,
-}));
 
 // Dynamic, and after the mock.module calls above: bun does not hoist module
 // mocks the way vitest does, so a static import here would bind the real
@@ -66,6 +50,9 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
+  // Hand the shared mocks back in a neutral state: leaving dbBackend() on "d1"
+  // is precisely what sent mongo-crud's writes to the wrong backend in CI.
+  useBackend("mongodb");
   await mongoClient?.close();
   await mongod?.stop();
 });
@@ -74,6 +61,12 @@ beforeEach(async () => {
   await testCollection.deleteMany({});
   await goalsCollection.deleteMany({});
   testD1 = createTestD1(SCHEMA);
+  // Re-point the shared mocks at this file's fixtures — the D1 handle is new
+  // on every test, so this is a re-assignment, not just a guard against
+  // another file having claimed them.
+  useNotesCollection(testCollection);
+  useGoalsCollection(goalsCollection);
+  useD1(testD1);
 });
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -120,6 +113,7 @@ async function seed(notes: FSRSNote[]) {
 describe.each([...BACKENDS])("notesAdmin (%s)", (which) => {
   beforeEach(() => {
     backend = which;
+    useBackend(which);
   });
 
   describe("queryNotes", () => {
