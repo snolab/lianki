@@ -1,5 +1,10 @@
 import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import {
+  isWorkersAiConfigured,
+  textModelHq,
+  workersAiProvider,
+  WORKERS_AI_NOT_CONFIGURED,
+} from "@/lib/workers-ai";
 import { NextRequest } from "next/server";
 import { getRawPost } from "@/lib/blog";
 import { BLOG_LOCALES, LOCALE_NAMES } from "@/lib/constants";
@@ -79,8 +84,8 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    return new Response("OPENAI_API_KEY not configured", { status: 500 });
+  if (!isWorkersAiConfigured()) {
+    return new Response(WORKERS_AI_NOT_CONFIGURED, { status: 500 });
   }
 
   // Get the English source post
@@ -174,7 +179,7 @@ export async function GET(request: NextRequest) {
   const targetLanguage = LOCALE_NAMES[locale] ?? locale;
 
   const result = streamText({
-    model: openai("gpt-4o"),
+    model: workersAiProvider()(textModelHq()),
     system: `You are a professional technical translator. Translate markdown blog posts accurately while:
 - Preserving ALL markdown formatting (headers, bold, italic, lists, tables, code blocks)
 - Preserving ALL code snippets exactly as-is (do not translate code inside backticks or code fences)

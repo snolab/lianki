@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import {
+  isWorkersAiConfigured,
+  textModel,
+  workersAiOpenAI,
+  WORKERS_AI_NOT_CONFIGURED,
+} from "@/lib/workers-ai";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -49,16 +54,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid source/target language" }, { status: 400 });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 });
+    if (!isWorkersAiConfigured()) {
+      return NextResponse.json({ error: WORKERS_AI_NOT_CONFIGURED }, { status: 500 });
     }
 
-    const openai = new OpenAI({ apiKey });
+    const openai = workersAiOpenAI();
 
     // Translate both question and answer
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: textModel(),
       messages: [
         {
           role: "system",

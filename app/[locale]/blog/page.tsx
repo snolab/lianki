@@ -8,7 +8,7 @@ import { generateHreflangMetadata } from "@/lib/hreflang";
 import { getIntlayer } from "intlayer";
 import { Header } from "@/app/components/Header";
 import { authUser } from "@/app/signInEmail";
-import OpenAI from "openai";
+import { isWorkersAiConfigured, textModel, workersAiOpenAI } from "@/lib/workers-ai";
 import { logSanitizedError } from "@/lib/safeError";
 
 export const revalidate = 3600;
@@ -39,14 +39,16 @@ type PostSummary = {
 };
 
 async function translateText(text: string, targetLocale: string): Promise<string> {
-  if (!process.env.OPENAI_API_KEY) return text;
+  // Untranslated text is the documented fallback here, so an unconfigured
+  // provider degrades the page rather than failing it.
+  if (!isWorkersAiConfigured()) return text;
 
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = workersAiOpenAI();
     const languageName = LOCALE_LABELS[targetLocale as keyof typeof LOCALE_LABELS] || targetLocale;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: textModel(),
       messages: [
         {
           role: "system",
