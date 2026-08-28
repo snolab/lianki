@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name        [dev] Lianki
-// @namespace   lianki-dev-loader
+// @name        [dev] Lianki @dev
+// @namespace   Violentmonkey Scripts
 // @match       *://*/*
 // @grant       GM_xmlhttpRequest
 // @grant       GM_setValue
@@ -21,6 +21,12 @@
 // `scripts/dev-userscript-server.ts`, so installing this file raw does nothing
 // useful. (Keep placeholder tokens out of prose here — substitution is a plain
 // string replace and would rewrite them mid-sentence.)
+//
+// The @name/@namespace pair deliberately matches the loader already installed
+// in the fleet, so serving this replaces that install rather than sitting
+// alongside it — two loaders on one page means two of every handler. It still
+// differs from the production script's pair ("Lianki"), which is what keeps a
+// manager from treating it as an update to the real userscript.
 //
 // Design notes and the reasoning behind each rule below:
 // docs/dev-userscript-loader.md
@@ -185,11 +191,29 @@
         eval(code);
       } catch (err) {
         if (!/Trusted Type/i.test(String(err && err.message))) throw err;
-        // Allowed because these pages set no trusted-types allowlist directive,
-        // so any policy name is accepted. If a site ever restricts names this
-        // throws and the outer catch reports it rather than failing silently.
-        ttPolicy = ttPolicy || trustedTypes.createPolicy("lianki-dev", { createScript: (s) => s });
-        eval(ttPolicy.createScript(code));
+        // The retry is allowed only where the page sets no trusted-types
+        // allowlist directive, so any policy name is accepted. Where one IS
+        // set (translate.google.com), createPolicy throws — and letting that
+        // reach the outer catch meant backing off and re-reporting the same
+        // wall on every cycle, forever. Observed in the wild; treat a failed
+        // retry as terminal for this page, like a missing 'unsafe-eval'.
+        try {
+          ttPolicy =
+            ttPolicy || trustedTypes.createPolicy("lianki-dev", { createScript: (s) => s });
+          eval(ttPolicy.createScript(code));
+        } catch (ttErr) {
+          blocked = true;
+          report(
+            "tt-blocked",
+            "Trusted Types retry failed: " + (ttErr && ttErr.message) + " | first: " + err.message,
+          );
+          console.warn(
+            "[lianki dev " +
+              CID +
+              "] this page's Trusted Types policy forbids eval — loader disabled here",
+          );
+          return;
+        }
         console.log("[lianki dev " + CID + "] evaluated via TrustedScript policy");
       }
     } catch (err) {

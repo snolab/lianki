@@ -37,10 +37,22 @@ const PORT = Number(flag("port", "3003"));
 // GM_info.script.downloadURL with this, because the bundle derives its API
 // origin from that field.
 const APP_ORIGIN = flag("app", "https://lianki.com").replace(/\/+$/, "");
-// A stable origin means you run the tunnel yourself (named tunnel, stable
-// hostname) and we skip spawning a quick one.
 const FIXED_ORIGIN = flag("origin", "").replace(/\/+$/, "");
-const WANT_TUNNEL = !FIXED_ORIGIN && !has("no-tunnel");
+// A named tunnel (`--tunnel lianki-dev --origin https://dev.lianki.com`) keeps
+// the hostname across restarts, so an install survives. Without a name we spawn
+// a quick tunnel, whose hostname dies with the process. With --origin but no
+// name, you are running the tunnel yourself and we spawn nothing.
+const TUNNEL_NAME = flag("tunnel", "");
+const WANT_TUNNEL = TUNNEL_NAME ? true : !FIXED_ORIGIN && !has("no-tunnel");
+
+if (TUNNEL_NAME && !FIXED_ORIGIN) {
+  console.error(
+    `--tunnel ${TUNNEL_NAME} needs --origin too: a named tunnel's hostname lives\n` +
+      `in its DNS route, which cloudflared never prints. e.g.\n` +
+      `  bun run dev:loader --tunnel ${TUNNEL_NAME} --origin https://dev.lianki.com`,
+  );
+  process.exit(1);
+}
 
 let origin = FIXED_ORIGIN || `http://localhost:${PORT}`;
 
@@ -141,7 +153,11 @@ const text = (body: string, type = "text/plain; charset=utf-8", extra: HeadersIn
 function startServer() {
   return Bun.serve({
     port: PORT,
-    hostname: "0.0.0.0",
+    // "::" not "0.0.0.0": cloudflared resolves an ingress of http://localhost
+    // to [::1] first, and an IPv4-only bind makes it 502 with
+    // "dial tcp [::1]:<port>: connect: connection refused". Linux dual-stack
+    // sockets accept IPv4-mapped connections too, so this covers both.
+    hostname: "::",
     // Default is 10s, which would cut every long poll short.
     idleTimeout: 60,
     async fetch(req) {
@@ -268,12 +284,15 @@ function startWatch() {
 let tunnel: ChildProcess | null = null;
 
 function startTunnel() {
-  log("starting cloudflare quick tunnel…");
-  tunnel = spawn(
-    "cloudflared",
-    ["tunnel", "--no-autoupdate", "--url", `http://localhost:${PORT}`],
-    { stdio: ["ignore", "pipe", "pipe"] },
+  const args = TUNNEL_NAME
+    ? ["tunnel", "--no-autoupdate", "run", "--url", `http://localhost:${PORT}`, TUNNEL_NAME]
+    : ["tunnel", "--no-autoupdate", "--url", `http://localhost:${PORT}`];
+  log(
+    TUNNEL_NAME
+      ? `starting named tunnel ${TUNNEL_NAME} → ${origin}…`
+      : "starting cloudflare quick tunnel…",
   );
+  tunnel = spawn("cloudflared", args, { stdio: ["ignore", "pipe", "pipe"] });
   // cloudflared prints the hostname several seconds BEFORE the edge can route
   // to it. Announcing on the URL alone sends you to install a loader from a
   // host that still 404s, so hold the banner until a connection registers.
@@ -284,7 +303,9 @@ function startTunnel() {
     const m = s.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
     if (m && m[0] !== origin) origin = m[0];
     if (/Registered tunnel connection|Connection [0-9a-f-]+ registered/i.test(s)) routable = true;
-    if (!announced && routable && origin.includes("trycloudflare.com")) {
+    // A named tunnel prints no URL — its hostname came from --origin, so a
+    // registered connection is the only signal there is.
+    if (!announced && routable && (TUNNEL_NAME || origin.includes("trycloudflare.com"))) {
       announced = true;
       void announceWhenReachable();
     }

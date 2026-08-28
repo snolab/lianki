@@ -44,4 +44,8 @@ phone, over a Cloudflare tunnel) runs the new build — see
 ```bash
 bun run dev:loader                              # quick tunnel, bundle talks to lianki.com
 bun run dev:loader --app http://localhost:3000  # ...talks to the local Next dev server
+bun run dev:loader --tunnel lianki-userscript-dev --origin https://dev.lianki.com --port 5173
 ```
+
+The last one is the permanent install at `dev.lianki.com` — the hostname
+survives restarts, so the loader is installed once and never again.
