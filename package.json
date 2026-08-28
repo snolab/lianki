@@ -29,6 +29,7 @@
     "ship": "bun scripts/ship.ts",
     "scan:secrets": "gitleaks git . --no-banner --redact",
     "dev:userscript": "vite --config vite.config.userscript.ts",
+    "dev:loader": "bun scripts/dev-userscript-server.ts",
     "storybook": "storybook dev -p 6006",
     "build:storybook": "storybook build"
   },

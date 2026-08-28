@@ -182,7 +182,7 @@ The project uses Husky, split by speed:
   userscript suites against `wrangler dev` on local D1 (see the qa:all section
   above). CI runs the same command, so a `--no-verify` skip only defers failure.
 
-Never use `--no-verify` (CLAUDE.md hard rule) — it skips the userscript meta
+Never use `--no-verify` (AGENTS.md hard rule) — it skips the userscript meta
 sync and secret scan.
 
 ## Project Structure
@@ -203,7 +203,7 @@ sync and secret scan.
 ├── blog/
 │   ├── en/                   # English blog posts
 │   ├── zh/                   # Chinese blog posts (zh/cn)
-│   └── CLAUDE.md             # Blog guidelines
+│   └── AGENTS.md             # Blog guidelines
 ├── auth.ts                   # NextAuth configuration
 ├── auth.config.ts            # Auth providers config
 ├── public/
@@ -294,6 +294,24 @@ The loader is hand-written rather than built from `src/` — it has no
 dependencies, and a second build target would complicate the pre-commit hook.
 Nothing typechecks it, so `unit/userscript-loader.test.ts` executes it against
 stubbed GM APIs instead of only reading it as text.
+
+### Push loader — the build comes to the browser
+
+`bun run dev:loader` goes further: it bundles, watches, exposes itself over a
+Cloudflare tunnel, and **pushes** each new build to every attached browser over a
+long poll — so a phone on mobile data reloads nothing and still runs your last
+save. It also collects the userscript's errors back into your terminal.
+
+```bash
+bun run dev:loader                              # quick tunnel, bundle talks to lianki.com
+bun run dev:loader --app http://localhost:3000  # ...talks to your local Next dev server
+bun run dev:loader --origin https://dev.lianki.com   # you run a named tunnel yourself
+bun run dev:loader --no-tunnel                  # localhost only
+```
+
+Install the link it prints once. Requires `cloudflared` on PATH. Design notes,
+the endpoint contract, and the eval/Trusted Types/CSP rules that make it work on
+YouTube and friends: **[docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)**.
 
 **Version Bumping Rules:**
 
