@@ -74,13 +74,46 @@ the installed loader has it baked in — so every restart means reinstalling. Fo
 an install that survives restarts, run a **named** tunnel at a stable hostname
 and point the server at it with `--origin`:
 
+This repo already has one: **`lianki-userscript-dev`**, routed to
+`dev.lianki.com`. Run it with:
+
 ```bash
-cloudflared tunnel login                       # once, opens a browser
+bun run dev:loader --tunnel lianki-userscript-dev --origin https://dev.lianki.com --port 5173
+```
+
+`--tunnel` makes the server run the named tunnel itself; `--origin` is required
+with it, because a named tunnel's hostname lives in its DNS route and cloudflared
+never prints it.
+
+On a new machine, authenticate once with `cloudflared tunnel login` (browser),
+then re-issue the tunnel's credentials file — the original lives only on the
+machine that created it:
+
+```bash
+cloudflared tunnel token --cred-file ~/.cloudflared/<TUNNEL-UUID>.json lianki-userscript-dev
+```
+
+To create one from scratch instead:
+
+```bash
 cloudflared tunnel create lianki-dev
 cloudflared tunnel route dns lianki-dev dev.lianki.com
-cloudflared tunnel run --url http://localhost:3003 lianki-dev
-bun run dev:loader --origin https://dev.lianki.com
 ```
+
+Three things that will waste an afternoon otherwise:
+
+- **`--port` must match the tunnel's ingress.** `lianki-userscript-dev` is
+  *remotely managed* (configured in the Zero Trust dashboard), and a remotely
+  managed tunnel **ignores `--url`** — it dials whatever the dashboard says,
+  currently `http://localhost:5173`. The symptom is a 502 plus
+  `Unable to reach the origin service … dial tcp [::1]:5173` in the log. Either
+  match the port or change the ingress in the dashboard.
+- **Bind dual-stack.** cloudflared resolves an ingress of `http://localhost` to
+  `[::1]` first. An IPv4-only bind 502s intermittently — Happy Eyeballs lets the
+  occasional request through on `127.0.0.1`, which makes it look flaky rather
+  than broken. The server binds `::`.
+- **`dev.lianki.com` returning 530 / error 1033** means the DNS route exists but
+  no connector is attached — i.e. nothing is running, not a DNS problem.
 
 A stable host also means `@connect dev.lianki.com` is granted once instead of
 re-prompting per hostname.
@@ -110,7 +143,10 @@ reproducing what it prevents.
 
 - Give the loader its **own `@name` + `@namespace`** (`[dev] Lianki @dev`).
   Sharing production's pair makes a manager treat it as an _update_ to the
-  installed Lianki rather than a separate script.
+  installed Lianki rather than a separate script. Equally, keep that pair
+  **stable** once anyone has installed it: a manager matches on name+namespace,
+  so changing it turns the next install into a second loader running alongside
+  the first, with two of every handler.
 - Grant **every GM API the bundle uses**, not just the loader's own. The bundle
   runs inside the loader's grants, not its own header's.
 - `@run-at document-start`, so the loader is polling before the page settles —
@@ -132,6 +168,10 @@ reproducing what it prevents.
   `trustedTypes.createPolicy(...).createScript(code)`. Doing it up front breaks
   every other site: where Trusted Types are not enforced, `eval` of a non-string
   returns the object unevaluated instead of running it.
+- **A refused Trusted Types policy is terminal too.** Where a page's CSP lists
+  `trusted-types` names (translate.google.com), `createPolicy` throws and the
+  retry can never succeed. Observed in the wild re-reporting the same wall on
+  every backoff cycle; it now sets `blocked` and reports once as `tt-blocked`.
 - **`unsafe-eval`-less CSP is terminal** (e.g. translate.google.com). Set a
   `blocked` flag, report once, stop the poll loop. Retrying is pure noise.
 - The bundle is written for `document-end` (it appends to `document.body`), so

@@ -38,6 +38,7 @@ function runLoader(opts: {
    *  long poll does — answering /wait instantly would spin the pump loop. */
   answer: (path: string) => { status: number; body: string } | "network" | "pending";
   readyState?: string;
+  trustedTypes?: { createPolicy: (name: string, rules: unknown) => unknown };
 }) {
   const store: Record<string, string> = { ...opts.stored };
   const requests: Req[] = [];
@@ -95,7 +96,7 @@ function runLoader(opts: {
     },
     () => 0,
     (cb: Function, ms: number) => (ms >= 1000 ? 0 : (queueMicrotask(() => cb()), 0)),
-    { createPolicy: () => ({ createScript: (s: string) => s }) },
+    opts.trustedTypes ?? { createPolicy: () => ({ createScript: (s: string) => s }) },
     { script: { version: "0.0.0-loader", downloadURL: `${ORIGIN}/loader.user.js` } },
     (k: string, d = "") => store[k] ?? d,
     (k: string, v: string) => (store[k] = v),
@@ -250,6 +251,24 @@ describe("loader runtime", () => {
     await Bun.sleep(10);
     expect(r.requests.length).toBe(before); // stopped for good, not backing off
     expect(r.posts[0]!.data).toContain("eval-blocked");
+  });
+
+  it("stops polling when the page's Trusted Types policy refuses us", async () => {
+    // Observed on translate.google.com: the CSP lists trusted-types names and
+    // createPolicy throws, which used to back off and re-report forever.
+    const r = runLoader({
+      trustedTypes: {
+        createPolicy: () => {
+          throw new TypeError("Refused to create a TrustedTypePolicy named 'lianki-dev'");
+        },
+      },
+      answer: serve('throw new EvalError("requires Trusted Type assignment");'),
+    });
+    await Bun.sleep(10);
+    const before = r.requests.length;
+    await Bun.sleep(10);
+    expect(r.requests.length).toBe(before);
+    expect(r.posts[0]!.data).toContain("tt-blocked");
   });
 
   it("does not forward the page's own errors", async () => {
