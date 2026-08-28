@@ -282,6 +282,7 @@ function startWatch() {
 // ── tunnel ──────────────────────────────────────────────────────────────────
 
 let tunnel: ChildProcess | null = null;
+let shuttingDown = false;
 
 function startTunnel() {
   const args = TUNNEL_NAME
@@ -313,7 +314,15 @@ function startTunnel() {
   };
   tunnel.stdout?.on("data", scan);
   tunnel.stderr?.on("data", scan);
-  tunnel.on("exit", (code) => log(`cloudflared exited (${code}) — loader origin is now stale`));
+  tunnel.on("exit", (code) => {
+    if (shuttingDown) return;
+    // Without its tunnel this server is reachable by nobody, and the DNS route
+    // is left answering 1033 — a healthy-looking process behind a dead
+    // hostname, which is the hardest version of this to notice. Exit instead,
+    // so a supervisor restarts the pair.
+    log(`cloudflared exited (${code}) — exiting so the supervisor restarts the pair`);
+    process.exit(1);
+  });
 }
 
 // Registration is not reachability: the edge needs a few more seconds to route
@@ -367,6 +376,7 @@ if (import.meta.main) {
   log(`listening on http://localhost:${PORT}`);
 
   process.on("SIGINT", () => {
+    shuttingDown = true;
     tunnel?.kill();
     server.stop(true);
     process.exit(0);
