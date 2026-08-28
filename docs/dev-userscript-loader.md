@@ -115,6 +115,25 @@ Three things that will waste an afternoon otherwise:
 - **`dev.lianki.com` returning 530 / error 1033** means the DNS route exists but
   no connector is attached — i.e. nothing is running, not a DNS problem.
 
+### Keeping it up across reboots
+
+`cloudflared service install` does **not** apply on the dev box: it writes a
+systemd unit, and the container's PID 1 is `oxmgr runtime`, not systemd
+(`systemctl` there answers "System has not been booted with systemd").
+
+The equivalent is an app entry in `/code/snocode/vscode/oxfile.toml`
+(`lianki-dev-loader`), which `oxmgr` starts with the container:
+
+- The server spawns cloudflared itself via `--tunnel` and **exits if that child
+  dies**, so `restart_policy = "always"` restarts the pair. Without that exit you
+  get the worst failure mode: a healthy server behind a hostname answering 1033.
+- `health_cmd` hits the **public** URL, not localhost — a connector attached to
+  nothing is precisely what it needs to heal, and localhost cannot see that.
+- The entry is self-bootstrapping (installs `cloudflared` if missing, symlinks
+  the credentials) because only `/code` persists a container rebuild; `/root` and
+  `/usr/local` do not. Tunnel credentials therefore live in `/code/.cloudflared`,
+  symlinked to `~/.cloudflared` where cloudflared looks for them.
+
 A stable host also means `@connect dev.lianki.com` is granted once instead of
 re-prompting per hostname.
 
