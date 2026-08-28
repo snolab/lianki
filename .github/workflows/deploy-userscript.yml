@@ -6,6 +6,7 @@ on:
     paths:
       - "public/lianki.user.js"
       - "public/lianki.meta.js"
+      - "public/loader.user.js"
   workflow_dispatch:
 
 jobs:

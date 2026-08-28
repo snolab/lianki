@@ -265,6 +265,36 @@ docker-compose up
 
 The Tampermonkey/Violentmonkey userscript is in `public/lianki.user.js`.
 
+### Dev loader — install once, stop reinstalling
+
+Editing the userscript normally means rebuilding and reinstalling on every
+change. `public/loader.user.js` removes that loop: install it once, then run
+
+```bash
+bun run dev:userscript        # vite on :3002, serves the full build at /lianki.user.js
+```
+
+Every page load fetches the current build, so save + reload is the whole cycle.
+**Disable the production Lianki script while the loader is enabled**, or both
+run on each page and each registers its own handlers.
+
+Two sources, switched from the userscript-manager menu
+("Lianki dev: set dev server origin"):
+
+| Source | Origin | Use when |
+| ------ | ------ | -------- |
+| local  | `http://localhost:3002` (default) | developing on this machine |
+| tunnel | `https://<name>.trycloudflare.com` | testing on a phone against your laptop |
+
+The tunnel case is why `vite.config.userscript.ts` sets
+`allowedHosts: [".trycloudflare.com"]`. A tunnel host on another domain will
+ask for connect permission once.
+
+The loader is hand-written rather than built from `src/` — it has no
+dependencies, and a second build target would complicate the pre-commit hook.
+Nothing typechecks it, so `unit/userscript-loader.test.ts` executes it against
+stubbed GM APIs instead of only reading it as text.
+
 **Version Bumping Rules:**
 
 - The pre-commit hook checks if `lianki.user.js` was modified
