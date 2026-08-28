@@ -182,7 +182,7 @@ The project uses Husky, split by speed:
   userscript suites against `wrangler dev` on local D1 (see the qa:all section
   above). CI runs the same command, so a `--no-verify` skip only defers failure.
 
-Never use `--no-verify` (CLAUDE.md hard rule) — it skips the userscript meta
+Never use `--no-verify` (AGENTS.md hard rule) — it skips the userscript meta
 sync and secret scan.
 
 ## Project Structure
@@ -203,7 +203,7 @@ sync and secret scan.
 ├── blog/
 │   ├── en/                   # English blog posts
 │   ├── zh/                   # Chinese blog posts (zh/cn)
-│   └── CLAUDE.md             # Blog guidelines
+│   └── AGENTS.md             # Blog guidelines
 ├── auth.ts                   # NextAuth configuration
 ├── auth.config.ts            # Auth providers config
 ├── public/
@@ -264,6 +264,54 @@ docker-compose up
 ## Userscript Development
 
 The Tampermonkey/Violentmonkey userscript is in `public/lianki.user.js`.
+
+### Dev loader — install once, stop reinstalling
+
+Editing the userscript normally means rebuilding and reinstalling on every
+change. `public/loader.user.js` removes that loop: install it once, then run
+
+```bash
+bun run dev:userscript        # vite on :3002, serves the full build at /lianki.user.js
+```
+
+Every page load fetches the current build, so save + reload is the whole cycle.
+**Disable the production Lianki script while the loader is enabled**, or both
+run on each page and each registers its own handlers.
+
+Two sources, switched from the userscript-manager menu
+("Lianki dev: set dev server origin"):
+
+| Source | Origin | Use when |
+| ------ | ------ | -------- |
+| local  | `http://localhost:3002` (default) | developing on this machine |
+| tunnel | `https://<name>.trycloudflare.com` | testing on a phone against your laptop |
+
+The tunnel case is why `vite.config.userscript.ts` sets
+`allowedHosts: [".trycloudflare.com"]`. A tunnel host on another domain will
+ask for connect permission once.
+
+The loader is hand-written rather than built from `src/` — it has no
+dependencies, and a second build target would complicate the pre-commit hook.
+Nothing typechecks it, so `unit/userscript-loader.test.ts` executes it against
+stubbed GM APIs instead of only reading it as text.
+
+### Push loader — the build comes to the browser
+
+`bun run dev:loader` goes further: it bundles, watches, exposes itself over a
+Cloudflare tunnel, and **pushes** each new build to every attached browser over a
+long poll — so a phone on mobile data reloads nothing and still runs your last
+save. It also collects the userscript's errors back into your terminal.
+
+```bash
+bun run dev:loader                              # quick tunnel, bundle talks to lianki.com
+bun run dev:loader --app http://localhost:3000  # ...talks to your local Next dev server
+bun run dev:loader --origin https://dev.lianki.com   # you run a named tunnel yourself
+bun run dev:loader --no-tunnel                  # localhost only
+```
+
+Install the link it prints once. Requires `cloudflared` on PATH. Design notes,
+the endpoint contract, and the eval/Trusted Types/CSP rules that make it work on
+YouTube and friends: **[docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)**.
 
 **Version Bumping Rules:**
 
