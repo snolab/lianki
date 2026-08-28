@@ -2,4 +2,4 @@
 // Inlined rather than read from disk at runtime: the Workers runtime has no
 // filesystem, so readFileSync(process.cwd()…) silently fell back to "0.0.0",
 // which made the update prompt believe every install was already current.
-export const LIANKI_USERSCRIPT_VERSION = "2.23.19";
+export const LIANKI_USERSCRIPT_VERSION = "2.23.20";

@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.19
+// @version     2.23.20
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1768,7 +1768,7 @@
     const { signal } = ac;
     const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
     let userPreferences = {
-      mobileExcludeDomains: [],
+      mobileExcludePatterns: [],
     };
     async function loadPreferences() {
       try {
@@ -1914,9 +1914,14 @@
       );
     const buildExcludeDomainsParam = () => {
       if (!isMobile) return "";
-      const domains = userPreferences.mobileExcludeDomains || [];
-      if (domains.length === 0) return "";
-      return `&excludeDomains=${domains.join(",")}`;
+      const patterns = userPreferences.mobileExcludePatterns || [];
+      const values = patterns
+        .filter((p) => p && p.enabled !== false && !p.isRegex)
+        .filter((p) => p.type === "domain" || p.type === "url")
+        .map((p) => String(p.pattern || "").trim())
+        .filter((p) => p && !p.includes(","));
+      if (values.length === 0) return "";
+      return `&excludeDomains=${values.map(encodeURIComponent).join(",")}`;
     };
     const saveNotes = (id, notes) =>
       api(`/api/fsrs/notes?id=${encodeURIComponent(id)}`, {
