@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.20
+// @version     2.23.21
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1527,7 +1527,7 @@
       const now = new Date();
       return this._index()
         .filter((e) => new Date(e.due) <= now)
-        .sort((a, b) => new Date(a.due) - new Date(b.due))
+        .sort((a, b) => new Date(b.due) - new Date(a.due))
         .slice(0, limit)
         .map((e) => {
           const raw = GM_getValue(CARD_PREFIX + e.hash, "");

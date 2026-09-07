@@ -163,17 +163,44 @@ describe("READ", () => {
     expect(data.cards).toHaveLength(2);
   });
 
-  test("GET /api/fsrs/next-url returns the next due card URL", async () => {
+  test("GET /api/fsrs/next-url returns the MOST RECENTLY due card", async () => {
+    // The order is deliberate (app/fsrs-helpers.ts NEXT_DUE_SORT): among cards
+    // that are already due, study the one that came due most recently, so a
+    // long backlog does not gate every session behind its oldest item.
     await createNote(TEST_URL);
     await createNote(TEST_URL_2);
     await testCollection.updateOne(
+      { url: TEST_URL },
+      { $set: { "card.due": new Date(Date.now() - 60_000) } }, // just came due
+    );
+    await testCollection.updateOne(
       { url: TEST_URL_2 },
-      { $set: { "card.due": new Date(Date.now() - 60_000) } },
+      { $set: { "card.due": new Date(Date.now() - 86_400_000) } }, // a day stale
     );
 
     const res = await fsrsHandler(makeReq("GET", "/api/fsrs/next-url"), TEST_EMAIL);
     const data = await res.json();
-    expect(data.url).toBe(TEST_URL_2);
+    expect(data.url).toBe(TEST_URL);
+  });
+
+  test("next-url skips cards that are not due yet", async () => {
+    // Descending order must not reach past `now` — a card due tomorrow is the
+    // most recent due date in the collection, and picking it would mean
+    // reviewing cards early, every time.
+    await createNote(TEST_URL);
+    await createNote(TEST_URL_2);
+    await testCollection.updateOne(
+      { url: TEST_URL },
+      { $set: { "card.due": new Date(Date.now() - 60_000) } },
+    );
+    await testCollection.updateOne(
+      { url: TEST_URL_2 },
+      { $set: { "card.due": new Date(Date.now() + 86_400_000) } },
+    );
+
+    const res = await fsrsHandler(makeReq("GET", "/api/fsrs/next-url"), TEST_EMAIL);
+    const data = await res.json();
+    expect(data.url).toBe(TEST_URL);
   });
 });
 

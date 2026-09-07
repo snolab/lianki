@@ -107,13 +107,22 @@ export class D1FsrsCollection {
     return cursor;
   }
 
-  async findOne(query: AnyQuery): Promise<FsrsDoc | null> {
+  // `options` is not decoration: the next-card handlers pass
+  // `{ sort: NEXT_DUE_SORT }`, and ignoring it here would leave the D1 backend
+  // serving the oldest due card while Mongo served the newest — the same app
+  // behaving differently per backend, with nothing in the caller to show why.
+  async findOne(
+    query: AnyQuery = {},
+    options: { sort?: Record<string, 1 | -1> } = {},
+  ): Promise<FsrsDoc | null> {
     if (typeof query.url === "string" && Object.keys(query).length === 1) {
       const n = await this.repo.getByUrl(query.url);
       return n ? toDoc(n) : null;
     }
-    const rows = await this.candidates(query);
-    return rows.length > 0 ? toDoc(rows[0]) : null;
+    const rows = await this.candidates(query); // card_due ascending
+    if (rows.length === 0) return null;
+    const sortDir = options.sort?.["card.due"] ?? 1;
+    return toDoc(sortDir === -1 ? rows[rows.length - 1]! : rows[0]!);
   }
 
   async countDocuments(query: AnyQuery = {}): Promise<number> {

@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.20
+// @version     2.23.21
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -171,15 +171,19 @@ class GMCardStorage {
 
   getDueCards(limit = 10) {
     const now = new Date();
-    return this._index()
-      .filter((e) => new Date(e.due) <= now)
-      .sort((a, b) => new Date(a.due) - new Date(b.due))
-      .slice(0, limit)
-      .map((e) => {
-        const raw = GM_getValue(CARD_PREFIX + e.hash, "");
-        return raw ? { url: e.url, ...JSON.parse(raw) } : null;
-      })
-      .filter(Boolean);
+    return (
+      this._index()
+        .filter((e) => new Date(e.due) <= now)
+        // Most recently due first, matching the server's NEXT_DUE_SORT. Offline
+        // and online must agree, or the card you get depends on connectivity.
+        .sort((a, b) => new Date(b.due) - new Date(a.due))
+        .slice(0, limit)
+        .map((e) => {
+          const raw = GM_getValue(CARD_PREFIX + e.hash, "");
+          return raw ? { url: e.url, ...JSON.parse(raw) } : null;
+        })
+        .filter(Boolean)
+    );
   }
 }
 
