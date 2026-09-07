@@ -41,6 +41,7 @@ that are expensive to rediscover.
 | Landing changes, CI, branch protection, post-deploy QA | [docs/shipping.md](docs/shipping.md) |
 | Finding your way around the code | [docs/repo-map.md](docs/repo-map.md) |
 | Secrets, auth, OAuth config | [docs/secrets-and-auth.md](docs/secrets-and-auth.md) |
+| Anything calling an LLM or TTS | [docs/workers-ai.md](docs/workers-ai.md) |
 | The userscript's dev loader (hot reload over a CF tunnel) | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md) |
 | Blog posts | [blog/AGENTS.md](blog/AGENTS.md) |
 | Sync/offline architecture | [docs/sync-architecture.md](docs/sync-architecture.md) |

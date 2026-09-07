@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import {
+  isWorkersAiConfigured,
+  resolveTtsLang,
+  workersAiSpeech,
+  WORKERS_AI_NOT_CONFIGURED,
+} from "@/lib/workers-ai";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -35,7 +40,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { text, voice = "nova", speed = 1.0 } = await req.json();
+    const { text, language, voice = "nova", speed = 1.0 } = await req.json();
 
     // Validate inputs
     if (typeof text !== "string" || text.length === 0 || text.length > MAX_TEXT_LENGTH) {
@@ -54,21 +59,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Speed must be between 0.25 and 4.0" }, { status: 400 });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 });
+    if (!isWorkersAiConfigured()) {
+      return NextResponse.json({ error: WORKERS_AI_NOT_CONFIGURED }, { status: 500 });
     }
 
-    const openai = new OpenAI({ apiKey });
-
-    const mp3 = await openai.audio.speech.create({
-      model: "tts-1",
-      voice: voice as Voice,
-      input: text,
-      speed,
-    });
-
-    const buffer = Buffer.from(await mp3.arrayBuffer());
+    // `voice` and `speed` are still validated above so existing callers keep
+    // working, but MeloTTS offers neither — it has one voice per language. They
+    // are accepted and ignored rather than rejected, which would break older
+    // clients. `language` was already being sent and previously ignored; it is
+    // what MeloTTS actually needs.
+    const buffer = await workersAiSpeech({ text, lang: resolveTtsLang(text, language) });
 
     return new NextResponse(buffer, {
       headers: {

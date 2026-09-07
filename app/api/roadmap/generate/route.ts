@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { textModel, workersAiProvider } from "@/lib/workers-ai";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authEmailOrToken } from "@/lib/authEmailOrToken";
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { object } = await generateObject({
-    model: openai("gpt-4o-mini"),
+    model: workersAiProvider()(textModel()),
     schema: RoadmapSchema,
     prompt: `Generate a learning roadmap for: "${topic}"
 

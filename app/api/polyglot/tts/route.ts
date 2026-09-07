@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import {
+  isWorkersAiConfigured,
+  workersAiSpeech,
+  WORKERS_AI_NOT_CONFIGURED,
+} from "@/lib/workers-ai";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -41,21 +45,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 });
+    if (!isWorkersAiConfigured()) {
+      return NextResponse.json({ error: WORKERS_AI_NOT_CONFIGURED }, { status: 500 });
     }
 
-    const openai = new OpenAI({ apiKey });
-
-    const mp3 = await openai.audio.speech.create({
-      model: "tts-1",
-      voice: "nova",
-      input: text,
-      speed: 1.0,
-    });
-
-    const buffer = Buffer.from(await mp3.arrayBuffer());
+    // MeloTTS has no voice or speed control, so the previous "nova" at 1.0x has
+    // no equivalent — it picks the voice from the language.
+    const buffer = await workersAiSpeech({ text });
 
     return new NextResponse(buffer, {
       headers: {

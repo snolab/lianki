@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import {
+  isWorkersAiConfigured,
+  speechModel,
+  workersAiSpeech,
+  WORKERS_AI_NOT_CONFIGURED,
+} from "@/lib/workers-ai";
 import crypto from "crypto";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
@@ -7,7 +12,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { logSanitizedError } from "@/lib/safeError";
 import { getCachedTTS, putCachedTTS } from "@/lib/ttsCache";
 
-const MAX_TEXT_LENGTH = 4096; // OpenAI's limit
+const MAX_TEXT_LENGTH = 4096;
 const RATE_LIMIT_WINDOW_MS = 10 * 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 60;
 
@@ -81,7 +86,15 @@ export const POST = async (req: NextRequest) => {
   console.log("TTS request:", { textLength: text.length, voice, model });
 
   // Generate cache key based on text, voice, and model
-  const cacheKey = crypto.createHash("sha256").update(`${model}:${voice}:${text}`).digest("hex");
+  // The provider is part of the key on purpose. Without it, MeloTTS audio would
+  // be stored under a key that names an OpenAI voice, and every previously
+  // cached tts-1 clip would keep being served as if it were current output —
+  // the same text sounding different depending on cache age, with nothing in
+  // the key to explain why.
+  const cacheKey = crypto
+    .createHash("sha256")
+    .update(`${speechModel()}:${model}:${voice}:${text}`)
+    .digest("hex");
 
   // Try to find cached audio
   try {
@@ -101,27 +114,23 @@ export const POST = async (req: NextRequest) => {
     // Continue to generate even if cache lookup fails
   }
 
-  // Generate new audio with OpenAI
-  console.log("Generating TTS with OpenAI...");
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 });
+  // Generate new audio with Workers AI
+  console.log("Generating TTS with Workers AI...");
+  if (!isWorkersAiConfigured()) {
+    return NextResponse.json({ error: WORKERS_AI_NOT_CONFIGURED }, { status: 500 });
   }
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-  let response;
+  let audioBuffer: Buffer<ArrayBuffer>;
   try {
-    response = await openai.audio.speech.create({
-      model: model as Model,
-      voice: voice as Voice,
-      input: text,
-    });
+    // `voice` and `model` stay validated and stay in the cache key, but MeloTTS
+    // has neither — one voice per language, no tts-1/tts-1-hd tiers. Kept in
+    // the request contract so existing clients do not break; see
+    // docs/workers-ai.md for what that costs.
+    audioBuffer = await workersAiSpeech({ text });
   } catch (err) {
-    logSanitizedError("tts.openai.generate", err, { requester });
+    logSanitizedError("tts.workersai.generate", err, { requester });
     return NextResponse.json({ error: "Failed to generate speech" }, { status: 500 });
   }
-
-  // Convert response to buffer
-  const audioBuffer = Buffer.from(await response.arrayBuffer());
 
   // Cache the audio (R2 or GridFS depending on DB_BACKEND)
   try {

@@ -54,6 +54,23 @@ export const RATING_MAP: Record<string, Grade> = {
  * @param excludeDomains - comma-separated domain list from query params
  * @param excludeUrl - URL of the just-reviewed card to exclude from results
  */
+/**
+ * Order used to pick the NEXT card to review: most recently due first.
+ *
+ * Everything here is already filtered to `card.due <= now`, so descending means
+ * "the card that came due most recently" — freshly-due cards are studied while
+ * they are still fresh, and a long backlog sits at the back instead of gating
+ * everything behind the oldest item.
+ *
+ * The trade-off is real: with a backlog that never empties, the oldest cards are
+ * never reached. Flip to 1 here to go back to oldest-first; this constant is the
+ * only place that decides it.
+ *
+ * Listing endpoints (`/all`, the list page, the debug dump) keep their own
+ * ascending order — they show everything, so the head of the list is cosmetic.
+ */
+export const NEXT_DUE_SORT = { "card.due": -1 } as const;
+
 export function buildNextDueQuery(excludeDomains: string[], excludeUrl?: string) {
   const query: any = {
     "card.due": { $lte: new Date() },

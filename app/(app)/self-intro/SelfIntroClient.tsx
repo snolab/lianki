@@ -68,20 +68,6 @@ const QUESTIONS: Question[] = [
   },
 ];
 
-type VoiceSettings = {
-  voice: string;
-  speed: number;
-};
-
-const OPENAI_VOICES = [
-  { id: "alloy", name: "Alloy", gender: "neutral" },
-  { id: "echo", name: "Echo", gender: "male" },
-  { id: "fable", name: "Fable", gender: "neutral" },
-  { id: "onyx", name: "Onyx", gender: "male" },
-  { id: "nova", name: "Nova", gender: "female" },
-  { id: "shimmer", name: "Shimmer", gender: "female" },
-];
-
 export default function SelfIntroClient() {
   const { selectLanguage, interview, review, errors, success } = useIntlayer("self-intro-page");
 
@@ -94,11 +80,6 @@ export default function SelfIntroClient() {
   >({});
   const [editingText, setEditingText] = useState<Record<string, string>>({});
   const [isEditing, setIsEditing] = useState<Record<string, boolean>>({});
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
-    voice: "nova",
-    speed: 1.0,
-  });
   const [isGenerating, setIsGenerating] = useState(false);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -114,12 +95,9 @@ export default function SelfIntroClient() {
     const audioResponse = await fetch("/api/self-intro/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text,
-        language: selectedLanguage!.code,
-        voice: voiceSettings.voice,
-        speed: voiceSettings.speed,
-      }),
+      // No voice/speed: Workers AI (MeloTTS) has one voice per language and no
+      // speed control. `language` is what actually selects the voice now.
+      body: JSON.stringify({ text, language: selectedLanguage!.code }),
     });
 
     const audioBlob = await audioResponse.blob();
@@ -367,56 +345,6 @@ export default function SelfIntroClient() {
                 )}
               </div>
             )}
-
-            <div className="mb-4">
-              <button
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="text-sm text-gray-600 hover:underline"
-              >
-                {showAdvanced ? interview.hideAdvanced : interview.showAdvanced}
-              </button>
-              {showAdvanced && (
-                <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">{interview.voice}</label>
-                    <select
-                      value={voiceSettings.voice}
-                      onChange={(e) =>
-                        setVoiceSettings((prev) => ({ ...prev, voice: e.target.value }))
-                      }
-                      className="w-full p-2 border border-gray-300 rounded dark:bg-gray-600"
-                    >
-                      {OPENAI_VOICES.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.name} ({v.gender})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      {interview.speechRate.replace("{speed}", voiceSettings.speed.toString())}
-                    </label>
-                    <input
-                      type="range"
-                      min="0.25"
-                      max="2.0"
-                      step="0.25"
-                      value={voiceSettings.speed}
-                      onChange={(e) =>
-                        setVoiceSettings((prev) => ({ ...prev, speed: parseFloat(e.target.value) }))
-                      }
-                      className="w-full"
-                    />
-                    <div className="flex justify-between text-xs text-gray-500 mt-1">
-                      <span>{interview.slow}</span>
-                      <span>{interview.normal}</span>
-                      <span>{interview.fast}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
 
             <div className="flex gap-4">
               {currentQuestionIndex > 0 && (

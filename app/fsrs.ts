@@ -15,7 +15,14 @@ import {
 import { z } from "zod";
 import { revalidateTag } from "next/cache";
 import { dueMs } from "./ems";
-import { buildNextDueQuery, compareHLC, type HLC, newServerHLC, RATING_MAP } from "./fsrs-helpers";
+import {
+  buildNextDueQuery,
+  compareHLC,
+  type HLC,
+  newServerHLC,
+  NEXT_DUE_SORT,
+  RATING_MAP,
+} from "./fsrs-helpers";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
 import { getHeatmapCacheTag } from "./lib/heatmap-cache";
 import { normalizeUrl } from "@/lib/normalizeUrl";
@@ -168,7 +175,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       });
     },
     "GET /api/fsrs/next-url(?:/|$|\\?)": async (req) => {
-      const note = await FSRSNotes.findOne(nextDueQuery(req), { sort: { "card.due": 1 } });
+      const note = await FSRSNotes.findOne(nextDueQuery(req), { sort: NEXT_DUE_SORT });
       return JSONR({ url: note?.url ?? null, title: note?.title ?? null });
     },
     "GET /api/fsrs/review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (
@@ -181,7 +188,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const reviewedCard = await reviewed(note, rating);
 
       const nextNote = await FSRSNotes.findOne(nextDueQuery(req, note.url), {
-        sort: { "card.due": 1 },
+        sort: NEXT_DUE_SORT,
       });
 
       return JSONR({
@@ -242,7 +249,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const reviewedCard = await reviewed(note, rating, clientHLC);
 
       const nextNote = await FSRSNotes.findOne(nextDueQuery(req, note.url), {
-        sort: { "card.due": 1 },
+        sort: NEXT_DUE_SORT,
       });
 
       return JSONR({
@@ -259,7 +266,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
       await FSRSNotes.deleteOne({ url: note.url });
 
-      const nextNote = await FSRSNotes.findOne(nextDueQuery(req), { sort: { "card.due": 1 } });
+      const nextNote = await FSRSNotes.findOne(nextDueQuery(req), { sort: NEXT_DUE_SORT });
 
       return JSONR({
         ok: true,
@@ -367,7 +374,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     },
     "GET /api/fsrs/next(?:/|\\?|$)": async () =>
       new Response(
-        sflow(FSRSNotes.find({ "card.due": { $lte: new Date() } }, { sort: { "card.due": 1 } }))
+        sflow(FSRSNotes.find({ "card.due": { $lte: new Date() } }, { sort: NEXT_DUE_SORT }))
           .limit(1)
           .map((note) => {
             const url = JSON.stringify(note.url);
