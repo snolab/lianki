@@ -31,6 +31,12 @@ coveragePathIgnorePatterns = [
   "app/fsrs.ts",
   "app/fsrsNotesD1Collection.ts",
   "app/getRoadmapGoalsCollection.ts",
+  "app/getWatchStatsStore.ts",
+  # Reached only because app/fsrs.ts now calls authUserOrNull() for the
+  # per-user review order — the auth stack, not anything a unit suite targets.
+  "app/signInEmail.tsx",
+  "auth.ts",
+  "lib/app-locale.server.ts",
   "app/lib/heatmap-aggregation.ts",
   "app/lib/heatmap-cache.ts",
   "app/lib/notesAdmin.ts",

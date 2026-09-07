@@ -17,8 +17,15 @@ declare const chrome: any;
 const STORAGE_PREFIX = "gm:";
 const cache = new Map<string, unknown>();
 
-/** Load all gm: keys from chrome.storage.local into the sync cache. */
+/**
+ * Load all gm: keys from chrome.storage.local into the sync cache.
+ *
+ * Clears first, so storage stays the source of truth: without it a key deleted
+ * from another context would survive a reload and GM_getValue would keep
+ * serving the stale value forever.
+ */
 export async function loadGmCache(): Promise<void> {
+  cache.clear();
   const all = await chrome.storage.local.get(null);
   for (const [k, v] of Object.entries(all)) {
     if (k.startsWith(STORAGE_PREFIX)) cache.set(k.slice(STORAGE_PREFIX.length), v);
