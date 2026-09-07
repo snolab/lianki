@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach } from "vitest";
+import { describe, expect, test, beforeEach } from "bun:test";
 import { testSchema } from "@/lib/d1/testSchema";
 import {
   COV_BUCKET_S,

@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach } from "vitest";
+import { describe, expect, test, beforeEach } from "bun:test";
 import { createEmptyCard } from "ts-fsrs";
 import {
   DEFAULT_REVIEW_ORDER,

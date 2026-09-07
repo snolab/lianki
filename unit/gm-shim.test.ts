@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, mock } from "bun:test";
+import { installGmShim, loadGmCache } from "../packages/ext/src/gm-shim";
 
 // Unit tests for the MV3 GM→chrome adapter (packages/ext/src/gm-shim.ts). No
 // browser: we mock chrome.storage.local + fetch and assert the behaviour the
@@ -13,20 +14,19 @@ function mockChrome() {
   g.chrome = {
     storage: {
       local: {
-        get: vi.fn(async () => ({ ...store })),
-        set: vi.fn(async (o: Record<string, unknown>) => void Object.assign(store, o)),
-        remove: vi.fn(async (k: string) => void delete store[k]),
+        get: mock(async () => ({ ...store })),
+        set: mock(async (o: Record<string, unknown>) => void Object.assign(store, o)),
+        remove: mock(async (k: string) => void delete store[k]),
       },
     },
   };
   return store;
 }
 
-// Fresh module instance per test so the shim's internal cache doesn't leak.
-async function freshShim() {
-  vi.resetModules();
-  return import("../packages/ext/src/gm-shim");
-}
+// One module instance for the run: bun:test has no `resetModules`, and
+// cache-busting the specifier with a query string makes coverage credit a
+// different path, so the real file reads as untested. Isolation comes from
+// `loadGmCache()` clearing the cache instead — which is what it must do anyway.
 
 describe("gm-shim", () => {
   beforeEach(() => {
@@ -39,7 +39,6 @@ describe("gm-shim", () => {
   it("GM_getValue reads the preloaded cache synchronously (with default fallback)", async () => {
     const store = mockChrome();
     store["gm:lk:token"] = "lk_abc";
-    const { installGmShim, loadGmCache } = await freshShim();
     await loadGmCache();
     installGmShim();
     expect(g.GM_getValue("lk:token", "")).toBe("lk_abc");
@@ -48,7 +47,6 @@ describe("gm-shim", () => {
 
   it("GM_setValue updates the cache and writes through to chrome.storage", async () => {
     const store = mockChrome();
-    const { installGmShim } = await freshShim();
     installGmShim();
     g.GM_setValue("count", 42);
     expect(g.GM_getValue("count")).toBe(42); // synchronous read-back
@@ -58,7 +56,6 @@ describe("gm-shim", () => {
   it("GM_deleteValue removes from cache and storage", async () => {
     const store = mockChrome();
     store["gm:x"] = "y";
-    const { installGmShim, loadGmCache } = await freshShim();
     await loadGmCache();
     installGmShim();
     g.GM_deleteValue("x");
@@ -68,8 +65,7 @@ describe("gm-shim", () => {
 
   it("GM_xmlhttpRequest maps a fetch response onto the GM onload shape", async () => {
     mockChrome();
-    g.fetch = vi.fn(async () => new Response("hello", { status: 200, headers: { "x-test": "1" } }));
-    const { installGmShim } = await freshShim();
+    g.fetch = mock(async () => new Response("hello", { status: 200, headers: { "x-test": "1" } }));
     installGmShim();
     const resp = await new Promise<any>((resolve, reject) => {
       g.GM_xmlhttpRequest({ url: "https://lianki.com/api/x", onload: resolve, onerror: reject });
@@ -81,10 +77,9 @@ describe("gm-shim", () => {
 
   it("GM_xmlhttpRequest routes failures to onerror", async () => {
     mockChrome();
-    g.fetch = vi.fn(async () => {
+    g.fetch = mock(async () => {
       throw new Error("network down");
     });
-    const { installGmShim } = await freshShim();
     installGmShim();
     const err = await new Promise<any>((resolve) => {
       g.GM_xmlhttpRequest({ url: "https://x", onerror: resolve });
