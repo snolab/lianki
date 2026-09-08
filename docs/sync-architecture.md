@@ -250,7 +250,9 @@ doDelete()
 - The card persists locally in GM (dirty=true) with no server counterpart.
 - `queueStorage.addToQueue("add", ...)` is not re-queued automatically.
 
-**Gap**: No reconciliation path exists to re-add cards orphaned this way.
+**Gap**: No reconciliation path exists to re-add cards orphaned this way. The
+fix is specified in [sync-merge-rules.md](sync-merge-rules.md) — soft deletes
+plus a full-reconcile path gated on a `purgedBefore` watermark.
 
 ---
 

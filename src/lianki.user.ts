@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.21
+// @version     2.23.23
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -128,7 +128,8 @@ class GMCardStorage {
     const raw = GM_getValue(CARD_PREFIX + hashUrl(url), "");
     if (!raw) return null;
     const c = JSON.parse(raw);
-    return c._url === url ? c : null; // hash collision guard
+    if (c._url !== url) return null; // hash collision guard
+    return c.deletedAt ? null : c;
   }
 
   setCard(url, note, hlc, dirty = false) {
@@ -136,7 +137,7 @@ class GMCardStorage {
     const key = CARD_PREFIX + hash;
     let idx = this._index();
     const pos = idx.findIndex((e) => e.url === url);
-    const entry = { url, due: note.card.due, hash };
+    const entry = { url, due: note.card.due, hash }; // no `del`: writing a card undeletes it
     if (pos >= 0) {
       idx[pos] = entry;
     } else {
@@ -155,13 +156,88 @@ class GMCardStorage {
     GM_setValue(key, JSON.stringify({ _url: url, note, hlc, dirty }));
   }
 
+  /**
+   * Soft delete. Writes a tombstone instead of dropping the record.
+   *
+   * A hard delete flip-flops: the next prefetch sees no local copy, treats the
+   * server's card as new, and puts it straight back — so deleting the same card
+   * five times leaves it exactly where it was. The tombstone carries a fresh
+   * HLC, so the merge in prefetchDueCards sees a LOCAL state that is NEWER than
+   * the server's card and leaves it alone until the deletion reaches the server.
+   *
+   * Merge rules and the 90-day retention: docs/sync-merge-rules.md.
+   */
   deleteCard(url) {
-    GM_deleteValue(CARD_PREFIX + hashUrl(url));
-    this._saveIndex(this._index().filter((e) => e.url !== url));
+    const hash = hashUrl(url);
+    const prev = this.getEntry(url);
+    const idx = this._index();
+    const pos = idx.findIndex((e) => e.url === url);
+    const entry = { url, due: new Date(0).toISOString(), hash, del: 1 };
+    if (pos >= 0) idx[pos] = entry;
+    else idx.push(entry);
+    this._saveIndex(idx);
+    GM_setValue(
+      CARD_PREFIX + hash,
+      JSON.stringify({
+        _url: url,
+        note: null,
+        hlc: newHLC(getDeviceId(), prev?.hlc ?? null),
+        dirty: true,
+        deletedAt: Date.now(),
+      }),
+    );
+  }
+
+  deleteAllCards() {
+    const idx = this._index();
+    let n = 0;
+    for (const e of idx) {
+      if (e.del) continue;
+      this.deleteCard(e.url);
+      n++;
+    }
+    return n;
+  }
+
+  /** The raw record, tombstones included — merge decisions need to see them. */
+  getEntry(url) {
+    const raw = GM_getValue(CARD_PREFIX + hashUrl(url), "");
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    return c._url === url ? c : null;
+  }
+
+  isDeleted(url) {
+    return !!this.getEntry(url)?.deletedAt;
+  }
+
+  /**
+   * Drop tombstones past the retention window. Until then they must stay: a
+   * tombstone is the only thing that can outvote a stale server copy.
+   */
+  purgeExpiredTombstones(maxAgeMs = 90 * 86400_000) {
+    const now = Date.now();
+    const idx = this._index();
+    const keep = [];
+    let removed = 0;
+    for (const e of idx) {
+      if (e.del) {
+        const rec = this.getEntry(e.url);
+        if (!rec || now - (rec.deletedAt ?? 0) > maxAgeMs) {
+          GM_deleteValue(CARD_PREFIX + e.hash);
+          removed++;
+          continue;
+        }
+      }
+      keep.push(e);
+    }
+    if (removed) this._saveIndex(keep);
+    return removed;
   }
 
   getAllCards() {
     return this._index()
+      .filter((e) => !e.del)
       .map((e) => {
         const raw = GM_getValue(CARD_PREFIX + e.hash, "");
         return raw ? { url: e.url, ...JSON.parse(raw) } : null;
@@ -173,7 +249,7 @@ class GMCardStorage {
     const now = new Date();
     return (
       this._index()
-        .filter((e) => new Date(e.due) <= now)
+        .filter((e) => !e.del && new Date(e.due) <= now)
         // Most recently due first, matching the server's NEXT_DUE_SORT. Offline
         // and online must agree, or the card you get depends on connectivity.
         .sort((a, b) => new Date(b.due) - new Date(a.due))
@@ -233,9 +309,56 @@ class GMQueueStorage {
 // GM→IndexedDB Sync (runs on lianki.com to expose cached cards to site UI)
 // ============================================================================
 
+/**
+ * Apply deletions the site queued for us (see lib/local-purge.ts).
+ *
+ * GM storage is the copy this script serves cards FROM, and nothing else can
+ * reach it: the site can delete from the cloud and from its IndexedDB mirror and
+ * still be handed the same card back, because syncToSiteDB rebuilds that mirror
+ * from here.
+ */
+function drainPurgeQueue(cs) {
+  let req;
+  try {
+    const raw = localStorage.getItem("lk:purge");
+    if (!raw) return 0;
+    req = JSON.parse(raw);
+  } catch {
+    return 0;
+  }
+  let removed = 0;
+  try {
+    if (req?.all) {
+      removed = cs.deleteAllCards();
+    } else if (Array.isArray(req?.urls)) {
+      for (const url of req.urls) {
+        // deleteCard writes a tombstone, so the next prefetch cannot undo this.
+        // A hard delete here is what let the same card come back repeatedly.
+        if (cs.getCard(url)) removed++;
+        cs.deleteCard(url);
+      }
+    }
+    localStorage.removeItem("lk:purge");
+  } catch (err) {
+    // Leave the queue in place: better to retry on the next visit than to drop
+    // deletions and keep serving cards the user removed.
+    console.error("[Lianki] purge failed:", err);
+    return removed;
+  }
+  if (removed) console.log(`[Lianki] Purged ${removed} deleted cards from local storage`);
+  return removed;
+}
+
 async function syncToSiteDB() {
   const cs = new GMCardStorage();
-  const index = cs._index();
+  drainPurgeQueue(cs);
+  // Retention sweep. A tombstone older than the window can no longer be
+  // outvoting anything useful; keeping it forever would grow GM storage without
+  // bound against the 2000-card cap.
+  cs.purgeExpiredTombstones();
+  // Tombstones stay OUT of the site mirror: the /data page lists what exists,
+  // and the prune below removes any row whose card is now deleted.
+  const index = cs._index().filter((e) => !e.del);
   const now = new Date();
   const dueCount = index.filter((e) => new Date(e.due) <= now).length;
   localStorage.setItem(
@@ -247,7 +370,8 @@ async function syncToSiteDB() {
       lastSync: Date.now(),
     }),
   );
-  if (!index.length) return;
+  // No early return on an empty index: an empty index is exactly what a "delete
+  // all" produces, and that is when the mirror most needs clearing.
   try {
     const db = await new Promise((resolve, reject) => {
       const req = indexedDB.open("lianki-keyval", 1);
@@ -255,8 +379,25 @@ async function syncToSiteDB() {
       req.onsuccess = (e) => resolve(e.target.result);
       req.onerror = (e) => reject(e.target.error);
     });
+    // Read the existing keys in their OWN transaction: awaiting anything inside
+    // a readwrite transaction risks it auto-committing before the writes land.
+    const existingKeys = await new Promise((resolve) => {
+      const req = db.transaction("keyval", "readonly").objectStore("keyval").getAllKeys();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+
     const tx = db.transaction("keyval", "readwrite");
     const store = tx.objectStore("keyval");
+
+    // Prune. This sync used to only put(), so a card deleted anywhere stayed in
+    // the site's mirror forever and the /data page kept listing it. GM storage
+    // is the source of truth here, so anything absent from the index is gone.
+    const live = new Set(index.map((e) => "card:" + e.url));
+    for (const key of existingKeys) {
+      if (typeof key === "string" && key.startsWith("card:") && !live.has(key)) store.delete(key);
+    }
+
     for (const entry of index) {
       const raw = GM_getValue(CARD_PREFIX + entry.hash, "");
       if (!raw) continue;
@@ -2230,9 +2371,14 @@ function main() {
       for (const note of dueCards) {
         try {
           const url = note.url;
-          const existing = cardStorage.getCard(url);
+          // getEntry, not getCard: a tombstone must be visible here. getCard
+          // hides it, which made every prefetch look like "no local copy" and
+          // put the deleted card straight back — delete, resurrect, repeat.
+          const existing = cardStorage.getEntry(url);
 
-          // Update if server version is newer or doesn't exist
+          // Soft-delete vs incoming card: last write wins (docs/sync-merge-rules.md).
+          // A genuinely newer server card resurrects — that is an edit made
+          // after the delete — but a stale one never does.
           if (!existing || compareHLC(note.hlc, existing.hlc) > 0) {
             cardStorage.setCard(
               url,

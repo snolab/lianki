@@ -45,3 +45,4 @@ that are expensive to rediscover.
 | The userscript's dev loader (hot reload over a CF tunnel) | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md) |
 | Blog posts | [blog/AGENTS.md](blog/AGENTS.md) |
 | Sync/offline architecture | [docs/sync-architecture.md](docs/sync-architecture.md) |
+| Sync conflicts, deletions, tombstones | [docs/sync-merge-rules.md](docs/sync-merge-rules.md) |

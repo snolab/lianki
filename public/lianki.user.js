@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.21
+// @version     2.23.23
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1487,7 +1487,8 @@
       const raw = GM_getValue(CARD_PREFIX + hashUrl(url), "");
       if (!raw) return null;
       const c = JSON.parse(raw);
-      return c._url === url ? c : null;
+      if (c._url !== url) return null;
+      return c.deletedAt ? null : c;
     }
     setCard(url, note, hlc, dirty = false) {
       const hash = hashUrl(url);
@@ -1512,11 +1513,66 @@
       GM_setValue(key, JSON.stringify({ _url: url, note, hlc, dirty }));
     }
     deleteCard(url) {
-      GM_deleteValue(CARD_PREFIX + hashUrl(url));
-      this._saveIndex(this._index().filter((e) => e.url !== url));
+      const hash = hashUrl(url);
+      const prev = this.getEntry(url);
+      const idx = this._index();
+      const pos = idx.findIndex((e) => e.url === url);
+      const entry = { url, due: new Date(0).toISOString(), hash, del: 1 };
+      if (pos >= 0) idx[pos] = entry;
+      else idx.push(entry);
+      this._saveIndex(idx);
+      GM_setValue(
+        CARD_PREFIX + hash,
+        JSON.stringify({
+          _url: url,
+          note: null,
+          hlc: newHLC(getDeviceId(), prev?.hlc ?? null),
+          dirty: true,
+          deletedAt: Date.now(),
+        }),
+      );
+    }
+    deleteAllCards() {
+      const idx = this._index();
+      let n = 0;
+      for (const e of idx) {
+        if (e.del) continue;
+        this.deleteCard(e.url);
+        n++;
+      }
+      return n;
+    }
+    getEntry(url) {
+      const raw = GM_getValue(CARD_PREFIX + hashUrl(url), "");
+      if (!raw) return null;
+      const c = JSON.parse(raw);
+      return c._url === url ? c : null;
+    }
+    isDeleted(url) {
+      return !!this.getEntry(url)?.deletedAt;
+    }
+    purgeExpiredTombstones(maxAgeMs = 90 * 86400000) {
+      const now = Date.now();
+      const idx = this._index();
+      const keep = [];
+      let removed = 0;
+      for (const e of idx) {
+        if (e.del) {
+          const rec = this.getEntry(e.url);
+          if (!rec || now - (rec.deletedAt ?? 0) > maxAgeMs) {
+            GM_deleteValue(CARD_PREFIX + e.hash);
+            removed++;
+            continue;
+          }
+        }
+        keep.push(e);
+      }
+      if (removed) this._saveIndex(keep);
+      return removed;
     }
     getAllCards() {
       return this._index()
+        .filter((e) => !e.del)
         .map((e) => {
           const raw = GM_getValue(CARD_PREFIX + e.hash, "");
           return raw ? { url: e.url, ...JSON.parse(raw) } : null;
@@ -1526,7 +1582,7 @@
     getDueCards(limit = 10) {
       const now = new Date();
       return this._index()
-        .filter((e) => new Date(e.due) <= now)
+        .filter((e) => !e.del && new Date(e.due) <= now)
         .sort((a, b) => new Date(b.due) - new Date(a.due))
         .slice(0, limit)
         .map((e) => {
@@ -1578,9 +1634,38 @@
       );
     }
   }
+  function drainPurgeQueue(cs) {
+    let req;
+    try {
+      const raw = localStorage.getItem("lk:purge");
+      if (!raw) return 0;
+      req = JSON.parse(raw);
+    } catch {
+      return 0;
+    }
+    let removed = 0;
+    try {
+      if (req?.all) {
+        removed = cs.deleteAllCards();
+      } else if (Array.isArray(req?.urls)) {
+        for (const url of req.urls) {
+          if (cs.getCard(url)) removed++;
+          cs.deleteCard(url);
+        }
+      }
+      localStorage.removeItem("lk:purge");
+    } catch (err) {
+      console.error("[Lianki] purge failed:", err);
+      return removed;
+    }
+    if (removed) console.log(`[Lianki] Purged ${removed} deleted cards from local storage`);
+    return removed;
+  }
   async function syncToSiteDB() {
     const cs = new GMCardStorage();
-    const index = cs._index();
+    drainPurgeQueue(cs);
+    cs.purgeExpiredTombstones();
+    const index = cs._index().filter((e) => !e.del);
     const now = new Date();
     const dueCount = index.filter((e) => new Date(e.due) <= now).length;
     localStorage.setItem(
@@ -1592,7 +1677,6 @@
         lastSync: Date.now(),
       }),
     );
-    if (!index.length) return;
     try {
       const db = await new Promise((resolve, reject) => {
         const req = indexedDB.open("lianki-keyval", 1);
@@ -1600,8 +1684,17 @@
         req.onsuccess = (e) => resolve(e.target.result);
         req.onerror = (e) => reject(e.target.error);
       });
+      const existingKeys = await new Promise((resolve) => {
+        const req = db.transaction("keyval", "readonly").objectStore("keyval").getAllKeys();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => resolve([]);
+      });
       const tx = db.transaction("keyval", "readwrite");
       const store = tx.objectStore("keyval");
+      const live = new Set(index.map((e) => "card:" + e.url));
+      for (const key of existingKeys) {
+        if (typeof key === "string" && key.startsWith("card:") && !live.has(key)) store.delete(key);
+      }
       for (const entry of index) {
         const raw = GM_getValue(CARD_PREFIX + entry.hash, "");
         if (!raw) continue;
@@ -3179,7 +3272,7 @@ ${actualUrl}
         for (const note of dueCards) {
           try {
             const url = note.url;
-            const existing = cardStorage.getCard(url);
+            const existing = cardStorage.getEntry(url);
             if (!existing || compareHLC(note.hlc, existing.hlc) > 0) {
               cardStorage.setCard(url, note, note.hlc || newHLC("server", null), false);
             }
