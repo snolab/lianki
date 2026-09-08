@@ -86,7 +86,7 @@ and **Node ≥ 22.12** (older Node mishandles `node:sqlite` null rows).
 
 - Node.js 20+ or Bun
 - MongoDB instance (local or cloud)
-- (Optional) SMTP server for email authentication
+- (Optional) Resend API key for magic-link email
 - (Optional) GitHub/Google OAuth credentials
 - (Optional) OpenAI API key for blog auto-translation
 
@@ -123,7 +123,7 @@ MONGODB_URI=mongodb://localhost:27017/lianki
 AUTH_SECRET=<generate with: openssl rand -base64 32>
 
 # Optional - Email Authentication
-EMAIL_SERVER=smtp://user:password@smtp.example.com:587
+RESEND_API_KEY=re_...            # magic-link email (Resend HTTP API)
 EMAIL_FROM=noreply@yourdomain.com
 
 # Optional - OAuth Providers
@@ -248,7 +248,7 @@ The project is configured for Vercel deployment:
    - `AUTH_SECRET`
    - `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET`
    - `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`
-   - `EMAIL_SERVER` / `EMAIL_FROM`
+   - `RESEND_API_KEY` / `EMAIL_FROM`
    - `OPENAI_API_KEY`
    - `GITHUB_INTL_TOKEN`
 4. Deploy
