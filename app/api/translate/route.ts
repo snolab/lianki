@@ -104,7 +104,11 @@ export async function GET(request: NextRequest) {
   const cacheKey = `${locale}/${slug}`;
   const lockKey = `${cacheKey}.lock`;
 
-  // Layer 1: Check filesystem (fastest - already committed)
+  // Layer 1: Check filesystem (fastest - already committed).
+  // On Workers this layer ALWAYS misses and that is fine, not a bug to fix:
+  // there is no filesystem, getRawPost catches the failure and returns null,
+  // and we fall through to the GitHub layer below. Do not "repair" the miss
+  // by bundling the corpus — it would exist only to serve this one lookup.
   const fsPost = await getRawPost(locale, slug);
   if (fsPost) {
     console.log(`[fs] ✓ Hit: blog/${cacheKey}.md`);

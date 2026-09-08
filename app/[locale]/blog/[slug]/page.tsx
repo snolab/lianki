@@ -12,7 +12,18 @@ import { getIntlayer } from "intlayer";
 import { Header } from "@/app/components/Header";
 import { authUser } from "@/app/signInEmail";
 
-export const revalidate = 3600;
+// Fully static, and deliberately so: the page path must never read the disk at
+// request time. lib/blog.ts reads blog/*.md under process.cwd(), and the Workers
+// runtime has no filesystem — but those reads are wrapped in catch and return
+// null/[], so a runtime render there does not fail, it renders EMPTY with a 200.
+//
+// `revalidate` would reintroduce that on a timer (the index silently emptying an
+// hour after deploy); `dynamicParams` defaults to true and would reintroduce it
+// on demand for any path missing from the build manifest. Both are off, so an
+// unknown path 404s at the routing layer and the disk read stays a build-time
+// concern. Blog content is repo-sourced and cannot change without a deploy, so
+// nothing is lost by this.
+export const dynamicParams = false;
 
 export async function generateStaticParams() {
   const slugs = await getAllSlugs();
