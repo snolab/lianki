@@ -68,12 +68,18 @@ export async function POST(req: NextRequest) {
     // are accepted and ignored rather than rejected, which would break older
     // clients. `language` was already being sent and previously ignored; it is
     // what MeloTTS actually needs.
-    const buffer = await workersAiSpeech({ text, lang: resolveTtsLang(text, language) });
+    const { audio, contentType } = await workersAiSpeech({
+      text,
+      lang: resolveTtsLang(text, language),
+    });
 
-    return new NextResponse(buffer, {
+    // Extension follows the real container — MeloTTS returns WAV, not the MP3
+    // Cloudflare documents.
+    const ext = contentType === "audio/wav" ? "wav" : "mp3";
+    return new NextResponse(audio, {
       headers: {
-        "Content-Type": "audio/mpeg",
-        "Content-Disposition": `attachment; filename="self-intro-${Date.now()}.mp3"`,
+        "Content-Type": contentType,
+        "Content-Disposition": `attachment; filename="self-intro-${Date.now()}.${ext}"`,
       },
     });
   } catch (error) {

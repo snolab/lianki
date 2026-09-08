@@ -90,18 +90,41 @@ export function guessTtsLang(text: string): string {
 }
 
 /**
- * Generate speech. Returns MP3 bytes.
+ * Sniff the container from the bytes rather than trusting a declared type.
+ *
+ * Cloudflare documents MeloTTS as returning MP3. It does not — it returns WAV
+ * (`RIFF`). Declaring `audio/mpeg` for a RIFF payload is the kind of mismatch
+ * browsers usually paper over and occasionally do not, so the format is read
+ * off the bytes and can follow the model changing under us.
+ */
+export function sniffAudioType(buf: Uint8Array): string {
+  if (buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46)
+    return "audio/wav"; // "RIFF"
+  if (buf.length >= 4 && buf[0] === 0x4f && buf[1] === 0x67 && buf[2] === 0x67) return "audio/ogg";
+  // "ID3", or a raw MPEG frame sync (0xFF 0xEx/0xFx)
+  if (buf.length >= 3 && buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) return "audio/mpeg";
+  if (buf.length >= 2 && buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0) return "audio/mpeg";
+  return "application/octet-stream";
+}
+
+/**
+ * Generate speech.
  *
  * MeloTTS takes only `prompt` and `lang` — there is no voice or speed control,
  * unlike tts-1. Callers that still pass a voice keep working; the value is
  * ignored here rather than silently changing what they hear, and the caller is
  * responsible for not promising the user a voice choice that no longer exists.
+ *
+ * Two things here contradict Cloudflare's own model docs, both verified against
+ * the live API: the response is a JSON envelope (`{result:{audio:"<base64>"}}`),
+ * not a binary body, and the audio inside it is WAV, not MP3. The binary path is
+ * kept because the docs describe it and the API may yet behave that way.
  */
 export async function workersAiSpeech(opts: {
   text: string;
   lang?: string;
   signal?: AbortSignal;
-}): Promise<Buffer<ArrayBuffer>> {
+}): Promise<{ audio: Buffer<ArrayBuffer>; contentType: string }> {
   const { apiToken } = requireConfig();
   const lang = opts.lang || guessTtsLang(opts.text);
 
@@ -122,14 +145,26 @@ export async function workersAiSpeech(opts: {
     throw new Error(`Workers AI TTS failed (HTTP ${res.status}) ${detail.slice(0, 500)}`);
   }
 
-  // Binary MP3 for a success. A JSON body here means the model returned an
-  // error envelope with a 200, which the audio path would otherwise hand to the
-  // browser as a corrupt file.
   const type = res.headers.get("content-type") ?? "";
+
   if (type.includes("application/json")) {
     const body = await res.text();
-    throw new Error(`Workers AI TTS returned JSON, not audio: ${body.slice(0, 500)}`);
+    let parsed: { result?: { audio?: string }; errors?: unknown[] } | null = null;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      throw new Error(`Workers AI TTS returned unparseable JSON: ${body.slice(0, 300)}`);
+    }
+    const b64 = parsed?.result?.audio;
+    if (typeof b64 !== "string" || !b64) {
+      // A 200 with no audio is a model-side failure wrapped in a success
+      // envelope; handing that to an <audio> element is a silent dead player.
+      throw new Error(`Workers AI TTS returned no audio: ${body.slice(0, 300)}`);
+    }
+    const audio = Buffer.from(b64, "base64");
+    return { audio, contentType: sniffAudioType(audio) };
   }
 
-  return Buffer.from(await res.arrayBuffer());
+  const audio = Buffer.from(await res.arrayBuffer());
+  return { audio, contentType: sniffAudioType(audio) };
 }

@@ -8,6 +8,7 @@ import {
   textModelHq,
   workersAiOpenAI,
   workersAiProvider,
+  sniffAudioType,
   workersAiSpeech,
   WORKERS_AI_NOT_CONFIGURED,
 } from "../lib/workers-ai";
@@ -127,7 +128,14 @@ describe("tts language", () => {
 });
 
 describe("speech", () => {
-  const mp3 = new Uint8Array([0x49, 0x44, 0x33, 0x04]);
+  const mp3 = new Uint8Array([0x49, 0x44, 0x33, 0x04]); // "ID3"
+  const wav = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x24, 0, 0, 0, 0x57, 0x41, 0x56, 0x45]); // "RIFF….WAVE"
+  /** What the live API actually returns — verified against Workers AI. */
+  const envelope = (bytes: Uint8Array) =>
+    new Response(
+      JSON.stringify({ result: { audio: Buffer.from(bytes).toString("base64") }, success: true }),
+      { headers: { "content-type": "application/json" } },
+    );
 
   it("posts prompt + lang to the model's run endpoint and returns the audio", async () => {
     configure();
@@ -139,7 +147,8 @@ describe("speech", () => {
 
     const out = await workersAiSpeech({ text: "これは日本語です" });
 
-    expect(out).toEqual(Buffer.from(mp3));
+    expect(out.audio).toEqual(Buffer.from(mp3));
+    expect(out.contentType).toBe("audio/mpeg");
     expect(seen!.url).toBe(
       "https://api.cloudflare.com/client/v4/accounts/acct123/ai/run/@cf/myshell-ai/melotts",
     );
@@ -170,15 +179,46 @@ describe("speech", () => {
     expect(workersAiSpeech({ text: "hi" })).rejects.toThrow(/HTTP 401.*Authentication error/s);
   });
 
-  it("rejects a JSON body served with a 200 rather than passing it off as audio", async () => {
-    // Cloudflare answers some model failures inside a 200 envelope; handing that
-    // to an <audio> element produces a silent, unexplained failure.
+  it("decodes the JSON envelope the live API actually returns", async () => {
+    // Cloudflare's model docs say binary MP3. The live API returns
+    // {result:{audio:"<base64>"}} as application/json, and the bytes are WAV.
+    // Rejecting that shape — which the first version of this client did — makes
+    // every TTS request fail in production while passing every doc-based test.
+    configure();
+    globalThis.fetch = (async () => envelope(wav)) as never;
+
+    const out = await workersAiSpeech({ text: "これは日本語です" });
+    expect(out.audio).toEqual(Buffer.from(wav));
+    expect(out.contentType).toBe("audio/wav");
+  });
+
+  it("sniffs the container instead of trusting the documented format", () => {
+    expect(sniffAudioType(wav)).toBe("audio/wav");
+    expect(sniffAudioType(mp3)).toBe("audio/mpeg");
+    expect(sniffAudioType(new Uint8Array([0xff, 0xfb, 0x90]))).toBe("audio/mpeg"); // raw frame sync
+    expect(sniffAudioType(new Uint8Array([0x4f, 0x67, 0x67, 0x53]))).toBe("audio/ogg");
+    expect(sniffAudioType(new Uint8Array([1, 2, 3, 4]))).toBe("application/octet-stream");
+  });
+
+  it("rejects a 200 envelope that carries no audio", async () => {
+    // A model-side failure wrapped in a success envelope; handing it to an
+    // <audio> element produces a silent, unexplained dead player.
     configure();
     globalThis.fetch = (async () =>
       new Response('{"success":false,"errors":[{"message":"model overloaded"}]}', {
         headers: { "content-type": "application/json" },
       })) as never;
 
-    expect(workersAiSpeech({ text: "hi" })).rejects.toThrow(/JSON, not audio.*model overloaded/s);
+    expect(workersAiSpeech({ text: "hi" })).rejects.toThrow(/no audio.*model overloaded/s);
+  });
+
+  it("rejects an unparseable JSON body", async () => {
+    configure();
+    globalThis.fetch = (async () =>
+      new Response("<html>gateway</html>", {
+        headers: { "content-type": "application/json" },
+      })) as never;
+
+    expect(workersAiSpeech({ text: "hi" })).rejects.toThrow(/unparseable JSON/);
   });
 });

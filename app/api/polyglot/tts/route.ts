@@ -51,12 +51,16 @@ export async function POST(req: NextRequest) {
 
     // MeloTTS has no voice or speed control, so the previous "nova" at 1.0x has
     // no equivalent — it picks the voice from the language.
-    const buffer = await workersAiSpeech({ text });
+    const { audio, contentType } = await workersAiSpeech({ text });
 
-    return new NextResponse(buffer, {
+    // Extension follows the real container: MeloTTS returns WAV despite
+    // Cloudflare documenting MP3, and a .mp3 file that is actually RIFF is a
+    // download some players refuse to open.
+    const ext = contentType === "audio/wav" ? "wav" : "mp3";
+    return new NextResponse(audio, {
       headers: {
-        "Content-Type": "audio/mpeg",
-        "Content-Disposition": `attachment; filename="polyglot-${Date.now()}.mp3"`,
+        "Content-Type": contentType,
+        "Content-Disposition": `attachment; filename="polyglot-${Date.now()}.${ext}"`,
       },
     });
   } catch (error) {

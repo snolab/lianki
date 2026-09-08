@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   isWorkersAiConfigured,
+  sniffAudioType,
   speechModel,
   workersAiSpeech,
   WORKERS_AI_NOT_CONFIGURED,
@@ -101,9 +102,13 @@ export const POST = async (req: NextRequest) => {
     const cached = await getCachedTTS(cacheKey);
     if (cached) {
       console.log("TTS cache hit:", cacheKey);
-      return new Response(Buffer.from(cached), {
+      const bytes = Buffer.from(cached);
+      // Sniff rather than assume: the cache may hold MP3 from the OpenAI era
+      // and WAV from MeloTTS, and serving one labelled as the other is how a
+      // player ends up silently refusing a file that is actually fine.
+      return new Response(bytes, {
         headers: {
-          "Content-Type": "audio/mpeg",
+          "Content-Type": sniffAudioType(bytes),
           "Cache-Control": "private, max-age=86400",
         },
       });
@@ -121,12 +126,13 @@ export const POST = async (req: NextRequest) => {
   }
 
   let audioBuffer: Buffer<ArrayBuffer>;
+  let audioType: string;
   try {
     // `voice` and `model` stay validated and stay in the cache key, but MeloTTS
     // has neither — one voice per language, no tts-1/tts-1-hd tiers. Kept in
     // the request contract so existing clients do not break; see
     // docs/workers-ai.md for what that costs.
-    audioBuffer = await workersAiSpeech({ text });
+    ({ audio: audioBuffer, contentType: audioType } = await workersAiSpeech({ text }));
   } catch (err) {
     logSanitizedError("tts.workersai.generate", err, { requester });
     return NextResponse.json({ error: "Failed to generate speech" }, { status: 500 });
@@ -149,7 +155,7 @@ export const POST = async (req: NextRequest) => {
 
   return new Response(audioBuffer, {
     headers: {
-      "Content-Type": "audio/mpeg",
+      "Content-Type": audioType,
       "Cache-Control": "private, max-age=86400",
     },
   });
