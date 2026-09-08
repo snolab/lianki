@@ -62,8 +62,7 @@ export function parseDataFilters(
     // user pasted into the address bar.
     store: store === "cloud" || store === "local" ? store : defaults.store,
     q: params.get("q") ?? defaults.q,
-    state:
-      Number.isInteger(stateNum) && stateNum >= 0 && stateNum <= 3 ? stateNum : defaults.state,
+    state: Number.isInteger(stateNum) && stateNum >= 0 && stateNum <= 3 ? stateNum : defaults.state,
     onlyDue: params.has("due") ? params.get("due") !== "0" : defaults.onlyDue,
     sort: (SORT_KEYS as readonly string[]).includes(sort ?? "") ? sort! : defaults.sort,
     order: order === "asc" || order === "desc" ? order : defaults.order,
@@ -95,7 +94,8 @@ export function dataFiltersToQuery(
   if (filters.onlyDue !== defaults.onlyDue) next.set("due", filters.onlyDue ? "1" : "0");
   if (filters.sort !== defaults.sort) next.set("sort", filters.sort);
   if (filters.order !== defaults.order) next.set("order", filters.order);
-  if (filters.page !== defaults.page && filters.page > 0) next.set("page", String(filters.page + 1));
+  if (filters.page !== defaults.page && filters.page > 0)
+    next.set("page", String(filters.page + 1));
 
   return next.toString();
 }

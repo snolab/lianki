@@ -20,7 +20,12 @@ describe("parse", () => {
   });
 
   it("reads every filter", () => {
-    expect(parseDataFilters(q("store=local&q=linkedin&state=2&due=1&sort=reps&order=desc&page=3"), loggedIn)).toEqual({
+    expect(
+      parseDataFilters(
+        q("store=local&q=linkedin&state=2&due=1&sort=reps&order=desc&page=3"),
+        loggedIn,
+      ),
+    ).toEqual({
       store: "local",
       q: "linkedin",
       state: 2,
