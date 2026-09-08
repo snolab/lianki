@@ -46,8 +46,22 @@ per route.
 ## TTS is the part that actually changed
 
 The compatibility layer covers `/chat/completions` and `/embeddings` only — **not
-audio**. Speech uses the native `/ai/run/<model>` endpoint, which returns binary
-MP3, and MeloTTS is not a drop-in for `tts-1`:
+audio**. Speech uses the native `/ai/run/<model>` endpoint, and MeloTTS is not a
+drop-in for `tts-1`:
+
+> **Cloudflare's model docs are wrong about the response, in two ways.** They
+> say binary MP3 with `content-type: audio/mpeg`. Verified against the live API,
+> it is actually a **JSON envelope** — `{"result":{"audio":"<base64>"},"success":true}`
+> — and the decoded bytes are **WAV** (`RIFF`), not MP3.
+>
+> Both mattered: the first version of this client *rejected* a JSON
+> content-type as an error envelope, so every TTS request would have failed in
+> production while passing every test written from the docs. And the routes
+> declared `audio/mpeg` for what is really RIFF. `workersAiSpeech` now decodes
+> the envelope and returns `{ audio, contentType }`, with `sniffAudioType()`
+> reading the container off the magic bytes so a future format change follows
+> automatically. The binary path is kept, since the docs describe it and the API
+> may yet behave that way.
 
 - **No voice selection.** One voice per language. The six OpenAI voices
   (alloy/echo/fable/onyx/nova/shimmer) have no equivalent, so the voice picker in
@@ -79,7 +93,16 @@ endpoint. It is inert unless someone runs an intlayer fill.
 ## Verifying
 
 `lib/workers-ai.ts` is covered by `unit/workers-ai.test.ts` (fetch stubbed).
-End-to-end output quality — whether llama-3.3 keeps the JSON contract the vocab
-routes parse, and whether MeloTTS Japanese/Chinese is good enough to learn from —
-needs real credentials and a listen. It has not been verified against the live
-API.
+
+Verified against the **live** API on 2026-09-08 with the `lianki-workers-ai`
+token:
+
+- chat — `@cf/meta/llama-3.3-70b-instruct-fp8-fast` via the OpenAI-compatible
+  endpoint, returns normally.
+- TTS — `@cf/myshell-ai/melotts` for `ja` / `zh` / `en`, all HTTP 200 with real
+  audio. This is what exposed the JSON-envelope and WAV findings above; the
+  doc-based implementation would have failed on the first request.
+
+Still unverified: **output quality**. Whether llama-3.3 keeps the JSON contract
+the vocab routes parse under real prompts, and whether MeloTTS Japanese/Chinese
+is good enough to learn from, needs a human to read and listen.
