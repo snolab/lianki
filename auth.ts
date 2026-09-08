@@ -5,7 +5,7 @@ import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
 import { Kysely } from "kysely";
 import { D1Dialect } from "kysely-d1";
-import nodemailer from "nodemailer";
+import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { db, mongoClient } from "./app/db";
 import { dbBackend, getD1 } from "./lib/d1";
 
@@ -75,13 +75,14 @@ function baseOptions() {
     },
 
     plugins: [
-      ...(process.env.EMAIL_SERVER
+      // Gated on configuration, as the SMTP version was: with no provider the
+      // plugin is absent and the sign-in form offers only OAuth, rather than
+      // accepting an address and silently dropping the mail.
+      ...(isEmailConfigured()
         ? [
             magicLink({
               sendMagicLink: async ({ email, url }) => {
-                const transport = nodemailer.createTransport(process.env.EMAIL_SERVER!);
-                await transport.sendMail({
-                  from: process.env.EMAIL_FROM,
+                await sendEmail({
                   to: email,
                   subject: "Sign in to Lianki",
                   text: `Sign in to Lianki: ${url}`,

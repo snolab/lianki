@@ -66,7 +66,7 @@ wrangler secret put AUTH_GITHUB_ID
 wrangler secret put AUTH_GITHUB_SECRET
 wrangler secret put AUTH_GOOGLE_ID
 wrangler secret put AUTH_GOOGLE_SECRET
-wrangler secret put EMAIL_SERVER
+wrangler secret put RESEND_API_KEY   # SMTP cannot run on Workers; see docs/secrets-and-auth.md
 wrangler secret put EMAIL_FROM
 wrangler secret put OPENAI_API_KEY
 wrangler secret put YOUTUBE_API_KEY
