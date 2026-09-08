@@ -11,18 +11,12 @@ import { authUser } from "@/app/signInEmail";
 import { isWorkersAiConfigured, textModel, workersAiOpenAI } from "@/lib/workers-ai";
 import { logSanitizedError } from "@/lib/safeError";
 
-// Fully static, and deliberately so: the page path must never read the disk at
-// request time. lib/blog.ts reads blog/*.md under process.cwd(), and the Workers
-// runtime has no filesystem — but those reads are wrapped in catch and return
-// null/[], so a runtime render there does not fail, it renders EMPTY with a 200.
-//
-// `revalidate` would reintroduce that on a timer (the index silently emptying an
-// hour after deploy); `dynamicParams` defaults to true and would reintroduce it
-// on demand for any path missing from the build manifest. Both are off, so an
-// unknown path 404s at the routing layer and the disk read stays a build-time
-// concern. Blog content is repo-sourced and cannot change without a deploy, so
-// nothing is lost by this.
-export const dynamicParams = false;
+// No `revalidate` / `dynamicParams` here on purpose: the root layout awaits
+// headers()/cookies(), so every route in this app is dynamically rendered and
+// neither flag has any effect (verified — the prerender manifest holds 2 routes
+// for the whole app, and an unknown slug still returns 200 with
+// `dynamicParams = false`). The blog reaches the Worker because lib/blog.ts
+// bundles the markdown, not because anything here is static.
 
 export async function generateStaticParams() {
   return BLOG_LOCALES.map((locale) => ({ locale }));
