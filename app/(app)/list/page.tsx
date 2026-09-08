@@ -6,6 +6,7 @@ import { getNotesCollection } from "@/app/lib/getNotesCollection";
 import { authEmail } from "@/app/signInEmail";
 import { getCachedHeatmapData } from "@/app/lib/heatmap-cache";
 import ActivityHeatmap from "./components/ActivityHeatmap";
+import { AutoRefresh } from "./components/AutoRefresh";
 import DeleteButton from "./components/DeleteButton";
 import RefreshHeatmapButton from "./components/RefreshHeatmapButton";
 import { ReviewHistory } from "./components/ReviewHistory";
@@ -67,6 +68,9 @@ async function LoggedInView({
 
   return (
     <div className="flex flex-col">
+      {/* Re-renders this server component when you come back to the tab, so a
+          review done in the userscript shows up without a manual reload. */}
+      <AutoRefresh />
       {/* Main Content */}
       <div className="px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">

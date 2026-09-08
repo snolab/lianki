@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { getIntlayer } from "intlayer";
 import { authUserOrNull } from "@/app/signInEmail";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
@@ -24,7 +25,11 @@ export default async function DataPage() {
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8">
       <div className="max-w-6xl mx-auto">
-        <DataClient isLoggedIn={!!user} />
+        {/* useSearchParams() inside DataClient reads the filter state from the
+            URL; Next requires it to sit under a Suspense boundary. */}
+        <Suspense fallback={null}>
+          <DataClient isLoggedIn={!!user} />
+        </Suspense>
       </div>
     </div>
   );
