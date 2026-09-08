@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useIntlayer } from "next-intlayer";
 import {
   deleteLocalCards,
@@ -11,12 +12,14 @@ import {
   type LocalSnapshot,
   type UserscriptStatus,
 } from "@/app/lib/localStore";
+import { queuePurge } from "@/lib/local-purge";
 import type { NoteRow, StoreStats } from "@/app/lib/notesAdmin";
 import BackupSection from "./BackupSection";
 import CardTable from "./CardTable";
 import DangerZone from "./DangerZone";
 import StoreConsole from "./StoreConsole";
 import { type DataRow, type StoreId } from "./types";
+import { dataFiltersToQuery, defaultFilters, parseDataFilters } from "@/lib/data-filters";
 
 const PAGE_SIZE = 50;
 /** `/api/fsrs/bulk-upsert` caps a request at 500 notes. */
@@ -45,13 +48,22 @@ export default function DataClient({ isLoggedIn }: { isLoggedIn: boolean }) {
   const [cloudUrls, setCloudUrls] = useState<Set<string> | null>(null);
 
   // ── Table ─────────────────────────────────────────────────────────────────
-  const [store, setStore] = useState<StoreId>(isLoggedIn ? "cloud" : "local");
-  const [q, setQ] = useState("");
-  const [state, setState] = useState<number | null>(null);
-  const [onlyDue, setOnlyDue] = useState(false);
-  const [sort, setSort] = useState("due");
-  const [order, setOrder] = useState<"asc" | "desc">("asc");
-  const [page, setPage] = useState(0);
+  // Filters live in the URL so a view can be bookmarked, shared, or reopened as
+  // you left it. Read once on mount; from then on state drives the URL, not the
+  // reverse — a two-way binding here loops, since every write re-renders.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const defaults = useMemo(() => defaultFilters(isLoggedIn), [isLoggedIn]);
+  const [initial] = useState(() => parseDataFilters(searchParams, defaults));
+
+  const [store, setStore] = useState<StoreId>(initial.store);
+  const [q, setQ] = useState(initial.q);
+  const [state, setState] = useState<number | null>(initial.state);
+  const [onlyDue, setOnlyDue] = useState(initial.onlyDue);
+  const [sort, setSort] = useState(initial.sort);
+  const [order, setOrder] = useState<"asc" | "desc">(initial.order);
+  const [page, setPage] = useState(initial.page);
   const [cloudRows, setCloudRows] = useState<NoteRow[]>([]);
   const [cloudTotal, setCloudTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -194,6 +206,27 @@ export default function DataClient({ isLoggedIn }: { isLoggedIn: boolean }) {
     return (local?.cards ?? []).filter((c) => !cloudUrls.has(c.url));
   }, [isLoggedIn, cloudUrls, local]);
 
+  // Mirror the filters into the query string. `replace`, not `push`: typing a
+  // search term would otherwise leave one history entry per keystroke, and Back
+  // would walk the user through their own typing instead of leaving the page.
+  const lastQueryRef = useRef<string | null>(null);
+  useEffect(() => {
+    const write = () => {
+      const query = dataFiltersToQuery(
+        { store, q, state, onlyDue, sort, order, page },
+        defaults,
+        searchParams,
+      );
+      if (query === lastQueryRef.current) return;
+      lastQueryRef.current = query;
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    };
+
+    // Only the text box needs debouncing; a dropdown or checkbox is one event.
+    const timer = setTimeout(write, 300);
+    return () => clearTimeout(timer);
+  }, [store, q, state, onlyDue, sort, order, page, defaults, pathname, router, searchParams]);
+
   function changeSort(next: string) {
     if (next === sort) setOrder(order === "asc" ? "desc" : "asc");
     else {
@@ -273,6 +306,11 @@ export default function DataClient({ isLoggedIn }: { isLoggedIn: boolean }) {
         setCloudTotal((n) => Math.max(0, n - urls.length));
         await refreshCloud();
       }
+      // Both branches: the userscript's GM storage is a third copy, and it is
+      // the one that decides which card you are shown next. Without this, a
+      // deleted card keeps being served and re-appears in the local mirror on
+      // the next sync.
+      queuePurge(urls);
       setSelected(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
@@ -372,6 +410,9 @@ export default function DataClient({ isLoggedIn }: { isLoggedIn: boolean }) {
         cloudCount={cloud?.notes ?? null}
         onWipeLocal={async () => {
           const n = await wipeLocalStore();
+          // The mirror is rebuilt from the userscript's GM storage on its next
+          // sync, so wiping only IndexedDB puts every card straight back.
+          queuePurge([], { all: true });
           await refreshLocal();
           setSelected(new Set());
           return `Removed ${n} cards from this browser.`;
@@ -387,6 +428,7 @@ export default function DataClient({ isLoggedIn }: { isLoggedIn: boolean }) {
           setCloudRows([]);
           setCloudTotal(0);
           setSelected(new Set());
+          queuePurge([], { all: true });
           await refreshCloud();
           return `Deleted ${data.deleted} cards from the cloud.`;
         }}
