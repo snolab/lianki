@@ -80,7 +80,8 @@ wrangler secret put MONGODB_URI   # still needed by the migration script
 Apply the schema:
 
 ```bash
-wrangler d1 execute lianki --remote --file=db/migrations/0001_init.sql
+# Apply the whole migrations dir, tracked — NOT a single file by name.
+wrangler d1 migrations apply lianki --remote
 ```
 
 ---
@@ -162,9 +163,30 @@ cutover, re-run — `INSERT OR REPLACE` makes this idempotent:
 # dry run — prints row counts, writes nothing
 bun --env-file=.env.local scripts/migrate-mongo-to-d1.ts --dry-run
 
+# bring the schema fully up to date FIRST — see the warning below
+wrangler d1 migrations apply lianki --remote
+
 # regenerate the SQL (real user data — kept out of git under tmp/) and load it
 bun --env-file=.env.local scripts/migrate-mongo-to-d1.ts --out=tmp/migration-data.sql
 wrangler d1 execute lianki --remote --file=tmp/migration-data.sql --yes
+```
+
+> **Apply migrations by directory, never `--file=db/migrations/0001_init.sql`.**
+> Naming one file was fine while `0001_init.sql` was the only migration, and it
+> silently stops being fine the moment a second one exists. `0002_watch_stats`
+> and `0003_review_order` land with the cf-native split — a load run the old way
+> builds a D1 whose schema is a migration or two behind, and that does not fail
+> at migration time. It fails *after cutover*, as runtime SQL errors on the
+> tables that were never created.
+>
+> `wrangler d1 migrations apply` tracks what has run in D1's own
+> `d1_migrations` table, so it is idempotent and always applies the full set.
+>
+> **Run the load from a tree that contains every migration** — `prod-split` or
+> later, not whatever `main` happens to be at. Found by pid 133237 during the
+> cf-native split.
+
+```bash
 ```
 
 ---
