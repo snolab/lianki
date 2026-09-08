@@ -18,14 +18,14 @@ const SCHEMA = testSchema();
 const USER = "orderer@example.com";
 
 describe("review order helpers", () => {
-  test("defaults to the historical behaviour", () => {
-    expect(DEFAULT_REVIEW_ORDER).toBe("oldest");
+  test("defaults to most-recently-due", () => {
+    expect(DEFAULT_REVIEW_ORDER).toBe("newest");
   });
 
   test("coerces junk to the default rather than throwing", () => {
-    for (const junk of [undefined, null, "", "OLDEST", 1, {}, "reverse"])
-      expect(asReviewOrder(junk)).toBe("oldest");
-    expect(asReviewOrder("newest")).toBe("newest");
+    for (const junk of [undefined, null, "", "NEWEST", 1, {}, "reverse"])
+      expect(asReviewOrder(junk)).toBe("newest");
+    expect(asReviewOrder("oldest")).toBe("oldest");
   });
 
   test("isReviewOrder is exact", () => {
@@ -99,8 +99,8 @@ describe("listDue ordering", () => {
     ]);
   });
 
-  test("defaults to oldest when no order is passed", async () => {
-    expect((await repo.listDue(new Date(), 1)).map((n) => n.url)).toEqual(["https://x/old"]);
+  test("defaults to newest when no order is passed", async () => {
+    expect((await repo.listDue(new Date(), 1)).map((n) => n.url)).toEqual(["https://x/fresh"]);
   });
 });
 
@@ -113,7 +113,7 @@ describe("PreferencesD1Repo review order", () => {
   });
 
   test("an account that never set one reads as the default", async () => {
-    expect(await prefs.reviewOrder()).toBe("oldest");
+    expect(await prefs.reviewOrder()).toBe("newest");
     expect(await prefs.get()).toBeNull();
   });
 
