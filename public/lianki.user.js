@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.28
+// @version     2.23.29
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -2670,6 +2670,31 @@ ${state.errorDetails}`);
         renderDialog();
       }
     }
+    function probeUrl(url, timeoutMs = 6000) {
+      return new Promise((resolve) => {
+        try {
+          GM_xmlhttpRequest({
+            method: "HEAD",
+            url,
+            timeout: timeoutMs,
+            anonymous: true,
+            onload: (r) => resolve({ ok: true, finalUrl: r?.finalUrl || url, status: r?.status }),
+            onerror: () => resolve({ ok: false }),
+            ontimeout: () => resolve({ ok: false }),
+          });
+        } catch {
+          resolve({ ok: true });
+        }
+      });
+    }
+    function markUnreachable(url) {
+      try {
+        const rec = cardStorage?.getCard?.(url);
+        if (!rec?.note) return;
+        const note = { ...rec.note, unreachableAt: Date.now() };
+        cardStorage.setCard(url, note, rec.hlc, rec.dirty ?? false);
+      } catch {}
+    }
     async function afterReview(doneMessage) {
       state.phase = "reviewed";
       let nextUrl = prefetchedNextUrl;
@@ -2689,6 +2714,28 @@ ${nextTitle || nextUrl}`;
         }
       }
       if (nextUrl && /^https?:\/\//.test(nextUrl)) {
+        const probe = await probeUrl(nextUrl);
+        if (probe.ok && probe.finalUrl && probe.finalUrl !== nextUrl) {
+          console.log("[Lianki] Next card likely redirects:", nextUrl, "->", probe.finalUrl);
+        }
+        if (!probe.ok) {
+          console.warn("[Lianki] Next card is unreachable, skipping:", nextUrl);
+          markUnreachable(nextUrl);
+          state.message = `Skipped an unreachable page:
+${nextUrl}`;
+          renderDialog();
+          prefetchedNextUrl = null;
+          const again = await getNextUrl().catch(() => ({ url: null }));
+          if (again.url && again.url !== nextUrl) {
+            GM_setValue("lk:nav_intended", JSON.stringify({ url: again.url, ts: Date.now() }));
+            location.href = again.url;
+            return;
+          }
+          state.message = "Skipped an unreachable page — nothing else is due.";
+          renderDialog();
+          setTimeout(closeDialog, 3000);
+          return;
+        }
         console.log("[Lianki] Storing intended URL:", nextUrl);
         GM_setValue("lk:nav_intended", JSON.stringify({ url: nextUrl, ts: Date.now() }));
         location.href = nextUrl;
