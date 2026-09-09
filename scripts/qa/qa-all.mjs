@@ -3,7 +3,7 @@
  * qa:all — local "test everything" against the **deployed D1/Workers path**.
  *
  * Builds the OpenNext Worker, applies the D1 migrations to the local
- * (Miniflare-backed) D1 database, boots `wrangler dev` on :3000, then runs the
+ * (Miniflare-backed) D1 database, boots `wrangler dev` on a free port, then runs the
  * four integration layers against that live Worker and tears it down:
  *
  *   1. API        — scripts/qa/qa-api.mjs        (authed FSRS/roadmap/prefs/...)
@@ -26,9 +26,38 @@
  * node:sqlite null rows — see the test-stack notes).
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
 
-const PORT = Number(process.env.QA_PORT || 3000);
+/**
+ * Ask the OS for a free port.
+ *
+ * Ephemeral by DEFAULT, not merely overridable. This gate used to pin :3000, so
+ * two agents (or two shells) on one host could not gate a push at the same
+ * time: the second `wrangler dev` lost the bind, and the suites failed with
+ * ERR_CONNECTION_REFUSED — which reads as a flaky test, not as contention. It
+ * cost three pushes and two wrong-cause investigations before that was spotted.
+ *
+ * Nothing depends on the number any more: BETTER_AUTH_BASE_URL is derived from
+ * it and lib/trusted-origins.ts accepts any localhost origin.
+ */
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.on("error", reject);
+    // Port 0 = let the kernel choose. There is a small window between closing
+    // this listener and wrangler binding, but the kernel does not hand out the
+    // same ephemeral port twice in quick succession, so it is not worth holding
+    // the socket open and passing an fd around.
+    srv.listen(0, "127.0.0.1", () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+// QA_PORT still pins it, for when you want a predictable URL to poke at.
+const PORT = Number(process.env.QA_PORT) || (await freePort());
 const BASE = `http://localhost:${PORT}`;
 const flags = new Set(process.argv.slice(2));
 const NO_BUILD = flags.has("--no-build");
@@ -57,6 +86,18 @@ if (!existsSync(".dev.vars")) {
     ].join("\n"),
   );
   log(".dev.vars created (local-only QA secrets)");
+} else {
+  // The port changes every run now, and wrangler dev reads the base URL from
+  // here — a stale value means better-auth trusts a port nothing is listening
+  // on and rejects every write, which is the same failure the fixed port
+  // caused. Rewrite ONLY this line: the file is gitignored and unrecoverable,
+  // and may hold secrets nothing else knows.
+  const prev = readFileSync(".dev.vars", "utf8");
+  const line = `BETTER_AUTH_BASE_URL=${BASE}`;
+  const next = /^BETTER_AUTH_BASE_URL=.*$/m.test(prev)
+    ? prev.replace(/^BETTER_AUTH_BASE_URL=.*$/m, line)
+    : `${prev.replace(/\n*$/, "\n")}${line}\n`;
+  if (next !== prev) writeFileSync(".dev.vars", next);
 }
 
 function step(name, cmd, args, env = {}) {
@@ -81,7 +122,8 @@ if (!NO_BUILD) {
 // `--local` targets the same .wrangler/state DB that `wrangler dev` serves.
 step("D1 migrate (local)", "bunx", ["wrangler", "d1", "migrations", "apply", "lianki", "--local"]);
 
-// ── 3. Boot `wrangler dev` on :PORT (port 3000 matches auth.ts trustedOrigins) ─
+// ── 3. Boot `wrangler dev` on :PORT (ephemeral by default; auth.ts trusts any
+//       localhost origin via BETTER_AUTH_BASE_URL — see lib/trusted-origins.ts) ─
 log(`wrangler dev on :${PORT}`);
 let stopped = false;
 const server = spawn("bunx", ["wrangler", "dev", "--port", String(PORT), "--local"], {
