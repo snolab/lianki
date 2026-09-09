@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.26
+// @version     2.23.27
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1719,6 +1719,34 @@ function main() {
   // auto-open the review dialog so the session continues uninterrupted.
   // Also handles pushState/replaceState URL changes.
 
+  /**
+   * Move a locally cached card from one url to another, following a redirect
+   * the server has already recorded.
+   *
+   * The old key becomes a tombstone rather than simply vanishing, so a stale
+   * copy arriving from elsewhere cannot resurrect it (see
+   * docs/sync-merge-rules.md). If the destination already holds a card, the
+   * newer HLC wins — the redirect may have been noticed after the new url was
+   * already being reviewed, which is exactly how the duplicate pair arises.
+   */
+  function renameLocalCard(oldUrl, newUrl) {
+    if (!oldUrl || !newUrl || oldUrl === newUrl) return;
+    try {
+      const from = cardStorage.getCard(oldUrl);
+      if (!from) return;
+      const to = cardStorage.getCard(newUrl);
+      const keepExisting = to && compareHLC(to.hlc, from.hlc) >= 0;
+      if (!keepExisting) {
+        const note = { ...(from.note ?? {}), url: newUrl };
+        cardStorage.setCard(newUrl, note, from.hlc, from.dirty ?? false);
+      }
+      cardStorage.deleteCard(oldUrl);
+      console.log(`[Lianki] Local card moved: ${oldUrl} -> ${newUrl}`);
+    } catch (err) {
+      console.error("[Lianki] Failed to move local card:", oldUrl, err);
+    }
+  }
+
   async function checkRedirect() {
     try {
       const raw = GM_getValue("lk:nav_intended", "");
@@ -1752,6 +1780,16 @@ function main() {
         body: JSON.stringify({ oldUrl: intendedUrl, newUrl: actualUrl }),
       });
       console.log("[Lianki] Card URL updated:", result);
+      // Rename the LOCAL copy too, not just the server's.
+      //
+      // This used to update only the server, leaving GM storage holding the old
+      // url with its whole review history and its old due date. That card then
+      // came due forever and could not be got rid of: the site had renamed its
+      // copy, so nothing there matched the url the userscript kept serving, and
+      // deleting the new url did nothing to the old one. Observed in the wild as
+      // a card that "reappears again and again" — snomiao.com/ redirecting to
+      // snomiao.com/ja left a local snomiao.com/ card six months overdue.
+      renameLocalCard(intendedUrl, actualUrl);
       GM_setValue("lk:nav_intended", ""); // only clear after success
       openDialog();
     } catch (err) {
