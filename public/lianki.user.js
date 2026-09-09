@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.27
+// @version     2.23.28
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1524,7 +1524,7 @@
         JSON.stringify({
           _url: url,
           note: null,
-          hlc: newHLC(getDeviceId(), prev?.hlc ?? null),
+          hlc: newHLC(getOrCreateDeviceId(), prev?.hlc ?? null),
           dirty: true,
           deletedAt: Date.now(),
         }),
@@ -2766,9 +2766,10 @@ ${nextTitle || nextUrl}`;
     function renameLocalCard(oldUrl, newUrl) {
       if (!oldUrl || !newUrl || oldUrl === newUrl) return;
       try {
-        const from = cardStorage.getCard(oldUrl);
+        const cs = cardStorage ?? new GMCardStorage();
+        const from = cs.getCard(oldUrl);
         if (!from) return;
-        const to = cardStorage.getCard(newUrl);
+        const to = cs.getCard(newUrl);
         const keepExisting = to && compareHLC(to.hlc, from.hlc) >= 0;
         if (!keepExisting) {
           const note = { ...from.note, url: newUrl };
