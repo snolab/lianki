@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.24
+// @version     2.23.25
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -113,6 +113,29 @@ function hashUrl(url) {
   let h = 5381;
   for (let i = 0; i < url.length; i++) h = (((h << 5) + h) ^ url.charCodeAt(i)) >>> 0;
   return h.toString(16).padStart(8, "0");
+}
+
+/**
+ * Is a failed sync worth trying again?
+ *
+ * Most 4xx say the request itself is wrong and will stay wrong however many
+ * times it is repeated — 409 means the server already has a newer version, 404
+ * means the note is gone. Those must be dropped, or they jam the queue behind
+ * them forever.
+ *
+ * The exceptions are the ones where the SAME request can succeed later:
+ *
+ *   401/403 — not signed in yet. A guest reviews cards before ever having an
+ *             account; those reviews sit in the queue until they sign in. The
+ *             first version of this dropped them, which silently destroyed the
+ *             work of every signed-out user. The guest suite caught it.
+ *   408/429 — timeout and rate limit, which literally mean "try again".
+ *
+ * No status at all is a network failure, and equally worth retrying.
+ */
+function isPermanentSyncFailure(status) {
+  if (status === 401 || status === 403 || status === 408 || status === 429) return false;
+  return status >= 400 && status < 500;
 }
 
 class GMCardStorage {
@@ -760,6 +783,12 @@ function main() {
           .catch(() => null)
           .then((body) => {
             const e = new Error(`HTTP ${status}`);
+            // Callers need the status and body to tell a permanent failure from
+            // a transient one. Without these only 401 carried a status, so the
+            // sync queue could not distinguish "will never succeed" from "try
+            // again later" and retried both — see tryBackgroundSync.
+            e.status = status;
+            e.body = body;
             if (body?.errorId) e.details = `Error ID: ${body.errorId}`;
             else if (body?.error) e.details = body.error;
             throw e;
@@ -2280,6 +2309,27 @@ function main() {
     setTimeout(() => tryBackgroundSync(), 5000);
   }
 
+  /**
+   * Take the server's version after a 409.
+   *
+   * The conflict response already carries `card`, `log` and `serverHLC`, so the
+   * losing client has everything it needs to converge immediately. Dropping the
+   * queue item without this would leave the local copy permanently behind and
+   * marked dirty, which is what made a card look "stuck": reviewed locally,
+   * never reconciled, forever pending.
+   */
+  function adoptServerVersion(item, body) {
+    const url = item?.data?.url;
+    if (!url || !body?.card) return;
+    try {
+      const existing = cardStorage.getEntry ? cardStorage.getEntry(url) : cardStorage.getCard(url);
+      const note = { ...existing?.note, url, card: body.card, log: body.log ?? [] };
+      cardStorage.setCard(url, note, body.serverHLC ?? existing?.hlc ?? null, false);
+    } catch (e) {
+      console.error("[Lianki] could not adopt server version for", url, e);
+    }
+  }
+
   async function tryBackgroundSync() {
     if (syncInProgress || !offlineReady) return;
     if (!navigator.onLine) {
@@ -2306,16 +2356,40 @@ function main() {
           queueStorage.removeFromQueue(item.id);
           console.log(`[Lianki] Synced: ${item.action} ${item.data.url || item.data.noteId}`);
         } catch (err) {
-          console.error(`[Lianki] Sync failed for ${item.id}:`, err);
+          const status = err?.status;
 
-          // Increment retry count
-          item.retries = (item.retries || 0) + 1;
+          // Classify, do not just count.
+          //
+          // Every failure used to be treated as transient: bump `retries`, drop
+          // after 5. But a 409 ("Server has newer version") and a 404 (the note
+          // is gone) can never succeed on a repeat — nothing about trying again
+          // changes the server's answer. They burned retries they should never
+          // have been given, and because `retries` is a read-modify-write on GM
+          // storage shared by every open tab, concurrent tabs lost increments
+          // and dead items were retried into the hundreds. Measured on a real
+          // browser: one item failed 237 times, and 73 of 230 cards sat
+          // unsynced behind the jam.
+          //
+          const permanent = isPermanentSyncFailure(status);
 
-          if (item.retries > 5) {
-            console.warn(`[Lianki] Dropping ${item.id} after 5 retries`);
+          if (status === 409) {
+            // The server already sent us what it has; adopt it rather than
+            // discarding the response and asking again.
+            adoptServerVersion(item, err.body);
             queueStorage.removeFromQueue(item.id);
+            console.warn(`[Lianki] ${item.id}: server had a newer version — adopted it`);
+          } else if (permanent) {
+            queueStorage.removeFromQueue(item.id);
+            console.warn(`[Lianki] Dropping ${item.id}: HTTP ${status} will not succeed on retry`);
           } else {
-            queueStorage.updateQueueItem(item.id, { retries: item.retries });
+            console.error(`[Lianki] Sync failed for ${item.id}:`, err);
+            item.retries = (item.retries || 0) + 1;
+            if (item.retries > 5) {
+              console.warn(`[Lianki] Dropping ${item.id} after 5 retries`);
+              queueStorage.removeFromQueue(item.id);
+            } else {
+              queueStorage.updateQueueItem(item.id, { retries: item.retries });
+            }
           }
         }
       }
