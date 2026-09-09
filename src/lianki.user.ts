@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.31
+// @version     2.23.32
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -15,7 +15,6 @@
 // @updateURL   https://lianki.com/lianki.meta.js
 // @connect     lianki.com
 // @connect     www.lianki.com
-// @connect     *
 // ==/UserScript==
 
 import { fsrs, generatorParameters, Rating } from "ts-fsrs";
@@ -732,6 +731,9 @@ function main() {
         headers,
         data: opts.body ?? undefined,
         withCredentials: opts.credentials === "include",
+        // GM_xmlhttpRequest predates AbortSignal; a caller that must not hang
+        // passes `timeout` instead.
+        ...(opts.timeout ? { timeout: opts.timeout } : {}),
         onload(resp) {
           const hdrs = {};
           for (const line of resp.responseHeaders.split("\r\n")) {
@@ -761,6 +763,9 @@ function main() {
         },
         onerror() {
           reject(new Error("Network error"));
+        },
+        ontimeout() {
+          reject(new Error("Request timed out"));
         },
         onabort() {
           reject(new Error("Request aborted"));
@@ -1607,108 +1612,39 @@ function main() {
   /**
    * Is this card's page actually reachable?
    *
-   * A page whose host refuses connections cannot be reviewed away, because no
+   * A page whose host no longer answers cannot be reviewed away, because no
    * content script runs on the browser's network-error page — there is nothing
-   * for the userscript to attach to. The card therefore stays due forever and
-   * is served again and again. The only escape was the dashboard. Observed with
-   * a retired site that still had 75 cards in the deck, 18 of them due.
+   * for the userscript to attach to. The card therefore stays due forever and is
+   * served again and again. So the check has to happen HERE, on a page that is
+   * still alive, before navigating away.
    *
-   * So the check has to happen HERE, on a page that is still alive, before
-   * navigating away.
+   * The question goes to the server rather than out through GM_xmlhttpRequest.
+   * Managers gate cross-origin requests on `@connect`, a refusal is reported
+   * exactly like a dead server, and `@connect` is frozen at install time — so
+   * the browser-side version declared every host dead on installs granting only
+   * lianki.com, and no bundle update could fix it. lianki.com is the one origin
+   * every install can already reach, so routing through it works under any
+   * `@connect` list and in the extension alike. See lib/probe.ts.
    *
-   * Deliberately conservative: only a connection-level failure counts as dead.
-   * HTTP status is not evidence — plenty of perfectly good pages answer 403 to
-   * a HEAD from a script, sit behind bot walls, or return 404 while rendering
-   * content. Skipping those would be worse than the problem being solved.
+   * Anything uncertain resolves reachable. A wrong "dead" verdict silently drops
+   * a card the user wanted, which is worse than the trap it guards against.
    */
-  function rawProbe(url, timeoutMs = 6000) {
-    return new Promise((resolve) => {
-      try {
-        GM_xmlhttpRequest({
-          method: "HEAD",
-          url,
-          timeout: timeoutMs,
-          // No cookies. GM_xmlhttpRequest sends them by default, which would
-          // mean firing an authenticated request at every third-party site
-          // before you visit it — and some endpoints act on a bare GET/HEAD
-          // (analytics, "mark as read", rate limits). Whether a host answers at
-          // all does not need the user's session, so it does not get it.
-          // Managers that predate `anonymous` ignore it and fall back to
-          // sending cookies, which is no worse than the previous behaviour.
-          anonymous: true,
-          // `finalUrl` is the url after redirects, so the probe sees a redirect
-          // before we navigate. It is a HINT, not the truth: this request does
-          // not carry the browser's full context, and plenty of redirects are
-          // decided by Accept-Language or cookies — snomiao.com/ sends a browser
-          // to /ja and a bare script to /en. So it is logged, and the
-          // authoritative check stays checkRedirect() after landing, which sees
-          // where the browser actually ended up.
-          onload: (r) => resolve({ ok: true, finalUrl: r?.finalUrl || url, status: r?.status }),
-          onerror: (e) => resolve({ ok: false, blocked: isConnectRefusal(e) }),
-          ontimeout: () => resolve({ ok: false }),
-        });
-      } catch {
-        resolve({ ok: true }); // never block navigation because the probe broke
-      }
-    });
-  }
-
-  /**
-   * Did the userscript manager refuse this request outright?
-   *
-   * A refusal is not a network failure, but `onerror` reports both. Violentmonkey
-   * says `Refused to connect to "...": This domain is not a part of the @connect
-   * list`; other managers word it differently, so match loosely and treat a
-   * miss as inconclusive rather than trusting the wording.
-   */
-  function isConnectRefusal(e) {
-    const msg = String(e?.error ?? e?.message ?? e?.statusText ?? "").toLowerCase();
-    return msg.includes("@connect") || msg.includes("refused to connect");
-  }
-
-  /**
-   * Can this manager reach an arbitrary third-party host at all?
-   *
-   * A failed probe has two causes that `onerror` cannot tell apart: the site is
-   * down, or the manager refused the request. When the script shipped
-   * `@connect lianki.com` only, EVERY probe was refused — so a live YouTube page
-   * was reported unreachable and skipped.
-   *
-   * The control CANNOT be the current page. Managers always allow requests to
-   * the origin the script is running on, so that probe succeeds even while every
-   * other host is refused — measured directly: youtube.com came back
-   * `Refused to connect` in 3ms while news.ycombinator.com answered 405 from the
-   * same page. A control that cannot fail proves nothing.
-   *
-   * So the control is a third-party host neither we nor the deck chose:
-   * Google's `generate_204`, an empty response built for exactly this question.
-   * If it cannot be reached — refused, blocked, or simply unavailable where the
-   * user is — probes are not trustworthy here and no card is judged by them.
-   */
-  let probesUsable = null;
-  async function probesAreUsable() {
-    if (probesUsable !== null) return probesUsable;
-    const r = await rawProbe("https://www.google.com/generate_204", 6000);
-    probesUsable = r.ok;
-    if (!probesUsable) {
-      console.warn(
-        "[Lianki] Reachability probes are unusable here (the control host failed too) —" +
-          " not skipping any cards. Grant the script cross-origin access to re-enable them.",
-      );
+  async function probeUrl(url, timeoutMs = 8000) {
+    try {
+      const r = await api(`/api/fsrs/probe?url=${encodeURIComponent(url)}`, {
+        timeout: timeoutMs,
+      });
+      return {
+        ok: r?.reachable !== false,
+        finalUrl: r?.finalUrl,
+        status: r?.status,
+        reason: r?.reason,
+      };
+    } catch {
+      // Offline, signed out, rate limited, endpoint not deployed yet — none of
+      // these say anything about the card's host, so none of them skip a card.
+      return { ok: true, reason: "unknown" };
     }
-    return probesUsable;
-  }
-
-  /**
-   * `{ok: true}` unless the url is genuinely unreachable AND we can show the
-   * probe itself works. Anything less certain resolves ok, because a wrong
-   * "dead" verdict silently drops a card the user wanted.
-   */
-  async function probeUrl(url, timeoutMs = 6000) {
-    const r = await rawProbe(url, timeoutMs);
-    if (r.ok) return r;
-    if (r.blocked) return { ok: true, blocked: true }; // refused, not dead
-    return (await probesAreUsable()) ? r : { ok: true, blocked: true };
   }
 
   /** Remember that a url did not answer, so /data can surface it later. */

@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.31
+// @version     2.23.32
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -15,7 +15,6 @@
 // @updateURL   https://lianki.com/lianki.meta.js
 // @connect     lianki.com
 // @connect     www.lianki.com
-// @connect     *
 // ==/UserScript==
 (() => {
   // node_modules/ts-fsrs/dist/index.mjs
@@ -1920,6 +1919,7 @@
           headers,
           data: opts.body ?? undefined,
           withCredentials: opts.credentials === "include",
+          ...(opts.timeout ? { timeout: opts.timeout } : {}),
           onload(resp) {
             const hdrs = {};
             for (const line of resp.responseHeaders.split(`\r
@@ -1950,6 +1950,9 @@
           },
           onerror() {
             reject(new Error("Network error"));
+          },
+          ontimeout() {
+            reject(new Error("Request timed out"));
           },
           onabort() {
             reject(new Error("Request aborted"));
@@ -2671,45 +2674,20 @@ ${state.errorDetails}`);
         renderDialog();
       }
     }
-    function rawProbe(url, timeoutMs = 6000) {
-      return new Promise((resolve) => {
-        try {
-          GM_xmlhttpRequest({
-            method: "HEAD",
-            url,
-            timeout: timeoutMs,
-            anonymous: true,
-            onload: (r) => resolve({ ok: true, finalUrl: r?.finalUrl || url, status: r?.status }),
-            onerror: (e) => resolve({ ok: false, blocked: isConnectRefusal(e) }),
-            ontimeout: () => resolve({ ok: false }),
-          });
-        } catch {
-          resolve({ ok: true });
-        }
-      });
-    }
-    function isConnectRefusal(e) {
-      const msg = String(e?.error ?? e?.message ?? e?.statusText ?? "").toLowerCase();
-      return msg.includes("@connect") || msg.includes("refused to connect");
-    }
-    let probesUsable = null;
-    async function probesAreUsable() {
-      if (probesUsable !== null) return probesUsable;
-      const r = await rawProbe("https://www.google.com/generate_204", 6000);
-      probesUsable = r.ok;
-      if (!probesUsable) {
-        console.warn(
-          "[Lianki] Reachability probes are unusable here (the control host failed too) —" +
-            " not skipping any cards. Grant the script cross-origin access to re-enable them.",
-        );
+    async function probeUrl(url, timeoutMs = 8000) {
+      try {
+        const r = await api(`/api/fsrs/probe?url=${encodeURIComponent(url)}`, {
+          timeout: timeoutMs,
+        });
+        return {
+          ok: r?.reachable !== false,
+          finalUrl: r?.finalUrl,
+          status: r?.status,
+          reason: r?.reason,
+        };
+      } catch {
+        return { ok: true, reason: "unknown" };
       }
-      return probesUsable;
-    }
-    async function probeUrl(url, timeoutMs = 6000) {
-      const r = await rawProbe(url, timeoutMs);
-      if (r.ok) return r;
-      if (r.blocked) return { ok: true, blocked: true };
-      return (await probesAreUsable()) ? r : { ok: true, blocked: true };
     }
     function markUnreachable(url) {
       try {

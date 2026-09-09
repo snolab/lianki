@@ -26,6 +26,7 @@ import {
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
 import { getHeatmapCacheTag } from "./lib/heatmap-cache";
 import { normalizeUrl } from "@/lib/normalizeUrl";
+import { probeReachability } from "@/lib/probe";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { restoreNoteFromExport } from "@/lib/yaml-export";
 import {
@@ -280,6 +281,15 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const email = requireEmail();
       const params = new URL(req.url, "http://localhost").searchParams;
       return JSONR(await queryNotes(email, parseQueryOptions(params)));
+    },
+    // Is a card's page still answering? Asked by the userscript before it sends
+    // you to the next card — see lib/probe.ts for why the server does this and
+    // not the browser.
+    "GET /api/fsrs/probe(?:/|$|\\?)": async (req) => {
+      requireEmail();
+      const url = new URL(req.url, "http://localhost").searchParams.get("url") ?? "";
+      if (!url) return JSONR({ error: "url is required" }, 400);
+      return JSONR(await probeReachability(url));
     },
     // Cloud-store counts for the three-store console.
     "GET /api/fsrs/stats(?:/|$|\\?)": async () => JSONR(await storeStats(requireEmail())),

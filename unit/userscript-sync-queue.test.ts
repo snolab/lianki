@@ -104,158 +104,84 @@ describe("the built script wires the rule in", () => {
 });
 
 describe("unreachable-page probe", () => {
-  /** End offset of the function whose declaration starts at `start`. */
-  function bodyEnd(start: number) {
+  /** Lift probeUrl out of the build and drive it with a fake api(). */
+  function makeProbe(api: (path: string, opts?: unknown) => Promise<unknown>) {
+    const start = BUILT.indexOf("async function probeUrl(");
+    if (start === -1) throw new Error("probeUrl not found in the built userscript");
     const open = BUILT.indexOf("{", start);
     let depth = 0;
+    let end = -1;
     for (let i = open; i < BUILT.length; i++) {
       if (BUILT[i] === "{") depth++;
-      else if (BUILT[i] === "}" && --depth === 0) return i + 1;
+      else if (BUILT[i] === "}" && --depth === 0) {
+        end = i + 1;
+        break;
+      }
     }
-    throw new Error("unterminated function in the built userscript");
-  }
-
-  function sliceFn(name: string, decl = `function ${name}(`) {
-    const start = BUILT.indexOf(decl);
-    if (start === -1) throw new Error(`${name} not found in the built userscript`);
-    return BUILT.slice(start, bodyEnd(start));
-  }
-
-  /** Lift the bare transport and drive it with a fake GM_xmlhttpRequest. */
-  function makeProbe(impl: (opts: Record<string, unknown>) => void) {
-    const src = `${sliceFn("isConnectRefusal")}\n${sliceFn("rawProbe")}\nreturn rawProbe;`;
-    return new Function("GM_xmlhttpRequest", src)(impl) as (
+    return new Function("api", `${BUILT.slice(start, end)}; return probeUrl;`)(api) as (
       u: string,
       t?: number,
-    ) => Promise<{ ok: boolean; finalUrl?: string }>;
+    ) => Promise<{ ok: boolean; finalUrl?: string; status?: number; reason?: string }>;
   }
 
-  /**
-   * Lift the guarded probe — transport plus the "is the probe itself working?"
-   * check — with a controllable current page.
-   */
-  function makeGuardedProbe(impl: (opts: Record<string, unknown>) => void) {
-    const src = [
-      sliceFn("isConnectRefusal"),
-      sliceFn("rawProbe"),
-      "let probesUsable = null;",
-      sliceFn("probesAreUsable", "async function probesAreUsable("),
-      sliceFn("probeUrl", "async function probeUrl("),
-      "return probeUrl;",
-    ].join("\n");
-    return new Function("GM_xmlhttpRequest", "console", src)(impl, { warn() {} }) as (
-      u: string,
-      t?: number,
-    ) => Promise<{ ok: boolean; blocked?: boolean }>;
-  }
+  it("asks the server, not the userscript manager", async () => {
+    // The bug this replaced: managers gate cross-origin requests on @connect and
+    // report a refusal exactly like a dead server, so an install granting only
+    // lianki.com called every host on earth dead — a live YouTube watch page
+    // included. @connect is frozen at install time, so no bundle fix could reach
+    // it. lianki.com is the one origin every install can already talk to.
+    let path = "";
+    const probe = makeProbe(async (p) => {
+      path = p;
+      return { reachable: true, status: 200 };
+    });
+    await probe("https://www.youtube.com/watch?v=x");
+    expect(path).toContain("/api/fsrs/probe?url=");
+    expect(path).toContain(encodeURIComponent("https://www.youtube.com/watch?v=x"));
+  });
 
   it("reports a dead host as unreachable", async () => {
-    // The retired site that left 75 cards stuck: connection refused, so no
-    // userscript ever runs there and the card cannot be reviewed away.
-    const probe = makeProbe((o) => (o.onerror as () => void)());
+    const probe = makeProbe(async () => ({ reachable: false, reason: "tls" }));
     expect((await probe("https://brainstorm.snomiao.dev/faq")).ok).toBe(false);
   });
 
-  it("treats a timeout as unreachable", async () => {
-    const probe = makeProbe((o) => (o.ontimeout as () => void)());
-    expect((await probe("https://slow.test/")).ok).toBe(false);
-  });
-
-  it("treats ANY http status as reachable", async () => {
-    // Status is not evidence of a dead page: plenty of good pages answer 403 to
-    // a scripted HEAD, sit behind bot walls, or 404 while rendering content.
-    // Skipping those would be worse than the bug being fixed.
+  it("treats any answer as reachable, whatever the status", async () => {
     for (const status of [200, 403, 404, 500]) {
-      const probe = makeProbe((o) =>
-        (o.onload as (r: unknown) => void)({ status, finalUrl: o.url }),
-      );
+      const probe = makeProbe(async () => ({ reachable: true, status, reason: "ok" }));
       expect((await probe("https://example.test/x")).ok).toBe(true);
     }
   });
 
   it("surfaces the post-redirect url", async () => {
-    const probe = makeProbe((o) =>
-      (o.onload as (r: unknown) => void)({ status: 200, finalUrl: "https://snomiao.com/ja" }),
-    );
+    const probe = makeProbe(async () => ({
+      reachable: true,
+      status: 200,
+      finalUrl: "https://snomiao.com/ja",
+    }));
     expect((await probe("https://snomiao.com/")).finalUrl).toBe("https://snomiao.com/ja");
   });
 
-  it("sends no cookies", async () => {
-    // The probe fires at third-party sites before you visit them; it has no
-    // business carrying your session, and some endpoints act on a bare HEAD.
-    let seen: Record<string, unknown> = {};
-    const probe = makeProbe((o) => {
-      seen = o;
-      (o.onload as (r: unknown) => void)({ status: 200 });
+  it("never skips a card when the probe itself could not run", async () => {
+    // Offline, signed out, rate limited, endpoint not deployed. None of these
+    // say anything about the card's host, and a wrong "dead" verdict silently
+    // drops a card the user wanted.
+    for (const err of [new Error("Network error"), new Error("Login required")]) {
+      const probe = makeProbe(async () => {
+        throw err;
+      });
+      expect((await probe("https://example.test/x")).ok).toBe(true);
+    }
+  });
+
+  it("bounds how long it can hold up navigation", async () => {
+    // GM_xmlhttpRequest has no AbortSignal, so the timeout goes through as an
+    // option; without it a hanging probe strands the user on the reviewed page.
+    let opts: { timeout?: number } = {};
+    const probe = makeProbe(async (_p, o) => {
+      opts = (o ?? {}) as { timeout?: number };
+      return { reachable: true };
     });
-    await probe("https://example.test/x");
-    expect(seen.anonymous).toBe(true);
-    expect(seen.method).toBe("HEAD");
-  });
-
-  it("does not call a page dead when the manager refuses the request", async () => {
-    // The regression, verified in a real browser: with `@connect lianki.com`
-    // only, Violentmonkey answered a probe of youtube.com in 3ms with
-    // `Refused to connect ... not a part of the @connect list`. That reaches
-    // onerror exactly like a dead server, so a live watch page was skipped.
-    const probe = makeGuardedProbe((o) =>
-      (o.onerror as (e: unknown) => void)({
-        error:
-          'Refused to connect to "https://www.youtube.com/": This domain is not a part of the @connect list',
-      }),
-    );
-    const r = await probe("https://www.youtube.com/watch?v=x");
-    expect(r.ok).toBe(true);
-    expect(r.blocked).toBe(true);
-  });
-
-  it("does not use the current page as the control, which can never fail", async () => {
-    // Measured in the browser: from news.ycombinator.com, a probe of the page's
-    // own origin returned 405 — the manager always allows the origin the script
-    // runs on — while every third-party host was refused. Controlling against
-    // it would have proved the probe worked when it did not.
-    const seen: string[] = [];
-    const probe = makeGuardedProbe((o) => {
-      seen.push(String(o.url));
-      (o.onerror as (e: unknown) => void)({});
-    });
-    await probe("https://dead.test/page");
-    expect(seen).toHaveLength(2);
-    expect(seen[1]).not.toContain("dead.test");
-    expect(new URL(seen[1]).host).not.toBe("dead.test");
-  });
-
-  it("suppresses the verdict when even the control host cannot be reached", async () => {
-    let calls = 0;
-    const probe = makeGuardedProbe((o) => {
-      calls++;
-      (o.onerror as (e: unknown) => void)({});
-    });
-    expect((await probe("https://a.test/")).ok).toBe(true);
-    expect(calls).toBe(2); // the url, then the control
-
-    // Cached: one control probe per session, not one per card.
-    expect((await probe("https://b.test/")).ok).toBe(true);
-    expect(calls).toBe(3);
-  });
-
-  it("still reports a dead host when the control proves probes work", async () => {
-    const probe = makeGuardedProbe((o) =>
-      String(o.url).includes("brainstorm")
-        ? (o.onerror as (e: unknown) => void)({})
-        : (o.onload as (r: unknown) => void)({ status: 204, finalUrl: o.url }),
-    );
-    expect((await probe("https://brainstorm.snomiao.dev/faq")).ok).toBe(false);
-  });
-
-  it("grants itself cross-origin access, or every probe is refused", async () => {
-    expect(BUILT).toMatch(/^\/\/ @connect\s+\*$/m);
-  });
-
-  it("never blocks navigation when the probe itself throws", async () => {
-    const probe = makeProbe(() => {
-      throw new Error("GM_xmlhttpRequest exploded");
-    });
-    expect((await probe("https://example.test/x")).ok).toBe(true);
+    await probe("https://example.test/x", 1234);
+    expect(opts.timeout).toBe(1234);
   });
 });
