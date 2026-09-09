@@ -164,6 +164,53 @@ describe("soft delete", () => {
   });
 });
 
+describe("capacity", () => {
+  it("stores well past the old 2000-card cap without evicting", () => {
+    // The cap used to delete the furthest-due card to make room — silently, and
+    // possibly a dirty one carrying un-synced reviews. Only survivable while the
+    // server held a full copy.
+    const { cs } = makeStorage();
+    for (let i = 0; i < 2100; i++) {
+      cs.setCard(
+        `https://example.test/${i}`,
+        card(past),
+        { timestamp: i, counter: 0, deviceId: "s" },
+        false,
+      );
+    }
+    expect(cs.getAllCards()).toHaveLength(2100);
+    // The first card written is the one the old LDF eviction would have taken.
+    expect(cs.getCard("https://example.test/0")).not.toBeNull();
+  });
+
+  it("reports a failed write instead of dropping someone else's card", () => {
+    const { cs, store } = makeStorage();
+    cs.setCard(URL_A, card(past), { timestamp: 1, counter: 0, deviceId: "s" }, false);
+    const before = cs.getAllCards().length;
+
+    // Simulate a quota rejection on the next card write.
+    const realSet = store.set.bind(store);
+    let failing = true;
+    store.set = (k: string, v: string) => {
+      if (failing && k.startsWith("lk:c:")) throw new Error("QuotaExceededError");
+      return realSet(k, v);
+    };
+
+    expect(
+      cs.setCard(
+        "https://example.test/new",
+        card(past),
+        { timestamp: 2, counter: 0, deviceId: "s" },
+        false,
+      ),
+    ).toBe(false);
+    failing = false;
+    // The existing card survived, and the index did not gain a phantom entry.
+    expect(cs.getAllCards()).toHaveLength(before);
+    expect(cs.getCard(URL_A)).not.toBeNull();
+  });
+});
+
 describe("retention", () => {
   it("keeps a fresh tombstone and drops one past the window", () => {
     const clock = { now: 1_000_000 };

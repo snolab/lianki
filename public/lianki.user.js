@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.23
+// @version     2.23.24
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1469,7 +1469,6 @@
   }
   var CARD_PREFIX = "lk:c:";
   var INDEX_KEY = "lk:card-index";
-  var MAX_CARDS = 2000;
   function hashUrl(url) {
     let h = 5381;
     for (let i = 0; i < url.length; i++) h = (((h << 5) + h) ^ url.charCodeAt(i)) >>> 0;
@@ -1493,24 +1492,19 @@
     setCard(url, note, hlc, dirty = false) {
       const hash = hashUrl(url);
       const key = CARD_PREFIX + hash;
-      let idx = this._index();
+      const idx = this._index();
       const pos = idx.findIndex((e) => e.url === url);
       const entry = { url, due: note.card.due, hash };
-      if (pos >= 0) {
-        idx[pos] = entry;
-      } else {
-        if (idx.length >= MAX_CARDS) {
-          const maxI = idx.reduce(
-            (mi, e, i, a) => (new Date(e.due) > new Date(a[mi].due) ? i : mi),
-            0,
-          );
-          GM_deleteValue(CARD_PREFIX + idx[maxI].hash);
-          idx.splice(maxI, 1);
-        }
-        idx.push(entry);
+      try {
+        GM_setValue(key, JSON.stringify({ _url: url, note, hlc, dirty }));
+      } catch (err) {
+        console.error("[Lianki] could not store card locally:", url, err);
+        return false;
       }
+      if (pos >= 0) idx[pos] = entry;
+      else idx.push(entry);
       this._saveIndex(idx);
-      GM_setValue(key, JSON.stringify({ _url: url, note, hlc, dirty }));
+      return true;
     }
     deleteCard(url) {
       const hash = hashUrl(url);
