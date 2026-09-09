@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.30
+// @version     2.23.31
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1644,7 +1644,7 @@ function main() {
           // authoritative check stays checkRedirect() after landing, which sees
           // where the browser actually ended up.
           onload: (r) => resolve({ ok: true, finalUrl: r?.finalUrl || url, status: r?.status }),
-          onerror: () => resolve({ ok: false }),
+          onerror: (e) => resolve({ ok: false, blocked: isConnectRefusal(e) }),
           ontimeout: () => resolve({ ok: false }),
         });
       } catch {
@@ -1654,31 +1654,45 @@ function main() {
   }
 
   /**
-   * Can this manager reach third-party hosts at all?
+   * Did the userscript manager refuse this request outright?
    *
-   * A failed probe has two very different causes, and they are indistinguishable
-   * from `onerror` alone: the site is down, or the userscript manager refused
-   * the request. Tampermonkey gates GM_xmlhttpRequest on `@connect`, and a
-   * denied host errors exactly like a dead one. When the script shipped
-   * `@connect lianki.com` only, EVERY probe failed — so a live YouTube page was
-   * reported unreachable and skipped.
+   * A refusal is not a network failure, but `onerror` reports both. Violentmonkey
+   * says `Refused to connect to "...": This domain is not a part of the @connect
+   * list`; other managers word it differently, so match loosely and treat a
+   * miss as inconclusive rather than trusting the wording.
+   */
+  function isConnectRefusal(e) {
+    const msg = String(e?.error ?? e?.message ?? e?.statusText ?? "").toLowerCase();
+    return msg.includes("@connect") || msg.includes("refused to connect");
+  }
+
+  /**
+   * Can this manager reach an arbitrary third-party host at all?
    *
-   * The control is the page we are standing on: we loaded it, so it answers. If
-   * a probe to it fails, the failure belongs to the probe, not the network, and
-   * no card should be judged by it.
+   * A failed probe has two causes that `onerror` cannot tell apart: the site is
+   * down, or the manager refused the request. When the script shipped
+   * `@connect lianki.com` only, EVERY probe was refused — so a live YouTube page
+   * was reported unreachable and skipped.
    *
-   * Skipped when the current page is Lianki itself — `@connect` lists it
-   * explicitly, so it would answer even while every other host is blocked, and
-   * a control that cannot fail proves nothing.
+   * The control CANNOT be the current page. Managers always allow requests to
+   * the origin the script is running on, so that probe succeeds even while every
+   * other host is refused — measured directly: youtube.com came back
+   * `Refused to connect` in 3ms while news.ycombinator.com answered 405 from the
+   * same page. A control that cannot fail proves nothing.
+   *
+   * So the control is a third-party host neither we nor the deck chose:
+   * Google's `generate_204`, an empty response built for exactly this question.
+   * If it cannot be reached — refused, blocked, or simply unavailable where the
+   * user is — probes are not trustworthy here and no card is judged by them.
    */
   let probesUsable = null;
   async function probesAreUsable() {
     if (probesUsable !== null) return probesUsable;
-    if (/(^|\.)lianki\.com$/.test(location.hostname)) return true; // inconclusive
-    probesUsable = (await rawProbe(location.origin + "/", 6000)).ok;
+    const r = await rawProbe("https://www.google.com/generate_204", 6000);
+    probesUsable = r.ok;
     if (!probesUsable) {
       console.warn(
-        "[Lianki] Reachability probes are blocked (the current page failed its own probe) —" +
+        "[Lianki] Reachability probes are unusable here (the control host failed too) —" +
           " not skipping any cards. Grant the script cross-origin access to re-enable them.",
       );
     }
@@ -1686,13 +1700,14 @@ function main() {
   }
 
   /**
-   * `{ok: true}` unless the url is genuinely unreachable AND we can prove the
+   * `{ok: true}` unless the url is genuinely unreachable AND we can show the
    * probe itself works. Anything less certain resolves ok, because a wrong
    * "dead" verdict silently drops a card the user wanted.
    */
   async function probeUrl(url, timeoutMs = 6000) {
     const r = await rawProbe(url, timeoutMs);
     if (r.ok) return r;
+    if (r.blocked) return { ok: true, blocked: true }; // refused, not dead
     return (await probesAreUsable()) ? r : { ok: true, blocked: true };
   }
 

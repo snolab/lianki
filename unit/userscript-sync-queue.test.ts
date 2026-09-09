@@ -123,7 +123,8 @@ describe("unreachable-page probe", () => {
 
   /** Lift the bare transport and drive it with a fake GM_xmlhttpRequest. */
   function makeProbe(impl: (opts: Record<string, unknown>) => void) {
-    return new Function("GM_xmlhttpRequest", `${sliceFn("rawProbe")}; return rawProbe;`)(impl) as (
+    const src = `${sliceFn("isConnectRefusal")}\n${sliceFn("rawProbe")}\nreturn rawProbe;`;
+    return new Function("GM_xmlhttpRequest", src)(impl) as (
       u: string,
       t?: number,
     ) => Promise<{ ok: boolean; finalUrl?: string }>;
@@ -133,19 +134,19 @@ describe("unreachable-page probe", () => {
    * Lift the guarded probe — transport plus the "is the probe itself working?"
    * check — with a controllable current page.
    */
-  function makeGuardedProbe(hostname: string, impl: (opts: Record<string, unknown>) => void) {
+  function makeGuardedProbe(impl: (opts: Record<string, unknown>) => void) {
     const src = [
+      sliceFn("isConnectRefusal"),
       sliceFn("rawProbe"),
       "let probesUsable = null;",
       sliceFn("probesAreUsable", "async function probesAreUsable("),
       sliceFn("probeUrl", "async function probeUrl("),
       "return probeUrl;",
     ].join("\n");
-    return new Function("GM_xmlhttpRequest", "location", "console", src)(
-      impl,
-      { hostname, origin: `https://${hostname}` },
-      { warn() {} },
-    ) as (u: string, t?: number) => Promise<{ ok: boolean; blocked?: boolean }>;
+    return new Function("GM_xmlhttpRequest", "console", src)(impl, { warn() {} }) as (
+      u: string,
+      t?: number,
+    ) => Promise<{ ok: boolean; blocked?: boolean }>;
   }
 
   it("reports a dead host as unreachable", async () => {
@@ -192,51 +193,62 @@ describe("unreachable-page probe", () => {
     expect(seen.method).toBe("HEAD");
   });
 
-  it("does not call a page dead when the probe is blocked outright", async () => {
-    // The regression: the script shipped `@connect lianki.com` only, so every
-    // request to a third-party host was refused by the manager and errored
-    // exactly like a dead site. A live YouTube page was reported unreachable
-    // and skipped. The control is the page we are standing on — it answered
-    // when the browser loaded it, so if it fails the probe, the probe is broken.
-    let calls = 0;
-    const probe = makeGuardedProbe("news.ycombinator.com", (o) => {
-      calls++;
-      (o.onerror as () => void)();
-    });
+  it("does not call a page dead when the manager refuses the request", async () => {
+    // The regression, verified in a real browser: with `@connect lianki.com`
+    // only, Violentmonkey answered a probe of youtube.com in 3ms with
+    // `Refused to connect ... not a part of the @connect list`. That reaches
+    // onerror exactly like a dead server, so a live watch page was skipped.
+    const probe = makeGuardedProbe((o) =>
+      (o.onerror as (e: unknown) => void)({
+        error:
+          'Refused to connect to "https://www.youtube.com/": This domain is not a part of the @connect list',
+      }),
+    );
     const r = await probe("https://www.youtube.com/watch?v=x");
     expect(r.ok).toBe(true);
     expect(r.blocked).toBe(true);
+  });
+
+  it("does not use the current page as the control, which can never fail", async () => {
+    // Measured in the browser: from news.ycombinator.com, a probe of the page's
+    // own origin returned 405 — the manager always allows the origin the script
+    // runs on — while every third-party host was refused. Controlling against
+    // it would have proved the probe worked when it did not.
+    const seen: string[] = [];
+    const probe = makeGuardedProbe((o) => {
+      seen.push(String(o.url));
+      (o.onerror as (e: unknown) => void)({});
+    });
+    await probe("https://dead.test/page");
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).not.toContain("dead.test");
+    expect(new URL(seen[1]).host).not.toBe("dead.test");
+  });
+
+  it("suppresses the verdict when even the control host cannot be reached", async () => {
+    let calls = 0;
+    const probe = makeGuardedProbe((o) => {
+      calls++;
+      (o.onerror as (e: unknown) => void)({});
+    });
+    expect((await probe("https://a.test/")).ok).toBe(true);
     expect(calls).toBe(2); // the url, then the control
 
-    // The verdict is cached: one control probe per session, not one per card.
-    await probe("https://www.youtube.com/watch?v=y");
+    // Cached: one control probe per session, not one per card.
+    expect((await probe("https://b.test/")).ok).toBe(true);
     expect(calls).toBe(3);
   });
 
-  it("still reports a dead host when probes demonstrably work", async () => {
-    const probe = makeGuardedProbe("news.ycombinator.com", (o) =>
+  it("still reports a dead host when the control proves probes work", async () => {
+    const probe = makeGuardedProbe((o) =>
       String(o.url).includes("brainstorm")
-        ? (o.onerror as () => void)()
-        : (o.onload as (r: unknown) => void)({ status: 200, finalUrl: o.url }),
+        ? (o.onerror as (e: unknown) => void)({})
+        : (o.onload as (r: unknown) => void)({ status: 204, finalUrl: o.url }),
     );
     expect((await probe("https://brainstorm.snomiao.dev/faq")).ok).toBe(false);
   });
 
-  it("skips the control when standing on Lianki, where it cannot fail", async () => {
-    // `@connect` names lianki.com explicitly, so it answers even while every
-    // other host is blocked — a control that always passes proves nothing.
-    let calls = 0;
-    const probe = makeGuardedProbe("lianki.com", (o) => {
-      calls++;
-      (o.onerror as () => void)();
-    });
-    expect((await probe("https://dead.test/")).ok).toBe(false);
-    expect(calls).toBe(1);
-  });
-
-  it("grants itself cross-origin access, or every probe fails", async () => {
-    // The metadata block is the whole fix: without a wildcard @connect the
-    // manager refuses the probes and the guard above has to suppress them all.
+  it("grants itself cross-origin access, or every probe is refused", async () => {
     expect(BUILT).toMatch(/^\/\/ @connect\s+\*$/m);
   });
 
