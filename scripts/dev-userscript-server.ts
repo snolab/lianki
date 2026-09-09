@@ -28,7 +28,11 @@ const WATCH_DIR = resolve(ROOT, "src");
 const argv = Bun.argv.slice(2);
 const flag = (name: string, fallback = "") => {
   const i = argv.indexOf(`--${name}`);
-  return i === -1 || !argv[i + 1] ? fallback : argv[i + 1];
+  if (i === -1) return fallback;
+  const next = argv[i + 1];
+  // A following `--other` is the NEXT flag, not this one's value. Without this,
+  // `--a --b foo` silently reads "--b" as the value of `--a`.
+  return !next || next.startsWith("--") ? fallback : next;
 };
 const has = (name: string) => argv.includes(`--${name}`);
 
