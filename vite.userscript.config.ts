@@ -1,5 +1,5 @@
 import { fileURLToPath } from "url";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import monkey from "vite-plugin-monkey";
 import { parseUserscriptMeta, withoutAutoUpdate } from "./scripts/userscript-meta";
 
@@ -40,6 +40,42 @@ const publicHost = publicOrigin ? new URL(publicOrigin).host : undefined;
 
 const corePath = (f: string) => fileURLToPath(new URL(`./packages/core/src/${f}`, import.meta.url));
 
+/**
+ * vite-plugin-monkey computes its entry URL from the install request's `?origin`
+ * query param, else falls back to server.host — which is 0.0.0.0 here, so it
+ * would mint http://127.0.0.1:5173/… that never reaches this box through the
+ * tunnel. It never reads vite's server.origin, so derive the real origin from
+ * the *incoming request* instead: cloudflared forwards the public Host and sets
+ * X-Forwarded-Proto: https, so the shim gets https://dev.lianki.com with no
+ * `?origin` on the URL. Local (no-tunnel) requests fall back to their own Host.
+ */
+const autoOrigin = (fallback?: string): Plugin => ({
+  name: "lianki:auto-origin",
+  apply: "serve",
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      // Through the tunnel, Cloudflare caches .js by default (max-age=14400) —
+      // a stale install shim/entry would hand back yesterday's code. no-store on
+      // every response, matching the loader server.
+      res.setHeader("cache-control", "no-store, max-age=0");
+      const u = new URL(req.url ?? "/", "http://localhost");
+      if (u.pathname !== "/__vite-plugin-monkey.install.user.js" || u.searchParams.has("origin"))
+        return next();
+      const first = (h: string | string[] | undefined) =>
+        (Array.isArray(h) ? h[0] : h)?.split(",")[0].trim();
+      const proto =
+        first(req.headers["x-forwarded-proto"]) ?? (server.config.server.https ? "https" : "http");
+      const host = first(req.headers["x-forwarded-host"]) ?? req.headers.host;
+      const origin = fallback ?? (host ? `${proto}://${host}` : undefined);
+      if (origin) {
+        u.searchParams.set("origin", origin);
+        req.url = `${u.pathname}${u.search}`;
+      }
+      next();
+    });
+  },
+});
+
 export default defineConfig({
   // Rollup does not read tsconfig `paths` the way bun's bundler does, so the
   // workspace aliases have to be restated. Both forms are needed: the barrel,
@@ -51,6 +87,7 @@ export default defineConfig({
     ],
   },
   plugins: [
+    autoOrigin(publicOrigin),
     monkey({
       entry: ENTRY,
       userscript: withoutAutoUpdate(parseUserscriptMeta(ENTRY)),

@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.1
+// @version     2.24.2
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -2009,7 +2009,6 @@
   }
   function main() {
     window.LIANKI_USERSCRIPT_INSTALLED = true;
-    const API_HOSTS = ["www.lianki.com", "beta.lianki.com"];
     const ORIGIN = (() => {
       try {
         const u = new URL(GM_info?.script?.downloadURL || "");
@@ -2180,13 +2179,23 @@
         if (!r.ok) {
           const status = r.status;
           return r
-            .json()
-            .catch(() => null)
-            .then((body) => {
-              const detail = body?.errorId ? `Error ID: ${body.errorId}` : body?.error;
+            .text()
+            .catch(() => "")
+            .then((raw) => {
+              let body = null;
+              try {
+                body = JSON.parse(raw);
+              } catch {}
+              return { body, raw };
+            })
+            .then(({ body, raw }) => {
+              const digest = raw?.match(/"digest"\s*:\s*"([^"]+)"/)?.[1];
+              const detail = body?.errorId
+                ? `Error ID: ${body.errorId}`
+                : (body?.error ?? (digest && `digest: ${digest}`));
               const e = new Error(`HTTP ${status} — ${what}${detail ? ` — ${detail}` : ""}`);
               e.status = status;
-              if (detail) e.details = detail;
+              e.details = detail || raw?.slice(0, 500) || undefined;
               throw e;
             });
         }

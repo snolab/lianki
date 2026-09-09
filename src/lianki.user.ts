@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.1
+// @version     2.24.2
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -788,10 +788,25 @@ function main() {
       }
       if (!r.ok) {
         const status = r.status;
+        // Read as TEXT and parse optimistically, rather than .json().catch().
+        // A handled failure returns JSON; an UNHANDLED one returns Next's HTML
+        // error page, where the only identifying token is a `digest`. Going
+        // straight to .json() discarded that page wholesale, so an unhandled 500
+        // — the kind you most need to trace — arrived with no detail at all,
+        // which is exactly how this one was first reported.
         return r
-          .json()
-          .catch(() => null)
-          .then((body) => {
+          .text()
+          .catch(() => "")
+          .then((raw) => {
+            let body = null;
+            try {
+              body = JSON.parse(raw);
+            } catch {
+              // not JSON — fall through to digest extraction below
+            }
+            return { body, raw };
+          })
+          .then(({ body, raw }) => {
             // Fold the server's own explanation into the message, not just onto
             // a side property. Production Next hides the real error behind a
             // digest/errorId, and that id is the ONLY way to find it in the
@@ -799,10 +814,18 @@ function main() {
             // the error reporter never printed. A 500 was therefore reported as
             // a bare status with the one piece of correlating information
             // silently dropped.
-            const detail = body?.errorId ? `Error ID: ${body.errorId}` : body?.error;
+            // Next stamps a digest into its production error page; that digest
+            // is what matches the entry in the runtime logs.
+            const digest = raw?.match(/"digest"\s*:\s*"([^"]+)"/)?.[1];
+            const detail = body?.errorId
+              ? `Error ID: ${body.errorId}`
+              : (body?.error ?? (digest && `digest: ${digest}`));
             const e = new Error(`HTTP ${status} — ${what}${detail ? ` — ${detail}` : ""}`);
             e.status = status;
-            if (detail) e.details = detail;
+            // Keep a slice of the raw body when nothing structured was found, so
+            // an unrecognised failure shape still carries something to look at
+            // instead of vanishing.
+            e.details = detail || raw?.slice(0, 500) || undefined;
             throw e;
           });
       }

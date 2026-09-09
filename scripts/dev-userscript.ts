@@ -175,6 +175,9 @@ const origin = TUNNEL ? await startTunnel() : `http://localhost:${PORT}`;
 if (MONKEY) startVite(TUNNEL ? origin : undefined);
 else await startLoaderServer(PORT, origin);
 
+// vite-plugin-monkey bakes the *entry* URL into the install shim at request
+// time. The origin is derived server-side from the request (see autoOrigin in
+// vite.userscript.config.ts), so the install URL stays clean.
 const installUrl = MONKEY ? `${origin}${MONKEY_INSTALL_PATH}` : `${origin}/loader.user.js`;
 const mode = MONKEY ? "vite-plugin-monkey (HMR)" : "sandbox loader (CSP-proof)";
 
