@@ -84,6 +84,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/sql.js": "^1.4.11",
     "@typescript/native-preview": "^7.0.0-dev.20260308.1",
+    "dotenv": "^16.6.1",
     "husky": "^9.1.7",
     "idb-keyval": "^6.2.2",
     "lint-staged": "^16.4.0",
@@ -97,6 +98,7 @@
     "storybook": "^10.3.5",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
+    "vite": "^8.0.0",
     "vite-plugin-monkey": "^8.1.0",
     "wrangler": "^4.92.0"
   },

@@ -64,3 +64,6 @@ test-results/
 
 # Claude Code local settings (per-machine)
 .claude/settings.local.json
+
+# Agent worktrees (git worktree add .wt-<name>)
+.wt-*/
