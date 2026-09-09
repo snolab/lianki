@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.29
+// @version     2.23.30
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -15,6 +15,7 @@
 // @updateURL   https://lianki.com/lianki.meta.js
 // @connect     lianki.com
 // @connect     www.lianki.com
+// @connect     *
 // ==/UserScript==
 (() => {
   // node_modules/ts-fsrs/dist/index.mjs
@@ -2670,7 +2671,7 @@ ${state.errorDetails}`);
         renderDialog();
       }
     }
-    function probeUrl(url, timeoutMs = 6000) {
+    function rawProbe(url, timeoutMs = 6000) {
       return new Promise((resolve) => {
         try {
           GM_xmlhttpRequest({
@@ -2686,6 +2687,24 @@ ${state.errorDetails}`);
           resolve({ ok: true });
         }
       });
+    }
+    let probesUsable = null;
+    async function probesAreUsable() {
+      if (probesUsable !== null) return probesUsable;
+      if (/(^|\.)lianki\.com$/.test(location.hostname)) return true;
+      probesUsable = (await rawProbe(location.origin + "/", 6000)).ok;
+      if (!probesUsable) {
+        console.warn(
+          "[Lianki] Reachability probes are blocked (the current page failed its own probe) —" +
+            " not skipping any cards. Grant the script cross-origin access to re-enable them.",
+        );
+      }
+      return probesUsable;
+    }
+    async function probeUrl(url, timeoutMs = 6000) {
+      const r = await rawProbe(url, timeoutMs);
+      if (r.ok) return r;
+      return (await probesAreUsable()) ? r : { ok: true, blocked: true };
     }
     function markUnreachable(url) {
       try {

@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.29
+// @version     2.23.30
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -15,6 +15,7 @@
 // @updateURL   https://lianki.com/lianki.meta.js
 // @connect     lianki.com
 // @connect     www.lianki.com
+// @connect     *
 // ==/UserScript==
 
 import { fsrs, generatorParameters, Rating } from "ts-fsrs";
@@ -1620,7 +1621,7 @@ function main() {
    * a HEAD from a script, sit behind bot walls, or return 404 while rendering
    * content. Skipping those would be worse than the problem being solved.
    */
-  function probeUrl(url, timeoutMs = 6000) {
+  function rawProbe(url, timeoutMs = 6000) {
     return new Promise((resolve) => {
       try {
         GM_xmlhttpRequest({
@@ -1650,6 +1651,49 @@ function main() {
         resolve({ ok: true }); // never block navigation because the probe broke
       }
     });
+  }
+
+  /**
+   * Can this manager reach third-party hosts at all?
+   *
+   * A failed probe has two very different causes, and they are indistinguishable
+   * from `onerror` alone: the site is down, or the userscript manager refused
+   * the request. Tampermonkey gates GM_xmlhttpRequest on `@connect`, and a
+   * denied host errors exactly like a dead one. When the script shipped
+   * `@connect lianki.com` only, EVERY probe failed — so a live YouTube page was
+   * reported unreachable and skipped.
+   *
+   * The control is the page we are standing on: we loaded it, so it answers. If
+   * a probe to it fails, the failure belongs to the probe, not the network, and
+   * no card should be judged by it.
+   *
+   * Skipped when the current page is Lianki itself — `@connect` lists it
+   * explicitly, so it would answer even while every other host is blocked, and
+   * a control that cannot fail proves nothing.
+   */
+  let probesUsable = null;
+  async function probesAreUsable() {
+    if (probesUsable !== null) return probesUsable;
+    if (/(^|\.)lianki\.com$/.test(location.hostname)) return true; // inconclusive
+    probesUsable = (await rawProbe(location.origin + "/", 6000)).ok;
+    if (!probesUsable) {
+      console.warn(
+        "[Lianki] Reachability probes are blocked (the current page failed its own probe) —" +
+          " not skipping any cards. Grant the script cross-origin access to re-enable them.",
+      );
+    }
+    return probesUsable;
+  }
+
+  /**
+   * `{ok: true}` unless the url is genuinely unreachable AND we can prove the
+   * probe itself works. Anything less certain resolves ok, because a wrong
+   * "dead" verdict silently drops a card the user wanted.
+   */
+  async function probeUrl(url, timeoutMs = 6000) {
+    const r = await rawProbe(url, timeoutMs);
+    if (r.ok) return r;
+    return (await probesAreUsable()) ? r : { ok: true, blocked: true };
   }
 
   /** Remember that a url did not answer, so /data can surface it later. */
