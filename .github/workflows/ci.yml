@@ -30,10 +30,17 @@ jobs:
           fetch-depth: 0 # gitleaks scans history, not just the tip
       # gitleaks-action@v2 requires a paid licence for organisation accounts, so
       # run the upstream binary directly — same tool, no licence gate.
+      # Download to a FILE, then extract. Piping curl into tar reports a GitHub
+      # outage as "tar: Error is not recoverable", which hides the cause: the
+      # run that prompted this said exactly that, and the real error was
+      # `curl: (22) ... 500` from the release CDN. Retries because one hiccup
+      # fetching a third-party binary should not turn main red.
       - name: Secret scan (gitleaks)
         run: |
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz gitleaks
+          curl -sSfL --retry 5 --retry-delay 3 --retry-all-errors \
+            -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf gitleaks.tar.gz gitleaks
           ./gitleaks git . --no-banner --redact
         env:
           GITLEAKS_VERSION: 8.28.0
