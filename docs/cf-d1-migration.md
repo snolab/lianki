@@ -157,7 +157,7 @@ Best done after cutover is stable (does not block the D1 migration):
 
 The D1 `lianki` database (SNOLAB account) already has the schema applied and a
 first data load (6 users, 1609 notes, 3 api tokens). To refresh it before
-cutover, re-run — `INSERT OR REPLACE` makes this idempotent:
+cutover, re-run — `--replace` makes D1 match Mongo exactly (plain re-runs are additive only):
 
 ```bash
 # dry run — prints row counts, writes nothing
@@ -166,8 +166,11 @@ bun --env-file=.env.local scripts/migrate-mongo-to-d1.ts --dry-run
 # bring the schema fully up to date FIRST — see the warning below
 wrangler d1 migrations apply lianki --remote
 
-# regenerate the SQL (real user data — kept out of git under tmp/) and load it
-bun --env-file=.env.local scripts/migrate-mongo-to-d1.ts --out=tmp/migration-data.sql
+# regenerate the SQL (real user data — kept out of git under tmp/) and load it.
+# --replace is REQUIRED before a cutover: without it the load is additive and
+# rows deleted in Mongo stay in D1, returning as live cards. Measured once: 26
+# such rows, 4 of them cards the user had deleted repeatedly.
+bun --env-file=.env.local scripts/migrate-mongo-to-d1.ts --replace --out=tmp/migration-data.sql
 wrangler d1 execute lianki --remote --file=tmp/migration-data.sql --yes
 ```
 
@@ -235,7 +238,7 @@ Keep the Vercel deployment live but idle for a few days as the instant rollback.
 | 0 — Foundation | DONE (committed, tested) |
 | 1 — Provision CF | DONE — D1 `lianki` + R2 `lianki-blobs` created, schema applied |
 | 2 — Code wiring | DONE — auth, FSRS handler, all data routes (incl. roadmap progress), R2. Only the IndexedDB-mirror cleanup (2d) and the 2e Workers fixups remain. |
-| 3 — Data migration | DONE — first load done (6 users, 1609 notes); re-runnable |
+| 3 — Data migration | DONE — refreshed 2026-09-09 with `--replace`; D1 1958 notes == Mongo 1958, verified url-by-url |
 | 4 — Preview deploy + QA | pending — needs Worker secrets, then deploy |
 | 5 — DNS cutover | pending |
 
