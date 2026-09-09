@@ -104,23 +104,48 @@ describe("the built script wires the rule in", () => {
 });
 
 describe("unreachable-page probe", () => {
-  /** Lift probeUrl out of the build and drive it with a fake GM_xmlhttpRequest. */
-  function makeProbe(impl: (opts: Record<string, unknown>) => void) {
-    const start = BUILT.indexOf("function probeUrl(");
-    if (start === -1) throw new Error("probeUrl not found in the built userscript");
+  /** End offset of the function whose declaration starts at `start`. */
+  function bodyEnd(start: number) {
     const open = BUILT.indexOf("{", start);
     let depth = 0;
-    let end = -1;
     for (let i = open; i < BUILT.length; i++) {
       if (BUILT[i] === "{") depth++;
-      else if (BUILT[i] === "}" && --depth === 0) {
-        end = i + 1;
-        break;
-      }
+      else if (BUILT[i] === "}" && --depth === 0) return i + 1;
     }
-    return new Function("GM_xmlhttpRequest", `${BUILT.slice(start, end)}; return probeUrl;`)(
+    throw new Error("unterminated function in the built userscript");
+  }
+
+  function sliceFn(name: string, decl = `function ${name}(`) {
+    const start = BUILT.indexOf(decl);
+    if (start === -1) throw new Error(`${name} not found in the built userscript`);
+    return BUILT.slice(start, bodyEnd(start));
+  }
+
+  /** Lift the bare transport and drive it with a fake GM_xmlhttpRequest. */
+  function makeProbe(impl: (opts: Record<string, unknown>) => void) {
+    return new Function("GM_xmlhttpRequest", `${sliceFn("rawProbe")}; return rawProbe;`)(impl) as (
+      u: string,
+      t?: number,
+    ) => Promise<{ ok: boolean; finalUrl?: string }>;
+  }
+
+  /**
+   * Lift the guarded probe — transport plus the "is the probe itself working?"
+   * check — with a controllable current page.
+   */
+  function makeGuardedProbe(hostname: string, impl: (opts: Record<string, unknown>) => void) {
+    const src = [
+      sliceFn("rawProbe"),
+      "let probesUsable = null;",
+      sliceFn("probesAreUsable", "async function probesAreUsable("),
+      sliceFn("probeUrl", "async function probeUrl("),
+      "return probeUrl;",
+    ].join("\n");
+    return new Function("GM_xmlhttpRequest", "location", "console", src)(
       impl,
-    ) as (u: string, t?: number) => Promise<{ ok: boolean; finalUrl?: string }>;
+      { hostname, origin: `https://${hostname}` },
+      { warn() {} },
+    ) as (u: string, t?: number) => Promise<{ ok: boolean; blocked?: boolean }>;
   }
 
   it("reports a dead host as unreachable", async () => {
@@ -165,6 +190,54 @@ describe("unreachable-page probe", () => {
     await probe("https://example.test/x");
     expect(seen.anonymous).toBe(true);
     expect(seen.method).toBe("HEAD");
+  });
+
+  it("does not call a page dead when the probe is blocked outright", async () => {
+    // The regression: the script shipped `@connect lianki.com` only, so every
+    // request to a third-party host was refused by the manager and errored
+    // exactly like a dead site. A live YouTube page was reported unreachable
+    // and skipped. The control is the page we are standing on — it answered
+    // when the browser loaded it, so if it fails the probe, the probe is broken.
+    let calls = 0;
+    const probe = makeGuardedProbe("news.ycombinator.com", (o) => {
+      calls++;
+      (o.onerror as () => void)();
+    });
+    const r = await probe("https://www.youtube.com/watch?v=x");
+    expect(r.ok).toBe(true);
+    expect(r.blocked).toBe(true);
+    expect(calls).toBe(2); // the url, then the control
+
+    // The verdict is cached: one control probe per session, not one per card.
+    await probe("https://www.youtube.com/watch?v=y");
+    expect(calls).toBe(3);
+  });
+
+  it("still reports a dead host when probes demonstrably work", async () => {
+    const probe = makeGuardedProbe("news.ycombinator.com", (o) =>
+      String(o.url).includes("brainstorm")
+        ? (o.onerror as () => void)()
+        : (o.onload as (r: unknown) => void)({ status: 200, finalUrl: o.url }),
+    );
+    expect((await probe("https://brainstorm.snomiao.dev/faq")).ok).toBe(false);
+  });
+
+  it("skips the control when standing on Lianki, where it cannot fail", async () => {
+    // `@connect` names lianki.com explicitly, so it answers even while every
+    // other host is blocked — a control that always passes proves nothing.
+    let calls = 0;
+    const probe = makeGuardedProbe("lianki.com", (o) => {
+      calls++;
+      (o.onerror as () => void)();
+    });
+    expect((await probe("https://dead.test/")).ok).toBe(false);
+    expect(calls).toBe(1);
+  });
+
+  it("grants itself cross-origin access, or every probe fails", async () => {
+    // The metadata block is the whole fix: without a wildcard @connect the
+    // manager refuses the probes and the guard above has to suppress them all.
+    expect(BUILT).toMatch(/^\/\/ @connect\s+\*$/m);
   });
 
   it("never blocks navigation when the probe itself throws", async () => {
