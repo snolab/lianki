@@ -6,6 +6,7 @@ import { magicLink } from "better-auth/plugins";
 import { Kysely } from "kysely";
 import { D1Dialect } from "kysely-d1";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
+import { trustedOrigins } from "@/lib/trusted-origins";
 import { db, mongoClient } from "./app/db";
 import { dbBackend, getD1 } from "./lib/d1";
 
@@ -40,7 +41,10 @@ function baseOptions() {
     baseURL:
       process.env.BETTER_AUTH_BASE_URL ?? process.env.BETTER_AUTH_URL ?? process.env.NEXTAUTH_URL,
     // Allow both www and non-www (the canonical domain is non-www).
-    trustedOrigins: ["https://lianki.com", "https://www.lianki.com", "http://localhost:3000"],
+    // Deployed origins plus a localhost QA origin derived from
+    // BETTER_AUTH_BASE_URL, so qa:all can run on any port. Only localhost is
+    // honoured — see lib/trusted-origins.ts.
+    trustedOrigins: trustedOrigins(),
 
     // Dev-only email+password sign-in/up so the full flow can be QA'd locally
     // without OAuth, SMTP, or Turnstile. Production stays passwordless (magic
