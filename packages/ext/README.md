@@ -37,6 +37,61 @@ most 500 per-URL caches (`lianki_devbundle_*`/`lk:watch:*`).
 to disable watch tracking entirely** — worth adding before a store release.
 
 
+## Chrome Web Store submission
+
+Build the upload package with the pipeline, never by hand:
+
+```bash
+bun scripts/build-extension.ts          # -> packages/ext/dist/lianki-extension.zip
+```
+
+It generates the icons, builds `content.js`, derives the manifest version from
+`lib/userscript-version.ts`, and zips the result. The version is *derived* because
+it had silently drifted seven patches behind the product (2.23.17 vs 2.24.1); a
+number nobody owns is a number nobody updates.
+
+### Privacy policy
+
+<https://lianki.com/privacy> — required by the store for any extension handling
+user data. Keep it truthful as data flows change; it is written from the code, not
+from intent.
+
+### Permission justifications (paste into the listing)
+
+**`storage`**
+
+> Cards, review history and settings are written to local extension storage first,
+> so scheduling works offline and without an account. Nothing else is kept here.
+
+**Host permission `*://*/*` (content script)**
+
+> Lianki is a spaced-repetition tool for whatever the user is already reading or
+> watching. The user decides, on any site, that the current page should become a
+> flashcard — so the script must be able to run wherever they are, in the same way
+> a bookmarking extension must. It cannot be narrowed to a list of sites without
+> removing the feature.
+>
+> The script does not transmit the pages a user visits. A page leaves the device
+> only after the user explicitly adds it as a card, or when they play video/audio
+> on it and watch-time is recorded for their own study statistics. Ordinary
+> browsing is never sent anywhere, and for a signed-out user nothing leaves the
+> browser at all.
+
+**Host permissions `https://lianki.com/*`, `https://www.lianki.com/*`, `https://beta.lianki.com/*`**
+
+> Sync the user's own cards to their own Lianki account. These are the only remote
+> hosts the extension contacts.
+
+### Remaining manual steps
+
+The Web Store console cannot be automated — Chrome blocks devtools-driven
+navigation to `chrome.google.com/webstore/devconsole` and
+`chromewebstore.google.com/devconsole` outright. Creating the item, uploading the
+zip, filling the listing and publishing are all manual.
+
+Still needed in the listing itself: screenshots (1280×800 or 640×400), a category,
+and the data-usage disclosures matching the privacy policy above.
+
 Browser extension targets for Lianki, built from **one source of truth** — the
 existing Tampermonkey userscript (`src/lianki.user.ts`).
 
