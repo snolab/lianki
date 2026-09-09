@@ -33,7 +33,7 @@ The primary client-side store. Holds all card data, the sync queue, and device c
 | `lk:markers:{url}` | JSON | Video speed markers: `{ markers, dirty }` |
 | `lianki_pos` | JSON | FAB button position `{ x, y }` |
 
-**Capacity**: Max 2000 cards. On overflow, the card with the furthest due date (LDF) is evicted.
+**Capacity**: Unbounded. There is no card cap and no eviction — a card is ~1.3 KB, so the old 2000-card limit guarded ~2.6 MB in a store that handles far more, and it paid for that bound with silent data loss. If a write ever fails (quota), the failure is surfaced and the index is left untouched; the card is simply not cached locally and still reaches the server via the queue.
 
 **Hash collision guard**: Each card record stores `_url`. On read, if `_url` doesn't match the requested URL, `getCard()` returns `null`.
 
@@ -336,16 +336,19 @@ plus a full-reconcile path gated on a `purgedBefore` watermark.
 
 ---
 
-### Case 10: GM storage full (2000 cards), new card added
+### Case 10: local storage write fails (quota)
 
-**Scenario**: User has 2000 cards cached. Navigates to a new page.
+**Scenario**: The extension's storage rejects a write.
 
 **Resolution**:
-- `setCard()` checks `_index().length >= MAX_CARDS`.
-- LDF (Least Due First / Furthest Due) eviction: the card with the latest `due` date is removed.
-- The new card is stored.
+- `setCard()` surfaces the error (prefixed so the dev loader's sink forwards it) and returns `false`.
+- The index is left untouched, so the store stays consistent.
+- The card is not cached locally, but the sync queue still carries it to the server.
 
-**Risk**: If the evicted card was `dirty`, its pending reviews are lost from GM. The queue still holds the review action, so the server sync may still succeed if queue item hasn't expired.
+**Previously**: a 2000-card cap evicted the furthest-due card to make room. That
+could discard a `dirty` card along with its un-synced reviews, silently. It was
+only survivable because the server held a full copy — which stops being true if
+cloud sync becomes optional. Removed in v2.23.24.
 
 ---
 

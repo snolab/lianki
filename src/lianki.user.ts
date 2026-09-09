@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.23
+// @version     2.23.24
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -108,7 +108,6 @@ function getOrCreateDeviceId() {
 
 const CARD_PREFIX = "lk:c:";
 const INDEX_KEY = "lk:card-index";
-const MAX_CARDS = 2000;
 
 function hashUrl(url) {
   let h = 5381;
@@ -132,28 +131,46 @@ class GMCardStorage {
     return c.deletedAt ? null : c;
   }
 
+  /**
+   * No card cap, and no eviction.
+   *
+   * This used to hold 2000 cards and, when full, delete the furthest-due one to
+   * make room. That traded a bounded store for silent data loss: the evicted
+   * card could be `dirty`, taking un-synced reviews with it, and the user was
+   * never told. It was only ever survivable because the server held a full
+   * copy — which stops being true the moment cloud sync is optional.
+   *
+   * The bound it bought was not worth much either: measured against real data,
+   * a card is roughly 1.3 KB, so the cap guarded about 2.6 MB in an extension
+   * store that handles far more.
+   *
+   * If a write genuinely fails (quota), the failure is surfaced and the index
+   * is left untouched, so the store stays consistent and the card simply is not
+   * cached locally — it still reaches the server through the sync queue. A
+   * loud, recoverable failure on the NEW card beats silently deleting an old
+   * one the user never chose to lose.
+   */
   setCard(url, note, hlc, dirty = false) {
     const hash = hashUrl(url);
     const key = CARD_PREFIX + hash;
-    let idx = this._index();
+    const idx = this._index();
     const pos = idx.findIndex((e) => e.url === url);
     const entry = { url, due: note.card.due, hash }; // no `del`: writing a card undeletes it
-    if (pos >= 0) {
-      idx[pos] = entry;
-    } else {
-      if (idx.length >= MAX_CARDS) {
-        // LDF: evict furthest due
-        const maxI = idx.reduce(
-          (mi, e, i, a) => (new Date(e.due) > new Date(a[mi].due) ? i : mi),
-          0,
-        );
-        GM_deleteValue(CARD_PREFIX + idx[maxI].hash);
-        idx.splice(maxI, 1);
-      }
-      idx.push(entry);
+
+    try {
+      GM_setValue(key, JSON.stringify({ _url: url, note, hlc, dirty }));
+    } catch (err) {
+      // Prefixed so the dev loader's error sink forwards it (see
+      // docs/dev-userscript-loader.md); otherwise it dies in a console nobody
+      // is reading.
+      console.error("[Lianki] could not store card locally:", url, err);
+      return false;
     }
+
+    if (pos >= 0) idx[pos] = entry;
+    else idx.push(entry);
     this._saveIndex(idx);
-    GM_setValue(key, JSON.stringify({ _url: url, note, hlc, dirty }));
+    return true;
   }
 
   /**
