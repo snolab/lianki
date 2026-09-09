@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.30
+// @version     2.23.31
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -2680,7 +2680,7 @@ ${state.errorDetails}`);
             timeout: timeoutMs,
             anonymous: true,
             onload: (r) => resolve({ ok: true, finalUrl: r?.finalUrl || url, status: r?.status }),
-            onerror: () => resolve({ ok: false }),
+            onerror: (e) => resolve({ ok: false, blocked: isConnectRefusal(e) }),
             ontimeout: () => resolve({ ok: false }),
           });
         } catch {
@@ -2688,14 +2688,18 @@ ${state.errorDetails}`);
         }
       });
     }
+    function isConnectRefusal(e) {
+      const msg = String(e?.error ?? e?.message ?? e?.statusText ?? "").toLowerCase();
+      return msg.includes("@connect") || msg.includes("refused to connect");
+    }
     let probesUsable = null;
     async function probesAreUsable() {
       if (probesUsable !== null) return probesUsable;
-      if (/(^|\.)lianki\.com$/.test(location.hostname)) return true;
-      probesUsable = (await rawProbe(location.origin + "/", 6000)).ok;
+      const r = await rawProbe("https://www.google.com/generate_204", 6000);
+      probesUsable = r.ok;
       if (!probesUsable) {
         console.warn(
-          "[Lianki] Reachability probes are blocked (the current page failed its own probe) —" +
+          "[Lianki] Reachability probes are unusable here (the control host failed too) —" +
             " not skipping any cards. Grant the script cross-origin access to re-enable them.",
         );
       }
@@ -2704,6 +2708,7 @@ ${state.errorDetails}`);
     async function probeUrl(url, timeoutMs = 6000) {
       const r = await rawProbe(url, timeoutMs);
       if (r.ok) return r;
+      if (r.blocked) return { ok: true, blocked: true };
       return (await probesAreUsable()) ? r : { ok: true, blocked: true };
     }
     function markUnreachable(url) {
