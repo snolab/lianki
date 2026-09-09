@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.26
+// @version     2.23.27
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -2763,6 +2763,23 @@ ${nextTitle || nextUrl}`;
     })();
     loadPreferences();
     fab = createUI();
+    function renameLocalCard(oldUrl, newUrl) {
+      if (!oldUrl || !newUrl || oldUrl === newUrl) return;
+      try {
+        const from = cardStorage.getCard(oldUrl);
+        if (!from) return;
+        const to = cardStorage.getCard(newUrl);
+        const keepExisting = to && compareHLC(to.hlc, from.hlc) >= 0;
+        if (!keepExisting) {
+          const note = { ...from.note, url: newUrl };
+          cardStorage.setCard(newUrl, note, from.hlc, from.dirty ?? false);
+        }
+        cardStorage.deleteCard(oldUrl);
+        console.log(`[Lianki] Local card moved: ${oldUrl} -> ${newUrl}`);
+      } catch (err) {
+        console.error("[Lianki] Failed to move local card:", oldUrl, err);
+      }
+    }
     async function checkRedirect() {
       try {
         const raw = GM_getValue("lk:nav_intended", "");
@@ -2797,6 +2814,7 @@ ${actualUrl}
           body: JSON.stringify({ oldUrl: intendedUrl, newUrl: actualUrl }),
         });
         console.log("[Lianki] Card URL updated:", result);
+        renameLocalCard(intendedUrl, actualUrl);
         GM_setValue("lk:nav_intended", "");
         openDialog();
       } catch (err) {

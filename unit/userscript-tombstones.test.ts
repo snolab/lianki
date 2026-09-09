@@ -226,3 +226,64 @@ describe("retention", () => {
     expect(cs.getEntry(URL_A)).toBeNull(); // now genuinely absent
   });
 });
+
+describe("redirect rename", () => {
+  /** Lift the standalone helper out of the build, wired to a live storage. */
+  function makeRename(cs: Record<string, (...a: unknown[]) => unknown>) {
+    const start = BUILT.indexOf("function renameLocalCard(");
+    if (start === -1) throw new Error("renameLocalCard not found in the built userscript");
+    const open = BUILT.indexOf("{", start);
+    let depth = 0;
+    let end = -1;
+    for (let i = open; i < BUILT.length; i++) {
+      if (BUILT[i] === "{") depth++;
+      else if (BUILT[i] === "}" && --depth === 0) {
+        end = i + 1;
+        break;
+      }
+    }
+    return new Function(
+      "cardStorage",
+      "compareHLC",
+      "console",
+      `${BUILT.slice(start, end)}; return renameLocalCard;`,
+    )(cs, compareHLC, { log() {}, error() {} }) as (a: string, b: string) => void;
+  }
+
+  const OLD = "https://snomiao.com/";
+  const NEW = "https://snomiao.com/ja";
+
+  it("moves the card and tombstones the old url", () => {
+    // The real bug: the server was renamed, GM storage was not, so the old url
+    // stayed six months overdue and kept coming back for review.
+    const { cs } = makeStorage();
+    cs.setCard(OLD, card(past), { timestamp: 100, counter: 0, deviceId: "d" }, false);
+
+    makeRename(cs)(OLD, NEW);
+
+    expect(cs.getCard(OLD)).toBeNull();
+    expect(cs.isDeleted(OLD)).toBe(true); // tombstoned, so it cannot resurrect
+    expect(cs.getCard(NEW)).not.toBeNull();
+    expect(cs.getDueCards(10).map((c: { url: string }) => c.url)).toEqual([NEW]);
+  });
+
+  it("keeps the newer side when both urls already hold a card", () => {
+    // The duplicate pair: the new url was already being reviewed before the
+    // redirect was noticed, so its history must not be clobbered.
+    const { cs } = makeStorage();
+    cs.setCard(OLD, card(past), { timestamp: 100, counter: 0, deviceId: "d" }, false);
+    cs.setCard(NEW, card(past), { timestamp: 900, counter: 0, deviceId: "d" }, false);
+
+    makeRename(cs)(OLD, NEW);
+
+    expect(cs.getEntry(NEW).hlc.timestamp).toBe(900);
+    expect(cs.isDeleted(OLD)).toBe(true);
+    expect(cs.getDueCards(10)).toHaveLength(1); // no duplicate left behind
+  });
+
+  it("does nothing when there is no local card to move", () => {
+    const { cs } = makeStorage();
+    expect(() => makeRename(cs)(OLD, NEW)).not.toThrow();
+    expect(cs.getCard(NEW)).toBeNull();
+  });
+});
