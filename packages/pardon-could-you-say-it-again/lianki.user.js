@@ -2651,7 +2651,7 @@ ${nextTitle || nextUrl}`;
             pardon(0, 1.2);
           });
           navigator.mediaSession.setActionHandler("previoustrack", () => {
-            pardon(-3, 0.7);
+            pardon(-1, 0.9);
           });
         };
         if (document.visibilityState === "hidden") {
