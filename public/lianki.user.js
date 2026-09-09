@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.24
+// @version     2.23.25
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1474,6 +1474,10 @@
     for (let i = 0; i < url.length; i++) h = (((h << 5) + h) ^ url.charCodeAt(i)) >>> 0;
     return h.toString(16).padStart(8, "0");
   }
+  function isPermanentSyncFailure(status) {
+    if (status === 401 || status === 403 || status === 408 || status === 429) return false;
+    return status >= 400 && status < 500;
+  }
 
   class GMCardStorage {
     _index() {
@@ -1966,6 +1970,8 @@
             .catch(() => null)
             .then((body) => {
               const e = new Error(`HTTP ${status}`);
+              e.status = status;
+              e.body = body;
               if (body?.errorId) e.details = `Error ID: ${body.errorId}`;
               else if (body?.error) e.details = body.error;
               throw e;
@@ -3182,6 +3188,19 @@ ${actualUrl}
       });
       setTimeout(() => tryBackgroundSync(), 5000);
     }
+    function adoptServerVersion(item, body) {
+      const url = item?.data?.url;
+      if (!url || !body?.card) return;
+      try {
+        const existing = cardStorage.getEntry
+          ? cardStorage.getEntry(url)
+          : cardStorage.getCard(url);
+        const note = { ...existing?.note, url, card: body.card, log: body.log ?? [] };
+        cardStorage.setCard(url, note, body.serverHLC ?? existing?.hlc ?? null, false);
+      } catch (e) {
+        console.error("[Lianki] could not adopt server version for", url, e);
+      }
+    }
     async function tryBackgroundSync() {
       if (syncInProgress || !offlineReady) return;
       if (!navigator.onLine) {
@@ -3202,13 +3221,26 @@ ${actualUrl}
             queueStorage.removeFromQueue(item.id);
             console.log(`[Lianki] Synced: ${item.action} ${item.data.url || item.data.noteId}`);
           } catch (err) {
-            console.error(`[Lianki] Sync failed for ${item.id}:`, err);
-            item.retries = (item.retries || 0) + 1;
-            if (item.retries > 5) {
-              console.warn(`[Lianki] Dropping ${item.id} after 5 retries`);
+            const status = err?.status;
+            const permanent = isPermanentSyncFailure(status);
+            if (status === 409) {
+              adoptServerVersion(item, err.body);
               queueStorage.removeFromQueue(item.id);
+              console.warn(`[Lianki] ${item.id}: server had a newer version — adopted it`);
+            } else if (permanent) {
+              queueStorage.removeFromQueue(item.id);
+              console.warn(
+                `[Lianki] Dropping ${item.id}: HTTP ${status} will not succeed on retry`,
+              );
             } else {
-              queueStorage.updateQueueItem(item.id, { retries: item.retries });
+              console.error(`[Lianki] Sync failed for ${item.id}:`, err);
+              item.retries = (item.retries || 0) + 1;
+              if (item.retries > 5) {
+                console.warn(`[Lianki] Dropping ${item.id} after 5 retries`);
+                queueStorage.removeFromQueue(item.id);
+              } else {
+                queueStorage.updateQueueItem(item.id, { retries: item.retries });
+              }
             }
           }
         }
