@@ -22,7 +22,25 @@ export type MigrationResult = {
   warnings: string[];
 };
 
-export async function generateMigrationSql(db: Db): Promise<MigrationResult> {
+/**
+ * Tables this migration owns, in an order safe to DELETE from: children before
+ * the `user` rows they reference.
+ */
+const OWNED_TABLES = [
+  "fsrs_notes",
+  "roadmap_goals",
+  "preferences",
+  "api_tokens",
+  "session",
+  "account",
+  "verification",
+  "user",
+] as const;
+
+export async function generateMigrationSql(
+  db: Db,
+  opts: { replace?: boolean } = {},
+): Promise<MigrationResult> {
   const sections: string[] = [];
   const counts: Record<string, number> = {};
   const warnings: string[] = [];
@@ -80,7 +98,23 @@ export async function generateMigrationSql(db: Db): Promise<MigrationResult> {
   const header =
     `-- Lianki MongoDB -> D1 data migration\n` +
     `-- Generated ${new Date().toISOString()}\n` +
-    `-- Apply after db/migrations/0001_init.sql\n\n`;
+    `-- Apply after the migrations in db/migrations (wrangler d1 migrations apply)\n\n`;
 
-  return { sql: header + sections.join("\n\n") + "\n", counts, warnings };
+  // Deletions do not replicate through INSERT OR REPLACE.
+  //
+  // The load can add and update, never remove — so every row deleted in Mongo
+  // since the previous load stays in D1 forever, and at cutover comes back as a
+  // live card. Measured on the real database: 26 such rows, 4 of them the
+  // LinkedIn cards the user had deleted repeatedly. Refreshing "idempotently"
+  // did not converge; it only ever grew.
+  //
+  // Opt-in rather than default: this is destructive, and once D1 is the live
+  // backend an accidental run would wipe writes Mongo never saw.
+  const truncate = opts.replace
+    ? `-- FULL REFRESH: make D1 match Mongo exactly, including deletions.\n` +
+      OWNED_TABLES.map((t) => `DELETE FROM ${t};`).join("\n") +
+      `\n\n`
+    : "";
+
+  return { sql: header + truncate + sections.join("\n\n") + "\n", counts, warnings };
 }
