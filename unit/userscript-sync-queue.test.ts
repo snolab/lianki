@@ -102,3 +102,75 @@ describe("the built script wires the rule in", () => {
     expect(BUILT).toMatch(/e\.status = status/);
   });
 });
+
+describe("unreachable-page probe", () => {
+  /** Lift probeUrl out of the build and drive it with a fake GM_xmlhttpRequest. */
+  function makeProbe(impl: (opts: Record<string, unknown>) => void) {
+    const start = BUILT.indexOf("function probeUrl(");
+    if (start === -1) throw new Error("probeUrl not found in the built userscript");
+    const open = BUILT.indexOf("{", start);
+    let depth = 0;
+    let end = -1;
+    for (let i = open; i < BUILT.length; i++) {
+      if (BUILT[i] === "{") depth++;
+      else if (BUILT[i] === "}" && --depth === 0) {
+        end = i + 1;
+        break;
+      }
+    }
+    return new Function("GM_xmlhttpRequest", `${BUILT.slice(start, end)}; return probeUrl;`)(
+      impl,
+    ) as (u: string, t?: number) => Promise<{ ok: boolean; finalUrl?: string }>;
+  }
+
+  it("reports a dead host as unreachable", async () => {
+    // The retired site that left 75 cards stuck: connection refused, so no
+    // userscript ever runs there and the card cannot be reviewed away.
+    const probe = makeProbe((o) => (o.onerror as () => void)());
+    expect((await probe("https://brainstorm.snomiao.dev/faq")).ok).toBe(false);
+  });
+
+  it("treats a timeout as unreachable", async () => {
+    const probe = makeProbe((o) => (o.ontimeout as () => void)());
+    expect((await probe("https://slow.test/")).ok).toBe(false);
+  });
+
+  it("treats ANY http status as reachable", async () => {
+    // Status is not evidence of a dead page: plenty of good pages answer 403 to
+    // a scripted HEAD, sit behind bot walls, or 404 while rendering content.
+    // Skipping those would be worse than the bug being fixed.
+    for (const status of [200, 403, 404, 500]) {
+      const probe = makeProbe((o) =>
+        (o.onload as (r: unknown) => void)({ status, finalUrl: o.url }),
+      );
+      expect((await probe("https://example.test/x")).ok).toBe(true);
+    }
+  });
+
+  it("surfaces the post-redirect url", async () => {
+    const probe = makeProbe((o) =>
+      (o.onload as (r: unknown) => void)({ status: 200, finalUrl: "https://snomiao.com/ja" }),
+    );
+    expect((await probe("https://snomiao.com/")).finalUrl).toBe("https://snomiao.com/ja");
+  });
+
+  it("sends no cookies", async () => {
+    // The probe fires at third-party sites before you visit them; it has no
+    // business carrying your session, and some endpoints act on a bare HEAD.
+    let seen: Record<string, unknown> = {};
+    const probe = makeProbe((o) => {
+      seen = o;
+      (o.onload as (r: unknown) => void)({ status: 200 });
+    });
+    await probe("https://example.test/x");
+    expect(seen.anonymous).toBe(true);
+    expect(seen.method).toBe("HEAD");
+  });
+
+  it("never blocks navigation when the probe itself throws", async () => {
+    const probe = makeProbe(() => {
+      throw new Error("GM_xmlhttpRequest exploded");
+    });
+    expect((await probe("https://example.test/x")).ok).toBe(true);
+  });
+});

@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.28
+// @version     2.23.29
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1603,6 +1603,65 @@ function main() {
     }
   }
 
+  /**
+   * Is this card's page actually reachable?
+   *
+   * A page whose host refuses connections cannot be reviewed away, because no
+   * content script runs on the browser's network-error page — there is nothing
+   * for the userscript to attach to. The card therefore stays due forever and
+   * is served again and again. The only escape was the dashboard. Observed with
+   * a retired site that still had 75 cards in the deck, 18 of them due.
+   *
+   * So the check has to happen HERE, on a page that is still alive, before
+   * navigating away.
+   *
+   * Deliberately conservative: only a connection-level failure counts as dead.
+   * HTTP status is not evidence — plenty of perfectly good pages answer 403 to
+   * a HEAD from a script, sit behind bot walls, or return 404 while rendering
+   * content. Skipping those would be worse than the problem being solved.
+   */
+  function probeUrl(url, timeoutMs = 6000) {
+    return new Promise((resolve) => {
+      try {
+        GM_xmlhttpRequest({
+          method: "HEAD",
+          url,
+          timeout: timeoutMs,
+          // No cookies. GM_xmlhttpRequest sends them by default, which would
+          // mean firing an authenticated request at every third-party site
+          // before you visit it — and some endpoints act on a bare GET/HEAD
+          // (analytics, "mark as read", rate limits). Whether a host answers at
+          // all does not need the user's session, so it does not get it.
+          // Managers that predate `anonymous` ignore it and fall back to
+          // sending cookies, which is no worse than the previous behaviour.
+          anonymous: true,
+          // `finalUrl` is the url after redirects, so the probe sees a redirect
+          // before we navigate. It is a HINT, not the truth: this request does
+          // not carry the browser's full context, and plenty of redirects are
+          // decided by Accept-Language or cookies — snomiao.com/ sends a browser
+          // to /ja and a bare script to /en. So it is logged, and the
+          // authoritative check stays checkRedirect() after landing, which sees
+          // where the browser actually ended up.
+          onload: (r) => resolve({ ok: true, finalUrl: r?.finalUrl || url, status: r?.status }),
+          onerror: () => resolve({ ok: false }),
+          ontimeout: () => resolve({ ok: false }),
+        });
+      } catch {
+        resolve({ ok: true }); // never block navigation because the probe broke
+      }
+    });
+  }
+
+  /** Remember that a url did not answer, so /data can surface it later. */
+  function markUnreachable(url) {
+    try {
+      const rec = cardStorage?.getCard?.(url);
+      if (!rec?.note) return;
+      const note = { ...rec.note, unreachableAt: Date.now() };
+      cardStorage.setCard(url, note, rec.hlc, rec.dirty ?? false);
+    } catch {}
+  }
+
   async function afterReview(doneMessage) {
     state.phase = "reviewed";
 
@@ -1625,6 +1684,31 @@ function main() {
     }
 
     if (nextUrl && /^https?:\/\//.test(nextUrl)) {
+      // Do not send the user to a page that cannot answer — they would land on
+      // a browser error page where no userscript runs, with no way to review or
+      // delete the card that sent them there.
+      const probe = await probeUrl(nextUrl);
+      if (probe.ok && probe.finalUrl && probe.finalUrl !== nextUrl) {
+        console.log("[Lianki] Next card likely redirects:", nextUrl, "->", probe.finalUrl);
+      }
+      if (!probe.ok) {
+        console.warn("[Lianki] Next card is unreachable, skipping:", nextUrl);
+        markUnreachable(nextUrl);
+        state.message = `Skipped an unreachable page:\n${nextUrl}`;
+        renderDialog();
+        prefetchedNextUrl = null;
+        const again = await getNextUrl().catch(() => ({ url: null }));
+        if (again.url && again.url !== nextUrl) {
+          GM_setValue("lk:nav_intended", JSON.stringify({ url: again.url, ts: Date.now() }));
+          location.href = again.url;
+          return;
+        }
+        state.message = "Skipped an unreachable page — nothing else is due.";
+        renderDialog();
+        setTimeout(closeDialog, 3000);
+        return;
+      }
+
       // Normal navigation to next card (backend already filtered hijacking domains)
       console.log("[Lianki] Storing intended URL:", nextUrl);
       GM_setValue("lk:nav_intended", JSON.stringify({ url: nextUrl, ts: Date.now() }));
