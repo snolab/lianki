@@ -197,4 +197,44 @@ describe("generateMigrationSql (Mongo -> D1 end to end)", () => {
     // api token
     expect(await new ApiTokensD1Repo(db).emailByHash("abc123")).toBe("alice@example.com");
   }, 60_000);
+
+  test("--replace removes rows Mongo no longer has; the default leaves them", async () => {
+    // The load is INSERT OR REPLACE: it can add and update, never delete. So a
+    // card deleted in Mongo survives every "idempotent" refresh and comes back
+    // as a live card at cutover. Measured on the real database before this
+    // existed: 26 such rows, 4 of them LinkedIn cards the user had deleted.
+    const SCHEMA_DB = () => {
+      const d1 = createTestD1(SCHEMA);
+      // A row that exists only in D1 — deleted upstream at some earlier point.
+      d1.raw().exec(
+        `INSERT INTO fsrs_notes (id, email, url, title, card, log, card_due)
+         VALUES ('ghost-1', 'alice@example.com', 'https://deleted.example/gone', 'Ghost',
+                 '{"due":"2026-01-01T00:00:00.000Z"}', '[]', '2026-01-01T00:00:00.000Z');`,
+      );
+      return d1;
+    };
+
+    const additive = await generateMigrationSql(client.db("lianki-test"));
+    const replaced = await generateMigrationSql(client.db("lianki-test"), { replace: true });
+
+    expect(additive.sql).not.toContain("DELETE FROM");
+    expect(replaced.sql).toContain("DELETE FROM fsrs_notes;");
+    // Children are cleared before the user rows they reference.
+    expect(replaced.sql.indexOf("DELETE FROM fsrs_notes;")).toBeLessThan(
+      replaced.sql.indexOf("DELETE FROM user;"),
+    );
+
+    // Additive: the ghost survives.
+    const a = SCHEMA_DB();
+    a.raw().exec(additive.sql);
+    const aNotes = new FsrsNotesD1Repo(a as unknown as D1Like, "alice@example.com");
+    expect(await aNotes.getByUrl("https://deleted.example/gone")).not.toBeNull();
+
+    // --replace: D1 ends up matching Mongo exactly.
+    const r = SCHEMA_DB();
+    r.raw().exec(replaced.sql);
+    const rNotes = new FsrsNotesD1Repo(r as unknown as D1Like, "alice@example.com");
+    expect(await rNotes.getByUrl("https://deleted.example/gone")).toBeNull();
+    expect(await rNotes.getByUrl("https://example.com/page")).not.toBeNull();
+  }, 60_000);
 });
