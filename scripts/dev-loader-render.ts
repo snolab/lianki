@@ -27,10 +27,6 @@ export function renderLoader(opts: {
   // covered by the apex entry, and localhost needs both spellings.
   if ([...hosts].some((h) => h.endsWith(".trycloudflare.com"))) hosts.add("trycloudflare.com");
   if (hosts.has("localhost")) hosts.add("127.0.0.1");
-  // The bundle probes arbitrary card hosts for reachability before navigating,
-  // so a dev install needs the same wildcard the published script carries —
-  // without it every probe errors and live pages are reported dead.
-  hosts.add("*");
   const connect = [...hosts].map((h) => `// @connect     ${h}`).join("\n");
 
   return (
