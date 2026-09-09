@@ -11,7 +11,12 @@ import { authUser } from "@/app/signInEmail";
 import { isWorkersAiConfigured, textModel, workersAiOpenAI } from "@/lib/workers-ai";
 import { logSanitizedError } from "@/lib/safeError";
 
-export const revalidate = 3600;
+// No `revalidate` / `dynamicParams` here on purpose: the root layout awaits
+// headers()/cookies(), so every route in this app is dynamically rendered and
+// neither flag has any effect (verified — the prerender manifest holds 2 routes
+// for the whole app, and an unknown slug still returns 200 with
+// `dynamicParams = false`). The blog reaches the Worker because lib/blog.ts
+// bundles the markdown, not because anything here is static.
 
 export async function generateStaticParams() {
   return BLOG_LOCALES.map((locale) => ({ locale }));

@@ -1,6 +1,5 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { testSchema } from "@/lib/d1/testSchema";
 import { createEmptyCard } from "ts-fsrs";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import type { D1Like } from "@/lib/d1/types";
@@ -8,7 +7,7 @@ import { FsrsNotesD1Repo } from "@/lib/repos/fsrsNotesD1";
 import { RoadmapGoalsD1Repo, PreferencesD1Repo, ApiTokensD1Repo } from "@/lib/repos/d1Repos";
 import type { FSRSNote } from "@/app/fsrs";
 
-const SCHEMA = readFileSync(join(process.cwd(), "db/migrations/0001_init.sql"), "utf8");
+const SCHEMA = testSchema();
 const USER = "user-123";
 
 let d1: TestD1Database;

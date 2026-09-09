@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.24
+// @version     2.24.1
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -18,6 +18,25 @@
 // ==/UserScript==
 
 import { fsrs, generatorParameters, Rating } from "ts-fsrs";
+// Watch-time accounting is a grow-only CRDT whose merge rules the server relies
+// on byte-for-byte, so it is imported from the shared core rather than inlined
+// the way normalizeUrl/HLC are — a drift here would silently mis-count hours.
+// Deep import, not the barrel: pulling in @lianki/core's index would also drag
+// its normalizeUrl into the bundle, and the bundler would rename the userscript's
+// own inlined copy out from under unit/normalizeUrl-userscript-drift.test.ts.
+import {
+  coverageBuckets,
+  decodeCoverage,
+  emptyWatchStats,
+  encodeCoverage,
+  localDayKey,
+  markCoverage,
+  mergeWatchStats,
+  newCoverage,
+  sanitizeWatchStats,
+  COV_BUCKET_S,
+} from "@lianki/core/watchStats";
+import { heatmapBuckets, rateColor, videoDifficulty } from "@lianki/core/difficulty";
 
 declare const GM_xmlhttpRequest: Function;
 declare const GM_setValue: (key: string, value: any) => void;
@@ -262,21 +281,28 @@ class GMCardStorage {
       .filter(Boolean);
   }
 
-  getDueCards(limit = 10) {
+  /**
+   * Cards already due, in the user's chosen order.
+   *
+   * Must match the server's ordering: if the offline store disagreed, the next
+   * card would change depending on whether you happened to be online.
+   */
+  getDueCards(limit = 10, order = "newest") {
     const now = new Date();
-    return (
-      this._index()
-        .filter((e) => !e.del && new Date(e.due) <= now)
-        // Most recently due first, matching the server's NEXT_DUE_SORT. Offline
-        // and online must agree, or the card you get depends on connectivity.
-        .sort((a, b) => new Date(b.due) - new Date(a.due))
-        .slice(0, limit)
-        .map((e) => {
-          const raw = GM_getValue(CARD_PREFIX + e.hash, "");
-          return raw ? { url: e.url, ...JSON.parse(raw) } : null;
-        })
-        .filter(Boolean)
-    );
+    // `!e.del` skips tombstones: a deleted card must not come back as due.
+    // `dir` is the user's reviewOrder — the same preference the server applies,
+    // because offline and online must agree or which card you get depends on
+    // connectivity.
+    const dir = order === "newest" ? -1 : 1;
+    return this._index()
+      .filter((e) => !e.del && new Date(e.due) <= now)
+      .sort((a, b) => dir * (new Date(a.due) - new Date(b.due)))
+      .slice(0, limit)
+      .map((e) => {
+        const raw = GM_getValue(CARD_PREFIX + e.hash, "");
+        return raw ? { url: e.url, ...JSON.parse(raw) } : null;
+      })
+      .filter(Boolean);
   }
 }
 
@@ -440,7 +466,10 @@ async function syncToSiteDB() {
     db.close();
     console.log(`[Lianki] Synced ${index.length} cards to site IndexedDB`);
   } catch (err) {
-    console.error("[Lianki] syncToSiteDB failed:", err);
+    // Not logFail(): syncToSiteDB lives outside main(), where logFail/warnOnce
+    // are declared. Calling it here throws ReferenceError inside a catch block —
+    // turning a handled failure into an unhandled one.
+    console.error("[Lianki] site DB sync FAILED:", err);
   }
 }
 
@@ -622,6 +651,19 @@ function main() {
   const ac = new AbortController();
   const { signal } = ac;
 
+  // Every interval must be revocable. unload_Lianki() aborted the controller —
+  // which unhooks listeners registered with { signal } — but left setInterval
+  // timers running. Each re-entry (hot reload, or a manager re-injecting the
+  // script) therefore stacked another generation of timers still executing the
+  // OLD closure: a 30 s sync firing every 5 s, logging messages from code that
+  // had already been replaced.
+  const intervals = [];
+  const addInterval = (fn, ms) => {
+    const id = setInterval(fn, ms);
+    intervals.push(id);
+    return id;
+  };
+
   // ── Constants ──────────────────────────────────────────────────────────────
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
@@ -637,6 +679,9 @@ function main() {
   };
 
   // Load preferences on startup (called after api() is defined)
+  /** Next-card order from the cached preferences; defaults to the classic order. */
+  const reviewOrder = () => (userPreferences?.reviewOrder === "oldest" ? "oldest" : "newest");
+
   async function loadPreferences() {
     try {
       const cached = GM_getValue("lk:preferences", "");
@@ -748,8 +793,13 @@ function main() {
   // ── API ────────────────────────────────────────────────────────────────────
   const api = (path, opts = {}) =>
     gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
+      // Every error names the request that produced it. A bare "HTTP 500" from
+      // one of several background sync loops is undiagnosable — you cannot tell
+      // which endpoint failed, so it takes a round trip just to learn where to
+      // look. The method+path costs nothing and answers that immediately.
+      const what = `${(opts.method || "GET").toUpperCase()} ${ORIGIN}${path}`;
       if (r.status === 401) {
-        const e = new Error("Login required");
+        const e = new Error(`Login required (${what})`);
         e.status = 401;
         throw e;
       }
@@ -759,15 +809,49 @@ function main() {
           .json()
           .catch(() => null)
           .then((body) => {
-            const e = new Error(`HTTP ${status}`);
-            if (body?.errorId) e.details = `Error ID: ${body.errorId}`;
-            else if (body?.error) e.details = body.error;
+            // Fold the server's own explanation into the message, not just onto
+            // a side property. Production Next hides the real error behind a
+            // digest/errorId, and that id is the ONLY way to find it in the
+            // runtime logs — but it lived on `details`, which the console and
+            // the error reporter never printed. A 500 was therefore reported as
+            // a bare status with the one piece of correlating information
+            // silently dropped.
+            const detail = body?.errorId ? `Error ID: ${body.errorId}` : body?.error;
+            const e = new Error(`HTTP ${status} — ${what}${detail ? ` — ${detail}` : ""}`);
+            e.status = status;
+            if (detail) e.details = detail;
             throw e;
           });
       }
       checkVersion(r);
       return r.json();
     });
+
+  // Signed-out is a stable condition, not an incident. Without this, every page
+  // load logs the same "Login required" for each endpoint forever — unactionable
+  // noise that buries real errors. Same stand-down already used for a server
+  // missing /api/fsrs/watch.
+  const loggedOnce = new Set();
+  const warnOnce = (key, ...args) => {
+    if (loggedOnce.has(key)) return;
+    loggedOnce.add(key);
+    console.warn(...args);
+  };
+  const isAuthError = (err) => err?.status === 401 || /Login required/i.test(String(err?.message));
+
+  /**
+   * Log a background failure.
+   *
+   * Being signed out is a stable state, not an incident: it is reported once per
+   * subsystem and then stays quiet, because repeating it every 30 s buries the
+   * errors that DO need attention. Anything else is a real error and logs every
+   * time, naming what it was doing.
+   */
+  const logFail = (key, doing, err) => {
+    if (isAuthError(err))
+      warnOnce(`auth:${key}`, `[Lianki] Not signed in — ${doing} is local-only.`);
+    else console.error(`[Lianki] ${doing} FAILED:`, err);
+  };
 
   // ── Cache (keyv-style, GM_setValue as cross-origin storage adapter) ────────
   function gmCache(key, ttlMs, fn) {
@@ -1538,7 +1622,7 @@ function main() {
       // Find next card from local cache before server call
       if (offlineReady) {
         try {
-          const dueCards = cardStorage.getDueCards(2);
+          const dueCards = cardStorage.getDueCards(2, reviewOrder());
           const nextCard = dueCards.find((c) => c.url !== url);
           prefetchedNextUrl = nextCard?.url ?? null;
           if (prefetchedNextUrl) prefetchNextPage(prefetchedNextUrl);
@@ -1911,7 +1995,13 @@ function main() {
 
         console.log(`[Lianki] Loaded ${Object.keys(merged).length} speed markers for ${url}`);
       } catch (err) {
-        console.error("[Lianki] Failed to load speed markers:", err);
+        if (isAuthError(err))
+          warnOnce(
+            "auth:markers",
+            "[Lianki] Not signed in — speed markers stay local only.",
+            err.message,
+          );
+        else console.error(`[Lianki] Failed to load speed markers for ${url}:`, err);
         // Fall back to local cache
         const local = loadLocalMarkers(url);
         if (!videoSpeedMaps.has(video)) videoSpeedMaps.set(video, new Map());
@@ -1951,6 +2041,590 @@ function main() {
     });
   }
 
+  // ── Watch time ─────────────────────────────────────────────────────────────
+  // Accumulates *active* language-input time per video, keyed by normalized URL —
+  // so a rewatch adds to the same total and every device folds into one number.
+  //
+  // Two clocks, both kept. `wall` is real seconds out of your life; `media` is
+  // seconds of content. At 1.5× an hour of content costs 40 minutes of wall, and
+  // this same script ships speed markers, so its users genuinely diverge —
+  // reporting a single number would be a lie in one direction or the other.
+
+  const WATCH_TICK_MAX_S = 2; // a longer gap means a stall/sleep, not watching
+  const WATCH_SESSION_GAP_MS = 30 * 60_000;
+  const WATCH_MIN_SYNC_S = 60; // don't create a server row for an incidental play
+  const WATCH_SYNC_MS = 30_000;
+  const WATCH_SAVE_MS = 5_000; // local persist throttle (timeupdate fires ~4×/s)
+  const WATCH_REQUIRE_AUDIBLE = true; // muted playback is not language input
+  // Only count while the tab is on screen. Errs toward under-counting: it drops
+  // deliberate background listening, but it also refuses to bank hours while a
+  // tab sits buried behind your actual work. Flip to false to count audio-only.
+  const WATCH_REQUIRE_VISIBLE = true;
+  const WATCH_DIRTY_KEY = "lk:watch-dirty";
+  const WATCH_INDEX_KEY = "lk:watch-index";
+  const WATCH_MAX_CACHED = 500; // GM storage has no key enumeration — track our own
+
+  const watchDeviceId = getOrCreateDeviceId();
+  const watchCacheKey = (url) => `lk:watch:${normalizeUrl(url)}`;
+  const isYouTube = () => /(^|\.)youtube\.com$/.test(location.hostname);
+
+  function loadLocalWatch(url) {
+    try {
+      const raw = GM_getValue(watchCacheKey(url), "");
+      if (!raw) return { stats: emptyWatchStats(), dirty: false };
+      const c = JSON.parse(raw);
+      return { stats: sanitizeWatchStats(c.stats), dirty: !!c.dirty };
+    } catch {
+      return { stats: emptyWatchStats(), dirty: false };
+    }
+  }
+
+  const saveLocalWatch = (url, stats, dirty) =>
+    GM_setValue(watchCacheKey(url), JSON.stringify({ stats, dirty, savedAt: Date.now() }));
+
+  // The tab that accumulated the time is exactly the tab that gets closed, so an
+  // unsynced URL is parked in a list and retried from whatever page loads next.
+  const watchDirtyList = () => {
+    try {
+      const list = JSON.parse(GM_getValue(WATCH_DIRTY_KEY, "[]"));
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  };
+  const watchDirtyAdd = (url) =>
+    GM_setValue(
+      WATCH_DIRTY_KEY,
+      JSON.stringify([...watchDirtyList().filter((u) => u !== url), url].slice(-200)),
+    );
+  const watchDirtyDrop = (url) =>
+    GM_setValue(WATCH_DIRTY_KEY, JSON.stringify(watchDirtyList().filter((u) => u !== url)));
+
+  /**
+   * LRU over the per-URL caches. Without it every video ever played leaves a
+   * key behind and GM storage grows without bound; with no way to enumerate
+   * keys, the list has to be kept by hand (same shape as `lk:card-index`).
+   * Only synced entries are evicted — unsynced time is never thrown away.
+   */
+  function watchIndexTouch(url) {
+    let list = [];
+    try {
+      const parsed = JSON.parse(GM_getValue(WATCH_INDEX_KEY, "[]"));
+      if (Array.isArray(parsed)) list = parsed;
+    } catch {
+      /* corrupt index — rebuild from this url onward */
+    }
+    const next = [...list.filter((u) => u !== url), url];
+    for (const stale of next.splice(0, Math.max(0, next.length - WATCH_MAX_CACHED))) {
+      if (loadLocalWatch(stale).dirty) next.unshift(stale);
+      else GM_deleteValue(watchCacheKey(stale));
+    }
+    GM_setValue(WATCH_INDEX_KEY, JSON.stringify(next));
+  }
+
+  // Audio language. Detection is deliberately conservative: YouTube's <html lang>
+  // is the *interface* locale, so trusting it would label every Japanese video
+  // "en". What is reliable is a per-channel override (most immersion comes from a
+  // handful of channels) and, on ordinary sites, the page's own lang attribute.
+  // Server-side enrichment from the YouTube Data API is the follow-up.
+  function watchLangFor() {
+    let overrides = {};
+    try {
+      overrides = JSON.parse(GM_getValue("lk:watch-lang", "{}")) || {};
+    } catch {
+      /* corrupt override map — fall through to auto-detection */
+    }
+    if (isYouTube()) {
+      const href = document
+        .querySelector('ytd-channel-name a[href^="/@"], a.yt-simple-endpoint[href^="/@"]')
+        ?.getAttribute("href");
+      return (href && overrides[`youtube${href}`]) || undefined;
+    }
+    const lang = document.documentElement.lang?.trim();
+    return overrides[location.hostname] || (lang && lang.length <= 32 ? lang : undefined);
+  }
+
+  // Set once the server proves it has no /api/fsrs/watch route; stops a 30 s
+  // retry loop against a deployment that predates the feature.
+  let watchSyncUnavailable = false;
+  let watchAcc = null;
+  let watchSavedAt = 0;
+
+  /** Live counters + every other device's stored numbers, as one WatchStats. */
+  const watchSnapshot = (acc) =>
+    mergeWatchStats(acc.base, {
+      v: 1,
+      by: {
+        [watchDeviceId]: {
+          wall: Math.round(acc.wall),
+          media: Math.round(acc.media),
+          sessions: acc.sessions,
+          days: acc.days,
+          cov: acc.cov.length ? encodeCoverage(acc.cov) : undefined,
+          dur: acc.dur,
+          lang: acc.lang,
+          first: acc.first,
+          last: acc.last,
+        },
+      },
+    });
+
+  function persistWatch(acc, force) {
+    if (!acc) return;
+    const now = Date.now();
+    if (!force && now - watchSavedAt < WATCH_SAVE_MS) return;
+    watchSavedAt = now;
+    // Re-read the title here rather than at accumulator creation: YouTube swaps
+    // the URL before it swaps document.title, so capturing it up front would
+    // label a video with the name of the one before it.
+    acc.title = document.title || acc.title;
+    saveLocalWatch(acc.url, watchSnapshot(acc), acc.dirty);
+    if (acc.dirty) watchDirtyAdd(acc.url);
+    // Once per accumulator, not per save: the index walk is O(WATCH_MAX_CACHED)
+    // and the LRU position only needs updating when a url is first written.
+    if (!acc.indexed) {
+      acc.indexed = true;
+      watchIndexTouch(acc.url);
+    }
+  }
+
+  async function flushWatch(acc = watchAcc) {
+    if (watchSyncUnavailable || !acc?.dirty) return;
+    persistWatch(acc, true);
+    if (acc.wall < WATCH_MIN_SYNC_S) return; // too incidental to be worth a row
+    const stats = watchSnapshot(acc);
+    try {
+      await api("/api/fsrs/watch", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url: acc.url, title: acc.title, stats }),
+      });
+      acc.dirty = false;
+      acc.base = stats;
+      saveLocalWatch(acc.url, stats, false);
+      watchDirtyDrop(acc.url);
+    } catch (err) {
+      // /api/fsrs/watch is newer than some deployments. A server without it
+      // errors on every 30 s tick forever, which is noise the user cannot act
+      // on — so stand down for this session and keep accumulating locally. The
+      // data is not lost: it stays dirty on disk and syncs once the server has
+      // the route.
+      if (/HTTP (404|405|500|501|502)/.test(String(err?.message))) {
+        watchSyncUnavailable = true;
+        console.warn(
+          `[Lianki] Watch sync disabled — ${ORIGIN}/api/fsrs/watch unavailable (${err.message}). ` +
+            `Time is still being recorded locally.`,
+        );
+        return;
+      }
+      // Stay dirty; the 30 s loop and the next page load both retry.
+      logFail("watch", `watch-time sync for ${acc.url}`, err);
+    }
+  }
+
+  /** Retry URLs whose tab closed before they synced. A few per tick, oldest first. */
+  async function flushPendingWatch(max = 3) {
+    if (watchSyncUnavailable) return;
+    for (const url of watchDirtyList()
+      .filter((u) => u !== watchAcc?.url)
+      .slice(0, max)) {
+      const { stats, dirty } = loadLocalWatch(url);
+      if (!dirty) {
+        watchDirtyDrop(url);
+        continue;
+      }
+      try {
+        await api("/api/fsrs/watch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ url, stats }),
+        });
+        saveLocalWatch(url, stats, false);
+        watchDirtyDrop(url);
+      } catch {
+        return; // offline — leave the rest queued
+      }
+    }
+  }
+
+  /**
+   * Fold the server's copy back in. Needed when this device's local cache was
+   * evicted but its device id survived: the counters merge by max, so without a
+   * reseed the device would silently re-accumulate from zero.
+   */
+  async function seedWatchFromServer(acc) {
+    try {
+      const { stats } = await api(`/api/fsrs/watch?url=${encodeURIComponent(acc.url)}`);
+      const merged = mergeWatchStats(sanitizeWatchStats(stats), watchSnapshot(acc));
+      if (acc !== watchAcc || acc.url !== watchAcc.url) return;
+      const mine = merged.by[watchDeviceId] ?? {};
+      acc.base = merged;
+      acc.wall = Math.max(acc.wall, mine.wall ?? 0);
+      acc.media = Math.max(acc.media, mine.media ?? 0);
+      acc.sessions = Math.max(acc.sessions, mine.sessions ?? 0);
+      // Per-key max, not a spread: a spread would let a freshly-reset local day
+      // overwrite the larger figure the server already holds for that day.
+      for (const [day, secs] of Object.entries(mine.days ?? {}))
+        acc.days[day] = Math.max(acc.days[day] ?? 0, secs);
+      acc.cov = decodeCoverage(mine.cov);
+      acc.first ??= mine.first;
+    } catch {
+      // Offline or logged out — keep accumulating locally, sync catches up later.
+    }
+  }
+
+  /** The accumulator for the current URL, rolling over on SPA navigation. */
+  function watchAccFor() {
+    const url = normalizeUrl(location.href);
+    if (watchAcc?.url === url) return watchAcc;
+    if (watchAcc) void flushWatch(watchAcc);
+    const { stats, dirty } = loadLocalWatch(url);
+    const mine = stats.by[watchDeviceId] ?? {};
+    watchAcc = {
+      url,
+      base: stats,
+      title: document.title,
+      wall: mine.wall ?? 0,
+      media: mine.media ?? 0,
+      sessions: mine.sessions ?? 0,
+      days: { ...mine.days },
+      cov: decodeCoverage(mine.cov),
+      dur: mine.dur,
+      lang: mine.lang,
+      first: mine.first,
+      last: mine.last,
+      tick: 0, // wall-clock anchor; 0 means "not currently accumulating"
+      mediaAt: 0,
+      activeAt: 0,
+      langAt: 0,
+      dirty,
+      seeded: false,
+      indexed: false,
+    };
+    return watchAcc;
+  }
+
+  const isWatchActive = (v) =>
+    !v.paused &&
+    !v.ended &&
+    v.readyState >= 3 &&
+    v.playbackRate > 0 &&
+    (!WATCH_REQUIRE_VISIBLE || document.visibilityState === "visible") &&
+    (!WATCH_REQUIRE_AUDIBLE || (!v.muted && v.volume > 0)) &&
+    // YouTube plays ads through the same element; that time isn't input.
+    !(isYouTube() && document.querySelector(".ad-showing"));
+
+  function watchTick(video) {
+    const acc = watchAccFor();
+    const now = Date.now();
+
+    if (!isWatchActive(video)) {
+      acc.tick = 0;
+      return;
+    }
+
+    if (Number.isFinite(video.duration) && video.duration > 0) {
+      acc.dur = video.duration;
+      const buckets = coverageBuckets(acc.dur);
+      if (buckets && acc.cov.length * 8 < buckets) {
+        const grown = newCoverage(buckets);
+        grown.set(acc.cov);
+        acc.cov = grown;
+      }
+    }
+    if (acc.lang == null && now - acc.langAt > 5_000) {
+      acc.langAt = now;
+      acc.lang = watchLangFor();
+    }
+
+    if (!acc.tick) {
+      // Start of an active stretch — anchor only, count nothing yet.
+      if (!acc.activeAt || now - acc.activeAt > WATCH_SESSION_GAP_MS) acc.sessions++;
+      acc.tick = now;
+      acc.activeAt = now;
+      acc.mediaAt = video.currentTime;
+      acc.first ??= new Date(now).toISOString();
+      return;
+    }
+
+    const dtWall = (now - acc.tick) / 1000;
+    acc.tick = now;
+    acc.activeAt = now;
+    if (dtWall <= 0 || dtWall > WATCH_TICK_MAX_S) {
+      // Throttled tab, jank, or a sleeping laptop. Re-anchor without counting —
+      // under-reporting by a couple of seconds beats inventing hours.
+      acc.mediaAt = video.currentTime;
+      return;
+    }
+
+    // Reject seeks: real playback can't advance the media clock faster than
+    // dtWall × rate (plus slack for timer jitter).
+    const dtMedia = video.currentTime - acc.mediaAt;
+    if (dtMedia > 0 && dtMedia <= dtWall * video.playbackRate * 1.5 + 0.5) {
+      acc.media += dtMedia;
+      if (acc.cov.length) markCoverage(acc.cov, acc.mediaAt, video.currentTime);
+    }
+    acc.mediaAt = video.currentTime;
+
+    acc.wall += dtWall;
+    const day = localDayKey(new Date(now));
+    acc.days[day] = (acc.days[day] ?? 0) + dtWall;
+    acc.last = new Date(now).toISOString();
+    acc.dirty = true;
+
+    if (!acc.seeded && acc.wall >= 10) {
+      acc.seeded = true;
+      void seedWatchFromServer(acc);
+    }
+    persistWatch(acc);
+  }
+
+  function setupWatchTracking(video) {
+    video.addEventListener("timeupdate", () => watchTick(video));
+    // timeupdate simply stops while paused/seeking, which would leave a stale
+    // anchor and bill the gap to the next resume. Drop the anchor explicitly.
+    const drop = () => {
+      if (watchAcc) watchAcc.tick = 0;
+    };
+    for (const ev of ["pause", "ended", "seeking", "waiting", "ratechange", "play"])
+      video.addEventListener(ev, drop);
+  }
+
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+      if (document.visibilityState !== "hidden" || !watchAcc) return;
+      watchAcc.tick = 0;
+      persistWatch(watchAcc, true);
+      void flushWatch();
+    },
+    { signal },
+  );
+  // pagehide is the one unload event that fires reliably (bfcache included). A
+  // network round-trip won't finish here, so persist locally and let the next
+  // page load drain the dirty list.
+  window.addEventListener("pagehide", () => persistWatch(watchAcc, true), { signal });
+
+  addInterval(() => {
+    void flushWatch();
+    void flushPendingWatch();
+  }, WATCH_SYNC_MS);
+  void flushPendingWatch();
+
+  // ── Difficulty overlay ─────────────────────────────────────────────────────
+  // A heatmap of the speed markers, drawn along the bottom of the video: green
+  // where you outran it, red where you slowed it down, grey where you never had
+  // an opinion. Plus one score — the time-weighted geometric mean rate — so
+  // "how comfortable is this video for me" is a glance, not a memory.
+  //
+  // Rendered into our own fixed-position layer tracking the video's rect rather
+  // than injected into the site's player chrome: this script runs on *://*/*, and
+  // anything keyed to YouTube's progress-bar DOM would break everywhere else and
+  // again the next time YouTube reshuffles its markup.
+
+  const HEAT_BUCKETS = 160;
+  const HEAT_MIN_DURATION = 10; // ignore stings, ads, and preview loops
+  let heatLayer = null;
+  let heatVideo = null;
+  let heatRaf = 0;
+  let heatUrl = null;
+  let heatBroken = false;
+
+  const heatEnabled = () => GM_getValue("lk:heatmap", "1") !== "0";
+
+  function buildHeatLayer() {
+    const el = document.createElement("div");
+    Object.assign(el.style, {
+      position: "fixed",
+      zIndex: "2147483000",
+      pointerEvents: "none",
+      display: "none",
+      transition: "opacity .2s",
+      font: "600 11px/1.4 system-ui, sans-serif",
+    });
+    // Built with DOM calls, not innerHTML: YouTube enforces Trusted Types, which
+    // rejects string-to-markup assignment exactly as it rejected string-to-code.
+    const bar = document.createElement("div");
+    bar.dataset.lk = "bar";
+    bar.style.cssText =
+      "position:absolute;left:0;right:0;bottom:0;height:5px;display:flex;" +
+      "border-radius:3px;overflow:hidden;box-shadow:0 0 0 1px rgba(0,0,0,.35)";
+    const pill = document.createElement("div");
+    pill.dataset.lk = "pill";
+    pill.style.cssText =
+      "position:absolute;right:8px;bottom:12px;padding:3px 8px;border-radius:999px;" +
+      "color:#fff;background:rgba(0,0,0,.72);backdrop-filter:blur(6px);white-space:nowrap";
+    // Playhead. A sibling of the bar, not a child: paintHeatmap() replaces the
+    // bar's children wholesale, which would wipe a nested marker on every repaint.
+    const head = document.createElement("div");
+    head.dataset.lk = "head";
+    head.style.cssText =
+      "position:absolute;bottom:0;width:2px;height:9px;background:#fff;" +
+      "box-shadow:0 0 3px rgba(0,0,0,.9);border-radius:1px;transform:translateX(-1px);display:none";
+    el.append(bar, head, pill);
+    document.body.appendChild(el);
+    return el;
+  }
+
+  /**
+   * Markers for the video *currently on screen*.
+   *
+   * YouTube reuses the same <video> element across SPA navigations, and
+   * observeVideos() WeakSets each element so it is only ever set up once — so
+   * without re-keying here the speed map still holds the PREVIOUS video's
+   * markers. That mis-drew this overlay and, worse, made auto-speed apply the
+   * last video's timings to the new one.
+   */
+  function markersForCurrentVideo(video) {
+    const url = normalizeUrl(location.href);
+    if (url !== heatUrl) {
+      heatUrl = url;
+      videoSpeedMaps.set(
+        video,
+        new Map(Object.entries(loadLocalMarkers(url).markers).map(([t, s]) => [parseFloat(t), s])),
+      );
+    }
+    return Object.fromEntries(videoSpeedMaps.get(video) ?? []);
+  }
+
+  /**
+   * Repaint the bar + pill. Never throws.
+   *
+   * This runs inside observeVideos(), which runs inside main()'s synchronous
+   * body — so an exception here does not just break the overlay, it aborts the
+   * rest of main() and leaves everything declared below it (offlineReady, the
+   * sync timers) permanently in the temporal dead zone. That is precisely what
+   * an innerHTML call did on YouTube. Cosmetic code gets a hard boundary.
+   */
+  function paintHeatmap(video) {
+    try {
+      paintHeatmapUnsafe(video);
+    } catch (err) {
+      console.error("[Lianki] Difficulty overlay disabled after error:", err);
+      hideHeatmap();
+      heatBroken = true;
+    }
+  }
+
+  function paintHeatmapUnsafe(video) {
+    if (heatBroken) return;
+    if (!heatEnabled() || !video || !Number.isFinite(video.duration)) return hideHeatmap();
+    if (video.duration < HEAT_MIN_DURATION) return hideHeatmap();
+
+    const markers = markersForCurrentVideo(video);
+    const { score, label, marked, segments } = videoDifficulty(markers, video.duration);
+
+    heatLayer ??= buildHeatLayer();
+    const bar = heatLayer.querySelector('[data-lk="bar"]');
+    const pill = heatLayer.querySelector('[data-lk="pill"]');
+
+    const buckets = heatmapBuckets(segments, video.duration, HEAT_BUCKETS);
+    bar.replaceChildren(); // not innerHTML="" — Trusted Types rejects that sink
+    // Fade the parts you haven't reached yet. A speed marker holds until the next
+    // one, so the step function paints the *whole* remaining timeline in the
+    // current rate — which reads as a confident judgement about video you have
+    // never seen. Opacity separates "measured" from "not yet visited".
+    const acc = watchAccFor();
+    const played = video.played;
+    const seenAt = (t) => {
+      const bit = Math.floor(t / COV_BUCKET_S);
+      if (acc.cov.length && bit >> 3 < acc.cov.length && acc.cov[bit >> 3] & (1 << (bit & 7)))
+        return true;
+      for (let i = 0; i < played.length; i++)
+        if (t >= played.start(i) && t <= played.end(i)) return true;
+      return false;
+    };
+
+    const width = video.duration / buckets.length;
+    buckets.forEach((rate, i) => {
+      const cell = document.createElement("div");
+      // Sample both edges and the middle: a 5 s coverage bucket and a heatmap
+      // bucket rarely line up, and checking one point drops thin slivers.
+      const mid = i * width + width / 2;
+      const seen =
+        seenAt(i * width) || seenAt(mid) || seenAt(Math.min(video.duration, (i + 1) * width));
+      cell.style.cssText = `flex:1;background:${rateColor(rate, seen ? (marked > 0 ? 0.92 : 0.3) : 0.1)}`;
+      bar.appendChild(cell);
+    });
+
+    // An unrated video still shows the bar, faintly, with the interaction spelled
+    // out. Hiding it made "nothing marked yet" and "the overlay is broken" look
+    // identical — which is exactly how this got reported as not working.
+    if (marked > 0) {
+      pill.textContent = `${score.toFixed(2)}× ${label} · ${Math.round(marked * 100)}% marked`;
+      pill.style.color = rateColor(score);
+      pill.style.opacity = "1";
+    } else {
+      pill.textContent = "unrated · , slower · . faster";
+      pill.style.color = "#cbd5e1";
+      pill.style.opacity = "0.75";
+    }
+    heatVideo = video;
+    positionHeatmap();
+  }
+
+  /** Slide the playhead. Cheap by design — called ~4×/s from timeupdate. */
+  function movePlayhead(video) {
+    const head = heatLayer?.querySelector('[data-lk="head"]');
+    if (!head || heatLayer.style.display === "none") return;
+    const d = video.duration;
+    if (!Number.isFinite(d) || d <= 0) return (head.style.display = "none");
+    head.style.display = "block";
+    head.style.left = `${Math.min(100, Math.max(0, (video.currentTime / d) * 100))}%`;
+  }
+
+  function positionHeatmap() {
+    if (!heatLayer || !heatVideo) return;
+    const r = heatVideo.getBoundingClientRect();
+    const visible = r.width > 120 && r.height > 80 && r.bottom > 0 && r.top < innerHeight;
+    heatLayer.style.display = visible ? "block" : "none";
+    if (!visible) return;
+    Object.assign(heatLayer.style, {
+      left: `${r.left}px`,
+      top: `${r.top}px`,
+      width: `${r.width}px`,
+      height: `${r.height}px`,
+    });
+  }
+
+  function hideHeatmap() {
+    if (heatLayer) heatLayer.style.display = "none";
+  }
+
+  const scheduleHeatReposition = () => {
+    cancelAnimationFrame(heatRaf);
+    heatRaf = requestAnimationFrame(positionHeatmap);
+  };
+  addEventListener("scroll", scheduleHeatReposition, { passive: true, capture: true, signal });
+  addEventListener("resize", scheduleHeatReposition, { passive: true, signal });
+
+  function setupHeatmap(video) {
+    // loadedmetadata gives duration; ratechange fires on every marker the user
+    // sets, which is exactly when the picture changes.
+    for (const ev of ["loadedmetadata", "ratechange", "durationchange"])
+      video.addEventListener(ev, () => paintHeatmap(video));
+    video.addEventListener("play", () => paintHeatmap(video));
+    // Playhead moves on timeupdate (~4 Hz) but only nudges one element's `left`.
+    // A full repaint here would rebuild 160 divs four times a second.
+    video.addEventListener("timeupdate", () => movePlayhead(video));
+    if (Number.isFinite(video.duration) && video.duration > 0) paintHeatmap(video);
+    // Markers load asynchronously from the DB after setup; repaint once they land.
+    setTimeout(() => paintHeatmap(video), 1500);
+  }
+
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.code !== "KeyH" || !e.altKey || e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      GM_setValue("lk:heatmap", heatEnabled() ? "0" : "1");
+      if (heatEnabled()) paintHeatmap(heatVideo ?? $$("video,audio")[0]);
+      else hideHeatmap();
+      centerTooltip(`Difficulty overlay ${heatEnabled() ? "on" : "off"}`);
+    },
+    { capture: true, signal },
+  );
+
   // Detect and track all video/audio elements
   function observeVideos() {
     const tracked = new WeakSet();
@@ -1959,6 +2633,8 @@ function main() {
       if (tracked.has(v)) return;
       tracked.add(v);
       setupVideoSpeedTracking(v);
+      setupWatchTracking(v);
+      setupHeatmap(v);
     };
 
     // Track existing videos
@@ -1974,15 +2650,14 @@ function main() {
   observeVideos();
 
   // Periodic sync to DB (every 30s)
-  setInterval(async () => {
+  addInterval(async () => {
     try {
       const url = normalizeUrl(location.href);
       const cache = loadLocalMarkers(url);
 
       if (!cache.dirty) return; // No changes to sync
 
-      console.log(`[Lianki] Syncing ${Object.keys(cache.markers).length} markers to DB...`);
-
+      const count = Object.keys(cache.markers).length;
       await api("/api/fsrs/speed-markers", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1991,9 +2666,15 @@ function main() {
 
       // Mark as synced
       saveLocalMarkers(url, cache.markers, false); // dirty = false
-      console.log("[Lianki] Sync complete");
+      // Name what was synced and where. A bare "Sync complete" is unfalsifiable:
+      // with several syncs running on a timer you cannot tell which one spoke,
+      // whether it was this page, or whether anything was actually sent.
+      console.log(`[Lianki] Synced ${count} speed markers → ${ORIGIN}/api/fsrs/speed-markers`, {
+        url,
+        markers: cache.markers,
+      });
     } catch (err) {
-      console.error("[Lianki] Sync failed:", err);
+      logFail("markers-sync", `speed-marker sync for ${normalizeUrl(location.href)}`, err);
       // Keep dirty flag, will retry in 30s
     }
   }, 30_000); // 30 seconds
@@ -2083,7 +2764,7 @@ function main() {
           return;
         }
       } catch (err) {
-        console.error("[Lianki] Cache check failed:", err);
+        logFail("cache-check", "cache check", err);
         // Fall through to online mode
       }
     }
@@ -2205,7 +2886,7 @@ function main() {
           // Must set prefetchedNextUrl BEFORE afterReview(), because the server
           // hasn't received this review yet and would return the same card.
           try {
-            const dueCards = cardStorage.getDueCards(2);
+            const dueCards = cardStorage.getDueCards(2, reviewOrder());
             const normalizedCurrent = normalizeUrl(location.href);
             const nextCard = dueCards.find((c) => c.url !== url && c.url !== normalizedCurrent);
             prefetchedNextUrl = nextCard?.url ?? null;
@@ -2264,7 +2945,7 @@ function main() {
   // ── Background Sync ──────────────────────────────────────────────────────────
   function startBackgroundSync() {
     // Sync every 30 seconds
-    syncTimer = setInterval(() => {
+    syncTimer = addInterval(() => {
       if (navigator.onLine && !syncInProgress) {
         tryBackgroundSync();
       }
@@ -2306,7 +2987,7 @@ function main() {
           queueStorage.removeFromQueue(item.id);
           console.log(`[Lianki] Synced: ${item.action} ${item.data.url || item.data.noteId}`);
         } catch (err) {
-          console.error(`[Lianki] Sync failed for ${item.id}:`, err);
+          logFail("queue", `queued sync of ${item.id}`, err);
 
           // Increment retry count
           item.retries = (item.retries || 0) + 1;
@@ -2382,8 +3063,42 @@ function main() {
     try {
       console.log("[Lianki] Prefetching due cards...");
 
-      const response = await api("/api/fsrs/due?limit=20");
+      const LIMIT = 20;
+      const response = await api(`/api/fsrs/due?limit=${LIMIT}`);
       const dueCards = response.cards || [];
+
+      // Reconcile deletions. This loop only ever added or refreshed cards, so a
+      // card deleted from the website stayed in the local index forever and kept
+      // being served as "next" — the local store had no way to learn it was gone.
+      //
+      // Prune by due-date horizon, not by page fullness.
+      //
+      // The first attempt only pruned when the server returned fewer than the
+      // limit — reasoning that a full page might be truncated. But /due sorts by
+      // card.due ascending, so with ≥20 due cards it ALWAYS returns exactly 20
+      // and the prune never ran. That is the common case, which made the fix a
+      // no-op precisely for the people hitting the bug.
+      //
+      // The response is authoritative up to its last due date: the server would
+      // have included anything due at or before that. So a local card due
+      // strictly earlier than the horizon, yet missing from the response, is
+      // genuinely gone. Cards beyond the horizon are simply out of view.
+      const live = new Set(dueCards.map((n) => n.url));
+      const horizon = dueCards.length
+        ? new Date(dueCards[dueCards.length - 1].card.due).getTime()
+        : Infinity; // empty response = nothing is due, so every local due card is stale
+      for (const stale of cardStorage.getDueCards(9999)) {
+        if (live.has(stale.url) || stale.dirty) continue; // dirty = unsynced local edit
+        // Fail SAFE: keep the card unless we can positively prove it is stale.
+        // An unreadable due date must not fall through to deletion — NaN fails
+        // every comparison, so testing "is it beyond the horizon" would answer
+        // false and drop a card we know nothing about.
+        const due = new Date(stale.note?.card?.due).getTime();
+        if (!Number.isFinite(due) || due >= horizon) continue;
+        console.log(`[Lianki] Dropping locally cached card deleted on the server: ${stale.url}`);
+        cardStorage.deleteCard(stale.url);
+        if (prefetchedNextUrl === stale.url) prefetchedNextUrl = null;
+      }
 
       for (const note of dueCards) {
         try {
@@ -2411,7 +3126,13 @@ function main() {
 
       console.log(`[Lianki] Prefetched ${dueCards.length} cards`);
     } catch (err) {
-      console.error("[Lianki] Prefetch failed:", err);
+      if (isAuthError(err))
+        warnOnce(
+          "auth:prefetch",
+          "[Lianki] Not signed in — using locally cached cards only.",
+          err.message,
+        );
+      else console.error("[Lianki] Prefetch failed:", err);
     }
   }
 
@@ -2419,14 +3140,14 @@ function main() {
     if (!offlineReady) return;
 
     try {
-      const dueCards = cardStorage.getDueCards(2);
+      const dueCards = cardStorage.getDueCards(2, reviewOrder());
       const normalizedCurrent = normalizeUrl(location.href);
       const nextCard = dueCards.find((c) => c.url !== normalizedCurrent);
       if (nextCard) {
         prefetchNextPage(nextCard.url);
       }
     } catch (err) {
-      console.error("[Lianki] Failed to prefetch next cached card:", err);
+      logFail("prefetch-next", "next-card prefetch", err);
     }
   }
 
@@ -2438,6 +3159,8 @@ function main() {
 
   return () => {
     ac.abort();
+    for (const id of intervals) clearInterval(id);
+    intervals.length = 0;
     closeDialog();
     videoObserver?.disconnect();
     fab?.remove();

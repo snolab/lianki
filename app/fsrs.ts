@@ -20,10 +20,21 @@ import {
   compareHLC,
   type HLC,
   newServerHLC,
-  NEXT_DUE_SORT,
   RATING_MAP,
 } from "./fsrs-helpers";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
+import { getWatchStatsStore } from "./getWatchStatsStore";
+import {
+  asReviewOrder,
+  DEFAULT_REVIEW_ORDER,
+  reviewOrderMongo,
+  sanitizeWatchStats,
+  summarizeWatch,
+  type ReviewOrder,
+} from "@lianki/core";
+import { authUserOrNull } from "./signInEmail";
+import { PreferencesD1Repo } from "@/lib/repos/d1Repos";
+import { db as mongoDb } from "./db";
 import { getHeatmapCacheTag } from "./lib/heatmap-cache";
 import { normalizeUrl } from "@/lib/normalizeUrl";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -53,16 +64,11 @@ export function getFsrsNotes(email?: string): Collection<FSRSNote> {
 
 export type { HLC } from "./fsrs-helpers";
 
-export type FSRSNote = {
-  url: string;
-  title?: string;
-  card: Card;
-  log?: ReviewLog[]; // Review history
-  notes?: string; // User notes, max 128 chars
-  speedMarkers?: Record<number, number>; // {timestamp: speed}
-  hlc?: HLC; // Hybrid Logical Clock for sync
-  deviceId?: string; // Last device that modified (legacy field)
-};
+// FSRSNote moved to lib/core/fsrsNote.ts (Next-free) for reuse by the D1 repos
+// and the CF-native worker; imported for local use + re-exported so existing
+// imports keep working.
+import type { FSRSNote } from "@/lib/core/fsrsNote";
+export type { FSRSNote };
 
 // Configure FSRS with fuzz enabled to prevent review bunching
 // Fuzz adds small random variations (±2.5% by default) to scheduled intervals
@@ -72,6 +78,24 @@ const fsrsConfig = fsrs(
     enable_fuzz: true, // Explicitly enable fuzz (default is true, but making it explicit)
   }),
 );
+
+/**
+ * The signed-in user's next-card order. Preferences are keyed by user id while
+ * the FSRS handler works in emails, so this resolves the user separately.
+ * Any failure yields the historical order — a preference lookup must never be
+ * able to block reviewing.
+ */
+async function getReviewOrder(): Promise<ReviewOrder> {
+  try {
+    const user = await authUserOrNull();
+    if (!user?.id) return DEFAULT_REVIEW_ORDER;
+    if (dbBackend() === "d1") return await new PreferencesD1Repo(getD1(), user.id).reviewOrder();
+    const prefs = await mongoDb.collection("preferences").findOne({ userId: user.id });
+    return asReviewOrder(prefs?.reviewOrder);
+  } catch {
+    return DEFAULT_REVIEW_ORDER;
+  }
+}
 
 function nextDueQuery(req: Request, excludeUrl?: string) {
   const url = new URL(req.url, "http://localhost");
@@ -83,6 +107,15 @@ function nextDueQuery(req: Request, excludeUrl?: string) {
 
 export const fsrsHandler = async (req: Request, email?: string) => {
   const FSRSNotes = getFsrsNotes(email);
+
+  // Next-card order preference. Resolved once per request and reused, so every
+  // "what comes next" decision in this handler agrees. Failure falls back to the
+  // historical order rather than breaking review.
+  let _order: 1 | -1 | null = null;
+  const dueSort = async (): Promise<{ "card.due": 1 | -1 }> => {
+    if (_order === null) _order = reviewOrderMongo(await getReviewOrder());
+    return { "card.due": _order };
+  };
 
   type RegexRoutes = Record<
     string,
@@ -146,7 +179,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         };
       }
 
-      const cards = await FSRSNotes.find(query, { sort: { "card.due": 1 }, limit }).toArray();
+      const cards = await FSRSNotes.find(query, { sort: await dueSort(), limit }).toArray();
 
       return JSONR({
         cards: cards.map((note) => ({
@@ -174,8 +207,17 @@ export const fsrsHandler = async (req: Request, email?: string) => {
         ),
       });
     },
+    // Existence probe for the offline sync queue. The userscript has always
+    // called this; it was never implemented on any backend, so that queue step
+    // silently 404'd for every user.
+    "GET /api/fsrs/get(?:/|$|\\?)": async (req, opts) => {
+      const { url } = getParams(req, opts);
+      const note = await FSRSNotes.findOne({ url: normalizeUrl(url) });
+      if (!note) return JSONR({ error: "note not found" }, 404);
+      return JSONR({ _id: note._id.toString(), url: note.url, title: note.title ?? null });
+    },
     "GET /api/fsrs/next-url(?:/|$|\\?)": async (req) => {
-      const note = await FSRSNotes.findOne(nextDueQuery(req), { sort: NEXT_DUE_SORT });
+      const note = await FSRSNotes.findOne(nextDueQuery(req), { sort: await dueSort() });
       return JSONR({ url: note?.url ?? null, title: note?.title ?? null });
     },
     "GET /api/fsrs/review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (
@@ -188,7 +230,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const reviewedCard = await reviewed(note, rating);
 
       const nextNote = await FSRSNotes.findOne(nextDueQuery(req, note.url), {
-        sort: NEXT_DUE_SORT,
+        sort: await dueSort(),
       });
 
       return JSONR({
@@ -249,7 +291,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const reviewedCard = await reviewed(note, rating, clientHLC);
 
       const nextNote = await FSRSNotes.findOne(nextDueQuery(req, note.url), {
-        sort: NEXT_DUE_SORT,
+        sort: await dueSort(),
       });
 
       return JSONR({
@@ -266,7 +308,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
       await FSRSNotes.deleteOne({ url: note.url });
 
-      const nextNote = await FSRSNotes.findOne(nextDueQuery(req), { sort: NEXT_DUE_SORT });
+      const nextNote = await FSRSNotes.findOne(nextDueQuery(req), { sort: await dueSort() });
 
       return JSONR({
         ok: true,
@@ -372,9 +414,40 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const note = await FSRSNotes.findOne({ url: normalized });
       return JSONR({ markers: note?.speedMarkers ?? {} });
     },
+    // Per-video watch time. Stored apart from the note (see getWatchStatsStore)
+    // so merely playing a video never enqueues a review card.
+    "POST /api/fsrs/watch(?:/|$|\\?)": async (req) => {
+      const body = await req.json().catch(() => null);
+      const { url, title, stats } = z
+        .object({
+          url: z.string(),
+          title: z.string().max(512).optional().nullable(),
+          stats: z.unknown().optional(),
+        })
+        .parse(body);
+      const row = await getWatchStatsStore(email).merge(
+        normalizeUrl(url),
+        sanitizeWatchStats(stats),
+        title ?? undefined,
+      );
+      return JSONR({ ok: true, stats: row.stats, summary: summarizeWatch(row.stats) });
+    },
+    "GET /api/fsrs/watch/overview(?:/|$|\\?)": async (req, opts) => {
+      const { top } = getParams(req, opts);
+      const limit = Math.min(100, parseInt(top ?? "20", 10) || 20);
+      return JSONR(await getWatchStatsStore(email).overview(limit));
+    },
+    "GET /api/fsrs/watch(?:/|$|\\?)": async (req, opts) => {
+      const { url } = getParams(req, opts);
+      const row = await getWatchStatsStore(email).getByUrl(normalizeUrl(url));
+      return JSONR({
+        stats: row?.stats ?? { v: 1, by: {} },
+        summary: summarizeWatch(row?.stats),
+      });
+    },
     "GET /api/fsrs/next(?:/|\\?|$)": async () =>
       new Response(
-        sflow(FSRSNotes.find({ "card.due": { $lte: new Date() } }, { sort: NEXT_DUE_SORT }))
+        sflow(FSRSNotes.find({ "card.due": { $lte: new Date() } }, { sort: await dueSort() }))
           .limit(1)
           .map((note) => {
             const url = JSON.stringify(note.url);

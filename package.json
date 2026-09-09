@@ -1,5 +1,5 @@
 {
-  "name": "main",
+  "name": "lianki-monorepo",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -24,6 +24,7 @@
     "test:e2e": "node tests/e2e-offline-sync.spec.mjs",
     "test:e2e:prod": "LIANKI_URL=https://lianki.com node tests/e2e-offline-sync.spec.mjs",
     "test:unit": "bun test",
+    "test:ext": "(cd packages/ext && bun run build) && xvfb-run -a bunx playwright test tests/extension.spec.ts",
     "test:sync": "playwright test tests/db-sync-matrix.spec.ts",
     "build:userscript": "bunx --bun userbuild src/lianki.user.ts --outdir=public --format=iife",
     "ship": "bun scripts/ship.ts",
@@ -31,11 +32,14 @@
     "dev:userscript": "vite --config vite.config.userscript.ts",
     "dev:loader": "bun scripts/dev-userscript-server.ts",
     "storybook": "storybook dev -p 6006",
-    "build:storybook": "storybook build"
+    "build:storybook": "storybook build",
+    "dev:userscript:tunnel": "bun scripts/dev-userscript.ts --tunnel",
+    "dev:userscript:monkey": "bun scripts/dev-userscript.ts --monkey --tunnel"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.41",
     "@marsidev/react-turnstile": "^1.4.2",
+    "@better-auth/kysely-adapter": "^1.5.4",
     "@tailwindcss/postcss": "^4.2.1",
     "ai": "^6.0.116",
     "better-auth": "^1.5.4",
@@ -84,6 +88,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/sql.js": "^1.4.11",
     "@typescript/native-preview": "^7.0.0-dev.20260308.1",
+    "cloudflared": "^0.7.1",
     "dotenv": "^16.6.1",
     "husky": "^9.1.7",
     "idb-keyval": "^6.2.2",
@@ -104,9 +109,5 @@
   },
   "overrides": {
     "kysely": "0.28.17"
-  },
-  "lint-staged": {
-    "**/*": "secretlint",
-    "**/*.{ts,tsx,js,jsx,mjs,cjs}": ["oxlint --fix --ignore-pattern 'packages/**'", "oxfmt"]
   }
 }

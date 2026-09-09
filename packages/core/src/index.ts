@@ -1,0 +1,12 @@
+// @lianki/core — framework-neutral shared code (no Next.js, no Mongo, no DOM).
+// Consumed by the Next app (via re-export stubs in lib/* and app/fsrs-helpers),
+// the apps/api Hono worker, and future apps. Barrel export.
+export * from "./normalizeUrl";
+export * from "./hlc";
+export * from "./rating";
+export * from "./fsrsNote";
+export * from "./preferences";
+export * from "./apiToken";
+export * from "./watchStats";
+export * from "./difficulty";
+export * from "./youtubeLang";

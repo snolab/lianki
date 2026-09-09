@@ -6,6 +6,7 @@
       "name": "main",
       "dependencies": {
         "@ai-sdk/openai": "^3.0.41",
+        "@better-auth/kysely-adapter": "^1.5.4",
         "@marsidev/react-turnstile": "^1.4.2",
         "@tailwindcss/postcss": "^4.2.1",
         "ai": "^6.0.116",
@@ -55,6 +56,7 @@
         "@types/react-dom": "^19.2.3",
         "@types/sql.js": "^1.4.11",
         "@typescript/native-preview": "^7.0.0-dev.20260308.1",
+        "cloudflared": "^0.7.1",
         "dotenv": "^16.6.1",
         "husky": "^9.1.7",
         "idb-keyval": "^6.2.2",
@@ -73,6 +75,13 @@
         "vite-plugin-monkey": "^8.1.0",
         "wrangler": "^4.92.0",
       },
+    },
+    "packages/core": {
+      "name": "@lianki/core",
+      "version": "0.0.0",
+    },
+    "packages/ext": {
+      "name": "@lianki/ext",
     },
   },
   "overrides": {
@@ -508,6 +517,10 @@
     "@kwsites/promise-deferred": ["@kwsites/promise-deferred@1.1.1", "", {}, "sha512-GaHYm+c0O9MjZRu0ongGBRbinu8gVAMd2UZjji6jVmqKtZluZnptXGWhz1E8j8D2HJ3f/yMxKAUC0b+57wncIw=="],
 
     "@leichtgewicht/ip-codec": ["@leichtgewicht/ip-codec@2.0.5", "", {}, "sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw=="],
+
+    "@lianki/core": ["@lianki/core@workspace:packages/core"],
+
+    "@lianki/ext": ["@lianki/ext@workspace:packages/ext"],
 
     "@marsidev/react-turnstile": ["@marsidev/react-turnstile@1.4.2", "", { "peerDependencies": { "react": "^17.0.2 || ^18.0.0 || ^19.0", "react-dom": "^17.0.2 || ^18.0.0 || ^19.0" } }, "sha512-xs1qOuyeMOz6t9BXXCXWiukC0/0+48vR08B7uwNdG05wCMnbcNgxiFmdFKDOFbM76qFYFRYlGeRfhfq1U/iZmA=="],
 
@@ -1426,6 +1439,8 @@
     "cliui": ["cliui@9.0.1", "", { "dependencies": { "string-width": "^7.2.0", "strip-ansi": "^7.1.0", "wrap-ansi": "^9.0.0" } }, "sha512-k7ndgKhwoQveBL+/1tqGJYNz097I7WOvwbmmU2AR5+magtbjPWQTS1C5vzGkBC8Ym8UWRzfKUzUUqFLypY4Q+w=="],
 
     "cloudflare": ["cloudflare@4.5.0", "", { "dependencies": { "@types/node": "^18.11.18", "@types/node-fetch": "^2.6.4", "abort-controller": "^3.0.0", "agentkeepalive": "^4.2.1", "form-data-encoder": "1.7.2", "formdata-node": "^4.3.2", "node-fetch": "^2.6.7" } }, "sha512-fPcbPKx4zF45jBvQ0z7PCdgejVAPBBCZxwqk1k7krQNfpM07Cfj97/Q6wBzvYqlWXx/zt1S9+m8vnfCe06umbQ=="],
+
+    "cloudflared": ["cloudflared@0.7.3", "", { "bin": { "cloudflared": "./lib/cloudflared.js" } }, "sha512-dR4QMS4PbD287QqOV/vAoE1BcQCXphLOVrN9vjNUgkLrPDA5qxn9Dz0VId0P7/Czj4Mxu3hoLgbrVx5OtOWr5Q=="],
 
     "clsx": ["clsx@2.1.1", "", {}, "sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA=="],
 

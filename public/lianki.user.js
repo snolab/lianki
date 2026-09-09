@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.24
+// @version     2.24.1
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -17,7 +17,7 @@
 // @connect     www.lianki.com
 // ==/UserScript==
 (() => {
-  // node_modules/ts-fsrs/dist/index.mjs
+  // node_modules/.bun/ts-fsrs@5.2.3/node_modules/ts-fsrs/dist/index.mjs
   var State = /* @__PURE__ */ ((State2) => {
     State2[(State2["New"] = 0)] = "New";
     State2[(State2["Learning"] = 1)] = "Learning";
@@ -1432,6 +1432,208 @@
     return new FSRS(params || {});
   };
 
+  // packages/core/src/watchStats.ts
+  var COV_BUCKET_S = 5;
+  var COV_MAX_BUCKETS = 4096;
+  var emptyWatchStats = () => ({ v: 1, by: {} });
+  var localDayKey = (d = new Date()) => d.toLocaleDateString("en-CA");
+  function coverageBuckets(durSeconds) {
+    if (durSeconds == null || !Number.isFinite(durSeconds) || durSeconds <= 0) return 0;
+    const n = Math.ceil(durSeconds / COV_BUCKET_S);
+    return n > COV_MAX_BUCKETS ? 0 : n;
+  }
+  var newCoverage = (buckets) => new Uint8Array(Math.ceil(buckets / 8));
+  function markCoverage(bytes, fromS, toS) {
+    const buckets = bytes.length * 8;
+    if (!buckets) return;
+    const a = Math.min(fromS, toS);
+    const b = Math.max(fromS, toS);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return;
+    const lo = Math.max(0, Math.floor(a / COV_BUCKET_S));
+    const hi = Math.min(buckets - 1, Math.floor(b / COV_BUCKET_S));
+    for (let i = lo; i <= hi; i++) bytes[i >> 3] |= 1 << (i & 7);
+  }
+  function encodeCoverage(bytes) {
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 1024)
+      bin += String.fromCharCode(...bytes.subarray(i, i + 1024));
+    return btoa(bin);
+  }
+  function decodeCoverage(b64) {
+    if (!b64) return new Uint8Array(0);
+    try {
+      const bin = atob(b64);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    } catch {
+      return new Uint8Array(0);
+    }
+  }
+  function mergeCoverage(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    const x = decodeCoverage(a);
+    const y = decodeCoverage(b);
+    const out = new Uint8Array(Math.max(x.length, y.length));
+    out.set(x);
+    for (let i = 0; i < y.length; i++) out[i] |= y[i];
+    return encodeCoverage(out);
+  }
+  var maxNum = (a, b) => (a == null ? b : b == null ? a : Math.max(a, b));
+  var minStr = (a, b) => (a == null ? b : b == null ? a : a < b ? a : b);
+  var maxStr = (a, b) => (a == null ? b : b == null ? a : a > b ? a : b);
+  function mergeLang(a, b) {
+    if (!a.lang || !b.lang || a.lang === b.lang) return a.lang ?? b.lang;
+    const al = a.last ?? "";
+    const bl = b.last ?? "";
+    if (al !== bl) return al > bl ? a.lang : b.lang;
+    return a.lang < b.lang ? a.lang : b.lang;
+  }
+  function mergeDeviceWatch(a, b) {
+    const days = { ...a.days };
+    for (const [day, secs] of Object.entries(b.days ?? {}))
+      days[day] = Math.max(days[day] ?? 0, secs);
+    return {
+      wall: Math.max(a.wall, b.wall),
+      media: Math.max(a.media, b.media),
+      sessions: Math.max(a.sessions, b.sessions),
+      days,
+      cov: mergeCoverage(a.cov, b.cov),
+      dur: maxNum(a.dur, b.dur),
+      lang: mergeLang(a, b),
+      first: minStr(a.first, b.first),
+      last: maxStr(a.last, b.last),
+    };
+  }
+  function mergeWatchStats(a, b) {
+    const out = { v: 1, by: { ...a?.by } };
+    for (const [device, watch] of Object.entries(b?.by ?? {})) {
+      const mine = out.by[device];
+      out.by[device] = mine ? mergeDeviceWatch(mine, watch) : watch;
+    }
+    return out;
+  }
+  var MAX_DEVICES = 32;
+  var MAX_DAYS = 400;
+  var MAX_COV_CHARS = 700;
+  var MAX_SECONDS = 1e9;
+  var DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+  var num = (v, max) =>
+    typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.min(v, max) : undefined;
+  var str = (v, max) => (typeof v === "string" && v.length > 0 && v.length <= max ? v : undefined);
+  function sanitizeWatchStats(input) {
+    const by = input?.by;
+    if (!by || typeof by !== "object") return emptyWatchStats();
+    const out = emptyWatchStats();
+    for (const [device, raw] of Object.entries(by).slice(0, MAX_DEVICES)) {
+      if (device.length > 64 || !raw || typeof raw !== "object") continue;
+      const d = raw;
+      const days = {};
+      for (const [day, secs] of Object.entries(d.days ?? {}).slice(0, MAX_DAYS)) {
+        if (!DAY_KEY.test(day)) continue;
+        const v = num(secs, 86400);
+        if (v != null) days[day] = v;
+      }
+      const cov = str(d.cov, MAX_COV_CHARS);
+      out.by[device] = {
+        wall: num(d.wall, MAX_SECONDS) ?? 0,
+        media: num(d.media, MAX_SECONDS) ?? 0,
+        sessions: num(d.sessions, 1e6) ?? 0,
+        days,
+        cov: cov && /^[A-Za-z0-9+/=]*$/.test(cov) ? cov : undefined,
+        dur: num(d.dur, MAX_SECONDS),
+        lang: str(d.lang, 32),
+        first: str(d.first, 32),
+        last: str(d.last, 32),
+      };
+    }
+    return out;
+  }
+
+  // packages/core/src/difficulty.ts
+  var RATE_FLOOR = 0.5;
+  var RATE_CEIL = 2;
+  function rateSegments(markers, duration) {
+    if (!Number.isFinite(duration) || duration <= 0) return [];
+    const points = Object.entries(markers ?? {})
+      .map(([t, rate2]) => ({ t: Number(t), rate: Number(rate2) }))
+      .filter((p) => Number.isFinite(p.t) && p.t >= 0 && Number.isFinite(p.rate) && p.rate > 0)
+      .sort((a, b) => a.t - b.t);
+    const segments = [];
+    let cursor = 0;
+    let rate = 1;
+    for (const p of points) {
+      if (p.t >= duration) break;
+      if (p.t > cursor) segments.push({ from: cursor, to: p.t, rate });
+      cursor = p.t;
+      rate = p.rate;
+    }
+    if (cursor < duration) segments.push({ from: cursor, to: duration, rate });
+    return segments.filter((s) => s.to > s.from);
+  }
+  function maturityScore(segments) {
+    let total = 0;
+    let sumLog = 0;
+    for (const s of segments) {
+      const span = s.to - s.from;
+      if (span <= 0) continue;
+      total += span;
+      sumLog += Math.log(clampRate(s.rate)) * span;
+    }
+    return total > 0 ? Math.exp(sumLog / total) : 1;
+  }
+  var clampRate = (rate) =>
+    Math.min(RATE_CEIL, Math.max(RATE_FLOOR, Number.isFinite(rate) && rate > 0 ? rate : 1));
+  function heatmapBuckets(segments, duration, count) {
+    if (!Number.isFinite(duration) || duration <= 0 || count <= 0) return [];
+    const width = duration / count;
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const lo = i * width;
+      const hi = lo + width;
+      let span = 0;
+      let sumLog = 0;
+      for (const s of segments) {
+        const overlap = Math.min(hi, s.to) - Math.max(lo, s.from);
+        if (overlap <= 0) continue;
+        span += overlap;
+        sumLog += Math.log(clampRate(s.rate)) * overlap;
+      }
+      out.push(span > 0 ? Math.exp(sumLog / span) : 1);
+    }
+    return out;
+  }
+  function rateColor(rate, alpha = 1) {
+    const x = Math.log2(clampRate(rate));
+    if (Math.abs(x) < 0.05) return `oklch(0.72 0.012 250 / ${alpha})`;
+    const mag = Math.min(1, Math.abs(x));
+    const hue = x > 0 ? 148 : 27;
+    const chroma = (0.06 + mag * 0.11).toFixed(3);
+    const light = (0.68 - mag * 0.08).toFixed(3);
+    return `oklch(${light} ${chroma} ${hue} / ${alpha})`;
+  }
+  function maturityLabel(score) {
+    if (score >= 1.25) return "comfortable";
+    if (score >= 1.05) return "easy";
+    if (score > 0.95) return "steady";
+    if (score > 0.8) return "effortful";
+    return "hard";
+  }
+  function videoDifficulty(markers, duration) {
+    const segments = rateSegments(markers, duration);
+    const markedSpan = segments
+      .filter((s) => Math.abs(s.rate - 1) > 0.01)
+      .reduce((sum, s) => sum + (s.to - s.from), 0);
+    const score = maturityScore(segments);
+    return {
+      score,
+      label: maturityLabel(score),
+      marked: duration > 0 ? Math.min(1, markedSpan / duration) : 0,
+      segments,
+    };
+  }
+
   // src/lianki.user.ts
   if (window.self === window.top) {
     globalThis.unload_Lianki?.();
@@ -1573,11 +1775,12 @@
         })
         .filter(Boolean);
     }
-    getDueCards(limit = 10) {
+    getDueCards(limit = 10, order = "newest") {
       const now = new Date();
+      const dir = order === "newest" ? -1 : 1;
       return this._index()
         .filter((e) => !e.del && new Date(e.due) <= now)
-        .sort((a, b) => new Date(b.due) - new Date(a.due))
+        .sort((a, b) => dir * (new Date(a.due) - new Date(b.due)))
         .slice(0, limit)
         .map((e) => {
           const raw = GM_getValue(CARD_PREFIX + e.hash, "");
@@ -1714,7 +1917,7 @@
       db.close();
       console.log(`[Lianki] Synced ${index.length} cards to site IndexedDB`);
     } catch (err) {
-      console.error("[Lianki] syncToSiteDB failed:", err);
+      console.error("[Lianki] site DB sync FAILED:", err);
     }
   }
 
@@ -1800,6 +2003,7 @@
   }
   function main() {
     window.LIANKI_USERSCRIPT_INSTALLED = true;
+    const API_HOSTS = ["www.lianki.com", "beta.lianki.com"];
     const ORIGIN = (() => {
       try {
         const u = new URL(GM_info?.script?.downloadURL || "");
@@ -1853,10 +2057,17 @@
     }
     const ac = new AbortController();
     const { signal } = ac;
+    const intervals = [];
+    const addInterval = (fn, ms) => {
+      const id = setInterval(fn, ms);
+      intervals.push(id);
+      return id;
+    };
     const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
     let userPreferences = {
       mobileExcludePatterns: [],
     };
+    const reviewOrder = () => (userPreferences?.reviewOrder === "oldest" ? "oldest" : "newest");
     async function loadPreferences() {
       try {
         const cached = GM_getValue("lk:preferences", "");
@@ -1954,8 +2165,9 @@
     }
     const api = (path, opts = {}) =>
       gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
+        const what = `${(opts.method || "GET").toUpperCase()} ${ORIGIN}${path}`;
         if (r.status === 401) {
-          const e = new Error("Login required");
+          const e = new Error(`Login required (${what})`);
           e.status = 401;
           throw e;
         }
@@ -1965,15 +2177,29 @@
             .json()
             .catch(() => null)
             .then((body) => {
-              const e = new Error(`HTTP ${status}`);
-              if (body?.errorId) e.details = `Error ID: ${body.errorId}`;
-              else if (body?.error) e.details = body.error;
+              const detail = body?.errorId ? `Error ID: ${body.errorId}` : body?.error;
+              const e = new Error(`HTTP ${status} — ${what}${detail ? ` — ${detail}` : ""}`);
+              e.status = status;
+              if (detail) e.details = detail;
               throw e;
             });
         }
         checkVersion(r);
         return r.json();
       });
+    const loggedOnce = new Set();
+    const warnOnce = (key, ...args) => {
+      if (loggedOnce.has(key)) return;
+      loggedOnce.add(key);
+      console.warn(...args);
+    };
+    const isAuthError = (err) =>
+      err?.status === 401 || /Login required/i.test(String(err?.message));
+    const logFail = (key, doing, err) => {
+      if (isAuthError(err))
+        warnOnce(`auth:${key}`, `[Lianki] Not signed in — ${doing} is local-only.`);
+      else console.error(`[Lianki] ${doing} FAILED:`, err);
+    };
     function gmCache(key, ttlMs, fn) {
       try {
         const raw = GM_getValue(key);
@@ -2635,7 +2861,7 @@ ${state.errorDetails}`);
         gmCacheInvalidate(noteKey(url));
         if (offlineReady) {
           try {
-            const dueCards = cardStorage.getDueCards(2);
+            const dueCards = cardStorage.getDueCards(2, reviewOrder());
             const nextCard = dueCards.find((c) => c.url !== url);
             prefetchedNextUrl = nextCard?.url ?? null;
             if (prefetchedNextUrl) prefetchNextPage(prefetchedNextUrl);
@@ -2928,7 +3154,13 @@ ${actualUrl}
           }
           console.log(`[Lianki] Loaded ${Object.keys(merged).length} speed markers for ${url}`);
         } catch (err) {
-          console.error("[Lianki] Failed to load speed markers:", err);
+          if (isAuthError(err))
+            warnOnce(
+              "auth:markers",
+              "[Lianki] Not signed in — speed markers stay local only.",
+              err.message,
+            );
+          else console.error(`[Lianki] Failed to load speed markers for ${url}:`, err);
           const local = loadLocalMarkers(url);
           if (!videoSpeedMaps.has(video)) videoSpeedMaps.set(video, new Map());
           const speedMap = videoSpeedMaps.get(video);
@@ -2959,12 +3191,444 @@ ${actualUrl}
         }
       });
     }
+    const WATCH_TICK_MAX_S = 2;
+    const WATCH_SESSION_GAP_MS = 30 * 60000;
+    const WATCH_MIN_SYNC_S = 60;
+    const WATCH_SYNC_MS = 30000;
+    const WATCH_SAVE_MS = 5000;
+    const WATCH_REQUIRE_AUDIBLE = true;
+    const WATCH_REQUIRE_VISIBLE = true;
+    const WATCH_DIRTY_KEY = "lk:watch-dirty";
+    const WATCH_INDEX_KEY = "lk:watch-index";
+    const WATCH_MAX_CACHED = 500;
+    const watchDeviceId = getOrCreateDeviceId();
+    const watchCacheKey = (url) => `lk:watch:${normalizeUrl(url)}`;
+    const isYouTube = () => /(^|\.)youtube\.com$/.test(location.hostname);
+    function loadLocalWatch(url) {
+      try {
+        const raw = GM_getValue(watchCacheKey(url), "");
+        if (!raw) return { stats: emptyWatchStats(), dirty: false };
+        const c = JSON.parse(raw);
+        return { stats: sanitizeWatchStats(c.stats), dirty: !!c.dirty };
+      } catch {
+        return { stats: emptyWatchStats(), dirty: false };
+      }
+    }
+    const saveLocalWatch = (url, stats, dirty) =>
+      GM_setValue(watchCacheKey(url), JSON.stringify({ stats, dirty, savedAt: Date.now() }));
+    const watchDirtyList = () => {
+      try {
+        const list = JSON.parse(GM_getValue(WATCH_DIRTY_KEY, "[]"));
+        return Array.isArray(list) ? list : [];
+      } catch {
+        return [];
+      }
+    };
+    const watchDirtyAdd = (url) =>
+      GM_setValue(
+        WATCH_DIRTY_KEY,
+        JSON.stringify([...watchDirtyList().filter((u) => u !== url), url].slice(-200)),
+      );
+    const watchDirtyDrop = (url) =>
+      GM_setValue(WATCH_DIRTY_KEY, JSON.stringify(watchDirtyList().filter((u) => u !== url)));
+    function watchIndexTouch(url) {
+      let list = [];
+      try {
+        const parsed = JSON.parse(GM_getValue(WATCH_INDEX_KEY, "[]"));
+        if (Array.isArray(parsed)) list = parsed;
+      } catch {}
+      const next = [...list.filter((u) => u !== url), url];
+      for (const stale of next.splice(0, Math.max(0, next.length - WATCH_MAX_CACHED))) {
+        if (loadLocalWatch(stale).dirty) next.unshift(stale);
+        else GM_deleteValue(watchCacheKey(stale));
+      }
+      GM_setValue(WATCH_INDEX_KEY, JSON.stringify(next));
+    }
+    function watchLangFor() {
+      let overrides = {};
+      try {
+        overrides = JSON.parse(GM_getValue("lk:watch-lang", "{}")) || {};
+      } catch {}
+      if (isYouTube()) {
+        const href = document
+          .querySelector('ytd-channel-name a[href^="/@"], a.yt-simple-endpoint[href^="/@"]')
+          ?.getAttribute("href");
+        return (href && overrides[`youtube${href}`]) || undefined;
+      }
+      const lang = document.documentElement.lang?.trim();
+      return overrides[location.hostname] || (lang && lang.length <= 32 ? lang : undefined);
+    }
+    let watchSyncUnavailable = false;
+    let watchAcc = null;
+    let watchSavedAt = 0;
+    const watchSnapshot = (acc) =>
+      mergeWatchStats(acc.base, {
+        v: 1,
+        by: {
+          [watchDeviceId]: {
+            wall: Math.round(acc.wall),
+            media: Math.round(acc.media),
+            sessions: acc.sessions,
+            days: acc.days,
+            cov: acc.cov.length ? encodeCoverage(acc.cov) : undefined,
+            dur: acc.dur,
+            lang: acc.lang,
+            first: acc.first,
+            last: acc.last,
+          },
+        },
+      });
+    function persistWatch(acc, force) {
+      if (!acc) return;
+      const now = Date.now();
+      if (!force && now - watchSavedAt < WATCH_SAVE_MS) return;
+      watchSavedAt = now;
+      acc.title = document.title || acc.title;
+      saveLocalWatch(acc.url, watchSnapshot(acc), acc.dirty);
+      if (acc.dirty) watchDirtyAdd(acc.url);
+      if (!acc.indexed) {
+        acc.indexed = true;
+        watchIndexTouch(acc.url);
+      }
+    }
+    async function flushWatch(acc = watchAcc) {
+      if (watchSyncUnavailable || !acc?.dirty) return;
+      persistWatch(acc, true);
+      if (acc.wall < WATCH_MIN_SYNC_S) return;
+      const stats = watchSnapshot(acc);
+      try {
+        await api("/api/fsrs/watch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ url: acc.url, title: acc.title, stats }),
+        });
+        acc.dirty = false;
+        acc.base = stats;
+        saveLocalWatch(acc.url, stats, false);
+        watchDirtyDrop(acc.url);
+      } catch (err) {
+        if (/HTTP (404|405|500|501|502)/.test(String(err?.message))) {
+          watchSyncUnavailable = true;
+          console.warn(
+            `[Lianki] Watch sync disabled — ${ORIGIN}/api/fsrs/watch unavailable (${err.message}). ` +
+              `Time is still being recorded locally.`,
+          );
+          return;
+        }
+        logFail("watch", `watch-time sync for ${acc.url}`, err);
+      }
+    }
+    async function flushPendingWatch(max = 3) {
+      if (watchSyncUnavailable) return;
+      for (const url of watchDirtyList()
+        .filter((u) => u !== watchAcc?.url)
+        .slice(0, max)) {
+        const { stats, dirty } = loadLocalWatch(url);
+        if (!dirty) {
+          watchDirtyDrop(url);
+          continue;
+        }
+        try {
+          await api("/api/fsrs/watch", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ url, stats }),
+          });
+          saveLocalWatch(url, stats, false);
+          watchDirtyDrop(url);
+        } catch {
+          return;
+        }
+      }
+    }
+    async function seedWatchFromServer(acc) {
+      try {
+        const { stats } = await api(`/api/fsrs/watch?url=${encodeURIComponent(acc.url)}`);
+        const merged = mergeWatchStats(sanitizeWatchStats(stats), watchSnapshot(acc));
+        if (acc !== watchAcc || acc.url !== watchAcc.url) return;
+        const mine = merged.by[watchDeviceId] ?? {};
+        acc.base = merged;
+        acc.wall = Math.max(acc.wall, mine.wall ?? 0);
+        acc.media = Math.max(acc.media, mine.media ?? 0);
+        acc.sessions = Math.max(acc.sessions, mine.sessions ?? 0);
+        for (const [day, secs] of Object.entries(mine.days ?? {}))
+          acc.days[day] = Math.max(acc.days[day] ?? 0, secs);
+        acc.cov = decodeCoverage(mine.cov);
+        acc.first ??= mine.first;
+      } catch {}
+    }
+    function watchAccFor() {
+      const url = normalizeUrl(location.href);
+      if (watchAcc?.url === url) return watchAcc;
+      if (watchAcc) flushWatch(watchAcc);
+      const { stats, dirty } = loadLocalWatch(url);
+      const mine = stats.by[watchDeviceId] ?? {};
+      watchAcc = {
+        url,
+        base: stats,
+        title: document.title,
+        wall: mine.wall ?? 0,
+        media: mine.media ?? 0,
+        sessions: mine.sessions ?? 0,
+        days: { ...mine.days },
+        cov: decodeCoverage(mine.cov),
+        dur: mine.dur,
+        lang: mine.lang,
+        first: mine.first,
+        last: mine.last,
+        tick: 0,
+        mediaAt: 0,
+        activeAt: 0,
+        langAt: 0,
+        dirty,
+        seeded: false,
+        indexed: false,
+      };
+      return watchAcc;
+    }
+    const isWatchActive = (v) =>
+      !v.paused &&
+      !v.ended &&
+      v.readyState >= 3 &&
+      v.playbackRate > 0 &&
+      (!WATCH_REQUIRE_VISIBLE || document.visibilityState === "visible") &&
+      (!WATCH_REQUIRE_AUDIBLE || (!v.muted && v.volume > 0)) &&
+      !(isYouTube() && document.querySelector(".ad-showing"));
+    function watchTick(video) {
+      const acc = watchAccFor();
+      const now = Date.now();
+      if (!isWatchActive(video)) {
+        acc.tick = 0;
+        return;
+      }
+      if (Number.isFinite(video.duration) && video.duration > 0) {
+        acc.dur = video.duration;
+        const buckets = coverageBuckets(acc.dur);
+        if (buckets && acc.cov.length * 8 < buckets) {
+          const grown = newCoverage(buckets);
+          grown.set(acc.cov);
+          acc.cov = grown;
+        }
+      }
+      if (acc.lang == null && now - acc.langAt > 5000) {
+        acc.langAt = now;
+        acc.lang = watchLangFor();
+      }
+      if (!acc.tick) {
+        if (!acc.activeAt || now - acc.activeAt > WATCH_SESSION_GAP_MS) acc.sessions++;
+        acc.tick = now;
+        acc.activeAt = now;
+        acc.mediaAt = video.currentTime;
+        acc.first ??= new Date(now).toISOString();
+        return;
+      }
+      const dtWall = (now - acc.tick) / 1000;
+      acc.tick = now;
+      acc.activeAt = now;
+      if (dtWall <= 0 || dtWall > WATCH_TICK_MAX_S) {
+        acc.mediaAt = video.currentTime;
+        return;
+      }
+      const dtMedia = video.currentTime - acc.mediaAt;
+      if (dtMedia > 0 && dtMedia <= dtWall * video.playbackRate * 1.5 + 0.5) {
+        acc.media += dtMedia;
+        if (acc.cov.length) markCoverage(acc.cov, acc.mediaAt, video.currentTime);
+      }
+      acc.mediaAt = video.currentTime;
+      acc.wall += dtWall;
+      const day = localDayKey(new Date(now));
+      acc.days[day] = (acc.days[day] ?? 0) + dtWall;
+      acc.last = new Date(now).toISOString();
+      acc.dirty = true;
+      if (!acc.seeded && acc.wall >= 10) {
+        acc.seeded = true;
+        seedWatchFromServer(acc);
+      }
+      persistWatch(acc);
+    }
+    function setupWatchTracking(video) {
+      video.addEventListener("timeupdate", () => watchTick(video));
+      const drop = () => {
+        if (watchAcc) watchAcc.tick = 0;
+      };
+      for (const ev of ["pause", "ended", "seeking", "waiting", "ratechange", "play"])
+        video.addEventListener(ev, drop);
+    }
+    document.addEventListener(
+      "visibilitychange",
+      () => {
+        if (document.visibilityState !== "hidden" || !watchAcc) return;
+        watchAcc.tick = 0;
+        persistWatch(watchAcc, true);
+        flushWatch();
+      },
+      { signal },
+    );
+    window.addEventListener("pagehide", () => persistWatch(watchAcc, true), { signal });
+    addInterval(() => {
+      flushWatch();
+      flushPendingWatch();
+    }, WATCH_SYNC_MS);
+    flushPendingWatch();
+    const HEAT_BUCKETS = 160;
+    const HEAT_MIN_DURATION = 10;
+    let heatLayer = null;
+    let heatVideo = null;
+    let heatRaf = 0;
+    let heatUrl = null;
+    let heatBroken = false;
+    const heatEnabled = () => GM_getValue("lk:heatmap", "1") !== "0";
+    function buildHeatLayer() {
+      const el = document.createElement("div");
+      Object.assign(el.style, {
+        position: "fixed",
+        zIndex: "2147483000",
+        pointerEvents: "none",
+        display: "none",
+        transition: "opacity .2s",
+        font: "600 11px/1.4 system-ui, sans-serif",
+      });
+      const bar = document.createElement("div");
+      bar.dataset.lk = "bar";
+      bar.style.cssText =
+        "position:absolute;left:0;right:0;bottom:0;height:5px;display:flex;" +
+        "border-radius:3px;overflow:hidden;box-shadow:0 0 0 1px rgba(0,0,0,.35)";
+      const pill = document.createElement("div");
+      pill.dataset.lk = "pill";
+      pill.style.cssText =
+        "position:absolute;right:8px;bottom:12px;padding:3px 8px;border-radius:999px;" +
+        "color:#fff;background:rgba(0,0,0,.72);backdrop-filter:blur(6px);white-space:nowrap";
+      const head = document.createElement("div");
+      head.dataset.lk = "head";
+      head.style.cssText =
+        "position:absolute;bottom:0;width:2px;height:9px;background:#fff;" +
+        "box-shadow:0 0 3px rgba(0,0,0,.9);border-radius:1px;transform:translateX(-1px);display:none";
+      el.append(bar, head, pill);
+      document.body.appendChild(el);
+      return el;
+    }
+    function markersForCurrentVideo(video) {
+      const url = normalizeUrl(location.href);
+      if (url !== heatUrl) {
+        heatUrl = url;
+        videoSpeedMaps.set(
+          video,
+          new Map(
+            Object.entries(loadLocalMarkers(url).markers).map(([t, s]) => [parseFloat(t), s]),
+          ),
+        );
+      }
+      return Object.fromEntries(videoSpeedMaps.get(video) ?? []);
+    }
+    function paintHeatmap(video) {
+      try {
+        paintHeatmapUnsafe(video);
+      } catch (err) {
+        console.error("[Lianki] Difficulty overlay disabled after error:", err);
+        hideHeatmap();
+        heatBroken = true;
+      }
+    }
+    function paintHeatmapUnsafe(video) {
+      if (heatBroken) return;
+      if (!heatEnabled() || !video || !Number.isFinite(video.duration)) return hideHeatmap();
+      if (video.duration < HEAT_MIN_DURATION) return hideHeatmap();
+      const markers = markersForCurrentVideo(video);
+      const { score, label, marked, segments } = videoDifficulty(markers, video.duration);
+      heatLayer ??= buildHeatLayer();
+      const bar = heatLayer.querySelector('[data-lk="bar"]');
+      const pill = heatLayer.querySelector('[data-lk="pill"]');
+      const buckets = heatmapBuckets(segments, video.duration, HEAT_BUCKETS);
+      bar.replaceChildren();
+      const acc = watchAccFor();
+      const played = video.played;
+      const seenAt = (t) => {
+        const bit = Math.floor(t / COV_BUCKET_S);
+        if (acc.cov.length && bit >> 3 < acc.cov.length && acc.cov[bit >> 3] & (1 << (bit & 7)))
+          return true;
+        for (let i = 0; i < played.length; i++)
+          if (t >= played.start(i) && t <= played.end(i)) return true;
+        return false;
+      };
+      const width = video.duration / buckets.length;
+      buckets.forEach((rate, i) => {
+        const cell = document.createElement("div");
+        const mid = i * width + width / 2;
+        const seen =
+          seenAt(i * width) || seenAt(mid) || seenAt(Math.min(video.duration, (i + 1) * width));
+        cell.style.cssText = `flex:1;background:${rateColor(rate, seen ? (marked > 0 ? 0.92 : 0.3) : 0.1)}`;
+        bar.appendChild(cell);
+      });
+      if (marked > 0) {
+        pill.textContent = `${score.toFixed(2)}× ${label} · ${Math.round(marked * 100)}% marked`;
+        pill.style.color = rateColor(score);
+        pill.style.opacity = "1";
+      } else {
+        pill.textContent = "unrated · , slower · . faster";
+        pill.style.color = "#cbd5e1";
+        pill.style.opacity = "0.75";
+      }
+      heatVideo = video;
+      positionHeatmap();
+    }
+    function movePlayhead(video) {
+      const head = heatLayer?.querySelector('[data-lk="head"]');
+      if (!head || heatLayer.style.display === "none") return;
+      const d = video.duration;
+      if (!Number.isFinite(d) || d <= 0) return (head.style.display = "none");
+      head.style.display = "block";
+      head.style.left = `${Math.min(100, Math.max(0, (video.currentTime / d) * 100))}%`;
+    }
+    function positionHeatmap() {
+      if (!heatLayer || !heatVideo) return;
+      const r = heatVideo.getBoundingClientRect();
+      const visible = r.width > 120 && r.height > 80 && r.bottom > 0 && r.top < innerHeight;
+      heatLayer.style.display = visible ? "block" : "none";
+      if (!visible) return;
+      Object.assign(heatLayer.style, {
+        left: `${r.left}px`,
+        top: `${r.top}px`,
+        width: `${r.width}px`,
+        height: `${r.height}px`,
+      });
+    }
+    function hideHeatmap() {
+      if (heatLayer) heatLayer.style.display = "none";
+    }
+    const scheduleHeatReposition = () => {
+      cancelAnimationFrame(heatRaf);
+      heatRaf = requestAnimationFrame(positionHeatmap);
+    };
+    addEventListener("scroll", scheduleHeatReposition, { passive: true, capture: true, signal });
+    addEventListener("resize", scheduleHeatReposition, { passive: true, signal });
+    function setupHeatmap(video) {
+      for (const ev of ["loadedmetadata", "ratechange", "durationchange"])
+        video.addEventListener(ev, () => paintHeatmap(video));
+      video.addEventListener("play", () => paintHeatmap(video));
+      video.addEventListener("timeupdate", () => movePlayhead(video));
+      if (Number.isFinite(video.duration) && video.duration > 0) paintHeatmap(video);
+      setTimeout(() => paintHeatmap(video), 1500);
+    }
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.code !== "KeyH" || !e.altKey || e.ctrlKey || e.metaKey) return;
+        e.preventDefault();
+        GM_setValue("lk:heatmap", heatEnabled() ? "0" : "1");
+        if (heatEnabled()) paintHeatmap(heatVideo ?? $$("video,audio")[0]);
+        else hideHeatmap();
+        centerTooltip(`Difficulty overlay ${heatEnabled() ? "on" : "off"}`);
+      },
+      { capture: true, signal },
+    );
     function observeVideos() {
       const tracked = new WeakSet();
       const trackVideo = (v) => {
         if (tracked.has(v)) return;
         tracked.add(v);
         setupVideoSpeedTracking(v);
+        setupWatchTracking(v);
+        setupHeatmap(v);
       };
       $$("video,audio").forEach(trackVideo);
       const observer = new MutationObserver(() => {
@@ -2973,21 +3637,24 @@ ${actualUrl}
       observer.observe(document.body, { childList: true, subtree: true });
     }
     observeVideos();
-    setInterval(async () => {
+    addInterval(async () => {
       try {
         const url = normalizeUrl(location.href);
         const cache = loadLocalMarkers(url);
         if (!cache.dirty) return;
-        console.log(`[Lianki] Syncing ${Object.keys(cache.markers).length} markers to DB...`);
+        const count = Object.keys(cache.markers).length;
         await api("/api/fsrs/speed-markers", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ url, markers: cache.markers }),
         });
         saveLocalMarkers(url, cache.markers, false);
-        console.log("[Lianki] Sync complete");
+        console.log(`[Lianki] Synced ${count} speed markers → ${ORIGIN}/api/fsrs/speed-markers`, {
+          url,
+          markers: cache.markers,
+        });
       } catch (err) {
-        console.error("[Lianki] Sync failed:", err);
+        logFail("markers-sync", `speed-marker sync for ${normalizeUrl(location.href)}`, err);
       }
     }, 30000);
     let offlineReady = false;
@@ -3038,7 +3705,7 @@ ${actualUrl}
             return;
           }
         } catch (err) {
-          console.error("[Lianki] Cache check failed:", err);
+          logFail("cache-check", "cache check", err);
         }
       }
       addNote(url, document.title)
@@ -3128,7 +3795,7 @@ ${actualUrl}
               newHlc,
             );
             try {
-              const dueCards = cardStorage.getDueCards(2);
+              const dueCards = cardStorage.getDueCards(2, reviewOrder());
               const normalizedCurrent = normalizeUrl(location.href);
               const nextCard = dueCards.find((c) => c.url !== url && c.url !== normalizedCurrent);
               prefetchedNextUrl = nextCard?.url ?? null;
@@ -3171,7 +3838,7 @@ ${actualUrl}
       }
     };
     function startBackgroundSync() {
-      syncTimer = setInterval(() => {
+      syncTimer = addInterval(() => {
         if (navigator.onLine && !syncInProgress) {
           tryBackgroundSync();
         }
@@ -3202,7 +3869,7 @@ ${actualUrl}
             queueStorage.removeFromQueue(item.id);
             console.log(`[Lianki] Synced: ${item.action} ${item.data.url || item.data.noteId}`);
           } catch (err) {
-            console.error(`[Lianki] Sync failed for ${item.id}:`, err);
+            logFail("queue", `queued sync of ${item.id}`, err);
             item.retries = (item.retries || 0) + 1;
             if (item.retries > 5) {
               console.warn(`[Lianki] Dropping ${item.id} after 5 retries`);
@@ -3261,8 +3928,21 @@ ${actualUrl}
       if (!offlineReady || !navigator.onLine) return;
       try {
         console.log("[Lianki] Prefetching due cards...");
-        const response = await api("/api/fsrs/due?limit=20");
+        const LIMIT = 20;
+        const response = await api(`/api/fsrs/due?limit=${LIMIT}`);
         const dueCards = response.cards || [];
+        const live = new Set(dueCards.map((n) => n.url));
+        const horizon = dueCards.length
+          ? new Date(dueCards[dueCards.length - 1].card.due).getTime()
+          : Infinity;
+        for (const stale of cardStorage.getDueCards(9999)) {
+          if (live.has(stale.url) || stale.dirty) continue;
+          const due = new Date(stale.note?.card?.due).getTime();
+          if (!Number.isFinite(due) || due >= horizon) continue;
+          console.log(`[Lianki] Dropping locally cached card deleted on the server: ${stale.url}`);
+          cardStorage.deleteCard(stale.url);
+          if (prefetchedNextUrl === stale.url) prefetchedNextUrl = null;
+        }
         for (const note of dueCards) {
           try {
             const url = note.url;
@@ -3276,20 +3956,26 @@ ${actualUrl}
         }
         console.log(`[Lianki] Prefetched ${dueCards.length} cards`);
       } catch (err) {
-        console.error("[Lianki] Prefetch failed:", err);
+        if (isAuthError(err))
+          warnOnce(
+            "auth:prefetch",
+            "[Lianki] Not signed in — using locally cached cards only.",
+            err.message,
+          );
+        else console.error("[Lianki] Prefetch failed:", err);
       }
     }
     async function prefetchNextCachedCard() {
       if (!offlineReady) return;
       try {
-        const dueCards = cardStorage.getDueCards(2);
+        const dueCards = cardStorage.getDueCards(2, reviewOrder());
         const normalizedCurrent = normalizeUrl(location.href);
         const nextCard = dueCards.find((c) => c.url !== normalizedCurrent);
         if (nextCard) {
           prefetchNextPage(nextCard.url);
         }
       } catch (err) {
-        console.error("[Lianki] Failed to prefetch next cached card:", err);
+        logFail("prefetch-next", "next-card prefetch", err);
       }
     }
     setTimeout(() => {
@@ -3297,6 +3983,8 @@ ${actualUrl}
     }, 100);
     return () => {
       ac.abort();
+      for (const id of intervals) clearInterval(id);
+      intervals.length = 0;
       closeDialog();
       videoObserver?.disconnect();
       fab?.remove();

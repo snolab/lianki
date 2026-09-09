@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { execSync } from "child_process";
 import { writeFileSync, existsSync } from "fs";
+import { writeCorpus, CORPUS_PATH } from "./gen-blog-corpus";
 import { join } from "path";
 
 const run = (cmd: string) => execSync(cmd, { encoding: "utf-8" });
@@ -17,7 +18,10 @@ const isStaged = (path: string) => staged().includes(path);
 // Build userscript from TS source if staged
 if (isStaged("src/lianki.user.ts")) {
   execSync("bun run build:userscript", { stdio: "inherit" });
-  execSync("oxfmt public/lianki.user.js", { stdio: "inherit" });
+  // bunx, not bare `oxfmt`: the binary lives in node_modules/.bin and is not on
+  // PATH inside the git hook's shell, so a bare call fails with status 127 and
+  // blocks every commit that touches the userscript.
+  execSync("bunx oxfmt public/lianki.user.js", { stdio: "inherit" });
   run("git add public/lianki.user.js");
 }
 if (!isStaged("public/lianki.user.js")) process.exit(0);
@@ -48,6 +52,18 @@ writeFileSync(
     `export const LIANKI_USERSCRIPT_VERSION = ${JSON.stringify(sv)};\n`,
 );
 run("git add lib/userscript-version.ts");
+
+// Bundle the blog markdown for the same reason as the version above: the
+// Workers runtime has no filesystem, and lib/blog.ts reading blog/*.md at
+// request time renders an empty page with a 200 rather than failing. Every
+// route is dynamically rendered (the root layout awaits headers()/cookies()),
+// so there is no prerendered copy to fall back on. unit/blog-corpus.test.ts
+// fails if this drifts.
+{
+  const { changed, count } = writeCorpus();
+  if (changed) console.log(`blog corpus regenerated (${count} posts)`);
+  run(`git add ${CORPUS_PATH}`);
+}
 
 // Sync pardon submodule — only when it's initialized as its OWN git repo.
 // The directory exists even for an uninitialized submodule; without the .git
