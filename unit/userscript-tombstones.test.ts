@@ -36,6 +36,26 @@ function extractStorageClass() {
 
 const CLASS_SRC = extractStorageClass();
 
+/**
+ * Every name this harness injects must actually exist in the built script.
+ *
+ * The first version passed `getDeviceId`, which the bundle does not define —
+ * the real helper is `getOrCreateDeviceId`. The lifted class then ran happily
+ * against the fake, the test went green, and `deleteCard` threw
+ * `ReferenceError: getDeviceId is not defined` in every real browser for five
+ * versions: nobody could delete a card. Supplying a dependency by hand is only
+ * safe if the hand-supplied name is the one the code will really find.
+ */
+function assertInjectablesExist(names: string[]) {
+  const missing = names.filter((n) => !new RegExp(`\\b${n}\\b`).test(BUILT));
+  if (missing.length) {
+    throw new Error(
+      `harness injects names the built userscript never defines: ${missing.join(", ")}. ` +
+        `The test would pass against a fiction.`,
+    );
+  }
+}
+
 /** Instantiate the real class against an in-memory GM store. */
 function makeStorage(clock = { now: 1_000_000 }) {
   const store = new Map<string, string>();
@@ -54,13 +74,15 @@ function makeStorage(clock = { now: 1_000_000 }) {
     deviceId,
   });
 
+  assertInjectablesExist(["hashUrl", "newHLC", "getOrCreateDeviceId", "CARD_PREFIX", "INDEX_KEY"]);
+
   const Ctor = new Function(
     "GM_getValue",
     "GM_setValue",
     "GM_deleteValue",
     "hashUrl",
     "newHLC",
-    "getDeviceId",
+    "getOrCreateDeviceId",
     "CARD_PREFIX",
     "INDEX_KEY",
     "MAX_CARDS",

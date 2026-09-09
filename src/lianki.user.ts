@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.27
+// @version     2.23.28
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -221,7 +221,7 @@ class GMCardStorage {
       JSON.stringify({
         _url: url,
         note: null,
-        hlc: newHLC(getDeviceId(), prev?.hlc ?? null),
+        hlc: newHLC(getOrCreateDeviceId(), prev?.hlc ?? null),
         dirty: true,
         deletedAt: Date.now(),
       }),
@@ -1732,12 +1732,17 @@ function main() {
   function renameLocalCard(oldUrl, newUrl) {
     if (!oldUrl || !newUrl || oldUrl === newUrl) return;
     try {
-      const from = cardStorage.getCard(oldUrl);
+      // checkRedirect runs on page load, before initOfflineStorage() assigns
+      // cardStorage. GMCardStorage keeps no state of its own — it reads and
+      // writes GM storage directly — so one can be made on demand rather than
+      // skipping the rename on the very page load that detected the redirect.
+      const cs = cardStorage ?? new GMCardStorage();
+      const from = cs.getCard(oldUrl);
       if (!from) return;
-      const to = cardStorage.getCard(newUrl);
+      const to = cs.getCard(newUrl);
       const keepExisting = to && compareHLC(to.hlc, from.hlc) >= 0;
       if (!keepExisting) {
-        const note = { ...(from.note ?? {}), url: newUrl };
+        const note = { ...from.note, url: newUrl };
         cardStorage.setCard(newUrl, note, from.hlc, from.dirty ?? false);
       }
       cardStorage.deleteCard(oldUrl);
