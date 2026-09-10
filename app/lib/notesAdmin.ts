@@ -102,6 +102,71 @@ export async function queryNotes(
   return { rows: docs.map((d) => toRow(d as unknown as FSRSNote)), total };
 }
 
+export type HostGroup = {
+  host: string;
+  count: number;
+  /** How many are due now — the ones actually blocking a review session. */
+  due: number;
+  /** One url on this host, so reachability can be probed once per host. */
+  sampleUrl: string;
+};
+
+/**
+ * Group cards by host. Pure, so the grouping is testable without a database.
+ *
+ * A url that will not parse is grouped under a single bucket rather than
+ * dropped: a card you cannot see is a card you cannot delete, which is the
+ * whole problem this view exists to solve.
+ */
+export function groupByHost(
+  rows: Array<{ url: string; due?: string | Date | null }>,
+  now = Date.now(),
+): HostGroup[] {
+  const groups = new Map<string, HostGroup>();
+  for (const { url, due } of rows) {
+    let host: string;
+    try {
+      host = new URL(url).host;
+    } catch {
+      host = "(unparseable)";
+    }
+    const g = groups.get(host) ?? { host, count: 0, due: 0, sampleUrl: url };
+    g.count++;
+    if (due && new Date(due).getTime() <= now) g.due++;
+    groups.set(host, g);
+  }
+  return [...groups.values()].sort((a, b) => b.count - a.count || a.host.localeCompare(b.host));
+}
+
+/**
+ * Every host in the deck, with its card counts.
+ *
+ * Exists because a retired site is invisible in a paginated list. A user had 75
+ * cards on a host that no longer resolved, 18 of them due; clearing one simply
+ * served the next, nothing in the UI showed they shared a cause, and removing
+ * them took direct database access.
+ *
+ * Grouped on the server, not in the browser: the list endpoint is paginated, so
+ * aggregating client-side would only ever see the current page. Both backends
+ * read just the two columns needed — the point is a cheap sweep over the whole
+ * deck, not a second copy of it.
+ */
+export async function hostGroups(email: string): Promise<HostGroup[]> {
+  if (dbBackend() === "d1") {
+    const rows = await getD1()
+      .prepare("SELECT url, card_due FROM fsrs_notes WHERE email = ?")
+      .bind(email)
+      .all<{ url: string; card_due: string }>();
+    return groupByHost((rows.results ?? []).map((r) => ({ url: r.url, due: r.card_due })));
+  }
+  const cursor = getFSRSNotesCollection(email).find({}, { projection: { url: 1, "card.due": 1 } });
+  const rows: Array<{ url: string; due?: Date }> = [];
+  for await (const d of cursor) {
+    rows.push({ url: String(d.url ?? ""), due: (d as { card?: { due?: Date } }).card?.due });
+  }
+  return groupByHost(rows);
+}
+
 export type BulkDeleteInput = { urls?: string[]; all?: boolean };
 
 export async function bulkDeleteNotes(
