@@ -31,6 +31,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { restoreNoteFromExport } from "@/lib/yaml-export";
 import {
   bulkDeleteNotes,
+  hostGroups,
   bulkUpsertNotes,
   parseQueryOptions,
   queryNotes,
@@ -291,6 +292,9 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       if (!url) return JSONR({ error: "url is required" }, 400);
       return JSONR(await probeReachability(url));
     },
+    // Every host in the deck with its counts — the by-host cleanup panel.
+    "GET /api/fsrs/hosts(?:/|$|\\?)": async () =>
+      JSONR({ hosts: await hostGroups(requireEmail()) }),
     // Cloud-store counts for the three-store console.
     "GET /api/fsrs/stats(?:/|$|\\?)": async () => JSONR(await storeStats(requireEmail())),
     "POST /api/fsrs/bulk-delete/?$": async (req) => {

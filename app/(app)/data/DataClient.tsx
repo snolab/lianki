@@ -13,10 +13,11 @@ import {
   type UserscriptStatus,
 } from "@/app/lib/localStore";
 import { queuePurge } from "@/lib/local-purge";
-import type { NoteRow, StoreStats } from "@/app/lib/notesAdmin";
+import type { HostGroup, NoteRow, StoreStats } from "@/app/lib/notesAdmin";
 import BackupSection from "./BackupSection";
 import CardTable from "./CardTable";
 import DangerZone from "./DangerZone";
+import HostPanel from "./HostPanel";
 import StoreConsole from "./StoreConsole";
 import { type DataRow, type StoreId } from "./types";
 import { dataFiltersToQuery, defaultFilters, parseDataFilters } from "@/lib/data-filters";
@@ -71,6 +72,10 @@ export default function DataClient({ isLoggedIn }: { isLoggedIn: boolean }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
 
+  // ── Hosts ─────────────────────────────────────────────────────────────────
+  const [hosts, setHosts] = useState<HostGroup[]>([]);
+  const [hostsLoading, setHostsLoading] = useState(true);
+
   // ── Push ──────────────────────────────────────────────────────────────────
   const [pushing, setPushing] = useState(false);
   const [pushResult, setPushResult] = useState<string | null>(null);
@@ -103,11 +108,27 @@ export default function DataClient({ isLoggedIn }: { isLoggedIn: boolean }) {
     }
   }, [isLoggedIn]);
 
+  const refreshHosts = useCallback(async () => {
+    if (!isLoggedIn) {
+      setHostsLoading(false);
+      return;
+    }
+    try {
+      const res = await fetch("/api/fsrs/hosts");
+      if (res.ok) setHosts(((await res.json()) as { hosts: HostGroup[] }).hosts);
+    } catch (err) {
+      console.error("[Lianki] failed to group cards by host:", err);
+    } finally {
+      setHostsLoading(false);
+    }
+  }, [isLoggedIn]);
+
   useEffect(() => {
     setScript(readUserscriptStatus());
     void refreshLocal();
     void refreshCloud();
-  }, [refreshLocal, refreshCloud]);
+    void refreshHosts();
+  }, [refreshLocal, refreshCloud, refreshHosts]);
 
   // Cloud table: server-side filter/sort/page.
   useEffect(() => {
@@ -319,6 +340,54 @@ export default function DataClient({ isLoggedIn }: { isLoggedIn: boolean }) {
     }
   }
 
+  /**
+   * Delete every card on one host, from all three stores.
+   *
+   * The urls are fetched rather than derived from the table, which only ever
+   * holds the current page — the case this exists for is a host with dozens of
+   * cards spread across it. `q` matches url and title, so each candidate's host
+   * is re-checked here: a card merely *mentioning* the host in its title must
+   * not be swept up in a delete-all.
+   */
+  async function deleteHost(host: string) {
+    const params = new URLSearchParams({ q: host, size: "1000", page: "0", due: "all" });
+    const res = await fetch(`/api/fsrs/list?${params}`);
+    if (!res.ok) throw new Error(`Could not list cards on ${host} (${res.status})`);
+    const { rows } = (await res.json()) as { rows: NoteRow[] };
+    const urls = rows
+      .filter((r) => {
+        try {
+          return new URL(r.url).host === host;
+        } catch {
+          return host === "(unparseable)";
+        }
+      })
+      .map((r) => r.url);
+    if (!urls.length) return;
+
+    // The endpoint caps a request at 1000 urls.
+    for (let i = 0; i < urls.length; i += 1000) {
+      const batch = urls.slice(i, i + 1000);
+      const del = await fetch("/api/fsrs/bulk-delete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ urls: batch }),
+      });
+      if (!del.ok) {
+        const data = await del.json().catch(() => ({}));
+        throw new Error(data.error ?? `Delete failed (${del.status})`);
+      }
+    }
+    // The browser mirror and the userscript's GM storage are the other two
+    // copies; the second is the one that decides which card you see next.
+    await deleteLocalCards(urls);
+    queuePurge(urls);
+
+    setCloudRows((prev) => prev.filter((r) => !urls.includes(r.url)));
+    setSelected(new Set());
+    await Promise.all([refreshCloud(), refreshLocal(), refreshHosts()]);
+  }
+
   async function rename(url: string, title: string) {
     if (store !== "cloud") return;
     const res = await fetch(`/api/fsrs/notes?url=${encodeURIComponent(url)}`, {
@@ -392,6 +461,8 @@ export default function DataClient({ isLoggedIn }: { isLoggedIn: boolean }) {
         onRename={rename}
         deleteSelectedLabel={t.deleteSelected.value}
       />
+
+      {isLoggedIn && <HostPanel hosts={hosts} loading={hostsLoading} onDeleteHost={deleteHost} />}
 
       <BackupSection
         heading={t.backupHeading.value}
