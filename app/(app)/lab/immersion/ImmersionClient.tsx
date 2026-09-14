@@ -9,6 +9,7 @@ import {
   type ImmersionLanguage,
   type ImmersionSite,
   type Register,
+  orderImmersionLanguages,
 } from "@/lib/immersion-sites";
 
 const LANGS_KEY = "lk:lab:immersion:langs";
@@ -53,14 +54,28 @@ const STICKY_HEAD =
   "sticky start-0 z-10 bg-gray-50 dark:bg-gray-900 text-start px-4 py-3 font-semibold";
 const STICKY_ROW = "sticky start-0 z-10 bg-white dark:bg-gray-950 text-start px-4 py-3 font-normal";
 
-function LangHeader({ lang }: { lang: (typeof IMMERSION_LANGUAGES)[number] }) {
+function LangHeader({
+  lang,
+  focused,
+}: {
+  lang: (typeof IMMERSION_LANGUAGES)[number];
+  focused: boolean;
+}) {
   return (
     <>
+      {focused && (
+        <span aria-hidden className="me-1 text-blue-600 dark:text-blue-400">
+          ★
+        </span>
+      )}
       <span lang={lang.code}>{lang.native}</span>
       <span className="ms-1.5 text-xs font-normal text-gray-400">{lang.code.toUpperCase()}</span>
     </>
   );
 }
+
+/** Tint for the browser's first-choice language, so its column/row reads first. */
+const FOCUS_CELL = "bg-blue-50/60 dark:bg-blue-950/30";
 
 function TopicHeader({
   domain,
@@ -89,10 +104,18 @@ function TopicHeader({
   );
 }
 
-function SiteCell({ domain, code }: { domain: ImmersionDomain; code: ImmersionLanguage }) {
+function SiteCell({
+  domain,
+  code,
+  focused,
+}: {
+  domain: ImmersionDomain;
+  code: ImmersionLanguage;
+  focused: boolean;
+}) {
   const { primary, alt } = domain.sites[code];
   return (
-    <td className="px-4 py-3" lang={code}>
+    <td className={`px-4 py-3 ${focused ? FOCUS_CELL : ""}`} lang={code}>
       <div>
         <SiteLink site={primary} />
       </div>
@@ -105,9 +128,14 @@ function SiteCell({ domain, code }: { domain: ImmersionDomain; code: ImmersionLa
   );
 }
 
-export default function ImmersionClient() {
+export default function ImmersionClient({ preferred }: { preferred: ImmersionLanguage[] }) {
   const t = useIntlayer("lab-immersion-page");
-  const [langs, setLangs] = useState<ImmersionLanguage[]>(ALL_LANGS);
+  // Browser-preferred languages lead the chips and the columns; the first of
+  // them is the highlighted one. A saved choice (below) overrides which are
+  // shown, never the order.
+  const ordered = orderImmersionLanguages(preferred);
+  const focus = preferred[0] ?? null;
+  const [langs, setLangs] = useState<ImmersionLanguage[]>(preferred.length ? preferred : ALL_LANGS);
   const [query, setQuery] = useState("");
   // false: topics down, languages across (the original table). true: swapped —
   // handy when you learn one language and want its whole column as a row.
@@ -138,7 +166,7 @@ export default function ImmersionClient() {
       // Keep column order stable regardless of click order.
       const next = prev.includes(code)
         ? prev.filter((c) => c !== code)
-        : ALL_LANGS.filter((c) => c === code || prev.includes(c));
+        : ordered.map((l) => l.code).filter((c) => c === code || prev.includes(c));
       try {
         localStorage.setItem(LANGS_KEY, JSON.stringify(next));
       } catch {}
@@ -146,7 +174,7 @@ export default function ImmersionClient() {
     });
   }
 
-  const columns = IMMERSION_LANGUAGES.filter((l) => langs.includes(l.code));
+  const columns = ordered.filter((l) => langs.includes(l.code));
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -177,7 +205,7 @@ export default function ImmersionClient() {
           <span className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 me-1">
             {t.languages}
           </span>
-          {IMMERSION_LANGUAGES.map((l) => {
+          {ordered.map((l) => {
             const on = langs.includes(l.code);
             return (
               <button
@@ -191,6 +219,11 @@ export default function ImmersionClient() {
                     : "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-700 dark:text-gray-300 dark:hover:border-gray-500"
                 }`}
               >
+                {l.code === focus && (
+                  <span aria-hidden className="me-1">
+                    ★
+                  </span>
+                )}
                 <span lang={l.code}>{l.native}</span>
                 <span className="ms-1 text-xs opacity-70">{l.code.toUpperCase()}</span>
               </button>
@@ -257,11 +290,14 @@ export default function ImmersionClient() {
                       key={l.code}
                       className="border-t border-gray-200 dark:border-gray-800 align-top hover:bg-gray-50/60 dark:hover:bg-gray-900/40"
                     >
-                      <th scope="row" className={`${STICKY_ROW} font-semibold whitespace-nowrap`}>
-                        <LangHeader lang={l} />
+                      <th
+                        scope="row"
+                        className={`${STICKY_ROW} font-semibold whitespace-nowrap ${l.code === focus ? FOCUS_CELL : ""}`}
+                      >
+                        <LangHeader lang={l} focused={l.code === focus} />
                       </th>
                       {rows.map((d) => (
-                        <SiteCell key={d.key} domain={d} code={l.code} />
+                        <SiteCell key={d.key} domain={d} code={l.code} focused={l.code === focus} />
                       ))}
                     </tr>
                   ))}
@@ -278,9 +314,9 @@ export default function ImmersionClient() {
                       <th
                         key={l.code}
                         scope="col"
-                        className="text-start px-4 py-3 font-semibold min-w-36 whitespace-nowrap"
+                        className={`text-start px-4 py-3 font-semibold min-w-36 whitespace-nowrap ${l.code === focus ? FOCUS_CELL : ""}`}
                       >
-                        <LangHeader lang={l} />
+                        <LangHeader lang={l} focused={l.code === focus} />
                       </th>
                     ))}
                   </tr>
@@ -295,7 +331,12 @@ export default function ImmersionClient() {
                         <TopicHeader domain={d} registerLabel={registerLabel} />
                       </th>
                       {columns.map((l) => (
-                        <SiteCell key={l.code} domain={d} code={l.code} />
+                        <SiteCell
+                          key={l.code}
+                          domain={d}
+                          code={l.code}
+                          focused={l.code === focus}
+                        />
                       ))}
                     </tr>
                   ))}
