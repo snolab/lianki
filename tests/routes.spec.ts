@@ -116,13 +116,22 @@ test.describe("Public pages", () => {
     await page.goto(url("/lab/immersion"));
     await expect(page.locator("h1")).toBeVisible();
     await expect(page.locator("table")).toBeVisible();
-    await expect(page.locator("a[href='https://www.zhihu.com']")).toBeVisible();
-    // Toggling a language column off removes it from the header
+    // Playwright sends Accept-Language: en-US, so English is the default and
+    // highlighted column; everything else starts switched off.
+    await expect(page.locator("thead th").filter({ hasText: /English/ })).toContainText("★");
+    await expect(page.locator("a[href='https://www.quora.com']")).toBeVisible();
+    await expect(page.locator("thead th").filter({ hasText: /Deutsch/ })).toHaveCount(0);
+    // Toggling a language on adds its column (and its sites)
     await page
-      .locator("button[aria-pressed='true']")
+      .locator("button[aria-pressed='false']")
       .filter({ hasText: /Deutsch/ })
       .click();
-    await expect(page.locator("th").filter({ hasText: /Deutsch/ })).toHaveCount(0);
+    await expect(page.locator("thead th").filter({ hasText: /Deutsch/ })).toHaveCount(1);
+    await expect(page.locator("a[href='https://www.gutefrage.net']")).toBeVisible();
+    await page
+      .locator("button[aria-pressed='false']")
+      .filter({ hasText: /日本語/ })
+      .click();
     // Swapping axes puts languages down the side and topics across the top;
     // the text filter then narrows the topic columns.
     await page

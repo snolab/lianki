@@ -995,6 +995,35 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
   },
 ];
 
+const LANGUAGE_CODES = IMMERSION_LANGUAGES.map((l) => l.code);
+
+function isImmersionLanguage(code: string): code is ImmersionLanguage {
+  return (LANGUAGE_CODES as string[]).includes(code);
+}
+
+/**
+ * The matrix languages a browser asks for, in its order of preference — the
+ * default column selection, and the first entry is the one to highlight. A
+ * tag's region is ignored (`zh-TW` → `zh`); duplicates collapse to the first.
+ * Empty when nothing the browser wants is in the matrix.
+ */
+export function preferredImmersionLanguages(
+  acceptLanguage: string | null | undefined,
+): ImmersionLanguage[] {
+  const out: ImmersionLanguage[] = [];
+  for (const part of acceptLanguage?.split(",") ?? []) {
+    const base = part.split(";")[0].trim().toLowerCase().split("-")[0];
+    if (isImmersionLanguage(base) && !out.includes(base)) out.push(base);
+  }
+  return out;
+}
+
+/** Preferred languages first, in preference order, then the rest in matrix order. */
+export function orderImmersionLanguages(preferred: ImmersionLanguage[]) {
+  const rest = IMMERSION_LANGUAGES.filter((l) => !preferred.includes(l.code));
+  return [...preferred.map((code) => IMMERSION_LANGUAGES.find((l) => l.code === code)!), ...rest];
+}
+
 /** Every site in the matrix, flattened — for tests and for "is this host in the matrix?". */
 export function allImmersionSites(): Array<
   ImmersionSite & { domain: string; language: ImmersionLanguage; role: "primary" | "alt" }
