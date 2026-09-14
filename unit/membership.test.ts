@@ -1,11 +1,10 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { testSchema } from "@/lib/d1/testSchema";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import type { D1Like } from "@/lib/d1/types";
 import { tierFor, d1MembershipStore, getUserMembership, startTrial } from "@/lib/membership";
 
-const SCHEMA = readFileSync(join(process.cwd(), "db/migrations/0001_init.sql"), "utf8");
+const SCHEMA = testSchema();
 
 let d1: TestD1Database;
 beforeEach(() => {

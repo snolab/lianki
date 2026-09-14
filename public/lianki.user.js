@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.35
+// @version     2.24.5
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -17,21 +17,20 @@
 // @connect     www.lianki.com
 // ==/UserScript==
 (() => {
-
-  // node_modules/ts-fsrs/dist/index.mjs
+  // node_modules/.bun/ts-fsrs@5.2.3/node_modules/ts-fsrs/dist/index.mjs
   var State = /* @__PURE__ */ ((State2) => {
-    State2[State2["New"] = 0] = "New";
-    State2[State2["Learning"] = 1] = "Learning";
-    State2[State2["Review"] = 2] = "Review";
-    State2[State2["Relearning"] = 3] = "Relearning";
+    State2[(State2["New"] = 0)] = "New";
+    State2[(State2["Learning"] = 1)] = "Learning";
+    State2[(State2["Review"] = 2)] = "Review";
+    State2[(State2["Relearning"] = 3)] = "Relearning";
     return State2;
   })(State || {});
   var Rating = /* @__PURE__ */ ((Rating2) => {
-    Rating2[Rating2["Manual"] = 0] = "Manual";
-    Rating2[Rating2["Again"] = 1] = "Again";
-    Rating2[Rating2["Hard"] = 2] = "Hard";
-    Rating2[Rating2["Good"] = 3] = "Good";
-    Rating2[Rating2["Easy"] = 4] = "Easy";
+    Rating2[(Rating2["Manual"] = 0)] = "Manual";
+    Rating2[(Rating2["Again"] = 1)] = "Again";
+    Rating2[(Rating2["Hard"] = 2)] = "Hard";
+    Rating2[(Rating2["Good"] = 3)] = "Good";
+    Rating2[(Rating2["Easy"] = 4)] = "Easy";
     return Rating2;
   })(Rating || {});
 
@@ -41,7 +40,7 @@
         ...card,
         state: TypeConvert.state(card.state),
         due: TypeConvert.time(card.due),
-        last_review: card.last_review ? TypeConvert.time(card.last_review) : undefined
+        last_review: card.last_review ? TypeConvert.time(card.last_review) : undefined,
       };
     }
     static rating(value) {
@@ -74,7 +73,11 @@
     }
     static time(value) {
       const date = new Date(value);
-      if (typeof value === "object" && value !== null && !Number.isNaN(Date.parse(value) || +date)) {
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        !Number.isNaN(Date.parse(value) || +date)
+      ) {
         return date;
       } else if (typeof value === "string") {
         const timestamp = Date.parse(value);
@@ -94,24 +97,28 @@
         due: TypeConvert.time(log.due),
         rating: TypeConvert.rating(log.rating),
         state: TypeConvert.state(log.state),
-        review: TypeConvert.time(log.review)
+        review: TypeConvert.time(log.review),
       };
     }
   }
-  Date.prototype.scheduler = function(t, isDay) {
+  Date.prototype.scheduler = function (t, isDay) {
     return date_scheduler(this, t, isDay);
   };
-  Date.prototype.diff = function(pre, unit) {
+  Date.prototype.diff = function (pre, unit) {
     return date_diff(this, pre, unit);
   };
-  Date.prototype.format = function() {
+  Date.prototype.format = function () {
     return formatDate(this);
   };
-  Date.prototype.dueFormat = function(last_review, unit, timeUnit) {
+  Date.prototype.dueFormat = function (last_review, unit, timeUnit) {
     return show_diff_message(this, last_review, unit, timeUnit);
   };
   function date_scheduler(now, t, isDay) {
-    return new Date(isDay ? TypeConvert.time(now).getTime() + t * 24 * 60 * 60 * 1000 : TypeConvert.time(now).getTime() + t * 60 * 1000);
+    return new Date(
+      isDay
+        ? TypeConvert.time(now).getTime() + t * 24 * 60 * 60 * 1000
+        : TypeConvert.time(now).getTime() + t * 60 * 1000,
+    );
   }
   function date_diff(now, pre, unit) {
     if (!now || !pre) {
@@ -153,7 +160,7 @@
     let diff = due.getTime() - last_review.getTime();
     let i = 0;
     diff /= 1000;
-    for (i = 0;i < TIMEUNIT.length; i++) {
+    for (i = 0; i < TIMEUNIT.length; i++) {
       if (diff < TIMEUNIT[i]) {
         break;
       } else {
@@ -162,28 +169,23 @@
     }
     return `${Math.floor(diff)}${unit ? timeUnit[i] : ""}`;
   }
-  var Grades = Object.freeze([
-    Rating.Again,
-    Rating.Hard,
-    Rating.Good,
-    Rating.Easy
-  ]);
+  var Grades = Object.freeze([Rating.Again, Rating.Hard, Rating.Good, Rating.Easy]);
   var FUZZ_RANGES = [
     {
       start: 2.5,
       end: 7,
-      factor: 0.15
+      factor: 0.15,
     },
     {
       start: 7,
       end: 20,
-      factor: 0.1
+      factor: 0.1,
     },
     {
       start: 20,
       end: Infinity,
-      factor: 0.05
-    }
+      factor: 0.05,
+    },
   ];
   function get_fuzz_range(interval, elapsed_days, maximum_interval) {
     let delta = 1;
@@ -225,18 +227,19 @@
     }
   };
   var BasicLearningStepsStrategy = (params, state, cur_step) => {
-    const learning_steps = state === State.Relearning || state === State.Review ? params.relearning_steps : params.learning_steps;
+    const learning_steps =
+      state === State.Relearning || state === State.Review
+        ? params.relearning_steps
+        : params.learning_steps;
     const steps_length = learning_steps.length;
-    if (steps_length === 0 || cur_step >= steps_length)
-      return {};
+    if (steps_length === 0 || cur_step >= steps_length) return {};
     const firstStep = learning_steps[0];
     const toMinutes = ConvertStepUnitToMinutes;
     const getAgainInterval = () => {
       return toMinutes(firstStep);
     };
     const getHardInterval = () => {
-      if (steps_length === 1)
-        return Math.round(toMinutes(firstStep) * 1.5);
+      if (steps_length === 1) return Math.round(toMinutes(firstStep) * 1.5);
       const nextStep = learning_steps[1];
       return Math.round((toMinutes(firstStep) + toMinutes(nextStep)) / 2);
     };
@@ -255,17 +258,17 @@
     if (state === State.Review) {
       result[Rating.Again] = {
         scheduled_minutes: toMinutes(step_info),
-        next_step: 0
+        next_step: 0,
       };
       return result;
     } else {
       result[Rating.Again] = {
         scheduled_minutes: getAgainInterval(),
-        next_step: 0
+        next_step: 0,
       };
       result[Rating.Hard] = {
         scheduled_minutes: getHardInterval(),
-        next_step: cur_step
+        next_step: cur_step,
       };
       const next_info = getStepInfo(cur_step + 1);
       if (next_info) {
@@ -273,7 +276,7 @@
         if (nextMin) {
           result[Rating.Good] = {
             scheduled_minutes: Math.round(nextMin),
-            next_step: cur_step + 1
+            next_step: cur_step + 1,
           };
         }
       }
@@ -297,7 +300,7 @@
     last;
     current;
     review_time;
-    next = /* @__PURE__ */ new Map;
+    next = /* @__PURE__ */ new Map();
     algorithm;
     strategies;
     elapsed_days = 0;
@@ -339,7 +342,7 @@
         [Rating.Hard]: this.review(Rating.Hard),
         [Rating.Good]: this.review(Rating.Good),
         [Rating.Easy]: this.review(Rating.Easy),
-        [Symbol.iterator]: this.previewIterator.bind(this)
+        [Symbol.iterator]: this.previewIterator.bind(this),
       };
     }
     *previewIterator() {
@@ -377,7 +380,7 @@
         last_elapsed_days: elapsed_days,
         scheduled_days: this.current.scheduled_days,
         learning_steps: this.current.learning_steps,
-        review: this.review_time
+        review: this.review_time,
       };
     }
   }
@@ -393,17 +396,13 @@
       this.s0 = mash(" ");
       this.s1 = mash(" ");
       this.s2 = mash(" ");
-      if (seed == null)
-        seed = Date.now();
+      if (seed == null) seed = Date.now();
       this.s0 -= mash(seed);
-      if (this.s0 < 0)
-        this.s0 += 1;
+      if (this.s0 < 0) this.s0 += 1;
       this.s1 -= mash(seed);
-      if (this.s1 < 0)
-        this.s1 += 1;
+      if (this.s1 < 0) this.s1 += 1;
       this.s2 -= mash(seed);
-      if (this.s2 < 0)
-        this.s2 += 1;
+      if (this.s2 < 0) this.s2 += 1;
     }
     next() {
       const t = 2091639 * this.s0 + this.c * 0.00000000023283064365386963;
@@ -424,7 +423,7 @@
         c: this.c,
         s0: this.s0,
         s1: this.s1,
-        s2: this.s2
+        s2: this.s2,
       };
     }
   }
@@ -432,7 +431,7 @@
     let n = 4022871197;
     return function mash(data) {
       data = String(data);
-      for (let i = 0;i < data.length; i++) {
+      for (let i = 0; i < data.length; i++) {
         n += data.charCodeAt(i);
         let h = 0.02519603282416938 * n;
         n = h >>> 0;
@@ -448,8 +447,8 @@
   function alea(seed) {
     const xg = new Alea(seed);
     const prng = () => xg.next();
-    prng.int32 = () => xg.next() * 4294967296 | 0;
-    prng.double = () => prng() + (prng() * 2097152 | 0) * 0.00000000000000011102230246251565;
+    prng.int32 = () => (xg.next() * 4294967296) | 0;
+    prng.double = () => prng() + ((prng() * 2097152) | 0) * 0.00000000000000011102230246251565;
     prng.state = () => xg.state;
     prng.importState = (state) => {
       xg.state = state;
@@ -462,13 +461,8 @@
   var default_maximum_interval = 36500;
   var default_enable_fuzz = false;
   var default_enable_short_term = true;
-  var default_learning_steps = Object.freeze([
-    "1m",
-    "10m"
-  ]);
-  var default_relearning_steps = Object.freeze([
-    "10m"
-  ]);
+  var default_learning_steps = Object.freeze(["1m", "10m"]);
+  var default_relearning_steps = Object.freeze(["10m"]);
   var FSRSVersion = `v${version} using FSRS-6.0`;
   var S_MIN = 0.001;
   var INIT_S_MAX = 100;
@@ -495,7 +489,7 @@
     0.5425,
     0.0912,
     0.0658,
-    FSRS6_DEFAULT_DECAY
+    FSRS6_DEFAULT_DECAY,
   ]);
   var W17_W18_Ceiling = 2;
   var CLAMP_PARAMETERS = (w17_w18_ceiling, enable_short_term = default_enable_short_term) => [
@@ -518,22 +512,32 @@
     [1, 6],
     [0, w17_w18_ceiling],
     [0, w17_w18_ceiling],
-    [
-      enable_short_term ? 0.01 : 0,
-      0.8
-    ],
-    [0.1, 0.8]
+    [enable_short_term ? 0.01 : 0, 0.8],
+    [0.1, 0.8],
   ];
-  var clipParameters = (parameters, numRelearningSteps, enableShortTerm = default_enable_short_term) => {
+  var clipParameters = (
+    parameters,
+    numRelearningSteps,
+    enableShortTerm = default_enable_short_term,
+  ) => {
     let w17_w18_ceiling = W17_W18_Ceiling;
     if (Math.max(0, numRelearningSteps) > 1) {
-      const value = -(Math.log(parameters[11]) + Math.log(Math.pow(2, parameters[13]) - 1) + parameters[14] * 0.3) / numRelearningSteps;
+      const value =
+        -(
+          Math.log(parameters[11]) +
+          Math.log(Math.pow(2, parameters[13]) - 1) +
+          parameters[14] * 0.3
+        ) / numRelearningSteps;
       w17_w18_ceiling = clamp(+value.toFixed(8), 0.01, 2);
     }
     const clip = CLAMP_PARAMETERS(w17_w18_ceiling, enableShortTerm).slice(0, parameters.length);
     return clip.map(([min, max], index) => clamp(parameters[index] || 0, min, max));
   };
-  var migrateParameters = (parameters, numRelearningSteps = 0, enableShortTerm = default_enable_short_term) => {
+  var migrateParameters = (
+    parameters,
+    numRelearningSteps = 0,
+    enableShortTerm = default_enable_short_term,
+  ) => {
     if (parameters === undefined) {
       return [...default_w];
     }
@@ -542,7 +546,10 @@
         return clipParameters(Array.from(parameters), numRelearningSteps, enableShortTerm);
       case 19:
         console.debug("[FSRS-6]auto fill w from 19 to 21 length");
-        return clipParameters(Array.from(parameters), numRelearningSteps, enableShortTerm).concat([0, FSRS5_DEFAULT_DECAY]);
+        return clipParameters(Array.from(parameters), numRelearningSteps, enableShortTerm).concat([
+          0,
+          FSRS5_DEFAULT_DECAY,
+        ]);
       case 17: {
         const w = clipParameters(Array.from(parameters), numRelearningSteps, enableShortTerm);
         w[4] = +(w[5] * 2 + w[4]).toFixed(8);
@@ -557,8 +564,12 @@
     }
   };
   var generatorParameters = (props) => {
-    const learning_steps = Array.isArray(props?.learning_steps) ? props.learning_steps : default_learning_steps;
-    const relearning_steps = Array.isArray(props?.relearning_steps) ? props.relearning_steps : default_relearning_steps;
+    const learning_steps = Array.isArray(props?.learning_steps)
+      ? props.learning_steps
+      : default_learning_steps;
+    const relearning_steps = Array.isArray(props?.relearning_steps)
+      ? props.relearning_steps
+      : default_relearning_steps;
     const enable_short_term = props?.enable_short_term ?? default_enable_short_term;
     const w = migrateParameters(props?.w, relearning_steps.length, enable_short_term);
     return {
@@ -568,12 +579,12 @@
       enable_fuzz: props?.enable_fuzz ?? default_enable_fuzz,
       enable_short_term,
       learning_steps,
-      relearning_steps
+      relearning_steps,
     };
   };
   function createEmptyCard(now, afterHandler) {
     const emptyCard = {
-      due: now ? TypeConvert.time(now) : /* @__PURE__ */ new Date,
+      due: now ? TypeConvert.time(now) : /* @__PURE__ */ new Date(),
       stability: 0,
       difficulty: 0,
       elapsed_days: 0,
@@ -582,7 +593,7 @@
       lapses: 0,
       learning_steps: 0,
       state: State.New,
-      last_review: undefined
+      last_review: undefined,
     };
     if (afterHandler && typeof afterHandler === "function") {
       return afterHandler(emptyCard);
@@ -597,7 +608,7 @@
   };
   function forgetting_curve(decayOrParams, elapsed_days, stability) {
     const { decay, factor } = computeDecayFactor(decayOrParams);
-    return +Math.pow(1 + factor * elapsed_days / stability, decay).toFixed(8);
+    return +Math.pow(1 + (factor * elapsed_days) / stability, decay).toFixed(8);
   }
 
   class FSRSAlgorithm {
@@ -631,17 +642,23 @@
     params_handler_proxy() {
       const _this = this;
       return {
-        set: function(target, prop, value) {
+        set: function (target, prop, value) {
           if (prop === "request_retention" && Number.isFinite(value)) {
             _this.intervalModifier = _this.calculate_interval_modifier(Number(value));
           } else if (prop === "w") {
-            value = migrateParameters(value, target.relearning_steps.length, target.enable_short_term);
+            value = migrateParameters(
+              value,
+              target.relearning_steps.length,
+              target.enable_short_term,
+            );
             _this.forgetting_curve = forgetting_curve.bind(this, value);
-            _this.intervalModifier = _this.calculate_interval_modifier(Number(target.request_retention));
+            _this.intervalModifier = _this.calculate_interval_modifier(
+              Number(target.request_retention),
+            );
           }
           Reflect.set(target, prop, value);
           return true;
-        }
+        },
       };
     }
     update_parameters(params) {
@@ -659,19 +676,21 @@
       return +d.toFixed(8);
     }
     apply_fuzz(ivl, elapsed_days) {
-      if (!this.param.enable_fuzz || ivl < 2.5)
-        return Math.round(ivl);
+      if (!this.param.enable_fuzz || ivl < 2.5) return Math.round(ivl);
       const generator = alea(this._seed);
       const fuzz_factor = generator();
       const { min_ivl, max_ivl } = get_fuzz_range(ivl, elapsed_days, this.param.maximum_interval);
       return Math.floor(fuzz_factor * (max_ivl - min_ivl + 1) + min_ivl);
     }
     next_interval(s, elapsed_days) {
-      const newInterval = Math.min(Math.max(1, Math.round(s * this.intervalModifier)), this.param.maximum_interval);
+      const newInterval = Math.min(
+        Math.max(1, Math.round(s * this.intervalModifier)),
+        this.param.maximum_interval,
+      );
       return this.apply_fuzz(newInterval, elapsed_days);
     }
     linear_damping(delta_d, old_d) {
-      return +(delta_d * (10 - old_d) / 9).toFixed(8);
+      return +((delta_d * (10 - old_d)) / 9).toFixed(8);
     }
     next_difficulty(d, g) {
       const delta_d = -this.param.w[6] * (g - 3);
@@ -684,13 +703,32 @@
     next_recall_stability(d, s, r, g) {
       const hard_penalty = Rating.Hard === g ? this.param.w[15] : 1;
       const easy_bound = Rating.Easy === g ? this.param.w[16] : 1;
-      return +clamp(s * (1 + Math.exp(this.param.w[8]) * (11 - d) * Math.pow(s, -this.param.w[9]) * (Math.exp((1 - r) * this.param.w[10]) - 1) * hard_penalty * easy_bound), S_MIN, 36500).toFixed(8);
+      return +clamp(
+        s *
+          (1 +
+            Math.exp(this.param.w[8]) *
+              (11 - d) *
+              Math.pow(s, -this.param.w[9]) *
+              (Math.exp((1 - r) * this.param.w[10]) - 1) *
+              hard_penalty *
+              easy_bound),
+        S_MIN,
+        36500,
+      ).toFixed(8);
     }
     next_forget_stability(d, s, r) {
-      return +clamp(this.param.w[11] * Math.pow(d, -this.param.w[12]) * (Math.pow(s + 1, this.param.w[13]) - 1) * Math.exp((1 - r) * this.param.w[14]), S_MIN, 36500).toFixed(8);
+      return +clamp(
+        this.param.w[11] *
+          Math.pow(d, -this.param.w[12]) *
+          (Math.pow(s + 1, this.param.w[13]) - 1) *
+          Math.exp((1 - r) * this.param.w[14]),
+        S_MIN,
+        36500,
+      ).toFixed(8);
     }
     next_short_term_stability(s, g) {
-      const sinc = Math.pow(s, -this.param.w[19]) * Math.exp(this.param.w[17] * (g - 3 + this.param.w[18]));
+      const sinc =
+        Math.pow(s, -this.param.w[19]) * Math.exp(this.param.w[17] * (g - 3 + this.param.w[18]));
       const maskedSinc = g >= 3 ? Math.max(sinc, 1) : sinc;
       return +clamp(s * maskedSinc, S_MIN, 36500).toFixed(8);
     }
@@ -698,7 +736,7 @@
     next_state(memory_state, t, g) {
       const { difficulty: d, stability: s } = memory_state ?? {
         difficulty: 0,
-        stability: 0
+        stability: 0,
       };
       if (t < 0) {
         throw new Error(`Invalid delta_t "${t}"`);
@@ -709,13 +747,13 @@
       if (d === 0 && s === 0) {
         return {
           difficulty: clamp(this.init_difficulty(g), 1, 10),
-          stability: this.init_stability(g)
+          stability: this.init_stability(g),
         };
       }
       if (g === 0) {
         return {
           difficulty: d,
-          stability: s
+          stability: s,
         };
       }
       if (d < 1 || s < S_MIN) {
@@ -759,12 +797,18 @@
     getLearningInfo(card, grade) {
       const parameters = this.algorithm.parameters;
       card.learning_steps = card.learning_steps || 0;
-      const steps_strategy = this.learningStepsStrategy(parameters, card.state, this.current.state === State.Learning && grade !== Rating.Again && grade !== Rating.Hard ? card.learning_steps + 1 : card.learning_steps);
+      const steps_strategy = this.learningStepsStrategy(
+        parameters,
+        card.state,
+        this.current.state === State.Learning && grade !== Rating.Again && grade !== Rating.Hard
+          ? card.learning_steps + 1
+          : card.learning_steps,
+      );
       const scheduled_minutes = Math.max(0, steps_strategy[grade]?.scheduled_minutes ?? 0);
       const next_steps = Math.max(0, steps_strategy[grade]?.next_step ?? 0);
       return {
         scheduled_minutes,
-        next_steps
+        next_steps,
       };
     }
     applyLearningSteps(nextCard, grade, to_state) {
@@ -799,7 +843,7 @@
       this.applyLearningSteps(next, grade, State.Learning);
       const item = {
         card: next,
-        log: this.buildLog(grade)
+        log: this.buildLog(grade),
       };
       this.next.set(grade, item);
       return item;
@@ -816,7 +860,7 @@
       this.applyLearningSteps(next, grade, state);
       const item = {
         card: next,
-        log: this.buildLog(grade)
+        log: this.buildLog(grade),
       };
       this.next.set(grade, item);
       return item;
@@ -833,26 +877,34 @@
       const next_hard = TypeConvert.card(this.current);
       const next_good = TypeConvert.card(this.current);
       const next_easy = TypeConvert.card(this.current);
-      this.next_ds(next_again, next_hard, next_good, next_easy, difficulty, stability, retrievability);
+      this.next_ds(
+        next_again,
+        next_hard,
+        next_good,
+        next_easy,
+        difficulty,
+        stability,
+        retrievability,
+      );
       this.next_interval(next_hard, next_good, next_easy, interval);
       this.next_state(next_hard, next_good, next_easy);
       this.applyLearningSteps(next_again, Rating.Again, State.Relearning);
       next_again.lapses += 1;
       const item_again = {
         card: next_again,
-        log: this.buildLog(Rating.Again)
+        log: this.buildLog(Rating.Again),
       };
       const item_hard = {
         card: next_hard,
-        log: super.buildLog(Rating.Hard)
+        log: super.buildLog(Rating.Hard),
       };
       const item_good = {
         card: next_good,
-        log: super.buildLog(Rating.Good)
+        log: super.buildLog(Rating.Good),
       };
       const item_easy = {
         card: next_easy,
-        log: super.buildLog(Rating.Easy)
+        log: super.buildLog(Rating.Easy),
       };
       this.next.set(Rating.Again, item_again);
       this.next.set(Rating.Hard, item_hard);
@@ -862,15 +914,35 @@
     }
     next_ds(next_again, next_hard, next_good, next_easy, difficulty, stability, retrievability) {
       next_again.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Again);
-      const nextSMin = stability / Math.exp(this.algorithm.parameters.w[17] * this.algorithm.parameters.w[18]);
-      const s_after_fail = this.algorithm.next_forget_stability(difficulty, stability, retrievability);
+      const nextSMin =
+        stability / Math.exp(this.algorithm.parameters.w[17] * this.algorithm.parameters.w[18]);
+      const s_after_fail = this.algorithm.next_forget_stability(
+        difficulty,
+        stability,
+        retrievability,
+      );
       next_again.stability = clamp(+nextSMin.toFixed(8), S_MIN, s_after_fail);
       next_hard.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Hard);
-      next_hard.stability = this.algorithm.next_recall_stability(difficulty, stability, retrievability, Rating.Hard);
+      next_hard.stability = this.algorithm.next_recall_stability(
+        difficulty,
+        stability,
+        retrievability,
+        Rating.Hard,
+      );
       next_good.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Good);
-      next_good.stability = this.algorithm.next_recall_stability(difficulty, stability, retrievability, Rating.Good);
+      next_good.stability = this.algorithm.next_recall_stability(
+        difficulty,
+        stability,
+        retrievability,
+        Rating.Good,
+      );
       next_easy.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Easy);
-      next_easy.stability = this.algorithm.next_recall_stability(difficulty, stability, retrievability, Rating.Easy);
+      next_easy.stability = this.algorithm.next_recall_stability(
+        difficulty,
+        stability,
+        retrievability,
+        Rating.Easy,
+      );
     }
     next_interval(next_hard, next_good, next_easy, interval) {
       let hard_interval, good_interval;
@@ -878,7 +950,10 @@
       good_interval = this.algorithm.next_interval(next_good.stability, interval);
       hard_interval = Math.min(hard_interval, good_interval);
       good_interval = Math.max(good_interval, hard_interval + 1);
-      const easy_interval = Math.max(this.algorithm.next_interval(next_easy.stability, interval), good_interval + 1);
+      const easy_interval = Math.max(
+        this.algorithm.next_interval(next_easy.stability, interval),
+        good_interval + 1,
+      );
       next_hard.scheduled_days = hard_interval;
       next_hard.due = date_scheduler(this.review_time, hard_interval, true);
       next_good.scheduled_days = good_interval;
@@ -940,7 +1015,15 @@
       const next_hard = TypeConvert.card(this.current);
       const next_good = TypeConvert.card(this.current);
       const next_easy = TypeConvert.card(this.current);
-      this.next_ds(next_again, next_hard, next_good, next_easy, difficulty, stability, retrievability);
+      this.next_ds(
+        next_again,
+        next_hard,
+        next_good,
+        next_easy,
+        difficulty,
+        stability,
+        retrievability,
+      );
       this.next_interval(next_again, next_hard, next_good, next_easy, interval);
       this.next_state(next_again, next_hard, next_good, next_easy);
       next_again.lapses += 1;
@@ -949,14 +1032,33 @@
     }
     next_ds(next_again, next_hard, next_good, next_easy, difficulty, stability, retrievability) {
       next_again.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Again);
-      const s_after_fail = this.algorithm.next_forget_stability(difficulty, stability, retrievability);
+      const s_after_fail = this.algorithm.next_forget_stability(
+        difficulty,
+        stability,
+        retrievability,
+      );
       next_again.stability = clamp(stability, S_MIN, s_after_fail);
       next_hard.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Hard);
-      next_hard.stability = this.algorithm.next_recall_stability(difficulty, stability, retrievability, Rating.Hard);
+      next_hard.stability = this.algorithm.next_recall_stability(
+        difficulty,
+        stability,
+        retrievability,
+        Rating.Hard,
+      );
       next_good.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Good);
-      next_good.stability = this.algorithm.next_recall_stability(difficulty, stability, retrievability, Rating.Good);
+      next_good.stability = this.algorithm.next_recall_stability(
+        difficulty,
+        stability,
+        retrievability,
+        Rating.Good,
+      );
       next_easy.difficulty = this.algorithm.next_difficulty(difficulty, Rating.Easy);
-      next_easy.stability = this.algorithm.next_recall_stability(difficulty, stability, retrievability, Rating.Easy);
+      next_easy.stability = this.algorithm.next_recall_stability(
+        difficulty,
+        stability,
+        retrievability,
+        Rating.Easy,
+      );
     }
     next_interval(next_again, next_hard, next_good, next_easy, interval) {
       let again_interval, hard_interval, good_interval, easy_interval;
@@ -990,19 +1092,19 @@
     update_next(next_again, next_hard, next_good, next_easy) {
       const item_again = {
         card: next_again,
-        log: this.buildLog(Rating.Again)
+        log: this.buildLog(Rating.Again),
       };
       const item_hard = {
         card: next_hard,
-        log: super.buildLog(Rating.Hard)
+        log: super.buildLog(Rating.Hard),
       };
       const item_good = {
         card: next_good,
-        log: super.buildLog(Rating.Good)
+        log: super.buildLog(Rating.Good),
       };
       const item_easy = {
         card: next_easy,
-        log: super.buildLog(Rating.Easy)
+        log: super.buildLog(Rating.Easy),
       };
       this.next.set(Rating.Again, item_again);
       this.next.set(Rating.Hard, item_hard);
@@ -1036,7 +1138,7 @@
           last_elapsed_days: card.elapsed_days,
           scheduled_days: card.scheduled_days,
           learning_steps: card.learning_steps,
-          review: reviewed
+          review: reviewed,
         };
         next_card = createEmptyCard(reviewed);
         next_card.last_review = reviewed;
@@ -1055,7 +1157,7 @@
           last_elapsed_days: card.elapsed_days,
           scheduled_days: card.scheduled_days,
           learning_steps: card.learning_steps,
-          review: reviewed
+          review: reviewed,
         };
         next_card = {
           ...card,
@@ -1066,7 +1168,7 @@
           difficulty: difficulty || card.difficulty,
           elapsed_days,
           scheduled_days,
-          reps: card.reps + 1
+          reps: card.reps + 1,
         };
       }
       return { card: next_card, log };
@@ -1082,7 +1184,15 @@
           if (cur_card.state !== State.New && cur_card.last_review) {
             interval = date_diff(review.review, cur_card.last_review, "days");
           }
-          item = this.handleManualRating(cur_card, review.state, review.review, interval, review.stability, review.difficulty, review.due ? TypeConvert.time(review.due) : undefined);
+          item = this.handleManualRating(
+            cur_card,
+            review.state,
+            review.review,
+            interval,
+            review.stability,
+            review.difficulty,
+            review.due ? TypeConvert.time(review.due) : undefined,
+          );
         } else {
           item = this.replay(cur_card, review.review, review.rating);
         }
@@ -1101,12 +1211,20 @@
         return null;
       }
       cur_card.scheduled_days = date_diff(reschedule_card.due, cur_card.due, "days");
-      return this.handleManualRating(cur_card, reschedule_card.state, TypeConvert.time(now), log.elapsed_days, update_memory ? reschedule_card.stability : undefined, update_memory ? reschedule_card.difficulty : undefined, reschedule_card.due);
+      return this.handleManualRating(
+        cur_card,
+        reschedule_card.state,
+        TypeConvert.time(now),
+        log.elapsed_days,
+        update_memory ? reschedule_card.stability : undefined,
+        update_memory ? reschedule_card.difficulty : undefined,
+        reschedule_card.due,
+      );
     }
   }
 
   class FSRS extends FSRSAlgorithm {
-    strategyHandler = /* @__PURE__ */ new Map;
+    strategyHandler = /* @__PURE__ */ new Map();
     Scheduler;
     constructor(param) {
       super(param);
@@ -1116,19 +1234,25 @@
     params_handler_proxy() {
       const _this = this;
       return {
-        set: function(target, prop, value) {
+        set: function (target, prop, value) {
           if (prop === "request_retention" && Number.isFinite(value)) {
             _this.intervalModifier = _this.calculate_interval_modifier(Number(value));
           } else if (prop === "enable_short_term") {
             _this.Scheduler = value === true ? BasicScheduler : LongTermScheduler;
           } else if (prop === "w") {
-            value = migrateParameters(value, target.relearning_steps.length, target.enable_short_term);
+            value = migrateParameters(
+              value,
+              target.relearning_steps.length,
+              target.enable_short_term,
+            );
             _this.forgetting_curve = forgetting_curve.bind(this, value);
-            _this.intervalModifier = _this.calculate_interval_modifier(Number(target.request_retention));
+            _this.intervalModifier = _this.calculate_interval_modifier(
+              Number(target.request_retention),
+            );
           }
           Reflect.set(target, prop, value);
           return true;
-        }
+        },
       };
     }
     useStrategy(mode, handler) {
@@ -1173,9 +1297,15 @@
     }
     get_retrievability(card, now, format = true) {
       const processedCard = TypeConvert.card(card);
-      now = now ? TypeConvert.time(now) : /* @__PURE__ */ new Date;
-      const t = processedCard.state !== State.New ? Math.max(date_diff(now, processedCard.last_review, "days"), 0) : 0;
-      const r = processedCard.state !== State.New ? this.forgetting_curve(t, +processedCard.stability.toFixed(8)) : 0;
+      now = now ? TypeConvert.time(now) : /* @__PURE__ */ new Date();
+      const t =
+        processedCard.state !== State.New
+          ? Math.max(date_diff(now, processedCard.last_review, "days"), 0)
+          : 0;
+      const r =
+        processedCard.state !== State.New
+          ? this.forgetting_curve(t, +processedCard.stability.toFixed(8))
+          : 0;
       return format ? `${(r * 100).toFixed(2)}%` : r;
     }
     rollback(card, log, afterHandler) {
@@ -1198,7 +1328,9 @@
         case State.Review:
           last_due = processedLog.review;
           last_review = processedLog.due;
-          last_lapses = processedCard.lapses - (processedLog.rating === Rating.Again && processedLog.state === State.Review ? 1 : 0);
+          last_lapses =
+            processedCard.lapses -
+            (processedLog.rating === Rating.Again && processedLog.state === State.Review ? 1 : 0);
           break;
       }
       const prevCard = {
@@ -1212,7 +1344,7 @@
         lapses: Math.max(0, last_lapses),
         learning_steps: processedLog.learning_steps,
         state: processedLog.state,
-        last_review
+        last_review,
       };
       if (afterHandler && typeof afterHandler === "function") {
         return afterHandler(prevCard);
@@ -1223,7 +1355,8 @@
     forget(card, now, reset_count = false, afterHandler) {
       const processedCard = TypeConvert.card(card);
       now = TypeConvert.time(now);
-      const scheduled_days = processedCard.state === State.New ? 0 : date_diff(now, processedCard.due, "days");
+      const scheduled_days =
+        processedCard.state === State.New ? 0 : date_diff(now, processedCard.due, "days");
       const forget_log = {
         rating: Rating.Manual,
         state: processedCard.state,
@@ -1234,7 +1367,7 @@
         last_elapsed_days: processedCard.elapsed_days,
         scheduled_days,
         learning_steps: processedCard.learning_steps,
-        review: now
+        review: now,
       };
       const forget_card = {
         ...processedCard,
@@ -1247,7 +1380,7 @@
         lapses: reset_count ? 0 : processedCard.lapses,
         learning_steps: 0,
         state: State.New,
-        last_review: processedCard.last_review
+        last_review: processedCard.last_review,
       };
       const recordLogItem = { card: forget_card, log: forget_log };
       if (afterHandler && typeof afterHandler === "function") {
@@ -1261,8 +1394,8 @@
         recordLogHandler,
         reviewsOrderBy,
         skipManual = true,
-        now = /* @__PURE__ */ new Date,
-        update_memory_state: updateMemoryState = false
+        now = /* @__PURE__ */ new Date(),
+        update_memory_state: updateMemoryState = false,
       } = options;
       if (reviewsOrderBy && typeof reviewsOrderBy === "function") {
         reviews.sort(reviewsOrderBy);
@@ -1271,19 +1404,27 @@
         reviews = reviews.filter((review) => review.rating !== Rating.Manual);
       }
       const rescheduleSvc = new Reschedule(this);
-      const collections = rescheduleSvc.reschedule(options.first_card || createEmptyCard(), reviews);
+      const collections = rescheduleSvc.reschedule(
+        options.first_card || createEmptyCard(),
+        reviews,
+      );
       const len = collections.length;
       const cur_card = TypeConvert.card(current_card);
-      const manual_item = rescheduleSvc.calculateManualRecord(cur_card, now, len ? collections[len - 1] : undefined, updateMemoryState);
+      const manual_item = rescheduleSvc.calculateManualRecord(
+        cur_card,
+        now,
+        len ? collections[len - 1] : undefined,
+        updateMemoryState,
+      );
       if (recordLogHandler && typeof recordLogHandler === "function") {
         return {
           collections: collections.map(recordLogHandler),
-          reschedule_item: manual_item ? recordLogHandler(manual_item) : null
+          reschedule_item: manual_item ? recordLogHandler(manual_item) : null,
         };
       }
       return {
         collections,
-        reschedule_item: manual_item
+        reschedule_item: manual_item,
       };
     }
   }
@@ -1291,20 +1432,233 @@
     return new FSRS(params || {});
   };
 
+  // packages/core/src/watchStats.ts
+  var COV_BUCKET_S = 5;
+  var COV_MAX_BUCKETS = 4096;
+  var emptyWatchStats = () => ({ v: 1, by: {} });
+  var localDayKey = (d = new Date()) => d.toLocaleDateString("en-CA");
+  function coverageBuckets(durSeconds) {
+    if (durSeconds == null || !Number.isFinite(durSeconds) || durSeconds <= 0) return 0;
+    const n = Math.ceil(durSeconds / COV_BUCKET_S);
+    return n > COV_MAX_BUCKETS ? 0 : n;
+  }
+  var newCoverage = (buckets) => new Uint8Array(Math.ceil(buckets / 8));
+  function markCoverage(bytes, fromS, toS) {
+    const buckets = bytes.length * 8;
+    if (!buckets) return;
+    const a = Math.min(fromS, toS);
+    const b = Math.max(fromS, toS);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return;
+    const lo = Math.max(0, Math.floor(a / COV_BUCKET_S));
+    const hi = Math.min(buckets - 1, Math.floor(b / COV_BUCKET_S));
+    for (let i = lo; i <= hi; i++) bytes[i >> 3] |= 1 << (i & 7);
+  }
+  function encodeCoverage(bytes) {
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 1024)
+      bin += String.fromCharCode(...bytes.subarray(i, i + 1024));
+    return btoa(bin);
+  }
+  function decodeCoverage(b64) {
+    if (!b64) return new Uint8Array(0);
+    try {
+      const bin = atob(b64);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    } catch {
+      return new Uint8Array(0);
+    }
+  }
+  function mergeCoverage(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    const x = decodeCoverage(a);
+    const y = decodeCoverage(b);
+    const out = new Uint8Array(Math.max(x.length, y.length));
+    out.set(x);
+    for (let i = 0; i < y.length; i++) out[i] |= y[i];
+    return encodeCoverage(out);
+  }
+  var maxNum = (a, b) => (a == null ? b : b == null ? a : Math.max(a, b));
+  var minStr = (a, b) => (a == null ? b : b == null ? a : a < b ? a : b);
+  var maxStr = (a, b) => (a == null ? b : b == null ? a : a > b ? a : b);
+  function mergeLang(a, b) {
+    if (!a.lang || !b.lang || a.lang === b.lang) return a.lang ?? b.lang;
+    const al = a.last ?? "";
+    const bl = b.last ?? "";
+    if (al !== bl) return al > bl ? a.lang : b.lang;
+    return a.lang < b.lang ? a.lang : b.lang;
+  }
+  function mergeDeviceWatch(a, b) {
+    const days = { ...a.days };
+    for (const [day, secs] of Object.entries(b.days ?? {}))
+      days[day] = Math.max(days[day] ?? 0, secs);
+    return {
+      wall: Math.max(a.wall, b.wall),
+      media: Math.max(a.media, b.media),
+      sessions: Math.max(a.sessions, b.sessions),
+      days,
+      cov: mergeCoverage(a.cov, b.cov),
+      dur: maxNum(a.dur, b.dur),
+      lang: mergeLang(a, b),
+      first: minStr(a.first, b.first),
+      last: maxStr(a.last, b.last),
+    };
+  }
+  function mergeWatchStats(a, b) {
+    const out = { v: 1, by: { ...a?.by } };
+    for (const [device, watch] of Object.entries(b?.by ?? {})) {
+      const mine = out.by[device];
+      out.by[device] = mine ? mergeDeviceWatch(mine, watch) : watch;
+    }
+    return out;
+  }
+  var MAX_DEVICES = 32;
+  var MAX_DAYS = 400;
+  var MAX_COV_CHARS = 700;
+  var MAX_SECONDS = 1e9;
+  var DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+  var num = (v, max) =>
+    typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.min(v, max) : undefined;
+  var str = (v, max) => (typeof v === "string" && v.length > 0 && v.length <= max ? v : undefined);
+  function sanitizeWatchStats(input) {
+    const by = input?.by;
+    if (!by || typeof by !== "object") return emptyWatchStats();
+    const out = emptyWatchStats();
+    for (const [device, raw] of Object.entries(by).slice(0, MAX_DEVICES)) {
+      if (device.length > 64 || !raw || typeof raw !== "object") continue;
+      const d = raw;
+      const days = {};
+      for (const [day, secs] of Object.entries(d.days ?? {}).slice(0, MAX_DAYS)) {
+        if (!DAY_KEY.test(day)) continue;
+        const v = num(secs, 86400);
+        if (v != null) days[day] = v;
+      }
+      const cov = str(d.cov, MAX_COV_CHARS);
+      out.by[device] = {
+        wall: num(d.wall, MAX_SECONDS) ?? 0,
+        media: num(d.media, MAX_SECONDS) ?? 0,
+        sessions: num(d.sessions, 1e6) ?? 0,
+        days,
+        cov: cov && /^[A-Za-z0-9+/=]*$/.test(cov) ? cov : undefined,
+        dur: num(d.dur, MAX_SECONDS),
+        lang: str(d.lang, 32),
+        first: str(d.first, 32),
+        last: str(d.last, 32),
+      };
+    }
+    return out;
+  }
+
+  // packages/core/src/difficulty.ts
+  var RATE_FLOOR = 0.5;
+  var RATE_CEIL = 2;
+  function rateSegments(markers, duration) {
+    if (!Number.isFinite(duration) || duration <= 0) return [];
+    const points = Object.entries(markers ?? {})
+      .map(([t, rate2]) => ({ t: Number(t), rate: Number(rate2) }))
+      .filter((p) => Number.isFinite(p.t) && p.t >= 0 && Number.isFinite(p.rate) && p.rate > 0)
+      .sort((a, b) => a.t - b.t);
+    const segments = [];
+    let cursor = 0;
+    let rate = 1;
+    for (const p of points) {
+      if (p.t >= duration) break;
+      if (p.t > cursor) segments.push({ from: cursor, to: p.t, rate });
+      cursor = p.t;
+      rate = p.rate;
+    }
+    if (cursor < duration) segments.push({ from: cursor, to: duration, rate });
+    return segments.filter((s) => s.to > s.from);
+  }
+  function maturityScore(segments) {
+    let total = 0;
+    let sumLog = 0;
+    for (const s of segments) {
+      const span = s.to - s.from;
+      if (span <= 0) continue;
+      total += span;
+      sumLog += Math.log(clampRate(s.rate)) * span;
+    }
+    return total > 0 ? Math.exp(sumLog / total) : 1;
+  }
+  var clampRate = (rate) =>
+    Math.min(RATE_CEIL, Math.max(RATE_FLOOR, Number.isFinite(rate) && rate > 0 ? rate : 1));
+  function heatmapBuckets(segments, duration, count) {
+    if (!Number.isFinite(duration) || duration <= 0 || count <= 0) return [];
+    const width = duration / count;
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const lo = i * width;
+      const hi = lo + width;
+      let span = 0;
+      let sumLog = 0;
+      for (const s of segments) {
+        const overlap = Math.min(hi, s.to) - Math.max(lo, s.from);
+        if (overlap <= 0) continue;
+        span += overlap;
+        sumLog += Math.log(clampRate(s.rate)) * overlap;
+      }
+      out.push(span > 0 ? Math.exp(sumLog / span) : 1);
+    }
+    return out;
+  }
+  function rateColor(rate, alpha = 1) {
+    const x = Math.log2(clampRate(rate));
+    if (Math.abs(x) < 0.05) return `oklch(0.72 0.012 250 / ${alpha})`;
+    const mag = Math.min(1, Math.abs(x));
+    const hue = x > 0 ? 148 : 27;
+    const chroma = (0.06 + mag * 0.11).toFixed(3);
+    const light = (0.68 - mag * 0.08).toFixed(3);
+    return `oklch(${light} ${chroma} ${hue} / ${alpha})`;
+  }
+  function maturityLabel(score) {
+    if (score >= 1.25) return "comfortable";
+    if (score >= 1.05) return "easy";
+    if (score > 0.95) return "steady";
+    if (score > 0.8) return "effortful";
+    return "hard";
+  }
+  function videoDifficulty(markers, duration) {
+    const segments = rateSegments(markers, duration);
+    const markedSpan = segments
+      .filter((s) => Math.abs(s.rate - 1) > 0.01)
+      .reduce((sum, s) => sum + (s.to - s.from), 0);
+    const score = maturityScore(segments);
+    return {
+      score,
+      label: maturityLabel(score),
+      marked: duration > 0 ? Math.min(1, markedSpan / duration) : 0,
+      segments,
+    };
+  }
+
+  // packages/core/src/duePrune.ts
+  function dueWindow(dueMs, pageSize, limit) {
+    const finite = dueMs.filter((d) => Number.isFinite(d));
+    return {
+      lo: finite.length ? Math.min(...finite) : Infinity,
+      hi: finite.length ? Math.max(...finite) : -Infinity,
+      truncated: pageSize >= limit,
+    };
+  }
+  function isProvablyDeleted(dueMs, w) {
+    if (!Number.isFinite(dueMs)) return false;
+    if (!w.truncated) return true;
+    return dueMs > w.lo && dueMs < w.hi;
+  }
+
   // src/lianki.user.ts
   if (window.self === window.top) {
     globalThis.unload_Lianki?.();
     globalThis.unload_Lianki = main();
   }
   function compareHLC(a, b) {
-    if (!a)
-      return -1;
-    if (!b)
-      return 1;
-    if (a.timestamp !== b.timestamp)
-      return a.timestamp - b.timestamp;
-    if (a.counter !== b.counter)
-      return a.counter - b.counter;
+    if (!a) return -1;
+    if (!b) return 1;
+    if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+    if (a.counter !== b.counter) return a.counter - b.counter;
     return a.deviceId.localeCompare(b.deviceId);
   }
   function newHLC(deviceId, lastHLC = null) {
@@ -1315,15 +1669,15 @@
     return {
       timestamp: lastHLC.timestamp,
       counter: lastHLC.counter + 1,
-      deviceId
+      deviceId,
     };
   }
   function getOrCreateDeviceId() {
     let deviceId = GM_getValue("lk:deviceId", "");
     if (!deviceId) {
       deviceId = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-        const r = Math.random() * 16 | 0;
-        const v = c === "x" ? r : r & 3 | 8;
+        const r = (Math.random() * 16) | 0;
+        const v = c === "x" ? r : (r & 3) | 8;
         return v.toString(16);
       });
       GM_setValue("lk:deviceId", deviceId);
@@ -1334,13 +1688,11 @@
   var INDEX_KEY = "lk:card-index";
   function hashUrl(url) {
     let h = 5381;
-    for (let i = 0;i < url.length; i++)
-      h = ((h << 5) + h ^ url.charCodeAt(i)) >>> 0;
+    for (let i = 0; i < url.length; i++) h = (((h << 5) + h) ^ url.charCodeAt(i)) >>> 0;
     return h.toString(16).padStart(8, "0");
   }
   function isPermanentSyncFailure(status) {
-    if (status === 401 || status === 403 || status === 408 || status === 429)
-      return false;
+    if (status === 401 || status === 403 || status === 408 || status === 429) return false;
     return status >= 400 && status < 500;
   }
   function originOf(url) {
@@ -1361,11 +1713,9 @@
     }
     getCard(url) {
       const raw = GM_getValue(CARD_PREFIX + hashUrl(url), "");
-      if (!raw)
-        return null;
+      if (!raw) return null;
       const c = JSON.parse(raw);
-      if (c._url !== url)
-        return null;
+      if (c._url !== url) return null;
       return c.deletedAt ? null : c;
     }
     setCard(url, note, hlc, dirty = false) {
@@ -1380,10 +1730,8 @@
         console.error("[Lianki] could not store card locally:", url, err);
         return false;
       }
-      if (pos >= 0)
-        idx[pos] = entry;
-      else
-        idx.push(entry);
+      if (pos >= 0) idx[pos] = entry;
+      else idx.push(entry);
       this._saveIndex(idx);
       return true;
     }
@@ -1393,25 +1741,25 @@
       const idx = this._index();
       const pos = idx.findIndex((e) => e.url === url);
       const entry = { url, due: new Date(0).toISOString(), hash, del: 1 };
-      if (pos >= 0)
-        idx[pos] = entry;
-      else
-        idx.push(entry);
+      if (pos >= 0) idx[pos] = entry;
+      else idx.push(entry);
       this._saveIndex(idx);
-      GM_setValue(CARD_PREFIX + hash, JSON.stringify({
-        _url: url,
-        note: null,
-        hlc: newHLC(getOrCreateDeviceId(), prev?.hlc ?? null),
-        dirty: true,
-        deletedAt: Date.now()
-      }));
+      GM_setValue(
+        CARD_PREFIX + hash,
+        JSON.stringify({
+          _url: url,
+          note: null,
+          hlc: newHLC(getOrCreateDeviceId(), prev?.hlc ?? null),
+          dirty: true,
+          deletedAt: Date.now(),
+        }),
+      );
     }
     deleteAllCards() {
       const idx = this._index();
       let n = 0;
       for (const e of idx) {
-        if (e.del)
-          continue;
+        if (e.del) continue;
         this.deleteCard(e.url);
         n++;
       }
@@ -1419,8 +1767,7 @@
     }
     getEntry(url) {
       const raw = GM_getValue(CARD_PREFIX + hashUrl(url), "");
-      if (!raw)
-        return null;
+      if (!raw) return null;
       const c = JSON.parse(raw);
       return c._url === url ? c : null;
     }
@@ -1443,33 +1790,39 @@
         }
         keep.push(e);
       }
-      if (removed)
-        this._saveIndex(keep);
+      if (removed) this._saveIndex(keep);
       return removed;
     }
     getAllCards() {
-      return this._index().filter((e) => !e.del).map((e) => {
-        const raw = GM_getValue(CARD_PREFIX + e.hash, "");
-        return raw ? { url: e.url, ...JSON.parse(raw) } : null;
-      }).filter(Boolean);
+      return this._index()
+        .filter((e) => !e.del)
+        .map((e) => {
+          const raw = GM_getValue(CARD_PREFIX + e.hash, "");
+          return raw ? { url: e.url, ...JSON.parse(raw) } : null;
+        })
+        .filter(Boolean);
     }
-    getDueCards(limit = 10, preferOrigin = null) {
-      const now = new Date;
-      const onOrigin = (e) => preferOrigin !== null && originOf(e.url) === preferOrigin ? 1 : 0;
-      return this._index().filter((e) => !e.del && new Date(e.due) <= now).sort((a, b) => onOrigin(b) - onOrigin(a) || new Date(b.due) - new Date(a.due)).slice(0, limit).map((e) => {
-        const raw = GM_getValue(CARD_PREFIX + e.hash, "");
-        return raw ? { url: e.url, ...JSON.parse(raw) } : null;
-      }).filter(Boolean);
+    getDueCards(limit = 10, preferOrigin = null, order = "newest") {
+      const now = new Date();
+      const onOrigin = (e) => (preferOrigin !== null && originOf(e.url) === preferOrigin ? 1 : 0);
+      const dir = order === "newest" ? -1 : 1;
+      return this._index()
+        .filter((e) => !e.del && new Date(e.due) <= now)
+        .sort((a, b) => onOrigin(b) - onOrigin(a) || dir * (new Date(a.due) - new Date(b.due)))
+        .slice(0, limit)
+        .map((e) => {
+          const raw = GM_getValue(CARD_PREFIX + e.hash, "");
+          return raw ? { url: e.url, ...JSON.parse(raw) } : null;
+        })
+        .filter(Boolean);
     }
   }
 
   class GMConfigStorage {
     getConfig() {
       const cfg = JSON.parse(GM_getValue("lk:config", "{}"));
-      if (!cfg.lastSyncHLC)
-        cfg.lastSyncHLC = null;
-      if (!cfg.lastSyncTime)
-        cfg.lastSyncTime = 0;
+      if (!cfg.lastSyncHLC) cfg.lastSyncHLC = null;
+      if (!cfg.lastSyncTime) cfg.lastSyncTime = 0;
       return cfg;
     }
     setConfig(cfg) {
@@ -1492,7 +1845,7 @@
         data,
         hlc,
         retries: 0,
-        createdAt: Date.now()
+        createdAt: Date.now(),
       });
       GM_setValue("lk:queue", JSON.stringify(q));
     }
@@ -1500,15 +1853,17 @@
       GM_setValue("lk:queue", JSON.stringify(this.getQueue().filter((e) => e.id !== id)));
     }
     updateQueueItem(id, updates) {
-      GM_setValue("lk:queue", JSON.stringify(this.getQueue().map((e) => e.id === id ? { ...e, ...updates } : e)));
+      GM_setValue(
+        "lk:queue",
+        JSON.stringify(this.getQueue().map((e) => (e.id === id ? { ...e, ...updates } : e))),
+      );
     }
   }
   function drainPurgeQueue(cs) {
     let req;
     try {
       const raw = localStorage.getItem("lk:purge");
-      if (!raw)
-        return 0;
+      if (!raw) return 0;
       req = JSON.parse(raw);
     } catch {
       return 0;
@@ -1519,8 +1874,7 @@
         removed = cs.deleteAllCards();
       } else if (Array.isArray(req?.urls)) {
         for (const url of req.urls) {
-          if (cs.getCard(url))
-            removed++;
+          if (cs.getCard(url)) removed++;
           cs.deleteCard(url);
         }
       }
@@ -1529,23 +1883,25 @@
       console.error("[Lianki] purge failed:", err);
       return removed;
     }
-    if (removed)
-      console.log(`[Lianki] Purged ${removed} deleted cards from local storage`);
+    if (removed) console.log(`[Lianki] Purged ${removed} deleted cards from local storage`);
     return removed;
   }
   async function syncToSiteDB() {
-    const cs = new GMCardStorage;
+    const cs = new GMCardStorage();
     drainPurgeQueue(cs);
     cs.purgeExpiredTombstones();
     const index = cs._index().filter((e) => !e.del);
-    const now = new Date;
+    const now = new Date();
     const dueCount = index.filter((e) => new Date(e.due) <= now).length;
-    localStorage.setItem("lk:status", JSON.stringify({
-      version: GM_info?.script?.version ?? "?",
-      cardCount: index.length,
-      dueCount,
-      lastSync: Date.now()
-    }));
+    localStorage.setItem(
+      "lk:status",
+      JSON.stringify({
+        version: GM_info?.script?.version ?? "?",
+        cardCount: index.length,
+        dueCount,
+        lastSync: Date.now(),
+      }),
+    );
     try {
       const db = await new Promise((resolve, reject) => {
         const req = indexedDB.open("lianki-keyval", 1);
@@ -1562,24 +1918,24 @@
       const store = tx.objectStore("keyval");
       const live = new Set(index.map((e) => "card:" + e.url));
       for (const key of existingKeys) {
-        if (typeof key === "string" && key.startsWith("card:") && !live.has(key))
-          store.delete(key);
+        if (typeof key === "string" && key.startsWith("card:") && !live.has(key)) store.delete(key);
       }
       for (const entry of index) {
         const raw = GM_getValue(CARD_PREFIX + entry.hash, "");
-        if (!raw)
-          continue;
+        if (!raw) continue;
         const { note, hlc, dirty } = JSON.parse(raw);
-        if (!note?.card)
-          continue;
-        store.put({
-          url: note.url || entry.url,
-          title: note.title || note.url || entry.url,
-          card: note.card,
-          log: note.log || [],
-          hlc: hlc || note.hlc,
-          synced: !dirty
-        }, "card:" + (note.url || entry.url));
+        if (!note?.card) continue;
+        store.put(
+          {
+            url: note.url || entry.url,
+            title: note.title || note.url || entry.url,
+            card: note.card,
+            log: note.log || [],
+            hlc: hlc || note.hlc,
+            synced: !dirty,
+          },
+          "card:" + (note.url || entry.url),
+        );
       }
       store.put(index.length, "meta:gm-count");
       await new Promise((resolve, reject) => {
@@ -1589,7 +1945,7 @@
       db.close();
       console.log(`[Lianki] Synced ${index.length} cards to site IndexedDB`);
     } catch (err) {
-      console.error("[Lianki] syncToSiteDB failed:", err);
+      console.error("[Lianki] site DB sync FAILED:", err);
     }
   }
 
@@ -1599,7 +1955,7 @@
       this.params = params || generatorParameters({});
       this.scheduler = fsrs(this.params);
     }
-    calculateOptions(card, now = new Date) {
+    calculateOptions(card, now = new Date()) {
       const scheduleInfo = this.scheduler.repeat(card, now);
       return [
         {
@@ -1607,53 +1963,48 @@
           label: "Again",
           card: scheduleInfo[this.Rating.Again].card,
           log: scheduleInfo[this.Rating.Again].log,
-          due: this.formatDue(scheduleInfo[this.Rating.Again].card.due)
+          due: this.formatDue(scheduleInfo[this.Rating.Again].card.due),
         },
         {
           rating: 2,
           label: "Hard",
           card: scheduleInfo[this.Rating.Hard].card,
           log: scheduleInfo[this.Rating.Hard].log,
-          due: this.formatDue(scheduleInfo[this.Rating.Hard].card.due)
+          due: this.formatDue(scheduleInfo[this.Rating.Hard].card.due),
         },
         {
           rating: 3,
           label: "Good",
           card: scheduleInfo[this.Rating.Good].card,
           log: scheduleInfo[this.Rating.Good].log,
-          due: this.formatDue(scheduleInfo[this.Rating.Good].card.due)
+          due: this.formatDue(scheduleInfo[this.Rating.Good].card.due),
         },
         {
           rating: 4,
           label: "Easy",
           card: scheduleInfo[this.Rating.Easy].card,
           log: scheduleInfo[this.Rating.Easy].log,
-          due: this.formatDue(scheduleInfo[this.Rating.Easy].card.due)
-        }
+          due: this.formatDue(scheduleInfo[this.Rating.Easy].card.due),
+        },
       ];
     }
     formatDue(dueDate) {
-      const now = new Date;
+      const now = new Date();
       const diffMs = new Date(dueDate) - now;
       const diffMins = Math.round(diffMs / 60000);
       const diffHours = Math.round(diffMs / 3600000);
       const diffDays = Math.round(diffMs / 86400000);
-      if (diffMins < 1)
-        return "now";
-      if (diffMins < 60)
-        return `${diffMins}m`;
-      if (diffHours < 24)
-        return `${diffHours}h`;
-      if (diffDays < 30)
-        return `${diffDays}d`;
+      if (diffMins < 1) return "now";
+      if (diffMins < 60) return `${diffMins}m`;
+      if (diffHours < 24) return `${diffHours}h`;
+      if (diffDays < 30) return `${diffDays}d`;
       const diffMonths = Math.round(diffDays / 30);
-      if (diffMonths < 12)
-        return `${diffMonths}mo`;
+      if (diffMonths < 12) return `${diffMonths}mo`;
       const diffYears = Math.round(diffDays / 365);
       return `${diffYears}y`;
     }
     newCard() {
-      const now = new Date;
+      const now = new Date();
       return {
         due: now,
         stability: 0,
@@ -1663,17 +2014,17 @@
         reps: 0,
         lapses: 0,
         state: 0,
-        last_review: now
+        last_review: now,
       };
     }
-    applyReview(card, rating, now = new Date) {
+    applyReview(card, rating, now = new Date()) {
       const scheduleInfo = this.scheduler.repeat(card, now);
       const ratingKey = [
         this.Rating.Manual,
         this.Rating.Again,
         this.Rating.Hard,
         this.Rating.Good,
-        this.Rating.Easy
+        this.Rating.Easy,
       ][rating];
       return scheduleInfo[ratingKey];
     }
@@ -1683,8 +2034,7 @@
     const ORIGIN = (() => {
       try {
         const u = new URL(GM_info?.script?.downloadURL || "");
-        if (u.hostname === "www.lianki.com")
-          u.hostname = "lianki.com";
+        if (u.hostname === "www.lianki.com") u.hostname = "lianki.com";
         return u.origin;
       } catch {
         return "https://lianki.com";
@@ -1699,8 +2049,7 @@
           u.pathname = "/watch";
           u.searchParams.set("v", id);
         }
-        if (u.hostname.startsWith("m."))
-          u.hostname = "www." + u.hostname.slice(2);
+        if (u.hostname.startsWith("m.")) u.hostname = "www." + u.hostname.slice(2);
         if (u.hostname.endsWith("youtube.com") && u.pathname === "/watch")
           u.searchParams.delete("index");
         for (const p of [
@@ -1719,7 +2068,7 @@
           "gclid",
           "mc_cid",
           "mc_eid",
-          "igshid"
+          "igshid",
         ])
           u.searchParams.delete(p);
         u.searchParams.sort();
@@ -1733,12 +2082,19 @@
       setTimeout(() => syncToSiteDB(), 500);
       return () => {};
     }
-    const ac = new AbortController;
+    const ac = new AbortController();
     const { signal } = ac;
+    const intervals = [];
+    const addInterval = (fn, ms) => {
+      const id = setInterval(fn, ms);
+      intervals.push(id);
+      return id;
+    };
     const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
     let userPreferences = {
-      mobileExcludePatterns: []
+      mobileExcludePatterns: [],
     };
+    const reviewOrder = () => (userPreferences?.reviewOrder === "oldest" ? "oldest" : "newest");
     async function loadPreferences() {
       try {
         const cached = GM_getValue("lk:preferences", "");
@@ -1763,7 +2119,7 @@
       error: null,
       message: null,
       notes: "",
-      notesSynced: true
+      notesSynced: true,
     };
     let fab = null;
     let dialog = null;
@@ -1779,8 +2135,7 @@
       return aa !== ba ? aa > ba : ab !== bb ? ab > bb : ac2 > bc;
     }
     function checkVersion(r) {
-      if (updatePrompted)
-        return;
+      if (updatePrompted) return;
       const sv = r.headers.get("x-lianki-version");
       if (sv && isNewerVersion(sv, CURRENT_VERSION)) {
         updatePrompted = true;
@@ -1791,15 +2146,14 @@
       return new Promise((resolve, reject) => {
         const token = GM_getValue("lk:token", "");
         const headers = { ...opts.headers };
-        if (token)
-          headers["Authorization"] = `Bearer ${token}`;
+        if (token) headers["Authorization"] = `Bearer ${token}`;
         GM_xmlhttpRequest({
           method: (opts.method || "GET").toUpperCase(),
           url: String(url),
           headers,
           data: opts.body ?? undefined,
           withCredentials: opts.credentials === "include",
-          ...opts.timeout ? { timeout: opts.timeout } : {},
+          ...(opts.timeout ? { timeout: opts.timeout } : {}),
           onload(resp) {
             const hdrs = {};
             for (const line of resp.responseHeaders.split(`\r
@@ -1807,8 +2161,7 @@
               const i = line.indexOf(": ");
               if (i > 0) {
                 const name = line.slice(0, i).toLowerCase();
-                if (name !== "set-cookie")
-                  hdrs[name] = line.slice(i + 2);
+                if (name !== "set-cookie") hdrs[name] = line.slice(i + 2);
               }
             }
             resolve({
@@ -1826,7 +2179,7 @@
                   return Promise.reject(err);
                 }
               },
-              text: () => Promise.resolve(resp.responseText)
+              text: () => Promise.resolve(resp.responseText),
             });
           },
           onerror() {
@@ -1837,39 +2190,54 @@
           },
           onabort() {
             reject(new Error("Request aborted"));
-          }
+          },
         });
       });
     }
-    const api = (path, opts = {}) => gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
-      if (r.status === 401) {
-        const e = new Error("Login required");
-        e.status = 401;
-        throw e;
-      }
-      if (!r.ok) {
-        const status = r.status;
-        return r.json().catch(() => null).then((body) => {
-          const e = new Error(`HTTP ${status}`);
-          e.status = status;
-          e.body = body;
-          if (body?.errorId)
-            e.details = `Error ID: ${body.errorId}`;
-          else if (body?.error)
-            e.details = body.error;
+    const api = (path, opts = {}) =>
+      gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
+        const what = `${(opts.method || "GET").toUpperCase()} ${ORIGIN}${path}`;
+        if (r.status === 401) {
+          const e = new Error(`Login required (${what})`);
+          e.status = 401;
           throw e;
-        });
-      }
-      checkVersion(r);
-      return r.json();
-    });
+        }
+        if (!r.ok) {
+          const status = r.status;
+          return r
+            .json()
+            .catch(() => null)
+            .then((body) => {
+              const detail = body?.errorId ? `Error ID: ${body.errorId}` : body?.error;
+              const e = new Error(`HTTP ${status} — ${what}${detail ? ` — ${detail}` : ""}`);
+              e.status = status;
+              e.body = body;
+              if (detail) e.details = detail;
+              throw e;
+            });
+        }
+        checkVersion(r);
+        return r.json();
+      });
+    const loggedOnce = new Set();
+    const warnOnce = (key, ...args) => {
+      if (loggedOnce.has(key)) return;
+      loggedOnce.add(key);
+      console.warn(...args);
+    };
+    const isAuthError = (err) =>
+      err?.status === 401 || /Login required/i.test(String(err?.message));
+    const logFail = (key, doing, err) => {
+      if (isAuthError(err))
+        warnOnce(`auth:${key}`, `[Lianki] Not signed in — ${doing} is local-only.`);
+      else console.error(`[Lianki] ${doing} FAILED:`, err);
+    };
     function gmCache(key, ttlMs, fn) {
       try {
         const raw = GM_getValue(key);
         if (raw) {
           const { v, exp } = JSON.parse(raw);
-          if (Date.now() < exp)
-            return Promise.resolve(v);
+          if (Date.now() < exp) return Promise.resolve(v);
         }
       } catch {}
       return fn().then((v) => {
@@ -1881,36 +2249,44 @@
       GM_setValue(key, "");
     }
     const noteKey = (url) => `lk:note:${url}`;
-    const addNote = (url, title) => gmCache(noteKey(url), 10 * 60 * 1000, () => api("/api/fsrs/add", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url, title })
-    }));
+    const addNote = (url, title) =>
+      gmCache(noteKey(url), 10 * 60 * 1000, () =>
+        api("/api/fsrs/add", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ url, title }),
+        }),
+      );
     const buildExcludeDomainsParam = () => {
-      if (!isMobile)
-        return "";
+      if (!isMobile) return "";
       const patterns = userPreferences.mobileExcludePatterns || [];
-      const values = patterns.filter((p) => p && p.enabled !== false && !p.isRegex).filter((p) => p.type === "domain" || p.type === "url").map((p) => String(p.pattern || "").trim()).filter((p) => p && !p.includes(","));
-      if (values.length === 0)
-        return "";
+      const values = patterns
+        .filter((p) => p && p.enabled !== false && !p.isRegex)
+        .filter((p) => p.type === "domain" || p.type === "url")
+        .map((p) => String(p.pattern || "").trim())
+        .filter((p) => p && !p.includes(","));
+      if (values.length === 0) return "";
       return `&excludeDomains=${values.map(encodeURIComponent).join(",")}`;
     };
-    const saveNotes = (id, notes) => api(`/api/fsrs/notes?id=${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ notes })
-    });
+    const saveNotes = (id, notes) =>
+      api(`/api/fsrs/notes?id=${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ notes }),
+      });
     const getOptions = (id) => api(`/api/fsrs/options?id=${encodeURIComponent(id)}`);
-    const submitReview = (id, rating) => api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
-    const deleteNote = (id) => api(`/api/fsrs/delete?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
+    const submitReview = (id, rating) =>
+      api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
+    const deleteNote = (id) =>
+      api(`/api/fsrs/delete?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
     const getNextUrl = () => {
       const excludeUrl = `&excludeUrl=${encodeURIComponent(normalizeUrl(location.href))}`;
       return api(`/api/fsrs/next-url?${buildExcludeDomainsParam().slice(1)}${excludeUrl}`);
     };
-    const btn = (bg, extra = "") => `all:initial;display:inline-block;box-sizing:border-box;background:${bg};color:${bg === "transparent" ? "var(--lk-fg)" : "#eee"};border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;font-family:system-ui,sans-serif;min-width:60px;line-height:1.5;text-align:center;${extra}`;
+    const btn = (bg, extra = "") =>
+      `all:initial;display:inline-block;box-sizing:border-box;background:${bg};color:${bg === "transparent" ? "var(--lk-fg)" : "#eee"};border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;font-family:system-ui,sans-serif;min-width:60px;line-height:1.5;text-align:center;${extra}`;
     function prefetchNextPage(pageUrl) {
-      if (!pageUrl)
-        return;
+      if (!pageUrl) return;
       if (prefetchLink) {
         prefetchLink.remove();
         prefetchLink = null;
@@ -1937,10 +2313,13 @@
         boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
         backdropFilter: "blur(6px)",
         WebkitBackdropFilter: "blur(6px)",
-        overflow: "hidden"
+        overflow: "hidden",
       });
       let isDragged = false;
-      const BTN_BASE = "border:none;cursor:pointer;background:transparent;color:#eee;" + "padding:10px 14px;font-size:15px;font-weight:bold;touch-action:manipulation;" + "transition:background 0.2s;";
+      const BTN_BASE =
+        "border:none;cursor:pointer;background:transparent;color:#eee;" +
+        "padding:10px 14px;font-size:15px;font-weight:bold;touch-action:manipulation;" +
+        "transition:background 0.2s;";
       const BTN_HOVER = "background:rgba(255,255,255,0.1);";
       const makeBtn = (text, title, action) => {
         const b = document.createElement("button");
@@ -1948,8 +2327,7 @@
         b.title = title;
         b.style.cssText = BTN_BASE;
         b.addEventListener("mouseenter", () => {
-          if (!isDragged)
-            b.style.background = "rgba(255,255,255,0.1)";
+          if (!isDragged) b.style.background = "rgba(255,255,255,0.1)";
         });
         b.addEventListener("mouseleave", () => {
           b.style.background = "transparent";
@@ -1965,11 +2343,14 @@
         return b;
       };
       const slowerBtn = makeBtn("⏪", "Slower (,/v)", () => pardon(-3, 0.7));
-      const liankiBtn = makeBtn("\uD83D\uDD16", "Lianki (Alt+F)", () => dialog ? closeDialog() : openDialog());
+      const liankiBtn = makeBtn("\uD83D\uDD16", "Lianki (Alt+F)", () =>
+        dialog ? closeDialog() : openDialog(),
+      );
       const fasterBtn = makeBtn("⏩", "Faster (./b)", () => pardon(0, 1.2));
       const makeSeparator = () => {
         const sep = document.createElement("div");
-        sep.style.cssText = "width:1px;height:24px;background:rgba(255,255,255,0.15);align-self:center;";
+        sep.style.cssText =
+          "width:1px;height:24px;background:rgba(255,255,255,0.15);align-self:center;";
         return sep;
       };
       container.append(slowerBtn, makeSeparator(), liankiBtn, makeSeparator(), fasterBtn);
@@ -1995,22 +2376,14 @@
         const atTop = r.top <= EDGE_THRESHOLD;
         const atBottom = r.bottom >= window.innerHeight - EDGE_THRESHOLD;
         let radius = "999px";
-        if (atLeft && atTop)
-          radius = "0 999px 999px 0";
-        else if (atRight && atTop)
-          radius = "999px 0 0 999px";
-        else if (atLeft && atBottom)
-          radius = "0 999px 999px 0";
-        else if (atRight && atBottom)
-          radius = "999px 0 0 999px";
-        else if (atLeft)
-          radius = "0 999px 999px 0";
-        else if (atRight)
-          radius = "999px 0 0 999px";
-        else if (atTop)
-          radius = "0 0 999px 999px";
-        else if (atBottom)
-          radius = "999px 999px 0 0";
+        if (atLeft && atTop) radius = "0 999px 999px 0";
+        else if (atRight && atTop) radius = "999px 0 0 999px";
+        else if (atLeft && atBottom) radius = "0 999px 999px 0";
+        else if (atRight && atBottom) radius = "999px 0 0 999px";
+        else if (atLeft) radius = "0 999px 999px 0";
+        else if (atRight) radius = "999px 0 0 999px";
+        else if (atTop) radius = "0 0 999px 999px";
+        else if (atBottom) radius = "999px 999px 0 0";
         container.style.borderRadius = radius;
       };
       const constrainPosition = () => {
@@ -2031,11 +2404,14 @@
       videoObserver = new MutationObserver(updateVideoButtonVisibility);
       videoObserver.observe(document.body, {
         childList: true,
-        subtree: true
+        subtree: true,
       });
       window.addEventListener("resize", constrainPosition, { signal });
       let dragging = false;
-      let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+      let startX = 0,
+        startY = 0,
+        startLeft = 0,
+        startTop = 0;
       const initDrag = (clientX, clientY) => {
         isDragged = false;
         dragging = true;
@@ -2050,9 +2426,9 @@
         container.style.top = startTop + "px";
       };
       const moveDrag = (clientX, clientY) => {
-        if (!dragging)
-          return;
-        const dx = clientX - startX, dy = clientY - startY;
+        if (!dragging) return;
+        const dx = clientX - startX,
+          dy = clientY - startY;
         if (!isDragged && Math.abs(dx) + Math.abs(dy) > 6) {
           isDragged = true;
           const r = container.getBoundingClientRect();
@@ -2072,18 +2448,29 @@
       };
       const stopDrag = () => {
         if (isDragged) {
-          GM_setValue("lianki_pos", JSON.stringify({ x: parseInt(container.style.left), y: parseInt(container.style.top) }));
+          GM_setValue(
+            "lianki_pos",
+            JSON.stringify({ x: parseInt(container.style.left), y: parseInt(container.style.top) }),
+          );
           updateBorderRadius();
         }
         dragging = false;
       };
-      container.addEventListener("touchstart", (e) => initDrag(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
-      container.addEventListener("touchmove", (e) => {
-        if (dragging) {
-          e.preventDefault();
-          moveDrag(e.touches[0].clientX, e.touches[0].clientY);
-        }
-      }, { passive: false });
+      container.addEventListener(
+        "touchstart",
+        (e) => initDrag(e.touches[0].clientX, e.touches[0].clientY),
+        { passive: true },
+      );
+      container.addEventListener(
+        "touchmove",
+        (e) => {
+          if (dragging) {
+            e.preventDefault();
+            moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+          }
+        },
+        { passive: false },
+      );
       container.addEventListener("touchend", stopDrag, { passive: true });
       container.addEventListener("mousedown", (e) => {
         initDrag(e.clientX, e.clientY);
@@ -2161,7 +2548,7 @@
         position: "fixed",
         inset: "0",
         background: "var(--lk-backdrop)",
-        zIndex: "2147483645"
+        zIndex: "2147483645",
       });
       backdrop.addEventListener("click", closeDialog);
       const el = document.createElement("div");
@@ -2186,7 +2573,7 @@
         fontSize: "14px",
         outline: "none",
         lineHeight: "1.5",
-        boxSizing: "border-box"
+        boxSizing: "border-box",
       });
       shadow.appendChild(backdrop);
       shadow.appendChild(el);
@@ -2196,11 +2583,9 @@
       return el;
     }
     function renderDialog() {
-      if (!dialog)
-        return;
+      if (!dialog) return;
       const { phase, options, error, message } = state;
-      while (dialog.lastChild)
-        dialog.removeChild(dialog.lastChild);
+      while (dialog.lastChild) dialog.removeChild(dialog.lastChild);
       const globalStyle = document.createElement("style");
       globalStyle.textContent = `
       * { font-family: system-ui, sans-serif; box-sizing: border-box; }
@@ -2213,21 +2598,28 @@
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        marginBottom: "16px"
+        marginBottom: "16px",
       });
       const titleSpan = document.createElement("span");
       Object.assign(titleSpan.style, { fontWeight: "700", fontSize: "16px" });
       titleSpan.textContent = "\uD83D\uDD16 Lianki";
       const closeBtn = document.createElement("button");
       closeBtn.textContent = "×";
-      closeBtn.setAttribute("style", `${btn("transparent")};color:var(--lk-muted);font-size:20px;padding:0 6px;line-height:1`);
+      closeBtn.setAttribute(
+        "style",
+        `${btn("transparent")};color:var(--lk-muted);font-size:20px;padding:0 6px;line-height:1`,
+      );
       closeBtn.addEventListener("click", closeDialog);
       header.appendChild(titleSpan);
       header.appendChild(closeBtn);
       dialog.appendChild(header);
       if (phase === "adding") {
         const styleEl = document.createElement("style");
-        styleEl.textContent = "@keyframes lk-spin{to{transform:rotate(360deg)}}" + ".lk-spinner{display:inline-block;width:20px;height:20px;" + "border:3px solid #555;border-top-color:#7eb8f7;border-radius:50%;" + "animation:lk-spin 0.8s linear infinite;vertical-align:middle;margin-right:8px}";
+        styleEl.textContent =
+          "@keyframes lk-spin{to{transform:rotate(360deg)}}" +
+          ".lk-spinner{display:inline-block;width:20px;height:20px;" +
+          "border:3px solid #555;border-top-color:#7eb8f7;border-radius:50%;" +
+          "animation:lk-spin 0.8s linear infinite;vertical-align:middle;margin-right:8px}";
         dialog.appendChild(styleEl);
         const wrap = document.createElement("div");
         Object.assign(wrap.style, { display: "flex", flexDirection: "column", gap: "10px" });
@@ -2241,7 +2633,7 @@
         Object.assign(urlDiv.style, {
           color: "var(--lk-muted)",
           fontSize: "12px",
-          wordBreak: "break-all"
+          wordBreak: "break-all",
         });
         urlDiv.textContent = normalizeUrl(location.href);
         wrap.appendChild(spinRow);
@@ -2258,7 +2650,7 @@
             fontSize: "11px",
             color: "var(--lk-muted)",
             marginTop: "4px",
-            wordBreak: "break-all"
+            wordBreak: "break-all",
           });
           detailDiv.textContent = state.errorDetails;
           dialog.appendChild(detailDiv);
@@ -2268,7 +2660,7 @@
           display: "flex",
           gap: "8px",
           marginTop: "10px",
-          flexWrap: "wrap"
+          flexWrap: "wrap",
         });
         const loginBtn = document.createElement("button");
         loginBtn.setAttribute("style", btn("#2a5f8f"));
@@ -2283,7 +2675,7 @@
             `Error: ${error}`,
             `Page: ${location.href}`,
             `Origin: ${ORIGIN}`,
-            `Version: ${CURRENT_VERSION}`
+            `Version: ${CURRENT_VERSION}`,
           ];
           if (state.errorDetails)
             parts.push(`
@@ -2313,7 +2705,7 @@ ${state.errorDetails}`);
           marginBottom: "12px",
           wordBreak: "break-all",
           fontSize: "13px",
-          opacity: ".8"
+          opacity: ".8",
         });
         const bold = document.createElement("b");
         bold.textContent = document.title || location.href;
@@ -2324,7 +2716,7 @@ ${state.errorDetails}`);
           display: "flex",
           gap: "8px",
           flexWrap: "wrap",
-          marginBottom: "8px"
+          marginBottom: "8px",
         });
         for (const o of options) {
           const b = document.createElement("button");
@@ -2365,7 +2757,7 @@ ${state.errorDetails}`);
           borderRadius: "6px",
           padding: "6px 28px 6px 8px",
           fontSize: "12px",
-          outline: "none"
+          outline: "none",
         });
         const syncIndicator = document.createElement("span");
         Object.assign(syncIndicator.style, {
@@ -2375,7 +2767,7 @@ ${state.errorDetails}`);
           transform: "translateY(-50%)",
           fontSize: "13px",
           opacity: ".7",
-          pointerEvents: "none"
+          pointerEvents: "none",
         });
         syncIndicator.textContent = state.notesSynced ? "✓" : "⋯";
         let notesTimer = null;
@@ -2414,56 +2806,54 @@ ${state.errorDetails}`);
           opacity: "0.6",
           display: "flex",
           alignItems: "center",
-          gap: "4px"
+          gap: "4px",
         });
         const queue = queueStorage.getQueue();
-        if (!navigator.onLine)
-          indicator.textContent = "\uD83D\uDCF4 Offline";
-        else if (syncInProgress)
-          indicator.textContent = "\uD83D\uDD04 Syncing...";
-        else if (queue.length > 0)
-          indicator.textContent = `⏳ ${queue.length}`;
-        else
-          indicator.textContent = "✓";
+        if (!navigator.onLine) indicator.textContent = "\uD83D\uDCF4 Offline";
+        else if (syncInProgress) indicator.textContent = "\uD83D\uDD04 Syncing...";
+        else if (queue.length > 0) indicator.textContent = `⏳ ${queue.length}`;
+        else indicator.textContent = "✓";
         dialog.appendChild(indicator);
       }
     }
     function openDialog() {
-      if (dialog)
-        return;
+      if (dialog) return;
       dialog = mountDialog();
       state = { phase: "adding", noteId: null, options: null, error: null, message: null };
       prefetchedNextUrl = null;
       renderDialog();
       dialog.focus();
       const url = normalizeUrl(location.href);
-      addNote(url, document.title).then((note) => {
-        state.noteId = note._id;
-        state.notes = note.notes ?? "";
-        state.notesSynced = true;
-        getNextUrl().then((data) => {
-          prefetchedNextUrl = data.url;
-          if (data.url)
-            prefetchNextPage(data.url);
-        }).catch(() => {});
-        if (note.options) {
-          return { options: note.options };
-        }
-        return getOptions(note._id);
-      }).then((data) => {
-        state.phase = "reviewing";
-        state.options = data.options;
-        renderDialog();
-      }).catch((err) => {
-        state.phase = "error";
-        state.error = err.message;
-        state.errorDetails = err.details ?? null;
-        renderDialog();
-      });
+      addNote(url, document.title)
+        .then((note) => {
+          state.noteId = note._id;
+          state.notes = note.notes ?? "";
+          state.notesSynced = true;
+          getNextUrl()
+            .then((data) => {
+              prefetchedNextUrl = data.url;
+              if (data.url) prefetchNextPage(data.url);
+            })
+            .catch(() => {});
+          if (note.options) {
+            return { options: note.options };
+          }
+          return getOptions(note._id);
+        })
+        .then((data) => {
+          state.phase = "reviewing";
+          state.options = data.options;
+          renderDialog();
+        })
+        .catch((err) => {
+          state.phase = "error";
+          state.error = err.message;
+          state.errorDetails = err.details ?? null;
+          renderDialog();
+        });
     }
     function closeDialog() {
-      if (!dialog)
-        return;
+      if (!dialog) return;
       dialog._backdrop?.remove();
       dialog._shadowHost?.remove();
       dialog.remove();
@@ -2475,13 +2865,11 @@ ${state.errorDetails}`);
       }
     }
     async function doReview(rating) {
-      if (state.phase !== "reviewing" || !state.noteId)
-        return;
+      if (state.phase !== "reviewing" || !state.noteId) return;
       try {
         const result = await submitReview(state.noteId, rating);
         prefetchedNextUrl = result.nextUrl ?? null;
-        if (result.nextUrl)
-          prefetchNextPage(result.nextUrl);
+        if (result.nextUrl) prefetchNextPage(result.nextUrl);
         const opt = state.options.find((o) => Number(o.rating) === rating);
         await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
       } catch (err) {
@@ -2492,8 +2880,7 @@ ${state.errorDetails}`);
       }
     }
     async function doDelete() {
-      if (state.phase !== "reviewing" || !state.noteId)
-        return;
+      if (state.phase !== "reviewing" || !state.noteId) return;
       const url = normalizeUrl(location.href);
       try {
         if (offlineReady) {
@@ -2506,11 +2893,10 @@ ${state.errorDetails}`);
         gmCacheInvalidate(noteKey(url));
         if (offlineReady) {
           try {
-            const dueCards = cardStorage.getDueCards(2, location.origin);
+            const dueCards = cardStorage.getDueCards(2, location.origin, reviewOrder());
             const nextCard = dueCards.find((c) => c.url !== url);
             prefetchedNextUrl = nextCard?.url ?? null;
-            if (prefetchedNextUrl)
-              prefetchNextPage(prefetchedNextUrl);
+            if (prefetchedNextUrl) prefetchNextPage(prefetchedNextUrl);
           } catch (e) {
             prefetchedNextUrl = null;
           }
@@ -2539,13 +2925,13 @@ ${state.errorDetails}`);
     async function probeUrl(url, timeoutMs = 8000) {
       try {
         const r = await api(`/api/fsrs/probe?url=${encodeURIComponent(url)}`, {
-          timeout: timeoutMs
+          timeout: timeoutMs,
         });
         return {
           ok: r?.reachable !== false,
           finalUrl: r?.finalUrl,
           status: r?.status,
-          reason: r?.reason
+          reason: r?.reason,
         };
       } catch {
         return { ok: true, reason: "unknown" };
@@ -2554,8 +2940,7 @@ ${state.errorDetails}`);
     function markUnreachable(url) {
       try {
         const rec = cardStorage?.getCard?.(url);
-        if (!rec?.note)
-          return;
+        if (!rec?.note) return;
         const note = { ...rec.note, unreachableAt: Date.now() };
         cardStorage.setCard(url, note, rec.hlc, rec.dirty ?? false);
       } catch {}
@@ -2626,38 +3011,37 @@ ${nextUrl}`;
       Digit5: () => doDelete(),
       KeyT: () => doDelete(),
       KeyM: () => doDelete(),
-      Escape: () => closeDialog()
+      Escape: () => closeDialog(),
     };
-    document.addEventListener("keydown", (e) => {
-      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === "KeyF") {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        if (dialog)
-          closeDialog();
-        else
-          openDialog();
-        return;
-      }
-      if (!dialog || state.phase !== "reviewing")
-        return;
-      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey)
-        return;
-      const action = KEYS[e.code];
-      if (action) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        action();
-      }
-    }, { capture: true, signal });
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === "KeyF") {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (dialog) closeDialog();
+          else openDialog();
+          return;
+        }
+        if (!dialog || state.phase !== "reviewing") return;
+        if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        const action = KEYS[e.code];
+        if (action) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          action();
+        }
+      },
+      { capture: true, signal },
+    );
     (() => {
       let vcid = null;
       document.addEventListener("visibilitychange", trackHandler, { signal });
       function trackHandler() {
         const cb = () => {
-          if (!navigator.mediaSession)
-            return;
+          if (!navigator.mediaSession) return;
           navigator.mediaSession.setActionHandler("nexttrack", () => {
             pardon(0, 1.2);
           });
@@ -2677,13 +3061,11 @@ ${nextUrl}`;
     loadPreferences();
     fab = createUI();
     function renameLocalCard(oldUrl, newUrl) {
-      if (!oldUrl || !newUrl || oldUrl === newUrl)
-        return;
+      if (!oldUrl || !newUrl || oldUrl === newUrl) return;
       try {
-        const cs = cardStorage ?? new GMCardStorage;
+        const cs = cardStorage ?? new GMCardStorage();
         const from = cs.getCard(oldUrl);
-        if (!from)
-          return;
+        if (!from) return;
         const to = cs.getCard(newUrl);
         const keepExisting = to && compareHLC(to.hlc, from.hlc) >= 0;
         if (!keepExisting) {
@@ -2699,24 +3081,26 @@ ${nextUrl}`;
     async function checkRedirect() {
       try {
         const raw = GM_getValue("lk:nav_intended", "");
-        if (!raw)
-          return;
+        if (!raw) return;
         const { url: intendedUrl, ts } = JSON.parse(raw);
-        if (Date.now() - ts > 30000)
-          return;
+        if (Date.now() - ts > 30000) return;
         const actualUrl = location.href;
         if (normalizeUrl(actualUrl) === normalizeUrl(intendedUrl)) {
           GM_setValue("lk:nav_intended", "");
           return;
         }
         console.log("[Lianki] Redirect detected:", intendedUrl, "→", actualUrl);
-        const confirmed = confirm(`This page redirected from:
+        const confirmed = confirm(
+          `This page redirected from:
 ${intendedUrl}
 
-` + `To:
+` +
+            `To:
 ${actualUrl}
 
-` + `Update the card to point to the new URL?`);
+` +
+            `Update the card to point to the new URL?`,
+        );
         if (!confirmed) {
           console.log("[Lianki] User declined URL update");
           GM_setValue("lk:nav_intended", "");
@@ -2725,7 +3109,7 @@ ${actualUrl}
         const result = await api("/api/fsrs/update-url", {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ oldUrl: intendedUrl, newUrl: actualUrl })
+          body: JSON.stringify({ oldUrl: intendedUrl, newUrl: actualUrl }),
         });
         console.log("[Lianki] Card URL updated:", result);
         renameLocalCard(intendedUrl, actualUrl);
@@ -2741,11 +3125,11 @@ ${actualUrl}
     } else {
       const originalPushState = history.pushState;
       const originalReplaceState = history.replaceState;
-      history.pushState = function(...args) {
+      history.pushState = function (...args) {
         originalPushState.apply(this, args);
         setTimeout(checkRedirect, 100);
       };
-      history.replaceState = function(...args) {
+      history.replaceState = function (...args) {
         originalReplaceState.apply(this, args);
         setTimeout(checkRedirect, 100);
       };
@@ -2753,22 +3137,27 @@ ${actualUrl}
     }
     const $$ = (sel) => [...document.querySelectorAll(sel)];
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-    const renderTime = (t) => [t / 3600 | 0, (t / 60 | 0) % 60, t % 60 | 0].map((e) => e.toString().padStart(2, "0")).join(":");
+    const renderTime = (t) =>
+      [(t / 3600) | 0, ((t / 60) | 0) % 60, (t % 60) | 0]
+        .map((e) => e.toString().padStart(2, "0"))
+        .join(":");
     const renderSpeed = (s) => "x" + s.toFixed(2);
     function centerTooltip(textContent) {
       const el = document.createElement("div");
       el.textContent = textContent;
-      el.style.cssText = "position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); " + "background: #0008; color: white; padding: 0.5rem; border-radius: 1rem; " + "z-index: 2147483647; pointer-events: none;";
+      el.style.cssText =
+        "position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); " +
+        "background: #0008; color: white; padding: 0.5rem; border-radius: 1rem; " +
+        "z-index: 2147483647; pointer-events: none;";
       document.body.appendChild(el);
       setTimeout(() => el.remove(), 500);
     }
-    const videoSpeedMaps = new WeakMap;
+    const videoSpeedMaps = new WeakMap();
     const markerCacheKey = (url) => `lk:markers:${normalizeUrl(url)}`;
     function loadLocalMarkers(url) {
       try {
         const raw = GM_getValue(markerCacheKey(url), "");
-        if (!raw)
-          return { markers: {}, lastSync: 0, dirty: false };
+        if (!raw) return { markers: {}, lastSync: 0, dirty: false };
         return JSON.parse(raw);
       } catch {
         return { markers: {}, lastSync: 0, dirty: false };
@@ -2778,69 +3167,74 @@ ${actualUrl}
       const cache = {
         markers,
         lastSync: dirty ? loadLocalMarkers(url).lastSync : Date.now(),
-        dirty
+        dirty,
       };
       GM_setValue(markerCacheKey(url), JSON.stringify(cache));
     }
     async function pardon(dt = 0, speedMultiplier = 1, wait = 0) {
       const vs = $$("video,audio");
       const v = vs.filter((e) => !e.paused)[0];
-      if (!v)
-        return vs[0]?.click();
+      if (!v) return vs[0]?.click();
       const mergeNearbyMarkers = (time) => {
-        if (speedMultiplier === 1)
-          return;
-        if (!videoSpeedMaps.has(v))
-          videoSpeedMaps.set(v, new Map);
+        if (speedMultiplier === 1) return;
+        if (!videoSpeedMaps.has(v)) videoSpeedMaps.set(v, new Map());
         const speedMap = videoSpeedMaps.get(v);
         const MERGE_THRESHOLD = 2;
         for (const [existingTime] of speedMap) {
           if (Math.abs(time - existingTime) < MERGE_THRESHOLD) {
             speedMap.delete(existingTime);
-            console.log(`[Lianki] Merged marker: ${renderTime(existingTime)} @ ${renderTime(time)}`);
+            console.log(
+              `[Lianki] Merged marker: ${renderTime(existingTime)} @ ${renderTime(time)}`,
+            );
           }
         }
       };
       mergeNearbyMarkers(v.currentTime);
-      if (dt !== 0)
-        v.currentTime += dt;
+      if (dt !== 0) v.currentTime += dt;
       mergeNearbyMarkers(v.currentTime);
       if (speedMultiplier !== 1) {
         v.playbackRate *= speedMultiplier;
         const speedMap = videoSpeedMaps.get(v);
         speedMap.set(v.currentTime, v.playbackRate);
-        console.log(`[Lianki] Speed marker: ${renderTime(v.currentTime)} → ${renderSpeed(v.playbackRate)}`);
+        console.log(
+          `[Lianki] Speed marker: ${renderTime(v.currentTime)} → ${renderSpeed(v.playbackRate)}`,
+        );
         const url = normalizeUrl(location.href);
         const markers = Object.fromEntries(speedMap);
         saveLocalMarkers(url, markers, true);
       }
-      centerTooltip((dt < 0 ? "<-" : "->") + " " + renderTime(v.currentTime) + " " + renderSpeed(v.playbackRate));
-      if (wait)
-        await sleep(wait);
+      centerTooltip(
+        (dt < 0 ? "<-" : "->") +
+          " " +
+          renderTime(v.currentTime) +
+          " " +
+          renderSpeed(v.playbackRate),
+      );
+      if (wait) await sleep(wait);
       return true;
     }
-    window.addEventListener("keydown", async (e) => {
-      if (dialog)
-        return;
-      if (e.altKey || e.ctrlKey || e.metaKey)
-        return;
-      if (document?.activeElement?.isContentEditable)
-        return;
-      if (["INPUT", "TEXTAREA"].includes(document?.activeElement?.tagName))
-        return;
-      if (e.code === "Comma" || e.code === "KeyV") {
-        if (await pardon(-3, 0.7)) {
-          e.preventDefault();
-          e.stopPropagation();
+    window.addEventListener(
+      "keydown",
+      async (e) => {
+        if (dialog) return;
+        if (e.altKey || e.ctrlKey || e.metaKey) return;
+        if (document?.activeElement?.isContentEditable) return;
+        if (["INPUT", "TEXTAREA"].includes(document?.activeElement?.tagName)) return;
+        if (e.code === "Comma" || e.code === "KeyV") {
+          if (await pardon(-3, 0.7)) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
         }
-      }
-      if (e.code === "Period" || e.code === "KeyB") {
-        if (await pardon(0, 1.2)) {
-          e.preventDefault();
-          e.stopPropagation();
+        if (e.code === "Period" || e.code === "KeyB") {
+          if (await pardon(0, 1.2)) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
         }
-      }
-    }, { capture: true });
+      },
+      { capture: true },
+    );
     function setupVideoSpeedTracking(video) {
       const url = normalizeUrl(location.href);
       (async () => {
@@ -2849,18 +3243,22 @@ ${actualUrl}
           const { markers } = await api(`/api/fsrs/speed-markers?url=${encodeURIComponent(url)}`);
           const merged = { ...local.markers, ...markers };
           saveLocalMarkers(url, merged, false);
-          if (!videoSpeedMaps.has(video))
-            videoSpeedMaps.set(video, new Map);
+          if (!videoSpeedMaps.has(video)) videoSpeedMaps.set(video, new Map());
           const speedMap = videoSpeedMaps.get(video);
           for (const [timestamp, speed] of Object.entries(merged)) {
             speedMap.set(parseFloat(timestamp), speed);
           }
           console.log(`[Lianki] Loaded ${Object.keys(merged).length} speed markers for ${url}`);
         } catch (err) {
-          console.error("[Lianki] Failed to load speed markers:", err);
+          if (isAuthError(err))
+            warnOnce(
+              "auth:markers",
+              "[Lianki] Not signed in — speed markers stay local only.",
+              err.message,
+            );
+          else console.error(`[Lianki] Failed to load speed markers for ${url}:`, err);
           const local = loadLocalMarkers(url);
-          if (!videoSpeedMaps.has(video))
-            videoSpeedMaps.set(video, new Map);
+          if (!videoSpeedMaps.has(video)) videoSpeedMaps.set(video, new Map());
           const speedMap = videoSpeedMaps.get(video);
           for (const [timestamp, speed] of Object.entries(local.markers)) {
             speedMap.set(parseFloat(timestamp), speed);
@@ -2870,32 +3268,463 @@ ${actualUrl}
       let lastCheckedTime = 0;
       video.addEventListener("timeupdate", () => {
         const speedMap = videoSpeedMaps.get(video);
-        if (!speedMap || speedMap.size === 0)
-          return;
+        if (!speedMap || speedMap.size === 0) return;
         const currentTime = video.currentTime;
         const threshold = 0.5;
-        if (Math.abs(currentTime - lastCheckedTime) < 0.3)
-          return;
+        if (Math.abs(currentTime - lastCheckedTime) < 0.3) return;
         lastCheckedTime = currentTime;
         for (const [markedTime, targetSpeed] of speedMap) {
           if (Math.abs(currentTime - markedTime) < threshold) {
             if (Math.abs(video.playbackRate - targetSpeed) > 0.01) {
               video.playbackRate = targetSpeed;
               centerTooltip(`Auto-speed: ${renderSpeed(targetSpeed)} @ ${renderTime(markedTime)}`);
-              console.log(`[Lianki] Auto-adjusted to ${renderSpeed(targetSpeed)} at ${renderTime(currentTime)}`);
+              console.log(
+                `[Lianki] Auto-adjusted to ${renderSpeed(targetSpeed)} at ${renderTime(currentTime)}`,
+              );
             }
             break;
           }
         }
       });
     }
-    function observeVideos() {
-      const tracked = new WeakSet;
-      const trackVideo = (v) => {
-        if (tracked.has(v))
+    const WATCH_TICK_MAX_S = 2;
+    const WATCH_SESSION_GAP_MS = 30 * 60000;
+    const WATCH_MIN_SYNC_S = 60;
+    const WATCH_SYNC_MS = 30000;
+    const WATCH_SAVE_MS = 5000;
+    const WATCH_REQUIRE_AUDIBLE = true;
+    const WATCH_REQUIRE_VISIBLE = true;
+    const WATCH_DIRTY_KEY = "lk:watch-dirty";
+    const WATCH_INDEX_KEY = "lk:watch-index";
+    const WATCH_MAX_CACHED = 500;
+    const watchDeviceId = getOrCreateDeviceId();
+    const watchCacheKey = (url) => `lk:watch:${normalizeUrl(url)}`;
+    const isYouTube = () => /(^|\.)youtube\.com$/.test(location.hostname);
+    function loadLocalWatch(url) {
+      try {
+        const raw = GM_getValue(watchCacheKey(url), "");
+        if (!raw) return { stats: emptyWatchStats(), dirty: false };
+        const c = JSON.parse(raw);
+        return { stats: sanitizeWatchStats(c.stats), dirty: !!c.dirty };
+      } catch {
+        return { stats: emptyWatchStats(), dirty: false };
+      }
+    }
+    const saveLocalWatch = (url, stats, dirty) =>
+      GM_setValue(watchCacheKey(url), JSON.stringify({ stats, dirty, savedAt: Date.now() }));
+    const watchDirtyList = () => {
+      try {
+        const list = JSON.parse(GM_getValue(WATCH_DIRTY_KEY, "[]"));
+        return Array.isArray(list) ? list : [];
+      } catch {
+        return [];
+      }
+    };
+    const watchDirtyAdd = (url) =>
+      GM_setValue(
+        WATCH_DIRTY_KEY,
+        JSON.stringify([...watchDirtyList().filter((u) => u !== url), url].slice(-200)),
+      );
+    const watchDirtyDrop = (url) =>
+      GM_setValue(WATCH_DIRTY_KEY, JSON.stringify(watchDirtyList().filter((u) => u !== url)));
+    function watchIndexTouch(url) {
+      let list = [];
+      try {
+        const parsed = JSON.parse(GM_getValue(WATCH_INDEX_KEY, "[]"));
+        if (Array.isArray(parsed)) list = parsed;
+      } catch {}
+      const next = [...list.filter((u) => u !== url), url];
+      for (const stale of next.splice(0, Math.max(0, next.length - WATCH_MAX_CACHED))) {
+        if (loadLocalWatch(stale).dirty) next.unshift(stale);
+        else GM_deleteValue(watchCacheKey(stale));
+      }
+      GM_setValue(WATCH_INDEX_KEY, JSON.stringify(next));
+    }
+    function watchLangFor() {
+      let overrides = {};
+      try {
+        overrides = JSON.parse(GM_getValue("lk:watch-lang", "{}")) || {};
+      } catch {}
+      if (isYouTube()) {
+        const href = document
+          .querySelector('ytd-channel-name a[href^="/@"], a.yt-simple-endpoint[href^="/@"]')
+          ?.getAttribute("href");
+        return (href && overrides[`youtube${href}`]) || undefined;
+      }
+      const lang = document.documentElement.lang?.trim();
+      return overrides[location.hostname] || (lang && lang.length <= 32 ? lang : undefined);
+    }
+    let watchSyncUnavailable = false;
+    let watchAcc = null;
+    let watchSavedAt = 0;
+    const watchSnapshot = (acc) =>
+      mergeWatchStats(acc.base, {
+        v: 1,
+        by: {
+          [watchDeviceId]: {
+            wall: Math.round(acc.wall),
+            media: Math.round(acc.media),
+            sessions: acc.sessions,
+            days: acc.days,
+            cov: acc.cov.length ? encodeCoverage(acc.cov) : undefined,
+            dur: acc.dur,
+            lang: acc.lang,
+            first: acc.first,
+            last: acc.last,
+          },
+        },
+      });
+    function persistWatch(acc, force) {
+      if (!acc) return;
+      const now = Date.now();
+      if (!force && now - watchSavedAt < WATCH_SAVE_MS) return;
+      watchSavedAt = now;
+      acc.title = document.title || acc.title;
+      saveLocalWatch(acc.url, watchSnapshot(acc), acc.dirty);
+      if (acc.dirty) watchDirtyAdd(acc.url);
+      if (!acc.indexed) {
+        acc.indexed = true;
+        watchIndexTouch(acc.url);
+      }
+    }
+    async function flushWatch(acc = watchAcc) {
+      if (watchSyncUnavailable || !acc?.dirty) return;
+      persistWatch(acc, true);
+      if (acc.wall < WATCH_MIN_SYNC_S) return;
+      const stats = watchSnapshot(acc);
+      try {
+        await api("/api/fsrs/watch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ url: acc.url, title: acc.title, stats }),
+        });
+        acc.dirty = false;
+        acc.base = stats;
+        saveLocalWatch(acc.url, stats, false);
+        watchDirtyDrop(acc.url);
+      } catch (err) {
+        if (/HTTP (404|405|500|501|502)/.test(String(err?.message))) {
+          watchSyncUnavailable = true;
+          console.warn(
+            `[Lianki] Watch sync disabled — ${ORIGIN}/api/fsrs/watch unavailable (${err.message}). ` +
+              `Time is still being recorded locally.`,
+          );
           return;
+        }
+        logFail("watch", `watch-time sync for ${acc.url}`, err);
+      }
+    }
+    async function flushPendingWatch(max = 3) {
+      if (watchSyncUnavailable) return;
+      for (const url of watchDirtyList()
+        .filter((u) => u !== watchAcc?.url)
+        .slice(0, max)) {
+        const { stats, dirty } = loadLocalWatch(url);
+        if (!dirty) {
+          watchDirtyDrop(url);
+          continue;
+        }
+        try {
+          await api("/api/fsrs/watch", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ url, stats }),
+          });
+          saveLocalWatch(url, stats, false);
+          watchDirtyDrop(url);
+        } catch {
+          return;
+        }
+      }
+    }
+    async function seedWatchFromServer(acc) {
+      try {
+        const { stats } = await api(`/api/fsrs/watch?url=${encodeURIComponent(acc.url)}`);
+        const merged = mergeWatchStats(sanitizeWatchStats(stats), watchSnapshot(acc));
+        if (acc !== watchAcc || acc.url !== watchAcc.url) return;
+        const mine = merged.by[watchDeviceId] ?? {};
+        acc.base = merged;
+        acc.wall = Math.max(acc.wall, mine.wall ?? 0);
+        acc.media = Math.max(acc.media, mine.media ?? 0);
+        acc.sessions = Math.max(acc.sessions, mine.sessions ?? 0);
+        for (const [day, secs] of Object.entries(mine.days ?? {}))
+          acc.days[day] = Math.max(acc.days[day] ?? 0, secs);
+        acc.cov = decodeCoverage(mine.cov);
+        acc.first ??= mine.first;
+      } catch {}
+    }
+    function watchAccFor() {
+      const url = normalizeUrl(location.href);
+      if (watchAcc?.url === url) return watchAcc;
+      if (watchAcc) flushWatch(watchAcc);
+      const { stats, dirty } = loadLocalWatch(url);
+      const mine = stats.by[watchDeviceId] ?? {};
+      watchAcc = {
+        url,
+        base: stats,
+        title: document.title,
+        wall: mine.wall ?? 0,
+        media: mine.media ?? 0,
+        sessions: mine.sessions ?? 0,
+        days: { ...mine.days },
+        cov: decodeCoverage(mine.cov),
+        dur: mine.dur,
+        lang: mine.lang,
+        first: mine.first,
+        last: mine.last,
+        tick: 0,
+        mediaAt: 0,
+        activeAt: 0,
+        langAt: 0,
+        dirty,
+        seeded: false,
+        indexed: false,
+      };
+      return watchAcc;
+    }
+    const isWatchActive = (v) =>
+      !v.paused &&
+      !v.ended &&
+      v.readyState >= 3 &&
+      v.playbackRate > 0 &&
+      (!WATCH_REQUIRE_VISIBLE || document.visibilityState === "visible") &&
+      (!WATCH_REQUIRE_AUDIBLE || (!v.muted && v.volume > 0)) &&
+      !(isYouTube() && document.querySelector(".ad-showing"));
+    function watchTick(video) {
+      const acc = watchAccFor();
+      const now = Date.now();
+      if (!isWatchActive(video)) {
+        acc.tick = 0;
+        return;
+      }
+      if (Number.isFinite(video.duration) && video.duration > 0) {
+        acc.dur = video.duration;
+        const buckets = coverageBuckets(acc.dur);
+        if (buckets && acc.cov.length * 8 < buckets) {
+          const grown = newCoverage(buckets);
+          grown.set(acc.cov);
+          acc.cov = grown;
+        }
+      }
+      if (acc.lang == null && now - acc.langAt > 5000) {
+        acc.langAt = now;
+        acc.lang = watchLangFor();
+      }
+      if (!acc.tick) {
+        if (!acc.activeAt || now - acc.activeAt > WATCH_SESSION_GAP_MS) acc.sessions++;
+        acc.tick = now;
+        acc.activeAt = now;
+        acc.mediaAt = video.currentTime;
+        acc.first ??= new Date(now).toISOString();
+        return;
+      }
+      const dtWall = (now - acc.tick) / 1000;
+      acc.tick = now;
+      acc.activeAt = now;
+      if (dtWall <= 0 || dtWall > WATCH_TICK_MAX_S) {
+        acc.mediaAt = video.currentTime;
+        return;
+      }
+      const dtMedia = video.currentTime - acc.mediaAt;
+      if (dtMedia > 0 && dtMedia <= dtWall * video.playbackRate * 1.5 + 0.5) {
+        acc.media += dtMedia;
+        if (acc.cov.length) markCoverage(acc.cov, acc.mediaAt, video.currentTime);
+      }
+      acc.mediaAt = video.currentTime;
+      acc.wall += dtWall;
+      const day = localDayKey(new Date(now));
+      acc.days[day] = (acc.days[day] ?? 0) + dtWall;
+      acc.last = new Date(now).toISOString();
+      acc.dirty = true;
+      if (!acc.seeded && acc.wall >= 10) {
+        acc.seeded = true;
+        seedWatchFromServer(acc);
+      }
+      persistWatch(acc);
+    }
+    function setupWatchTracking(video) {
+      video.addEventListener("timeupdate", () => watchTick(video));
+      const drop = () => {
+        if (watchAcc) watchAcc.tick = 0;
+      };
+      for (const ev of ["pause", "ended", "seeking", "waiting", "ratechange", "play"])
+        video.addEventListener(ev, drop);
+    }
+    document.addEventListener(
+      "visibilitychange",
+      () => {
+        if (document.visibilityState !== "hidden" || !watchAcc) return;
+        watchAcc.tick = 0;
+        persistWatch(watchAcc, true);
+        flushWatch();
+      },
+      { signal },
+    );
+    window.addEventListener("pagehide", () => persistWatch(watchAcc, true), { signal });
+    addInterval(() => {
+      flushWatch();
+      flushPendingWatch();
+    }, WATCH_SYNC_MS);
+    flushPendingWatch();
+    const HEAT_BUCKETS = 160;
+    const HEAT_MIN_DURATION = 10;
+    let heatLayer = null;
+    let heatVideo = null;
+    let heatRaf = 0;
+    let heatUrl = null;
+    let heatBroken = false;
+    const heatEnabled = () => GM_getValue("lk:heatmap", "1") !== "0";
+    function buildHeatLayer() {
+      const el = document.createElement("div");
+      Object.assign(el.style, {
+        position: "fixed",
+        zIndex: "2147483000",
+        pointerEvents: "none",
+        display: "none",
+        transition: "opacity .2s",
+        font: "600 11px/1.4 system-ui, sans-serif",
+      });
+      const bar = document.createElement("div");
+      bar.dataset.lk = "bar";
+      bar.style.cssText =
+        "position:absolute;left:0;right:0;bottom:0;height:5px;display:flex;" +
+        "border-radius:3px;overflow:hidden;box-shadow:0 0 0 1px rgba(0,0,0,.35)";
+      const pill = document.createElement("div");
+      pill.dataset.lk = "pill";
+      pill.style.cssText =
+        "position:absolute;right:8px;bottom:12px;padding:3px 8px;border-radius:999px;" +
+        "color:#fff;background:rgba(0,0,0,.72);backdrop-filter:blur(6px);white-space:nowrap";
+      const head = document.createElement("div");
+      head.dataset.lk = "head";
+      head.style.cssText =
+        "position:absolute;bottom:0;width:2px;height:9px;background:#fff;" +
+        "box-shadow:0 0 3px rgba(0,0,0,.9);border-radius:1px;transform:translateX(-1px);display:none";
+      el.append(bar, head, pill);
+      document.body.appendChild(el);
+      return el;
+    }
+    function markersForCurrentVideo(video) {
+      const url = normalizeUrl(location.href);
+      if (url !== heatUrl) {
+        heatUrl = url;
+        videoSpeedMaps.set(
+          video,
+          new Map(
+            Object.entries(loadLocalMarkers(url).markers).map(([t, s]) => [parseFloat(t), s]),
+          ),
+        );
+      }
+      return Object.fromEntries(videoSpeedMaps.get(video) ?? []);
+    }
+    function paintHeatmap(video) {
+      try {
+        paintHeatmapUnsafe(video);
+      } catch (err) {
+        console.error("[Lianki] Difficulty overlay disabled after error:", err);
+        hideHeatmap();
+        heatBroken = true;
+      }
+    }
+    function paintHeatmapUnsafe(video) {
+      if (heatBroken) return;
+      if (!heatEnabled() || !video || !Number.isFinite(video.duration)) return hideHeatmap();
+      if (video.duration < HEAT_MIN_DURATION) return hideHeatmap();
+      const markers = markersForCurrentVideo(video);
+      const { score, label, marked, segments } = videoDifficulty(markers, video.duration);
+      heatLayer ??= buildHeatLayer();
+      const bar = heatLayer.querySelector('[data-lk="bar"]');
+      const pill = heatLayer.querySelector('[data-lk="pill"]');
+      const buckets = heatmapBuckets(segments, video.duration, HEAT_BUCKETS);
+      bar.replaceChildren();
+      const acc = watchAccFor();
+      const played = video.played;
+      const seenAt = (t) => {
+        const bit = Math.floor(t / COV_BUCKET_S);
+        if (acc.cov.length && bit >> 3 < acc.cov.length && acc.cov[bit >> 3] & (1 << (bit & 7)))
+          return true;
+        for (let i = 0; i < played.length; i++)
+          if (t >= played.start(i) && t <= played.end(i)) return true;
+        return false;
+      };
+      const width = video.duration / buckets.length;
+      buckets.forEach((rate, i) => {
+        const cell = document.createElement("div");
+        const mid = i * width + width / 2;
+        const seen =
+          seenAt(i * width) || seenAt(mid) || seenAt(Math.min(video.duration, (i + 1) * width));
+        cell.style.cssText = `flex:1;background:${rateColor(rate, seen ? (marked > 0 ? 0.92 : 0.3) : 0.1)}`;
+        bar.appendChild(cell);
+      });
+      if (marked > 0) {
+        pill.textContent = `${score.toFixed(2)}× ${label} · ${Math.round(marked * 100)}% marked`;
+        pill.style.color = rateColor(score);
+        pill.style.opacity = "1";
+      } else {
+        pill.textContent = "unrated · , slower · . faster";
+        pill.style.color = "#cbd5e1";
+        pill.style.opacity = "0.75";
+      }
+      heatVideo = video;
+      positionHeatmap();
+    }
+    function movePlayhead(video) {
+      const head = heatLayer?.querySelector('[data-lk="head"]');
+      if (!head || heatLayer.style.display === "none") return;
+      const d = video.duration;
+      if (!Number.isFinite(d) || d <= 0) return (head.style.display = "none");
+      head.style.display = "block";
+      head.style.left = `${Math.min(100, Math.max(0, (video.currentTime / d) * 100))}%`;
+    }
+    function positionHeatmap() {
+      if (!heatLayer || !heatVideo) return;
+      const r = heatVideo.getBoundingClientRect();
+      const visible = r.width > 120 && r.height > 80 && r.bottom > 0 && r.top < innerHeight;
+      heatLayer.style.display = visible ? "block" : "none";
+      if (!visible) return;
+      Object.assign(heatLayer.style, {
+        left: `${r.left}px`,
+        top: `${r.top}px`,
+        width: `${r.width}px`,
+        height: `${r.height}px`,
+      });
+    }
+    function hideHeatmap() {
+      if (heatLayer) heatLayer.style.display = "none";
+    }
+    const scheduleHeatReposition = () => {
+      cancelAnimationFrame(heatRaf);
+      heatRaf = requestAnimationFrame(positionHeatmap);
+    };
+    addEventListener("scroll", scheduleHeatReposition, { passive: true, capture: true, signal });
+    addEventListener("resize", scheduleHeatReposition, { passive: true, signal });
+    function setupHeatmap(video) {
+      for (const ev of ["loadedmetadata", "ratechange", "durationchange"])
+        video.addEventListener(ev, () => paintHeatmap(video));
+      video.addEventListener("play", () => paintHeatmap(video));
+      video.addEventListener("timeupdate", () => movePlayhead(video));
+      if (Number.isFinite(video.duration) && video.duration > 0) paintHeatmap(video);
+      setTimeout(() => paintHeatmap(video), 1500);
+    }
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.code !== "KeyH" || !e.altKey || e.ctrlKey || e.metaKey) return;
+        e.preventDefault();
+        GM_setValue("lk:heatmap", heatEnabled() ? "0" : "1");
+        if (heatEnabled()) paintHeatmap(heatVideo ?? $$("video,audio")[0]);
+        else hideHeatmap();
+        centerTooltip(`Difficulty overlay ${heatEnabled() ? "on" : "off"}`);
+      },
+      { capture: true, signal },
+    );
+    function observeVideos() {
+      const tracked = new WeakSet();
+      const trackVideo = (v) => {
+        if (tracked.has(v)) return;
         tracked.add(v);
         setupVideoSpeedTracking(v);
+        setupWatchTracking(v);
+        setupHeatmap(v);
       };
       $$("video,audio").forEach(trackVideo);
       const observer = new MutationObserver(() => {
@@ -2904,22 +3733,24 @@ ${actualUrl}
       observer.observe(document.body, { childList: true, subtree: true });
     }
     observeVideos();
-    setInterval(async () => {
+    addInterval(async () => {
       try {
         const url = normalizeUrl(location.href);
         const cache = loadLocalMarkers(url);
-        if (!cache.dirty)
-          return;
-        console.log(`[Lianki] Syncing ${Object.keys(cache.markers).length} markers to DB...`);
+        if (!cache.dirty) return;
+        const count = Object.keys(cache.markers).length;
         await api("/api/fsrs/speed-markers", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ url, markers: cache.markers })
+          body: JSON.stringify({ url, markers: cache.markers }),
         });
         saveLocalMarkers(url, cache.markers, false);
-        console.log("[Lianki] Sync complete");
+        console.log(`[Lianki] Synced ${count} speed markers → ${ORIGIN}/api/fsrs/speed-markers`, {
+          url,
+          markers: cache.markers,
+        });
       } catch (err) {
-        console.error("[Lianki] Sync failed:", err);
+        logFail("markers-sync", `speed-marker sync for ${normalizeUrl(location.href)}`, err);
       }
     }, 30000);
     let offlineReady = false;
@@ -2929,9 +3760,9 @@ ${actualUrl}
     let syncTimer = null;
     function initOfflineStorage() {
       try {
-        cardStorage = new GMCardStorage;
-        configStorage = new GMConfigStorage;
-        queueStorage = new GMQueueStorage;
+        cardStorage = new GMCardStorage();
+        configStorage = new GMConfigStorage();
+        queueStorage = new GMQueueStorage();
         const config = configStorage.getConfig();
         localFSRS = new LocalFSRS(config.fsrsParams);
         offlineReady = true;
@@ -2944,8 +3775,7 @@ ${actualUrl}
     }
     const _originalOpenDialog = openDialog;
     openDialog = async function openDialogOffline() {
-      if (dialog)
-        return;
+      if (dialog) return;
       dialog = mountDialog();
       state = { phase: "adding", noteId: null, options: null, error: null, message: null };
       prefetchedNextUrl = null;
@@ -2971,66 +3801,74 @@ ${actualUrl}
             return;
           }
         } catch (err) {
-          console.error("[Lianki] Cache check failed:", err);
+          logFail("cache-check", "cache check", err);
         }
       }
-      addNote(url, document.title).then(async (note) => {
-        state.noteId = note._id;
-        state.notes = note.notes ?? "";
-        state.notesSynced = true;
-        if (offlineReady) {
-          try {
-            cardStorage.setCard(url, note, note.hlc ?? newHLC(deviceId, null));
-          } catch (err) {
-            console.error("[Lianki] Failed to cache card:", err);
+      addNote(url, document.title)
+        .then(async (note) => {
+          state.noteId = note._id;
+          state.notes = note.notes ?? "";
+          state.notesSynced = true;
+          if (offlineReady) {
+            try {
+              cardStorage.setCard(url, note, note.hlc ?? newHLC(deviceId, null));
+            } catch (err) {
+              console.error("[Lianki] Failed to cache card:", err);
+            }
           }
-        }
-        getNextUrl().then((data) => {
-          prefetchedNextUrl = data.url;
-          if (data.url)
-            prefetchNextPage(data.url);
-        }).catch(() => {});
-        if (note.options) {
-          return { options: note.options };
-        }
-        if (offlineReady && localFSRS) {
-          return { options: localFSRS.calculateOptions(note.card) };
-        }
-        return getOptions(note._id);
-      }).then((data) => {
-        state.phase = "reviewing";
-        state.options = data.options;
-        renderDialog();
-      }).catch((err) => {
-        if (offlineReady && (err?.status === 401 || String(err?.message).includes("401") || String(err?.message).toLowerCase().includes("unauthorized"))) {
-          const localNote = {
-            _id: "local:" + hashUrl(url),
-            url,
-            title: document.title,
-            card: localFSRS.newCard(),
-            notes: "",
-            hlc: newHLC(deviceId, null)
-          };
-          cardStorage.setCard(url, localNote, localNote.hlc, true);
-          queueStorage.addToQueue("add", { url, title: document.title }, localNote.hlc);
-          state.noteId = localNote._id;
-          state.notes = "";
-          state.notesSynced = false;
+          getNextUrl()
+            .then((data) => {
+              prefetchedNextUrl = data.url;
+              if (data.url) prefetchNextPage(data.url);
+            })
+            .catch(() => {});
+          if (note.options) {
+            return { options: note.options };
+          }
+          if (offlineReady && localFSRS) {
+            return { options: localFSRS.calculateOptions(note.card) };
+          }
+          return getOptions(note._id);
+        })
+        .then((data) => {
           state.phase = "reviewing";
-          state.options = localFSRS.calculateOptions(localNote.card);
+          state.options = data.options;
           renderDialog();
-          return;
-        }
-        state.phase = "error";
-        state.error = err.message;
-        state.errorDetails = err.details ?? null;
-        renderDialog();
-      });
+        })
+        .catch((err) => {
+          if (
+            offlineReady &&
+            (err?.status === 401 ||
+              String(err?.message).includes("401") ||
+              String(err?.message).toLowerCase().includes("unauthorized"))
+          ) {
+            const localNote = {
+              _id: "local:" + hashUrl(url),
+              url,
+              title: document.title,
+              card: localFSRS.newCard(),
+              notes: "",
+              hlc: newHLC(deviceId, null),
+            };
+            cardStorage.setCard(url, localNote, localNote.hlc, true);
+            queueStorage.addToQueue("add", { url, title: document.title }, localNote.hlc);
+            state.noteId = localNote._id;
+            state.notes = "";
+            state.notesSynced = false;
+            state.phase = "reviewing";
+            state.options = localFSRS.calculateOptions(localNote.card);
+            renderDialog();
+            return;
+          }
+          state.phase = "error";
+          state.error = err.message;
+          state.errorDetails = err.details ?? null;
+          renderDialog();
+        });
     };
     const _originalDoReview = doReview;
     doReview = async function doReviewOffline(rating) {
-      if (state.phase !== "reviewing" || !state.noteId)
-        return;
+      if (state.phase !== "reviewing" || !state.noteId) return;
       const url = normalizeUrl(location.href);
       if (offlineReady) {
         try {
@@ -3043,18 +3881,21 @@ ${actualUrl}
             cachedCard.note.log.push(reviewResult.log);
             const newHlc = newHLC(deviceId, cachedCard.hlc);
             cardStorage.setCard(url, cachedCard.note, newHlc, true);
-            queueStorage.addToQueue("review", {
-              url,
-              noteId: state.noteId,
-              rating
-            }, newHlc);
+            queueStorage.addToQueue(
+              "review",
+              {
+                url,
+                noteId: state.noteId,
+                rating,
+              },
+              newHlc,
+            );
             try {
-              const dueCards = cardStorage.getDueCards(2, location.origin);
+              const dueCards = cardStorage.getDueCards(2, location.origin, reviewOrder());
               const normalizedCurrent = normalizeUrl(location.href);
               const nextCard = dueCards.find((c) => c.url !== url && c.url !== normalizedCurrent);
               prefetchedNextUrl = nextCard?.url ?? null;
-              if (prefetchedNextUrl)
-                prefetchNextPage(prefetchedNextUrl);
+              if (prefetchedNextUrl) prefetchNextPage(prefetchedNextUrl);
             } catch (e) {
               prefetchedNextUrl = null;
             }
@@ -3082,8 +3923,7 @@ ${actualUrl}
           }
         }
         prefetchedNextUrl = result.nextUrl ?? null;
-        if (result.nextUrl)
-          prefetchNextPage(result.nextUrl);
+        if (result.nextUrl) prefetchNextPage(result.nextUrl);
         const opt = state.options.find((o) => Number(o.rating) === rating);
         await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
       } catch (err) {
@@ -3094,7 +3934,7 @@ ${actualUrl}
       }
     };
     function startBackgroundSync() {
-      syncTimer = setInterval(() => {
+      syncTimer = addInterval(() => {
         if (navigator.onLine && !syncInProgress) {
           tryBackgroundSync();
         }
@@ -3107,10 +3947,11 @@ ${actualUrl}
     }
     function adoptServerVersion(item, body) {
       const url = item?.data?.url;
-      if (!url || !body?.card)
-        return;
+      if (!url || !body?.card) return;
       try {
-        const existing = cardStorage.getEntry ? cardStorage.getEntry(url) : cardStorage.getCard(url);
+        const existing = cardStorage.getEntry
+          ? cardStorage.getEntry(url)
+          : cardStorage.getCard(url);
         const note = { ...existing?.note, url, card: body.card, log: body.log ?? [] };
         cardStorage.setCard(url, note, body.serverHLC ?? existing?.hlc ?? null, false);
       } catch (e) {
@@ -3118,8 +3959,7 @@ ${actualUrl}
       }
     }
     async function tryBackgroundSync() {
-      if (syncInProgress || !offlineReady)
-        return;
+      if (syncInProgress || !offlineReady) return;
       if (!navigator.onLine) {
         console.log("[Lianki] Offline - will sync when online");
         return;
@@ -3139,6 +3979,7 @@ ${actualUrl}
             console.log(`[Lianki] Synced: ${item.action} ${item.data.url || item.data.noteId}`);
           } catch (err) {
             const status = err?.status;
+            logFail("queue", `queued sync of ${item.id}`, err);
             const permanent = isPermanentSyncFailure(status);
             if (status === 409) {
               adoptServerVersion(item, err.body);
@@ -3146,7 +3987,9 @@ ${actualUrl}
               console.warn(`[Lianki] ${item.id}: server had a newer version — adopted it`);
             } else if (permanent) {
               queueStorage.removeFromQueue(item.id);
-              console.warn(`[Lianki] Dropping ${item.id}: HTTP ${status} will not succeed on retry`);
+              console.warn(
+                `[Lianki] Dropping ${item.id}: HTTP ${status} will not succeed on retry`,
+              );
             } else {
               console.error(`[Lianki] Sync failed for ${item.id}:`, err);
               item.retries = (item.retries || 0) + 1;
@@ -3168,16 +4011,18 @@ ${actualUrl}
     async function syncQueueItem(item) {
       switch (item.action) {
         case "review": {
-          const result = await api(`/api/fsrs/review/${item.data.rating}/?id=${encodeURIComponent(item.data.noteId)}`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ hlc: item.hlc })
-          });
+          const result = await api(
+            `/api/fsrs/review/${item.data.rating}/?id=${encodeURIComponent(item.data.noteId)}`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ hlc: item.hlc }),
+            },
+          );
           if (item.data.url) {
             const cached = cardStorage.getCard(item.data.url);
             if (cached) {
-              if (result?.card)
-                cached.note.card = result.card;
+              if (result?.card) cached.note.card = result.card;
               cardStorage.setCard(item.data.url, cached.note, result?.hlc ?? item.hlc, false);
             }
           }
@@ -3188,8 +4033,7 @@ ${actualUrl}
           if (addResult && item.data.url) {
             const cached = cardStorage.getCard(item.data.url);
             if (cached) {
-              if (addResult._id)
-                cached.note._id = addResult._id;
+              if (addResult._id) cached.note._id = addResult._id;
               cardStorage.setCard(item.data.url, cached.note, addResult.hlc ?? item.hlc, false);
             }
           }
@@ -3204,12 +4048,25 @@ ${actualUrl}
       }
     }
     async function prefetchDueCards() {
-      if (!offlineReady || !navigator.onLine)
-        return;
+      if (!offlineReady || !navigator.onLine) return;
       try {
         console.log("[Lianki] Prefetching due cards...");
-        const response = await api("/api/fsrs/due?limit=20");
+        const LIMIT = 20;
+        const response = await api(`/api/fsrs/due?limit=${LIMIT}`);
         const dueCards = response.cards || [];
+        const live = new Set(dueCards.map((n) => n.url));
+        const w = dueWindow(
+          dueCards.map((n) => new Date(n.card?.due).getTime()),
+          dueCards.length,
+          LIMIT,
+        );
+        for (const stale of cardStorage.getDueCards(9999)) {
+          if (live.has(stale.url) || stale.dirty) continue;
+          if (!isProvablyDeleted(new Date(stale.note?.card?.due).getTime(), w)) continue;
+          console.log(`[Lianki] Dropping locally cached card deleted on the server: ${stale.url}`);
+          cardStorage.deleteCard(stale.url);
+          if (prefetchedNextUrl === stale.url) prefetchedNextUrl = null;
+        }
         for (const note of dueCards) {
           try {
             const url = note.url;
@@ -3223,21 +4080,26 @@ ${actualUrl}
         }
         console.log(`[Lianki] Prefetched ${dueCards.length} cards`);
       } catch (err) {
-        console.error("[Lianki] Prefetch failed:", err);
+        if (isAuthError(err))
+          warnOnce(
+            "auth:prefetch",
+            "[Lianki] Not signed in — using locally cached cards only.",
+            err.message,
+          );
+        else console.error("[Lianki] Prefetch failed:", err);
       }
     }
     async function prefetchNextCachedCard() {
-      if (!offlineReady)
-        return;
+      if (!offlineReady) return;
       try {
-        const dueCards = cardStorage.getDueCards(2, location.origin);
+        const dueCards = cardStorage.getDueCards(2, location.origin, reviewOrder());
         const normalizedCurrent = normalizeUrl(location.href);
         const nextCard = dueCards.find((c) => c.url !== normalizedCurrent);
         if (nextCard) {
           prefetchNextPage(nextCard.url);
         }
       } catch (err) {
-        console.error("[Lianki] Failed to prefetch next cached card:", err);
+        logFail("prefetch-next", "next-card prefetch", err);
       }
     }
     setTimeout(() => {
@@ -3245,6 +4107,8 @@ ${actualUrl}
     }, 100);
     return () => {
       ac.abort();
+      for (const id of intervals) clearInterval(id);
+      intervals.length = 0;
       closeDialog();
       videoObserver?.disconnect();
       fab?.remove();

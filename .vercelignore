@@ -1,5 +1,11 @@
 archived/
-packages/
+# packages/* rather than packages/: the Next app imports @lianki/core, and the
+# tsconfig alias points at packages/core/src. Excluding the whole directory made
+# that alias resolve to nothing and the Vercel build fail — it never bit before
+# because no file outside packages/ imported it. Only core is needed: ext is the
+# MV3 extension and pardon is a submodule, neither reachable from a Next build.
+packages/*
+!packages/core
 .husky/
 *.md
 !blog/**/*.md

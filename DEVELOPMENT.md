@@ -263,7 +263,8 @@ docker-compose up
 
 ## Userscript Development
 
-The Tampermonkey/Violentmonkey userscript is in `public/lianki.user.js`.
+Source of truth is `src/lianki.user.ts`; `public/lianki.user.js` is the built
+release artifact (`bun run build:userscript`).
 
 ### Dev loader — install once, stop reinstalling
 
@@ -313,7 +314,77 @@ Install the link it prints once. Requires `cloudflared` on PATH. Design notes,
 the endpoint contract, and the eval/Trusted Types/CSP rules that make it work on
 YouTube and friends: **[docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)**.
 
-**Version Bumping Rules:**
+### Live dev server (tunnel / monkey)
+
+A second, independent take on the same problem — kept because it covers the
+phone-over-a-tunnel and HMR cases the loader above does not:
+
+```bash
+bun run dev:userscript:tunnel   # + a public https://<random>.trycloudflare.com URL
+bun run dev:userscript:monkey   # vite-plugin-monkey HMR instead (see below)
+```
+
+Install the printed `…/loader.user.js` **once**. From then on every edit to
+`src/` or `packages/core/src/` reloads in the browser within a few hundred ms —
+no reinstall. **Disable the released Lianki script while the dev one is
+installed**, or both run and fight over the same GM storage keys.
+
+The tunnel is public and unauthenticated for as long as the process runs, and
+the hostname changes on every restart (quick tunnels are ephemeral).
+
+**Two modes, because neither covers everything:**
+
+| | default (`loader`) | `--monkey` |
+| --- | --- | --- |
+| How code reaches the page | installed shim fetches the bundle over `GM_xmlhttpRequest` and `eval`s it in the userscript sandbox | vite-plugin-monkey injects `<script src>` into the page |
+| Reload granularity | whole script | per-module HMR |
+| Works on YouTube | **yes** | **no** — see below |
+| GM\_\* APIs | the real ones | shims mounted on `window` via `mountGmApi` |
+
+`--monkey` is the nicer feedback loop, but the page's CSP gets a veto over an
+injected `<script src>`. YouTube sends `script-src` with an explicit host
+allowlist (no wildcard) plus `'strict-dynamic'`, so a tunnel-hosted module is
+refused outright — which rules the mode out for the main thing this script
+targets. The default mode never enters the page's script context, so CSP has
+nothing to say about it, and it exercises the real GM APIs rather than shims.
+
+Reloading works at all because the script is built for it: `main()` returns an
+AbortController-backed unload fn and the entry calls `globalThis.unload_Lianki?.()`
+before starting, so re-evaluating the bundle tears the previous instance down.
+
+Both modes parse the `==UserScript==` header out of `src/lianki.user.ts` rather
+than re-declaring it (`scripts/userscript-meta.ts`), so `@match`/`@grant`/
+`@connect` can't drift from the released script. `@downloadURL`/`@updateURL` are
+stripped so Tampermonkey can't quietly replace the script under test with
+production.
+
+Neither mode writes to `public/` — the release path is `build:userscript` alone,
+because the pre-commit hook, the version-bump check, and
+`unit/normalizeUrl-userscript-drift.test.ts` all read that exact file.
+
+### Watch-time tracking
+
+The userscript records active listening time per video (`packages/core/src/watchStats.ts`),
+synced to `/api/fsrs/watch` and surfaced at `/[locale]/stats`.
+
+Two properties worth knowing before changing it:
+
+- **The stored shape is a grow-only CRDT keyed by device id.** Every field merges
+  monotonically (max / bitwise-OR / min-for-`first`), which makes re-POSTing a
+  payload idempotent and lets two devices merge without coordination. A running
+  total would break the first; last-writer-wins would break the second.
+- **Two clocks are kept.** `wall` is real seconds; `media` is seconds of content.
+  At 1.5× an hour of content costs 40 minutes of wall — and this app ships speed
+  controls, so reporting one number would be a lie in one direction or the other.
+
+Time only accrues while the media is playing, audible, on-screen, and not a
+YouTube ad. Gaps over 2 s are dropped rather than counted, so it under-reports
+rather than inventing hours.
+
+**Privacy:** see `packages/ext/README.md` — the MV3 content script matches
+`*://*/*`, so the store listing needs an accurate disclosure before release.
+
+### Version Bumping Rules
 
 - The pre-commit hook checks if `lianki.user.js` was modified
 - If modified, you MUST bump the `@version` field

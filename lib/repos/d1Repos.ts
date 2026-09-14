@@ -1,7 +1,8 @@
 import type { D1Like } from "@/lib/d1/types";
 import type { RoadmapGoal } from "@/types/roadmap";
-import type { FilterPattern } from "@/app/api/preferences/route";
-import type { ApiToken } from "@/lib/getApiTokensCollection";
+import type { FilterPattern } from "@/lib/core/preferences";
+import { asReviewOrder, type ReviewOrder } from "@lianki/core";
+import type { ApiToken } from "@/lib/core/apiToken";
 
 // ── Roadmap goals ────────────────────────────────────────────────────────────
 
@@ -86,7 +87,12 @@ export class RoadmapGoalsD1Repo {
 
 // ── Preferences ──────────────────────────────────────────────────────────────
 
-type PrefRow = { user_id: string; mobile_exclude_patterns: string; updated_at: string };
+type PrefRow = {
+  user_id: string;
+  mobile_exclude_patterns: string;
+  review_order?: string;
+  updated_at: string;
+};
 
 /** D1-backed access to one user's preferences. */
 export class PreferencesD1Repo {
@@ -95,25 +101,45 @@ export class PreferencesD1Repo {
     private readonly userId: string,
   ) {}
 
-  async get(): Promise<{ mobileExcludePatterns: FilterPattern[] } | null> {
+  async get(): Promise<{
+    mobileExcludePatterns: FilterPattern[];
+    reviewOrder: ReviewOrder;
+  } | null> {
     const row = await this.db
       .prepare("SELECT * FROM preferences WHERE user_id = ?")
       .bind(this.userId)
       .first<PrefRow>();
     if (!row) return null;
-    return { mobileExcludePatterns: JSON.parse(row.mobile_exclude_patterns || "[]") };
+    return {
+      mobileExcludePatterns: JSON.parse(row.mobile_exclude_patterns || "[]"),
+      reviewOrder: asReviewOrder(row.review_order),
+    };
   }
 
-  async set(patterns: FilterPattern[]): Promise<void> {
+  /** Just the review order, for the hot path that picks the next card. */
+  async reviewOrder(): Promise<ReviewOrder> {
+    const row = await this.db
+      .prepare("SELECT review_order FROM preferences WHERE user_id = ?")
+      .bind(this.userId)
+      .first<{ review_order?: string }>();
+    return asReviewOrder(row?.review_order);
+  }
+
+  async set(patterns: FilterPattern[], reviewOrder?: ReviewOrder): Promise<void> {
+    // Preserve the stored order when the caller does not supply one — the
+    // filter-patterns UI saves without it, and defaulting there would silently
+    // reset a choice made elsewhere.
+    const order = reviewOrder ?? (await this.reviewOrder());
     await this.db
       .prepare(
-        `INSERT INTO preferences (user_id, mobile_exclude_patterns, updated_at)
-         VALUES (?, ?, ?)
+        `INSERT INTO preferences (user_id, mobile_exclude_patterns, review_order, updated_at)
+         VALUES (?, ?, ?, ?)
          ON CONFLICT(user_id) DO UPDATE SET
            mobile_exclude_patterns = excluded.mobile_exclude_patterns,
+           review_order = excluded.review_order,
            updated_at = excluded.updated_at`,
       )
-      .bind(this.userId, JSON.stringify(patterns), new Date().toISOString())
+      .bind(this.userId, JSON.stringify(patterns), order, new Date().toISOString())
       .run();
   }
 }

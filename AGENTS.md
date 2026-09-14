@@ -30,6 +30,30 @@ bun run qa:all         # full integration gate — what CI runs, and pre-push
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
 
+## Where requests actually go (verified 2026-08-03)
+
+**The CF-native cutover has NOT happened.** Cloudflare fronts the DNS, which
+makes responses *look* Cloudflare-served and has caused this to be misremembered
+as migrated. It is not:
+
+| signal | reading |
+| --- | --- |
+| `x-vercel-id` on every response | www / apex are served by **Vercel** |
+| `server: cloudflare`, `cf-ray` | Cloudflare **DNS proxy** only — the orange cloud, not the Worker |
+| `GET /api/health` (Worker-only route) | **404** on every lianki.com hostname |
+
+Re-check with:
+
+```bash
+curl -sI https://www.lianki.com/ | grep -iE 'x-vercel-id|cf-ray'
+curl -sL -o /dev/null -w '%{http_code}\n' https://lianki.com/api/health   # 404 = still Vercel
+```
+
+While this holds: production runtime errors are in **Vercel** logs, the live
+code is `app/**` + MongoDB, and a fix in `apps/api/src/worker/**` or the D1
+migrations changes nothing in prod. `dev.lianki.com` is unrelated — a Cloudflare
+tunnel to the local userscript dev server, not the Worker.
+
 ## Where to look
 
 Read the relevant file before working in that area — each one carries decisions

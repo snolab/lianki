@@ -6,19 +6,16 @@ import { PreferencesD1Repo } from "@/lib/repos/d1Repos";
 
 const Preferences = db.collection("preferences");
 
-export type FilterType = "domain" | "title" | "url";
-
-export interface FilterPattern {
-  id: string;
-  type: FilterType;
-  pattern: string;
-  isRegex: boolean;
-  enabled: boolean;
-  createdAt: string;
-}
+// FilterType/FilterPattern moved to lib/core/preferences.ts (Next-free) for reuse
+// by the D1 repos / CF-native worker; re-exported here so existing imports keep
+// working.
+import type { FilterType, FilterPattern } from "@/lib/core/preferences";
+import { asReviewOrder, DEFAULT_REVIEW_ORDER, type ReviewOrder } from "@lianki/core";
+export type { FilterType, FilterPattern };
 
 export interface UserPreferences {
   userId: string;
+  reviewOrder?: ReviewOrder;
   mobileExcludeDomains?: string[]; // Legacy, deprecated
   mobileExcludePatterns?: FilterPattern[];
   updatedAt: Date;
@@ -31,7 +28,10 @@ export async function GET() {
 
     if (dbBackend() === "d1") {
       const prefs = await new PreferencesD1Repo(getD1(), user.id).get();
-      return NextResponse.json({ mobileExcludePatterns: prefs?.mobileExcludePatterns ?? [] });
+      return NextResponse.json({
+        mobileExcludePatterns: prefs?.mobileExcludePatterns ?? [],
+        reviewOrder: prefs?.reviewOrder ?? DEFAULT_REVIEW_ORDER,
+      });
     }
 
     const prefs = await Preferences.findOne({ userId: user.id });
@@ -40,6 +40,7 @@ export async function GET() {
     if (!prefs) {
       return NextResponse.json({
         mobileExcludePatterns: [],
+        reviewOrder: DEFAULT_REVIEW_ORDER,
       });
     }
 
@@ -62,6 +63,7 @@ export async function GET() {
 
     return NextResponse.json({
       mobileExcludePatterns: patterns,
+      reviewOrder: asReviewOrder(prefs.reviewOrder),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -75,15 +77,20 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Login required" }, { status: 401 });
     const body = await req.json();
     const patterns: FilterPattern[] = body.mobileExcludePatterns || [];
+    // Only apply an order when one was sent — the filter-patterns form posts
+    // without it, and defaulting here would quietly reset a saved choice.
+    const reviewOrder =
+      body.reviewOrder === undefined ? undefined : asReviewOrder(body.reviewOrder);
 
     if (dbBackend() === "d1") {
-      await new PreferencesD1Repo(getD1(), user.id).set(patterns);
+      await new PreferencesD1Repo(getD1(), user.id).set(patterns, reviewOrder);
       return NextResponse.json({ success: true });
     }
 
     const preferences: Partial<UserPreferences> = {
       userId: user.id,
       mobileExcludePatterns: patterns,
+      ...(reviewOrder !== undefined && { reviewOrder }),
       updatedAt: new Date(),
     };
 

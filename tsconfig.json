@@ -19,7 +19,11 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@lianki/core": ["./packages/core/src/index.ts"],
+      // Deep imports, for bundles that must not pull in the whole barrel —
+      // see the @lianki/core/watchStats import in src/lianki.user.ts.
+      "@lianki/core/*": ["./packages/core/src/*.ts"]
     },
     "target": "ES2017"
   },
@@ -31,5 +35,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "archived", "tmp", "src/lianki.user.ts"]
+  "exclude": ["node_modules", "archived", "tmp", "src/lianki.user.ts", "apps", "packages/ext"]
 }

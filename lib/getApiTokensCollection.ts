@@ -1,12 +1,9 @@
 import { createHash } from "crypto";
 import { db } from "@/app/db";
-
-export type ApiToken = {
-  tokenHash: string;
-  email: string;
-  name: string;
-  createdAt: Date;
-};
+// ApiToken moved to lib/core/apiToken.ts (MongoDB-free) for reuse by the D1
+// repos / CF-native worker; re-exported here so existing imports keep working.
+import type { ApiToken } from "@/lib/core/apiToken";
+export type { ApiToken };
 
 export function getApiTokensCollection() {
   return db.collection<ApiToken>("ApiTokens");
