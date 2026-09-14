@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.32
+// @version     2.23.33
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1478,6 +1478,13 @@
     if (status === 401 || status === 403 || status === 408 || status === 429) return false;
     return status >= 400 && status < 500;
   }
+  function hostOf(url) {
+    try {
+      return new URL(url).host || null;
+    } catch {
+      return null;
+    }
+  }
 
   class GMCardStorage {
     _index() {
@@ -1577,11 +1584,12 @@
         })
         .filter(Boolean);
     }
-    getDueCards(limit = 10) {
+    getDueCards(limit = 10, preferHost = null) {
       const now = new Date();
+      const onHost = (e) => (preferHost !== null && hostOf(e.url) === preferHost ? 1 : 0);
       return this._index()
         .filter((e) => !e.del && new Date(e.due) <= now)
-        .sort((a, b) => new Date(b.due) - new Date(a.due))
+        .sort((a, b) => onHost(b) - onHost(a) || new Date(b.due) - new Date(a.due))
         .slice(0, limit)
         .map((e) => {
           const raw = GM_getValue(CARD_PREFIX + e.hash, "");
@@ -2645,7 +2653,7 @@ ${state.errorDetails}`);
         gmCacheInvalidate(noteKey(url));
         if (offlineReady) {
           try {
-            const dueCards = cardStorage.getDueCards(2);
+            const dueCards = cardStorage.getDueCards(2, hostOf(location.href));
             const nextCard = dueCards.find((c) => c.url !== url);
             prefetchedNextUrl = nextCard?.url ?? null;
             if (prefetchedNextUrl) prefetchNextPage(prefetchedNextUrl);
@@ -3202,7 +3210,7 @@ ${actualUrl}
               newHlc,
             );
             try {
-              const dueCards = cardStorage.getDueCards(2);
+              const dueCards = cardStorage.getDueCards(2, hostOf(location.href));
               const normalizedCurrent = normalizeUrl(location.href);
               const nextCard = dueCards.find((c) => c.url !== url && c.url !== normalizedCurrent);
               prefetchedNextUrl = nextCard?.url ?? null;
@@ -3382,7 +3390,7 @@ ${actualUrl}
     async function prefetchNextCachedCard() {
       if (!offlineReady) return;
       try {
-        const dueCards = cardStorage.getDueCards(2);
+        const dueCards = cardStorage.getDueCards(2, hostOf(location.href));
         const normalizedCurrent = normalizeUrl(location.href);
         const nextCard = dueCards.find((c) => c.url !== normalizedCurrent);
         if (nextCard) {

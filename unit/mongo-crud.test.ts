@@ -183,6 +183,84 @@ describe("READ", () => {
     expect(data.url).toBe(TEST_URL);
   });
 
+  describe("same-host preference", () => {
+    // Reviewing is a chain of page loads. A same-host hop is a cheap one, and
+    // FSRS does not care what order due cards are cleared in — so the card on
+    // the site you are already on comes first, regardless of due date.
+    const YT_A = "https://www.youtube.com/watch?v=a";
+    const YT_B = "https://www.youtube.com/watch?v=b";
+    const OTHER = "https://example.com/other";
+    const dueAgo = (url: string, ms: number) =>
+      testCollection.updateOne({ url }, { $set: { "card.due": new Date(Date.now() - ms) } });
+
+    test("next-url prefers the host of the page you are on, even over a more recent due", async () => {
+      await createNote(YT_A);
+      await createNote(YT_B);
+      await createNote(OTHER);
+      await dueAgo(YT_A, 60_000); // the page being reviewed
+      await dueAgo(YT_B, 86_400_000); // same host, a day stale
+      await dueAgo(OTHER, 1_000); // the most recently due card overall
+
+      const res = await fsrsHandler(
+        makeReq("GET", `/api/fsrs/next-url?excludeUrl=${encodeURIComponent(YT_A)}`),
+        TEST_EMAIL,
+      );
+      expect((await res.json()).url).toBe(YT_B);
+    });
+
+    test("falls through to the plain rule once the host is drained", async () => {
+      // A preference, never a filter — or you could be trapped on one site.
+      await createNote(YT_A);
+      await createNote(OTHER);
+      await dueAgo(YT_A, 60_000);
+      await dueAgo(OTHER, 1_000);
+
+      const res = await fsrsHandler(
+        makeReq("GET", `/api/fsrs/next-url?excludeUrl=${encodeURIComponent(YT_A)}`),
+        TEST_EMAIL,
+      );
+      expect((await res.json()).url).toBe(OTHER);
+    });
+
+    test("a review's nextUrl stays on the host of the card just graded", async () => {
+      await createNote(YT_A);
+      await createNote(YT_B);
+      await createNote(OTHER);
+      await dueAgo(YT_A, 60_000);
+      await dueAgo(YT_B, 86_400_000);
+      await dueAgo(OTHER, 1_000);
+
+      const res = await fsrsHandler(
+        makeReq("POST", `/api/fsrs/review/good?url=${encodeURIComponent(YT_A)}`, {}),
+        TEST_EMAIL,
+      );
+      expect((await res.json()).nextUrl).toBe(YT_B);
+    });
+
+    test("composes with excludeDomains on a real Mongo query", async () => {
+      // The host filter is a `$regex` sibling of the existing `$not`/`$nin`
+      // operators on `url`. That combination has to be accepted by Mongo, not
+      // just by the D1 shim's in-memory matcher.
+      const YT_SHORTS = "https://www.youtube.com/shorts/x";
+      await createNote(YT_A);
+      await createNote(YT_SHORTS);
+      await createNote(OTHER);
+      await dueAgo(YT_A, 60_000);
+      await dueAgo(YT_SHORTS, 30_000);
+      await dueAgo(OTHER, 1_000);
+
+      const res = await fsrsHandler(
+        makeReq(
+          "GET",
+          `/api/fsrs/next-url?excludeUrl=${encodeURIComponent(YT_A)}&excludeDomains=youtube.com`,
+        ),
+        TEST_EMAIL,
+      );
+      // Same host would be YT_SHORTS, but the whole domain is excluded.
+      expect((await res.json()).url).toBe(OTHER);
+    });
+  });
+
   test("next-url skips cards that are not due yet", async () => {
     // Descending order must not reach past `now` — a card due tomorrow is the
     // most recent due date in the collection, and picking it would mean

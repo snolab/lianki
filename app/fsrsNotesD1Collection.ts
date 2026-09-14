@@ -21,7 +21,7 @@ function toDoc(n: StoredNote): FsrsDoc {
 
 type AnyQuery = Record<string, unknown>;
 
-/** Does a note pass the `url` constraints of a query ($ne/$nin/$not, or exact)? */
+/** Does a note pass the `url` constraints of a query ($ne/$nin/$not/$regex, or exact)? */
 function urlMatches(url: string | undefined, urlCond: unknown): boolean {
   if (urlCond == null) return true;
   if (typeof urlCond === "string") return url === urlCond;
@@ -30,6 +30,10 @@ function urlMatches(url: string | undefined, urlCond: unknown): boolean {
     if (!url) return false; // $exists:true / $ne:null
     if (Array.isArray(c.$nin) && c.$nin.includes(url)) return false;
     if (c.$not instanceof RegExp && c.$not.test(url)) return false;
+    // The same-host preference (sameHostQuery). An operator this filter does not
+    // know is silently dropped, which here would mean "prefer this host" quietly
+    // becoming "any host" on one backend only.
+    if (c.$regex instanceof RegExp && !c.$regex.test(url)) return false;
   }
   return true;
 }

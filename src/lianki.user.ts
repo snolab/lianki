@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.32
+// @version     2.23.33
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -136,6 +136,15 @@ function hashUrl(url) {
 function isPermanentSyncFailure(status) {
   if (status === 401 || status === 403 || status === 408 || status === 429) return false;
   return status >= 400 && status < 500;
+}
+
+/** The host of a url, or null when it will not parse. */
+function hostOf(url) {
+  try {
+    return new URL(url).host || null;
+  } catch {
+    return null;
+  }
 }
 
 class GMCardStorage {
@@ -285,21 +294,26 @@ class GMCardStorage {
       .filter(Boolean);
   }
 
-  getDueCards(limit = 10) {
+  /**
+   * Due cards in the order they should be served.
+   *
+   * Cards on `preferHost` come first, then most recently due — the same rule
+   * as the server's findNextDue. Offline and online must agree, or the card
+   * you get depends on connectivity. Same-host is a preference, not a filter:
+   * once that host is drained the rest of the deck follows.
+   */
+  getDueCards(limit = 10, preferHost = null) {
     const now = new Date();
-    return (
-      this._index()
-        .filter((e) => !e.del && new Date(e.due) <= now)
-        // Most recently due first, matching the server's NEXT_DUE_SORT. Offline
-        // and online must agree, or the card you get depends on connectivity.
-        .sort((a, b) => new Date(b.due) - new Date(a.due))
-        .slice(0, limit)
-        .map((e) => {
-          const raw = GM_getValue(CARD_PREFIX + e.hash, "");
-          return raw ? { url: e.url, ...JSON.parse(raw) } : null;
-        })
-        .filter(Boolean)
-    );
+    const onHost = (e) => (preferHost !== null && hostOf(e.url) === preferHost ? 1 : 0);
+    return this._index()
+      .filter((e) => !e.del && new Date(e.due) <= now)
+      .sort((a, b) => onHost(b) - onHost(a) || new Date(b.due) - new Date(a.due))
+      .slice(0, limit)
+      .map((e) => {
+        const raw = GM_getValue(CARD_PREFIX + e.hash, "");
+        return raw ? { url: e.url, ...JSON.parse(raw) } : null;
+      })
+      .filter(Boolean);
   }
 }
 
@@ -1573,7 +1587,7 @@ function main() {
       // Find next card from local cache before server call
       if (offlineReady) {
         try {
-          const dueCards = cardStorage.getDueCards(2);
+          const dueCards = cardStorage.getDueCards(2, hostOf(location.href));
           const nextCard = dueCards.find((c) => c.url !== url);
           prefetchedNextUrl = nextCard?.url ?? null;
           if (prefetchedNextUrl) prefetchNextPage(prefetchedNextUrl);
@@ -2356,7 +2370,7 @@ function main() {
           // Must set prefetchedNextUrl BEFORE afterReview(), because the server
           // hasn't received this review yet and would return the same card.
           try {
-            const dueCards = cardStorage.getDueCards(2);
+            const dueCards = cardStorage.getDueCards(2, hostOf(location.href));
             const normalizedCurrent = normalizeUrl(location.href);
             const nextCard = dueCards.find((c) => c.url !== url && c.url !== normalizedCurrent);
             prefetchedNextUrl = nextCard?.url ?? null;
@@ -2615,7 +2629,7 @@ function main() {
     if (!offlineReady) return;
 
     try {
-      const dueCards = cardStorage.getDueCards(2);
+      const dueCards = cardStorage.getDueCards(2, hostOf(location.href));
       const normalizedCurrent = normalizeUrl(location.href);
       const nextCard = dueCards.find((c) => c.url !== normalizedCurrent);
       if (nextCard) {

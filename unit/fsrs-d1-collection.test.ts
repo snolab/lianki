@@ -78,6 +78,36 @@ describe("D1FsrsCollection", () => {
     expect(limited).toHaveLength(1);
   });
 
+  test("findOne honours the same-host $regex, composed with $nin and $not", async () => {
+    // sameHostQuery() layers `$regex` onto the url constraints. This matcher
+    // drops any operator it does not know, so without explicit support the
+    // "prefer this host" query would quietly return the whole deck — on D1
+    // only, with Mongo behaving correctly. The same app, two answers.
+    const now = Date.now();
+    await seed("https://www.youtube.com/watch?v=current", new Date(now - 60_000));
+    await seed("https://www.youtube.com/watch?v=stale", new Date(now - 86_400_000));
+    await seed("https://example.com/fresh", new Date(now - 1_000));
+    await seed("https://www.youtube.com/watch?v=future", new Date(now + 86_400_000));
+
+    const query = {
+      "card.due": { $lte: new Date() },
+      url: {
+        $nin: ["https://www.youtube.com/watch?v=current"],
+        $not: /example\.org/,
+        $regex: /^https?:\/\/www\.youtube\.com\//,
+      },
+    };
+    const same = await col.findOne(query, { sort: { "card.due": -1 } });
+    expect(same?.url).toBe("https://www.youtube.com/watch?v=stale");
+
+    // Drained: nothing on that host is due and not excluded.
+    const drained = await col.findOne(
+      { ...query, url: { ...query.url, $regex: /^https?:\/\/nothing\.test\// } },
+      { sort: { "card.due": -1 } },
+    );
+    expect(drained).toBeNull();
+  });
+
   test("countDocuments — all and due", async () => {
     await seed("https://due.com", new Date(Date.now() - 1000));
     await seed("https://later.com", new Date(Date.now() + 86_400_000));

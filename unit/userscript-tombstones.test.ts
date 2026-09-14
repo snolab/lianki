@@ -18,8 +18,15 @@ const BUILT = readFileSync(join(process.cwd(), "public/lianki.user.js"), "utf-8"
 
 /** Lift `class GMCardStorage` out of the build by brace-matching. */
 function extractStorageClass() {
-  const start = BUILT.indexOf("class GMCardStorage {");
-  if (start === -1) throw new Error("GMCardStorage not found in the built userscript");
+  // The class calls hostOf() for the same-host preference; lift the real one
+  // rather than injecting a hand-written copy the bundle might not match.
+  return `${extractBlock("function hostOf(")}\n${extractBlock("class GMCardStorage {")}`;
+}
+
+/** The brace-balanced block starting at `decl`, lifted from the built script. */
+function extractBlock(decl: string) {
+  const start = BUILT.indexOf(decl);
+  if (start === -1) throw new Error(`${decl} not found in the built userscript`);
   const open = BUILT.indexOf("{", start);
   let depth = 0;
   let end = -1;
@@ -30,7 +37,7 @@ function extractStorageClass() {
       break;
     }
   }
-  if (end === -1) throw new Error("could not brace-match GMCardStorage");
+  if (end === -1) throw new Error(`could not brace-match ${decl}`);
   return BUILT.slice(start, end);
 }
 
@@ -163,6 +170,28 @@ describe("soft delete", () => {
 
     expect(cs.getDueCards(10).map((c: { url: string }) => c.url)).toEqual(["https://keep.test/1"]);
     expect(cs.getAllCards().map((c: { url: string }) => c.url)).toEqual(["https://keep.test/1"]);
+  });
+
+  it("serves the host you are on first, then most recently due", () => {
+    // Same rule as the server's findNextDue. Offline and online must agree, or
+    // the card you get depends on connectivity. Same-host is a preference —
+    // with the host drained, the rest of the deck follows in the usual order.
+    const { cs } = makeStorage();
+    const hlc = { timestamp: 1, counter: 0, deviceId: "s" };
+    const ago = (ms: number) => new Date(1_000_000 - ms).toISOString();
+    const STALE = "https://www.youtube.com/watch?v=stale";
+    const LATER = "https://www.youtube.com/watch?v=later";
+    const FRESH = "https://example.com/fresh";
+    cs.setCard(STALE, card(ago(86_400_000)), hlc, false);
+    cs.setCard(FRESH, card(ago(60_000)), hlc, false);
+    cs.setCard(LATER, card(ago(3_600_000)), hlc, false);
+    const urls = (cards: { url: string }[]) => cards.map((c) => c.url);
+
+    expect(urls(cs.getDueCards(10, "www.youtube.com"))).toEqual([LATER, STALE, FRESH]);
+
+    // No preference, or a host with nothing due: plain most-recent-first.
+    expect(urls(cs.getDueCards(10))).toEqual([FRESH, LATER, STALE]);
+    expect(urls(cs.getDueCards(10, "nothing.test"))).toEqual([FRESH, LATER, STALE]);
   });
 
   it("undeletes when the card is written again", () => {
