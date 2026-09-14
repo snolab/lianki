@@ -59,6 +59,15 @@ const labImmersionPageContent = {
       es: "Filtrar temas o sitios…",
       de: "Themen oder Seiten filtern…",
     }),
+    transpose: t({
+      en: "Swap axes",
+      zh: "行列互换",
+      ja: "縦横を入れ替え",
+      ko: "행/열 바꾸기",
+      fr: "Inverser les axes",
+      es: "Intercambiar ejes",
+      de: "Achsen tauschen",
+    }),
     topic: t({
       en: "Topic",
       zh: "主题",
