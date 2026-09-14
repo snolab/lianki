@@ -41,6 +41,8 @@ const PAGES = [
   "/data",
   "/read",
   "/self-intro",
+  "/lab",
+  "/lab/immersion",
 ];
 
 /** Served from the build output; any drift here means the asset pipeline broke. */

@@ -103,6 +103,29 @@ test.describe("Public pages", () => {
     expect(errors).toHaveLength(0);
   });
 
+  test("/lab lists experiments", async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.goto(url("/lab"));
+    await expect(page.locator("h1")).toContainText(/Lab/);
+    await expect(page.locator("a[href*='/lab/immersion']")).toBeVisible();
+    expect(errors).toHaveLength(0);
+  });
+
+  test("/lab/immersion renders the matrix with outbound site links", async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.goto(url("/lab/immersion"));
+    await expect(page.locator("h1")).toBeVisible();
+    await expect(page.locator("table")).toBeVisible();
+    await expect(page.locator("a[href='https://www.zhihu.com']")).toBeVisible();
+    // Toggling a language column off removes it from the header
+    await page
+      .locator("button[aria-pressed='true']")
+      .filter({ hasText: /Deutsch/ })
+      .click();
+    await expect(page.locator("th").filter({ hasText: /Deutsch/ })).toHaveCount(0);
+    expect(errors).toHaveLength(0);
+  });
+
   test("/learn renders without server error", async ({ page }) => {
     const errors = collectErrors(page);
     const response = await page.goto(url("/learn"));
@@ -259,6 +282,8 @@ test.describe("Route availability", () => {
     "/en/blog",
     "/contact",
     "/self-intro",
+    "/lab",
+    "/lab/immersion",
     "/learn",
     "/sign-in",
     "/en/blog/2025-01-01-introduction",
