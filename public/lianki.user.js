@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.3
+// @version     2.24.4
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1632,6 +1632,21 @@
       marked: duration > 0 ? Math.min(1, markedSpan / duration) : 0,
       segments,
     };
+  }
+
+  // packages/core/src/duePrune.ts
+  function dueWindow(dueMs, pageSize, limit) {
+    const finite = dueMs.filter((d) => Number.isFinite(d));
+    return {
+      lo: finite.length ? Math.min(...finite) : Infinity,
+      hi: finite.length ? Math.max(...finite) : -Infinity,
+      truncated: pageSize >= limit,
+    };
+  }
+  function isProvablyDeleted(dueMs, w) {
+    if (!Number.isFinite(dueMs)) return false;
+    if (!w.truncated) return true;
+    return dueMs > w.lo && dueMs < w.hi;
   }
 
   // src/lianki.user.ts
@@ -4031,13 +4046,14 @@ ${actualUrl}
         const response = await api(`/api/fsrs/due?limit=${LIMIT}`);
         const dueCards = response.cards || [];
         const live = new Set(dueCards.map((n) => n.url));
-        const horizon = dueCards.length
-          ? new Date(dueCards[dueCards.length - 1].card.due).getTime()
-          : Infinity;
+        const w = dueWindow(
+          dueCards.map((n) => new Date(n.card?.due).getTime()),
+          dueCards.length,
+          LIMIT,
+        );
         for (const stale of cardStorage.getDueCards(9999)) {
           if (live.has(stale.url) || stale.dirty) continue;
-          const due = new Date(stale.note?.card?.due).getTime();
-          if (!Number.isFinite(due) || due >= horizon) continue;
+          if (!isProvablyDeleted(new Date(stale.note?.card?.due).getTime(), w)) continue;
           console.log(`[Lianki] Dropping locally cached card deleted on the server: ${stale.url}`);
           cardStorage.deleteCard(stale.url);
           if (prefetchedNextUrl === stale.url) prefetchedNextUrl = null;

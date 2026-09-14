@@ -68,7 +68,14 @@ export class D1FsrsCollection {
     const dueCond = query["card.due"] as { $lte?: Date } | undefined;
     const all =
       dueCond?.$lte != null
-        ? await this.repo.listDue(new Date(dueCond.$lte), Number.MAX_SAFE_INTEGER)
+        ? // "oldest" pins ORDER BY card_due ASC, which is the invariant the rest
+          // of this class is built on (see find/findOne below). Omitting it took
+          // listDue's default, and when DEFAULT_REVIEW_ORDER became "newest" the
+          // rows arrived DESC while find/findOne still reversed them as if they
+          // were ASC — inverting the next card for BOTH settings on D1. The
+          // caller's requested direction is applied in memory, so the SQL order
+          // here only has to be the one this file documents.
+          await this.repo.listDue(new Date(dueCond.$lte), Number.MAX_SAFE_INTEGER, "oldest")
         : await this.repo.listAll();
     return applyQuery(all, query);
   }

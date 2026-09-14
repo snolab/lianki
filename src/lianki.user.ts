@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.3
+// @version     2.24.4
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -37,6 +37,7 @@ import {
   COV_BUCKET_S,
 } from "@lianki/core/watchStats";
 import { heatmapBuckets, rateColor, videoDifficulty } from "@lianki/core/difficulty";
+import { dueWindow, isProvablyDeleted } from "@lianki/core/duePrune";
 
 declare const GM_xmlhttpRequest: Function;
 declare const GM_setValue: (key: string, value: any) => void;
@@ -3305,30 +3306,23 @@ function main() {
       // card deleted from the website stayed in the local index forever and kept
       // being served as "next" — the local store had no way to learn it was gone.
       //
-      // Prune by due-date horizon, not by page fullness.
+      // Prune against the window the response actually covers.
       //
-      // The first attempt only pruned when the server returned fewer than the
-      // limit — reasoning that a full page might be truncated. But /due sorts by
-      // card.due ascending, so with ≥20 due cards it ALWAYS returns exactly 20
-      // and the prune never ran. That is the common case, which made the fix a
-      // no-op precisely for the people hitting the bug.
-      //
-      // The response is authoritative up to its last due date: the server would
-      // have included anything due at or before that. So a local card due
-      // strictly earlier than the horizon, yet missing from the response, is
-      // genuinely gone. Cards beyond the horizon are simply out of view.
+      // The decision is in @lianki/core/duePrune, not inline here: it was a
+      // three-line calculation that deleted a third of the deck when the server
+      // sort changed under it, and nothing could test it where it sat. The
+      // reasoning, and the two earlier attempts that were wrong in opposite
+      // directions, are documented there.
       const live = new Set(dueCards.map((n) => n.url));
-      const horizon = dueCards.length
-        ? new Date(dueCards[dueCards.length - 1].card.due).getTime()
-        : Infinity; // empty response = nothing is due, so every local due card is stale
+      const w = dueWindow(
+        dueCards.map((n) => new Date(n.card?.due).getTime()),
+        dueCards.length,
+        LIMIT,
+      );
+
       for (const stale of cardStorage.getDueCards(9999)) {
         if (live.has(stale.url) || stale.dirty) continue; // dirty = unsynced local edit
-        // Fail SAFE: keep the card unless we can positively prove it is stale.
-        // An unreadable due date must not fall through to deletion — NaN fails
-        // every comparison, so testing "is it beyond the horizon" would answer
-        // false and drop a card we know nothing about.
-        const due = new Date(stale.note?.card?.due).getTime();
-        if (!Number.isFinite(due) || due >= horizon) continue;
+        if (!isProvablyDeleted(new Date(stale.note?.card?.due).getTime(), w)) continue;
         console.log(`[Lianki] Dropping locally cached card deleted on the server: ${stale.url}`);
         cardStorage.deleteCard(stale.url);
         if (prefetchedNextUrl === stale.url) prefetchedNextUrl = null;
