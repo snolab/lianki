@@ -24,6 +24,7 @@ export const IMMERSION_LANGUAGES = [
   { code: "ko", name: "Korean", native: "한국어" },
   { code: "es", name: "Spanish", native: "Español" },
   { code: "de", name: "German", native: "Deutsch" },
+  { code: "fi", name: "Finnish", native: "Suomi" },
 ] as const;
 
 export type ImmersionLanguage = (typeof IMMERSION_LANGUAGES)[number]["code"];
@@ -67,6 +68,14 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
       ko: { primary: s("네이버 지식iN", "https://kin.naver.com") },
       es: { primary: s("Quora (es)", "https://es.quora.com") },
       de: { primary: s("gutefrage", "https://www.gutefrage.net") },
+      fi: {
+        primary: s(
+          "Kysy kirjastonhoitajalta",
+          "https://www.kirjastot.fi/kysy",
+          "librarians answer anything, in careful prose",
+        ),
+        alt: s("Reddit r/Suomi", "https://www.reddit.com/r/Suomi/"),
+      },
     },
   },
   {
@@ -101,6 +110,14 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
         alt: s("Forocoches", "https://www.forocoches.com"),
       },
       de: { primary: s("Reddit r/de", "https://www.reddit.com/r/de/") },
+      fi: {
+        primary: s("Suomi24", "https://www.suomi24.fi"),
+        alt: s(
+          "Ylilauta",
+          "https://ylilauta.org",
+          "imageboard; Finnish net slang at full strength",
+        ),
+      },
     },
   },
   {
@@ -137,6 +154,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
         primary: s("heise online", "https://www.heise.de"),
         alt: s("Golem.de", "https://www.golem.de"),
       },
+      fi: {
+        primary: s("io-tech", "https://www.io-tech.fi"),
+        alt: s("Muropaketti", "https://muropaketti.com"),
+      },
     },
   },
   {
@@ -166,6 +187,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
       de: {
         primary: s("Krautreporter", "https://krautreporter.de"),
         alt: s("Perlentaucher", "https://www.perlentaucher.de"),
+      },
+      fi: {
+        primary: s("Long Play", "https://longplay.fi", "long-form journalism"),
+        alt: s("Rapport", "https://www.rapport.fi"),
       },
     },
   },
@@ -197,6 +222,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
         primary: s("ZDFmediathek", "https://www.zdf.de"),
         alt: s("ARD Mediathek", "https://www.ardmediathek.de"),
       },
+      fi: {
+        primary: s("Yle Areena", "https://areena.yle.fi"),
+        alt: s("Ruutu", "https://www.ruutu.fi"),
+      },
     },
   },
   {
@@ -226,6 +255,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
       de: {
         primary: s("ARD Audiothek", "https://www.ardaudiothek.de"),
         alt: s("Deutschlandfunk", "https://www.deutschlandfunk.de"),
+      },
+      fi: {
+        primary: s("Yle Areena podcastit", "https://areena.yle.fi/podcastit"),
+        alt: s("Supla", "https://www.supla.fi"),
       },
     },
   },
@@ -262,6 +295,14 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
       de: {
         primary: s("TripAdvisor (de)", "https://www.tripadvisor.de"),
         alt: s("Yelp (de)", "https://www.yelp.de"),
+      },
+      fi: {
+        primary: s(
+          "Vauva.fi keskustelu",
+          "https://www.vauva.fi/keskustelu",
+          "the forum outgrew its parenting roots long ago",
+        ),
+        alt: s("Eat.fi", "https://eat.fi"),
       },
     },
   },
@@ -300,6 +341,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
         primary: s("LovelyBooks", "https://www.lovelybooks.de"),
         alt: s("Perlentaucher Bücher", "https://www.perlentaucher.de/buch.html"),
       },
+      fi: {
+        primary: s("Kirjasampo", "https://www.kirjasampo.fi"),
+        alt: s("Kirjavinkit", "https://www.kirjavinkit.fi"),
+      },
     },
   },
   {
@@ -337,6 +382,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
         primary: s("Moviepilot", "https://www.moviepilot.de"),
         alt: s("FILMSTARTS", "https://www.filmstarts.de"),
       },
+      fi: {
+        primary: s("Leffatykki", "https://www.leffatykki.com"),
+        alt: s("Episodi", "https://www.episodi.fi"),
+      },
     },
   },
   {
@@ -373,6 +422,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
         primary: s("Kleinanzeigen", "https://www.kleinanzeigen.de"),
         alt: s("Vinted (de)", "https://www.vinted.de"),
       },
+      fi: {
+        primary: s("Tori.fi", "https://www.tori.fi"),
+        alt: s("Huuto.net", "https://www.huuto.net"),
+      },
     },
   },
   {
@@ -405,6 +458,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
       de: {
         primary: s("Chefkoch", "https://www.chefkoch.de"),
         alt: s("kochbar", "https://www.kochbar.de"),
+      },
+      fi: {
+        primary: s("Kotikokki", "https://www.kotikokki.net"),
+        alt: s("K-Ruoka reseptit", "https://www.k-ruoka.fi/reseptit"),
       },
     },
   },
@@ -446,6 +503,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
         primary: s("tagesschau.de", "https://www.tagesschau.de"),
         alt: s("DER SPIEGEL", "https://www.spiegel.de"),
       },
+      fi: {
+        primary: s("Yle Uutiset", "https://yle.fi/uutiset"),
+        alt: s("Yle Selkouutiset", "https://yle.fi/selkouutiset", "the same news in plain Finnish"),
+      },
     },
   },
   {
@@ -486,6 +547,14 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
         primary: s("Wikipedia (de)", "https://de.wikipedia.org"),
         alt: s("Duden", "https://www.duden.de"),
       },
+      fi: {
+        primary: s("Wikipedia (fi)", "https://fi.wikipedia.org"),
+        alt: s(
+          "Kielitoimiston sanakirja",
+          "https://www.kielitoimistonsanakirja.fi",
+          "the official dictionary",
+        ),
+      },
     },
   },
   {
@@ -516,6 +585,7 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
         alt: s("X", "https://x.com"),
       },
       de: { primary: s("X", "https://x.com") },
+      fi: { primary: s("X", "https://x.com") },
     },
   },
   {
@@ -556,6 +626,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
         primary: s("Songtexte.com", "https://www.songtexte.com"),
         alt: s("laut.de", "https://www.laut.de", "reviews, not lyrics"),
       },
+      fi: {
+        primary: s("Soundi", "https://www.soundi.fi", "reviews and interviews, not lyrics"),
+        alt: s("Rumba", "https://www.rumba.fi"),
+      },
     },
   },
   {
@@ -591,6 +665,14 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
       de: {
         primary: s("WEBTOON (de)", "https://www.webtoons.com/de/"),
         alt: s("Comic.de", "https://comic.de"),
+      },
+      fi: {
+        primary: s(
+          "Fingerpori",
+          "https://www.hs.fi/fingerpori/",
+          "a daily strip built on Finnish wordplay",
+        ),
+        alt: s("Kvaak.fi", "https://www.kvaak.fi", "comics community"),
       },
     },
   },
@@ -628,6 +710,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
         primary: s("GameStar", "https://www.gamestar.de"),
         alt: s("PC Games", "https://www.pcgames.de"),
       },
+      fi: {
+        primary: s("Pelaaja", "https://www.pelaajalehti.com"),
+        alt: s("V2.fi", "https://www.v2.fi"),
+      },
     },
   },
   {
@@ -663,6 +749,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
       de: {
         primary: s("GEO Reisen", "https://www.geo.de/reisen"),
         alt: s("komoot", "https://www.komoot.com/de", "hiking and cycling routes"),
+      },
+      fi: {
+        primary: s("Rantapallo", "https://www.rantapallo.fi"),
+        alt: s("Retkipaikka", "https://retkipaikka.fi", "hiking and the outdoors"),
       },
     },
   },
@@ -700,6 +790,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
         primary: s("StepStone", "https://www.stepstone.de"),
         alt: s("kununu", "https://www.kununu.com"),
       },
+      fi: {
+        primary: s("Duunitori", "https://duunitori.fi"),
+        alt: s("Oikotie Työpaikat", "https://www.oikotie.fi/tyopaikat"),
+      },
     },
   },
   {
@@ -735,6 +829,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
       de: {
         primary: s("Stiftung Warentest", "https://www.test.de"),
         alt: s("mydealz", "https://www.mydealz.de"),
+      },
+      fi: {
+        primary: s("Hintaseuranta", "https://hintaseuranta.fi"),
+        alt: s("Hintaopas", "https://hintaopas.fi"),
       },
     },
   },
@@ -772,6 +870,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
         primary: s("finanzen.net", "https://www.finanzen.net"),
         alt: s("Finanztip", "https://www.finanztip.de"),
       },
+      fi: {
+        primary: s("Kauppalehti", "https://www.kauppalehti.fi"),
+        alt: s("Inderes", "https://www.inderes.fi", "investor community and forum"),
+      },
     },
   },
   {
@@ -807,6 +909,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
       de: {
         primary: s("Spektrum", "https://www.spektrum.de"),
         alt: s("scinexx", "https://www.scinexx.de"),
+      },
+      fi: {
+        primary: s("Tiede", "https://www.tiede.fi"),
+        alt: s("Tekniikka&Talous", "https://www.tekniikkatalous.fi"),
       },
     },
   },
@@ -844,6 +950,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
         primary: s("kicker", "https://www.kicker.de"),
         alt: s("Sportschau", "https://www.sportschau.de"),
       },
+      fi: {
+        primary: s("Yle Urheilu", "https://yle.fi/urheilu"),
+        alt: s("Jatkoaika", "https://www.jatkoaika.com", "hockey, and the arguments about it"),
+      },
     },
   },
   {
@@ -876,6 +986,10 @@ export const IMMERSION_DOMAINS: ImmersionDomain[] = [
       de: {
         primary: s("bund.de", "https://www.bund.de"),
         alt: s("Bundesregierung", "https://www.bundesregierung.de"),
+      },
+      fi: {
+        primary: s("Suomi.fi", "https://www.suomi.fi"),
+        alt: s("Finlex", "https://www.finlex.fi"),
       },
     },
   },
