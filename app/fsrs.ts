@@ -21,12 +21,14 @@ import {
   type HLC,
   newServerHLC,
   NEXT_DUE_SORT,
+  sameHostQuery,
   RATING_MAP,
 } from "./fsrs-helpers";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
 import { getHeatmapCacheTag } from "./lib/heatmap-cache";
 import { normalizeUrl } from "@/lib/normalizeUrl";
 import { probeReachability } from "@/lib/probe";
+import { hostOf } from "@/lib/next-card";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { restoreNoteFromExport } from "@/lib/yaml-export";
 import {
@@ -85,6 +87,28 @@ function nextDueQuery(req: Request, excludeUrl?: string) {
 
 export const fsrsHandler = async (req: Request, email?: string) => {
   const FSRSNotes = getFsrsNotes(email);
+
+  /**
+   * The next card to review, preferring the host the user is already on.
+   *
+   * `current` is the page they are reviewing from: the card just graded, or
+   * for /next-url the `excludeUrl` the userscript sends. Cards on the same host
+   * are served first — a same-host hop is a cheap navigation and no context
+   * switch for the reader, and FSRS is indifferent to the order due cards are
+   * cleared in. It is a preference, not a filter: with that host drained the
+   * plain most-recently-due pick takes over, so nobody gets trapped on one site.
+   */
+  async function findNextDue(req: Request, current?: string) {
+    const base = nextDueQuery(req, current);
+    const host = hostOf(
+      current ?? new URL(req.url, "http://localhost").searchParams.get("excludeUrl"),
+    );
+    if (host) {
+      const same = await FSRSNotes.findOne(sameHostQuery(base, host), { sort: NEXT_DUE_SORT });
+      if (same) return same;
+    }
+    return FSRSNotes.findOne(base, { sort: NEXT_DUE_SORT });
+  }
 
   type RegexRoutes = Record<
     string,
@@ -177,7 +201,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       });
     },
     "GET /api/fsrs/next-url(?:/|$|\\?)": async (req) => {
-      const note = await FSRSNotes.findOne(nextDueQuery(req), { sort: NEXT_DUE_SORT });
+      const note = await findNextDue(req);
       return JSONR({ url: note?.url ?? null, title: note?.title ?? null });
     },
     "GET /api/fsrs/review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (
@@ -189,9 +213,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const note = (await getQueryNote(req, options)) ?? DIE("note not found");
       const reviewedCard = await reviewed(note, rating);
 
-      const nextNote = await FSRSNotes.findOne(nextDueQuery(req, note.url), {
-        sort: NEXT_DUE_SORT,
-      });
+      const nextNote = await findNextDue(req, note.url);
 
       return JSONR({
         ok: true,
@@ -250,9 +272,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
 
       const reviewedCard = await reviewed(note, rating, clientHLC);
 
-      const nextNote = await FSRSNotes.findOne(nextDueQuery(req, note.url), {
-        sort: NEXT_DUE_SORT,
-      });
+      const nextNote = await findNextDue(req, note.url);
 
       return JSONR({
         ok: true,
@@ -268,7 +288,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const note = (await getQueryNote(req, opt)) ?? DIE("note not found");
       await FSRSNotes.deleteOne({ url: note.url });
 
-      const nextNote = await FSRSNotes.findOne(nextDueQuery(req), { sort: NEXT_DUE_SORT });
+      const nextNote = await findNextDue(req, note.url);
 
       return JSONR({
         ok: true,

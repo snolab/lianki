@@ -71,6 +71,19 @@ export const RATING_MAP: Record<string, Grade> = {
  */
 export const NEXT_DUE_SORT = { "card.due": -1 } as const;
 
+/**
+ * Narrow a next-due query to one host.
+ *
+ * Layered on as a sibling `$regex` rather than an `$and`, because the D1 shim
+ * only understands the flat `url: {…}` shape — and it must be taught this
+ * operator too, or it would silently ignore the constraint and return the
+ * whole deck. See `urlMatches` in fsrsNotesD1Collection.ts.
+ */
+export function sameHostQuery(query: any, host: string) {
+  const escaped = host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return { ...query, url: { ...query.url, $regex: new RegExp(`^https?://${escaped}/`) } };
+}
+
 export function buildNextDueQuery(excludeDomains: string[], excludeUrl?: string) {
   const query: any = {
     "card.due": { $lte: new Date() },
