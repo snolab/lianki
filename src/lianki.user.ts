@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.4
+// @version     2.24.5
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -320,37 +320,26 @@ class GMCardStorage {
   }
 
   /**
-<<<<<<< HEAD
    * Due cards in the order they should be served.
    *
-   * Cards on `preferOrigin` come first, then most recently due — the same rule
-   * as the server's findNextDue. Offline and online must agree, or the card
-   * you get depends on connectivity. Same-origin is a preference, not a filter:
-   * once that origin is drained the rest of the deck follows.
+   * Two preferences compose, exactly as the server's findNextDue does: cards on
+   * `preferOrigin` come first (a same-origin hop is a cheap navigation and no
+   * context switch, and FSRS is indifferent to the order due cards clear in),
+   * and WITHIN each group the user's own reviewOrder decides which end of the
+   * due pile to take. Same-origin is a preference, not a filter: once that
+   * origin is drained the rest of the deck follows.
+   *
+   * Both must match the server, or the next card would change depending on
+   * whether you happened to be online.
    */
-  getDueCards(limit = 10, preferOrigin = null) {
+  getDueCards(limit = 10, preferOrigin = null, order = "newest") {
     const now = new Date();
     const onOrigin = (e) => (preferOrigin !== null && originOf(e.url) === preferOrigin ? 1 : 0);
-    return this._index()
-      .filter((e) => !e.del && new Date(e.due) <= now)
-      .sort((a, b) => onOrigin(b) - onOrigin(a) || new Date(b.due) - new Date(a.due))
-=======
-   * Cards already due, in the user's chosen order.
-   *
-   * Must match the server's ordering: if the offline store disagreed, the next
-   * card would change depending on whether you happened to be online.
-   */
-  getDueCards(limit = 10, order = "newest") {
-    const now = new Date();
     // `!e.del` skips tombstones: a deleted card must not come back as due.
-    // `dir` is the user's reviewOrder — the same preference the server applies,
-    // because offline and online must agree or which card you get depends on
-    // connectivity.
     const dir = order === "newest" ? -1 : 1;
     return this._index()
       .filter((e) => !e.del && new Date(e.due) <= now)
-      .sort((a, b) => dir * (new Date(a.due) - new Date(b.due)))
->>>>>>> 93d1159 (feat(review): choose next-card order — most-overdue or just-came-due)
+      .sort((a, b) => onOrigin(b) - onOrigin(a) || dir * (new Date(a.due) - new Date(b.due)))
       .slice(0, limit)
       .map((e) => {
         const raw = GM_getValue(CARD_PREFIX + e.hash, "");
@@ -1687,11 +1676,7 @@ function main() {
       // Find next card from local cache before server call
       if (offlineReady) {
         try {
-<<<<<<< HEAD
-          const dueCards = cardStorage.getDueCards(2, location.origin);
-=======
-          const dueCards = cardStorage.getDueCards(2, reviewOrder());
->>>>>>> 93d1159 (feat(review): choose next-card order — most-overdue or just-came-due)
+          const dueCards = cardStorage.getDueCards(2, location.origin, reviewOrder());
           const nextCard = dueCards.find((c) => c.url !== url);
           prefetchedNextUrl = nextCard?.url ?? null;
           if (prefetchedNextUrl) prefetchNextPage(prefetchedNextUrl);
@@ -3071,11 +3056,7 @@ function main() {
           // Must set prefetchedNextUrl BEFORE afterReview(), because the server
           // hasn't received this review yet and would return the same card.
           try {
-<<<<<<< HEAD
-            const dueCards = cardStorage.getDueCards(2, location.origin);
-=======
-            const dueCards = cardStorage.getDueCards(2, reviewOrder());
->>>>>>> 93d1159 (feat(review): choose next-card order — most-overdue or just-came-due)
+            const dueCards = cardStorage.getDueCards(2, location.origin, reviewOrder());
             const normalizedCurrent = normalizeUrl(location.href);
             const nextCard = dueCards.find((c) => c.url !== url && c.url !== normalizedCurrent);
             prefetchedNextUrl = nextCard?.url ?? null;
@@ -3368,11 +3349,7 @@ function main() {
     if (!offlineReady) return;
 
     try {
-<<<<<<< HEAD
-      const dueCards = cardStorage.getDueCards(2, location.origin);
-=======
-      const dueCards = cardStorage.getDueCards(2, reviewOrder());
->>>>>>> 93d1159 (feat(review): choose next-card order — most-overdue or just-came-due)
+      const dueCards = cardStorage.getDueCards(2, location.origin, reviewOrder());
       const normalizedCurrent = normalizeUrl(location.href);
       const nextCard = dueCards.find((c) => c.url !== normalizedCurrent);
       if (nextCard) {
