@@ -123,6 +123,17 @@ test.describe("Public pages", () => {
       .filter({ hasText: /Deutsch/ })
       .click();
     await expect(page.locator("th").filter({ hasText: /Deutsch/ })).toHaveCount(0);
+    // Swapping axes puts languages down the side and topics across the top;
+    // the text filter then narrows the topic columns.
+    await page
+      .locator("button[aria-pressed]")
+      .filter({ hasText: /Swap axes/ })
+      .click();
+    await expect(page.locator("tbody th").filter({ hasText: /日本語/ })).toBeVisible();
+    await page.getByRole("searchbox").fill("cooking");
+    await expect(page.locator("thead th").filter({ hasText: /Cooking/ })).toHaveCount(1);
+    await expect(page.locator("thead th").filter({ hasText: /Sports/ })).toHaveCount(0);
+    await expect(page.locator("a[href='https://cookpad.com']")).toBeVisible();
     expect(errors).toHaveLength(0);
   });
 

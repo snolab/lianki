@@ -5,12 +5,14 @@ import { useIntlayer } from "next-intlayer";
 import {
   IMMERSION_DOMAINS,
   IMMERSION_LANGUAGES,
+  type ImmersionDomain,
   type ImmersionLanguage,
   type ImmersionSite,
   type Register,
 } from "@/lib/immersion-sites";
 
 const LANGS_KEY = "lk:lab:immersion:langs";
+const TRANSPOSE_KEY = "lk:lab:immersion:transpose";
 const ALL_LANGS = IMMERSION_LANGUAGES.map((l) => l.code);
 
 function readSavedLangs(): ImmersionLanguage[] | null {
@@ -47,17 +49,89 @@ function SiteLink({ site, muted = false }: { site: ImmersionSite; muted?: boolea
   );
 }
 
+const STICKY_HEAD =
+  "sticky start-0 z-10 bg-gray-50 dark:bg-gray-900 text-start px-4 py-3 font-semibold";
+const STICKY_ROW = "sticky start-0 z-10 bg-white dark:bg-gray-950 text-start px-4 py-3 font-normal";
+
+function LangHeader({ lang }: { lang: (typeof IMMERSION_LANGUAGES)[number] }) {
+  return (
+    <>
+      <span lang={lang.code}>{lang.native}</span>
+      <span className="ms-1.5 text-xs font-normal text-gray-400">{lang.code.toUpperCase()}</span>
+    </>
+  );
+}
+
+function TopicHeader({
+  domain,
+  registerLabel,
+}: {
+  domain: ImmersionDomain;
+  registerLabel: (r: Register) => React.ReactNode;
+}) {
+  return (
+    <>
+      <div className="font-semibold">{domain.title}</div>
+      <div className="text-xs font-normal text-gray-500 dark:text-gray-400 mt-0.5">
+        {domain.blurb}
+      </div>
+      <div className="flex flex-wrap gap-1 mt-1.5">
+        {domain.registers.map((r) => (
+          <span
+            key={r}
+            className="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-gray-600 dark:text-gray-300"
+          >
+            {registerLabel(r)}
+          </span>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function SiteCell({ domain, code }: { domain: ImmersionDomain; code: ImmersionLanguage }) {
+  const { primary, alt } = domain.sites[code];
+  return (
+    <td className="px-4 py-3" lang={code}>
+      <div>
+        <SiteLink site={primary} />
+      </div>
+      {alt && (
+        <div className="mt-0.5">
+          <SiteLink site={alt} muted />
+        </div>
+      )}
+    </td>
+  );
+}
+
 export default function ImmersionClient() {
   const t = useIntlayer("lab-immersion-page");
   const [langs, setLangs] = useState<ImmersionLanguage[]>(ALL_LANGS);
   const [query, setQuery] = useState("");
+  // false: topics down, languages across (the original table). true: swapped —
+  // handy when you learn one language and want its whole column as a row.
+  const [transposed, setTransposed] = useState(false);
 
   // Restore the column choice after mount — reading localStorage during render
   // would desync SSR and hydration.
   useEffect(() => {
     const saved = readSavedLangs();
     if (saved) setLangs(saved);
+    try {
+      setTransposed(localStorage.getItem(TRANSPOSE_KEY) === "1");
+    } catch {}
   }, []);
+
+  function toggleTransposed() {
+    setTransposed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(TRANSPOSE_KEY, next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  }
 
   function toggleLang(code: ImmersionLanguage) {
     setLangs((prev) => {
@@ -123,14 +197,32 @@ export default function ImmersionClient() {
             );
           })}
         </fieldset>
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t.filterPlaceholder.value}
-          aria-label={t.filterPlaceholder.value}
-          className="w-full sm:w-64 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t.filterPlaceholder.value}
+            aria-label={t.filterPlaceholder.value}
+            className="w-full sm:w-64 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm"
+          />
+          <button
+            type="button"
+            onClick={toggleTransposed}
+            aria-pressed={transposed}
+            title={t.transpose.value}
+            className={`shrink-0 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+              transposed
+                ? "border-blue-600 bg-blue-600 text-white dark:border-blue-500 dark:bg-blue-500"
+                : "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-700 dark:text-gray-300 dark:hover:border-gray-500"
+            }`}
+          >
+            <span aria-hidden className="me-1.5">
+              ⇄
+            </span>
+            {t.transpose}
+          </button>
+        </div>
       </div>
 
       {/* Matrix */}
@@ -141,69 +233,75 @@ export default function ImmersionClient() {
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
           <table className="w-full text-sm border-collapse">
-            <thead className="bg-gray-50 dark:bg-gray-900/60 text-start">
-              <tr>
-                <th
-                  scope="col"
-                  className="sticky start-0 z-10 bg-gray-50 dark:bg-gray-900 text-start px-4 py-3 font-semibold min-w-48"
-                >
-                  {t.topic}
-                </th>
-                {columns.map((l) => (
-                  <th
-                    key={l.code}
-                    scope="col"
-                    className="text-start px-4 py-3 font-semibold min-w-36 whitespace-nowrap"
-                  >
-                    <span lang={l.code}>{l.native}</span>
-                    <span className="ms-1.5 text-xs font-normal text-gray-400">
-                      {l.code.toUpperCase()}
-                    </span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((d) => (
-                <tr
-                  key={d.key}
-                  className="border-t border-gray-200 dark:border-gray-800 align-top hover:bg-gray-50/60 dark:hover:bg-gray-900/40"
-                >
-                  <th
-                    scope="row"
-                    className="sticky start-0 z-10 bg-white dark:bg-gray-950 text-start px-4 py-3 font-normal"
-                  >
-                    <div className="font-semibold">{d.title}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{d.blurb}</div>
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {d.registers.map((r) => (
-                        <span
-                          key={r}
-                          className="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-300"
-                        >
-                          {registerLabel(r)}
-                        </span>
+            {transposed ? (
+              <>
+                <thead className="bg-gray-50 dark:bg-gray-900/60">
+                  <tr>
+                    <th scope="col" className={`${STICKY_HEAD} min-w-36`}>
+                      {t.languages}
+                    </th>
+                    {rows.map((d) => (
+                      <th
+                        key={d.key}
+                        scope="col"
+                        className="text-start px-4 py-3 align-top min-w-44 font-semibold"
+                      >
+                        <TopicHeader domain={d} registerLabel={registerLabel} />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {columns.map((l) => (
+                    <tr
+                      key={l.code}
+                      className="border-t border-gray-200 dark:border-gray-800 align-top hover:bg-gray-50/60 dark:hover:bg-gray-900/40"
+                    >
+                      <th scope="row" className={`${STICKY_ROW} font-semibold whitespace-nowrap`}>
+                        <LangHeader lang={l} />
+                      </th>
+                      {rows.map((d) => (
+                        <SiteCell key={d.key} domain={d} code={l.code} />
                       ))}
-                    </div>
-                  </th>
-                  {columns.map((l) => {
-                    const { primary, alt } = d.sites[l.code];
-                    return (
-                      <td key={l.code} className="px-4 py-3" lang={l.code}>
-                        <div>
-                          <SiteLink site={primary} />
-                        </div>
-                        {alt && (
-                          <div className="mt-0.5">
-                            <SiteLink site={alt} muted />
-                          </div>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
+                    </tr>
+                  ))}
+                </tbody>
+              </>
+            ) : (
+              <>
+                <thead className="bg-gray-50 dark:bg-gray-900/60">
+                  <tr>
+                    <th scope="col" className={`${STICKY_HEAD} min-w-48`}>
+                      {t.topic}
+                    </th>
+                    {columns.map((l) => (
+                      <th
+                        key={l.code}
+                        scope="col"
+                        className="text-start px-4 py-3 font-semibold min-w-36 whitespace-nowrap"
+                      >
+                        <LangHeader lang={l} />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((d) => (
+                    <tr
+                      key={d.key}
+                      className="border-t border-gray-200 dark:border-gray-800 align-top hover:bg-gray-50/60 dark:hover:bg-gray-900/40"
+                    >
+                      <th scope="row" className={STICKY_ROW}>
+                        <TopicHeader domain={d} registerLabel={registerLabel} />
+                      </th>
+                      {columns.map((l) => (
+                        <SiteCell key={l.code} domain={d} code={l.code} />
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </>
+            )}
           </table>
         </div>
       )}
