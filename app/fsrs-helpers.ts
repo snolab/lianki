@@ -72,25 +72,19 @@ export const RATING_MAP: Record<string, Grade> = {
 export const NEXT_DUE_SORT = { "card.due": -1 } as const;
 
 /**
- * Narrow a next-due query to one site (registrable domain, any subdomain).
+ * Narrow a next-due query to one origin (scheme + host + port, exactly).
  *
  * Layered on as a sibling `$regex` rather than an `$and`, because the D1 shim
  * only understands the flat `url: {…}` shape — and it must be taught this
  * operator too, or it would silently ignore the constraint and return the
  * whole deck. See `urlMatches` in fsrsNotesD1Collection.ts.
  *
- * The subdomain group is restricted to hostname characters so the match cannot
- * be satisfied by a site name appearing later in the url's path or query.
+ * Anchored at the start and terminated by `/`, so `https://a.com` cannot match
+ * `https://a.com.evil.test/` and `http://` cannot match `https://`.
  */
-export function sameSiteQuery(query: any, site: string) {
-  const escaped = site.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return {
-    ...query,
-    url: {
-      ...query.url,
-      $regex: new RegExp(`^https?://(?:[a-z0-9-]+\\.)*${escaped}(?::\\d+)?/`, "i"),
-    },
-  };
+export function sameOriginQuery(query: any, origin: string) {
+  const escaped = origin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return { ...query, url: { ...query.url, $regex: new RegExp(`^${escaped}/`) } };
 }
 
 export function buildNextDueQuery(excludeDomains: string[], excludeUrl?: string) {
