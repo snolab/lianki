@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.1
+// @version     2.24.3
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -2007,7 +2007,6 @@
   }
   function main() {
     window.LIANKI_USERSCRIPT_INSTALLED = true;
-    const API_HOSTS = ["www.lianki.com", "beta.lianki.com"];
     const ORIGIN = (() => {
       try {
         const u = new URL(GM_info?.script?.downloadURL || "");
@@ -3956,13 +3955,10 @@ ${actualUrl}
             console.log(`[Lianki] Synced: ${item.action} ${item.data.url || item.data.noteId}`);
           } catch (err) {
             const status = err?.status;
+            logFail("queue", `queued sync of ${item.id}`, err);
             const permanent = isPermanentSyncFailure(status);
             if (status === 409) {
               adoptServerVersion(item, err.body);
-            logFail("queue", `queued sync of ${item.id}`, err);
-            item.retries = (item.retries || 0) + 1;
-            if (item.retries > 5) {
-              console.warn(`[Lianki] Dropping ${item.id} after 5 retries`);
               queueStorage.removeFromQueue(item.id);
               console.warn(`[Lianki] ${item.id}: server had a newer version — adopted it`);
             } else if (permanent) {
