@@ -21,14 +21,14 @@ import {
   type HLC,
   newServerHLC,
   NEXT_DUE_SORT,
-  sameHostQuery,
+  sameSiteQuery,
   RATING_MAP,
 } from "./fsrs-helpers";
 import { getFSRSNotesCollection } from "./getFSRSNotesCollection";
 import { getHeatmapCacheTag } from "./lib/heatmap-cache";
 import { normalizeUrl } from "@/lib/normalizeUrl";
 import { probeReachability } from "@/lib/probe";
-import { hostOf } from "@/lib/next-card";
+import { siteOf } from "@/lib/next-card";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { restoreNoteFromExport } from "@/lib/yaml-export";
 import {
@@ -89,22 +89,23 @@ export const fsrsHandler = async (req: Request, email?: string) => {
   const FSRSNotes = getFsrsNotes(email);
 
   /**
-   * The next card to review, preferring the host the user is already on.
+   * The next card to review, preferring the site the user is already on.
    *
    * `current` is the page they are reviewing from: the card just graded, or
-   * for /next-url the `excludeUrl` the userscript sends. Cards on the same host
-   * are served first — a same-host hop is a cheap navigation and no context
-   * switch for the reader, and FSRS is indifferent to the order due cards are
-   * cleared in. It is a preference, not a filter: with that host drained the
-   * plain most-recently-due pick takes over, so nobody gets trapped on one site.
+   * for /next-url the `excludeUrl` the userscript sends. Cards on the same site
+   * — registrable domain, any subdomain — are served first: a same-site hop is
+   * a cheap navigation and no context switch for the reader, and FSRS is
+   * indifferent to the order due cards are cleared in. It is a preference, not
+   * a filter: with that site drained the plain most-recently-due pick takes
+   * over, so nobody gets trapped on one site.
    */
   async function findNextDue(req: Request, current?: string) {
     const base = nextDueQuery(req, current);
-    const host = hostOf(
+    const site = siteOf(
       current ?? new URL(req.url, "http://localhost").searchParams.get("excludeUrl"),
     );
-    if (host) {
-      const same = await FSRSNotes.findOne(sameHostQuery(base, host), { sort: NEXT_DUE_SORT });
+    if (site) {
+      const same = await FSRSNotes.findOne(sameSiteQuery(base, site), { sort: NEXT_DUE_SORT });
       if (same) return same;
     }
     return FSRSNotes.findOne(base, { sort: NEXT_DUE_SORT });

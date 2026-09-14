@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { hostOf, pickNextDue } from "@/lib/next-card";
+import { hostOf, pickNextDue, siteOf } from "@/lib/next-card";
 
 const NOW = Date.parse("2026-09-10T12:00:00Z");
 const at = (iso: string) => ({ url: iso, card: { due: iso } });
@@ -41,31 +41,42 @@ describe("pickNextDue", () => {
     expect(pickNextDue([{ url: "broken", card: { due: "not a date" } }], NOW)).toBeNull();
   });
 
-  it("prefers the host you are on, even over a more recently due card elsewhere", () => {
-    // A same-host hop is a cheap navigation and no context switch, and FSRS is
+  it("prefers the site you are on, even over a more recently due card elsewhere", () => {
+    // A same-site hop is a cheap navigation and no context switch, and FSRS is
     // indifferent to the order due cards are cleared in.
     const cards = [
       { url: "https://example.com/fresh", card: { due: "2026-09-10T11:59:00Z" } },
       { url: "https://www.youtube.com/watch?v=stale", card: { due: "2026-01-01T00:00:00Z" } },
       { url: "https://www.youtube.com/watch?v=later", card: { due: "2026-06-01T00:00:00Z" } },
     ];
-    expect(pickNextDue(cards, NOW, "www.youtube.com")?.url).toBe(
+    expect(pickNextDue(cards, NOW, "youtube.com")?.url).toBe(
       "https://www.youtube.com/watch?v=later",
     );
   });
 
-  it("is a preference, not a filter: a drained host falls through to the plain rule", () => {
+  it("treats subdomains of one registrable domain as the same site", () => {
+    // zhihu.com and zhuanlan.zhihu.com are one site to the reader; so are
+    // docs.google.com and console.cloud.google.com.
+    const cards = [
+      { url: "https://example.com/fresh", card: { due: "2026-09-10T11:59:00Z" } },
+      { url: "https://zhuanlan.zhihu.com/p/1", card: { due: "2026-01-01T00:00:00Z" } },
+    ];
+    expect(pickNextDue(cards, NOW, siteOf("https://www.zhihu.com/question/1"))?.url).toBe(
+      "https://zhuanlan.zhihu.com/p/1",
+    );
+  });
+
+  it("is a preference, not a filter: a drained site falls through to the plain rule", () => {
     const cards = [
       { url: "https://example.com/fresh", card: { due: "2026-09-10T11:59:00Z" } },
       { url: "https://www.youtube.com/watch?v=x", card: { due: "2027-01-01T00:00:00Z" } },
     ];
-    expect(pickNextDue(cards, NOW, "www.youtube.com")?.url).toBe("https://example.com/fresh");
+    expect(pickNextDue(cards, NOW, "youtube.com")?.url).toBe("https://example.com/fresh");
     expect(pickNextDue(cards, NOW, "nothing.test")?.url).toBe("https://example.com/fresh");
   });
 
-  it("matches the host exactly, port included", () => {
+  it("hostOf keeps the exact host, port included", () => {
     expect(hostOf("https://a.test:8443/x")).toBe("a.test:8443");
-    expect(hostOf("https://www.youtube.com/watch?v=1")).toBe("www.youtube.com");
     expect(hostOf("not a url")).toBeNull();
     expect(hostOf(null)).toBeNull();
   });
