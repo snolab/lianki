@@ -183,7 +183,7 @@ describe("READ", () => {
     expect(data.url).toBe(TEST_URL);
   });
 
-  describe("same-site preference", () => {
+  describe("same-origin preference", () => {
     // Reviewing is a chain of page loads. A same-host hop is a cheap one, and
     // FSRS does not care what order due cards are cleared in — so the card on
     // the site you are already on comes first, regardless of due date.
@@ -193,7 +193,7 @@ describe("READ", () => {
     const dueAgo = (url: string, ms: number) =>
       testCollection.updateOne({ url }, { $set: { "card.due": new Date(Date.now() - ms) } });
 
-    test("next-url prefers the site of the page you are on, even over a more recent due", async () => {
+    test("next-url prefers the origin of the page you are on, even over a more recent due", async () => {
       await createNote(YT_A);
       await createNote(YT_B);
       await createNote(OTHER);
@@ -208,24 +208,30 @@ describe("READ", () => {
       expect((await res.json()).url).toBe(YT_B);
     });
 
-    test("groups subdomains: a card on zhuanlan.zhihu.com follows one on www.zhihu.com", async () => {
+    test("is exact: a subdomain or another scheme is a different origin", async () => {
+      // zhuanlan.zhihu.com and www.zhihu.com share a domain but are different
+      // products with different content; moving between them is the context
+      // switch the preference exists to avoid.
       const ZH_Q = "https://www.zhihu.com/question/1";
       const ZH_COL = "https://zhuanlan.zhihu.com/p/1";
+      const ZH_HTTP = "http://www.zhihu.com/question/2";
       await createNote(ZH_Q);
       await createNote(ZH_COL);
+      await createNote(ZH_HTTP);
       await createNote(OTHER);
       await dueAgo(ZH_Q, 60_000);
       await dueAgo(ZH_COL, 86_400_000);
+      await dueAgo(ZH_HTTP, 86_400_000);
       await dueAgo(OTHER, 1_000);
 
       const res = await fsrsHandler(
         makeReq("GET", `/api/fsrs/next-url?excludeUrl=${encodeURIComponent(ZH_Q)}`),
         TEST_EMAIL,
       );
-      expect((await res.json()).url).toBe(ZH_COL);
+      expect((await res.json()).url).toBe(OTHER);
     });
 
-    test("falls through to the plain rule once the site is drained", async () => {
+    test("falls through to the plain rule once the origin is drained", async () => {
       // A preference, never a filter — or you could be trapped on one site.
       await createNote(YT_A);
       await createNote(OTHER);
@@ -239,7 +245,7 @@ describe("READ", () => {
       expect((await res.json()).url).toBe(OTHER);
     });
 
-    test("a review's nextUrl stays on the site of the card just graded", async () => {
+    test("a review's nextUrl stays on the origin of the card just graded", async () => {
       await createNote(YT_A);
       await createNote(YT_B);
       await createNote(OTHER);
@@ -255,7 +261,7 @@ describe("READ", () => {
     });
 
     test("composes with excludeDomains on a real Mongo query", async () => {
-      // The site filter is a `$regex` sibling of the existing `$not`/`$nin`
+      // The origin filter is a `$regex` sibling of the existing `$not`/`$nin`
       // operators on `url`. That combination has to be accepted by Mongo, not
       // just by the D1 shim's in-memory matcher.
       const YT_SHORTS = "https://www.youtube.com/shorts/x";
@@ -273,7 +279,7 @@ describe("READ", () => {
         ),
         TEST_EMAIL,
       );
-      // Same site would be YT_SHORTS, but the whole domain is excluded.
+      // Same origin would be YT_SHORTS, but the whole domain is excluded.
       expect((await res.json()).url).toBe(OTHER);
     });
   });

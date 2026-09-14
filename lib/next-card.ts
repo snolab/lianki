@@ -7,12 +7,18 @@
  * end of, and the most recently due card is the one you last decided was worth
  * remembering.
  *
- * On top of that, cards on the site you are already on come first. Reviewing is
- * a chain of page loads, and a same-site hop is a cheap one: warm caches, a live
- * session, no context switch for the reader either. FSRS does not care what
- * order due cards are cleared in, so grouping them costs nothing. It is a
- * PREFERENCE, never a filter — once the site is drained the pick falls through
+ * On top of that, cards on the origin you are already on come first. Reviewing
+ * is a chain of page loads, and a same-origin hop is a cheap one: warm caches, a
+ * live session, no context switch for the reader either. FSRS does not care
+ * what order due cards are cleared in, so grouping them costs nothing. It is a
+ * PREFERENCE, never a filter — once the origin is drained the pick falls through
  * to the plain rule, so you cannot get trapped on one site.
+ *
+ * Origin, exactly as the browser defines it: scheme + host + port. Not the
+ * registrable domain — zhuanlan.zhihu.com and www.zhihu.com share one but are
+ * different products with different content, and moving between them is the
+ * context switch this exists to avoid. Being the browser's own notion, it needs
+ * no suffix table and is right for localhost:3000 and a tunnel hostname alike.
  *
  * Kept pure and separate from the IndexedDB read so the choice can be tested
  * without a browser, and so the local deck and the cloud cannot drift apart on
@@ -20,6 +26,17 @@
  */
 
 export type DueCandidate = { url: string; title?: string; card: { due: string | Date } };
+
+/** The origin of a url — scheme, host, port — or null when it will not parse. */
+export function originOf(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const o = new URL(url).origin;
+    return o === "null" ? null : o;
+  } catch {
+    return null;
+  }
+}
 
 /** The host of a url, or null when it will not parse. */
 export function hostOf(url: string | null | undefined): string | null {
@@ -82,9 +99,11 @@ const TWO_LABEL_SUFFIXES = new Set([
 /**
  * The site a url belongs to: its registrable domain, port dropped, `www.`
  * folded in. `www.zhihu.com` and `zhuanlan.zhihu.com` are one site; so are
- * `docs.google.com` and `console.cloud.google.com`. The same-site preference
- * groups on this rather than the exact host, because that is the unit a reader
- * experiences as "still on the same site".
+ * `docs.google.com` and `console.cloud.google.com`.
+ *
+ * NOT what the next-card preference uses — that is `originOf`, because those
+ * pairs are different products to a reader. This is the coarser grouping for
+ * places that want "the same publisher", such as the immersion-site matrix.
  */
 export function siteOf(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -106,22 +125,22 @@ export function siteOf(url: string | null | undefined): string | null {
 export function pickNextDue<T extends DueCandidate>(
   cards: T[],
   now = Date.now(),
-  preferSite: string | null = null,
+  preferOrigin: string | null = null,
 ): T | null {
   let best: T | null = null;
   let bestDue = -Infinity;
-  let bestSameSite = false;
+  let bestSameOrigin = false;
   for (const c of cards) {
     const due = new Date(c.card.due).getTime();
     // NaN from a malformed date fails every comparison, so such a card is
     // skipped rather than being treated as due at the epoch and served forever.
     if (!(due <= now)) continue;
-    const sameSite = preferSite !== null && siteOf(c.url) === preferSite;
-    // Same site beats a later due date; among equals, the later due date wins.
-    if (sameSite !== bestSameSite ? sameSite : due > bestDue) {
+    const sameOrigin = preferOrigin !== null && originOf(c.url) === preferOrigin;
+    // Same origin beats a later due date; among equals, the later due date wins.
+    if (sameOrigin !== bestSameOrigin ? sameOrigin : due > bestDue) {
       best = c;
       bestDue = due;
-      bestSameSite = sameSite;
+      bestSameOrigin = sameOrigin;
     }
   }
   return best;

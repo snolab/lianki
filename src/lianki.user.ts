@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.23.34
+// @version     2.23.35
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -139,67 +139,17 @@ function isPermanentSyncFailure(status) {
 }
 
 /**
- * Public suffixes that take two labels, so the registrable domain is three.
- * Mirror of TWO_LABEL_SUFFIXES in lib/next-card.ts — a drift test compares
- * the two implementations on the same inputs.
+ * The origin of a url — scheme, host, port — or null when it will not parse.
+ * Same-origin cards are served first; see GMCardStorage.getDueCards. Mirror of
+ * originOf in lib/next-card.ts.
  */
-const TWO_LABEL_SUFFIXES = new Set([
-  "co.jp",
-  "ne.jp",
-  "or.jp",
-  "ac.jp",
-  "go.jp",
-  "co.uk",
-  "org.uk",
-  "ac.uk",
-  "gov.uk",
-  "com.cn",
-  "net.cn",
-  "org.cn",
-  "gov.cn",
-  "com.au",
-  "net.au",
-  "org.au",
-  "com.br",
-  "com.tw",
-  "com.hk",
-  "com.sg",
-  "com.mx",
-  "co.kr",
-  "co.in",
-  "co.nz",
-  "co.za",
-  "pages.dev",
-  "workers.dev",
-  "github.io",
-  "gitlab.io",
-  "vercel.app",
-  "netlify.app",
-  "herokuapp.com",
-  "web.app",
-  "firebaseapp.com",
-  "azurewebsites.net",
-  "cloudfront.net",
-]);
-
-/**
- * The site a url belongs to: registrable domain, port dropped, www folded in.
- * Same-site cards are served first — see GMCardStorage.getDueCards. Mirror of
- * siteOf in lib/next-card.ts.
- */
-function siteOf(url) {
-  let hostname;
+function originOf(url) {
   try {
-    hostname = new URL(url).hostname.toLowerCase();
+    const o = new URL(url).origin;
+    return o === "null" ? null : o;
   } catch {
     return null;
   }
-  if (!hostname) return null;
-  if (/^[\d.]+$/.test(hostname) || hostname.includes(":")) return hostname;
-  const labels = hostname.split(".");
-  if (labels.length <= 2) return hostname;
-  const take = TWO_LABEL_SUFFIXES.has(labels.slice(-2).join(".")) ? 3 : 2;
-  return labels.slice(-take).join(".");
 }
 
 class GMCardStorage {
@@ -352,17 +302,17 @@ class GMCardStorage {
   /**
    * Due cards in the order they should be served.
    *
-   * Cards on `preferSite` come first, then most recently due — the same rule
+   * Cards on `preferOrigin` come first, then most recently due — the same rule
    * as the server's findNextDue. Offline and online must agree, or the card
-   * you get depends on connectivity. Same-site is a preference, not a filter:
-   * once that site is drained the rest of the deck follows.
+   * you get depends on connectivity. Same-origin is a preference, not a filter:
+   * once that origin is drained the rest of the deck follows.
    */
-  getDueCards(limit = 10, preferSite = null) {
+  getDueCards(limit = 10, preferOrigin = null) {
     const now = new Date();
-    const onSite = (e) => (preferSite !== null && siteOf(e.url) === preferSite ? 1 : 0);
+    const onOrigin = (e) => (preferOrigin !== null && originOf(e.url) === preferOrigin ? 1 : 0);
     return this._index()
       .filter((e) => !e.del && new Date(e.due) <= now)
-      .sort((a, b) => onSite(b) - onSite(a) || new Date(b.due) - new Date(a.due))
+      .sort((a, b) => onOrigin(b) - onOrigin(a) || new Date(b.due) - new Date(a.due))
       .slice(0, limit)
       .map((e) => {
         const raw = GM_getValue(CARD_PREFIX + e.hash, "");
@@ -1642,7 +1592,7 @@ function main() {
       // Find next card from local cache before server call
       if (offlineReady) {
         try {
-          const dueCards = cardStorage.getDueCards(2, siteOf(location.href));
+          const dueCards = cardStorage.getDueCards(2, location.origin);
           const nextCard = dueCards.find((c) => c.url !== url);
           prefetchedNextUrl = nextCard?.url ?? null;
           if (prefetchedNextUrl) prefetchNextPage(prefetchedNextUrl);
@@ -2425,7 +2375,7 @@ function main() {
           // Must set prefetchedNextUrl BEFORE afterReview(), because the server
           // hasn't received this review yet and would return the same card.
           try {
-            const dueCards = cardStorage.getDueCards(2, siteOf(location.href));
+            const dueCards = cardStorage.getDueCards(2, location.origin);
             const normalizedCurrent = normalizeUrl(location.href);
             const nextCard = dueCards.find((c) => c.url !== url && c.url !== normalizedCurrent);
             prefetchedNextUrl = nextCard?.url ?? null;
@@ -2684,7 +2634,7 @@ function main() {
     if (!offlineReady) return;
 
     try {
-      const dueCards = cardStorage.getDueCards(2, siteOf(location.href));
+      const dueCards = cardStorage.getDueCards(2, location.origin);
       const normalizedCurrent = normalizeUrl(location.href);
       const nextCard = dueCards.find((c) => c.url !== normalizedCurrent);
       if (nextCard) {
