@@ -28,6 +28,7 @@ export const APP_NAV: NavItem[] = [
   { key: "selfIntro", href: "/self-intro", icon: "🗣", group: "main" },
   { key: "read", href: "/read", icon: "📖", group: "main" },
   { key: "addNote", href: "/add-note", icon: "➕", group: "main" },
+  { key: "lab", href: "/lab", icon: "🧪", group: "main" },
   { key: "import", href: "/import", icon: "⬆", group: "data" },
   { key: "data", href: "/data", icon: "💾", group: "data" },
   { key: "preferences", href: "/preferences", icon: "⚙", group: "account" },
