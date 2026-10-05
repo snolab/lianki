@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.5
+// @version     2.24.6
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1330,6 +1330,15 @@ function main() {
     return el;
   }
 
+  // Patch the header in place rather than re-rendering, so a half-typed note
+  // keeps its focus.
+  function showDueCount(n) {
+    if (typeof n !== "number") return; // older server without dueCount
+    state.dueCount = n;
+    const el = dialog?.querySelector("[data-lk-due]");
+    if (el) el.textContent = `${n} due`;
+  }
+
   function renderDialog() {
     if (!dialog) return;
     const { phase, options, error, message } = state;
@@ -1356,6 +1365,17 @@ function main() {
     const titleSpan = document.createElement("span");
     Object.assign(titleSpan.style, { fontWeight: "700", fontSize: "16px" });
     titleSpan.textContent = "🔖 Lianki";
+    // Filled in by showDueCount once next-url answers; kept across re-renders.
+    const dueSpan = document.createElement("span");
+    dueSpan.dataset.lkDue = "";
+    Object.assign(dueSpan.style, {
+      marginLeft: "8px",
+      fontWeight: "400",
+      fontSize: "12px",
+      color: "var(--lk-muted)",
+    });
+    if (typeof state.dueCount === "number") dueSpan.textContent = `${state.dueCount} due`;
+    titleSpan.appendChild(dueSpan);
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "×";
     closeBtn.setAttribute(
@@ -1604,6 +1624,7 @@ function main() {
           .then((data) => {
             prefetchedNextUrl = data.url;
             if (data.url) prefetchNextPage(data.url);
+            showDueCount(data.dueCount);
           })
           .catch(() => {});
         // Use options from add-card response if available (optimization)
@@ -2960,6 +2981,7 @@ function main() {
           .then((data) => {
             prefetchedNextUrl = data.url;
             if (data.url) prefetchNextPage(data.url);
+            showDueCount(data.dueCount);
           })
           .catch(() => {});
 

@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.5
+// @version     2.24.6
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -2582,6 +2582,12 @@
       el._shadowHost = shadowHost;
       return el;
     }
+    function showDueCount(n) {
+      if (typeof n !== "number") return;
+      state.dueCount = n;
+      const el = dialog?.querySelector("[data-lk-due]");
+      if (el) el.textContent = `${n} due`;
+    }
     function renderDialog() {
       if (!dialog) return;
       const { phase, options, error, message } = state;
@@ -2603,6 +2609,16 @@
       const titleSpan = document.createElement("span");
       Object.assign(titleSpan.style, { fontWeight: "700", fontSize: "16px" });
       titleSpan.textContent = "\uD83D\uDD16 Lianki";
+      const dueSpan = document.createElement("span");
+      dueSpan.dataset.lkDue = "";
+      Object.assign(dueSpan.style, {
+        marginLeft: "8px",
+        fontWeight: "400",
+        fontSize: "12px",
+        color: "var(--lk-muted)",
+      });
+      if (typeof state.dueCount === "number") dueSpan.textContent = `${state.dueCount} due`;
+      titleSpan.appendChild(dueSpan);
       const closeBtn = document.createElement("button");
       closeBtn.textContent = "×";
       closeBtn.setAttribute(
@@ -2833,6 +2849,7 @@ ${state.errorDetails}`);
             .then((data) => {
               prefetchedNextUrl = data.url;
               if (data.url) prefetchNextPage(data.url);
+              showDueCount(data.dueCount);
             })
             .catch(() => {});
           if (note.options) {
@@ -3820,6 +3837,7 @@ ${actualUrl}
             .then((data) => {
               prefetchedNextUrl = data.url;
               if (data.url) prefetchNextPage(data.url);
+              showDueCount(data.dueCount);
             })
             .catch(() => {});
           if (note.options) {

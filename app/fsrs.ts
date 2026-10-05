@@ -249,8 +249,12 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       return JSONR({ _id: note._id.toString(), url: note.url, title: note.title ?? null });
     },
     "GET /api/fsrs/next-url(?:/|$|\\?)": async (req) => {
-      const note = await findNextDue(req);
-      return JSONR({ url: note?.url ?? null, title: note?.title ?? null });
+      // dueCount lets the review dialog show the backlog so the user can pace.
+      const [note, dueCount] = await Promise.all([
+        findNextDue(req),
+        FSRSNotes.countDocuments({ "card.due": { $lte: new Date() } }),
+      ]);
+      return JSONR({ url: note?.url ?? null, title: note?.title ?? null, dueCount });
     },
     "GET /api/fsrs/review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (
       req,
