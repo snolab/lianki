@@ -12,6 +12,8 @@ import {
   roadmapGoalRow,
   preferenceRow,
   apiTokenRow,
+  watchStatsRow,
+  readMaterialRow,
 } from "./mappers";
 
 type Doc = Record<string, unknown>;
@@ -28,6 +30,8 @@ export type MigrationResult = {
  */
 const OWNED_TABLES = [
   "fsrs_notes",
+  "watch_stats",
+  "read_materials",
   "roadmap_goals",
   "preferences",
   "api_tokens",
@@ -91,6 +95,33 @@ export async function generateMigrationSql(
     }
   }
   emit("roadmap_goals", goalRows);
+
+  // Watch time is a separate per-email collection from the notes; leaving it out
+  // dropped every user's watch history at cutover.
+  const watchRows: Doc[] = [];
+  for (const c of collections) {
+    if (!c.name.startsWith("WatchStats@")) continue;
+    const email = c.name.slice("WatchStats@".length);
+    if (!email) {
+      warnings.push(`skipped WatchStats collection with empty email suffix: ${c.name}`);
+      continue;
+    }
+    for (const d of await db.collection(c.name).find({}).toArray()) {
+      if (d.url) watchRows.push(watchStatsRow(email, d));
+      else warnings.push(`skipped WatchStats doc without url in ${c.name}`);
+    }
+  }
+  emit("watch_stats", watchRows);
+
+  // Materials whose content lives in GridFS would need an R2 copy; warn rather
+  // than load a row whose body is missing.
+  const materials = await db.collection("readMaterials").find({}).toArray();
+  for (const d of materials) {
+    if (d.content == null) {
+      warnings.push(`readMaterials ${String(d._id)} has no inline content (GridFS?), not migrated`);
+    }
+  }
+  emit("read_materials", materials.filter((d) => d.content != null).map(readMaterialRow));
 
   emit("preferences", (await db.collection("preferences").find({}).toArray()).map(preferenceRow));
   emit("api_tokens", (await db.collection("ApiTokens").find({}).toArray()).map(apiTokenRow));

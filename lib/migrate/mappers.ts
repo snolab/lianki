@@ -113,6 +113,36 @@ export function preferenceRow(doc: Doc): Record<string, unknown> {
   return {
     user_id: String(doc.userId),
     mobile_exclude_patterns: doc.mobileExcludePatterns ?? [],
+    // Without this every migrated user silently reverts to the column default.
+    review_order: typeof doc.reviewOrder === "string" ? doc.reviewOrder : "oldest",
+    updated_at: isoOrNow(doc.updatedAt),
+  };
+}
+
+/** WatchStats@{email} doc -> watch_stats. `stats` is already a JSON string in Mongo. */
+export function watchStatsRow(email: string, doc: Doc): Record<string, unknown> {
+  return {
+    email,
+    url: doc.url,
+    stats: typeof doc.stats === "string" ? doc.stats : JSON.stringify(doc.stats ?? {}),
+    wall: Number(doc.wall ?? 0),
+    media: Number(doc.media ?? 0),
+    lang: doc.lang ?? null,
+    title: doc.title ?? null,
+    last_seen: asIso(doc.lastSeen),
+  };
+}
+
+/** readMaterials doc -> read_materials. Only inline content exists in Mongo today. */
+export function readMaterialRow(doc: Doc): Record<string, unknown> {
+  return {
+    id: idOf(doc),
+    user_id: String(doc.userId),
+    title: doc.title ?? "",
+    lines: doc.lines ?? [],
+    r2_key: null,
+    content: doc.content ?? null,
+    created_at: isoOrNow(doc.createdAt),
     updated_at: isoOrNow(doc.updatedAt),
   };
 }

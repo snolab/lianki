@@ -126,6 +126,24 @@ describe("generateMigrationSql (Mongo -> D1 end to end)", () => {
           createdAt: "z",
         },
       ],
+      reviewOrder: "newest",
+      updatedAt: now,
+    });
+    await db.collection("WatchStats@alice@example.com").insertOne({
+      url: "https://www.youtube.com/watch?v=abc",
+      title: "A video",
+      stats: JSON.stringify({ v: 1, by: {} }),
+      wall: 120,
+      media: 90,
+      lang: "ja",
+      lastSeen: "2026-05-02T00:00:00.000Z",
+    });
+    await db.collection("readMaterials").insertOne({
+      userId: "u1",
+      title: "T",
+      lines: ["a", "b"],
+      content: "a\nb",
+      createdAt: now,
       updatedAt: now,
     });
     await db.collection("ApiTokens").insertOne({
@@ -159,6 +177,8 @@ describe("generateMigrationSql (Mongo -> D1 end to end)", () => {
     expect(counts.roadmap_goals).toBe(1);
     expect(counts.preferences).toBe(1);
     expect(counts.api_tokens).toBe(1);
+    expect(counts.watch_stats).toBe(1);
+    expect(counts.read_materials).toBe(1);
     expect(warnings).toHaveLength(0);
 
     // apply schema + generated data into a fresh in-memory D1
@@ -192,6 +212,23 @@ describe("generateMigrationSql (Mongo -> D1 end to end)", () => {
     // preferences
     const prefs = await new PreferencesD1Repo(db, "u1").get();
     expect(prefs!.mobileExcludePatterns[0].pattern).toBe("x.com");
+    expect(prefs!.reviewOrder).toBe("newest");
+
+    // watch stats — keyed by email like the notes
+    const watch = await db
+      .prepare("SELECT * FROM watch_stats WHERE email = ? AND url = ?")
+      .bind("alice@example.com", "https://www.youtube.com/watch?v=abc")
+      .first();
+    expect(watch!.wall).toBe(120);
+    expect(watch!.lang).toBe("ja");
+    expect(watch!.last_seen).toBe("2026-05-02T00:00:00.000Z");
+
+    // read material, inline content
+    const mat = await db
+      .prepare("SELECT * FROM read_materials WHERE user_id = ?")
+      .bind("u1")
+      .first();
+    expect(mat!.content).toBe("a\nb");
 
     // api token
     expect(await new ApiTokensD1Repo(db).emailByHash("abc123")).toBe("alice@example.com");
