@@ -126,6 +126,24 @@ describe("generateMigrationSql (Mongo -> D1 end to end)", () => {
           createdAt: "z",
         },
       ],
+      reviewOrder: "newest",
+      updatedAt: now,
+    });
+    await db.collection("WatchStats@alice@example.com").insertOne({
+      url: "https://www.youtube.com/watch?v=abc",
+      title: "A video",
+      stats: JSON.stringify({ v: 1, by: {} }),
+      wall: 120,
+      media: 90,
+      lang: "ja",
+      lastSeen: "2026-05-02T00:00:00.000Z",
+    });
+    await db.collection("readMaterials").insertOne({
+      userId: "u1",
+      title: "T",
+      lines: ["a", "b"],
+      content: "a\nb",
+      createdAt: now,
       updatedAt: now,
     });
     await db.collection("ApiTokens").insertOne({
@@ -159,6 +177,8 @@ describe("generateMigrationSql (Mongo -> D1 end to end)", () => {
     expect(counts.roadmap_goals).toBe(1);
     expect(counts.preferences).toBe(1);
     expect(counts.api_tokens).toBe(1);
+    expect(counts.watch_stats).toBe(1);
+    expect(counts.read_materials).toBe(1);
     expect(warnings).toHaveLength(0);
 
     // apply schema + generated data into a fresh in-memory D1
@@ -192,9 +212,81 @@ describe("generateMigrationSql (Mongo -> D1 end to end)", () => {
     // preferences
     const prefs = await new PreferencesD1Repo(db, "u1").get();
     expect(prefs!.mobileExcludePatterns[0].pattern).toBe("x.com");
+    expect(prefs!.reviewOrder).toBe("newest");
+
+    // watch stats — keyed by email like the notes
+    const watch = await db
+      .prepare("SELECT * FROM watch_stats WHERE email = ? AND url = ?")
+      .bind("alice@example.com", "https://www.youtube.com/watch?v=abc")
+      .first();
+    expect(watch!.wall).toBe(120);
+    expect(watch!.lang).toBe("ja");
+    expect(watch!.last_seen).toBe("2026-05-02T00:00:00.000Z");
+
+    // read material, inline content
+    const mat = await db
+      .prepare("SELECT * FROM read_materials WHERE user_id = ?")
+      .bind("u1")
+      .first();
+    expect(mat!.content).toBe("a\nb");
 
     // api token
     expect(await new ApiTokensD1Repo(db).emailByHash("abc123")).toBe("alice@example.com");
+  }, 60_000);
+
+  test("duplicate urls: the better note wins and watch stats merge, whatever the order", async () => {
+    // Found on the live data: Mongo held two docs for one url, and the load kept
+    // the last one — the worse copy every time (8 reps over 9, 5s over 420s).
+    const db = client.db("lianki-dupes");
+    const url = "https://example.com/dup";
+    await db.collection("FSRSNotes@a@x.com").insertMany([
+      { url, card: { due: new Date("2026-06-01T00:00:00Z"), reps: 9 }, log: [1, 2, 3] },
+      { url, card: { due: new Date("2026-05-01T00:00:00Z"), reps: 8 }, log: [1, 2] },
+    ]);
+    const dev = (wall: number, last: string) => ({ wall, media: wall, sessions: 1, last });
+    await db.collection("WatchStats@a@x.com").insertMany([
+      {
+        url,
+        stats: JSON.stringify({ v: 1, by: { laptop: dev(420, "2026-10-05T00:00:00.000Z") } }),
+        wall: 420,
+      },
+      {
+        url,
+        stats: JSON.stringify({ v: 1, by: { phone: dev(5, "2026-09-24T00:00:00.000Z") } }),
+        wall: 5,
+      },
+    ]);
+
+    const { sql, counts, warnings } = await generateMigrationSql(db);
+    expect(counts.fsrs_notes).toBe(1);
+    expect(counts.watch_stats).toBe(1);
+    expect(warnings).toHaveLength(2);
+    // A speed-markers-only doc (no card) stays out of the due queue, as in Mongo.
+    await db
+      .collection("FSRSNotes@a@x.com")
+      .insertOne({ url: "https://video.example", speedMarkers: { 1: 2 } });
+
+    const d1 = createTestD1(SCHEMA);
+    d1.raw().exec(sql);
+    const D = d1 as unknown as D1Like;
+    const note = await new FsrsNotesD1Repo(D, "a@x.com").getByUrl(url);
+    expect(note!.card.reps).toBe(9);
+    const w = await D.prepare("SELECT wall FROM watch_stats WHERE email = ?")
+      .bind("a@x.com")
+      .first();
+    expect(w!.wall).toBe(425); // both devices kept
+
+    const again = await generateMigrationSql(db);
+    const d2 = createTestD1(SCHEMA);
+    d2.raw().exec(again.sql);
+    const repo = new FsrsNotesD1Repo(d2 as unknown as D1Like, "a@x.com");
+    expect(await repo.countAll()).toBe(2);
+    expect((await repo.getByUrl("https://video.example"))!.card).toBeUndefined();
+    const due = await d2
+      .prepare("SELECT COUNT(*) AS c FROM fsrs_notes WHERE email = ? AND card_due <= ?")
+      .bind("a@x.com", new Date().toISOString())
+      .first();
+    expect(due!.c).toBe(1);
   }, 60_000);
 
   test("--replace removes rows Mongo no longer has; the default leaves them", async () => {

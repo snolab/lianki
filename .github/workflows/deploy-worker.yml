@@ -1,0 +1,65 @@
+name: Deploy Worker
+
+# Deploys the OpenNext build of main to the `lianki` Worker
+# (https://lianki.snomiao.workers.dev), so the CF cutover target tracks what
+# Vercel serves instead of drifting. Before this existed the Worker was only
+# deployed by hand and fell weeks behind (userscript 2.24.1 vs 2.24.5, no /lab),
+# which failed the differential gate for reasons that had nothing to do with
+# the Workers runtime. See docs/cf-d1-migration.md.
+#
+# Runs only after CI passes on main — never deploys a red commit.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# Queue rather than cancel: a cancelled deploy can leave the D1 migration
+# applied with the old Worker still serving.
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit CI just passed, not whatever main is by now.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      # wrangler requires Node >= 22.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # Same flags as qa:all's build. NEXT_PUBLIC_* is inlined at build time, so
+      # the real Turnstile site key must be present here, not as a Worker var.
+      - name: OpenNext build
+        run: bunx opennextjs-cloudflare build
+        env:
+          CF_BUILD: "1"
+          DB_BACKEND: d1
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+      # By directory, never one file: tracked in d1_migrations, so idempotent and
+      # never leaves the schema a migration behind the code.
+      - name: D1 migrations
+        run: bunx wrangler d1 migrations apply lianki --remote
+      - name: Deploy
+        run: bunx wrangler deploy
+      # Differential check against lianki.com. Advisory until cutover: Vercel
+      # deploys the same commit on its own schedule, so the asset comparison can
+      # race it.
+      - name: Differential gate
+        continue-on-error: true
+        run: bun scripts/qa/qa-worker.mjs https://lianki.snomiao.workers.dev

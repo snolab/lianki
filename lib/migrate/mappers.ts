@@ -1,6 +1,8 @@
 // MongoDB document -> D1 row mappers for the migration.
 // Pure functions, unit tested. Mongo dates arrive as JS Date objects.
 
+import { CARDLESS_DUE } from "@/lib/repos/fsrsNotesD1";
+
 type Doc = Record<string, unknown>;
 
 /** Stringify a Mongo `id`/`_id` (ObjectId or string) to a plain string. */
@@ -82,19 +84,22 @@ export function verificationRow(doc: Doc): Record<string, unknown> {
 // ── app tables ───────────────────────────────────────────────────────────────
 
 export function fsrsNoteRow(email: string, doc: Doc): Record<string, unknown> {
-  const card = (doc.card ?? {}) as Doc;
+  const card = doc.card as Doc | undefined;
   return {
     id: idOf(doc),
     email,
     url: doc.url,
     title: doc.title ?? null,
-    card: doc.card ?? {},
+    // A cardless note (speed markers only) is never due in Mongo; "due now"
+    // here put 411 of one user's watched videos into their review queue.
+    // JSON text "null" (the column is NOT NULL) — the same form the repo writes.
+    card: card ?? "null",
     log: doc.log ?? [],
     notes: doc.notes ?? null,
     speed_markers: doc.speedMarkers ?? null,
     hlc: doc.hlc ?? null,
     device_id: doc.deviceId ?? null,
-    card_due: isoOrNow(card.due),
+    card_due: card ? isoOrNow(card.due) : CARDLESS_DUE,
   };
 }
 
@@ -113,6 +118,36 @@ export function preferenceRow(doc: Doc): Record<string, unknown> {
   return {
     user_id: String(doc.userId),
     mobile_exclude_patterns: doc.mobileExcludePatterns ?? [],
+    // Without this every migrated user silently reverts to the column default.
+    review_order: typeof doc.reviewOrder === "string" ? doc.reviewOrder : "oldest",
+    updated_at: isoOrNow(doc.updatedAt),
+  };
+}
+
+/** WatchStats@{email} doc -> watch_stats. `stats` is already a JSON string in Mongo. */
+export function watchStatsRow(email: string, doc: Doc): Record<string, unknown> {
+  return {
+    email,
+    url: doc.url,
+    stats: typeof doc.stats === "string" ? doc.stats : JSON.stringify(doc.stats ?? {}),
+    wall: Number(doc.wall ?? 0),
+    media: Number(doc.media ?? 0),
+    lang: doc.lang ?? null,
+    title: doc.title ?? null,
+    last_seen: asIso(doc.lastSeen),
+  };
+}
+
+/** readMaterials doc -> read_materials. Only inline content exists in Mongo today. */
+export function readMaterialRow(doc: Doc): Record<string, unknown> {
+  return {
+    id: idOf(doc),
+    user_id: String(doc.userId),
+    title: doc.title ?? "",
+    lines: doc.lines ?? [],
+    r2_key: null,
+    content: doc.content ?? null,
+    created_at: isoOrNow(doc.createdAt),
     updated_at: isoOrNow(doc.updatedAt),
   };
 }
