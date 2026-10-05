@@ -239,7 +239,7 @@ Keep the Vercel deployment live but idle for a few days as the instant rollback.
 | 1 — Provision CF | DONE — D1 `lianki` + R2 `lianki-blobs` created, schema applied |
 | 2 — Code wiring | DONE — auth, FSRS handler, all data routes (incl. roadmap progress), R2. Only the IndexedDB-mirror cleanup (2d) and the 2e Workers fixups remain. |
 | 3 — Data migration | DONE — refreshed 2026-09-09 with `--replace`; D1 1958 notes == Mongo 1958, verified url-by-url |
-| 4 — Preview deploy + QA | LIVE at https://lianki.snomiao.workers.dev — all 11 secrets set, differential gate 11/13 (`bun scripts/qa/qa-worker.mjs`). Remaining: OAuth callback URLs for the workers.dev host must be added in the GitHub/Google consoles before sign-in can be QA'd |
+| 4 — Preview deploy + QA | LIVE at https://lianki.snomiao.workers.dev, auto-deployed from main by `.github/workflows/deploy-worker.yml` after CI passes (added 2026-10-05; the hand-deployed Worker had drifted weeks behind). All 11 secrets set, differential gate 15/15 on 2026-10-05 (`bun scripts/qa/qa-worker.mjs`). The `cf-native` rewrite branch is shelved; OpenNext is the cutover path. Remaining: OAuth callback URLs for the workers.dev host must be added in the GitHub/Google consoles before sign-in can be QA'd |
 | 5 — DNS cutover | pending |
 
 The build (`bun run build`) and OpenNext build pass. The D1 code paths are
