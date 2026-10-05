@@ -1,6 +1,8 @@
 // MongoDB document -> D1 row mappers for the migration.
 // Pure functions, unit tested. Mongo dates arrive as JS Date objects.
 
+import { CARDLESS_DUE } from "@/lib/repos/fsrsNotesD1";
+
 type Doc = Record<string, unknown>;
 
 /** Stringify a Mongo `id`/`_id` (ObjectId or string) to a plain string. */
@@ -82,19 +84,22 @@ export function verificationRow(doc: Doc): Record<string, unknown> {
 // ── app tables ───────────────────────────────────────────────────────────────
 
 export function fsrsNoteRow(email: string, doc: Doc): Record<string, unknown> {
-  const card = (doc.card ?? {}) as Doc;
+  const card = doc.card as Doc | undefined;
   return {
     id: idOf(doc),
     email,
     url: doc.url,
     title: doc.title ?? null,
-    card: doc.card ?? {},
+    // A cardless note (speed markers only) is never due in Mongo; "due now"
+    // here put 411 of one user's watched videos into their review queue.
+    // JSON text "null" (the column is NOT NULL) — the same form the repo writes.
+    card: card ?? "null",
     log: doc.log ?? [],
     notes: doc.notes ?? null,
     speed_markers: doc.speedMarkers ?? null,
     hlc: doc.hlc ?? null,
     device_id: doc.deviceId ?? null,
-    card_due: isoOrNow(card.due),
+    card_due: card ? isoOrNow(card.due) : CARDLESS_DUE,
   };
 }
 

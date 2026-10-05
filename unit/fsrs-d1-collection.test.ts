@@ -169,6 +169,24 @@ describe("D1FsrsCollection", () => {
     expect((await col.findOne({ url: "https://new.com" }))!.speedMarkers).toEqual({ 1: 2 });
   });
 
+  test("speedMarkers on a new url stores no card: never due, healed by a later save", async () => {
+    // Mongo's upsert created no card, so watching a video never queued it.
+    // The D1 path used to insert createEmptyCard() — due immediately.
+    await col.updateOne({ url: "https://video.com" }, { $set: { speedMarkers: { 3: 1.5 } } });
+    const note = await col.findOne({ url: "https://video.com" });
+    expect(note!.card).toBeUndefined();
+    expect(await col.countDocuments({ "card.due": { $lte: new Date() } })).toBe(0);
+    expect(await col.countDocuments({})).toBe(1);
+
+    // Saving the page later heals the card (saveNote's `card: {$exists:false}` step).
+    await col.findOneAndUpdate(
+      { url: "https://video.com", card: { $exists: false } } as never,
+      { $set: { card: cardDueAt(new Date(0)) } } as never,
+    );
+    expect(await col.countDocuments({ "card.due": { $lte: new Date() } })).toBe(1);
+    expect((await col.findOne({ url: "https://video.com" }))!.speedMarkers).toEqual({ 3: 1.5 });
+  });
+
   test("deleteOne removes a note", async () => {
     await seed("https://a.com", new Date());
     expect((await col.deleteOne({ url: "https://a.com" })).deletedCount).toBe(1);

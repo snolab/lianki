@@ -247,7 +247,9 @@ export class D1FsrsCollection {
             const { id: _id, ...n } = existing;
             return n;
           })()
-        : { url: filter.url, card: createEmptyCard(), log: [] };
+        : // No card, as Mongo's upsert created none: watching a video must
+          // not enqueue it for review (it would be due immediately).
+          ({ url: filter.url, log: [] } as unknown as FSRSNote);
       await this.repo.upsert({ ...base, speedMarkers: set.speedMarkers }, existing?.id);
       return { matchedCount: 1 };
     }

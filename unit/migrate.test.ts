@@ -261,6 +261,10 @@ describe("generateMigrationSql (Mongo -> D1 end to end)", () => {
     expect(counts.fsrs_notes).toBe(1);
     expect(counts.watch_stats).toBe(1);
     expect(warnings).toHaveLength(2);
+    // A speed-markers-only doc (no card) stays out of the due queue, as in Mongo.
+    await db
+      .collection("FSRSNotes@a@x.com")
+      .insertOne({ url: "https://video.example", speedMarkers: { 1: 2 } });
 
     const d1 = createTestD1(SCHEMA);
     d1.raw().exec(sql);
@@ -271,6 +275,18 @@ describe("generateMigrationSql (Mongo -> D1 end to end)", () => {
       .bind("a@x.com")
       .first();
     expect(w!.wall).toBe(425); // both devices kept
+
+    const again = await generateMigrationSql(db);
+    const d2 = createTestD1(SCHEMA);
+    d2.raw().exec(again.sql);
+    const repo = new FsrsNotesD1Repo(d2 as unknown as D1Like, "a@x.com");
+    expect(await repo.countAll()).toBe(2);
+    expect((await repo.getByUrl("https://video.example"))!.card).toBeUndefined();
+    const due = await d2
+      .prepare("SELECT COUNT(*) AS c FROM fsrs_notes WHERE email = ? AND card_due <= ?")
+      .bind("a@x.com", new Date().toISOString())
+      .first();
+    expect(due!.c).toBe(1);
   }, 60_000);
 
   test("--replace removes rows Mongo no longer has; the default leaves them", async () => {

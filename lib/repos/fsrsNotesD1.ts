@@ -20,11 +20,20 @@ type Row = {
   card_due: string;
 };
 
+/**
+ * `card_due` of a note that has no card yet — e.g. one created only to hold
+ * speed markers. Mongo stores such notes without `card`, which its due query
+ * never matches; this sorts after every real date so `card_due <= now` never
+ * does either, while the note still counts toward the total.
+ */
+export const CARDLESS_DUE = "9999-12-31T23:59:59.999Z";
+
 function rowToNote(row: Row): StoredNote {
   const raw = {
     url: row.url,
     title: row.title ?? undefined,
-    card: JSON.parse(row.card),
+    // Stored as JSON null when absent; surfaced as a missing field, like Mongo.
+    card: JSON.parse(row.card) ?? undefined,
     log: JSON.parse(row.log || "[]"),
     notes: row.notes ?? undefined,
     speedMarkers: row.speed_markers ? JSON.parse(row.speed_markers) : undefined,
@@ -158,7 +167,7 @@ export class FsrsNotesD1Repo {
       .bind(this.email, note.url)
       .first<{ id: string }>();
     const noteId = existing?.id ?? id ?? crypto.randomUUID();
-    const cardDue = new Date(note.card.due).toISOString();
+    const cardDue = note.card ? new Date(note.card.due).toISOString() : CARDLESS_DUE;
     await this.db
       .prepare(
         `INSERT INTO fsrs_notes
@@ -174,7 +183,7 @@ export class FsrsNotesD1Repo {
         this.email,
         note.url,
         note.title ?? null,
-        JSON.stringify(note.card),
+        JSON.stringify(note.card ?? null),
         JSON.stringify(note.log ?? []),
         note.notes ?? null,
         note.speedMarkers ? JSON.stringify(note.speedMarkers) : null,
