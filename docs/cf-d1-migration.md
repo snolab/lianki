@@ -212,14 +212,35 @@ the Google/GitHub OAuth callback allow-lists for testing.
 
 ## Phase 5 — DNS cutover (USER)
 
-1. Add `lianki.com` as a custom domain on the Worker.
-2. Move DNS to Cloudflare; point the apex at the Worker.
-3. Add `https://lianki.com/api/auth/callback/{google,github}` to the OAuth
-   consoles (the www/non-www entries already exist).
-4. Set `DB_BACKEND=d1` as the production var.
-5. Watch logs: `wrangler tail`.
+Zero-loss procedure (rehearsed on the preview 2026-10-05: the full load takes
+~4 s). DNS is already on Cloudflare (orange-cloud proxy in front of Vercel), the
+OAuth callbacks for `lianki.com` already exist, and `DB_BACKEND=d1` is already a
+Worker var.
+
+1. **Prefer a Worker route over a Custom Domain.** A route `lianki.com/*` →
+   `lianki` runs the Worker in front of the proxied record and leaves the DNS
+   record (→ Vercel) untouched, so rollback is deleting the route. A Custom
+   Domain with "override existing record" *deletes* the Vercel record, and
+   rolling back then needs DNS edit rights. Either needs a token or dashboard
+   session with Workers Routes / DNS edit on the `lianki.com` zone — the CI token
+   has neither. Leave `www` on Vercel: it already 301s to the apex.
+2. `T0=$(date -u +%FT%TZ)`, then the `--replace` load (Phase 3 commands).
+3. `bun --env-file=.env.local scripts/cutover/verify.ts` — must print
+   `✓ D1 matches Mongo row-for-row`.
+4. Attach the route. Check `curl -sI https://lianki.com/ | grep -i x-vercel-id`
+   is gone and `https://lianki.com/api/health` returns 200.
+5. `bun --env-file=.env.local scripts/cutover/catchup.ts $T0 --out=tmp/catchup.sql`,
+   review the plan, apply with `wrangler d1 execute lianki --remote --file=…`.
+   Repeat until it reports nothing new (clients with a cached Vercel response
+   can keep writing to Mongo for a few minutes).
+6. Watch logs: `wrangler tail lianki`.
 
 Keep the Vercel deployment live but idle for a few days as the instant rollback.
+
+Load fixes this procedure depends on (found by the 2026-10-05 rehearsal): watch
+stats, read materials and `reviewOrder` were not migrated; duplicate
+(email, url) docs kept the worse copy; and a note without a card (speed
+markers only) became due — 411 watched videos for one user.
 
 ---
 
