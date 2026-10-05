@@ -234,6 +234,45 @@ describe("generateMigrationSql (Mongo -> D1 end to end)", () => {
     expect(await new ApiTokensD1Repo(db).emailByHash("abc123")).toBe("alice@example.com");
   }, 60_000);
 
+  test("duplicate urls: the better note wins and watch stats merge, whatever the order", async () => {
+    // Found on the live data: Mongo held two docs for one url, and the load kept
+    // the last one — the worse copy every time (8 reps over 9, 5s over 420s).
+    const db = client.db("lianki-dupes");
+    const url = "https://example.com/dup";
+    await db.collection("FSRSNotes@a@x.com").insertMany([
+      { url, card: { due: new Date("2026-06-01T00:00:00Z"), reps: 9 }, log: [1, 2, 3] },
+      { url, card: { due: new Date("2026-05-01T00:00:00Z"), reps: 8 }, log: [1, 2] },
+    ]);
+    const dev = (wall: number, last: string) => ({ wall, media: wall, sessions: 1, last });
+    await db.collection("WatchStats@a@x.com").insertMany([
+      {
+        url,
+        stats: JSON.stringify({ v: 1, by: { laptop: dev(420, "2026-10-05T00:00:00.000Z") } }),
+        wall: 420,
+      },
+      {
+        url,
+        stats: JSON.stringify({ v: 1, by: { phone: dev(5, "2026-09-24T00:00:00.000Z") } }),
+        wall: 5,
+      },
+    ]);
+
+    const { sql, counts, warnings } = await generateMigrationSql(db);
+    expect(counts.fsrs_notes).toBe(1);
+    expect(counts.watch_stats).toBe(1);
+    expect(warnings).toHaveLength(2);
+
+    const d1 = createTestD1(SCHEMA);
+    d1.raw().exec(sql);
+    const D = d1 as unknown as D1Like;
+    const note = await new FsrsNotesD1Repo(D, "a@x.com").getByUrl(url);
+    expect(note!.card.reps).toBe(9);
+    const w = await D.prepare("SELECT wall FROM watch_stats WHERE email = ?")
+      .bind("a@x.com")
+      .first();
+    expect(w!.wall).toBe(425); // both devices kept
+  }, 60_000);
+
   test("--replace removes rows Mongo no longer has; the default leaves them", async () => {
     // The load is INSERT OR REPLACE: it can add and update, never delete. So a
     // card deleted in Mongo survives every "idempotent" refresh and comes back
