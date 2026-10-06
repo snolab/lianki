@@ -246,9 +246,16 @@ markers only) became due — 411 watched videos for one user.
 
 ## Rollback
 
-- **Fast:** set `DB_BACKEND=mongodb` and redeploy — the app reads MongoDB again.
-- **Full:** repoint DNS back to Vercel. MongoDB was never modified, so no data
-  reconciliation is needed.
+- **Traffic:** delete the Worker route (`lianki.com/*` → `lianki`, id
+  `85b86c6e7cbc436681680e4cf800eb02`) — the apex falls through to the proxied
+  CNAME `973a3d7061d8fc14.vercel-dns-017.com` (Vercel) within a minute. Needs a
+  token with Zone → Workers Routes: Edit on `lianki.com`, or the dashboard.
+- **Data:** MongoDB is frozen at the cutover (T0 2026-10-06T09:30:39Z; the
+  catch-up found no later Mongo writes). Every review since lives only in D1, so
+  a rollback must first copy D1 back into Mongo — there is no script for that
+  yet. D1 Time Travel (30 days) covers mistakes inside D1.
+- `DB_BACKEND=mongodb` on the Worker no longer works as a rollback: the CF build
+  stubs the `mongodb` driver.
 
 ---
 
@@ -261,7 +268,7 @@ markers only) became due — 411 watched videos for one user.
 | 2 — Code wiring | DONE — auth, FSRS handler, all data routes (incl. roadmap progress), R2. Only the IndexedDB-mirror cleanup (2d) and the 2e Workers fixups remain. |
 | 3 — Data migration | DONE — refreshed 2026-09-09 with `--replace`; D1 1958 notes == Mongo 1958, verified url-by-url |
 | 4 — Preview deploy + QA | LIVE at https://lianki.snomiao.workers.dev, auto-deployed from main by `.github/workflows/deploy-worker.yml` after CI passes (added 2026-10-05; the hand-deployed Worker had drifted weeks behind). All 11 secrets set, differential gate 15/15 on 2026-10-05 (`bun scripts/qa/qa-worker.mjs`). The `cf-native` rewrite branch is shelved; OpenNext is the cutover path. OAuth callbacks for the workers.dev host are registered on both clients (the GitHub "Lianki.com" app now holds two redirect URIs). Sign-in QA 2026-10-05: GitHub end-to-end ✓ (session from D1). Google: redirect_uri accepted, but snomiao@gmail.com hits `invalid_request` — better-auth sends `include_granted_scopes=true`, which merges earlier drive.file/youtube grants on that client into a combination Google refuses. Same request as production, so not a Worker defect; a fresh Google account is still to test. Remaining: card review, import/export, TTS on the preview |
-| 5 — DNS cutover | pending |
+| 5 — Cutover | **DONE 2026-10-06** — final `--replace` load at T0 09:30:39Z, verified row-for-row (notes 2276, watch 771, 0 discrepancies), Worker route `lianki.com/*` added, 20/20 requests on the Worker ~50 s later, existing sessions carried over, catch-up found no Mongo writes after T0 |
 
 The build (`bun run build`) and OpenNext build pass. The D1 code paths are
 exercised by unit tests against SQLite but not yet verified on a live Worker —
