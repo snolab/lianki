@@ -212,22 +212,50 @@ the Google/GitHub OAuth callback allow-lists for testing.
 
 ## Phase 5 — DNS cutover (USER)
 
-1. Add `lianki.com` as a custom domain on the Worker.
-2. Move DNS to Cloudflare; point the apex at the Worker.
-3. Add `https://lianki.com/api/auth/callback/{google,github}` to the OAuth
-   consoles (the www/non-www entries already exist).
-4. Set `DB_BACKEND=d1` as the production var.
-5. Watch logs: `wrangler tail`.
+Zero-loss procedure (rehearsed on the preview 2026-10-05: the full load takes
+~4 s). DNS is already on Cloudflare (orange-cloud proxy in front of Vercel), the
+OAuth callbacks for `lianki.com` already exist, and `DB_BACKEND=d1` is already a
+Worker var.
+
+1. **Prefer a Worker route over a Custom Domain.** A route `lianki.com/*` →
+   `lianki` runs the Worker in front of the proxied record and leaves the DNS
+   record (→ Vercel) untouched, so rollback is deleting the route. A Custom
+   Domain with "override existing record" *deletes* the Vercel record, and
+   rolling back then needs DNS edit rights. Either needs a token or dashboard
+   session with Workers Routes / DNS edit on the `lianki.com` zone — the CI token
+   has neither. Leave `www` on Vercel: it already 301s to the apex.
+2. `T0=$(date -u +%FT%TZ)`, then the `--replace` load (Phase 3 commands).
+3. `bun --env-file=.env.local scripts/cutover/verify.ts` — must print
+   `✓ D1 matches Mongo row-for-row`.
+4. Attach the route. Check `curl -sI https://lianki.com/ | grep -i x-vercel-id`
+   is gone and `https://lianki.com/api/health` returns 200.
+5. `bun --env-file=.env.local scripts/cutover/catchup.ts $T0 --out=tmp/catchup.sql`,
+   review the plan, apply with `wrangler d1 execute lianki --remote --file=…`.
+   Repeat until it reports nothing new (clients with a cached Vercel response
+   can keep writing to Mongo for a few minutes).
+6. Watch logs: `wrangler tail lianki`.
 
 Keep the Vercel deployment live but idle for a few days as the instant rollback.
+
+Load fixes this procedure depends on (found by the 2026-10-05 rehearsal): watch
+stats, read materials and `reviewOrder` were not migrated; duplicate
+(email, url) docs kept the worse copy; and a note without a card (speed
+markers only) became due — 411 watched videos for one user.
 
 ---
 
 ## Rollback
 
-- **Fast:** set `DB_BACKEND=mongodb` and redeploy — the app reads MongoDB again.
-- **Full:** repoint DNS back to Vercel. MongoDB was never modified, so no data
-  reconciliation is needed.
+- **Traffic:** delete the Worker route (`lianki.com/*` → `lianki`, id
+  `85b86c6e7cbc436681680e4cf800eb02`) — the apex falls through to the proxied
+  CNAME `973a3d7061d8fc14.vercel-dns-017.com` (Vercel) within a minute. Needs a
+  token with Zone → Workers Routes: Edit on `lianki.com`, or the dashboard.
+- **Data:** MongoDB is frozen at the cutover (T0 2026-10-06T09:30:39Z; the
+  catch-up found no later Mongo writes). Every review since lives only in D1, so
+  a rollback must first copy D1 back into Mongo — there is no script for that
+  yet. D1 Time Travel (30 days) covers mistakes inside D1.
+- `DB_BACKEND=mongodb` on the Worker no longer works as a rollback: the CF build
+  stubs the `mongodb` driver.
 
 ---
 
@@ -240,7 +268,7 @@ Keep the Vercel deployment live but idle for a few days as the instant rollback.
 | 2 — Code wiring | DONE — auth, FSRS handler, all data routes (incl. roadmap progress), R2. Only the IndexedDB-mirror cleanup (2d) and the 2e Workers fixups remain. |
 | 3 — Data migration | DONE — refreshed 2026-09-09 with `--replace`; D1 1958 notes == Mongo 1958, verified url-by-url |
 | 4 — Preview deploy + QA | LIVE at https://lianki.snomiao.workers.dev, auto-deployed from main by `.github/workflows/deploy-worker.yml` after CI passes (added 2026-10-05; the hand-deployed Worker had drifted weeks behind). All 11 secrets set, differential gate 15/15 on 2026-10-05 (`bun scripts/qa/qa-worker.mjs`). The `cf-native` rewrite branch is shelved; OpenNext is the cutover path. OAuth callbacks for the workers.dev host are registered on both clients (the GitHub "Lianki.com" app now holds two redirect URIs). Sign-in QA 2026-10-05: GitHub end-to-end ✓ (session from D1). Google: redirect_uri accepted, but snomiao@gmail.com hits `invalid_request` — better-auth sends `include_granted_scopes=true`, which merges earlier drive.file/youtube grants on that client into a combination Google refuses. Same request as production, so not a Worker defect; a fresh Google account is still to test. Remaining: card review, import/export, TTS on the preview |
-| 5 — DNS cutover | pending |
+| 5 — Cutover | **DONE 2026-10-06** — final `--replace` load at T0 09:30:39Z, verified row-for-row (notes 2276, watch 771, 0 discrepancies), Worker route `lianki.com/*` added, 20/20 requests on the Worker ~50 s later, existing sessions carried over, catch-up found no Mongo writes after T0 |
 
 The build (`bun run build`) and OpenNext build pass. The D1 code paths are
 exercised by unit tests against SQLite but not yet verified on a live Worker —

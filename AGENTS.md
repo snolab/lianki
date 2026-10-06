@@ -30,29 +30,32 @@ bun run qa:all         # full integration gate — what CI runs, and pre-push
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
 
-## Where requests actually go (verified 2026-08-03)
+## Where requests actually go (cut over 2026-10-06)
 
-**The CF-native cutover has NOT happened.** Cloudflare fronts the DNS, which
-makes responses *look* Cloudflare-served and has caused this to be misremembered
-as migrated. It is not:
+**`lianki.com` is served by the `lianki` Cloudflare Worker** — the OpenNext
+build of `app/**` with `DB_BACKEND=d1`. It is attached by a Worker **route**
+`lianki.com/*` on the zone; the DNS record still points at Vercel underneath,
+so the route alone decides. `www.lianki.com` is still Vercel, which only 301s
+to the apex.
 
 | signal | reading |
 | --- | --- |
-| `x-vercel-id` on every response | www / apex are served by **Vercel** |
-| `server: cloudflare`, `cf-ray` | Cloudflare **DNS proxy** only — the orange cloud, not the Worker |
-| `GET /api/health` (Worker-only route) | **404** on every lianki.com hostname |
-
-Re-check with:
+| no `x-vercel-id` on `https://lianki.com/` | apex served by the **Worker** |
+| `x-vercel-id` on `https://www.lianki.com/` | expected — Vercel's www→apex redirect |
+| `GET /api/health` | 404 — that route was the shelved cf-native design, not a signal |
 
 ```bash
-curl -sI https://www.lianki.com/ | grep -iE 'x-vercel-id|cf-ray'
-curl -sL -o /dev/null -w '%{http_code}\n' https://lianki.com/api/health   # 404 = still Vercel
+curl -sI https://lianki.com/en | grep -i x-vercel-id   # nothing = Worker
 ```
 
-While this holds: production runtime errors are in **Vercel** logs, the live
-code is `app/**` + MongoDB, and a fix in `apps/api/src/worker/**` or the D1
-migrations changes nothing in prod. `dev.lianki.com` is unrelated — a Cloudflare
-tunnel to the local userscript dev server, not the Worker.
+So: production runtime errors are in `wrangler tail lianki`, the live data is
+**D1** (`lianki`), and MongoDB is a frozen rollback copy as of the cutover —
+do not write to it. The Worker deploys itself after CI passes on `main`
+(`.github/workflows/deploy-worker.yml`); Vercel still builds but serves only
+the www redirect. `apps/**` (cf-native) is shelved. Rollback, the load
+procedure, and the cutover scripts are in
+[docs/cf-d1-migration.md](docs/cf-d1-migration.md). `dev.lianki.com` is
+unrelated — a Cloudflare tunnel to the local userscript dev server.
 
 ## Where to look
 
