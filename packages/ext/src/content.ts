@@ -1,7 +1,8 @@
-// MV3 content-script entry. Order matters: install the GM shims and preload the
-// synchronous storage cache BEFORE the userscript logic runs (it reads
-// GM_getValue synchronously at startup).
+// MV3 content-script entry for the TOP frame: the whole of Lianki.
+// Subframes get frame.ts instead — see the manifest.
 import { installGmShim, loadGmCache } from "./gm-shim";
+
+const KEY_RELAY = "lianki:hotkey";
 
 async function boot() {
   // Benign marker: lets pages / tests detect the extension is present and its
@@ -18,6 +19,15 @@ async function boot() {
   // truth for behaviour (one core, two targets). Dynamic import so it executes
   // only after the shim + cache are ready.
   await import("../../../src/lianki.user.ts");
+
+  // Keys relayed out of a frame arrive here, vouched for by the browser.
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg?.type === KEY_RELAY) {
+      (globalThis as { __liankiRelayKey?: (k: unknown) => void }).__liankiRelayKey?.(msg);
+    }
+  });
 }
 
+// Top frame only — the manifest keeps this entry out of subframes, where
+// frame.ts does the one job that has to happen there.
 void boot();

@@ -2,19 +2,42 @@
   "manifest_version": 3,
   "name": "Lianki",
   "description": "Spaced-repetition (FSRS) for the pages you read and watch.",
-  "version": "2.23.17",
-  "permissions": ["storage"],
+  "version": "2.24.14",
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "https://lianki.com/*",
     "https://www.lianki.com/*",
     "https://beta.lianki.com/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
-      "matches": ["*://*/*"],
-      "js": ["content.js"],
+      "matches": [
+        "*://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://*/*"
+      ],
+      "js": [
+        "frame.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true,
+      "match_origin_as_fallback": true
     }
   ],
-  "action": { "default_title": "Lianki" }
+  "action": {
+    "default_title": "Lianki"
+  }
 }
