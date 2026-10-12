@@ -37,6 +37,104 @@ most 500 per-URL caches (`lianki_devbundle_*`/`lk:watch:*`).
 to disable watch tracking entirely** — worth adding before a store release.
 
 
+## Chrome Web Store submission
+
+Build the upload package with the pipeline, never by hand:
+
+```bash
+bun scripts/build-extension.ts          # -> packages/ext/dist/lianki-extension.zip
+bun scripts/publish-extension.ts        # upload as a draft
+bun scripts/publish-extension.ts --publish   # ...and submit for review
+```
+
+### Why the API and not the developer console
+
+Chrome refuses CDP navigation to the Web Store console — it answers
+`Protocol error (Page.navigate): Not allowed` — so the browser cannot be driven
+there, and a release step only a human can perform is one that drifts. The
+publish script talks to the Chrome Web Store API instead.
+
+### One-time credentials (a person has to do this once)
+
+1. Register as a Chrome Web Store developer (one-off USD 5 fee).
+2. In Google Cloud console, pick a project and enable **Chrome Web Store API**.
+3. Create an **OAuth 2.0 Client ID**, application type **Desktop app**. Add
+   `http://localhost:8976/` as an authorised redirect URI.
+4. Mint a refresh token:
+
+   ```bash
+   export CWS_CLIENT_ID=... CWS_CLIENT_SECRET=...
+   bun scripts/publish-extension.ts --auth              # prints a consent URL
+   bun scripts/publish-extension.ts --auth --code=...   # the code from the address bar
+   ```
+
+   The consent redirect lands on a localhost page that fails to load. That is
+   expected — Google retired the out-of-band flow, and the code is in the URL.
+
+5. Put `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN` in `.env.local`.
+   The first upload creates the store item and prints its id; save that too as
+   `CWS_ITEM_ID`, since every later upload targets it.
+
+It generates the icons, builds `content.js`, derives the manifest version from
+`lib/userscript-version.ts`, and zips the result. The version is *derived* because
+it had silently drifted seven patches behind the product (2.23.17 vs 2.24.1); a
+number nobody owns is a number nobody updates.
+
+### Privacy policy
+
+<https://lianki.com/privacy> — required by the store for any extension handling
+user data. Keep it truthful as data flows change; it is written from the code, not
+from intent.
+
+### Permission justifications (paste into the listing)
+
+**`storage`**
+
+> Cards, review history and settings are written to local extension storage first,
+> so scheduling works offline and without an account. Nothing else is kept here.
+
+**All-frames content script**
+
+> A second content script runs in every frame, including sandboxed ones. It is
+> a few hundred bytes and does exactly one thing: when a key is pressed inside
+> a frame, it tells the top frame which key it was. It reads no page content and
+> sends nothing off the device.
+>
+> It exists because keyboard events are delivered to the focused document and
+> never cross a frame boundary. A reader that renders its content into an iframe
+> — calibre-web puts a whole book into a sandboxed `srcdoc` frame — swallows
+> every shortcut the extension listens for, so the review hotkeys do nothing
+> while the user is reading.
+
+**Host permission `*://*/*` (content script)**
+
+> Lianki is a spaced-repetition tool for whatever the user is already reading or
+> watching. The user decides, on any site, that the current page should become a
+> flashcard — so the script must be able to run wherever they are, in the same way
+> a bookmarking extension must. It cannot be narrowed to a list of sites without
+> removing the feature.
+>
+> The script does not transmit the pages a user visits. A page leaves the device
+> only after the user explicitly adds it as a card, or when they play video/audio
+> on it and watch-time is recorded for their own study statistics. Ordinary
+> browsing is never sent anywhere, and for a signed-out user nothing leaves the
+> browser at all.
+
+**Host permissions `https://lianki.com/*`, `https://www.lianki.com/*`, `https://beta.lianki.com/*`**
+
+> Sync the user's own cards to their own Lianki account. These are the only remote
+> hosts the extension contacts.
+
+### Remaining manual steps
+
+The Web Store console cannot be automated — Chrome blocks devtools-driven
+navigation to `chrome.google.com/webstore/devconsole` and
+`chromewebstore.google.com/devconsole` outright. Creating the item, uploading the
+zip, filling the listing and publishing are all manual.
+
+Still needed in the listing itself: screenshots (1280×800 or 640×400), a category,
+and the data-usage disclosures matching the privacy policy above.
+
 Browser extension targets for Lianki, built from **one source of truth** — the
 existing Tampermonkey userscript (`src/lianki.user.ts`).
 

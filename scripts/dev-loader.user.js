@@ -32,10 +32,38 @@
 // docs/dev-userscript-loader.md
 
 (function () {
-  // The bundle no-ops in subframes anyway (its entry checks window.self ===
-  // window.top), so without this every iframe still downloads and evals the
-  // whole build.
-  if (window.self !== window.top) return;
+  // Subframes get the hotkey relay and nothing else.
+  //
+  // The bundle's own entry does the same (see installFrameKeyRelay in
+  // src/lianki.user.ts) — but downloading and evaluating the whole build in
+  // every iframe on every page, just to register one listener, is not worth it.
+  // A reader that renders into a sandboxed frame keeps the keyboard focus, so
+  // the top document never sees the hotkey; the frame notices it and tells its
+  // parent, one hop at a time so each level can verify the sender is its own
+  // child.
+  if (window.self !== window.top) {
+    const RELAY = "lianki:hotkey";
+    const isChild = (src) => {
+      for (let i = 0; i < window.frames.length; i++) if (window.frames[i] === src) return true;
+      return false;
+    };
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.code !== "KeyF") return;
+        e.preventDefault();
+        e.stopPropagation();
+        window.parent.postMessage({ type: RELAY }, "*");
+      },
+      true,
+    );
+    window.addEventListener("message", (e) => {
+      if (e.data && e.data.type === RELAY && isChild(e.source)) {
+        window.parent.postMessage({ type: RELAY }, "*");
+      }
+    });
+    return;
+  }
 
   const ORIGIN = "__ORIGIN__"; // dev server (tunnel) — bundles, long poll, error sink
   const APP_ORIGIN = "__APP_ORIGIN__"; // what the BUNDLE talks to for the API

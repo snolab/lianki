@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.5
+// @version     2.24.14
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -48,6 +48,210 @@ declare const GM_info: { script: { version: string } };
 if (window.self === window.top) {
   globalThis.unload_Lianki?.();
   globalThis.unload_Lianki = main();
+} else {
+  installFrameKeyRelay();
+}
+
+/**
+ * The hotkey, when the page you are reading lives in an iframe.
+ *
+ * Keyboard events are delivered to the focused document and never cross a
+ * document boundary. A reader that renders its content into a frame therefore
+ * swallows every key Lianki listens for. Measured on books.snomiao.dev, whose
+ * calibre-web reader uses `<iframe srcdoc sandbox="allow-scripts …">`: with
+ * focus in the reader, the top document received ZERO keydowns.
+ *
+ * That frame cannot host Lianki itself. Its `sandbox` omits `allow-same-origin`,
+ * so its origin is opaque: no storage, and every request to lianki.com is
+ * cross-origin. What it can do is notice the hotkey and tell its parent.
+ *
+ * Relayed one hop at a time rather than straight to `window.top`, so each level
+ * can check the sender is genuinely one of its own child frames. A message from
+ * an unrelated page then cannot pop the dialog open.
+ */
+const KEY_RELAY = "lianki:hotkey";
+
+function isHotkey(e) {
+  return e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === "KeyF";
+}
+
+/** Is this WindowProxy one of our own direct child frames? */
+function isChildFrame(source) {
+  for (let i = 0; i < window.frames.length; i++) {
+    if (window.frames[i] === source) return true;
+  }
+  return false;
+}
+
+function relayPayload(e) {
+  return {
+    type: KEY_RELAY,
+    code: e.code,
+    altKey: e.altKey,
+    ctrlKey: e.ctrlKey,
+    metaKey: e.metaKey,
+    shiftKey: e.shiftKey,
+  };
+}
+
+function installFrameKeyRelay() {
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      // Forward every key, not just the one that opens the dialog: once it IS
+      // open, the ratings are pressed with the focus still in here.
+      window.parent.postMessage(relayPayload(e), "*");
+    },
+    true,
+  );
+  // A frame between the reader and the top passes its children's relays on.
+  window.addEventListener("message", (e) => {
+    if (e.data?.type === KEY_RELAY && isChildFrame(e.source)) {
+      window.parent.postMessage(e.data, "*");
+    }
+  });
+}
+
+/**
+ * The relay, for a frame the manager will not inject into.
+ *
+ * A userscript manager matches on url, and a `srcdoc` frame has none — plus
+ * `sandbox` without `allow-same-origin` gives it an opaque origin. Measured on
+ * calibre-web's reader: a probe frame ran its own script and fired a key on its
+ * own document, and no injected listener answered. Nothing of ours is in there.
+ *
+ * But the parent owns the `srcdoc` attribute, so the relay can be written into
+ * the frame's own markup. It runs under `allow-scripts`, which the reader
+ * already grants, and needs nothing else — in particular the sandbox is left
+ * exactly as the site set it. Widening it to `allow-same-origin` would also
+ * work and was tried; it hands page scripts the parent's origin, which is not
+ * ours to give away.
+ */
+const SRCDOC_RELAY_FLAG = "liankiRelay";
+
+/**
+ * Proof that a relayed key came from a frame we wrote into.
+ *
+ * The obvious check — is `event.source` one of `window.frames` — cannot be
+ * trusted here. A userscript manager runs us in its own world, where the
+ * WindowProxy handed to a message listener need not be the same object as the
+ * one in our `window.frames`, so the identity test silently failed and every
+ * relayed key was dropped. Measured: the frame posted `KeyF+alt`, the parent
+ * received it, and the dialog stayed shut.
+ *
+ * A nonce is immune to that: only a frame whose markup we wrote can quote it.
+ * A page could read it out of its own `srcdoc` and forge one, which buys an
+ * attacker the ability to open a review dialog — not worth defending against.
+ */
+const RELAY_NONCE = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+function srcdocRelaySource(frameId) {
+  const head = 'type:"' + KEY_RELAY + '",nonce:"' + RELAY_NONCE + '",frameId:"' + frameId + '"';
+  // Split the closing tag so this file never contains one inside a string.
+  return (
+    "<script>(function(){try{if(window.__liankiRelay)return;window.__liankiRelay=1;" +
+    "parent.postMessage({" +
+    head +
+    ',code:"__alive"},"*");' +
+    'document.addEventListener("keydown",function(e){try{parent.postMessage({' +
+    head +
+    ",code:e.code,altKey:e.altKey,ctrlKey:e.ctrlKey,metaKey:e.metaKey,shiftKey:e.shiftKey" +
+    '},"*")}catch(_){}},true)}catch(_){}})()<' +
+    "/script>"
+  );
+}
+
+/** Frames that have reported their relay running, by the id we gave them. */
+const liveRelays = new Set();
+let frameSeq = 0;
+
+function installSrcdocRelays() {
+  // The extension already runs a content script in every frame, including the
+  // sandboxed ones a userscript manager will not touch. Rewriting srcdoc there
+  // would be pure cost: it reloads the frame, and a reader's srcdoc can be the
+  // whole book.
+  if (document.documentElement.dataset.liankiExt) return () => {};
+
+  /**
+   * Re-injection is capped, hard.
+   *
+   * Writing srcdoc reloads the frame, and a reader's srcdoc can be the entire
+   * book — three megabytes. A retry loop against that is not a retry loop, it
+   * is a denial of service against the page you are reading: measured, a
+   * three-second sweep re-parsed the book until the tab stopped responding.
+   * Two attempts, then leave the page alone.
+   */
+  const MAX_INJECTS = 2;
+  /** Above this, rewriting srcdoc costs more than the hotkey is worth. */
+  const MAX_SRCDOC = 512 * 1024;
+  const attempts = new WeakMap();
+
+  const inject = (f) => {
+    const src = f.getAttribute("srcdoc") || "";
+    // Skip the tracking-pixel sized frames the web is full of; a document a
+    // person reads in is not 40 bytes of markup.
+    if (src.length < 200) return;
+    // And skip the enormous ones. Writing srcdoc reloads the frame, so the cost
+    // of injecting is the cost of re-parsing whatever is in there. calibre-web
+    // puts an entire book in one srcdoc — measured at 3.7 MB — and rewriting it
+    // during page load made the reader take longer than half a minute to become
+    // usable. A hotkey is not worth that; such a frame is left alone.
+    if (src.length > MAX_SRCDOC) return;
+    const n = attempts.get(f) ?? 0;
+    if (n >= MAX_INJECTS) return;
+    attempts.set(f, n + 1);
+    const id = `${RELAY_NONCE}-${++frameSeq}`;
+    f.dataset[SRCDOC_RELAY_FLAG] = id;
+    try {
+      f.setAttribute("srcdoc", srcdocRelaySource(id) + stripRelay(src));
+    } catch {}
+  };
+
+  const sweep = () => {
+    for (const f of document.querySelectorAll("iframe[srcdoc]")) {
+      const id = f.dataset[SRCDOC_RELAY_FLAG];
+      // Never injected, or the page replaced srcdoc and threw our script away.
+      if (!id || !(f.getAttribute("srcdoc") || "").includes(id)) {
+        inject(f);
+        continue;
+      }
+      if (liveRelays.has(id)) continue;
+      // Injected, attribute still carries it, and yet the frame never reported
+      // in: the write landed on the attribute without the document reloading.
+      // Seen on a reader whose srcdoc is the whole book. One more try, then the
+      // cap stops us.
+      inject(f);
+    }
+  };
+
+  window.addEventListener("message", (e) => {
+    if (e.data?.type === KEY_RELAY && e.data.nonce === RELAY_NONCE && e.data.code === "__alive") {
+      liveRelays.add(e.data.frameId);
+    }
+  });
+
+  sweep();
+  const observer = new MutationObserver(sweep);
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributeFilter: ["srcdoc"],
+  });
+  // One late sweep: a frame can finish loading without a mutation of ours to
+  // trigger it. Not a timer — see the cap above for why a loop here is unsafe.
+  const timer = setTimeout(sweep, 4000);
+  return () => {
+    observer.disconnect();
+    clearTimeout(timer);
+  };
+}
+
+/** Drop a previous relay from srcdoc, so re-injection cannot stack copies. */
+function stripRelay(src) {
+  const end = src.indexOf("</" + "script>");
+  return src.startsWith("<script>(function(){try{if(window.__liankiRelay)") && end !== -1
+    ? src.slice(end + 9)
+    : src;
 }
 
 /**
@@ -641,6 +845,12 @@ function main() {
   })();
 
   // ── URL normalization ───────────────────────────────────────────────────────
+  /** The url without its `#fragment` — what decides same-document navigation. */
+  function stripFragment(href) {
+    const i = href.indexOf("#");
+    return i === -1 ? href : href.slice(0, i);
+  }
+
   function normalizeUrl(href) {
     try {
       const u = new URL(href);
@@ -1592,6 +1802,7 @@ function main() {
     prefetchedNextUrl = null;
     renderDialog();
     dialog.focus();
+    keepFocusInDialog();
 
     const url = normalizeUrl(location.href);
     addNote(url, document.title)
@@ -1624,6 +1835,36 @@ function main() {
         state.errorDetails = err.details ?? null;
         renderDialog();
       });
+  }
+
+  /**
+   * Hold the keyboard while the dialog is open.
+   *
+   * Opening the dialog focuses it, but a page that manages its own focus takes
+   * it straight back: calibre-web re-focuses its reader iframe on every
+   * position change. Focus then sits in a frame, every review key is delivered
+   * to that frame's document, and none of them reach us — measured, with the
+   * dialog plainly on screen and `activeElement` back to `read-book-iframe-1`.
+   * Pressing Hard did nothing, and neither did D.
+   *
+   * So take it back whenever it leaves. Only while the dialog is open, only
+   * when the new focus is outside it, and capped — a page that insists on
+   * focus should not be fought forever, and a tug-of-war would be worse than
+   * the keys not working.
+   */
+  function keepFocusInDialog() {
+    let grabs = 0;
+    document.addEventListener(
+      "focusin",
+      (e) => {
+        if (!dialog || grabs >= 10) return;
+        // Focus inside our shadow root reports as the host element.
+        if (e.target === dialog._shadowHost || dialog.contains(e.target)) return;
+        grabs++;
+        dialog.focus();
+      },
+      { signal },
+    );
   }
 
   function closeDialog() {
@@ -1810,7 +2051,24 @@ function main() {
       // Normal navigation to next card (backend already filtered hijacking domains)
       console.log("[Lianki] Storing intended URL:", nextUrl);
       GM_setValue("lk:nav_intended", JSON.stringify({ url: nextUrl, ts: Date.now() }));
+
+      // A next card that differs only in the fragment is the SAME document, so
+      // assigning location.href navigates without ever loading a page: the
+      // script does not re-run, and the dialog sits there showing the card you
+      // just reviewed. It looks exactly like the review did nothing.
+      //
+      // Observed in a calibre-web reader, where every position in a book is one
+      // url with a different `#bookpos=epubcfi(…)`. Reloading would work but
+      // would throw away the reader's state, and the app moves to the new
+      // position on the hash change by itself — so re-arm the dialog in place
+      // instead, which is what a page load would have done.
+      const sameDocument = stripFragment(nextUrl) === stripFragment(location.href);
       location.href = nextUrl;
+      if (sameDocument) {
+        closeDialog();
+        // A tick, so the page has reacted to the hash before we read the url.
+        setTimeout(openDialog, 0);
+      }
     } else {
       // No more cards or invalid URL
       state.message = `${doneMessage} — All done!`;
@@ -1839,29 +2097,53 @@ function main() {
     Escape: () => closeDialog(),
   };
 
+  /**
+   * What a key should do, given only its code and modifiers.
+   *
+   * Split out from the listener because the same decision has to be made for
+   * keys that never reach this document at all — see the frame relay below.
+   * Returns the action, or null if we do not claim the key.
+   */
+  function keyAction(k) {
+    if (k.altKey && !k.ctrlKey && !k.metaKey && !k.shiftKey && k.code === "KeyF") {
+      return () => (dialog ? closeDialog() : openDialog());
+    }
+    if (!dialog || state.phase !== "reviewing") return null;
+    if (k.altKey || k.ctrlKey || k.metaKey || k.shiftKey) return null;
+    return KEYS[k.code] ?? null;
+  }
+
   document.addEventListener(
     "keydown",
     (e) => {
-      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === "KeyF") {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        if (dialog) closeDialog();
-        else openDialog();
-        return;
-      }
-      if (!dialog || state.phase !== "reviewing") return;
-      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      const action = KEYS[e.code];
-      if (action) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        action();
-      }
+      const action = keyAction(e);
+      if (!action) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      action();
     },
     { capture: true, signal },
   );
+
+  // Keys pressed inside a frame, relayed out to us.
+  window.addEventListener(
+    "message",
+    (e) => {
+      if (e.data?.type !== KEY_RELAY || e.data.code === "__alive") return;
+      if (e.data.nonce !== RELAY_NONCE && !isChildFrame(e.source)) return;
+      keyAction(e.data)?.();
+    },
+    { signal },
+  );
+
+  // The extension hands relayed keys straight to us: it learns them from a
+  // content script in the frame and routes them through its own background
+  // worker, so the browser itself vouches for where they came from. Nothing to
+  // verify here, unlike the postMessage path above.
+  globalThis.__liankiRelayKey = (k) => keyAction(k)?.();
+
+  installSrcdocRelays();
 
   // ── Media Keys ─────────────────────────────────────────────────────────────
   // Support hardware media keys (headphones, keyboards, etc.)

@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.5
+// @version     2.24.14
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1653,6 +1653,110 @@
   if (window.self === window.top) {
     globalThis.unload_Lianki?.();
     globalThis.unload_Lianki = main();
+  } else {
+    installFrameKeyRelay();
+  }
+  var KEY_RELAY = "lianki:hotkey";
+  function isChildFrame(source) {
+    for (let i = 0; i < window.frames.length; i++) {
+      if (window.frames[i] === source) return true;
+    }
+    return false;
+  }
+  function relayPayload(e) {
+    return {
+      type: KEY_RELAY,
+      code: e.code,
+      altKey: e.altKey,
+      ctrlKey: e.ctrlKey,
+      metaKey: e.metaKey,
+      shiftKey: e.shiftKey,
+    };
+  }
+  function installFrameKeyRelay() {
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        window.parent.postMessage(relayPayload(e), "*");
+      },
+      true,
+    );
+    window.addEventListener("message", (e) => {
+      if (e.data?.type === KEY_RELAY && isChildFrame(e.source)) {
+        window.parent.postMessage(e.data, "*");
+      }
+    });
+  }
+  var SRCDOC_RELAY_FLAG = "liankiRelay";
+  var RELAY_NONCE = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  function srcdocRelaySource(frameId) {
+    const head = 'type:"' + KEY_RELAY + '",nonce:"' + RELAY_NONCE + '",frameId:"' + frameId + '"';
+    return (
+      "<script>(function(){try{if(window.__liankiRelay)return;window.__liankiRelay=1;" +
+      "parent.postMessage({" +
+      head +
+      ',code:"__alive"},"*");' +
+      'document.addEventListener("keydown",function(e){try{parent.postMessage({' +
+      head +
+      ",code:e.code,altKey:e.altKey,ctrlKey:e.ctrlKey,metaKey:e.metaKey,shiftKey:e.shiftKey" +
+      '},"*")}catch(_){}},true)}catch(_){}})()<' +
+      "/script>"
+    );
+  }
+  var liveRelays = new Set();
+  var frameSeq = 0;
+  function installSrcdocRelays() {
+    if (document.documentElement.dataset.liankiExt) return () => {};
+    const MAX_INJECTS = 2;
+    const MAX_SRCDOC = 512 * 1024;
+    const attempts = new WeakMap();
+    const inject = (f) => {
+      const src = f.getAttribute("srcdoc") || "";
+      if (src.length < 200) return;
+      if (src.length > MAX_SRCDOC) return;
+      const n = attempts.get(f) ?? 0;
+      if (n >= MAX_INJECTS) return;
+      attempts.set(f, n + 1);
+      const id = `${RELAY_NONCE}-${++frameSeq}`;
+      f.dataset[SRCDOC_RELAY_FLAG] = id;
+      try {
+        f.setAttribute("srcdoc", srcdocRelaySource(id) + stripRelay(src));
+      } catch {}
+    };
+    const sweep = () => {
+      for (const f of document.querySelectorAll("iframe[srcdoc]")) {
+        const id = f.dataset[SRCDOC_RELAY_FLAG];
+        if (!id || !(f.getAttribute("srcdoc") || "").includes(id)) {
+          inject(f);
+          continue;
+        }
+        if (liveRelays.has(id)) continue;
+        inject(f);
+      }
+    };
+    window.addEventListener("message", (e) => {
+      if (e.data?.type === KEY_RELAY && e.data.nonce === RELAY_NONCE && e.data.code === "__alive") {
+        liveRelays.add(e.data.frameId);
+      }
+    });
+    sweep();
+    const observer = new MutationObserver(sweep);
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributeFilter: ["srcdoc"],
+    });
+    const timer = setTimeout(sweep, 4000);
+    return () => {
+      observer.disconnect();
+      clearTimeout(timer);
+    };
+  }
+  function stripRelay(src) {
+    const end = src.indexOf("</" + "script>");
+    return src.startsWith("<script>(function(){try{if(window.__liankiRelay)") && end !== -1
+      ? src.slice(end + 9)
+      : src;
   }
   function compareHLC(a, b) {
     if (!a) return -1;
@@ -2040,6 +2144,10 @@
         return "https://lianki.com";
       }
     })();
+    function stripFragment(href) {
+      const i = href.indexOf("#");
+      return i === -1 ? href : href.slice(0, i);
+    }
     function normalizeUrl(href) {
       try {
         const u = new URL(href);
@@ -2823,6 +2931,7 @@ ${state.errorDetails}`);
       prefetchedNextUrl = null;
       renderDialog();
       dialog.focus();
+      keepFocusInDialog();
       const url = normalizeUrl(location.href);
       addNote(url, document.title)
         .then((note) => {
@@ -2851,6 +2960,19 @@ ${state.errorDetails}`);
           state.errorDetails = err.details ?? null;
           renderDialog();
         });
+    }
+    function keepFocusInDialog() {
+      let grabs = 0;
+      document.addEventListener(
+        "focusin",
+        (e) => {
+          if (!dialog || grabs >= 10) return;
+          if (e.target === dialog._shadowHost || dialog.contains(e.target)) return;
+          grabs++;
+          dialog.focus();
+        },
+        { signal },
+      );
     }
     function closeDialog() {
       if (!dialog) return;
@@ -2988,7 +3110,12 @@ ${nextUrl}`;
         }
         console.log("[Lianki] Storing intended URL:", nextUrl);
         GM_setValue("lk:nav_intended", JSON.stringify({ url: nextUrl, ts: Date.now() }));
+        const sameDocument = stripFragment(nextUrl) === stripFragment(location.href);
         location.href = nextUrl;
+        if (sameDocument) {
+          closeDialog();
+          setTimeout(openDialog, 0);
+        }
       } else {
         state.message = `${doneMessage} — All done!`;
         renderDialog();
@@ -3013,29 +3140,37 @@ ${nextUrl}`;
       KeyM: () => doDelete(),
       Escape: () => closeDialog(),
     };
+    function keyAction(k) {
+      if (k.altKey && !k.ctrlKey && !k.metaKey && !k.shiftKey && k.code === "KeyF") {
+        return () => (dialog ? closeDialog() : openDialog());
+      }
+      if (!dialog || state.phase !== "reviewing") return null;
+      if (k.altKey || k.ctrlKey || k.metaKey || k.shiftKey) return null;
+      return KEYS[k.code] ?? null;
+    }
     document.addEventListener(
       "keydown",
       (e) => {
-        if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === "KeyF") {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          if (dialog) closeDialog();
-          else openDialog();
-          return;
-        }
-        if (!dialog || state.phase !== "reviewing") return;
-        if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-        const action = KEYS[e.code];
-        if (action) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          action();
-        }
+        const action = keyAction(e);
+        if (!action) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        action();
       },
       { capture: true, signal },
     );
+    window.addEventListener(
+      "message",
+      (e) => {
+        if (e.data?.type !== KEY_RELAY || e.data.code === "__alive") return;
+        if (e.data.nonce !== RELAY_NONCE && !isChildFrame(e.source)) return;
+        keyAction(e.data)?.();
+      },
+      { signal },
+    );
+    globalThis.__liankiRelayKey = (k) => keyAction(k)?.();
+    installSrcdocRelays();
     (() => {
       let vcid = null;
       document.addEventListener("visibilitychange", trackHandler, { signal });
