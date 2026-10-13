@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.14
+// @version     2.24.15
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -934,6 +934,19 @@ function main() {
   // Load preferences on startup (called after api() is defined)
   /** Next-card order from the cached preferences; defaults to the classic order. */
   const reviewOrder = () => (userPreferences?.reviewOrder === "oldest" ? "oldest" : "newest");
+
+  /**
+   * Is watch tracking switched on?
+   *
+   * Only an explicit `false` turns it off: the preference arrives from a cache
+   * that may predate the setting, and treating "not yet known" as off would
+   * silently stop recording for everyone until the first fetch landed.
+   *
+   * WATCH_REQUIRE_VISIBLE / WATCH_REQUIRE_AUDIBLE decide what counts once
+   * recording is on. This decides whether to record at all, which is the thing
+   * a user — and a store reviewer — can actually ask for.
+   */
+  const watchTrackingOn = () => userPreferences?.watchTracking !== false;
 
   async function loadPreferences() {
     try {
@@ -2757,6 +2770,7 @@ function main() {
   }
 
   const isWatchActive = (v) =>
+    watchTrackingOn() &&
     !v.paused &&
     !v.ended &&
     v.readyState >= 3 &&

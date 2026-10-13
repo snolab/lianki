@@ -204,6 +204,30 @@ describe("PreferencesD1Repo", () => {
     expect(got!.mobileExcludePatterns[0].pattern).toBe("youtube.com");
   });
 
+  test("watch tracking defaults to on for a user who never chose", async () => {
+    const repo = new PreferencesD1Repo(d1 as unknown as D1Like, USER);
+    await repo.set([]);
+    expect((await repo.get())!.watchTracking).toBe(true);
+  });
+
+  test("watch tracking round-trips when switched off", async () => {
+    const repo = new PreferencesD1Repo(d1 as unknown as D1Like, USER);
+    await repo.set([], undefined, false);
+    expect((await repo.get())!.watchTracking).toBe(false);
+  });
+
+  test("a save that omits it does not silently switch it back on", async () => {
+    // The filter-patterns UI saves patterns alone. Defaulting there would undo
+    // a choice made on the other section of the same page — the bug this
+    // already had once for review order.
+    const repo = new PreferencesD1Repo(d1 as unknown as D1Like, USER);
+    await repo.set([], undefined, false);
+    await repo.set([
+      { id: "p1", type: "domain", pattern: "a.com", isRegex: false, enabled: true, createdAt: "x" },
+    ]);
+    expect((await repo.get())!.watchTracking).toBe(false);
+  });
+
   test("set overwrites existing", async () => {
     const repo = new PreferencesD1Repo(d1 as unknown as D1Like, USER);
     await repo.set([

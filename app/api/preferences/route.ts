@@ -10,12 +10,19 @@ const Preferences = db.collection("preferences");
 // by the D1 repos / CF-native worker; re-exported here so existing imports keep
 // working.
 import type { FilterType, FilterPattern } from "@/lib/core/preferences";
-import { asReviewOrder, DEFAULT_REVIEW_ORDER, type ReviewOrder } from "@lianki/core";
+import {
+  asReviewOrder,
+  DEFAULT_REVIEW_ORDER,
+  DEFAULT_WATCH_TRACKING,
+  asWatchTracking,
+  type ReviewOrder,
+} from "@lianki/core";
 export type { FilterType, FilterPattern };
 
 export interface UserPreferences {
   userId: string;
   reviewOrder?: ReviewOrder;
+  watchTracking?: boolean;
   mobileExcludeDomains?: string[]; // Legacy, deprecated
   mobileExcludePatterns?: FilterPattern[];
   updatedAt: Date;
@@ -31,6 +38,7 @@ export async function GET() {
       return NextResponse.json({
         mobileExcludePatterns: prefs?.mobileExcludePatterns ?? [],
         reviewOrder: prefs?.reviewOrder ?? DEFAULT_REVIEW_ORDER,
+        watchTracking: asWatchTracking(prefs?.watchTracking),
       });
     }
 
@@ -41,6 +49,7 @@ export async function GET() {
       return NextResponse.json({
         mobileExcludePatterns: [],
         reviewOrder: DEFAULT_REVIEW_ORDER,
+        watchTracking: DEFAULT_WATCH_TRACKING,
       });
     }
 
@@ -64,6 +73,7 @@ export async function GET() {
     return NextResponse.json({
       mobileExcludePatterns: patterns,
       reviewOrder: asReviewOrder(prefs.reviewOrder),
+      watchTracking: asWatchTracking(prefs.watchTracking),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -81,9 +91,11 @@ export async function POST(req: NextRequest) {
     // without it, and defaulting here would quietly reset a saved choice.
     const reviewOrder =
       body.reviewOrder === undefined ? undefined : asReviewOrder(body.reviewOrder);
+    const watchTracking =
+      body.watchTracking === undefined ? undefined : asWatchTracking(body.watchTracking);
 
     if (dbBackend() === "d1") {
-      await new PreferencesD1Repo(getD1(), user.id).set(patterns, reviewOrder);
+      await new PreferencesD1Repo(getD1(), user.id).set(patterns, reviewOrder, watchTracking);
       return NextResponse.json({ success: true });
     }
 
@@ -91,6 +103,7 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       mobileExcludePatterns: patterns,
       ...(reviewOrder !== undefined && { reviewOrder }),
+      ...(watchTracking !== undefined && { watchTracking }),
       updatedAt: new Date(),
     };
 
