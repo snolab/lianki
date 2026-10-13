@@ -91,6 +91,7 @@ type PrefRow = {
   user_id: string;
   mobile_exclude_patterns: string;
   review_order?: string;
+  watch_tracking?: number;
   updated_at: string;
 };
 
@@ -104,6 +105,7 @@ export class PreferencesD1Repo {
   async get(): Promise<{
     mobileExcludePatterns: FilterPattern[];
     reviewOrder: ReviewOrder;
+    watchTracking: boolean;
   } | null> {
     const row = await this.db
       .prepare("SELECT * FROM preferences WHERE user_id = ?")
@@ -113,6 +115,7 @@ export class PreferencesD1Repo {
     return {
       mobileExcludePatterns: JSON.parse(row.mobile_exclude_patterns || "[]"),
       reviewOrder: asReviewOrder(row.review_order),
+      watchTracking: row.watch_tracking !== 0,
     };
   }
 
@@ -125,21 +128,28 @@ export class PreferencesD1Repo {
     return asReviewOrder(row?.review_order);
   }
 
-  async set(patterns: FilterPattern[], reviewOrder?: ReviewOrder): Promise<void> {
-    // Preserve the stored order when the caller does not supply one — the
-    // filter-patterns UI saves without it, and defaulting there would silently
-    // reset a choice made elsewhere.
+  async set(
+    patterns: FilterPattern[],
+    reviewOrder?: ReviewOrder,
+    watchTracking?: boolean,
+  ): Promise<void> {
+    // Preserve stored values the caller does not supply — the filter-patterns
+    // UI saves without them, and defaulting there would silently reset a
+    // choice made elsewhere.
     const order = reviewOrder ?? (await this.reviewOrder());
+    const watch = watchTracking ?? (await this.get())?.watchTracking ?? true;
     await this.db
       .prepare(
-        `INSERT INTO preferences (user_id, mobile_exclude_patterns, review_order, updated_at)
-         VALUES (?, ?, ?, ?)
+        `INSERT INTO preferences
+           (user_id, mobile_exclude_patterns, review_order, watch_tracking, updated_at)
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(user_id) DO UPDATE SET
            mobile_exclude_patterns = excluded.mobile_exclude_patterns,
            review_order = excluded.review_order,
+           watch_tracking = excluded.watch_tracking,
            updated_at = excluded.updated_at`,
       )
-      .bind(this.userId, JSON.stringify(patterns), order, new Date().toISOString())
+      .bind(this.userId, JSON.stringify(patterns), order, watch ? 1 : 0, new Date().toISOString())
       .run();
   }
 }

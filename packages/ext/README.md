@@ -6,8 +6,9 @@ The content script matches `*://*/*` and, since the watch-time feature, records
 **per-video viewing behaviour**. The store listing and privacy policy must say so
 before this ships; the previous disclosure predates this and is now incomplete.
 
-**What is recorded**, keyed by normalized URL, for every `<video>`/`<audio>` the
-user plays:
+**What is recorded** — only while *Record watch time* is on, which the user can
+switch off at `/preferences` — keyed by normalized URL, for every
+`<video>`/`<audio>` the user plays:
 
 | field | meaning |
 | --- | --- |
@@ -32,9 +33,15 @@ permission surface is every site, and the disclosure has to reflect that.
 **Retention:** rows live until the user deletes the note. Locally, an LRU keeps at
 most 500 per-URL caches (`lianki_devbundle_*`/`lk:watch:*`).
 
-**Opting out:** `WATCH_REQUIRE_VISIBLE` / `WATCH_REQUIRE_AUDIBLE` in
-`src/lianki.user.ts` gate what counts; there is currently **no user-facing toggle
-to disable watch tracking entirely** — worth adding before a store release.
+**Opting out:** `/preferences` → **Watch time** → *Record watch time*. Off means
+`isWatchActive()` returns false for every media element, so nothing is measured
+and nothing is sent. Existing statistics are kept; they stop growing. The
+preference is stored per user (`preferences.watch_tracking`) and reaches the
+userscript through the same cache as the rest, where only an explicit `false`
+counts as off — a cache predating the setting must not read as "disabled".
+
+`WATCH_REQUIRE_VISIBLE` / `WATCH_REQUIRE_AUDIBLE` in `src/lianki.user.ts` still
+gate what *counts* once recording is on; they were never a way to decline it.
 
 
 ## Chrome Web Store submission
@@ -116,9 +123,11 @@ from intent.
 >
 > The script does not transmit the pages a user visits. A page leaves the device
 > only after the user explicitly adds it as a card, or when they play video/audio
-> on it and watch-time is recorded for their own study statistics. Ordinary
-> browsing is never sent anywhere, and for a signed-out user nothing leaves the
-> browser at all.
+> on it and watch-time is recorded for their own study statistics. Watch-time
+> recording can be switched off entirely in the extension's preferences, and
+> when it is off nothing about playback is measured or sent. Ordinary browsing is
+> never sent anywhere, and for a signed-out user nothing leaves the browser at
+> all.
 
 **Host permissions `https://lianki.com/*`, `https://www.lianki.com/*`, `https://beta.lianki.com/*`**
 

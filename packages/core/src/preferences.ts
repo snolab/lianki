@@ -40,6 +40,24 @@ export const isReviewOrder = (v: unknown): v is ReviewOrder => v === "oldest" ||
 export const asReviewOrder = (v: unknown): ReviewOrder =>
   isReviewOrder(v) ? v : DEFAULT_REVIEW_ORDER;
 
+/**
+ * Whether to record watch time at all.
+ *
+ * Watch tracking measures per-video viewing on every site the user visits, so
+ * it needs a switch the user can reach — not only the compile-time constants
+ * that decide what *counts* once recording is on. The Chrome Web Store asks
+ * what data an extension collects and whether the user can decline; "no" is a
+ * hard answer to defend for behavioural data gathered everywhere.
+ *
+ * Defaults to on, because the feature is why the streaks and heatmap have
+ * anything in them, and turning it off silently would be its own surprise.
+ */
+export const DEFAULT_WATCH_TRACKING = true;
+
+/** Coerce untrusted input; anything but an explicit `false` means on. */
+export const asWatchTracking = (v: unknown): boolean =>
+  v === undefined || v === null ? DEFAULT_WATCH_TRACKING : v !== false;
+
 /** SQL fragment / Mongo direction for a given order. Single source of truth. */
 export const reviewOrderSql = (o: ReviewOrder) => (o === "newest" ? "DESC" : "ASC");
 export const reviewOrderMongo = (o: ReviewOrder): 1 | -1 => (o === "newest" ? -1 : 1);

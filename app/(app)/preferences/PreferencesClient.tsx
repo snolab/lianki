@@ -36,6 +36,7 @@ export default function PreferencesClient() {
   const [newType, setNewType] = useState<FilterType>("domain");
   const [isRegex, setIsRegex] = useState(false);
   const [reviewOrder, setReviewOrder] = useState<ReviewOrder>(DEFAULT_REVIEW_ORDER);
+  const [watchTracking, setWatchTracking] = useState(true);
 
   useEffect(() => {
     fetchPreferences();
@@ -48,6 +49,9 @@ export default function PreferencesClient() {
       const data = await res.json();
       setPatterns(data.mobileExcludePatterns || []);
       setReviewOrder(asReviewOrder(data.reviewOrder));
+      // Only an explicit false is off, so a server that predates the setting
+      // keeps recording rather than appearing to have it disabled.
+      setWatchTracking(data.watchTracking !== false);
     } catch (error) {
       console.error("Error fetching preferences:", error);
       alert(errors.failedToLoad);
@@ -65,6 +69,7 @@ export default function PreferencesClient() {
         body: JSON.stringify({
           mobileExcludePatterns: patterns,
           reviewOrder,
+          watchTracking,
         }),
       });
       if (!res.ok) throw new Error(errors.failedToSave);
@@ -159,6 +164,32 @@ export default function PreferencesClient() {
             </label>
           ))}
         </div>
+      </section>
+
+      {/* Watch tracking */}
+      <section className="mb-10">
+        <h2 className="text-2xl font-semibold mb-4 text-white">Watch time</h2>
+        <p className="text-gray-400 mb-4">
+          Lianki can measure how long you actually watch or listen to media on a page, to fill your
+          streaks and the activity heatmap. Time is counted only while something is playing, audible
+          and on screen — never from visiting a page.
+        </p>
+        <label className="flex items-start gap-3 p-3 rounded-lg bg-white/5 cursor-pointer hover:bg-white/10">
+          <input
+            type="checkbox"
+            id="watchTracking"
+            className="mt-1"
+            checked={watchTracking}
+            onChange={(e) => setWatchTracking(e.target.checked)}
+          />
+          <span>
+            <span className="block font-medium">Record watch time</span>
+            <span className="block text-sm text-gray-400">
+              Turn this off and nothing about your playback leaves the page. Existing statistics are
+              kept; they simply stop growing.
+            </span>
+          </span>
+        </label>
       </section>
 
       {/* Mobile Exclude Patterns */}

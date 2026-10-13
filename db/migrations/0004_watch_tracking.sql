@@ -1,0 +1,14 @@
+-- Whether to record watch time at all.
+--
+-- The compile-time constants in the userscript (WATCH_REQUIRE_VISIBLE,
+-- WATCH_REQUIRE_AUDIBLE) decide what *counts* once recording is on; they are
+-- not a way to decline it. Watch tracking measures per-video viewing on every
+-- site a user visits, so it needs a switch the user can reach — the Chrome Web
+-- Store asks what an extension collects and whether the user can opt out, and
+-- "no" is hard to defend for behavioural data gathered everywhere.
+--
+-- Stored as 0/1 rather than a string: unlike review_order this will never grow
+-- a third value. Defaults to 1, since the feature is what fills the streaks and
+-- the heatmap, and silently disabling it for existing users would be its own
+-- surprise.
+ALTER TABLE preferences ADD COLUMN watch_tracking INTEGER NOT NULL DEFAULT 1;
