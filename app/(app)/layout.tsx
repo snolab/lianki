@@ -4,6 +4,7 @@ import { LANG_TAGS, isRTLLocale } from "@/lib/constants";
 import { appLocale } from "@/lib/app-locale.server";
 import { authUserOrNull } from "@/app/signInEmail";
 import { AppShell, type ShellLabels, type ShellUser } from "@/app/components/AppShell";
+import type { FirstRunLabels } from "@/app/components/FirstRunChoice";
 import { IntlayerClientProvider } from "../IntlayerClientProvider";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -18,6 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const { appName, nav } = getIntlayer("landing-page", locale);
   const shell = getIntlayer("app-shell", locale);
+  const firstRun = getIntlayer("first-run", locale) as unknown as FirstRunLabels;
 
   // `nav` covers blog/learn/import/aiVocab/roadmap/polyglot; `shell.nav` adds
   // the rest, including the account labels `landing-page` never declared.
@@ -32,7 +34,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <IntlayerServerProvider locale={locale}>
       <IntlayerClientProvider locale={locale}>
         <div lang={lang} dir={dir} className="min-h-screen">
-          <AppShell locale={locale} appName={appName} labels={labels} user={user}>
+          <AppShell
+            locale={locale}
+            appName={appName}
+            labels={labels}
+            user={user}
+            firstRun={firstRun}
+          >
             {children}
           </AppShell>
         </div>

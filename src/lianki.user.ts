@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.15
+// @version     2.24.16
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1062,47 +1062,86 @@ function main() {
     });
   }
 
+  /**
+   * Where the cards the dialog is showing actually live.
+   *
+   * The dialog never said. A signed-out visitor and a signed-in one saw an
+   * identical panel, so "did that review reach my account?" had no answer short
+   * of opening /data. `cloud` means the last API call was authenticated, `local`
+   * means it answered 401/403 (guest), `offline` means it never answered.
+   */
+  function storeBadge(store) {
+    if (store === "cloud") return { icon: "\u2601\uFE0F", title: "Synced to your Lianki account" };
+    if (store === "offline") {
+      return { icon: "\uD83D\uDCF4", title: "Offline — saved in this browser, will sync later" };
+    }
+    return {
+      icon: "\uD83D\uDCBE",
+      title: "Saved in this browser only — sign in to sync (it is free)",
+    };
+  }
+
+  /** Cards at or past their due date. Mirrors the /data mirror's own count. */
+  function dueCountFromIndex(index, now) {
+    if (!Array.isArray(index)) return 0;
+    const t = now instanceof Date ? now.getTime() : Date.now();
+    return index.filter((e) => e && !e.del && new Date(e.due).getTime() <= t).length;
+  }
+
   // ── API ────────────────────────────────────────────────────────────────────
+  // Last known store, shown in the dialog header. Updated from api() outcomes
+  // rather than probed: every call already proves which one is in play.
+  let cardStore = "local";
+  /** A rejection carrying no HTTP status never reached the server. */
+  const markStoreFromError = (err) => {
+    if (!err?.status) cardStore = "offline";
+  };
   const api = (path, opts = {}) =>
-    gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
-      // Every error names the request that produced it. A bare "HTTP 500" from
-      // one of several background sync loops is undiagnosable — you cannot tell
-      // which endpoint failed, so it takes a round trip just to learn where to
-      // look. The method+path costs nothing and answers that immediately.
-      const what = `${(opts.method || "GET").toUpperCase()} ${ORIGIN}${path}`;
-      if (r.status === 401) {
-        const e = new Error(`Login required (${what})`);
-        e.status = 401;
-        throw e;
-      }
-      if (!r.ok) {
-        const status = r.status;
-        return r
-          .json()
-          .catch(() => null)
-          .then((body) => {
-            // Fold the server's own explanation into the message, not just onto
-            // a side property. Production Next hides the real error behind a
-            // digest/errorId, and that id is the ONLY way to find it in the
-            // runtime logs — but it lived on `details`, which the console and
-            // the error reporter never printed. A 500 was therefore reported as
-            // a bare status with the one piece of correlating information
-            // silently dropped.
-            const detail = body?.errorId ? `Error ID: ${body.errorId}` : body?.error;
-            const e = new Error(`HTTP ${status} — ${what}${detail ? ` — ${detail}` : ""}`);
-            // `status` and `body` let callers tell a permanent failure from a
-            // transient one. Without them only 401 carried a status, so the sync
-            // queue could not distinguish "will never succeed" from "try again
-            // later" and retried both — see tryBackgroundSync.
-            e.status = status;
-            e.body = body;
-            if (detail) e.details = detail;
-            throw e;
-          });
-      }
-      checkVersion(r);
-      return r.json();
-    });
+    gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts })
+      .then((r) => {
+        cardStore = r.status === 401 || r.status === 403 ? "local" : "cloud";
+        // Every error names the request that produced it. A bare "HTTP 500" from
+        // one of several background sync loops is undiagnosable — you cannot tell
+        // which endpoint failed, so it takes a round trip just to learn where to
+        // look. The method+path costs nothing and answers that immediately.
+        const what = `${(opts.method || "GET").toUpperCase()} ${ORIGIN}${path}`;
+        if (r.status === 401) {
+          const e = new Error(`Login required (${what})`);
+          e.status = 401;
+          throw e;
+        }
+        if (!r.ok) {
+          const status = r.status;
+          return r
+            .json()
+            .catch(() => null)
+            .then((body) => {
+              // Fold the server's own explanation into the message, not just onto
+              // a side property. Production Next hides the real error behind a
+              // digest/errorId, and that id is the ONLY way to find it in the
+              // runtime logs — but it lived on `details`, which the console and
+              // the error reporter never printed. A 500 was therefore reported as
+              // a bare status with the one piece of correlating information
+              // silently dropped.
+              const detail = body?.errorId ? `Error ID: ${body.errorId}` : body?.error;
+              const e = new Error(`HTTP ${status} — ${what}${detail ? ` — ${detail}` : ""}`);
+              // `status` and `body` let callers tell a permanent failure from a
+              // transient one. Without them only 401 carried a status, so the sync
+              // queue could not distinguish "will never succeed" from "try again
+              // later" and retried both — see tryBackgroundSync.
+              e.status = status;
+              e.body = body;
+              if (detail) e.details = detail;
+              throw e;
+            });
+        }
+        checkVersion(r);
+        return r.json();
+      })
+      .catch((err) => {
+        markStoreFromError(err);
+        throw err;
+      });
 
   // Signed-out is a stable condition, not an incident. Without this, every page
   // load logs the same "Login required" for each endpoint forever — unactionable
@@ -1579,6 +1618,23 @@ function main() {
     const titleSpan = document.createElement("span");
     Object.assign(titleSpan.style, { fontWeight: "700", fontSize: "16px" });
     titleSpan.textContent = "🔖 Lianki";
+
+    // Where the cards live, and how many are waiting. Both were invisible: the
+    // panel looked the same signed in or out, and the only way to see the queue
+    // was to finish it.
+    const badge = document.createElement("span");
+    const { icon, title } = storeBadge(cardStore);
+    const due = offlineReady ? dueCountFromIndex(cardStorage._index(), new Date()) : null;
+    badge.textContent = due === null ? icon : `${icon} ${due} due`;
+    badge.title = due === null ? title : `${title} · ${due} card(s) due`;
+    Object.assign(badge.style, {
+      marginLeft: "8px",
+      fontSize: "12px",
+      fontWeight: "400",
+      color: "var(--lk-muted)",
+      whiteSpace: "nowrap",
+    });
+    titleSpan.appendChild(badge);
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "×";
     closeBtn.setAttribute(

@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.15
+// @version     2.24.16
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -2303,31 +2303,56 @@
         });
       });
     }
+    function storeBadge(store) {
+      if (store === "cloud") return { icon: "☁️", title: "Synced to your Lianki account" };
+      if (store === "offline") {
+        return { icon: "\uD83D\uDCF4", title: "Offline — saved in this browser, will sync later" };
+      }
+      return {
+        icon: "\uD83D\uDCBE",
+        title: "Saved in this browser only — sign in to sync (it is free)",
+      };
+    }
+    function dueCountFromIndex(index, now) {
+      if (!Array.isArray(index)) return 0;
+      const t = now instanceof Date ? now.getTime() : Date.now();
+      return index.filter((e) => e && !e.del && new Date(e.due).getTime() <= t).length;
+    }
+    let cardStore = "local";
+    const markStoreFromError = (err) => {
+      if (!err?.status) cardStore = "offline";
+    };
     const api = (path, opts = {}) =>
-      gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts }).then((r) => {
-        const what = `${(opts.method || "GET").toUpperCase()} ${ORIGIN}${path}`;
-        if (r.status === 401) {
-          const e = new Error(`Login required (${what})`);
-          e.status = 401;
-          throw e;
-        }
-        if (!r.ok) {
-          const status = r.status;
-          return r
-            .json()
-            .catch(() => null)
-            .then((body) => {
-              const detail = body?.errorId ? `Error ID: ${body.errorId}` : body?.error;
-              const e = new Error(`HTTP ${status} — ${what}${detail ? ` — ${detail}` : ""}`);
-              e.status = status;
-              e.body = body;
-              if (detail) e.details = detail;
-              throw e;
-            });
-        }
-        checkVersion(r);
-        return r.json();
-      });
+      gmFetch(`${ORIGIN}${path}`, { credentials: "include", ...opts })
+        .then((r) => {
+          cardStore = r.status === 401 || r.status === 403 ? "local" : "cloud";
+          const what = `${(opts.method || "GET").toUpperCase()} ${ORIGIN}${path}`;
+          if (r.status === 401) {
+            const e = new Error(`Login required (${what})`);
+            e.status = 401;
+            throw e;
+          }
+          if (!r.ok) {
+            const status = r.status;
+            return r
+              .json()
+              .catch(() => null)
+              .then((body) => {
+                const detail = body?.errorId ? `Error ID: ${body.errorId}` : body?.error;
+                const e = new Error(`HTTP ${status} — ${what}${detail ? ` — ${detail}` : ""}`);
+                e.status = status;
+                e.body = body;
+                if (detail) e.details = detail;
+                throw e;
+              });
+          }
+          checkVersion(r);
+          return r.json();
+        })
+        .catch((err) => {
+          markStoreFromError(err);
+          throw err;
+        });
     const loggedOnce = new Set();
     const warnOnce = (key, ...args) => {
       if (loggedOnce.has(key)) return;
@@ -2712,6 +2737,19 @@
       const titleSpan = document.createElement("span");
       Object.assign(titleSpan.style, { fontWeight: "700", fontSize: "16px" });
       titleSpan.textContent = "\uD83D\uDD16 Lianki";
+      const badge = document.createElement("span");
+      const { icon, title } = storeBadge(cardStore);
+      const due = offlineReady ? dueCountFromIndex(cardStorage._index(), new Date()) : null;
+      badge.textContent = due === null ? icon : `${icon} ${due} due`;
+      badge.title = due === null ? title : `${title} · ${due} card(s) due`;
+      Object.assign(badge.style, {
+        marginLeft: "8px",
+        fontSize: "12px",
+        fontWeight: "400",
+        color: "var(--lk-muted)",
+        whiteSpace: "nowrap",
+      });
+      titleSpan.appendChild(badge);
       const closeBtn = document.createElement("button");
       closeBtn.textContent = "×";
       closeBtn.setAttribute(
