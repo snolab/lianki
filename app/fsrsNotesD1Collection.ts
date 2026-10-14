@@ -176,6 +176,12 @@ export class D1FsrsCollection {
       $push?: { log: ReviewLog };
       $setOnInsert?: Partial<FSRSNote>;
     },
+    /**
+     * `restore: true` is an explicit "give me this card back" — it revives a
+     * tombstoned url regardless of clocks. Without it the add path refuses to
+     * revive anything, which is what stops a page visit undoing a deletion.
+     */
+    opts: { restore?: boolean } = {},
   ): Promise<FsrsDoc | null> {
     const existing = await this.repo.getByUrl(filter.url);
 
@@ -226,7 +232,9 @@ export class D1FsrsCollection {
     // fresh `$setOnInsert` HLC would outrank the tombstone and revive a card
     // the user deleted — the exact bug tombstones were added to prevent, one
     // layer up from the guard in the repo.
-    const id = await this.repo.upsert(note, undefined, { resurrect: false });
+    const id = await this.repo.upsert(note, undefined, {
+      resurrect: opts.restore === true ? true : false,
+    });
     return toDoc({ ...note, id });
   }
 

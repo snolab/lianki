@@ -99,6 +99,69 @@ describe("the add path never resurrects", () => {
   });
 });
 
+describe("restoring a deleted card", () => {
+  test("an explicit restore revives it", async () => {
+    await repo.upsert(note());
+    await repo.delete(URL_A);
+    await collection.findOneAndUpdate(
+      { url: URL_A },
+      { $setOnInsert: { card: createEmptyCard(), url: URL_A, hlc: newServerHLC() } },
+      { restore: true },
+    );
+    expect(await repo.getByUrl(URL_A)).not.toBeNull();
+    expect(await repo.getTombstone(URL_A)).toBeNull();
+  });
+
+  test("a restore wins even against a NEWER tombstone", async () => {
+    // Someone pressing Restore is looking at the card and asking for it back;
+    // no clock comparison should be able to tell them no. Clock skew between
+    // devices would otherwise make the button silently do nothing.
+    await repo.upsert(note());
+    await repo.delete(URL_A);
+    await (d1 as unknown as D1Like)
+      .prepare("UPDATE fsrs_notes SET hlc = ? WHERE email = ? AND url = ?")
+      .bind(
+        JSON.stringify({ timestamp: Date.now() + 600_000, counter: 0, deviceId: "zzz" }),
+        EMAIL,
+        URL_A,
+      )
+      .run();
+    await repo.upsert(
+      note(URL_A, { hlc: { timestamp: 1, counter: 0, deviceId: "a" } }),
+      undefined,
+      {
+        resurrect: true,
+      },
+    );
+    expect(await repo.getByUrl(URL_A)).not.toBeNull();
+  });
+
+  test("restoring does not resurrect every other deleted card", async () => {
+    await repo.upsert(note());
+    await repo.upsert(note("https://other.test/1"));
+    await repo.delete(URL_A);
+    await repo.delete("https://other.test/1");
+    await collection.findOneAndUpdate(
+      { url: URL_A },
+      { $setOnInsert: { card: createEmptyCard(), url: URL_A, hlc: newServerHLC() } },
+      { restore: true },
+    );
+    expect(await repo.getByUrl("https://other.test/1")).toBeNull();
+  });
+
+  test("a plain add is still refused after a restore of a different url", async () => {
+    await repo.upsert(note("https://other.test/1"));
+    await repo.delete("https://other.test/1");
+    await collection.findOneAndUpdate(
+      { url: "https://other.test/1" },
+      {
+        $setOnInsert: { card: createEmptyCard(), url: "https://other.test/1", hlc: newServerHLC() },
+      },
+    );
+    expect(await repo.getByUrl("https://other.test/1")).toBeNull();
+  });
+});
+
 describe("the userscript side", () => {
   const BUILT = readFileSync(join(process.cwd(), "public/lianki.user.js"), "utf-8");
 
@@ -112,6 +175,19 @@ describe("the userscript side", () => {
   it("consults it before adding, so a deleted page adds nothing", () => {
     expect(BUILT).toMatch(/isDeleted\(url\)/);
     expect(BUILT).toMatch(/You deleted this card/);
+  });
+
+  it("offers a way back instead of a dead end", () => {
+    // The first build of the guard said "You deleted this card." and gave the
+    // user no way to disagree.
+    expect(BUILT).toMatch(/Restore it/);
+    expect(BUILT).toMatch(/restoreCard\(/);
+    expect(BUILT).toMatch(/restore: true/);
+    expect(BUILT).toMatch(/KeyR/);
+  });
+
+  it("drops the tombstone record so the add path can repopulate it", () => {
+    expect(BUILT).toMatch(/GM_deleteValue\(/);
   });
 
   it("sends the url with a delete, so a stale id cannot strand the row", () => {

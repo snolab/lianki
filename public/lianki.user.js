@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.17
+// @version     2.24.18
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1859,6 +1859,19 @@
         }),
       );
     }
+    restoreCard(url) {
+      const hash = hashUrl(url);
+      const prev = this.getEntry(url);
+      if (!prev?.del) return false;
+      const idx = this._index();
+      const pos = idx.findIndex((e) => e.url === url);
+      const entry = { url, due: new Date().toISOString(), hash };
+      if (pos >= 0) idx[pos] = entry;
+      else idx.push(entry);
+      this._saveIndex(idx);
+      GM_deleteValue(CARD_PREFIX + hash);
+      return true;
+    }
     deleteAllCards() {
       const idx = this._index();
       let n = 0;
@@ -2412,6 +2425,12 @@
     const getOptions = (id) => api(`/api/fsrs/options?id=${encodeURIComponent(id)}`);
     const submitReview = (id, rating) =>
       api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
+    const restoreNote = (url, title) =>
+      api("/api/fsrs/add", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url, title, restore: true }),
+      });
     const deleteNote = (id, url) =>
       api(
         `/api/fsrs/delete?id=${encodeURIComponent(id)}` +
@@ -2941,6 +2960,24 @@ ${state.errorDetails}`);
         notesRow.appendChild(notesInput);
         notesRow.appendChild(syncIndicator);
         dialog.appendChild(notesRow);
+      } else if (phase === "deleted") {
+        const msgDiv = document.createElement("div");
+        Object.assign(msgDiv.style, { fontSize: "15px", marginBottom: "12px" });
+        msgDiv.textContent = message;
+        dialog.appendChild(msgDiv);
+        const restoreBtn = document.createElement("button");
+        restoreBtn.textContent = "Restore it (R)";
+        restoreBtn.setAttribute("style", btn("#2d6a4f"));
+        restoreBtn.addEventListener("click", doRestore);
+        dialog.appendChild(restoreBtn);
+        const hint = document.createElement("div");
+        Object.assign(hint.style, {
+          fontSize: "11px",
+          color: "var(--lk-muted)",
+          marginTop: "8px",
+        });
+        hint.textContent = "Restoring keeps its review history.";
+        dialog.appendChild(hint);
       } else if (phase === "reviewed") {
         const msgDiv = document.createElement("div");
         Object.assign(msgDiv.style, { color: "var(--lk-success)", fontSize: "15px" });
@@ -3041,6 +3078,20 @@ ${state.errorDetails}`);
         state.phase = "error";
         state.error = err.message;
         state.errorDetails = err.details ?? null;
+        renderDialog();
+      }
+    }
+    async function doRestore() {
+      const url = normalizeUrl(location.href);
+      try {
+        if (offlineReady) cardStorage.restoreCard(url);
+        gmCacheInvalidate(noteKey(url));
+        await restoreNote(url, document.title);
+        closeDialog();
+        setTimeout(openDialog, 0);
+      } catch (err) {
+        state.phase = "error";
+        state.error = `Restore failed: ${err?.message ?? err}`;
         renderDialog();
       }
     }
@@ -3178,6 +3229,7 @@ ${nextUrl}`;
       Digit4: () => doReview(4),
       KeyA: () => doReview(4),
       KeyH: () => doReview(4),
+      KeyR: () => (state.phase === "deleted" ? doRestore() : undefined),
       Digit5: () => doDelete(),
       KeyT: () => doDelete(),
       KeyM: () => doDelete(),
@@ -3962,7 +4014,7 @@ ${actualUrl}
       dialog.focus();
       const url = normalizeUrl(location.href);
       if (offlineReady && cardStorage.isDeleted(url)) {
-        state.phase = "reviewed";
+        state.phase = "deleted";
         state.message = "You deleted this card.";
         renderDialog();
         return;

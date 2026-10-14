@@ -194,11 +194,18 @@ export class FsrsNotesD1Repo {
     id?: string,
     opts: {
       /**
-       * Whether this write may revive a tombstoned url. False for an *add*:
-       * merely opening a page must never undo a deletion, and `addNote` fires
-       * on dialog-open carrying a fresh server HLC that would otherwise
-       * outrank any tombstone. True (the default) for a review, which is a
-       * deliberate act and the "last write wins" case the merge rules mean.
+       * Whether this write may revive a tombstoned url. Three states, because
+       * three different things can want to write to a deleted card:
+       *
+       * - `false` — an *add*. `addNote` fires on merely opening the dialog and
+       *   carries a fresh server HLC that would outrank any tombstone, so it
+       *   is refused outright rather than compared.
+       * - `undefined` (default) — a *review*. Compared by HLC: last write
+       *   wins, which is the merge rule tombstones were designed around.
+       * - `true` — an explicit *restore*, someone pressing a button. It wins
+       *   regardless of clocks: the user is looking at the deleted card and
+       *   asking for it back, and no HLC comparison should be able to tell
+       *   them no.
        */
       resurrect?: boolean;
     } = {},
@@ -217,7 +224,7 @@ export class FsrsNotesD1Repo {
     // A write carrying no HLC cannot be compared, so it loses: `addNote` fires
     // on merely opening the dialog, and an unclocked write must not undo an
     // explicit deletion.
-    if (existing?.deleted_at) {
+    if (existing?.deleted_at && opts.resurrect !== true) {
       if (opts.resurrect === false) return noteId;
       if (!note.hlc) return noteId;
       const tombstone = parseHlc(existing.hlc);

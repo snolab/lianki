@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.17
+// @version     2.24.18
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -464,6 +464,31 @@ class GMCardStorage {
         deletedAt: Date.now(),
       }),
     );
+  }
+
+  /**
+   * Undo a local delete.
+   *
+   * The row is still there — that is what soft deletion buys — so restoring is
+   * just dropping the tombstone. The card body is gone (deleteCard nulls it),
+   * so the entry becomes due now and the next add refetches the real card from
+   * the server. Carries a fresh HLC so the restore outranks the tombstone it
+   * replaces, on every device.
+   */
+  restoreCard(url) {
+    const hash = hashUrl(url);
+    const prev = this.getEntry(url);
+    if (!prev?.del) return false;
+    const idx = this._index();
+    const pos = idx.findIndex((e) => e.url === url);
+    const entry = { url, due: new Date().toISOString(), hash };
+    if (pos >= 0) idx[pos] = entry;
+    else idx.push(entry);
+    this._saveIndex(idx);
+    // Drop the tombstone record outright rather than rewriting it: a restored
+    // url must look untouched, so the normal add path can repopulate it.
+    GM_deleteValue(CARD_PREFIX + hash);
+    return true;
   }
 
   deleteAllCards() {
@@ -1239,6 +1264,14 @@ function main() {
   const getOptions = (id) => api(`/api/fsrs/options?id=${encodeURIComponent(id)}`);
   const submitReview = (id, rating) =>
     api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
+  /** Explicit restore: the only write allowed to revive a deleted url. */
+  const restoreNote = (url, title) =>
+    api("/api/fsrs/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url, title, restore: true }),
+    });
+
   // Both id AND url: the id can be stale (a row deleted and re-added by
   // addNote returns with a fresh uuid), and the server falls back to the url
   // rather than answering "note not found" while the local tombstone lands.
@@ -1849,6 +1882,29 @@ function main() {
       notesRow.appendChild(notesInput);
       notesRow.appendChild(syncIndicator);
       dialog.appendChild(notesRow);
+    } else if (phase === "deleted") {
+      // Soft deletion means the card is recoverable, so offer that rather than
+      // leaving a dead end: the first build of this guard told people "You
+      // deleted this card." and gave them no way to disagree.
+      const msgDiv = document.createElement("div");
+      Object.assign(msgDiv.style, { fontSize: "15px", marginBottom: "12px" });
+      msgDiv.textContent = message;
+      dialog.appendChild(msgDiv);
+
+      const restoreBtn = document.createElement("button");
+      restoreBtn.textContent = "Restore it (R)";
+      restoreBtn.setAttribute("style", btn("#2d6a4f"));
+      restoreBtn.addEventListener("click", doRestore);
+      dialog.appendChild(restoreBtn);
+
+      const hint = document.createElement("div");
+      Object.assign(hint.style, {
+        fontSize: "11px",
+        color: "var(--lk-muted)",
+        marginTop: "8px",
+      });
+      hint.textContent = "Restoring keeps its review history.";
+      dialog.appendChild(hint);
     } else if (phase === "reviewed") {
       const msgDiv = document.createElement("div");
       Object.assign(msgDiv.style, { color: "var(--lk-success)", fontSize: "15px" });
@@ -1980,6 +2036,29 @@ function main() {
       state.phase = "error";
       state.error = err.message;
       state.errorDetails = err.details ?? null;
+      renderDialog();
+    }
+  }
+
+  /**
+   * Put a deleted card back.
+   *
+   * Clears the local tombstone, then tells the server explicitly — a plain add
+   * is refused for a deleted url (that is what stops a page visit reviving
+   * one), so the restore has to say what it is. Then reopen the dialog, which
+   * now takes the ordinary path and fetches the real card.
+   */
+  async function doRestore() {
+    const url = normalizeUrl(location.href);
+    try {
+      if (offlineReady) cardStorage.restoreCard(url);
+      gmCacheInvalidate(noteKey(url));
+      await restoreNote(url, document.title);
+      closeDialog();
+      setTimeout(openDialog, 0);
+    } catch (err) {
+      state.phase = "error";
+      state.error = `Restore failed: ${err?.message ?? err}`;
       renderDialog();
     }
   }
@@ -2175,6 +2254,7 @@ function main() {
     Digit4: () => doReview(4),
     KeyA: () => doReview(4),
     KeyH: () => doReview(4),
+    KeyR: () => (state.phase === "deleted" ? doRestore() : undefined),
     Digit5: () => doDelete(),
     KeyT: () => doDelete(),
     KeyM: () => doDelete(),
@@ -3279,7 +3359,7 @@ function main() {
     // YouTube card undeletable. The local tombstone is the authority here, so
     // say so and add nothing.
     if (offlineReady && cardStorage.isDeleted(url)) {
-      state.phase = "reviewed";
+      state.phase = "deleted";
       state.message = "You deleted this card.";
       renderDialog();
       return;
