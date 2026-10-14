@@ -766,10 +766,14 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     const zAddNote = z.object({
       url: z.string(),
       title: z.string().optional().nullable(),
+      // An explicit "restore" from the review dialog: the user is looking at a
+      // card they deleted and asking for it back. A plain add must never do
+      // this, which is why it is a separate, opt-in field.
+      restore: z.boolean().optional(),
     });
     const input = await req.json();
-    const { url, title } = zAddNote.parse(input);
-    const resp = await saveNote({ url, title: title ?? undefined });
+    const { url, title, restore } = zAddNote.parse(input);
+    const resp = await saveNote({ url, title: title ?? undefined, restore });
 
     // Include review options in response to save an API call
     const repeatRecord = fsrsConfig.repeat(resp.card, new Date());
@@ -842,7 +846,15 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     };
   }
 
-  async function saveNote({ url, title }: { url: string; title?: string }) {
+  async function saveNote({
+    url,
+    title,
+    restore,
+  }: {
+    url: string;
+    title?: string;
+    restore?: boolean;
+  }) {
     let normalized;
     try {
       normalized = normalizeUrl(url);
@@ -858,7 +870,7 @@ export const fsrsHandler = async (req: Request, email?: string) => {
           $setOnInsert: { card: createEmptyCard(), url: normalized, hlc: newServerHLC() },
           $set: { ...(title && { title }) },
         },
-        { upsert: true, returnDocument: "after" },
+        { upsert: true, returnDocument: "after", ...(restore ? { restore: true } : {}) },
       );
     } catch (err) {
       DIE(`Database operation failed for saveNote: ${normalized}`);
