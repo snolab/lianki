@@ -28,6 +28,10 @@ coveragePathIgnorePatterns = [
   # Must be a glob — a bare "unit/support/" silently matches nothing.
   "unit/support/**",
   "app/db.ts",
+  # Replaced wholesale by unit/support/testMocks.ts (mock.module), so the real
+  # function never runs under the unit suites: 0% funcs / 50% lines on bun
+  # 1.4.2, which fails the per-file gate locally. Covered by qa:all.
+  "app/getFSRSNotesCollection.ts",
   "app/fsrs.ts",
   "app/fsrsNotesD1Collection.ts",
   "app/getRoadmapGoalsCollection.ts",

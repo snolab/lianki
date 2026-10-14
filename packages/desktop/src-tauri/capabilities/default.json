@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The shell exposes nothing to the page; these cover the Rust-side plugins only.",
+  "windows": ["main"],
+  "permissions": ["core:default", "opener:default", "window-state:default"]
+}
