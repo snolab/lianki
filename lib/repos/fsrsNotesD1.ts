@@ -1,7 +1,14 @@
 import type { FSRSNote } from "@/lib/core/fsrsNote";
 import type { D1Like } from "@/lib/d1/types";
 import { restoreNoteFromExport } from "@/lib/yaml-export";
-import { DEFAULT_REVIEW_ORDER, reviewOrderSql, type ReviewOrder } from "@lianki/core";
+import {
+  compareHLC,
+  DEFAULT_REVIEW_ORDER,
+  newServerHLC,
+  reviewOrderSql,
+  type HLC,
+  type ReviewOrder,
+} from "@lianki/core";
 
 /** A note as stored in D1 — carries the stable `id` (migrated MongoDB _id). */
 export type StoredNote = FSRSNote & { id: string };
@@ -86,6 +93,27 @@ export function escapeLike(input: string): string {
  * D1-backed access to one user's FSRS notes (replaces MongoDB `FSRSNotes@{email}`).
  * Keyed by `email`, matching the per-email MongoDB collection model.
  */
+/**
+ * Appended to every read's WHERE clause.
+ *
+ * A tombstoned row still exists — that is the point — so every read has to
+ * exclude it explicitly. Kept as one constant rather than spelled out per
+ * query: a read that forgets it shows the user a card they deleted, which is
+ * exactly the bug tombstones were added to fix.
+ */
+const LIVE = "deleted_at IS NULL";
+
+/** The stored HLC, or null when the column is empty or malformed. */
+function parseHlc(raw: string | null | undefined): HLC | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    return typeof v?.timestamp === "number" ? (v as HLC) : null;
+  } catch {
+    return null;
+  }
+}
+
 export class FsrsNotesD1Repo {
   constructor(
     private readonly db: D1Like,
@@ -94,7 +122,7 @@ export class FsrsNotesD1Repo {
 
   async getByUrl(url: string): Promise<StoredNote | null> {
     const row = await this.db
-      .prepare("SELECT * FROM fsrs_notes WHERE email = ? AND url = ?")
+      .prepare(`SELECT * FROM fsrs_notes WHERE email = ? AND url = ? AND ${LIVE}`)
       .bind(this.email, url)
       .first<Row>();
     return row ? rowToNote(row) : null;
@@ -102,7 +130,7 @@ export class FsrsNotesD1Repo {
 
   async getById(id: string): Promise<StoredNote | null> {
     const row = await this.db
-      .prepare("SELECT * FROM fsrs_notes WHERE email = ? AND id = ?")
+      .prepare(`SELECT * FROM fsrs_notes WHERE email = ? AND id = ? AND ${LIVE}`)
       .bind(this.email, id)
       .first<Row>();
     return row ? rowToNote(row) : null;
@@ -110,7 +138,7 @@ export class FsrsNotesD1Repo {
 
   async listAll(): Promise<StoredNote[]> {
     const { results } = await this.db
-      .prepare("SELECT * FROM fsrs_notes WHERE email = ? ORDER BY card_due")
+      .prepare(`SELECT * FROM fsrs_notes WHERE email = ? AND ${LIVE} ORDER BY card_due`)
       .bind(this.email)
       .all<Row>();
     return results.map(rowToNote);
@@ -132,7 +160,7 @@ export class FsrsNotesD1Repo {
   ): Promise<StoredNote[]> {
     const { results } = await this.db
       .prepare(
-        `SELECT * FROM fsrs_notes WHERE email = ? AND card_due <= ?
+        `SELECT * FROM fsrs_notes WHERE email = ? AND card_due <= ? AND ${LIVE}
           ORDER BY card_due ${reviewOrderSql(order)} LIMIT ?`,
       )
       .bind(this.email, now.toISOString(), limit)
@@ -142,7 +170,7 @@ export class FsrsNotesD1Repo {
 
   async countAll(): Promise<number> {
     const row = await this.db
-      .prepare("SELECT COUNT(*) AS c FROM fsrs_notes WHERE email = ?")
+      .prepare(`SELECT COUNT(*) AS c FROM fsrs_notes WHERE email = ? AND ${LIVE}`)
       .bind(this.email)
       .first<{ c: number }>();
     return row?.c ?? 0;
@@ -150,7 +178,7 @@ export class FsrsNotesD1Repo {
 
   async countDue(now: Date): Promise<number> {
     const row = await this.db
-      .prepare("SELECT COUNT(*) AS c FROM fsrs_notes WHERE email = ? AND card_due <= ?")
+      .prepare(`SELECT COUNT(*) AS c FROM fsrs_notes WHERE email = ? AND card_due <= ? AND ${LIVE}`)
       .bind(this.email, now.toISOString())
       .first<{ c: number }>();
     return row?.c ?? 0;
@@ -163,10 +191,24 @@ export class FsrsNotesD1Repo {
    */
   async upsert(note: FSRSNote, id?: string): Promise<string> {
     const existing = await this.db
-      .prepare("SELECT id FROM fsrs_notes WHERE email = ? AND url = ?")
+      .prepare("SELECT id, deleted_at, hlc FROM fsrs_notes WHERE email = ? AND url = ?")
       .bind(this.email, note.url)
-      .first<{ id: string }>();
+      .first<{ id: string; deleted_at?: string | null; hlc?: string | null }>();
     const noteId = existing?.id ?? id ?? crypto.randomUUID();
+
+    // A tombstone is a value that can win a merge, so an incoming live card
+    // only resurrects the url when it is genuinely newer. Without this, every
+    // client still holding a deleted card re-creates it on its next save —
+    // which is the bug tombstones exist to fix, reintroduced one layer down.
+    //
+    // A write carrying no HLC cannot be compared, so it loses: `addNote` fires
+    // on merely opening the dialog, and an unclocked write must not undo an
+    // explicit deletion.
+    if (existing?.deleted_at) {
+      if (!note.hlc) return noteId;
+      const tombstone = parseHlc(existing.hlc);
+      if (tombstone && compareHLC(note.hlc, tombstone) <= 0) return noteId;
+    }
     const cardDue = note.card ? new Date(note.card.due).toISOString() : CARDLESS_DUE;
     await this.db
       .prepare(
@@ -176,7 +218,8 @@ export class FsrsNotesD1Repo {
          ON CONFLICT(email, url) DO UPDATE SET
            title = excluded.title, card = excluded.card, log = excluded.log,
            notes = excluded.notes, speed_markers = excluded.speed_markers,
-           hlc = excluded.hlc, device_id = excluded.device_id, card_due = excluded.card_due`,
+           hlc = excluded.hlc, device_id = excluded.device_id, card_due = excluded.card_due,
+           deleted_at = NULL`,
       )
       .bind(
         noteId,
@@ -195,10 +238,20 @@ export class FsrsNotesD1Repo {
     return noteId;
   }
 
+  /**
+   * Soft-delete: the row stays, carrying `deleted_at` and a fresh HLC so it can
+   * out-rank a stale live copy arriving from another device. The card body is
+   * cleared — a tombstone is a fact about a url, not a copy of what was there.
+   */
   async delete(url: string): Promise<void> {
     await this.db
-      .prepare("DELETE FROM fsrs_notes WHERE email = ? AND url = ?")
-      .bind(this.email, url)
+      .prepare(
+        `UPDATE fsrs_notes
+            SET deleted_at = ?, title = NULL, notes = NULL, speed_markers = NULL,
+                log = '[]', hlc = ?
+          WHERE email = ? AND url = ?`,
+      )
+      .bind(new Date().toISOString(), JSON.stringify(newServerHLC()), this.email, url)
       .run();
   }
 
@@ -214,7 +267,10 @@ export class FsrsNotesD1Repo {
    * caller cannot reach the ORDER BY clause.
    */
   async query(opts: NotesQueryOptions): Promise<{ rows: StoredNote[]; total: number }> {
-    const where: string[] = ["email = ?"];
+    // LIVE goes in with the first clause, not as an afterthought: this WHERE is
+    // assembled from optional filters, and a tombstone leaking into the data
+    // table is the user seeing a card they deleted.
+    const where: string[] = ["email = ?", LIVE];
     const binds: unknown[] = [this.email];
 
     if (opts.q) {
@@ -266,12 +322,19 @@ export class FsrsNotesD1Repo {
       const chunk = urls.slice(i, i + 50);
       const holes = chunk.map(() => "?").join(", ");
       const before = await this.db
-        .prepare(`SELECT COUNT(*) AS c FROM fsrs_notes WHERE email = ? AND url IN (${holes})`)
+        .prepare(
+          `SELECT COUNT(*) AS c FROM fsrs_notes WHERE email = ? AND url IN (${holes}) AND ${LIVE}`,
+        )
         .bind(this.email, ...chunk)
         .first<{ c: number }>();
       await this.db
-        .prepare(`DELETE FROM fsrs_notes WHERE email = ? AND url IN (${holes})`)
-        .bind(this.email, ...chunk)
+        .prepare(
+          `UPDATE fsrs_notes
+              SET deleted_at = ?, title = NULL, notes = NULL, speed_markers = NULL,
+                  log = '[]', hlc = ?
+            WHERE email = ? AND url IN (${holes}) AND ${LIVE}`,
+        )
+        .bind(new Date().toISOString(), JSON.stringify(newServerHLC()), this.email, ...chunk)
         .run();
       deleted += before?.c ?? 0;
     }
@@ -281,8 +344,64 @@ export class FsrsNotesD1Repo {
   /** Delete every note for this user. Unrecoverable. */
   async deleteAll(): Promise<number> {
     const before = await this.countAll();
-    await this.db.prepare("DELETE FROM fsrs_notes WHERE email = ?").bind(this.email).run();
+    await this.db
+      .prepare(
+        `UPDATE fsrs_notes
+            SET deleted_at = ?, title = NULL, notes = NULL, speed_markers = NULL,
+                log = '[]', hlc = ?
+          WHERE email = ? AND ${LIVE}`,
+      )
+      .bind(new Date().toISOString(), JSON.stringify(newServerHLC()), this.email)
+      .run();
     return before;
+  }
+
+  /**
+   * Hard-delete tombstones past the retention window.
+   *
+   * 90 days must be longer than any plausible offline period: it is the window
+   * in which a returning device can still learn about a deletion cheaply. Past
+   * it, a device needs the full-reconcile path instead — see
+   * docs/sync-merge-rules.md. Sweeping earlier would resurrect cards on any
+   * device that was away longer than the window.
+   *
+   * Returns how many rows were swept, so a caller can advance `purgedBefore`
+   * only for work actually done.
+   */
+  async purgeTombstones(olderThan: Date): Promise<number> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM fsrs_notes
+          WHERE email = ? AND deleted_at IS NOT NULL AND deleted_at < ?`,
+      )
+      .bind(this.email, olderThan.toISOString())
+      .all<{ c: number }>();
+    const n = results?.[0]?.c ?? 0;
+    if (n > 0) {
+      await this.db
+        .prepare(
+          `DELETE FROM fsrs_notes
+            WHERE email = ? AND deleted_at IS NOT NULL AND deleted_at < ?`,
+        )
+        .bind(this.email, olderThan.toISOString())
+        .run();
+    }
+    return n;
+  }
+
+  /** Tombstones, for a client reconciling deletions. Live rows are excluded. */
+  async listTombstones(): Promise<{ url: string; deletedAt: string; hlc: HLC | null }[]> {
+    const { results } = await this.db
+      .prepare(
+        "SELECT url, deleted_at, hlc FROM fsrs_notes WHERE email = ? AND deleted_at IS NOT NULL",
+      )
+      .bind(this.email)
+      .all<{ url: string; deleted_at: string; hlc?: string | null }>();
+    return (results ?? []).map((r) => ({
+      url: r.url,
+      deletedAt: r.deleted_at,
+      hlc: parseHlc(r.hlc),
+    }));
   }
 
   async updateUrl(oldUrl: string, newUrl: string): Promise<void> {
