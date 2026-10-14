@@ -73,3 +73,4 @@ that are expensive to rediscover.
 | Blog posts | [blog/AGENTS.md](blog/AGENTS.md) |
 | Sync/offline architecture | [docs/sync-architecture.md](docs/sync-architecture.md) |
 | Sync conflicts, deletions, tombstones | [docs/sync-merge-rules.md](docs/sync-merge-rules.md) |
+| The Windows desktop shell (Tauri window around lianki.com) | [packages/desktop/README.md](packages/desktop/README.md) |

@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Clip deck</title>
+  <style>
+    :root { color-scheme: dark; --bg: #111a2e; --fg: #e8edf7; --mute: #8a96b0; --line: #243049;
+            --again: #ef4444; --hard: #f59e0b; --good: #22c55e; --easy: #3b82f6; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+    .stage { height: 100%; display: grid; grid-template-rows: auto 1fr auto; padding: 10px 12px; gap: 10px; user-select: none; -webkit-user-select: none; }
+
+    .meter { position: relative; height: 34px; border-radius: 10px; overflow: hidden; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; font-size: 12px; font-weight: 700; letter-spacing: .04em; }
+    .meter span { display: grid; place-items: center; opacity: .45; transition: opacity .12s, background .12s; }
+    .meter .again { color: var(--again); } .meter .hard { color: var(--hard); } .meter .good { color: var(--good); } .meter .easy { color: var(--easy); }
+    .meter span.lit { opacity: 1; background: rgba(255,255,255,.08); }
+    .meter .marker { position: absolute; top: 4px; bottom: 4px; width: 3px; left: 50%; background: var(--fg); border-radius: 2px; translate: -50% 0; opacity: .5; }
+    .meter .mid { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--line); }
+
+    .deck { position: relative; display: grid; place-items: center; touch-action: none; }
+    .empty { color: var(--mute); text-align: center; padding: 24px; max-width: 420px; }
+    .card { position: absolute; width: 100%; max-width: 560px; aspect-ratio: 9 / 14; max-height: 100%; border-radius: 16px; overflow: hidden; background: #000;
+            box-shadow: 0 16px 40px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.08); will-change: transform; display: grid; grid-template-rows: 1fr auto; }
+    .card .video { position: relative; background: #000; }
+    .card .video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    .card .overlay { position: absolute; inset: 0; cursor: grab; }
+    .card.free .overlay { pointer-events: none; }
+    .card .budget { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,.15); }
+    .card .budget i { display: block; height: 100%; width: 0; background: var(--easy); transition: width .25s linear; }
+    .card .cap { padding: 8px 12px 10px; font-size: 13px; color: var(--mute); background: #0b1220; display: grid; gap: 4px; }
+    .card .cap .meta { display: flex; justify-content: space-between; gap: 8px; }
+    .card .cap b { color: var(--fg); }
+    .card .cap .text { color: var(--fg); font-size: 14px; line-height: 1.35; max-height: 3.9em; overflow: hidden; }
+    .card .cap .text mark { background: rgba(59,130,246,.35); color: inherit; border-radius: 3px; padding: 0 2px; }
+    .card.under { transform: scale(.94) translateY(16px); opacity: .5; pointer-events: none; }
+    .card.fly { transition: transform .3s cubic-bezier(.2,.7,.3,1), opacity .3s; opacity: 0; }
+    .card.snap { transition: transform .22s cubic-bezier(.2,.7,.3,1); }
+    .stamp { position: absolute; top: 14px; padding: 6px 12px; border: 3px solid currentColor; border-radius: 10px; font-weight: 800; font-size: 22px; letter-spacing: .08em; opacity: 0; pointer-events: none; background: rgba(0,0,0,.35); }
+    .stamp.again, .stamp.hard { left: 14px; transform: rotate(-8deg); }
+    .stamp.good, .stamp.easy { right: 14px; transform: rotate(8deg); }
+    .stamp.again { color: var(--again); } .stamp.hard { color: var(--hard); } .stamp.good { color: var(--good); } .stamp.easy { color: var(--easy); }
+    .stamp.next, .stamp.undo, .stamp.done { left: 50%; translate: -50% 0; transform: none; color: var(--fg); }
+    .stamp.next { top: auto; bottom: 54px; } .stamp.undo { top: 14px; }
+    .stamp.done { top: 50%; translate: -50% -50%; font-size: 16px; border-width: 2px; }
+
+    .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--mute); flex-wrap: wrap; }
+    .tally span { margin-left: 8px; } .tally .again { color: var(--again); } .tally .hard { color: var(--hard); } .tally .good { color: var(--good); } .tally .easy { color: var(--easy); }
+    .foot button { font: inherit; font-size: 12px; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; touch-action: manipulation; }
+    .foot button[aria-pressed="true"] { border-color: var(--easy); color: var(--easy); }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="meter" id="meter">
+      <span class="again" data-z="again">AGAIN</span><span class="hard" data-z="hard">HARD</span>
+      <span class="good" data-z="good">GOOD</span><span class="easy" data-z="easy">EASY</span>
+      <i class="mid"></i><i class="marker" id="marker"></i>
+    </div>
+    <div class="deck" id="deck"><div class="empty" id="empty">loading clips</div></div>
+    <div class="foot">
+      <span id="status">loading</span>
+      <span class="tally" id="tally"></span>
+      <button id="free" type="button" aria-pressed="false">YouTube controls</button>
+    </div>
+  </div>
+
+  <script>
+    // Same gesture model as frame.html, but each card is a clip {videoId,start,end,text}
+    // cut from the video's caption track by /api/clips. The player is cued at
+    // `start` and stops itself at `end` (≤ 60 s); the bar under the video is the
+    // time budget. Horizontal swipe grades by distance, up = next, down = undo.
+    const DEAD = 36, FAR = 150;
+    const GRADES = { again: { pattern: [40, 60, 40] }, hard: { pattern: [80] }, good: { pattern: [30] }, easy: { pattern: [20, 40, 20, 40, 20] } };
+    const NAV = { next: { pattern: [15] }, undo: { pattern: [15, 40, 15] }, done: { pattern: [10, 30, 10] } };
+    const TICK = [12];
+    const KEYS = { "1": "again", "2": "hard", "3": "good", "4": "easy" };
+    const qs = new URLSearchParams(location.search);
+    const Q = qs.get("q") || "", LANG = qs.get("lang") || "en", MAX = qs.get("max") || "60";
+    const V = qs.get("v") || "jNQXAC9IVRw,iG9CE55wbtY";
+
+    const canVibrate = typeof navigator.vibrate === "function";
+    const post = (m) => parent.postMessage(Object.assign({ src: "swipe-grade" }, m), "*");
+    function vibrate(pattern) { try { return canVibrate && navigator.vibrate(pattern); } catch { return false; } }
+    function zoneFor(dx) { const a = Math.abs(dx); if (a < DEAD) return null; if (dx < 0) return a >= FAR ? "again" : "hard"; return a >= FAR ? "easy" : "good"; }
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]));
+    const fmt = (s) => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+
+    const deck = document.getElementById("deck"), meter = document.getElementById("meter"), marker = document.getElementById("marker");
+    const status = document.getElementById("status"), tallyEl = document.getElementById("tally"), freeBtn = document.getElementById("free"), empty = document.getElementById("empty");
+    const tally = { again: 0, hard: 0, good: 0, easy: 0 };
+    const history = [];
+    let CLIPS = [], index = 0, cur = null, under = null, players = new Map(), ytReady = false, free = false, lastZone = null, lastDx = 0, budgetTimer = null;
+    const renderTally = () => tallyEl.innerHTML = Object.entries(tally).map(([g, n]) => "<span class=\"" + g + "\">" + g + " " + n + "</span>").join("");
+    renderTally();
+
+    // ── YouTube IFrame API ───────────────────────────────────────────────
+    const tag = document.createElement("script"); tag.src = "https://www.youtube.com/iframe_api"; document.head.append(tag);
+    window.onYouTubeIframeAPIReady = () => { ytReady = true; for (const c of deck.querySelectorAll(".card")) attachPlayer(c); };
+    function attachPlayer(card) {
+      if (!ytReady || players.has(card) || !card.dataset.video) return;
+      const clip = CLIPS[Number(card.dataset.index)];
+      const p = new YT.Player(card.querySelector(".yt"), {
+        videoId: clip.videoId,
+        playerVars: { playsinline: 1, rel: 0, modestbranding: 1, controls: 1, start: Math.floor(clip.start), end: Math.ceil(clip.end) },
+        events: {
+          onReady: () => { if (card === cur) try { p.playVideo(); } catch {} },
+          onStateChange: (e) => {
+            if (card !== cur) return;
+            if (e.data === YT.PlayerState.PLAYING) startBudget(card, clip);
+            if (e.data === YT.PlayerState.ENDED) { stopBudget(); card.querySelector(".stamp.done").style.opacity = 1; const v = vibrate(NAV.done.pattern); post({ type: "info", msg: "clip ended at " + fmt(clip.end) + " (budget " + Math.round(clip.end - clip.start) + " s); vibrate " + v }); }
+          },
+        },
+      });
+      players.set(card, p);
+    }
+    function startBudget(card, clip) {
+      stopBudget();
+      const bar = card.querySelector(".budget i"), p = players.get(card);
+      budgetTimer = setInterval(() => { try { const t = p.getCurrentTime() - clip.start; bar.style.width = Math.max(0, Math.min(100, (t / (clip.end - clip.start)) * 100)) + "%"; } catch {} }, 250);
+    }
+    function stopBudget() { if (budgetTimer) clearInterval(budgetTimer); budgetTimer = null; }
+    function togglePlay(card) { const p = players.get(card); if (!p || !p.getPlayerState) return; try { p.getPlayerState() === YT.PlayerState.PLAYING ? p.pauseVideo() : p.playVideo(); } catch {} }
+    function pause(card) { const p = players.get(card); try { p && p.pauseVideo && p.pauseVideo(); } catch {} }
+
+    // ── cards ────────────────────────────────────────────────────────────
+    function makeCard(i) {
+      const el = document.createElement("div");
+      el.className = "card"; el.dataset.index = i;
+      if (i >= CLIPS.length) { el.innerHTML = "<div class=\"video\"></div><div class=\"cap\"><div class=\"meta\"><span>end of clips</span></div></div>"; return el; }
+      const c = CLIPS[i];
+      el.dataset.video = c.videoId;
+      const text = c.hit && Q ? esc(c.text).replace(new RegExp(esc(Q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "ig"), (m) => "<mark>" + m + "</mark>") : esc(c.text);
+      el.innerHTML =
+        "<div class=\"video\"><div class=\"yt\"></div><div class=\"overlay\"></div><div class=\"budget\"><i></i></div>" +
+        "<span class=\"stamp again\">AGAIN</span><span class=\"stamp hard\">HARD</span><span class=\"stamp good\">GOOD</span><span class=\"stamp easy\">EASY</span>" +
+        "<span class=\"stamp next\">NEXT</span><span class=\"stamp undo\">UNDO</span><span class=\"stamp done\">CLIP DONE · SWIPE TO GRADE</span></div>" +
+        "<div class=\"cap\"><div class=\"meta\"><span>#" + (i + 1) + "/" + CLIPS.length + " <b>" + esc(c.title).slice(0, 40) + "</b></span><span>" + fmt(c.start) + "–" + fmt(c.end) + " · " + Math.round(c.end - c.start) + "s" + (c.auto ? " · auto-cc" : "") + "</span></div>" +
+        "<div class=\"text\">" + text + "</div></div>";
+      el.classList.toggle("free", free);
+      return el;
+    }
+    function mount(i) {
+      deck.replaceChildren();
+      cur = makeCard(i); under = makeCard(i + 1); under.classList.add("under");
+      deck.append(under, cur);
+      attachPlayer(cur); attachPlayer(under);
+    }
+    function advance(kind, grade, input) {
+      if (index >= CLIPS.length) { snapBack(); return; }
+      const clip = CLIPS[index];
+      const vib = vibrate(grade ? GRADES[grade].pattern : NAV.next.pattern);
+      if (grade) { tally[grade]++; renderTally(); }
+      history.push({ index, grade });
+      if (grade) post({ type: "grade", grade, input, pattern: GRADES[grade].pattern, vibrated: vib, dx: lastDx, clip: clip.videoId + "@" + fmt(clip.start) });
+      else post({ type: "nav", action: "next", input, index: index + 1, vibrated: vib });
+      const gone = cur; pause(gone); stopBudget();
+      const [fx, fy] = grade ? [(grade === "again" || grade === "hard") ? -720 : 720, 0] : [0, -820];
+      gone.classList.add("fly"); gone.style.transform = "translate(" + fx + "px, " + fy + "px) rotate(" + fx / 16 + "deg)";
+      const done = () => { gone.remove(); players.get(gone)?.destroy?.(); players.delete(gone); };
+      gone.addEventListener("transitionend", done, { once: true }); setTimeout(done, 450);
+      index++;
+      cur = under; cur.classList.remove("under"); players.get(cur)?.playVideo?.();
+      under = makeCard(index + 1); under.classList.add("under"); deck.prepend(under); attachPlayer(under);
+      clearMeter();
+    }
+    function undo(input) {
+      const last = history.pop();
+      const vib = vibrate(NAV.undo.pattern);
+      if (!last) { post({ type: "nav", action: "undo", input, index, vibrated: vib }); snapBack(); return; }
+      if (last.grade) { tally[last.grade]--; renderTally(); }
+      pause(cur); stopBudget();
+      index = last.index;
+      post({ type: "nav", action: "undo", input, index, vibrated: vib });
+      for (const c of deck.querySelectorAll(".card")) { players.get(c)?.destroy?.(); players.delete(c); }
+      mount(index);
+      clearMeter();
+    }
+
+    // ── meter + stamps ───────────────────────────────────────────────────
+    function paint(dx, dy, axis) {
+      const s = Object.fromEntries([...cur.querySelectorAll(".stamp")].map((e) => [e.classList[1], e]));
+      for (const k in s) if (k !== "done") s[k].style.opacity = 0;
+      if (axis === "x") {
+        lastDx = dx;
+        cur.style.transform = "translateX(" + dx + "px) rotate(" + dx / 22 + "deg)";
+        const z = zoneFor(dx);
+        marker.style.left = (50 + Math.max(-50, Math.min(50, (dx / (FAR * 1.4)) * 50))) + "%"; marker.style.opacity = 1;
+        for (const el of meter.querySelectorAll("span")) el.classList.toggle("lit", el.dataset.z === z);
+        if (z) s[z].style.opacity = Math.min(1, (Math.abs(dx) - DEAD) / 40 + .4);
+        if (z !== lastZone) { const t = z ? vibrate(TICK) : false; if (z) post({ type: "tick", zone: z, vibrated: t }); lastZone = z; }
+      } else {
+        cur.style.transform = "translateY(" + dy + "px)";
+        const k = dy < 0 ? "next" : "undo";
+        if (Math.abs(dy) >= DEAD) s[k].style.opacity = Math.min(1, (Math.abs(dy) - DEAD) / 40 + .4);
+      }
+    }
+    function clearMeter() { marker.style.left = "50%"; marker.style.opacity = .5; lastZone = null; for (const el of meter.querySelectorAll("span")) el.classList.remove("lit"); }
+    function snapBack() {
+      if (!cur) return;
+      cur.classList.add("snap"); cur.style.transform = "";
+      for (const e of cur.querySelectorAll(".stamp")) if (!e.classList.contains("done")) e.style.opacity = 0;
+      cur.addEventListener("transitionend", () => cur.classList.remove("snap"), { once: true });
+      clearMeter();
+    }
+
+    // ── gesture ──────────────────────────────────────────────────────────
+    let drag = null;
+    deck.addEventListener("pointerdown", (e) => {
+      if (!cur || !cur.contains(e.target)) return;
+      drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, axis: null };
+      deck.setPointerCapture(e.pointerId); cur.classList.remove("snap");
+    });
+    deck.addEventListener("pointermove", (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      drag.dx = e.clientX - drag.x0; drag.dy = e.clientY - drag.y0;
+      if (!drag.axis && Math.hypot(drag.dx, drag.dy) > 10) drag.axis = Math.abs(drag.dx) >= Math.abs(drag.dy) ? "x" : "y";
+      if (drag.axis) paint(drag.dx, drag.dy, drag.axis);
+    });
+    const end = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const { dx, dy, axis } = drag; drag = null;
+      if (!axis) { togglePlay(cur); return; }
+      if (axis === "x") { const z = zoneFor(dx); z ? advance("grade", z, "swipe " + Math.round(dx) + "px") : snapBack(); return; }
+      if (dy <= -DEAD * 2) advance("next", null, "swipe up");
+      else if (dy >= DEAD * 2) undo("swipe down");
+      else snapBack();
+    };
+    deck.addEventListener("pointerup", end);
+    deck.addEventListener("pointercancel", end);
+    freeBtn.addEventListener("click", () => {
+      free = !free; freeBtn.setAttribute("aria-pressed", String(free));
+      for (const c of deck.querySelectorAll(".card")) c.classList.toggle("free", free);
+    });
+    window.addEventListener("keydown", (e) => {
+      const k = e.key.toLowerCase();
+      if (KEYS[k]) { lastDx = 0; advance("grade", KEYS[k], "key " + k); }
+      else if (k === "w") advance("next", null, "key w");
+      else if (k === "s") undo("key s");
+      else if (k === " ") { e.preventDefault(); togglePlay(cur); }
+    });
+    window.addEventListener("pointerdown", () => window.focus(), { once: true });
+
+    // ── load clips ───────────────────────────────────────────────────────
+    (async () => {
+      status.textContent = "fetching captions";
+      try {
+        const r = await fetch("/api/clips?" + new URLSearchParams({ v: V, q: Q, lang: LANG, max: MAX }));
+        const data = await r.json();
+        if (data.error) throw new Error(data.error);
+        CLIPS = data.clips;
+        for (const v of data.videos) post({ type: "info", msg: v.error ? v.videoId + ": " + v.error : v.videoId + " \"" + v.title + "\" captions=" + (v.tracks || []).map((t) => t.lang + (t.auto ? "(auto)" : "")).join(",") + " used=" + v.lang + (v.auto ? "(auto)" : "") + " clips=" + v.clips });
+        post({ type: "clips", count: CLIPS.length, q: Q, lang: LANG });
+        if (!CLIPS.length) { empty.textContent = Q ? "no caption line contains \"" + Q + "\" in " + LANG : "no captions found"; status.textContent = "0 clips"; return; }
+        status.textContent = (canVibrate ? "vibrate: available" : "vibrate: not available here") + " · " + CLIPS.length + " clips ≤ " + MAX + "s";
+        mount(0);
+      } catch (e) {
+        empty.textContent = "failed: " + e.message; status.textContent = "error";
+        post({ type: "info", msg: "clips failed: " + e.message });
+      }
+    })();
+  </script>
+</body>
+</html>

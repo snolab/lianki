@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>Swipe to grade</title>
+  <style>
+    :root { color-scheme: dark; --bg: #0b1220; --panel: #111a2e; --line: #243049; --fg: #e8edf7; --mute: #8a96b0; --accent: #2563eb; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    body { display: flex; flex-direction: column; padding: max(10px, env(safe-area-inset-top)) 14px max(10px, env(safe-area-inset-bottom)); gap: 8px; }
+    h1 { font-size: 16px; margin: 0; display: flex; justify-content: space-between; align-items: baseline; }
+    h1 small { color: var(--mute); font-weight: 400; }
+    .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    button { font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 10px; padding: 9px 12px; touch-action: manipulation; }
+    button.ghost { background: transparent; border: 1px solid var(--line); color: var(--fg); font-weight: 500; }
+    button:active { filter: brightness(1.2); }
+    input, select { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+    input#v { flex: 1 1 220px; } input#q { flex: 1 1 140px; }
+    .pill { font-size: 12px; padding: 4px 8px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); color: var(--mute); }
+    .pill.ok { color: #4ade80; border-color: #166534; }
+    .pill.bad { color: #f87171; border-color: #7f1d1d; }
+    iframe { flex: 1; min-height: 440px; width: 100%; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+    #log { height: 96px; overflow: auto; margin: 0; padding: 8px 10px; font: 12px/1.5 ui-monospace, Consolas, monospace; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; color: var(--mute); white-space: pre-wrap; }
+    #log b { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <h1>Swipe to grade <small>clips ≤ 60 s from YouTube captions</small></h1>
+  <div class="row">
+    <button id="buzz" type="button">Vibrate</button>
+    <span id="support" class="pill">checking</span>
+    <span id="last" class="pill">no call yet</span>
+  </div>
+  <form class="row" id="form">
+    <input id="v" placeholder="video ids or URLs, comma separated" />
+    <input id="q" placeholder="word or phrase (optional)" />
+    <select id="lang">
+      <option value="en">en</option><option value="ja">ja</option><option value="zh">zh</option><option value="zh-Hans">zh-Hans</option><option value="zh-Hant">zh-Hant</option>
+      <option value="ko">ko</option><option value="es">es</option><option value="fr">fr</option><option value="de">de</option>
+    </select>
+    <select id="max"><option value="60">60 s</option><option value="30">30 s</option><option value="15">15 s</option></select>
+    <button type="submit">Load clips</button>
+    <button type="button" class="ghost" id="playlist">Whole videos</button>
+  </form>
+  <iframe id="frame" title="Swipe deck (iframe)" allow="autoplay; encrypted-media; picture-in-picture"></iframe>
+  <pre id="log"></pre>
+  <script>
+    const log = document.getElementById("log");
+    const supportEl = document.getElementById("support");
+    const lastEl = document.getElementById("last");
+    const frame = document.getElementById("frame");
+    const say = (where, msg) => {
+      const t = new Date().toLocaleTimeString([], { hour12: false });
+      log.insertAdjacentHTML("afterbegin", "<b>" + t + " " + where + "</b> " + msg + "\n");
+    };
+    const supported = typeof navigator.vibrate === "function";
+    supportEl.textContent = supported ? "navigator.vibrate: yes" : "navigator.vibrate: missing";
+    supportEl.className = "pill " + (supported ? "ok" : "bad");
+    say("top", "ua: " + navigator.userAgent.replace(/^Mozilla\/5\.0 /, ""));
+    say("top", supported ? "Vibration API present" : "Vibration API absent (iOS or desktop) - visual feedback only");
+
+    document.getElementById("buzz").addEventListener("click", () => {
+      let r = false;
+      try { r = supported && navigator.vibrate([40, 60, 40]); } catch (e) { say("top", "vibrate threw " + e); }
+      lastEl.textContent = "top vibrate -> " + r;
+      lastEl.className = "pill " + (r ? "ok" : "bad");
+      say("top", "vibrate([40,60,40]) returned " + r);
+    });
+
+    // ── clip controls: the deck reloads with the chosen videos / phrase / language ──
+    const ids = (s) => s.split(/[\s,]+/).map((x) => (x.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([\w-]{11})/) || [, x])[1]).filter((x) => /^[\w-]{11}$/.test(x)).join(",");
+    const state = new URLSearchParams(location.search);
+    const vIn = document.getElementById("v"), qIn = document.getElementById("q"), langIn = document.getElementById("lang"), maxIn = document.getElementById("max");
+    vIn.value = state.get("v") || "jNQXAC9IVRw, iG9CE55wbtY";
+    qIn.value = state.get("q") || ""; langIn.value = state.get("lang") || "en"; maxIn.value = state.get("max") || "60";
+    function loadClips() {
+      const p = new URLSearchParams({ v: ids(vIn.value), q: qIn.value.trim(), lang: langIn.value, max: maxIn.value });
+      history.replaceState(null, "", "?" + p);
+      frame.src = "clips.html?" + p;
+      say("top", "loading clips: " + p);
+    }
+    document.getElementById("form").addEventListener("submit", (e) => { e.preventDefault(); loadClips(); });
+    document.getElementById("playlist").addEventListener("click", () => { frame.src = "frame.html?v=" + ids(vIn.value); say("top", "whole-video deck"); });
+    loadClips();
+
+    window.addEventListener("message", (e) => {
+      const d = e.data;
+      if (!d || d.src !== "swipe-grade") return;
+      if (d.type === "grade") {
+        lastEl.textContent = "iframe " + d.grade + " -> vibrate " + d.vibrated;
+        lastEl.className = "pill " + (d.vibrated ? "ok" : "bad");
+        say("iframe", d.dx + "px -> <b>" + d.grade + "</b> (" + d.input + ")" + (d.clip ? " clip " + d.clip : "") + "; vibrate(" + JSON.stringify(d.pattern) + ") returned " + d.vibrated);
+      } else if (d.type === "nav") {
+        lastEl.textContent = "iframe " + d.action + " -> vibrate " + d.vibrated;
+        lastEl.className = "pill " + (d.vibrated ? "ok" : "bad");
+        say("iframe", "<b>" + d.action + "</b> (" + d.input + ") -> #" + d.index + "; vibrate returned " + d.vibrated);
+      } else if (d.type === "tick") {
+        say("iframe", "zone -> " + d.zone + "; tick vibrate returned " + d.vibrated);
+      } else if (d.type === "clips") {
+        say("iframe", "<b>" + d.count + " clips</b>" + (d.q ? " containing \"" + d.q + "\"" : "") + " [" + d.lang + "]");
+      } else if (d.type === "info") {
+        say("iframe", d.msg);
+      }
+    });
+  </script>
+</body>
+</html>

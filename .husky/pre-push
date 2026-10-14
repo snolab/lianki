@@ -22,4 +22,22 @@ if [ "$saw_ref" = "1" ] && [ "$only_deletes" = "1" ]; then
   exit 0
 fi
 
+# Skip on native Windows (Git Bash / MSYS), where the gate cannot pass: the
+# OpenNext Cloudflare packaging breaks there — with bun's isolated linker its
+# traced copy turns directory symlinks into file symlinks ("Access is denied"
+# in esbuild), and with a hoisted install the Worker boots but every route
+# fails with ChunkLoadError on Turbopack server chunks. Verified 2026-10-14;
+# neither failure involves the code being pushed. CI runs the identical
+# `qa:all` on Linux and remains the gate. WSL is not affected (uname = Linux).
+# Set LIANKI_QA_ON_WINDOWS=1 to run it anyway (e.g. after an OpenNext upgrade).
+case "$(uname -s 2>/dev/null)" in
+MINGW* | MSYS* | CYGWIN*)
+  if [ "${LIANKI_QA_ON_WINDOWS:-}" != "1" ]; then
+    echo "pre-push: native Windows — qa:all cannot run here (OpenNext packaging); CI is the gate."
+    echo "pre-push: set LIANKI_QA_ON_WINDOWS=1 to force it."
+    exit 0
+  fi
+  ;;
+esac
+
 bun run qa:all

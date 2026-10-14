@@ -28,6 +28,7 @@
 | `scripts/dev-loader.user.js` | Loader template that server renders |
 | `scripts/pre-commit.ts` | Pre-commit hook (run via Husky) |
 | `scripts/ship.ts` | Land a commit on `main` |
+| `packages/desktop/` | Windows desktop shell — Tauri 2 window around lianki.com (`README.md` there) |
 | `.github/workflows/ci.yml` | Typecheck + unit, qa:all |
 | `.github/workflows/deploy.yml` | CI/CD to Vercel |
 
