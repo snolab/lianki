@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.16
+// @version     2.24.17
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -485,8 +485,17 @@ class GMCardStorage {
     return c._url === url ? c : null;
   }
 
+  /**
+   * Whether this url is tombstoned locally.
+   *
+   * Checks `del`, the flag `deleteCard` actually writes on the index entry.
+   * It used to read `deletedAt`, which only ever existed on the card record —
+   * so this answered "not deleted" for every tombstone, and it was called from
+   * nowhere, which together let `addNote` revive deleted cards on dialog-open.
+   */
   isDeleted(url) {
-    return !!this.getEntry(url)?.deletedAt;
+    const e = this.getEntry(url);
+    return !!(e && (e.del || e.deletedAt));
   }
 
   /**
@@ -1230,8 +1239,14 @@ function main() {
   const getOptions = (id) => api(`/api/fsrs/options?id=${encodeURIComponent(id)}`);
   const submitReview = (id, rating) =>
     api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
-  const deleteNote = (id) =>
-    api(`/api/fsrs/delete?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
+  // Both id AND url: the id can be stale (a row deleted and re-added by
+  // addNote returns with a fresh uuid), and the server falls back to the url
+  // rather than answering "note not found" while the local tombstone lands.
+  const deleteNote = (id, url) =>
+    api(
+      `/api/fsrs/delete?id=${encodeURIComponent(id)}` +
+        `${url ? `&url=${encodeURIComponent(url)}` : ""}${buildExcludeDomainsParam()}`,
+    );
   const getNextUrl = () => {
     const excludeUrl = `&excludeUrl=${encodeURIComponent(normalizeUrl(location.href))}`;
     return api(`/api/fsrs/next-url?${buildExcludeDomainsParam().slice(1)}${excludeUrl}`);
@@ -1998,7 +2013,7 @@ function main() {
       // Try server delete (may fail for local-only cards — that's OK)
       if (!state.noteId.startsWith("local:")) {
         try {
-          const result = await deleteNote(state.noteId);
+          const result = await deleteNote(state.noteId, url);
           // Server response overrides local prefetch if available
           if (result.nextUrl) {
             prefetchedNextUrl = result.nextUrl;
@@ -3258,6 +3273,18 @@ function main() {
 
     const url = normalizeUrl(location.href);
 
+    // A card you deleted stays deleted. `addNote` below fires on merely
+    // opening this dialog and carries a fresh HLC, which outranks the
+    // tombstone and revives the card server-side — the bug that made one
+    // YouTube card undeletable. The local tombstone is the authority here, so
+    // say so and add nothing.
+    if (offlineReady && cardStorage.isDeleted(url)) {
+      state.phase = "reviewed";
+      state.message = "You deleted this card.";
+      renderDialog();
+      return;
+    }
+
     // Offline-first: Check GM cache
     if (offlineReady) {
       try {
@@ -3614,7 +3641,7 @@ function main() {
       }
 
       case "delete":
-        await deleteNote(item.data.noteId);
+        await deleteNote(item.data.noteId, item.data.url);
         break;
 
       case "sync":

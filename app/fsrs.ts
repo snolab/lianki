@@ -804,13 +804,22 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       DIE("no query");
     }
 
-    try {
-      return (await FSRSNotes.aggregate([
+    const byMatch = async (match: Record<string, unknown>) =>
+      (await FSRSNotes.aggregate([
         { $set: { _id: { $toString: "$_id" } } },
-        {
-          $match: id ? { _id: id } : { url: url! },
-        },
-      ]).next()) as WithId<FSRSNote>;
+        { $match: match },
+      ]).next()) as WithId<FSRSNote> | null;
+
+    try {
+      const found = id ? await byMatch({ _id: id }) : await byMatch({ url: url! });
+      // Fall back from a stale id to the url. A note id is not stable: a row
+      // deleted and re-created by `addNote` comes back with a fresh uuid, so a
+      // dialog holding the old one asked to delete a note that no longer
+      // existed and got "note not found" — the local tombstone was written and
+      // the cloud row stayed live, which is divergence with no error shown.
+      // The url is what the user actually means by "this card".
+      if (!found && id && url) return await byMatch({ url });
+      return found as WithId<FSRSNote>;
     } catch (err) {
       DIE(`Database query failed. ID: ${id || "none"}, URL: ${url || "none"}`);
     }

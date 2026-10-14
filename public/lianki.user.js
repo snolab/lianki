@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.16
+// @version     2.24.17
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1876,7 +1876,8 @@
       return c._url === url ? c : null;
     }
     isDeleted(url) {
-      return !!this.getEntry(url)?.deletedAt;
+      const e = this.getEntry(url);
+      return !!(e && (e.del || e.deletedAt));
     }
     purgeExpiredTombstones(maxAgeMs = 90 * 86400000) {
       const now = Date.now();
@@ -2411,8 +2412,11 @@
     const getOptions = (id) => api(`/api/fsrs/options?id=${encodeURIComponent(id)}`);
     const submitReview = (id, rating) =>
       api(`/api/fsrs/review/${rating}/?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
-    const deleteNote = (id) =>
-      api(`/api/fsrs/delete?id=${encodeURIComponent(id)}${buildExcludeDomainsParam()}`);
+    const deleteNote = (id, url) =>
+      api(
+        `/api/fsrs/delete?id=${encodeURIComponent(id)}` +
+          `${url ? `&url=${encodeURIComponent(url)}` : ""}${buildExcludeDomainsParam()}`,
+      );
     const getNextUrl = () => {
       const excludeUrl = `&excludeUrl=${encodeURIComponent(normalizeUrl(location.href))}`;
       return api(`/api/fsrs/next-url?${buildExcludeDomainsParam().slice(1)}${excludeUrl}`);
@@ -3064,7 +3068,7 @@ ${state.errorDetails}`);
         }
         if (!state.noteId.startsWith("local:")) {
           try {
-            const result = await deleteNote(state.noteId);
+            const result = await deleteNote(state.noteId, url);
             if (result.nextUrl) {
               prefetchedNextUrl = result.nextUrl;
               prefetchNextPage(result.nextUrl);
@@ -3957,6 +3961,12 @@ ${actualUrl}
       renderDialog();
       dialog.focus();
       const url = normalizeUrl(location.href);
+      if (offlineReady && cardStorage.isDeleted(url)) {
+        state.phase = "reviewed";
+        state.message = "You deleted this card.";
+        renderDialog();
+        return;
+      }
       if (offlineReady) {
         try {
           const cachedCard = cardStorage.getCard(url);
@@ -4215,7 +4225,7 @@ ${actualUrl}
           break;
         }
         case "delete":
-          await deleteNote(item.data.noteId);
+          await deleteNote(item.data.noteId, item.data.url);
           break;
         case "sync":
           await api(`/api/fsrs/get?url=${encodeURIComponent(item.data.url)}`);
