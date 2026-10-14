@@ -189,7 +189,20 @@ export class FsrsNotesD1Repo {
    * Reuses an existing row's id, or the passed id, or a fresh UUID. The id
    * never changes on update (ON CONFLICT leaves it untouched).
    */
-  async upsert(note: FSRSNote, id?: string): Promise<string> {
+  async upsert(
+    note: FSRSNote,
+    id?: string,
+    opts: {
+      /**
+       * Whether this write may revive a tombstoned url. False for an *add*:
+       * merely opening a page must never undo a deletion, and `addNote` fires
+       * on dialog-open carrying a fresh server HLC that would otherwise
+       * outrank any tombstone. True (the default) for a review, which is a
+       * deliberate act and the "last write wins" case the merge rules mean.
+       */
+      resurrect?: boolean;
+    } = {},
+  ): Promise<string> {
     const existing = await this.db
       .prepare("SELECT id, deleted_at, hlc FROM fsrs_notes WHERE email = ? AND url = ?")
       .bind(this.email, note.url)
@@ -205,6 +218,7 @@ export class FsrsNotesD1Repo {
     // on merely opening the dialog, and an unclocked write must not undo an
     // explicit deletion.
     if (existing?.deleted_at) {
+      if (opts.resurrect === false) return noteId;
       if (!note.hlc) return noteId;
       const tombstone = parseHlc(existing.hlc);
       if (tombstone && compareHLC(note.hlc, tombstone) <= 0) return noteId;
@@ -387,6 +401,17 @@ export class FsrsNotesD1Repo {
         .run();
     }
     return n;
+  }
+
+  /** The tombstone for one url, or null when the url is live or absent. */
+  async getTombstone(url: string): Promise<{ url: string; deletedAt: string } | null> {
+    const row = await this.db
+      .prepare(
+        "SELECT url, deleted_at FROM fsrs_notes WHERE email = ? AND url = ? AND deleted_at IS NOT NULL",
+      )
+      .bind(this.email, url)
+      .first<{ url: string; deleted_at: string }>();
+    return row ? { url: row.url, deletedAt: row.deleted_at } : null;
   }
 
   /** Tombstones, for a client reconciling deletions. Live rows are excluded. */
