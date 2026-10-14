@@ -28,7 +28,12 @@ silently eat uncommitted work.
 
 The `pre-push` hook runs the same `qa:all` before anything leaves the machine, so
 a `--no-verify` skip only defers the failure. It skips automatically for
-deletion-only pushes.
+deletion-only pushes, and on **native Windows** (Git Bash), where the OpenNext
+Cloudflare packaging cannot produce a working Worker (symlink copy errors with
+bun's isolated linker, `ChunkLoadError` on every route with a hoisted install;
+verified 2026-10-14). There CI is the only gate; `LIANKI_QA_ON_WINDOWS=1` forces
+the local run, for example to re-test after an OpenNext upgrade. WSL counts as
+Linux and runs the gate normally.
 
 ## Branch protection — two mechanisms
 
