@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { APP_NAV, NAV_GROUPS, activeNavKey, type NavGroup } from "@/lib/app-nav";
 import { appHref } from "@/lib/app-locale";
 import { LanguageSwitcher } from "./LanguageSwitcher";
+import { FirstRunChoice, type FirstRunLabels } from "./FirstRunChoice";
 
 const SIDEBAR_KEY = "lk:sidebar";
 
@@ -26,10 +27,12 @@ interface AppShellProps {
   appName: string;
   labels: ShellLabels;
   user: ShellUser;
+  /** Absent only if a caller has no content for it; the prompt then stays off. */
+  firstRun?: FirstRunLabels;
   children: React.ReactNode;
 }
 
-export function AppShell({ locale, appName, labels, user, children }: AppShellProps) {
+export function AppShell({ locale, appName, labels, user, firstRun, children }: AppShellProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -213,6 +216,9 @@ export function AppShell({ locale, appName, labels, user, children }: AppShellPr
 
         <main className="flex-1 min-w-0">{children}</main>
       </div>
+
+      {/* Signed-out only: a signed-in visitor answered this by signing in. */}
+      {user === null && firstRun && <FirstRunChoice locale={locale} labels={firstRun} />}
     </div>
   );
 }
