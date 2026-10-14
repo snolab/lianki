@@ -3,6 +3,7 @@ import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { kyselyAdapter } from "@better-auth/kysely-adapter";
 import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
+import { stripGrantedScopesHook } from "@/lib/google-auth-url";
 import { Kysely } from "kysely";
 import { D1Dialect } from "kysely-d1";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
@@ -77,6 +78,10 @@ function baseOptions() {
           }
         : {}),
     },
+
+    // The Google URL must not ask for previously granted scopes — see
+    // lib/google-auth-url.ts.
+    hooks: { after: stripGrantedScopesHook },
 
     plugins: [
       // Gated on configuration, as the SMTP version was: with no provider the
