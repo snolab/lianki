@@ -10,11 +10,10 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
-import { readFileSync } from "fs";
-import { join } from "path";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { MongoClient, type Collection } from "mongodb";
 import { createEmptyCard } from "ts-fsrs";
+import { testSchema } from "@/lib/d1/testSchema";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import type { FSRSNote } from "@/app/fsrs";
 import type { HLC } from "@/app/fsrs-helpers";
@@ -34,7 +33,10 @@ let backend: "mongodb" | "d1" = "mongodb";
 const { bulkDeleteNotes, bulkUpsertNotes, escapeLike, parseQueryOptions, queryNotes, storeStats } =
   await import("@/app/lib/notesAdmin");
 
-const SCHEMA = readFileSync(join(process.cwd(), "db/migrations/0001_init.sql"), "utf8");
+// Every migration, not just 0001: a test built on the initial schema alone
+// silently misses columns the code now depends on — review_order and
+// deleted_at both landed after it.
+const SCHEMA = testSchema();
 const EMAIL = "test@example.com";
 const BACKENDS = ["mongodb", "d1"] as const;
 

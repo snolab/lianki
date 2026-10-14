@@ -57,4 +57,17 @@ const nextConfig = {
   ],
 };
 
+// `next dev` has no Cloudflare runtime, so `getCloudflareContext()` — which
+// every D1 query goes through (lib/d1/index.ts) — throws without this. It hands
+// the dev server miniflare-backed bindings from wrangler.jsonc, so DB_BACKEND=d1
+// works locally against `.wrangler/state` instead of only inside the deployed
+// Worker. Before this, local dev only ran on MongoDB, which no longer exists.
+//
+// Dev only, and awaited lazily: in a production build the import is dead weight,
+// and at module scope it would run during `next build` too.
+if (process.env.NODE_ENV === "development") {
+  const { initOpenNextCloudflareForDev } = await import("@opennextjs/cloudflare");
+  await initOpenNextCloudflareForDev();
+}
+
 export default withIntlayer(nextConfig);

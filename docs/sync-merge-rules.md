@@ -1,14 +1,41 @@
 # Sync merge rules
 
-Target design for **bidirectional** sync with **soft deletes**. Today's sync is
-one-way in both halves — `syncToSiteDB` pushes GM → IndexedDB, `prefetchDueCards`
-pulls server → GM — and nothing carries a deletion, which is why a card deleted
-on the site keeps being served for review. See
-[sync-architecture.md](sync-architecture.md) for what exists now; this document
-is what it should become.
+Target design for **bidirectional** sync with **soft deletes**. See
+[sync-architecture.md](sync-architecture.md) for the transport that exists now;
+this document is the merge semantics it is growing into.
 
 Companion to that doc's Edge Cases section, which records the same gap as
 "Case 3 … no reconciliation path exists".
+
+## What is built (2026-10-14)
+
+**The cloud now stores tombstones.** Until then the server deleted rows outright
+while the userscript kept tombstones locally, and that asymmetry is what made
+deletion unreliable across devices: the server could not express "deleted", so
+any client still holding the card as live re-uploaded it on its next save and
+the server upserted it back. Reported as a card that reappeared every time it
+was deleted — two installs in one browser, one deleting, the other resurrecting.
+
+| Piece | State |
+| ----- | ----- |
+| `deleted_at` on `fsrs_notes`, every read filtered | **built** (`0005_soft_delete.sql`) |
+| delete / `deleteMany` / `deleteAll` write tombstones | **built** |
+| an incoming live card only resurrects on a strictly newer HLC | **built** |
+| a write carrying no HLC never beats a tombstone | **built** |
+| `purgeTombstones(olderThan)`, the 90-day sweep | **built**, no caller yet |
+| `listTombstones()` | **built**, not yet served to clients |
+| the `changed` / `cursor` / `purgedBefore` sync endpoint | not built |
+| full-reconcile path and "not-exists wins" | not built |
+| review log union | not built |
+| retiring `lib/local-purge.ts` | not built — still the site → userscript path |
+
+So a delete made anywhere now *survives* contact with a stale client, which was
+the reported bug. What is still missing is replication: a tombstone is not yet
+handed to clients, so a second device learns of a deletion only by failing to
+see the card in a read, and the purge queue is still how the site tells the
+userscript. The sweep exists but nothing schedules it, which is deliberate —
+`purgedBefore` must not advance until there is a client contract to advance it
+for.
 
 ## The model
 

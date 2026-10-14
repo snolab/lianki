@@ -154,7 +154,7 @@ export function groupByHost(
 export async function hostGroups(email: string): Promise<HostGroup[]> {
   if (dbBackend() === "d1") {
     const rows = await getD1()
-      .prepare("SELECT url, card_due FROM fsrs_notes WHERE email = ?")
+      .prepare("SELECT url, card_due FROM fsrs_notes WHERE email = ? AND deleted_at IS NULL")
       .bind(email)
       .all<{ url: string; card_due: string }>();
     return groupByHost((rows.results ?? []).map((r) => ({ url: r.url, due: r.card_due })));
