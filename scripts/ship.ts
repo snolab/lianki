@@ -24,12 +24,18 @@ if (!run(`gh pr view ${pr} --json autoMergeRequest --jq .autoMergeRequest`))
   die(`auto-merge not armed on #${pr} — check the repo's "Allow auto-merge" setting`);
 
 // gh exits 1 if no required check has registered yet, so wait for them to appear.
+// Double quotes around the jq filter, not single: execSync goes through cmd.exe
+// on Windows, which does not treat single quotes as quoting and split the
+// filter at its `|` ("'length'' is not recognized as an internal or external
+// command"). Double quotes are honoured by both shells and nothing inside
+// needs POSIX-only escaping. Same reason `sleep` is Bun.sleepSync, not a shell
+// command.
 for (let i = 0; i < 30; i++) {
   const checks = run(
-    `gh pr view ${pr} --json statusCheckRollup --jq '[.statusCheckRollup[]?.name] | length'`,
+    `gh pr view ${pr} --json statusCheckRollup --jq "[.statusCheckRollup[]?.name] | length"`,
   );
   if (Number(checks) > 0) break;
-  execSync("sleep 5");
+  Bun.sleepSync(5000);
 }
 stream(`gh pr checks ${pr} --watch --required --interval 20`);
 
@@ -40,7 +46,7 @@ for (let i = 0; i < 40; i++) {
     merged = true;
     break;
   }
-  execSync("sleep 5");
+  Bun.sleepSync(5000);
 }
 if (!merged) die(`#${pr} did not merge`);
 
