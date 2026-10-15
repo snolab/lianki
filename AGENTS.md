@@ -35,14 +35,15 @@ bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 **`lianki.com` is served by the `lianki` Cloudflare Worker** — the OpenNext
 build of `app/**` with `DB_BACKEND=d1`. It is attached by a Worker **route**
 `lianki.com/*` on the zone; the DNS record still points at Vercel underneath,
-so the route alone decides. `www.lianki.com` is still Vercel, which only 301s
-to the apex.
+so the route alone decides. A second route covers `www.lianki.com/*`, so that
+hostname is the **Worker** too — it 308s to the apex with no `x-vercel-id`.
 
-| signal | reading |
-| --- | --- |
-| no `x-vercel-id` on `https://lianki.com/` | apex served by the **Worker** |
-| `x-vercel-id` on `https://www.lianki.com/` | expected — Vercel's www→apex redirect |
-| `GET /api/health` | 404 — that route was the shelved cf-native design, not a signal |
+| signal                                        | reading                                                         |
+| --------------------------------------------- | --------------------------------------------------------------- |
+| no `x-vercel-id` on `https://lianki.com/`     | apex served by the **Worker**                                   |
+| no `x-vercel-id` on `https://www.lianki.com/` | www served by the **Worker** as well, since 2026-10-14          |
+| `x-vercel-id` on `https://fsrsnext.*`         | expected — those legacy redirects are still Vercel's            |
+| `GET /api/health`                             | 404 — that route was the shelved cf-native design, not a signal |
 
 ```bash
 curl -sI https://lianki.com/en | grep -i x-vercel-id   # nothing = Worker
@@ -55,7 +56,7 @@ do not write to it. The Worker deploys itself after CI passes on `main`
 
 **Vercel no longer builds.** `vercel.json`'s `git.deploymentEnabled.main` is
 `false` as of 2026-10-15, so a push to `main` triggers nothing there. The
-project is deliberately *not* deleted and its domains are left in place:
+project is deliberately _not_ deleted and its domains are left in place:
 `fsrsnext.snomiao.com` and `fsrsnext.vercel.app` still 308 to `lianki.com`
 from Vercel, and that redirect target must stay in the project or both break.
 `lianki.com` and `www.lianki.com` are listed there too but dark — the Worker
@@ -72,14 +73,15 @@ unrelated — a Cloudflare tunnel to the local userscript dev server.
 Read the relevant file before working in that area — each one carries decisions
 that are expensive to rediscover.
 
-| Working on | Read |
-| ---------- | ---- |
-| Running or setting up the app locally, QA suites | [DEVELOPMENT.md](DEVELOPMENT.md) |
-| Landing changes, CI, branch protection, post-deploy QA | [docs/shipping.md](docs/shipping.md) |
-| Finding your way around the code | [docs/repo-map.md](docs/repo-map.md) |
-| Secrets, auth, OAuth config | [docs/secrets-and-auth.md](docs/secrets-and-auth.md) |
-| Anything calling an LLM or TTS | [docs/workers-ai.md](docs/workers-ai.md) |
+| Working on                                                | Read                                                           |
+| --------------------------------------------------------- | -------------------------------------------------------------- |
+| Running or setting up the app locally, QA suites          | [DEVELOPMENT.md](DEVELOPMENT.md)                               |
+| Landing changes, CI, branch protection, post-deploy QA    | [docs/shipping.md](docs/shipping.md)                           |
+| Finding your way around the code                          | [docs/repo-map.md](docs/repo-map.md)                           |
+| Secrets, auth, OAuth config                               | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)           |
+| Anything calling an LLM or TTS                            | [docs/workers-ai.md](docs/workers-ai.md)                       |
 | The userscript's dev loader (hot reload over a CF tunnel) | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md) |
-| Blog posts | [blog/AGENTS.md](blog/AGENTS.md) |
-| Sync/offline architecture | [docs/sync-architecture.md](docs/sync-architecture.md) |
-| Sync conflicts, deletions, tombstones | [docs/sync-merge-rules.md](docs/sync-merge-rules.md) |
+| Blog posts                                                | [blog/AGENTS.md](blog/AGENTS.md)                               |
+| The Chrome extension, and publishing it                   | [packages/ext/README.md](packages/ext/README.md)               |
+| Sync/offline architecture                                 | [docs/sync-architecture.md](docs/sync-architecture.md)         |
+| Sync conflicts, deletions, tombstones                     | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)           |
