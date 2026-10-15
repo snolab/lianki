@@ -61,26 +61,64 @@ Chrome refuses CDP navigation to the Web Store console — it answers
 there, and a release step only a human can perform is one that drifts. The
 publish script talks to the Chrome Web Store API instead.
 
-### One-time credentials (a person has to do this once)
+### One-time credentials — where this stands (2026-10-15)
 
-1. Register as a Chrome Web Store developer (one-off USD 5 fee).
-2. In Google Cloud console, pick a project and enable **Chrome Web Store API**.
-3. Create an **OAuth 2.0 Client ID**, application type **Desktop app**. Add
-   `http://localhost:8976/` as an authorised redirect URI.
-4. Mint a refresh token:
+**Done:**
 
-   ```bash
-   export CWS_CLIENT_ID=... CWS_CLIENT_SECRET=...
-   bun scripts/publish-extension.ts --auth              # prints a consent URL
-   bun scripts/publish-extension.ts --auth --code=...   # the code from the address bar
-   ```
+- OAuth client **`lianki-cws-publisher`**, application type **Desktop app**, in
+  GCP project `snomiao` (project number 483729869966 — the same project as
+  Lianki's Google sign-in client; see `lib/google-auth-url.ts` for why that
+  project's scope grants once broke sign-in).
+- `CWS_CLIENT_ID` and `CWS_CLIENT_SECRET` are in `.env.local`. **The secret
+  cannot be read again** — Google shows it once, on the creation dialog — so
+  losing `.env.local` means creating a new client, not recovering this one.
 
-   The consent redirect lands on a localhost page that fails to load. That is
-   expected — Google retired the out-of-band flow, and the code is in the URL.
+**Left to do, and why a person has to:** minting the refresh token needs a
+consent grant, and the grant's authorization code comes back in the browser's
+address bar. An agent driving a *remote* browser cannot read it: a Desktop
+client may only redirect to `localhost`, which is the browser host's localhost,
+not ours, so the tab ends on `chrome-error://chromewebdata` with the code
+visible only in the omnibox.
 
-5. Put `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN` in `.env.local`.
-   The first upload creates the store item and prints its id; save that too as
-   `CWS_ITEM_ID`, since every later upload targets it.
+```bash
+cd /code/snolab/lianki/tree/main
+set -a; source .env.local; set +a
+
+bun scripts/publish-extension.ts --auth        # prints a consent URL
+```
+
+Open that URL, pick the account, click **Advanced → Go to snomiao (unsafe)**
+(expected: the client is unverified, and it is yours), then **Continue**. The
+browser lands on a `localhost:8976` page that fails to load — that is the
+designed outcome. Copy the `code=` value out of the address bar and:
+
+```bash
+bun scripts/publish-extension.ts --auth --code=<the code>   # prints CWS_REFRESH_TOKEN
+```
+
+Put that in `.env.local` as `CWS_REFRESH_TOKEN`. It does not expire unless
+revoked. The code itself is single-use and dies in minutes, so if the exchange
+errors, re-run `--auth` for a fresh one.
+
+Then:
+
+```bash
+bun scripts/build-extension.ts                 # rebuild at the current version
+bun scripts/publish-extension.ts               # first run CREATES the item
+```
+
+The first upload prints the new item id — save it as `CWS_ITEM_ID`, because
+every later upload targets it and there is no way to look it up from the API
+without the console. Nothing is public yet: uploads are drafts until
+`--publish`.
+
+```bash
+bun scripts/publish-extension.ts --publish     # submits for review
+```
+
+A Chrome Web Store **developer registration** (one-off USD 5) must exist on the
+account before the first upload; the API answers with an authorization error
+rather than anything clearer if it does not.
 
 It generates the icons, builds `content.js`, derives the manifest version from
 `lib/userscript-version.ts`, and zips the result. The version is *derived* because
@@ -141,8 +179,18 @@ navigation to `chrome.google.com/webstore/devconsole` and
 `chromewebstore.google.com/devconsole` outright. Creating the item, uploading the
 zip, filling the listing and publishing are all manual.
 
-Still needed in the listing itself: screenshots (1280×800 or 640×400), a category,
-and the data-usage disclosures matching the privacy policy above.
+Still needed in the listing itself:
+
+- **Screenshots** — 1280×800 or 640×400. The review dialog on a YouTube page
+  shows the product in one frame; the `/list` and `/data` pages show the rest.
+- **A category** — Productivity is the closest fit.
+- **Data-usage disclosures** matching the privacy policy above. Answer these
+  from the code, not from intent: the extension reads page URLs and titles,
+  stores cards locally, and syncs them to lianki.com when signed in. Watch-time
+  tracking is on by default and opt-out in Preferences, which the disclosures
+  have to say.
+- **A privacy-policy URL** — <https://lianki.com/privacy>, which still predates
+  watch-time tracking and needs that paragraph before submission.
 
 Browser extension targets for Lianki, built from **one source of truth** — the
 existing Tampermonkey userscript (`src/lianki.user.ts`).
