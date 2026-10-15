@@ -51,8 +51,18 @@ curl -sI https://lianki.com/en | grep -i x-vercel-id   # nothing = Worker
 So: production runtime errors are in `wrangler tail lianki`, the live data is
 **D1** (`lianki`), and MongoDB is a frozen rollback copy as of the cutover —
 do not write to it. The Worker deploys itself after CI passes on `main`
-(`.github/workflows/deploy-worker.yml`); Vercel still builds but serves only
-the www redirect. `apps/**` (cf-native) is shelved. Rollback, the load
+(`.github/workflows/deploy-worker.yml`).
+
+**Vercel no longer builds.** `vercel.json`'s `git.deploymentEnabled.main` is
+`false` as of 2026-10-15, so a push to `main` triggers nothing there. The
+project is deliberately *not* deleted and its domains are left in place:
+`fsrsnext.snomiao.com` and `fsrsnext.vercel.app` still 308 to `lianki.com`
+from Vercel, and that redirect target must stay in the project or both break.
+`lianki.com` and `www.lianki.com` are listed there too but dark — the Worker
+routes intercept both, so neither reaches Vercel (`www` answers 308 with no
+`x-vercel-id`). `beta.lianki.com` already 404s.
+
+`apps/**` (cf-native) is shelved. Rollback, the load
 procedure, and the cutover scripts are in
 [docs/cf-d1-migration.md](docs/cf-d1-migration.md). `dev.lianki.com` is
 unrelated — a Cloudflare tunnel to the local userscript dev server.
@@ -73,4 +83,3 @@ that are expensive to rediscover.
 | Blog posts | [blog/AGENTS.md](blog/AGENTS.md) |
 | Sync/offline architecture | [docs/sync-architecture.md](docs/sync-architecture.md) |
 | Sync conflicts, deletions, tombstones | [docs/sync-merge-rules.md](docs/sync-merge-rules.md) |
-| The Windows desktop shell (Tauri window around lianki.com) | [packages/desktop/README.md](packages/desktop/README.md) |
