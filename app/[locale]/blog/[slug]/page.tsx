@@ -2,10 +2,10 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { getPost, getRawPost, getAllSlugs } from "@/lib/blog";
+import { getRawPost, getAllSlugs } from "@/lib/blog";
 import { StreamingTranslation } from "../StreamingTranslation";
-import { CommittedTranslation } from "../CommittedTranslation";
-import { BLOG_LOCALES, LOCALE_LABELS, getDateLocale, isSupportedLocale } from "@/lib/constants";
+import { MarkdownPost } from "../MarkdownPost";
+import { BLOG_LOCALES, LOCALE_LABELS, isSupportedLocale } from "@/lib/constants";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import matter from "gray-matter";
 import { getIntlayer } from "intlayer";
@@ -75,43 +75,9 @@ function PostSkeleton() {
 }
 
 async function EnglishPost({ slug, locale }: { slug: string; locale: string }) {
-  const post = await getPost("en", slug);
-  if (!post) notFound();
-
-  return (
-    <article>
-      <header className="mb-8">
-        <time className="text-sm text-gray-400">
-          {post.date
-            ? new Date(post.date).toLocaleDateString(getDateLocale(locale), {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })
-            : ""}
-        </time>
-        <h1 className="text-3xl font-bold mt-2">{post.title}</h1>
-        {post.tags.length > 0 && (
-          <div className="flex gap-2 mt-3 flex-wrap">
-            {post.tags.map((tag) => (
-              <span
-                key={tag}
-                className="text-xs px-2 py-0.5 bg-gray-100 rounded-full text-gray-600"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-      </header>
-
-      <div
-        className="prose prose-gray max-w-none"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted markdown
-        dangerouslySetInnerHTML={{ __html: post.contentHtml }}
-      />
-    </article>
-  );
+  const raw = await getRawPost("en", slug);
+  if (!raw) notFound();
+  return <MarkdownPost content={raw} locale={locale} />;
 }
 
 function UntranslatedNotice({ locale, signedIn }: { locale: string; signedIn: boolean }) {
@@ -139,7 +105,7 @@ async function PostContent({
   // For other locales, check if committed translation exists
   const committedRaw = await getRawPost(locale, slug);
   if (committedRaw) {
-    return <CommittedTranslation content={committedRaw} locale={locale} />;
+    return <MarkdownPost content={committedRaw} locale={locale} />;
   }
 
   // Ensure English source exists

@@ -4,19 +4,22 @@ import { Streamdown } from "streamdown";
 import matter from "gray-matter";
 import { getDateLocale } from "@/lib/constants";
 
-interface CommittedTranslationProps {
+interface MarkdownPostProps {
   content: string;
   locale: string;
 }
 
-export function CommittedTranslation({ content, locale }: CommittedTranslationProps) {
+/** Renders a post (English or a committed translation) from its raw markdown. */
+export function MarkdownPost({ content, locale }: MarkdownPostProps) {
   // Strip markdown code fence if present (LLM sometimes wraps in ```markdown...```)
   const cleanedContent = content
     .replace(/^```markdown\s*\n?/, "") // Remove opening fence
     .replace(/\n?```\s*$/, ""); // Remove closing fence
 
   // Parse frontmatter
-  const { data, content: markdown } = matter(cleanedContent);
+  const { data, content: body } = matter(cleanedContent);
+  // Posts open with `# Title`, which repeats the header's <h1> right above it.
+  const markdown = body.replace(/^\s*# [^\n]*\n/, "");
 
   return (
     <article>
@@ -45,7 +48,7 @@ export function CommittedTranslation({ content, locale }: CommittedTranslationPr
         )}
       </header>
 
-      <div className="committed-translation">
+      <div className="markdown-post">
         <Streamdown>{markdown}</Streamdown>
       </div>
     </article>
