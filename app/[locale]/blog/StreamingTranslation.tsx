@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Streamdown } from "streamdown";
 
 interface StreamingTranslationProps {
   locale: string;
   slug: string;
+  /** Shown with the error when the translation can't be generated. */
+  fallback?: ReactNode;
 }
 
-export function StreamingTranslation({ locale, slug }: StreamingTranslationProps) {
+export function StreamingTranslation({ locale, slug, fallback }: StreamingTranslationProps) {
   const [content, setContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,10 +67,17 @@ export function StreamingTranslation({ locale, slug }: StreamingTranslationProps
   }, [locale, slug]);
 
   if (error) {
-    return (
+    const errorBox = (
       <div className="text-red-600 bg-red-50 px-4 py-3 rounded">
         <strong>Translation Error:</strong> {error}
       </div>
+    );
+    if (!fallback) return errorBox;
+    return (
+      <>
+        {errorBox}
+        <div className="mt-6">{fallback}</div>
+      </>
     );
   }
 

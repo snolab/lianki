@@ -38,8 +38,8 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.41",
-    "@marsidev/react-turnstile": "^1.4.2",
     "@better-auth/kysely-adapter": "^1.5.4",
+    "@marsidev/react-turnstile": "^1.4.2",
     "@tailwindcss/postcss": "^4.2.1",
     "ai": "^6.0.116",
     "better-auth": "^1.5.4",
@@ -52,7 +52,6 @@
     "idb": "^8.0.3",
     "intlayer": "^8.2.3",
     "jszip": "^3.10.1",
-    "keyv-github": "^1.5.1",
     "kysely": "0.28.17",
     "kysely-d1": "^0.4.0",
     "marked": "^17.0.4",

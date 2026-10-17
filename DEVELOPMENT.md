@@ -419,9 +419,14 @@ summary: "One sentence description."
 
 **Auto-Translation:**
 
-- Powered by OpenAI GPT-4o
-- Streaming translation UI in `/[locale]/blog` pages
-- Auto-commits to GitHub via `GITHUB_INTL_TOKEN`
+- Powered by Workers AI (`textModelHq`, see [docs/workers-ai.md](docs/workers-ai.md))
+- Streaming translation UI in `/[locale]/blog` pages, for signed-in users;
+  signed-out visitors see the English post with a notice
+- Each finished translation is committed, with `lib/blog.corpus.json`, to one
+  review PR on branch `translations/auto` (`lib/translation-pr.ts`). It needs
+  `GITHUB_INTL_TOKEN` on the Worker (fine-grained, `snolab/lianki`, Contents +
+  Pull requests read/write): `bunx wrangler secret put GITHUB_INTL_TOKEN --name lianki`.
+  A person merges the PR; translations go live with the next deploy.
 
 ## Contributing
 
