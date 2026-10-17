@@ -74,47 +74,67 @@ function PostSkeleton() {
   );
 }
 
-async function PostContent({ locale, slug }: { locale: string; slug: string }) {
+async function EnglishPost({ slug, locale }: { slug: string; locale: string }) {
+  const post = await getPost("en", slug);
+  if (!post) notFound();
+
+  return (
+    <article>
+      <header className="mb-8">
+        <time className="text-sm text-gray-400">
+          {post.date
+            ? new Date(post.date).toLocaleDateString(getDateLocale(locale), {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })
+            : ""}
+        </time>
+        <h1 className="text-3xl font-bold mt-2">{post.title}</h1>
+        {post.tags.length > 0 && (
+          <div className="flex gap-2 mt-3 flex-wrap">
+            {post.tags.map((tag) => (
+              <span
+                key={tag}
+                className="text-xs px-2 py-0.5 bg-gray-100 rounded-full text-gray-600"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </header>
+
+      <div
+        className="prose prose-gray max-w-none"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted markdown
+        dangerouslySetInnerHTML={{ __html: post.contentHtml }}
+      />
+    </article>
+  );
+}
+
+function UntranslatedNotice({ locale, signedIn }: { locale: string; signedIn: boolean }) {
+  const language = LOCALE_LABELS[locale] ?? locale;
+  return (
+    <p className="text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded mb-6">
+      This post hasn&apos;t been translated into {language} yet, so it is shown in English.
+      {!signedIn && " Sign in to generate a translation."}
+    </p>
+  );
+}
+
+async function PostContent({
+  locale,
+  slug,
+  signedIn,
+}: {
+  locale: string;
+  slug: string;
+  signedIn: boolean;
+}) {
   // For English, render directly (no translation needed)
-  if (locale === "en") {
-    const post = await getPost("en", slug);
-    if (!post) notFound();
-
-    return (
-      <article>
-        <header className="mb-8">
-          <time className="text-sm text-gray-400">
-            {post.date
-              ? new Date(post.date).toLocaleDateString(getDateLocale(locale), {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })
-              : ""}
-          </time>
-          <h1 className="text-3xl font-bold mt-2">{post.title}</h1>
-          {post.tags.length > 0 && (
-            <div className="flex gap-2 mt-3 flex-wrap">
-              {post.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="text-xs px-2 py-0.5 bg-gray-100 rounded-full text-gray-600"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
-        </header>
-
-        <div
-          className="prose prose-gray max-w-none"
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted markdown
-          dangerouslySetInnerHTML={{ __html: post.contentHtml }}
-        />
-      </article>
-    );
-  }
+  if (locale === "en") return <EnglishPost slug={slug} locale={locale} />;
 
   // For other locales, check if committed translation exists
   const committedRaw = await getRawPost(locale, slug);
@@ -126,8 +146,30 @@ async function PostContent({ locale, slug }: { locale: string; slug: string }) {
   const english = await getRawPost("en", slug);
   if (!english) notFound();
 
-  // Stream the translation to the client
-  return <StreamingTranslation locale={locale} slug={slug} />;
+  // /api/translate needs a signed-in user, so a visitor would only ever see a
+  // "Sign in required" error box. Show them the English original instead.
+  if (!signedIn) {
+    return (
+      <>
+        <UntranslatedNotice locale={locale} signedIn={false} />
+        <EnglishPost slug={slug} locale={locale} />
+      </>
+    );
+  }
+
+  // Stream the translation to the client, falling back to English if it fails
+  return (
+    <StreamingTranslation
+      locale={locale}
+      slug={slug}
+      fallback={
+        <>
+          <UntranslatedNotice locale={locale} signedIn />
+          <EnglishPost slug={slug} locale={locale} />
+        </>
+      }
+    />
+  );
 }
 
 export default async function BlogPostPage({
@@ -176,7 +218,7 @@ export default async function BlogPostPage({
 
         {/* Shell renders immediately; PostContent streams in when translation is ready */}
         <Suspense fallback={<PostSkeleton />}>
-          <PostContent locale={locale} slug={slug} />
+          <PostContent locale={locale} slug={slug} signedIn={Boolean(user)} />
         </Suspense>
       </main>
     </div>
