@@ -23,6 +23,9 @@ Below are six games where deciphering a language is the main mechanic or a centr
 - **Released:** September 5, 2023 on Windows, Nintendo Switch, PlayStation 4 and Xbox One; Android and iOS on August 26, 2025
 - **Link:** [Steam](https://store.steampowered.com/app/1931770/Chants_of_Sennaar/)
 
+![Chants of Sennaar: the notebook where you match symbols to drawings](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1931770/ss_d194cfba045634d86c99aec5ed7ecbf7270cb8a2.600x338.jpg)
+_Screenshot: Steam store page_
+
 **The language mechanic.** Chants of Sennaar is loosely based on the Tower of Babel myth. You climb a tower where each level belongs to a different people with their own culture and their own written language — the Steam page describes "five different interconnected languages." Each one is written with symbols, and you work out what they mean from gestures, illustrated signs, and what is happening around you.
 
 Every new symbol goes into your notebook, where you can type in your guess for what it means. Every so often the notebook gives you a page of drawings — nouns, verbs, adjectives — and asks you to match symbols to them. Only when the **whole page** is right does the game confirm your guesses and show the real meanings. As Mark Brown of Game Maker's Toolkit put it, "you have to correctly fill in an entire page to validate your hunch," so you can't just guess your way through.
@@ -42,6 +45,9 @@ Later in the game you also have to carry meaning _between_ languages, acting as 
 - **Developer / publisher:** inkle
 - **Released:** April 16, 2019 on Windows and PlayStation 4; Nintendo Switch on January 28, 2021
 - **Link:** [Official site](https://www.inklestudios.com/heavensvault/) · [Steam](https://store.steampowered.com/app/774201/Heavens_Vault/)
+
+![Heaven's Vault: translating an inscription](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/774201/ss_3affea332f51a95c51cd521513b23df16ace67b1.600x338.jpg)
+_Screenshot: Steam store page_
 
 **The language mechanic.** You play Aliya, an archaeologist, who collects inscriptions from artifacts and ruins and translates the hieroglyphic language of a lost civilization called the Ancients. The developers say more than a thousand words of "Ancient" can be found in the game, and its pictorial glyphs draw on Ancient Egyptian and Chinese writing.
 
@@ -63,6 +69,9 @@ Chants of Sennaar's developers have said Heaven's Vault was one of their inspira
 - **Released:** November 9, 2016 on Windows and macOS
 - **Link:** [Steam](https://store.steampowered.com/app/432370/Sethian/)
 
+![Sethian: the glyph keyboard](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/432370/ss_e60bba06362be98a6f01f1f7336e506237499c4a.600x338.jpg)
+_Screenshot: Steam store page_
+
 **The language mechanic.** You play an archaeologist investigating a long-vanished people. A computer they left behind may hold the answers you're looking for — but, as the Steam page puts it, it "only operates in the lost native language," so you have to learn that language to use it.
 
 The Steam page calls its language, Sethianese, "a more earnest attempt at creating a fictitious language, using its own unique grammar and vocabulary," and says it borrows elements from Chinese, American Sign Language and other real languages. You keep a handwritten journal and a dictionary as you go.
@@ -80,6 +89,9 @@ The Steam page calls its language, Sethianese, "a more earnest attempt at creati
 - **Released:** February 19, 2024 on Windows
 - **Link:** [Steam](https://store.steampowered.com/app/2789770/Epigraph/)
 
+![Epigraph: an artifact and the player's notes](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2789770/ss_fc471af8de2ed213790643c9dc3b52563498dd5f.600x338.jpg)
+_Screenshot: Steam store page_
+
 **The language mechanic.** Its Steam page calls it "a short, challenging, language decipherment puzzle game." There's no story to wrap around the puzzle: you study inscriptions on seven artifacts, look for patterns, use the images to work out what symbols mean, cross-reference what you've learned, and type in your translations to uncover the secrets of the Nari.
 
 **Why it's interesting for learners.**
@@ -94,6 +106,9 @@ The Steam page calls its language, Sethianese, "a more earnest attempt at creati
 - **Developer / publisher:** Isometricorp Games (Andrew Shouldice) / Finji
 - **Released:** March 16, 2022 on Windows, macOS, Xbox One and Xbox Series X|S; Nintendo Switch, PlayStation 4 and PlayStation 5 on September 27, 2022
 - **Link:** [Official site](https://tunicgame.com/)
+
+![Tunic: a page of the in-game manual](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/553420/ss_1ff04f3863a782037ca39d5d416459fbaeefd3a4.600x338.jpg)
+_Screenshot: Steam store page_
 
 **The language mechanic.** Tunic is an action adventure about a small fox, not a puzzle game first. But most of its text — including the in-game instruction manual you collect page by page — is written in a made-up script, and the game doesn't expect you to read it.
 
@@ -112,6 +127,9 @@ Players decided to read it anyway. Shortly after release, a Reddit user called o
 - **Released:** 2012 on Xbox 360, later Windows, macOS, Linux, PlayStation 3/4/Vita, iOS (2017) and Nintendo Switch (2021)
 - **Link:** [Official site](https://fezgame.com/)
 
+![Fez](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/224760/ss_38a73fa1ebe9fcf4f7c8ee3b80e5de067a6e8897.600x338.jpg)
+_Screenshot: Steam store page_
+
 **The language mechanic.** Fez is a platformer in which you rotate between four 2D views of a 3D world to line up platforms. Underneath it is a layer of codes and glyphs, including a ciphered alphabet and its own number system, and the second half of the game is mostly about cracking them. Its hardest puzzle was famously solved by players working together online.
 
 **Why it's interesting for learners.**
@@ -122,6 +140,9 @@ Players decided to read it anyway. Shortly after release, a Reddit user called o
 ---
 
 ## Honorable mention: Outer Wilds
+
+![Outer Wilds: translating Nomai writing](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/753640/ss_09f0fa8d9b8d7da1408cf4e03303d896cbd9be18.600x338.jpg)
+_Screenshot: Steam store page_
 
 People often bring up Outer Wilds alongside these games because you spend much of it reading the writings of an alien people, the Nomai. But you read Nomai writing through an in-game translator tool rather than working out the script yourself, so it is a game about _reading_, not deciphering. Wonderful, but not a language puzzle.
 
