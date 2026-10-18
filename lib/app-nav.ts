@@ -19,6 +19,7 @@ export type NavItem = {
 };
 
 export const APP_NAV: NavItem[] = [
+  { key: "home", href: "/home", icon: "🏠", group: "main" },
   { key: "review", href: "/next", icon: "▶", group: "main" },
   { key: "cards", href: "/list", icon: "📚", group: "main" },
   { key: "learn", href: "/learn", icon: "🎓", group: "main" },

@@ -118,6 +118,70 @@ describe("CREATE", () => {
     const count = await testCollection.countDocuments({});
     expect(count).toBe(2);
   });
+
+  test("batch-add takes {items} with titles, as the paste-links importer sends", async () => {
+    // The importer carries the title out of a markdown link, so the card is
+    // not named after its own url. An earlier version of this endpoint only
+    // accepted {urls}, and the importer silently failed its zod parse.
+    const res = await fsrsHandler(
+      makeReq("POST", "/api/fsrs/batch-add", {
+        items: [{ url: "https://a.test/one", title: "The First One" }],
+      }),
+      TEST_EMAIL,
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.created).toBe(1);
+    expect(data.existed).toBe(0);
+    const doc = await testCollection.findOne({ url: "https://a.test/one" });
+    expect(doc?.title).toBe("The First One");
+  });
+
+  test("reports created vs already-present separately", async () => {
+    await fsrsHandler(
+      makeReq("POST", "/api/fsrs/batch-add", { items: [{ url: "https://b.test/x" }] }),
+      TEST_EMAIL,
+    );
+    const res = await fsrsHandler(
+      makeReq("POST", "/api/fsrs/batch-add", {
+        items: [{ url: "https://b.test/x" }, { url: "https://b.test/y" }],
+      }),
+      TEST_EMAIL,
+    );
+    const data = await res.json();
+    expect(data.created).toBe(1);
+    expect(data.existed).toBe(1);
+    expect(data.count).toBe(2);
+  });
+
+  test("hands back unparseable input instead of counting it as a failure", async () => {
+    // Pasted prose is full of bare words that look like links.
+    const res = await fsrsHandler(
+      makeReq("POST", "/api/fsrs/batch-add", {
+        items: [{ url: "https://c.test/ok" }, { url: "not a url at all" }],
+      }),
+      TEST_EMAIL,
+    );
+    const data = await res.json();
+    expect(data.created).toBe(1);
+    expect(data.rejected).toEqual(["not a url at all"]);
+    expect(data.failed).toBe(0);
+  });
+
+  test("refuses an oversized batch rather than failing opaquely", async () => {
+    // Unbounded, this fanned out one D1 write per url at once and blew the
+    // Workers subrequest limit — a 500 that said nothing about the cause.
+    const urls = Array.from({ length: 501 }, (_, i) => `https://d.test/${i}`);
+    const res = await fsrsHandler(makeReq("POST", "/api/fsrs/batch-add", { urls }), TEST_EMAIL);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/at most 500/);
+  });
+
+  test("an empty batch is rejected, not silently successful", async () => {
+    const res = await fsrsHandler(makeReq("POST", "/api/fsrs/batch-add", { urls: [] }), TEST_EMAIL);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/no urls/);
+  });
 });
 
 // ── READ ───────────────────────────────────────────────────────────────────────

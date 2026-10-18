@@ -109,6 +109,33 @@ function nextDueQuery(req: Request, excludeUrl?: string) {
   return buildNextDueQuery(excludeDomains, exclude);
 }
 
+/**
+ * Caps on `POST /api/fsrs/batch-add`.
+ *
+ * The importer accepts pasted markdown, so "how many urls" is whatever the user
+ * had in their clipboard. The cap makes an oversized paste a clear 400 instead
+ * of an opaque failure, and the concurrency bound keeps one request from firing
+ * hundreds of simultaneous D1 writes.
+ */
+const BATCH_ADD_MAX = 500;
+const BATCH_ADD_CONCURRENCY = 10;
+
+/**
+ * Whether this is a url we will store.
+ *
+ * `normalizeUrl` does NOT reject prose — it hands back "not a url at all"
+ * unchanged — so without this check pasted text becomes cards. The importer
+ * filters client-side too, but the endpoint cannot trust that.
+ */
+function isHttpUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export const fsrsHandler = async (req: Request, email?: string) => {
   const FSRSNotes = getFsrsNotes(email);
 
@@ -179,23 +206,74 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     "GET /add(?:/|$|\\?)": async (req, options) => JSONR(saveQueryNote(req, options)),
     "POST /api/fsrs/add/?$": async (req) => JSONR(saveQueryNoteByJSONData(req)),
     "POST /api/fsrs/batch-add/?$": async (req) => {
+      // Two shapes, because two callers predate each other: `urls` (LearnClient
+      // and the blog import) and `items` (the paste-links importer, which
+      // carries the title out of a markdown link so the card is not named after
+      // its own url).
       const zBatchAddNote = z.object({
-        urls: z.array(z.string()),
+        urls: z.array(z.string()).optional(),
+        items: z.array(z.object({ url: z.string(), title: z.string().nullish() })).optional(),
       });
       const input = await req.json();
-      const { urls } = zBatchAddNote.parse(input);
+      const { urls, items } = zBatchAddNote.parse(input);
 
-      // Save all URLs in parallel
-      const results = await Promise.allSettled(urls.map((url) => saveNote({ url })));
+      const all = [...(items ?? []), ...(urls ?? []).map((url) => ({ url, title: undefined }))];
 
-      const successful = results.filter((r) => r.status === "fulfilled").length;
-      const failed = results.filter((r) => r.status === "rejected").length;
+      // Checked here rather than as a zod refinement: a thrown ZodError leaves
+      // this route as a 500 with a text body ("Error: [" and the issue array),
+      // and the importer surfaces `error` to the user. "Too many urls" is the
+      // caller's mistake and has to say so.
+      if (all.length === 0) {
+        return JSONR({ success: false, error: "no urls given" }, 400);
+      }
+      if (all.length > BATCH_ADD_MAX) {
+        return JSONR({ success: false, error: `at most ${BATCH_ADD_MAX} urls per request` }, 400);
+      }
+
+      let created = 0;
+      let existed = 0;
+      let failed = 0;
+      const rejected: string[] = [];
+
+      // Bounded concurrency, not Promise.allSettled over everything: the
+      // importer accepts a pasted markdown file, and 500 simultaneous upserts
+      // both exceed the Workers subrequest limit and contend on the same rows.
+      for (let i = 0; i < all.length; i += BATCH_ADD_CONCURRENCY) {
+        const chunk = all.slice(i, i + BATCH_ADD_CONCURRENCY);
+        const results = await Promise.allSettled(
+          chunk.map(async (item) => {
+            // Anything unparseable is reported back rather than counted as a
+            // failure: pasted prose is full of bare words that look like links.
+            if (!isHttpUrl(item.url)) return { kind: "rejected" as const, url: item.url };
+            let normalized: string;
+            try {
+              normalized = normalizeUrl(item.url);
+            } catch {
+              return { kind: "rejected" as const, url: item.url };
+            }
+            const before = await FSRSNotes.findOne({ url: normalized });
+            await saveNote({ url: normalized, title: item.title ?? undefined });
+            return { kind: before ? ("existed" as const) : ("created" as const) };
+          }),
+        );
+        for (const r of results) {
+          if (r.status === "rejected") failed++;
+          else if (r.value.kind === "rejected") rejected.push(r.value.url);
+          else if (r.value.kind === "existed") existed++;
+          else created++;
+        }
+      }
 
       return JSONR({
         success: true,
-        count: successful,
+        // `count` is what the older callers read; it means "saved", which is
+        // created plus already-present, and excludes rejects.
+        count: created + existed,
+        created,
+        existed,
         failed,
-        total: urls.length,
+        rejected,
+        total: all.length,
       });
     },
     "GET /api/fsrs/due(?:/|$|\\?)": async (req) => {
