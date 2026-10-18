@@ -11,6 +11,24 @@ const appShellContent = {
   key: "app-shell",
   content: {
     nav: {
+      home: t({
+        en: "Home",
+        zh: "首页",
+        hi: "होम",
+        es: "Inicio",
+        fr: "Accueil",
+        ar: "الرئيسية",
+        bn: "হোম",
+        pt: "Início",
+        ru: "Главная",
+        ur: "ہوم",
+        id: "Beranda",
+        de: "Start",
+        ja: "ホーム",
+        sw: "Nyumbani",
+        mr: "मुख्यपृष्ठ",
+        ko: "홈",
+      }),
       review: t({
         en: "Review",
         zh: "复习",

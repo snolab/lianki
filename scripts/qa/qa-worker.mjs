@@ -41,6 +41,7 @@ const PAGES = [
   "/data",
   "/read",
   "/self-intro",
+  "/home",
   "/lab",
   "/lab/immersion",
 ];

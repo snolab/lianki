@@ -103,6 +103,26 @@ test.describe("Public pages", () => {
     expect(errors).toHaveLength(0);
   });
 
+  test("/home renders the start page for a guest", async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.goto(url("/home"));
+    // Playwright's en-US browser lands on the English tab, starred.
+    await expect(page.getByRole("tab", { selected: true })).toContainText("English");
+    await expect(page.getByRole("tab", { selected: true })).toContainText("★");
+    await expect(page.locator("a[href='https://www.quora.com']")).toBeVisible();
+    await expect(page.locator("main a[href*='/next']")).toBeVisible();
+    // Switching tabs swaps the whole grid to that language
+    await page.getByRole("tab", { name: /日本語/ }).click();
+    await expect(page.locator("a[href='https://qiita.com']")).toBeVisible();
+    await expect(page.locator("a[href='https://www.quora.com']")).toHaveCount(0);
+    // Pinning a site puts it in "Your sites"
+    await page.locator("button[aria-pressed='false'][aria-label='Pin']").first().click();
+    await expect(
+      page.locator("section").first().locator("button[aria-label='Unpin']"),
+    ).toBeVisible();
+    expect(errors).toHaveLength(0);
+  });
+
   test("/lab lists experiments", async ({ page }) => {
     const errors = collectErrors(page);
     await page.goto(url("/lab"));
@@ -302,6 +322,7 @@ test.describe("Route availability", () => {
     "/en/blog",
     "/contact",
     "/self-intro",
+    "/home",
     "/lab",
     "/lab/immersion",
     "/learn",

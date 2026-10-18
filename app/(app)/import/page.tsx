@@ -3,6 +3,8 @@ import { getIntlayer } from "intlayer";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import ImportClient from "./ImportClient";
 import YamlImportSection from "./YamlImportSection";
+import PasteLinksSection from "./PasteLinksSection";
+import { authEmail } from "@/app/signInEmail";
 import { appLocale } from "@/lib/app-locale.server";
 import { appHref } from "@/lib/app-locale";
 
@@ -19,6 +21,12 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ImportPage() {
   const locale = await appLocale();
+  let isLoggedIn = false;
+  try {
+    isLoggedIn = Boolean(await authEmail());
+  } catch {
+    // Guest: the paste importer renders disabled with a sign-in hint.
+  }
   const {
     title,
     description,
@@ -46,6 +54,7 @@ export default async function ImportPage() {
             importComplete={importComplete}
             viewDashboard={viewDashboard}
           />
+          <PasteLinksSection isLoggedIn={isLoggedIn} />
           <YamlImportSection />
           <p className="mt-8 text-sm text-gray-500 dark:text-gray-400">
             Looking for exports, bulk delete or the storage overview?{" "}

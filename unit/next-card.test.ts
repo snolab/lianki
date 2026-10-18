@@ -87,7 +87,9 @@ describe("pickNextDue", () => {
       { url: "https://example.com/fresh", card: { due: "2026-09-10T11:59:00Z" } },
       { url: "https://www.youtube.com/watch?v=x", card: { due: "2027-01-01T00:00:00Z" } },
     ];
-    expect(pickNextDue(cards, NOW, "https://www.youtube.com")?.url).toBe("https://example.com/fresh");
+    expect(pickNextDue(cards, NOW, "https://www.youtube.com")?.url).toBe(
+      "https://example.com/fresh",
+    );
     expect(pickNextDue(cards, NOW, "https://nothing.test")?.url).toBe("https://example.com/fresh");
   });
 
