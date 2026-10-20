@@ -20,7 +20,7 @@ So this time we counted **cities**, and ranked them by **GDP per person** — ho
 ## How we did it
 
 - **Cities:** all 499 urban centres with at least 1 million people in 2020, from the EU Joint Research Centre's [GHS Urban Centre Database](https://human-settlement.emergency.copernicus.eu/ghs_ucdb_2024.php) (R2024A). It draws every city's boundary the same way, from satellite data, so a "city" means the same thing in Tokyo and in Lagos.
-- **Value per job:** GDP per person in 2020, in purchasing-power dollars (PPP, so a dollar buys roughly the same everywhere). There is no comparable dataset of median wages for cities worldwide, so GDP per person is the closest stand-in. It is not the same as what a job pays — more on that below.
+- **Value per job:** GDP per person in 2020, in purchasing-power dollars (PPP, so a dollar buys roughly the same everywhere). There is no comparable dataset of median wages for cities worldwide, so GDP per person is the closest stand-in. It is not the same as what a job pays — more on that below. For real wages in software, design, media and marketing jobs, see [What Internet Jobs Pay City by City](/en/blog/2026-10-21-internet-jobs-pay-by-city).
 - **Languages:** for each city, the languages people use for daily life and work there. **Bilingual cities count in full for each language** — Montreal counts as a French city _and_ an English city, Brussels as French and Dutch, Hong Kong as Chinese and English, Singapore as English, Chinese, Malay and Tamil. Someone who speaks either language can work there, so the city is not split between them.
 - **The ranking:** take the top 100 (or 200) cities by GDP per person, and count how many of them each language opens, and how many people live in them.
 
