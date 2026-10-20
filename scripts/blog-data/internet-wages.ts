@@ -28,6 +28,9 @@ const PPP: Record<string, Record<number, number>> = {
   Japan: { 2025: 103.3366 },
   Australia: { 2025: 1.4646 },
   Spain: { 2022: 0.6225, 2024: 0.5885 },
+  Switzerland: { 2024: 1.1072 },
+  Luxembourg: { 2022: 0.8937 },
+  Belgium: { 2022: 0.779 },
 };
 
 type Row = Record<string, string>;
@@ -66,6 +69,7 @@ const data = {
   au: readCsv("au.csv"),
   es: readCsv("es.csv"),
   so: readCsv("so_survey.csv"),
+  frz: readCsv("fr_zone.csv"),
 };
 
 const PCT = ["p10", "p25", "median", "p75", "p90"] as const;
@@ -392,3 +396,104 @@ for (const r of data.so.filter((r) => SO_LANG[r.country!]))
   console.log(
     `| ${r.country} | ${SO_LANG[r.country!]} | ${Number(r.n).toLocaleString("en-US")} | ${k(Number(r.p10))} | ${k(Number(r.median))} | ${k(Number(r.p90))} |`,
   );
+
+// ---------------------------------------------------------------------------
+// 6. Japan by prefecture: averages including bonus (no medians are published)
+// ---------------------------------------------------------------------------
+
+/**
+ * Prefecture tables give only means: monthly scheduled pay (所定内給与額) and the
+ * annual bonus (年間賞与その他特別給与額), both in thousands of yen. Their sum
+ * ×12 + bonus is the mean annual pay without overtime. Kept apart from every
+ * median table above.
+ */
+function jpMeanAnnualYen(row: Row): number {
+  const m = /mean 所定内給与額 = ([\d.]+).*?mean 年間賞与その他特別給与額 = ([\d.]+)/.exec(
+    row.notes!,
+  );
+  if (!m) throw new Error(`no means in notes for ${row.city} ${row.measure}`);
+  return (Number(m[1]) * 12 + Number(m[2])) * 1000;
+}
+const JP_COLUMNS: [string, string][] = [
+  ["All workers", "一般労働者)"],
+  ["Information & communications industry", "情報通信業"],
+  ["Software developers", "ソフトウェア作成者"],
+  ["System consultants & designers", "システムコンサルタント"],
+  ["Designers", "デザイナー"],
+  ["Writers, reporters & editors", "著述家"],
+];
+console.log(
+  "\n## Japan: average annual pay including bonus (mean, not median; gross, ¥ and PPP $/year, 2025)\n",
+);
+console.log(
+  `| Where | ${JP_COLUMNS.map(([l]) => l).join(" | ")} |\n| --- |${" ---: |".repeat(JP_COLUMNS.length)}`,
+);
+for (const [label, city] of [
+  ["Tokyo", "Tokyo"],
+  ["Osaka", "Osaka"],
+  ["Aichi (Nagoya)", "Nagoya"],
+  ["Fukuoka", "Fukuoka"],
+  ["Japan (national)", "Japan (national)"],
+] as const) {
+  const cells = JP_COLUMNS.map(([, key]) => {
+    const r = data.jp.find(
+      (r) => r.city === city && (key.endsWith(")") ? r.measure!.endsWith(key) : has(r, key)),
+    );
+    if (!r) return "—";
+    const yen = jpMeanAnnualYen(r);
+    return `¥${(yen / 1e6).toFixed(1)}M (${k(yen / PPP.Japan![2025]!)})`;
+  });
+  console.log(`| ${label} | ${cells.join(" | ")} |`);
+}
+
+// ---------------------------------------------------------------------------
+// 7. French-speaking high-wage areas: Switzerland, Luxembourg, Belgium
+// ---------------------------------------------------------------------------
+
+console.log(
+  "\n## Switzerland by region, 2024 (gross, PPP $/year; monthly pay incl. 1/12 of the 13th month × 12)\n",
+);
+console.log(
+  "| Region | Languages | All jobs, median | IT services: P10 | IT services: median | IT services: P90 | ICT professionals, median |\n| --- | --- | ---: | ---: | ---: | ---: | ---: |",
+);
+for (const [city, label, langs] of [
+  ["Geneva/Lausanne", "Lake Geneva (Geneva, Lausanne)", "French"],
+  ["Zurich", "Zurich", "German"],
+  ["Basel", "Northwestern Switzerland (Basel)", "German"],
+  ["Bern", "Espace Mittelland (Bern)", "German, French"],
+  ["Lugano", "Ticino (Lugano)", "Italian"],
+] as const) {
+  const rows = data.frz.filter((r) => r.city === city);
+  const all = one(rows, (r) => has(r, "all economic activities"), `${city} all`);
+  const it = one(rows, (r) => has(r, "division 62"), `${city} 62`);
+  const ict = one(rows, (r) => has(r, "ISCO-08 sub-major group 25"), `${city} ict`);
+  console.log(
+    `| ${label} | ${langs} | ${k(annualPpp(all, "median"))} | ${k(annualPpp(it, "p10"))} | ${k(annualPpp(it, "median"))} | ${k(annualPpp(it, "p90"))} | ${k(annualPpp(ict, "median"))} |`,
+  );
+}
+
+const lux = data.frz.filter((r) => r.country === "Luxembourg");
+const luxAll = one(lux, (r) => has(r, "B-S"), "lux all");
+const luxJ = one(lux, (r) => has(r, "section J"), "lux J");
+console.log("\n## Luxembourg, 2022 (gross annual pay per full-time equivalent, PPP $/year)\n");
+console.log("| Sector | P10 | Median | P90 |\n| --- | ---: | ---: | ---: |");
+for (const [label, r] of [
+  ["All sectors", luxAll],
+  ["Information & communication", luxJ],
+] as const)
+  console.log(
+    `| ${label} | ${k(annualPpp(r, "p10"))} | ${k(annualPpp(r, "median"))} | ${k(annualPpp(r, "p90"))} |`,
+  );
+
+console.log(
+  "\n## Belgium by region, 2022 (October pay × 12, excludes 13th month and holiday pay; PPP $/year)\n",
+);
+console.log("| Region | Languages | Median, all private-sector jobs |\n| --- | --- | ---: |");
+for (const [city, label, langs] of [
+  ["Brussels", "Brussels", "French, Dutch"],
+  ["Antwerp/Ghent", "Flanders (Antwerp, Ghent)", "Dutch"],
+  ["Liège/Charleroi", "Wallonia (Liège, Charleroi)", "French"],
+] as const) {
+  const r = one(data.frz, (r) => r.city === city, city);
+  console.log(`| ${label} | ${langs} | ${k(annualPpp(r, "median"))} |`);
+}

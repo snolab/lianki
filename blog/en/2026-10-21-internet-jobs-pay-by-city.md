@@ -11,7 +11,7 @@ _Posted October 21, 2026 by [lianki.com](https://lianki.com)_
 
 Our [city ranking](/en/blog/2026-10-21-languages-by-city-wealth) used GDP per person, which says how rich a city is, not what a job there pays. This post uses actual wages, from each country's official statistics, for the kind of work most people mean by "internet jobs": **software, design, media and writing, and marketing.**
 
-The short version: **English opens the best-paid internet jobs by a wide margin, German comes next, and inside bilingual Canada the French-speaking cities pay less than the English-speaking ones.**
+The short version: **English opens the best-paid internet jobs by a wide margin, German comes next, and French pays at that level only in a few small places — Geneva, Lausanne, Luxembourg and Brussels. Japanese tech jobs pay far less than either.**
 
 ---
 
@@ -135,6 +135,61 @@ Catalonia's median is a little below Madrid's, and its top 10% earn less ($96k a
 
 ---
 
+## Japanese: Tokyo and the rest of Japan
+
+Japan's wage survey gives prefectures **averages only**, so this table is separate from the medians above. It shows average yearly pay **including bonuses** (monthly pay × 12 plus the yearly bonus, not counting overtime). Averages run higher than medians — nationally the average monthly pay is ¥340,600 against a median of ¥296,600.
+
+| Where            |  All workers | Information & communications industry | Software developers | System consultants & designers |    Designers | Writers, reporters & editors |
+| ---------------- | -----------: | ------------------------------------: | ------------------: | -----------------------------: | -----------: | ---------------------------: |
+| Tokyo            | ¥6.4M ($62k) |                          ¥6.5M ($63k) |        ¥5.5M ($53k) |                   ¥9.2M ($89k) | ¥5.8M ($56k) |                 ¥6.5M ($63k) |
+| Osaka            | ¥5.2M ($50k) |                          ¥5.6M ($54k) |        ¥5.1M ($50k) |                   ¥6.9M ($67k) | ¥4.7M ($45k) |                 ¥5.9M ($57k) |
+| Aichi (Nagoya)   | ¥5.2M ($51k) |                          ¥6.5M ($63k) |        ¥5.8M ($56k) |                   ¥6.5M ($63k) | ¥4.2M ($41k) |                 ¥5.3M ($51k) |
+| Fukuoka          | ¥4.7M ($45k) |                          ¥5.7M ($55k) |        ¥4.9M ($47k) |                   ¥7.3M ($71k) | ¥4.1M ($39k) |                 ¥5.9M ($57k) |
+| Japan (national) | ¥5.1M ($49k) |                          ¥6.3M ($61k) |        ¥5.4M ($52k) |                   ¥8.5M ($82k) | ¥5.1M ($50k) |                 ¥6.1M ($59k) |
+
+- **Tokyo pays the most overall**, but not for every job: software developers earn more on average in Aichi (Nagoya, home of Toyota and its suppliers) than in Tokyo.
+- **The job title matters more than the city.** "System consultants & designers" — the people who plan and design systems — earn ¥9.2M a year in Tokyo, about two-thirds more than "software developers" (¥5.5M), who mostly write the code. Even that group ($89k) stays below the median IT pay in Berlin or London ($107k).
+- Even counting bonuses, an average software developer in Tokyo earns about $53k in purchasing-power terms — well below the medians in the US, Germany or the UK.
+
+---
+
+## French: where it pays at the top
+
+France itself only publishes city **averages** after tax, so Paris is not in the median tables. The French-speaking places that pay most are elsewhere — in Switzerland, Luxembourg and Brussels.
+
+**Switzerland** publishes full distributions by region (Federal Statistical Office, 2024; monthly pay already includes a share of the 13th-month salary):
+
+| Region                           | Languages      | All jobs, median | IT services: P10 | IT services: median | IT services: P90 | ICT professionals, median |
+| -------------------------------- | -------------- | ---------------: | ---------------: | ------------------: | ---------------: | ------------------------: |
+| Lake Geneva (Geneva, Lausanne)   | French         |             $76k |             $65k |               $103k |            $155k |                     $106k |
+| Zurich                           | German         |             $81k |             $73k |               $120k |            $310k |                     $116k |
+| Northwestern Switzerland (Basel) | German         |             $78k |             $63k |                $99k |            $161k |                     $105k |
+| Espace Mittelland (Bern)         | German, French |             $75k |             $64k |               $102k |            $158k |                     $106k |
+| Ticino (Lugano)                  | Italian        |             $62k |             $46k |                $77k |            $131k |                      $76k |
+
+The French-speaking Lake Geneva region pays IT workers about what London and Berlin do (a median of $103k in IT services, $106k for ICT professionals). German-speaking Zurich is higher, and its top end is far higher: the best-paid 10% of its IT-services workers earn over $310k, against $155k around Lake Geneva.
+
+**Luxembourg** (STATEC, 2022), where French is one of the main working languages alongside German and Luxembourgish:
+
+| Sector                      |  P10 | Median |   P90 |
+| --------------------------- | ---: | -----: | ----: |
+| All sectors                 | $37k |   $65k | $152k |
+| Information & communication | $46k |   $81k | $140k |
+
+**Belgium** (Statbel, 2022). These are October salaries × 12, so they leave out the 13th month and holiday pay and understate real yearly pay — but they do so equally for every region:
+
+| Region                      | Languages     | Median, all private-sector jobs |
+| --------------------------- | ------------- | ------------------------------: |
+| Brussels                    | French, Dutch |                            $66k |
+| Flanders (Antwerp, Ghent)   | Dutch         |                            $57k |
+| Wallonia (Liège, Charleroi) | French        |                            $55k |
+
+Bilingual Brussels pays clearly more than both Dutch-speaking Flanders and French-speaking Wallonia.
+
+So French does open well-paid tech jobs — in Geneva, Lausanne, Luxembourg and Brussels. They are small places compared with London or the Bay Area, and they usually also expect English (and in Luxembourg, often German).
+
+---
+
 ## Designers, media and marketing
 
 Software is the best-paid internet work almost everywhere. Here is how the other kinds compare (medians):
@@ -201,7 +256,7 @@ For internet jobs specifically:
 1. **English is the first language to learn** — every one of the highest-paying cities in this post works in English.
 2. **German is the strongest second choice** for tech: Munich, Frankfurt and Stuttgart pay above London, and the official medians understate them.
 3. **Hebrew, Dutch and the Swiss languages** go with high pay, but in small markets.
-4. **French on its own pays less** than you might expect in tech: Montreal and Quebec City trail Toronto, and France's developers sit around the European middle in the survey. It is most valuable together with English, in bilingual cities.
+4. **French pays at the top only in a few small places**: Geneva and Lausanne pay IT workers about what London and Berlin do, and Luxembourg and Brussels are well paid too. But Montreal and Quebec City trail Toronto, and France's developers sit around the European middle in the survey. French is most valuable together with English.
 5. **Japanese is worth learning for Japan itself, not for the pay**: official salaries for developers there are far below other rich countries.
 
 Whatever you pick, the way to get to working fluency is the same: lots of real reading and listening, and steady review so you keep what you learn. That is what [Lianki](/en) is for.
@@ -218,6 +273,9 @@ Whatever you pick, the way to get to working fluency is the same: lots of real r
 - [ABS Employee Earnings, August 2025](https://www.abs.gov.au/statistics/labour/earnings-and-working-conditions/employee-earnings/latest-release)
 - [INE Encuesta Anual de Estructura Salarial 2024](https://www.ine.es/jaxiT3/Tabla.htm?t=28191) and Cuatrienal 2022 (tables 36829, 36830)
 - [Stack Overflow Developer Survey 2025](https://survey.stackoverflow.co/2025) (ODbL)
+- [Swiss Federal Statistical Office, Swiss Earnings Structure Survey 2024](https://www.bfs.admin.ch/asset/de/36196162)
+- [STATEC Luxembourg, Structure of Earnings Survey 2022](https://lustat.statec.lu/)
+- [Statbel, Structure of Earnings 2022](https://statbel.fgov.be/en/themes/work-training/wages-and-labourcost) (regional medians via [IWEPS](https://www.iweps.be/))
 - [World Bank, PPP conversion factor, private consumption](https://data.worldbank.org/indicator/PA.NUS.PRVT.PP)
 - [Data, per-source notes and script for this post](https://github.com/snolab/lianki/tree/main/blog/data/internet-wages)
 
