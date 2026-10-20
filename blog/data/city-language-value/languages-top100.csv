@@ -1,0 +1,29 @@
+rank,language,cities,population_2020,example_cities
+1,English,49,155725685,Boston / San Francisco / Dublin / Washington
+2,Chinese,9,45162159,Singapore / Tainan / Hong Kong / Taipei
+3,Arabic,7,25034344,Doha / Jeddah / Riyadh / Kuwait City
+4,German,6,12835497,Munich / Hamburg / Cologne / Vienna
+5,Japanese,4,56612294,Tokyo / Nagoya / Sapporo / Osaka
+6,Russian,4,22171590,Moscow / Astana / Almaty / Saint Petersburg
+7,French,4,14924863,Paris / Brussels / Lyon / Montreal
+8,Turkish,3,19867402,Istanbul / Ankara / Bursa
+9,Spanish,3,14889195,Miami / Madrid / Barcelona
+10,Italian,3,6840817,Milan / Rome / Turin
+11,Dutch,3,4722524,Amsterdam / Brussels / Rotterdam [The Hague]
+12,Korean,2,23768648,Seoul / Daejeon
+13,Malay,2,12765460,Singapore / Kuala Lumpur
+14,Kazakh,2,3146999,Astana / Almaty
+15,Indonesian,2,2220742,Pekanbaru / Samarinda
+16,Tamil,1,5015276,Singapore
+17,Catalan,1,3797532,Barcelona
+18,Ukrainian,1,2835153,Kyiv
+19,Hebrew,1,2429768,Tel Aviv
+20,Romanian,1,1955327,Bucharest
+21,Portuguese,1,1922855,Lisbon
+22,Polish,1,1892607,Warsaw
+23,Persian,1,1857538,Ahwaz
+24,Hungarian,1,1678443,Budapest
+25,Swedish,1,1450800,Stockholm
+26,Danish,1,1201209,Copenhagen
+27,Czech,1,1181057,Prague
+28,Bulgarian,1,1092034,Sofia

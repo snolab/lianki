@@ -1,0 +1,40 @@
+rank,language,cities,population_2020,example_cities
+1,English,52,170320860,Boston / San Francisco / Dublin / Washington
+2,Chinese,42,224439423,Singapore / Tainan / Hong Kong / Taipei
+3,Spanish,20,89539579,Miami / Madrid / Barcelona / Panama City
+4,Arabic,11,33264150,Doha / Jeddah / Riyadh / Kuwait City
+5,Japanese,10,64659815,Tokyo / Nagoya / Sapporo / Osaka
+6,Portuguese,10,38093900,Lisbon / Brasilia / Porto / Curitiba
+7,Russian,10,30161351,Moscow / Astana / Almaty / Saint Petersburg
+8,Indonesian,9,55039542,Pekanbaru / Samarinda / Palembang / Batam City
+9,Turkish,7,26313832,Istanbul / Ankara / Bursa / Sincan
+10,German,6,12835497,Munich / Hamburg / Cologne / Vienna
+11,Korean,5,30910126,Seoul / Daejeon / Daegu / Gwangju
+12,French,4,14924863,Paris / Brussels / Lyon / Montreal
+13,Italian,4,9761609,Milan / Rome / Turin / Naples
+14,Malay,3,14359990,Singapore / Kuala Lumpur / Johor Bahru
+15,Dutch,3,4722524,Amsterdam / Brussels / Rotterdam [The Hague]
+16,Persian,2,10748925,Ahwaz / Tehran
+17,Catalan,2,5195623,Barcelona / Valencia
+18,Kazakh,2,3146999,Astana / Almaty
+19,Thai,1,17430926,Bangkok
+20,Vietnamese,1,12917368,Ho Chi Minh City
+21,Telugu,1,9023910,Hyderabad
+22,Urdu,1,9023910,Hyderabad
+23,Tamil,1,5015276,Singapore
+24,Afrikaans,1,3976735,Cape Town
+25,Xhosa,1,3976735,Cape Town
+26,Greek,1,3207052,Athens
+27,Ukrainian,1,2835153,Kyiv
+28,Hebrew,1,2429768,Tel Aviv
+29,Belarusian,1,2065198,Minsk
+30,Romanian,1,1955327,Bucharest
+31,Azerbaijani,1,1950544,Baku
+32,Polish,1,1892607,Warsaw
+33,Hungarian,1,1678443,Budapest
+34,Swedish,1,1450800,Stockholm
+35,Serbian,1,1215846,Belgrade
+36,Danish,1,1201209,Copenhagen
+37,Czech,1,1181057,Prague
+38,Bulgarian,1,1092034,Sofia
+39,Armenian,1,1030819,Yerevan
