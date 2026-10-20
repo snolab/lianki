@@ -9,6 +9,8 @@ summary: "Discover how learning just a few languages can unlock most of the worl
 
 _Posted February 24, 2025 by [lianki.com](https://www.lianki.com)_
 
+> **Correction (October 21, 2026):** This post has errors. French is undercounted (its total leaves out Quebec, Wallonia, Brussels and French-speaking Switzerland and Africa, which is why it ranks below Hindi), the cumulative chart adds languages in a different order from the ranking table, all of India is counted as Hindi, and the post cites IMF data newer than its date. Countries are also too big a unit for this question. We redid the analysis city by city: **[Which Languages Open the Richest Cities?](/en/blog/2026-10-21-languages-by-city-wealth)**
+
 If you're learning languages for economic opportunity, you might wonder: **How many languages do I need to access most of the global economy?**
 
 The answer is surprisingly few. This data-driven analysis reveals the **power law distribution** of languages by economic value, showing that a small number of languages provide access to most global GDP.
