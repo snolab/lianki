@@ -1,0 +1,21 @@
+language,cities,population_2020,p50,p50_city,p80,p80_city,p90,p90_city
+German,6,12835497,60864,Vienna,74752,Hamburg,110335,Munich
+Japanese,10,64659815,46640,Tokyo,46640,Tokyo,46640,Tokyo
+Korean,6,33742347,43787,Seoul,43787,Seoul,43787,Seoul
+Turkish,7,26313832,43319,Istanbul,43319,Istanbul,43319,Istanbul
+Russian,12,32521419,39264,Almaty,53996,Moscow,53996,Moscow
+Chinese,85,326764482,24859,Quanzhou,35351,Shanghai,37033,Beijing
+Spanish,42,140173223,21588,Mexico City,34462,Buenos Aires,43186,Barcelona
+Indonesian,22,88852767,20909,Jakarta,20909,Jakarta,20909,Jakarta
+Marathi,8,38005285,18283,Mumbai,18283,Mumbai,18283,Mumbai
+Portuguese,25,83959983,18253,Rio de Janeiro,21149,São Paulo,23825,Belo Horizonte
+Persian,6,22271886,15523,Isfahan,20807,Tehran,20807,Tehran
+Tamil,8,28779286,14267,Chennai,17273,Colombo [Sri Jayawardenepura Kotte],92119,Singapore
+English,173,611894476,12048,Mysuru,48454,Brisbane,72186,London
+Arabic,42,128484324,10338,Basra,35179,Medina,58175,Riyadh
+Malayalam,6,20274801,10086,Kochi,10393,Kozhikode,10992,Thiruvananthapuram
+Bengali,12,77262235,7594,Dhaka,7594,Dhaka,7715,Chattogram
+Urdu,14,68457371,7312,Karachi,8297,Islamabad,18839,Hyderabad
+Hindi,34,106020602,4953,Ranchi,14834,New Delhi,14834,New Delhi
+French,28,80647354,4298,Ouagadougou,9228,Abidjan,76860,Paris
+Lingala,5,18620237,2070,Kinshasa,2070,Kinshasa,2070,Kinshasa

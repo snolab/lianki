@@ -103,6 +103,42 @@ So the answer depends on what you are after: **English, Chinese, Arabic and Germ
 
 ---
 
+## Rich at the top, poor in the middle
+
+Counting cities hides how a language's speakers are spread out. This table looks at **all** 499 big cities and asks: if you line up everyone living in a city where the language is used, from the poorest city to the richest, which city is the person in the middle (P50) in? And the person 80% or 90% of the way up?
+
+| Language   | Cities | People | P50                   | P80                                        | P90                       |
+| ---------- | -----: | -----: | --------------------- | ------------------------------------------ | ------------------------- |
+| German     |      6 |  12.8M | $61k (Vienna)         | $75k (Hamburg)                             | $110k (Munich)            |
+| Japanese   |     10 |  64.7M | $47k (Tokyo)          | $47k (Tokyo)                               | $47k (Tokyo)              |
+| Korean     |      6 |  33.7M | $44k (Seoul)          | $44k (Seoul)                               | $44k (Seoul)              |
+| Turkish    |      7 |  26.3M | $43k (Istanbul)       | $43k (Istanbul)                            | $43k (Istanbul)           |
+| Russian    |     12 |  32.5M | $39k (Almaty)         | $54k (Moscow)                              | $54k (Moscow)             |
+| Chinese    |     85 | 326.8M | $25k (Quanzhou)       | $35k (Shanghai)                            | $37k (Beijing)            |
+| Spanish    |     42 | 140.2M | $22k (Mexico City)    | $34k (Buenos Aires)                        | $43k (Barcelona)          |
+| Indonesian |     22 |  88.9M | $21k (Jakarta)        | $21k (Jakarta)                             | $21k (Jakarta)            |
+| Marathi    |      8 |  38.0M | $18k (Mumbai)         | $18k (Mumbai)                              | $18k (Mumbai)             |
+| Portuguese |     25 |  84.0M | $18k (Rio de Janeiro) | $21k (São Paulo)                           | $24k (Belo Horizonte)     |
+| Persian    |      6 |  22.3M | $16k (Isfahan)        | $21k (Tehran)                              | $21k (Tehran)             |
+| Tamil      |      8 |  28.8M | $14k (Chennai)        | $17k (Colombo [Sri Jayawardenepura Kotte]) | $92k (Singapore)          |
+| English    |    173 | 611.9M | $12k (Mysuru)         | $48k (Brisbane)                            | $72k (London)             |
+| Arabic     |     42 | 128.5M | $10k (Basra)          | $35k (Medina)                              | $58k (Riyadh)             |
+| Malayalam  |      6 |  20.3M | $10k (Kochi)          | $10k (Kozhikode)                           | $11k (Thiruvananthapuram) |
+| Bengali    |     12 |  77.3M | $8k (Dhaka)           | $8k (Dhaka)                                | $8k (Chattogram)          |
+| Urdu       |     14 |  68.5M | $7k (Karachi)         | $8k (Islamabad)                            | $19k (Hyderabad)          |
+| Hindi      |     34 | 106.0M | $5k (Ranchi)          | $15k (New Delhi)                           | $15k (New Delhi)          |
+| French     |     28 |  80.6M | $4k (Ouagadougou)     | $9k (Abidjan)                              | $77k (Paris)              |
+| Lingala    |      5 |  18.6M | $2k (Kinshasa)        | $2k (Kinshasa)                             | $2k (Kinshasa)            |
+
+Two kinds of language show up:
+
+- **Concentrated languages** — Japanese, Korean, Turkish, German. Most of their big-city speakers live in one or two well-off cities, so P50 and P90 are close together.
+- **Split languages** — English, French and Arabic. Their richest cities are among the richest anywhere, but most of the people who use them live in much poorer cities. For French, 79% of the people in big French-speaking cities live in African cities under $15,000 per person, such as Kinshasa, Abidjan, Dakar and Douala; the line only reaches Paris at P90.
+
+For a learner, the average is not the useful number. What matters is the end of the range you are aiming for.
+
+---
+
 ## The 30 richest big cities
 
 | Rank | City                     | Country        | People | GDP per person (PPP) | Languages                      |

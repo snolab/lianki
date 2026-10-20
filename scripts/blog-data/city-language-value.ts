@@ -314,6 +314,74 @@ for (const n of [100, 200]) {
     );
 }
 
+/**
+ * Population-weighted percentiles of GDP per person across every 1M+ city a
+ * language is used in: P50 is the city the median city-dweller who uses that
+ * language lives in. Shows how unevenly a language's speakers are spread
+ * between rich and poor cities, which the top-N counts hide.
+ */
+function distribution(cities: City[], minCities: number) {
+  const by = new Map<string, City[]>();
+  for (const c of cities) for (const l of c.languages) by.set(l, [...(by.get(l) ?? []), c]);
+  const at = (list: City[], q: number) => {
+    const sorted = [...list].sort((a, b) => a.gdpPerHead - b.gdpPerHead);
+    const total = sorted.reduce((s, c) => s + c.population, 0);
+    let acc = 0;
+    for (const c of sorted) {
+      acc += c.population;
+      if (acc >= q * total) return c;
+    }
+    return sorted.at(-1)!;
+  };
+  return [...by.entries()]
+    .filter(([, list]) => list.length >= minCities)
+    .map(([language, list]) => ({
+      language,
+      cities: list.length,
+      population: list.reduce((s, c) => s + c.population, 0),
+      p50: at(list, 0.5),
+      p80: at(list, 0.8),
+      p90: at(list, 0.9),
+    }))
+    .sort((a, b) => b.p50.gdpPerHead - a.p50.gdpPerHead);
+}
+
+const dist = distribution(cities, 5);
+writeCsv(
+  "languages-distribution.csv",
+  [
+    "language",
+    "cities",
+    "population_2020",
+    "p50",
+    "p50_city",
+    "p80",
+    "p80_city",
+    "p90",
+    "p90_city",
+  ],
+  dist.map((d) => [
+    d.language,
+    d.cities,
+    d.population,
+    Math.round(d.p50.gdpPerHead),
+    d.p50.city,
+    Math.round(d.p80.gdpPerHead),
+    d.p80.city,
+    Math.round(d.p90.gdpPerHead),
+    d.p90.city,
+  ]),
+);
+console.log("\n## Distribution (languages in 5+ cities)\n");
+console.log(
+  "| Language | Cities | People | P50 | P80 | P90 |\n| --- | ---: | ---: | --- | --- | --- |",
+);
+const cell = (c: City) => `${usd(c.gdpPerHead)} (${c.city})`;
+for (const d of dist)
+  console.log(
+    `| ${d.language} | ${d.cities} | ${m(d.population)} | ${cell(d.p50)} | ${cell(d.p80)} | ${cell(d.p90)} |`,
+  );
+
 console.log("\n## Top 40 cities\n");
 console.log(
   "| Rank | City | Country | People | GDP per person (PPP) | Languages |\n| ---: | --- | --- | ---: | ---: | --- |",
