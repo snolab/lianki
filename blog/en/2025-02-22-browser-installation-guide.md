@@ -128,7 +128,7 @@ After installing the Lianki userscript, you should see the floating action butto
 
 1. **Open any HTTPS website** (e.g., https://www.wikipedia.org)
 2. Look for a **circular floating button** in the bottom-right corner of the page
-3. The button should be **draggable** — try moving it around
+3. To move the button, **long-press it**, then drag
 4. Press **Alt+F** or click the button to open the Lianki dialog
 
 If you see the floating button, congratulations! Lianki is installed and working.
@@ -235,17 +235,17 @@ When a card is due for review:
 2. The floating button will **glow** to indicate a review is due
 3. Click it to open the review dialog
 4. Rate your memory: **Again** (1), **Hard** (2), **Good** (3), or **Easy** (4)
-5. Use keyboard shortcuts: `1/D/L`, `2/W/K`, `3/S/J`, `4/A/H`
+5. Use keyboard shortcuts: `1/A/H`, `2/S/J`, `3/W/K`, `4/D/L`
 
 The dialog shows the next review interval for each rating, so you can choose based on how well you remember the content.
 
 ### Keyboard Shortcuts
 
 - **Alt+F** — Open Lianki dialog (add or review)
-- **1, D, L** — Rate as "Again" (forgot it)
-- **2, W, K** — Rate as "Hard" (barely remembered)
-- **3, S, J** — Rate as "Good" (remembered well)
-- **4, A, H** — Rate as "Easy" (trivial to remember)
+- **1, A, H** — Rate as "Again" (forgot it)
+- **2, S, J** — Rate as "Hard" (barely remembered)
+- **3, W, K** — Rate as "Good" (remembered well)
+- **4, D, L** — Rate as "Easy" (trivial to remember)
 
 The shortcuts support both WASD and HJKL layouts, plus numpad 1-4.
 

@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.19
+// @version     2.24.20
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1908,7 +1908,7 @@ function main() {
       const hints = document.createElement("div");
       Object.assign(hints.style, { marginTop: "14px", opacity: ".6", fontSize: "11px" });
       hints.textContent =
-        "A/H=Easy \u00b7 S/J=Good \u00b7 W/K=Hard \u00b7 D/L=Again \u00b7 T/M=Delete \u00b7 Esc=Close";
+        "A/H=Again \u00b7 S/J=Hard \u00b7 W/K=Good \u00b7 D/L=Easy \u00b7 T/M=Delete \u00b7 Esc=Close";
       dialog.appendChild(hints);
 
       // Notes input
@@ -2326,18 +2326,19 @@ function main() {
 
   // ── Keyboard ───────────────────────────────────────────────────────────────
   const KEYS = {
+    // Same directions as the pill swipe: ← Again, ↓ Hard, → Easy; ↑ is Good.
     Digit1: () => doReview(1),
-    KeyD: () => doReview(1),
-    KeyL: () => doReview(1),
+    KeyA: () => doReview(1),
+    KeyH: () => doReview(1),
     Digit2: () => doReview(2),
-    KeyW: () => doReview(2),
-    KeyK: () => doReview(2),
+    KeyS: () => doReview(2),
+    KeyJ: () => doReview(2),
     Digit3: () => doReview(3),
-    KeyS: () => doReview(3),
-    KeyJ: () => doReview(3),
+    KeyW: () => doReview(3),
+    KeyK: () => doReview(3),
     Digit4: () => doReview(4),
-    KeyA: () => doReview(4),
-    KeyH: () => doReview(4),
+    KeyD: () => doReview(4),
+    KeyL: () => doReview(4),
     KeyR: () => (state.phase === "deleted" ? doRestore() : undefined),
     Digit5: () => doDelete(),
     KeyT: () => doDelete(),

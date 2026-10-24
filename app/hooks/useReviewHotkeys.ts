@@ -14,10 +14,12 @@ type ReviewHotkeysOptions = {
  * Keyboard shortcuts for the review flow.
  *
  * Rating:
- *   1 / d / l  = Again (1)
+ *   1 / a / h  = Again (1)
  *   2 / s / j  = Hard  (2)
- *   3          = Good  (3)
- *   4 / a / h  = Easy  (4)
+ *   3 / w      = Good  (3)   (k is "next" here, so Good has no vim key)
+ *   4 / d / l  = Easy  (4)
+ *
+ * Same directions as the userscript pill swipe: ← Again, ↓ Hard, → Easy.
  *
  * Delete: 5 / m / t
  * Navigate: ArrowUp/i (prev), ArrowDown/k (next)
@@ -39,7 +41,7 @@ export function useReviewHotkeys({
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
 
       // Rating: 1-4
-      if (e.code === "Digit1" || e.code === "KeyD" || e.code === "KeyL") {
+      if (e.code === "Digit1" || e.code === "KeyA" || e.code === "KeyH") {
         e.preventDefault();
         onRate(1);
         return;
@@ -49,12 +51,12 @@ export function useReviewHotkeys({
         onRate(2);
         return;
       }
-      if (e.code === "Digit3") {
+      if (e.code === "Digit3" || e.code === "KeyW") {
         e.preventDefault();
         onRate(3);
         return;
       }
-      if (e.code === "Digit4" || e.code === "KeyA" || e.code === "KeyH") {
+      if (e.code === "Digit4" || e.code === "KeyD" || e.code === "KeyL") {
         e.preventDefault();
         onRate(4);
         return;
