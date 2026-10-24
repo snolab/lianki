@@ -126,10 +126,11 @@ async function setupWithRoutingMock(page: Page) {
 
 async function clickFab(page: Page) {
   await page.evaluate(() => {
-    const fab = Array.from(document.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("🔖"),
+    // 🔖 on a page without a card, 📗 once it has one.
+    const fab = Array.from(document.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("🔖") || b.textContent?.includes("📗"),
     ) as HTMLElement | undefined;
-    if (!fab) throw new Error("FAB 🔖 not found");
+    if (!fab) throw new Error("FAB 🔖/📗 not found");
     fab.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
   });
 }

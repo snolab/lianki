@@ -98,10 +98,11 @@ const FIND_HOST = () =>
 /** Click the FAB 🔖 button via JS (bypasses keyboard/focus issues on about:blank) */
 async function clickFab(page: Page) {
   await page.evaluate(() => {
-    const fab = Array.from(document.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("🔖"),
+    // 🔖 on a page without a card, 📗 once it has one.
+    const fab = Array.from(document.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("🔖") || b.textContent?.includes("📗"),
     ) as HTMLElement | undefined;
-    if (!fab) throw new Error("FAB 🔖 not found");
+    if (!fab) throw new Error("FAB 🔖/📗 not found");
     fab.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
   });
 }
@@ -293,6 +294,99 @@ test.describe("Guest initialization", () => {
       Array.from(document.querySelectorAll("button")).some((b) => b.textContent?.includes("🔖")),
     );
     expect(fabVisible).toBe(true);
+  });
+});
+
+test.describe("Floating pill", () => {
+  const pillBox = (page: Page) =>
+    page.evaluate(() => {
+      const fab = Array.from(document.querySelectorAll("button")).find(
+        (b) => b.textContent?.includes("🔖") || b.textContent?.includes("📗"),
+      )!;
+      const r = fab.parentElement!.getBoundingClientRect();
+      const b = fab.getBoundingClientRect();
+      return { left: r.left, top: r.top, x: b.left + b.width / 2, y: b.top + b.height / 2 };
+    });
+
+  test("a plain drag does not move it", async ({ page }) => {
+    await setup(page, { status: 401 });
+    const before = await pillBox(page);
+    await page.mouse.move(before.x, before.y);
+    await page.mouse.down();
+    await page.mouse.move(before.x - 150, before.y - 150, { steps: 5 });
+    await page.mouse.up();
+    const after = await pillBox(page);
+    expect(after.left).toBe(before.left);
+    expect(after.top).toBe(before.top);
+    expect(await page.evaluate(() => (window as any).__gm.lianki_pos)).toBeUndefined();
+  });
+
+  test("a long press then drag moves it and saves the position", async ({ page }) => {
+    await setup(page, { status: 401 });
+    const before = await pillBox(page);
+    await page.mouse.move(before.x, before.y);
+    await page.mouse.down();
+    await page.waitForTimeout(500);
+    await page.mouse.move(before.x - 150, before.y - 150, { steps: 5 });
+    await page.mouse.up();
+    const after = await pillBox(page);
+    expect(after.left).toBeLessThan(before.left - 100);
+    expect(await page.evaluate(() => (window as any).__gm.lianki_pos)).toBeTruthy();
+    // The release after a long press is not a click: no dialog opened.
+    expect(await page.evaluate(FIND_HOST)).toBeFalsy();
+  });
+
+  test("the icon turns to 📗 once the page has a card", async ({ page }) => {
+    await setup(page, { status: 401 });
+    const icon = () =>
+      page.evaluate(() =>
+        Array.from(document.querySelectorAll("button")).some((b) => b.textContent === "📗"),
+      );
+    expect(await icon()).toBe(false);
+    await openDialog(page);
+    await page.waitForTimeout(1200);
+    expect(await icon()).toBe(true);
+  });
+
+  const swipe = async (page: Page, dx: number, dy: number) => {
+    const p = await pillBox(page);
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.down();
+    await page.mouse.move(p.x + dx, p.y + dy, { steps: 5 });
+    await page.mouse.up();
+  };
+  const cardPage = async (page: Page) => {
+    await setup(page, { status: 401 });
+    await openDialog(page);
+    await clickFab(page);
+    await waitForDialogClosed(page);
+  };
+
+  for (const [name, dx, dy, rating] of [
+    ["left", -80, 0, 1],
+    ["down", 0, 80, 2],
+    ["right", 80, 0, 4],
+  ] as const) {
+    test(`swiping ${name} on a page with a card reviews it as ${rating}`, async ({ page }) => {
+      await cardPage(page);
+      await swipe(page, dx, dy);
+      await page.waitForTimeout(500);
+      const queue = (await gmJSON(page, "lk:queue")) as {
+        action: string;
+        data: { rating: number };
+      }[];
+      const reviews = queue.filter((e) => e.action === "review");
+      expect(reviews.map((e) => e.data.rating)).toEqual([rating]);
+    });
+  }
+
+  test("swiping up opens the review dialog without reviewing", async ({ page }) => {
+    await cardPage(page);
+    await swipe(page, 0, -80);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(FIND_HOST)).toBeTruthy();
+    const queue = (await gmJSON(page, "lk:queue")) as { action: string }[];
+    expect(queue.some((e) => e.action === "review")).toBe(false);
   });
 });
 
