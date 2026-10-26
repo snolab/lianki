@@ -7,7 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.18
+// @version     2.24.20
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1557,7 +1557,7 @@
   function rateSegments(markers, duration) {
     if (!Number.isFinite(duration) || duration <= 0) return [];
     const points = Object.entries(markers ?? {})
-      .map(([t, rate2]) => ({ t: Number(t), rate: Number(rate2) }))
+      .map(([t, rate]) => ({ t: Number(t), rate: Number(rate) }))
       .filter((p) => Number.isFinite(p.t) && p.t >= 0 && Number.isFinite(p.rate) && p.rate > 0)
       .sort((a, b) => a.t - b.t);
     const segments = [];
@@ -2464,6 +2464,7 @@
         gap: "0",
         alignItems: "center",
         userSelect: "none",
+        WebkitTouchCallout: "none",
         touchAction: "none",
         background: "rgba(20,20,20,0.82)",
         borderRadius: "999px",
@@ -2511,6 +2512,21 @@
         return sep;
       };
       container.append(slowerBtn, makeSeparator(), liankiBtn, makeSeparator(), fasterBtn);
+      let pageHasCard = false;
+      const updateLiankiIcon = () => {
+        let hasCard = false;
+        try {
+          hasCard = offlineReady && !!cardStorage.getCard(normalizeUrl(location.href));
+        } catch {}
+        pageHasCard = hasCard;
+        if (swipeRating) return;
+        const icon = hasCard ? "\uD83D\uDCD7" : "\uD83D\uDD16";
+        if (liankiBtn.textContent !== icon) {
+          liankiBtn.textContent = icon;
+          liankiBtn.title = hasCard ? "Review this card (Alt+F)" : "Add to Lianki (Alt+F)";
+        }
+      };
+      addInterval(updateLiankiIcon, 1000);
       const updateVideoButtonVisibility = () => {
         const hasVideo = document.querySelector("video,audio") !== null;
         const display = hasVideo ? "" : "none";
@@ -2564,54 +2580,109 @@
         subtree: true,
       });
       window.addEventListener("resize", constrainPosition, { signal });
+      const LONG_PRESS_MS = 400;
       let dragging = false;
+      let armed = false;
+      let pressTimer = 0;
+      let moved = false;
+      const SWIPE_MIN = 40;
+      const SWIPE_UP = -1;
+      const SWIPE_RATINGS = { left: 1, down: 2, right: 4, up: SWIPE_UP };
+      const RATING_LABELS = { 1: "Again", 2: "Hard", 4: "Easy", [SWIPE_UP]: "Open" };
+      let swiping = false;
+      let swipeRating = 0;
+      const swipeDirection = (dx, dy) => {
+        if (Math.hypot(dx, dy) < SWIPE_MIN) return null;
+        if (Math.abs(dx) > Math.abs(dy)) return dx < 0 ? "left" : "right";
+        return dy < 0 ? "up" : "down";
+      };
+      const quickReview = async (rating) => {
+        if (!dialog) openDialog();
+        for (let i = 0; i < 50 && state?.phase !== "reviewing"; i++)
+          await new Promise((r) => setTimeout(r, 100));
+        if (state?.phase === "reviewing") await doReview(rating);
+      };
       let startX = 0,
         startY = 0,
         startLeft = 0,
         startTop = 0;
       const initDrag = (clientX, clientY) => {
         isDragged = false;
+        armed = false;
+        swiping = false;
+        swipeRating = 0;
+        updateLiankiIcon();
         dragging = true;
-        const r = container.getBoundingClientRect();
         startX = clientX;
         startY = clientY;
-        startLeft = r.left;
-        startTop = r.top;
-        container.style.right = "auto";
-        container.style.bottom = "auto";
-        container.style.left = startLeft + "px";
-        container.style.top = startTop + "px";
+        clearTimeout(pressTimer);
+        pressTimer = setTimeout(() => {
+          if (!dragging) return;
+          armed = true;
+          isDragged = true;
+          container.style.transform = "scale(1.08)";
+          container.style.boxShadow = "0 4px 16px rgba(0,0,0,0.55)";
+          navigator.vibrate?.(20);
+        }, LONG_PRESS_MS);
       };
       const moveDrag = (clientX, clientY) => {
         if (!dragging) return;
         const dx = clientX - startX,
           dy = clientY - startY;
-        if (!isDragged && Math.abs(dx) + Math.abs(dy) > 6) {
-          isDragged = true;
+        if (!armed) {
+          if (!swiping && Math.abs(dx) + Math.abs(dy) > 6) {
+            clearTimeout(pressTimer);
+            if (pageHasCard) {
+              swiping = true;
+              isDragged = true;
+            } else dragging = false;
+          }
+          if (swiping) {
+            const dir = swipeDirection(dx, dy);
+            swipeRating = dir ? SWIPE_RATINGS[dir] : 0;
+            liankiBtn.textContent = swipeRating ? RATING_LABELS[swipeRating] : "\uD83D\uDCD7";
+          }
+          return;
+        }
+        if (!moved) {
+          moved = true;
           const r = container.getBoundingClientRect();
+          container.style.right = "auto";
+          container.style.bottom = "auto";
           startLeft = clientX - r.width / 2;
           startTop = clientY - r.height / 2;
           startX = clientX;
           startY = clientY;
         }
-        if (isDragged) {
-          const r = container.getBoundingClientRect();
-          const newLeft = startLeft + (clientX - startX);
-          const newTop = startTop + (clientY - startY);
-          container.style.left = Math.max(0, Math.min(window.innerWidth - r.width, newLeft)) + "px";
-          container.style.top = Math.max(0, Math.min(window.innerHeight - r.height, newTop)) + "px";
-          updateBorderRadius();
-        }
+        const r = container.getBoundingClientRect();
+        const newLeft = startLeft + (clientX - startX);
+        const newTop = startTop + (clientY - startY);
+        container.style.left = Math.max(0, Math.min(window.innerWidth - r.width, newLeft)) + "px";
+        container.style.top = Math.max(0, Math.min(window.innerHeight - r.height, newTop)) + "px";
+        updateBorderRadius();
       };
       const stopDrag = () => {
-        if (isDragged) {
+        clearTimeout(pressTimer);
+        if (moved) {
           GM_setValue(
             "lianki_pos",
             JSON.stringify({ x: parseInt(container.style.left), y: parseInt(container.style.top) }),
           );
           updateBorderRadius();
         }
+        if (armed) {
+          container.style.transform = "";
+          container.style.boxShadow = "0 2px 8px rgba(0,0,0,0.4)";
+        }
+        const rating = swipeRating;
         dragging = false;
+        armed = false;
+        moved = false;
+        swiping = false;
+        swipeRating = 0;
+        updateLiankiIcon();
+        if (rating === SWIPE_UP) dialog || openDialog();
+        else if (rating) quickReview(rating);
       };
       container.addEventListener(
         "touchstart",
@@ -2621,14 +2692,14 @@
       container.addEventListener(
         "touchmove",
         (e) => {
-          if (dragging) {
-            e.preventDefault();
-            moveDrag(e.touches[0].clientX, e.touches[0].clientY);
-          }
+          if (armed || swiping) e.preventDefault();
+          if (dragging) moveDrag(e.touches[0].clientX, e.touches[0].clientY);
         },
         { passive: false },
       );
       container.addEventListener("touchend", stopDrag, { passive: true });
+      container.addEventListener("touchcancel", stopDrag, { passive: true });
+      container.addEventListener("contextmenu", (e) => e.preventDefault());
       container.addEventListener("mousedown", (e) => {
         initDrag(e.clientX, e.clientY);
         const onMove = (ev) => moveDrag(ev.clientX, ev.clientY);
@@ -2908,7 +2979,7 @@ ${state.errorDetails}`);
         dialog.appendChild(deleteBtn);
         const hints = document.createElement("div");
         Object.assign(hints.style, { marginTop: "14px", opacity: ".6", fontSize: "11px" });
-        hints.textContent = "A/H=Easy · S/J=Good · W/K=Hard · D/L=Again · T/M=Delete · Esc=Close";
+        hints.textContent = "A/H=Again · S/J=Hard · W/K=Good · D/L=Easy · T/M=Delete · Esc=Close";
         dialog.appendChild(hints);
         const notesRow = document.createElement("div");
         Object.assign(notesRow.style, { marginTop: "10px", position: "relative" });
@@ -3218,17 +3289,17 @@ ${nextUrl}`;
     }
     const KEYS = {
       Digit1: () => doReview(1),
-      KeyD: () => doReview(1),
-      KeyL: () => doReview(1),
+      KeyA: () => doReview(1),
+      KeyH: () => doReview(1),
       Digit2: () => doReview(2),
-      KeyW: () => doReview(2),
-      KeyK: () => doReview(2),
+      KeyS: () => doReview(2),
+      KeyJ: () => doReview(2),
       Digit3: () => doReview(3),
-      KeyS: () => doReview(3),
-      KeyJ: () => doReview(3),
+      KeyW: () => doReview(3),
+      KeyK: () => doReview(3),
       Digit4: () => doReview(4),
-      KeyA: () => doReview(4),
-      KeyH: () => doReview(4),
+      KeyD: () => doReview(4),
+      KeyL: () => doReview(4),
       KeyR: () => (state.phase === "deleted" ? doRestore() : undefined),
       Digit5: () => doDelete(),
       KeyT: () => doDelete(),

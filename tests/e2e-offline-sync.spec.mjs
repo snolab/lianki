@@ -221,7 +221,7 @@ async function test() {
 
     if (dialogOpenedOffline) {
       // Try to review the card
-      await page.keyboard.press("j"); // Press 'j' for Good
+      await page.keyboard.press("k"); // Press 'k' for Good
       await sleep(1000);
 
       console.log("  ✓ Offline review submitted");

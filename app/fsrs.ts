@@ -634,16 +634,18 @@ export const fsrsHandler = async (req: Request, email?: string) => {
               if (e.code === 'Digit4') review(4);
               if (e.code === 'Digit5') deleteCard();
 
-              // asdt = easy, good, again, delete
-              if (e.code === 'KeyA') review(4);
-              if (e.code === 'KeyS') review(3);
-              if (e.code === 'KeyD') review(1);
+              // wasd: a again, s hard, w good, d easy; t delete
+              if (e.code === 'KeyA') review(1);
+              if (e.code === 'KeyS') review(2);
+              if (e.code === 'KeyW') review(3);
+              if (e.code === 'KeyD') review(4);
               if (e.code === 'KeyT') deleteCard();
 
-              // hjlm = easy, good, again, delete
-              if (e.code === 'KeyH') review(4);
-              if (e.code === 'KeyJ') review(3);
-              if (e.code === 'KeyL') review(1);
+              // hjkl: h again, j hard, k good, l easy; m delete
+              if (e.code === 'KeyH') review(1);
+              if (e.code === 'KeyJ') review(2);
+              if (e.code === 'KeyK') review(3);
+              if (e.code === 'KeyL') review(4);
               if (e.code === 'KeyM') deleteCard();
             });
           </script>`),

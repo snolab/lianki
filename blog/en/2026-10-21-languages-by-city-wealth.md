@@ -20,7 +20,7 @@ So this time we counted **cities**, and ranked them by **GDP per person** — ho
 ## How we did it
 
 - **Cities:** all 499 urban centres with at least 1 million people in 2020, from the EU Joint Research Centre's [GHS Urban Centre Database](https://human-settlement.emergency.copernicus.eu/ghs_ucdb_2024.php) (R2024A). It draws every city's boundary the same way, from satellite data, so a "city" means the same thing in Tokyo and in Lagos.
-- **Value per job:** GDP per person in 2020, in purchasing-power dollars (PPP, so a dollar buys roughly the same everywhere). There is no comparable dataset of median wages for cities worldwide, so GDP per person is the closest stand-in. It is not the same as what a job pays — more on that below.
+- **Value per job:** GDP per person in 2020, in purchasing-power dollars (PPP, so a dollar buys roughly the same everywhere). There is no comparable dataset of median wages for cities worldwide, so GDP per person is the closest stand-in. It is not the same as what a job pays — more on that below. For real wages in software, design, media and marketing jobs, see [What Internet Jobs Pay City by City](/en/blog/2026-10-21-internet-jobs-pay-by-city).
 - **Languages:** for each city, the languages people use for daily life and work there. **Bilingual cities count in full for each language** — Montreal counts as a French city _and_ an English city, Brussels as French and Dutch, Hong Kong as Chinese and English, Singapore as English, Chinese, Malay and Tamil. Someone who speaks either language can work there, so the city is not split between them.
 - **The ranking:** take the top 100 (or 200) cities by GDP per person, and count how many of them each language opens, and how many people live in them.
 
@@ -100,6 +100,42 @@ Widen the net to the top 200 (at least about $19,000 per resident) and the middl
 Chinese now has the most people by far — 42 cities and 224 million residents, from Shanghai and Beijing to Suzhou, Nanjing and Hangzhou. Spanish jumps to third with Latin American capitals like Mexico City, Bogotá, Santiago and Buenos Aires, and Portuguese arrives with Brazil.
 
 So the answer depends on what you are after: **English, Chinese, Arabic and German** open the most of the very richest cities; **Chinese, Spanish and Portuguese** open the most large, fairly well-off cities.
+
+---
+
+## Rich at the top, poor in the middle
+
+Counting cities hides how a language's speakers are spread out. This table looks at **all** 499 big cities and asks: if you line up everyone living in a city where the language is used, from the poorest city to the richest, which city is the person in the middle (P50) in? And the person 80% or 90% of the way up?
+
+| Language   | Cities | People | P50                   | P80                                        | P90                       |
+| ---------- | -----: | -----: | --------------------- | ------------------------------------------ | ------------------------- |
+| German     |      6 |  12.8M | $61k (Vienna)         | $75k (Hamburg)                             | $110k (Munich)            |
+| Japanese   |     10 |  64.7M | $47k (Tokyo)          | $47k (Tokyo)                               | $47k (Tokyo)              |
+| Korean     |      6 |  33.7M | $44k (Seoul)          | $44k (Seoul)                               | $44k (Seoul)              |
+| Turkish    |      7 |  26.3M | $43k (Istanbul)       | $43k (Istanbul)                            | $43k (Istanbul)           |
+| Russian    |     12 |  32.5M | $39k (Almaty)         | $54k (Moscow)                              | $54k (Moscow)             |
+| Chinese    |     85 | 326.8M | $25k (Quanzhou)       | $35k (Shanghai)                            | $37k (Beijing)            |
+| Spanish    |     42 | 140.2M | $22k (Mexico City)    | $34k (Buenos Aires)                        | $43k (Barcelona)          |
+| Indonesian |     22 |  88.9M | $21k (Jakarta)        | $21k (Jakarta)                             | $21k (Jakarta)            |
+| Marathi    |      8 |  38.0M | $18k (Mumbai)         | $18k (Mumbai)                              | $18k (Mumbai)             |
+| Portuguese |     25 |  84.0M | $18k (Rio de Janeiro) | $21k (São Paulo)                           | $24k (Belo Horizonte)     |
+| Persian    |      6 |  22.3M | $16k (Isfahan)        | $21k (Tehran)                              | $21k (Tehran)             |
+| Tamil      |      8 |  28.8M | $14k (Chennai)        | $17k (Colombo [Sri Jayawardenepura Kotte]) | $92k (Singapore)          |
+| English    |    173 | 611.9M | $12k (Mysuru)         | $48k (Brisbane)                            | $72k (London)             |
+| Arabic     |     42 | 128.5M | $10k (Basra)          | $35k (Medina)                              | $58k (Riyadh)             |
+| Malayalam  |      6 |  20.3M | $10k (Kochi)          | $10k (Kozhikode)                           | $11k (Thiruvananthapuram) |
+| Bengali    |     12 |  77.3M | $8k (Dhaka)           | $8k (Dhaka)                                | $8k (Chattogram)          |
+| Urdu       |     14 |  68.5M | $7k (Karachi)         | $8k (Islamabad)                            | $19k (Hyderabad)          |
+| Hindi      |     34 | 106.0M | $5k (Ranchi)          | $15k (New Delhi)                           | $15k (New Delhi)          |
+| French     |     28 |  80.6M | $4k (Ouagadougou)     | $9k (Abidjan)                              | $77k (Paris)              |
+| Lingala    |      5 |  18.6M | $2k (Kinshasa)        | $2k (Kinshasa)                             | $2k (Kinshasa)            |
+
+Two kinds of language show up:
+
+- **Concentrated languages** — Japanese, Korean, Turkish, German. Most of their big-city speakers live in one or two well-off cities, so P50 and P90 are close together.
+- **Split languages** — English, French and Arabic. Their richest cities are among the richest anywhere, but most of the people who use them live in much poorer cities. For French, 79% of the people in big French-speaking cities live in African cities under $15,000 per person, such as Kinshasa, Abidjan, Dakar and Douala; the line only reaches Paris at P90.
+
+For a learner, the average is not the useful number. What matters is the end of the range you are aiming for.
 
 ---
 
