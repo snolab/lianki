@@ -1,6 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  type Modifier,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
 import { formatInterval, previewInterval } from "@/lib/words/schedule";
@@ -456,6 +474,78 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
   );
 }
 
+/** Lists only move up and down. */
+const restrictToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 });
+
+/** One list in the picker, draggable by its ⠿ handle. */
+function SortableListRow({
+  list: l,
+  index: i,
+  total,
+  onOpen,
+  onDeleted,
+}: {
+  list: WordList;
+  index: number;
+  total?: number;
+  onOpen: (id: string) => void;
+  onDeleted: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: l.id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`relative flex items-center gap-3 rounded-lg px-4 py-3 ${
+        isDragging ? "z-10 bg-white/15 ring-1 ring-white/30 shadow-lg" : "bg-white/5"
+      }`}
+    >
+      <span
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
+        title="Drag to reorder"
+        className="cursor-grab active:cursor-grabbing select-none opacity-40 hover:opacity-100 px-1 text-lg leading-none touch-none"
+      >
+        ⠿
+      </span>
+      {i < 9 && <kbd className="hidden sm:inline text-xs opacity-40 tabular-nums">{i + 1}</kbd>}
+      <button className="flex-1 text-left" onClick={() => onOpen(l.id)}>
+        <div className="font-medium">{l.name}</div>
+        <div className="text-xs opacity-60 tabular-nums">
+          {l.due} due · {l.learning} learning · {l.mastered} mastered (≥1y) · {l.cards}/
+          {total ?? "?"} seen
+        </div>
+      </button>
+      <button
+        className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20"
+        onClick={() => onOpen(l.id)}
+      >
+        Study
+      </button>
+      <button
+        className="text-xs opacity-40 hover:opacity-80"
+        onClick={async () => {
+          if (!confirm(`Delete "${l.name}" and its progress?`)) return;
+          await api(`/api/words/lists/${l.id}`, { method: "DELETE" });
+          onDeleted();
+        }}
+      >
+        delete
+      </button>
+    </div>
+  );
+}
+
 function ListPicker({
   config,
   lists,
@@ -474,32 +564,17 @@ function ListPicker({
   /** New order of list ids; also the order "study all" learns new words in. */
   onReorder: (order: string[]) => void;
 }) {
-  // Drag-to-reorder by the ⠿ handle (pointer events: mouse and touch alike).
-  // `dragOrder` is the live order while a handle is held.
-  const [dragOrder, setDragOrder] = useState<string[] | null>(null);
-  const [dragging, setDragging] = useState<string | null>(null);
-  const rowEls = useRef<Map<string, HTMLDivElement>>(new Map());
-  const shown = dragOrder
-    ? dragOrder.map((id) => lists.find((l) => l.id === id)!).filter(Boolean)
-    : lists;
-  const dragTo = (id: string, y: number) => {
-    const order = (dragOrder ?? lists.map((l) => l.id)).filter((x) => x !== id);
-    // Insert before the first row whose middle is below the pointer.
-    let at = order.length;
-    for (const [i, other] of order.entries()) {
-      const r = rowEls.current.get(other)?.getBoundingClientRect();
-      if (r && y < r.top + r.height / 2) {
-        at = i;
-        break;
-      }
-    }
-    order.splice(at, 0, id);
-    setDragOrder(order);
-  };
-  const endDrag = () => {
-    if (dragOrder && dragOrder.join() !== lists.map((l) => l.id).join()) onReorder(dragOrder);
-    setDragOrder(null);
-    setDragging(null);
+  // Drag-to-reorder by the ⠿ handle (dnd-kit). PointerSensor covers mouse
+  // and touch (the handle is touch-action: none); the keyboard sensor lets a
+  // focused handle move with Space + arrows.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const ids = lists.map((l) => l.id);
+    onReorder(arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id))));
   };
   const [busy, setBusy] = useState(false);
   const langs = useMemo(() => [...new Set(catalog.map((c) => c.lang))], [catalog]);
@@ -555,65 +630,25 @@ function ListPicker({
       )}
       {lists.length > 0 && (
         <div className="space-y-2">
-          {shown.map((l, i) => (
-            <div
-              key={l.id}
-              ref={(el) => {
-                if (el) rowEls.current.set(l.id, el);
-                else rowEls.current.delete(l.id);
-              }}
-              className={`flex items-center gap-3 rounded-lg px-4 py-3 ${
-                dragging === l.id ? "bg-white/15 ring-1 ring-white/30" : "bg-white/5"
-              }`}
-            >
-              <span
-                role="button"
-                aria-label="Drag to reorder"
-                title="Drag to reorder"
-                className="cursor-grab active:cursor-grabbing select-none opacity-40 hover:opacity-100 px-1 text-lg leading-none"
-                style={{ touchAction: "none" }}
-                onPointerDown={(e) => {
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  setDragging(l.id);
-                  setDragOrder(lists.map((x) => x.id));
-                }}
-                onPointerMove={(e) => dragging === l.id && dragTo(l.id, e.clientY)}
-                onPointerUp={endDrag}
-                onPointerCancel={() => {
-                  setDragOrder(null);
-                  setDragging(null);
-                }}
-              >
-                ⠿
-              </span>
-              {i < 9 && (
-                <kbd className="hidden sm:inline text-xs opacity-40 tabular-nums">{i + 1}</kbd>
-              )}
-              <button className="flex-1 text-left" onClick={() => onOpen(l.id)}>
-                <div className="font-medium">{l.name}</div>
-                <div className="text-xs opacity-60 tabular-nums">
-                  {l.due} due · {l.learning} learning · {l.mastered} mastered (≥1y) · {l.cards}/
-                  {catalog.find((c) => c.id === l.source)?.count ?? "?"} seen
-                </div>
-              </button>
-              <button
-                className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20"
-                onClick={() => onOpen(l.id)}
-              >
-                Study
-              </button>
-              <button
-                className="text-xs opacity-40 hover:opacity-80"
-                onClick={async () => {
-                  if (!confirm(`Delete "${l.name}" and its progress?`)) return;
-                  await api(`/api/words/lists/${l.id}`, { method: "DELETE" });
-                  onDeleted();
-                }}
-              >
-                delete
-              </button>
-            </div>
-          ))}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis]}
+            onDragEnd={onDragEnd}
+          >
+            <SortableContext items={lists.map((l) => l.id)} strategy={verticalListSortingStrategy}>
+              {lists.map((l, i) => (
+                <SortableListRow
+                  key={l.id}
+                  list={l}
+                  index={i}
+                  total={catalog.find((c) => c.id === l.source)?.count}
+                  onOpen={onOpen}
+                  onDeleted={onDeleted}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         </div>
       )}
 
