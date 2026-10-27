@@ -8,13 +8,14 @@
  *
  *   1. API        — scripts/qa/qa-api.mjs        (authed FSRS/roadmap/prefs/...)
  *   2. UI         — scripts/qa/qa-ui.mjs         (Playwright sign-in → dashboard)
+ *      WORDS      — scripts/qa/qa-words.mjs      (Playwright /words: add list, grade a screen)
  *   3. SYNC       — tests/db-sync-matrix.spec.ts (GM storage ↔ IndexedDB ↔ API)
  *   4. USERSCRIPT — tests/userscript-guest.spec.ts
  *
  * This exercises the *real* backend we ship (better-auth + app data both on D1),
  * so no MongoDB is involved on this path.
  *
- *   bun run qa:all              # full: build + migrate + serve + 4 suites
+ *   bun run qa:all              # full: build + migrate + serve + 5 suites
  *   bun run qa:all -- --no-build   # reuse the last .open-next build (fast iterate)
  *   bun run qa:all -- --keep       # leave wrangler dev running after the suites
  *
@@ -180,6 +181,7 @@ log("server ready");
 const suites = [
   ["API  (qa-api)", "node", ["scripts/qa/qa-api.mjs"], { QA_BASE: BASE }],
   ["UI   (qa-ui)", "node", ["scripts/qa/qa-ui.mjs"], { QA_BASE: BASE }],
+  ["WORDS (qa-words)", "node", ["scripts/qa/qa-words.mjs"], { QA_BASE: BASE }],
   [
     "SYNC (db-sync-matrix)",
     "bunx",

@@ -58,3 +58,15 @@ describe("localeFromAcceptLanguage", () => {
     expect(localeFromAcceptLanguage(null)).toBe("en");
   });
 });
+
+it("every sidebar page is an app route, so the locale middleware leaves it alone", async () => {
+  const { APP_NAV } = await import("@/lib/app-nav");
+  for (const item of APP_NAV) expect(isAppRoute(item.href)).toBe(true);
+});
+
+it("activeNavKey picks the longest matching sidebar href", async () => {
+  const { activeNavKey } = await import("@/lib/app-nav");
+  expect(activeNavKey("/words")).toBe("words");
+  expect(activeNavKey("/read/abc")).toBe("read");
+  expect(activeNavKey("/nowhere")).toBeNull();
+});
