@@ -117,3 +117,26 @@ export function newRemaining(
   const used = list.new_day === day ? list.new_today : 0;
   return Math.max(0, params.newPerDay - used);
 }
+
+/** Short interval label: 30s, 10m, 5h, 3d, 4mo, 1y. */
+export function formatInterval(ms: number): string {
+  const s = Math.max(0, ms) / 1000;
+  if (s < 60) return `${Math.round(s)}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  if (s < 86400) return `${Math.round(s / 3600)}h`;
+  const d = s / 86400;
+  if (d < 30) return `${Math.round(d)}d`;
+  if (d < 365) return `${Math.round(d / 30)}mo`;
+  return `${Math.round((d / 365) * 10) / 10}y`.replace(".0y", "y");
+}
+
+/** When a rating would schedule this card next, as an interval label. */
+export function previewInterval(
+  cardJson: string | null | undefined,
+  rating: Rating,
+  params: WordListParams,
+  now = new Date(),
+): string {
+  const { card } = reviewWord(parseCard(cardJson), rating, now, params);
+  return formatInterval(card.due.getTime() - now.getTime());
+}

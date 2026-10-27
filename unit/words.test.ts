@@ -4,6 +4,8 @@ import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { WordsD1Repo } from "@/lib/repos/wordsD1";
 import {
   DEFAULT_WORD_PARAMS,
+  formatInterval,
+  previewInterval,
   dayKey,
   newRemaining,
   normalizeParams,
@@ -95,4 +97,38 @@ describe("WordsD1Repo", () => {
   test("reviewing an unknown list returns null", async () => {
     expect(await repo.review("nope", [{ term: "a", rating: 3 }], "2026-10-27")).toBeNull();
   });
+});
+
+test("list progress counts learning and mastered words", async () => {
+  const d1 = createTestD1(testSchema());
+  const repo = new WordsD1Repo(d1, "p@example.com");
+  const id = await repo.createList({ name: "x", lang: "fr" });
+  await repo.review(
+    id,
+    [
+      { term: "a", rating: 1 },
+      { term: "b", rating: 3 },
+    ],
+    "2026-10-27",
+  );
+  // Pretend "b" has graduated to a one-year interval.
+  await d1
+    .prepare(
+      "UPDATE word_cards SET card = json_set(card, '$.scheduled_days', 365, '$.state', 2) WHERE term = 'b'",
+    )
+    .run();
+  const list = await repo.getList(id);
+  expect(list).toMatchObject({ cards: 2, learning: 1, mastered: 1 });
+});
+
+test("intervals read as 10m / 3d / 1y", () => {
+  expect(formatInterval(30_000)).toBe("30s");
+  expect(formatInterval(10 * 60_000)).toBe("10m");
+  expect(formatInterval(5 * 3600_000)).toBe("5h");
+  expect(formatInterval(3 * 86400_000)).toBe("3d");
+  expect(formatInterval(120 * 86400_000)).toBe("4mo");
+  expect(formatInterval(365 * 86400_000)).toBe("1y");
+  expect(formatInterval(548 * 86400_000)).toBe("1.5y");
+  // A new word rated Again comes back within the learning step.
+  expect(previewInterval(null, 1, DEFAULT_WORD_PARAMS)).toBe("1m");
 });

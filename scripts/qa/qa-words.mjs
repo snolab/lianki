@@ -44,12 +44,17 @@ try {
   check(catalog?.length > 0, `catalog lists: ${catalog?.length}`);
   const first = catalog.find((c) => c.lang === "fr") ?? catalog[0];
   await page.getByRole("button", { name: first.lang, exact: true }).click();
-  await page.getByRole("button", { name: "add" }).first().click();
+  await page.getByRole("button", { name: "add", exact: true }).first().click();
 
   const rows = page.locator('[role="listitem"]');
   await rows.first().waitFor({ timeout: 15000 });
   check((await rows.count()) === 20, `first screen shows ${await rows.count()} words`);
-  check((await page.getByText("new", { exact: true }).count()) > 0, "new words are tagged");
+  check((await page.locator("span.text-emerald-400").count()) > 0, "new words are shown in green");
+  const interval = (await rows.first().locator("span.tabular-nums").innerText()).trim();
+  check(
+    /^\d+(\.\d)?(s|m|h|d|mo|y)$/.test(interval),
+    `each row shows its next interval: ${interval}`,
+  );
 
   // F moves the cursor down (like ↓) and the focused row shows its meaning.
   const blurred = (i) =>
@@ -64,7 +69,7 @@ try {
 
   // Mark the first word Again, then reload: the mark is sent on leaving, and
   // the same screen comes back from the local draft with the mark on it.
-  const firstTerm = (await rows.first().locator("span.font-medium").innerText()).trim();
+  const firstTerm = (await rows.first().locator("span.truncate.font-medium").innerText()).trim();
   await page.keyboard.press("a");
   const listsNow = async () =>
     (await page.evaluate(async () => (await fetch("/api/words/lists")).json())).lists.find(
@@ -78,8 +83,8 @@ try {
   check(saved === 1, `leaving the page saved the one marked word (${saved})`);
   await page.getByRole("button", { name: first.name }).click();
   await rows.first().waitFor({ timeout: 15000 });
-  const restoredTerm = (await rows.first().locator("span.font-medium").innerText()).trim();
-  const restoredMark = (await rows.first().innerText()).includes("Again");
+  const restoredTerm = (await rows.first().locator("span.truncate.font-medium").innerText()).trim();
+  const restoredMark = (await rows.first().getAttribute("class")).includes("bg-red-500");
   check(
     restoredTerm === firstTerm && restoredMark,
     `draft restored the screen and its mark: ${restoredTerm} ${restoredMark ? "Again" : "(no mark)"}`,
@@ -105,15 +110,28 @@ try {
   // /alphabet: same drill over its own catalog; its lists stay off /words.
   await page.goto(`${BASE}/alphabet`, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "ja", exact: true }).click();
-  await page.getByRole("button", { name: "add" }).first().click();
+  await page.getByRole("button", { name: "add", exact: true }).first().click();
   await rows.first().waitFor({ timeout: 15000 });
-  const firstTerms = await rows.locator("span.font-medium").allInnerTexts();
+  const firstTerms = await rows.locator("span.truncate.font-medium").allInnerTexts();
   const fronts = firstTerms.map((t) => t.split("\n")[0].trim());
   check(fronts[0] === "あ", `alphabet starts with あ: ${fronts.slice(0, 3)}`);
   // A reverse card never shares a screen with its forward card (a under あ).
   check(!fronts.includes("a"), "あ and its reverse a are on different screens");
   await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
   check((await page.getByText("Hiragana").count()) === 0, "alphabet lists stay off /words");
+
+  // Study all: with two lists, one queue mixes both.
+  await page.getByRole("button", { name: first.lang, exact: true }).click();
+  await page.getByRole("button", { name: "add", exact: true }).first().click();
+  await rows.first().waitFor({ timeout: 15000 });
+  await page.getByRole("button", { name: "← lists" }).click();
+  await page.getByRole("button", { name: /Study all lists together/ }).click();
+  await rows.first().waitFor({ timeout: 15000 });
+  const sent = page.waitForResponse(
+    (r) => r.url().includes("/review") && r.request().method() === "POST",
+  );
+  await page.keyboard.press("Enter");
+  check((await sent).status() === 200, "study all: a mixed screen submits");
   check(errs.length === 0, `no page errors${errs.length ? ": " + errs.join(" | ") : ""}`);
 } catch (e) {
   check(false, `threw: ${e.message}`);

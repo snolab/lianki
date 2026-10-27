@@ -19,8 +19,13 @@ export type WordList = {
   params: WordListParams;
   newDay: string | null;
   newToday: number;
+  /** Words with a card (seen at least once). */
   cards: number;
   due: number;
+  /** In (re)learning steps: seen recently, not yet on day-scale intervals. */
+  learning: number;
+  /** Next interval of a year or more. */
+  mastered: number;
   createdAt: string;
 };
 
@@ -32,6 +37,8 @@ export type WordCard = {
   due: string;
   state: number;
   reps: number;
+  /** The ts-fsrs Card as stored (JSON), so a client can preview intervals. */
+  card: string;
 };
 
 /** One rating from the client. `newIndex` marks a catalog word seen for the first time. */
@@ -56,6 +63,8 @@ type ListRow = {
   created_at: string;
   cards?: number;
   due?: number;
+  learning?: number;
+  mastered?: number;
 };
 
 type CardRow = {
@@ -78,6 +87,8 @@ const toList = (r: ListRow): WordList => ({
   newToday: r.new_today,
   cards: r.cards ?? 0,
   due: r.due ?? 0,
+  learning: r.learning ?? 0,
+  mastered: r.mastered ?? 0,
   createdAt: r.created_at,
 });
 
@@ -90,6 +101,7 @@ const toCard = (r: CardRow): WordCard => {
     due: r.card_due,
     state: c?.state ?? 0,
     reps: r.reps,
+    card: r.card,
   };
 };
 
@@ -114,13 +126,20 @@ export class WordsD1Repo {
   async lists(now = new Date()): Promise<WordList[]> {
     const { results } = await this.db
       .prepare(
-        `SELECT l.*,
-           (SELECT COUNT(*) FROM word_cards c WHERE c.email = l.email AND c.list_id = l.id) AS cards,
-           (SELECT COUNT(*) FROM word_cards c WHERE c.email = l.email AND c.list_id = l.id
-              AND c.card_due <= ?) AS due
-         FROM word_lists l WHERE l.email = ? ORDER BY l.created_at`,
+        `SELECT l.*, s.cards, s.due, s.learning, s.mastered
+         FROM word_lists l
+         LEFT JOIN (
+           SELECT list_id,
+             COUNT(*) AS cards,
+             SUM(card_due <= ?) AS due,
+             -- ts-fsrs State: 1 Learning, 3 Relearning
+             SUM(json_extract(card, '$.state') IN (1, 3)) AS learning,
+             SUM(json_extract(card, '$.scheduled_days') >= 365) AS mastered
+           FROM word_cards WHERE email = ? GROUP BY list_id
+         ) s ON s.list_id = l.id
+         WHERE l.email = ? ORDER BY l.created_at`,
       )
-      .bind(now.toISOString(), this.email)
+      .bind(now.toISOString(), this.email, this.email)
       .all<ListRow>();
     return results.map(toList);
   }
@@ -322,6 +341,7 @@ export class WordsD1Repo {
       due: s.card!.due.toISOString(),
       state: s.card!.state,
       reps: s.reps,
+      card: JSON.stringify(s.card),
     }));
     return {
       cards,
