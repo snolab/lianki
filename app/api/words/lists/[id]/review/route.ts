@@ -7,6 +7,8 @@ type Ctx = { params: Promise<{ id: string }> };
 
 const Body = z.object({
   day: z.string().optional(),
+  /** First catalog index not yet introduced, as the client sees it. */
+  cursor: z.number().int().min(0).nullable().optional(),
   reviews: z
     .array(
       z.object({
@@ -29,7 +31,13 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid reviews" }, { status: 400 });
-  const result = await repo.review(id, parsed.data.reviews, dayKey(parsed.data.day));
+  const result = await repo.review(
+    id,
+    parsed.data.reviews,
+    dayKey(parsed.data.day),
+    new Date(),
+    parsed.data.cursor,
+  );
   if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(result);
 }

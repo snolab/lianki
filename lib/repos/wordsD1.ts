@@ -123,29 +123,41 @@ export class WordsD1Repo {
     private readonly email: string,
   ) {}
 
-  async lists(now = new Date()): Promise<WordList[]> {
+  /** Lists with progress counts; `id` narrows the scan to one list. */
+  private async query(now: Date, id?: string): Promise<WordList[]> {
     const { results } = await this.db
       .prepare(
         `SELECT l.*, s.cards, s.due, s.learning, s.mastered
          FROM word_lists l
          LEFT JOIN (
-           SELECT list_id,
+           SELECT c.list_id,
              COUNT(*) AS cards,
-             SUM(card_due <= ?) AS due,
+             SUM(c.card_due <= ?) AS due,
              -- ts-fsrs State: 1 Learning, 3 Relearning
-             SUM(json_extract(card, '$.state') IN (1, 3)) AS learning,
-             SUM(json_extract(card, '$.scheduled_days') >= 365) AS mastered
-           FROM word_cards WHERE email = ? GROUP BY list_id
+             SUM(json_extract(c.card, '$.state') IN (1, 3)) AS learning,
+             -- A year, or the list's own cap when that is shorter.
+             SUM(json_extract(c.card, '$.scheduled_days') >=
+                 MIN(365, COALESCE(json_extract(wl.params, '$.maxIntervalDays'), 365))) AS mastered
+           FROM word_cards c JOIN word_lists wl ON wl.email = c.email AND wl.id = c.list_id
+           WHERE c.email = ?${id ? " AND c.list_id = ?" : ""} GROUP BY c.list_id
          ) s ON s.list_id = l.id
-         WHERE l.email = ? ORDER BY l.created_at`,
+         WHERE l.email = ?${id ? " AND l.id = ?" : ""} ORDER BY l.created_at`,
       )
-      .bind(now.toISOString(), this.email, this.email)
+      .bind(
+        ...(id
+          ? [now.toISOString(), this.email, id, this.email, id]
+          : [now.toISOString(), this.email, this.email]),
+      )
       .all<ListRow>();
     return results.map(toList);
   }
 
+  async lists(now = new Date()): Promise<WordList[]> {
+    return this.query(now);
+  }
+
   async getList(id: string, now = new Date()): Promise<WordList | null> {
-    return (await this.lists(now)).find((l) => l.id === id) ?? null;
+    return (await this.query(now, id))[0] ?? null;
   }
 
   async createList(input: {
@@ -238,6 +250,12 @@ export class WordsD1Repo {
     reviews: WordReviewInput[],
     day: string,
     now = new Date(),
+    /**
+     * The first catalog index the client has not yet introduced. The client
+     * knows which new words it reordered or still holds; deriving this from
+     * the highest index reviewed would skip the ones left behind.
+     */
+    nextCursor?: number | null,
   ): Promise<{ cards: WordCard[]; newRemaining: number } | null> {
     const list = await this.db
       .prepare("SELECT * FROM word_lists WHERE email = ? AND id = ?")
@@ -274,16 +292,12 @@ export class WordsD1Repo {
       });
     }
 
-    let newToday = list.new_day === day ? list.new_today : 0;
-    let cursor = list.cursor;
+    let introduced = 0;
     const at = now.toISOString();
     const statements: D1StmtLike[] = [];
     for (const r of reviews) {
       const s = state.get(r.term)!;
-      if (!s.card) {
-        newToday++;
-        if (typeof r.newIndex === "number") cursor = Math.max(cursor, r.newIndex + 1);
-      }
+      if (!s.card) introduced++;
       const { card, prevState } = reviewWord(s.card, r.rating, now, params);
       s.card = card;
       s.reps++;
@@ -324,10 +338,15 @@ export class WordsD1Repo {
     statements.push(
       this.db
         .prepare(
-          `UPDATE word_lists SET cursor = ?, new_day = ?, new_today = ?, updated_at = ?
+          // Relative updates: two screens submitted together must not overwrite
+          // each other's counts.
+          `UPDATE word_lists SET
+             cursor = COALESCE(?, cursor),
+             new_today = CASE WHEN new_day = ? THEN new_today + ? ELSE ? END,
+             new_day = ?, updated_at = ?
            WHERE email = ? AND id = ?`,
         )
-        .bind(cursor, day, newToday, at, this.email, listId),
+        .bind(nextCursor ?? null, day, introduced, introduced, day, at, this.email, listId),
     );
     // One round trip on D1; the D1Like test double may lack batch().
     const batch = (this.db as { batch?: (s: D1StmtLike[]) => Promise<unknown> }).batch;
@@ -343,9 +362,7 @@ export class WordsD1Repo {
       reps: s.reps,
       card: JSON.stringify(s.card),
     }));
-    return {
-      cards,
-      newRemaining: newRemaining({ new_day: day, new_today: newToday }, params, day),
-    };
+    const used = (list.new_day === day ? list.new_today : 0) + introduced;
+    return { cards, newRemaining: newRemaining({ new_day: day, new_today: used }, params, day) };
   }
 }

@@ -57,6 +57,7 @@ describe("WordsD1Repo", () => {
       ],
       "2026-10-27",
       now,
+      2,
     );
     expect(res!.cards).toHaveLength(2);
     const after = await repo.getList(id, now);
@@ -131,4 +132,23 @@ test("intervals read as 10m / 3d / 1y", () => {
   expect(formatInterval(548 * 86400_000)).toBe("1.5y");
   // A new word rated Again comes back within the learning step.
   expect(previewInterval(null, 1, DEFAULT_WORD_PARAMS)).toBe("1m");
+});
+
+test("the cursor is what the client says, and concurrent screens add up", async () => {
+  const d1 = createTestD1(testSchema());
+  const repo = new WordsD1Repo(d1, "c@example.com");
+  const id = await repo.createList({ name: "x", lang: "ja" });
+  // Screen 1 holds catalog words 0, 2, 4 (1, 3 were moved to the next screen):
+  // the client reports 1 as the first word it has not introduced yet.
+  await repo.review(
+    id,
+    [0, 2, 4].map((i) => ({ term: `w${i}`, rating: 3 as const, newIndex: i })),
+    "2026-10-27",
+    new Date(),
+    1,
+  );
+  // A flush sends no cursor and must leave it alone.
+  await repo.review(id, [{ term: "w6", rating: 1 }], "2026-10-27");
+  const list = await repo.getList(id);
+  expect(list).toMatchObject({ cursor: 1, newToday: 4, cards: 4 });
 });
