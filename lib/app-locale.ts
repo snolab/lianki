@@ -7,6 +7,7 @@ export const DEFAULT_LOCALE = "en";
 export const APP_ROUTES = [
   "add-note",
   "ai-vocab",
+  "alphabet",
   "contact",
   "data",
   "home",
@@ -23,6 +24,8 @@ export const APP_ROUTES = [
   "roadmap",
   "self-intro",
   "sign-in",
+  "stats",
+  "words",
 ] as const;
 
 export function isAppRoute(pathname: string): boolean {

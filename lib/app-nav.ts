@@ -25,6 +25,8 @@ export const APP_NAV: NavItem[] = [
   { key: "learn", href: "/learn", icon: "🎓", group: "main" },
   { key: "roadmap", href: "/roadmap", icon: "🗺", group: "main" },
   { key: "aiVocab", href: "/ai-vocab", icon: "🧠", group: "main" },
+  { key: "words", href: "/words", icon: "🔤", group: "main" },
+  { key: "alphabet", href: "/alphabet", icon: "🔡", group: "main" },
   { key: "polyglot", href: "/polyglot", icon: "🌍", group: "main" },
   { key: "selfIntro", href: "/self-intro", icon: "🗣", group: "main" },
   { key: "read", href: "/read", icon: "📖", group: "main" },
