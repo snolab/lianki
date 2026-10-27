@@ -150,6 +150,29 @@ try {
   for (let i = 0; i < n; i++) await page.keyboard.press("w");
   await page.keyboard.press("Enter");
   check((await sent).status() === 200, "study all: a graded screen submits");
+
+  // Drag the second list above the first by its handle; the order is saved.
+  await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
+  const handles = page.getByRole("button", { name: "Drag to reorder" });
+  const before = (
+    await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
+  )
+    .filter((l) => l.lang === first.lang)
+    .map((l) => l.id);
+  const h2 = await handles.nth(1).boundingBox();
+  const h1 = await handles.nth(0).boundingBox();
+  await page.mouse.move(h2.x + h2.width / 2, h2.y + h2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(h1.x + h1.width / 2, h1.y - 10, { steps: 8 });
+  await page.mouse.up();
+  let after = before;
+  for (let i = 0; i < 10 && after.join() === before.join(); i++, await page.waitForTimeout(300))
+    after = (
+      await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
+    )
+      .filter((l) => l.lang === first.lang)
+      .map((l) => l.id);
+  check(after[0] === before[1] && after[1] === before[0], "dragging a handle reorders the lists");
   check(errs.length === 0, `no page errors${errs.length ? ": " + errs.join(" | ") : ""}`);
 } catch (e) {
   check(false, `threw: ${e.message}`);
