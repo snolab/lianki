@@ -218,16 +218,25 @@ function useSpeech() {
   );
 
   /** Repeat `text` with a pause until the next call; "" just stops. */
+  /**
+   * Say `texts` in turn (the word, then its example), pause, repeat — until
+   * the next call; an empty list just stops.
+   */
   const loop = useCallback(
-    (text: string, lang: string) => {
+    (texts: string[], lang: string) => {
       stop();
-      if (!text) return;
+      const parts = texts.filter(Boolean);
+      if (!parts.length) return;
       const gen = generation.current;
-      const say = () => gen === generation.current && speak(text, lang, again);
-      // A short delay so flicking through rows does not start a word per row.
-      const again = () => {
-        if (gen === generation.current) timer.current = setTimeout(say, 900);
+      let i = 0;
+      const say = () => gen === generation.current && speak(parts[i], lang, after);
+      const after = () => {
+        if (gen !== generation.current) return;
+        i = (i + 1) % parts.length;
+        // A short gap between word and example; a longer one before repeating.
+        timer.current = setTimeout(say, i === 0 ? 1200 : 400);
       };
+      // A short delay so flicking through rows does not start a word per row.
       timer.current = setTimeout(say, 250);
       return stop;
     },
@@ -1085,7 +1094,9 @@ function Study({
   const focused = !touch && active ? page[row] : undefined;
   const say = focused ? spokenText(focused, focused.lang, !!config.readingOnBack) : "";
   const sayLang = focused?.lang ?? "";
-  useEffect(() => speech.loop(say, sayLang), [say, sayLang, speech]);
+  // The example is read after the word once the row is revealed, i.e. focused.
+  const sayEx = focused?.ex ?? "";
+  useEffect(() => speech.loop([say, sayEx], sayLang), [say, sayEx, sayLang, speech]);
 
   const minutes = (Date.now() - started.current) / 60_000;
   const left = queue.length - pos;
