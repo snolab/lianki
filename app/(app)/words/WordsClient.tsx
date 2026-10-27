@@ -16,6 +16,8 @@ import { previewInterval } from "@/lib/words/schedule";
  */
 
 const PAGE = 20;
+/** Due words per /session fetch; more are fetched as the queue drains. */
+const DUE_PAGE = 200;
 /** Fewer, taller rows on a touch screen: 44px is a comfortable thumb target. */
 const PAGE_TOUCH = 12;
 /**
@@ -111,21 +113,25 @@ const answers = (a: Item, b: Item) =>
  * card under its forward card gives the answer away. `offset` is how far into
  * the current screen the first item lands.
  */
-function spreadPairs(items: Item[], size: number, offset: number): Item[] {
+function spreadPairs(items: Item[], size: number, offset: number, seed: Item[] = []): Item[] {
   const out: Item[] = [];
   let pending = items;
   let room = size - (offset % size);
+  // `seed`: what already sits on the partly filled screen these items join.
+  let onScreen = room < size ? seed.slice(-(size - room)) : [];
   while (pending.length) {
     const screen: Item[] = [];
     const later: Item[] = [];
     for (const it of pending) {
-      if (screen.length < room && !screen.some((s) => answers(s, it))) screen.push(it);
+      if (screen.length < room && ![...onScreen, ...screen].some((s) => answers(s, it)))
+        screen.push(it);
       else later.push(it);
     }
     if (!screen.length) screen.push(later.shift()!);
     out.push(...screen);
     pending = later;
     room = size;
+    onScreen = [];
   }
   return out;
 }
@@ -162,6 +168,11 @@ function useSpeech() {
     }
   });
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /**
+   * Bumped by stop(). cancel() can fire the old utterance's onend, which would
+   * otherwise schedule the old word again beside the new loop, forever.
+   */
+  const generation = useRef(0);
 
   useEffect(() => {
     if (typeof speechSynthesis === "undefined") return;
@@ -180,6 +191,7 @@ function useSpeech() {
   );
 
   const stop = useCallback(() => {
+    generation.current++;
     clearTimeout(timer.current);
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
   }, []);
@@ -203,11 +215,13 @@ function useSpeech() {
     (text: string, lang: string) => {
       stop();
       if (!text) return;
+      const gen = generation.current;
+      const say = () => gen === generation.current && speak(text, lang, again);
       // A short delay so flicking through rows does not start a word per row.
       const again = () => {
-        timer.current = setTimeout(() => speak(text, lang, again), 900);
+        if (gen === generation.current) timer.current = setTimeout(say, 900);
       };
-      timer.current = setTimeout(() => speak(text, lang, again), 250);
+      timer.current = setTimeout(say, 250);
       return stop;
     },
     [speak, stop],
@@ -571,6 +585,9 @@ function Study({
    * screen's own submit does not grade them a second time.
    */
   const flushed = useRef<Map<string, Rating>>(new Map());
+  /** Lists whose due words did not all fit in one session fetch. */
+  const moreDue = useRef<Set<string>>(new Set());
+  const [loadError, setLoadError] = useState<string | null>(null);
   const draftKey =
     lists.length === 1 ? `lk:words-draft:${lists[0].id}` : `lk:words-draft:all${base}`;
 
@@ -580,12 +597,15 @@ function Study({
     const out: Item[] = [];
     while (out.length < n && (nextNew.current.get(list.id) ?? 0) < entries.length) {
       const from = nextNew.current.get(list.id) ?? 0;
-      const slice = entries.slice(from, from + Math.max(n * 2, 40));
-      nextNew.current.set(list.id, from + slice.length);
+      // The /known route takes at most 500 terms.
+      const slice = entries.slice(from, from + Math.min(500, Math.max(n * 2, 40)));
       const { known } = await api<{ known: string[] }>(`/api/words/lists/${list.id}/known`, {
         method: "POST",
         body: JSON.stringify({ terms: slice.map((e) => e.term) }),
       });
+      // Advance only once the slice is checked: a failed request must not
+      // leave its words behind the cursor, never to be introduced.
+      nextNew.current.set(list.id, from + slice.length);
       const skip = new Set(known);
       slice.forEach((e, i) => {
         if (out.length < n && !skip.has(e.term))
@@ -607,6 +627,9 @@ function Study({
 
   useEffect(() => {
     let alive = true;
+    // Start from the stored cursors every run: a discarded run (React Strict
+    // Mode mounts twice in dev) must not have advanced them.
+    nextNew.current = new Map(lists.map((l) => [l.id, l.cursor]));
     (async () => {
       const loaded = await Promise.all(
         lists.map(async (list) => {
@@ -617,11 +640,12 @@ function Study({
             ),
             meta
               ? fetch(`${base}/${meta.file}`)
-                  .then((r) => r.json())
+                  .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`catalog ${r.status}`))))
                   .then((d) => d.entries as Entry[])
               : Promise.resolve([] as Entry[]),
           ]);
           catalogs.current.set(list.id, entries);
+          if (session.due.length >= DUE_PAGE) moreDue.current.add(list.id);
           const due: Item[] = session.due.map((c) => ({
             term: c.term,
             reading: c.reading ?? undefined,
@@ -637,7 +661,8 @@ function Study({
       if (!alive) return;
       const due = interleave(loaded.map((l) => l.due));
       const fresh = interleave(loaded.map((l) => l.fresh));
-      const queued = [...due, ...spreadPairs(fresh, pageSizeRef.current, due.length)];
+      const size = pageSizeRef.current;
+      const queued = [...due, ...spreadPairs(fresh, size, due.length, due)];
       // A draft is the screen that was open when the page was left: put it back
       // first, with its marks, and drop those words from the rest of the queue.
       const draft = readDraft(draftKey);
@@ -651,7 +676,7 @@ function Study({
         flushed.current = new Map(draft.flushed);
       } else setQueue(queued);
       setLoading(false);
-    })().catch((e) => setSyncError((e as Error).message));
+    })().catch((e) => alive && setLoadError((e as Error).message));
     return () => {
       alive = false;
     };
@@ -701,9 +726,24 @@ function Study({
           elapsedMs: Math.round(dwell.current.get(i) ?? 0),
           newIndex: it.kind === "new" ? it.newIndex : null,
         }))
-        // Already graded by a flush on leaving, with the same mark.
-        .filter((r) => flushed.current.get(keyOf(r)) !== r.rating);
+        // Already graded by a flush on leaving: never grade it twice, even if
+        // the mark changed afterwards.
+        .filter((r) => !flushed.current.has(keyOf(r)));
+      // Flushed misses still come back this session, like any other Again.
+      const flushedBack = page.filter((it) => (flushed.current.get(keyOf(it)) ?? 3) <= 2);
+      if (flushedBack.length)
+        setQueue((q) => [...q, ...flushedBack.map((it): Item => ({ ...it, kind: "again" }))]);
       flushed.current = new Map();
+      // Per list, the first catalog word not yet introduced: the lowest new
+      // word still waiting in the queue, else where loading has got to.
+      const waiting = queue.slice(pos + page.length);
+      const cursorOf = (listId: string) =>
+        Math.min(
+          nextNew.current.get(listId) ?? 0,
+          ...waiting
+            .filter((it) => it.listId === listId && it.kind === "new")
+            .map((it) => it.newIndex ?? Infinity),
+        );
       clearDraft(draftKey);
       const byKey = new Map(page.map((it) => [keyOf(it), it]));
       setPos((p) => p + page.length);
@@ -720,7 +760,9 @@ function Study({
         setPending((n) => n + 1);
         api<{ cards: WordCard[] }>(`/api/words/lists/${listId}/review`, {
           method: "POST",
-          body: JSON.stringify({ day: localDay(), reviews: mine }),
+          body: JSON.stringify({ day: localDay(), reviews: mine, cursor: cursorOf(listId) }),
+          // Survives the tab closing right after Enter.
+          keepalive: true,
         })
           .then(({ cards }) => {
             // Learning steps: words due again within minutes come back this session.
@@ -741,7 +783,7 @@ function Study({
           .finally(() => setPending((n) => n - 1));
       }
     },
-    [page, marks, row, draftKey],
+    [page, marks, row, draftKey, queue, pos],
   );
 
   // Save the open screen and its marks as a draft on every change, so a
@@ -802,15 +844,43 @@ function Study({
   useEffect(() => {
     if (loading || exhausted || fetching.current || queue.length - pos > pageSize * 2) return;
     fetching.current = true;
-    takeNew(pageSize * 2)
-      .then((fresh) => {
+    const queued = new Set(queue.map(keyOf));
+    const appendSpread = (items: Item[]) =>
+      setQueue((q) => [...q, ...spreadPairs(items, pageSize, q.length - pos, q.slice(pos))]);
+    // Due words the first fetch left out come before any new word.
+    const topUpDue = async () => {
+      const due: Item[] = [];
+      for (const list of lists.filter((l) => moreDue.current.has(l.id))) {
+        const s = await api<{ due: WordCard[] }>(
+          `/api/words/lists/${list.id}/session?day=${localDay()}&limit=${DUE_PAGE}`,
+        );
+        const fresh = s.due.filter((c) => !queued.has(keyOf({ listId: list.id, term: c.term })));
+        if (!fresh.length) moreDue.current.delete(list.id);
+        for (const c of fresh)
+          due.push({
+            term: c.term,
+            reading: c.reading ?? undefined,
+            back: c.back,
+            kind: "due",
+            listId: list.id,
+            lang: list.lang,
+            card: c.card,
+          });
+      }
+      return due;
+    };
+    topUpDue()
+      .then(async (due) => {
+        if (due.length) return appendSpread(due);
+        const fresh = await takeNew(pageSize * 2);
         if (!fresh.length) setExhausted(true);
-        else setQueue((q) => [...q, ...spreadPairs(fresh, pageSize, q.length - pos)]);
+        else appendSpread(fresh);
       })
       .catch((e) => setSyncError((e as Error).message))
       .finally(() => {
         fetching.current = false;
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, exhausted, queue.length, pos, pageSize, takeNew]);
 
   useEffect(() => {
@@ -818,6 +888,10 @@ function Study({
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+      // Holding a key repeats movement only: a held grade key must not run
+      // onto Next and grade the rest of the screen, nor a held Enter skip screens.
+      const moves = ["ArrowDown", "ArrowUp", "KeyF", "KeyU", "KeyR", "KeyI"];
+      if (e.repeat && !moves.includes(e.code)) return e.preventDefault();
       // R/I up, F/U down: home-row alternatives to the arrows for either hand.
       if (["ArrowDown", "KeyF", "KeyU"].includes(e.code)) moveRow(row + 1);
       else if (["ArrowUp", "KeyR", "KeyI"].includes(e.code)) moveRow(row - 1);
@@ -890,7 +964,17 @@ function Study({
       </div>
       {syncError && <div className="text-red-400 text-sm mb-2">Not saved: {syncError}</div>}
 
-      {loading ? (
+      {loadError ? (
+        <div className="space-y-3 py-8 text-center">
+          <div className="text-red-400">Couldn't load: {loadError}</div>
+          <button
+            className="px-4 py-2 rounded bg-white/10 hover:bg-white/20"
+            onClick={() => location.reload()}
+          >
+            Retry
+          </button>
+        </div>
+      ) : loading ? (
         <div className="opacity-60">Loading…</div>
       ) : page.length === 0 ? (
         <div className="space-y-4 py-8 text-center">
@@ -1066,6 +1150,8 @@ function WordRow({
       }}
       onPointerDown={(e) => {
         start.current = { x: e.clientX, y: e.clientY };
+        // Keep receiving the gesture even if the finger leaves this row.
+        e.currentTarget.setPointerCapture(e.pointerId);
       }}
       onPointerMove={(e) => {
         if (!start.current) return;

@@ -60,8 +60,8 @@ export function normalizeParams(raw: unknown): WordListParams {
 }
 
 const schedulers = new Map<string, FSRS>();
-function schedulerFor(params: WordListParams): FSRS {
-  const key = JSON.stringify(params);
+function schedulerFor(params: WordListParams, fuzz = true): FSRS {
+  const key = JSON.stringify(params) + fuzz;
   let s = schedulers.get(key);
   if (!s) {
     s = fsrs(
@@ -71,7 +71,7 @@ function schedulerFor(params: WordListParams): FSRS {
         learning_steps: params.learningSteps as never,
         relearning_steps: params.relearningSteps as never,
         enable_short_term: true,
-        enable_fuzz: true,
+        enable_fuzz: fuzz,
       }),
     );
     schedulers.set(key, s);
@@ -95,9 +95,10 @@ export function reviewWord(
   rating: Rating,
   now: Date,
   params: WordListParams,
+  fuzz = true,
 ): { card: Card; prevState: State } {
   const before: Card = card ?? createEmptyCard<Card>(now);
-  const next = schedulerFor(params).next(before, now, rating as Grade);
+  const next = schedulerFor(params, fuzz).next(before, now, rating as Grade);
   return { card: next.card, prevState: before.state };
 }
 
@@ -137,6 +138,8 @@ export function previewInterval(
   params: WordListParams,
   now = new Date(),
 ): string {
-  const { card } = reviewWord(parseCard(cardJson), rating, now, params);
+  // No fuzz: the preview must not jitter between renders. The real schedule
+  // adds a few percent either way.
+  const { card } = reviewWord(parseCard(cardJson), rating, now, params, false);
   return formatInterval(card.due.getTime() - now.getTime());
 }
