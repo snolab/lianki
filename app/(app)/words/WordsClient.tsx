@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
+import { spokenText } from "@/lib/words/spoken";
 
 /**
  * Sub-second word-list review.
@@ -118,6 +119,89 @@ function spreadPairs(items: Item[], size: number, offset: number): Item[] {
   return out;
 }
 
+/**
+ * Browser speech (Web Speech API): instant, offline, no rate limit, and every
+ * language the OS has a voice for. Silent when there is no voice for `lang`.
+ */
+function useSpeech(lang: string) {
+  const [voice, setVoice] = useState<SpeechSynthesisVoice | null>(null);
+  const [on, setOn] = useState(() => {
+    try {
+      return localStorage.getItem("lk:words-sound") !== "off";
+    } catch {
+      return true;
+    }
+  });
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    if (typeof speechSynthesis === "undefined") return;
+    const pick = () => {
+      const vs = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(lang));
+      setVoice(vs.find((v) => v.localService) ?? vs[0] ?? null);
+    };
+    pick();
+    speechSynthesis.addEventListener("voiceschanged", pick);
+    return () => speechSynthesis.removeEventListener("voiceschanged", pick);
+  }, [lang]);
+
+  const stop = useCallback(() => {
+    clearTimeout(timer.current);
+    if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+  }, []);
+
+  const speak = useCallback(
+    (text: string, then?: () => void) => {
+      if (!voice || !on || !text) return;
+      const u = new SpeechSynthesisUtterance(text);
+      u.voice = voice;
+      u.lang = voice.lang;
+      u.rate = 0.9;
+      if (then) u.onend = then;
+      speechSynthesis.speak(u);
+    },
+    [voice, on],
+  );
+
+  /** Repeat `text` with a pause until the next call; "" just stops. */
+  const loop = useCallback(
+    (text: string) => {
+      stop();
+      if (!text) return;
+      // A short delay so flicking through rows does not start a word per row.
+      const again = () => {
+        timer.current = setTimeout(() => speak(text, again), 900);
+      };
+      timer.current = setTimeout(() => speak(text, again), 250);
+      return stop;
+    },
+    [speak, stop],
+  );
+
+  const once = useCallback(
+    (text: string) => {
+      stop();
+      speak(text);
+    },
+    [speak, stop],
+  );
+
+  const toggle = useCallback(() => {
+    setOn((v) => {
+      try {
+        localStorage.setItem("lk:words-sound", v ? "off" : "on");
+      } catch {}
+      if (v) stop();
+      return !v;
+    });
+  }, [stop]);
+
+  return useMemo(
+    () => ({ available: !!voice, on, loop, once, toggle }),
+    [voice, on, loop, once, toggle],
+  );
+}
+
 const localDay = () => new Date().toLocaleDateString("en-CA");
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -135,12 +219,18 @@ export type DrillConfig = {
   base: string;
   title: string;
   intro: string;
+  /**
+   * Where `reading` goes. Words put it on the hidden back (kana or pinyin is
+   * part of the answer); alphabets keep it on the front as a hint.
+   */
+  readingOnBack?: boolean;
 };
 
 const WORDS: DrillConfig = {
   base: "/words",
   title: "Word lists",
   intro: "Fast review: a screen of words at once. Mark only the ones you miss, press Enter.",
+  readingOnBack: true,
 };
 
 export default function WordsClient({ config = WORDS }: { config?: DrillConfig }) {
@@ -185,7 +275,7 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
   if (current)
     return (
       <Study
-        base={config.base}
+        config={config}
         list={current}
         meta={catalog.find((c) => c.id === current.source)}
         onExit={() => {
@@ -337,12 +427,12 @@ function ListPicker({
 }
 
 function Study({
-  base,
+  config,
   list,
   meta,
   onExit,
 }: {
-  base: string;
+  config: DrillConfig;
   list: WordList;
   meta?: CatalogMeta;
   onExit: () => void;
@@ -363,6 +453,8 @@ function Study({
   const dwell = useRef<Map<number, number>>(new Map());
   const rowSince = useRef(Date.now());
   const touch = useTouch();
+  const base = config.base;
+  const speech = useSpeech(list.lang);
   const pageSize = touch ? PAGE_TOUCH : PAGE;
   // Read by the one-time session load, which must not re-run when it changes.
   const pageSizeRef = useRef(pageSize);
@@ -503,8 +595,9 @@ function Study({
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
-      if (e.code === "ArrowDown") moveRow(row + 1);
-      else if (e.code === "ArrowUp") moveRow(row - 1);
+      // R/I up, F/U down: home-row alternatives to the arrows for either hand.
+      if (["ArrowDown", "KeyF", "KeyU"].includes(e.code)) moveRow(row + 1);
+      else if (["ArrowUp", "KeyR", "KeyI"].includes(e.code)) moveRow(row - 1);
       else if (e.code === "Space")
         setRevealed((s) => {
           const n = new Set(s);
@@ -512,9 +605,9 @@ function Study({
           else n.add(row);
           return n;
         });
-      else if (e.code === "KeyR") setRevealed(new Set(page.map((_, i) => i)));
+      else if (e.code === "KeyE") setRevealed(new Set(page.map((_, i) => i)));
       else if (e.code === "Enter") submit(e.shiftKey ? 4 : 3);
-      else if (e.code === "KeyZ" || e.code === "Backspace") {
+      else if (e.code === "KeyZ" || e.code === "KeyM" || e.code === "Backspace") {
         // Undo the last mark and go back to that row.
         const last = markOrder.current.at(-1);
         if (last == null) return;
@@ -522,6 +615,7 @@ function Study({
         moveRow(last);
       } else if (e.code === "Escape") mark(row, null);
       else if (e.key === "?") setHelp((h) => !h);
+      else if (e.code === "KeyV") speech.toggle();
       else if (KEY_RATING[e.code] && !e.shiftKey) {
         mark(row, KEY_RATING[e.code]);
         moveRow(row + 1);
@@ -530,7 +624,12 @@ function Study({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [row, page, submit, moveRow, mark]);
+  }, [row, page, submit, moveRow, mark, speech]);
+
+  // Say the focused row aloud, on a loop, while it stays focused.
+  const focused = !touch ? page[row] : undefined;
+  const say = focused ? spokenText(focused, list.lang, !!config.readingOnBack) : "";
+  useEffect(() => speech.loop(say), [say, speech]);
 
   const minutes = (Date.now() - started.current) / 60_000;
   const left = queue.length - pos;
@@ -547,6 +646,11 @@ function Study({
           {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
           {left - dueLeft} new
           {pending > 0 && " · saving…"}
+          {speech.available && (
+            <button className="ml-2 opacity-80" onClick={speech.toggle} title="Sound (V)">
+              {speech.on ? "🔊" : "🔇"}
+            </button>
+          )}
         </span>
       </div>
       {syncError && <div className="text-red-400 text-sm mb-2">Not saved: {syncError}</div>}
@@ -567,7 +671,8 @@ function Study({
           <div className="rounded-lg overflow-hidden border border-white/10" role="list">
             {page.map((it, i) => {
               const rating = marks.get(i);
-              const show = revealed.has(i);
+              // The keyboard cursor reveals its row, just as hovering does.
+              const show = revealed.has(i) || (!touch && i === row);
               return (
                 <WordRow
                   key={`${pos}-${i}`}
@@ -576,12 +681,13 @@ function Study({
                   // Desktop click = Again; on touch a tap reveals instead.
                   onTap={() =>
                     touch
-                      ? setRevealed((s) => {
+                      ? (speech.once(spokenText(it, list.lang, !!config.readingOnBack)),
+                        setRevealed((s) => {
                           const n = new Set(s);
                           if (n.has(i)) n.delete(i);
                           else n.add(i);
                           return n;
-                        })
+                        }))
                       : mark(i, rating === 1 ? null : 1)
                   }
                   onSwipe={(r) => mark(i, rating === r ? null : r)}
@@ -600,7 +706,7 @@ function Study({
                     className={`truncate font-medium ${it.kind === "new" ? "text-emerald-400" : it.kind === "again" ? "text-amber-300" : ""}`}
                   >
                     {it.term}
-                    {it.reading && it.reading !== it.term && (
+                    {!config.readingOnBack && it.reading && it.reading !== it.term && (
                       <span className="ml-2 text-xs font-normal opacity-60">{it.reading}</span>
                     )}
                   </span>
@@ -609,6 +715,9 @@ function Study({
                       show ? "" : touch ? "blur-[6px]" : "blur-[5px] group-hover:blur-none"
                     }`}
                   >
+                    {config.readingOnBack && it.reading && it.reading !== it.term && (
+                      <span className="mr-2 font-medium">{it.reading}</span>
+                    )}
                     {it.back}
                   </span>
                   <span className="text-[11px] text-right opacity-60">
@@ -646,9 +755,10 @@ function Study({
             <div className="flex items-start justify-between gap-4 mt-3 text-[11px] opacity-50">
               {help ? (
                 <span className="leading-relaxed">
-                  ↑↓ move · Space show · R show all · A Again · S Hard · W Good · D Easy (also
-                  H/J/K/L, 1–4) · click = Again · Z undo · Esc clear · Enter = rest Good ·
-                  Shift+Enter = rest Easy · ? hide help
+                  ↑↓ / R F / I U move (the focused row shows its meaning) · Space pin · E show all ·
+                  A Again · S Hard · W Good · D Easy (also H/J/K/L, 1–4) · click = Again · Z / M
+                  undo · Esc clear · V sound · Enter = rest Good · Shift+Enter = rest Easy · ? hide
+                  help
                 </span>
               ) : (
                 <span>A Again · S Hard · D Easy · Enter = rest Good · ? all keys</span>
@@ -693,7 +803,15 @@ function WordRow({
 
   if (!touch)
     return (
-      <div role="listitem" onMouseEnter={onHover} onClick={onTap} className={className}>
+      <div
+        role="listitem"
+        // Only a real mouse move takes the cursor: Chrome replays mouse events
+        // at a resting pointer when rows re-render, which would otherwise yank
+        // the cursor back under the mouse after every key press.
+        onMouseMove={(e) => (e.movementX || e.movementY) && onHover()}
+        onClick={onTap}
+        className={className}
+      >
         {children}
       </div>
     );

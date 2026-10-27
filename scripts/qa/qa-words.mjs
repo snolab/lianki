@@ -48,6 +48,17 @@ try {
   check((await rows.count()) === 20, `first screen shows ${await rows.count()} words`);
   check((await page.getByText("new", { exact: true }).count()) > 0, "new words are tagged");
 
+  // F moves the cursor down (like ↓) and the focused row shows its meaning.
+  const blurred = (i) =>
+    rows
+      .nth(i)
+      .locator("span.text-sm")
+      .evaluate((el) => el.className.includes("blur-["));
+  await page.keyboard.press("f");
+  check(!(await blurred(1)) && (await blurred(0)), "F moves down and reveals the focused row");
+  await page.keyboard.press("r");
+  check(!(await blurred(0)), "R moves back up");
+
   // Mark the first word Again, leave the rest, submit the screen.
   const reviewed = page.waitForResponse(
     (r) => r.url().includes("/review") && r.request().method() === "POST",
