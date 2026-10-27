@@ -119,6 +119,24 @@ function spreadPairs(items: Item[], size: number, offset: number): Item[] {
   return out;
 }
 
+/** True while the tab is visible and its window has focus. */
+function usePageActive() {
+  const [active, setActive] = useState(true);
+  useEffect(() => {
+    const update = () => setActive(document.visibilityState === "visible" && document.hasFocus());
+    update();
+    document.addEventListener("visibilitychange", update);
+    window.addEventListener("focus", update);
+    window.addEventListener("blur", update);
+    return () => {
+      document.removeEventListener("visibilitychange", update);
+      window.removeEventListener("focus", update);
+      window.removeEventListener("blur", update);
+    };
+  }, []);
+  return active;
+}
+
 /**
  * Browser speech (Web Speech API): instant, offline, no rate limit, and every
  * language the OS has a voice for. Silent when there is no voice for `lang`.
@@ -627,7 +645,10 @@ function Study({
   }, [row, page, submit, moveRow, mark, speech]);
 
   // Say the focused row aloud, on a loop, while it stays focused.
-  const focused = !touch ? page[row] : undefined;
+  // Paused while the tab is hidden or the window is in the background; the
+  // same row picks the loop back up when the page is active again.
+  const active = usePageActive();
+  const focused = !touch && active ? page[row] : undefined;
   const say = focused ? spokenText(focused, list.lang, !!config.readingOnBack) : "";
   useEffect(() => speech.loop(say), [say, speech]);
 
