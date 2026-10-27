@@ -141,7 +141,8 @@ export class WordsD1Repo {
            FROM word_cards c JOIN word_lists wl ON wl.email = c.email AND wl.id = c.list_id
            WHERE c.email = ?${id ? " AND c.list_id = ?" : ""} GROUP BY c.list_id
          ) s ON s.list_id = l.id
-         WHERE l.email = ?${id ? " AND l.id = ?" : ""} ORDER BY l.created_at`,
+         WHERE l.email = ?${id ? " AND l.id = ?" : ""}
+         ORDER BY COALESCE(l.position, 1e9), l.created_at`,
       )
       .bind(
         ...(id
@@ -170,8 +171,9 @@ export class WordsD1Repo {
     const at = new Date().toISOString();
     await this.db
       .prepare(
-        `INSERT INTO word_lists (email, id, name, lang, source, cursor, params, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+        `INSERT INTO word_lists (email, id, name, lang, source, cursor, params, created_at, updated_at, position)
+         VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?,
+           (SELECT COALESCE(MAX(position), -1) + 1 FROM word_lists WHERE email = ?))`,
       )
       .bind(
         this.email,
@@ -182,9 +184,19 @@ export class WordsD1Repo {
         JSON.stringify(normalizeParams(input.params)),
         at,
         at,
+        this.email,
       )
       .run();
     return id;
+  }
+
+  /** Save the user's order of lists: `ids` first to last; others keep theirs after. */
+  async reorder(ids: string[]): Promise<void> {
+    for (const [i, id] of ids.entries())
+      await this.db
+        .prepare("UPDATE word_lists SET position = ? WHERE email = ? AND id = ?")
+        .bind(i, this.email, id)
+        .run();
   }
 
   async updateParams(id: string, params: unknown): Promise<WordListParams> {

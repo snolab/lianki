@@ -320,12 +320,37 @@ const WORDS: DrillConfig = {
 };
 
 /** listId for "study all": every list of this page in one queue. */
-const ALL = "*";
+const ALL = "all";
+
+/**
+ * The open list lives in the URL (?list=<id>, or ?list=all), so each list and
+ * "study all" has its own address: bookmarkable, and a refresh stays put.
+ * Other params (the app's ?lang=) are kept.
+ */
+function useListParam(): [string | null, (id: string | null) => void] {
+  const read = () =>
+    typeof location === "undefined" ? null : new URLSearchParams(location.search).get("list");
+  const [id, setId] = useState<string | null>(null);
+  useEffect(() => {
+    setId(read());
+    const onPop = () => setId(read());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  const go = useCallback((next: string | null) => {
+    const url = new URL(location.href);
+    if (next) url.searchParams.set("list", next);
+    else url.searchParams.delete("list");
+    history.pushState(null, "", url);
+    setId(next);
+  }, []);
+  return [id, go];
+}
 
 export default function WordsClient({ config = WORDS }: { config?: DrillConfig }) {
   const [allLists, setLists] = useState<WordList[] | null>(null);
-  const [catalog, setCatalog] = useState<CatalogMeta[]>([]);
-  const [listId, setListId] = useState<string | null>(null);
+  const [catalog, setCatalog] = useState<CatalogMeta[] | null>(null);
+  const [listId, setListId] = useListParam();
   const [error, setError] = useState<string | null>(null);
 
   const refreshLists = useCallback(async () => {
@@ -348,6 +373,7 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
   // Both pages share the word_lists table; each shows only lists from its own
   // catalog, so alphabets never appear among the vocabulary lists.
   const lists = useMemo(() => {
+    if (!catalog) return null;
     const ids = new Set(catalog.map((c) => c.id));
     return allLists?.filter((l) => l.source && ids.has(l.source)) ?? null;
   }, [allLists, catalog]);
@@ -358,9 +384,10 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
         {error === "Login required" ? "Sign in to use word lists." : error}
       </div>
     );
-  if (!lists) return <div className="p-8 opacity-60">Loading…</div>;
+  if (!lists || !catalog) return <div className="p-8 opacity-60">Loading…</div>;
 
   const studying = listId === ALL ? lists : lists.filter((l) => l.id === listId);
+  // "Study all" with only one list is just that list.
   if (studying.length)
     return (
       <Study
@@ -387,6 +414,19 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
         setListId(id);
       }}
       onDeleted={refreshLists}
+      onReorder={async (order) => {
+        // Show the new order at once; the server confirms with its own.
+        setLists((all) => {
+          if (!all) return all;
+          const pos = new Map(order.map((id, i) => [id, i]));
+          return [...all].sort((a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9));
+        });
+        const { lists } = await api<{ lists: WordList[] }>("/api/words/lists", {
+          method: "PATCH",
+          body: JSON.stringify({ order }),
+        });
+        setLists(lists);
+      }}
     />
   );
 }
@@ -398,6 +438,7 @@ function ListPicker({
   onOpen,
   onCreated,
   onDeleted,
+  onReorder,
 }: {
   config: DrillConfig;
   lists: WordList[];
@@ -405,7 +446,16 @@ function ListPicker({
   onOpen: (id: string) => void;
   onCreated: (id: string) => void;
   onDeleted: () => void;
+  /** New order of list ids; also the order "study all" learns new words in. */
+  onReorder: (order: string[]) => void;
 }) {
+  const move = (i: number, by: number) => {
+    const j = i + by;
+    if (j < 0 || j >= lists.length) return;
+    const order = lists.map((l) => l.id);
+    [order[i], order[j]] = [order[j], order[i]];
+    onReorder(order);
+  };
   const [busy, setBusy] = useState(false);
   const langs = useMemo(() => [...new Set(catalog.map((c) => c.lang))], [catalog]);
   const [lang, setLang] = useState<string>("");
@@ -449,7 +499,10 @@ function ListPicker({
           className="w-full flex items-center gap-3 rounded-lg bg-emerald-700/40 hover:bg-emerald-700/60 px-4 py-3 text-left"
         >
           <kbd className="hidden sm:inline text-xs opacity-50">0</kbd>
-          <span className="flex-1 font-medium">Study all lists together</span>
+          <span className="flex-1">
+            <span className="font-medium">Study all lists together</span>
+            <span className="block text-xs opacity-60">New words come in the order below.</span>
+          </span>
           <span className="text-xs opacity-70 tabular-nums">
             {lists.reduce((n, l) => n + l.due, 0)} due
           </span>
@@ -459,6 +512,24 @@ function ListPicker({
         <div className="space-y-2">
           {lists.map((l, i) => (
             <div key={l.id} className="flex items-center gap-3 rounded-lg bg-white/5 px-4 py-3">
+              <div className="flex flex-col -my-1 text-[10px] leading-none">
+                <button
+                  className="opacity-40 hover:opacity-100 disabled:opacity-10 px-1"
+                  disabled={i === 0}
+                  onClick={() => move(i, -1)}
+                  title="Move up"
+                >
+                  ▲
+                </button>
+                <button
+                  className="opacity-40 hover:opacity-100 disabled:opacity-10 px-1"
+                  disabled={i === lists.length - 1}
+                  onClick={() => move(i, 1)}
+                  title="Move down"
+                >
+                  ▼
+                </button>
+              </div>
               {i < 9 && (
                 <kbd className="hidden sm:inline text-xs opacity-40 tabular-nums">{i + 1}</kbd>
               )}
@@ -615,11 +686,18 @@ function Study({
     return out;
   }, []);
 
-  /** Up to `n` new words, spread across the lists. */
+  /**
+   * Up to `n` new words, in the user's list order: the first list until it
+   * runs out, then the next.
+   */
   const takeNew = useCallback(
     async (n: number) => {
-      const per = Math.ceil(n / lists.length);
-      return interleave(await Promise.all(lists.map((l) => takeNewFrom(l, per))));
+      const out: Item[] = [];
+      for (const l of lists) {
+        if (out.length >= n) break;
+        out.push(...(await takeNewFrom(l, n - out.length)));
+      }
+      return out;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [listIds, takeNewFrom],
@@ -660,7 +738,8 @@ function Study({
       );
       if (!alive) return;
       const due = interleave(loaded.map((l) => l.due));
-      const fresh = interleave(loaded.map((l) => l.fresh));
+      // New words follow the user's list order; due words alternate lists.
+      const fresh = loaded.flatMap((l) => l.fresh);
       const size = pageSizeRef.current;
       const queued = [...due, ...spreadPairs(fresh, size, due.length, due)];
       // A draft is the screen that was open when the page was left: put it back
@@ -710,81 +789,93 @@ function Study({
     }
   }, []);
 
-  /** Submit the screen. Unmarked words get `rest`: Good, or Easy with Shift+Enter. */
-  const submit = useCallback(
-    (rest: Rating = 3) => {
-      if (!page.length) return;
-      const now = Date.now();
-      dwell.current.set(row, (dwell.current.get(row) ?? 0) + now - rowSince.current);
-      const reviews = page
-        .map((it, i) => ({
-          listId: it.listId,
-          term: it.term,
-          reading: it.reading ?? null,
-          back: it.back,
-          rating: marks.get(i) ?? rest,
-          elapsedMs: Math.round(dwell.current.get(i) ?? 0),
-          newIndex: it.kind === "new" ? it.newIndex : null,
-        }))
-        // Already graded by a flush on leaving: never grade it twice, even if
-        // the mark changed afterwards.
-        .filter((r) => !flushed.current.has(keyOf(r)));
-      // Flushed misses still come back this session, like any other Again.
-      const flushedBack = page.filter((it) => (flushed.current.get(keyOf(it)) ?? 3) <= 2);
-      if (flushedBack.length)
-        setQueue((q) => [...q, ...flushedBack.map((it): Item => ({ ...it, kind: "again" }))]);
-      flushed.current = new Map();
-      // Per list, the first catalog word not yet introduced: the lowest new
-      // word still waiting in the queue, else where loading has got to.
-      const waiting = queue.slice(pos + page.length);
-      const cursorOf = (listId: string) =>
-        Math.min(
-          nextNew.current.get(listId) ?? 0,
-          ...waiting
-            .filter((it) => it.listId === listId && it.kind === "new")
-            .map((it) => it.newIndex ?? Infinity),
-        );
-      clearDraft(draftKey);
-      const byKey = new Map(page.map((it) => [keyOf(it), it]));
-      setPos((p) => p + page.length);
-      setMarks(new Map());
-      markOrder.current = [];
-      setRevealed(new Set());
-      setRow(0);
-      dwell.current = new Map();
-      rowSince.current = Date.now();
-      setDone((d) => d + page.length);
-      // One request per list on the screen.
-      for (const listId of new Set(reviews.map((r) => r.listId))) {
-        const mine = reviews.filter((r) => r.listId === listId).map(({ listId: _, ...r }) => r);
-        setPending((n) => n + 1);
-        api<{ cards: WordCard[] }>(`/api/words/lists/${listId}/review`, {
-          method: "POST",
-          body: JSON.stringify({ day: localDay(), reviews: mine, cursor: cursorOf(listId) }),
-          // Survives the tab closing right after Enter.
-          keepalive: true,
+  /**
+   * Submit the screen. Every word must carry an explicit grade — nothing is
+   * graded in bulk; `next` sends the cursor to the first ungraded word instead.
+   */
+  const submit = useCallback(() => {
+    if (!page.length || page.some((_, i) => !marks.has(i))) return;
+    const now = Date.now();
+    dwell.current.set(row, (dwell.current.get(row) ?? 0) + now - rowSince.current);
+    const reviews = page
+      .map((it, i) => ({
+        listId: it.listId,
+        term: it.term,
+        reading: it.reading ?? null,
+        back: it.back,
+        rating: marks.get(i)!,
+        elapsedMs: Math.round(dwell.current.get(i) ?? 0),
+        newIndex: it.kind === "new" ? it.newIndex : null,
+      }))
+      // Already graded by a flush on leaving: never grade it twice, even if
+      // the mark changed afterwards.
+      .filter((r) => !flushed.current.has(keyOf(r)));
+    // Flushed misses still come back this session, like any other Again.
+    const flushedBack = page.filter((it) => (flushed.current.get(keyOf(it)) ?? 3) <= 2);
+    if (flushedBack.length)
+      setQueue((q) => [...q, ...flushedBack.map((it): Item => ({ ...it, kind: "again" }))]);
+    flushed.current = new Map();
+    // Per list, the first catalog word not yet introduced: the lowest new
+    // word still waiting in the queue, else where loading has got to.
+    const waiting = queue.slice(pos + page.length);
+    const cursorOf = (listId: string) =>
+      Math.min(
+        nextNew.current.get(listId) ?? 0,
+        ...waiting
+          .filter((it) => it.listId === listId && it.kind === "new")
+          .map((it) => it.newIndex ?? Infinity),
+      );
+    clearDraft(draftKey);
+    const byKey = new Map(page.map((it) => [keyOf(it), it]));
+    setPos((p) => p + page.length);
+    setMarks(new Map());
+    markOrder.current = [];
+    setRevealed(new Set());
+    setRow(0);
+    dwell.current = new Map();
+    rowSince.current = Date.now();
+    setDone((d) => d + page.length);
+    // One request per list on the screen.
+    for (const listId of new Set(reviews.map((r) => r.listId))) {
+      const mine = reviews.filter((r) => r.listId === listId).map(({ listId: _, ...r }) => r);
+      setPending((n) => n + 1);
+      api<{ cards: WordCard[] }>(`/api/words/lists/${listId}/review`, {
+        method: "POST",
+        body: JSON.stringify({ day: localDay(), reviews: mine, cursor: cursorOf(listId) }),
+        // Survives the tab closing right after Enter.
+        keepalive: true,
+      })
+        .then(({ cards }) => {
+          // Learning steps: words due again within minutes come back this session.
+          const back = cards
+            .filter((c) => new Date(c.due).getTime() - Date.now() < SESSION_WINDOW_MS)
+            .map(
+              (c): Item => ({
+                ...byKey.get(keyOf({ listId, term: c.term }))!,
+                kind: "again",
+                newIndex: undefined,
+                card: c.card,
+              }),
+            );
+          if (back.length) setQueue((q) => [...q, ...back]);
+          setSyncError(null);
         })
-          .then(({ cards }) => {
-            // Learning steps: words due again within minutes come back this session.
-            const back = cards
-              .filter((c) => new Date(c.due).getTime() - Date.now() < SESSION_WINDOW_MS)
-              .map(
-                (c): Item => ({
-                  ...byKey.get(keyOf({ listId, term: c.term }))!,
-                  kind: "again",
-                  newIndex: undefined,
-                  card: c.card,
-                }),
-              );
-            if (back.length) setQueue((q) => [...q, ...back]);
-            setSyncError(null);
-          })
-          .catch((e) => setSyncError((e as Error).message))
-          .finally(() => setPending((n) => n - 1));
-      }
-    },
-    [page, marks, row, draftKey, queue, pos],
-  );
+        .catch((e) => setSyncError((e as Error).message))
+        .finally(() => setPending((n) => n - 1));
+    }
+  }, [page, marks, row, draftKey, queue, pos]);
+
+  const firstUngraded = page.findIndex((_, i) => !marks.has(i));
+  /** Next: jump to the first ungraded word, or submit once all are graded. */
+  const next = useCallback(() => {
+    if (firstUngraded >= 0) {
+      moveRow(firstUngraded);
+      document
+        .querySelectorAll('[role="listitem"]')
+        [firstUngraded]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    } else submit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstUngraded, submit]);
 
   // Save the open screen and its marks as a draft on every change, so a
   // refresh or a closed tab comes back to the same screen.
@@ -895,10 +986,9 @@ function Study({
       // R/I up, F/U down: home-row alternatives to the arrows for either hand.
       if (["ArrowDown", "KeyF", "KeyU"].includes(e.code)) moveRow(row + 1);
       else if (["ArrowUp", "KeyR", "KeyI"].includes(e.code)) moveRow(row - 1);
-      // On the Next row, Space or a grade key submits the screen, the grade
-      // going to every unmarked word (W = rest Good, D = rest Easy, …).
-      else if (row === page.length && e.code === "Space") submit(3);
-      else if (row === page.length && KEY_RATING[e.code] && !e.shiftKey) submit(KEY_RATING[e.code]);
+      // On the Next row, Space or a grade key acts as Next: to the first
+      // ungraded word, or submit when every word has its grade.
+      else if (row === page.length && (e.code === "Space" || KEY_RATING[e.code])) next();
       else if (e.code === "Space")
         setRevealed((s) => {
           const n = new Set(s);
@@ -907,7 +997,7 @@ function Study({
           return n;
         });
       else if (e.code === "KeyE") setRevealed(new Set(page.map((_, i) => i)));
-      else if (e.code === "Enter") submit(e.shiftKey ? 4 : 3);
+      else if (e.code === "Enter") next();
       else if (e.code === "KeyZ" || e.code === "KeyM" || e.code === "Backspace") {
         // Undo the last mark and go back to that row.
         const last = markOrder.current.at(-1);
@@ -925,7 +1015,7 @@ function Study({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [row, page, submit, moveRow, mark, speech]);
+  }, [row, page, next, moveRow, mark, speech]);
 
   // Say the focused row aloud, on a loop, while it stays focused.
   // Paused while the tab is hidden or the window is in the background; the
@@ -1034,12 +1124,15 @@ function Study({
                     )}
                     {it.back}
                   </span>
-                  {/* When this word comes back: for its mark, or Good if unmarked. */}
+                  {/* When this word comes back for its grade; ungraded: "new" for
+                      a new word, else a faint Good preview. */}
                   <span
                     className={`text-[11px] text-right tabular-nums ${rating ? "opacity-90 font-medium" : "opacity-40"}`}
-                    title={RATING_LABEL[rating ?? 3]}
+                    title={rating ? RATING_LABEL[rating] : "if Good"}
                   >
-                    {previewInterval(it.card, rating ?? 3, paramsOf.get(it.listId)!)}
+                    {!rating && it.kind === "new"
+                      ? "new"
+                      : previewInterval(it.card, rating ?? 3, paramsOf.get(it.listId)!)}
                   </span>
                 </WordRow>
               );
@@ -1062,10 +1155,12 @@ function Study({
                   {revealed.size === page.length ? "Hide" : "Show all"}
                 </button>
                 <button
-                  className="flex-1 py-3 rounded-lg bg-emerald-600 text-white font-medium"
-                  onClick={() => submit(3)}
+                  className={`flex-1 py-3 rounded-lg font-medium ${firstUngraded < 0 ? "bg-emerald-600 text-white" : "bg-white/15"}`}
+                  onClick={next}
                 >
-                  Next · rest Good
+                  {firstUngraded < 0
+                    ? "Next"
+                    : `${page.filter((_, i) => !marks.has(i)).length} left to grade`}
                 </button>
               </div>
             </>
@@ -1075,11 +1170,11 @@ function Study({
                 <span className="leading-relaxed">
                   ↑↓ / R F / I U move (the focused row shows its meaning) · Space pin · E show all ·
                   A Again · S Hard · W Good · D Easy (also H/J/K/L, 1–4) · click = Again · Z / M
-                  undo · Esc clear · V sound · Enter = rest Good · Shift+Enter = rest Easy · ? hide
-                  help
+                  undo · Esc clear · V sound · Enter / Next = first ungraded word, or submit when
+                  all are graded · ? hide help
                 </span>
               ) : (
-                <span>A Again · S Hard · D Easy · Enter = rest Good · ? all keys</span>
+                <span>A Again · S Hard · W Good · D Easy · Enter = next · ? all keys</span>
               )}
               <button
                 className={`px-3 py-1 rounded hover:bg-white/20 opacity-100 text-xs shrink-0 ${
@@ -1087,9 +1182,11 @@ function Study({
                     ? "bg-emerald-600 text-white outline outline-1 outline-white/60"
                     : "bg-white/10"
                 }`}
-                onClick={() => submit(3)}
+                onClick={next}
               >
-                Next ⏎
+                {firstUngraded < 0
+                  ? "Next ⏎"
+                  : `${page.filter((_, i) => !marks.has(i)).length} left ⏎`}
               </button>
             </div>
           )}
