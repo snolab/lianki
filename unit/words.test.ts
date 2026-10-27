@@ -152,3 +152,14 @@ test("the cursor is what the client says, and concurrent screens add up", async 
   const list = await repo.getList(id);
   expect(list).toMatchObject({ cursor: 1, newToday: 4, cards: 4 });
 });
+
+test("lists keep the user's order, and new lists go last", async () => {
+  const d1 = createTestD1(testSchema());
+  const repo = new WordsD1Repo(d1, "o@example.com");
+  const a = await repo.createList({ name: "a", lang: "fr" });
+  const b = await repo.createList({ name: "b", lang: "fr" });
+  await repo.reorder([b, a]);
+  const c = await repo.createList({ name: "c", lang: "fr" });
+  expect((await repo.lists()).map((l) => l.name)).toEqual(["b", "a", "c"]);
+  expect(c).toBeTruthy();
+});

@@ -27,3 +27,15 @@ export async function POST(req: NextRequest) {
   const id = await repo.createList(parsed.data);
   return NextResponse.json({ list: await repo.getList(id) });
 }
+
+/** Reorder lists: `order` is list ids first to last. */
+export async function PATCH(req: NextRequest) {
+  const repo = await wordsRepo();
+  if (repo instanceof NextResponse) return repo;
+  const parsed = z
+    .object({ order: z.array(z.string().max(64)).max(200) })
+    .safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: "Invalid order" }, { status: 400 });
+  await repo.reorder(parsed.data.order);
+  return NextResponse.json({ lists: await repo.lists() });
+}

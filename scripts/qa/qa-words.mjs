@@ -51,10 +51,7 @@ try {
   check((await rows.count()) === 20, `first screen shows ${await rows.count()} words`);
   check((await page.locator("span.text-emerald-400").count()) > 0, "new words are shown in green");
   const interval = (await rows.first().locator("span.tabular-nums").innerText()).trim();
-  check(
-    /^\d+(\.\d)?(s|m|h|d|mo|y)$/.test(interval),
-    `each row shows its next interval: ${interval}`,
-  );
+  check(interval === "new", `an ungraded new word says "new": ${interval}`);
 
   // F moves the cursor down (like ↓) and the focused row shows its meaning.
   const blurred = (i) =>
@@ -71,17 +68,23 @@ try {
   // the same screen comes back from the local draft with the mark on it.
   const firstTerm = (await rows.first().locator("span.truncate.font-medium").innerText()).trim();
   await page.keyboard.press("a");
+  const graded = (await rows.first().locator("span.tabular-nums").innerText()).trim();
+  check(
+    /^\d+(\.\d)?(s|m|h|d|mo|y)$/.test(graded),
+    `a graded word shows when it returns: ${graded}`,
+  );
   const listsNow = async () =>
     (await page.evaluate(async () => (await fetch("/api/words/lists")).json())).lists.find(
       (l) => l.source === first.id,
     );
+  check(/[?&]list=/.test(page.url()), `the open list is in the URL: ${new URL(page.url()).search}`);
   await page.reload({ waitUntil: "networkidle" });
   // The beacon is fire-and-forget: give it a moment to land.
   let saved = 0;
   for (let i = 0; i < 10 && saved !== 1; i++, await page.waitForTimeout(300))
     saved = (await listsNow())?.cards;
   check(saved === 1, `leaving the page saved the one marked word (${saved})`);
-  await page.getByRole("button", { name: first.name }).click();
+  // The URL brought us straight back into the list.
   await rows.first().waitFor({ timeout: 15000 });
   const restoredTerm = (await rows.first().locator("span.truncate.font-medium").innerText()).trim();
   const restoredMark = (await rows.first().getAttribute("class")).includes("bg-red-500");
@@ -90,14 +93,26 @@ try {
     `draft restored the screen and its mark: ${restoredTerm} ${restoredMark ? "Again" : "(no mark)"}`,
   );
 
-  // Walk past the last word onto Next, and W there submits the screen.
+  // Nothing is graded in bulk: W on Next jumps to the first ungraded word.
   for (let i = 0; i < 20; i++) await page.keyboard.press("f");
+  let posted = false;
+  page.on(
+    "request",
+    (r) => r.url().includes("/review") && r.method() === "POST" && (posted = true),
+  );
+  await page.keyboard.press("w");
+  const cursorAt = await rows.evaluateAll((els) =>
+    els.findIndex((e) => e.className.includes("outline-white")),
+  );
+  check(cursorAt === 1 && !posted, `W on Next jumps to the first ungraded word (row ${cursorAt})`);
+  // Grade the rest one by one; the cursor lands on Next, and W there submits.
   const reviewed = page.waitForResponse(
     (r) => r.url().includes("/review") && r.request().method() === "POST",
   );
+  for (let i = 0; i < 19; i++) await page.keyboard.press("w");
   await page.keyboard.press("w");
   const res = await reviewed;
-  check(res.status() === 200, `W on Next submitted the screen: HTTP ${res.status()}`);
+  check(res.status() === 200, `all graded, W on Next submits: HTTP ${res.status()}`);
   const body = await res.json();
   check(
     body.cards?.length === 19,
@@ -127,11 +142,14 @@ try {
   await page.getByRole("button", { name: "← lists" }).click();
   await page.getByRole("button", { name: /Study all lists together/ }).click();
   await rows.first().waitFor({ timeout: 15000 });
+  check(page.url().includes("list=all"), "study all has its own URL");
   const sent = page.waitForResponse(
     (r) => r.url().includes("/review") && r.request().method() === "POST",
   );
+  const n = await rows.count();
+  for (let i = 0; i < n; i++) await page.keyboard.press("w");
   await page.keyboard.press("Enter");
-  check((await sent).status() === 200, "study all: a mixed screen submits");
+  check((await sent).status() === 200, "study all: a graded screen submits");
   check(errs.length === 0, `no page errors${errs.length ? ": " + errs.join(" | ") : ""}`);
 } catch (e) {
   check(false, `threw: ${e.message}`);
