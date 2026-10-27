@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
+import { previewInterval } from "@/lib/words/schedule";
 
 /**
  * Sub-second word-list review.
@@ -54,7 +55,17 @@ type CatalogMeta = {
   license: string;
 };
 type Entry = { term: string; reading?: string; back: string };
-type Item = Entry & { kind: "due" | "new" | "again"; newIndex?: number };
+type Item = Entry & {
+  kind: "due" | "new" | "again";
+  newIndex?: number;
+  /** The list it belongs to — a "study all" screen mixes lists. */
+  listId: string;
+  lang: string;
+  /** Stored ts-fsrs card JSON; absent for a word never reviewed. */
+  card?: string;
+};
+/** Identity of a card across lists: the same term may be in two of them. */
+const keyOf = (it: { listId: string; term: string }) => `${it.listId}\u0000${it.term}`;
 
 const KEY_RATING: Record<string, Rating> = {
   KeyA: 1,
@@ -139,10 +150,10 @@ function usePageActive() {
 
 /**
  * Browser speech (Web Speech API): instant, offline, no rate limit, and every
- * language the OS has a voice for. Silent when there is no voice for `lang`.
+ * language the OS has a voice for. A word in a language with no voice is silent.
  */
-function useSpeech(lang: string) {
-  const [voice, setVoice] = useState<SpeechSynthesisVoice | null>(null);
+function useSpeech() {
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [on, setOn] = useState(() => {
     try {
       return localStorage.getItem("lk:words-sound") !== "off";
@@ -154,14 +165,19 @@ function useSpeech(lang: string) {
 
   useEffect(() => {
     if (typeof speechSynthesis === "undefined") return;
-    const pick = () => {
-      const vs = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(lang));
-      setVoice(vs.find((v) => v.localService) ?? vs[0] ?? null);
-    };
+    const pick = () => setVoices(speechSynthesis.getVoices());
     pick();
     speechSynthesis.addEventListener("voiceschanged", pick);
     return () => speechSynthesis.removeEventListener("voiceschanged", pick);
-  }, [lang]);
+  }, []);
+
+  const voiceFor = useCallback(
+    (lang: string) => {
+      const vs = voices.filter((v) => v.lang.toLowerCase().startsWith(lang));
+      return vs.find((v) => v.localService) ?? vs[0] ?? null;
+    },
+    [voices],
+  );
 
   const stop = useCallback(() => {
     clearTimeout(timer.current);
@@ -169,7 +185,8 @@ function useSpeech(lang: string) {
   }, []);
 
   const speak = useCallback(
-    (text: string, then?: () => void) => {
+    (text: string, lang: string, then?: () => void) => {
+      const voice = voiceFor(lang);
       if (!voice || !on || !text) return;
       const u = new SpeechSynthesisUtterance(text);
       u.voice = voice;
@@ -178,28 +195,28 @@ function useSpeech(lang: string) {
       if (then) u.onend = then;
       speechSynthesis.speak(u);
     },
-    [voice, on],
+    [voiceFor, on],
   );
 
   /** Repeat `text` with a pause until the next call; "" just stops. */
   const loop = useCallback(
-    (text: string) => {
+    (text: string, lang: string) => {
       stop();
       if (!text) return;
       // A short delay so flicking through rows does not start a word per row.
       const again = () => {
-        timer.current = setTimeout(() => speak(text, again), 900);
+        timer.current = setTimeout(() => speak(text, lang, again), 900);
       };
-      timer.current = setTimeout(() => speak(text, again), 250);
+      timer.current = setTimeout(() => speak(text, lang, again), 250);
       return stop;
     },
     [speak, stop],
   );
 
   const once = useCallback(
-    (text: string) => {
+    (text: string, lang: string) => {
       stop();
-      speak(text);
+      speak(text, lang);
     },
     [speak, stop],
   );
@@ -215,8 +232,8 @@ function useSpeech(lang: string) {
   }, [stop]);
 
   return useMemo(
-    () => ({ available: !!voice, on, loop, once, toggle }),
-    [voice, on, loop, once, toggle],
+    () => ({ available: voices.length > 0, on, loop, once, toggle }),
+    [voices, on, loop, once, toggle],
   );
 }
 
@@ -226,7 +243,9 @@ type Draft = { day: string; items: Item[]; marks: [string, Rating][]; flushed: [
 function readDraft(key: string): Draft | null {
   try {
     const d = JSON.parse(localStorage.getItem(key) ?? "null") as Draft | null;
-    return d && d.day === localDay() && Array.isArray(d.items) && d.items.length ? d : null;
+    return d && d.day === localDay() && Array.isArray(d.items) && d.items.every((it) => it.listId)
+      ? d
+      : null;
   } catch {
     return null;
   }
@@ -242,7 +261,7 @@ function writeDraft(
     const draft: Draft = {
       day: localDay(),
       items: page,
-      marks: [...marks].filter(([i]) => page[i]).map(([i, r]) => [page[i].term, r]),
+      marks: [...marks].filter(([i]) => page[i]).map(([i, r]) => [keyOf(page[i]), r]),
       flushed: [...flushed],
     };
     localStorage.setItem(key, JSON.stringify(draft));
@@ -286,6 +305,9 @@ const WORDS: DrillConfig = {
   readingOnBack: true,
 };
 
+/** listId for "study all": every list of this page in one queue. */
+const ALL = "*";
+
 export default function WordsClient({ config = WORDS }: { config?: DrillConfig }) {
   const [allLists, setLists] = useState<WordList[] | null>(null);
   const [catalog, setCatalog] = useState<CatalogMeta[]>([]);
@@ -324,13 +346,15 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
     );
   if (!lists) return <div className="p-8 opacity-60">Loading…</div>;
 
-  const current = lists.find((l) => l.id === listId);
-  if (current)
+  const studying = listId === ALL ? lists : lists.filter((l) => l.id === listId);
+  if (studying.length)
     return (
       <Study
+        key={listId}
         config={config}
-        list={current}
-        meta={catalog.find((c) => c.id === current.source)}
+        lists={studying}
+        catalog={catalog}
+        title={listId === ALL ? `All ${config.title.toLowerCase()}` : studying[0].name}
         onExit={() => {
           setListId(null);
           refreshLists();
@@ -378,7 +402,8 @@ function ListPicker({
     const onKey = (e: KeyboardEvent) => {
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       const n = Number(e.key);
-      if (n >= 1 && n <= 9 && lists[n - 1]) onOpen(lists[n - 1].id);
+      if (e.key === "0" && lists.length > 1) onOpen(ALL);
+      else if (n >= 1 && n <= 9 && lists[n - 1]) onOpen(lists[n - 1].id);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -404,6 +429,18 @@ function ListPicker({
         <p className="opacity-70 text-sm mt-1">{config.intro}</p>
       </div>
 
+      {lists.length > 1 && (
+        <button
+          onClick={() => onOpen(ALL)}
+          className="w-full flex items-center gap-3 rounded-lg bg-emerald-700/40 hover:bg-emerald-700/60 px-4 py-3 text-left"
+        >
+          <kbd className="hidden sm:inline text-xs opacity-50">0</kbd>
+          <span className="flex-1 font-medium">Study all lists together</span>
+          <span className="text-xs opacity-70 tabular-nums">
+            {lists.reduce((n, l) => n + l.due, 0)} due
+          </span>
+        </button>
+      )}
       {lists.length > 0 && (
         <div className="space-y-2">
           {lists.map((l, i) => (
@@ -414,7 +451,8 @@ function ListPicker({
               <button className="flex-1 text-left" onClick={() => onOpen(l.id)}>
                 <div className="font-medium">{l.name}</div>
                 <div className="text-xs opacity-60 tabular-nums">
-                  {l.due} due · {l.cards} learned · {l.cursor} introduced
+                  {l.due} due · {l.learning} learning · {l.mastered} mastered (≥1y) · {l.cards}/
+                  {catalog.find((c) => c.id === l.source)?.count ?? "?"} seen
                 </div>
               </button>
               <button
@@ -479,15 +517,26 @@ function ListPicker({
   );
 }
 
+/** Round-robin merge, so a "study all" screen alternates between lists. */
+function interleave<T>(groups: T[][]): T[] {
+  const out: T[] = [];
+  for (let i = 0; groups.some((g) => i < g.length); i++)
+    for (const g of groups) if (i < g.length) out.push(g[i]);
+  return out;
+}
+
 function Study({
   config,
-  list,
-  meta,
+  lists,
+  catalog,
+  title,
   onExit,
 }: {
   config: DrillConfig;
-  list: WordList;
-  meta?: CatalogMeta;
+  /** One list, or every list for "study all". */
+  lists: WordList[];
+  catalog: CatalogMeta[];
+  title: string;
   onExit: () => void;
 }) {
   const [queue, setQueue] = useState<Item[]>([]);
@@ -500,14 +549,16 @@ function Study({
   const [pending, setPending] = useState(0);
   const [syncError, setSyncError] = useState<string | null>(null);
   const started = useRef(Date.now());
-  const catalogRef = useRef<Entry[]>([]);
-  /** Next catalog index to consider for new words. */
-  const nextNew = useRef(list.cursor);
+  const catalogs = useRef<Map<string, Entry[]>>(new Map());
+  /** Per list: next catalog index to consider for new words. */
+  const nextNew = useRef<Map<string, number>>(new Map(lists.map((l) => [l.id, l.cursor])));
+  const listIds = lists.map((l) => l.id).join(",");
+  const paramsOf = useMemo(() => new Map(lists.map((l) => [l.id, l.params])), [lists]);
   const dwell = useRef<Map<number, number>>(new Map());
   const rowSince = useRef(Date.now());
   const touch = useTouch();
   const base = config.base;
-  const speech = useSpeech(list.lang);
+  const speech = useSpeech();
   const pageSize = touch ? PAGE_TOUCH : PAGE;
   // Read by the one-time session load, which must not re-run when it changes.
   const pageSizeRef = useRef(pageSize);
@@ -520,64 +571,83 @@ function Study({
    * screen's own submit does not grade them a second time.
    */
   const flushed = useRef<Map<string, Rating>>(new Map());
-  const draftKey = `lk:words-draft:${list.id}`;
+  const draftKey =
+    lists.length === 1 ? `lk:words-draft:${lists[0].id}` : `lk:words-draft:all${base}`;
 
-  /** Pull up to `n` catalog words that have no card yet. */
+  /** Pull up to `n` catalog words of one list that have no card yet. */
+  const takeNewFrom = useCallback(async (list: WordList, n: number): Promise<Item[]> => {
+    const entries = catalogs.current.get(list.id) ?? [];
+    const out: Item[] = [];
+    while (out.length < n && (nextNew.current.get(list.id) ?? 0) < entries.length) {
+      const from = nextNew.current.get(list.id) ?? 0;
+      const slice = entries.slice(from, from + Math.max(n * 2, 40));
+      nextNew.current.set(list.id, from + slice.length);
+      const { known } = await api<{ known: string[] }>(`/api/words/lists/${list.id}/known`, {
+        method: "POST",
+        body: JSON.stringify({ terms: slice.map((e) => e.term) }),
+      });
+      const skip = new Set(known);
+      slice.forEach((e, i) => {
+        if (out.length < n && !skip.has(e.term))
+          out.push({ ...e, kind: "new", newIndex: from + i, listId: list.id, lang: list.lang });
+      });
+    }
+    return out;
+  }, []);
+
+  /** Up to `n` new words, spread across the lists. */
   const takeNew = useCallback(
-    async (n: number): Promise<Item[]> => {
-      const entries = catalogRef.current;
-      const out: Item[] = [];
-      while (out.length < n && nextNew.current < entries.length) {
-        const from = nextNew.current;
-        const slice = entries.slice(from, from + Math.max(n * 2, 40));
-        nextNew.current = from + slice.length;
-        const { known } = await api<{ known: string[] }>(`/api/words/lists/${list.id}/known`, {
-          method: "POST",
-          body: JSON.stringify({ terms: slice.map((e) => e.term) }),
-        });
-        const skip = new Set(known);
-        slice.forEach((e, i) => {
-          if (out.length < n && !skip.has(e.term))
-            out.push({ ...e, kind: "new", newIndex: from + i });
-        });
-      }
-      return out;
+    async (n: number) => {
+      const per = Math.ceil(n / lists.length);
+      return interleave(await Promise.all(lists.map((l) => takeNewFrom(l, per))));
     },
-    [list.id],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [listIds, takeNewFrom],
   );
 
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [session, entries] = await Promise.all([
-        api<{ due: WordCard[]; newRemaining: number }>(
-          `/api/words/lists/${list.id}/session?day=${localDay()}`,
-        ),
-        meta
-          ? fetch(`${base}/${meta.file}`)
-              .then((r) => r.json())
-              .then((d) => d.entries as Entry[])
-          : Promise.resolve([] as Entry[]),
-      ]);
-      catalogRef.current = entries;
-      const due: Item[] = session.due.map((c) => ({
-        term: c.term,
-        reading: c.reading ?? undefined,
-        back: c.back,
-        kind: "due",
-      }));
-      const fresh = await takeNew(session.newRemaining);
+      const loaded = await Promise.all(
+        lists.map(async (list) => {
+          const meta = catalog.find((c) => c.id === list.source);
+          const [session, entries] = await Promise.all([
+            api<{ due: WordCard[]; newRemaining: number }>(
+              `/api/words/lists/${list.id}/session?day=${localDay()}`,
+            ),
+            meta
+              ? fetch(`${base}/${meta.file}`)
+                  .then((r) => r.json())
+                  .then((d) => d.entries as Entry[])
+              : Promise.resolve([] as Entry[]),
+          ]);
+          catalogs.current.set(list.id, entries);
+          const due: Item[] = session.due.map((c) => ({
+            term: c.term,
+            reading: c.reading ?? undefined,
+            back: c.back,
+            kind: "due",
+            listId: list.id,
+            lang: list.lang,
+            card: c.card,
+          }));
+          return { due, fresh: await takeNewFrom(list, session.newRemaining) };
+        }),
+      );
       if (!alive) return;
+      const due = interleave(loaded.map((l) => l.due));
+      const fresh = interleave(loaded.map((l) => l.fresh));
       const queued = [...due, ...spreadPairs(fresh, pageSizeRef.current, due.length)];
       // A draft is the screen that was open when the page was left: put it back
       // first, with its marks, and drop those words from the rest of the queue.
       const draft = readDraft(draftKey);
-      if (draft) {
-        const onScreen = new Set(draft.items.map((it) => it.term));
-        setQueue([...draft.items, ...queued.filter((it) => !onScreen.has(it.term))]);
-        const index = new Map(draft.items.map((it, i) => [it.term, i]));
-        setMarks(new Map(draft.marks.map(([t, r]) => [index.get(t)!, r])));
-        markOrder.current = draft.marks.map(([t]) => index.get(t)!);
+      const ids = new Set(lists.map((l) => l.id));
+      if (draft && draft.items.every((it) => ids.has(it.listId))) {
+        const onScreen = new Set(draft.items.map(keyOf));
+        setQueue([...draft.items, ...queued.filter((it) => !onScreen.has(keyOf(it)))]);
+        const index = new Map(draft.items.map((it, i) => [keyOf(it), i]));
+        setMarks(new Map(draft.marks.map(([k, r]) => [index.get(k)!, r])));
+        markOrder.current = draft.marks.map(([k]) => index.get(k)!);
         flushed.current = new Map(draft.flushed);
       } else setQueue(queued);
       setLoading(false);
@@ -585,7 +655,8 @@ function Study({
     return () => {
       alive = false;
     };
-  }, [list.id, meta, takeNew, base, draftKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listIds, catalog, takeNewFrom, base, draftKey]);
 
   const page = queue.slice(pos, pos + pageSize);
 
@@ -622,6 +693,7 @@ function Study({
       dwell.current.set(row, (dwell.current.get(row) ?? 0) + now - rowSince.current);
       const reviews = page
         .map((it, i) => ({
+          listId: it.listId,
           term: it.term,
           reading: it.reading ?? null,
           back: it.back,
@@ -630,10 +702,10 @@ function Study({
           newIndex: it.kind === "new" ? it.newIndex : null,
         }))
         // Already graded by a flush on leaving, with the same mark.
-        .filter((r) => flushed.current.get(r.term) !== r.rating);
+        .filter((r) => flushed.current.get(keyOf(r)) !== r.rating);
       flushed.current = new Map();
       clearDraft(draftKey);
-      const byTerm = new Map(page.map((it) => [it.term, it]));
+      const byKey = new Map(page.map((it) => [keyOf(it), it]));
       setPos((p) => p + page.length);
       setMarks(new Map());
       markOrder.current = [];
@@ -642,24 +714,34 @@ function Study({
       dwell.current = new Map();
       rowSince.current = Date.now();
       setDone((d) => d + page.length);
-      if (!reviews.length) return;
-      setPending((n) => n + 1);
-      api<{ cards: WordCard[] }>(`/api/words/lists/${list.id}/review`, {
-        method: "POST",
-        body: JSON.stringify({ day: localDay(), reviews }),
-      })
-        .then(({ cards }) => {
-          // Learning steps: words due again within minutes come back this session.
-          const back = cards
-            .filter((c) => new Date(c.due).getTime() - Date.now() < SESSION_WINDOW_MS)
-            .map((c): Item => ({ ...byTerm.get(c.term)!, kind: "again", newIndex: undefined }));
-          if (back.length) setQueue((q) => [...q, ...back]);
-          setSyncError(null);
+      // One request per list on the screen.
+      for (const listId of new Set(reviews.map((r) => r.listId))) {
+        const mine = reviews.filter((r) => r.listId === listId).map(({ listId: _, ...r }) => r);
+        setPending((n) => n + 1);
+        api<{ cards: WordCard[] }>(`/api/words/lists/${listId}/review`, {
+          method: "POST",
+          body: JSON.stringify({ day: localDay(), reviews: mine }),
         })
-        .catch((e) => setSyncError((e as Error).message))
-        .finally(() => setPending((n) => n - 1));
+          .then(({ cards }) => {
+            // Learning steps: words due again within minutes come back this session.
+            const back = cards
+              .filter((c) => new Date(c.due).getTime() - Date.now() < SESSION_WINDOW_MS)
+              .map(
+                (c): Item => ({
+                  ...byKey.get(keyOf({ listId, term: c.term }))!,
+                  kind: "again",
+                  newIndex: undefined,
+                  card: c.card,
+                }),
+              );
+            if (back.length) setQueue((q) => [...q, ...back]);
+            setSyncError(null);
+          })
+          .catch((e) => setSyncError((e as Error).message))
+          .finally(() => setPending((n) => n - 1));
+      }
     },
-    [page, marks, row, list.id, draftKey],
+    [page, marks, row, draftKey],
   );
 
   // Save the open screen and its marks as a draft on every change, so a
@@ -675,8 +757,9 @@ function Study({
   const flush = useCallback(() => {
     const { page, marks } = latest.current;
     const reviews = [...marks]
-      .filter(([i, r]) => page[i] && flushed.current.get(page[i].term) !== r)
+      .filter(([i, r]) => page[i] && flushed.current.get(keyOf(page[i])) !== r)
       .map(([i, r]) => ({
+        listId: page[i].listId,
         term: page[i].term,
         reading: page[i].reading ?? null,
         back: page[i].back,
@@ -686,19 +769,22 @@ function Study({
         newIndex: null,
       }));
     if (!reviews.length) return;
-    const body = JSON.stringify({ day: localDay(), reviews });
-    const url = `/api/words/lists/${list.id}/review`;
-    const sent = navigator.sendBeacon?.(url, new Blob([body], { type: "application/json" }));
-    if (!sent)
-      fetch(url, {
-        method: "POST",
-        body,
-        keepalive: true,
-        headers: { "content-type": "application/json" },
-      }).catch(() => {});
-    for (const r of reviews) flushed.current.set(r.term, r.rating);
+    for (const listId of new Set(reviews.map((r) => r.listId))) {
+      const mine = reviews.filter((r) => r.listId === listId).map(({ listId: _, ...r }) => r);
+      const body = JSON.stringify({ day: localDay(), reviews: mine });
+      const url = `/api/words/lists/${listId}/review`;
+      const sent = navigator.sendBeacon?.(url, new Blob([body], { type: "application/json" }));
+      if (!sent)
+        fetch(url, {
+          method: "POST",
+          body,
+          keepalive: true,
+          headers: { "content-type": "application/json" },
+        }).catch(() => {});
+    }
+    for (const r of reviews) flushed.current.set(keyOf(r), r.rating);
     writeDraft(draftKey, page, marks, flushed.current);
-  }, [list.id, draftKey]);
+  }, [draftKey]);
   useEffect(() => {
     const onHide = () => document.visibilityState === "hidden" && flush();
     document.addEventListener("visibilitychange", onHide);
@@ -709,10 +795,23 @@ function Study({
     };
   }, [flush]);
 
-  const more = useCallback(async () => {
-    const fresh = await takeNew(pageSize);
-    setQueue((q) => [...q, ...spreadPairs(fresh, pageSize, q.length - pos)]);
-  }, [takeNew, pageSize, pos]);
+  // No daily stop: when the queue runs low, keep pulling new words — anyone
+  // still here has time to learn more. Stops only when the catalogs run out.
+  const [exhausted, setExhausted] = useState(false);
+  const fetching = useRef(false);
+  useEffect(() => {
+    if (loading || exhausted || fetching.current || queue.length - pos > pageSize * 2) return;
+    fetching.current = true;
+    takeNew(pageSize * 2)
+      .then((fresh) => {
+        if (!fresh.length) setExhausted(true);
+        else setQueue((q) => [...q, ...spreadPairs(fresh, pageSize, q.length - pos)]);
+      })
+      .catch((e) => setSyncError((e as Error).message))
+      .finally(() => {
+        fetching.current = false;
+      });
+  }, [loading, exhausted, queue.length, pos, pageSize, takeNew]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -759,15 +858,17 @@ function Study({
   // same row picks the loop back up when the page is active again.
   const active = usePageActive();
   const focused = !touch && active ? page[row] : undefined;
-  const say = focused ? spokenText(focused, list.lang, !!config.readingOnBack) : "";
-  useEffect(() => speech.loop(say), [say, speech]);
+  const say = focused ? spokenText(focused, focused.lang, !!config.readingOnBack) : "";
+  const sayLang = focused?.lang ?? "";
+  useEffect(() => speech.loop(say, sayLang), [say, sayLang, speech]);
 
   const minutes = (Date.now() - started.current) / 60_000;
   const left = queue.length - pos;
   const dueLeft = queue.slice(pos).filter((q) => q.kind !== "new").length;
 
   return (
-    <div className="max-w-3xl mx-auto p-4 sm:p-8">
+    // Full width: wide screens get room for longer explanations.
+    <div className="w-full px-3 py-4 sm:px-8 sm:py-6">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm mb-4">
         <button
           className="opacity-60 hover:opacity-100 whitespace-nowrap"
@@ -775,7 +876,7 @@ function Study({
         >
           ← lists
         </button>
-        <span className="font-medium">{list.name}</span>
+        <span className="font-medium">{title}</span>
         <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
           {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
           {left - dueLeft} new
@@ -793,12 +894,7 @@ function Study({
         <div className="opacity-60">Loading…</div>
       ) : page.length === 0 ? (
         <div className="space-y-4 py-8 text-center">
-          <div className="text-lg">All caught up.</div>
-          {nextNew.current < catalogRef.current.length && (
-            <button className="px-4 py-2 rounded bg-white/10 hover:bg-white/20" onClick={more}>
-              Learn {pageSize} more new words
-            </button>
-          )}
+          <div className="text-lg">{exhausted ? "Every word learned. 🎉" : "Loading more…"}</div>
         </div>
       ) : (
         <>
@@ -815,7 +911,7 @@ function Study({
                   // Desktop click = Again; on touch a tap reveals instead.
                   onTap={() =>
                     touch
-                      ? (speech.once(spokenText(it, list.lang, !!config.readingOnBack)),
+                      ? (speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang),
                         setRevealed((s) => {
                           const n = new Set(s);
                           if (n.has(i)) n.delete(i);
@@ -827,8 +923,8 @@ function Study({
                   onSwipe={(r) => mark(i, rating === r ? null : r)}
                   className={`group grid items-center gap-2 px-2 leading-none cursor-pointer select-none border-b border-white/5 last:border-0 ${
                     touch
-                      ? "grid-cols-[minmax(6rem,2fr)_3fr_3rem] h-11 text-base"
-                      : "grid-cols-[1.25rem_minmax(8rem,2fr)_3fr_3.5rem] h-7 text-[15px]"
+                      ? "grid-cols-[minmax(6rem,12rem)_1fr_3rem] h-11 text-base"
+                      : "grid-cols-[1.25rem_minmax(8rem,18rem)_1fr_3.5rem] h-7 text-[15px]"
                   } ${rating ? RATING_STYLE[rating] : ""} ${
                     i === row && !touch
                       ? "outline outline-1 -outline-offset-1 outline-white/40"
@@ -854,8 +950,12 @@ function Study({
                     )}
                     {it.back}
                   </span>
-                  <span className="text-[11px] text-right opacity-60">
-                    {rating ? RATING_LABEL[rating] : it.kind === "new" ? "new" : ""}
+                  {/* When this word comes back: for its mark, or Good if unmarked. */}
+                  <span
+                    className={`text-[11px] text-right tabular-nums ${rating ? "opacity-90 font-medium" : "opacity-40"}`}
+                    title={RATING_LABEL[rating ?? 3]}
+                  >
+                    {previewInterval(it.card, rating ?? 3, paramsOf.get(it.listId)!)}
                   </span>
                 </WordRow>
               );
