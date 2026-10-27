@@ -465,12 +465,32 @@ function ListPicker({
   /** New order of list ids; also the order "study all" learns new words in. */
   onReorder: (order: string[]) => void;
 }) {
-  const move = (i: number, by: number) => {
-    const j = i + by;
-    if (j < 0 || j >= lists.length) return;
-    const order = lists.map((l) => l.id);
-    [order[i], order[j]] = [order[j], order[i]];
-    onReorder(order);
+  // Drag-to-reorder by the ⠿ handle (pointer events: mouse and touch alike).
+  // `dragOrder` is the live order while a handle is held.
+  const [dragOrder, setDragOrder] = useState<string[] | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const rowEls = useRef<Map<string, HTMLDivElement>>(new Map());
+  const shown = dragOrder
+    ? dragOrder.map((id) => lists.find((l) => l.id === id)!).filter(Boolean)
+    : lists;
+  const dragTo = (id: string, y: number) => {
+    const order = (dragOrder ?? lists.map((l) => l.id)).filter((x) => x !== id);
+    // Insert before the first row whose middle is below the pointer.
+    let at = order.length;
+    for (const [i, other] of order.entries()) {
+      const r = rowEls.current.get(other)?.getBoundingClientRect();
+      if (r && y < r.top + r.height / 2) {
+        at = i;
+        break;
+      }
+    }
+    order.splice(at, 0, id);
+    setDragOrder(order);
+  };
+  const endDrag = () => {
+    if (dragOrder && dragOrder.join() !== lists.map((l) => l.id).join()) onReorder(dragOrder);
+    setDragOrder(null);
+    setDragging(null);
   };
   const [busy, setBusy] = useState(false);
   const langs = useMemo(() => [...new Set(catalog.map((c) => c.lang))], [catalog]);
@@ -526,26 +546,37 @@ function ListPicker({
       )}
       {lists.length > 0 && (
         <div className="space-y-2">
-          {lists.map((l, i) => (
-            <div key={l.id} className="flex items-center gap-3 rounded-lg bg-white/5 px-4 py-3">
-              <div className="flex flex-col -my-1 text-[10px] leading-none">
-                <button
-                  className="opacity-40 hover:opacity-100 disabled:opacity-10 px-1"
-                  disabled={i === 0}
-                  onClick={() => move(i, -1)}
-                  title="Move up"
-                >
-                  ▲
-                </button>
-                <button
-                  className="opacity-40 hover:opacity-100 disabled:opacity-10 px-1"
-                  disabled={i === lists.length - 1}
-                  onClick={() => move(i, 1)}
-                  title="Move down"
-                >
-                  ▼
-                </button>
-              </div>
+          {shown.map((l, i) => (
+            <div
+              key={l.id}
+              ref={(el) => {
+                if (el) rowEls.current.set(l.id, el);
+                else rowEls.current.delete(l.id);
+              }}
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 ${
+                dragging === l.id ? "bg-white/15 ring-1 ring-white/30" : "bg-white/5"
+              }`}
+            >
+              <span
+                role="button"
+                aria-label="Drag to reorder"
+                title="Drag to reorder"
+                className="cursor-grab active:cursor-grabbing select-none opacity-40 hover:opacity-100 px-1 text-lg leading-none"
+                style={{ touchAction: "none" }}
+                onPointerDown={(e) => {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  setDragging(l.id);
+                  setDragOrder(lists.map((x) => x.id));
+                }}
+                onPointerMove={(e) => dragging === l.id && dragTo(l.id, e.clientY)}
+                onPointerUp={endDrag}
+                onPointerCancel={() => {
+                  setDragOrder(null);
+                  setDragging(null);
+                }}
+              >
+                ⠿
+              </span>
               {i < 9 && (
                 <kbd className="hidden sm:inline text-xs opacity-40 tabular-nums">{i + 1}</kbd>
               )}
