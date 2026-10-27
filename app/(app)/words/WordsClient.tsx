@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
-import { previewInterval } from "@/lib/words/schedule";
+import { formatInterval, previewInterval } from "@/lib/words/schedule";
 
 /**
  * Sub-second word-list review.
@@ -56,7 +56,14 @@ type CatalogMeta = {
   source: string;
   license: string;
 };
-type Entry = { term: string; reading?: string; back: string };
+type Entry = {
+  term: string;
+  reading?: string;
+  back: string;
+  /** An example sentence in the target language, and its English. */
+  ex?: string;
+  exTr?: string;
+};
 type Item = Entry & {
   kind: "due" | "new" | "again";
   newIndex?: number;
@@ -287,6 +294,15 @@ function clearDraft(key: string) {
     localStorage.removeItem(key);
   } catch {}
 }
+
+/** Due time (ms) of a stored card JSON. */
+const dueOf = (card: string) => {
+  try {
+    return new Date(JSON.parse(card).due).getTime();
+  } catch {
+    return Date.now();
+  }
+};
 
 const localDay = () => new Date().toLocaleDateString("en-CA");
 
@@ -635,6 +651,17 @@ function Study({
   const [syncError, setSyncError] = useState<string | null>(null);
   const started = useRef(Date.now());
   const catalogs = useRef<Map<string, Entry[]>>(new Map());
+  /** A word's example sentence, from its list's catalog (cards store none). */
+  const byTerm = useRef<Map<string, Map<string, Entry>>>(new Map());
+  const exampleOf = (listId: string, term: string) => {
+    let m = byTerm.current.get(listId);
+    if (!m) {
+      m = new Map((catalogs.current.get(listId) ?? []).map((e) => [e.term, e]));
+      byTerm.current.set(listId, m);
+    }
+    const e = m.get(term);
+    return e?.ex ? { ex: e.ex, exTr: e.exTr } : {};
+  };
   /** Per list: next catalog index to consider for new words. */
   const nextNew = useRef<Map<string, number>>(new Map(lists.map((l) => [l.id, l.cursor])));
   const listIds = lists.map((l) => l.id).join(",");
@@ -725,6 +752,7 @@ function Study({
           catalogs.current.set(list.id, entries);
           if (session.due.length >= DUE_PAGE) moreDue.current.add(list.id);
           const due: Item[] = session.due.map((c) => ({
+            ...exampleOf(list.id, c.term),
             term: c.term,
             reading: c.reading ?? undefined,
             back: c.back,
@@ -763,6 +791,7 @@ function Study({
   }, [listIds, catalog, takeNewFrom, base, draftKey]);
 
   const page = queue.slice(pos, pos + pageSize);
+  const hasExamples = page.some((it) => it.ex);
 
   const moveRow = useCallback(
     (to: number) => {
@@ -949,6 +978,7 @@ function Study({
         if (!fresh.length) moreDue.current.delete(list.id);
         for (const c of fresh)
           due.push({
+            ...exampleOf(list.id, c.term),
             term: c.term,
             reading: c.reading ?? undefined,
             back: c.back,
@@ -1098,7 +1128,9 @@ function Study({
                   className={`group grid items-center gap-2 px-2 leading-none cursor-pointer select-none border-b border-white/5 last:border-0 ${
                     touch
                       ? "grid-cols-[minmax(6rem,12rem)_1fr_3rem] h-11 text-base"
-                      : "grid-cols-[1.25rem_minmax(8rem,18rem)_1fr_3.5rem] h-7 text-[15px]"
+                      : hasExamples
+                        ? "grid-cols-[1.25rem_minmax(8rem,16rem)_minmax(10rem,1fr)_minmax(12rem,1.4fr)_3.5rem] h-7 text-[15px]"
+                        : "grid-cols-[1.25rem_minmax(8rem,18rem)_1fr_3.5rem] h-7 text-[15px]"
                   } ${rating ? RATING_STYLE[rating] : ""} ${
                     i === row && !touch
                       ? "outline outline-1 -outline-offset-1 outline-white/40"
@@ -1124,15 +1156,29 @@ function Study({
                     )}
                     {it.back}
                   </span>
-                  {/* When this word comes back for its grade; ungraded: "new" for
-                      a new word, else a faint Good preview. */}
+                  {hasExamples && !touch && (
+                    // The example is part of the answer side: hidden with the meaning.
+                    <span
+                      className={`truncate text-sm opacity-70 transition-[filter] duration-75 ${
+                        show ? "" : "blur-[5px] group-hover:blur-none"
+                      }`}
+                      title={it.ex ? `${it.ex}\n${it.exTr ?? ""}` : undefined}
+                    >
+                      {it.ex}
+                      {it.exTr && <span className="ml-2 text-xs opacity-60">{it.exTr}</span>}
+                    </span>
+                  )}
+                  {/* Graded: when it comes back for that grade. Ungraded: "new",
+                      or how long the word has been due ("5m ago"). */}
                   <span
                     className={`text-[11px] text-right tabular-nums ${rating ? "opacity-90 font-medium" : "opacity-40"}`}
-                    title={rating ? RATING_LABEL[rating] : "if Good"}
+                    title={rating ? `next, if ${RATING_LABEL[rating]}` : "due"}
                   >
-                    {!rating && it.kind === "new"
-                      ? "new"
-                      : previewInterval(it.card, rating ?? 3, paramsOf.get(it.listId)!)}
+                    {rating
+                      ? previewInterval(it.card, rating, paramsOf.get(it.listId)!)
+                      : it.kind === "new" || !it.card
+                        ? "new"
+                        : `${formatInterval(Date.now() - dueOf(it.card))} ago`}
                   </span>
                 </WordRow>
               );
