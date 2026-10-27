@@ -6,19 +6,18 @@ import {
   DndContext,
   type DragEndEvent,
   KeyboardSensor,
-  type Modifier,
   PointerSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/words/tree";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
 import { formatInterval, previewInterval } from "@/lib/words/schedule";
@@ -362,6 +361,9 @@ const WORDS: DrillConfig = {
   readingOnBack: true,
 };
 
+/** `source` of a group row on this page: "group:words" / "group:alphabets". */
+const groupSourceOf = (config: DrillConfig) => `group:${config.base.replace(/^\//, "")}`;
+
 /** listId for "study all": every list of this page in one queue. */
 const ALL = "all";
 
@@ -418,8 +420,9 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
   const lists = useMemo(() => {
     if (!catalog) return null;
     const ids = new Set(catalog.map((c) => c.id));
-    return allLists?.filter((l) => l.source && ids.has(l.source)) ?? null;
-  }, [allLists, catalog]);
+    const group = groupSourceOf(config);
+    return allLists?.filter((l) => l.source && (ids.has(l.source) || l.source === group)) ?? null;
+  }, [allLists, catalog, config]);
 
   if (error)
     return (
@@ -429,7 +432,14 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
     );
   if (!lists || !catalog) return <div className="p-8 opacity-60">Loading…</div>;
 
-  const studying = listId === ALL ? lists : lists.filter((l) => l.id === listId);
+  // A row studies itself and everything below it, in tree order; groups hold
+  // no words of their own.
+  const flat = flatten(lists);
+  const scope =
+    listId === ALL
+      ? flat
+      : flat.filter((x) => x.id === listId || descendants(flat, listId ?? "").includes(x.id));
+  const studying = scope.filter((l) => l.source !== groupSourceOf(config));
   // "Study all" with only one list is just that list.
   if (studying.length)
     return (
@@ -438,7 +448,11 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
         config={config}
         lists={studying}
         catalog={catalog}
-        title={listId === ALL ? `All ${config.title.toLowerCase()}` : studying[0].name}
+        title={
+          listId === ALL
+            ? `All ${config.title.toLowerCase()}`
+            : (lists.find((l) => l.id === listId)?.name ?? studying[0].name)
+        }
         onExit={() => {
           setListId(null);
           refreshLists();
@@ -458,11 +472,14 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
       }}
       onDeleted={refreshLists}
       onReorder={async (order) => {
-        // Show the new order at once; the server confirms with its own.
+        // Show the new tree at once; the server confirms with its own.
         setLists((all) => {
           if (!all) return all;
-          const pos = new Map(order.map((id, i) => [id, i]));
-          return [...all].sort((a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9));
+          const pos = new Map(order.map((x, i) => [x.id, i]));
+          const parent = new Map(order.map((x) => [x.id, x.parentId]));
+          return [...all]
+            .map((l) => (parent.has(l.id) ? { ...l, parentId: parent.get(l.id)! } : l))
+            .sort((a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9));
         });
         const { lists } = await api<{ lists: WordList[] }>("/api/words/lists", {
           method: "PATCH",
@@ -474,20 +491,33 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
   );
 }
 
-/** Lists only move up and down. */
-const restrictToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 });
+/** Indent per tree level, px. Dragging this far sideways nests or un-nests. */
+const INDENT = 24;
 
-/** One list in the picker, draggable by its ⠿ handle. */
+/** Sums over a row and everything below it. */
+type Totals = { due: number; learning: number; mastered: number; cards: number; total: number };
+
+/** One row of the picker tree: a list or a group, draggable by its ⠿ handle. */
 function SortableListRow({
   list: l,
-  index: i,
-  total,
+  depth,
+  index,
+  totals,
+  isGroup,
+  hasChildren,
+  collapsed,
+  onToggle,
   onOpen,
   onDeleted,
 }: {
   list: WordList;
+  depth: number;
   index: number;
-  total?: number;
+  totals: Totals;
+  isGroup: boolean;
+  hasChildren: boolean;
+  collapsed: boolean;
+  onToggle: () => void;
   onOpen: (id: string) => void;
   onDeleted: () => void;
 }) {
@@ -503,9 +533,18 @@ function SortableListRow({
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
+      // Rows move vertically; the sideways drag shows up as the indent instead.
+      style={{
+        transform: CSS.Translate.toString(transform && { ...transform, x: 0 }),
+        transition,
+        marginLeft: depth * INDENT,
+      }}
       className={`relative flex items-center gap-3 rounded-lg px-4 py-3 ${
-        isDragging ? "z-10 bg-white/15 ring-1 ring-white/30 shadow-lg" : "bg-white/5"
+        isDragging
+          ? "z-10 bg-white/15 ring-1 ring-white/30 shadow-lg"
+          : isGroup
+            ? "bg-white/[0.08]"
+            : "bg-white/5"
       }`}
     >
       <span
@@ -513,17 +552,29 @@ function SortableListRow({
         {...attributes}
         {...listeners}
         aria-label="Drag to reorder"
-        title="Drag to reorder"
+        title="Drag to reorder · drag right to put it inside the row above, left to take it out"
         className="cursor-grab active:cursor-grabbing select-none opacity-40 hover:opacity-100 px-1 text-lg leading-none touch-none"
       >
         ⠿
       </span>
-      {i < 9 && <kbd className="hidden sm:inline text-xs opacity-40 tabular-nums">{i + 1}</kbd>}
-      <button className="flex-1 text-left" onClick={() => onOpen(l.id)}>
-        <div className="font-medium">{l.name}</div>
+      <button
+        className={`w-4 text-xs opacity-60 hover:opacity-100 ${hasChildren ? "" : "invisible"}`}
+        onClick={onToggle}
+        aria-label={collapsed ? "Expand" : "Collapse"}
+      >
+        {collapsed ? "▸" : "▾"}
+      </button>
+      {index < 9 && (
+        <kbd className="hidden sm:inline text-xs opacity-40 tabular-nums">{index + 1}</kbd>
+      )}
+      <button className="flex-1 text-left min-w-0" onClick={() => onOpen(l.id)}>
+        <div className="font-medium truncate">
+          {isGroup && "📁 "}
+          {l.name}
+        </div>
         <div className="text-xs opacity-60 tabular-nums">
-          {l.due} due · {l.learning} learning · {l.mastered} mastered (≥1y) · {l.cards}/
-          {total ?? "?"} seen
+          {totals.due} due · {totals.learning} learning · {totals.mastered} mastered (≥1y) ·{" "}
+          {totals.cards}/{totals.total || "?"} seen
         </div>
       </button>
       <button
@@ -535,7 +586,10 @@ function SortableListRow({
       <button
         className="text-xs opacity-40 hover:opacity-80"
         onClick={async () => {
-          if (!confirm(`Delete "${l.name}" and its progress?`)) return;
+          const what = isGroup
+            ? `Delete group "${l.name}"? The lists inside it are kept and move up a level.`
+            : `Delete "${l.name}" and its progress?`;
+          if (!confirm(what)) return;
           await api(`/api/words/lists/${l.id}`, { method: "DELETE" });
           onDeleted();
         }}
@@ -561,37 +615,106 @@ function ListPicker({
   onOpen: (id: string) => void;
   onCreated: (id: string) => void;
   onDeleted: () => void;
-  /** New order of list ids; also the order "study all" learns new words in. */
-  onReorder: (order: string[]) => void;
+  /** The whole tree in display order; also the order new words are learned in. */
+  onReorder: (order: { id: string; parentId: string | null }[]) => void;
 }) {
-  // Drag-to-reorder by the ⠿ handle (dnd-kit). PointerSensor covers mouse
-  // and touch (the handle is touch-action: none); the keyboard sensor lets a
-  // focused handle move with Space + arrows.
+  const groupSource = groupSourceOf(config);
+  const isGroup = (l: WordList) => l.source === groupSource;
+  const flat = useMemo(() => flatten(lists), [lists]);
+
+  // Collapsed groups, remembered per page.
+  const collapsedKey = `lk:words-collapsed:${config.base}`;
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      setCollapsed(new Set(JSON.parse(localStorage.getItem(collapsedKey) ?? "[]")));
+    } catch {}
+  }, [collapsedKey]);
+  const toggle = (id: string) =>
+    setCollapsed((c) => {
+      const n = new Set(c);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      try {
+        localStorage.setItem(collapsedKey, JSON.stringify([...n]));
+      } catch {}
+      return n;
+    });
+
+  // Drag: up/down reorders, the sideways offset picks the depth (nest under
+  // the row above, or come out a level). The dragged row's subtree moves with
+  // it, so it is hidden during the drag.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-  const onDragEnd = ({ active, over }: DragEndEvent) => {
-    if (!over || active.id === over.id) return;
-    const ids = lists.map((l) => l.id);
-    onReorder(arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id))));
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const [offsetX, setOffsetX] = useState(0);
+  const items = useMemo(() => {
+    const hide = new Set(collapsed);
+    if (activeId) hide.add(activeId);
+    return visible(flat, hide);
+  }, [flat, collapsed, activeId]);
+  const projected =
+    activeId && overId ? projectDrop(items, activeId, overId, offsetX, INDENT) : null;
+  const resetDrag = () => {
+    setActiveId(null);
+    setOverId(null);
+    setOffsetX(0);
   };
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (over && projected) {
+      const order = applyDrop(flat, items, String(active.id), String(over.id), projected.parentId);
+      const before = flat.map((x) => `${x.id}>${x.parentId}`).join();
+      if (order.map((x) => `${x.id}>${x.parentId}`).join() !== before) onReorder(order);
+    }
+    resetDrag();
+  };
+
+  const totals = useMemo(() => {
+    const own = (l: WordList): Totals => ({
+      due: l.due,
+      learning: l.learning,
+      mastered: l.mastered,
+      cards: l.cards,
+      total: catalog.find((c) => c.id === l.source)?.count ?? 0,
+    });
+    const m = new Map<string, Totals>();
+    for (const row of flat) {
+      const sum = own(row);
+      for (const id of descendants(flat, row.id)) {
+        const d = own(flat.find((x) => x.id === id)!);
+        sum.due += d.due;
+        sum.learning += d.learning;
+        sum.mastered += d.mastered;
+        sum.cards += d.cards;
+        sum.total += d.total;
+      }
+      m.set(row.id, sum);
+    }
+    return m;
+  }, [flat, catalog]);
+
   const [busy, setBusy] = useState(false);
   const langs = useMemo(() => [...new Set(catalog.map((c) => c.lang))], [catalog]);
   const [lang, setLang] = useState<string>("");
   const added = new Set(lists.map((l) => l.source));
+  const studyable = lists.filter((l) => !isGroup(l));
 
-  // 1–9 open the matching list, so the whole flow works without a mouse.
+  // 1–9 open the matching row, 0 studies everything — no mouse needed.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.altKey || e.ctrlKey || e.metaKey) return;
+      const t = e.target as HTMLElement;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
       const n = Number(e.key);
-      if (e.key === "0" && lists.length > 1) onOpen(ALL);
-      else if (n >= 1 && n <= 9 && lists[n - 1]) onOpen(lists[n - 1].id);
+      if (e.key === "0" && studyable.length > 1) onOpen(ALL);
+      else if (n >= 1 && n <= 9 && items[n - 1]) onOpen(items[n - 1].id);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [lists, onOpen]);
+  }, [items, studyable.length, onOpen]);
 
   const add = async (c: CatalogMeta) => {
     setBusy(true);
@@ -606,6 +729,16 @@ function ListPicker({
     }
   };
 
+  const addGroup = async () => {
+    const name = prompt("Group name")?.trim();
+    if (!name) return;
+    await api("/api/words/lists", {
+      method: "POST",
+      body: JSON.stringify({ name, lang: "mul", source: groupSource }),
+    });
+    onDeleted(); // refresh
+  };
+
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-8">
       <div>
@@ -613,7 +746,7 @@ function ListPicker({
         <p className="opacity-70 text-sm mt-1">{config.intro}</p>
       </div>
 
-      {lists.length > 1 && (
+      {studyable.length > 1 && (
         <button
           onClick={() => onOpen(ALL)}
           className="w-full flex items-center gap-3 rounded-lg bg-emerald-700/40 hover:bg-emerald-700/60 px-4 py-3 text-left"
@@ -624,7 +757,7 @@ function ListPicker({
             <span className="block text-xs opacity-60">New words come in the order below.</span>
           </span>
           <span className="text-xs opacity-70 tabular-nums">
-            {lists.reduce((n, l) => n + l.due, 0)} due
+            {studyable.reduce((n, l) => n + l.due, 0)} due
           </span>
         </button>
       )}
@@ -633,24 +766,45 @@ function ListPicker({
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
-            modifiers={[restrictToVerticalAxis]}
+            onDragStart={({ active }) => {
+              setActiveId(String(active.id));
+              setOverId(String(active.id));
+            }}
+            onDragMove={({ delta }) => setOffsetX(delta.x)}
+            onDragOver={({ over }) => setOverId(over ? String(over.id) : null)}
             onDragEnd={onDragEnd}
+            onDragCancel={resetDrag}
           >
-            <SortableContext items={lists.map((l) => l.id)} strategy={verticalListSortingStrategy}>
-              {lists.map((l, i) => (
+            <SortableContext items={items.map((x) => x.id)} strategy={verticalListSortingStrategy}>
+              {items.map((row, i) => (
                 <SortableListRow
-                  key={l.id}
-                  list={l}
+                  key={row.id}
+                  list={row}
+                  depth={row.id === activeId && projected ? projected.depth : row.depth}
                   index={i}
-                  total={catalog.find((c) => c.id === l.source)?.count}
+                  totals={totals.get(row.id)!}
+                  isGroup={isGroup(row)}
+                  hasChildren={descendants(flat, row.id).length > 0}
+                  collapsed={collapsed.has(row.id)}
+                  onToggle={() => toggle(row.id)}
                   onOpen={onOpen}
                   onDeleted={onDeleted}
                 />
               ))}
             </SortableContext>
           </DndContext>
+          <p className="text-[11px] opacity-40">
+            Drag ⠿ up or down to reorder; drag it right to put a list inside the one above (like
+            Anki subdecks), left to take it out. Studying a group studies everything inside.
+          </p>
         </div>
       )}
+      <button
+        onClick={addGroup}
+        className="text-sm px-3 py-1.5 rounded bg-white/10 hover:bg-white/20"
+      >
+        + New group
+      </button>
 
       <div className="space-y-3">
         <h2 className="text-sm font-medium opacity-80">Add a list</h2>

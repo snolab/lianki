@@ -158,8 +158,33 @@ test("lists keep the user's order, and new lists go last", async () => {
   const repo = new WordsD1Repo(d1, "o@example.com");
   const a = await repo.createList({ name: "a", lang: "fr" });
   const b = await repo.createList({ name: "b", lang: "fr" });
-  await repo.reorder([b, a]);
+  await repo.reorder([{ id: b }, { id: a }]);
   const c = await repo.createList({ name: "c", lang: "fr" });
   expect((await repo.lists()).map((l) => l.name)).toEqual(["b", "a", "c"]);
   expect(c).toBeTruthy();
+});
+
+test("lists nest under groups; cycles are refused; deleting a group lifts its children", async () => {
+  const d1 = createTestD1(testSchema());
+  const repo = new WordsD1Repo(d1, "g@example.com");
+  const g = await repo.createList({ name: "French", lang: "fr", source: "group:words" });
+  const a = await repo.createList({ name: "a", lang: "fr", source: "fr-freq-1" });
+  const b = await repo.createList({ name: "b", lang: "fr", source: "fr-freq-2" });
+  await repo.reorder([{ id: g }, { id: a, parentId: g }, { id: b, parentId: g }]);
+  expect((await repo.lists()).map((l) => [l.name, l.parentId])).toEqual([
+    ["French", null],
+    ["a", g],
+    ["b", g],
+  ]);
+  // A group cannot go inside its own child.
+  await repo.reorder([{ id: a }, { id: g, parentId: a }, { id: b, parentId: g }]);
+  expect((await repo.getList(g))!.parentId).toBe(a);
+  await repo.reorder([
+    { id: g, parentId: a },
+    { id: a, parentId: g },
+  ]);
+  expect((await repo.getList(a))!.parentId).toBeNull();
+  await repo.reorder([{ id: g }, { id: a, parentId: g }]);
+  await repo.deleteList(g);
+  expect((await repo.getList(a))!.parentId).toBeNull();
 });

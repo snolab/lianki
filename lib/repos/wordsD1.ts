@@ -15,6 +15,8 @@ export type WordList = {
   name: string;
   lang: string;
   source: string | null;
+  /** Parent group's id, or null at the top level. */
+  parentId: string | null;
   cursor: number;
   params: WordListParams;
   newDay: string | null;
@@ -56,6 +58,7 @@ type ListRow = {
   name: string;
   lang: string;
   source: string | null;
+  parent_id?: string | null;
   cursor: number;
   params: string;
   new_day: string | null;
@@ -81,6 +84,7 @@ const toList = (r: ListRow): WordList => ({
   name: r.name,
   lang: r.lang,
   source: r.source,
+  parentId: r.parent_id ?? null,
   cursor: r.cursor,
   params: normalizeParams(safeJson(r.params)),
   newDay: r.new_day,
@@ -190,13 +194,26 @@ export class WordsD1Repo {
     return id;
   }
 
-  /** Save the user's order of lists: `ids` first to last; others keep theirs after. */
-  async reorder(ids: string[]): Promise<void> {
-    for (const [i, id] of ids.entries())
+  /**
+   * Save the tree: `items` in display order, each with its parent (null = top
+   * level). A parent must be one of this user's lists and must not be the item
+   * itself or below it; anything else falls back to top level.
+   */
+  async reorder(items: { id: string; parentId?: string | null }[]): Promise<void> {
+    const ids = new Set(items.map((x) => x.id));
+    const parentOf = new Map(items.map((x) => [x.id, x.parentId ?? null]));
+    const cycles = (id: string, parent: string | null) => {
+      for (let p = parent, n = 0; p && n < 64; p = parentOf.get(p) ?? null, n++)
+        if (p === id) return true;
+      return false;
+    };
+    for (const [i, { id, parentId }] of items.entries()) {
+      const parent = parentId && ids.has(parentId) && !cycles(id, parentId) ? parentId : null;
       await this.db
-        .prepare("UPDATE word_lists SET position = ? WHERE email = ? AND id = ?")
-        .bind(i, this.email, id)
+        .prepare("UPDATE word_lists SET position = ?, parent_id = ? WHERE email = ? AND id = ?")
+        .bind(i, parent, this.email, id)
         .run();
+    }
   }
 
   async updateParams(id: string, params: unknown): Promise<WordListParams> {
@@ -209,6 +226,15 @@ export class WordsD1Repo {
   }
 
   async deleteList(id: string): Promise<void> {
+    // A deleted group's children move up to its own parent.
+    await this.db
+      .prepare(
+        `UPDATE word_lists SET parent_id =
+           (SELECT parent_id FROM word_lists WHERE email = ? AND id = ?)
+         WHERE email = ? AND parent_id = ?`,
+      )
+      .bind(this.email, id, this.email, id)
+      .run();
     for (const table of ["word_reviews", "word_cards"]) {
       await this.db
         .prepare(`DELETE FROM ${table} WHERE email = ? AND list_id = ?`)

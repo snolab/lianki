@@ -174,6 +174,20 @@ try {
       .filter((l) => l.lang === first.lang)
       .map((l) => l.id);
   check(after[0] === before[1] && after[1] === before[0], "dragging a handle reorders the lists");
+
+  // Drag the second row right: it nests under the first (Anki-style subdeck).
+  await page.waitForTimeout(500);
+  const n2 = await handles.nth(1).boundingBox();
+  await page.mouse.move(n2.x + n2.width / 2, n2.y + n2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(n2.x + n2.width / 2 + 40, n2.y + n2.height / 2, { steps: 8 });
+  await page.mouse.up();
+  let nested = null;
+  for (let i = 0; i < 10 && !nested?.parentId; i++, await page.waitForTimeout(300))
+    nested = (
+      await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
+    ).find((l) => l.id === after[1]);
+  check(nested?.parentId === after[0], "dragging right nests a list under the one above");
   check(errs.length === 0, `no page errors${errs.length ? ": " + errs.join(" | ") : ""}`);
 } catch (e) {
   check(false, `threw: ${e.message}`);
