@@ -220,6 +220,41 @@ function useSpeech(lang: string) {
   );
 }
 
+type Draft = { day: string; items: Item[]; marks: [string, Rating][]; flushed: [string, Rating][] };
+
+/** Today's draft screen for a list, if one was saved. */
+function readDraft(key: string): Draft | null {
+  try {
+    const d = JSON.parse(localStorage.getItem(key) ?? "null") as Draft | null;
+    return d && d.day === localDay() && Array.isArray(d.items) && d.items.length ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDraft(
+  key: string,
+  page: Item[],
+  marks: Map<number, Rating>,
+  flushed: Map<string, Rating>,
+) {
+  try {
+    const draft: Draft = {
+      day: localDay(),
+      items: page,
+      marks: [...marks].filter(([i]) => page[i]).map(([i, r]) => [page[i].term, r]),
+      flushed: [...flushed],
+    };
+    localStorage.setItem(key, JSON.stringify(draft));
+  } catch {}
+}
+
+function clearDraft(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {}
+}
+
 const localDay = () => new Date().toLocaleDateString("en-CA");
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -480,6 +515,12 @@ function Study({
   const [help, setHelp] = useState(false);
   /** Rows marked in order, so Z can undo the last one. */
   const markOrder = useRef<number[]>([]);
+  /**
+   * Marks already sent by a flush on leaving the page (term → rating), so the
+   * screen's own submit does not grade them a second time.
+   */
+  const flushed = useRef<Map<string, Rating>>(new Map());
+  const draftKey = `lk:words-draft:${list.id}`;
 
   /** Pull up to `n` catalog words that have no card yet. */
   const takeNew = useCallback(
@@ -527,13 +568,24 @@ function Study({
       }));
       const fresh = await takeNew(session.newRemaining);
       if (!alive) return;
-      setQueue([...due, ...spreadPairs(fresh, pageSizeRef.current, due.length)]);
+      const queued = [...due, ...spreadPairs(fresh, pageSizeRef.current, due.length)];
+      // A draft is the screen that was open when the page was left: put it back
+      // first, with its marks, and drop those words from the rest of the queue.
+      const draft = readDraft(draftKey);
+      if (draft) {
+        const onScreen = new Set(draft.items.map((it) => it.term));
+        setQueue([...draft.items, ...queued.filter((it) => !onScreen.has(it.term))]);
+        const index = new Map(draft.items.map((it, i) => [it.term, i]));
+        setMarks(new Map(draft.marks.map(([t, r]) => [index.get(t)!, r])));
+        markOrder.current = draft.marks.map(([t]) => index.get(t)!);
+        flushed.current = new Map(draft.flushed);
+      } else setQueue(queued);
       setLoading(false);
     })().catch((e) => setSyncError((e as Error).message));
     return () => {
       alive = false;
     };
-  }, [list.id, meta, takeNew, base]);
+  }, [list.id, meta, takeNew, base, draftKey]);
 
   const page = queue.slice(pos, pos + pageSize);
 
@@ -542,9 +594,10 @@ function Study({
       const now = Date.now();
       dwell.current.set(row, (dwell.current.get(row) ?? 0) + now - rowSince.current);
       rowSince.current = now;
-      setRow(Math.max(0, Math.min(page.length - 1, to)));
+      // On desktop the Next button sits after the last word as one more row.
+      setRow(Math.max(0, Math.min(touch ? page.length - 1 : page.length, to)));
     },
-    [row, page.length],
+    [row, page.length, touch],
   );
 
   const mark = useCallback((i: number, r: Rating | null) => {
@@ -567,14 +620,19 @@ function Study({
       if (!page.length) return;
       const now = Date.now();
       dwell.current.set(row, (dwell.current.get(row) ?? 0) + now - rowSince.current);
-      const reviews = page.map((it, i) => ({
-        term: it.term,
-        reading: it.reading ?? null,
-        back: it.back,
-        rating: marks.get(i) ?? rest,
-        elapsedMs: Math.round(dwell.current.get(i) ?? 0),
-        newIndex: it.kind === "new" ? it.newIndex : null,
-      }));
+      const reviews = page
+        .map((it, i) => ({
+          term: it.term,
+          reading: it.reading ?? null,
+          back: it.back,
+          rating: marks.get(i) ?? rest,
+          elapsedMs: Math.round(dwell.current.get(i) ?? 0),
+          newIndex: it.kind === "new" ? it.newIndex : null,
+        }))
+        // Already graded by a flush on leaving, with the same mark.
+        .filter((r) => flushed.current.get(r.term) !== r.rating);
+      flushed.current = new Map();
+      clearDraft(draftKey);
       const byTerm = new Map(page.map((it) => [it.term, it]));
       setPos((p) => p + page.length);
       setMarks(new Map());
@@ -584,6 +642,7 @@ function Study({
       dwell.current = new Map();
       rowSince.current = Date.now();
       setDone((d) => d + page.length);
+      if (!reviews.length) return;
       setPending((n) => n + 1);
       api<{ cards: WordCard[] }>(`/api/words/lists/${list.id}/review`, {
         method: "POST",
@@ -600,8 +659,55 @@ function Study({
         .catch((e) => setSyncError((e as Error).message))
         .finally(() => setPending((n) => n - 1));
     },
-    [page, marks, row, list.id],
+    [page, marks, row, list.id, draftKey],
   );
+
+  // Save the open screen and its marks as a draft on every change, so a
+  // refresh or a closed tab comes back to the same screen.
+  useEffect(() => {
+    if (!loading && page.length) writeDraft(draftKey, page, marks, flushed.current);
+  }, [loading, page, marks, draftKey]);
+
+  // Leaving the page (hidden, closed, refreshed) sends the marks made so far.
+  // Unmarked words are not counted as Good — they stay on the draft screen.
+  const latest = useRef({ page, marks });
+  latest.current = { page, marks };
+  const flush = useCallback(() => {
+    const { page, marks } = latest.current;
+    const reviews = [...marks]
+      .filter(([i, r]) => page[i] && flushed.current.get(page[i].term) !== r)
+      .map(([i, r]) => ({
+        term: page[i].term,
+        reading: page[i].reading ?? null,
+        back: page[i].back,
+        rating: r,
+        // No newIndex: the catalog cursor must not skip the unmarked words
+        // before this one; they still need introducing.
+        newIndex: null,
+      }));
+    if (!reviews.length) return;
+    const body = JSON.stringify({ day: localDay(), reviews });
+    const url = `/api/words/lists/${list.id}/review`;
+    const sent = navigator.sendBeacon?.(url, new Blob([body], { type: "application/json" }));
+    if (!sent)
+      fetch(url, {
+        method: "POST",
+        body,
+        keepalive: true,
+        headers: { "content-type": "application/json" },
+      }).catch(() => {});
+    for (const r of reviews) flushed.current.set(r.term, r.rating);
+    writeDraft(draftKey, page, marks, flushed.current);
+  }, [list.id, draftKey]);
+  useEffect(() => {
+    const onHide = () => document.visibilityState === "hidden" && flush();
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", flush);
+    };
+  }, [flush]);
 
   const more = useCallback(async () => {
     const fresh = await takeNew(pageSize);
@@ -616,6 +722,10 @@ function Study({
       // R/I up, F/U down: home-row alternatives to the arrows for either hand.
       if (["ArrowDown", "KeyF", "KeyU"].includes(e.code)) moveRow(row + 1);
       else if (["ArrowUp", "KeyR", "KeyI"].includes(e.code)) moveRow(row - 1);
+      // On the Next row, Space or a grade key submits the screen, the grade
+      // going to every unmarked word (W = rest Good, D = rest Easy, …).
+      else if (row === page.length && e.code === "Space") submit(3);
+      else if (row === page.length && KEY_RATING[e.code] && !e.shiftKey) submit(KEY_RATING[e.code]);
       else if (e.code === "Space")
         setRevealed((s) => {
           const n = new Set(s);
@@ -659,7 +769,10 @@ function Study({
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-8">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm mb-4">
-        <button className="opacity-60 hover:opacity-100 whitespace-nowrap" onClick={onExit}>
+        <button
+          className="opacity-60 hover:opacity-100 whitespace-nowrap"
+          onClick={() => (flush(), onExit())}
+        >
           ← lists
         </button>
         <span className="font-medium">{list.name}</span>
@@ -785,7 +898,11 @@ function Study({
                 <span>A Again · S Hard · D Easy · Enter = rest Good · ? all keys</span>
               )}
               <button
-                className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 opacity-100 text-xs shrink-0"
+                className={`px-3 py-1 rounded hover:bg-white/20 opacity-100 text-xs shrink-0 ${
+                  row === page.length
+                    ? "bg-emerald-600 text-white outline outline-1 outline-white/60"
+                    : "bg-white/10"
+                }`}
                 onClick={() => submit(3)}
               >
                 Next ⏎

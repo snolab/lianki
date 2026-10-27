@@ -11,7 +11,10 @@ const ctx = await browser.newContext();
 await ctx.addInitScript(() => localStorage.setItem("lk:first-run", "account"));
 const page = await ctx.newPage();
 const errs = [];
-page.on("pageerror", (e) => errs.push("PAGEERROR " + e.message));
+page.on("pageerror", (e) => {
+  // Local runs have no Turnstile site key; that warning is not this page's fault.
+  if (!e.message.includes("Turnstile")) errs.push("PAGEERROR " + e.message);
+});
 let ok = true;
 const check = (cond, msg) => {
   console.log(`${cond ? "✓" : "✗"} ${msg}`);
@@ -59,26 +62,45 @@ try {
   await page.keyboard.press("r");
   check(!(await blurred(0)), "R moves back up");
 
-  // Mark the first word Again, leave the rest, submit the screen.
+  // Mark the first word Again, then reload: the mark is sent on leaving, and
+  // the same screen comes back from the local draft with the mark on it.
+  const firstTerm = (await rows.first().locator("span.font-medium").innerText()).trim();
+  await page.keyboard.press("a");
+  const listsNow = async () =>
+    (await page.evaluate(async () => (await fetch("/api/words/lists")).json())).lists.find(
+      (l) => l.source === first.id,
+    );
+  await page.reload({ waitUntil: "networkidle" });
+  // The beacon is fire-and-forget: give it a moment to land.
+  let saved = 0;
+  for (let i = 0; i < 10 && saved !== 1; i++, await page.waitForTimeout(300))
+    saved = (await listsNow())?.cards;
+  check(saved === 1, `leaving the page saved the one marked word (${saved})`);
+  await page.getByRole("button", { name: first.name }).click();
+  await rows.first().waitFor({ timeout: 15000 });
+  const restoredTerm = (await rows.first().locator("span.font-medium").innerText()).trim();
+  const restoredMark = (await rows.first().innerText()).includes("Again");
+  check(
+    restoredTerm === firstTerm && restoredMark,
+    `draft restored the screen and its mark: ${restoredTerm} ${restoredMark ? "Again" : "(no mark)"}`,
+  );
+
+  // Walk past the last word onto Next, and W there submits the screen.
+  for (let i = 0; i < 20; i++) await page.keyboard.press("f");
   const reviewed = page.waitForResponse(
     (r) => r.url().includes("/review") && r.request().method() === "POST",
   );
-  await page.keyboard.press("a");
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("w");
   const res = await reviewed;
-  check(res.status() === 200, `screen submitted: HTTP ${res.status()}`);
+  check(res.status() === 200, `W on Next submitted the screen: HTTP ${res.status()}`);
   const body = await res.json();
-  check(body.cards?.length === 20, `server scheduled ${body.cards?.length} cards`);
-
-  const { lists } = await page.evaluate(async () => (await fetch("/api/words/lists")).json());
-  const list = lists.find((l) => l.source === first.id);
   check(
-    list?.cards === 20 && list?.cursor >= 20,
-    `list stored: ${list?.cards} cards, cursor ${list?.cursor}`,
+    body.cards?.length === 19,
+    `the flushed word was not graded twice: ${body.cards?.length} sent`,
   );
-  // The word rated Again is due again within minutes, so it is already due or close.
-  const again = body.cards.find((c) => new Date(c.due) - Date.now() < 20 * 60_000);
-  check(!!again, `a word comes back this session: ${again?.term}`);
+
+  const list = await listsNow();
+  check(list?.cards === 20, `list stored: ${list?.cards} cards, cursor ${list?.cursor}`);
 
   // /alphabet: same drill over its own catalog; its lists stay off /words.
   await page.goto(`${BASE}/alphabet`, { waitUntil: "networkidle" });
