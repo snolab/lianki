@@ -58,6 +58,7 @@ try {
     rows
       .nth(i)
       .locator("span.text-sm")
+      .first()
       .evaluate((el) => el.className.includes("blur-["));
   await page.keyboard.press("f");
   check(!(await blurred(1)) && (await blurred(0)), "F moves down and reveals the focused row");
