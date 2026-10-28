@@ -170,6 +170,22 @@ try {
   await page.keyboard.press("e"); // back off, for the checks below
   check(await blurred(5), "E turns it off again");
 
+  // "Server voice" reads with the server's recordings even where the browser
+  // can speak (stubbed: no AI call, nothing audible).
+  await page.route("**/api/words/tts?*", (r) =>
+    r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") }),
+  );
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("switch", { name: "Server voice" }).click();
+  await page.keyboard.press("f");
+  await page
+    .waitForFunction(() => window.__played.length > 0, null, { timeout: 5000 })
+    .catch(() => {});
+  check((await page.evaluate(() => window.__played.length)) > 0, "Server voice plays server audio");
+  await page.getByRole("switch", { name: "Server voice" }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.unroute("**/api/words/tts?*");
+
   // Server word audio validates before any (paid) generation.
   const ttsStatus = await page.evaluate(async () =>
     Promise.all(
