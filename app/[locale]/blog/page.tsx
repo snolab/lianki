@@ -134,6 +134,7 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
   if (!isSupportedLocale(locale)) notFound();
 
   const { appName, nav } = getIntlayer("landing-page", locale);
+  const shellNav = getIntlayer("app-shell", locale).nav;
   const { heading } = getIntlayer("blog-page", locale);
 
   // Try to get user if logged in (optional)
@@ -154,12 +155,12 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
         learnLabel={nav.learn}
         importLabel={nav.import}
         aiVocabLabel={nav.aiVocab}
-        signInLabel={nav.signIn}
-        dashboardLabel={nav.dashboard}
-        profileLabel={nav.profile}
-        preferencesLabel={nav.preferences}
-        membershipLabel={nav.membership}
-        signOutLabel={nav.signOut}
+        signInLabel={shellNav.signIn}
+        dashboardLabel={shellNav.dashboard}
+        profileLabel={shellNav.profile}
+        preferencesLabel={shellNav.preferences}
+        membershipLabel={shellNav.membership}
+        signOutLabel={shellNav.signOut}
         user={user}
       />
 

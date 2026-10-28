@@ -9,33 +9,27 @@ import { useRouter } from "next/navigation";
 
 type Step = "email" | "password" | "magic-sent";
 
-export default function SignInClient() {
-  const {
-    heading,
-    signInWithGithub,
-    signInWithGoogle,
-    checkEmail,
-    emailPlaceholder,
-    sending,
-    sendSignInLink,
-  } = useIntlayer("sign-in-page");
+/**
+ * Sign in = sign up: an unknown email gets an account on first sign-in.
+ *
+ * Email comes first — Google and GitHub are unreachable from mainland China —
+ * and goes straight to sending a sign-in link. The password step exists only
+ * when the server allows passwords (dev QA); production never asks for one,
+ * since it could not work there.
+ */
+export default function SignInClient({ passwordEnabled }: { passwordEnabled: boolean }) {
+  const t = useIntlayer("sign-in-page");
   const router = useRouter();
   const turnstileRef = useRef<TurnstileInstance | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-  const [showTurnstile, setShowTurnstile] = useState(false);
+  const [turnstileState, setTurnstileState] = useState<"loading" | "ready" | "failed">("loading");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [step, setStep] = useState<Step>("email");
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
-
-  function handleEmailContinue(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setStep("password");
-    setShowTurnstile(true);
-  }
+  const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
   function handleBack() {
     setStep("email");
@@ -72,7 +66,7 @@ export default function SignInClient() {
     });
   }
 
-  async function handleMagicLink() {
+  function sendLink() {
     if (!turnstileToken) return;
     setError("");
     startTransition(async () => {
@@ -87,38 +81,127 @@ export default function SignInClient() {
     });
   }
 
+  function handleEmailSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (passwordEnabled) setStep("password");
+    else sendLink();
+  }
+
   if (step === "magic-sent") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 p-4">
         <div className="text-4xl">✉️</div>
-        <p className="text-center text-lg">{checkEmail}</p>
+        <p className="text-center text-lg">{t.checkEmail}</p>
         <p className="text-sm text-gray-500">{email}</p>
+        <p className="text-sm text-gray-500 text-center max-w-sm">{t.checkSpam}</p>
         <button
           type="button"
           onClick={() => setStep("email")}
           className="text-sm text-blue-600 hover:underline"
         >
-          Use a different email
+          {t.useDifferentEmail}
         </button>
       </div>
     );
   }
 
+  const turnstile = siteKey ? (
+    <div className="space-y-1">
+      <Turnstile
+        ref={turnstileRef}
+        siteKey={siteKey}
+        onWidgetLoad={() => setTurnstileState("ready")}
+        onSuccess={(token) => {
+          setTurnstileToken(token);
+          setTurnstileState("ready");
+        }}
+        onExpire={() => {
+          turnstileRef.current?.reset();
+          setTurnstileToken(null);
+        }}
+        onError={() => {
+          setTurnstileToken(null);
+          setTurnstileState("failed");
+        }}
+        options={{ theme: "auto" }}
+      />
+      {turnstileState === "loading" && <p className="text-xs text-gray-500">{t.captchaChecking}</p>}
+      {turnstileState === "failed" && (
+        <button
+          type="button"
+          className="text-xs text-red-500 hover:underline"
+          onClick={() => {
+            setTurnstileState("loading");
+            turnstileRef.current?.reset();
+          }}
+        >
+          {t.captchaFailed}
+        </button>
+      )}
+    </div>
+  ) : null;
+
+  const blockedNote = t.blockedNote.value;
+
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 p-4">
-      <h1 className="text-2xl font-bold">{heading}</h1>
+      <div className="text-center space-y-2 max-w-sm">
+        <h1 className="text-2xl font-bold">{t.heading}</h1>
+        <p className="text-sm text-gray-500">{t.subtitle}</p>
+      </div>
 
       <div className="w-full max-w-sm space-y-3">
         {step === "email" ? (
           <>
-            {/* Social */}
+            {/* Email first: it works everywhere. */}
+            <form onSubmit={handleEmailSubmit} className="space-y-3">
+              <div>
+                <label htmlFor="email" className="sr-only">
+                  {t.emailPlaceholder}
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  placeholder={t.emailPlaceholder.value}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full border border-gray-300 dark:border-gray-600 px-3 py-2.5 rounded-lg dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              {!passwordEnabled && turnstile}
+              {error && (
+                <p role="alert" className="text-red-500 text-sm">
+                  {error}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={isPending || (!passwordEnabled && !turnstileToken)}
+                className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
+              >
+                {passwordEnabled ? "Continue" : isPending ? t.sending : t.sendSignInLink}
+              </button>
+            </form>
+
+            <div className="relative py-2">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200 dark:border-gray-700" />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="px-2 bg-[var(--background)] text-gray-400">{t.otherWays}</span>
+              </div>
+            </div>
+
             <button
               type="button"
               onClick={() => authClient.signIn.social({ provider: "google", callbackURL: "/list" })}
               className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <GoogleIcon />
-              <span>{signInWithGoogle}</span>
+              <span>{t.signInWithGoogle}</span>
             </button>
 
             <button
@@ -127,48 +210,20 @@ export default function SignInClient() {
               className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <GitHubIcon />
-              <span>{signInWithGithub}</span>
+              <span>{t.signInWithGithub}</span>
             </button>
+            {blockedNote && <p className="text-xs text-gray-500 text-center">{blockedNote}</p>}
 
-            <div className="relative py-2">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200 dark:border-gray-700" />
-              </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="px-2 bg-white dark:bg-gray-900 text-gray-400">
-                  or continue with email
-                </span>
-              </div>
-            </div>
-
-            {/* Email step */}
-            <form onSubmit={handleEmailContinue} className="space-y-3">
-              <div>
-                <label htmlFor="email" className="sr-only">
-                  {emailPlaceholder}
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  placeholder={emailPlaceholder.value}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full border border-gray-300 dark:border-gray-600 px-3 py-2.5 rounded-lg dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-              >
-                Continue
-              </button>
-            </form>
+            <a
+              href="/list"
+              className="block text-center text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 pt-2"
+            >
+              {t.continueAsGuest}
+            </a>
           </>
         ) : (
           <>
-            {/* Password step */}
+            {/* Password step: dev QA only (passwordEnabled). */}
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <button
                 type="button"
@@ -211,39 +266,6 @@ export default function SignInClient() {
                 {isPending ? "Signing in…" : "Sign in"}
               </button>
             </form>
-
-            {/* Magic link fallback */}
-            <div className="relative py-2">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200 dark:border-gray-700" />
-              </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="px-2 bg-white dark:bg-gray-900 text-gray-400">no password?</span>
-              </div>
-            </div>
-
-            {showTurnstile && (
-              <Turnstile
-                ref={turnstileRef}
-                siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
-                onSuccess={(t) => setTurnstileToken(t)}
-                onExpire={() => {
-                  turnstileRef.current?.reset();
-                  setTurnstileToken(null);
-                }}
-                onError={() => setTurnstileToken(null)}
-                options={{ theme: "auto" }}
-              />
-            )}
-
-            <button
-              type="button"
-              disabled={isPending || !turnstileToken}
-              onClick={handleMagicLink}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors text-sm"
-            >
-              {isPending ? sending : sendSignInLink}
-            </button>
           </>
         )}
       </div>

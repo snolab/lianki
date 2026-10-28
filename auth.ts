@@ -35,6 +35,15 @@ function runtimeNodeEnv(): string | undefined {
   return proc?.env?.[key];
 }
 
+/**
+ * Dev-only email+password sign-in/up, so the full flow can be QA'd locally
+ * without OAuth, SMTP or Turnstile. Never in production; the sign-in page asks
+ * this too, so it only offers a password where one can work.
+ */
+export function passwordAuthEnabled(): boolean {
+  return runtimeNodeEnv() !== "production" && process.env.DEV_EMAIL_PASSWORD_AUTH === "1";
+}
+
 /** Backend-agnostic better-auth options (everything except `database`). */
 function baseOptions() {
   return {
@@ -47,14 +56,8 @@ function baseOptions() {
     // honoured — see lib/trusted-origins.ts.
     trustedOrigins: trustedOrigins(),
 
-    // Dev-only email+password sign-in/up so the full flow can be QA'd locally
-    // without OAuth, SMTP, or Turnstile. Production stays passwordless (magic
-    // link + OAuth): this is honored only outside production AND when explicitly
-    // opted in via DEV_EMAIL_PASSWORD_AUTH=1, so it can never be enabled on the
-    // deployed app. The sign-in UI already drives the password path.
-    emailAndPassword: {
-      enabled: runtimeNodeEnv() !== "production" && process.env.DEV_EMAIL_PASSWORD_AUTH === "1",
-    },
+    // Production stays passwordless (magic link + OAuth); see passwordAuthEnabled.
+    emailAndPassword: { enabled: passwordAuthEnabled() },
 
     // Note: trialEndsAt / proEndsAt are managed out-of-band by lib/membership.ts
     // (direct collection / D1 writes), so they are intentionally not declared as
@@ -90,12 +93,30 @@ function baseOptions() {
       ...(isEmailConfigured()
         ? [
             magicLink({
+              // 15 minutes, not the 5-minute default: mail to some providers
+              // (QQ, 163) can take longer than that to arrive.
+              expiresIn: 15 * 60,
               sendMagicLink: async ({ email, url }) => {
+                // Bilingual, with a plain-text part: a bare English one-link
+                // mail tends to land in spam with Chinese providers.
                 await sendEmail({
                   to: email,
-                  subject: "Sign in to Lianki",
-                  text: `Sign in to Lianki: ${url}`,
-                  html: `<a href="${url}">Sign in to Lianki</a>`,
+                  subject: "Sign in to Lianki 登录炼記",
+                  text: [
+                    "Sign in to Lianki — open this link within 15 minutes:",
+                    "登录炼記（Lianki）——请在 15 分钟内打开以下链接：",
+                    "",
+                    url,
+                    "",
+                    "If you did not ask for this, ignore this email.",
+                    "如果不是你本人操作，请忽略此邮件。",
+                  ].join("\n"),
+                  html:
+                    `<p>Sign in to Lianki — open this link within 15 minutes.<br>` +
+                    `登录炼記（Lianki）——请在 15 分钟内打开下面的链接。</p>` +
+                    `<p><a href="${url}">Sign in / 登录</a></p>` +
+                    `<p style="color:#888">If you did not ask for this, ignore this email.<br>` +
+                    `如果不是你本人操作，请忽略此邮件。</p>`,
                 });
               },
             }),
