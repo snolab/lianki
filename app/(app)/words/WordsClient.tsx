@@ -1017,45 +1017,6 @@ function Study({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listIds, catalog, takeNew, ensureCatalog, base]);
 
-  // Endless: when fewer than AHEAD ungraded words are left below the cursor,
-  // fetch more — remaining due words first, then new ones. Stops only when
-  // every catalog runs out.
-  const [exhausted, setExhausted] = useState(false);
-  const fetching = useRef(false);
-  useEffect(() => {
-    if (loading || exhausted || fetching.current || queue.length - row > AHEAD) return;
-    fetching.current = true;
-    const queued = new Set(queue.map(keyOf));
-    const append = (items: Item[]) =>
-      setQueue((q) => [...q, ...spreadPairs(items, PAGE, q.length, q.slice(-PAGE))]);
-    (async () => {
-      const due: Item[] = [];
-      const waiting = lists.filter((l) => moreDue.current.has(l.id));
-      if (waiting.length) {
-        const s = await api<{ lists: Record<string, { due: WordCard[] }>; more: boolean }>(
-          `/api/words/session?lists=${encodeURIComponent(waiting.map((l) => l.id).join(","))}&day=${localDay()}&limit=${DUE_PAGE}`,
-        );
-        await Promise.all(waiting.map(ensureCatalog));
-        for (const list of waiting) {
-          const fresh = (s.lists[list.id]?.due ?? []).filter(
-            (c) => !queued.has(keyOf({ listId: list.id, term: c.term })),
-          );
-          if (!fresh.length || !s.more) moreDue.current.delete(list.id);
-          due.push(...dueItems(list, fresh));
-        }
-      }
-      if (due.length) return append(due);
-      const fresh = await takeNew(AHEAD);
-      if (!fresh.length) setExhausted(true);
-      else append(fresh);
-    })()
-      .catch((e) => setSyncError((e as Error).message))
-      .finally(() => {
-        fetching.current = false;
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, exhausted, queue.length, row, takeNew]);
-
   /** Per list, the first catalog word not yet introduced: the lowest ungraded new word in the queue. */
   const cursorOf = (listId: string, except: number) =>
     Math.min(
@@ -1224,6 +1185,48 @@ function Study({
     else if (top + ROW_H > el.scrollTop + el.clientHeight - ROW_H * 2)
       el.scrollTop = top + ROW_H * 3 - el.clientHeight;
   }, [row, ROW_H]);
+
+  /** How far down the list the user has got: the cursor, or the last row in view. */
+  const reach = Math.max(row, Math.floor((scrollTop + viewH) / ROW_H));
+  // Endless: when fewer than AHEAD ungraded words are left below the cursor
+  // or below the bottom of the view (touch has no cursor; scrolling doesn't
+  // move it), fetch more — remaining due words first, then new ones. Stops only when
+  // every catalog runs out.
+  const [exhausted, setExhausted] = useState(false);
+  const fetching = useRef(false);
+  useEffect(() => {
+    if (loading || exhausted || fetching.current || queue.length - reach > AHEAD) return;
+    fetching.current = true;
+    const queued = new Set(queue.map(keyOf));
+    const append = (items: Item[]) =>
+      setQueue((q) => [...q, ...spreadPairs(items, PAGE, q.length, q.slice(-PAGE))]);
+    (async () => {
+      const due: Item[] = [];
+      const waiting = lists.filter((l) => moreDue.current.has(l.id));
+      if (waiting.length) {
+        const s = await api<{ lists: Record<string, { due: WordCard[] }>; more: boolean }>(
+          `/api/words/session?lists=${encodeURIComponent(waiting.map((l) => l.id).join(","))}&day=${localDay()}&limit=${DUE_PAGE}`,
+        );
+        await Promise.all(waiting.map(ensureCatalog));
+        for (const list of waiting) {
+          const fresh = (s.lists[list.id]?.due ?? []).filter(
+            (c) => !queued.has(keyOf({ listId: list.id, term: c.term })),
+          );
+          if (!fresh.length || !s.more) moreDue.current.delete(list.id);
+          due.push(...dueItems(list, fresh));
+        }
+      }
+      if (due.length) return append(due);
+      const fresh = await takeNew(AHEAD);
+      if (!fresh.length) setExhausted(true);
+      else append(fresh);
+    })()
+      .catch((e) => setSyncError((e as Error).message))
+      .finally(() => {
+        fetching.current = false;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, exhausted, queue.length, reach, takeNew]);
 
   // Say the focused row aloud on a loop (word, then example) while the page
   // is active; paused in a hidden tab or background window.
