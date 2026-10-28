@@ -8,6 +8,9 @@ import { appHref } from "@/lib/app-locale";
 export default async function LandingPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
   const { appName, nav, hero, features, howItWorks, footer } = getIntlayer("landing-page", locale);
+  // Account labels live in the app shell's dictionary; the landing one never
+  // declared them, which left the sign-in link empty.
+  const shellNav = getIntlayer("app-shell", locale).nav;
   const rawContact = getIntlayer("contact-form", locale);
 
   // Create plain object to ensure proper serialization to client component
@@ -48,12 +51,12 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
         learnLabel={nav.learn}
         importLabel={nav.import}
         aiVocabLabel={nav.aiVocab}
-        signInLabel={nav.signIn}
-        dashboardLabel={nav.dashboard}
-        profileLabel={nav.profile}
-        preferencesLabel={nav.preferences}
-        membershipLabel={nav.membership}
-        signOutLabel={nav.signOut}
+        signInLabel={shellNav.signIn}
+        dashboardLabel={shellNav.dashboard}
+        profileLabel={shellNav.profile}
+        preferencesLabel={shellNav.preferences}
+        membershipLabel={shellNav.membership}
+        signOutLabel={shellNav.signOut}
         user={user}
       />
 

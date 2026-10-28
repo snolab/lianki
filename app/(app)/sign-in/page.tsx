@@ -3,6 +3,7 @@ import { getIntlayer } from "intlayer";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import SignInClient from "./SignInClient";
 import { appLocale } from "@/lib/app-locale.server";
+import { passwordAuthEnabled } from "@/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export default async function SignInPage() {
   return (
     <div className="flex flex-col">
       <div className="flex-grow">
-        <SignInClient />
+        <SignInClient passwordEnabled={passwordAuthEnabled()} />
       </div>
     </div>
   );
