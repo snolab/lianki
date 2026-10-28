@@ -6,6 +6,7 @@ describe("isAppRoute", () => {
     expect(isAppRoute("/list")).toBe(true);
     expect(isAppRoute("/read/abc123")).toBe(true);
     expect(isAppRoute("/ai-vocab/ja")).toBe(true);
+    expect(isAppRoute("/dev/roadmap")).toBe(true);
   });
 
   it("does not match the landing page or blog, which keep /{locale}/ prefixes", () => {

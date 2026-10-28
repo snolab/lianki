@@ -241,6 +241,13 @@ test.describe("Auth-required pages (guest redirect)", () => {
     expect(errors).toHaveLength(0);
   });
 
+  test("/dev/roadmap is a 404 for a guest (owner-only, existence not revealed)", async ({
+    request,
+  }) => {
+    const response = await request.get(url("/dev/roadmap"), { maxRedirects: 0 });
+    expect(response.status()).toBe(404);
+  });
+
   test("/roadmap does not 500 on unauthenticated access", async ({ page }) => {
     const response = await page.goto(url("/roadmap"));
     // Must not throw a 500 server error regardless of auth state
