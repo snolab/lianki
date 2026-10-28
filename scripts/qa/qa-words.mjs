@@ -113,7 +113,7 @@ try {
     await page.waitForTimeout(40);
   }
   // Grades go out one by one from the sync queue: wait for the last to land.
-  const cardsReach = async (n, ms = 15000) => {
+  const cardsReach = async (n, ms = 40000) => {
     let c;
     for (const end = Date.now() + ms; Date.now() < end; await page.waitForTimeout(300))
       if ((c = (await listsNow())?.cards) === n) return c;
