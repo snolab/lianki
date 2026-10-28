@@ -20,6 +20,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/words/tree";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
+import { ease, nextGoal, termTarget } from "@/lib/words/columns";
 import { projectSwipe, releaseVelocity, SWIPE_VELOCITY_MS, swipeRating } from "@/lib/words/swipe";
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
 import { idbAdd, idbAll, idbDelete, idbGet, idbPut, type PendingOp } from "@/lib/words/idb";
@@ -1825,7 +1826,70 @@ function Study({
   const OVERSCAN = 20;
   const from = Math.max(0, Math.floor((scrollTop - pad) / ROW_H) - OVERSCAN);
   const to = Math.min(queue.length, Math.ceil((scrollTop - pad + viewH) / ROW_H) + OVERSCAN);
-  const hasExamples = queue.slice(from, to).some((it) => it.ex);
+  // Sticky over the whole loaded queue: a column appearing and disappearing
+  // as example-less stretches scroll by would shift every other column.
+  const hasExamples = useMemo(() => queue.some((it) => it.ex), [queue]);
+
+  // Term column width (lib/words/columns.ts): fitted to the terms near the
+  // middle of the screen, eased into place through --term-w on the list.
+  const measureTerm = useMemo(() => {
+    if (typeof document === "undefined") return () => 0;
+    const ctx = document.createElement("canvas").getContext("2d");
+    const family = getComputedStyle(document.body).fontFamily;
+    const cache = new Map<string, number>();
+    return (it: Item) => {
+      const k = keyOf(it);
+      let w = cache.get(k);
+      if (w === undefined && ctx) {
+        ctx.font = `500 ${touch ? 16 : 15}px ${family}`;
+        w = ctx.measureText(it.term).width;
+        if (!config.readingOnBack && it.reading && it.reading !== it.term) {
+          ctx.font = `400 12px ${family}`;
+          w += 8 + ctx.measureText(it.reading).width;
+        }
+        cache.set(k, w);
+      }
+      return w ?? 0;
+    };
+  }, [touch, config.readingOnBack]);
+  const rem = useMemo(
+    () =>
+      typeof document === "undefined"
+        ? 16
+        : parseFloat(getComputedStyle(document.documentElement).fontSize) || 16,
+    [],
+  );
+  const termGoal = useRef<number | null>(null);
+  const termShown = useRef<number | null>(null);
+  useEffect(() => {
+    if (!viewH || to <= from) return;
+    const centre = scrollTop + viewH / 2;
+    const rows = [];
+    for (let i = from; i < to; i++)
+      rows.push({
+        width: measureTerm(queue[i]),
+        distance: Math.abs(pad + i * ROW_H + ROW_H / 2 - centre),
+      });
+    termGoal.current = nextGoal(termGoal.current, termTarget(rows, viewH, rem, touch), rem);
+    const el = listRef.current;
+    if (!el) return;
+    if (termShown.current === null) {
+      termShown.current = termGoal.current;
+      el.style.setProperty("--term-w", `${termShown.current}px`);
+      return;
+    }
+    // Glide every row together: one variable, eased per frame.
+    let raf = 0;
+    let last = performance.now();
+    const step = (now: number) => {
+      termShown.current = ease(termShown.current!, termGoal.current!, now - last);
+      last = now;
+      el.style.setProperty("--term-w", `${termShown.current}px`);
+      if (termShown.current !== termGoal.current) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [from, to, scrollTop, viewH, pad, queue, measureTerm, rem, touch]);
 
   const done = grades.size;
   const minutes = (Date.now() - started.current) / 60_000;
@@ -2036,10 +2100,10 @@ function Study({
                   }}
                   className={`group grid items-center gap-2 px-2 leading-none cursor-pointer select-none border-b border-black/5 dark:border-white/5 ${
                     touch
-                      ? "grid-cols-[minmax(6rem,12rem)_1fr_3rem] text-base"
+                      ? "grid-cols-[var(--term-w,8rem)_1fr_3rem] text-base"
                       : hasExamples
-                        ? "grid-cols-[1.25rem_minmax(8rem,16rem)_minmax(10rem,1fr)_minmax(12rem,1.4fr)_3.5rem] text-[15px]"
-                        : "grid-cols-[1.25rem_minmax(8rem,18rem)_1fr_3.5rem] text-[15px]"
+                        ? "grid-cols-[1.25rem_var(--term-w,12rem)_minmax(10rem,1fr)_minmax(12rem,1.4fr)_3.5rem] text-[15px]"
+                        : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] text-[15px]"
                   } ${rating ? RATING_STYLE[rating] : ""} ${
                     i === row && !touch
                       ? "outline outline-1 -outline-offset-1 outline-black/40 dark:outline-white/40"
