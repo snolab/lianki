@@ -9,6 +9,35 @@ const browser = await chromium.launch();
 const ctx = await browser.newContext();
 // A signed-up user has answered the first-run question; skip its modal.
 await ctx.addInitScript(() => localStorage.setItem("lk:first-run", "account"));
+// Grade tones: a silent stand-in for Web Audio that records each note's pitch,
+// so the wiring is checked and nothing ever sounds on the test machine.
+const silentAudio = () => {
+  window.__tones = [];
+  const param = () => ({
+    value: 0,
+    setValueAtTime(v) {
+      this.value = v;
+    },
+    exponentialRampToValueAtTime() {},
+    cancelScheduledValues() {},
+    setTargetAtTime() {},
+  });
+  const node = () => ({ connect: (n) => n, disconnect() {} });
+  window.AudioContext = class {
+    currentTime = 0;
+    state = "running";
+    destination = node();
+    resume = async () => {};
+    createGain = () => ({ ...node(), gain: param() });
+    createOscillator = () => {
+      const o = { ...node(), type: "", frequency: param(), stop() {} };
+      o.start = () => window.__tones.push(Math.round(o.frequency.value));
+      return o;
+    };
+  };
+  window.webkitAudioContext = window.AudioContext;
+};
+await ctx.addInitScript(silentAudio);
 const page = await ctx.newPage();
 const errs = [];
 page.on("pageerror", (e) => {
@@ -99,6 +128,9 @@ try {
     l?.cards === 0 && (await statusOf(0)) === "new",
     `after undo the word is new again (${l?.cards} cards)`,
   );
+  // Each grade sounded its tone: Again falls, Easy rises, undo glides.
+  const tones = await page.evaluate(() => window.__tones.join(","));
+  check(tones === "330,262,523,784,880", `grade tones: Again, Easy, undo (${tones})`);
 
   // The URL keeps the list; a refresh lands back in it.
   check(/[?&]list=/.test(page.url()), `the open list is in the URL: ${new URL(page.url()).search}`);
@@ -178,6 +210,7 @@ try {
       ...devices["iPhone 13"],
       storageState: await ctx.storageState(),
     });
+    await phone.addInitScript(silentAudio);
     const m = await phone.newPage();
     await m.goto(page.url(), { waitUntil: "networkidle" });
     const mrows = m.locator('[role="listitem"]');
