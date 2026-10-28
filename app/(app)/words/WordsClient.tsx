@@ -2175,11 +2175,9 @@ function Study({
                   // Desktop click = Again; on touch a tap reveals and reads it.
                   onTap={() =>
                     touch
-                      ? (speech.once(
-                          spokenText(it, it.lang, !!config.readingOnBack),
-                          it.lang,
-                          true,
-                        ),
+                      ? // A tap focuses the row, as the cursor does on desktop.
+                        (setFocusLine(i),
+                        speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang, true),
                         setRevealed((s) => {
                           const n = new Set(s);
                           if (n.has(i)) n.delete(i);
@@ -2334,6 +2332,34 @@ function WordRow({
   const held = useRef(false);
   /** The axis this gesture committed to (lib/words/swipe.ts lockAxis). */
   const axis = useRef<Axis | null>(null);
+  const rowEl = useRef<HTMLDivElement>(null);
+  // touch-action: pan-y alone does not hold: iOS Safari still takes over a
+  // sideways drag that wanders vertically, scrolling and cancelling the
+  // swipe. A non-passive touchmove keeps the page from scrolling once the
+  // gesture is sideways — and while it is undecided but leaning sideways,
+  // since a scroll that has started can no longer be stopped.
+  useEffect(() => {
+    const el = rowEl.current;
+    if (!el || !touch) return;
+    let x0 = 0;
+    let y0 = 0;
+    const down = (e: TouchEvent) => {
+      x0 = e.touches[0].clientX;
+      y0 = e.touches[0].clientY;
+    };
+    const move = (e: TouchEvent) => {
+      if (axis.current === "v" || !e.cancelable) return;
+      const dx = Math.abs(e.touches[0].clientX - x0);
+      const dy = Math.abs(e.touches[0].clientY - y0);
+      if (axis.current === "h" || dx > dy) e.preventDefault();
+    };
+    el.addEventListener("touchstart", down, { passive: true });
+    el.addEventListener("touchmove", move, { passive: false });
+    return () => {
+      el.removeEventListener("touchstart", down);
+      el.removeEventListener("touchmove", move);
+    };
+  }, [touch]);
   /** The touch landed on a moving list: it stops the fling, nothing more. */
   const catching = useRef(false);
   /** Recent finger positions, for the release velocity. */
@@ -2369,6 +2395,7 @@ function WordRow({
   );
   return (
     <div
+      ref={rowEl}
       role="listitem"
       data-i={index}
       className={`relative ${className}`}
