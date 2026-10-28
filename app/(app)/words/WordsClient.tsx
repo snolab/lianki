@@ -32,11 +32,10 @@ import { formatInterval, previewInterval } from "@/lib/words/schedule";
  * request in the background; the next screen never waits for the network.
  */
 
+/** Spacing for spreadPairs: the two directions of a pair stay this far apart. */
 const PAGE = 20;
 /** Due words per /session fetch; more are fetched as the queue drains. */
 const DUE_PAGE = 200;
-/** Fewer, taller rows on a touch screen: 44px is a comfortable thumb target. */
-const PAGE_TOUCH = 12;
 /**
  * Touch grading by swipe distance: a short swipe is the milder grade, a long
  * one the stronger. ← short Hard, ← long Again; → short Good, → long Easy.
@@ -284,43 +283,6 @@ function useSpeech() {
   );
 }
 
-type Draft = { day: string; items: Item[]; marks: [string, Rating][]; flushed: [string, Rating][] };
-
-/** Today's draft screen for a list, if one was saved. */
-function readDraft(key: string): Draft | null {
-  try {
-    const d = JSON.parse(localStorage.getItem(key) ?? "null") as Draft | null;
-    return d && d.day === localDay() && Array.isArray(d.items) && d.items.every((it) => it.listId)
-      ? d
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeDraft(
-  key: string,
-  page: Item[],
-  marks: Map<number, Rating>,
-  flushed: Map<string, Rating>,
-) {
-  try {
-    const draft: Draft = {
-      day: localDay(),
-      items: page,
-      marks: [...marks].filter(([i]) => page[i]).map(([i, r]) => [keyOf(page[i]), r]),
-      flushed: [...flushed],
-    };
-    localStorage.setItem(key, JSON.stringify(draft));
-  } catch {}
-}
-
-function clearDraft(key: string) {
-  try {
-    localStorage.removeItem(key);
-  } catch {}
-}
-
 /** Due time (ms) of a stored card JSON. */
 const dueOf = (card: string) => {
   try {
@@ -357,7 +319,7 @@ export type DrillConfig = {
 const WORDS: DrillConfig = {
   base: "/words",
   title: "Word lists",
-  intro: "Fast review: a screen of words at once. Mark only the ones you miss, press Enter.",
+  intro: "An endless list: grade each word with A / S / W / D — it is saved at once. Z undoes.",
   readingOnBack: true,
 };
 
@@ -541,10 +503,10 @@ function SortableListRow({
       }}
       className={`relative flex items-center gap-3 rounded-lg px-4 py-3 ${
         isDragging
-          ? "z-10 bg-white/15 ring-1 ring-white/30 shadow-lg"
+          ? "z-10 bg-black/10 dark:bg-white/15 ring-1 ring-black/20 dark:ring-white/30 shadow-lg"
           : isGroup
-            ? "bg-white/[0.08]"
-            : "bg-white/5"
+            ? "bg-black/[0.07] dark:bg-white/[0.08]"
+            : "bg-black/5 dark:bg-white/5"
       }`}
     >
       <span
@@ -578,7 +540,7 @@ function SortableListRow({
         </div>
       </button>
       <button
-        className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20"
+        className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
         onClick={() => onOpen(l.id)}
       >
         Study
@@ -749,7 +711,7 @@ function ListPicker({
       {studyable.length > 1 && (
         <button
           onClick={() => onOpen(ALL)}
-          className="w-full flex items-center gap-3 rounded-lg bg-emerald-700/40 hover:bg-emerald-700/60 px-4 py-3 text-left"
+          className="w-full flex items-center gap-3 rounded-lg bg-emerald-500/20 dark:bg-emerald-700/40 hover:bg-emerald-500/30 dark:hover:bg-emerald-700/60 px-4 py-3 text-left"
         >
           <kbd className="hidden sm:inline text-xs opacity-50">0</kbd>
           <span className="flex-1">
@@ -801,7 +763,7 @@ function ListPicker({
       )}
       <button
         onClick={addGroup}
-        className="text-sm px-3 py-1.5 rounded bg-white/10 hover:bg-white/20"
+        className="text-sm px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
       >
         + New group
       </button>
@@ -813,7 +775,7 @@ function ListPicker({
             <button
               key={l}
               onClick={() => setLang(l)}
-              className={`px-3 py-1 rounded text-sm ${l === lang ? "bg-white/25" : "bg-white/10 hover:bg-white/20"}`}
+              className={`px-3 py-1 rounded text-sm ${l === lang ? "bg-black/20 dark:bg-white/25" : "bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"}`}
             >
               {l}
             </button>
@@ -830,7 +792,7 @@ function ListPicker({
                   <button
                     disabled={busy || added.has(c.id)}
                     onClick={() => add(c)}
-                    className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40"
+                    className="px-3 py-1 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-40"
                   >
                     {added.has(c.id) ? "added" : "add"}
                   </button>
@@ -855,6 +817,12 @@ function interleave<T>(groups: T[][]): T[] {
   return out;
 }
 
+/**
+ * The study list: one endless column of words, each graded on its own and
+ * saved the moment it is graded. Due words come first, then new words (green);
+ * misses come back further down within minutes. Grading a word again re-grades
+ * it (the server replaces the review while the word is not due yet); Z undoes.
+ */
 function Study({
   config,
   lists,
@@ -863,25 +831,33 @@ function Study({
   onExit,
 }: {
   config: DrillConfig;
-  /** One list, or every list for "study all". */
+  /** One list, or every list of a group / "study all". */
   lists: WordList[];
   catalog: CatalogMeta[];
   title: string;
   onExit: () => void;
 }) {
   const [queue, setQueue] = useState<Item[]>([]);
-  const [pos, setPos] = useState(0);
-  const [marks, setMarks] = useState<Map<number, Rating>>(new Map());
+  /** Grade per queue index; `card` is the server's card once saved. */
+  const [grades, setGrades] = useState<Map<number, { rating: Rating; card?: string }>>(new Map());
   const [row, setRow] = useState(0);
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [done, setDone] = useState(0);
-  const [pending, setPending] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pending, setPending] = useState(0);
+  const [help, setHelp] = useState(false);
   const started = useRef(Date.now());
+  const touch = useTouch();
+  const speech = useSpeech();
+  const base = config.base;
+  const listIds = lists.map((l) => l.id).join(",");
+  const paramsOf = useMemo(() => new Map(lists.map((l) => [l.id, l.params])), [lists]);
+
   const catalogs = useRef<Map<string, Entry[]>>(new Map());
-  /** A word's example sentence, from its list's catalog (cards store none). */
   const byTerm = useRef<Map<string, Map<string, Entry>>>(new Map());
+  /** A word's example sentence, from its list's catalog (cards store none). */
   const exampleOf = (listId: string, term: string) => {
     let m = byTerm.current.get(listId);
     if (!m) {
@@ -892,31 +868,30 @@ function Study({
     return e?.ex ? { ex: e.ex, exTr: e.exTr } : {};
   };
   /** Per list: next catalog index to consider for new words. */
-  const nextNew = useRef<Map<string, number>>(new Map(lists.map((l) => [l.id, l.cursor])));
-  const listIds = lists.map((l) => l.id).join(",");
-  const paramsOf = useMemo(() => new Map(lists.map((l) => [l.id, l.params])), [lists]);
-  const dwell = useRef<Map<number, number>>(new Map());
-  const rowSince = useRef(Date.now());
-  const touch = useTouch();
-  const base = config.base;
-  const speech = useSpeech();
-  const pageSize = touch ? PAGE_TOUCH : PAGE;
-  // Read by the one-time session load, which must not re-run when it changes.
-  const pageSizeRef = useRef(pageSize);
-  pageSizeRef.current = pageSize;
-  const [help, setHelp] = useState(false);
-  /** Rows marked in order, so Z can undo the last one. */
-  const markOrder = useRef<number[]>([]);
-  /**
-   * Marks already sent by a flush on leaving the page (term → rating), so the
-   * screen's own submit does not grade them a second time.
-   */
-  const flushed = useRef<Map<string, Rating>>(new Map());
+  const nextNew = useRef<Map<string, number>>(new Map());
   /** Lists whose due words did not all fit in one session fetch. */
   const moreDue = useRef<Set<string>>(new Set());
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const draftKey =
-    lists.length === 1 ? `lk:words-draft:${lists[0].id}` : `lk:words-draft:all${base}`;
+  /** Queue indices in the order they were graded (and not undone): Z walks this back. */
+  const gradeLog = useRef<number[]>([]);
+  /** Indices whose miss was already queued again further down. */
+  const requeued = useRef<Set<number>>(new Set());
+  /**
+   * Words in a learning step (due again within minutes) wait here and join the
+   * end of the list only once due — met early, grading them would re-grade
+   * the review just made instead of recording a new one.
+   */
+  const later = useRef<{ item: Item; due: number }[]>([]);
+  useEffect(() => {
+    const t = setInterval(() => {
+      const now = Date.now();
+      const ready = later.current.filter((x) => x.due <= now);
+      if (!ready.length) return;
+      later.current = later.current.filter((x) => x.due > now);
+      setQueue((q) => [...q, ...ready.map((x) => x.item)]);
+    }, 3000);
+    return () => clearInterval(t);
+  }, []);
+  const dwellSince = useRef(Date.now());
 
   /** Pull up to `n` catalog words of one list that have no card yet. */
   const takeNewFrom = useCallback(async (list: WordList, n: number): Promise<Item[]> => {
@@ -930,8 +905,8 @@ function Study({
         method: "POST",
         body: JSON.stringify({ terms: slice.map((e) => e.term) }),
       });
-      // Advance only once the slice is checked: a failed request must not
-      // leave its words behind the cursor, never to be introduced.
+      // Advance only once the slice is checked, so a failed request leaves no
+      // word behind the cursor.
       nextNew.current.set(list.id, from + slice.length);
       const skip = new Set(known);
       slice.forEach((e, i) => {
@@ -942,10 +917,7 @@ function Study({
     return out;
   }, []);
 
-  /**
-   * Up to `n` new words, in the user's list order: the first list until it
-   * runs out, then the next.
-   */
+  /** Up to `n` new words in the user's list order: the first list until it runs out. */
   const takeNew = useCallback(
     async (n: number) => {
       const out: Item[] = [];
@@ -959,10 +931,21 @@ function Study({
     [listIds, takeNewFrom],
   );
 
+  const dueItems = (list: WordList, cards: WordCard[]): Item[] =>
+    cards.map((c) => ({
+      ...exampleOf(list.id, c.term),
+      term: c.term,
+      reading: c.reading ?? undefined,
+      back: c.back,
+      kind: "due",
+      listId: list.id,
+      lang: list.lang,
+      card: c.card,
+    }));
+
   useEffect(() => {
     let alive = true;
-    // Start from the stored cursors every run: a discarded run (React Strict
-    // Mode mounts twice in dev) must not have advanced them.
+    // Start from the stored cursors every run (Strict Mode mounts twice in dev).
     nextNew.current = new Map(lists.map((l) => [l.id, l.cursor]));
     (async () => {
       const loaded = await Promise.all(
@@ -980,224 +963,36 @@ function Study({
           ]);
           catalogs.current.set(list.id, entries);
           if (session.due.length >= DUE_PAGE) moreDue.current.add(list.id);
-          const due: Item[] = session.due.map((c) => ({
-            ...exampleOf(list.id, c.term),
-            term: c.term,
-            reading: c.reading ?? undefined,
-            back: c.back,
-            kind: "due",
-            listId: list.id,
-            lang: list.lang,
-            card: c.card,
-          }));
-          return { due, fresh: await takeNewFrom(list, session.newRemaining) };
+          return { due: dueItems(list, session.due), newRemaining: session.newRemaining, list };
         }),
       );
+      // New words follow the list order, within each list's daily allowance.
+      const fresh: Item[] = [];
+      for (const l of loaded) fresh.push(...(await takeNewFrom(l.list, l.newRemaining)));
       if (!alive) return;
       const due = interleave(loaded.map((l) => l.due));
-      // New words follow the user's list order; due words alternate lists.
-      const fresh = loaded.flatMap((l) => l.fresh);
-      const size = pageSizeRef.current;
-      const queued = [...due, ...spreadPairs(fresh, size, due.length, due)];
-      // A draft is the screen that was open when the page was left: put it back
-      // first, with its marks, and drop those words from the rest of the queue.
-      const draft = readDraft(draftKey);
-      const ids = new Set(lists.map((l) => l.id));
-      if (draft && draft.items.every((it) => ids.has(it.listId))) {
-        const onScreen = new Set(draft.items.map(keyOf));
-        setQueue([...draft.items, ...queued.filter((it) => !onScreen.has(keyOf(it)))]);
-        const index = new Map(draft.items.map((it, i) => [keyOf(it), i]));
-        setMarks(new Map(draft.marks.map(([k, r]) => [index.get(k)!, r])));
-        markOrder.current = draft.marks.map(([k]) => index.get(k)!);
-        flushed.current = new Map(draft.flushed);
-      } else setQueue(queued);
+      setQueue([...due, ...spreadPairs(fresh, PAGE, due.length, due)]);
       setLoading(false);
     })().catch((e) => alive && setLoadError((e as Error).message));
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listIds, catalog, takeNewFrom, base, draftKey]);
+  }, [listIds, catalog, takeNewFrom, base]);
 
-  const page = queue.slice(pos, pos + pageSize);
-  const hasExamples = page.some((it) => it.ex);
-
-  const moveRow = useCallback(
-    (to: number) => {
-      const now = Date.now();
-      dwell.current.set(row, (dwell.current.get(row) ?? 0) + now - rowSince.current);
-      rowSince.current = now;
-      // On desktop the Next button sits after the last word as one more row.
-      setRow(Math.max(0, Math.min(touch ? page.length - 1 : page.length, to)));
-    },
-    [row, page.length, touch],
-  );
-
-  const mark = useCallback((i: number, r: Rating | null) => {
-    setMarks((m) => {
-      const n = new Map(m);
-      if (r == null) n.delete(i);
-      else n.set(i, r);
-      return n;
-    });
-    markOrder.current = markOrder.current.filter((x) => x !== i);
-    if (r != null) {
-      markOrder.current.push(i);
-      navigator.vibrate?.(10);
-    }
-  }, []);
-
-  /**
-   * Submit the screen. Every word must carry an explicit grade — nothing is
-   * graded in bulk; `next` sends the cursor to the first ungraded word instead.
-   */
-  const submit = useCallback(() => {
-    if (!page.length || page.some((_, i) => !marks.has(i))) return;
-    const now = Date.now();
-    dwell.current.set(row, (dwell.current.get(row) ?? 0) + now - rowSince.current);
-    const reviews = page
-      .map((it, i) => ({
-        listId: it.listId,
-        term: it.term,
-        reading: it.reading ?? null,
-        back: it.back,
-        rating: marks.get(i)!,
-        elapsedMs: Math.round(dwell.current.get(i) ?? 0),
-        newIndex: it.kind === "new" ? it.newIndex : null,
-      }))
-      // Already graded by a flush on leaving: never grade it twice, even if
-      // the mark changed afterwards.
-      .filter((r) => !flushed.current.has(keyOf(r)));
-    // Flushed misses still come back this session, like any other Again.
-    const flushedBack = page.filter((it) => (flushed.current.get(keyOf(it)) ?? 3) <= 2);
-    if (flushedBack.length)
-      setQueue((q) => [...q, ...flushedBack.map((it): Item => ({ ...it, kind: "again" }))]);
-    flushed.current = new Map();
-    // Per list, the first catalog word not yet introduced: the lowest new
-    // word still waiting in the queue, else where loading has got to.
-    const waiting = queue.slice(pos + page.length);
-    const cursorOf = (listId: string) =>
-      Math.min(
-        nextNew.current.get(listId) ?? 0,
-        ...waiting
-          .filter((it) => it.listId === listId && it.kind === "new")
-          .map((it) => it.newIndex ?? Infinity),
-      );
-    clearDraft(draftKey);
-    const byKey = new Map(page.map((it) => [keyOf(it), it]));
-    setPos((p) => p + page.length);
-    setMarks(new Map());
-    markOrder.current = [];
-    setRevealed(new Set());
-    setRow(0);
-    dwell.current = new Map();
-    rowSince.current = Date.now();
-    setDone((d) => d + page.length);
-    // One request per list on the screen.
-    for (const listId of new Set(reviews.map((r) => r.listId))) {
-      const mine = reviews.filter((r) => r.listId === listId).map(({ listId: _, ...r }) => r);
-      setPending((n) => n + 1);
-      api<{ cards: WordCard[] }>(`/api/words/lists/${listId}/review`, {
-        method: "POST",
-        body: JSON.stringify({ day: localDay(), reviews: mine, cursor: cursorOf(listId) }),
-        // Survives the tab closing right after Enter.
-        keepalive: true,
-      })
-        .then(({ cards }) => {
-          // Learning steps: words due again within minutes come back this session.
-          const back = cards
-            .filter((c) => new Date(c.due).getTime() - Date.now() < SESSION_WINDOW_MS)
-            .map(
-              (c): Item => ({
-                ...byKey.get(keyOf({ listId, term: c.term }))!,
-                kind: "again",
-                newIndex: undefined,
-                card: c.card,
-              }),
-            );
-          if (back.length) setQueue((q) => [...q, ...back]);
-          setSyncError(null);
-        })
-        .catch((e) => setSyncError((e as Error).message))
-        .finally(() => setPending((n) => n - 1));
-    }
-  }, [page, marks, row, draftKey, queue, pos]);
-
-  const firstUngraded = page.findIndex((_, i) => !marks.has(i));
-  /** Next: jump to the first ungraded word, or submit once all are graded. */
-  const next = useCallback(() => {
-    if (firstUngraded >= 0) {
-      moveRow(firstUngraded);
-      document
-        .querySelectorAll('[role="listitem"]')
-        [firstUngraded]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    } else submit();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firstUngraded, submit]);
-
-  // Save the open screen and its marks as a draft on every change, so a
-  // refresh or a closed tab comes back to the same screen.
-  useEffect(() => {
-    if (!loading && page.length) writeDraft(draftKey, page, marks, flushed.current);
-  }, [loading, page, marks, draftKey]);
-
-  // Leaving the page (hidden, closed, refreshed) sends the marks made so far.
-  // Unmarked words are not counted as Good — they stay on the draft screen.
-  const latest = useRef({ page, marks });
-  latest.current = { page, marks };
-  const flush = useCallback(() => {
-    const { page, marks } = latest.current;
-    const reviews = [...marks]
-      .filter(([i, r]) => page[i] && flushed.current.get(keyOf(page[i])) !== r)
-      .map(([i, r]) => ({
-        listId: page[i].listId,
-        term: page[i].term,
-        reading: page[i].reading ?? null,
-        back: page[i].back,
-        rating: r,
-        // No newIndex: the catalog cursor must not skip the unmarked words
-        // before this one; they still need introducing.
-        newIndex: null,
-      }));
-    if (!reviews.length) return;
-    for (const listId of new Set(reviews.map((r) => r.listId))) {
-      const mine = reviews.filter((r) => r.listId === listId).map(({ listId: _, ...r }) => r);
-      const body = JSON.stringify({ day: localDay(), reviews: mine });
-      const url = `/api/words/lists/${listId}/review`;
-      const sent = navigator.sendBeacon?.(url, new Blob([body], { type: "application/json" }));
-      if (!sent)
-        fetch(url, {
-          method: "POST",
-          body,
-          keepalive: true,
-          headers: { "content-type": "application/json" },
-        }).catch(() => {});
-    }
-    for (const r of reviews) flushed.current.set(keyOf(r), r.rating);
-    writeDraft(draftKey, page, marks, flushed.current);
-  }, [draftKey]);
-  useEffect(() => {
-    const onHide = () => document.visibilityState === "hidden" && flush();
-    document.addEventListener("visibilitychange", onHide);
-    window.addEventListener("pagehide", flush);
-    return () => {
-      document.removeEventListener("visibilitychange", onHide);
-      window.removeEventListener("pagehide", flush);
-    };
-  }, [flush]);
-
-  // No daily stop: when the queue runs low, keep pulling new words — anyone
-  // still here has time to learn more. Stops only when the catalogs run out.
+  // Endless: when fewer than this many ungraded words are left below the
+  // cursor, fetch more — remaining due words first, then new ones. Stops only
+  // when every catalog runs out.
+  const AHEAD = 40;
   const [exhausted, setExhausted] = useState(false);
   const fetching = useRef(false);
   useEffect(() => {
-    if (loading || exhausted || fetching.current || queue.length - pos > pageSize * 2) return;
+    if (loading || exhausted || fetching.current || queue.length - row > AHEAD) return;
     fetching.current = true;
     const queued = new Set(queue.map(keyOf));
-    const appendSpread = (items: Item[]) =>
-      setQueue((q) => [...q, ...spreadPairs(items, pageSize, q.length - pos, q.slice(pos))]);
-    // Due words the first fetch left out come before any new word.
-    const topUpDue = async () => {
+    const append = (items: Item[]) =>
+      setQueue((q) => [...q, ...spreadPairs(items, PAGE, q.length, q.slice(-PAGE))]);
+    (async () => {
       const due: Item[] = [];
       for (const list of lists.filter((l) => moreDue.current.has(l.id))) {
         const s = await api<{ due: WordCard[] }>(
@@ -1205,49 +1000,135 @@ function Study({
         );
         const fresh = s.due.filter((c) => !queued.has(keyOf({ listId: list.id, term: c.term })));
         if (!fresh.length) moreDue.current.delete(list.id);
-        for (const c of fresh)
-          due.push({
-            ...exampleOf(list.id, c.term),
-            term: c.term,
-            reading: c.reading ?? undefined,
-            back: c.back,
-            kind: "due",
-            listId: list.id,
-            lang: list.lang,
-            card: c.card,
-          });
+        due.push(...dueItems(list, fresh));
       }
-      return due;
-    };
-    topUpDue()
-      .then(async (due) => {
-        if (due.length) return appendSpread(due);
-        const fresh = await takeNew(pageSize * 2);
-        if (!fresh.length) setExhausted(true);
-        else appendSpread(fresh);
-      })
+      if (due.length) return append(due);
+      const fresh = await takeNew(AHEAD);
+      if (!fresh.length) setExhausted(true);
+      else append(fresh);
+    })()
       .catch((e) => setSyncError((e as Error).message))
       .finally(() => {
         fetching.current = false;
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, exhausted, queue.length, pos, pageSize, takeNew]);
+  }, [loading, exhausted, queue.length, row, takeNew]);
+
+  /** Per list, the first catalog word not yet introduced: the lowest ungraded new word in the queue. */
+  const cursorOf = (listId: string, except: number) =>
+    Math.min(
+      nextNew.current.get(listId) ?? 0,
+      ...queue
+        .map((it, i) => ({ it, i }))
+        .filter(
+          ({ it, i }) =>
+            it.listId === listId && it.kind === "new" && i !== except && !grades.has(i),
+        )
+        .map(({ it }) => it.newIndex ?? Infinity),
+    );
+
+  // The cursor also lives in a ref: keys pressed faster than React re-renders
+  // must each act on the row the previous key moved to.
+  const rowRef = useRef(0);
+  const queueLen = useRef(0);
+  queueLen.current = queue.length;
+  const moveRow = useCallback((to: number) => {
+    dwellSince.current = Date.now();
+    rowRef.current = Math.max(0, Math.min(queueLen.current - 1, to));
+    setRow(rowRef.current);
+  }, []);
+
+  /** Grade one word and save it right away. Grading it again re-grades it. */
+  const grade = (i: number, rating: Rating) => {
+    const it = queue[i];
+    if (!it) return;
+    const elapsedMs = i === rowRef.current ? Date.now() - dwellSince.current : null;
+    setGrades((g) => new Map(g).set(i, { rating }));
+    gradeLog.current = [...gradeLog.current.filter((x) => x !== i), i];
+    navigator.vibrate?.(10);
+    setPending((n) => n + 1);
+    api<{ cards: WordCard[] }>(`/api/words/lists/${it.listId}/review`, {
+      method: "POST",
+      body: JSON.stringify({
+        day: localDay(),
+        cursor: cursorOf(it.listId, i),
+        reviews: [
+          {
+            term: it.term,
+            reading: it.reading ?? null,
+            back: it.back,
+            rating,
+            elapsedMs,
+            newIndex: it.kind === "new" ? it.newIndex : null,
+          },
+        ],
+      }),
+      // Survives the tab closing right after the key press.
+      keepalive: true,
+    })
+      .then(({ cards }) => {
+        const c = cards[0];
+        if (!c) return;
+        setGrades((g) =>
+          g.get(i)?.rating === rating ? new Map(g).set(i, { rating, card: c.card }) : g,
+        );
+        // A miss comes back further down, within minutes (learning steps).
+        if (
+          !requeued.current.has(i) &&
+          new Date(c.due).getTime() - Date.now() < SESSION_WINDOW_MS
+        ) {
+          requeued.current.add(i);
+          later.current.push({
+            item: { ...it, kind: "again", newIndex: undefined, card: c.card },
+            due: new Date(c.due).getTime(),
+          });
+        }
+        setSyncError(null);
+      })
+      .catch((e) => setSyncError((e as Error).message))
+      .finally(() => setPending((n) => n - 1));
+  };
+
+  /**
+   * Z: undo the focused word's grade if it has one, else the most recent
+   * grade not yet undone (and move there). Repeated Z walks back in time.
+   * One level per word: the server keeps only the card before its last review.
+   */
+  const undo = (focusedOnly = false) => {
+    const at = rowRef.current;
+    const target = grades.has(at) ? at : focusedOnly ? -1 : (gradeLog.current.at(-1) ?? -1);
+    if (target < 0) return;
+    const it = queue[target];
+    gradeLog.current = gradeLog.current.filter((x) => x !== target);
+    setGrades((g) => {
+      const n = new Map(g);
+      n.delete(target);
+      return n;
+    });
+    moveRow(target);
+    api(`/api/words/lists/${it.listId}/undo`, {
+      method: "POST",
+      body: JSON.stringify({ term: it.term, day: localDay() }),
+    }).catch(() => setNotice(`“${it.term}” can't be undone further`));
+  };
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 2500);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const row = rowRef.current;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
-      // Holding a key repeats movement only: a held grade key must not run
-      // onto Next and grade the rest of the screen, nor a held Enter skip screens.
+      // Holding a key repeats movement only, never grading or undo.
       const moves = ["ArrowDown", "ArrowUp", "KeyF", "KeyU", "KeyR", "KeyI"];
       if (e.repeat && !moves.includes(e.code)) return e.preventDefault();
       // R/I up, F/U down: home-row alternatives to the arrows for either hand.
       if (["ArrowDown", "KeyF", "KeyU"].includes(e.code)) moveRow(row + 1);
       else if (["ArrowUp", "KeyR", "KeyI"].includes(e.code)) moveRow(row - 1);
-      // On the Next row, Space or a grade key acts as Next: to the first
-      // ungraded word, or submit when every word has its grade.
-      else if (row === page.length && (e.code === "Space" || KEY_RATING[e.code])) next();
       else if (e.code === "Space")
         setRevealed((s) => {
           const n = new Set(s);
@@ -1255,56 +1136,74 @@ function Study({
           else n.add(row);
           return n;
         });
-      else if (e.code === "KeyE") setRevealed(new Set(page.map((_, i) => i)));
-      else if (e.code === "Enter") next();
-      else if (e.code === "KeyZ" || e.code === "KeyM" || e.code === "Backspace") {
-        // Undo the last mark and go back to that row.
-        const last = markOrder.current.at(-1);
-        if (last == null) return;
-        mark(last, null);
-        moveRow(last);
-      } else if (e.code === "Escape") mark(row, null);
+      else if (e.code === "Enter") {
+        // Jump to the next word not graded yet.
+        const next = queue.findIndex((_, i) => i > row && !grades.has(i));
+        if (next >= 0) moveRow(next);
+      } else if (e.code === "KeyZ" || e.code === "KeyM" || e.code === "Backspace") undo();
+      else if (e.code === "Escape") undo(true);
       else if (e.key === "?") setHelp((h) => !h);
       else if (e.code === "KeyV") speech.toggle();
       else if (KEY_RATING[e.code] && !e.shiftKey) {
-        mark(row, KEY_RATING[e.code]);
+        grade(row, KEY_RATING[e.code]);
         moveRow(row + 1);
       } else return;
       e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [row, page, next, moveRow, mark, speech]);
+  });
 
-  // Say the focused row aloud, on a loop, while it stays focused.
-  // Paused while the tab is hidden or the window is in the background; the
-  // same row picks the loop back up when the page is active again.
+  // Keep the cursor in view as it moves.
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    listRef.current
+      ?.querySelector(`[data-i="${row}"]`)
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [row]);
+
+  // Say the focused row aloud on a loop (word, then example) while the page
+  // is active; paused in a hidden tab or background window.
   const active = usePageActive();
-  const focused = !touch && active ? page[row] : undefined;
+  const focused = !touch && active ? queue[row] : undefined;
   const say = focused ? spokenText(focused, focused.lang, !!config.readingOnBack) : "";
-  const sayLang = focused?.lang ?? "";
-  // The example is read after the word once the row is revealed, i.e. focused.
   const sayEx = focused?.ex ?? "";
+  const sayLang = focused?.lang ?? "";
   useEffect(() => speech.loop([say, sayEx], sayLang), [say, sayEx, sayLang, speech]);
 
+  // Windowed rendering: the list is endless, the DOM is not.
+  const ROW_H = touch ? 44 : 28;
+  const from = Math.max(0, row - 60);
+  const to = Math.min(queue.length, row + 80);
+  const hasExamples = queue.slice(from, to).some((it) => it.ex);
+
+  const done = grades.size;
   const minutes = (Date.now() - started.current) / 60_000;
-  const left = queue.length - pos;
-  const dueLeft = queue.slice(pos).filter((q) => q.kind !== "new").length;
+  const ahead = queue.filter((_, i) => i >= row && !grades.has(i));
+  const dueLeft = ahead.filter((it) => it.kind !== "new").length;
+
+  const status = (it: Item, i: number) => {
+    const g = grades.get(i);
+    if (g) {
+      // Saved: when it actually comes back. Not yet saved: the preview.
+      if (g.card) return formatInterval(dueOf(g.card) - Date.now());
+      return previewInterval(it.card, g.rating, paramsOf.get(it.listId)!);
+    }
+    if (it.kind === "new" || !it.card) return "new";
+    return `${formatInterval(Date.now() - dueOf(it.card))} ago`;
+  };
 
   return (
     // Full width: wide screens get room for longer explanations.
     <div className="w-full px-3 py-4 sm:px-8 sm:py-6">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm mb-4">
-        <button
-          className="opacity-60 hover:opacity-100 whitespace-nowrap"
-          onClick={() => (flush(), onExit())}
-        >
+      <div className="sticky top-0 z-10 -mx-3 sm:-mx-8 px-3 sm:px-8 py-2 mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm bg-[var(--background)] backdrop-blur">
+        <button className="opacity-60 hover:opacity-100 whitespace-nowrap" onClick={onExit}>
           ← lists
         </button>
         <span className="font-medium">{title}</span>
         <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
           {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
-          {left - dueLeft} new
+          {ahead.length - dueLeft} new
           {pending > 0 && " · saving…"}
           {speech.available && (
             <button className="ml-2 opacity-80" onClick={speech.toggle} title="Sound (V)">
@@ -1313,13 +1212,14 @@ function Study({
           )}
         </span>
       </div>
-      {syncError && <div className="text-red-400 text-sm mb-2">Not saved: {syncError}</div>}
+      {syncError && <div className="text-red-500 text-sm mb-2">Not saved: {syncError}</div>}
+      {notice && <div className="text-amber-600 dark:text-amber-300 text-sm mb-2">{notice}</div>}
 
       {loadError ? (
         <div className="space-y-3 py-8 text-center">
-          <div className="text-red-400">Couldn't load: {loadError}</div>
+          <div className="text-red-500">Couldn't load: {loadError}</div>
           <button
-            className="px-4 py-2 rounded bg-white/10 hover:bg-white/20"
+            className="px-4 py-2 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
             onClick={() => location.reload()}
           >
             Retry
@@ -1327,23 +1227,31 @@ function Study({
         </div>
       ) : loading ? (
         <div className="opacity-60">Loading…</div>
-      ) : page.length === 0 ? (
-        <div className="space-y-4 py-8 text-center">
-          <div className="text-lg">{exhausted ? "Every word learned. 🎉" : "Loading more…"}</div>
+      ) : queue.length === 0 ? (
+        <div className="py-8 text-center text-lg">
+          {exhausted ? "Every word learned. 🎉" : "Loading more…"}
         </div>
       ) : (
         <>
-          <div className="rounded-lg overflow-hidden border border-white/10" role="list">
-            {page.map((it, i) => {
-              const rating = marks.get(i);
-              // The keyboard cursor reveals its row, just as hovering does.
+          <div
+            ref={listRef}
+            className="rounded-lg border border-black/10 dark:border-white/10"
+            role="list"
+          >
+            <div style={{ height: from * ROW_H }} />
+            {queue.slice(from, to).map((it, k) => {
+              const i = from + k;
+              const g = grades.get(i);
+              const rating = g?.rating;
+              // The keyboard cursor reveals its row, as hovering does.
               const show = revealed.has(i) || (!touch && i === row);
               return (
                 <WordRow
-                  key={`${pos}-${i}`}
+                  key={i}
+                  index={i}
                   touch={touch}
                   onHover={() => moveRow(i)}
-                  // Desktop click = Again; on touch a tap reveals instead.
+                  // Desktop click = Again; on touch a tap reveals and reads it.
                   onTap={() =>
                     touch
                       ? (speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang),
@@ -1353,24 +1261,31 @@ function Study({
                           else n.add(i);
                           return n;
                         }))
-                      : mark(i, rating === 1 ? null : 1)
+                      : grade(i, 1)
                   }
-                  onSwipe={(r) => mark(i, rating === r ? null : r)}
-                  className={`group grid items-center gap-2 px-2 leading-none cursor-pointer select-none border-b border-white/5 last:border-0 ${
+                  onSwipe={(r) => grade(i, r)}
+                  className={`group grid items-center gap-2 px-2 leading-none cursor-pointer select-none border-b border-black/5 dark:border-white/5 ${
                     touch
-                      ? "grid-cols-[minmax(6rem,12rem)_1fr_3rem] h-11 text-base"
+                      ? "grid-cols-[minmax(6rem,12rem)_1fr_3rem] text-base"
                       : hasExamples
-                        ? "grid-cols-[1.25rem_minmax(8rem,16rem)_minmax(10rem,1fr)_minmax(12rem,1.4fr)_3.5rem] h-7 text-[15px]"
-                        : "grid-cols-[1.25rem_minmax(8rem,18rem)_1fr_3.5rem] h-7 text-[15px]"
+                        ? "grid-cols-[1.25rem_minmax(8rem,16rem)_minmax(10rem,1fr)_minmax(12rem,1.4fr)_3.5rem] text-[15px]"
+                        : "grid-cols-[1.25rem_minmax(8rem,18rem)_1fr_3.5rem] text-[15px]"
                   } ${rating ? RATING_STYLE[rating] : ""} ${
                     i === row && !touch
-                      ? "outline outline-1 -outline-offset-1 outline-white/40"
+                      ? "outline outline-1 -outline-offset-1 outline-black/40 dark:outline-white/40"
                       : ""
                   }`}
+                  style={{ height: ROW_H }}
                 >
                   {!touch && <span className="text-[10px] opacity-40">{i === row ? "▸" : ""}</span>}
                   <span
-                    className={`truncate font-medium ${it.kind === "new" ? "text-emerald-400" : it.kind === "again" ? "text-amber-300" : ""}`}
+                    className={`truncate font-medium ${
+                      it.kind === "new"
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : it.kind === "again"
+                          ? "text-amber-600 dark:text-amber-300"
+                          : ""
+                    }`}
                   >
                     {it.term}
                     {!config.readingOnBack && it.reading && it.reading !== it.term && (
@@ -1399,73 +1314,35 @@ function Study({
                       {it.exTr && <span className="ml-2 text-xs opacity-60">{it.exTr}</span>}
                     </span>
                   )}
-                  {/* Graded: when it comes back for that grade. Ungraded: "new",
-                      or how long the word has been due ("5m ago"). */}
+                  {/* Graded: when it comes back. Ungraded: "new", or how long it has been due. */}
                   <span
                     className={`text-[11px] text-right tabular-nums ${rating ? "opacity-90 font-medium" : "opacity-40"}`}
-                    title={rating ? `next, if ${RATING_LABEL[rating]}` : "due"}
+                    title={rating ? RATING_LABEL[rating] : "due"}
                   >
-                    {rating
-                      ? previewInterval(it.card, rating, paramsOf.get(it.listId)!)
-                      : it.kind === "new" || !it.card
-                        ? "new"
-                        : `${formatInterval(Date.now() - dueOf(it.card))} ago`}
+                    {status(it, i)}
                   </span>
                 </WordRow>
               );
             })}
+            <div style={{ height: (queue.length - to) * ROW_H }} />
           </div>
-          {touch ? (
-            <>
-              <div className="text-[11px] opacity-50 mt-2 pb-20">
-                tap = show · swipe ← a little Hard, far Again · swipe → a little Good, far Easy
-              </div>
-              <div className="fixed inset-x-0 bottom-0 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-black/80 backdrop-blur flex gap-2">
-                <button
-                  className="px-4 rounded-lg bg-white/10 text-sm"
-                  onClick={() =>
-                    setRevealed((s) =>
-                      s.size === page.length ? new Set() : new Set(page.map((_, i) => i)),
-                    )
-                  }
-                >
-                  {revealed.size === page.length ? "Hide" : "Show all"}
-                </button>
-                <button
-                  className={`flex-1 py-3 rounded-lg font-medium ${firstUngraded < 0 ? "bg-emerald-600 text-white" : "bg-white/15"}`}
-                  onClick={next}
-                >
-                  {firstUngraded < 0
-                    ? "Next"
-                    : `${page.filter((_, i) => !marks.has(i)).length} left to grade`}
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="flex items-start justify-between gap-4 mt-3 text-[11px] opacity-50">
-              {help ? (
-                <span className="leading-relaxed">
-                  ↑↓ / R F / I U move (the focused row shows its meaning) · Space pin · E show all ·
-                  A Again · S Hard · W Good · D Easy (also H/J/K/L, 1–4) · click = Again · Z / M
-                  undo · Esc clear · V sound · Enter / Next = first ungraded word, or submit when
-                  all are graded · ? hide help
-                </span>
-              ) : (
-                <span>A Again · S Hard · W Good · D Easy · Enter = next · ? all keys</span>
-              )}
-              <button
-                className={`px-3 py-1 rounded hover:bg-white/20 opacity-100 text-xs shrink-0 ${
-                  row === page.length
-                    ? "bg-emerald-600 text-white outline outline-1 outline-white/60"
-                    : "bg-white/10"
-                }`}
-                onClick={next}
-              >
-                {firstUngraded < 0
-                  ? "Next ⏎"
-                  : `${page.filter((_, i) => !marks.has(i)).length} left ⏎`}
-              </button>
-            </div>
+          <div className="mt-3 text-[11px] opacity-50 pb-24">
+            {exhausted && ahead.length === 0
+              ? "Every word learned. 🎉"
+              : touch
+                ? "tap = show · swipe ← a little Hard, far Again · swipe → a little Good, far Easy · ↶ undo"
+                : help
+                  ? "↑↓ / R F / I U move (the focused row shows its meaning) · Space pin · A Again · S Hard · W Good · D Easy (also H/J/K/L, 1–4) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
+                  : "A Again · S Hard · W Good · D Easy · Z undo · ? all keys"}
+          </div>
+          {touch && (
+            <button
+              className="fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] rounded-full w-12 h-12 text-xl bg-black/80 text-white dark:bg-white/90 dark:text-black shadow-lg"
+              onClick={() => undo()}
+              aria-label="Undo"
+            >
+              ↶
+            </button>
           )}
         </>
       )}
@@ -1480,18 +1357,22 @@ function Study({
  * scrolling stays native.
  */
 function WordRow({
+  index,
   touch,
   onHover,
   onTap,
   onSwipe,
   className,
+  style,
   children,
 }: {
+  index: number;
   touch: boolean;
   onHover: () => void;
   onTap: () => void;
   onSwipe: (r: Rating) => void;
   className: string;
+  style: React.CSSProperties;
   children: React.ReactNode;
 }) {
   const start = useRef<{ x: number; y: number } | null>(null);
@@ -1501,12 +1382,14 @@ function WordRow({
     return (
       <div
         role="listitem"
+        data-i={index}
         // Only a real mouse move takes the cursor: Chrome replays mouse events
         // at a resting pointer when rows re-render, which would otherwise yank
         // the cursor back under the mouse after every key press.
         onMouseMove={(e) => (e.movementX || e.movementY) && onHover()}
         onClick={onTap}
         className={className}
+        style={style}
       >
         {children}
       </div>
@@ -1516,8 +1399,10 @@ function WordRow({
   return (
     <div
       role="listitem"
+      data-i={index}
       className={`relative ${className}`}
       style={{
+        ...style,
         touchAction: "pan-y",
         transform: dx ? `translateX(${dx}px)` : undefined,
         background: pending ? SWIPE_BG[pending] : undefined,

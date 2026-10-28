@@ -71,18 +71,43 @@ describe("WordsD1Repo", () => {
     expect((await repo.knownTerms(id, ["être", "faire"])).has("être")).toBe(true);
   });
 
-  test("the same word twice in one batch builds on the first rating", async () => {
+  test("re-grading a word that is not due again replaces its review", async () => {
     const id = await repo.createList({ name: "x", lang: "fr" });
+    const now = new Date("2026-10-28T10:00:00Z");
+    await repo.review(id, [{ term: "chat", back: "cat", rating: 1 }], "2026-10-28", now);
+    // Changed mind a few seconds later: Easy instead of Again.
     const res = await repo.review(
       id,
-      [
-        { term: "chat", back: "cat", rating: 1, newIndex: 0 },
-        { term: "chat", rating: 3 },
-      ],
-      "2026-10-27",
+      [{ term: "chat", rating: 4 }],
+      "2026-10-28",
+      new Date(now.getTime() + 5000),
     );
-    expect(res!.cards).toEqual([expect.objectContaining({ term: "chat", reps: 2, back: "cat" })]);
+    expect(res!.cards).toEqual([expect.objectContaining({ term: "chat", reps: 1, back: "cat" })]);
+    expect(new Date(res!.cards[0].due).getTime() - now.getTime()).toBeGreaterThan(86400_000);
+    const n = await d1.prepare("SELECT COUNT(*) AS n FROM word_reviews").first<{ n: number }>();
+    expect(n!.n).toBe(1);
     expect((await repo.getList(id))!.newToday).toBe(1);
+  });
+
+  test("a due word gets a new review; undo goes back one level", async () => {
+    const id = await repo.createList({ name: "x", lang: "fr" });
+    const t0 = new Date("2026-10-28T10:00:00Z");
+    await repo.review(id, [{ term: "chat", rating: 3 }], "2026-10-28", t0);
+    const later = new Date(t0.getTime() + 30 * 86400_000); // well past due
+    await repo.review(id, [{ term: "chat", rating: 3 }], "2026-11-27", later);
+    const n = await d1.prepare("SELECT COUNT(*) AS n FROM word_reviews").first<{ n: number }>();
+    expect(n!.n).toBe(2);
+    const undone = await repo.undo(id, "chat", "2026-11-27");
+    expect(undone!.card).toMatchObject({ term: "chat", reps: 1 });
+    // One level only.
+    expect(await repo.undo(id, "chat", "2026-11-27")).toBeNull();
+  });
+
+  test("undoing a word's only review forgets the word", async () => {
+    const id = await repo.createList({ name: "x", lang: "fr" });
+    await repo.review(id, [{ term: "chat", rating: 3 }], "2026-10-28");
+    expect(await repo.undo(id, "chat", "2026-10-28")).toEqual({ card: null });
+    expect(await repo.getList(id)).toMatchObject({ cards: 0, newToday: 0 });
   });
 
   test("lists are per user and deleting one removes its cards", async () => {
@@ -124,6 +149,7 @@ test("list progress counts learning and mastered words", async () => {
 
 test("intervals read as 10m / 3d / 1y", () => {
   expect(formatInterval(30_000)).toBe("30s");
+  expect(formatInterval(59_800)).toBe("1m");
   expect(formatInterval(10 * 60_000)).toBe("10m");
   expect(formatInterval(5 * 3600_000)).toBe("5h");
   expect(formatInterval(3 * 86400_000)).toBe("3d");

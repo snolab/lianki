@@ -122,9 +122,10 @@ export function newRemaining(
 /** Short interval label: 30s, 10m, 5h, 3d, 4mo, 1y. */
 export function formatInterval(ms: number): string {
   const s = Math.max(0, ms) / 1000;
-  if (s < 60) return `${Math.round(s)}s`;
-  if (s < 3600) return `${Math.round(s / 60)}m`;
-  if (s < 86400) return `${Math.round(s / 3600)}h`;
+  // Compare rounded values, so 59.6s reads "1m", not "60s".
+  if (Math.round(s) < 60) return `${Math.round(s)}s`;
+  if (Math.round(s / 60) < 60) return `${Math.round(s / 60)}m`;
+  if (Math.round(s / 3600) < 24) return `${Math.round(s / 3600)}h`;
   const d = s / 86400;
   if (d < 30) return `${Math.round(d)}d`;
   if (d < 365) return `${Math.round(d / 30)}mo`;

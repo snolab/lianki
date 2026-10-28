@@ -18,7 +18,7 @@ const ALPHABET: DrillConfig = {
   base: "/alphabets",
   title: "Alphabets",
   intro:
-    "Symbol → sound and sound → symbol, a screen at a time. Mark only the ones you miss, press Enter.",
+    "Symbol → sound and sound → symbol, in one endless list. Grade each with A / S / W / D; Z undoes.",
 };
 
 export default function AlphabetPage() {
