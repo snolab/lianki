@@ -25,12 +25,16 @@ export const STATUS_LABEL: Record<RoadmapStatus, string> = {
 export const ROADMAP: Record<RoadmapStatus, RoadmapItem[]> = {
   doing: [
     {
-      title: "更好的发音",
-      detail:
-        "免费档：VOICEVOX（日语）+ Kokoro（英西法意葡中）本机预生成词表音频进 R2，Piper 补德俄，韩语保留 MeloTTS；第二步会员档接 ElevenLabs/Gemini（例句、整段朗读、音色选择、慢速）。",
+      title: "更好的发音：德俄补 Piper",
+      detail: "免费档已上线（#225）。德语、俄语还没有服务器语音，韩语仍是 MeloTTS。",
     },
   ],
   deciding: [
+    {
+      title: "会员档语音（ElevenLabs / Gemini）",
+      detail:
+        "例句、整段朗读、音色选择、慢速。需要：Worker secret ELEVENLABS_API_KEY；会员开通方式（手动开 pro 还是接 Stripe）。",
+    },
     {
       title: "全站信息架构重新分组",
       detail:
@@ -55,6 +59,12 @@ export const ROADMAP: Record<RoadmapStatus, RoadmapItem[]> = {
     },
   ],
   shipped: [
+    {
+      pr: 225,
+      title: "词表发音换开源语音",
+      detail: "VOICEVOX No.7（日）+ Kokoro（英西法意葡中），62,617 条预生成进 R2。",
+    },
+    { pr: 224, title: "/dev/roadmap" },
     { pr: 223, title: "服务器 AI 语音默认" },
     { pr: 222, title: "首页 = 导航 + 引导，旧首页移到 /sites" },
     { pr: 221, title: "单词表为入口，页面卡片功能移入高级" },
@@ -63,5 +73,5 @@ export const ROADMAP: Record<RoadmapStatus, RoadmapItem[]> = {
     { pr: 212, title: "竹简" },
     { pr: 211, title: "书法纸张主题" },
   ],
-  ideas: [{ title: "会员服务（高级语音）" }, { title: "AI 对话陪练" }],
+  ideas: [{ title: "AI 对话陪练" }],
 };
