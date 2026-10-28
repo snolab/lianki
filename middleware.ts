@@ -70,6 +70,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|sw\\.js|manifest\\.json|.*\\.user\\.js|.*\\.meta\\.js|.*\\.wasm|.*\\.svg|.*\\.png|.*\\.webp|sqlite3).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|sw\\.js|manifest\\.json|.*\\.user\\.js|.*\\.meta\\.js|.*\\.wasm|.*\\.svg|.*\\.png|.*\\.webp|proto/|sqlite3).*)",
   ],
 };
