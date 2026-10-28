@@ -1286,8 +1286,9 @@ function Study({
       // load when their new words are needed.
       const withDue = lists.filter((l) => session.lists[l.id]?.due.length);
       await Promise.all(withDue.map(ensureCatalog));
-      // New words: just enough to start, in list order; more load as you go.
-      const fresh = await takeNew(AHEAD);
+      // New words: two batches to start — enough headroom that a fast grader
+      // never reaches the end before the next batch lands; more as you go.
+      const fresh = await takeNew(AHEAD * 2);
       if (!alive) return;
       const due = interleave(lists.map((l) => dueItems(l, session.lists[l.id]?.due ?? [])));
       setQueue([...due, ...spreadPairs(fresh, PAGE, due.length, due)]);

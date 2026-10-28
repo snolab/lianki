@@ -142,6 +142,11 @@ try {
   );
   // Offline: grades wait on the device, the page reopens from the cache, and
   // everything syncs once the network is back.
+  // Let the sync queue drain first, so the offline count below is only new grades.
+  await page
+    .locator('[data-sync="synced"]')
+    .filter({ hasText: "synced" })
+    .waitFor({ timeout: 20000 });
   await ctx.setOffline(true);
   for (let i = 0; i < 3; i++) {
     await page.keyboard.press("w");
