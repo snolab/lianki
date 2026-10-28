@@ -390,6 +390,28 @@ try {
       ttsAsked.length > 0 && (await m.evaluate(() => window.__played.length)) > 0,
       `phone: speech that never starts falls back to server audio (${ttsAsked.join(",")})`,
     );
+    // Swipe vs scroll: a steep drag is a scroll and never grades; a clearly
+    // sideways drag grades.
+    const mStatus = async (i) =>
+      (await mrows.nth(i).locator("span.tabular-nums").innerText()).trim();
+    const drag = async (i, dx, dy) => {
+      const b = await mrows.nth(i).boundingBox();
+      const x = b.x + b.width / 2;
+      const y = b.y + b.height / 2;
+      await m.mouse.move(x, y);
+      await m.mouse.down();
+      for (let k = 1; k <= 8; k++) await m.mouse.move(x + (dx * k) / 8, y + (dy * k) / 8);
+      await m.waitForTimeout(80); // stop before lifting: distance, not a flick
+      await m.mouse.up();
+      await m.waitForTimeout(400);
+    };
+    const before = await mStatus(3);
+    await drag(3, 40, 45);
+    check((await mStatus(3)) === before, `phone: a diagonal drag does not grade (${before})`);
+    await drag(3, 70, 4);
+    const after = await mStatus(3);
+    check(after !== before, `phone: a sideways drag grades (${before} → ${after})`);
+
     // Full screen: the API where there is one, else the Add to Home Screen hint.
     await m.getByRole("button", { name: "Settings" }).click();
     await m.getByRole("switch", { name: "Full screen" }).click();

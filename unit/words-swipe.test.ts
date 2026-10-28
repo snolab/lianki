@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { projectSwipe, releaseVelocity, swipeRating } from "@/lib/words/swipe";
+import {
+  lockAxis,
+  projectSwipe,
+  releaseRating,
+  releaseVelocity,
+  swipeRating,
+} from "@/lib/words/swipe";
 
 describe("swipe physics", () => {
   test("distance picks the grade: short is milder, long is stronger", () => {
@@ -42,5 +48,21 @@ describe("swipe physics", () => {
         5,
       ),
     ).toBe(0);
+  });
+});
+
+describe("swipe vs scroll", () => {
+  test("the axis locks after the slop, steep gestures are scrolls", () => {
+    expect(lockAxis(3, 4)).toBeNull();
+    expect(lockAxis(20, 5)).toBe("h");
+    expect(lockAxis(-20, 10)).toBe("h");
+    expect(lockAxis(12, 12)).toBe("v");
+    expect(lockAxis(2, -30)).toBe("v");
+  });
+
+  test("a twitch never grades, however fast", () => {
+    expect(releaseRating(10, 3)).toBeNull();
+    expect(releaseRating(20, 1.5)).toBe(4);
+    expect(releaseRating(-50, 0)).toBe(2);
   });
 });

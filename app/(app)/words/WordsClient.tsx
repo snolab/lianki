@@ -22,7 +22,15 @@ import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
 import { nextGoal, termTarget } from "@/lib/words/columns";
 import { MIN_JERK_EASING, moveSeconds, springStep } from "@/lib/words/motion";
-import { projectSwipe, releaseVelocity, SWIPE_VELOCITY_MS, swipeRating } from "@/lib/words/swipe";
+import {
+  type Axis,
+  lockAxis,
+  projectSwipe,
+  releaseRating,
+  releaseVelocity,
+  SWIPE_VELOCITY_MS,
+  swipeRating,
+} from "@/lib/words/swipe";
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
 import { idbAdd, idbAll, idbDelete, idbGet, idbPut, type PendingOp } from "@/lib/words/idb";
 import {
@@ -1790,6 +1798,9 @@ function Study({
   const ROW_H = touch ? 44 : 28;
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
+  /** When the list last scrolled: a touch within 120 ms of it catches a fling. */
+  const lastScrollAt = useRef(0);
+  const scrollingNow = useCallback(() => performance.now() - lastScrollAt.current < 120, []);
   const [viewH, setViewH] = useState(600);
   /** viewH holds the real measured height (the opening scroll depends on it). */
   const [measured, setMeasured] = useState(false);
@@ -2132,7 +2143,10 @@ function Study({
             // overflow-anchor: none — the padding and spacers change as rows
             // load; the browser must not "help" by shifting the scroll.
             style={{ height: viewH, overflowAnchor: "none" }}
-            onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+            onScroll={(e) => {
+              setScrollTop(e.currentTarget.scrollTop);
+              lastScrollAt.current = performance.now();
+            }}
             // pointerup, not pointerdown: for touch it is the event that grants
             // the user activation full screen needs.
             onPointerUp={touch ? resumeFullscreen : undefined}
@@ -2153,6 +2167,7 @@ function Study({
                   index={i}
                   touch={touch}
                   onHover={() => moveRow(i)}
+                  scrolling={scrollingNow}
                   // Desktop click = Again; on touch a tap reveals and reads it.
                   onTap={() =>
                     touch
@@ -2288,6 +2303,7 @@ function WordRow({
   onSwipeStart,
   onHold,
   onHoldEnd,
+  scrolling,
   className,
   style,
   children,
@@ -2302,6 +2318,8 @@ function WordRow({
   /** Held still for HOLD_MS: listen mode until the finger lifts. */
   onHold?: () => void;
   onHoldEnd?: () => void;
+  /** The list is (or just was) scrolling: a touch now is catching a fling. */
+  scrolling?: () => boolean;
   className: string;
   style: React.CSSProperties;
   children: React.ReactNode;
@@ -2310,7 +2328,10 @@ function WordRow({
   const [dx, setDx] = useState(0);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const held = useRef(false);
-  const swiping = useRef(false);
+  /** The axis this gesture committed to (lib/words/swipe.ts lockAxis). */
+  const axis = useRef<Axis | null>(null);
+  /** The touch landed on a moving list: it stops the fling, nothing more. */
+  const catching = useRef(false);
   /** Recent finger positions, for the release velocity. */
   const samples = useRef<{ t: number; x: number }[]>([]);
   /** How far the row was when let go: it glides back from there. */
@@ -2358,10 +2379,12 @@ function WordRow({
         start.current = { x: e.clientX, y: e.clientY };
         samples.current = [{ t: performance.now(), x: 0 }];
         held.current = false;
-        swiping.current = false;
+        axis.current = null;
+        catching.current = scrolling?.() ?? false;
         // Keep receiving the gesture even if the finger leaves this row.
         e.currentTarget.setPointerCapture(e.pointerId);
         clearTimeout(holdTimer.current);
+        if (catching.current) return;
         holdTimer.current = setTimeout(() => {
           held.current = true;
           onHold?.();
@@ -2371,13 +2394,17 @@ function WordRow({
         if (!start.current) return;
         const x = e.clientX - start.current.x;
         const y = e.clientY - start.current.y;
-        // Any real movement is a swipe or a scroll, not a hold.
-        if (!held.current && Math.hypot(x, y) > 8) clearTimeout(holdTimer.current);
-        if (Math.abs(x) > Math.abs(y)) {
-          if (!swiping.current && Math.abs(x) > 12) {
-            swiping.current = true;
-            onSwipeStart?.();
-          }
+        // Commit to one axis once past the slop; until then nothing moves,
+        // so the start of a scroll never jiggles the row.
+        if (!axis.current) {
+          axis.current = lockAxis(x, y);
+          if (!axis.current) return;
+          // Any real movement is a swipe or a scroll, not a hold.
+          if (!held.current) clearTimeout(holdTimer.current);
+          if (axis.current === "h" && !held.current) onSwipeStart?.();
+        }
+        // A scroll stays a scroll however it drifts; a hold stays a hold.
+        if (axis.current === "h" && !held.current) {
           const t = performance.now();
           samples.current = [
             ...samples.current.filter((s) => t - s.t <= SWIPE_VELOCITY_MS * 2),
@@ -2399,13 +2426,19 @@ function WordRow({
           onHoldEnd?.();
           return;
         }
-        const v = releaseVelocity(samples.current, performance.now());
-        const projected = projectSwipe(moved, v);
-        const r = Math.abs(moved) < 8 ? null : swipeRating(projected);
-        if (Math.abs(moved) >= 8)
-          logSwipe({ dx: Math.round(moved), v, projected: Math.round(projected), rating: r });
-        if (r) onSwipe(r);
-        else if (Math.abs(moved) < 8) onTap();
+        if (axis.current === "h") {
+          const v = releaseVelocity(samples.current, performance.now());
+          const r = releaseRating(moved, v);
+          logSwipe({
+            dx: Math.round(moved),
+            v,
+            projected: Math.round(projectSwipe(moved, v)),
+            rating: r,
+          });
+          if (r) onSwipe(r);
+        }
+        // Never moved past the slop: a tap — unless it was catching a fling.
+        else if (axis.current === null && !catching.current) onTap();
       }}
       onPointerCancel={() => {
         clearTimeout(holdTimer.current);

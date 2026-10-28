@@ -40,3 +40,25 @@ export function releaseVelocity(samples: { t: number; x: number }[], now: number
   const b = recent.at(-1)!;
   return b.t > a.t ? (b.x - a.x) / (b.t - a.t) : 0;
 }
+
+/**
+ * Swipe vs scroll: a gesture commits to one axis once it has moved
+ * LOCK_SLOP px, and keeps it until the finger lifts. Sideways means clearly
+ * sideways (|x| > 1.5·|y|, under ~34° from horizontal); anything steeper is a
+ * scroll and can never grade, however it drifts later.
+ */
+export const LOCK_SLOP = 10;
+export type Axis = "h" | "v";
+export function lockAxis(x: number, y: number): Axis | null {
+  if (Math.hypot(x, y) < LOCK_SLOP) return null;
+  return Math.abs(x) > 1.5 * Math.abs(y) ? "h" : "v";
+}
+
+/** Below this, a release is not a flick: speed alone must not grade a twitch. */
+export const MIN_FLICK_PX = 16;
+
+/** The grade a sideways gesture gives when released: distance + coasting. */
+export function releaseRating(moved: number, v: number): SwipeRating | null {
+  if (Math.abs(moved) < MIN_FLICK_PX) return null;
+  return swipeRating(projectSwipe(moved, v));
+}
