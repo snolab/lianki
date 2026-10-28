@@ -9,7 +9,7 @@
  * `href` is a bare app path; the shell runs it through `appHref()` so the
  * `?lang=` app-route locale survives navigation.
  */
-export type NavGroup = "main" | "data" | "account";
+export type NavGroup = "main" | "advanced" | "data" | "account";
 
 export type NavItem = {
   key: string;
@@ -18,27 +18,30 @@ export type NavItem = {
   group: NavGroup;
 };
 
+// Word lists are the front door; the page-card features (reviewing pages,
+// the card list with its userscript install, the dashboard) sit under
+// "Advanced".
 export const APP_NAV: NavItem[] = [
-  { key: "home", href: "/home", icon: "🏠", group: "main" },
-  { key: "review", href: "/next", icon: "▶", group: "main" },
-  { key: "cards", href: "/list", icon: "📚", group: "main" },
-  { key: "learn", href: "/learn", icon: "🎓", group: "main" },
-  { key: "roadmap", href: "/roadmap", icon: "🗺", group: "main" },
-  { key: "aiVocab", href: "/ai-vocab", icon: "🧠", group: "main" },
   { key: "words", href: "/words", icon: "🔤", group: "main" },
   { key: "alphabet", href: "/alphabet", icon: "🔡", group: "main" },
+  { key: "learn", href: "/learn", icon: "🎓", group: "main" },
+  { key: "aiVocab", href: "/ai-vocab", icon: "🧠", group: "main" },
   { key: "polyglot", href: "/polyglot", icon: "🌍", group: "main" },
   { key: "selfIntro", href: "/self-intro", icon: "🗣", group: "main" },
   { key: "read", href: "/read", icon: "📖", group: "main" },
-  { key: "addNote", href: "/add-note", icon: "➕", group: "main" },
-  { key: "lab", href: "/lab", icon: "🧪", group: "main" },
+  { key: "roadmap", href: "/roadmap", icon: "🗺", group: "main" },
+  { key: "home", href: "/home", icon: "🏠", group: "advanced" },
+  { key: "review", href: "/next", icon: "▶", group: "advanced" },
+  { key: "cards", href: "/list", icon: "📚", group: "advanced" },
+  { key: "addNote", href: "/add-note", icon: "➕", group: "advanced" },
+  { key: "lab", href: "/lab", icon: "🧪", group: "advanced" },
   { key: "import", href: "/import", icon: "⬆", group: "data" },
   { key: "data", href: "/data", icon: "💾", group: "data" },
   { key: "preferences", href: "/preferences", icon: "⚙", group: "account" },
   { key: "membership", href: "/membership", icon: "★", group: "account" },
 ];
 
-export const NAV_GROUPS: NavGroup[] = ["main", "data", "account"];
+export const NAV_GROUPS: NavGroup[] = ["main", "advanced", "data", "account"];
 
 /**
  * Which nav item a pathname belongs to. Longest matching href wins so

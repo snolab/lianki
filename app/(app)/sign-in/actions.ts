@@ -14,7 +14,7 @@ export async function sendMagicLinkAction(
 
   try {
     await auth.api.signInMagicLink({
-      body: { email, callbackURL: "/list" },
+      body: { email, callbackURL: "/words" },
       headers: await headers(),
     });
     return { success: true };
