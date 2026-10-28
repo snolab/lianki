@@ -67,9 +67,9 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
           <h2 className="font-brush text-5xl leading-tight mb-4">{hero.title}</h2>
           <p className="text-lg mb-8 max-w-2xl mx-auto">{hero.description}</p>
           <Link
-            // Signed in: straight to the word lists, the front door. Guests
-            // land on the card list, which works without an account.
-            href={appHref(user ? "/words" : "/list", locale)}
+            // Signed in: Home (navigation + onboarding). Guests land on the
+            // card list, which works without an account.
+            href={appHref(user ? "/home" : "/list", locale)}
             className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700"
           >
             {hero.cta}
