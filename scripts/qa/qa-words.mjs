@@ -108,6 +108,12 @@ try {
   const statusOf = async (i) => (await rows.nth(i).locator("span.tabular-nums").innerText()).trim();
   check((await statusOf(0)) === "new", `an ungraded new word says "new": ${await statusOf(0)}`);
 
+  // The term column is fitted to the terms on screen (6–20rem), one width for all rows.
+  const termW = await page
+    .locator('[role="list"]')
+    .evaluate((el) => parseFloat(el.style.getPropertyValue("--term-w")));
+  check(termW >= 96 && termW <= 320, `the term column is fitted: ${Math.round(termW)}px`);
+
   // F moves the cursor down (like ↓) and the focused row shows its meaning.
   const blurred = (i) =>
     rows
