@@ -20,6 +20,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/words/tree";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
+import { projectSwipe, releaseVelocity, SWIPE_VELOCITY_MS, swipeRating } from "@/lib/words/swipe";
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
 import { idbAdd, idbAll, idbDelete, idbGet, idbPut, type PendingOp } from "@/lib/words/idb";
 import {
@@ -49,24 +50,16 @@ const PAGE = 20;
 const AHEAD = 40;
 /** Due words per /session fetch; more are fetched as the queue drains. */
 const DUE_PAGE = 200;
-/**
- * Touch grading by swipe distance: a short swipe is the milder grade, a long
- * one the stronger. ← short Hard, ← long Again; → short Good, → long Easy.
- */
-const SWIPE_PX = 40;
 /** A touch held this long without moving starts listen mode (looped audio). */
 const HOLD_MS = 300;
-const SWIPE_FAR_PX = 110;
-const swipeRating = (dx: number): Rating | null =>
-  dx <= -SWIPE_FAR_PX
-    ? 1
-    : dx <= -SWIPE_PX
-      ? 2
-      : dx >= SWIPE_FAR_PX
-        ? 4
-        : dx >= SWIPE_PX
-          ? 3
-          : null;
+/** The last swipes (distance, speed, result), kept locally to tune the physics. */
+function logSwipe(entry: { dx: number; v: number; projected: number; rating: Rating | null }) {
+  try {
+    const log = JSON.parse(localStorage.getItem("lk:swipe-log") ?? "[]") as unknown[];
+    log.push({ ...entry, v: Math.round(entry.v * 1000) / 1000, at: Date.now() });
+    localStorage.setItem("lk:swipe-log", JSON.stringify(log.slice(-300)));
+  } catch {}
+}
 const SWIPE_BG: Record<Rating, string> = {
   1: "rgb(239 68 68 / 0.4)",
   2: "rgb(245 158 11 / 0.35)",
@@ -2158,6 +2151,8 @@ function WordRow({
   const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const held = useRef(false);
   const swiping = useRef(false);
+  /** Recent finger positions, for the release velocity. */
+  const samples = useRef<{ t: number; x: number }[]>([]);
 
   if (!touch)
     return (
@@ -2176,7 +2171,10 @@ function WordRow({
       </div>
     );
 
-  const pending = swipeRating(dx);
+  // Tinted by where the row would land if released now — what it will grade.
+  const pending = swipeRating(
+    dx ? projectSwipe(dx, releaseVelocity(samples.current, performance.now())) : 0,
+  );
   return (
     <div
       role="listitem"
@@ -2192,6 +2190,7 @@ function WordRow({
       }}
       onPointerDown={(e) => {
         start.current = { x: e.clientX, y: e.clientY };
+        samples.current = [{ t: performance.now(), x: 0 }];
         held.current = false;
         swiping.current = false;
         // Keep receiving the gesture even if the finger leaves this row.
@@ -2213,6 +2212,11 @@ function WordRow({
             swiping.current = true;
             onSwipeStart?.();
           }
+          const t = performance.now();
+          samples.current = [
+            ...samples.current.filter((s) => t - s.t <= SWIPE_VELOCITY_MS * 2),
+            { t, x },
+          ];
           setDx(Math.max(-160, Math.min(160, x)));
         }
       }}
@@ -2228,7 +2232,11 @@ function WordRow({
           onHoldEnd?.();
           return;
         }
-        const r = swipeRating(moved);
+        const v = releaseVelocity(samples.current, performance.now());
+        const projected = projectSwipe(moved, v);
+        const r = Math.abs(moved) < 8 ? null : swipeRating(projected);
+        if (Math.abs(moved) >= 8)
+          logSwipe({ dx: Math.round(moved), v, projected: Math.round(projected), rating: r });
         if (r) onSwipe(r);
         else if (Math.abs(moved) < 8) onTap();
       }}
