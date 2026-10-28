@@ -5,6 +5,7 @@ import { asReviewOrder, DEFAULT_REVIEW_ORDER, type ReviewOrder } from "@lianki/c
 import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import TokenManager from "../list/components/TokenManager";
+import { PaperSkinPicker } from "@/app/components/PaperSkinPicker";
 
 type FilterType = "domain" | "title" | "url";
 
@@ -140,9 +141,17 @@ export default function PreferencesClient() {
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-3xl font-bold mb-8">{heading}</h1>
 
+      {/* Paper skin — this device only, kept in localStorage */}
+      <section className="mb-10">
+        <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">紙紋 Paper</h2>
+        <PaperSkinPicker />
+      </section>
+
       {/* Next-card order */}
       <section className="mb-10">
-        <h2 className="text-2xl font-semibold mb-4 text-white">{reviewOrderUi.heading}</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
+          {reviewOrderUi.heading}
+        </h2>
         <p className="text-gray-400 mb-4">{reviewOrderUi.description}</p>
         <div className="space-y-2">
           {(["oldest", "newest"] as const).map((opt) => (
@@ -168,7 +177,7 @@ export default function PreferencesClient() {
 
       {/* Watch tracking */}
       <section className="mb-10">
-        <h2 className="text-2xl font-semibold mb-4 text-white">Watch time</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">Watch time</h2>
         <p className="text-gray-400 mb-4">
           Lianki can measure how long you actually watch or listen to media on a page, to fill your
           streaks and the activity heatmap. Time is counted only while something is playing, audible
@@ -194,7 +203,9 @@ export default function PreferencesClient() {
 
       {/* Mobile Exclude Patterns */}
       <section className="mb-10">
-        <h2 className="text-2xl font-semibold mb-4 text-white">{mobileFilters.heading}</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
+          {mobileFilters.heading}
+        </h2>
         <p className="text-gray-400 mb-4">{mobileFilters.description}</p>
 
         {/* Current Patterns */}

@@ -3,24 +3,105 @@
 /* Streamdown renders blog posts with Tailwind classes Tailwind would not otherwise see */
 @source "../node_modules/streamdown/dist/*.js";
 
+/* 書法 theme — paper (紙) in light mode, ink (墨) in dark.
+ * Pages are written with Tailwind's gray / blue / white classes; rather than
+ * touch every page, the palette itself is re-pointed: gray becomes a warm
+ * paper→ink ramp and blue becomes seal red (印泥), so `bg-blue-600` is the
+ * seal button and `dark:bg-gray-900` is ink. Same ordinal lightness as stock
+ * Tailwind, so existing contrast pairs keep working in both modes. */
+@theme {
+  --color-gray-50: oklch(0.975 0.012 85);
+  --color-gray-100: oklch(0.95 0.018 82);
+  --color-gray-200: oklch(0.91 0.022 80);
+  --color-gray-300: oklch(0.85 0.025 78);
+  --color-gray-400: oklch(0.7 0.025 72);
+  --color-gray-500: oklch(0.56 0.022 70);
+  --color-gray-600: oklch(0.46 0.02 68);
+  --color-gray-700: oklch(0.37 0.017 65);
+  --color-gray-800: oklch(0.27 0.013 62);
+  --color-gray-900: oklch(0.21 0.01 60);
+  --color-gray-950: oklch(0.15 0.008 60);
+
+  --color-blue-50: oklch(0.97 0.015 20);
+  --color-blue-100: oklch(0.93 0.04 20);
+  --color-blue-200: oklch(0.87 0.08 20);
+  --color-blue-300: oklch(0.78 0.13 21);
+  --color-blue-400: oklch(0.68 0.18 22);
+  --color-blue-500: oklch(0.6 0.2 22);
+  --color-blue-600: oklch(0.53 0.207 22.3); /* seal */
+  --color-blue-700: oklch(0.46 0.18 22);
+  --color-blue-800: oklch(0.38 0.15 22);
+  --color-blue-900: oklch(0.3 0.11 22);
+  --color-blue-950: oklch(0.22 0.08 22);
+
+  /* "white" is the card sheet laid on the paper; "black" is ink. */
+  --color-white: oklch(0.985 0.01 85);
+  --color-black: oklch(0.17 0.01 60);
+
+  --font-sans: "LXGW WenKai TC", "Klee One", ui-sans-serif, system-ui, sans-serif;
+  --font-brush: "Yuji Syuku", "LXGW WenKai TC", serif;
+  --font-antique: "Zen Antique", "LXGW WenKai TC", serif;
+}
+
 :root {
   /* Seal red (印泥) — the brand colour, as in public/icon.svg. */
-  --brand: #c8102e;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --brand: oklch(0.53 0.207 22.3);
+  --background: oklch(0.945 0.02 82); /* 宣紙 */
+  --foreground: oklch(0.22 0.015 65); /* 墨 */
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: oklch(0.09 0 0);
-    --foreground: oklch(0.945 0 0);
+    --brand: oklch(0.6 0.205 18.3); /* lifted for contrast on ink */
+    --background: oklch(0.18 0.01 65); /* 松煙墨 */
+    --foreground: oklch(0.92 0.02 82);
+    color-scheme: dark;
+  }
+}
+
+/* Paper skins (紙紋), picked in preferences and stored as <html data-paper>.
+ * B 宣紙 (xuan fibres, a 12KB WebP tile per scheme) is the default; A 細紙 is
+ * a 0.5KB grain, C 和紙 adds faint clouds, E 手漉紙 is lit relief. */
+:root {
+  --grain-a: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .38 0 0 0 0 .28 0 0 0 .2 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --clouds: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .55 0 0 0 0 .42 0 0 0 0 .25 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --relief: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.05' numOctaves='4' stitchTiles='stitch' result='t'/%3E%3CfeDiffuseLighting in='t' lighting-color='oklch(0.95 0.02 82)' surfaceScale='.9'%3E%3CfeDistantLight azimuth='45' elevation='65'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)'/%3E%3C/svg%3E");
+  --fibres: url(/paper/xuan-light.webp);
+  --paper: var(--fibres), var(--grain-a);
+}
+:root[data-paper="a"] {
+  --paper: var(--grain-a);
+}
+:root[data-paper="c"] {
+  --paper: var(--grain-a), var(--clouds);
+}
+:root[data-paper="e"] {
+  --paper: var(--relief);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --grain-a: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 .95 0 0 0 0 .85 0 0 0 .06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    --clouds: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 .9 0 0 0 0 .75 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    --relief: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.05' numOctaves='4' stitchTiles='stitch' result='t'/%3E%3CfeDiffuseLighting in='t' lighting-color='oklch(0.26 0.015 70)' surfaceScale='.7'%3E%3CfeDistantLight azimuth='45' elevation='65'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)'/%3E%3C/svg%3E");
+    --fibres: url(/paper/xuan-dark.webp);
+    --paper: var(--fibres);
+  }
+  :root[data-paper="a"] {
+    --paper: var(--grain-a);
+  }
+  :root[data-paper="c"] {
+    --paper: var(--clouds);
+  }
+  :root[data-paper="e"] {
+    --paper: var(--relief);
   }
 }
 
 body {
   color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper), var(--background);
+  font-family: var(--font-sans);
 }
 
 @layer utilities {
