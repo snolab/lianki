@@ -151,9 +151,15 @@ try {
 
   // The URL keeps the list; a refresh lands back in it.
   check(/[?&]list=/.test(page.url()), `the open list is in the URL: ${new URL(page.url()).search}`);
+  // Settings live in a panel of switches, and are remembered across a refresh.
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("switch", { name: "Show all meanings" }).click();
   await page.reload({ waitUntil: "networkidle" });
   await rows.first().waitFor({ timeout: 15000 });
   check((await rows.count()) > 0, "a refresh lands back in the list");
+  check(!(await blurred(5)), "Show all meanings is remembered across a refresh");
+  await page.keyboard.press("e"); // back off, for the checks below
+  check(await blurred(5), "E turns it off again");
 
   // Endless: grade 60 words in a row; more keep coming and all are saved.
   // 40 ms apart: still far faster than a person, slow enough for loading to keep up.
@@ -258,7 +264,8 @@ try {
     await m.waitForTimeout(100);
     check(whileHeld && (await blurredM()), "phone: holding a row reveals it, releasing hides it");
     // Full screen: the API where there is one, else the Add to Home Screen hint.
-    await m.getByRole("button", { name: "Full screen" }).click();
+    await m.getByRole("button", { name: "Settings" }).click();
+    await m.getByRole("switch", { name: "Full screen" }).click();
     await m.waitForTimeout(300);
     const fsOn = await m.evaluate(() => !!document.fullscreenElement);
     const hint = await m.getByText("Add to Home Screen", { exact: false }).count();
