@@ -1463,13 +1463,28 @@ function Study({
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewH, setViewH] = useState(600);
+  /** viewH holds the real measured height (the opening scroll depends on it). */
+  const [measured, setMeasured] = useState(false);
   const listReady = !loading && !loadError && queue.length > 0;
+  // Half a screen of empty space above the first row and below the last, so
+  // any row — the first included — can be scrolled to the middle (or to the
+  // touch focus line). Row positions below are offset by it.
+  const pad = Math.round(viewH / 2);
+  const startedAtTop = useRef(false);
+  useLayoutEffect(() => {
+    // Open with the first row at the top, not half a screen down.
+    const el = listRef.current;
+    if (!el || startedAtTop.current || !listReady || !measured) return;
+    startedAtTop.current = true;
+    el.scrollTop = pad;
+  }, [listReady, measured, pad]);
   useLayoutEffect(() => {
     const fit = () => {
       const el = listRef.current;
       if (!el) return;
       // Fill down to the bottom of the window, leaving room for the key hints.
       setViewH(Math.max(160, window.innerHeight - el.getBoundingClientRect().top - 40));
+      setMeasured(true);
     };
     fit();
     window.addEventListener("resize", fit);
@@ -1479,7 +1494,7 @@ function Study({
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
-    const top = row * ROW_H;
+    const top = pad + row * ROW_H;
     if (top < el.scrollTop + ROW_H) el.scrollTop = Math.max(0, top - ROW_H);
     else if (top + ROW_H > el.scrollTop + el.clientHeight - ROW_H * 2)
       el.scrollTop = top + ROW_H * 3 - el.clientHeight;
@@ -1494,7 +1509,10 @@ function Study({
     const t = setTimeout(
       () =>
         setFocusLine(
-          Math.max(0, Math.min(queue.length - 1, Math.floor((scrollTop + viewH / 3) / ROW_H))),
+          Math.max(
+            0,
+            Math.min(queue.length - 1, Math.floor((scrollTop - pad + viewH / 3) / ROW_H)),
+          ),
         ),
       200,
     );
@@ -1509,7 +1527,7 @@ function Study({
   }, [touch, focusLine, focusText]);
 
   /** How far down the list the user has got: the cursor, or the last row in view. */
-  const reach = Math.max(row, Math.floor((scrollTop + viewH) / ROW_H));
+  const reach = Math.max(row, Math.floor((scrollTop - pad + viewH) / ROW_H));
   // Endless: when fewer than AHEAD ungraded words are left below the cursor
   // or below the bottom of the view (touch has no cursor; scrolling doesn't
   // move it), fetch more — remaining due words first, then new ones. Stops only when
@@ -1561,8 +1579,8 @@ function Study({
 
   // Windowed rendering: the list is endless, the DOM is not.
   const OVERSCAN = 20;
-  const from = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
-  const to = Math.min(queue.length, Math.ceil((scrollTop + viewH) / ROW_H) + OVERSCAN);
+  const from = Math.max(0, Math.floor((scrollTop - pad) / ROW_H) - OVERSCAN);
+  const to = Math.min(queue.length, Math.ceil((scrollTop - pad + viewH) / ROW_H) + OVERSCAN);
   const hasExamples = queue.slice(from, to).some((it) => it.ex);
 
   const done = grades.size;
@@ -1676,11 +1694,13 @@ function Study({
           <div
             ref={listRef}
             className="rounded-lg border border-black/10 dark:border-white/10 overflow-y-auto overscroll-contain"
-            style={{ height: viewH }}
+            // overflow-anchor: none — the padding and spacers change as rows
+            // load; the browser must not "help" by shifting the scroll.
+            style={{ height: viewH, overflowAnchor: "none" }}
             onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
             role="list"
           >
-            <div style={{ height: from * ROW_H }} />
+            <div style={{ height: pad + from * ROW_H }} />
             {queue.slice(from, to).map((it, k) => {
               const i = from + k;
               const g = grades.get(i);
@@ -1791,7 +1811,7 @@ function Study({
                 </WordRow>
               );
             })}
-            <div style={{ height: (queue.length - to) * ROW_H }} />
+            <div style={{ height: (queue.length - to) * ROW_H + pad }} />
           </div>
           <div className="mt-2 text-[11px] opacity-50">
             {exhausted && ahead.length === 0

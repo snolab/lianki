@@ -182,6 +182,15 @@ try {
     await m.goto(page.url(), { waitUntil: "networkidle" });
     const mrows = m.locator('[role="listitem"]');
     await mrows.first().waitFor({ timeout: 15000 });
+    await m.waitForTimeout(500); // let the opening scroll settle
+    const listTop = await m
+      .locator('[role="list"]')
+      .evaluate((el) => el.getBoundingClientRect().top);
+    const firstTop = (await mrows.nth(0).boundingBox()).y;
+    check(
+      Math.abs(firstTop - listTop) < 50,
+      `phone: the list opens with the first word at the top (${Math.round(firstTop - listTop)}px)`,
+    );
     const blurredM = () =>
       mrows
         .nth(0)
