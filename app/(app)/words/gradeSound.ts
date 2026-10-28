@@ -54,6 +54,29 @@ function pluck(
   osc.stop(at + len + 0.01);
 }
 
+/**
+ * Mobile browsers start Web Audio suspended unless it is created or resumed
+ * inside a tap or key press — and a swipe may not count as one. So open (and
+ * resume) the context on the first touch or key, before any grade. Returns
+ * the cleanup for an effect.
+ */
+export function unlockGradeTones() {
+  const unlock = () => {
+    const ac = audio();
+    if (!ac) return;
+    // A one-sample silent buffer: what iOS needs to really start output.
+    const src = ac.createBufferSource();
+    src.buffer = ac.createBuffer(1, 1, 22050);
+    src.connect(ac.destination);
+    src.start();
+    if (ac.state === "running") off();
+  };
+  const events = ["pointerdown", "pointerup", "touchend", "keydown"] as const;
+  const off = () => events.forEach((e) => window.removeEventListener(e, unlock, true));
+  events.forEach((e) => window.addEventListener(e, unlock, true));
+  return off;
+}
+
 export function playGradeTone(tone: GradeTone) {
   const ac = audio();
   if (!ac) return;

@@ -29,6 +29,8 @@ const silentAudio = () => {
     destination = node();
     resume = async () => {};
     createGain = () => ({ ...node(), gain: param() });
+    createBuffer = () => ({});
+    createBufferSource = () => ({ ...node(), start() {} });
     createOscillator = () => {
       const o = { ...node(), type: "", frequency: param(), stop() {} };
       o.start = () => window.__tones.push(Math.round(o.frequency.value));
@@ -36,6 +38,21 @@ const silentAudio = () => {
     };
   };
   window.webkitAudioContext = window.AudioContext;
+  // Speech too: record what would be said, with no voices listed (as on
+  // many Android phones) — words must still be spoken.
+  window.__spoken = [];
+  Object.defineProperty(window, "speechSynthesis", {
+    value: {
+      speak(u) {
+        if (u.text) window.__spoken.push(`${u.lang}:${u.text}`);
+        setTimeout(() => u.onend?.(), 50);
+      },
+      cancel() {},
+      getVoices: () => [],
+      addEventListener() {},
+      removeEventListener() {},
+    },
+  });
 };
 await ctx.addInitScript(silentAudio);
 const page = await ctx.newPage();
@@ -235,6 +252,8 @@ try {
     await m.mouse.down();
     await m.waitForTimeout(500);
     const whileHeld = !(await blurredM());
+    const spoken = await m.evaluate(() => window.__spoken.slice(0, 2).join(" | "));
+    check(spoken.length > 0, `phone: holding speaks the word, with no voices listed (${spoken})`);
     await m.mouse.up();
     await m.waitForTimeout(100);
     check(whileHeld && (await blurredM()), "phone: holding a row reveals it, releasing hides it");

@@ -30,7 +30,7 @@ import {
   sendOrder,
   undoTarget,
 } from "@/lib/words/pending";
-import { playGradeTone, type GradeTone } from "./gradeSound";
+import { playGradeTone, unlockGradeTones, type GradeTone } from "./gradeSound";
 import { formatInterval, parseCard, previewInterval, reviewWord } from "@/lib/words/schedule";
 
 /**
@@ -257,17 +257,34 @@ function useSpeech() {
    */
   const generation = useRef(0);
 
+  const [available, setAvailable] = useState(false);
   useEffect(() => {
     if (typeof speechSynthesis === "undefined") return;
+    setAvailable(true);
+    // Mobile browsers speak only once a gesture has spoken: say nothing on
+    // the first touch or key so later, timer-driven speech is allowed.
+    const prime = () => {
+      const u = new SpeechSynthesisUtterance("");
+      u.volume = 0;
+      speechSynthesis.speak(u);
+    };
+    const opts = { once: true, capture: true } as const;
+    window.addEventListener("pointerup", prime, opts);
+    window.addEventListener("keydown", prime, opts);
     const pick = () => setVoices(speechSynthesis.getVoices());
     pick();
     speechSynthesis.addEventListener("voiceschanged", pick);
-    return () => speechSynthesis.removeEventListener("voiceschanged", pick);
+    return () => {
+      speechSynthesis.removeEventListener("voiceschanged", pick);
+      window.removeEventListener("pointerup", prime, opts);
+      window.removeEventListener("keydown", prime, opts);
+    };
   }, []);
 
   const voiceFor = useCallback(
     (lang: string) => {
-      const vs = voices.filter((v) => v.lang.toLowerCase().startsWith(lang));
+      // Android has reported tags as "fr_FR".
+      const vs = voices.filter((v) => v.lang.toLowerCase().replace("_", "-").startsWith(lang));
       return vs.find((v) => v.localService) ?? vs[0] ?? null;
     },
     [voices],
@@ -281,11 +298,13 @@ function useSpeech() {
 
   const speak = useCallback(
     (text: string, lang: string, then?: () => void, force = false) => {
-      const voice = voiceFor(lang);
-      if (!voice || (!on && !force) || !text) return;
+      if (typeof speechSynthesis === "undefined" || (!on && !force) || !text) return;
       const u = new SpeechSynthesisUtterance(text);
-      u.voice = voice;
-      u.lang = voice.lang;
+      // Chrome on Android often lists no voices at all yet speaks fine: with
+      // no voice to pick, name the language and let the OS choose.
+      const voice = voiceFor(lang);
+      if (voice) u.voice = voice;
+      u.lang = voice?.lang ?? lang;
       u.rate = 0.9;
       if (then) u.onend = then;
       speechSynthesis.speak(u);
@@ -338,8 +357,8 @@ function useSpeech() {
   }, [stop]);
 
   return useMemo(
-    () => ({ available: voices.length > 0, on, loop, once, toggle }),
-    [voices, on, loop, once, toggle],
+    () => ({ available, on, loop, once, toggle }),
+    [available, on, loop, once, toggle],
   );
 }
 
@@ -1178,6 +1197,7 @@ function Study({
       } catch {}
       return !on;
     });
+  useEffect(() => unlockGradeTones(), []);
   const tone = (t: GradeTone) => {
     if (tones) playGradeTone(t);
   };
