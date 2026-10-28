@@ -2122,8 +2122,8 @@ function Study({
 
 /**
  * One row. On touch, tap = onTap and a horizontal swipe grades by distance
- * (see swipeRating); the row follows the finger and shows the grade it will
- * give. Rows only claim horizontal drags (touch-action: pan-y), so vertical
+ * (see swipeRating); the row follows the finger, tinted the colour of the
+ * grade it will give (no label: colour and the grade tone say enough). Rows only claim horizontal drags (touch-action: pan-y), so vertical
  * scrolling stays native.
  */
 function WordRow({
@@ -2241,13 +2241,6 @@ function WordRow({
       }}
     >
       {children}
-      {pending && (
-        <span
-          className={`absolute top-1/2 -translate-y-1/2 text-xs font-semibold ${dx < 0 ? "right-2" : "left-2"}`}
-        >
-          {RATING_LABEL[pending]}
-        </span>
-      )}
     </div>
   );
 }
