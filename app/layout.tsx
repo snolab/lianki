@@ -35,6 +35,21 @@ export default async function RootLayout({
   const locale = await getRootLocale();
   return (
     <html lang={locale}>
+      <head>
+        {/* Calligraphy theme fonts (all OFL). Both are sliced by unicode-range, so a
+            page fetches only the chunks for the characters it shows — CJK fonts are
+            ~10MB whole. Body: 霞鶩文楷 TC. Display: Yuji Syuku (brush), Zen Antique. */}
+        <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-tc-web@1.522.0/lxgwwenkaitc-regular/result.css"
+        />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&family=Zen+Antique&display=swap"
+        />
+      </head>
       <body>
         <IntlayerServerProvider locale={locale}>
           <ServiceWorkerRegistration />

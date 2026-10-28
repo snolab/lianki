@@ -55,7 +55,7 @@ export function Header({
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a tiny static SVG */}
           <img src="/icon.svg" alt="" width={28} height={28} className="rounded-md" />
-          {appName}
+          <span className="font-brush font-normal tracking-wider">{appName}</span>
         </Link>
 
         {/* Navigation */}

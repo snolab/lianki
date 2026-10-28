@@ -64,7 +64,7 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
       <main className="flex-grow">
         {/* Hero Section */}
         <section className="py-12 px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-4xl font-bold mb-4">{hero.title}</h2>
+          <h2 className="font-brush text-5xl leading-tight mb-4">{hero.title}</h2>
           <p className="text-lg mb-8 max-w-2xl mx-auto">{hero.description}</p>
           <Link
             href={appHref("/list", locale)}
