@@ -3,8 +3,8 @@
  * Upload rendered clips (render.py's out dir) to the production R2 bucket,
  * in batches through `wrangler r2 bulk put`. The Cloudflare API allows about
  * 1200 requests per 5 minutes, so this is ~4 clips a second: a full render
- * takes hours. A batch that hits the limit waits it out and is sent again
- * (re-sending a clip is harmless). Japanese goes first. Incremental: keys already sent
+ * takes hours. A batch that hits the limit, or a passing 5xx, waits and is
+ * sent again (re-sending a clip is harmless). Japanese goes first. Incremental: keys already sent
  * are listed in <out>/uploaded.txt and skipped, so it can run again while a
  * render is still going.
  *
@@ -35,15 +35,20 @@ for (let i = 0; i < todo.length; i += BATCH) {
   const batch = todo.slice(i, i + BATCH).map((file) => ({ key: relative(out, file), file }));
   const list = join(out, "batch.json");
   writeFileSync(list, JSON.stringify(batch));
-  for (;;) {
+  for (let tries = 0; ; ) {
     const r =
       await $`bunx wrangler r2 bulk put lianki-blobs --remote -f ${list} --ct audio/mpeg --concurrency 4`
         .quiet()
         .nothrow();
     if (r.exitCode === 0) break;
-    if (!/429|Too Many Requests/.test(r.stderr.toString())) throw new Error(r.stderr.toString());
-    console.log("rate limited; waiting 5 minutes");
-    await Bun.sleep(5 * 60_000);
+    const err = r.stderr.toString();
+    if (++tries > 10 || !/ 429| 5\d\d:/.test(err)) throw new Error(err);
+    // 429: the API's 5-minute window; 5xx: a passing hiccup.
+    const wait = / 429/.test(err) ? 5 * 60_000 : 30_000;
+    console.log(
+      `${/ 429/.test(err) ? "rate limited" : "server error"}; retrying in ${wait / 1000}s`,
+    );
+    await Bun.sleep(wait);
   }
   appendFileSync(log, batch.map((b) => b.key).join("\n") + "\n");
   console.log(`${Math.min(i + BATCH, todo.length)}/${todo.length}`);
