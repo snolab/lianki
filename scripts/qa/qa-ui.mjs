@@ -16,6 +16,18 @@ page.on("response", (r) => {
 const log = (s) => console.log(s);
 let ok = true;
 
+// 0. Owner-only /dev/roadmap is a 404 for a guest. ctx.request shares the
+// context's cookies but fires no page events, so the expected 404 does not
+// land in badResponses / console errors.
+{
+  const r = await ctx.request.get(`${BASE}/dev/roadmap`, { maxRedirects: 0 });
+  if (r.status() === 404) log("✓ /dev/roadmap is 404 for a guest");
+  else {
+    log(`✗ /dev/roadmap for a guest: HTTP ${r.status()} (want 404)`);
+    ok = false;
+  }
+}
+
 // 1. Sign-in page
 await page.goto(`${BASE}/sign-in`, { waitUntil: "networkidle" });
 log(`✓ sign-in page loaded: ${await page.title()}`);
@@ -51,6 +63,16 @@ await page.goto(`${BASE}/list`, { waitUntil: "networkidle" });
 log(`✓ dashboard loaded: ${await page.title()}`);
 await page.goto(`${BASE}/roadmap`, { waitUntil: "networkidle" });
 log(`✓ roadmap loaded: ${await page.title()}`);
+
+// 5b. …and still a 404 for a signed-in user who is not in OWNER_EMAILS.
+{
+  const r = await ctx.request.get(`${BASE}/dev/roadmap`, { maxRedirects: 0 });
+  if (r.status() === 404) log("✓ /dev/roadmap is 404 for a signed-in non-owner");
+  else {
+    log(`✗ /dev/roadmap for a non-owner: HTTP ${r.status()} (want 404)`);
+    ok = false;
+  }
+}
 
 // 6. Console errors (ignore benign RSC prefetch aborts / 404 favicon / the
 // Turnstile widget complaining about a missing sitekey — it gates only the

@@ -11,7 +11,10 @@
   // The deployed Worker uses the D1 backend; local `next dev` stays on mongodb
   // via .env.local.
   "vars": {
-    "DB_BACKEND": "d1"
+    "DB_BACKEND": "d1",
+    // Comma-separated. Gates owner-only internal pages (/dev/roadmap); empty
+    // means nobody passes. See lib/owner.ts.
+    "OWNER_EMAILS": "snomiao@gmail.com"
   },
   // Workers Logs: requests and console output kept and searchable in the
   // dashboard (Observability), not only live via `wrangler tail`.

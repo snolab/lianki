@@ -10,6 +10,7 @@ export const APP_ROUTES = [
   "alphabet",
   "contact",
   "data",
+  "dev",
   "home",
   "import",
   "lab",
