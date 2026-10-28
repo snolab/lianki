@@ -103,9 +103,19 @@ test.describe("Public pages", () => {
     expect(errors).toHaveLength(0);
   });
 
-  test("/home renders the start page for a guest", async ({ page }) => {
+  test("/home is navigation and onboarding, word lists first", async ({ page }) => {
     const errors = collectErrors(page);
     await page.goto(url("/home"));
+    // A guest has no lists yet: the three-step start, then the other entries.
+    await expect(page.locator("[data-onboarding] ol li")).toHaveCount(3);
+    await expect(page.locator("main a[href*='/words']").first()).toBeVisible();
+    await expect(page.locator("main a[href*='/sites']")).toBeVisible();
+    expect(errors).toHaveLength(0);
+  });
+
+  test("/sites renders the immersion start page for a guest", async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.goto(url("/sites"));
     // Playwright's en-US browser lands on the English tab, starred.
     await expect(page.getByRole("tab", { selected: true })).toContainText("English");
     await expect(page.getByRole("tab", { selected: true })).toContainText("★");
@@ -323,6 +333,7 @@ test.describe("Route availability", () => {
     "/contact",
     "/self-intro",
     "/home",
+    "/sites",
     "/lab",
     "/lab/immersion",
     "/learn",

@@ -26,6 +26,7 @@ export const APP_ROUTES = [
   "sign-in",
   "stats",
   "words",
+  "sites",
 ] as const;
 
 export function isAppRoute(pathname: string): boolean {

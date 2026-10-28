@@ -44,7 +44,7 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
     e.preventDefault();
     setError("");
     startTransition(async () => {
-      const result = await authClient.signIn.email({ email, password, callbackURL: "/words" });
+      const result = await authClient.signIn.email({ email, password, callbackURL: "/home" });
       if (result.error) {
         // Try sign-up if sign-in fails with "user not found" type error
         const msg = result.error.message ?? "";
@@ -53,18 +53,18 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
             email,
             password,
             name: "",
-            callbackURL: "/words",
+            callbackURL: "/home",
           });
           if (signUpResult.error) {
             setError(signUpResult.error.message || "Authentication failed");
           } else {
-            router.push("/words");
+            router.push("/home");
           }
         } else {
           setError(msg || "Sign in failed");
         }
       } else {
-        router.push("/words");
+        router.push("/home");
       }
     });
   }
@@ -91,7 +91,7 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
       const result = await authClient.signIn.emailOtp({ email, otp: code.trim() });
       if (result.error) setError(t.wrongCode.value);
       // A full load, so every part of the app sees the new session.
-      else window.location.href = "/words";
+      else window.location.href = "/home";
     });
   }
 
@@ -259,9 +259,7 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
 
             <button
               type="button"
-              onClick={() =>
-                authClient.signIn.social({ provider: "google", callbackURL: "/words" })
-              }
+              onClick={() => authClient.signIn.social({ provider: "google", callbackURL: "/home" })}
               className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <GoogleIcon />
@@ -270,9 +268,7 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
 
             <button
               type="button"
-              onClick={() =>
-                authClient.signIn.social({ provider: "github", callbackURL: "/words" })
-              }
+              onClick={() => authClient.signIn.social({ provider: "github", callbackURL: "/home" })}
               className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <GitHubIcon />

@@ -18,10 +18,11 @@ export type NavItem = {
   group: NavGroup;
 };
 
-// Word lists are the front door; the page-card features (reviewing pages,
-// the card list with its userscript install, the dashboard) sit under
-// "Advanced".
+// Home is navigation and onboarding; word lists are the main path. The
+// page-card features (immersion sites, reviewing pages, the card list with
+// its userscript install) sit under "Advanced".
 export const APP_NAV: NavItem[] = [
+  { key: "home", href: "/home", icon: "🏠", group: "main" },
   { key: "words", href: "/words", icon: "🔤", group: "main" },
   { key: "alphabet", href: "/alphabet", icon: "🔡", group: "main" },
   { key: "learn", href: "/learn", icon: "🎓", group: "main" },
@@ -30,7 +31,7 @@ export const APP_NAV: NavItem[] = [
   { key: "selfIntro", href: "/self-intro", icon: "🗣", group: "main" },
   { key: "read", href: "/read", icon: "📖", group: "main" },
   { key: "roadmap", href: "/roadmap", icon: "🗺", group: "main" },
-  { key: "home", href: "/home", icon: "🏠", group: "advanced" },
+  { key: "sites", href: "/sites", icon: "🌐", group: "advanced" },
   { key: "review", href: "/next", icon: "▶", group: "advanced" },
   { key: "cards", href: "/list", icon: "📚", group: "advanced" },
   { key: "addNote", href: "/add-note", icon: "➕", group: "advanced" },
