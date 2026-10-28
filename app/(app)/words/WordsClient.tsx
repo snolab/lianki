@@ -20,6 +20,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/words/tree";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
+import { loadCatalog } from "@/lib/words/catalog-cache";
 import { formatInterval, previewInterval } from "@/lib/words/schedule";
 
 /**
@@ -34,6 +35,8 @@ import { formatInterval, previewInterval } from "@/lib/words/schedule";
 
 /** Spacing for spreadPairs: the two directions of a pair stay this far apart. */
 const PAGE = 20;
+/** Ungraded words kept ready below the cursor; also the first batch of new words. */
+const AHEAD = 40;
 /** Due words per /session fetch; more are fetched as the queue drains. */
 const DUE_PAGE = 200;
 /**
@@ -109,7 +112,7 @@ const KEY_RATING: Record<string, Rating> = {
 const RATING_STYLE: Record<Rating, string> = {
   1: "bg-red-500/25",
   2: "bg-amber-500/25",
-  3: "",
+  3: "bg-emerald-500/20",
   4: "bg-sky-500/25",
 };
 const RATING_LABEL: Record<Rating, string> = { 1: "Again", 2: "Hard", 3: "Good", 4: "Easy" };
@@ -371,8 +374,7 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
 
   useEffect(() => {
     refreshLists();
-    fetch(`${config.base}/index.json`)
-      .then((r) => (r.ok ? r.json() : { lists: [] }))
+    loadCatalog<{ lists: CatalogMeta[] }>(`${config.base}/index.json`)
       .then((d) => setCatalog(d.lists ?? []))
       .catch(() => setCatalog([]));
   }, [refreshLists, config.base]);
@@ -908,29 +910,57 @@ function Study({
   }, []);
   const dwellSince = useRef(Date.now());
 
+  /**
+   * A list's catalog, loaded once and only when needed (its due words'
+   * examples, or new words), from the IndexedDB cache when it has a copy.
+   */
+  const catalogLoads = useRef<Map<string, Promise<Entry[]>>>(new Map());
+  const ensureCatalog = useCallback(
+    (list: WordList): Promise<Entry[]> => {
+      let p = catalogLoads.current.get(list.id);
+      if (!p) {
+        const meta = catalog.find((c) => c.id === list.source);
+        p = meta
+          ? loadCatalog<{ entries: Entry[] }>(`${base}/${meta.file}`).then((d) => d.entries)
+          : Promise.resolve([]);
+        p = p.then((entries) => {
+          catalogs.current.set(list.id, entries);
+          byTerm.current.delete(list.id);
+          return entries;
+        });
+        catalogLoads.current.set(list.id, p);
+      }
+      return p;
+    },
+    [catalog, base],
+  );
+
   /** Pull up to `n` catalog words of one list that have no card yet. */
-  const takeNewFrom = useCallback(async (list: WordList, n: number): Promise<Item[]> => {
-    const entries = catalogs.current.get(list.id) ?? [];
-    const out: Item[] = [];
-    while (out.length < n && (nextNew.current.get(list.id) ?? 0) < entries.length) {
-      const from = nextNew.current.get(list.id) ?? 0;
-      // The /known route takes at most 500 terms.
-      const slice = entries.slice(from, from + Math.min(500, Math.max(n * 2, 40)));
-      const { known } = await api<{ known: string[] }>(`/api/words/lists/${list.id}/known`, {
-        method: "POST",
-        body: JSON.stringify({ terms: slice.map((e) => e.term) }),
-      });
-      // Advance only once the slice is checked, so a failed request leaves no
-      // word behind the cursor.
-      nextNew.current.set(list.id, from + slice.length);
-      const skip = new Set(known);
-      slice.forEach((e, i) => {
-        if (out.length < n && !skip.has(e.term))
-          out.push({ ...e, kind: "new", newIndex: from + i, listId: list.id, lang: list.lang });
-      });
-    }
-    return out;
-  }, []);
+  const takeNewFrom = useCallback(
+    async (list: WordList, n: number): Promise<Item[]> => {
+      const entries = await ensureCatalog(list);
+      const out: Item[] = [];
+      while (out.length < n && (nextNew.current.get(list.id) ?? 0) < entries.length) {
+        const from = nextNew.current.get(list.id) ?? 0;
+        // The /known route takes at most 500 terms.
+        const slice = entries.slice(from, from + Math.min(500, Math.max(n * 2, 40)));
+        const { known } = await api<{ known: string[] }>(`/api/words/lists/${list.id}/known`, {
+          method: "POST",
+          body: JSON.stringify({ terms: slice.map((e) => e.term) }),
+        });
+        // Advance only once the slice is checked, so a failed request leaves no
+        // word behind the cursor.
+        nextNew.current.set(list.id, from + slice.length);
+        const skip = new Set(known);
+        slice.forEach((e, i) => {
+          if (out.length < n && !skip.has(e.term))
+            out.push({ ...e, kind: "new", newIndex: from + i, listId: list.id, lang: list.lang });
+        });
+      }
+      return out;
+    },
+    [ensureCatalog],
+  );
 
   /** Up to `n` new words in the user's list order: the first list until it runs out. */
   const takeNew = useCallback(
@@ -963,29 +993,21 @@ function Study({
     // Start from the stored cursors every run (Strict Mode mounts twice in dev).
     nextNew.current = new Map(lists.map((l) => [l.id, l.cursor]));
     (async () => {
-      const loaded = await Promise.all(
-        lists.map(async (list) => {
-          const meta = catalog.find((c) => c.id === list.source);
-          const [session, entries] = await Promise.all([
-            api<{ due: WordCard[]; newRemaining: number }>(
-              `/api/words/lists/${list.id}/session?day=${localDay()}`,
-            ),
-            meta
-              ? fetch(`${base}/${meta.file}`)
-                  .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`catalog ${r.status}`))))
-                  .then((d) => d.entries as Entry[])
-              : Promise.resolve([] as Entry[]),
-          ]);
-          catalogs.current.set(list.id, entries);
-          if (session.due.length >= DUE_PAGE) moreDue.current.add(list.id);
-          return { due: dueItems(list, session.due), newRemaining: session.newRemaining, list };
-        }),
-      );
-      // New words follow the list order, within each list's daily allowance.
-      const fresh: Item[] = [];
-      for (const l of loaded) fresh.push(...(await takeNewFrom(l.list, l.newRemaining)));
+      // All lists' due words in one request (one D1 query).
+      const ids = lists.map((l) => l.id).join(",");
+      const session = await api<{
+        lists: Record<string, { due: WordCard[] }>;
+        more: boolean;
+      }>(`/api/words/session?lists=${encodeURIComponent(ids)}&day=${localDay()}`);
+      if (session.more) for (const l of lists) moreDue.current.add(l.id);
+      // Catalogs only for lists with due words (for their examples); the rest
+      // load when their new words are needed.
+      const withDue = lists.filter((l) => session.lists[l.id]?.due.length);
+      await Promise.all(withDue.map(ensureCatalog));
+      // New words: just enough to start, in list order; more load as you go.
+      const fresh = await takeNew(AHEAD);
       if (!alive) return;
-      const due = interleave(loaded.map((l) => l.due));
+      const due = interleave(lists.map((l) => dueItems(l, session.lists[l.id]?.due ?? [])));
       setQueue([...due, ...spreadPairs(fresh, PAGE, due.length, due)]);
       setLoading(false);
     })().catch((e) => alive && setLoadError((e as Error).message));
@@ -993,12 +1015,11 @@ function Study({
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listIds, catalog, takeNewFrom, base]);
+  }, [listIds, catalog, takeNew, ensureCatalog, base]);
 
-  // Endless: when fewer than this many ungraded words are left below the
-  // cursor, fetch more — remaining due words first, then new ones. Stops only
-  // when every catalog runs out.
-  const AHEAD = 40;
+  // Endless: when fewer than AHEAD ungraded words are left below the cursor,
+  // fetch more — remaining due words first, then new ones. Stops only when
+  // every catalog runs out.
   const [exhausted, setExhausted] = useState(false);
   const fetching = useRef(false);
   useEffect(() => {
@@ -1009,13 +1030,19 @@ function Study({
       setQueue((q) => [...q, ...spreadPairs(items, PAGE, q.length, q.slice(-PAGE))]);
     (async () => {
       const due: Item[] = [];
-      for (const list of lists.filter((l) => moreDue.current.has(l.id))) {
-        const s = await api<{ due: WordCard[] }>(
-          `/api/words/lists/${list.id}/session?day=${localDay()}&limit=${DUE_PAGE}`,
+      const waiting = lists.filter((l) => moreDue.current.has(l.id));
+      if (waiting.length) {
+        const s = await api<{ lists: Record<string, { due: WordCard[] }>; more: boolean }>(
+          `/api/words/session?lists=${encodeURIComponent(waiting.map((l) => l.id).join(","))}&day=${localDay()}&limit=${DUE_PAGE}`,
         );
-        const fresh = s.due.filter((c) => !queued.has(keyOf({ listId: list.id, term: c.term })));
-        if (!fresh.length) moreDue.current.delete(list.id);
-        due.push(...dueItems(list, fresh));
+        await Promise.all(waiting.map(ensureCatalog));
+        for (const list of waiting) {
+          const fresh = (s.lists[list.id]?.due ?? []).filter(
+            (c) => !queued.has(keyOf({ listId: list.id, term: c.term })),
+          );
+          if (!fresh.length || !s.more) moreDue.current.delete(list.id);
+          due.push(...dueItems(list, fresh));
+        }
       }
       if (due.length) return append(due);
       const fresh = await takeNew(AHEAD);

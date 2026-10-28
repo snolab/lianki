@@ -214,3 +214,20 @@ test("lists nest under groups; cycles are refused; deleting a group lifts its ch
   await repo.deleteList(g);
   expect((await repo.getList(a))!.parentId).toBeNull();
 });
+
+test("one session query covers several lists", async () => {
+  const d1 = createTestD1(testSchema());
+  const repo = new WordsD1Repo(d1, "s@example.com");
+  const a = await repo.createList({ name: "a", lang: "fr" });
+  const b = await repo.createList({ name: "b", lang: "ja" });
+  const t0 = new Date("2026-10-28T10:00:00Z");
+  await repo.review(a, [{ term: "chat", rating: 1 }], "2026-10-28", t0);
+  await repo.review(b, [{ term: "猫", rating: 1 }], "2026-10-28", t0);
+  const later = new Date(t0.getTime() + 3600_000);
+  const s = await repo.sessionMany([a, b], "2026-10-28", later);
+  expect(s.lists[a].due.map((c) => c.term)).toEqual(["chat"]);
+  expect(s.lists[b].due.map((c) => c.term)).toEqual(["猫"]);
+  expect(s.lists[a].newRemaining).toBe(49);
+  expect(s.more).toBe(false);
+  expect((await repo.sessionMany([], "2026-10-28")).lists).toEqual({});
+});
