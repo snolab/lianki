@@ -45,6 +45,33 @@ export function passwordAuthEnabled(): boolean {
   return runtimeNodeEnv() !== "production" && process.env.DEV_EMAIL_PASSWORD_AUTH === "1";
 }
 
+/**
+ * Send a sign-in mail and leave one log line either way, for Workers Logs:
+ * the kind, the recipient's domain (never the full address), and Resend's
+ * message id or the error — enough to trace "QQ Mail can't sign in".
+ */
+async function sendSignInMail(
+  kind: "otp" | "link",
+  email: string,
+  mail: Parameters<typeof sendEmail>[0],
+) {
+  const domain = email.split("@")[1]?.toLowerCase() ?? "?";
+  try {
+    const { id } = await sendEmail(mail);
+    console.log(JSON.stringify({ event: "signin.mail.sent", kind, domain, id }));
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        event: "signin.mail.failed",
+        kind,
+        domain,
+        error: String(err).slice(0, 300),
+      }),
+    );
+    throw err;
+  }
+}
+
 /** Backend-agnostic better-auth options (everything except `database`). */
 function baseOptions() {
   return {
@@ -102,7 +129,10 @@ function baseOptions() {
               expiresIn: 15 * 60,
               allowedAttempts: 5,
               sendVerificationOTP: async ({ email, otp }, ctx) => {
-                await sendEmail({ to: email, ...signInMail(mailLocale(ctx), { otp }) });
+                await sendSignInMail("otp", email, {
+                  to: email,
+                  ...signInMail(mailLocale(ctx), { otp }),
+                });
               },
             }),
             magicLink({
@@ -110,7 +140,10 @@ function baseOptions() {
               // can take longer than that to arrive.
               expiresIn: 15 * 60,
               sendMagicLink: async ({ email, url }, ctx) => {
-                await sendEmail({ to: email, ...signInMail(mailLocale(ctx), { url }) });
+                await sendSignInMail("link", email, {
+                  to: email,
+                  ...signInMail(mailLocale(ctx), { url }),
+                });
               },
             }),
           ]
