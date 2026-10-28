@@ -141,6 +141,51 @@ function useTouch() {
   return touch;
 }
 
+type FsDoc = Document & {
+  webkitFullscreenEnabled?: boolean;
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void>;
+};
+type FsEl = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+
+/**
+ * Full screen for phone study: the address bar eats a lot of a phone screen.
+ * The Fullscreen API works on Android; iPhone Safari has none for pages, so
+ * there `supported` is false and the way is Add to Home Screen (standalone).
+ */
+function useFullscreen() {
+  const [supported, setSupported] = useState(false);
+  const [active, setActive] = useState(false);
+  const [standalone, setStandalone] = useState(false);
+  useEffect(() => {
+    const d = document as FsDoc;
+    setSupported(!!(d.fullscreenEnabled || d.webkitFullscreenEnabled));
+    setStandalone(
+      window.matchMedia("(display-mode: standalone), (display-mode: fullscreen)").matches ||
+        (navigator as Navigator & { standalone?: boolean }).standalone === true,
+    );
+    const on = () => setActive(!!(d.fullscreenElement || d.webkitFullscreenElement));
+    on();
+    document.addEventListener("fullscreenchange", on);
+    document.addEventListener("webkitfullscreenchange", on);
+    return () => {
+      document.removeEventListener("fullscreenchange", on);
+      document.removeEventListener("webkitfullscreenchange", on);
+    };
+  }, []);
+  const enter = useCallback(() => {
+    const el = document.documentElement as FsEl;
+    const req = el.requestFullscreen?.bind(el) ?? el.webkitRequestFullscreen?.bind(el);
+    return req?.({ navigationUI: "hide" } as FullscreenOptions)?.catch(() => {});
+  }, []);
+  const exit = useCallback(() => {
+    const d = document as FsDoc;
+    if (!(d.fullscreenElement || d.webkitFullscreenElement)) return;
+    (d.exitFullscreen?.bind(d) ?? d.webkitExitFullscreen?.bind(d))?.()?.catch(() => {});
+  }, []);
+  return { supported, active, standalone, enter, exit };
+}
+
 /** Does one card's answer show the other's front? (あ → a next to a → あ) */
 const answers = (a: Item, b: Item) =>
   a.back.split(/\s*\/\s*/).includes(b.term) || b.back.split(/\s*\/\s*/).includes(a.term);
@@ -1120,6 +1165,40 @@ function Study({
   };
   const started = useRef(Date.now());
   const touch = useTouch();
+  /** Phone full screen. Remembered: once on, the first touch of a later study re-enters it. */
+  const fs = useFullscreen();
+  const [fsHint, setFsHint] = useState(false);
+  const fsWanted = useRef(false);
+  useEffect(() => {
+    try {
+      fsWanted.current = localStorage.getItem("lk:words-fullscreen") === "1";
+    } catch {}
+    // Leaving study leaves full screen too.
+    return () => fs.exit();
+  }, [fs.exit]);
+  const rememberFs = (on: boolean) => {
+    fsWanted.current = on;
+    try {
+      localStorage.setItem("lk:words-fullscreen", on ? "1" : "0");
+    } catch {}
+  };
+  const toggleFullscreen = () => {
+    if (!fs.supported) return setFsHint((v) => !v);
+    if (fs.active) {
+      rememberFs(false);
+      fs.exit();
+    } else {
+      rememberFs(true);
+      fs.enter();
+    }
+  };
+  /** Browsers allow full screen only from a gesture: re-enter on this study's first touch. */
+  const fsResumed = useRef(false);
+  const resumeFullscreen = () => {
+    if (fsResumed.current) return;
+    fsResumed.current = true;
+    if (fsWanted.current && fs.supported && !fs.active) fs.enter();
+  };
   const speech = useSpeech();
   const base = config.base;
   const listIds = lists.map((l) => l.id).join(",");
@@ -1627,6 +1706,17 @@ function Study({
             ↶ Undo
           </button>
         )}
+        {touch && !fs.standalone && (
+          <button
+            className={`px-2 py-0.5 rounded text-xs ${
+              fs.active ? "bg-black/20 dark:bg-white/25" : "bg-black/10 dark:bg-white/10"
+            }`}
+            onClick={toggleFullscreen}
+            aria-label="Full screen"
+          >
+            {fs.active ? "⤡ Exit full screen" : "⤢ Full screen"}
+          </button>
+        )}
         {touch && (
           <label className="flex items-center gap-1 text-xs opacity-80">
             <input
@@ -1672,6 +1762,12 @@ function Study({
       </div>
       {syncError && <div className="text-red-500 text-sm mb-2">Not saved: {syncError}</div>}
       {notice && <div className="text-amber-600 dark:text-amber-300 text-sm mb-2">{notice}</div>}
+      {fsHint && (
+        <div className="text-sm mb-2 opacity-80" onClick={() => setFsHint(false)}>
+          This browser can&apos;t hide its address bar for a page. On iPhone: Share → Add to Home
+          Screen, then open Lianki from the home screen — it runs without the address bar.
+        </div>
+      )}
 
       {loadError ? (
         <div className="space-y-3 py-8 text-center">
@@ -1698,6 +1794,9 @@ function Study({
             // load; the browser must not "help" by shifting the scroll.
             style={{ height: viewH, overflowAnchor: "none" }}
             onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+            // pointerup, not pointerdown: for touch it is the event that grants
+            // the user activation full screen needs.
+            onPointerUp={touch ? resumeFullscreen : undefined}
             role="list"
           >
             <div style={{ height: pad + from * ROW_H }} />

@@ -205,6 +205,15 @@ try {
     await m.mouse.up();
     await m.waitForTimeout(100);
     check(whileHeld && (await blurredM()), "phone: holding a row reveals it, releasing hides it");
+    // Full screen: the API where there is one, else the Add to Home Screen hint.
+    await m.getByRole("button", { name: "Full screen" }).click();
+    await m.waitForTimeout(300);
+    const fsOn = await m.evaluate(() => !!document.fullscreenElement);
+    const hint = await m.getByText("Add to Home Screen", { exact: false }).count();
+    check(
+      fsOn || hint > 0,
+      `phone: the full screen button works (${fsOn ? "fullscreen" : "hint"})`,
+    );
     await phone.close();
   }
 
