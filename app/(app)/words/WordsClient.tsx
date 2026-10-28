@@ -850,6 +850,19 @@ function Study({
   const [help, setHelp] = useState(false);
   /** Every meaning shown, not just the focused / pinned rows. */
   const [showAll, setShowAll] = useState(false);
+  /** After a swipe grades a row, scroll the list down one row. Remembered. */
+  const [swipeScroll, setSwipeScroll] = useState(false);
+  useEffect(() => {
+    try {
+      setSwipeScroll(localStorage.getItem("lk:words-swipe-scroll") === "1");
+    } catch {}
+  }, []);
+  const toggleSwipeScroll = (on: boolean) => {
+    setSwipeScroll(on);
+    try {
+      localStorage.setItem("lk:words-swipe-scroll", on ? "1" : "0");
+    } catch {}
+  };
   const started = useRef(Date.now());
   const touch = useTouch();
   const speech = useSpeech();
@@ -1244,6 +1257,16 @@ function Study({
             ↶ Undo
           </button>
         )}
+        {touch && (
+          <label className="flex items-center gap-1 text-xs opacity-80">
+            <input
+              type="checkbox"
+              checked={swipeScroll}
+              onChange={(e) => toggleSwipeScroll(e.target.checked)}
+            />
+            scroll after swipe
+          </label>
+        )}
         <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
           {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
           {ahead.length - dueLeft} new
@@ -1308,7 +1331,10 @@ function Study({
                         }))
                       : grade(i, 1)
                   }
-                  onSwipe={(r) => grade(i, r)}
+                  onSwipe={(r) => {
+                    grade(i, r);
+                    if (swipeScroll) listRef.current?.scrollBy({ top: ROW_H, behavior: "smooth" });
+                  }}
                   className={`group grid items-center gap-2 px-2 leading-none cursor-pointer select-none border-b border-black/5 dark:border-white/5 ${
                     touch
                       ? "grid-cols-[minmax(6rem,12rem)_1fr_3rem] text-base"
