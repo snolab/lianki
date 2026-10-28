@@ -135,13 +135,14 @@ try {
   await page.setViewportSize(fullSize);
   await page.waitForTimeout(200);
 
-  // F moves the cursor down (like ↓) and the focused row shows its meaning.
+  // F moves the cursor down (like ↓) and the focused row shows its meaning;
+  // a hidden meaning is a blank slot (留白, class slip-blank).
   const blurred = (i) =>
     rows
       .nth(i)
       .locator("span.text-sm")
       .first()
-      .evaluate((el) => el.className.includes("blur-["));
+      .evaluate((el) => el.className.includes("slip-blank"));
   await page.keyboard.press("f");
   check(!(await blurred(1)) && (await blurred(0)), "F moves down and reveals the focused row");
   await page.keyboard.press("r");
@@ -369,7 +370,7 @@ try {
         .nth(0)
         .locator("span.text-sm")
         .first()
-        .evaluate((el) => el.className.includes("blur-["));
+        .evaluate((el) => el.className.includes("slip-blank"));
     const box = await mrows.nth(0).boundingBox();
     await m.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await m.mouse.down();

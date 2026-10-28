@@ -119,3 +119,93 @@ ruby rt {
   font-size: 0.6em;
   color: var(--color-gray-500, oklch(0.556 0.013 264.5));
 }
+
+/* Bamboo slips (竹簡) — /words rows. Each row is a slip: a flat bamboo colour,
+ * one shared 6KB fibre tile, a node line at the term column's edge, and two
+ * binding cords that line up across rows into one continuous cord. All of it is
+ * background layers — no filters, nothing per frame. Grades swap --slip-c. */
+:root {
+  --slip-fib: url(/paper/bamboo-light.webp);
+  --slip-base: oklch(0.88 0.056 84);
+  --slip-again: oklch(0.83 0.071 40);
+  --slip-hard: oklch(0.86 0.091 79);
+  --slip-good: oklch(0.85 0.071 124);
+  --slip-easy: oklch(0.86 0.05 230);
+  --slip-cord: oklch(0.45 0.12 35);
+  --slip-node: oklch(0.45 0.06 70 / 0.18);
+  --slip-seam: oklch(0.55 0.05 70 / 0.35);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --slip-fib: url(/paper/bamboo-dark.webp);
+    --slip-base: oklch(0.42 0.069 61.5);
+    --slip-again: oklch(0.39 0.089 35);
+    --slip-hard: oklch(0.46 0.079 69);
+    --slip-good: oklch(0.43 0.069 130);
+    --slip-easy: oklch(0.42 0.06 235);
+    --slip-cord: oklch(0.5 0.12 35);
+    --slip-node: oklch(0.15 0.02 60 / 0.35);
+    --slip-seam: oklch(0.12 0.01 60 / 0.8);
+  }
+}
+.slip {
+  --slip-c: var(--slip-base);
+  /* term/meaning boundary: padding + marker column + gaps + the fitted term width */
+  --node-x: calc(0.5rem + 1.25rem + 0.75rem + var(--term-w, 12rem));
+  --fx: 0px;
+  background:
+    linear-gradient(var(--slip-cord), var(--slip-cord)) 3px 0 / 3px 100% no-repeat,
+    linear-gradient(var(--slip-cord), var(--slip-cord)) right 3px top 0 / 3px 100% no-repeat,
+    linear-gradient(var(--slip-node), var(--slip-node)) var(--node-x) 0 / 2px 100% no-repeat,
+    var(--slip-fib) var(--fx) 0 / 512px 48px repeat,
+    var(--slip-c);
+  border-bottom-color: var(--slip-seam);
+}
+/* Shift the shared tile per row so neighbouring slips never repeat the same grain. */
+.slip:nth-child(3n + 1) {
+  --fx: -171px;
+}
+.slip:nth-child(3n + 2) {
+  --fx: -343px;
+}
+.slip-touch {
+  --node-x: calc(0.5rem + var(--term-w, 8rem) + 0.25rem);
+}
+.slip-again {
+  --slip-c: var(--slip-again);
+}
+.slip-hard {
+  --slip-c: var(--slip-hard);
+}
+.slip-good {
+  --slip-c: var(--slip-good);
+}
+.slip-easy {
+  --slip-c: var(--slip-easy);
+}
+/* An unrevealed meaning is a blank left to be written in (留白), not blurred text. */
+.slip-blank {
+  color: transparent;
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--foreground) 0 4px,
+    transparent 4px 8px
+  );
+  background-size: 100% 1px;
+  background-repeat: no-repeat;
+  background-position: 0 55%;
+  opacity: 0.3;
+}
+.slip-blank * {
+  color: transparent;
+}
+@media (hover: hover) {
+  .group:hover .slip-blank {
+    color: inherit;
+    background: none;
+    opacity: 0.8;
+  }
+  .group:hover .slip-blank * {
+    color: inherit;
+  }
+}
