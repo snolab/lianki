@@ -112,14 +112,20 @@ try {
     await page.keyboard.press("w");
     await page.waitForTimeout(40);
   }
-  await page.waitForTimeout(1500);
-  l = await listsNow();
+  // Grades go out one by one from the sync queue: wait for the last to land.
+  const cardsReach = async (n, ms = 15000) => {
+    let c;
+    for (const end = Date.now() + ms; Date.now() < end; await page.waitForTimeout(300))
+      if ((c = (await listsNow())?.cards) === n) return c;
+    return c;
+  };
+  const saved60 = await cardsReach(60);
   const ahead = await rows.evaluateAll(
     (els) => els.filter((e) => e.querySelector("span.tabular-nums")?.textContent === "new").length,
   );
   check(
-    l?.cards === 60 && ahead > 0,
-    `60 graded and saved (${l?.cards}), more words below (${ahead})`,
+    saved60 === 60 && ahead > 0,
+    `60 graded and saved (${saved60}), more words below (${ahead})`,
   );
 
   // Scrolling to the bottom (no cursor movement, as on a phone) loads more too.
@@ -134,6 +140,31 @@ try {
     heightAfter > heightBefore,
     `scrolling to the end loads more words (${heightBefore} → ${heightAfter}px)`,
   );
+  // Offline: grades wait on the device, the page reopens from the cache, and
+  // everything syncs once the network is back.
+  await ctx.setOffline(true);
+  for (let i = 0; i < 3; i++) {
+    await page.keyboard.press("w");
+    await page.waitForTimeout(60);
+  }
+  await page.waitForTimeout(500);
+  const waitingText = await page
+    .locator('[data-sync="pending"]')
+    .innerText()
+    .catch(() => "");
+  check(
+    /3 to sync/.test(waitingText),
+    `offline grades wait on the device: "${waitingText.trim()}"`,
+  );
+  await page.reload({ waitUntil: "load" }).catch(() => {});
+  await rows
+    .first()
+    .waitFor({ timeout: 15000 })
+    .catch(() => {});
+  check((await rows.count()) > 0, "offline, the list reopens from the device");
+  await ctx.setOffline(false);
+  const synced = await cardsReach(63, 20000);
+  check(synced === 63, `back online, the offline grades reach the server (${synced})`);
 
   // Phone: holding a row reveals it (listen mode); letting go hides it again.
   {
@@ -175,6 +206,15 @@ try {
   check(!fronts.slice(0, 20).includes("a"), "あ and its reverse a are kept 20+ rows apart");
   await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
   check((await page.getByText("Hiragana").count()) === 0, "alphabet lists stay off /words");
+
+  // "Download for offline" saves the lists, catalogs and due words on the device.
+  await page.getByRole("button", { name: /Download for offline/ }).click();
+  const saved = await page
+    .getByText("Saved on this device ✓")
+    .waitFor({ timeout: 20000 })
+    .then(() => true)
+    .catch(() => false);
+  check(saved, "download for offline completes");
 
   // Study all: with two lists, one queue mixes both.
   await page.getByRole("button", { name: first.lang, exact: true }).click();

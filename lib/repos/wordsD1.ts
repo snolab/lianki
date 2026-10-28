@@ -1,6 +1,7 @@
 import type { Card } from "ts-fsrs";
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
 import {
+  reviewTime,
   newRemaining,
   normalizeParams,
   parseCard,
@@ -51,6 +52,8 @@ export type WordReviewInput = {
   rating: Rating;
   elapsedMs?: number | null;
   newIndex?: number | null;
+  /** When it was graded, if not now: a review made offline and synced later. */
+  reviewedAt?: string | null;
 };
 
 type ListRow = {
@@ -456,13 +459,14 @@ export class WordsD1Repo {
     const statements: D1StmtLike[] = [];
     for (const r of reviews) {
       const s = state.get(r.term)!;
+      const when = reviewTime(r.reviewedAt, now);
       // Grading a word that is not due again yet re-grades its latest review
       // (it was just reviewed: a changed mind, not a new recall), replacing
       // that review. Grading a due word is a new review.
       const replace =
         !s.undone &&
         !!s.card &&
-        s.card.due.getTime() > now.getTime() &&
+        s.card.due.getTime() > when.getTime() &&
         (s.prev !== null || s.reps === 1);
       let base: Card | null;
       if (replace) {
@@ -475,7 +479,7 @@ export class WordsD1Repo {
         s.prev = s.card ? JSON.stringify(s.card) : null;
       }
       s.undone = false;
-      const { card, prevState } = reviewWord(base, r.rating, now, params);
+      const { card, prevState } = reviewWord(base, r.rating, when, params);
       s.card = card;
       s.reps++;
       if (r.reading != null && !s.reading) s.reading = r.reading;
@@ -486,7 +490,15 @@ export class WordsD1Repo {
             `INSERT INTO word_reviews (email, list_id, term, rating, state, elapsed_ms, reviewed_at)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
           )
-          .bind(this.email, listId, r.term, r.rating, prevState, r.elapsedMs ?? null, at),
+          .bind(
+            this.email,
+            listId,
+            r.term,
+            r.rating,
+            prevState,
+            r.elapsedMs ?? null,
+            when.toISOString(),
+          ),
       );
     }
     for (const [term, s] of state) {

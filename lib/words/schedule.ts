@@ -144,3 +144,21 @@ export function previewInterval(
   const { card } = reviewWord(parseCard(cardJson), rating, now, params, false);
   return formatInterval(card.due.getTime() - now.getTime());
 }
+
+/** How far back an offline review may be dated. */
+export const MAX_OFFLINE_AGE_MS = 30 * 86400_000;
+
+/**
+ * The time a review is scheduled at: when it was made (a review graded
+ * offline and synced later), if that is a plausible past time within
+ * MAX_OFFLINE_AGE_MS; otherwise the server's now. A minute of clock skew into
+ * the future is tolerated as "now".
+ */
+export function reviewTime(reviewedAt: string | null | undefined, now: Date): Date {
+  if (!reviewedAt) return now;
+  const t = Date.parse(reviewedAt);
+  if (!Number.isFinite(t)) return now;
+  if (t > now.getTime()) return now;
+  if (now.getTime() - t > MAX_OFFLINE_AGE_MS) return now;
+  return new Date(t);
+}
