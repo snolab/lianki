@@ -2,6 +2,11 @@ import { withIntlayer } from "next-intlayer/server";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Which build this is, inlined into server and client alike: a page whose
+  // id differs from the server's is out of date (app/api/version/stream).
+  env: {
+    NEXT_PUBLIC_BUILD_ID: (process.env.GITHUB_SHA ?? `local-${Date.now()}`).slice(0, 20),
+  },
   // Internal workspace package shipping TypeScript source (@lianki/core).
   transpilePackages: ["@lianki/core"],
   async headers() {
