@@ -34,7 +34,7 @@ export default async function RootLayout({
 }>) {
   const locale = await getRootLocale();
   return (
-    <html lang={locale}>
+    <html lang={locale} suppressHydrationWarning>
       <head>
         {/* Calligraphy theme fonts (all OFL). Both are sliced by unicode-range, so a
             page fetches only the chunks for the characters it shows — CJK fonts are
@@ -48,6 +48,13 @@ export default async function RootLayout({
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&family=Zen+Antique&display=swap"
+        />
+        {/* The paper skin is per device; set it before first paint so the page
+            never flashes the default. Key: PAPER_KEY in PaperSkinPicker. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var p=localStorage.getItem("lk:paper");if(p)document.documentElement.dataset.paper=p}catch(e){}`,
+          }}
         />
       </head>
       <body>
