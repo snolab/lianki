@@ -309,7 +309,25 @@ function usePageActive() {
  * for the language, or it never starts (Firefox on Android) — the word comes
  * from the server instead (/api/words/tts, generated once and cached).
  */
-function useSpeech() {
+/**
+ * Full language tags for speech. A bare "ja" with no voice chosen lets
+ * Android pick any engine voice — Japanese then came out in a Chinese accent.
+ */
+const SPEECH_TAG: Record<string, string> = {
+  ja: "ja-JP",
+  zh: "zh-CN",
+  ko: "ko-KR",
+  fr: "fr-FR",
+  es: "es-ES",
+  de: "de-DE",
+  it: "it-IT",
+  pt: "pt-BR",
+  ru: "ru-RU",
+  en: "en-US",
+};
+
+/** `serverVoice`: always use the server's recordings, never the browser's. */
+function useSpeech(serverVoice = false) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [on, setOn] = useState(() => {
     try {
@@ -360,8 +378,18 @@ function useSpeech() {
   const voiceFor = useCallback(
     (lang: string) => {
       // Android has reported tags as "fr_FR".
-      const vs = voices.filter((v) => v.lang.toLowerCase().replace("_", "-").startsWith(lang));
-      return vs.find((v) => v.localService) ?? vs[0] ?? null;
+      const norm = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace("_", "-");
+      const vs = voices.filter((v) => norm(v).startsWith(lang));
+      const tag = SPEECH_TAG[lang]?.toLowerCase();
+      // The language's own region first (ja-JP, not a ja voice of elsewhere).
+      const exact = vs.filter((v) => norm(v) === tag);
+      return (
+        exact.find((v) => v.localService) ??
+        exact[0] ??
+        vs.find((v) => v.localService) ??
+        vs[0] ??
+        null
+      );
     },
     [voices],
   );
@@ -407,6 +435,7 @@ function useSpeech() {
     (text: string, lang: string, then?: () => void, force = false) => {
       if ((!on && !force) || !text) return;
       const browser =
+        !serverVoice &&
         typeof speechSynthesis !== "undefined" &&
         !browserDead.current.has(lang) &&
         (voices.length === 0 || voiceFor(lang) !== null);
@@ -416,7 +445,7 @@ function useSpeech() {
       // no voice to pick, name the language and let the OS choose.
       const voice = voiceFor(lang);
       if (voice) u.voice = voice;
-      u.lang = voice?.lang ?? lang;
+      u.lang = voice?.lang ?? SPEECH_TAG[lang] ?? lang;
       u.rate = 0.9;
       // Never started (no engine behind the API) or failed outright: the
       // server speaks this language from now on.
@@ -443,7 +472,7 @@ function useSpeech() {
       watchdog.current = setTimeout(fallBack, 2000);
       speechSynthesis.speak(u);
     },
-    [voiceFor, voices, on, serverSpeak],
+    [voiceFor, voices, on, serverSpeak, serverVoice],
   );
 
   /** Repeat `text` with a pause until the next call; "" just stops. */
@@ -1338,7 +1367,9 @@ function Study({
     fsResumed.current = true;
     if (fsWanted.current && fs.supported && !fs.active) fs.enter();
   };
-  const speech = useSpeech();
+  /** Read with the server's voice instead of the browser's. Remembered. */
+  const [serverVoice, setServerVoice] = usePref("lk:words-server-voice", false);
+  const speech = useSpeech(serverVoice);
   const base = config.base;
   const listIds = lists.map((l) => l.id).join(",");
   const paramsOf = useMemo(() => new Map(lists.map((l) => [l.id, l.params])), [lists]);
@@ -1879,6 +1910,14 @@ function Study({
                 onChange={() => speech.toggle()}
                 label="Read cards aloud"
                 hint="Speak the word and its example (V)"
+              />
+            )}
+            {speech.on && (
+              <TogglePill
+                on={serverVoice}
+                onChange={setServerVoice}
+                label="Server voice"
+                hint="Use Lianki's recorded voice (fr, ja, zh, en, es, ko) instead of the browser's"
               />
             )}
             <TogglePill
