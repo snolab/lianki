@@ -135,6 +135,34 @@ try {
     `scrolling to the end loads more words (${heightBefore} → ${heightAfter}px)`,
   );
 
+  // Phone: holding a row reveals it (listen mode); letting go hides it again.
+  {
+    const { devices } = await import("playwright");
+    const phone = await browser.newContext({
+      ...devices["iPhone 13"],
+      storageState: await ctx.storageState(),
+    });
+    const m = await phone.newPage();
+    await m.goto(page.url(), { waitUntil: "networkidle" });
+    const mrows = m.locator('[role="listitem"]');
+    await mrows.first().waitFor({ timeout: 15000 });
+    const blurredM = () =>
+      mrows
+        .nth(0)
+        .locator("span.text-sm")
+        .first()
+        .evaluate((el) => el.className.includes("blur-["));
+    const box = await mrows.nth(0).boundingBox();
+    await m.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await m.mouse.down();
+    await m.waitForTimeout(500);
+    const whileHeld = !(await blurredM());
+    await m.mouse.up();
+    await m.waitForTimeout(100);
+    check(whileHeld && (await blurredM()), "phone: holding a row reveals it, releasing hides it");
+    await phone.close();
+  }
+
   // /alphabet: same drill over its own catalog; its lists stay off /words.
   await page.goto(`${BASE}/alphabet`, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "ja", exact: true }).click();

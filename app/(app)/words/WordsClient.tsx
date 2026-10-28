@@ -44,6 +44,8 @@ const DUE_PAGE = 200;
  * one the stronger. ← short Hard, ← long Again; → short Good, → long Easy.
  */
 const SWIPE_PX = 40;
+/** A touch held this long without moving starts listen mode (looped audio). */
+const HOLD_MS = 300;
 const SWIPE_FAR_PX = 110;
 const swipeRating = (dx: number): Rating | null =>
   dx <= -SWIPE_FAR_PX
@@ -223,9 +225,9 @@ function useSpeech() {
   }, []);
 
   const speak = useCallback(
-    (text: string, lang: string, then?: () => void) => {
+    (text: string, lang: string, then?: () => void, force = false) => {
       const voice = voiceFor(lang);
-      if (!voice || !on || !text) return;
+      if (!voice || (!on && !force) || !text) return;
       const u = new SpeechSynthesisUtterance(text);
       u.voice = voice;
       u.lang = voice.lang;
@@ -242,13 +244,13 @@ function useSpeech() {
    * the next call; an empty list just stops.
    */
   const loop = useCallback(
-    (texts: string[], lang: string) => {
+    (texts: string[], lang: string, force = false) => {
       stop();
       const parts = texts.filter(Boolean);
       if (!parts.length) return;
       const gen = generation.current;
       let i = 0;
-      const say = () => gen === generation.current && speak(parts[i], lang, after);
+      const say = () => gen === generation.current && speak(parts[i], lang, after, force);
       const after = () => {
         if (gen !== generation.current) return;
         i = (i + 1) % parts.length;
@@ -263,9 +265,9 @@ function useSpeech() {
   );
 
   const once = useCallback(
-    (text: string, lang: string) => {
+    (text: string, lang: string, force = false) => {
       stop();
-      speak(text, lang);
+      speak(text, lang, undefined, force);
     },
     [speak, stop],
   );
@@ -852,6 +854,21 @@ function Study({
   const [help, setHelp] = useState(false);
   /** Every meaning shown, not just the focused / pinned rows. */
   const [showAll, setShowAll] = useState(false);
+  /** Touch: say the word as a swipe starts. Remembered; on by default. */
+  const [swipeSpeak, setSwipeSpeak] = useState(true);
+  useEffect(() => {
+    try {
+      setSwipeSpeak(localStorage.getItem("lk:words-swipe-speak") !== "0");
+    } catch {}
+  }, []);
+  const toggleSwipeSpeak = (on: boolean) => {
+    setSwipeSpeak(on);
+    try {
+      localStorage.setItem("lk:words-swipe-speak", on ? "1" : "0");
+    } catch {}
+  };
+  /** Touch: the row being held (listen mode) — revealed and looped while held. */
+  const [holding, setHolding] = useState<number | null>(null);
   /** After a swipe grades a row, scroll the list down one row. Remembered. */
   const [swipeScroll, setSwipeScroll] = useState(false);
   useEffect(() => {
@@ -1186,6 +1203,29 @@ function Study({
       el.scrollTop = top + ROW_H * 3 - el.clientHeight;
   }, [row, ROW_H]);
 
+  // Touch has no cursor: the row a third of the way down the list is the
+  // "focus line". When scrolling settles there, it is read once — so with
+  // scroll-after-swipe each next word speaks itself, like the desktop loop.
+  const [focusLine, setFocusLine] = useState(0);
+  useEffect(() => {
+    if (!touch) return;
+    const t = setTimeout(
+      () =>
+        setFocusLine(
+          Math.max(0, Math.min(queue.length - 1, Math.floor((scrollTop + viewH / 3) / ROW_H))),
+        ),
+      200,
+    );
+    return () => clearTimeout(t);
+  }, [touch, scrollTop, viewH, ROW_H, queue.length]);
+  const focusItem = touch ? queue[focusLine] : undefined;
+  const focusText = focusItem ? spokenText(focusItem, focusItem.lang, !!config.readingOnBack) : "";
+  useEffect(() => {
+    if (!touch || !active || holding !== null || !focusItem) return;
+    speech.once(focusText, focusItem.lang);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [touch, focusLine, focusText]);
+
   /** How far down the list the user has got: the cursor, or the last row in view. */
   const reach = Math.max(row, Math.floor((scrollTop + viewH) / ROW_H));
   // Endless: when fewer than AHEAD ungraded words are left below the cursor
@@ -1297,6 +1337,16 @@ function Study({
             scroll after swipe
           </label>
         )}
+        {touch && (
+          <label className="flex items-center gap-1 text-xs opacity-80">
+            <input
+              type="checkbox"
+              checked={swipeSpeak}
+              onChange={(e) => toggleSwipeSpeak(e.target.checked)}
+            />
+            speak on swipe
+          </label>
+        )}
         <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
           {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
           {ahead.length - dueLeft} new
@@ -1342,7 +1392,7 @@ function Study({
               const g = grades.get(i);
               const rating = g?.rating;
               // The keyboard cursor reveals its row, as hovering does.
-              const show = showAll || revealed.has(i) || (!touch && i === row);
+              const show = showAll || revealed.has(i) || (!touch && i === row) || holding === i;
               return (
                 <WordRow
                   key={i}
@@ -1352,7 +1402,11 @@ function Study({
                   // Desktop click = Again; on touch a tap reveals and reads it.
                   onTap={() =>
                     touch
-                      ? (speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang),
+                      ? (speech.once(
+                          spokenText(it, it.lang, !!config.readingOnBack),
+                          it.lang,
+                          true,
+                        ),
                         setRevealed((s) => {
                           const n = new Set(s);
                           if (n.has(i)) n.delete(i);
@@ -1361,6 +1415,22 @@ function Study({
                         }))
                       : grade(i, 1)
                   }
+                  onSwipeStart={() =>
+                    swipeSpeak &&
+                    speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang)
+                  }
+                  onHold={() => {
+                    setHolding(i);
+                    speech.loop(
+                      [spokenText(it, it.lang, !!config.readingOnBack), it.ex ?? ""],
+                      it.lang,
+                      true,
+                    );
+                  }}
+                  onHoldEnd={() => {
+                    setHolding(null);
+                    speech.loop([], "");
+                  }}
                   onSwipe={(r) => {
                     grade(i, r);
                     if (swipeScroll) listRef.current?.scrollBy({ top: ROW_H, behavior: "smooth" });
@@ -1374,7 +1444,9 @@ function Study({
                   } ${rating ? RATING_STYLE[rating] : ""} ${
                     i === row && !touch
                       ? "outline outline-1 -outline-offset-1 outline-black/40 dark:outline-white/40"
-                      : ""
+                      : touch && i === focusLine
+                        ? "shadow-[inset_3px_0_0_0] shadow-emerald-500"
+                        : ""
                   }`}
                   style={{ height: ROW_H }}
                 >
@@ -1431,7 +1503,7 @@ function Study({
             {exhausted && ahead.length === 0
               ? "Every word learned. 🎉"
               : touch
-                ? "tap = show · swipe ← a little Hard, far Again · swipe → a little Good, far Easy · ↶ undo"
+                ? "tap = show + say · hold = listen (loops) · swipe ← a little Hard, far Again · swipe → a little Good, far Easy · ↶ undo"
                 : help
                   ? "↑↓ / R F / I U move (the focused row shows its meaning) · Space pin · E show all · A Again · S Hard · W Good · D Easy (also H/J/K/L, 1–4) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
                   : "A Again · S Hard · W Good · D Easy · Z undo · ? all keys"}
@@ -1454,6 +1526,9 @@ function WordRow({
   onHover,
   onTap,
   onSwipe,
+  onSwipeStart,
+  onHold,
+  onHoldEnd,
   className,
   style,
   children,
@@ -1463,12 +1538,20 @@ function WordRow({
   onHover: () => void;
   onTap: () => void;
   onSwipe: (r: Rating) => void;
+  /** The finger has started moving sideways (a grade is being decided). */
+  onSwipeStart?: () => void;
+  /** Held still for HOLD_MS: listen mode until the finger lifts. */
+  onHold?: () => void;
+  onHoldEnd?: () => void;
   className: string;
   style: React.CSSProperties;
   children: React.ReactNode;
 }) {
   const start = useRef<{ x: number; y: number } | null>(null);
   const [dx, setDx] = useState(0);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const held = useRef(false);
+  const swiping = useRef(false);
 
   if (!touch)
     return (
@@ -1496,30 +1579,57 @@ function WordRow({
       style={{
         ...style,
         touchAction: "pan-y",
+        // A hold is listen mode, not iOS's callout / text-selection menu.
+        WebkitTouchCallout: "none",
         transform: dx ? `translateX(${dx}px)` : undefined,
         background: pending ? SWIPE_BG[pending] : undefined,
       }}
       onPointerDown={(e) => {
         start.current = { x: e.clientX, y: e.clientY };
+        held.current = false;
+        swiping.current = false;
         // Keep receiving the gesture even if the finger leaves this row.
         e.currentTarget.setPointerCapture(e.pointerId);
+        clearTimeout(holdTimer.current);
+        holdTimer.current = setTimeout(() => {
+          held.current = true;
+          onHold?.();
+        }, HOLD_MS);
       }}
       onPointerMove={(e) => {
         if (!start.current) return;
         const x = e.clientX - start.current.x;
         const y = e.clientY - start.current.y;
-        if (Math.abs(x) > Math.abs(y)) setDx(Math.max(-160, Math.min(160, x)));
+        // Any real movement is a swipe or a scroll, not a hold.
+        if (!held.current && Math.hypot(x, y) > 8) clearTimeout(holdTimer.current);
+        if (Math.abs(x) > Math.abs(y)) {
+          if (!swiping.current && Math.abs(x) > 12) {
+            swiping.current = true;
+            onSwipeStart?.();
+          }
+          setDx(Math.max(-160, Math.min(160, x)));
+        }
       }}
       onPointerUp={() => {
+        clearTimeout(holdTimer.current);
         const moved = dx;
         setDx(0);
         if (!start.current) return;
         start.current = null;
+        if (held.current) {
+          // Listening, not grading: the hold ends, nothing else happens.
+          held.current = false;
+          onHoldEnd?.();
+          return;
+        }
         const r = swipeRating(moved);
         if (r) onSwipe(r);
         else if (Math.abs(moved) < 8) onTap();
       }}
       onPointerCancel={() => {
+        clearTimeout(holdTimer.current);
+        if (held.current) onHoldEnd?.();
+        held.current = false;
         start.current = null;
         setDx(0);
       }}
