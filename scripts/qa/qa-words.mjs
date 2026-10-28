@@ -122,6 +122,19 @@ try {
     `60 graded and saved (${l?.cards}), more words below (${ahead})`,
   );
 
+  // Scrolling to the bottom (no cursor movement, as on a phone) loads more too.
+  const listBox = page.locator('[role="list"]');
+  const heightBefore = await listBox.evaluate((el) => el.scrollHeight);
+  for (let i = 0; i < 4; i++) {
+    await listBox.evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await page.waitForTimeout(700);
+  }
+  const heightAfter = await listBox.evaluate((el) => el.scrollHeight);
+  check(
+    heightAfter > heightBefore,
+    `scrolling to the end loads more words (${heightBefore} → ${heightAfter}px)`,
+  );
+
   // /alphabet: same drill over its own catalog; its lists stay off /words.
   await page.goto(`${BASE}/alphabet`, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "ja", exact: true }).click();
