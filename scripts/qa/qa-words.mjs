@@ -161,6 +161,36 @@ try {
   await page.keyboard.press("e"); // back off, for the checks below
   check(await blurred(5), "E turns it off again");
 
+  // New-version notice: the stream names the serving build at once…
+  const head = await page.evaluate(async () => {
+    const ac = new AbortController();
+    const r = await fetch("/api/version/stream", { signal: ac.signal });
+    const { value } = await r.body.getReader().read();
+    ac.abort();
+    return `${r.headers.get("content-type")}|${new TextDecoder().decode(value)}`;
+  });
+  check(
+    head.startsWith("text/event-stream") && head.includes("event: version"),
+    "the version stream names the build on connect",
+  );
+  // …and a page from an older build offers a refresh.
+  await page.route("**/api/version/stream", (r) =>
+    r.fulfill({
+      contentType: "text/event-stream",
+      body: "retry: 600000\nevent: version\ndata: some-newer-build\n\n",
+    }),
+  );
+  await page.evaluate(() => localStorage.setItem("lk:version-notice", "1"));
+  await page.reload({ waitUntil: "load" });
+  await page.bringToFront();
+  const notice = page.getByRole("button", { name: "New version · Refresh" });
+  await notice.waitFor({ timeout: 10000 }).catch(() => {});
+  check(await notice.isVisible(), "a newer build on the server shows a Refresh button");
+  await page.evaluate(() => localStorage.removeItem("lk:version-notice"));
+  await page.unroute("**/api/version/stream");
+  await page.reload({ waitUntil: "networkidle" });
+  await rows.first().waitFor({ timeout: 15000 });
+
   // Endless: grade 60 words in a row; more keep coming and all are saved.
   // 40 ms apart: still far faster than a person, slow enough for loading to keep up.
   for (let i = 0; i < 60; i++) {
