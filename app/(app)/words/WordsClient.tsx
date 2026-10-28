@@ -519,6 +519,63 @@ function useSpeech(serverVoice = false) {
   );
 }
 
+/** Glance speed: px per second while a cut-off cell slides to its end. */
+const GLANCE_PX_S = 45;
+
+/**
+ * A cell that would be cut off: on the active row it slides to its end,
+ * pauses, and slides back (lk-glance in globals.css), so a long word or
+ * meaning can be read in full without leaving the list. Elsewhere it ends in
+ * an ellipsis, and hovering shows the whole text.
+ */
+function Glance({
+  active,
+  className,
+  title,
+  children,
+}: {
+  active: boolean;
+  className: string;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  const outer = useRef<HTMLSpanElement>(null);
+  const inner = useRef<HTMLSpanElement>(null);
+  const [over, setOver] = useState(0);
+  useLayoutEffect(() => {
+    const o = outer.current;
+    const i = inner.current;
+    if (!active || !o || !i) return setOver(0);
+    // Measured as laid out on one line, ellipsis aside.
+    const extra = i.scrollWidth - o.clientWidth;
+    setOver(extra > 2 ? Math.ceil(extra) : 0);
+  }, [active, children, title]);
+  // Each slide takes 30% of the cycle; the rest is pauses at either end.
+  const seconds = Math.max(3, over / GLANCE_PX_S / 0.3);
+  return (
+    <span
+      ref={outer}
+      title={title}
+      className={`${className} overflow-hidden whitespace-nowrap ${over ? "" : "text-ellipsis"}`}
+    >
+      <span
+        ref={inner}
+        className={over ? "inline-block lk-glance" : ""}
+        style={
+          over
+            ? ({
+                "--glance-dx": `-${over}px`,
+                animationDuration: `${seconds}s`,
+              } as React.CSSProperties)
+            : undefined
+        }
+      >
+        {children}
+      </span>
+    </span>
+  );
+}
+
 /** Due time (ms) of a stored card JSON. */
 const dueOf = (card: string) => {
   try {
@@ -2056,6 +2113,8 @@ function Study({
               const rating = g?.rating;
               // The keyboard cursor reveals its row, as hovering does.
               const show = showAll || revealed.has(i) || (!touch && i === row) || holding === i;
+              // The row being read: long cells slide to show their end.
+              const glancing = touch ? holding === i || i === focusLine : i === row;
               return (
                 <WordRow
                   key={i}
@@ -2114,8 +2173,10 @@ function Study({
                   style={{ height: ROW_H }}
                 >
                   {!touch && <span className="text-[10px] opacity-40">{i === row ? "▸" : ""}</span>}
-                  <span
-                    className={`truncate font-medium ${
+                  <Glance
+                    active={glancing}
+                    title={it.reading ? `${it.term} ${it.reading}` : it.term}
+                    className={`font-medium ${
                       it.kind === "new"
                         ? "text-emerald-600 dark:text-emerald-400"
                         : it.kind === "again"
@@ -2127,9 +2188,11 @@ function Study({
                     {!config.readingOnBack && it.reading && it.reading !== it.term && (
                       <span className="ml-2 text-xs font-normal opacity-60">{it.reading}</span>
                     )}
-                  </span>
-                  <span
-                    className={`truncate text-sm opacity-80 transition-[filter] duration-75 ${
+                  </Glance>
+                  <Glance
+                    active={glancing && show}
+                    title={show ? it.back : undefined}
+                    className={`text-sm opacity-80 transition-[filter] duration-75 ${
                       show ? "" : touch ? "blur-[6px]" : "blur-[5px] group-hover:blur-none"
                     }`}
                   >
@@ -2137,18 +2200,19 @@ function Study({
                       <span className="mr-2 font-medium">{it.reading}</span>
                     )}
                     {it.back}
-                  </span>
+                  </Glance>
                   {hasExamples && !touch && (
                     // The example is part of the answer side: hidden with the meaning.
-                    <span
-                      className={`truncate text-sm opacity-70 transition-[filter] duration-75 ${
+                    <Glance
+                      active={glancing && show}
+                      className={`text-sm opacity-70 transition-[filter] duration-75 ${
                         show ? "" : "blur-[5px] group-hover:blur-none"
                       }`}
-                      title={it.ex ? `${it.ex}\n${it.exTr ?? ""}` : undefined}
+                      title={it.ex && show ? `${it.ex}\n${it.exTr ?? ""}` : undefined}
                     >
                       {it.ex}
                       {it.exTr && <span className="ml-2 text-xs opacity-60">{it.exTr}</span>}
-                    </span>
+                    </Glance>
                   )}
                   {/* Graded: when it comes back. Ungraded: "new", or how long it has been due. */}
                   <span
