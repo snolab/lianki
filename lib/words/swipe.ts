@@ -4,21 +4,27 @@
 export type SwipeRating = 1 | 2 | 3 | 4;
 
 /**
- * Touch grading by swipe distance: a short swipe is the milder grade, a long
- * one the stronger. ← short Hard, ← long Again; → short Good, → long Easy.
+ * Touch grading by where a row is let go, in units of the row's height `a`:
+ * the row travels at most 2a either way (a hard stop). Landing within a is
+ * the milder grade, between a and 2a the stronger one:
+ * ← Hard / ← Again, → Good / → Easy. Under SWIPE_START px is no grade at
+ * all, so a touch that barely moves never grades.
  */
-export const SWIPE_PX = 40;
-export const SWIPE_FAR_PX = 110;
-export const swipeRating = (dx: number): SwipeRating | null =>
-  dx <= -SWIPE_FAR_PX
-    ? 1
-    : dx <= -SWIPE_PX
-      ? 2
-      : dx >= SWIPE_FAR_PX
-        ? 4
-        : dx >= SWIPE_PX
-          ? 3
-          : null;
+export const SWIPE_START = 16;
+/** The row height on touch: 2a of travel each way. */
+export const SWIPE_ROW_PX = 44;
+/** 0 = no grade, 1 = the milder grade, 2 = the stronger. */
+export function swipeTier(dx: number, a = SWIPE_ROW_PX): 0 | 1 | 2 {
+  const d = Math.abs(dx);
+  return d < SWIPE_START ? 0 : d <= a ? 1 : 2;
+}
+export const swipeRating = (dx: number, a = SWIPE_ROW_PX): SwipeRating | null => {
+  const t = swipeTier(dx, a);
+  if (!t) return null;
+  return dx < 0 ? (t === 2 ? 1 : 2) : t === 2 ? 4 : 3;
+};
+/** The finger's travel, held at the 2a stop. */
+export const clampSwipe = (dx: number, a = SWIPE_ROW_PX) => Math.max(-2 * a, Math.min(2 * a, dx));
 /**
  * Swipes follow physics: the grade comes from where the row would come to
  * rest if let go, not just where the finger lifted — a quick flick travels
@@ -30,8 +36,9 @@ export const swipeRating = (dx: number): SwipeRating | null =>
 export const SWIPE_DECAY = 0.99;
 /** Velocity is measured over the last stretch of the gesture only. */
 export const SWIPE_VELOCITY_MS = 100;
-export const projectSwipe = (dx: number, v: number) =>
-  Math.max(-400, Math.min(400, dx + (v * SWIPE_DECAY) / (1 - SWIPE_DECAY)));
+/** Where a release would come to rest — never past the 2a stop. */
+export const projectSwipe = (dx: number, v: number, a = SWIPE_ROW_PX) =>
+  clampSwipe(dx + (v * SWIPE_DECAY) / (1 - SWIPE_DECAY), a);
 /** px/ms over the recent samples; 0 if the finger stopped before lifting. */
 export function releaseVelocity(samples: { t: number; x: number }[], now: number) {
   const recent = samples.filter((s) => now - s.t <= SWIPE_VELOCITY_MS);
@@ -54,11 +61,9 @@ export function lockAxis(x: number, y: number): Axis | null {
   return Math.abs(x) > 1.5 * Math.abs(y) ? "h" : "v";
 }
 
-/** Below this, a release is not a flick: speed alone must not grade a twitch. */
-export const MIN_FLICK_PX = 16;
-
 /** The grade a sideways gesture gives when released: distance + coasting. */
-export function releaseRating(moved: number, v: number): SwipeRating | null {
-  if (Math.abs(moved) < MIN_FLICK_PX) return null;
-  return swipeRating(projectSwipe(moved, v));
+export function releaseRating(moved: number, v: number, a = SWIPE_ROW_PX): SwipeRating | null {
+  // Speed alone must not grade a twitch.
+  if (Math.abs(moved) < SWIPE_START) return null;
+  return swipeRating(projectSwipe(moved, v, a), a);
 }
