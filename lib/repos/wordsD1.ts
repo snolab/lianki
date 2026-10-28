@@ -77,6 +77,7 @@ type CardRow = {
   card: string;
   card_due: string;
   reps: number;
+  prev_card?: string | null;
 };
 
 const toList = (r: ListRow): WordList => ({
@@ -278,6 +279,77 @@ export class WordsD1Repo {
     return known;
   }
 
+  private deleteLastReview(listId: string, term: string): D1StmtLike {
+    return this.db
+      .prepare(
+        `DELETE FROM word_reviews WHERE rowid = (
+           SELECT rowid FROM word_reviews WHERE email = ? AND list_id = ? AND term = ?
+           ORDER BY rowid DESC LIMIT 1)`,
+      )
+      .bind(this.email, listId, term);
+  }
+
+  /**
+   * Undo a word's latest review: back to the card it was before, or no card
+   * at all if that was its first review. One level: returns null when there
+   * is nothing kept to go back to.
+   */
+  async undo(listId: string, term: string, day: string): Promise<{ card: WordCard | null } | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT term, reading, back, card, card_due, reps, prev_card FROM word_cards
+         WHERE email = ? AND list_id = ? AND term = ?`,
+      )
+      .bind(this.email, listId, term)
+      .first<CardRow>();
+    // "" marks a card already undone once: nothing further is kept.
+    if (!row || row.prev_card === "") return null;
+    if (row.prev_card) {
+      const prev = parseCard(row.prev_card)!;
+      await this.deleteLastReview(listId, term).run();
+      await this.db
+        .prepare(
+          `UPDATE word_cards SET card = ?, card_due = ?, reps = ?, prev_card = '', updated_at = ?
+           WHERE email = ? AND list_id = ? AND term = ?`,
+        )
+        .bind(
+          row.prev_card,
+          prev.due.toISOString(),
+          Math.max(0, row.reps - 1),
+          new Date().toISOString(),
+          this.email,
+          listId,
+          term,
+        )
+        .run();
+      return {
+        card: toCard({
+          ...row,
+          card: row.prev_card,
+          card_due: prev.due.toISOString(),
+          reps: Math.max(0, row.reps - 1),
+        }),
+      };
+    }
+    if (row.reps <= 1) {
+      // Its only review: the word goes back to never seen.
+      await this.deleteLastReview(listId, term).run();
+      await this.db
+        .prepare("DELETE FROM word_cards WHERE email = ? AND list_id = ? AND term = ?")
+        .bind(this.email, listId, term)
+        .run();
+      await this.db
+        .prepare(
+          `UPDATE word_lists SET new_today = MAX(0, new_today - 1)
+           WHERE email = ? AND id = ? AND new_day = ?`,
+        )
+        .bind(this.email, listId, day)
+        .run();
+      return { card: null };
+    }
+    return null;
+  }
+
   /**
    * Apply a screen's worth of ratings in order. The same word may appear more
    * than once (a learning step that came back within the session); each rating
@@ -308,7 +380,7 @@ export class WordsD1Repo {
       const chunk = terms.slice(i, i + 90);
       const { results } = await this.db
         .prepare(
-          `SELECT term, reading, back, card, card_due, reps FROM word_cards
+          `SELECT term, reading, back, card, card_due, reps, prev_card FROM word_cards
            WHERE email = ? AND list_id = ? AND term IN (${chunk.map(() => "?").join(",")})`,
         )
         .bind(this.email, listId, ...chunk)
@@ -318,15 +390,26 @@ export class WordsD1Repo {
 
     const state = new Map<
       string,
-      { card: Card | null; reading: string | null; back: string; reps: number }
+      {
+        card: Card | null;
+        /** JSON of the card before its latest review; null = none kept. */
+        prev: string | null;
+        reading: string | null;
+        back: string;
+        reps: number;
+        /** Its latest review was undone: grading it is a fresh review. */
+        undone: boolean;
+      }
     >();
     for (const t of terms) {
       const row = existing.get(t);
       state.set(t, {
         card: parseCard(row?.card),
+        prev: row?.prev_card || null, // "" (already undone) keeps nothing
         reading: row?.reading ?? null,
         back: row?.back ?? "",
         reps: row?.reps ?? 0,
+        undone: row?.prev_card === "",
       });
     }
 
@@ -335,8 +418,26 @@ export class WordsD1Repo {
     const statements: D1StmtLike[] = [];
     for (const r of reviews) {
       const s = state.get(r.term)!;
-      if (!s.card) introduced++;
-      const { card, prevState } = reviewWord(s.card, r.rating, now, params);
+      // Grading a word that is not due again yet re-grades its latest review
+      // (it was just reviewed: a changed mind, not a new recall), replacing
+      // that review. Grading a due word is a new review.
+      const replace =
+        !s.undone &&
+        !!s.card &&
+        s.card.due.getTime() > now.getTime() &&
+        (s.prev !== null || s.reps === 1);
+      let base: Card | null;
+      if (replace) {
+        base = parseCard(s.prev); // null: the word's first review is re-graded
+        s.reps--;
+        statements.push(this.deleteLastReview(listId, r.term));
+      } else {
+        if (!s.card) introduced++;
+        base = s.card;
+        s.prev = s.card ? JSON.stringify(s.card) : null;
+      }
+      s.undone = false;
+      const { card, prevState } = reviewWord(base, r.rating, now, params);
       s.card = card;
       s.reps++;
       if (r.reading != null && !s.reading) s.reading = r.reading;
@@ -354,11 +455,12 @@ export class WordsD1Repo {
       statements.push(
         this.db
           .prepare(
-            `INSERT INTO word_cards (email, list_id, term, reading, back, card, card_due, reps, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO word_cards (email, list_id, term, reading, back, card, card_due, reps, updated_at, prev_card)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(email, list_id, term) DO UPDATE SET
                reading = excluded.reading, back = excluded.back, card = excluded.card,
-               card_due = excluded.card_due, reps = excluded.reps, updated_at = excluded.updated_at`,
+               card_due = excluded.card_due, reps = excluded.reps, updated_at = excluded.updated_at,
+               prev_card = excluded.prev_card`,
           )
           .bind(
             this.email,
@@ -370,6 +472,7 @@ export class WordsD1Repo {
             s.card!.due.toISOString(),
             s.reps,
             at,
+            s.prev,
           ),
       );
     }

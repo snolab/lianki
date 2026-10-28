@@ -48,10 +48,10 @@ try {
 
   const rows = page.locator('[role="listitem"]');
   await rows.first().waitFor({ timeout: 15000 });
-  check((await rows.count()) === 20, `first screen shows ${await rows.count()} words`);
-  check((await page.locator("span.text-emerald-400").count()) > 0, "new words are shown in green");
-  const interval = (await rows.first().locator("span.tabular-nums").innerText()).trim();
-  check(interval === "new", `an ungraded new word says "new": ${interval}`);
+  check((await rows.count()) >= 20, `the list opens with ${await rows.count()} words`);
+  check((await page.locator("span.text-emerald-600").count()) > 0, "new words are shown in green");
+  const statusOf = async (i) => (await rows.nth(i).locator("span.tabular-nums").innerText()).trim();
+  check((await statusOf(0)) === "new", `an ungraded new word says "new": ${await statusOf(0)}`);
 
   // F moves the cursor down (like ↓) and the focused row shows its meaning.
   const blurred = (i) =>
@@ -65,63 +65,62 @@ try {
   await page.keyboard.press("r");
   check(!(await blurred(0)), "R moves back up");
 
-  // Mark the first word Again, then reload: the mark is sent on leaving, and
-  // the same screen comes back from the local draft with the mark on it.
-  const firstTerm = (await rows.first().locator("span.truncate.font-medium").innerText()).trim();
-  await page.keyboard.press("a");
-  const graded = (await rows.first().locator("span.tabular-nums").innerText()).trim();
-  check(
-    /^\d+(\.\d)?(s|m|h|d|mo|y)$/.test(graded),
-    `a graded word shows when it returns: ${graded}`,
-  );
   const listsNow = async () =>
     (await page.evaluate(async () => (await fetch("/api/words/lists")).json())).lists.find(
       (l) => l.source === first.id,
     );
+  const reviewed = () =>
+    page.waitForResponse((r) => r.url().includes("/review") && r.request().method() === "POST");
+
+  // Each grade is saved at once — no screens, no Next.
+  let res = reviewed();
+  await page.keyboard.press("a");
+  check((await (await res).status()) === 200, "A saves that one word immediately");
+  check(
+    /^\d+(\.\d)?(s|m|h|d|mo|y)$/.test(await statusOf(0)),
+    `it shows when it returns: ${await statusOf(0)}`,
+  );
+
+  // Going back and grading again re-grades: still one card, one review.
+  await page.keyboard.press("r");
+  res = reviewed();
+  await page.keyboard.press("d");
+  await res;
+  let l = await listsNow();
+  check(l?.cards === 1, `re-grading keeps one card (${l?.cards})`);
+
+  // Z undoes it: the word is new again.
+  await page.keyboard.press("r");
+  const undone = page.waitForResponse((r) => r.url().includes("/undo"));
+  await page.keyboard.press("z");
+  check((await (await undone).status()) === 200, "Z undoes the focused word on the server");
+  l = await listsNow();
+  check(
+    l?.cards === 0 && (await statusOf(0)) === "new",
+    `after undo the word is new again (${l?.cards} cards)`,
+  );
+
+  // The URL keeps the list; a refresh lands back in it.
   check(/[?&]list=/.test(page.url()), `the open list is in the URL: ${new URL(page.url()).search}`);
   await page.reload({ waitUntil: "networkidle" });
-  // The beacon is fire-and-forget: give it a moment to land.
-  let saved = 0;
-  for (let i = 0; i < 10 && saved !== 1; i++, await page.waitForTimeout(300))
-    saved = (await listsNow())?.cards;
-  check(saved === 1, `leaving the page saved the one marked word (${saved})`);
-  // The URL brought us straight back into the list.
   await rows.first().waitFor({ timeout: 15000 });
-  const restoredTerm = (await rows.first().locator("span.truncate.font-medium").innerText()).trim();
-  const restoredMark = (await rows.first().getAttribute("class")).includes("bg-red-500");
-  check(
-    restoredTerm === firstTerm && restoredMark,
-    `draft restored the screen and its mark: ${restoredTerm} ${restoredMark ? "Again" : "(no mark)"}`,
-  );
+  check((await rows.count()) > 0, "a refresh lands back in the list");
 
-  // Nothing is graded in bulk: W on Next jumps to the first ungraded word.
-  for (let i = 0; i < 20; i++) await page.keyboard.press("f");
-  let posted = false;
-  page.on(
-    "request",
-    (r) => r.url().includes("/review") && r.method() === "POST" && (posted = true),
+  // Endless: grade 60 words in a row; more keep coming and all are saved.
+  // 40 ms apart: still far faster than a person, slow enough for loading to keep up.
+  for (let i = 0; i < 60; i++) {
+    await page.keyboard.press("w");
+    await page.waitForTimeout(40);
+  }
+  await page.waitForTimeout(1500);
+  l = await listsNow();
+  const ahead = await rows.evaluateAll(
+    (els) => els.filter((e) => e.querySelector("span.tabular-nums")?.textContent === "new").length,
   );
-  await page.keyboard.press("w");
-  const cursorAt = await rows.evaluateAll((els) =>
-    els.findIndex((e) => e.className.includes("outline-white")),
-  );
-  check(cursorAt === 1 && !posted, `W on Next jumps to the first ungraded word (row ${cursorAt})`);
-  // Grade the rest one by one; the cursor lands on Next, and W there submits.
-  const reviewed = page.waitForResponse(
-    (r) => r.url().includes("/review") && r.request().method() === "POST",
-  );
-  for (let i = 0; i < 19; i++) await page.keyboard.press("w");
-  await page.keyboard.press("w");
-  const res = await reviewed;
-  check(res.status() === 200, `all graded, W on Next submits: HTTP ${res.status()}`);
-  const body = await res.json();
   check(
-    body.cards?.length === 19,
-    `the flushed word was not graded twice: ${body.cards?.length} sent`,
+    l?.cards === 60 && ahead > 0,
+    `60 graded and saved (${l?.cards}), more words below (${ahead})`,
   );
-
-  const list = await listsNow();
-  check(list?.cards === 20, `list stored: ${list?.cards} cards, cursor ${list?.cursor}`);
 
   // /alphabet: same drill over its own catalog; its lists stay off /words.
   await page.goto(`${BASE}/alphabet`, { waitUntil: "networkidle" });
@@ -131,8 +130,8 @@ try {
   const firstTerms = await rows.locator("span.truncate.font-medium").allInnerTexts();
   const fronts = firstTerms.map((t) => t.split("\n")[0].trim());
   check(fronts[0] === "あ", `alphabet starts with あ: ${fronts.slice(0, 3)}`);
-  // A reverse card never shares a screen with its forward card (a under あ).
-  check(!fronts.includes("a"), "あ and its reverse a are on different screens");
+  // A reverse card is kept well away from its forward card (a right under あ gives it away).
+  check(!fronts.slice(0, 20).includes("a"), "あ and its reverse a are kept 20+ rows apart");
   await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
   check((await page.getByText("Hiragana").count()) === 0, "alphabet lists stay off /words");
 
@@ -147,10 +146,8 @@ try {
   const sent = page.waitForResponse(
     (r) => r.url().includes("/review") && r.request().method() === "POST",
   );
-  const n = await rows.count();
-  for (let i = 0; i < n; i++) await page.keyboard.press("w");
-  await page.keyboard.press("Enter");
-  check((await sent).status() === 200, "study all: a graded screen submits");
+  await page.keyboard.press("w");
+  check((await sent).status() === 200, "study all: a graded word saves");
 
   // Drag the second list above the first by its handle; the order is saved.
   await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
@@ -188,6 +185,37 @@ try {
       await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
     ).find((l) => l.id === after[1]);
   check(nested?.parentId === after[0], "dragging right nests a list under the one above");
+
+  // A group: study it (its lists) and study all, with groups present.
+  const group = await page.evaluate(
+    async () =>
+      (
+        await (
+          await fetch("/api/words/lists", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ name: "QA group", lang: "mul", source: "group:words" }),
+          })
+        ).json()
+      ).list.id,
+  );
+  await page.evaluate(
+    async ([g, ids]) =>
+      fetch("/api/words/lists", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          order: [{ id: g, parentId: null }, ...ids.map((id) => ({ id, parentId: g }))],
+        }),
+      }),
+    [group, after],
+  );
+  await page.goto(`${BASE}/words?list=${group}`, { waitUntil: "networkidle" });
+  await rows.first().waitFor({ timeout: 15000 });
+  check((await rows.count()) > 0, "studying a group lists its words");
+  await page.goto(`${BASE}/words?list=all`, { waitUntil: "networkidle" });
+  await rows.first().waitFor({ timeout: 15000 });
+  check((await rows.count()) > 0, "study all works with groups present");
   check(errs.length === 0, `no page errors${errs.length ? ": " + errs.join(" | ") : ""}`);
 } catch (e) {
   check(false, `threw: ${e.message}`);
