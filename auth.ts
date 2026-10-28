@@ -2,12 +2,13 @@ import { betterAuth } from "better-auth";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { kyselyAdapter } from "@better-auth/kysely-adapter";
 import { nextCookies } from "better-auth/next-js";
-import { magicLink } from "better-auth/plugins";
+import { emailOTP, magicLink } from "better-auth/plugins";
 import { stripGrantedScopesHook } from "@/lib/google-auth-url";
 import { Kysely } from "kysely";
 import { D1Dialect } from "kysely-d1";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { trustedOrigins } from "@/lib/trusted-origins";
+import { mailLocale, signInMail } from "@/lib/sign-in-mail";
 import { db, mongoClient } from "./app/db";
 import { dbBackend, getD1 } from "./lib/d1";
 
@@ -92,32 +93,24 @@ function baseOptions() {
       // accepting an address and silently dropping the mail.
       ...(isEmailConfigured()
         ? [
+            // The sign-in page's path: a 6-digit code typed on the same page.
+            // Unlike a link, it works when the mail is opened on another device
+            // or inside an app's built-in browser (WeChat, QQ Mail), and an
+            // unknown address simply gets an account (sign-in = sign-up).
+            emailOTP({
+              otpLength: 6,
+              expiresIn: 15 * 60,
+              allowedAttempts: 5,
+              sendVerificationOTP: async ({ email, otp }, ctx) => {
+                await sendEmail({ to: email, ...signInMail(mailLocale(ctx), { otp }) });
+              },
+            }),
             magicLink({
               // 15 minutes, not the 5-minute default: mail to some providers
-              // (QQ, 163) can take longer than that to arrive.
+              // can take longer than that to arrive.
               expiresIn: 15 * 60,
-              sendMagicLink: async ({ email, url }) => {
-                // Bilingual, with a plain-text part: a bare English one-link
-                // mail tends to land in spam with Chinese providers.
-                await sendEmail({
-                  to: email,
-                  subject: "Sign in to Lianki 登录炼記",
-                  text: [
-                    "Sign in to Lianki — open this link within 15 minutes:",
-                    "登录炼記（Lianki）——请在 15 分钟内打开以下链接：",
-                    "",
-                    url,
-                    "",
-                    "If you did not ask for this, ignore this email.",
-                    "如果不是你本人操作，请忽略此邮件。",
-                  ].join("\n"),
-                  html:
-                    `<p>Sign in to Lianki — open this link within 15 minutes.<br>` +
-                    `登录炼記（Lianki）——请在 15 分钟内打开下面的链接。</p>` +
-                    `<p><a href="${url}">Sign in / 登录</a></p>` +
-                    `<p style="color:#888">If you did not ask for this, ignore this email.<br>` +
-                    `如果不是你本人操作，请忽略此邮件。</p>`,
-                });
+              sendMagicLink: async ({ email, url }, ctx) => {
+                await sendEmail({ to: email, ...signInMail(mailLocale(ctx), { url }) });
               },
             }),
           ]

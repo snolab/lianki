@@ -4,16 +4,18 @@ import type { TurnstileInstance } from "@marsidev/react-turnstile";
 import { useRef, useState, useTransition } from "react";
 import { useIntlayer } from "next-intlayer";
 import { authClient } from "@/lib/auth-client";
-import { sendMagicLinkAction } from "./actions";
+import { sendSignInCodeAction } from "./actions";
 import { useRouter } from "next/navigation";
 
-type Step = "email" | "password" | "magic-sent";
+type Step = "email" | "password" | "code";
 
 /**
  * Sign in = sign up: an unknown email gets an account on first sign-in.
  *
  * Email comes first — Google and GitHub are unreachable from mainland China —
- * and goes straight to sending a sign-in link. The password step exists only
+ * and goes straight to emailing a 6-digit code, typed on this same page. A
+ * code (unlike a link) still works when the mail is read on another device or
+ * inside an app's built-in browser. The password step exists only
  * when the server allows passwords (dev QA); production never asks for one,
  * since it could not work there.
  */
@@ -29,6 +31,7 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
   const [step, setStep] = useState<Step>("email");
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
+  const [code, setCode] = useState("");
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
   function handleBack() {
@@ -66,18 +69,29 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
     });
   }
 
-  function sendLink() {
+  function sendCode() {
     if (!turnstileToken) return;
     setError("");
     startTransition(async () => {
-      const result = await sendMagicLinkAction(email, turnstileToken);
+      const result = await sendSignInCodeAction(email, turnstileToken);
+      // A Turnstile token is single-use: get a fresh one for "send a new code".
+      turnstileRef.current?.reset();
+      setTurnstileToken(null);
       if (result.success) {
-        setStep("magic-sent");
-      } else {
-        setError(result.error);
-        turnstileRef.current?.reset();
-        setTurnstileToken(null);
-      }
+        setCode("");
+        setStep("code");
+      } else setError(result.error === "captcha" ? t.captchaRetry.value : result.error);
+    });
+  }
+
+  function verifyCode(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    startTransition(async () => {
+      const result = await authClient.signIn.emailOtp({ email, otp: code.trim() });
+      if (result.error) setError(t.wrongCode.value);
+      // A full load, so every part of the app sees the new session.
+      else window.location.href = "/list";
     });
   }
 
@@ -85,25 +99,7 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
     e.preventDefault();
     setError("");
     if (passwordEnabled) setStep("password");
-    else sendLink();
-  }
-
-  if (step === "magic-sent") {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 p-4">
-        <div className="text-4xl">✉️</div>
-        <p className="text-center text-lg">{t.checkEmail}</p>
-        <p className="text-sm text-gray-500">{email}</p>
-        <p className="text-sm text-gray-500 text-center max-w-sm">{t.checkSpam}</p>
-        <button
-          type="button"
-          onClick={() => setStep("email")}
-          className="text-sm text-blue-600 hover:underline"
-        >
-          {t.useDifferentEmail}
-        </button>
-      </div>
-    );
+    else sendCode();
   }
 
   const turnstile = siteKey ? (
@@ -144,6 +140,72 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
 
   const blockedNote = t.blockedNote.value;
 
+  if (step === "code") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-5 p-4">
+        <div className="text-4xl">✉️</div>
+        <div className="text-center space-y-1">
+          <p className="text-sm text-gray-500">{t.codeSentTo}</p>
+          <p className="font-medium">{email}</p>
+        </div>
+        <form onSubmit={verifyCode} className="w-full max-w-xs space-y-3">
+          <label htmlFor="otp" className="sr-only">
+            {t.codeLabel}
+          </label>
+          <input
+            id="otp"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]{6}"
+            maxLength={6}
+            required
+            autoFocus
+            placeholder={t.codeLabel.value}
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+            className="w-full text-center text-2xl tracking-[0.5em] border border-gray-300 dark:border-gray-600 px-3 py-2.5 rounded-lg dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {error && (
+            <p role="alert" className="text-red-500 text-sm">
+              {error}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={isPending || code.length !== 6}
+            className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
+          >
+            {isPending ? t.verifying : t.verifyCode}
+          </button>
+        </form>
+        <p className="text-sm text-gray-500 text-center max-w-sm">{t.codeCheckSpam}</p>
+        <div className="flex gap-4 text-sm">
+          <button
+            type="button"
+            onClick={() => {
+              setStep("email");
+              setError("");
+            }}
+            className="text-blue-600 hover:underline"
+          >
+            {t.resendCode}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setEmail("");
+              setStep("email");
+              setError("");
+            }}
+            className="text-blue-600 hover:underline"
+          >
+            {t.useDifferentEmail}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 p-4">
       <div className="text-center space-y-2 max-w-sm">
@@ -182,7 +244,7 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
                 disabled={isPending || (!passwordEnabled && !turnstileToken)}
                 className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
               >
-                {passwordEnabled ? "Continue" : isPending ? t.sending : t.sendSignInLink}
+                {passwordEnabled ? "Continue" : isPending ? t.sending : t.sendCode}
               </button>
             </form>
 
