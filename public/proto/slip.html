@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>竹簡 swipe prototype</title>
+<!--
+  Prototype: swipe-to-grade with the browser doing the work.
+
+  Each slip is its own horizontal scroller inside the vertically scrolling
+  page, so the browser's own gesture recognizer locks the axis (nested
+  scrolling), the scroller's edges are the hard stop (±2a, with iOS's rubber
+  band), momentum is the system's, and scroll-snap points at 0, ±a, ±2a pick
+  the tier. The tint follows the position through a scroll-driven animation
+  (pure CSS). JavaScript only: start each slip centred, read the snap point
+  when scrolling ends (scrollend, debounced fallback), glide back, and tick
+  on snap changes (scrollsnapchanging, where supported).
+
+  a = one row's height. Landing within a: Good (→) / Hard (←); a to 2a:
+  Easy (→) / Again (←).
+-->
+<style>
+:root {
+  --a: 44px;
+  --paper: oklch(0.965 0.018 85);
+  --ink: oklch(0.25 0.02 60);
+  --slip: oklch(0.86 0.06 80);
+  --slip-edge: oklch(0.74 0.08 70);
+  --easy: oklch(0.72 0.12 235);
+  --good: oklch(0.75 0.13 155);
+  --hard: oklch(0.8 0.13 75);
+  --again: oklch(0.68 0.17 25);
+  --seal: oklch(0.52 0.2 25);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: oklch(0.18 0.01 60);
+    --ink: oklch(0.92 0.01 85);
+    --slip: oklch(0.36 0.04 65);
+    --slip-edge: oklch(0.28 0.04 60);
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--paper); color: var(--ink);
+  font-family: "LXGW WenKai TC", "Hiragino Mincho ProN", "Songti TC", serif; }
+header { position: sticky; top: 0; z-index: 2; padding: 10px 12px; background: var(--paper);
+  font: 13px/1.4 -apple-system, system-ui, sans-serif; border-bottom: 1px solid oklch(0.5 0 0 / 0.15); }
+header b { color: var(--seal); }
+#log { opacity: 0.75; }
+
+/* One slip = one horizontal scroller. Full page width, no box around the list. */
+.slip {
+  height: var(--a);
+  margin: 2px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  /* Scroll-driven tint: progress 0 = slid fully right (Easy) … 1 = fully left (Again). */
+  scroll-timeline: --slip x;
+}
+.slip::-webkit-scrollbar { display: none; }
+/* The track: 2a of slack, the face, 2a of slack. */
+.track { position: relative; width: calc(100% + 4 * var(--a)); height: 100%; }
+/* Snap markers at scrollLeft = 0, a, 2a, 3a, 4a. */
+.snap { position: absolute; top: 0; width: 1px; height: 1px; scroll-snap-align: start; scroll-snap-stop: normal; }
+.snap:nth-child(1) { left: 0; }
+.snap:nth-child(2) { left: var(--a); }
+.snap:nth-child(3) { left: calc(2 * var(--a)); }
+.snap:nth-child(4) { left: calc(3 * var(--a)); }
+.snap:nth-child(5) { left: calc(4 * var(--a)); }
+.face {
+  position: absolute; top: 0; bottom: 0; left: calc(2 * var(--a)); width: calc(100% - 4 * var(--a));
+  display: grid; grid-template-columns: minmax(5rem, 9rem) 1fr 3.2rem; align-items: center; gap: 10px;
+  padding: 0 14px;
+  background:
+    linear-gradient(90deg, var(--slip-edge), transparent 6%, transparent 94%, var(--slip-edge)),
+    linear-gradient(180deg, oklch(1 0 0 / 0.18), transparent 40%, oklch(0 0 0 / 0.08)),
+    var(--slip);
+  border-radius: 4px;
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.3);
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+/* The tint layer, driven by the scroller's position — no JavaScript. */
+.face::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  animation: tint linear both; animation-timeline: --slip;
+}
+@keyframes tint {
+  0%      { background: color-mix(in oklch, var(--easy) 70%, transparent); }
+  24.9%   { background: color-mix(in oklch, var(--easy) 35%, transparent); }
+  25%     { background: color-mix(in oklch, var(--good) 55%, transparent); }
+  49%     { background: color-mix(in oklch, var(--good) 15%, transparent); }
+  50%     { background: transparent; }
+  51%     { background: color-mix(in oklch, var(--hard) 15%, transparent); }
+  75%     { background: color-mix(in oklch, var(--hard) 55%, transparent); }
+  75.1%   { background: color-mix(in oklch, var(--again) 35%, transparent); }
+  100%    { background: color-mix(in oklch, var(--again) 70%, transparent); }
+}
+/* Graded: a steady tint of its grade. */
+.face[data-g="1"] { --g: var(--again); } .face[data-g="2"] { --g: var(--hard); }
+.face[data-g="3"] { --g: var(--good); }  .face[data-g="4"] { --g: var(--easy); }
+.face[data-g]::before { content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: color-mix(in oklch, var(--g) 30%, transparent); pointer-events: none; }
+.term { font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.term small { font-size: 12px; opacity: 0.65; margin-left: 4px; }
+.back { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Unrevealed: a dashed blank (留白). */
+.face:not(.open) .back { color: transparent;
+  background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 8px) left 72% / 70% 1px no-repeat;
+  color: transparent; }
+.face:not(.open) .back { background-image: repeating-linear-gradient(90deg, var(--ink) 0 4px, transparent 4px 8px); opacity: 0.35; }
+.st { font: 11px -apple-system, system-ui, sans-serif; text-align: right; opacity: 0.7; }
+</style>
+</head>
+<body>
+<header>
+  <b>竹簡原型</b> · 右滑：≤a Good，a–2a Easy · 左滑：≤a Hard，a–2a Again · 点按翻开 · 拖到 2a 就到头了
+  <div id="log">还没有打分</div>
+</header>
+<main id="list"></main>
+<script>
+const WORDS = [
+  ["勉強","べんきょう","学习；用功"],["習慣","しゅうかん","习惯"],["l'habitude","","习惯"],
+  ["le chemin","","道路"],["奮闘","ふんとう","奋斗"],["la fenêtre","","窗户"],["約束","やくそく","约定"],
+  ["le bonheur","","幸福"],["景色","けしき","景色；风景"],["soudain","","突然"],["大切","たいせつ","重要；珍惜"],
+  ["la montagne","","山"],["曖昧","あいまい","暧昧；含糊"],["le souvenir","","回忆；纪念品"],
+  ["懐かしい","なつかしい","怀念的"],["la lumière","","光"],["雰囲気","ふんいき","气氛"],
+];
+const LABEL = { 1: "Again", 2: "Hard", 3: "Good", 4: "Easy" };
+const list = document.getElementById("list");
+const log = document.getElementById("log");
+const a = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--a"));
+
+for (let i = 0; i < 60; i++) {
+  const [t, r, b] = WORDS[i % WORDS.length];
+  const s = document.createElement("div");
+  s.className = "slip";
+  s.innerHTML = `<div class="track"><i class="snap"></i><i class="snap"></i><i class="snap"></i><i class="snap"></i><i class="snap"></i>
+    <div class="face"><span class="term">${t}${r ? `<small>${r}</small>` : ""}</span><span class="back">${b}</span><span class="st">new</span></div></div>`;
+  list.appendChild(s);
+}
+
+const slips = [...document.querySelectorAll(".slip")];
+const centre = (s, smooth) => s.scrollTo({ left: 2 * a(), behavior: smooth ? "smooth" : "instant" });
+slips.forEach((s) => centre(s, false));
+
+let touching = 0;
+addEventListener("touchstart", () => touching++, { passive: true });
+addEventListener("touchend", () => (touching = Math.max(0, touching - 1)), { passive: true });
+addEventListener("touchcancel", () => (touching = Math.max(0, touching - 1)), { passive: true });
+
+function settled(s) {
+  if (touching) return; // still under the finger: the gesture isn't over
+  // Offset of the face from centre: + = slid right. Tiers as in the app
+  // (lib/words/swipe.ts): under 16px nothing, within a mild, beyond a strong.
+  const dx = 2 * a() - s.scrollLeft;
+  const d = Math.abs(dx);
+  if (d < 16) return;
+  const strong = d > a() + 0.5;
+  const g = dx > 0 ? (strong ? 4 : 3) : strong ? 1 : 2;
+  const k = Math.round(s.scrollLeft / a());
+  const face = s.querySelector(".face");
+  face.dataset.g = g;
+  face.querySelector(".st").textContent = LABEL[g];
+  log.textContent = `${face.querySelector(".term").firstChild.textContent} → ${LABEL[g]}（落在 ${k < 2 ? "右" : "左"} ${Math.abs(2 - k)}a）`;
+  centre(s, true);
+}
+
+const hasScrollEnd = "onscrollend" in window;
+for (const s of slips) {
+  if (hasScrollEnd) s.addEventListener("scrollend", () => settled(s));
+  else {
+    // Fallback (older Safari): no scroll events for 150 ms = settled.
+    let t;
+    s.addEventListener("scroll", () => { clearTimeout(t); t = setTimeout(() => settled(s), 150); }, { passive: true });
+  }
+  // A light tick when the snap target changes (Chrome; iOS has no vibration API).
+  s.addEventListener("scrollsnapchanging", () => navigator.vibrate?.(8));
+  // Tap reveals.
+  s.addEventListener("click", () => s.querySelector(".face").classList.toggle("open"));
+}
+// The finger lifted while resting on a snap point: scrollend may already have fired.
+addEventListener("touchend", () => setTimeout(() => slips.forEach((s) => {
+  if (!touching && Math.round(s.scrollLeft / a()) !== 2 && Math.abs(s.scrollLeft % a()) < 1) settled(s);
+}), 50), { passive: true });
+</script>
+</body>
+</html>

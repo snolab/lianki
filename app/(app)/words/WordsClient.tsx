@@ -2143,7 +2143,10 @@ function Study({
         <>
           <div
             ref={listRef}
-            className="rounded-lg border border-black/10 dark:border-white/10 overflow-y-auto overscroll-contain"
+            // Phones: edge to edge, no box — the whole screen width is the slips'.
+            className={`overflow-y-auto overscroll-contain ${
+              touch ? "-mx-3 sm:-mx-8" : "rounded-lg border border-black/10 dark:border-white/10"
+            }`}
             // overflow-anchor: none — the padding and spacers change as rows
             // load; the browser must not "help" by shifting the scroll.
             style={{ height: viewH, overflowAnchor: "none" }}
