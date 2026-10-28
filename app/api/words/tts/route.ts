@@ -23,7 +23,9 @@ import { getCachedTTS, putCachedTTS } from "@/lib/ttsCache";
  */
 const MAX_TEXT = 200;
 const MISS_WINDOW_MS = 10 * 60_000;
-const MISS_MAX = 120;
+// The server voice is the default: a fast session of new words (word + example
+// each) must fit. Cached clips never count.
+const MISS_MAX = 600;
 const CACHE_HEADERS = { "Cache-Control": "private, max-age=31536000, immutable" };
 
 export const GET = async (req: NextRequest) => {

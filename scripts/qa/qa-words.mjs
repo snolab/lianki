@@ -64,6 +64,10 @@ const silentAudio = () => {
   });
 };
 await ctx.addInitScript(silentAudio);
+// Word audio from the server is stubbed everywhere: no AI call from QA.
+await ctx.route("**/api/words/tts?*", (r) =>
+  r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") }),
+);
 const page = await ctx.newPage();
 const errs = [];
 page.on("pageerror", (e) => {
@@ -211,21 +215,20 @@ try {
   await page.keyboard.press("e"); // back off, for the checks below
   check(await blurred(5), "E turns it off again");
 
-  // "Server voice" reads with the server's recordings even where the browser
-  // can speak (stubbed: no AI call, nothing audible).
-  await page.route("**/api/words/tts?*", (r) =>
-    r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") }),
+  // The server voice is the default (browser voices can mislead): moving to
+  // a word plays the server's recording (stubbed: no AI call, nothing audible).
+  await page.getByRole("button", { name: "Settings" }).click();
+  check(
+    (await page.getByRole("switch", { name: "Server voice" }).getAttribute("aria-checked")) ===
+      "true",
+    "Server voice is on by default",
   );
   await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("switch", { name: "Server voice" }).click();
   await page.keyboard.press("f");
   await page
     .waitForFunction(() => window.__played.length > 0, null, { timeout: 5000 })
     .catch(() => {});
   check((await page.evaluate(() => window.__played.length)) > 0, "Server voice plays server audio");
-  await page.getByRole("switch", { name: "Server voice" }).click();
-  await page.getByRole("button", { name: "Settings" }).click();
-  await page.unroute("**/api/words/tts?*");
 
   // The installed app's scope is the whole site: /words opened from the home
   // screen must not fall outside it (iOS then shows the address bar).
@@ -246,12 +249,11 @@ try {
     `the seal icons are served (${icons.join(", ")})`,
   );
 
-  // Server word audio validates before any (paid) generation.
-  const ttsStatus = await page.evaluate(async () =>
-    Promise.all(
-      ["lang=de&text=Haus", "lang=fr&text=", `lang=fr&text=${"a".repeat(201)}`].map(
-        async (q) => (await fetch(`/api/words/tts?${q}`)).status,
-      ),
+  // Server word audio validates before any (paid) generation. page.request
+  // shares the session but bypasses the QA stub of this route.
+  const ttsStatus = await Promise.all(
+    ["lang=de&text=Haus", "lang=fr&text=", `lang=fr&text=${"a".repeat(201)}`].map(async (q) =>
+      (await page.request.get(`${new URL(page.url()).origin}/api/words/tts?${q}`)).status(),
     ),
   );
   check(
@@ -394,8 +396,8 @@ try {
     await m.mouse.down();
     await m.waitForTimeout(500);
     const whileHeld = !(await blurredM());
-    const spoken = await m.evaluate(() => window.__spoken.slice(0, 2).join(" | "));
-    check(spoken.length > 0, `phone: holding asks to speak the word (${spoken})`);
+    const spoken = await m.evaluate(() => window.__spoken.length + window.__played.length);
+    check(spoken > 0, `phone: holding speaks the word (${spoken} utterances)`);
 
     await m.mouse.up();
     await m.waitForTimeout(100);

@@ -501,9 +501,9 @@ function useSpeech(serverVoice = false) {
     audio.current?.pause();
   }, []);
 
-  /** Play the server's recording of `text`; silent if it has none. */
+  /** Play the server's recording of `text`. False when it could not (no voice, limit, offline). */
   const serverSpeak = useCallback(async (text: string, lang: string, then?: () => void) => {
-    if (serverDead.current.has(lang)) return;
+    if (serverDead.current.has(lang)) return false;
     const gen = generation.current;
     const key = `${lang}:${text}`;
     let url = clips.current.get(key);
@@ -513,7 +513,7 @@ function useSpeech(serverVoice = false) {
       ).catch(() => null);
       if (!r?.ok) {
         if (r && (r.status === 404 || r.status === 503)) serverDead.current.add(lang);
-        return;
+        return false;
       }
       url = URL.createObjectURL(await r.blob());
       clips.current.set(key, url);
@@ -523,18 +523,17 @@ function useSpeech(serverVoice = false) {
         URL.revokeObjectURL(oldUrl);
       }
     }
-    if (gen !== generation.current) return;
+    if (gen !== generation.current) return true;
     const a = (audio.current ??= new Audio());
     a.src = url;
     a.onended = then ?? null;
     void a.play().catch(() => {});
+    return true;
   }, []);
 
-  const speak = useCallback(
-    (text: string, lang: string, then?: () => void, force = false) => {
-      if ((!on && !force) || !text) return;
+  const browserSpeak = useCallback(
+    (text: string, lang: string, then?: () => void) => {
       const browser =
-        !serverVoice &&
         typeof speechSynthesis !== "undefined" &&
         !browserDead.current.has(lang) &&
         (voices.length === 0 || voiceFor(lang) !== null);
@@ -571,7 +570,25 @@ function useSpeech(serverVoice = false) {
       watchdog.current = setTimeout(fallBack, 2000);
       speechSynthesis.speak(u);
     },
-    [voiceFor, voices, on, serverSpeak, serverVoice],
+    [voiceFor, voices, serverSpeak],
+  );
+
+  const speak = useCallback(
+    (text: string, lang: string, then?: () => void, force = false) => {
+      if ((!on && !force) || !text) return;
+      // The server voice by default: browser voices can mislead (Japanese read
+      // in a Chinese accent). The browser speaks only where the server can't —
+      // a language it has no voice for, the rate limit, offline.
+      if (serverVoice && !serverDead.current.has(lang)) {
+        const gen = generation.current;
+        void serverSpeak(text, lang, then).then(
+          (ok) => !ok && gen === generation.current && browserSpeak(text, lang, then),
+        );
+        return;
+      }
+      browserSpeak(text, lang, then);
+    },
+    [on, serverVoice, serverSpeak, browserSpeak],
   );
 
   /** Repeat `text` with a pause until the next call; "" just stops. */
@@ -1580,7 +1597,7 @@ function Study({
     return () => document.removeEventListener("visibilitychange", hide);
   }, [touch]);
   /** Read with the server's voice instead of the browser's. Remembered. */
-  const [serverVoice, setServerVoice] = usePref("lk:words-server-voice", false);
+  const [serverVoice, setServerVoice] = usePref("lk:words-server-voice", true);
   const speech = useSpeech(serverVoice);
   const base = config.base;
   const listIds = lists.map((l) => l.id).join(",");
