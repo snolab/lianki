@@ -706,6 +706,29 @@ function Glance({
   );
 }
 
+/**
+ * When a graded word comes back, counting down live: each second under a
+ * minute (59s, 58s…), each minute under an hour, static beyond. Each row
+ * ticks itself — only rows on screen exist, so nothing else re-renders.
+ * Once due, a word that was put back in the queue reads "↓ back" and its
+ * slip fades (.lk-back in globals.css): the copy further down is the one
+ * to answer now.
+ */
+function Countdown({ due, back }: { due: number; back: boolean }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const left = due - now;
+    if (left <= 0 || left > 3_600_000) return;
+    // Wake when the label next changes: the next second, or the next minute.
+    const wait = left < 60_500 ? left % 1000 || 1000 : left % 60_000 || 60_000;
+    const t = setTimeout(() => setNow(Date.now()), Math.min(wait + 20, left + 20));
+    return () => clearTimeout(t);
+  }, [due, now]);
+  const left = due - now;
+  if (left > 0) return <>{formatInterval(left)}</>;
+  return back ? <span className="lk-back">↓ back</span> : <>now</>;
+}
+
 /** Due time (ms) of a stored card JSON. */
 const dueOf = (card: string) => {
   try {
@@ -1584,21 +1607,11 @@ function Study({
   /** Indices whose miss was already queued again further down. */
   const requeued = useRef<Set<number>>(new Set());
   /**
-   * Words in a learning step (due again within minutes) wait here and join the
-   * end of the list only once due — met early, grading them would re-grade
-   * the review just made instead of recording a new one.
+   * Words in a learning step (due again within minutes) wait here until due —
+   * met early, grading them would re-grade the review just made instead of
+   * recording a new one — then join the list just below the screen.
    */
   const later = useRef<{ item: Item; due: number }[]>([]);
-  useEffect(() => {
-    const t = setInterval(() => {
-      const now = Date.now();
-      const ready = later.current.filter((x) => x.due <= now);
-      if (!ready.length) return;
-      later.current = later.current.filter((x) => x.due > now);
-      setQueue((q) => [...q, ...ready.map((x) => x.item)]);
-    }, 3000);
-    return () => clearInterval(t);
-  }, []);
   const dwellSince = useRef(Date.now());
 
   /**
@@ -1948,6 +1961,40 @@ function Study({
   // never moves focus — the finger decides, not the scroll position. A newly
   // focused row is read once.
   const [focusLine, setFocusLine] = useState(0);
+
+  // Due words from `later` join the list just below the screen — nothing on
+  // screen moves, and scrolling on meets them, as Anki interleaves learning
+  // cards. Never mid-gesture or mid-scroll: they wait for the hand to rest.
+  // Every index-keyed piece of state below the insertion point shifts by one.
+  const touchingList = useRef(false);
+  useEffect(() => {
+    const t = setInterval(() => {
+      const el = listRef.current;
+      const now = Date.now();
+      const ready = later.current.filter((x) => x.due <= now);
+      if (!ready.length || !el) return;
+      if (touchingList.current || performance.now() - lastScrollAt.current < 400) return;
+      later.current = later.current.filter((x) => x.due > now);
+      const half = Math.round(el.clientHeight / 2);
+      const below = Math.floor((el.scrollTop - half + el.clientHeight) / ROW_H) + 1;
+      // Updaters stay pure (Strict Mode runs them twice): the insertion point
+      // is fixed here, from the queue length as last rendered.
+      const at = Math.max(0, Math.min(queueLen.current, below));
+      const n = ready.length;
+      const shift = (i: number) => (i >= at ? i + n : i);
+      setQueue((q) => [...q.slice(0, at), ...ready.map((x) => x.item), ...q.slice(at)]);
+      setGrades((g) => new Map([...g].map(([k, v]) => [shift(k), v])));
+      setRevealed((r) => new Set([...r].map(shift)));
+      requeued.current = new Set([...requeued.current].map(shift));
+      gradeLog.current = gradeLog.current.map(shift);
+      rowRef.current = shift(rowRef.current);
+      queueLen.current += n;
+      setRow((r) => shift(r));
+      setFocusLine((f) => shift(f));
+      setHolding((h) => (h === null ? h : shift(h)));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [ROW_H]);
   const focusItem = touch ? queue[focusLine] : undefined;
   const focusText = focusItem ? spokenText(focusItem, focusItem.lang, !!config.readingOnBack) : "";
   useEffect(() => {
@@ -2091,7 +2138,7 @@ function Study({
     const g = grades.get(i);
     if (g) {
       // Saved: when it actually comes back. Not yet saved: the preview.
-      if (g.card) return formatInterval(dueOf(g.card) - Date.now());
+      if (g.card) return <Countdown due={dueOf(g.card)} back={requeued.current.has(i)} />;
       return previewInterval(it.card, g.rating, paramsOf.get(it.listId)!);
     }
     if (it.kind === "new" || !it.card) return "new";
@@ -2241,6 +2288,9 @@ function Study({
               setScrollTop(e.currentTarget.scrollTop);
               lastScrollAt.current = performance.now();
             }}
+            onPointerDownCapture={() => (touchingList.current = true)}
+            onPointerUpCapture={() => (touchingList.current = false)}
+            onPointerCancelCapture={() => (touchingList.current = false)}
             // pointerup, not pointerdown: for touch it is the event that grants
             // the user activation full screen needs.
             onPointerUp={touch ? resumeFullscreen : undefined}
