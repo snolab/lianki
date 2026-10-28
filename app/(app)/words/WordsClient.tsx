@@ -1843,24 +1843,11 @@ function Study({
       el.scrollTop = top + ROW_H * 3 - el.clientHeight;
   }, [row, ROW_H]);
 
-  // Touch has no cursor: the row a third of the way down the list is the
-  // "focus line". When scrolling settles there, it is read once — so with
-  // scroll-after-swipe each next word speaks itself, like the desktop loop.
+  // Touch has no cursor: the focused row is the one last tapped, and grading
+  // it moves focus to the next row (as the desktop cursor advances). Scrolling
+  // never moves focus — the finger decides, not the scroll position. A newly
+  // focused row is read once.
   const [focusLine, setFocusLine] = useState(0);
-  useEffect(() => {
-    if (!touch) return;
-    const t = setTimeout(
-      () =>
-        setFocusLine(
-          Math.max(
-            0,
-            Math.min(queue.length - 1, Math.floor((scrollTop - pad + viewH / 3) / ROW_H)),
-          ),
-        ),
-      200,
-    );
-    return () => clearTimeout(t);
-  }, [touch, scrollTop, viewH, ROW_H, queue.length]);
   const focusItem = touch ? queue[focusLine] : undefined;
   const focusText = focusItem ? spokenText(focusItem, focusItem.lang, !!config.readingOnBack) : "";
   useEffect(() => {
@@ -2207,6 +2194,7 @@ function Study({
                   }}
                   onSwipe={(r) => {
                     grade(i, r);
+                    if (touch && i === focusLine) setFocusLine(Math.min(queue.length - 1, i + 1));
                     if (swipeScroll) listRef.current?.scrollBy({ top: ROW_H, behavior: "smooth" });
                   }}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none border-b ${
