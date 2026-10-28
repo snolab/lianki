@@ -214,6 +214,11 @@ try {
   await page.getByRole("button", { name: "Settings" }).click();
   await page.unroute("**/api/words/tts?*");
 
+  // The installed app's scope is the whole site: /words opened from the home
+  // screen must not fall outside it (iOS then shows the address bar).
+  const manifest = await page.evaluate(async () => (await fetch("/manifest.json")).json());
+  check(manifest.scope === "/", `the web app's scope is the whole site (${manifest.scope})`);
+
   // The seal icons are served as files, not swallowed by the locale redirect.
   const icons = await page.evaluate(async () =>
     Promise.all(
