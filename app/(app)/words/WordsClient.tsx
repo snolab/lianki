@@ -70,11 +70,12 @@ function logSwipe(entry: { dx: number; v: number; projected: number; rating: Rat
     localStorage.setItem("lk:swipe-log", JSON.stringify(log.slice(-300)));
   } catch {}
 }
+/** The slip colour a swipe would grade to, shown while the finger is down. */
 const SWIPE_BG: Record<Rating, string> = {
-  1: "rgb(239 68 68 / 0.4)",
-  2: "rgb(245 158 11 / 0.35)",
-  3: "rgb(16 185 129 / 0.3)",
-  4: "rgb(14 165 233 / 0.4)",
+  1: "var(--slip-again)",
+  2: "var(--slip-hard)",
+  3: "var(--slip-good)",
+  4: "var(--slip-easy)",
 };
 /** A word whose next due falls inside this window comes back in this session. */
 const SESSION_WINDOW_MS = 20 * 60_000;
@@ -124,11 +125,12 @@ const KEY_RATING: Record<string, Rating> = {
   Digit3: 3,
   Digit4: 4,
 };
+/** A graded row's slip colour — see the bamboo-slip rules in app/globals.css. */
 const RATING_STYLE: Record<Rating, string> = {
-  1: "bg-red-500/25",
-  2: "bg-amber-500/25",
-  3: "bg-emerald-500/20",
-  4: "bg-sky-500/25",
+  1: "slip-again",
+  2: "slip-hard",
+  3: "slip-good",
+  4: "slip-easy",
 };
 const RATING_LABEL: Record<Rating, string> = { 1: "Again", 2: "Hard", 3: "Good", 4: "Easy" };
 
@@ -2204,15 +2206,15 @@ function Study({
                     grade(i, r);
                     if (swipeScroll) listRef.current?.scrollBy({ top: ROW_H, behavior: "smooth" });
                   }}
-                  className={`group grid items-center gap-2 px-2 leading-none cursor-pointer select-none border-b border-black/5 dark:border-white/5 ${
+                  className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none border-b ${
                     touch
-                      ? "grid-cols-[var(--term-w,8rem)_1fr_3rem] text-base"
+                      ? "slip-touch grid-cols-[var(--term-w,8rem)_1fr_3rem] text-base"
                       : hasExamples
                         ? "grid-cols-[1.25rem_var(--term-w,12rem)_minmax(10rem,1fr)_minmax(12rem,1.4fr)_3.5rem] text-[15px]"
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] text-[15px]"
                   } ${rating ? RATING_STYLE[rating] : ""} ${
                     i === row && !touch
-                      ? "outline outline-1 -outline-offset-1 outline-black/40 dark:outline-white/40"
+                      ? "outline outline-2 -outline-offset-2 outline-blue-600"
                       : touch && i === focusLine
                         ? "shadow-[inset_3px_0_0_0] shadow-emerald-500"
                         : ""
@@ -2240,7 +2242,7 @@ function Study({
                     active={glancing && show}
                     title={show ? it.back : undefined}
                     className={`text-sm opacity-80 transition-[filter] duration-75 ${
-                      show ? "" : touch ? "blur-[6px]" : "blur-[5px] group-hover:blur-none"
+                      show ? "" : "slip-blank"
                     }`}
                   >
                     {config.readingOnBack && it.reading && it.reading !== it.term && (
@@ -2253,7 +2255,7 @@ function Study({
                     <Glance
                       active={glancing && show}
                       className={`text-sm opacity-70 transition-[filter] duration-75 ${
-                        show ? "" : "blur-[5px] group-hover:blur-none"
+                        show ? "" : "slip-blank"
                       }`}
                       title={it.ex && show ? `${it.ex}\n${it.exTr ?? ""}` : undefined}
                     >
@@ -2373,7 +2375,7 @@ function WordRow({
         transition: start.current
           ? "none"
           : `transform ${moveSeconds(releasedAt.current, 6000)}s ${MIN_JERK_EASING}`,
-        background: pending ? SWIPE_BG[pending] : undefined,
+        ["--slip-c" as string]: pending ? SWIPE_BG[pending] : undefined,
       }}
       onPointerDown={(e) => {
         start.current = { x: e.clientX, y: e.clientY };
