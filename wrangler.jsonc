@@ -13,6 +13,12 @@
   "vars": {
     "DB_BACKEND": "d1"
   },
+  // Workers Logs: requests and console output kept and searchable in the
+  // dashboard (Observability), not only live via `wrangler tail`.
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
   // D1 database (SNOLAB account). Bound as `DB` — see lib/d1/index.ts.
   "d1_databases": [
     {
