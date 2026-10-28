@@ -20,8 +20,17 @@ import { CSS } from "@dnd-kit/utilities";
 import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/words/tree";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
-import { loadCatalog } from "@/lib/words/catalog-cache";
-import { formatInterval, previewInterval } from "@/lib/words/schedule";
+import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
+import { idbAdd, idbAll, idbDelete, idbGet, idbPut, type PendingOp } from "@/lib/words/idb";
+import {
+  afterSend,
+  backoff,
+  pendingReviewed,
+  reviewedKey,
+  sendOrder,
+  undoTarget,
+} from "@/lib/words/pending";
+import { formatInterval, parseCard, previewInterval, reviewWord } from "@/lib/words/schedule";
 
 /**
  * Sub-second word-list review.
@@ -299,13 +308,136 @@ const dueOf = (card: string) => {
 
 const localDay = () => new Date().toLocaleDateString("en-CA");
 
+/** The request never reached the server: no network. */
+class OfflineError extends Error {}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: { "content-type": "application/json", ...init?.headers },
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      headers: { "content-type": "application/json", ...init?.headers },
+    });
+  } catch {
+    throw new OfflineError("offline");
+  }
   if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? res.statusText);
   return res.json() as Promise<T>;
+}
+
+// ── Sync: grades and undos wait in IndexedDB `pending` and go out in order ──
+
+type SyncStatus = { pending: number; online: boolean };
+const syncListeners = new Set<(s: SyncStatus) => void>();
+let flushing = false;
+let attempt = 0;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Tell every header how many ops are waiting. */
+async function notifySync() {
+  const n = (await idbAll<PendingOp>("pending").catch(() => [])).length;
+  const s = { pending: n, online: navigator.onLine };
+  for (const l of syncListeners) l(s);
+}
+
+/** Send waiting ops in the order they were made; stop at the first network failure. */
+async function flushPending() {
+  if (flushing) return;
+  flushing = true;
+  clearTimeout(retryTimer);
+  try {
+    const ops = sendOrder(await idbAll<PendingOp>("pending"));
+    for (const o of ops) {
+      let status: number | "network";
+      try {
+        const res = await fetch(`/api/words/lists/${o.listId}/${o.op}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(o.body),
+          keepalive: true,
+        });
+        status = res.status;
+      } catch {
+        status = "network";
+      }
+      const next = afterSend(status);
+      if (next === "retry") {
+        retryTimer = setTimeout(flushPending, backoff(attempt++));
+        break;
+      }
+      attempt = 0;
+      await idbDelete("pending", o.id!);
+      await notifySync();
+    }
+  } catch {
+    // IndexedDB unavailable: nothing to send from here.
+  } finally {
+    flushing = false;
+    await notifySync();
+  }
+}
+
+/** Queue an op and try to send it now. */
+async function enqueue(op: PendingOp) {
+  try {
+    await idbAdd("pending", op);
+  } catch {
+    // No IndexedDB (private mode): send directly, best effort.
+    void fetch(`/api/words/lists/${op.listId}/${op.op}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(op.body),
+      keepalive: true,
+    }).catch(() => {});
+    return;
+  }
+  await notifySync();
+  void flushPending();
+}
+
+/** Pending ops and connectivity, for the study header. Also drives retries. */
+function useSyncStatus(): SyncStatus {
+  const [s, setS] = useState<SyncStatus>({ pending: 0, online: true });
+  useEffect(() => {
+    syncListeners.add(setS);
+    const online = () => void flushPending();
+    const offline = () => void notifySync();
+    window.addEventListener("online", online);
+    window.addEventListener("offline", offline);
+    // Ops left from an earlier visit, and a slow heartbeat in case "online"
+    // never fires (it is unreliable on some phones).
+    void flushPending();
+    const t = setInterval(() => void flushPending(), 30_000);
+    return () => {
+      syncListeners.delete(setS);
+      window.removeEventListener("online", online);
+      window.removeEventListener("offline", offline);
+      clearInterval(t);
+    };
+  }, []);
+  return s;
+}
+
+/**
+ * Make this page open offline: the site-wide service worker (public/sw.js,
+ * registered in the root layout) caches pages as they load, but not the ones
+ * loaded before it took control — so tell it what this page already fetched.
+ */
+function useOfflineShell() {
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.ready
+      .then((reg) => {
+        // Files this page already loaded came before the worker was in charge:
+        // hand it their URLs so it caches them for the next offline visit.
+        const urls = performance
+          .getEntriesByType("resource")
+          .map((e) => e.name)
+          .filter((u) => u.startsWith(location.origin) && u.includes("/_next/static/"));
+        reg.active?.postMessage({ type: "cache", urls: [location.pathname, ...urls] });
+      })
+      .catch(() => {});
+  }, []);
 }
 
 /** Which catalog a page drills: /words (vocabulary) or /alphabet (scripts). */
@@ -364,13 +496,25 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
   const [catalog, setCatalog] = useState<CatalogMeta[] | null>(null);
   const [listId, setListId] = useListParam();
   const [error, setError] = useState<string | null>(null);
+  /** The lists shown came from the offline copy. */
+  const [offline, setOffline] = useState(false);
+  useOfflineShell();
 
   const refreshLists = useCallback(async () => {
     try {
       const { lists } = await api<{ lists: WordList[] }>("/api/words/lists");
       setLists(lists);
+      setOffline(false);
+      idbPut("lists", lists, "all").catch(() => {});
     } catch (e) {
-      setError((e as Error).message);
+      const cached =
+        e instanceof OfflineError
+          ? await idbGet<WordList[]>("lists", "all").catch(() => undefined)
+          : undefined;
+      if (cached) {
+        setLists(cached);
+        setOffline(true);
+      } else setError((e as Error).message);
     }
   }, []);
 
@@ -431,6 +575,7 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
       config={config}
       lists={lists}
       catalog={catalog}
+      offline={offline}
       onOpen={setListId}
       onCreated={async (id) => {
         await refreshLists();
@@ -455,6 +600,53 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
       }}
     />
   );
+}
+
+/** Cached due words for one list (IndexedDB `sessions`). */
+type CachedSession = { listId: string; due: WordCard[]; fetchedAt: string };
+
+async function cacheSessions(lists: Record<string, { due: WordCard[] }>) {
+  const fetchedAt = new Date().toISOString();
+  await Promise.all(
+    Object.entries(lists).map(([listId, s]) =>
+      idbPut("sessions", { listId, due: s.due, fetchedAt } satisfies CachedSession),
+    ),
+  );
+}
+
+/**
+ * "Download for offline": every list's catalog, the lists themselves and each
+ * list's due words go into IndexedDB, so the page works with no network.
+ */
+async function downloadForOffline(
+  config: DrillConfig,
+  lists: WordList[],
+  catalog: CatalogMeta[],
+  progress: (done: number, total: number) => void,
+) {
+  const studyable = lists.filter((l) => l.source !== groupSourceOf(config));
+  const files = studyable
+    .map((l) => catalog.find((c) => c.id === l.source)?.file)
+    .filter((f): f is string => !!f);
+  const total = files.length + 2;
+  let done = 0;
+  const step = () => progress(++done, total);
+  await downloadCatalog(`${config.base}/index.json`);
+  step();
+  for (const f of files) {
+    await downloadCatalog(`${config.base}/${f}`);
+    step();
+  }
+  // D1 binds at most ~100 parameters: ask for the lists' due words in chunks.
+  for (let i = 0; i < studyable.length; i += 80) {
+    const ids = studyable.slice(i, i + 80).map((l) => l.id);
+    const s = await api<{ lists: Record<string, { due: WordCard[] }> }>(
+      `/api/words/session?lists=${encodeURIComponent(ids.join(","))}&day=${localDay()}&limit=1000`,
+    );
+    await cacheSessions(s.lists);
+  }
+  await idbPut("lists", lists, "all");
+  step();
 }
 
 /** Indent per tree level, px. Dragging this far sideways nests or un-nests. */
@@ -570,6 +762,7 @@ function ListPicker({
   config,
   lists,
   catalog,
+  offline,
   onOpen,
   onCreated,
   onDeleted,
@@ -578,6 +771,8 @@ function ListPicker({
   config: DrillConfig;
   lists: WordList[];
   catalog: CatalogMeta[];
+  /** Showing the offline copy of the lists. */
+  offline: boolean;
   onOpen: (id: string) => void;
   onCreated: (id: string) => void;
   onDeleted: () => void;
@@ -587,6 +782,11 @@ function ListPicker({
   const groupSource = groupSourceOf(config);
   const isGroup = (l: WordList) => l.source === groupSource;
   const flat = useMemo(() => flatten(lists), [lists]);
+  const [download, setDownload] = useState<{
+    done: number;
+    total: number;
+    error?: string;
+  } | null>(null);
 
   // Collapsed groups, remembered per page.
   const collapsedKey = `lk:words-collapsed:${config.base}`;
@@ -710,6 +910,40 @@ function ListPicker({
       <div>
         <h1 className="text-2xl font-semibold">{config.title}</h1>
         <p className="opacity-70 text-sm mt-1">{config.intro}</p>
+        <div className="flex flex-wrap items-center gap-3 mt-3 text-sm">
+          {offline ? (
+            <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">
+              Offline — showing your downloaded lists. Grades sync when you are back online.
+            </span>
+          ) : (
+            <button
+              disabled={!!download && download.done < download.total}
+              onClick={async () => {
+                setDownload({ done: 0, total: 1 });
+                try {
+                  await downloadForOffline(config, lists, catalog, (done, total) =>
+                    setDownload({ done, total }),
+                  );
+                } catch (e) {
+                  setDownload({ done: 0, total: 0, error: (e as Error).message });
+                }
+              }}
+              className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-50"
+              title="Save every list and today's due words on this device, to study without a network"
+            >
+              ⬇ Download for offline
+            </button>
+          )}
+          {download && !offline && (
+            <span className="opacity-70 tabular-nums">
+              {download.error
+                ? `Download failed: ${download.error}`
+                : download.done < download.total
+                  ? `Downloading ${download.done}/${download.total}…`
+                  : "Saved on this device ✓"}
+            </span>
+          )}
+        </div>
       </div>
 
       {studyable.length > 1 && (
@@ -850,7 +1084,9 @@ function Study({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [pending, setPending] = useState(0);
+  const sync = useSyncStatus();
+  /** The queue was built from the offline copy. */
+  const [offlineCopy, setOfflineCopy] = useState(false);
   const [help, setHelp] = useState(false);
   /** Every meaning shown, not just the focused / pinned rows. */
   const [showAll, setShowAll] = useState(false);
@@ -961,10 +1197,16 @@ function Study({
         const from = nextNew.current.get(list.id) ?? 0;
         // The /known route takes at most 500 terms.
         const slice = entries.slice(from, from + Math.min(500, Math.max(n * 2, 40)));
-        const { known } = await api<{ known: string[] }>(`/api/words/lists/${list.id}/known`, {
-          method: "POST",
-          body: JSON.stringify({ terms: slice.map((e) => e.term) }),
-        });
+        let known: string[] = [];
+        try {
+          ({ known } = await api<{ known: string[] }>(`/api/words/lists/${list.id}/known`, {
+            method: "POST",
+            body: JSON.stringify({ terms: slice.map((e) => e.term) }),
+          }));
+        } catch (e) {
+          // Offline: no check; the stored cursor already skips introduced words.
+          if (!(e instanceof OfflineError)) throw e;
+        }
         // Advance only once the slice is checked, so a failed request leaves no
         // word behind the cursor.
         nextNew.current.set(list.id, from + slice.length);
@@ -1010,19 +1252,43 @@ function Study({
     // Start from the stored cursors every run (Strict Mode mounts twice in dev).
     nextNew.current = new Map(lists.map((l) => [l.id, l.cursor]));
     (async () => {
-      // All lists' due words in one request (one D1 query).
+      // All lists' due words in one request (one D1 query) — or, with no
+      // network, the copy saved on the last visit / "download for offline",
+      // minus words graded since that are still waiting to sync.
       const ids = lists.map((l) => l.id).join(",");
-      const session = await api<{
-        lists: Record<string, { due: WordCard[] }>;
-        more: boolean;
-      }>(`/api/words/session?lists=${encodeURIComponent(ids)}&day=${localDay()}`);
+      let session: { lists: Record<string, { due: WordCard[] }>; more: boolean };
+      try {
+        session = await api(
+          `/api/words/session?lists=${encodeURIComponent(ids)}&day=${localDay()}`,
+        );
+        cacheSessions(session.lists).catch(() => {});
+      } catch (e) {
+        if (!(e instanceof OfflineError)) throw e;
+        const [cached, queued] = await Promise.all([
+          idbAll<CachedSession>("sessions"),
+          idbAll<PendingOp>("pending"),
+        ]);
+        const graded = pendingReviewed(queued);
+        const now = Date.now();
+        session = { lists: {}, more: false };
+        for (const c of cached)
+          if (lists.some((l) => l.id === c.listId))
+            session.lists[c.listId] = {
+              due: c.due.filter(
+                (d) =>
+                  !graded.has(reviewedKey(c.listId, d.term)) && new Date(d.due).getTime() <= now,
+              ),
+            };
+        setOfflineCopy(true);
+      }
       if (session.more) for (const l of lists) moreDue.current.add(l.id);
       // Catalogs only for lists with due words (for their examples); the rest
       // load when their new words are needed.
       const withDue = lists.filter((l) => session.lists[l.id]?.due.length);
       await Promise.all(withDue.map(ensureCatalog));
-      // New words: just enough to start, in list order; more load as you go.
-      const fresh = await takeNew(AHEAD);
+      // New words: two batches to start — enough headroom that a fast grader
+      // never reaches the end before the next batch lands; more as you go.
+      const fresh = await takeNew(AHEAD * 2);
       if (!alive) return;
       const due = interleave(lists.map((l) => dueItems(l, session.lists[l.id]?.due ?? [])));
       setQueue([...due, ...spreadPairs(fresh, PAGE, due.length, due)]);
@@ -1058,18 +1324,37 @@ function Study({
     setRow(rowRef.current);
   }, []);
 
-  /** Grade one word and save it right away. Grading it again re-grades it. */
+  /**
+   * Grade one word. Works the same online and offline: the new card is
+   * computed here (same FSRS params as the server), and the review joins the
+   * `pending` queue, which the sync loop sends at once when online — or later,
+   * dated when it was made. Grading it again re-grades it.
+   */
   const grade = (i: number, rating: Rating) => {
     const it = queue[i];
     if (!it) return;
-    const elapsedMs = i === rowRef.current ? Date.now() - dwellSince.current : null;
-    setGrades((g) => new Map(g).set(i, { rating }));
+    const now = new Date();
+    const elapsedMs = i === rowRef.current ? now.getTime() - dwellSince.current : null;
+    // From the card as it was before this row's grade, so a re-grade replaces.
+    const { card } = reviewWord(parseCard(it.card), rating, now, paramsOf.get(it.listId)!);
+    const cardJson = JSON.stringify(card);
+    setGrades((g) => new Map(g).set(i, { rating, card: cardJson }));
     gradeLog.current = [...gradeLog.current.filter((x) => x !== i), i];
     navigator.vibrate?.(10);
-    setPending((n) => n + 1);
-    api<{ cards: WordCard[] }>(`/api/words/lists/${it.listId}/review`, {
-      method: "POST",
-      body: JSON.stringify({
+    // A miss comes back further down, within minutes (learning steps).
+    if (!requeued.current.has(i) && card.due.getTime() - now.getTime() < SESSION_WINDOW_MS) {
+      requeued.current.add(i);
+      later.current.push({
+        item: { ...it, kind: "again", newIndex: undefined, card: cardJson },
+        due: card.due.getTime(),
+      });
+    }
+    const op: PendingOp = {
+      listId: it.listId,
+      op: "review",
+      term: it.term,
+      at: now.toISOString(),
+      body: {
         day: localDay(),
         cursor: cursorOf(it.listId, i),
         reviews: [
@@ -1080,33 +1365,18 @@ function Study({
             rating,
             elapsedMs,
             newIndex: it.kind === "new" ? it.newIndex : null,
+            reviewedAt: now.toISOString(),
           },
         ],
-      }),
-      // Survives the tab closing right after the key press.
-      keepalive: true,
-    })
-      .then(({ cards }) => {
-        const c = cards[0];
-        if (!c) return;
-        setGrades((g) =>
-          g.get(i)?.rating === rating ? new Map(g).set(i, { rating, card: c.card }) : g,
-        );
-        // A miss comes back further down, within minutes (learning steps).
-        if (
-          !requeued.current.has(i) &&
-          new Date(c.due).getTime() - Date.now() < SESSION_WINDOW_MS
-        ) {
-          requeued.current.add(i);
-          later.current.push({
-            item: { ...it, kind: "again", newIndex: undefined, card: c.card },
-            due: new Date(c.due).getTime(),
-          });
-        }
-        setSyncError(null);
-      })
-      .catch((e) => setSyncError((e as Error).message))
-      .finally(() => setPending((n) => n - 1));
+      },
+    };
+    void (async () => {
+      // A re-grade whose earlier grade was never sent replaces it in the queue.
+      const queued = await idbAll<PendingOp>("pending").catch(() => []);
+      const stale = undoTarget(queued, it.listId, it.term);
+      if (stale != null && grades.has(i)) await idbDelete("pending", stale).catch(() => {});
+      await enqueue(op);
+    })();
   };
 
   /**
@@ -1126,10 +1396,22 @@ function Study({
       return n;
     });
     moveRow(target);
-    api(`/api/words/lists/${it.listId}/undo`, {
-      method: "POST",
-      body: JSON.stringify({ term: it.term, day: localDay() }),
-    }).catch(() => setNotice(`“${it.term}” can't be undone further`));
+    void (async () => {
+      // Not sent yet: just drop it. Already sent: queue an undo for the server.
+      const queued = await idbAll<PendingOp>("pending").catch(() => []);
+      const drop = undoTarget(queued, it.listId, it.term);
+      if (drop != null) {
+        await idbDelete("pending", drop).catch(() => {});
+        notifySync();
+      } else
+        await enqueue({
+          listId: it.listId,
+          op: "undo",
+          term: it.term,
+          at: new Date().toISOString(),
+          body: { term: it.term, day: localDay() },
+        });
+    })();
   };
   useEffect(() => {
     if (!notice) return;
@@ -1243,7 +1525,7 @@ function Study({
     (async () => {
       const due: Item[] = [];
       const waiting = lists.filter((l) => moreDue.current.has(l.id));
-      if (waiting.length) {
+      if (waiting.length && navigator.onLine) {
         const s = await api<{ lists: Record<string, { due: WordCard[] }>; more: boolean }>(
           `/api/words/session?lists=${encodeURIComponent(waiting.map((l) => l.id).join(","))}&day=${localDay()}&limit=${DUE_PAGE}`,
         );
@@ -1350,7 +1632,19 @@ function Study({
         <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
           {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
           {ahead.length - dueLeft} new
-          {pending > 0 && " · saving…"}
+          {sync.pending > 0 ? (
+            <span
+              data-sync="pending"
+              className={sync.online ? "" : "text-amber-700 dark:text-amber-300"}
+            >
+              {sync.online ? ` · ${sync.pending} saving…` : ` · offline · ${sync.pending} to sync`}
+            </span>
+          ) : (
+            <span data-sync="synced">
+              {!sync.online || offlineCopy ? " · offline" : ""}
+              {sync.online && grades.size > 0 ? " · synced ✓" : ""}
+            </span>
+          )}
           {speech.available && (
             <button className="ml-2 opacity-80" onClick={speech.toggle} title="Sound (V)">
               {speech.on ? "🔊" : "🔇"}

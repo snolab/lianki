@@ -18,6 +18,8 @@ const Body = z.object({
         rating: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
         elapsedMs: z.number().int().min(0).max(3_600_000).nullable().optional(),
         newIndex: z.number().int().min(0).nullable().optional(),
+        // Graded offline at this time (ISO); see reviewTime.
+        reviewedAt: z.string().max(40).nullable().optional(),
       }),
     )
     .min(1)

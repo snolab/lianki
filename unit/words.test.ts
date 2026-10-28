@@ -10,6 +10,8 @@ import {
   newRemaining,
   normalizeParams,
   reviewWord,
+  reviewTime,
+  MAX_OFFLINE_AGE_MS,
 } from "@/lib/words/schedule";
 
 describe("word params", () => {
@@ -230,4 +232,30 @@ test("one session query covers several lists", async () => {
   expect(s.lists[a].newRemaining).toBe(49);
   expect(s.more).toBe(false);
   expect((await repo.sessionMany([], "2026-10-28")).lists).toEqual({});
+});
+
+test("offline reviews are dated when they were made, within limits", async () => {
+  const now = new Date("2026-10-28T12:00:00Z");
+  expect(reviewTime(undefined, now)).toBe(now);
+  expect(reviewTime("nonsense", now)).toBe(now);
+  expect(reviewTime("2026-10-28T13:00:00Z", now)).toBe(now); // future
+  expect(reviewTime(new Date(now.getTime() - MAX_OFFLINE_AGE_MS - 1).toISOString(), now)).toBe(now);
+  expect(reviewTime("2026-10-28T09:00:00Z", now).toISOString()).toBe("2026-10-28T09:00:00.000Z");
+
+  const d1 = createTestD1(testSchema());
+  const repo = new WordsD1Repo(d1, "off@example.com");
+  const id = await repo.createList({ name: "x", lang: "fr" });
+  // Graded Again at 09:00 offline, synced at 12:00: due a minute after 09:00,
+  // so already due again now — not a minute after the sync.
+  const res = await repo.review(
+    id,
+    [{ term: "chat", rating: 1, reviewedAt: "2026-10-28T09:00:00Z" }],
+    "2026-10-28",
+    now,
+  );
+  expect(new Date(res!.cards[0].due).getTime()).toBeLessThan(now.getTime());
+  const row = await d1
+    .prepare("SELECT reviewed_at FROM word_reviews")
+    .first<{ reviewed_at: string }>();
+  expect(row!.reviewed_at).toBe("2026-10-28T09:00:00.000Z");
 });
