@@ -142,6 +142,72 @@ function useTouch() {
   return touch;
 }
 
+/**
+ * A remembered on/off setting (localStorage), the same across refreshes.
+ * Reads after mount, so server and first client render agree.
+ */
+function usePref(key: string, initial: boolean) {
+  const [on, setOn] = useState(initial);
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(key);
+      if (v === "1" || v === "0") setOn(v === "1");
+    } catch {}
+  }, [key]);
+  const set = useCallback(
+    (next: boolean | ((v: boolean) => boolean)) =>
+      setOn((v) => {
+        const n = typeof next === "function" ? next(v) : next;
+        try {
+          localStorage.setItem(key, n ? "1" : "0");
+        } catch {}
+        return n;
+      }),
+    [key],
+  );
+  return [on, set] as const;
+}
+
+/** A pill-shaped switch for the settings panel. */
+function TogglePill({
+  on,
+  onChange,
+  label,
+  hint,
+}: {
+  on: boolean;
+  onChange: (on: boolean) => void;
+  label: string;
+  hint?: string;
+}) {
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      title={hint}
+      onClick={() => onChange(!on)}
+      className={`inline-flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-xs transition-colors ${
+        on
+          ? "bg-emerald-500/20 text-emerald-900 dark:text-emerald-100"
+          : "bg-black/5 dark:bg-white/10 opacity-80"
+      }`}
+    >
+      <span
+        className={`relative h-4 w-7 rounded-full transition-colors ${
+          on ? "bg-emerald-500" : "bg-black/25 dark:bg-white/30"
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${
+            on ? "left-3.5" : "left-0.5"
+          }`}
+        />
+      </span>
+      {label}
+    </button>
+  );
+}
+
 type FsDoc = Document & {
   webkitFullscreenEnabled?: boolean;
   webkitFullscreenElement?: Element | null;
@@ -1154,49 +1220,16 @@ function Study({
   const [offlineCopy, setOfflineCopy] = useState(false);
   const [help, setHelp] = useState(false);
   /** Every meaning shown, not just the focused / pinned rows. */
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = usePref("lk:words-show-all", false);
+  const [settings, setSettings] = useState(false);
   /** Touch: say the word as a swipe starts. Remembered; on by default. */
-  const [swipeSpeak, setSwipeSpeak] = useState(true);
-  useEffect(() => {
-    try {
-      setSwipeSpeak(localStorage.getItem("lk:words-swipe-speak") !== "0");
-    } catch {}
-  }, []);
-  const toggleSwipeSpeak = (on: boolean) => {
-    setSwipeSpeak(on);
-    try {
-      localStorage.setItem("lk:words-swipe-speak", on ? "1" : "0");
-    } catch {}
-  };
+  const [swipeSpeak, setSwipeSpeak] = usePref("lk:words-swipe-speak", true);
   /** Touch: the row being held (listen mode) — revealed and looped while held. */
   const [holding, setHolding] = useState<number | null>(null);
   /** After a swipe grades a row, scroll the list down one row. Remembered. */
-  const [swipeScroll, setSwipeScroll] = useState(false);
-  useEffect(() => {
-    try {
-      setSwipeScroll(localStorage.getItem("lk:words-swipe-scroll") === "1");
-    } catch {}
-  }, []);
-  const toggleSwipeScroll = (on: boolean) => {
-    setSwipeScroll(on);
-    try {
-      localStorage.setItem("lk:words-swipe-scroll", on ? "1" : "0");
-    } catch {}
-  };
+  const [swipeScroll, setSwipeScroll] = usePref("lk:words-swipe-scroll", false);
   /** Grade tones for eyes-free study. Remembered; on unless turned off. */
-  const [tones, setTones] = useState(true);
-  useEffect(() => {
-    try {
-      setTones(localStorage.getItem("lk:words-grade-tones") !== "0");
-    } catch {}
-  }, []);
-  const toggleTones = () =>
-    setTones((on) => {
-      try {
-        localStorage.setItem("lk:words-grade-tones", on ? "0" : "1");
-      } catch {}
-      return !on;
-    });
+  const [tones, setTones] = usePref("lk:words-grade-tones", true);
   useEffect(() => unlockGradeTones(), []);
   const tone = (t: GradeTone) => {
     if (tones) playGradeTone(t);
@@ -1728,14 +1761,15 @@ function Study({
         <span className="font-medium">{title}</span>
         <button
           className={`px-2 py-0.5 rounded text-xs ${
-            showAll
+            settings
               ? "bg-black/20 dark:bg-white/25"
               : "bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
           }`}
-          onClick={() => setShowAll((v) => !v)}
-          title="Show every meaning (E)"
+          onClick={() => setSettings((v) => !v)}
+          aria-expanded={settings}
+          aria-label="Settings"
         >
-          {showAll ? "Hide meanings" : "Show all"}
+          ⚙ Settings
         </button>
         {touch && (
           <button
@@ -1745,37 +1779,6 @@ function Study({
           >
             ↶ Undo
           </button>
-        )}
-        {touch && !fs.standalone && (
-          <button
-            className={`px-2 py-0.5 rounded text-xs ${
-              fs.active ? "bg-black/20 dark:bg-white/25" : "bg-black/10 dark:bg-white/10"
-            }`}
-            onClick={toggleFullscreen}
-            aria-label="Full screen"
-          >
-            {fs.active ? "⤡ Exit full screen" : "⤢ Full screen"}
-          </button>
-        )}
-        {touch && (
-          <label className="flex items-center gap-1 text-xs opacity-80">
-            <input
-              type="checkbox"
-              checked={swipeScroll}
-              onChange={(e) => toggleSwipeScroll(e.target.checked)}
-            />
-            scroll after swipe
-          </label>
-        )}
-        {touch && (
-          <label className="flex items-center gap-1 text-xs opacity-80">
-            <input
-              type="checkbox"
-              checked={swipeSpeak}
-              onChange={(e) => toggleSwipeSpeak(e.target.checked)}
-            />
-            speak on swipe
-          </label>
         )}
         <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
           {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
@@ -1793,20 +1796,55 @@ function Study({
               {sync.online && grades.size > 0 ? " · synced ✓" : ""}
             </span>
           )}
-          {speech.available && (
-            <button className="ml-2 opacity-80" onClick={speech.toggle} title="Sound (V)">
-              {speech.on ? "🔊" : "🔇"}
-            </button>
-          )}
-          <button
-            className="ml-2 opacity-80"
-            onClick={toggleTones}
-            title="Grade tones: a short tone per grade, for studying without looking"
-            aria-label={tones ? "Grade tones on" : "Grade tones off"}
-          >
-            {tones ? "🔔" : "🔕"}
-          </button>
         </span>
+        {settings && (
+          <div className="w-full flex flex-wrap gap-2 pt-1 pb-1" aria-label="Study settings">
+            <TogglePill
+              on={showAll}
+              onChange={setShowAll}
+              label="Show all meanings"
+              hint="Every meaning visible, not only the focused row (E)"
+            />
+            {speech.available && (
+              <TogglePill
+                on={speech.on}
+                onChange={() => speech.toggle()}
+                label="Read cards aloud"
+                hint="Speak the word and its example (V)"
+              />
+            )}
+            <TogglePill
+              on={tones}
+              onChange={setTones}
+              label="Grade tones"
+              hint="A short tone per grade, for studying without looking"
+            />
+            {touch && (
+              <TogglePill
+                on={swipeSpeak}
+                onChange={setSwipeSpeak}
+                label="Speak on swipe"
+                hint="Say the word as a swipe starts"
+              />
+            )}
+            {touch && (
+              <TogglePill
+                on={swipeScroll}
+                onChange={setSwipeScroll}
+                label="Scroll after swipe"
+                hint="Move the list down one row after a swipe grades it"
+              />
+            )}
+            {touch && !fs.standalone && (
+              <TogglePill
+                on={fs.active}
+                onChange={toggleFullscreen}
+                label="Full screen"
+                hint="Hide the address bar while studying"
+              />
+            )}
+          </div>
+        )}
       </div>
       {syncError && <div className="text-red-500 text-sm mb-2">Not saved: {syncError}</div>}
       {notice && <div className="text-amber-600 dark:text-amber-300 text-sm mb-2">{notice}</div>}
