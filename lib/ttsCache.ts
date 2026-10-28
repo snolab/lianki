@@ -41,3 +41,10 @@ export async function putCachedTTS(
     uploadStream.on("error", reject);
   });
 }
+
+/** A pre-rendered word clip (lib/voice.ts) by its R2 key; null on a miss or off D1. */
+export async function getVoiceClip(key: string): Promise<Uint8Array | null> {
+  if (dbBackend() !== "d1") return null;
+  const obj = await getBlobs().get(key);
+  return obj ? new Uint8Array(await obj.arrayBuffer()) : null;
+}

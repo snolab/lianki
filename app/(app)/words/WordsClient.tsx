@@ -512,7 +512,9 @@ function useSpeech(serverVoice = false) {
         `/api/words/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}`,
       ).catch(() => null);
       if (!r?.ok) {
-        if (r && (r.status === 404 || r.status === 503)) serverDead.current.add(lang);
+        // X-Voice: miss — only this text has no recording; the language does.
+        if (r && (r.status === 404 || r.status === 503) && r.headers.get("X-Voice") !== "miss")
+          serverDead.current.add(lang);
         return false;
       }
       url = URL.createObjectURL(await r.blob());
@@ -2229,8 +2231,13 @@ function Study({
                 on={serverVoice}
                 onChange={setServerVoice}
                 label="Server voice"
-                hint="Use Lianki's recorded voice (fr, ja, zh, en, es, ko) instead of the browser's"
+                hint="Use Lianki's voices (en, es, fr, it, pt, zh, ja, ko) instead of the browser's"
               />
+            )}
+            {speech.on && serverVoice && (
+              <span className="w-full text-xs opacity-60" data-voice-credit>
+                Voices: VOICEVOX:No.7 (Japanese) · Kokoro · MeloTTS
+              </span>
             )}
             <TogglePill
               on={tones}

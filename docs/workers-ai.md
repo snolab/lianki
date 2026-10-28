@@ -106,3 +106,38 @@ token:
 Still unverified: **output quality**. Whether llama-3.3 keeps the JSON contract
 the vocab routes parse under real prompts, and whether MeloTTS Japanese/Chinese
 is good enough to learn from, needs a human to read and listen.
+
+## Word-list audio is rendered offline
+
+`/api/words/tts` serves pre-rendered clips first and generates with MeloTTS
+only on a miss. The clips are open voices rendered once, on a laptop, for
+every word, reading and example sentence in `public/words` and
+`public/alphabets` (~63k clips, ~10 KB each), and stored in R2 under
+`voice/<lang>/<sha256(lang \n text)>.mp3` (`lib/voice.ts`):
+
+| lang                   | voice                               | licence / credit                        |
+| ---------------------- | ----------------------------------- | --------------------------------------- |
+| ja                     | VOICEVOX engine, No.7 (アナウンス) | free incl. commercial; credit "VOICEVOX:No.7" |
+| en es fr it pt zh      | Kokoro-82M                          | Apache-2.0                              |
+| ko                     | none yet — MeloTTS on demand        |                                         |
+| de ru                  | none yet — browser voice            |                                         |
+
+The credit is shown under the words page's settings while the server voice
+is on. For a Japanese kana reading the engine is given the written word
+(行う, not おこなう) so it can pitch-accent it, but only when it reads the
+word the way the list does; otherwise it gets the kana.
+
+To render and upload (resumable, incremental):
+
+```bash
+bun scripts/voice/texts.ts > texts.jsonl
+# VOICEVOX engine (github.com/VOICEVOX/voicevox_engine releases) running on :50021
+uv venv -p 3.12 && uv pip install kokoro "misaki[zh,ja]" soundfile lameenc
+python scripts/voice/render.py texts.jsonl ~/.cache/lianki-voice/out [lang ...]
+bun scripts/voice/upload.ts ~/.cache/lianki-voice/out
+```
+
+A Cloudflare API rate limit makes the upload ~4 clips/s, so a full upload
+takes about four hours. A Whisper transcription of samples matched the text
+for sentences in all seven languages; isolated single syllables are where
+any voice is ambiguous.

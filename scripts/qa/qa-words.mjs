@@ -260,6 +260,15 @@ try {
     ttsStatus.join() === "404,400,400",
     `word audio: no voice → 404, bad text → 400 (${ttsStatus.join()})`,
   );
+  // A language with pre-rendered clips but none for this text: a 404 the
+  // client must not take as "no voice for Italian".
+  const miss = await page.request.get(
+    `${new URL(page.url()).origin}/api/words/tts?lang=it&text=qa-no-such-clip`,
+  );
+  check(
+    miss.status() === 404 && miss.headers()["x-voice"] === "miss",
+    `word audio: a missing clip is a per-text miss (${miss.status()} ${miss.headers()["x-voice"]})`,
+  );
 
   // New-version notice: the stream names the serving build at once…
   const head = await page.evaluate(async () => {
