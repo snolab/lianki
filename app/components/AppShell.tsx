@@ -131,7 +131,12 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
           <MenuIcon />
         </button>
 
-        <Link href={`/${locale}`} className="text-xl font-bold hover:opacity-80 transition-opacity">
+        <Link
+          href={`/${locale}`}
+          className="flex items-center gap-2 text-xl font-bold hover:opacity-80 transition-opacity"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- a tiny static SVG */}
+          <img src="/icon.svg" alt="" width={28} height={28} className="rounded-md" />
           {appName}
         </Link>
 

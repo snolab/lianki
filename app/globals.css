@@ -4,6 +4,8 @@
 @source "../node_modules/streamdown/dist/*.js";
 
 :root {
+  /* Seal red (印泥) — the brand colour, as in public/icon.svg. */
+  --brand: #c8102e;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
 }

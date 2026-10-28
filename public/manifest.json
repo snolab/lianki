@@ -4,12 +4,27 @@
   "description": "Spaced repetition learning with the FSRS algorithm",
   "start_url": "/en/list",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#2563eb",
+  "background_color": "#fbf5e9",
+  "theme_color": "#c8102e",
   "icons": [
     {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
       "src": "/favicon.ico",
-      "sizes": "256x256",
+      "sizes": "32x32 48x48",
       "type": "image/x-icon"
     }
   ]
