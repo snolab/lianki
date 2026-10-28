@@ -186,6 +186,20 @@ try {
   await page.getByRole("button", { name: "Settings" }).click();
   await page.unroute("**/api/words/tts?*");
 
+  // The seal icons are served as files, not swallowed by the locale redirect.
+  const icons = await page.evaluate(async () =>
+    Promise.all(
+      ["/icon.svg", "/icon-192.png", "/apple-icon.png", "/favicon.ico"].map(async (u) => {
+        const r = await fetch(u, { redirect: "manual" });
+        return `${r.status}:${(r.headers.get("content-type") ?? "").split(";")[0]}`;
+      }),
+    ),
+  );
+  check(
+    icons.every((x) => x.startsWith("200:image/")),
+    `the seal icons are served (${icons.join(", ")})`,
+  );
+
   // Server word audio validates before any (paid) generation.
   const ttsStatus = await page.evaluate(async () =>
     Promise.all(
