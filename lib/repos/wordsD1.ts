@@ -248,6 +248,44 @@ export class WordsD1Repo {
       .run();
   }
 
+  /**
+   * Due words for several lists in one query, most overdue first, and each
+   * list's remaining new-word allowance. `more` is true when the limit was
+   * reached, i.e. more due words are waiting.
+   */
+  async sessionMany(
+    ids: string[],
+    day: string,
+    now = new Date(),
+    limit = 400,
+  ): Promise<{
+    lists: Record<string, { due: WordCard[]; newRemaining: number }>;
+    more: boolean;
+  }> {
+    const out: Record<string, { due: WordCard[]; newRemaining: number }> = {};
+    if (!ids.length) return { lists: out, more: false };
+    const marks = ids.map(() => "?").join(",");
+    const { results: rows } = await this.db
+      .prepare(`SELECT * FROM word_lists WHERE email = ? AND id IN (${marks})`)
+      .bind(this.email, ...ids)
+      .all<ListRow>();
+    for (const r of rows)
+      out[r.id] = {
+        due: [],
+        newRemaining: newRemaining(r, normalizeParams(safeJson(r.params)), day),
+      };
+    const { results } = await this.db
+      .prepare(
+        `SELECT list_id, term, reading, back, card, card_due, reps FROM word_cards
+         WHERE email = ? AND list_id IN (${marks}) AND card_due <= ?
+         ORDER BY card_due LIMIT ?`,
+      )
+      .bind(this.email, ...ids, now.toISOString(), limit)
+      .all<CardRow & { list_id: string }>();
+    for (const r of results) out[r.list_id]?.due.push(toCard(r));
+    return { lists: out, more: results.length >= limit };
+  }
+
   /** Words due by `now`, most overdue first. */
   async dueCards(listId: string, now = new Date(), limit = 200): Promise<WordCard[]> {
     const { results } = await this.db
