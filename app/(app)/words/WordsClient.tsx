@@ -30,6 +30,8 @@ import {
   releaseVelocity,
   SWIPE_VELOCITY_MS,
   swipeRating,
+  swipeTier,
+  clampSwipe,
 } from "@/lib/words/swipe";
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
 import { idbAdd, idbAll, idbDelete, idbGet, idbPut, type PendingOp } from "@/lib/words/idb";
@@ -2338,6 +2340,10 @@ function WordRow({
   const samples = useRef<{ t: number; x: number }[]>([]);
   /** How far the row was when let go: it glides back from there. */
   const releasedAt = useRef(0);
+  /** The tier the row is in now: crossing into another gives a light buzz. */
+  const tier = useRef<0 | 1 | 2>(0);
+  /** Travel unit: the row's own height (2a of travel each way). */
+  const a = typeof style.height === "number" ? style.height : 44;
 
   if (!touch)
     return (
@@ -2358,7 +2364,8 @@ function WordRow({
 
   // Tinted by where the row would land if released now — what it will grade.
   const pending = swipeRating(
-    dx ? projectSwipe(dx, releaseVelocity(samples.current, performance.now())) : 0,
+    dx ? projectSwipe(dx, releaseVelocity(samples.current, performance.now()), a) : 0,
+    a,
   );
   return (
     <div
@@ -2382,6 +2389,7 @@ function WordRow({
         samples.current = [{ t: performance.now(), x: 0 }];
         held.current = false;
         axis.current = null;
+        tier.current = 0;
         catching.current = scrolling?.() ?? false;
         // Keep receiving the gesture even if the finger leaves this row.
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -2412,7 +2420,14 @@ function WordRow({
             ...samples.current.filter((s) => t - s.t <= SWIPE_VELOCITY_MS * 2),
             { t, x },
           ];
-          setDx(Math.max(-160, Math.min(160, x)));
+          const held2a = clampSwipe(x, a);
+          const t2 = swipeTier(held2a, a);
+          if (t2 !== tier.current) {
+            // A light tick at each threshold, either way (Android; iOS has no API).
+            navigator.vibrate?.(t2 === 2 ? 12 : 6);
+            tier.current = t2;
+          }
+          setDx(held2a);
         }
       }}
       onPointerUp={() => {
@@ -2430,11 +2445,11 @@ function WordRow({
         }
         if (axis.current === "h") {
           const v = releaseVelocity(samples.current, performance.now());
-          const r = releaseRating(moved, v);
+          const r = releaseRating(moved, v, a);
           logSwipe({
             dx: Math.round(moved),
             v,
-            projected: Math.round(projectSwipe(moved, v)),
+            projected: Math.round(projectSwipe(moved, v, a)),
             rating: r,
           });
           if (r) onSwipe(r);
