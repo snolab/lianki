@@ -127,12 +127,15 @@ const KEY_RATING: Record<string, Rating> = {
   Digit3: 3,
   Digit4: 4,
 };
-/** A graded row's slip colour — see the bamboo-slip rules in app/globals.css. */
+/**
+ * A graded row's ink (--grade, app/globals.css): the slip itself keeps its
+ * colour; only a small seal at its right end and the due time take the grade.
+ */
 const RATING_STYLE: Record<Rating, string> = {
-  1: "slip-again",
-  2: "slip-hard",
-  3: "slip-good",
-  4: "slip-easy",
+  1: "grade-again",
+  2: "grade-hard",
+  3: "grade-good",
+  4: "grade-easy",
 };
 const RATING_LABEL: Record<Rating, string> = { 1: "Again", 2: "Hard", 3: "Good", 4: "Easy" };
 
@@ -2256,10 +2259,15 @@ function Study({
                   )}
                   {/* Graded: when it comes back. Ungraded: "new", or how long it has been due. */}
                   <span
-                    className={`text-[11px] text-right tabular-nums ${rating ? "opacity-90 font-medium" : "opacity-40"}`}
+                    className={`flex items-center justify-end gap-1.5 text-[11px] tabular-nums ${rating ? "font-medium" : "opacity-40"}`}
+                    style={rating ? { color: "var(--grade)" } : undefined}
                     title={rating ? RATING_LABEL[rating] : "due"}
                   >
                     {status(it, i)}
+                    {/* The grade, stamped like a small seal (盖章). */}
+                    {rating && (
+                      <i key={rating} className="lk-stamp" aria-label={RATING_LABEL[rating]} />
+                    )}
                   </span>
                 </WordRow>
               );

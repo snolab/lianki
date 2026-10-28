@@ -209,3 +209,56 @@ ruby rt {
     color: inherit;
   }
 }
+
+/* Grades on a slip: a small seal at its right end and the due time in the
+ * grade's ink — the slip itself keeps its colour. The seal is stamped on with
+ * a minimum-jerk settle (lib/words/motion.ts MIN_JERK_EASING). */
+:root {
+  --ink-again: oklch(0.55 0.19 28);
+  --ink-hard: oklch(0.6 0.14 70);
+  --ink-good: oklch(0.52 0.12 150);
+  --ink-easy: oklch(0.52 0.12 245);
+  --min-jerk: linear(0, 0.0007, 0.0051, 0.0161, 0.0355, 0.0645, 0.1035, 0.1522, 0.2099, 0.2752, 0.3466, 0.4222, 0.5, 0.5778, 0.6534, 0.7248, 0.7901, 0.8478, 0.8965, 0.9355, 0.9645, 0.9839, 0.9949, 0.9993, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink-again: oklch(0.72 0.15 28);
+    --ink-hard: oklch(0.78 0.12 75);
+    --ink-good: oklch(0.74 0.11 150);
+    --ink-easy: oklch(0.74 0.1 245);
+  }
+}
+.grade-again {
+  --grade: var(--ink-again);
+}
+.grade-hard {
+  --grade: var(--ink-hard);
+}
+.grade-good {
+  --grade: var(--ink-good);
+}
+.grade-easy {
+  --grade: var(--ink-easy);
+}
+.lk-stamp {
+  flex: none;
+  width: 0.95em;
+  height: 0.95em;
+  border-radius: 2px;
+  background: var(--grade);
+  box-shadow: inset 0 0 0 1.5px oklch(1 0 0 / 0.5);
+  transform: rotate(-6deg);
+  opacity: 0.9;
+  animation: lk-stamp 260ms var(--min-jerk) both;
+}
+@keyframes lk-stamp {
+  from {
+    transform: rotate(-6deg) scale(1.8);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-stamp {
+    animation: none;
+  }
+}

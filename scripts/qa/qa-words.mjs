@@ -160,6 +160,10 @@ try {
   await page.keyboard.press("a");
   check((await (await res).status()) === 200, "A saves that one word immediately");
   check(
+    (await rows.nth(0).locator(".lk-stamp").count()) === 1,
+    "a graded slip gets a small seal at its right end",
+  );
+  check(
     /^\d+(\.\d)?(s|m|h|d|mo|y)$/.test(await statusOf(0)),
     `it shows when it returns: ${await statusOf(0)}`,
   );
