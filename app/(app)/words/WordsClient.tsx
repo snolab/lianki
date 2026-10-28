@@ -30,6 +30,7 @@ import {
   sendOrder,
   undoTarget,
 } from "@/lib/words/pending";
+import { playGradeTone, type GradeTone } from "./gradeSound";
 import { formatInterval, parseCard, previewInterval, reviewWord } from "@/lib/words/schedule";
 
 /**
@@ -1163,6 +1164,23 @@ function Study({
       localStorage.setItem("lk:words-swipe-scroll", on ? "1" : "0");
     } catch {}
   };
+  /** Grade tones for eyes-free study. Remembered; on unless turned off. */
+  const [tones, setTones] = useState(true);
+  useEffect(() => {
+    try {
+      setTones(localStorage.getItem("lk:words-grade-tones") !== "0");
+    } catch {}
+  }, []);
+  const toggleTones = () =>
+    setTones((on) => {
+      try {
+        localStorage.setItem("lk:words-grade-tones", on ? "0" : "1");
+      } catch {}
+      return !on;
+    });
+  const tone = (t: GradeTone) => {
+    if (tones) playGradeTone(t);
+  };
   const started = useRef(Date.now());
   const touch = useTouch();
   /** Phone full screen. Remembered: once on, the first touch of a later study re-enters it. */
@@ -1420,6 +1438,7 @@ function Study({
     setGrades((g) => new Map(g).set(i, { rating, card: cardJson }));
     gradeLog.current = [...gradeLog.current.filter((x) => x !== i), i];
     navigator.vibrate?.(10);
+    tone(rating);
     // A miss comes back further down, within minutes (learning steps).
     if (!requeued.current.has(i) && card.due.getTime() - now.getTime() < SESSION_WINDOW_MS) {
       requeued.current.add(i);
@@ -1468,6 +1487,7 @@ function Study({
     const target = grades.has(at) ? at : focusedOnly ? -1 : (gradeLog.current.at(-1) ?? -1);
     if (target < 0) return;
     const it = queue[target];
+    tone("undo");
     gradeLog.current = gradeLog.current.filter((x) => x !== target);
     setGrades((g) => {
       const n = new Map(g);
@@ -1758,6 +1778,14 @@ function Study({
               {speech.on ? "🔊" : "🔇"}
             </button>
           )}
+          <button
+            className="ml-2 opacity-80"
+            onClick={toggleTones}
+            title="Grade tones: a short tone per grade, for studying without looking"
+            aria-label={tones ? "Grade tones on" : "Grade tones off"}
+          >
+            {tones ? "🔔" : "🔕"}
+          </button>
         </span>
       </div>
       {syncError && <div className="text-red-500 text-sm mb-2">Not saved: {syncError}</div>}
