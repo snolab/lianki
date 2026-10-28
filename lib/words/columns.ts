@@ -11,7 +11,7 @@
  *  - The 85th percentile, not the max: one very long term truncates rather
  *    than widening the whole list.
  *  - The goal moves only when the target leaves a dead band, in quantized
- *    steps; the shown width eases toward it (time constant TAU_MS).
+ *    steps; the shown width follows it on a spring (lib/words/motion.ts).
  */
 export const TERM_MIN_REM = 6;
 export const TERM_MAX_REM = 20;
@@ -20,7 +20,6 @@ export const TOUCH_TERM_MAX_REM = 12;
 const QUANTILE = 0.85;
 const BAND_REM = 1.5;
 const STEP_REM = 0.5;
-export const TAU_MS = 250;
 
 /** The q-quantile of values weighted by w (weights need not sum to 1). */
 export function weightedQuantile(samples: [value: number, weight: number][], q: number): number {
@@ -58,10 +57,4 @@ export function termTarget(
 export function nextGoal(goal: number | null, target: number, rem: number) {
   if (goal !== null && Math.abs(target - goal) <= BAND_REM * rem) return goal;
   return Math.round(target / (STEP_REM * rem)) * STEP_REM * rem;
-}
-
-/** One easing step of the shown width toward the goal over `dt` ms. */
-export function ease(shown: number, goal: number, dt: number) {
-  const next = shown + (goal - shown) * (1 - Math.exp(-dt / TAU_MS));
-  return Math.abs(goal - next) < 0.5 ? goal : next;
 }

@@ -20,7 +20,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/words/tree";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
-import { ease, nextGoal, termTarget } from "@/lib/words/columns";
+import { nextGoal, termTarget } from "@/lib/words/columns";
+import { MIN_JERK_EASING, moveSeconds, springStep } from "@/lib/words/motion";
 import { projectSwipe, releaseVelocity, SWIPE_VELOCITY_MS, swipeRating } from "@/lib/words/swipe";
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
 import { idbAdd, idbAll, idbDelete, idbGet, idbPut, type PendingOp } from "@/lib/words/idb";
@@ -519,12 +520,18 @@ function useSpeech(serverVoice = false) {
   );
 }
 
-/** Glance speed: px per second while a cut-off cell slides to its end. */
-const GLANCE_PX_S = 45;
+/**
+ * Glance motion (lib/words/motion.ts): peak acceleration in px/s², and the
+ * pauses (s) to read the start and the end. A 200px slide takes ~1.6s.
+ */
+const GLANCE_ACCEL = 450;
+const GLANCE_HOLD_START = 1.0;
+const GLANCE_HOLD_END = 1.2;
 
 /**
  * A cell that would be cut off: on the active row it slides to its end,
- * pauses, and slides back (lk-glance in globals.css), so a long word or
+ * pauses, and slides back — a minimum-jerk move, run by the compositor
+ * through the Web Animations API — so a long word or
  * meaning can be read in full without leaving the list. Elsewhere it ends in
  * an ellipsis, and hovering shows the whole text.
  */
@@ -546,30 +553,49 @@ function Glance({
     const o = outer.current;
     const i = inner.current;
     if (!active || !o || !i) return setOver(0);
-    // Measured as laid out on one line, ellipsis aside.
-    const extra = i.scrollWidth - o.clientWidth;
-    setOver(extra > 2 ? Math.ceil(extra) : 0);
+    // Measured as laid out on one line, ellipsis aside — and again whenever
+    // the cell's width changes (window resize, the term column gliding).
+    // The outer box clips, so its scrollWidth is the full text's width (an
+    // inline span's own scrollWidth is always 0).
+    const measure = () => {
+      const extra = o.scrollWidth - o.clientWidth;
+      setOver(extra > 2 ? Math.ceil(extra) : 0);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(o);
+    return () => ro.disconnect();
   }, [active, children, title]);
-  // Each slide takes 30% of the cycle; the rest is pauses at either end.
-  const seconds = Math.max(3, over / GLANCE_PX_S / 0.3);
+  useEffect(() => {
+    const i = inner.current;
+    if (!over || !i || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const move = moveSeconds(over, GLANCE_ACCEL);
+    const total = GLANCE_HOLD_START + move + GLANCE_HOLD_END + move;
+    const at = (s: number) => s / total;
+    const end = `translateX(-${over}px)`;
+    const anim = i.animate(
+      [
+        { transform: "translateX(0)", offset: 0 },
+        { transform: "translateX(0)", offset: at(GLANCE_HOLD_START), easing: MIN_JERK_EASING },
+        { transform: end, offset: at(GLANCE_HOLD_START + move) },
+        {
+          transform: end,
+          offset: at(GLANCE_HOLD_START + move + GLANCE_HOLD_END),
+          easing: MIN_JERK_EASING,
+        },
+        { transform: "translateX(0)", offset: 1 },
+      ],
+      { duration: total * 1000, iterations: Infinity },
+    );
+    return () => anim.cancel();
+  }, [over]);
   return (
     <span
       ref={outer}
       title={title}
       className={`${className} overflow-hidden whitespace-nowrap ${over ? "" : "text-ellipsis"}`}
     >
-      <span
-        ref={inner}
-        className={over ? "inline-block lk-glance" : ""}
-        style={
-          over
-            ? ({
-                "--glance-dx": `-${over}px`,
-                animationDuration: `${seconds}s`,
-              } as React.CSSProperties)
-            : undefined
-        }
-      >
+      <span ref={inner} className={over ? "inline-block will-change-transform" : ""}>
         {children}
       </span>
     </span>
@@ -1918,6 +1944,7 @@ function Study({
   );
   const termGoal = useRef<number | null>(null);
   const termShown = useRef<number | null>(null);
+  const termVelocity = useRef(0);
   useEffect(() => {
     if (!viewH || to <= from) return;
     const centre = scrollTop + viewH / 2;
@@ -1935,14 +1962,19 @@ function Study({
       el.style.setProperty("--term-w", `${termShown.current}px`);
       return;
     }
-    // Glide every row together: one variable, eased per frame.
+    // Glide every row together: one variable, moved by a critically damped
+    // spring that keeps its velocity if the goal moves mid-glide.
     let raf = 0;
     let last = performance.now();
     const step = (now: number) => {
-      termShown.current = ease(termShown.current!, termGoal.current!, now - last);
+      const goal = termGoal.current!;
+      const s = springStep(termShown.current!, termVelocity.current, goal, (now - last) / 1000, 14);
       last = now;
+      const settled = Math.abs(s.x - goal) < 0.5 && Math.abs(s.v) < 5;
+      termShown.current = settled ? goal : s.x;
+      termVelocity.current = settled ? 0 : s.v;
       el.style.setProperty("--term-w", `${termShown.current}px`);
-      if (termShown.current !== termGoal.current) raf = requestAnimationFrame(step);
+      if (!settled) raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
@@ -2281,6 +2313,8 @@ function WordRow({
   const swiping = useRef(false);
   /** Recent finger positions, for the release velocity. */
   const samples = useRef<{ t: number; x: number }[]>([]);
+  /** How far the row was when let go: it glides back from there. */
+  const releasedAt = useRef(0);
 
   if (!touch)
     return (
@@ -2314,6 +2348,10 @@ function WordRow({
         // A hold is listen mode, not iOS's callout / text-selection menu.
         WebkitTouchCallout: "none",
         transform: dx ? `translateX(${dx}px)` : undefined,
+        // Following the finger: no easing. Let go: glide home, minimum jerk.
+        transition: start.current
+          ? "none"
+          : `transform ${moveSeconds(releasedAt.current, 6000)}s ${MIN_JERK_EASING}`,
         background: pending ? SWIPE_BG[pending] : undefined,
       }}
       onPointerDown={(e) => {
@@ -2351,6 +2389,7 @@ function WordRow({
       onPointerUp={() => {
         clearTimeout(holdTimer.current);
         const moved = dx;
+        releasedAt.current = moved;
         setDx(0);
         if (!start.current) return;
         start.current = null;

@@ -114,6 +114,27 @@ try {
     .evaluate((el) => parseFloat(el.style.getPropertyValue("--term-w")));
   check(termW >= 96 && termW <= 320, `the term column is fitted: ${Math.round(termW)}px`);
 
+  // Glance: in a narrow window, the cursor row's cut-off cells slide to their
+  // end and back — a Web Animation on the compositor, not a CSS timer.
+  const fullSize = page.viewportSize();
+  await page.setViewportSize({ width: 560, height: fullSize.height });
+  await page.waitForTimeout(400);
+  const glance = await page.evaluate(() => {
+    const row = document.querySelector('[role="listitem"] .outline')
+      ? document.querySelector('[role="listitem"].outline')
+      : document.querySelectorAll('[role="listitem"]')[0];
+    const cut = [...(row?.querySelectorAll("span.overflow-hidden") ?? [])].filter(
+      (el) => el.firstElementChild && el.firstElementChild.getAnimations().length > 0,
+    );
+    return { animated: cut.length, all: document.getAnimations().length };
+  });
+  check(
+    glance.animated > 0,
+    `a cut-off cell on the cursor row glances (${JSON.stringify(glance)})`,
+  );
+  await page.setViewportSize(fullSize);
+  await page.waitForTimeout(200);
+
   // F moves the cursor down (like ↓) and the focused row shows its meaning.
   const blurred = (i) =>
     rows
