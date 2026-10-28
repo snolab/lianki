@@ -38,3 +38,27 @@ ruby rt {
   font-size: 0.6em;
   color: var(--color-gray-500, oklch(0.556 0.013 264.5));
 }
+
+/* Words list: a cut-off cell on the active row slides to its end and back
+   (Glance in app/(app)/words/WordsClient.tsx). */
+@keyframes lk-glance {
+  0%,
+  20% {
+    transform: translateX(0);
+  }
+  50%,
+  70% {
+    transform: translateX(var(--glance-dx));
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+.lk-glance {
+  animation: lk-glance 4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-glance {
+    animation: none;
+  }
+}

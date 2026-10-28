@@ -387,7 +387,7 @@ try {
   await page.getByRole("button", { name: "ja", exact: true }).click();
   await page.getByRole("button", { name: "add", exact: true }).first().click();
   await rows.first().waitFor({ timeout: 15000 });
-  const firstTerms = await rows.locator("span.truncate.font-medium").allInnerTexts();
+  const firstTerms = await rows.locator("span.font-medium.overflow-hidden").allInnerTexts();
   const fronts = firstTerms.map((t) => t.split("\n")[0].trim());
   check(fronts[0] === "あ", `alphabet starts with あ: ${fronts.slice(0, 3)}`);
   // A reverse card is kept well away from its forward card (a right under あ gives it away).
