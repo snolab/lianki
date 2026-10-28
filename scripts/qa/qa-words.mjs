@@ -38,6 +38,12 @@ const silentAudio = () => {
     };
   };
   window.webkitAudioContext = window.AudioContext;
+  // Server audio (the fallback voice): record what would play, play nothing.
+  window.__played = [];
+  HTMLMediaElement.prototype.play = function () {
+    window.__played.push(this.src);
+    return Promise.resolve();
+  };
   // Speech too: record what would be said, with no voices listed (as on
   // many Android phones) — words must still be spoken.
   window.__spoken = [];
@@ -45,6 +51,9 @@ const silentAudio = () => {
     value: {
       speak(u) {
         if (u.text) window.__spoken.push(`${u.lang}:${u.text}`);
+        // __speechDead: an API with no engine behind it (Firefox on Android).
+        if (window.__speechDead) return;
+        u.onstart?.();
         setTimeout(() => u.onend?.(), 50);
       },
       cancel() {},
@@ -161,6 +170,19 @@ try {
   await page.keyboard.press("e"); // back off, for the checks below
   check(await blurred(5), "E turns it off again");
 
+  // Server word audio validates before any (paid) generation.
+  const ttsStatus = await page.evaluate(async () =>
+    Promise.all(
+      ["lang=de&text=Haus", "lang=fr&text=", `lang=fr&text=${"a".repeat(201)}`].map(
+        async (q) => (await fetch(`/api/words/tts?${q}`)).status,
+      ),
+    ),
+  );
+  check(
+    ttsStatus.join() === "404,400,400",
+    `word audio: no voice → 404, bad text → 400 (${ttsStatus.join()})`,
+  );
+
   // New-version notice: the stream names the serving build at once…
   const head = await page.evaluate(async () => {
     const ac = new AbortController();
@@ -264,6 +286,14 @@ try {
       storageState: await ctx.storageState(),
     });
     await phone.addInitScript(silentAudio);
+    // This phone's speech API never speaks, like Firefox on Android: words
+    // must come from the server instead (stubbed here — no AI call in QA).
+    await phone.addInitScript(() => (window.__speechDead = true));
+    const ttsAsked = [];
+    await phone.route("**/api/words/tts?*", (r) => {
+      ttsAsked.push(new URL(r.request().url()).searchParams.get("lang"));
+      return r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") });
+    });
     const m = await phone.newPage();
     await m.goto(page.url(), { waitUntil: "networkidle" });
     const mrows = m.locator('[role="listitem"]');
@@ -289,10 +319,20 @@ try {
     await m.waitForTimeout(500);
     const whileHeld = !(await blurredM());
     const spoken = await m.evaluate(() => window.__spoken.slice(0, 2).join(" | "));
-    check(spoken.length > 0, `phone: holding speaks the word, with no voices listed (${spoken})`);
+    check(spoken.length > 0, `phone: holding asks to speak the word (${spoken})`);
+
     await m.mouse.up();
     await m.waitForTimeout(100);
     check(whileHeld && (await blurredM()), "phone: holding a row reveals it, releasing hides it");
+    // A tap says the word once (releasing a hold stops speech, so tap here).
+    await m.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await m
+      .waitForFunction(() => window.__played.length > 0, null, { timeout: 6000 })
+      .catch(() => {});
+    check(
+      ttsAsked.length > 0 && (await m.evaluate(() => window.__played.length)) > 0,
+      `phone: speech that never starts falls back to server audio (${ttsAsked.join(",")})`,
+    );
     // Full screen: the API where there is one, else the Add to Home Screen hint.
     await m.getByRole("button", { name: "Settings" }).click();
     await m.getByRole("switch", { name: "Full screen" }).click();

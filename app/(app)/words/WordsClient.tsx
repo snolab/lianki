@@ -305,7 +305,9 @@ function usePageActive() {
 
 /**
  * Browser speech (Web Speech API): instant, offline, no rate limit, and every
- * language the OS has a voice for. A word in a language with no voice is silent.
+ * language the OS has a voice for. Where it cannot speak — no API, no voice
+ * for the language, or it never starts (Firefox on Android) — the word comes
+ * from the server instead (/api/words/tts, generated once and cached).
  */
 function useSpeech() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -324,9 +326,17 @@ function useSpeech() {
   const generation = useRef(0);
 
   const [available, setAvailable] = useState(false);
+  /** Languages the browser failed to speak; the server speaks them instead. */
+  const browserDead = useRef(new Set<string>());
+  /** Languages the server has no voice for (or speech is off there). */
+  const serverDead = useRef(new Set<string>());
+  const audio = useRef<HTMLAudioElement | null>(null);
+  /** Fetched server audio as blob URLs, by lang + text. */
+  const clips = useRef(new Map<string, string>());
+  const watchdog = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
-    if (typeof speechSynthesis === "undefined") return;
     setAvailable(true);
+    if (typeof speechSynthesis === "undefined") return;
     // Mobile browsers speak only once a gesture has spoken: say nothing on
     // the first touch or key so later, timer-driven speech is allowed.
     const prime = () => {
@@ -359,12 +369,48 @@ function useSpeech() {
   const stop = useCallback(() => {
     generation.current++;
     clearTimeout(timer.current);
+    clearTimeout(watchdog.current);
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+    audio.current?.pause();
+  }, []);
+
+  /** Play the server's recording of `text`; silent if it has none. */
+  const serverSpeak = useCallback(async (text: string, lang: string, then?: () => void) => {
+    if (serverDead.current.has(lang)) return;
+    const gen = generation.current;
+    const key = `${lang}:${text}`;
+    let url = clips.current.get(key);
+    if (!url) {
+      const r = await fetch(
+        `/api/words/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}`,
+      ).catch(() => null);
+      if (!r?.ok) {
+        if (r && (r.status === 404 || r.status === 503)) serverDead.current.add(lang);
+        return;
+      }
+      url = URL.createObjectURL(await r.blob());
+      clips.current.set(key, url);
+      if (clips.current.size > 300) {
+        const [oldKey, oldUrl] = clips.current.entries().next().value!;
+        clips.current.delete(oldKey);
+        URL.revokeObjectURL(oldUrl);
+      }
+    }
+    if (gen !== generation.current) return;
+    const a = (audio.current ??= new Audio());
+    a.src = url;
+    a.onended = then ?? null;
+    void a.play().catch(() => {});
   }, []);
 
   const speak = useCallback(
     (text: string, lang: string, then?: () => void, force = false) => {
-      if (typeof speechSynthesis === "undefined" || (!on && !force) || !text) return;
+      if ((!on && !force) || !text) return;
+      const browser =
+        typeof speechSynthesis !== "undefined" &&
+        !browserDead.current.has(lang) &&
+        (voices.length === 0 || voiceFor(lang) !== null);
+      if (!browser) return void serverSpeak(text, lang, then);
       const u = new SpeechSynthesisUtterance(text);
       // Chrome on Android often lists no voices at all yet speaks fine: with
       // no voice to pick, name the language and let the OS choose.
@@ -372,10 +418,32 @@ function useSpeech() {
       if (voice) u.voice = voice;
       u.lang = voice?.lang ?? lang;
       u.rate = 0.9;
-      if (then) u.onend = then;
+      // Never started (no engine behind the API) or failed outright: the
+      // server speaks this language from now on.
+      let started = false;
+      const gen = generation.current;
+      const fallBack = () => {
+        if (started || gen !== generation.current) return;
+        clearTimeout(watchdog.current);
+        browserDead.current.add(lang);
+        speechSynthesis.cancel();
+        void serverSpeak(text, lang, then);
+      };
+      u.onstart = () => {
+        started = true;
+        clearTimeout(watchdog.current);
+      };
+      u.onerror = (e) => {
+        if (e.error !== "interrupted" && e.error !== "canceled") fallBack();
+      };
+      u.onend = () => {
+        if (started) then?.();
+      };
+      clearTimeout(watchdog.current);
+      watchdog.current = setTimeout(fallBack, 2000);
       speechSynthesis.speak(u);
     },
-    [voiceFor, on],
+    [voiceFor, voices, on, serverSpeak],
   );
 
   /** Repeat `text` with a pause until the next call; "" just stops. */

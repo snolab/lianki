@@ -68,7 +68,7 @@ export function workersAiProvider() {
  * range that Japanese also draws on.
  */
 /** MeloTTS ships one voice per language; anything else falls back to guessing. */
-const MELOTTS_LANGS = new Set(["en", "es", "fr", "zh", "ja", "ko"]);
+export const MELOTTS_LANGS = new Set(["en", "es", "fr", "zh", "ja", "ko"]);
 
 /**
  * Resolve the language to synthesize in. An explicit locale from the caller
