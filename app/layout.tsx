@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   title: "Lianki",
   description: "Spaced repetition learning with the FSRS algorithm",
   manifest: "/manifest.json",
+  // Opened from the iPhone home screen, Lianki runs without Safari's address bar.
+  appleWebApp: { capable: true, title: "Lianki", statusBarStyle: "default" },
 };
 
 async function getRootLocale() {
