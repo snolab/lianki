@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   closestCenter,
   DndContext,
@@ -848,6 +848,8 @@ function Study({
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(0);
   const [help, setHelp] = useState(false);
+  /** Every meaning shown, not just the focused / pinned rows. */
+  const [showAll, setShowAll] = useState(false);
   const started = useRef(Date.now());
   const touch = useTouch();
   const speech = useSpeech();
@@ -1144,6 +1146,7 @@ function Study({
       else if (e.code === "Escape") undo(true);
       else if (e.key === "?") setHelp((h) => !h);
       else if (e.code === "KeyV") speech.toggle();
+      else if (e.code === "KeyE") setShowAll((v) => !v);
       else if (KEY_RATING[e.code] && !e.shiftKey) {
         grade(row, KEY_RATING[e.code]);
         moveRow(row + 1);
@@ -1154,13 +1157,33 @@ function Study({
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  // Keep the cursor in view as it moves.
+  // The list is a box the height of the screen that scrolls inside itself;
+  // only the rows in view (plus a margin) are rendered.
+  const ROW_H = touch ? 44 : 28;
   const listRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewH, setViewH] = useState(600);
+  const listReady = !loading && !loadError && queue.length > 0;
+  useLayoutEffect(() => {
+    const fit = () => {
+      const el = listRef.current;
+      if (!el) return;
+      // Fill down to the bottom of the window, leaving room for the key hints.
+      setViewH(Math.max(160, window.innerHeight - el.getBoundingClientRect().top - 40));
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [listReady]);
+  // Keep the cursor in view as it moves, a couple of rows from the edges.
   useEffect(() => {
-    listRef.current
-      ?.querySelector(`[data-i="${row}"]`)
-      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [row]);
+    const el = listRef.current;
+    if (!el) return;
+    const top = row * ROW_H;
+    if (top < el.scrollTop + ROW_H) el.scrollTop = Math.max(0, top - ROW_H);
+    else if (top + ROW_H > el.scrollTop + el.clientHeight - ROW_H * 2)
+      el.scrollTop = top + ROW_H * 3 - el.clientHeight;
+  }, [row, ROW_H]);
 
   // Say the focused row aloud on a loop (word, then example) while the page
   // is active; paused in a hidden tab or background window.
@@ -1172,9 +1195,9 @@ function Study({
   useEffect(() => speech.loop([say, sayEx], sayLang), [say, sayEx, sayLang, speech]);
 
   // Windowed rendering: the list is endless, the DOM is not.
-  const ROW_H = touch ? 44 : 28;
-  const from = Math.max(0, row - 60);
-  const to = Math.min(queue.length, row + 80);
+  const OVERSCAN = 20;
+  const from = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+  const to = Math.min(queue.length, Math.ceil((scrollTop + viewH) / ROW_H) + OVERSCAN);
   const hasExamples = queue.slice(from, to).some((it) => it.ex);
 
   const done = grades.size;
@@ -1201,6 +1224,26 @@ function Study({
           ← lists
         </button>
         <span className="font-medium">{title}</span>
+        <button
+          className={`px-2 py-0.5 rounded text-xs ${
+            showAll
+              ? "bg-black/20 dark:bg-white/25"
+              : "bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
+          }`}
+          onClick={() => setShowAll((v) => !v)}
+          title="Show every meaning (E)"
+        >
+          {showAll ? "Hide meanings" : "Show all"}
+        </button>
+        {touch && (
+          <button
+            className="px-2 py-0.5 rounded text-xs bg-black/10 dark:bg-white/10"
+            onClick={() => undo()}
+            aria-label="Undo"
+          >
+            ↶ Undo
+          </button>
+        )}
         <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
           {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
           {ahead.length - dueLeft} new
@@ -1235,7 +1278,9 @@ function Study({
         <>
           <div
             ref={listRef}
-            className="rounded-lg border border-black/10 dark:border-white/10"
+            className="rounded-lg border border-black/10 dark:border-white/10 overflow-y-auto overscroll-contain"
+            style={{ height: viewH }}
+            onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
             role="list"
           >
             <div style={{ height: from * ROW_H }} />
@@ -1244,7 +1289,7 @@ function Study({
               const g = grades.get(i);
               const rating = g?.rating;
               // The keyboard cursor reveals its row, as hovering does.
-              const show = revealed.has(i) || (!touch && i === row);
+              const show = showAll || revealed.has(i) || (!touch && i === row);
               return (
                 <WordRow
                   key={i}
@@ -1326,24 +1371,15 @@ function Study({
             })}
             <div style={{ height: (queue.length - to) * ROW_H }} />
           </div>
-          <div className="mt-3 text-[11px] opacity-50 pb-24">
+          <div className="mt-2 text-[11px] opacity-50">
             {exhausted && ahead.length === 0
               ? "Every word learned. 🎉"
               : touch
                 ? "tap = show · swipe ← a little Hard, far Again · swipe → a little Good, far Easy · ↶ undo"
                 : help
-                  ? "↑↓ / R F / I U move (the focused row shows its meaning) · Space pin · A Again · S Hard · W Good · D Easy (also H/J/K/L, 1–4) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
+                  ? "↑↓ / R F / I U move (the focused row shows its meaning) · Space pin · E show all · A Again · S Hard · W Good · D Easy (also H/J/K/L, 1–4) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
                   : "A Again · S Hard · W Good · D Easy · Z undo · ? all keys"}
           </div>
-          {touch && (
-            <button
-              className="fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] rounded-full w-12 h-12 text-xl bg-black/80 text-white dark:bg-white/90 dark:text-black shadow-lg"
-              onClick={() => undo()}
-              aria-label="Undo"
-            >
-              ↶
-            </button>
-          )}
         </>
       )}
     </div>
