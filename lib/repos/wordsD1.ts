@@ -556,4 +556,31 @@ export class WordsD1Repo {
     const used = (list.new_day === day ? list.new_today : 0) + introduced;
     return { cards, newRemaining: newRemaining({ new_day: day, new_today: used }, params, day) };
   }
+
+  /** Store swipe telemetry (db/migrations/0010_swipe_log.sql). At most 200 per call. */
+  async logSwipes(
+    swipes: {
+      at: string;
+      finger: number;
+      v: number;
+      projected: number;
+      rating: number | null;
+      a: number;
+      params?: string;
+    }[],
+  ): Promise<number> {
+    const rows = swipes.slice(0, 200);
+    const statements = rows.map((s) =>
+      this.db
+        .prepare(
+          `INSERT INTO swipe_log (email, at, finger, v, projected, rating, a, params)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(this.email, s.at, s.finger, s.v, s.projected, s.rating, s.a, s.params ?? null),
+    );
+    const batch = (this.db as { batch?: (s: D1StmtLike[]) => Promise<unknown> }).batch;
+    if (batch) await batch.call(this.db, statements);
+    else for (const st of statements) await st.run();
+    return rows.length;
+  }
 }

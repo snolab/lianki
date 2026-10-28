@@ -259,3 +259,13 @@ test("offline reviews are dated when they were made, within limits", async () =>
     .first<{ reviewed_at: string }>();
   expect(row!.reviewed_at).toBe("2026-10-28T09:00:00.000Z");
 });
+
+describe("swipe telemetry", () => {
+  test("stores swipes for the user, capped per call", async () => {
+    const d1 = createTestD1(testSchema());
+    const repo = new WordsD1Repo(d1, "t@example.com");
+    const one = { at: "2026-10-28T00:00:00Z", finger: 40, v: 0.6, projected: 52, rating: 3, a: 44 };
+    expect(await repo.logSwipes([one, { ...one, rating: null, params: "d=0.98" }])).toBe(2);
+    expect(await repo.logSwipes(Array.from({ length: 250 }, () => one))).toBe(200);
+  });
+});

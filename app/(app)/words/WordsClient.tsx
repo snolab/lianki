@@ -28,6 +28,9 @@ import {
   projectSwipe,
   releaseRating,
   releaseVelocity,
+  SWIPE_DECAY,
+  SWIPE_RESIST,
+  SWIPE_STRONG,
   SWIPE_VELOCITY_MS,
   swipeRating,
   swipeTier,
@@ -65,12 +68,98 @@ const DUE_PAGE = 200;
 /** A touch held this long without moving starts listen mode (looped audio). */
 const HOLD_MS = 300;
 /** The last swipes (distance, speed, result), kept locally to tune the physics. */
-function logSwipe(entry: { dx: number; v: number; projected: number; rating: Rating | null }) {
+/**
+ * Swipe telemetry, uploaded to /api/words/telemetry (the owner asked for it
+ * to be collected, no button): finger travel, release speed, where the row
+ * would rest, the grade, and the tuning in force. Queued in localStorage and
+ * sent in batches — every 20 swipes, when study opens, and by beacon when
+ * the page is hidden. The older local-only log (lk:swipe-log) goes up once.
+ */
+const SWIPE_PARAMS = `decay=${SWIPE_DECAY};resist=${SWIPE_RESIST};strong=${SWIPE_STRONG}`;
+type SwipeRow = {
+  at: string;
+  finger: number;
+  v: number;
+  projected: number;
+  rating: Rating | null;
+  a: number;
+  params: string;
+};
+const UNSENT = "lk:swipe-unsent";
+function readJson<T>(key: string): T[] {
   try {
-    const log = JSON.parse(localStorage.getItem("lk:swipe-log") ?? "[]") as unknown[];
-    log.push({ ...entry, v: Math.round(entry.v * 1000) / 1000, at: Date.now() });
-    localStorage.setItem("lk:swipe-log", JSON.stringify(log.slice(-300)));
+    const v = JSON.parse(localStorage.getItem(key) ?? "[]");
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+function logSwipe(e: {
+  finger: number;
+  v: number;
+  projected: number;
+  rating: Rating | null;
+  a: number;
+}) {
+  const unsent = readJson<SwipeRow>(UNSENT);
+  unsent.push({
+    at: new Date().toISOString(),
+    finger: Math.round(e.finger * 10) / 10,
+    v: Math.round(e.v * 1000) / 1000,
+    projected: Math.round(e.projected * 10) / 10,
+    rating: e.rating,
+    a: e.a,
+    params: SWIPE_PARAMS,
+  });
+  try {
+    localStorage.setItem(UNSENT, JSON.stringify(unsent.slice(-400)));
   } catch {}
+  if (unsent.length >= 20) flushSwipes();
+}
+function flushSwipes(beacon = false) {
+  let legacy: SwipeRow[] = [];
+  try {
+    if (!localStorage.getItem("lk:swipe-log-sent"))
+      legacy = readJson<{
+        at: number;
+        dx: number;
+        v: number;
+        projected: number;
+        rating: Rating | null;
+      }>("lk:swipe-log").map((l) => ({
+        at: new Date(l.at).toISOString(),
+        finger: l.dx,
+        v: l.v,
+        projected: l.projected,
+        rating: l.rating,
+        a: 44,
+        params: "legacy:decay=0.99;no-resist",
+      }));
+  } catch {}
+  const unsent = readJson<SwipeRow>(UNSENT);
+  const batch = [...legacy, ...unsent].slice(0, 200);
+  if (!batch.length) return;
+  const sentUnsent = Math.max(0, batch.length - legacy.length);
+  const done = () => {
+    try {
+      if (legacy.length) localStorage.setItem("lk:swipe-log-sent", "1");
+      localStorage.setItem(UNSENT, JSON.stringify(readJson<SwipeRow>(UNSENT).slice(sentUnsent)));
+    } catch {}
+  };
+  const body = JSON.stringify({ swipes: batch });
+  if (
+    beacon &&
+    navigator.sendBeacon?.("/api/words/telemetry", new Blob([body], { type: "application/json" }))
+  )
+    return done();
+  void fetch("/api/words/telemetry", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body,
+    keepalive: true,
+  })
+    .then((r) => r.ok && done())
+    .catch(() => {});
 }
 /** The slip colour a swipe would grade to, shown while the finger is down. */
 const SWIPE_BG: Record<Rating, string> = {
@@ -1459,6 +1548,14 @@ function Study({
     fsResumed.current = true;
     if (fsWanted.current && fs.supported && !fs.active) fs.enter();
   };
+  // Swipe telemetry: send what is queued now, and whatever is left on leaving.
+  useEffect(() => {
+    if (!touch) return;
+    flushSwipes();
+    const hide = () => document.visibilityState === "hidden" && flushSwipes(true);
+    document.addEventListener("visibilitychange", hide);
+    return () => document.removeEventListener("visibilitychange", hide);
+  }, [touch]);
   /** Read with the server's voice instead of the browser's. Remembered. */
   const [serverVoice, setServerVoice] = usePref("lk:words-server-voice", false);
   const speech = useSpeech(serverVoice);
@@ -2363,6 +2460,8 @@ function WordRow({
   const catching = useRef(false);
   /** Recent finger positions, for the release velocity. */
   const samples = useRef<{ t: number; x: number }[]>([]);
+  /** The finger's own travel (the row resists beyond a, so they differ). */
+  const finger = useRef(0);
   /** How far the row was when let go: it glides back from there. */
   const releasedAt = useRef(0);
   /** The tier the row is in now: crossing into another gives a light buzz. */
@@ -2389,7 +2488,7 @@ function WordRow({
 
   // Tinted by where the row would land if released now — what it will grade.
   const pending = swipeRating(
-    dx ? projectSwipe(dx, releaseVelocity(samples.current, performance.now()), a) : 0,
+    dx ? projectSwipe(finger.current, releaseVelocity(samples.current, performance.now()), a) : 0,
     a,
   );
   return (
@@ -2416,6 +2515,7 @@ function WordRow({
         held.current = false;
         axis.current = null;
         tier.current = 0;
+        finger.current = 0;
         catching.current = scrolling?.() ?? false;
         // Keep receiving the gesture even if the finger leaves this row.
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -2446,6 +2546,7 @@ function WordRow({
             ...samples.current.filter((s) => t - s.t <= SWIPE_VELOCITY_MS * 2),
             { t, x },
           ];
+          finger.current = x;
           const held2a = clampSwipe(x, a);
           const t2 = swipeTier(held2a, a);
           if (t2 !== tier.current) {
@@ -2471,12 +2572,13 @@ function WordRow({
         }
         if (axis.current === "h") {
           const v = releaseVelocity(samples.current, performance.now());
-          const r = releaseRating(moved, v, a);
+          const r = releaseRating(finger.current, v, a);
           logSwipe({
-            dx: Math.round(moved),
+            finger: finger.current,
             v,
-            projected: Math.round(projectSwipe(moved, v, a)),
+            projected: projectSwipe(finger.current, v, a),
             rating: r,
+            a,
           });
           if (r) onSwipe(r);
         }

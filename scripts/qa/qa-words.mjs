@@ -421,6 +421,17 @@ try {
     await drag(3, 70, 4);
     const after = await mStatus(3);
     check(after !== before, `phone: a sideways drag grades (${before} → ${after})`);
+    // Swipe telemetry is queued and the server takes it.
+    const tele = await m.evaluate(async () => {
+      const queued = JSON.parse(localStorage.getItem("lk:swipe-unsent") ?? "[]");
+      const r = await fetch("/api/words/telemetry", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ swipes: queued.slice(0, 5) }),
+      });
+      return `${queued.length}:${r.status}`;
+    });
+    check(/^[1-9]\d*:200$/.test(tele), `phone: swipe telemetry is queued and stored (${tele})`);
 
     // Full screen: the API where there is one, else the Add to Home Screen hint.
     await m.getByRole("button", { name: "Settings" }).click();
