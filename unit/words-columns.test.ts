@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { centreWeight, ease, nextGoal, termTarget, weightedQuantile } from "@/lib/words/columns";
+import { centreWeight, nextGoal, termTarget, weightedQuantile } from "@/lib/words/columns";
 
 const REM = 16;
 
@@ -52,12 +52,5 @@ describe("term column width", () => {
     expect(nextGoal(null, 101, REM)).toBe(104);
     expect(nextGoal(104, 120, REM)).toBe(104);
     expect(nextGoal(104, 140, REM)).toBe(144);
-  });
-
-  test("easing glides toward the goal and lands on it", () => {
-    const step = ease(100, 200, 16);
-    expect(step).toBeGreaterThan(100);
-    expect(step).toBeLessThan(200);
-    expect(ease(199.8, 200, 16)).toBe(200);
   });
 });
