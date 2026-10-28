@@ -262,3 +262,12 @@ ruby rt {
     animation: none;
   }
 }
+
+/* A word whose countdown ran out and was put back further down the list:
+ * this slip, already answered, fades; the copy below is the one to answer. */
+.lk-back {
+  opacity: 0.7;
+}
+[role="listitem"]:has(.lk-back) {
+  opacity: 0.5;
+}

@@ -167,6 +167,15 @@ try {
     /^\d+(\.\d)?(s|m|h|d|mo|y)$/.test(await statusOf(0)),
     `it shows when it returns: ${await statusOf(0)}`,
   );
+  // Again's minute counts down live: 58s, 57s…
+  await page.waitForTimeout(2000);
+  const tick1 = await statusOf(0);
+  await page.waitForTimeout(1200);
+  const tick2 = await statusOf(0);
+  check(
+    /^\d+s$/.test(tick1) && /^\d+s$/.test(tick2) && parseInt(tick2) < parseInt(tick1),
+    `Again counts down live (${tick1} → ${tick2})`,
+  );
 
   // Going back and grading again re-grades: still one card, one review.
   await page.keyboard.press("r");
