@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Icon, type IconName } from "@/app/components/icons";
+import { useIntlayer, useLocale } from "next-intlayer";
+import { appHref } from "@/lib/app-locale";
 import {
   closestCenter,
   DndContext,
@@ -190,7 +192,29 @@ type CatalogMeta = {
   file: string;
   source: string;
   license: string;
+  /**
+   * Where the entries are, when not `${base}/${file}`: an imported list's
+   * words come from /api/words/lists/<id>/entries.
+   */
+  path?: string;
 };
+/** The URL of a catalog's entries. */
+const catalogPath = (base: string, c: CatalogMeta) => c.path ?? `${base}/${c.file}`;
+/** An Anki deck imported at /words/import: its words live in D1, not a catalog file. */
+const isImported = (l: { source: string | null }) => !!l.source?.startsWith("anki:");
+/** Imported lists, described as catalogs so the rest of the page needs no special case. */
+const importedCatalog = (lists: WordList[]): CatalogMeta[] =>
+  lists.filter(isImported).map((l) => ({
+    id: l.source!,
+    lang: l.lang,
+    name: l.name,
+    level: "",
+    count: l.size,
+    file: "",
+    source: "Anki",
+    license: "",
+    path: `/api/words/lists/${l.id}/entries`,
+  }));
 type Entry = {
   term: string;
   reading?: string;
@@ -1044,6 +1068,8 @@ export type DrillConfig = {
    * part of the answer); alphabets keep it on the front as a hint.
    */
   readingOnBack?: boolean;
+  /** Offer importing Anki decks (/words/import) and show the imported lists. */
+  imports?: boolean;
 };
 
 const WORDS: DrillConfig = {
@@ -1051,6 +1077,7 @@ const WORDS: DrillConfig = {
   title: "Word lists",
   intro: "An endless list: grade each word with 1 / 2 / 3 / 4 — it is saved at once. Z undoes.",
   readingOnBack: true,
+  imports: true,
 };
 
 /** `source` of a group row on this page: "group:words" / "group:alphabets". */
@@ -1124,8 +1151,19 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
     if (!catalog) return null;
     const ids = new Set(catalog.map((c) => c.id));
     const group = groupSourceOf(config);
-    return allLists?.filter((l) => l.source && (ids.has(l.source) || l.source === group)) ?? null;
+    return (
+      allLists?.filter(
+        (l) =>
+          l.source &&
+          (ids.has(l.source) || l.source === group || (config.imports && isImported(l))),
+      ) ?? null
+    );
   }, [allLists, catalog, config]);
+  // The built-in catalogs plus this user's imported decks.
+  const fullCatalog = useMemo(
+    () => (catalog && lists ? [...catalog, ...importedCatalog(lists)] : null),
+    [catalog, lists],
+  );
 
   if (error)
     return (
@@ -1133,7 +1171,7 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
         {error === "Login required" ? "Sign in to use word lists." : error}
       </div>
     );
-  if (!lists || !catalog) return <div className="p-8 opacity-60">Loading…</div>;
+  if (!lists || !catalog || !fullCatalog) return <div className="p-8 opacity-60">Loading…</div>;
 
   // A row studies itself and everything below it, in tree order; groups hold
   // no words of their own.
@@ -1150,7 +1188,7 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
         key={listId}
         config={config}
         lists={studying}
-        catalog={catalog}
+        catalog={fullCatalog}
         title={
           listId === ALL
             ? `All ${config.title.toLowerCase()}`
@@ -1167,7 +1205,7 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
     <ListPicker
       config={config}
       lists={lists}
-      catalog={catalog}
+      catalog={fullCatalog}
       offline={offline}
       onOpen={setListId}
       onCreated={async (id) => {
@@ -1219,15 +1257,16 @@ async function downloadForOffline(
 ) {
   const studyable = lists.filter((l) => l.source !== groupSourceOf(config));
   const files = studyable
-    .map((l) => catalog.find((c) => c.id === l.source)?.file)
-    .filter((f): f is string => !!f);
+    .map((l) => catalog.find((c) => c.id === l.source))
+    .filter((c): c is CatalogMeta => !!c)
+    .map((c) => catalogPath(config.base, c));
   const total = files.length + 2;
   let done = 0;
   const step = () => progress(++done, total);
   await downloadCatalog(`${config.base}/index.json`);
   step();
   for (const f of files) {
-    await downloadCatalog(`${config.base}/${f}`);
+    await downloadCatalog(f);
     step();
   }
   // D1 binds at most ~100 parameters: ask for the lists' due words in chunks.
@@ -1456,7 +1495,9 @@ function ListPicker({
   }, [flat, catalog]);
 
   const [busy, setBusy] = useState(false);
-  const langs = useMemo(() => [...new Set(catalog.map((c) => c.lang))], [catalog]);
+  // Imported decks are already lists; only the built-in catalogs can be added.
+  const builtIn = useMemo(() => catalog.filter((c) => !c.path), [catalog]);
+  const langs = useMemo(() => [...new Set(builtIn.map((c) => c.lang))], [builtIn]);
   const [lang, setLang] = useState<string>("");
   const added = new Set(lists.map((l) => l.source));
   const studyable = lists.filter((l) => !isGroup(l));
@@ -1593,12 +1634,15 @@ function ListPicker({
           </p>
         </div>
       )}
-      <button
-        onClick={addGroup}
-        className="text-sm px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
-      >
-        + New group
-      </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={addGroup}
+          className="text-sm px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
+        >
+          + New group
+        </button>
+        {config.imports && <ImportLink />}
+      </div>
 
       <div className="space-y-3">
         <h2 className="text-sm font-medium opacity-80">Add a list</h2>
@@ -1615,7 +1659,7 @@ function ListPicker({
         </div>
         {lang && (
           <div className="space-y-1">
-            {catalog
+            {builtIn
               .filter((c) => c.lang === lang)
               .map((c) => (
                 <div key={c.id} className="flex items-center gap-3 text-sm">
@@ -1631,13 +1675,28 @@ function ListPicker({
                 </div>
               ))}
             <p className="text-[11px] opacity-40 pt-2">
-              {catalog.find((c) => c.lang === lang)?.source} —{" "}
-              {catalog.find((c) => c.lang === lang)?.license}
+              {builtIn.find((c) => c.lang === lang)?.source} —{" "}
+              {builtIn.find((c) => c.lang === lang)?.license}
             </p>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+/** "Import Anki deck (.apkg)" → /words/import. */
+function ImportLink() {
+  const { pickerLink } = useIntlayer("words-import");
+  const { locale } = useLocale();
+  return (
+    <a
+      href={appHref("/words/import", locale)}
+      className="text-sm px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
+    >
+      <Icon name="uploadSimple" className="me-1" />
+      {pickerLink}
+    </a>
   );
 }
 
@@ -1792,7 +1851,7 @@ function Study({
       if (!p) {
         const meta = catalog.find((c) => c.id === list.source);
         p = meta
-          ? loadCatalog<{ entries: Entry[] }>(`${base}/${meta.file}`).then((d) => d.entries)
+          ? loadCatalog<{ entries: Entry[] }>(catalogPath(base, meta)).then((d) => d.entries)
           : Promise.resolve([]);
         p = p.then((entries) => {
           catalogs.current.set(list.id, entries);

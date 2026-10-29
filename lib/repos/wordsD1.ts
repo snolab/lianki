@@ -29,6 +29,8 @@ export type WordList = {
   learning: number;
   /** Next interval of a year or more. */
   mastered: number;
+  /** Words an imported list holds (word_list_entries); 0 for a catalog list. */
+  size: number;
   createdAt: string;
 };
 
@@ -71,6 +73,7 @@ type ListRow = {
   due?: number;
   learning?: number;
   mastered?: number;
+  size?: number;
 };
 
 type CardRow = {
@@ -97,6 +100,7 @@ const toList = (r: ListRow): WordList => ({
   due: r.due ?? 0,
   learning: r.learning ?? 0,
   mastered: r.mastered ?? 0,
+  size: r.size ?? 0,
   createdAt: r.created_at,
 });
 
@@ -127,15 +131,17 @@ function safeJson(s: string | null): unknown {
  */
 export class WordsD1Repo {
   constructor(
-    private readonly db: D1Like,
-    private readonly email: string,
+    readonly db: D1Like,
+    readonly email: string,
   ) {}
 
   /** Lists with progress counts; `id` narrows the scan to one list. */
   private async query(now: Date, id?: string): Promise<WordList[]> {
     const { results } = await this.db
       .prepare(
-        `SELECT l.*, s.cards, s.due, s.learning, s.mastered
+        `SELECT l.*, s.cards, s.due, s.learning, s.mastered,
+           CASE WHEN l.source LIKE 'anki:%' THEN (SELECT COUNT(*) FROM word_list_entries e
+             WHERE e.email = l.email AND e.list_id = l.id) ELSE 0 END AS size
          FROM word_lists l
          LEFT JOIN (
            SELECT c.list_id,
@@ -239,7 +245,7 @@ export class WordsD1Repo {
       )
       .bind(this.email, id, this.email, id)
       .run();
-    for (const table of ["word_reviews", "word_cards"]) {
+    for (const table of ["word_reviews", "word_cards", "word_list_entries"]) {
       await this.db
         .prepare(`DELETE FROM ${table} WHERE email = ? AND list_id = ?`)
         .bind(this.email, id)
