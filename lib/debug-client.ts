@@ -1,8 +1,8 @@
 /**
  * The owner's remote-debug mode, in the browser. `?debug=1` on any page turns
  * it on for this device (`?debug=0` off); the installed app toggles it with
- * seven quick taps on /words' Settings button or on the version line at the
- * bottom of /preferences. It does nothing for anyone but the owner:
+ * seven quick taps on /words' Settings button or ten on your own name in the
+ * profile menu (top right, any page). It does nothing for anyone but the owner:
  * /api/dev/log and the debug socket refuse everyone else.
  */
 const KEY = "lk:debug";

@@ -322,22 +322,21 @@ try {
   );
   for (let k = 0; k < 7; k++) await gear.click();
   check((await page.locator("[data-debug-badge]").count()) === 0, "seven more turn it off");
-  // The same hidden switch, reachable from any page: the version line at the
-  // bottom of /preferences.
+  // The same hidden switch on every page: ten quick taps on your own name in
+  // the profile menu (the menu stays open between taps).
   {
-    const prefs = await ctx.newPage();
-    await prefs.goto(`${new URL(page.url()).origin}/preferences`, { waitUntil: "load" });
-    const line = prefs.locator("[data-build-line]");
-    await line.waitFor({ timeout: 15000 });
-    const flag = () => prefs.evaluate(() => localStorage.getItem("lk:debug"));
-    for (let k = 0; k < 7; k++) await line.click();
+    const flag = () => page.evaluate(() => localStorage.getItem("lk:debug"));
+    await page.locator("[data-profile-menu]").click();
+    const name = page.locator("[data-debug-name]");
+    await name.waitFor({ timeout: 5000 });
+    for (let k = 0; k < 10; k++) await name.click();
     const on = await flag();
-    for (let k = 0; k < 7; k++) await line.click();
+    for (let k = 0; k < 10; k++) await name.click();
     check(
       on === "1" && (await flag()) === "0",
-      `seven taps on /preferences' version line toggle debug (${on})`,
+      `ten taps on your name in the profile menu toggle debug (${on})`,
     );
-    await prefs.close();
+    await page.keyboard.press("Escape");
   }
 
   // /learn speaks the page's language (it used to be English-only) and links
