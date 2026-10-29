@@ -18,6 +18,9 @@
   },
   // Workers Logs: requests and console output kept and searchable in the
   // dashboard (Observability), not only live via `wrangler tail`.
+  // Every request's wall/CPU time, status and exceptions go to lianki-monitor
+  // (workers/monitor), which keeps metrics and posts alerts to Slack #lianki.
+  "tail_consumers": [{ "service": "lianki-monitor" }],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
