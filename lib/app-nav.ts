@@ -6,8 +6,9 @@
  * feature to the sidebar means one entry here plus one label — not an edit to
  * every page under `app/(app)/`.
  *
- * `href` is a bare app path; the shell runs it through `appHref()` so the
- * `?lang=` app-route locale survives navigation.
+ * `href` is a bare app path. App links never carry `?lang=`: the locale comes
+ * from the `lang` cookie (or Accept-Language), and only an explicit language
+ * switch puts `?lang=` in the URL.
  */
 import type { IconName } from "@/app/components/icons";
 

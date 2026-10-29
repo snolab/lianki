@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
-import { appHref } from "@/lib/app-locale";
 import { APP_NAV } from "@/lib/app-nav";
 import { Icon } from "@/app/components/icons";
 
@@ -18,13 +17,7 @@ const ADVANCED = ["sites", "review", "cards"];
  * page-card features (sites, page review, the card list and its userscript)
  * last, under Advanced.
  */
-export default function HomeClient({
-  locale,
-  isLoggedIn,
-}: {
-  locale: string;
-  isLoggedIn: boolean;
-}) {
+export default function HomeClient({ isLoggedIn }: { isLoggedIn: boolean }) {
   const t = useIntlayer("nav-home");
   // Nav labels live in two dictionaries, as in the app shell: landing-page
   // has learn / aiVocab / polyglot / roadmap, app-shell the rest.
@@ -70,7 +63,7 @@ export default function HomeClient({
               </span>
             </p>
             <Link
-              href={appHref(words!.lists > 1 ? "/words?list=all" : "/words", locale)}
+              href={words!.lists > 1 ? "/words?list=all" : "/words"}
               className="ms-auto rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5"
             >
               {t.cont} →
@@ -85,7 +78,7 @@ export default function HomeClient({
               <li>{t.step3}</li>
             </ol>
             <Link
-              href={appHref("/words", locale)}
+              href="/words"
               className="inline-block rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5"
             >
               {t.startButton} →
@@ -101,7 +94,7 @@ export default function HomeClient({
           {EXPLORE.map((k) => (
             <li key={k}>
               <Link
-                href={appHref(item(k).href, locale)}
+                href={item(k).href}
                 className="flex items-center gap-2 rounded-xl border border-black/10 dark:border-white/10 px-4 py-3 hover:bg-black/5 dark:hover:bg-white/5"
               >
                 <Icon name={item(k).icon} className="text-lg opacity-80" />
@@ -120,7 +113,7 @@ export default function HomeClient({
           {ADVANCED.map((k) => (
             <li key={k}>
               <Link
-                href={appHref(item(k).href, locale)}
+                href={item(k).href}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 dark:border-white/10 px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5"
               >
                 <Icon name={item(k).icon} className="opacity-80" />

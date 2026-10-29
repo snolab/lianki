@@ -6,7 +6,6 @@ import RoadmapClient from "./components/RoadmapClient";
 import { getRoadmapGoalsCollection } from "@/app/getRoadmapGoalsCollection";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { RoadmapGoalsD1Repo } from "@/lib/repos/d1Repos";
-import { appHref } from "@/lib/app-locale";
 import { appLocale } from "@/lib/app-locale.server";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +24,7 @@ export default async function RoadmapPage() {
 
   const user = await authUserOrNull();
   if (!user?.email) {
-    redirect(appHref("/list", locale));
+    redirect("/list");
   }
 
   const email = user.email;

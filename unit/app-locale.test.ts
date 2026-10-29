@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { appHref, isAppRoute, localeFromAcceptLanguage, resolveLocale } from "@/lib/app-locale";
+import { isAppRoute, localeFromAcceptLanguage, resolveLocale } from "@/lib/app-locale";
 
 describe("isAppRoute", () => {
   it("matches app routes and their subpaths", () => {
@@ -14,25 +14,6 @@ describe("isAppRoute", () => {
     expect(isAppRoute("/blog")).toBe(false);
     expect(isAppRoute("/blog/2025-01-01-introduction")).toBe(false);
     expect(isAppRoute("/ja")).toBe(false);
-  });
-});
-
-describe("appHref", () => {
-  it("leaves the default locale as a bare path so it stays the canonical URL", () => {
-    expect(appHref("/list", "en")).toBe("/list");
-  });
-
-  it("appends ?lang= for non-default locales", () => {
-    expect(appHref("/list", "ja")).toBe("/list?lang=ja");
-    expect(appHref("/read/abc", "ko")).toBe("/read/abc?lang=ko");
-  });
-
-  it("merges into an existing query string instead of starting a new one", () => {
-    expect(appHref("/list?due=today", "ja")).toBe("/list?due=today&lang=ja");
-  });
-
-  it("keeps the fragment last so the anchor still resolves", () => {
-    expect(appHref("/learn#imports", "ja")).toBe("/learn?lang=ja#imports");
   });
 });
 

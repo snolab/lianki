@@ -16,7 +16,6 @@ import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import GuestListClient from "./components/GuestListClient";
 import { SyncStatusBanner } from "./components/SyncStatusBanner";
 import { HotkeyHelp } from "@/app/components/HotkeyHelp";
-import { appHref } from "@/lib/app-locale";
 import { appLocale } from "@/lib/app-locale.server";
 import { LIANKI_USERSCRIPT_VERSION } from "@/lib/userscript-version";
 
@@ -76,7 +75,7 @@ async function LoggedInView({
         <div className="max-w-6xl mx-auto">
           <div className="mb-6 flex gap-4 flex-wrap">
             <a
-              href={appHref("/next", locale)}
+              href="/next"
               className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700"
               accessKey="1"
             >
@@ -86,7 +85,7 @@ async function LoggedInView({
             {/* Export moved to /data, alongside import, bulk delete and the
                 three-store overview, so backup lives in one place. */}
             <a
-              href={appHref("/data", locale)}
+              href="/data"
               className="border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-medium py-3 px-6 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
             >
               Manage data
@@ -222,7 +221,7 @@ function GuestView({ locale, latestVersion }: { locale: string; latestVersion: s
         <div className="max-w-6xl mx-auto">
           <div className="mb-6 flex gap-4">
             <a
-              href={appHref("/next", locale)}
+              href="/next"
               className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700"
               accessKey="1"
             >
@@ -231,7 +230,7 @@ function GuestView({ locale, latestVersion }: { locale: string; latestVersion: s
             <UserscriptInstallButton locale={locale} latestVersion={latestVersion} />
           </div>
 
-          <GuestListClient locale={locale} />
+          <GuestListClient />
         </div>
       </div>
     </div>

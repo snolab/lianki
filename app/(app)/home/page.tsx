@@ -15,7 +15,6 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /** Home: where signing in lands — navigation and onboarding, word lists first. */
 export default async function HomePage() {
-  const locale = await appLocale();
   const user = await authUserOrNull();
-  return <HomeClient locale={locale} isLoggedIn={!!user} />;
+  return <HomeClient isLoggedIn={!!user} />;
 }

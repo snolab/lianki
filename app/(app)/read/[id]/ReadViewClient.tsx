@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import type { ReadMaterial } from "../ReadListClient";
-import { appHref } from "@/lib/app-locale";
 
 const STORAGE_KEY = "lianki-read-materials";
 
@@ -19,15 +18,7 @@ function getLocalMaterial(id: string): ReadMaterial | null {
   }
 }
 
-export function ReadViewClient({
-  id,
-  locale,
-  isLoggedIn,
-}: {
-  id: string;
-  locale: string;
-  isLoggedIn: boolean;
-}) {
+export function ReadViewClient({ id, isLoggedIn }: { id: string; isLoggedIn: boolean }) {
   const [material, setMaterial] = useState<ReadMaterial | null>(null);
   const [currentLine, setCurrentLine] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -188,10 +179,7 @@ export function ReadViewClient({
     return (
       <div className="text-center py-12">
         <p className="text-gray-500 dark:text-gray-400 mb-4">Material not found</p>
-        <Link
-          href={appHref("/read", locale)}
-          className="text-blue-600 dark:text-blue-400 hover:underline"
-        >
+        <Link href="/read" className="text-blue-600 dark:text-blue-400 hover:underline">
           Back to materials
         </Link>
       </div>
@@ -204,7 +192,7 @@ export function ReadViewClient({
       <div className="flex items-center justify-between">
         <div>
           <Link
-            href={appHref("/read", locale)}
+            href="/read"
             className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
           >
             &larr; Back to materials

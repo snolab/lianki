@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useLocale } from "next-intlayer";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { LOCALE_PARAM, isAppRoute } from "@/lib/app-locale";
 import { LANGUAGES, isSupportedLocale } from "@/lib/constants";
 
 export function LanguageSwitcher() {
@@ -10,7 +11,6 @@ export function LanguageSwitcher() {
   const [browserLangs, setBrowserLangs] = useState<string[]>([]);
   const { locale: currentLocale } = useLocale();
   const pathname = usePathname();
-  const router = useRouter();
 
   // Get browser's preferred languages
   useEffect(() => {
@@ -22,10 +22,21 @@ export function LanguageSwitcher() {
   }, []);
 
   const handleLanguageSelect = (code: string) => {
-    // Set locale cookie for intlayer middleware (expires in 1 year)
+    // Remember the choice for a year: NEXT_LOCALE for the prefixed landing/blog
+    // pages, `lang` for the app routes, which are otherwise bare URLs.
     const expires = new Date();
     expires.setFullYear(expires.getFullYear() + 1);
-    document.cookie = `NEXT_LOCALE=${code}; path=/; expires=${expires.toUTCString()}; SameSite=Lax`;
+    for (const name of ["NEXT_LOCALE", LOCALE_PARAM]) {
+      document.cookie = `${name}=${code}; path=/; expires=${expires.toUTCString()}; SameSite=Lax`;
+    }
+
+    // App routes: an explicit switch is the one time `?lang=` goes in the URL.
+    if (isAppRoute(pathname)) {
+      const url = new URL(window.location.href);
+      url.searchParams.set(LOCALE_PARAM, code);
+      window.location.href = url.toString();
+      return;
+    }
 
     // Replace current locale in pathname with new locale
     const newPath = pathname.replace(

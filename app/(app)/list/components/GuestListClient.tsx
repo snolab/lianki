@@ -5,7 +5,6 @@ import { Icon } from "@/app/components/icons";
 import { useIntlayer } from "next-intlayer";
 import { dueMs } from "@/app/ems";
 import { SyncStatusBanner } from "./SyncStatusBanner";
-import { appHref } from "@/lib/app-locale";
 
 type FSRSCard = {
   url: string;
@@ -36,7 +35,7 @@ type FSRSCard = {
   synced?: boolean;
 };
 
-export default function GuestListClient({ locale }: { locale: string }) {
+export default function GuestListClient() {
   const { totalCards, dueCards, learningActivity } = useIntlayer("list-page");
   const [cards, setCards] = useState<FSRSCard[]>([]);
   const [localCount, setLocalCount] = useState(0);
@@ -134,7 +133,7 @@ export default function GuestListClient({ locale }: { locale: string }) {
               Lianki userscript
             </a>{" "}
             to use offline mode, or{" "}
-            <a href={appHref("/sign-in", locale)} className="underline font-semibold">
+            <a href="/sign-in" className="underline font-semibold">
               sign in
             </a>{" "}
             to sync across devices.
@@ -157,7 +156,7 @@ export default function GuestListClient({ locale }: { locale: string }) {
             </h3>
             <p className="text-blue-700 dark:text-blue-300 text-sm">
               Your cards are stored locally.{" "}
-              <a href={appHref("/sign-in", locale)} className="underline font-semibold">
+              <a href="/sign-in" className="underline font-semibold">
                 Sign in
               </a>{" "}
               to sync across devices.

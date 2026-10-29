@@ -2,8 +2,6 @@ import DIE from "phpdie";
 import { auth, hasSessionCookie } from "@/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { appHref } from "@/lib/app-locale";
-import { appLocale } from "@/lib/app-locale.server";
 
 export async function authEmail() {
   const user = await authUser();
@@ -12,7 +10,7 @@ export async function authEmail() {
 
 export async function authUser() {
   const user = await authUserOrNull();
-  if (!user) redirect(appHref("/sign-in", await appLocale()));
+  if (!user) redirect("/sign-in");
   return user;
 }
 
