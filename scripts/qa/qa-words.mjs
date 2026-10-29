@@ -45,7 +45,8 @@ const silentAudio = () => {
     return Promise.resolve();
   };
   // Speech too: record what would be said, with no voices listed (as on
-  // many Android phones) — words must still be spoken.
+  // many Android phones) — words must still be spoken, by the server: with no
+  // voice of the word's language the OS would read it in its default one.
   window.__spoken = [];
   Object.defineProperty(window, "speechSynthesis", {
     value: {
@@ -229,6 +230,27 @@ try {
     .waitForFunction(() => window.__played.length > 0, null, { timeout: 5000 })
     .catch(() => {});
   check((await page.evaluate(() => window.__played.length)) > 0, "Server voice plays server audio");
+  // Server voice off, and no browser voice for the language: still the
+  // server, never the OS's default voice (a Japanese voice reading French).
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("switch", { name: "Server voice" }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.evaluate(() => {
+    window.__played.length = 0;
+    window.__spoken.length = 0;
+  });
+  await page.keyboard.press("f");
+  await page
+    .waitForFunction(() => window.__played.length > 0, null, { timeout: 5000 })
+    .catch(() => {});
+  const voiceless = await page.evaluate(() => [window.__spoken.length, window.__played.length]);
+  check(
+    voiceless[0] === 0 && voiceless[1] > 0,
+    `no browser voice for the language: the server speaks, not the OS default (spoken ${voiceless[0]}, played ${voiceless[1]})`,
+  );
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("switch", { name: "Server voice" }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
 
   // The installed app's scope is the whole site: /words opened from the home
   // screen must not fall outside it (iOS then shows the address bar).

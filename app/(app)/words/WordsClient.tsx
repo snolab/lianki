@@ -535,17 +535,16 @@ function useSpeech(serverVoice = false) {
 
   const browserSpeak = useCallback(
     (text: string, lang: string, then?: () => void) => {
+      // Only a voice of this very language. With none listed (Chrome on
+      // Android often lists nothing) the OS picks its default voice — a
+      // Japanese voice reading French. The server speaks instead, or nothing.
+      const voice = voiceFor(lang);
       const browser =
-        typeof speechSynthesis !== "undefined" &&
-        !browserDead.current.has(lang) &&
-        (voices.length === 0 || voiceFor(lang) !== null);
+        typeof speechSynthesis !== "undefined" && !browserDead.current.has(lang) && voice !== null;
       if (!browser) return void serverSpeak(text, lang, then);
       const u = new SpeechSynthesisUtterance(text);
-      // Chrome on Android often lists no voices at all yet speaks fine: with
-      // no voice to pick, name the language and let the OS choose.
-      const voice = voiceFor(lang);
-      if (voice) u.voice = voice;
-      u.lang = voice?.lang ?? SPEECH_TAG[lang] ?? lang;
+      u.voice = voice;
+      u.lang = voice.lang;
       u.rate = 0.9;
       // Never started (no engine behind the API) or failed outright: the
       // server speaks this language from now on.
@@ -572,7 +571,7 @@ function useSpeech(serverVoice = false) {
       watchdog.current = setTimeout(fallBack, 2000);
       speechSynthesis.speak(u);
     },
-    [voiceFor, voices, serverSpeak],
+    [voiceFor, serverSpeak],
   );
 
   const speak = useCallback(
