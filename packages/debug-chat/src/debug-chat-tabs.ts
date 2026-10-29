@@ -1,6 +1,7 @@
 /**
  * One voice per device: every tab of a thread gets each agent reply, but only
- * one reads it aloud — the focused tab, else the one focused most recently.
+ * one reads it aloud — a tab with the mic on (hands-free; the latest to turn
+ * it on), else the focused tab, else the one focused most recently.
  * Tabs tell each other over a BroadcastChannel ("lk-debug-chat"), never the
  * network. docs/monitoring.md, "Chat with the agent".
  */
@@ -18,7 +19,9 @@ export function speakerTab(tabs: FocusTable): string | undefined {
   return best?.[0];
 }
 
-type Msg = { type: "focus" | "hello" | "bye"; tab: string; at: number };
+type Msg =
+  | { type: "focus" | "hello" | "bye"; tab: string; at: number }
+  | { type: "mic"; tab: string; at: number; on: boolean };
 
 /**
  * Join the tabs on this device. `isSpeaker()` says whether this tab should
@@ -33,15 +36,33 @@ export function joinTabs(
   now: () => number = Date.now,
 ) {
   const tabs: FocusTable = new Map([[self, focused() ? now() : 0]]);
-  const post = (type: Msg["type"]) =>
+  /** Tabs with the mic on → when they turned it on. */
+  const mics: FocusTable = new Map();
+  const post = (type: "focus" | "hello" | "bye") =>
     chan.postMessage({ type, tab: self, at: tabs.get(self) ?? 0 } satisfies Msg);
+  const postMic = () => {
+    const at = mics.get(self);
+    chan.postMessage({ type: "mic", tab: self, at: at ?? 0, on: at !== undefined } satisfies Msg);
+  };
   chan.onmessage = (e) => {
     const m = e.data as Msg;
     if (!m || typeof m.tab !== "string" || m.tab === self) return;
-    if (m.type === "bye") return void tabs.delete(m.tab);
+    if (m.type === "bye") {
+      tabs.delete(m.tab);
+      mics.delete(m.tab);
+      return;
+    }
+    if (m.type === "mic") {
+      if (m.on) mics.set(m.tab, Number(m.at) || 0);
+      else mics.delete(m.tab);
+      return;
+    }
     tabs.set(m.tab, Number(m.at) || 0);
-    // A newcomer asks who is here: answer with this tab's focus time.
-    if (m.type === "hello") post("focus");
+    // A newcomer asks who is here: answer with this tab's focus time (and mic).
+    if (m.type === "hello") {
+      post("focus");
+      if (mics.has(self)) postMic();
+    }
   };
   post("hello");
   return {
@@ -50,7 +71,15 @@ export function joinTabs(
       tabs.set(self, now());
       post("focus");
     },
-    isSpeaker: () => focused() || speakerTab(tabs) === self,
+    /** This tab's mic turned on or off: while on, this tab reads replies aloud. */
+    mic(on: boolean) {
+      if (on === mics.has(self)) return;
+      if (on) mics.set(self, now());
+      else mics.delete(self);
+      postMic();
+    },
+    isSpeaker: () =>
+      mics.size ? speakerTab(mics) === self : focused() || speakerTab(tabs) === self,
     leave() {
       post("bye");
       chan.close();

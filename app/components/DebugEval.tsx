@@ -15,6 +15,7 @@ import {
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
+import { voice } from "@lianki/debug-chat/voice";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
 
@@ -100,6 +101,7 @@ export function DebugEval() {
         new BroadcastChannel(TABS_CHANNEL),
         () => document.visibilityState === "visible" && document.hasFocus(),
       );
+      tabsRef.current.mic(voice().state().mic);
     };
     const leave = () => {
       tabsRef.current?.leave();
@@ -110,6 +112,8 @@ export function DebugEval() {
     };
     const show = (e: PageTransitionEvent) => e.persisted && !tabsRef.current && join();
     join();
+    // A tab with the mic on reads replies aloud (hands-free), whichever is focused.
+    const unsub = voice().subscribe((s) => tabsRef.current?.mic(s.mic));
     window.addEventListener("focus", focus);
     document.addEventListener("visibilitychange", focus);
     window.addEventListener("pagehide", leave);
@@ -119,6 +123,7 @@ export function DebugEval() {
       document.removeEventListener("visibilitychange", focus);
       window.removeEventListener("pagehide", leave);
       window.removeEventListener("pageshow", show);
+      unsub();
       leave();
     };
   }, []);
@@ -241,7 +246,8 @@ export function DebugEval() {
           if (m.from === "agent") {
             agentAtRef.current = Math.max(agentAtRef.current, Number(m.at) || 0);
             reBeat();
-            // Every tab shows it; only one reads it aloud.
+            // Every tab shows it; only one reads it aloud. speakReply queues it
+            // (voice.ts): always read while the mic is on, else by the focus rule.
             if (tabsRef.current?.isSpeaker() ?? true) speakReply(m.text);
           } else setWarning(null);
           return;

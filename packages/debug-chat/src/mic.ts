@@ -26,9 +26,17 @@ export const CLIP_SINK_KEY = "lk:debug-clip-sink";
 
 export type MicState = "off" | "loading" | "listening" | "capturing";
 /** What the button shows, from the state and the transcripts still out. */
-export type MicStatus = "idle" | "loading" | "listening" | "capturing" | "transcribing";
+export type MicStatus =
+  | "idle"
+  | "loading"
+  | "listening"
+  | "capturing"
+  | "transcribing"
+  | "speaking";
 
-export function micStatus(state: MicState, pending: number): MicStatus {
+/** `speaking`: the agent's reply is being read while the mic is on (capture is held). */
+export function micStatus(state: MicState, pending: number, speaking = false): MicStatus {
+  if (speaking && (state === "listening" || state === "capturing")) return "speaking";
   if (state === "capturing") return "capturing";
   if (pending > 0) return "transcribing";
   if (state === "off") return "idle";
@@ -377,6 +385,12 @@ export function createMic(d: {
   let cur: number | null = null;
   let partialBusy = false;
   let partialsOn = d.partials !== false;
+  /** The agent is speaking (hold): capture stops, and anything heard is dropped. */
+  let held = false;
+  /** Set by a hold: speech that began before it is dropped, even if it ends after. */
+  let tainted = false;
+  /** VAD pause/start calls, in order. */
+  let ctl: Promise<unknown> = Promise.resolve();
   const toMs = (n: number) => Math.round((n / RATE) * 1000);
   const toSamples = (ms: number) => (ms * RATE) / 1000;
 
@@ -429,7 +443,8 @@ export function createMic(d: {
   };
   const events = (g: number): VadEvents => ({
     onSpeechStart() {
-      if (g !== gen) return;
+      if (g !== gen || held) return;
+      tainted = false;
       set("capturing");
       resetLive();
       clearTimer(cap);
@@ -449,13 +464,15 @@ export function createMic(d: {
         sendPartial();
     },
     onMisfire() {
-      if (g !== gen) return;
+      if (g !== gen || held) return;
       clearTimer(cap);
       resetLive();
       dropCur();
       if (state === "capturing") set("listening");
     },
     onSpeechEnd(audio) {
+      // Heard while the agent spoke (or begun before it did): the reply's echo, dropped.
+      if (held || tainted) return;
       clearTimer(cap);
       const mine = g === gen;
       if (mine && state === "capturing") set("listening");
@@ -499,7 +516,7 @@ export function createMic(d: {
     }
     if (g !== gen) return void v.destroy();
     vad = v;
-    await v.start();
+    if (!held) await v.start();
     set("listening");
   };
   async function off() {
@@ -523,8 +540,28 @@ export function createMic(d: {
       dropCur();
     }
   }
+  /**
+   * Hold capture while the agent speaks (on), resume it (off). Speech being
+   * captured is dropped, partials stop, and the VAD is paused; what it hands
+   * over meanwhile (a submit-on-pause) is dropped too.
+   */
+  function hold(on: boolean) {
+    if (held === on) return;
+    held = on;
+    if (on) {
+      tainted = true;
+      clearTimer(cap);
+      resetLive();
+      dropCur();
+      if (state === "capturing") set("listening");
+    }
+    const v = vad;
+    if (v) ctl = ctl.then(() => (on ? v.pause() : v.start())).catch(() => {});
+  }
   return {
     toggle: () => (state === "off" ? on() : off()),
+    hold,
+    held: () => held,
     off,
     state: () => state,
   };
@@ -592,4 +629,59 @@ export function postClip(
     () => {},
     () => {},
   );
+}
+
+/** The custom DOM event fired on window when a spoken sentence is sent by itself. */
+export const VOICE_SENT_EVENT = "lk:voice-sent";
+/** The send tick: two soft sine tones, this loud at their peak, this long in all. */
+export const TICK_GAIN = 0.08;
+export const TICK_MS = 80;
+
+/** The slice of an AudioContext the tick uses (a fake in the tests). */
+export type TickContext = {
+  currentTime: number;
+  destination: unknown;
+  createOscillator(): {
+    type: string;
+    frequency: { setValueAtTime(v: number, t: number): unknown };
+    connect(n: unknown): unknown;
+    start(t: number): void;
+    stop(t: number): void;
+  };
+  createGain(): {
+    gain: {
+      setValueAtTime(v: number, t: number): unknown;
+      linearRampToValueAtTime(v: number, t: number): unknown;
+      exponentialRampToValueAtTime(v: number, t: number): unknown;
+    };
+    connect(n: unknown): unknown;
+  };
+};
+
+/**
+ * A short, soft "tick" when a spoken sentence goes out: two sine tones (the
+ * second a fifth up, 30 ms later) through one gain with a 5 ms attack and an
+ * exponential decay, TICK_MS long, peaking at TICK_GAIN. Web Audio only — no
+ * <audio> element — so iOS keeps it silent when the ringer is muted.
+ */
+export function scheduleTick(ctx: TickContext, at = ctx.currentTime) {
+  const end = at + TICK_MS / 1000;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.linearRampToValueAtTime(TICK_GAIN, at + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, end);
+  g.connect(ctx.destination);
+  const tones: [number, number][] = [
+    [880, at],
+    [1320, at + 0.03],
+  ];
+  for (const [hz, t] of tones) {
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(hz, t);
+    o.connect(g);
+    o.start(t);
+    o.stop(end);
+  }
+  return end;
 }
