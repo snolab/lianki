@@ -7,6 +7,9 @@ import { AppShell, type ShellLabels, type ShellUser } from "@/app/components/App
 import type { FirstRunLabels } from "@/app/components/FirstRunChoice";
 import { IntlayerClientProvider } from "../IntlayerClientProvider";
 import { announceBuild } from "@/lib/announce-build";
+import { cookies } from "next/headers";
+import { InviteClaim } from "@/app/components/InviteClaim";
+import { INVITE_COOKIE } from "@/lib/referrals/cookie";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   announceBuild();
@@ -18,6 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // data) have a guest mode, and the sign-in page itself lives in this group, so
   // the shell must never trigger authUser()'s redirect-to-/sign-in.
   const user = (await authUserOrNull()) as ShellUser;
+  const pendingInvite = Boolean(user) && (await cookies()).has(INVITE_COOKIE);
 
   const { appName, nav } = getIntlayer("landing-page", locale);
   const shell = getIntlayer("app-shell", locale);
@@ -43,6 +47,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             user={user}
             firstRun={firstRun}
           >
+            {pendingInvite && <InviteClaim />}
             {children}
           </AppShell>
         </div>

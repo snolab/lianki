@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useIntlayer } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import { PASSES, type PassId } from "@/lib/payments/passes";
+import { InviteCard } from "./InviteCard";
 
 const yen = (n: number) =>
   new Intl.NumberFormat(undefined, { style: "currency", currency: "JPY" }).format(n);
@@ -255,6 +256,8 @@ export default function MembershipClient() {
             )}
           </div>
         </div>
+
+        <InviteCard onProChanged={fetchMembership} />
       </div>
     </div>
   );

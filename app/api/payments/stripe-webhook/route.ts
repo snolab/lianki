@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getD1 } from "@/lib/d1";
 import { fulfilCheckout, type CheckoutSessionLike } from "@/lib/payments/fulfil";
 import { stripeEnabled, verifyStripeSignature } from "@/lib/payments/stripe";
+import { rewardPurchase } from "@/lib/referrals/store";
 
 /** Events that can mean a session is now paid; any other is acknowledged and ignored. */
 const PAID_EVENTS = new Set([
@@ -31,7 +32,16 @@ export async function POST(req: Request) {
   if (!PAID_EVENTS.has(event.type)) return NextResponse.json({ received: true });
 
   // A throw here is a 500, so Stripe retries; a duplicate or ignored session is a 200.
-  const result = await fulfilCheckout(getD1() as never, event.data.object);
+  const d1 = getD1() as never;
+  const result = await fulfilCheckout(d1, event.data.object);
+  // The inviter's purchase bonus. Also on a duplicate, so a failure here is
+  // retried with the redelivery; it is once-only by itself.
+  if (result.status !== "ignored") {
+    const buyer = result.status === "applied" ? result.userId : event.data.object.metadata?.userId;
+    if (buyer) {
+      await rewardPurchase(d1, buyer).catch((e) => console.error("[payments] referral bonus:", e));
+    }
+  }
   if (result.status === "ignored")
     console.warn("[payments] ignored", event.data.object.id, result.reason);
   return NextResponse.json({ received: true, status: result.status });
