@@ -8,15 +8,16 @@ export type SwipeRating = 1 | 2 | 3 | 4;
  * `a`: the row travels at most 2a either way (a hard stop). Up to a it
  * follows the finger 1:1; beyond a it resists — each finger px moves it
  * SWIPE_RESIST px, like a rubber band — so the far grade takes a deliberate
- * push. Resting within SWIPE_STRONG·a is the milder grade, beyond it the
+ * push: about 2.25a of finger (≈100 px on a phone), since the owner found
+ * Again/Easy too easy to fall into at 1.4a. Resting within SWIPE_STRONG·a is the milder grade, beyond it the
  * stronger: ← Hard / ← Again, → Good / → Easy. Under SWIPE_START px is no
  * grade at all, so a touch that barely moves never grades.
  */
 export const SWIPE_START = 16;
 /** The row height on touch: 2a of travel each way. */
 export const SWIPE_ROW_PX = 44;
-export const SWIPE_RESIST = 0.5;
-export const SWIPE_STRONG = 1.2;
+export const SWIPE_RESIST = 0.4;
+export const SWIPE_STRONG = 1.5;
 /** 0 = no grade, 1 = the milder grade, 2 = the stronger — of a row position. */
 export function swipeTier(dx: number, a = SWIPE_ROW_PX): 0 | 1 | 2 {
   const d = Math.abs(dx);
@@ -38,11 +39,11 @@ export function clampSwipe(finger: number, a = SWIPE_ROW_PX) {
  * rest if let go, not just where the finger lifted — a quick flick travels
  * further. Exponential deceleration, as iOS scroll views do: at rate `d` per
  * ms, a release at v px/ms coasts v·d/(1−d) px more (of finger travel, so
- * the coast meets the same resistance). 0.98 coasts ~49 px per 1 px/ms: a
- * slow drag barely moves, a real flick reaches the far grade. (0.99, iOS's
- * "fast" rate, made nearly every flick land on the far grade.)
+ * the coast meets the same resistance). 0.97 coasts ~32 px per 1 px/ms: a
+ * casual flick stays on the milder grade, only a hard one (≳2.5 px/ms)
+ * reaches the far grade. (0.99, then 0.98, made flicks land there too often.)
  */
-export const SWIPE_DECAY = 0.98;
+export const SWIPE_DECAY = 0.97;
 /** Velocity is measured over the last stretch of the gesture only. */
 export const SWIPE_VELOCITY_MS = 100;
 /** Where the row would come to rest after a release from finger travel `finger`. */
