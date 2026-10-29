@@ -154,11 +154,17 @@ export function DebugChat({
   listeners,
   messages,
   onSend,
+  notice,
+  warning,
 }: {
   live: boolean;
   listeners: number;
   messages: ChatMessage[];
   onSend: (text: string) => boolean;
+  /** Shown instead of the input when this account cannot chat (blocked). */
+  notice?: string;
+  /** A one-line note above the input (a message dropped by the rate limit). */
+  warning?: string;
 }) {
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
@@ -257,11 +263,13 @@ export function DebugChat({
 
   const unread = messages.slice(seen).filter((m) => m.from === "agent").length;
   const dot = live ? "oklch(0.68 0.16 150)" : "oklch(0.62 0.02 70)";
-  const status = !live
-    ? "reconnecting…"
-    : listeners
-      ? `agent listening (${listeners})`
-      : "connected · no agent listening";
+  const status = notice
+    ? "chat unavailable"
+    : !live
+      ? "reconnecting…"
+      : listeners
+        ? `agent listening (${listeners})`
+        : "connected · no agent listening";
 
   if (!open)
     return (
@@ -342,86 +350,107 @@ export function DebugChat({
             <span
               className="me-1 font-medium"
               style={{
-                color: m.from === "owner" ? "oklch(0.55 0.13 250)" : "oklch(0.55 0.14 150)",
+                color: m.from !== "agent" ? "oklch(0.55 0.13 250)" : "oklch(0.55 0.14 150)",
               }}
             >
-              {m.from === "owner" ? "you" : m.label || "agent"}:
+              {m.from !== "agent" ? "you" : m.label || "agent"}:
             </span>
             {m.text}
           </li>
         ))}
       </ol>
-      {/* The log above is click-through: taps reach the page under it. Only the
-          grip and the input take pointer events. */}
-      <div className="relative flex items-stretch gap-1">
-        <button
-          type="button"
-          data-drag-handle
-          aria-label="Drag the chat box"
-          title="Drag"
-          {...handle}
-          style={{ ...handle.style, background: INPUT_BG }}
-          className="pointer-events-auto shrink-0 rounded-lg border border-current/25 px-1.5 text-base leading-none text-gray-500"
+      {notice ? (
+        <p
+          role="status"
+          data-debug-chat-notice
+          className="pointer-events-auto px-2 py-2 text-gray-600 dark:text-gray-400"
         >
-          ⠿
-        </button>
-        {armed > 0 && (
-          <div
-            key={armed}
-            aria-hidden
-            className="lk-drain absolute inset-x-0 top-0 h-0.5 bg-blue-600/60"
-          />
-        )}
-        <textarea
-          ref={input}
-          rows={2}
-          value={draft}
-          maxLength={MAX_CHAT}
-          placeholder="Message the agent…"
-          aria-label="Message the agent"
-          onChange={(e) => {
-            draftRef.current = e.target.value;
-            setDraft(e.target.value);
-            setOffline(false);
-            cancelSpeech();
-            arm();
-          }}
-          onCompositionStart={() => {
-            composing.current = true;
-            clearTimeout(timer.current);
-            setArmed(0);
-          }}
-          onCompositionEnd={() => {
-            composing.current = false;
-            arm();
-          }}
-          // Android's keyboards report every key as 229, so Enter never
-          // reaches onKeyDown as "Enter": the line break itself is the cue.
-          onBeforeInput={(e) => {
-            const type = (e.nativeEvent as InputEvent).inputType;
-            if (type !== "insertLineBreak" && type !== "insertParagraph") return;
-            if (composing.current || (e.nativeEvent as InputEvent).isComposing) return;
-            if (shiftEnter.current) return; // Shift+Enter: a newline, as on desktop
-            e.preventDefault();
-            submit();
-          }}
-          onKeyDown={(e) => {
-            shiftEnter.current = e.key === "Enter" && e.shiftKey;
-            if (e.key !== "Enter" || e.shiftKey) return;
-            // Enter that confirms an IME candidate (Safari reports it as 229
-            // after compositionend) must not send.
-            if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229) return;
-            e.preventDefault();
-            submit();
-          }}
-          style={{ background: INPUT_BG }}
-          className="pointer-events-auto block min-w-0 flex-1 resize-none rounded-lg border border-current/25 px-2 py-1.5 text-sm outline-none placeholder:text-gray-400"
-        />
-      </div>
-      {(armed > 0 || offline) && (
-        <div className="px-2 pb-1 text-[10px] text-gray-500">
-          {offline ? "not connected — kept; it will go when you type again" : "sending in 3s"}
-        </div>
+          {notice}
+        </p>
+      ) : (
+        <>
+          {warning && (
+            <div
+              role="alert"
+              className="px-2 pt-1 text-[10px]"
+              style={{ color: "oklch(0.6 0.17 45)" }}
+            >
+              {warning}
+            </div>
+          )}
+          {/* The log above is click-through: taps reach the page under it. Only the
+          grip and the input take pointer events. */}
+          <div className="relative flex items-stretch gap-1">
+            <button
+              type="button"
+              data-drag-handle
+              aria-label="Drag the chat box"
+              title="Drag"
+              {...handle}
+              style={{ ...handle.style, background: INPUT_BG }}
+              className="pointer-events-auto shrink-0 rounded-lg border border-current/25 px-1.5 text-base leading-none text-gray-500"
+            >
+              ⠿
+            </button>
+            {armed > 0 && (
+              <div
+                key={armed}
+                aria-hidden
+                className="lk-drain absolute inset-x-0 top-0 h-0.5 bg-blue-600/60"
+              />
+            )}
+            <textarea
+              ref={input}
+              rows={2}
+              value={draft}
+              maxLength={MAX_CHAT}
+              placeholder="Message the agent…"
+              aria-label="Message the agent"
+              onChange={(e) => {
+                draftRef.current = e.target.value;
+                setDraft(e.target.value);
+                setOffline(false);
+                cancelSpeech();
+                arm();
+              }}
+              onCompositionStart={() => {
+                composing.current = true;
+                clearTimeout(timer.current);
+                setArmed(0);
+              }}
+              onCompositionEnd={() => {
+                composing.current = false;
+                arm();
+              }}
+              // Android's keyboards report every key as 229, so Enter never
+              // reaches onKeyDown as "Enter": the line break itself is the cue.
+              onBeforeInput={(e) => {
+                const type = (e.nativeEvent as InputEvent).inputType;
+                if (type !== "insertLineBreak" && type !== "insertParagraph") return;
+                if (composing.current || (e.nativeEvent as InputEvent).isComposing) return;
+                if (shiftEnter.current) return; // Shift+Enter: a newline, as on desktop
+                e.preventDefault();
+                submit();
+              }}
+              onKeyDown={(e) => {
+                shiftEnter.current = e.key === "Enter" && e.shiftKey;
+                if (e.key !== "Enter" || e.shiftKey) return;
+                // Enter that confirms an IME candidate (Safari reports it as 229
+                // after compositionend) must not send.
+                if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229) return;
+                e.preventDefault();
+                submit();
+              }}
+              style={{ background: INPUT_BG }}
+              className="pointer-events-auto block min-w-0 flex-1 resize-none rounded-lg border border-current/25 px-2 py-1.5 text-sm outline-none placeholder:text-gray-400"
+            />
+          </div>
+          {(armed > 0 || offline) && (
+            <div className="px-2 pb-1 text-[10px] text-gray-500">
+              {offline ? "not connected — kept; it will go when you type again" : "sending in 3s"}
+            </div>
+          )}
+        </>
       )}
     </section>
   );

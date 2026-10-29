@@ -13,18 +13,23 @@
  *                              again does nothing.
  *   GET  /api/version/stream   The old SSE notice, for pages from before:
  *                              one "new version" event, then silence.
- *   GET  /api/version/debug    WebSocket for the OWNER's debug-mode pages
- *                              (?label=<path + user agent>). Accepted only
- *                              from a lianki.com page whose cookie the main
- *                              Worker (service binding MAIN, /api/dev/whoami)
- *                              says is the owner's; 403 otherwise.
+ *   GET  /api/version/debug    WebSocket for a signed-in user's debug-mode
+ *                              pages (?label=<path + user agent>). Accepted
+ *                              only from a lianki.com page whose cookie the
+ *                              main Worker (service binding MAIN,
+ *                              /api/debug/identity) names a user for; 403
+ *                              otherwise. Who it is goes to the hub in the
+ *                              x-debug-* headers, set here and nowhere else.
  *   GET  /api/version/debug/control
  *                              WebSocket for the sender (scripts/dev/eval.ts):
  *                              unauthenticated, and useless until the owner
  *                              allows it on one of those pages (debug.ts) —
  *                              or it presents a live chat grant in the
  *                              x-debug-token header. The same sockets carry
- *                              the owner ⇄ agent chat.
+ *                              the agent's side of the chat.
+ *   GET/POST /internal/friends The main Worker's owner-only /api/dev/friends,
+ *                              over its PUSH binding: list chat users, read
+ *                              one's thread, Block or unblock (debug.ts).
  *
  * /internal/* is answered only on the binding's own hostname (lianki-push):
  * there is no workers.dev URL, and the zone route covers /api/version/* only.
@@ -36,7 +41,8 @@
  * Types are declared here rather than taken from @cloudflare/workers-types:
  * the repo's root tsconfig type-checks this folder with the DOM lib.
  */
-import { isOwnerSocket } from "./auth";
+import { debugIdentity } from "./auth";
+import { IDENTITY_HEADERS } from "./debug";
 
 export { DebugHub } from "./debug";
 
@@ -104,8 +110,13 @@ export default {
     }
     if (url.pathname === "/api/version/debug") {
       if (!wantsSocket) return new Response("WebSocket only", { status: 426 });
-      if (!(await isOwnerSocket(req, env.MAIN))) return new Response("forbidden", { status: 403 });
-      return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(req);
+      const who = await debugIdentity(req, env.MAIN);
+      if (!who) return new Response("forbidden", { status: 403 });
+      const headers = new Headers(req.headers);
+      headers.set(IDENTITY_HEADERS.user, who.userId);
+      headers.set(IDENTITY_HEADERS.email, who.email);
+      headers.set(IDENTITY_HEADERS.owner, who.owner ? "1" : "0");
+      return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
     }
     // The sender. Anyone may knock; it can do nothing until the owner allows
     // it on a page (debug.ts). A browser always sends Origin on a WebSocket,
@@ -113,8 +124,12 @@ export default {
     if (url.pathname === "/api/version/debug/control") {
       if (!wantsSocket) return new Response("WebSocket only", { status: 426 });
       if (req.headers.get("origin")) return new Response("forbidden", { status: 403 });
-      return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(req);
+      const headers = new Headers(req.headers);
+      for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
+      return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
     }
+    if (url.pathname.startsWith("/internal/friends") && isInternal(url))
+      return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(req);
     if (url.pathname === "/internal/publish" && req.method === "POST" && isInternal(url))
       return env.HUB.get(env.HUB.idFromName("version")).fetch(req);
     // Pages from before the switch listen on the old Server-Sent Events

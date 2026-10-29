@@ -1,8 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import { DebugHub, type Socket, type Storage, hashToken } from "@/workers/push/src/debug";
 import push, { type Env, VersionHub } from "@/workers/push/src/index";
-import { isOwnerSocket } from "@/workers/push/src/auth";
-import { APPROVAL_MS, CHAT_HISTORY, CHAT_MS, PENDING_MS } from "@/lib/dev-eval";
+import { debugIdentity } from "@/workers/push/src/auth";
+import {
+  APPROVAL_MS,
+  CHAT_HISTORY,
+  CHAT_MS,
+  FRIEND_CHAT_MAX,
+  FRIEND_CHAT_WINDOW_MS,
+  PENDING_MS,
+} from "@/lib/dev-eval";
 
 /** A socket as the hibernation API hands it to the hub, recording what it was sent. */
 class FakeSocket implements Socket {
@@ -96,6 +103,30 @@ function setup() {
     );
     return ws;
   };
+  /** A signed-in non-owner's page (resolves once the hub has looked them up). */
+  const friend = async (userId = "f1", email = "f1@x.com", label = "/words Android") => {
+    const ws = new FakeSocket();
+    sockets.push(ws);
+    await hub.connectPage(
+      ws,
+      new URL(`https://lianki.com/api/version/debug?label=${encodeURIComponent(label)}`),
+      { userId, email, owner: false },
+    );
+    return ws;
+  };
+  /** A controller asking for a pairing on a friend's pages, with a grant token. */
+  const forFriend = async (token: string | null, email: string, label = "agent") => {
+    const ws = new FakeSocket();
+    sockets.push(ws);
+    await hub.connectController(
+      ws,
+      new URL(
+        `https://lianki.com/api/version/debug/control?label=${encodeURIComponent(label)}&for=${encodeURIComponent(email)}`,
+      ),
+      token,
+    );
+    return ws;
+  };
   const msg = (ws: FakeSocket, m: unknown) => hub.webSocketMessage(ws, JSON.stringify(m));
   const pairOf = (p: FakeSocket) =>
     (p.last("state") as { pending: { pair: string } | null }).pending?.pair ?? "";
@@ -104,6 +135,8 @@ function setup() {
     page,
     controller,
     resume,
+    friend,
+    forFriend,
     msg,
     pairOf,
     storage,
@@ -231,7 +264,9 @@ describe("DebugHub pairing", () => {
   });
 });
 
-type Chat = { message: { id: string; from: string; label: string; text: string; at: number } };
+type Chat = {
+  message: { id: string; from: string; label: string; text: string; at: number; thread?: string };
+};
 const chats = (ws: FakeSocket) =>
   ws.sent.filter((m) => m.type === "chat").map((m) => (m as unknown as Chat).message);
 
@@ -246,7 +281,14 @@ describe("DebugHub chat", () => {
     await msg(phone, { type: "chat", id: "m1", text: "  hello agent  " });
     for (const ws of [phone, mac, approved])
       expect(chats(ws)).toEqual([
-        { id: "m1", from: "owner", label: "/words pwa iPhone", text: "hello agent", at: 1_000_000 },
+        {
+          id: "m1",
+          from: "owner",
+          label: "/words pwa iPhone",
+          text: "hello agent",
+          at: 1_000_000,
+          thread: "owner",
+        },
       ]);
     expect(chats(waiting)).toEqual([]);
   });
@@ -393,16 +435,16 @@ describe("lianki-push debug routes", () => {
         fetch: async (url, init) => {
           calls.push(`${url} ${new Headers(init?.headers).get("cookie")}`);
           return whoami === 200
-            ? Response.json({ owner: true })
+            ? Response.json({ userId: "u1", email: "o@x", owner: true })
             : new Response("no", { status: whoami });
         },
       },
     };
   };
 
-  it("a page socket without the owner's session is refused", async () => {
+  it("a page socket without a signed-in session is refused", async () => {
     const own = { origin: "https://lianki.com", cookie: "s=1" };
-    expect((await push.fetch(upgrade("/api/version/debug", own), env(404))).status).toBe(403);
+    expect((await push.fetch(upgrade("/api/version/debug", own), env(401))).status).toBe(403);
     expect(
       (await push.fetch(upgrade("/api/version/debug", { origin: "https://lianki.com" }), env(200)))
         .status,
@@ -417,11 +459,98 @@ describe("lianki-push debug routes", () => {
     ).toBe(403);
   });
 
-  it("the owner's cookie is checked by the main Worker", async () => {
+  it("the cookie is checked by the main Worker", async () => {
     const calls: string[] = [];
     const req = upgrade("/api/version/debug", { origin: "https://lianki.com", cookie: "s=1" });
-    expect(await isOwnerSocket(req, env(200, calls).MAIN)).toBe(true);
-    expect(calls).toEqual(["https://lianki.com/api/dev/whoami s=1"]);
+    expect(await debugIdentity(req, env(200, calls).MAIN)).toEqual({
+      userId: "u1",
+      email: "o@x",
+      owner: true,
+    });
+    expect(calls).toEqual(["https://lianki.com/api/debug/identity s=1"]);
+  });
+
+  it("the hub is told who the page is, and a page cannot claim it itself", async () => {
+    const seen: Headers[] = [];
+    const e: Env = {
+      ...env(200),
+      DEBUG: {
+        idFromName: () => 0,
+        get: () => ({
+          fetch: async (r: Request) => {
+            seen.push(r.headers);
+            return new Response("hub");
+          },
+        }),
+      },
+      MAIN: {
+        fetch: async () => Response.json({ userId: "friend1", email: "f@x", owner: false }),
+      },
+    };
+    await push.fetch(
+      upgrade("/api/version/debug", {
+        origin: "https://lianki.com",
+        cookie: "s=1",
+        "x-debug-owner": "1",
+        "x-debug-user": "someone-else",
+      }),
+      e,
+    );
+    expect(seen[0].get("x-debug-user")).toBe("friend1");
+    expect(seen[0].get("x-debug-owner")).toBe("0");
+    expect(seen[0].get("x-debug-email")).toBe("f@x");
+    await push.fetch(upgrade("/api/version/debug/control", { "x-debug-owner": "1" }), e);
+    expect(seen[1].get("x-debug-owner")).toBeNull();
+  });
+
+  it("an old main Worker (no identity route) falls back to the owner-only whoami", async () => {
+    const req = upgrade("/api/version/debug", { origin: "https://lianki.com", cookie: "s=1" });
+    const old = (whoami: Response, calls: string[] = []) => ({
+      fetch: async (url: string) => {
+        calls.push(url);
+        return url.endsWith("/api/debug/identity") ? new Response("", { status: 404 }) : whoami;
+      },
+    });
+    const calls: string[] = [];
+    expect(await debugIdentity(req, old(Response.json({ owner: true }), calls))).toEqual({
+      userId: "owner",
+      email: "",
+      owner: true,
+    });
+    expect(calls).toEqual([
+      "https://lianki.com/api/debug/identity",
+      "https://lianki.com/api/dev/whoami",
+    ]);
+    expect(await debugIdentity(req, old(new Response("", { status: 404 })))).toBeNull();
+    expect(await debugIdentity(req, old(Response.json({ owner: false })))).toBeNull();
+    // Through the router, the owner page reaches the hub as the owner.
+    const seen: Headers[] = [];
+    const stub = { fetch: async () => new Response("hub") };
+    const res = await push.fetch(req, {
+      HUB: { idFromName: () => 0, get: () => stub },
+      DEBUG: {
+        idFromName: () => 0,
+        get: () => ({
+          fetch: async (r: Request) => {
+            seen.push(r.headers);
+            return new Response("hub");
+          },
+        }),
+      },
+      MAIN: old(Response.json({ owner: true })),
+    });
+    expect(res.status).toBe(200);
+    expect(seen[0].get("x-debug-owner")).toBe("1");
+    // Any other answer from the identity route is not a reason to fall back.
+    const down = { fetch: async () => new Response("", { status: 500 }) };
+    expect(await debugIdentity(req, down)).toBeNull();
+  });
+
+  it("a malformed identity answer is refused", async () => {
+    const req = upgrade("/api/version/debug", { origin: "https://lianki.com", cookie: "s=1" });
+    const main = (body: unknown) => ({ fetch: async () => Response.json(body) });
+    expect(await debugIdentity(req, main({ owner: true }))).toBeNull();
+    expect(await debugIdentity(req, main({ userId: "a:b", email: "x", owner: false }))).toBeNull();
   });
 
   it("a controller from a browser (with Origin) is refused", async () => {
@@ -455,7 +584,15 @@ describe("DebugHub.fetch", () => {
       getWebSockets: () => sockets,
       storage: fakeStorage(),
     });
-    const res = await hub.fetch(new Request("https://lianki.com/api/version/debug?label=p"));
+    expect(
+      (await hub.fetch(new Request("https://lianki.com/api/version/debug?label=p"))).status,
+    ).toBe(403);
+    expect(sockets).toHaveLength(0);
+    const res = await hub.fetch(
+      new Request("https://lianki.com/api/version/debug?label=p", {
+        headers: { "x-debug-user": "u1", "x-debug-owner": "1" },
+      }),
+    );
     expect(res.status).toBe(101);
     const [page] = sockets;
     await hub.fetch(new Request("https://lianki.com/api/version/debug/control?label=c"));
@@ -524,7 +661,9 @@ describe("lianki-push routing", () => {
     DEBUG: { idFromName: () => 0, get: () => stub("debug") },
     MAIN: {
       fetch: async () =>
-        owner ? Response.json({ owner: true }) : new Response("", { status: 404 }),
+        owner
+          ? Response.json({ userId: "u1", email: "o@x", owner: true })
+          : new Response("", { status: 401 }),
     },
   });
   const ws = { upgrade: "websocket" };
@@ -549,6 +688,8 @@ describe("lianki-push routing", () => {
     expect(await go("https://lianki-push/internal/publish", { method: "POST", body: "b" })).toBe(
       "200 version",
     );
+    expect(await go("https://lianki-push/internal/friends", {})).toBe("200 debug");
+    expect(await go("https://lianki.com/internal/friends", {})).toStartWith("404");
     expect(await go("https://lianki.com/api/version/stream", {})).toContain("lianki-push");
     expect(await go("https://lianki.com/elsewhere", {})).toStartWith("404");
   });
@@ -557,9 +698,305 @@ describe("lianki-push routing", () => {
     const req = new Request("https://lianki.com/api/version/debug", {
       headers: { origin: "https://lianki.com", cookie: "s=1" },
     });
-    expect(await isOwnerSocket(req, { fetch: () => Promise.reject(new Error("down")) })).toBe(
-      false,
+    expect(await debugIdentity(req, { fetch: () => Promise.reject(new Error("down")) })).toBeNull();
+    expect(await debugIdentity(req, undefined)).toBeNull();
+  });
+});
+
+describe("DebugHub friends", () => {
+  /** The owner's agent: a listener with a 30-day chat grant (approved on an owner page). */
+  const agent = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    return { c, token: c.last("approved")?.token as string };
+  };
+  it("a friend chats without approval; the agent hears it with thread, email and page", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    const f = await s.friend("f1", "f1@x.com", "/words pwa Android");
+    expect(f.last("friend-status")?.status).toBe("open");
+    expect(f.last("history")).toEqual({ type: "history", messages: [] });
+    await s.msg(f, { type: "chat", id: "a", text: "the button is too small" });
+    expect(chats(c).at(-1)).toMatchObject({
+      from: "friend",
+      thread: "f1",
+      email: "f1@x.com",
+      label: "/words pwa Android",
+      text: "the button is too small",
+    });
+    expect(chats(f).map((m) => m.text)).toEqual(["the button is too small"]);
+    // The owner's pages do not get a friend's thread.
+    expect(chats(owner)).toEqual([]);
+  });
+
+  it("a friend's first message tells the agent once", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    const f = await s.friend();
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    await s.msg(f, { type: "chat", id: "b", text: "again" });
+    expect(c.sent.filter((m) => m.type === "friend-new")).toEqual([
+      { type: "friend-new", userId: "f1", email: "f1@x.com", at: 1_000_000 },
+    ]);
+    expect(s.storage.store.get("friend:f1")).toMatchObject({
+      email: "f1@x.com",
+      firstSeen: 1_000_000,
+      count: 2,
+    });
+  });
+
+  it("a friend never sees the owner's thread or another friend's", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    await s.msg(owner, { type: "chat", id: "o1", text: "owner secret" });
+    const a = await s.friend("fa", "a@x.com");
+    const b = await s.friend("fb", "b@x.com");
+    expect((a.last("history") as { messages: unknown[] }).messages).toEqual([]);
+    await s.msg(a, { type: "chat", id: "a1", text: "from a" });
+    await s.msg(owner, { type: "chat", id: "o2", text: "owner again" });
+    await s.msg(c, { type: "say", text: "to owner" });
+    await s.msg(c, { type: "say", text: "to a", to: "a@x.com" });
+    expect(chats(a).map((m) => m.text)).toEqual(["from a", "to a"]);
+    expect(chats(b)).toEqual([]);
+    expect(chats(owner).map((m) => m.text)).toEqual(["owner secret", "owner again", "to owner"]);
+    // A reload of b gets b's (empty) thread; a's history is a's alone.
+    const b2 = await s.friend("fb", "b@x.com");
+    expect((b2.last("history") as { messages: unknown[] }).messages).toEqual([]);
+    const a2 = await s.friend("fa", "a@x.com");
+    const texts = (a2.last("history") as { messages: { text: string }[] }).messages.map(
+      (m) => m.text,
     );
-    expect(await isOwnerSocket(req, undefined)).toBe(false);
+    expect(texts).toEqual(["from a", "to a"]);
+  });
+
+  it("say reaches a friend by email or user id, and refuses an unknown one", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    const f = await s.friend("f1", "F1@X.com");
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    await s.msg(c, { type: "say", text: "by email", to: "f1@x.com" });
+    await s.msg(c, { type: "say", text: "by id", to: "f1" });
+    expect(chats(f).map((m) => m.text)).toEqual(["hi", "by email", "by id"]);
+    expect(c.last("said")?.thread).toBe("f1");
+    await s.msg(c, { type: "say", text: "?", to: "nobody@x.com" });
+    expect(c.last("error")?.error).toContain("no chat thread");
+  });
+
+  it("a friend may send FRIEND_CHAT_MAX messages per window, then is told and dropped", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    const f = await s.friend();
+    for (let i = 0; i < FRIEND_CHAT_MAX + 2; i++)
+      await s.msg(f, { type: "chat", id: `m${i}`, text: `${i}` });
+    expect(chats(c).filter((m) => m.from === "friend")).toHaveLength(FRIEND_CHAT_MAX);
+    expect(f.last("rate-limited")).toMatchObject({ retryIn: FRIEND_CHAT_WINDOW_MS });
+    s.tick(FRIEND_CHAT_WINDOW_MS);
+    await s.msg(f, { type: "chat", id: "late", text: "later" });
+    expect(chats(c).at(-1)?.text).toBe("later");
+    // The owner has no such limit.
+    for (let i = 0; i < FRIEND_CHAT_MAX + 2; i++)
+      await s.msg(owner, { type: "chat", id: `o${i}`, text: `${i}` });
+    expect(owner.last("rate-limited")).toBeUndefined();
+  });
+
+  it("each friend thread keeps the last CHAT_HISTORY, apart from the owner's", async () => {
+    const s = setup();
+    s.page();
+    const f = await s.friend();
+    for (let i = 0; i < CHAT_HISTORY + 3; i++) {
+      if (i % FRIEND_CHAT_MAX === 0) s.tick(FRIEND_CHAT_WINDOW_MS);
+      await s.msg(f, { type: "chat", id: `m${i}`, text: `${i}` });
+    }
+    const keys = [...s.storage.store.keys()];
+    expect(keys.filter((k) => k.startsWith("t:f1:msg:"))).toHaveLength(CHAT_HISTORY);
+    expect(keys.filter((k) => k.startsWith("msg:"))).toHaveLength(0);
+    expect((await s.hub.history("f1"))[0].id).toBe("m3");
+  });
+
+  it("Block closes the friend's sockets and refuses them after; unblock lets them back", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c, token } = await agent(s, owner);
+    const f = await s.friend();
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    const p = await s.forFriend(token, "f1@x.com");
+    const api = (body: unknown) =>
+      s.hub.fetch(
+        new Request("https://lianki-push/internal/friends", {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+      );
+    expect((await api({ userId: "nobody", action: "block" })).status).toBe(404);
+    expect((await api({ userId: "f1", action: "nope" })).status).toBe(400);
+    expect((await api({ userId: "f1", action: "block" })).status).toBe(200);
+    expect(f.closed).toBe(4403);
+    expect(f.last("friend-status")?.status).toBe("blocked");
+    expect(p.closed).toBe(4401);
+    const again = await s.friend();
+    expect(again.closed).toBe(4403);
+    await s.msg(c, { type: "say", text: "x", to: "f1@x.com" });
+    expect(c.last("error")?.error).toContain("blocked");
+    const list = (await (
+      await s.hub.fetch(new Request("https://lianki-push/internal/friends"))
+    ).json()) as { friends: { userId: string; blocked: boolean; count: number }[] };
+    expect(list.friends).toMatchObject([{ userId: "f1", blocked: true, count: 1 }]);
+    await api({ userId: "f1", action: "unblock" });
+    const back = await s.friend();
+    expect(back.closed).toBeUndefined();
+    expect(back.last("friend-status")?.status).toBe("open");
+  });
+
+  it("the owner's read-only view gets one friend's thread over the internal API", async () => {
+    const s = setup();
+    const f = await s.friend();
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    const res = await s.hub.fetch(
+      new Request("https://lianki-push/internal/friends/thread?user=f1"),
+    );
+    const { messages } = (await res.json()) as { messages: { text: string }[] };
+    expect(messages.map((m) => m.text)).toEqual(["hi"]);
+    expect(
+      (await s.hub.fetch(new Request("https://lianki-push/internal/friends/thread?user=a:b")))
+        .status,
+    ).toBe(400);
+  });
+
+  it("a page with a malformed identity is closed", async () => {
+    const s = setup();
+    const ws = await s.friend("bad:id");
+    expect(ws.closed).toBe(4403);
+  });
+});
+
+describe("DebugHub eval scoping between the owner and friends", () => {
+  const agent = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    return { c, token: c.last("approved")?.token as string };
+  };
+  type St = { pending: { pair: string; label: string } | null; sessions: unknown[] };
+  const st = (ws: FakeSocket) => ws.last("state") as St;
+  /** Owner page, agent grant, two friends who have chatted. */
+  const world = async () => {
+    const s = setup();
+    const owner = s.page("/words Macintosh");
+    const { c, token } = await agent(s, owner);
+    const a = await s.friend("fa", "a@x.com", "/words Android");
+    const b = await s.friend("fb", "b@x.com", "/list iPhone");
+    await s.msg(a, { type: "chat", id: "a", text: "hi" });
+    await s.msg(b, { type: "chat", id: "b", text: "hi" });
+    return { s, owner, c, token, a, b };
+  };
+
+  it("an owner-approved eval reaches only the owner's pages", async () => {
+    const { s, owner, a, b } = await world();
+    const e = s.controller("eval lane");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner) });
+    // Friends were never shown the owner's prompt.
+    expect(st(a).pending).toBeNull();
+    await s.msg(e, { type: "eval", code: "document.title" });
+    expect(owner.last("eval")).toBeTruthy();
+    expect(a.last("eval")).toBeUndefined();
+    expect(b.last("eval")).toBeUndefined();
+  });
+
+  it("only the owner's grant may ask a friend for a pairing", async () => {
+    const { s } = await world();
+    expect((await s.forFriend(null, "a@x.com")).closed).toBe(4498);
+    expect((await s.forFriend("0".repeat(64), "a@x.com")).closed).toBe(4498);
+  });
+
+  it("a friend pairing prompts only that friend, and only they can answer it", async () => {
+    const { s, owner, token, a, b } = await world();
+    const p = await s.forFriend(token, "a@x.com", "agent on mac");
+    expect(p.last("pending")?.code).toMatch(/^[0-9a-f]{4}$/);
+    expect(st(a).pending?.label).toBe("agent on mac");
+    expect(st(b).pending).toBeNull();
+    expect(st(owner).pending).toBeNull();
+    const pair = st(a).pending?.pair ?? "";
+    // Neither the owner nor another friend can approve it.
+    await s.msg(owner, { type: "allow", pair });
+    await s.msg(b, { type: "allow", pair });
+    expect(p.last("approved")).toBeUndefined();
+    // Asking for chat scope from a friend's page still gives eval only, and no token.
+    await s.msg(a, { type: "allow", pair, scope: "chat" });
+    expect(p.last("approved")).toMatchObject({ scope: "eval", for: "a@x.com" });
+    expect(p.last("approved")?.token).toBeUndefined();
+    expect(p.last("history")).toBeUndefined();
+  });
+
+  it("a friend-approved eval reaches only that friend's pages, and cannot chat", async () => {
+    const { s, owner, c, token, a, b } = await world();
+    const a2 = await s.friend("fa", "a@x.com", "/words pwa Android");
+    const p = await s.forFriend(token, "a@x.com");
+    await s.msg(a, { type: "allow", pair: st(a).pending?.pair ?? "" });
+    await s.msg(p, { type: "eval", code: "1", target: "pwa" });
+    expect(p.last("sent")).toMatchObject({ delivered: 1, labels: ["/words pwa Android"] });
+    await s.msg(p, { type: "eval", code: "2" });
+    expect(p.last("sent")?.delivered).toBe(2);
+    expect(owner.last("eval")).toBeUndefined();
+    expect(b.last("eval")).toBeUndefined();
+    const ev = a.last("eval") as { id: string; to: string };
+    // A result from the owner's page (or another friend's) cannot reach it.
+    await s.msg(owner, { type: "result", id: ev.id, to: ev.to, ok: true, value: "x" });
+    await s.msg(b, { type: "result", id: ev.id, to: ev.to, ok: true, value: "x" });
+    expect(p.last("result")).toBeUndefined();
+    await s.msg(a, { type: "result", id: ev.id, to: ev.to, ok: true, value: "2" });
+    expect(p.last("result")).toMatchObject({ value: "2", page: "/words Android" });
+    // It is no listener: it hears no chat and may not say.
+    await s.msg(a2, { type: "chat", id: "z", text: "zz" });
+    expect(chats(p)).toEqual([]);
+    expect(chats(c).at(-1)?.text).toBe("zz");
+    await s.msg(p, { type: "say", text: "hi", to: "a@x.com" });
+    expect(p.last("error")?.error).toContain("cannot chat");
+    // Its session shows on the friend's pages, not the owner's.
+    expect(st(a).sessions).toHaveLength(1);
+    expect(st(owner).sessions).toHaveLength(1); // the owner's own chat grant only
+  });
+
+  it("the friend's End closes it, and the owner's End cannot reach it", async () => {
+    const { s, owner, token, a } = await world();
+    const p = await s.forFriend(token, "a@x.com");
+    const pair = st(a).pending?.pair ?? "";
+    await s.msg(a, { type: "allow", pair });
+    await s.msg(owner, { type: "revoke", pair });
+    expect(p.closed).toBeUndefined();
+    await s.msg(a, { type: "revoke", pair });
+    expect(p.closed).toBe(4401);
+  });
+
+  it("an expired friend pairing is closed", async () => {
+    const { s, token, a } = await world();
+    const p = await s.forFriend(token, "a@x.com");
+    await s.msg(a, { type: "allow", pair: st(a).pending?.pair ?? "" });
+    s.tick(APPROVAL_MS + 1);
+    await s.msg(p, { type: "eval", code: "1" });
+    expect(p.last("expired")).toBeTruthy();
+    expect(p.closed).toBe(4408);
+    expect(a.sent.filter((m) => m.type === "eval")).toHaveLength(0);
+  });
+
+  it("a waiting friend pairing does not block the owner's, nor another friend's", async () => {
+    const { s, owner, token, b } = await world();
+    await s.forFriend(token, "a@x.com");
+    const own = s.controller("eval lane");
+    expect(own.closed).toBeUndefined();
+    expect(st(owner).pending?.label).toBe("eval lane");
+    expect((await s.forFriend(token, "b@x.com")).closed).toBeUndefined();
+    expect(st(b).pending).toBeTruthy();
+    expect((await s.forFriend(token, "a@x.com")).closed).toBe(4429);
+  });
+
+  it("a pairing for an unknown friend, or one with no page open, is refused", async () => {
+    const { s, token, b } = await world();
+    expect((await s.forFriend(token, "nobody@x.com")).closed).toBe(4404);
+    b.close(1001);
+    expect((await s.forFriend(token, "b@x.com")).closed).toBe(4404);
   });
 });
