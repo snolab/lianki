@@ -15,14 +15,18 @@
     "bindings": [
       { "name": "HUB", "class_name": "VersionHub" },
       { "name": "DEBUG", "class_name": "DebugHub" },
+      { "name": "PROGRESS", "class_name": "ProgressHub" },
     ],
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["VersionHub"] },
     { "tag": "v2", "new_sqlite_classes": ["DebugHub"] },
+    { "tag": "v3", "new_sqlite_classes": ["ProgressHub"] },
   ],
   // Asks the main Worker whether a debug socket's cookie is the owner's
   // (/api/dev/whoami). Circular with its PUSH binding to us; that is allowed.
   "services": [{ "binding": "MAIN", "service": "lianki" }],
+  // Secret PROGRESS_TOKEN (wrangler secret put PROGRESS_TOKEN -c workers/push/wrangler.jsonc):
+  // agents' bearer token for live progress. Unset = writes answer 503.
   "observability": { "enabled": true },
 }

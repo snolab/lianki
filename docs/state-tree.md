@@ -34,6 +34,52 @@ Live
   hot-loaded (lk:debug-widget-src, docs/dev-debug-widget.md) it reads this
   file from the dev server instead (/state-tree.md) and refetches on every
   save (SSE `tree`; fs.watch, no polling); a green dot by "Tree" says so.
+
+Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
+  This file is the hand-edited base. Agents report progress to lianki-push's
+  ProgressHub; the owner's views (chat Tree, /dev/roadmap) hold one
+  owner-only WebSocket (/api/version/progress) and lay each live node over
+  this outline by path: "/words/swipe" updates "## /words" › the item whose
+  first word or title slugs to "swipe" (status, (!), assignee, action,
+  links; pct · ETA · needs · latest note go in its note), or adds it there.
+  A slug id with no path lands under "Live". No secret, no hub, not the
+  owner: the outline shows as written. Nothing polls.
+
+  Report (one POST, then exit):
+    bun scripts/dev/progress.ts --agent <you> --path /words/swipe       --task "Native swipe" --status doing --pct 40 --eta 15m
+    … --done --pr 310        when it lands
+    … --status blocked --note "why"
+    … --status waiting-owner --needs "OK the preview" --kind approval
+  status: doing | blocked | waiting | waiting-owner | review | done
+  kind:   task | decision | approval | feedback | person
+  --path sets id and parent (missing ancestors become groups); --id/--parent
+  for a slug; --ref, --action, --link, --note (appends), --rev N (409 if
+  stale), --human (a human assignee; --agent is the name).
+
+  Nodes. Every node has an id (a /path, or a slug), a parent, an assignee
+  {type: agent | human, name} and the agent that created it. /@owner is the
+  owner's node (kind person, human assignee "owner"; his name is shown,
+  never stored). His to-dos are /@owner/<slug> with --ref to the node they
+  unblock; resolving one also resolves the decision or approval it refs:
+    bun scripts/dev/progress.ts resolve --id /@owner/<slug> --note "answer"
+
+  Scopes. PROGRESS_TOKEN (a lianki-push secret; .dev.vars locally) is the
+  root: it writes anywhere. A scoped token covers one node and its subtree
+  (a path's descendants; a slug's by stored parent links):
+    bun scripts/dev/progress.ts grant --node /words --agent swipe-agent --ttl 8h
+  It is base64url(JSON {node, agent, exp, via}) "." HMAC-SHA256(root, payload),
+  minted by the hub only (a scoped token asks for a narrower one the same
+  way; never past its own expiry, at most 7 days). With it an agent writes
+  only as its own name, only inside its scope; a new node needs a parent
+  inside it; nothing moves out of it. Status, pct and ETA are the creator's
+  (or a scope above). Any agent may add an /@owner/… to-do whose ref is in
+  its scope. Any valid token reads the whole tree (`show`). The token is
+  --token, LIANKI_PROGRESS_TOKEN, PROGRESS_TOKEN or .dev.vars.
+
+  Limits: name 40, task 120, note 280, needs 120; 200 nodes (oldest done
+  dropped first); done nodes pruned after 24 h (Durable Object alarm); a
+  200-event log; 30 writes/min per name, 120 in all. Unset secret: 503.
+  Owner to-dos to start with: scripts/dev/progress-seed.ts (idempotent).
 -->
 
 # Lianki — state tree (2026-10-30)
