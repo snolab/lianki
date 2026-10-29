@@ -3,10 +3,6 @@
  * (unit/monitor-rules.test.ts) apart from the Worker plumbing.
  */
 
-/** A synthetic probe slower than this counts as slow (ms, to response headers). */
-export const PROBE_SLOW_MS = 3000;
-/** Consecutive bad probes of one path before alerting — one cold start is not an outage. */
-export const PROBE_STRIKES = 2;
 /** Real requests: alert when this many errors land within the window. */
 export const ERROR_BURST = 3;
 /** Real requests slower than this (wall ms) count as slow. */
@@ -16,25 +12,6 @@ export const SLOW_BURST = 5;
 export const WINDOW_MS = 10 * 60_000;
 /** The same alert at most this often. */
 export const REPEAT_MS = 30 * 60_000;
-
-export type Probe = { path: string; status: number; ms: number; error?: string };
-
-export function probeBad(p: Probe): string | null {
-  if (p.error) return `failed: ${p.error}`;
-  if (p.status >= 500) return `HTTP ${p.status}`;
-  if (p.ms > PROBE_SLOW_MS) return `slow: ${(p.ms / 1000).toFixed(1)}s`;
-  return null;
-}
-
-/** A path's run of bad probes: the next strike count, and whether to alert or announce recovery. */
-export function nextStrikes(
-  strikes: number,
-  bad: boolean,
-): { strikes: number; alert: boolean; recovered: boolean } {
-  if (!bad) return { strikes: 0, alert: false, recovered: strikes >= PROBE_STRIKES };
-  const n = strikes + 1;
-  return { strikes: n, alert: n === PROBE_STRIKES, recovered: false };
-}
 
 /** Timestamps within the window ending at `now`, with `at` added. */
 export function inWindow(times: number[], at: number, now: number): number[] {
@@ -60,3 +37,8 @@ export function pathGroup(url: string): string {
 
 /** Seconds, one decimal. */
 export const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
+
+/** A burst that was alerted on is over: nothing within the window before `now`. */
+export function quiet(times: number[], now: number): boolean {
+  return times.every((t) => now - t >= WINDOW_MS);
+}
