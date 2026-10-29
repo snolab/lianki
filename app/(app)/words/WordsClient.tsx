@@ -474,6 +474,59 @@ function useDebugToggle(onChange: (on: boolean) => void): [boolean, () => void] 
   return [on, tap];
 }
 
+/**
+ * Debug-only swipe profiler: frame times while a finger is on a slip, plus
+ * how often the slip rendered and how long the loose-cord frames took.
+ * Reported to devLog when the finger lifts.
+ */
+const swipePerf = {
+  on: false,
+  frames: [] as number[],
+  renders: 0,
+  cordFrames: 0,
+  cordMs: 0,
+  raf: 0,
+  last: 0,
+  start() {
+    if (!debugOn()) return;
+    this.on = true;
+    this.frames = [];
+    this.renders = 0;
+    this.cordFrames = 0;
+    this.cordMs = 0;
+    this.last = performance.now();
+    const tick = (now: number) => {
+      if (!this.on) return;
+      this.frames.push(now - this.last);
+      this.last = now;
+      this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  },
+  stop(kind: string) {
+    if (!this.on) return;
+    this.on = false;
+    cancelAnimationFrame(this.raf);
+    const f = [...this.frames].sort((a, b) => a - b);
+    const q = (p: number) =>
+      f.length ? Math.round(f[Math.min(f.length - 1, Math.floor(p * f.length))]) : 0;
+    devLog({
+      ev: "swipe-perf",
+      kind,
+      frames: f.length,
+      p50: q(0.5),
+      p95: q(0.95),
+      max: q(1),
+      over20: f.filter((x) => x > 20).length,
+      over34: f.filter((x) => x > 34).length,
+      renders: this.renders,
+      cordFrames: this.cordFrames,
+      cordMsPerFrame: this.cordFrames ? +(this.cordMs / this.cordFrames).toFixed(2) : 0,
+      dpr: devicePixelRatio,
+    });
+  },
+};
+
 function devLog(event: Record<string, unknown>) {
   try {
     if (!debugOn()) return;
@@ -2764,6 +2817,7 @@ function SlipCords({ loose, moving }: { loose: boolean; moving: boolean }) {
     const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let raf = 0;
     const frame = (now: number) => {
+      const c0 = swipePerf.on ? performance.now() : 0;
       const t = still ? 1 : Math.min(1, (now - t0) / 200);
       slack.current = from + (to - from) * minJerk(t);
       const h = row.offsetHeight;
@@ -2777,6 +2831,10 @@ function SlipCords({ loose, moving }: { loose: boolean; moving: boolean }) {
       left.setAttribute("d", cordPath(4.5, h, bow, pull));
       right.setAttribute("d", cordPath(35.5, h, -bow, pull));
       right.parentElement!.style.left = `${w - 40}px`;
+      if (swipePerf.on) {
+        swipePerf.cordFrames++;
+        swipePerf.cordMs += performance.now() - c0;
+      }
       if (t < 1 || x !== 0 || moving) raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -2883,6 +2941,7 @@ function WordRow({
   const tier = useRef<0 | 1 | 2>(0);
   /** Travel unit: the row's own height (2a of travel each way). */
   const a = typeof style.height === "number" ? style.height : 44;
+  if (swipePerf.on && touch) swipePerf.renders++;
 
   if (!touch)
     return (
@@ -2938,6 +2997,7 @@ function WordRow({
         tier.current = 0;
         finger.current = 0;
         catching.current = scrolling?.() ?? false;
+        swipePerf.start();
         // Keep receiving the gesture even if the finger leaves this row.
         e.currentTarget.setPointerCapture(e.pointerId);
         clearTimeout(holdTimer.current);
@@ -2980,6 +3040,7 @@ function WordRow({
       }}
       onPointerUp={(e) => {
         clearTimeout(holdTimer.current);
+        swipePerf.stop(axis.current === "h" ? "swipe" : axis.current === "v" ? "scroll" : "tap");
         const moved = dx;
         releasedAt.current = moved;
         setDx(0);
@@ -3008,6 +3069,7 @@ function WordRow({
       }}
       onPointerCancel={() => {
         clearTimeout(holdTimer.current);
+        swipePerf.stop(axis.current === "h" ? "swipe-cancel" : "scroll");
         if (held.current) onHoldEnd?.();
         held.current = false;
         start.current = null;
