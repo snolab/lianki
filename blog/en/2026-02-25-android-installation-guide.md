@@ -378,7 +378,7 @@ Or manually reinstall from https://www.lianki.com/lianki.user.js
 - ✅ Keep scripts updated to latest versions
 - ⚠️ Avoid installing random scripts from unknown sites
 
-Lianki is **open source** and only requests necessary permissions:
+The Lianki userscript only requests the permissions it needs:
 
 - Access to all websites (to add cards from any page)
 - Connection to lianki.com servers (for sync)

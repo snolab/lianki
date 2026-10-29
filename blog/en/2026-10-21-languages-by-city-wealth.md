@@ -24,7 +24,7 @@ So this time we counted **cities**, and ranked them by **GDP per person** — ho
 - **Languages:** for each city, the languages people use for daily life and work there. **Bilingual cities count in full for each language** — Montreal counts as a French city _and_ an English city, Brussels as French and Dutch, Hong Kong as Chinese and English, Singapore as English, Chinese, Malay and Tamil. Someone who speaks either language can work there, so the city is not split between them.
 - **The ranking:** take the top 100 (or 200) cities by GDP per person, and count how many of them each language opens, and how many people live in them.
 
-The full city list, the language assigned to every city, and the script that produces these tables are in the [Lianki repository](https://github.com/snolab/lianki/tree/main/blog/data/city-language-value).
+The data sources are listed under "Sources" at the end of this post.
 
 ---
 
@@ -196,7 +196,7 @@ We have added a note to the old post pointing here.
 - **The UK figures come from the OECD instead.** The city database's GDP numbers put every British city at about half of what the OECD reports (London $38k instead of $72k), while other countries agreed within about 10%. We used the OECD's 2020 figures for London, Manchester, Leeds, Liverpool and Birmingham.
 - **City boundaries are drawn by built-up area.** Guangzhou's urban centre includes Shenzhen, Dongguan and Foshan as one 41-million-person city, which pulls Shenzhen's high value down. Some rich cities have fewer than 1 million people in their dense core and are not in the list at all — Zurich, Geneva, Frankfurt and Luxembourg among them.
 - **The data is from 2020**, a pandemic year, and the GDP map behind it is modelled from regional statistics rather than measured city by city.
-- **Language assignments are judgement calls.** For example, we counted English in Indian, Pakistani, Philippine, Nigerian and Gulf cities, where it is a main working language, but not in Amsterdam or Stockholm, even though many jobs there are in English. Every choice is listed in the script, so you can change one and rerun it.
+- **Language assignments are judgement calls.** For example, we counted English in Indian, Pakistani, Philippine, Nigerian and Gulf cities, where it is a main working language, but not in Amsterdam or Stockholm, even though many jobs there are in English. Change one, and the ranking shifts with it.
 
 ---
 
@@ -215,7 +215,6 @@ Whatever you choose, getting to working fluency takes years of steady review. Th
 - [GHS Urban Centre Database R2024A, V1.2 — European Commission Joint Research Centre](https://human-settlement.emergency.copernicus.eu/ghs_ucdb_2024.php) (CC BY 4.0): city boundaries, population (2020) and GDP at PPP (2020)
 - Kummu, M. et al., _Downscaled gridded global dataset for Gross Domestic Product (GDP) per capita PPP over 1990–2022_ — the GDP layer used by the database ([preprint](https://doi.org/10.21203/rs.3.rs-4321741/v1))
 - [OECD Regions and Cities database — Economy, functional urban areas](https://db.nomics.world/OECD/DSD_FUA_ECO@DF_ECONOMY): GDP per person for the UK cities and the cross-check
-- [Data and script for this post](https://github.com/snolab/lianki/tree/main/blog/data/city-language-value)
 
 ---
 
