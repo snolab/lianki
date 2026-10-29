@@ -264,37 +264,52 @@ session listing carry the current path) and sends the listeners
 JSON line. Silent on the page, never stored, never in the chat log. A
 friend's page can only relabel its own socket.
 
-**The chat bar and its menu.** No title bar: the controls and the input are
-one rounded glass container (`debug-chat-pill`): minimize, connections, the
-input, then the mic at the far right, in that focus order, each control a 40px tap target
-(`tap-40`). The first control (`debug-chat-pill-min`, with `aria-expanded`)
-holds the liagent mark (`packages/debug-chat/src/LiagentMark.tsx`) and a dot,
-green while the socket is live: a tap minimizes or restores the box (after
-280 ms, so that a double tap can cancel it), and a double tap opens the menu
-(`packages/debug-chat/src/tap-gesture.ts`). The second
-(`debug-chat-pill-menu`) shows the eval/preview sessions (a play icon and
-their count, pulsing when code just ran) or ⋯; a tap opens the menu at once.
-A drag on either, or on the bar's edge, moves the box, and never counts as a
-tap. Minimizing animates the bar's width in 180 ms (two grid columns trading
-`1fr` ⇄ `0fr`; at once under reduced motion) down to its three controls
-(`debug-chat-minimized`, at 0.6 opacity; the input's slot closes to 0, so the
-mic, always the same node, slides in beside the connections; with an unread badge
-`debug-chat-pill-unread`). The input is then inert and aria-hidden, so it can
-take neither focus nor taps, and the log is hidden. The mic stays mounted with
-its live state, so hands-free voice goes on while minimized.
+**The chat bar, the state tree and the menu.** No title bar: the controls
+and the input are one rounded glass container (`debug-chat-pill`): the mark,
+the tree button, the input, then the mic at the far right, in that focus
+order, each control a 40px tap target (`tap-40`). The mark
+(`debug-chat-pill-min`, with `aria-expanded`) holds the liagent mark
+(`packages/debug-chat/src/LiagentMark.tsx`) and a dot, green while the socket
+is live: a tap minimizes or restores the box (after 280 ms, so that a double
+tap can cancel it), and a double tap opens the menu — the only way to it
+(`packages/debug-chat/src/tap-gesture.ts`). The tree button
+(`debug-chat-tree-button`, "State tree", with the eval/preview sessions'
+count on it, pulsing when code just ran) toggles the state tree
+(`debug-chat-tree`, content from the `renderTree` prop, else "No tree
+source"). Only one of the menu and the tree is open at a time. On a phone, or
+minimized, the tree is a glass sheet over the log, anchored to the bar, up to
+60dvh (`data-mode="sheet"`); ✕, Escape, the button again or a tap outside
+close it. From 768px wide, with the chat open, it is a column instead: the
+box widens to `min(44rem, 100vw - 1rem)` and shows `tree | log` side by side,
+each scrolling on its own, with the bar across both (`data-mode="column"`,
+switched by a `matchMedia` change event; the tree's scroll carries over).
+Neither takes the input's focus or its draft, and Escape there never stops the
+mic. A drag on the mark, the tree button, or the bar's edge moves the box,
+and never counts as a tap.
+
+Minimizing animates the bar's width in 180 ms (two grid columns trading
+`1fr` ⇄ `0fr`; at once under reduced motion) down to `[mark | tree | mic]`
+(`debug-chat-minimized`, at 0.6 opacity, with an unread badge
+`debug-chat-pill-unread`): the input's slot closes to 0, so the mic, always
+the same node, slides in beside the tree button. The input is then inert and
+aria-hidden, so it can take neither focus nor taps, and the log is hidden.
+The mic keeps its live state, so hands-free voice goes on while minimized.
 
 Minimized, messages float above the bar instead of the log
-(`debug-chat-float`, `packages/debug-chat/src/float-lines.ts`): only those
-that arrive while minimized, newest at the bottom, each fading out (opacity
-only) after `max(2.5 s, 2 × its reading time)`, reading CJK at 6 characters a
-second and anything else at 15. Hovering or touching the lines holds their
-timers. A vertical drag on the mic (locked after 8 px; a horizontal one moves
-the bar, and neither toggles the mic) scrubs back through the history: finger
-down goes back, as the expanded log follows the finger, three lines at a
-time, each dwell starting over on release. ↑/↓ on the focused mic do the same.
-Expanded, a vertical drag on the mic scrolls the log. While a control is held,
-the input shows "drag: move · tap: minimize · double-tap or ⋯: menu", as its
-placeholder, or over the draft (`debug-chat-drag-hint`). The menu lists every open debug page of this chat (the
+(`debug-chat-float`, `packages/debug-chat/src/float-lines.ts`): the latest
+message at the moment of minimizing (unless over 10 minutes old), and those
+that arrive while minimized, newest at the bottom. Each stays fully visible
+for `max(2.5 s, 2 × its reading time)` from when it floats up, reading CJK at
+6 characters a second and anything else at 15, then fades out over 10 s
+(opacity only; gone at once under reduced motion). Hovering or touching the
+lines holds them: mid-fade they snap back to full, and the fade starts over
+on release. A vertical drag on the mic (locked after 8 px; a horizontal one
+moves the bar, and neither toggles the mic) scrubs back through the history:
+finger down goes back, as the expanded log follows the finger, three lines at
+a time, each dwell starting over on release. ↑/↓ on the focused mic do the
+same. Expanded, a vertical drag on the mic scrolls the log. While a control
+is held, the input shows "drag: move · tap: minimize · double-tap: menu", as
+its placeholder, or over the draft (`debug-chat-drag-hint`). The menu lists every open debug page of this chat (the
 owner's own, or a friend's own: the hub's `state` carries `pages: [{id,
 label, at}]` and `self`, rebroadcast when a page connects, leaves or moves).
 Each row shows the path and a device hint ("pwa · Android", "iPhone"). Tapping
@@ -468,7 +483,9 @@ End still reaches it.
 tests:
 
 - The chat box: `debug-chat` (root), `debug-chat-minimized` (minimized),
-  `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-pill-menu`,
+  `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-tree-button`,
+  `debug-chat-tree` (with `data-mode`), `debug-chat-tree-body`,
+  `debug-chat-tree-close`, `debug-chat-tree-empty`,
   `debug-chat-pill-unread`, `debug-chat-log`, `debug-chat-line` (with
   `data-from`), `debug-chat-floats`, `debug-chat-float`, `debug-chat-input-slot`,
   `debug-chat-input`, `debug-chat-drag-hint`,

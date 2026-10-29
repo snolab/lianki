@@ -4,7 +4,7 @@
  * DebugChatHost (the loader DebugEval uses) with made-up messages, so the
  * import, React sharing and reload can be checked without lianki-push.
  * `?busy=1` shows the heartbeat spinner; `?pending=chat|eval|friend` the pairing modal;
- * `?min` starts minimized (`?open` expanded; neither keeps what was last chosen).
+ * `?notree` passes no state tree content; `?min` starts minimized (`?open` expanded; neither keeps what was last chosen).
  * `globalThis.__push(text, from?)` adds a live message, e.g. to float one up
  * over the minimized bar.
  */
@@ -89,6 +89,8 @@ function Harness() {
         ]}
         pages={pages}
         selfPage="p1"
+        // A small static outline for the state tree sheet (`?notree`: none).
+        renderTree={q.has("notree") ? undefined : () => <HarnessTree />}
         onOpenPage={(path) => {
           const w = globalThis as { __opened?: string[] };
           (w.__opened ??= []).push(path);
@@ -111,6 +113,37 @@ function Harness() {
         }}
       />
     </>
+  );
+}
+
+/** A stand-in for the state tree: a small static outline. */
+function HarnessTree() {
+  const rows: [number, string, string?][] = [
+    [0, "page", "/harness"],
+    [1, "chat", "open"],
+    [2, "messages", "30"],
+    [2, "voice", "mic off · speaker on"],
+    [1, "sessions", "2"],
+    [2, "agent", "chat"],
+    [2, "main lane", "eval"],
+    [1, "pages", "3"],
+    // Enough rows to scroll the sheet and the column.
+    ...Array.from({ length: 30 }, (_, i): [number, string, string?] => [
+      2 + (i % 2),
+      `card ${i + 1}`,
+      i % 3 ? "due" : "new",
+    ]),
+  ];
+  return (
+    <ul data-testid="harness-tree" className="list-none space-y-0.5 font-mono text-[11px]">
+      {rows.map(([depth, key, value]) => (
+        <li key={`${depth}${key}`} style={{ paddingInlineStart: `${depth}rem` }}>
+          <span className="opacity-60">{depth ? "└ " : ""}</span>
+          {key}
+          {value && <span className="opacity-60">: {value}</span>}
+        </li>
+      ))}
+    </ul>
   );
 }
 

@@ -5,8 +5,11 @@
  * on a free port, loads the hot widget (so its Tailwind CSS is there too), and
  * checks, expanded and minimized:
  *
- *   - one container: minimize → connections → input → mic, in tab order
- *     (minimized: minimize → connections → mic)
+ *   - one container: mark → tree → input → mic, in tab order
+ *     (minimized: mark → tree → mic)
+ *   - the tree button opens and closes the state tree sheet (also ✕, Escape,
+ *     a tap outside) without taking the input's focus or its draft; the menu
+ *     (double tap on the mark) and the sheet are never open together
  *   - the input is 16px or more (iOS zooms into anything smaller)
  *   - each control is a 40px tap target
  *   - minimized, the input is inert: it cannot take focus, and Tab skips it
@@ -65,9 +68,9 @@ const check = (ok, what) => {
 
 const browser = await chromium.launch();
 try {
-  const open = async (query, colorScheme = "light") => {
+  const open = async (query, colorScheme = "light", width = 390, height = 844) => {
     const ctx = await browser.newContext({
-      viewport: { width: 390, height: 844 },
+      viewport: { width, height },
       deviceScaleFactor: 2,
       colorScheme,
       hasTouch: false,
@@ -109,7 +112,7 @@ try {
       const q = (id) => document.querySelector(`[data-testid="${id}"]`);
       const bar = q("debug-chat-pill");
       const ta = q("debug-chat-input");
-      const kids = ["debug-chat-pill-min", "debug-chat-pill-menu", "debug-chat-mic"].map((id) =>
+      const kids = ["debug-chat-pill-min", "debug-chat-tree-button", "debug-chat-mic"].map((id) =>
         bar.contains(q(id)),
       );
       const target = (el) => {
@@ -120,7 +123,7 @@ try {
       return {
         inBar: kids.every(Boolean) && bar.contains(ta),
         font: Number.parseFloat(getComputedStyle(ta).fontSize),
-        targets: ["debug-chat-pill-min", "debug-chat-pill-menu", "debug-chat-mic"].map((id) =>
+        targets: ["debug-chat-pill-min", "debug-chat-tree-button", "debug-chat-mic"].map((id) =>
           target(q(id)),
         ),
         expanded: q("debug-chat-pill-min").getAttribute("aria-expanded"),
@@ -149,7 +152,7 @@ try {
     });
     const order = await tabOrder(page);
     check(
-      order.join() === "debug-chat-pill-min,debug-chat-pill-menu,debug-chat-input,debug-chat-mic",
+      order.join() === "debug-chat-pill-min,debug-chat-tree-button,debug-chat-input,debug-chat-mic",
       `expanded focus order: ${order.join(" → ")}`,
     );
     // Tap the mark: minimizes after the double-tap window, the bar shrinks.
@@ -167,7 +170,7 @@ try {
         same: mic.__qaTag === 1,
         nextToMenu:
           mic.getBoundingClientRect().left -
-          q("debug-chat-pill-menu").getBoundingClientRect().right,
+          q("debug-chat-tree-button").getBoundingClientRect().right,
       };
     });
     check(m.same, "the mic is the same DOM node across minimize");
@@ -208,7 +211,7 @@ try {
     check(r.expanded === "false", "minimize button has aria-expanded=false");
     const order = await tabOrder(page);
     check(
-      order.slice(0, 3).join() === "debug-chat-pill-min,debug-chat-pill-menu,debug-chat-mic" &&
+      order.slice(0, 3).join() === "debug-chat-pill-min,debug-chat-tree-button,debug-chat-mic" &&
         !order.includes("debug-chat-input"),
       `minimized focus order skips the input: ${order.join(" → ")}`,
     );
@@ -263,6 +266,238 @@ try {
     await ctx.close();
   }
 
+  // The state tree sheet, and the one-panel rule.
+  {
+    const { ctx, page } = await open("?open");
+    const sel = (id) => `[data-testid="${id}"]`;
+    const state = () =>
+      page.evaluate(() => {
+        const q = (id) => document.querySelector(`[data-testid="${id}"]`);
+        const sheet = q("debug-chat-tree");
+        const ta = q("debug-chat-input");
+        return {
+          tree: !!sheet && getComputedStyle(sheet).visibility !== "hidden" && !sheet.inert,
+          menu: !!q("debug-menu"),
+          focus: document.activeElement === ta,
+          value: ta.value,
+          body: q("debug-chat-tree-body")?.textContent ?? "",
+          expanded: q("debug-chat-tree-button").getAttribute("aria-expanded"),
+        };
+      });
+    const settle = () => page.waitForTimeout(350);
+    let both = false;
+    const watch = async (label) => {
+      const s = await state();
+      if (s.tree && s.menu) {
+        both = true;
+        console.log(`  both open after: ${label}`);
+      }
+      return s;
+    };
+    await page.fill(sel("debug-chat-input"), "keep me");
+    await page.focus(sel("debug-chat-input"));
+    // Tree button: opens, keeps the input's focus and draft.
+    await page.click(sel("debug-chat-tree-button"));
+    await settle();
+    let s = await watch("tree button");
+    check(s.tree && s.expanded === "true", "the tree button opens the state tree sheet");
+    check(s.focus && s.value === "keep me", "the input keeps its focus and its draft");
+    check(s.body.includes("chat"), "the sheet shows the tree from renderTree");
+    // Again: closes.
+    await page.click(sel("debug-chat-tree-button"));
+    await settle();
+    s = await watch("tree button again");
+    check(!s.tree && s.expanded === "false", "the tree button again closes it");
+    check(s.focus && s.value === "keep me", "still focused, draft intact");
+    // ✕ closes.
+    await page.click(sel("debug-chat-tree-button"));
+    await settle();
+    await page.click(sel("debug-chat-tree-close"));
+    await settle();
+    s = await watch("close");
+    check(!s.tree && s.focus, "✕ closes it, and the input keeps its focus");
+    // Escape closes.
+    await page.click(sel("debug-chat-tree-button"));
+    await settle();
+    await page.keyboard.press("Escape");
+    await settle();
+    s = await watch("escape");
+    check(!s.tree && s.value === "keep me", "Escape closes it");
+    // A tap outside closes.
+    await page.click(sel("debug-chat-tree-button"));
+    await settle();
+    await page.mouse.click(40, 120);
+    await settle();
+    s = await watch("outside");
+    check(!s.tree, "a tap outside closes it");
+    // Never both: tree, then a double tap on the mark (menu) — the tree closes.
+    await page.click(sel("debug-chat-tree-button"));
+    await settle();
+    await watch("tree button");
+    await page.dblclick(sel("debug-chat-pill-min"));
+    await settle();
+    s = await watch("double tap");
+    check(s.menu && !s.tree, "a double tap on the mark opens the menu and closes the tree");
+    // Menu, then the tree button — the menu closes.
+    await page.click(sel("debug-chat-tree-button"));
+    await settle();
+    s = await watch("tree button over the menu");
+    check(s.tree && !s.menu, "the tree button closes the menu");
+    // Double tap again over the tree, then twice more (menu off, menu on).
+    for (let i = 0; i < 3; i++) {
+      await page.dblclick(sel("debug-chat-pill-min"));
+      await settle();
+      await watch(`double tap ${i}`);
+    }
+    check(!both, "the menu and the tree sheet are never open together");
+    await ctx.close();
+  }
+  // Phone width: the tree is a sheet.
+  {
+    const { ctx, page } = await open("?open");
+    await page.click('[data-testid="debug-chat-tree-button"]');
+    await page.waitForTimeout(350);
+    const mode = await page.getAttribute('[data-testid="debug-chat-tree"]', "data-mode");
+    check(mode === "sheet", `390px: the tree opens as a sheet (${mode})`);
+    await ctx.close();
+  }
+
+  // Wide (1024): tree | log, side by side; switching back keeps the tree's scroll.
+  {
+    const { ctx, page } = await open("?open", "light", 1024, 768);
+    await page.click('[data-testid="debug-chat-tree-button"]');
+    await page.waitForTimeout(350);
+    const g = await page.evaluate(() => {
+      const q = (id) => document.querySelector(`[data-testid="${id}"]`);
+      const r = (el) => el.getBoundingClientRect();
+      const box = document.querySelector("[data-debug-chat]");
+      const tree = q("debug-chat-tree");
+      const log = q("debug-chat-log");
+      const slot = q("debug-chat-input-slot");
+      const bar = q("debug-chat-pill");
+      return {
+        two: box.hasAttribute("data-two-col"),
+        mode: tree.dataset.mode,
+        width: r(box).width,
+        tree: r(tree),
+        log: r(log),
+        bar: r(bar),
+        slot: r(slot),
+        logVisible: getComputedStyle(log).display !== "none" && r(log).height > 100,
+      };
+    });
+    check(g.two && g.mode === "column", `1024px: the tree is a column (${g.mode})`);
+    check(g.width > 600, `1024px: the box widens (${g.width}px)`);
+    check(
+      g.logVisible && g.tree.right <= g.log.left + 1 && g.tree.width > 150,
+      `tree | log side by side (tree ${Math.round(g.tree.left)}–${Math.round(g.tree.right)}, log ${Math.round(g.log.left)}–${Math.round(g.log.right)})`,
+    );
+    check(
+      g.bar.left <= g.tree.left + 1 && g.bar.right >= g.log.right - 1 && g.slot.left < g.tree.right,
+      "the bar and its input span both columns",
+    );
+    // Each column scrolls by itself.
+    const scrolls = () =>
+      page.evaluate(() => [
+        document.querySelector('[data-testid="debug-chat-tree-body"]').scrollTop,
+        document.querySelector('[data-testid="debug-chat-log"]').scrollTop,
+      ]);
+    const [, log0] = await scrolls();
+    await page.mouse.move(g.tree.left + 60, g.tree.top + 120);
+    await page.mouse.wheel(0, 200);
+    await page.waitForTimeout(300);
+    const [t1, l1] = await scrolls();
+    check(t1 > 0 && l1 === log0, `the tree scrolls on its own (tree ${t1}, log ${log0} → ${l1})`);
+    await page.mouse.move(g.log.left + 60, g.log.top + 120);
+    await page.mouse.wheel(0, -200);
+    await page.waitForTimeout(300);
+    const [t2, l2] = await scrolls();
+    check(l2 < l1 && t2 === t1, `the log scrolls on its own (log ${l1} → ${l2}, tree ${t2})`);
+    // Narrow the window: a change event switches to the sheet, the tree's scroll kept.
+    await page.setViewportSize({ width: 390, height: 768 });
+    await page.waitForTimeout(350);
+    const after = await page.evaluate(() => [
+      document.querySelector('[data-testid="debug-chat-tree"]').dataset.mode,
+      document.querySelector('[data-testid="debug-chat-tree-body"]').scrollTop,
+    ]);
+    check(
+      after[0] === "sheet" && after[1] >= t1 - 2, // (scroll anchoring may move it on as rows rewrap)
+      `narrowed: a sheet, scroll kept (${after.join(", ")})`,
+    );
+    // Menu over the column: the column goes (one panel at a time).
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.waitForTimeout(350);
+    await page.dblclick('[data-testid="debug-chat-pill-min"]');
+    await page.waitForTimeout(350);
+    const m = await page.evaluate(() => [
+      !!document.querySelector('[data-testid="debug-menu"]'),
+      document.querySelector("[data-debug-chat]").hasAttribute("data-two-col"),
+    ]);
+    check(m[0] && !m[1], "the menu hides the tree column");
+    await ctx.close();
+  }
+
+  {
+    const { ctx, page } = await open("?open&notree");
+    await page.click('[data-testid="debug-chat-tree-button"]');
+    await page.waitForTimeout(350);
+    const empty = await page.locator('[data-testid="debug-chat-tree-empty"]').textContent();
+    check(empty === "No tree source", "with no tree source, the sheet says so");
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await open("?min");
+    const ids = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="debug-chat-pill"] button')]
+        .filter((b) => !b.closest("[inert]") && b.getBoundingClientRect().width > 0)
+        .map((b) => b.dataset.testid),
+    );
+    check(
+      ids.join() === "debug-chat-pill-min,debug-chat-tree-button,debug-chat-mic",
+      `minimized: [mark | tree | mic] (${ids.join(", ")})`,
+    );
+    await ctx.close();
+  }
+
+  // Minimizing floats the latest message for its dwell, from the tap, then fades it.
+  {
+    const { ctx, page } = await open("?open");
+    await page.evaluate(() => window.__push("the latest line"));
+    await page.waitForTimeout(200);
+    await page.click('[data-testid="debug-chat-pill-min"]');
+    await page.waitForSelector('[data-testid="debug-chat-minimized"]');
+    const t0 = Date.now();
+    const line = page.locator('[data-testid="debug-chat-float"]');
+    const first = await line.allTextContents();
+    check(
+      first.join() === "agent:the latest line",
+      `on minimize the latest line floats (${first})`,
+    );
+    // Still fully there late in its dwell (2.5 s minimum)...
+    await page.waitForTimeout(Math.max(0, 2000 - (Date.now() - t0)));
+    const mid = await line.evaluateAll((els) => els.map((e) => getComputedStyle(e).opacity));
+    check(mid.join() === "1", `still fully visible at 2 s (opacity ${mid})`);
+    // ...then starts its slow fade (FADE_MS = 10 s) once the dwell is over.
+    await page.waitForSelector('[data-testid="debug-chat-float"][data-fading]', { timeout: 3000 });
+    const fadeAt = Date.now() - t0;
+    check(fadeAt >= 1500 && fadeAt < 3500, `then the fade starts (${fadeAt} ms after minimize)`);
+    await page.waitForTimeout(1500);
+    const midFade = Number(await line.evaluate((e) => getComputedStyle(e).opacity));
+    check(midFade > 0.2 && midFade < 0.99, `the fade is gradual (opacity ${midFade} 1.5 s in)`);
+    // Hovering (touching) it snaps it back to full, and holds it there.
+    await line.hover();
+    await page.waitForTimeout(100);
+    const held = await line.evaluate((e) => [getComputedStyle(e).opacity, e.dataset.fading]);
+    check(held[0] === "1" && !held[1], `hovered mid-fade, it is back at full (${held})`);
+    // Released: the fade starts over from full.
+    await page.mouse.move(380, 100);
+    await page.waitForSelector('[data-testid="debug-chat-float"][data-fading]', { timeout: 1000 });
+    await page.waitForTimeout(500);
+    const again = Number(await line.evaluate((e) => getComputedStyle(e).opacity));
+    check(again > 0.75, `released, the fade starts over from full (opacity ${again} 0.5 s in)`);
+    await ctx.close();
+  }
+
   // A live message floats above the minimized bar.
   {
     const { ctx, page } = await open("?min");
@@ -280,16 +515,29 @@ try {
 
   if (SHOTS) {
     mkdirSync(SHOTS, { recursive: true });
+    for (const scheme of ["light", "dark"]) {
+      const { ctx, page } = await open("?open", scheme, 1024, 768);
+      await page.click('[data-testid="debug-chat-tree-button"]');
+      await page.waitForTimeout(350);
+      const file = join(SHOTS, `desktop-two-col-${scheme}.png`);
+      await page.screenshot({ path: file });
+      console.log(`shot ${file}`);
+      await ctx.close();
+    }
     for (const scheme of ["light", "dark"])
-      for (const state of ["expanded", "minimized"]) {
+      for (const state of ["expanded", "minimized", "tree"]) {
         const { ctx, page } = await open(state === "minimized" ? "?min" : "?open", scheme);
+        if (state === "tree") {
+          await page.click('[data-testid="debug-chat-tree-button"]');
+          await page.waitForTimeout(350);
+        }
         if (state === "minimized") {
           await page.evaluate(() => {
             window.__push("今日はここまで。明日また続けましょう。");
             window.__push("Pushed the fix; the bar is one container now.");
           });
           await page.waitForTimeout(300);
-        } else {
+        } else if (state === "expanded") {
           await page.fill('[data-testid="debug-chat-input"]', "a draft in the unified bar");
           await page.locator('[data-testid="debug-chat-input"]').blur();
           await page.waitForTimeout(300);

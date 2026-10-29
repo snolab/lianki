@@ -12,8 +12,8 @@ export const READ_RATE_LATIN = 15;
 export const DWELL_FACTOR = 2;
 /** ...and never less than this. */
 export const DWELL_MIN_MS = 2_500;
-/** The fade-out once the dwell is over (instant under reduced motion). */
-export const FADE_MS = 400;
+/** The slow fade-out once the dwell is over (gone at once under reduced motion). */
+export const FADE_MS = 10_000;
 /** At most this many lines float at once; the oldest goes first. */
 export const FLOAT_MAX = 6;
 
@@ -82,4 +82,86 @@ export function createDwellTimer(d: {
     /** The time left, in ms (frozen while paused). */
     remaining: () => (timer === null ? left : Math.max(0, left - (now() - started))),
   };
+}
+
+/** The latest message floats on minimize only if it is at most this old. */
+export const MINIMIZE_FLOAT_MAX_AGE_MS = 10 * 60_000;
+
+/**
+ * At the moment the chat is minimized, the latest message (from anyone) is
+ * treated as unread and floats, unless it is older than
+ * MINIMIZE_FLOAT_MAX_AGE_MS. Its dwell starts then, not when it arrived.
+ */
+export function minimizeFloat<M extends { at: number }>(messages: M[], now: number): M | null {
+  const last = messages.at(-1);
+  return last && now - last.at <= MINIMIZE_FLOAT_MAX_AGE_MS ? last : null;
+}
+
+/**
+ * A floating line's life: "dwell" (fully visible) → "fade" (FADE_MS of
+ * opacity going down) → "gone". Paused (hovered, touched, a scrub) during the
+ * dwell, its time is frozen; paused during the fade, it is "held" at full
+ * opacity, and the fade starts over from full once released. Under reduced
+ * motion the dwell's end is the end. Timers are injected for tests.
+ */
+export type FloatPhase = "dwell" | "fade" | "held" | "gone";
+export function createFloatLife(d: {
+  ms: number;
+  fadeMs?: number;
+  reducedMotion?: boolean;
+  paused?: boolean;
+  onPhase: (p: FloatPhase) => void;
+  now?: () => number;
+  setTimer?: (f: () => void, ms: number) => unknown;
+  clearTimer?: (t: unknown) => void;
+}) {
+  const setTimer = d.setTimer ?? ((f, ms) => setTimeout(f, ms));
+  const clearTimer = d.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
+  let phase: FloatPhase = "dwell";
+  let paused = false;
+  let fade: unknown = null;
+  const set = (p: FloatPhase) => {
+    phase = p;
+    d.onPhase(p);
+  };
+  const startFade = () => {
+    set("fade");
+    fade = setTimer(() => {
+      fade = null;
+      set("gone");
+    }, d.fadeMs ?? FADE_MS);
+  };
+  const dwell = createDwellTimer({
+    ms: d.ms,
+    onDone: () => (d.reducedMotion ? set("gone") : startFade()),
+    now: d.now,
+    setTimer,
+    clearTimer,
+  });
+  const life = {
+    pause() {
+      if (paused) return;
+      paused = true;
+      if (phase === "dwell") dwell.pause();
+      else if (phase === "fade") {
+        clearTimer(fade);
+        fade = null;
+        set("held");
+      }
+    },
+    resume() {
+      if (!paused) return;
+      paused = false;
+      if (phase === "dwell") dwell.resume();
+      else if (phase === "held") startFade();
+    },
+    cancel() {
+      dwell.cancel();
+      if (fade !== null) clearTimer(fade);
+      fade = null;
+    },
+    phase: () => phase,
+  };
+  if (d.paused) life.pause();
+  return life;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   type ChatMessage,
   MAX_CHAT,
@@ -21,7 +21,14 @@ import { DebugMic, canCapture, playSentTick } from "./MicButton";
 import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
 import { cloudOut, outMode } from "./voice-out";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
-import { FADE_MS, FLOAT_MAX, createDwellTimer, dwellMs } from "./float-lines";
+import {
+  FADE_MS,
+  FLOAT_MAX,
+  type FloatPhase,
+  createFloatLife,
+  dwellMs,
+  minimizeFloat,
+} from "./float-lines";
 import { Icon } from "./icons";
 
 /** Typing pauses this long before the draft is sent. */
@@ -36,7 +43,19 @@ const OPEN_KEY = "lk:debug-chat-open";
 /** How long "Tap again to end the chat" waits for the second tap. */
 const END_CONFIRM_MS = 3_000;
 /** In the input while the bar is held. */
-const DRAG_HINT = "drag: move · tap: minimize · double-tap or ⋯: menu";
+const DRAG_HINT = "drag: move · tap: minimize · double-tap: menu";
+/** The mark's gestures, for its title and aria-description. */
+const MARK_HINT = "Tap: minimize or restore · double-tap: menu · drag: move the chat";
+/** Wide enough for the tree and the log side by side. */
+const WIDE_QUERY = "(min-width: 768px)";
+/**
+ * Two columns, `tree | log`, with everything else (warning, bar) spanning
+ * both. Placed from the box, so the log's own markup stays as it is.
+ */
+const TWO_COL =
+  "grid grid-cols-[2fr_3fr] gap-x-2 gap-y-1 rounded-xl border border-current/25 p-2 backdrop-blur-md backdrop-saturate-150 *:col-span-2 [&_[data-tree-col]]:col-span-1 [&_[data-testid=debug-chat-log]]:col-span-1 [&_[data-testid=debug-chat-log]]:pointer-events-auto [&_[data-testid=debug-chat-log]]:h-[min(60dvh,28rem)] [&_[data-testid=debug-chat-log]]:max-h-[min(60dvh,28rem)]";
+/** The tree sheet: the page colour at 0.85, so its text stays legible over anything. */
+const SHEET_BG = "color-mix(in oklch, var(--background) 85%, transparent)";
 /** The mic's extra gesture, for its title and aria-description. */
 const MIC_SCRUB_HINT = "Drag up or down (or press ↑/↓) to scroll back through the chat";
 /** A minimized scrub shows this many lines at a time. */
@@ -256,6 +275,8 @@ export type DebugChatProps = {
   onOpenPage?: (path: string) => void;
   /** Add this page to a pairing that was authorized for other pages only. */
   onAddPage?: (s: PairInfo) => void;
+  /** The state tree sheet's content (the tree button); without it, "No tree source". */
+  renderTree?: () => ReactNode;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -289,6 +310,7 @@ export function DebugChat({
   onEndPage,
   onOpenPage,
   onAddPage,
+  renderTree,
 }: DebugChatProps) {
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
@@ -299,9 +321,56 @@ export function DebugChat({
   /** The box: its bar is kept on screen, expanded or minimized. */
   const root = useRef<HTMLElement | null>(null);
   // Only expanding or minimizing refits (fit itself is fresh each render).
-  useLayoutEffect(() => fit(root.current, open), [open]);
-  /** The pill's menu: status, read-aloud, pages, sessions. */
-  const [menu, setMenu] = useState(false);
+  /**
+   * One panel at a time over the log: the menu (status, read-aloud, pages,
+   * sessions; a double tap on the mark) or the state tree (the tree button).
+   * Opening one closes the other.
+   */
+  const [panel, setPanel] = useState<"none" | "menu" | "tree">("none");
+  const menu = panel === "menu";
+  const tree = panel === "tree";
+  const setMenu = (v: boolean) => setPanel((p) => (v ? "menu" : p === "menu" ? "none" : p));
+  /** A wide screen (768px and up): the open tree is a column beside the log. */
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const mq = matchMedia(WIDE_QUERY);
+    setWide(mq.matches);
+    const change = (e: MediaQueryListEvent) => setWide(e.matches);
+    mq.addEventListener("change", change);
+    return () => mq.removeEventListener("change", change);
+  }, []);
+  /** Wide, open and the tree up: `tree | log` side by side. */
+  const twoCol = open && tree && wide;
+  // Expanding, minimizing or widening refits (fit itself is fresh each render).
+  useLayoutEffect(() => fit(root.current, open), [open, twoCol]);
+  /** The tree's scroll, kept across the sheet ⇄ column switch. */
+  const treeScroll = useRef(0);
+  /** The tree's content stays mounted until the sheet has faded out. */
+  const [treeBody, setTreeBody] = useState(false);
+  useEffect(() => {
+    if (tree) setTreeBody(true);
+  }, [tree]);
+  // Escape or a tap outside the chat closes the tree. Escape is caught before
+  // the mic's own Escape (which turns it off): closing the sheet never does.
+  useEffect(() => {
+    if (!tree) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setPanel("none");
+    };
+    const down = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setPanel("none");
+    };
+    window.addEventListener("keydown", key, true);
+    // The sheet floats over the page: a tap outside closes it. The column is
+    // part of the box, and stays until its button, ✕ or Escape.
+    if (!twoCol) document.addEventListener("pointerdown", down, true);
+    return () => {
+      window.removeEventListener("keydown", key, true);
+      document.removeEventListener("pointerdown", down, true);
+    };
+  }, [tree, twoCol]);
   /** The pill's mark: one tap minimizes or restores, two open the menu (the single waits for a second). */
   const gripAct = useRef({ single: () => {}, double: () => {} });
   const gripTaps = useRef<ReturnType<typeof createTapper> | null>(null);
@@ -512,10 +581,10 @@ export function DebugChat({
   };
   gripAct.current = {
     single: () => {
-      setMenu(false);
+      setPanel("none");
       toggle(!open);
     },
-    double: () => setMenu((m) => !m),
+    double: () => setPanel((p) => (p === "menu" ? "none" : "menu")),
   };
   /**
    * Minimized, the log is hidden and messages float above the bar instead
@@ -531,11 +600,23 @@ export function DebugChat({
   /** How many lines back from the newest the scrub is (0 = the newest SCRUB_LINES). */
   const back = useRef(0);
   const floatSeen = useRef(messages.length);
+  const wasOpen = useRef(open);
   useEffect(() => {
+    const minimizing = wasOpen.current && !open;
+    wasOpen.current = open;
     if (open) {
       floatSeen.current = messages.length;
       back.current = 0;
       setFloats([]);
+      return;
+    }
+    if (minimizing) {
+      // Just minimized: the latest message floats as if unread, its dwell
+      // starting now (its FloatLine mounts with this render).
+      floatSeen.current = messages.length;
+      const last = minimizeFloat(messages, Date.now());
+      setFloats(last ? [last] : []);
+      setFloatEpoch((e) => e + 1);
       return;
     }
     const fresh = messages
@@ -676,9 +757,9 @@ export function DebugChat({
   /**
    * The bar's controls, left of the input: drag any of them (or the bar's
    * edge) to move the box. The liagent mark: a tap minimizes or restores
-   * (after 280 ms), a double tap opens the menu. The connections (eval/preview
-   * sessions, or ⋯): a tap opens the menu. Each is its own drag handle, so its
-   * click still lands on it. The mic is the bar's last control (micEl).
+   * (after 280 ms), a double tap opens the menu. The tree button opens the
+   * state tree sheet (with the eval/preview sessions' count on it). Each is its
+   * own drag handle, so its click still lands on it. The mic is the bar's last control (micEl).
    */
   const controls = (
     <>
@@ -687,6 +768,8 @@ export function DebugChat({
         data-drag-handle
         data-testid="debug-chat-pill-min"
         aria-label={open ? "Minimize chat" : `Restore chat${unread ? `, ${unread} new` : ""}`}
+        aria-description={MARK_HINT}
+        title={MARK_HINT}
         aria-expanded={open}
         {...handle}
         onPointerDown={(e) => {
@@ -707,28 +790,28 @@ export function DebugChat({
       <button
         type="button"
         data-drag-handle
-        data-testid="debug-chat-pill-menu"
-        aria-label={`Open chat menu (${conns})`}
-        aria-expanded={menu}
+        data-testid="debug-chat-tree-button"
+        aria-label="State tree"
+        aria-description={evalSessions.length ? conns : undefined}
+        aria-expanded={tree}
+        aria-controls="debug-chat-tree"
         {...handle}
-        onClick={() => !wasDrag() && setMenu((m) => !m)}
+        // Keeps the input's focus (and its draft): the sheet only looks.
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => !wasDrag() && setPanel((p) => (p === "tree" ? "none" : "tree"))}
         style={handle.style}
-        className="tap-40 relative flex h-8 w-10 shrink-0 items-center justify-center gap-0.5 rounded-full text-[10px] tabular-nums"
+        className="tap-40 relative flex h-8 w-10 shrink-0 items-center justify-center rounded-full text-base"
       >
-        {evalSessions.length > 0 ? (
-          <>
-            <span
-              aria-hidden
-              className={`inline-flex size-3.5 items-center justify-center rounded-full text-[8px] text-white ${evalRan ? "animate-pulse" : "opacity-80"}`}
-              style={{ background: "oklch(0.55 0.15 30)" }}
-            >
-              <Icon name="play" />
-            </span>
+        <TreeIcon />
+        {evalSessions.length > 0 && (
+          // The eval/preview sessions, as before: their count, pulsing when code just ran.
+          <span
+            aria-hidden
+            data-testid="debug-chat-evals"
+            className={`absolute end-0.5 top-0 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5 text-[8px] leading-none text-white tabular-nums ${evalRan ? "animate-pulse" : ""}`}
+            style={{ background: "oklch(0.55 0.15 30)" }}
+          >
             {evalSessions.length}
-          </>
-        ) : (
-          <span aria-hidden className="text-sm leading-none">
-            ⋯
           </span>
         )}
       </button>
@@ -763,7 +846,67 @@ export function DebugChat({
       )}
     </>
   );
-  /** The menu (the pill's ⋯, or a double tap on its mark), open or minimized. */
+  /**
+   * The state tree. On a phone (or minimized): a glass sheet over the log,
+   * anchored to the bar, up to 60dvh, sliding and fading in (transform and
+   * opacity; at once under reduced motion). On a wide screen with the chat
+   * open: the left column beside the log (`twoCol`). Either way it scrolls
+   * inside, keeps its scroll across the switch, and its buttons never take the
+   * input's focus.
+   */
+  const treePanel = (column: boolean) => (
+    <div
+      id="debug-chat-tree"
+      role={column ? "region" : "dialog"}
+      aria-label="State tree"
+      data-testid="debug-chat-tree"
+      data-mode={column ? "column" : "sheet"}
+      data-tree-col={column || undefined}
+      data-open={tree || undefined}
+      inert={!tree}
+      aria-hidden={!tree || undefined}
+      onTransitionEnd={(e) => e.target === e.currentTarget && !tree && setTreeBody(false)}
+      style={{ background: SHEET_BG }}
+      className={
+        column
+          ? "pointer-events-auto flex h-[min(60dvh,28rem)] min-w-0 flex-col overflow-hidden rounded-lg border border-current/25 text-gray-800 dark:text-gray-100"
+          : `pointer-events-auto absolute inset-x-0 bottom-full z-10 mb-1 flex max-h-[60dvh] flex-col overflow-hidden rounded-xl border border-current/25 text-gray-800 backdrop-blur-md backdrop-saturate-150 transition-[opacity,transform,visibility] duration-[180ms] ease-out motion-reduce:transition-none dark:text-gray-100 ${tree ? "translate-y-0 opacity-100" : "invisible translate-y-2 opacity-0"}`
+      }
+    >
+      <div className="flex items-center gap-1 border-b border-current/15 ps-3 pe-1">
+        <span className="flex-1 py-1 font-medium">State tree</span>
+        <button
+          type="button"
+          data-testid="debug-chat-tree-close"
+          aria-label="Close the state tree"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setPanel("none")}
+          className="tap-40 flex h-7 w-10 items-center justify-center text-sm"
+        >
+          ✕
+        </button>
+      </div>
+      <div
+        data-testid="debug-chat-tree-body"
+        // The sheet and the column are different nodes: the scroll carries over.
+        ref={(el) => {
+          if (el) el.scrollTop = treeScroll.current;
+        }}
+        onScroll={(e) => {
+          treeScroll.current = e.currentTarget.scrollTop;
+        }}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2"
+      >
+        {(column || treeBody) &&
+          (renderTree?.() ?? (
+            <p data-testid="debug-chat-tree-empty" className="text-gray-500">
+              No tree source
+            </p>
+          ))}
+      </div>
+    </div>
+  );
+  /** The menu (a double tap on the mark), open or minimized. */
   const menuEl = menu && (
     <div
       role="menu"
@@ -931,9 +1074,11 @@ export function DebugChat({
       aria-label="Chat with the agent"
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
-      style={offset}
-      // A live mic counts as focus: the box goes opaque as it does while typing.
-      className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] transition-opacity ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none flex-col rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100`}
+      // A live mic (or the open tree) counts as focus: the box goes opaque as while typing.
+      // Wide with the tree open: twice as wide, two columns, opaque glass.
+      data-two-col={twoCol || undefined}
+      style={twoCol ? { ...offset, background: SHEET_BG } : offset}
+      className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 transition-opacity ${twoCol ? `w-[min(44rem,calc(100vw-1rem))] opacity-100 ${TWO_COL}` : `flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl ${micActive || tree ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"}`} pointer-events-none lk-halo text-xs text-gray-800 dark:text-gray-100`}
     >
       {!open && floats.length > 0 && (
         // Minimized: the lines that arrived (or a scrub brought back), newest
@@ -955,6 +1100,7 @@ export function DebugChat({
           ))}
         </ol>
       )}
+      {twoCol && treePanel(true)}
       <ol
         ref={log}
         data-testid="debug-chat-log"
@@ -1239,16 +1385,39 @@ export function DebugChat({
           )}
         </div>
         <span aria-hidden />
+        {!twoCol && treePanel(false)}
         {menuEl}
       </div>
     </section>
   );
 }
 
+/** An outline tree (a root and two branches), for the state tree button. */
+function TreeIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3" y="3" width="7" height="5" rx="1.5" />
+      <rect x="14" y="10" width="7" height="4.5" rx="1.5" />
+      <rect x="14" y="16.5" width="7" height="4.5" rx="1.5" />
+      <path d="M6.5 8v10.75H14M6.5 12.25H14" />
+    </svg>
+  );
+}
+
 /**
  * One floating line of the minimized chat: "name: text", up for its dwell
- * (float-lines.ts), then an opacity fade (none under reduced motion). `epoch`
- * restarts the dwell; `paused` holds it.
+ * (float-lines.ts), then a slow opacity fade (none under reduced motion).
+ * `epoch` restarts it; `paused` holds it, back at full opacity if fading.
  */
 function FloatLine({
   m,
@@ -1263,32 +1432,27 @@ function FloatLine({
   onHover: (on: boolean) => void;
   onGone: () => void;
 }) {
-  const [fading, setFading] = useState(false);
-  const timer = useRef<ReturnType<typeof createDwellTimer> | null>(null);
+  const [phase, setPhase] = useState<FloatPhase>("dwell");
+  const life = useRef<ReturnType<typeof createFloatLife> | null>(null);
   const live = useRef({ paused, onGone });
   live.current = { paused, onGone };
+  // A new epoch (a scrub step or its release) starts the line over: full dwell, then the fade.
   useEffect(() => {
-    setFading(false);
-    let gone: ReturnType<typeof setTimeout> | undefined;
-    const t = createDwellTimer({
+    setPhase("dwell");
+    const l = createFloatLife({
       ms: dwellMs(m.text),
-      onDone: () => {
-        if (matchMedia("(prefers-reduced-motion: reduce)").matches) return live.current.onGone();
-        setFading(true);
-        gone = setTimeout(() => live.current.onGone(), FADE_MS);
-      },
+      reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+      paused: live.current.paused,
+      onPhase: (p) => (p === "gone" ? live.current.onGone() : setPhase(p)),
     });
-    if (live.current.paused) t.pause();
-    timer.current = t;
-    return () => {
-      t.cancel();
-      clearTimeout(gone);
-    };
+    life.current = l;
+    return () => l.cancel();
   }, [epoch, m.id, m.text]);
   useEffect(() => {
-    if (paused) timer.current?.pause();
-    else timer.current?.resume();
+    if (paused) life.current?.pause();
+    else life.current?.resume();
   }, [paused]);
+  const fading = phase === "fade";
   return (
     <li
       data-testid="debug-chat-float"
@@ -1297,9 +1461,10 @@ function FloatLine({
       onPointerEnter={() => onHover(true)}
       onPointerLeave={() => onHover(false)}
       onPointerCancel={() => onHover(false)}
-      style={{ background: INPUT_BG }}
-      // FADE_MS; under reduced motion the line is dropped at once instead.
-      className={`${fading ? "opacity-0" : "opacity-100"} transition-opacity duration-[400ms] pointer-events-auto line-clamp-3 max-w-full whitespace-pre-wrap break-words rounded-lg px-2 py-0.5 leading-snug backdrop-blur-md motion-reduce:transition-none`}
+      style={{ background: INPUT_BG, transitionDuration: `${FADE_MS}ms` }}
+      // The fade runs FADE_MS (ease-out, opacity only); held (touched), the line
+      // snaps back to full at once. Reduced motion: no fade, it just goes.
+      className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto line-clamp-3 max-w-full whitespace-pre-wrap break-words rounded-lg px-2 py-0.5 leading-snug backdrop-blur-md motion-reduce:transition-none`}
     >
       <span
         className="me-1 font-medium"

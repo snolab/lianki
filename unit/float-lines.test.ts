@@ -4,8 +4,12 @@ import {
   DWELL_MIN_MS,
   READ_RATE_CJK,
   READ_RATE_LATIN,
+  FADE_MS,
+  MINIMIZE_FLOAT_MAX_AGE_MS,
   createDwellTimer,
+  createFloatLife,
   dwellMs,
+  minimizeFloat,
   readTime,
 } from "@lianki/debug-chat/float-lines";
 
@@ -139,5 +143,112 @@ describe("createDwellTimer with the real clock", () => {
     u.cancel();
     await new Promise((r) => setTimeout(r, 40));
     expect(done).toBe(1);
+  });
+});
+
+describe("minimizeFloat (the latest message, on minimize)", () => {
+  const msg = (id: string, at: number) => ({ id, at, text: "Deployed; the bar is one container." });
+
+  it("floats only the single latest message, unless it is over 10 minutes old", () => {
+    const list = [msg("a", 0), msg("b", 1_000)];
+    expect(minimizeFloat(list, 60_000)?.id).toBe("b");
+    expect(minimizeFloat(list, 1_000 + MINIMIZE_FLOAT_MAX_AGE_MS)?.id).toBe("b");
+    expect(minimizeFloat(list, 1_001 + MINIMIZE_FLOAT_MAX_AGE_MS)).toBeNull();
+    expect(minimizeFloat([], 0)).toBeNull();
+  });
+
+  it("starts the dwell at the minimize, not at the arrival", () => {
+    const c = clock();
+    const m = msg("a", 0);
+    c.advance(5 * 60_000); // the message arrived 5 minutes before the minimize
+    const minimizedAt = c.now();
+    const latest = minimizeFloat([m], minimizedAt);
+    expect(latest).not.toBeNull();
+    let gone = 0;
+    createDwellTimer({ ms: dwellMs(latest!.text), onDone: () => gone++, ...c });
+    // Fully visible for its whole dwell, counted from the minimize...
+    c.advance(dwellMs(m.text) - 1);
+    expect(gone).toBe(0);
+    // ...then it fades.
+    c.advance(1);
+    expect(gone).toBe(1);
+    expect(c.now() - minimizedAt).toBe(dwellMs(m.text));
+  });
+});
+
+describe("createFloatLife (dwell, then the slow fade)", () => {
+  const life = (o: { reducedMotion?: boolean; paused?: boolean } = {}) => {
+    const c = clock();
+    const seen: string[] = [];
+    const l = createFloatLife({ ms: 3000, onPhase: (p) => seen.push(p), ...o, ...c });
+    return { c, seen, l };
+  };
+
+  it("fades over FADE_MS (10 s) once the dwell is over, then goes", () => {
+    expect(FADE_MS).toBe(10_000);
+    const { c, seen, l } = life();
+    c.advance(2999);
+    expect(l.phase()).toBe("dwell");
+    c.advance(1);
+    expect(seen).toEqual(["fade"]);
+    c.advance(FADE_MS - 1);
+    expect(l.phase()).toBe("fade");
+    c.advance(1);
+    expect(seen).toEqual(["fade", "gone"]);
+  });
+
+  it("touched mid-fade: back to full (held), and the fade starts over on release", () => {
+    const { c, seen, l } = life();
+    c.advance(3000 + 6000); // 6 s into the fade
+    l.pause();
+    expect(l.phase()).toBe("held");
+    c.advance(60_000); // held as long as it is touched
+    expect(l.phase()).toBe("held");
+    l.resume();
+    expect(l.phase()).toBe("fade");
+    c.advance(FADE_MS - 1); // a whole fade again, from full
+    expect(l.phase()).toBe("fade");
+    c.advance(1);
+    expect(seen).toEqual(["fade", "held", "fade", "gone"]);
+  });
+
+  it("touched during the dwell: the time left is kept", () => {
+    const { c, l } = life({ paused: true });
+    c.advance(10_000);
+    expect(l.phase()).toBe("dwell");
+    l.resume();
+    c.advance(2000);
+    l.pause();
+    c.advance(10_000);
+    l.resume();
+    c.advance(999);
+    expect(l.phase()).toBe("dwell");
+    c.advance(1);
+    expect(l.phase()).toBe("fade");
+  });
+
+  it("reduced motion: gone the moment the dwell ends", () => {
+    const { c, seen } = life({ reducedMotion: true });
+    c.advance(3000);
+    expect(seen).toEqual(["gone"]);
+  });
+
+  it("cancel stops it in either phase", () => {
+    const a = life();
+    a.l.cancel();
+    a.c.advance(60_000);
+    expect(a.seen).toEqual([]);
+    const b = life();
+    b.c.advance(3000);
+    b.l.cancel();
+    b.c.advance(60_000);
+    expect(b.seen).toEqual(["fade"]);
+  });
+
+  it("runs on the real timers too", async () => {
+    const seen: string[] = [];
+    createFloatLife({ ms: 5, fadeMs: 5, onPhase: (p) => seen.push(p) });
+    await new Promise((r) => setTimeout(r, 60));
+    expect(seen).toEqual(["fade", "gone"]);
   });
 });
