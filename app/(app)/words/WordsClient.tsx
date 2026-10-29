@@ -1850,6 +1850,12 @@ function Study({
   const [swipeAb, setSwipeAb] = useState<SwipeVariant>("js");
   useEffect(() => setSwipeAb(swipeVariant()), []);
   const native = touch && swipeAb === "native";
+  /**
+   * Experimental: the paper texture scrolls with the list (a layer inside the
+   * scroller, [data-paper-layer]) instead of staying fixed on the body.
+   * Per device; off unless turned on.
+   */
+  const [paperScrolls, setPaperScrolls] = usePref("lk:words-paper-scrolls", false);
   /** Phone full screen. Remembered: once on, the first touch of a later study re-enters it. */
   const fs = useFullscreen();
   const [fsHint, setFsHint] = useState(false);
@@ -2351,6 +2357,14 @@ function Study({
     for (const el of [topRef.current, hintRef.current, listEl]) if (el) ro.observe(el);
     return () => ro.disconnect();
   }, [listEl, room]);
+  // Paper scrolls with the list: the body behind it is plain, so the texture
+  // isn't drawn twice.
+  useEffect(() => {
+    if (!listEl || !paperScrolls) return;
+    const root = document.documentElement;
+    root.classList.add("lk-paper-scrolls");
+    return () => root.classList.remove("lk-paper-scrolls");
+  }, [listEl, paperScrolls]);
   // Only the list scrolls: the page under it stays put.
   useEffect(() => {
     if (!listEl) return;
@@ -2855,12 +2869,12 @@ function Study({
                 hint="Hide the address bar while studying"
               />
             )}
-            {touch && (
-              <div className="w-full pt-1" data-experimental>
-                <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
-                  Experimental
-                </div>
-                <div className="flex flex-wrap items-center gap-2 pt-1">
+            <div className="w-full pt-1" data-experimental>
+              <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
+                Experimental
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {touch && (
                   <TogglePill
                     on={swipeAb === "native"}
                     onChange={(on) => {
@@ -2871,12 +2885,18 @@ function Study({
                     label="New swipe"
                     hint="Swipes done by the browser's own scrolling"
                   />
-                  <span className="text-xs opacity-60">
-                    Native scrolling swipe. It may change or go away.
-                  </span>
-                </div>
+                )}
+                <TogglePill
+                  on={paperScrolls}
+                  onChange={setPaperScrolls}
+                  label={text.paperScrolls.value}
+                  hint={text.paperScrollsHint.value}
+                />
+                <span className="text-xs opacity-60">
+                  {touch ? "Native scrolling swipe. " : ""}It may change or go away.
+                </span>
               </div>
-            )}
+            </div>
           </div>
           {fsHint && (
             <div className="text-sm mt-2 opacity-80" onClick={() => setFsHint(false)}>
@@ -2937,6 +2957,19 @@ function Study({
             onPointerUp={touch ? resumeFullscreen : undefined}
             role="list"
           >
+            {paperScrolls && (
+              // The paper, scrolling with the rows: one composited layer the
+              // height of the whole content (both over-scroll pads included),
+              // under everything in the list. `background-attachment: local`
+              // on the list cost ~50 of 90 frames over 20ms on an iPhone;
+              // this layer scrolls as fast as the fixed body texture.
+              <div
+                aria-hidden
+                data-paper-layer
+                className="lk-paper-layer"
+                style={{ height: pad * 2 + queue.length * ROW_H }}
+              />
+            )}
             {touch && !native && <SwipeUnderlay ref={underlay} />}
             <div className="relative" style={{ height: pad + from * ROW_H }}>
               {pad - bar.top > 140 && <EmptyTray style={{ top: bar.top, height: pad - bar.top }} />}
