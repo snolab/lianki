@@ -44,7 +44,6 @@ import { CORD_BOW, cordPath, cordPull } from "@/lib/words/cords";
 import {
   type Axis,
   type SwipeLevel,
-  levelRating,
   lockAxis,
   releaseLevel,
   releaseRating,
@@ -2175,6 +2174,8 @@ function Study({
   // only the rows in view (plus a margin) are rendered.
   const ROW_H = touch ? 44 : 28;
   const listRef = useRef<HTMLDivElement>(null);
+  /** What a sliding slip uncovers: the grade of each level (SwipeUnderlay). */
+  const underlay = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   /** When the list last scrolled: a touch within 120 ms of it catches a fling. */
   const lastScrollAt = useRef(0);
@@ -2628,7 +2629,7 @@ function Study({
           <div
             ref={listRef}
             // Phones: edge to edge, no box — the whole screen width is the slips'.
-            className={`overflow-y-auto overscroll-contain ${
+            className={`relative overflow-y-auto overscroll-contain ${
               touch ? "-mx-3 sm:-mx-8" : "rounded-lg border border-black/10 dark:border-white/10"
             }`}
             // overflow-anchor: none — the padding and spacers change as rows
@@ -2646,6 +2647,7 @@ function Study({
             onPointerUp={touch ? resumeFullscreen : undefined}
             role="list"
           >
+            {touch && <SwipeUnderlay ref={underlay} />}
             <div style={{ height: pad + from * ROW_H }} />
             {queue.slice(from, to).map((it, k) => {
               const i = from + k;
@@ -2664,6 +2666,7 @@ function Study({
                   onHover={() => moveRow(i)}
                   onMore={() => setSheet(i)}
                   scrolling={scrollingNow}
+                  underlay={underlay}
                   // Desktop click = Again; on touch a tap reveals and reads it.
                   onTap={(now) => {
                     if (!touch) return grade(i, 1);
@@ -2983,6 +2986,39 @@ function SlipCords({
   );
 }
 
+/**
+ * What a sliding slip uncovers: one static strip per list, put under the slip
+ * as it starts to slide. Slid right, the slip uncovers Good (its first row's
+ * width a) then Easy; slid left, Hard then Again — the levels it snaps to
+ * (lib/words/swipe.ts). Painted once: changing level repaints nothing, the
+ * slip only moves over it.
+ */
+function SwipeUnderlay({ ref }: { ref: React.RefObject<HTMLDivElement | null> }) {
+  const zone = (r: Rating, side: "left" | "right", from: string, width: string) => (
+    <span
+      data-reveal={r}
+      className="absolute inset-y-0 flex items-center justify-center text-[11px] font-medium opacity-90"
+      style={{ [side]: from, width, background: SWIPE_BG[r] }}
+    >
+      {RATING_LABEL[r]}
+    </span>
+  );
+  return (
+    <div
+      ref={ref}
+      aria-hidden
+      data-swipe-underlay
+      className="pointer-events-none absolute inset-x-0 overflow-hidden"
+      style={{ visibility: "hidden", background: "var(--slip-seam)" }}
+    >
+      {zone(3, "left", "0px", "var(--a)")}
+      {zone(4, "left", "var(--a)", "calc(var(--a) * 1.5)")}
+      {zone(2, "right", "0px", "var(--a)")}
+      {zone(1, "right", "var(--a)", "calc(var(--a) * 1.5)")}
+    </div>
+  );
+}
+
 function WordRow({
   index,
   touch,
@@ -2995,6 +3031,7 @@ function WordRow({
   onHold,
   onHoldEnd,
   scrolling,
+  underlay,
   className,
   style,
   children,
@@ -3011,6 +3048,8 @@ function WordRow({
   onSwipe: (r: Rating) => void;
   /** The finger has started moving sideways (a grade is being decided). */
   onSwipeStart?: () => void;
+  /** The list's one SwipeUnderlay: moved under this slip as it starts sliding. */
+  underlay?: React.RefObject<HTMLDivElement | null>;
   /** Held still for HOLD_MS: listen mode until the finger lifts. */
   onHold?: () => void;
   onHoldEnd?: () => void;
@@ -3027,7 +3066,6 @@ function WordRow({
    * style once a frame — a React render per pointermove dropped frames on Android. */
   const dx = useRef(0);
   const frame = useRef(0);
-  const shownTint = useRef<ReturnType<typeof levelRating>>(null);
   /** Where the slip is at a given moment, for its cords: the finger while
    * dragging, then the return spring — no reading the transform back. */
   const pos = useRef<(now: number) => number>(() => 0);
@@ -3105,13 +3143,6 @@ function WordRow({
     if (!el) return;
     const x = dx.current;
     el.style.transform = x ? `translateX(${x}px)` : "";
-    // Tinted by the level it has snapped to: what it grades if let go now.
-    const pending = x ? levelRating(level.current) : null;
-    if (pending !== shownTint.current) {
-      shownTint.current = pending;
-      if (pending) el.style.setProperty("--slip-c", SWIPE_BG[pending]);
-      else el.style.removeProperty("--slip-c");
-    }
   };
   /** Back to rest: spring home from where it was let go, on the compositor. */
   const release = () => {
@@ -3139,7 +3170,7 @@ function WordRow({
         touchAction: "pan-y",
         // A hold is listen mode, not iOS's callout / text-selection menu.
         WebkitTouchCallout: "none",
-        // transform, transition and --slip-c are the drag's: paint() writes them.
+        // transform and transition are the drag's: paint() writes them.
       }}
       onPointerDown={(e) => {
         start.current = { x: e.clientX, y: e.clientY };
@@ -3175,6 +3206,17 @@ function WordRow({
             e.currentTarget.style.transition = "none";
             e.currentTarget.style.willChange = "transform";
             pos.current = () => dx.current;
+            // Only one slip slides at a time: the list's underlay goes under
+            // it, once — what the slip uncovers then shows the grade, with no
+            // repaint as the level changes.
+            const u = underlay?.current;
+            if (u) {
+              const row = e.currentTarget;
+              u.style.top = `${row.offsetTop}px`;
+              u.style.height = `${row.offsetHeight}px`;
+              u.style.setProperty("--a", `${a}px`);
+              u.style.visibility = "visible";
+            }
             setMoving(true);
             onSwipeStart?.();
           }

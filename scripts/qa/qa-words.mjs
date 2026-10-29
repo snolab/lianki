@@ -585,6 +585,35 @@ try {
     await drag(3, 70, 4);
     const after = await mStatus(3);
     check(after !== before, `phone: a sideways drag grades (${before} → ${after})`);
+    // What the slip uncovered: the list's grade strip, put under that row.
+    const under = await m.evaluate(() => {
+      const u = document.querySelector("[data-swipe-underlay]");
+      const row = document.querySelectorAll('[role="listitem"]')[3];
+      return u && row
+        ? `${getComputedStyle(u).visibility}:${u.offsetTop === row.offsetTop}:${u.querySelectorAll("[data-reveal]").length}`
+        : "missing";
+    });
+    check(under === "visible:true:4", `phone: the grade strip sits under the slid row (${under})`);
+    if (process.env.QA_SHOTS) {
+      // Mid-swipe, held on each level, then back to rest (no grade).
+      const b = await mrows.nth(5).boundingBox();
+      const [x, y] = [b.x + b.width / 2, b.y + b.height / 2];
+      await m.mouse.move(x, y);
+      await m.mouse.down();
+      for (const [dx, name] of [
+        [48, "good"],
+        [96, "easy"],
+        [-48, "hard"],
+        [-96, "again"],
+      ]) {
+        await m.mouse.move(x + dx, y, { steps: 10 });
+        await m.waitForTimeout(150);
+        await m.screenshot({ path: `${process.env.QA_SHOTS}/swipe-${name}.png` });
+      }
+      await m.mouse.move(x, y, { steps: 10 });
+      await m.mouse.up();
+      await m.waitForTimeout(400);
+    }
     // Swipe telemetry is queued and the server takes it.
     const tele = await m.evaluate(async () => {
       const queued = JSON.parse(localStorage.getItem("lk:swipe-unsent") ?? "[]");
