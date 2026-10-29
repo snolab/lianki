@@ -85,3 +85,4 @@ that are expensive to rediscover.
 | The Chrome extension, and publishing it                   | [packages/ext/README.md](packages/ext/README.md)               |
 | Sync/offline architecture                                 | [docs/sync-architecture.md](docs/sync-architecture.md)         |
 | Sync conflicts, deletions, tombstones                     | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)           |
+| Metrics, slowness and error alerts (Slack #lianki)        | [docs/monitoring.md](docs/monitoring.md)                       |

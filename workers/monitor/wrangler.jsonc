@@ -1,0 +1,22 @@
+// lianki-monitor: watches the `lianki` Worker and posts alerts to Slack #lianki.
+//  - cron, every 5 minutes: synthetic probes of the main pages (status + time);
+//  - tail consumer of `lianki` (see the main wrangler.jsonc): every real
+//    request's wall/CPU time, status and exceptions.
+// Metrics go to Analytics Engine (dataset lianki_metrics); alerts and their
+// de-duplication state live in KV. Slack: secret SLACK_WEBHOOK_URL (an
+// incoming webhook for #lianki), or SLACK_BOT_TOKEN + SLACK_CHANNEL.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "lianki-monitor",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "analytics_engine_datasets": [{ "binding": "METRICS", "dataset": "lianki_metrics" }],
+  "kv_namespaces": [{ "binding": "STATE", "id": "42b76cf56ac84b10b4375a458a98ad88" }],
+  "vars": {
+    "SITE": "https://lianki.com",
+    "SLACK_CHANNEL": "C0AGG02J0GY",
+    "PROBE_PATHS": "/home,/words,/en",
+  },
+  "observability": { "enabled": true },
+}
