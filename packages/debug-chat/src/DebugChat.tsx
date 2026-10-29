@@ -829,7 +829,8 @@ export function DebugChat({
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
       style={offset}
-      className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] opacity-60 transition-opacity focus-within:opacity-100 active:opacity-100 pointer-events-none flex-col rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100"
+      // A live mic counts as focus: the box goes opaque as it does while typing.
+      className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] transition-opacity ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none flex-col rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100`}
     >
       <ol
         ref={log}

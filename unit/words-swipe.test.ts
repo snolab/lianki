@@ -5,6 +5,7 @@ import {
   releaseLevel,
   releaseRating,
   releaseVelocity,
+  revealShown,
   snapSwipe,
   springProgress,
   swipeLevel,
@@ -113,5 +114,37 @@ describe("swipe vs scroll", () => {
     expect(releaseRating(30, 3, 1)).toBe(4);
     expect(releaseRating(-50, 0)).toBe(2);
     expect(releaseRating(-80, 0)).toBe(1);
+  });
+});
+
+describe("swipe reveal: a far detent replaces the first one's content", () => {
+  const label = { 1: "Again", 2: "Hard", 3: "Good", 4: "Easy" } as const;
+  test("which label shows on each side at each level", () => {
+    const at = (k: number) => {
+      const s = revealShown(k);
+      return [label[s.hard], label[s.good]];
+    };
+    expect(at(-2)).toEqual(["Again", "Good"]);
+    expect(at(-1)).toEqual(["Hard", "Good"]);
+    expect(at(0)).toEqual(["Hard", "Good"]);
+    expect(at(1)).toEqual(["Hard", "Good"]);
+    expect(at(2)).toEqual(["Hard", "Easy"]);
+  });
+  test("past Good to Easy and back restores Good, by the finger's own levels", () => {
+    const a = 44;
+    let k = 0;
+    const seen: string[] = [];
+    for (const finger of [10, 44, 90, 130, 90, 44, 0, -44, -90, -130, -44]) {
+      k = swipeLevel(finger, k, a);
+      const s = revealShown(k);
+      seen.push(k > 0 ? label[s.good] : k < 0 ? label[s.hard] : "-");
+    }
+    expect(seen[1]).toBe("Good");
+    expect(seen).toContain("Easy");
+    expect(seen).toContain("Again");
+    expect(seen.at(-1)).toBe("Hard");
+    // Easy only ever after Good, Again only after Hard: the far one takes over.
+    expect(seen.indexOf("Easy")).toBeGreaterThan(seen.indexOf("Good"));
+    expect(seen.indexOf("Again")).toBeGreaterThan(seen.indexOf("Hard"));
   });
 });

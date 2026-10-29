@@ -70,6 +70,13 @@ export default async function RootLayout({
             __html: `try{var p=localStorage.getItem("lk:paper");if(p)document.documentElement.dataset.paper=p}catch(e){}`,
           }}
         />
+        {/* Embed mode: inside an iframe (an overlay preview) or with ?embed=1, the
+            page shows its content only, on a transparent background. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(self!==top||/[?&]embed=1(&|$)/.test(location.search))document.documentElement.dataset.embed=""}catch(e){document.documentElement.dataset.embed=""}`,
+          }}
+        />
       </head>
       <body>
         <IntlayerServerProvider locale={locale}>

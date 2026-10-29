@@ -1,5 +1,6 @@
 "use client";
 
+import { voiceQuality } from "@lianki/debug-chat/wire";
 import {
   startTransition,
   useCallback,
@@ -35,6 +36,7 @@ import { createSequencer } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useInputModality } from "@/lib/use-input-modality";
+import { EmptyTray } from "./EmptyTray";
 import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
@@ -57,6 +59,7 @@ import {
   snapSwipe,
   springProgress,
   swipeLevel,
+  revealShown,
   SWIPE_COAST_MS,
   SWIPE_HYSTERESIS,
   SWIPE_LEVEL,
@@ -684,13 +687,13 @@ function useSpeech(serverVoice = false) {
       const tag = SPEECH_TAG[lang]?.toLowerCase();
       // The language's own region first (ja-JP, not a ja voice of elsewhere).
       const exact = vs.filter((v) => norm(v) === tag);
-      return (
-        exact.find((v) => v.localService) ??
-        exact[0] ??
-        vs.find((v) => v.localService) ??
-        vs[0] ??
-        null
-      );
+      // Natural voices first: iOS lists robotic Eloquence and novelty voices first.
+      const best = (pool: SpeechSynthesisVoice[]) => {
+        const q = Math.max(-1, ...pool.map(voiceQuality));
+        const top = pool.filter((v) => voiceQuality(v) === q);
+        return top.find((v) => v.localService) ?? top[0];
+      };
+      return best(exact) ?? best(vs) ?? null;
     },
     [voices],
   );
@@ -2244,6 +2247,32 @@ function Study({
     setListEl(el);
   }, []);
   const hintRef = useRef<HTMLDivElement>(null);
+  /** The glass toolbar over the top of the list (header included in `bar.top`). */
+  const topRef = useRef<HTMLDivElement>(null);
+  /**
+   * What the glass overlays cover of the full-window list: `top` = the
+   * toolbar's bottom edge, `bottom` = the help strip's height; `toolbar` = the
+   * toolbar's own height, which the in-flow content (loading, errors) clears.
+   */
+  const [bar, setBar] = useState({ top: 0, bottom: 0, toolbar: 0 });
+  const barRef = useRef(bar);
+  barRef.current = bar;
+  /** Room for the help strip: a tall enough window, the on-screen keyboard closed. */
+  const [room, setRoom] = useState(true);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const check = () => {
+      const keyboard = !!vv && vv.scale <= 1.01 && vv.height < window.innerHeight - 120;
+      setRoom(window.innerHeight >= 560 && !keyboard);
+    };
+    check();
+    window.addEventListener("resize", check);
+    vv?.addEventListener("resize", check);
+    return () => {
+      window.removeEventListener("resize", check);
+      vv?.removeEventListener("resize", check);
+    };
+  }, []);
   /** What a sliding slip uncovers: the grade of each level (SwipeUnderlay). */
   const underlay = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -2259,38 +2288,99 @@ function Study({
   // scrolled well past the middle (or to the touch focus line). Row positions
   // and the windowing below are all offset by it.
   const pad = Math.round(viewH * OVERSCROLL_FRACTION);
-  const startedAtTop = useRef(false);
+  // Open with the first row just under the glass toolbar, not half a screen
+  // down. Re-applied until the person moves the list themselves: whenever the
+  // list element is (re)mounted (the queue can reload, e.g. from the offline
+  // copy and then the server), the measured heights or the over-scroll
+  // change (fonts, safe areas and the toolbar settle late on iOS), and on
+  // pageshow (a restored page). Events only — nothing polls.
+  const opened = useRef<{ el: HTMLElement | null; moved: boolean }>({ el: null, moved: false });
+  const [shownAt, setShownAt] = useState(0);
+  useEffect(() => {
+    const again = () => setShownAt((n) => n + 1);
+    window.addEventListener("pageshow", again);
+    return () => window.removeEventListener("pageshow", again);
+  }, []);
+  useEffect(() => {
+    if (!listEl) return;
+    const moved = () => {
+      if (opened.current.el === listEl) opened.current.moved = true;
+    };
+    const opts = { passive: true, capture: true } as const;
+    listEl.addEventListener("pointerdown", moved, opts);
+    listEl.addEventListener("touchstart", moved, opts);
+    listEl.addEventListener("wheel", moved, opts);
+    window.addEventListener("keydown", moved, opts);
+    return () => {
+      listEl.removeEventListener("pointerdown", moved, opts);
+      listEl.removeEventListener("touchstart", moved, opts);
+      listEl.removeEventListener("wheel", moved, opts);
+      window.removeEventListener("keydown", moved, opts);
+    };
+  }, [listEl]);
   useLayoutEffect(() => {
-    // Open with the first row at the top, not half a screen down.
-    const el = listRef.current;
-    if (!el || startedAtTop.current || !listReady || !measured) return;
-    startedAtTop.current = true;
-    el.scrollTop = pad;
-  }, [listReady, measured, pad]);
+    if (!listEl || !listReady || !measured) return;
+    if (opened.current.el !== listEl) opened.current = { el: listEl, moved: false };
+    if (opened.current.moved) return;
+    listEl.scrollTop = pad - bar.top;
+  }, [listEl, listReady, measured, pad, bar.top, shownAt]);
+  // The list fills the window (.lk-words-list); the toolbar and the help strip
+  // float over it. Measured whenever any of them changes size (settings open,
+  // hints change, the window turns), never polled.
   useLayoutEffect(() => {
     const fit = () => {
-      const el = listRef.current;
-      if (!el) return;
-      // Fill down to the bottom of the window, leaving room for the key hints
-      // and, on a phone, the home indicator: the hint row pads itself by
-      // env(safe-area-inset-bottom), so its padding is that inset in px.
+      const top = topRef.current;
       const hint = hintRef.current;
-      const inset = hint ? parseFloat(getComputedStyle(hint).paddingBottom) || 0 : 0;
-      setViewH(Math.max(160, window.innerHeight - el.getBoundingClientRect().top - 40 - inset));
-      setMeasured(true);
+      const next = {
+        top: Math.round(top?.getBoundingClientRect().bottom ?? 0),
+        toolbar: Math.round(top?.offsetHeight ?? 0),
+        bottom: hint
+          ? Math.max(0, Math.round(window.innerHeight - hint.getBoundingClientRect().top))
+          : 0,
+      };
+      setBar((b) =>
+        b.top === next.top && b.bottom === next.bottom && b.toolbar === next.toolbar ? b : next,
+      );
+      if (listEl) {
+        setViewH(Math.max(160, listEl.clientHeight));
+        setMeasured(true);
+      }
     };
     fit();
-    window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
-  }, [listReady]);
-  // Keep the cursor in view as it moves, a couple of rows from the edges.
+    const ro = new ResizeObserver(fit);
+    for (const el of [topRef.current, hintRef.current, listEl]) if (el) ro.observe(el);
+    return () => ro.disconnect();
+  }, [listEl, room]);
+  // Only the list scrolls: the page under it stays put.
+  useEffect(() => {
+    if (!listEl) return;
+    // iOS scrolls the document past an html-only overflow lock (the header
+    // plus the body's safe-area padding make it taller than the window), so
+    // body is locked too, with no rubber band, and the page starts at the top.
+    const els = [document.documentElement, document.body];
+    const prev = els.map((el) => [el.style.overflow, el.style.overscrollBehavior]);
+    for (const el of els) {
+      el.style.overflow = "hidden";
+      el.style.overscrollBehavior = "none";
+    }
+    window.scrollTo(0, 0);
+    return () => {
+      els.forEach((el, i) => {
+        el.style.overflow = prev[i][0];
+        el.style.overscrollBehavior = prev[i][1];
+      });
+    };
+  }, [listEl]);
+  // Keep the cursor in view as it moves, a couple of rows from the edges of
+  // what the overlays leave uncovered.
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
+    const { top: over, bottom: under } = barRef.current;
     const top = pad + row * ROW_H;
-    if (top < el.scrollTop + ROW_H) el.scrollTop = Math.max(0, top - ROW_H);
-    else if (top + ROW_H > el.scrollTop + el.clientHeight - ROW_H * 2)
-      el.scrollTop = top + ROW_H * 3 - el.clientHeight;
+    if (top < el.scrollTop + over + ROW_H) el.scrollTop = Math.max(0, top - ROW_H - over);
+    else if (top + ROW_H > el.scrollTop + el.clientHeight - under - ROW_H * 2)
+      el.scrollTop = top + ROW_H * 3 - el.clientHeight + under;
   }, [row, ROW_H]);
 
   // Touch has no cursor: the focused row is the one last tapped, and grading
@@ -2598,158 +2688,190 @@ function Study({
     return `${formatInterval(Date.now() - dueOf(it.card))} ago`;
   };
 
+  // The help strip's text, by the input used last (keys or gestures).
+  const hintText =
+    exhausted && ahead.length === 0 ? (
+      <>
+        Every word learned. <Icon name="confetti" className="ms-0.5" />
+      </>
+    ) : modality === null ? null : modality === "touch" ? (
+      // The gestures exist only in the touch layout; a touchscreen
+      // laptop's tap is a click (= Again), and has no swipe to explain.
+      touch &&
+      "tap = show + say · hold = listen (loops) · swipe ← a little Hard, far Again · swipe → a little Good, far Easy · ↶ undo"
+    ) : help ? (
+      "↑↓ / W S / I U move (the focused row shows its meaning) · Space pin · E show all · 1 Again · 2 Hard · 3 Good · 4 Easy (right hand mirrored: L Again · K Hard · J Good · H Easy) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
+    ) : (
+      "1 Again · 2 Hard · 3 Good · 4 Easy · Z undo · ? all keys"
+    );
+
   return (
     // Full width: wide screens get room for longer explanations.
-    <div className="w-full px-3 py-4 sm:px-8 sm:py-6">
-      <div className="sticky top-0 z-10 -mx-3 sm:-mx-8 px-3 sm:px-8 py-2 mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm bg-[var(--background)] backdrop-blur">
-        <button className="tap-40 opacity-60 hover:opacity-100 whitespace-nowrap" onClick={onExit}>
-          {text.backToLists}
-        </button>
-        <span className="font-medium">{title}</span>
-        <button
-          // Tapped seven times fast for debug: iOS must not turn that into a
-          // text selection or a double-tap zoom.
-          className={`tap-40 select-none touch-manipulation [-webkit-touch-callout:none] px-2 py-0.5 rounded text-xs ${
-            settings
-              ? "bg-black/20 dark:bg-white/25"
-              : "bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
-          }`}
-          onClick={() => {
-            setSettings((v) => !v);
-            // Seven quick toggles turn the debug log on or off (the installed
-            // app has no address bar for ?debug).
-            debugTap();
-          }}
-          aria-expanded={settings}
-          aria-label={text.settings.value}
-        >
-          <Icon name="gearSix" className="me-1" />
-          {text.settings}
-        </button>
-        {touch && (
+    // In-flow content (loading, errors) starts below the glass toolbar.
+    <div className="w-full px-3 pb-4 sm:px-8 sm:pb-6" style={{ paddingTop: bar.toolbar + 16 }}>
+      {/* The toolbar: a glass overlay under the header, over the list. */}
+      <div
+        ref={topRef}
+        data-words-top
+        className="lk-words-bar lk-glass border-b border-[var(--glass-line)] py-2 text-sm"
+        style={{ top: "calc(3.5rem + env(safe-area-inset-top))" }}
+      >
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <button
-            className="tap-40 px-2 py-0.5 rounded text-xs bg-black/10 dark:bg-white/10"
-            onClick={() => undo()}
-            aria-label={text.undo.value}
+            className="tap-40 opacity-60 hover:opacity-100 whitespace-nowrap"
+            onClick={onExit}
           >
-            <Icon name="arrowCounterClockwise" className="me-1" />
-            {text.undo}
+            {text.backToLists}
           </button>
-        )}
-        <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
-          {debug && (
-            <>
-              <span className="mr-1 rounded bg-red-700 px-1 text-white" data-debug-badge>
-                DEBUG
-              </span>
-              {/* Design prototypes, to try on the device itself. */}
-              {["slip", "cords"].map((p) => (
-                <a key={p} href={`/proto/${p}`} data-debug-proto={p} className="mr-1 underline">
-                  proto/{p}
-                </a>
-              ))}
-            </>
-          )}
-          {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
-          {ahead.length - dueLeft} new
-          {sync.pending > 0 ? (
-            <span
-              data-sync="pending"
-              className={sync.online ? "" : "text-amber-700 dark:text-amber-300"}
+          <span className="font-medium">{title}</span>
+          <button
+            // Tapped seven times fast for debug: iOS must not turn that into a
+            // text selection or a double-tap zoom.
+            className={`tap-40 select-none touch-manipulation [-webkit-touch-callout:none] px-2 py-0.5 rounded text-xs ${
+              settings
+                ? "bg-black/20 dark:bg-white/25"
+                : "bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
+            }`}
+            onClick={() => {
+              setSettings((v) => !v);
+              // Seven quick toggles turn the debug log on or off (the installed
+              // app has no address bar for ?debug).
+              debugTap();
+            }}
+            aria-expanded={settings}
+            aria-label={text.settings.value}
+          >
+            <Icon name="gearSix" className="me-1" />
+            {text.settings}
+          </button>
+          {touch && (
+            <button
+              className="tap-40 px-2 py-0.5 rounded text-xs bg-black/10 dark:bg-white/10"
+              onClick={() => undo()}
+              aria-label={text.undo.value}
             >
-              {sync.online ? ` · ${sync.pending} saving…` : ` · offline · ${sync.pending} to sync`}
-            </span>
-          ) : (
-            <span data-sync="synced">
-              {!sync.online || offlineCopy ? " · offline" : ""}
-              {sync.online && grades.size > 0 ? " · synced ✓" : ""}
-            </span>
+              <Icon name="arrowCounterClockwise" className="me-1" />
+              {text.undo}
+            </button>
           )}
-        </span>
-        {settings && (
-          <div className="w-full flex flex-wrap gap-2 pt-1 pb-1" aria-label="Study settings">
-            <TogglePill
-              on={showAll}
-              onChange={setShowAll}
-              label="Show all meanings"
-              hint="Every meaning visible, not only the focused row (E)"
-            />
-            {speech.available && (
-              <TogglePill
-                on={speech.on}
-                onChange={() => speech.toggle()}
-                label="Read cards aloud"
-                hint="Speak the word and its example (V)"
-              />
+          <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
+            {debug && (
+              <>
+                <span className="mr-1 rounded bg-red-700 px-1 text-white" data-debug-badge>
+                  DEBUG
+                </span>
+                {/* Design prototypes, to try on the device itself. */}
+                {["slip", "cords"].map((p) => (
+                  <a key={p} href={`/proto/${p}`} data-debug-proto={p} className="mr-1 underline">
+                    proto/{p}
+                  </a>
+                ))}
+              </>
             )}
-            {speech.on && (
-              <TogglePill
-                on={serverVoice}
-                onChange={setServerVoice}
-                label="Server voice"
-                hint="Use Lianki's voices (en, es, fr, de, it, pt, ru, zh, ja, ko) instead of the browser's"
-              />
-            )}
-            {speech.on && serverVoice && (
-              <span className="w-full text-xs opacity-60" data-voice-credit>
-                Voices: VOICEVOX:No.7 (Japanese) · Kokoro · Piper (Thorsten-Voice, Dmitri) · MeloTTS
+            {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
+            {ahead.length - dueLeft} new
+            {sync.pending > 0 ? (
+              <span
+                data-sync="pending"
+                className={sync.online ? "" : "text-amber-700 dark:text-amber-300"}
+              >
+                {sync.online
+                  ? ` · ${sync.pending} saving…`
+                  : ` · offline · ${sync.pending} to sync`}
+              </span>
+            ) : (
+              <span data-sync="synced">
+                {!sync.online || offlineCopy ? " · offline" : ""}
+                {sync.online && grades.size > 0 ? " · synced ✓" : ""}
               </span>
             )}
-            <TogglePill
-              on={tones}
-              onChange={setTones}
-              label="Grade tones"
-              hint="A short tone per grade, for studying without looking"
-            />
-            {touch && (
+          </span>
+          {settings && (
+            <div className="w-full flex flex-wrap gap-2 pt-1 pb-1" aria-label="Study settings">
               <TogglePill
-                on={swipeSpeak}
-                onChange={setSwipeSpeak}
-                label="Speak on swipe"
-                hint="Say the word as a swipe starts"
+                on={showAll}
+                onChange={setShowAll}
+                label="Show all meanings"
+                hint="Every meaning visible, not only the focused row (E)"
               />
-            )}
-            {touch && !fs.standalone && (
+              {speech.available && (
+                <TogglePill
+                  on={speech.on}
+                  onChange={() => speech.toggle()}
+                  label="Read cards aloud"
+                  hint="Speak the word and its example (V)"
+                />
+              )}
+              {speech.on && (
+                <TogglePill
+                  on={serverVoice}
+                  onChange={setServerVoice}
+                  label="Server voice"
+                  hint="Use Lianki's voices (en, es, fr, de, it, pt, ru, zh, ja, ko) instead of the browser's"
+                />
+              )}
+              {speech.on && serverVoice && (
+                <span className="w-full text-xs opacity-60" data-voice-credit>
+                  Voices: VOICEVOX:No.7 (Japanese) · Kokoro · Piper (Thorsten-Voice, Dmitri) ·
+                  MeloTTS
+                </span>
+              )}
               <TogglePill
-                on={fs.active}
-                onChange={toggleFullscreen}
-                label="Full screen"
-                hint="Hide the address bar while studying"
+                on={tones}
+                onChange={setTones}
+                label="Grade tones"
+                hint="A short tone per grade, for studying without looking"
               />
-            )}
-            {touch && (
-              <div className="w-full pt-1" data-experimental>
-                <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
-                  Experimental
+              {touch && (
+                <TogglePill
+                  on={swipeSpeak}
+                  onChange={setSwipeSpeak}
+                  label="Speak on swipe"
+                  hint="Say the word as a swipe starts"
+                />
+              )}
+              {touch && !fs.standalone && (
+                <TogglePill
+                  on={fs.active}
+                  onChange={toggleFullscreen}
+                  label="Full screen"
+                  hint="Hide the address bar while studying"
+                />
+              )}
+              {touch && (
+                <div className="w-full pt-1" data-experimental>
+                  <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
+                    Experimental
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <TogglePill
+                      on={swipeAb === "native"}
+                      onChange={(on) => {
+                        const v = on ? "native" : "js";
+                        setSwipeVariant(v);
+                        setSwipeAb(v);
+                      }}
+                      label="New swipe"
+                      hint="Swipes done by the browser's own scrolling"
+                    />
+                    <span className="text-xs opacity-60">
+                      Native scrolling swipe. It may change or go away.
+                    </span>
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <TogglePill
-                    on={swipeAb === "native"}
-                    onChange={(on) => {
-                      const v = on ? "native" : "js";
-                      setSwipeVariant(v);
-                      setSwipeAb(v);
-                    }}
-                    label="New swipe"
-                    hint="Swipes done by the browser's own scrolling"
-                  />
-                  <span className="text-xs opacity-60">
-                    Native scrolling swipe. It may change or go away.
-                  </span>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
+          )}
+        </div>
+        {syncError && <div className="text-red-500 text-sm mt-1">Not saved: {syncError}</div>}
+        {notice && <div className="text-amber-600 dark:text-amber-300 text-sm mt-1">{notice}</div>}
+        {fsHint && (
+          <div className="text-sm mt-1 opacity-80" onClick={() => setFsHint(false)}>
+            This browser can&apos;t hide its address bar for a page. On iPhone: Share → Add to Home
+            Screen, then open Lianki from the home screen — it runs without the address bar.
           </div>
         )}
       </div>
-      {syncError && <div className="text-red-500 text-sm mb-2">Not saved: {syncError}</div>}
-      {notice && <div className="text-amber-600 dark:text-amber-300 text-sm mb-2">{notice}</div>}
-      {fsHint && (
-        <div className="text-sm mb-2 opacity-80" onClick={() => setFsHint(false)}>
-          This browser can&apos;t hide its address bar for a page. On iPhone: Share → Add to Home
-          Screen, then open Lianki from the home screen — it runs without the address bar.
-        </div>
-      )}
 
       {loadError ? (
         <div className="space-y-3 py-8 text-center">
@@ -2778,13 +2900,17 @@ function Study({
         <>
           <div
             ref={setListRef}
-            // Phones: edge to edge, no box — the whole screen width is the slips'.
-            className={`relative overflow-y-auto overscroll-contain ${
-              touch ? "-mx-3 sm:-mx-8" : "rounded-lg border border-black/10 dark:border-white/10"
-            }`}
+            // The whole window, edge to edge, under the glass overlays
+            // (.lk-words-list); scroll-padding keeps resting rows clear of them.
+            className="lk-words-list overflow-y-auto overscroll-contain"
+            data-touch={touch ? "true" : "false"}
             // overflow-anchor: none — the padding and spacers change as rows
             // load; the browser must not "help" by shifting the scroll.
-            style={{ height: viewH, overflowAnchor: "none" }}
+            style={{
+              overflowAnchor: "none",
+              scrollPaddingTop: bar.top,
+              scrollPaddingBottom: bar.bottom,
+            }}
             onScroll={(e) => {
               setScrollTop(e.currentTarget.scrollTop);
               lastScrollAt.current = performance.now();
@@ -2798,7 +2924,9 @@ function Study({
             role="list"
           >
             {touch && !native && <SwipeUnderlay ref={underlay} />}
-            <div style={{ height: pad + from * ROW_H }} />
+            <div className="relative" style={{ height: pad + from * ROW_H }}>
+              {pad - bar.top > 140 && <EmptyTray style={{ top: bar.top, height: pad - bar.top }} />}
+            </div>
             {queue.slice(from, to).map((it, k) => {
               const i = from + k;
               const g = grades.get(i);
@@ -2945,7 +3073,11 @@ function Study({
                 </Row>
               );
             })}
-            <div style={{ height: (queue.length - to) * ROW_H + pad }} />
+            <div className="relative" style={{ height: (queue.length - to) * ROW_H + pad }}>
+              {pad - bar.bottom > 140 && (
+                <EmptyTray style={{ bottom: bar.bottom, height: pad - bar.bottom }} />
+              )}
+            </div>
           </div>
           {sheet !== null && queue[sheet] && (
             <SlipSheet
@@ -2962,31 +3094,22 @@ function Study({
               }}
             />
           )}
-          <div
-            ref={hintRef}
-            className="mt-2 pb-[env(safe-area-inset-bottom)] text-[11px] opacity-50"
-          >
-            {exhausted && ahead.length === 0 ? (
-              <>
-                Every word learned. <Icon name="confetti" className="ms-0.5" />
-              </>
-            ) : modality === null ? null : modality === "touch" ? (
-              // The gestures exist only in the touch layout; a touchscreen
-              // laptop's tap is a click (= Again), and has no swipe to explain.
-              touch &&
-              "tap = show + say · hold = listen (loops) · swipe ← a little Hard, far Again · swipe → a little Good, far Easy · ↶ undo"
-            ) : help ? (
-              "↑↓ / W S / I U move (the focused row shows its meaning) · Space pin · E show all · 1 Again · 2 Hard · 3 Good · 4 Easy (right hand mirrored: L Again · K Hard · J Good · H Easy) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
-            ) : (
-              "1 Again · 2 Hard · 3 Good · 4 Easy · Z undo · ? all keys"
-            )}
-          </div>
+          {/* The help strip: glass over the bottom of the list, shown only
+              when there is room (a tall window, no on-screen keyboard). */}
+          {room && hintText && (
+            <div
+              ref={hintRef}
+              data-words-help
+              className="lk-words-bar lk-glass bottom-0 border-t border-[var(--glass-line)] pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] text-[11px]"
+            >
+              <span className="opacity-75">{hintText}</span>
+            </div>
+          )}
         </>
       )}
     </div>
   );
 }
-
 /**
  * One row. On touch, tap = onTap and a horizontal swipe grades by the level
  * it snaps to (lib/words/swipe.ts snapSwipe); the row follows the finger, tinted the colour of the
@@ -3164,23 +3287,54 @@ function SwipeUnderlay({ ref }: { ref: React.RefObject<HTMLDivElement | null> })
 
 /** The strip's zones, in a row-wide box with --a set: shared by SwipeUnderlay and NativeSlipRow. */
 function GradeZones() {
-  const zone = (r: Rating, side: "left" | "right", from: string, width: string) => (
+  // One slot per side, the width of both detents. Its first detent's grade
+  // shows until the slip reaches the far detent; then the far grade takes
+  // over the same spot (crossfade + a short slide, CSS .lk-reveal), and
+  // gives it back on the way home. The container's data-good / data-hard
+  // (showReveal) pick which.
+  const layer = (r: Rating, side: "left" | "right", far: boolean) => (
     <span
       data-reveal={r}
-      className="absolute inset-y-0 flex items-center justify-center text-[11px] font-medium opacity-90"
-      style={{ [side]: from, width, background: SWIPE_BG[r] }}
+      data-far={far ? "" : undefined}
+      className="lk-reveal absolute inset-0"
+      style={{ background: SWIPE_BG[r] }}
     >
-      {RATING_LABEL[r]}
+      <span
+        className="absolute inset-y-0 flex items-center justify-center text-[11px] font-medium opacity-90"
+        style={{ [side]: 0, width: "var(--a)" }}
+      >
+        {RATING_LABEL[r]}
+      </span>
     </span>
   );
   return (
     <>
-      {zone(3, "left", "0px", "var(--a)")}
-      {zone(4, "left", "var(--a)", "calc(var(--a) * 1.5)")}
-      {zone(2, "right", "0px", "var(--a)")}
-      {zone(1, "right", "var(--a)", "calc(var(--a) * 1.5)")}
+      <span
+        data-reveal-slot="good"
+        className="absolute inset-y-0 left-0 overflow-hidden"
+        style={{ width: "calc(var(--a) * 2.5)" }}
+      >
+        {layer(3, "left", false)}
+        {layer(4, "left", true)}
+      </span>
+      <span
+        data-reveal-slot="hard"
+        className="absolute inset-y-0 right-0 overflow-hidden"
+        style={{ width: "calc(var(--a) * 2.5)" }}
+      >
+        {layer(2, "right", false)}
+        {layer(1, "right", true)}
+      </span>
     </>
   );
+}
+
+/** Point a GradeZones container at level `k`: which grade each side shows. */
+function showReveal(el: HTMLElement | null | undefined, k: number) {
+  if (!el) return;
+  const s = revealShown(k);
+  if (el.dataset.good !== String(s.good)) el.dataset.good = String(s.good);
+  if (el.dataset.hard !== String(s.hard)) el.dataset.hard = String(s.hard);
 }
 
 type RowProps = {
@@ -3380,7 +3534,13 @@ function WordRow({
               const row = e.currentTarget;
               u.style.top = `${row.offsetTop}px`;
               u.style.height = `${row.offsetHeight}px`;
+              // Under the row itself: on a tablet the list is padded by the
+              // glass nav, and the zones must line up with the slip.
+              u.style.left = `${row.offsetLeft}px`;
+              u.style.right = "auto";
+              u.style.width = `${row.offsetWidth}px`;
               u.style.setProperty("--a", `${a}px`);
+              showReveal(u, 0);
               u.style.visibility = "visible";
             }
             setMoving(true);
@@ -3399,6 +3559,7 @@ function WordRow({
             // A light tick at each level, either way (Android; iOS has no API).
             navigator.vibrate?.(Math.abs(k) === 2 ? 12 : 6);
             level.current = k;
+            showReveal(underlay?.current, k);
           }
           dx.current = snapSwipe(x, a);
           frame.current ||= requestAnimationFrame(paint);
@@ -3617,6 +3778,12 @@ function NativeSlipRow({
       clearTimeout(quiet);
       quiet = setTimeout(settle, 150);
     };
+    // The reveal follows the detent the slip is nearest (the far one's grade
+    // takes over the first one's spot).
+    const strip = el.querySelector<HTMLElement>("[data-swipe-strip]");
+    const reveal = () =>
+      showReveal(strip, Math.max(-2, Math.min(2, Math.round((home - el.scrollLeft) / a))));
+    el.addEventListener("scroll", reveal, { passive: true });
     el.addEventListener("touchstart", touchstart, { passive: true });
     el.addEventListener("touchend", touchend, { passive: true });
     el.addEventListener("touchcancel", touchend, { passive: true });
@@ -3638,6 +3805,7 @@ function NativeSlipRow({
       el.removeEventListener("scrollsnapchanging", snapping);
       el.removeEventListener("scrollend", settle);
       el.removeEventListener("scroll", scrolled);
+      el.removeEventListener("scroll", reveal);
       el.removeEventListener("scroll", slid);
       el.removeEventListener("touchmove", axis);
     };

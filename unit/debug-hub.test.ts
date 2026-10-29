@@ -200,6 +200,56 @@ describe("DebugHub pairing", () => {
     });
   });
 
+  it("a streamed result's chunks reach the controller, ahead of the result", async () => {
+    const { page, controller, msg, pairOf } = setup();
+    const p = page();
+    const c = controller();
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    msg(c, { type: "eval", code: "$lk.send(png)" });
+    const ev = p.last("eval") as { id: string; to: string };
+    const big = "A".repeat(100_000);
+    for (const seq of [0, 1])
+      msg(p, { type: "chunk", id: ev.id, to: ev.to, part: 0, seq, total: 2, data: big });
+    msg(p, { type: "result", id: ev.id, to: ev.to, ok: true, value: "{}" });
+    const got = c.sent.filter((m) => m.type === "chunk" || m.type === "result");
+    expect(got.map((m) => [m.type, m.seq])).toEqual([
+      ["chunk", 0],
+      ["chunk", 1],
+      ["result", undefined],
+    ]);
+    expect(got[0]).toEqual({
+      type: "chunk",
+      id: ev.id,
+      part: 0,
+      seq: 0,
+      total: 2,
+      data: big,
+      page: "/words pwa iPhone",
+    });
+  });
+
+  it("chunks go nowhere for a pairing not yet allowed, or one that lapsed", async () => {
+    const { page, controller, msg, pairOf, tick } = setup();
+    const p = page();
+    const c = controller();
+    const chunk = (to: string) => ({
+      type: "chunk",
+      id: "x",
+      to,
+      part: 0,
+      seq: 0,
+      total: 1,
+      data: "d",
+    });
+    msg(p, chunk(pairOf(p)));
+    expect(c.last("chunk")).toBeUndefined();
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    const ev = (msg(c, { type: "eval", code: "1" }), p.last("eval") as { to: string });
+    tick(EVAL_GRANT_MS + 1);
+    msg(p, chunk(ev.to));
+    expect(c.last("chunk")).toBeUndefined();
+  });
+
   it("only pages whose label contains the target get the code", async () => {
     const { page, controller, msg, pairOf } = setup();
     const phone = page("/words pwa iPhone");

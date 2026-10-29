@@ -190,6 +190,69 @@ Run it by hand with Playwright: open `http://localhost:5180/harness`
 value is the rev) and edit `DebugChat.tsx`: the rev changes and the new UI
 renders.
 
+## Screenshots
+
+`scripts/dev/shot.ts` takes a PNG of the owner's open debug pages (the PWA on
+the phone, say) over the eval channel, and prints the path:
+
+```bash
+bun scripts/dev/shot.ts                          # every open debug page
+bun scripts/dev/shot.ts --target iPhone          # or Android, /words, any part of the label
+bun scripts/dev/shot.ts --out /tmp/words.png     # a file, or a directory
+bun scripts/dev/shot.ts --burst 5 --every 400    # 5 shots, 400 ms apart, by the page's clock
+bun scripts/dev/shot.ts --selector "main ul"     # one element instead of the viewport
+```
+
+It needs a **live eval grant**. It resumes the saved one
+(`.debug-eval-token.json`, as `eval.ts` does), so under a live grant there is
+no prompt. With none, it pairs once, which prompts the owner; `--no-pair`
+fails instead. Paths go to stdout, one per line, and timings go to stderr. The
+default folder is `.shots/` at the repo root, which is gitignored. A burst
+adds `-<n>` to the name, and every page after the first adds `-p<n>`.
+
+**On the page.** The code (`scripts/dev/shot-page.ts`) imports
+`modern-screenshot`, pinned in `scripts/dev/shot-lib.ts`, from jsDelivr once
+and keeps it on `window`. It then renders the DOM through an SVG
+`foreignObject` onto a canvas at the device pixel ratio, capped at 2. It
+renders the whole layout viewport, so the safe-area insets are in it, at the
+document's scroll offset, and inner scrollers keep theirs. It crops to the
+visual viewport and fills in the page background. An image it cannot fetch
+(cross-origin without CORS, or gone) is left blank instead of failing the
+shot. Each PNG goes back with `$lk.send` in 128 K-character chunks, which
+the CLI joins and writes as they arrive. With `--burst`, the page's own timer
+spaces the shots (`burst` in `shot-lib.ts`). A slow shot delays the next one,
+never overlaps it.
+
+**Speed, measured locally.** These were measured with Playwright Chromium on a
+Mac (iPhone 13 emulation, 390×664, rendered at 2×), against the real
+`DebugHub` behind a local Bun server:
+
+| Shot                             | Render on the page | Command, end to end |
+| -------------------------------- | ------------------ | ------------------- |
+| simple page, 75 KB PNG           | 80–120 ms          | 110–200 ms          |
+| full-screen noise, 2.6 MB PNG    | 150–165 ms         | 190–255 ms          |
+| first shot on a page (CDN fetch) | +45–55 ms import   |                     |
+
+A burst of 3 every 500 ms took 1.1–1.2 s. A real phone has not been
+measured: no test runs against the owner's devices. On one, add the network
+(the resume handshake and the PNG upload) and a slower renderer. The aim is
+2–3 s a shot.
+
+**Limits.** DOM-to-image is a re-render, not a capture of the screen pixels,
+so these may come out wrong:
+
+- `<canvas>` and `<video>`: only their current frame, and only when it is readable.
+- Cross-origin `<iframe>`s: blank.
+- `backdrop-filter`: not applied, so glass bars show the content sharp behind them.
+- Cross-origin images without CORS: blank.
+- Fonts that are not reachable: fall back.
+
+The browser's own UI (the status bar, the keyboard) is never in the shot.
+
+**Deploys.** The page needs `$lk` (DebugEval) and the hub needs to forward
+`chunk` messages (lianki-push). Both ship with `main`. A page from before them
+answers that it needs a deploy and a reload.
+
 ## Voice clips and the STT bench
 
 To pick a speech-to-text model on the owner's own voice, the dev server can

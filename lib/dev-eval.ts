@@ -37,6 +37,15 @@ export {
 export const MAX_CODE = 16 * 1024;
 /** Largest result summary a page sends back, in characters. */
 export const MAX_RESULT = 4000;
+/**
+ * A streamed result's piece (`$lk.send`, below): at most this many characters
+ * of data per {type:"chunk"} message. A screenshot (scripts/dev/shot.ts) is a
+ * few hundred KB to a few MB of base64, so it travels as several of these,
+ * well under the runtime's WebSocket message limit.
+ */
+export const MAX_CHUNK = 128 * 1024;
+/** Most chunks one streamed piece may be split into (MAX_CHUNK × this ≈ 32 MB). */
+export const MAX_CHUNKS = 256;
 /** Largest page or controller label, in characters. */
 export const MAX_LABEL = 300;
 /** How long the owner has to answer a pairing prompt. */
@@ -116,6 +125,20 @@ export type PageMessage =
   | { type: "page"; label: string }
   /** Close another (or this) page of the same audience, from the chat's menu. */
   | { type: "end-page"; id: string }
+  /**
+   * One piece of a streamed result (`$lk.send(data)` in the eval code):
+   * piece `part` of the eval `id`, split into `total` chunks; this is `seq`.
+   * Forwarded to the controller like a result; the sender reassembles it.
+   */
+  | {
+      type: "chunk";
+      id: string;
+      to: string;
+      part: number;
+      seq: number;
+      total: number;
+      data: string;
+    }
   | {
       type: "result";
       id: string;
@@ -167,8 +190,12 @@ export const PAGES_IDLE = 4411;
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
 
-function parse(raw: unknown): Record<string, unknown> | null {
-  if (typeof raw !== "string" || raw.length > MAX_CODE + 2048) return null;
+/** The largest raw message, in characters: a chunk's data may be escaped (\u00xx) in JSON. */
+const MAX_RAW = MAX_CODE + 2048;
+const MAX_CHUNK_RAW = MAX_CHUNK * 6 + 1024;
+
+function parse(raw: unknown, max = MAX_RAW): Record<string, unknown> | null {
+  if (typeof raw !== "string" || raw.length > max) return null;
   try {
     const v = JSON.parse(raw);
     return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
@@ -212,8 +239,11 @@ export function parseControllerMessage(
 
 /** Validate an owner page's message; anything else is dropped. */
 export function parsePageMessage(raw: unknown): PageMessage | null {
-  const m = parse(raw);
+  const m = parse(raw, MAX_CHUNK_RAW);
   if (!m) return null;
+  if (m.type === "chunk") return parseChunk(m);
+  // Only a chunk may be that large.
+  if ((raw as string).length > MAX_RAW) return null;
   if (m.type === "allow") {
     const pair = str(m.pair, 64);
     if (!pair) return null;
@@ -263,6 +293,45 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     };
   }
   return null;
+}
+
+const count = (v: unknown, max: number) =>
+  typeof v === "number" && Number.isInteger(v) && v >= 0 && v < max ? v : undefined;
+
+function parseChunk(m: Record<string, unknown>): PageMessage | null {
+  const id = str(m.id, 64);
+  const to = str(m.to, 64);
+  const part = count(m.part, 1_000_000);
+  const total = count(m.total, MAX_CHUNKS + 1);
+  const seq = count(m.seq, total ?? 0);
+  if (!id || !to || part === undefined || !total || seq === undefined) return null;
+  if (typeof m.data !== "string" || m.data.length > MAX_CHUNK) return null;
+  return { type: "chunk", id, to, part, seq, total, data: m.data };
+}
+
+/**
+ * The {type:"chunk"} messages that carry one streamed piece of eval `id`'s
+ * result back to controller `to`: `data` cut into MAX_CHUNK-character
+ * pieces (an empty string is one empty chunk). The page sends them in order.
+ */
+export function chunkMessages(
+  id: string,
+  to: string,
+  part: number,
+  data: string,
+  size = MAX_CHUNK,
+): Extract<PageMessage, { type: "chunk" }>[] {
+  const total = Math.max(1, Math.ceil(data.length / size));
+  if (total > MAX_CHUNKS) throw new Error(`too large to send: ${data.length} chars`);
+  return Array.from({ length: total }, (_, seq) => ({
+    type: "chunk" as const,
+    id,
+    to,
+    part,
+    seq,
+    total,
+    data: data.slice(seq * size, (seq + 1) * size),
+  }));
 }
 
 /** A chat message's text: trimmed, non-empty, at most MAX_CHAT characters; else undefined. */
@@ -356,15 +425,24 @@ export function summarize(value: unknown, max = MAX_RESULT): string {
 }
 
 /**
- * Compile `code` as an async function. An expression (`document.title`) is
- * returned as is; anything else is a function body, so `return x` works and
- * `await` is allowed in both.
+ * What eval code sees as `$lk` (DebugEval passes it). `send(data)` streams
+ * one piece back to the sender ahead of the result, in chunks of any size
+ * the result itself could not carry (MAX_RESULT); it returns the piece's
+ * number, 0, 1, 2… in this run.
  */
-export function compile(code: string): () => Promise<unknown> {
+export type EvalContext = { send(data: string): number };
+
+/**
+ * Compile `code` as an async function of `$lk` (an EvalContext). An
+ * expression (`document.title`) is returned as is; anything else is a
+ * function body, so `return x` works and `await` is allowed in both.
+ */
+export function compile(code: string): ($lk?: EvalContext) => Promise<unknown> {
+  type Fn = ($lk?: EvalContext) => Promise<unknown>;
   try {
-    return new Function(`return (async () => (\n${code}\n))();`) as () => Promise<unknown>;
+    return new Function("$lk", `return (async () => (\n${code}\n))();`) as Fn;
   } catch (e) {
     if (!(e instanceof SyntaxError)) throw e;
-    return new Function(`return (async () => {\n${code}\n})();`) as () => Promise<unknown>;
+    return new Function("$lk", `return (async () => {\n${code}\n})();`) as Fn;
   }
 }

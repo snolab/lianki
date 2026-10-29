@@ -131,7 +131,13 @@ eval ran · id", runs it as `new Function` in an async wrapper (an expression
 is returned; a body may `return`; `await` works), and sends the result — a
 JSON summary of at most 4 KB, or the error and stack — back over the socket
 to the sender and to `/api/dev/log`. The app sets no Content-Security-Policy,
-so nothing blocks `new Function`.
+so nothing blocks `new Function`. Anything larger is streamed ahead of the
+result: the code calls `$lk.send(data)`, and the page sends it as
+`{type:"chunk", id, to, part, seq, total, data}` messages of at most 128 K
+characters each, which the hub forwards like a result (to an approved sender
+still in time, with the page's label) and the sender joins back together.
+`scripts/dev/shot.ts` uses this for screenshots
+([dev-debug-widget.md](dev-debug-widget.md), "Screenshots").
 
 **Logs.** Every pairing, answer and command (id, length, first 200 chars) is
 logged by lianki-push (`wrangler tail lianki-push`, `debug.*`); results land

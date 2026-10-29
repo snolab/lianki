@@ -80,6 +80,77 @@ page.on("pageerror", (e) => {
   if (!e.message.includes("Turnstile")) errs.push("PAGEERROR " + e.message);
 });
 let ok = true;
+
+/**
+ * The grade reveal paints behind its slip: at rest the point over a label's
+ * spot hits the card; slid away (Good uncovered), it hits the label. The
+ * reveal ignores pointers, so they are let through for the probe only (the
+ * page is closed right after).
+ */
+async function revealOrder(pg, variant) {
+  await pg.addStyleTag({
+    content:
+      "[data-swipe-underlay],[data-swipe-strip],[data-reveal-slot],[data-reveal],[data-reveal] *{pointer-events:auto!important}",
+  });
+  const barB = await pg
+    .locator("[data-words-top]")
+    .evaluate((el) => el.getBoundingClientRect().bottom);
+  const rows = pg.locator('[role="listitem"]');
+  let i = 0;
+  let b = null;
+  for (; !b; i++) {
+    const bi = await rows.nth(i).boundingBox();
+    if (bi && bi.y > barB + 100) b = bi;
+  }
+  const row = rows.nth(i - 1);
+  const [x, y] = [b.x + 20, b.y + b.height / 2];
+  const hit = () =>
+    pg.evaluate(
+      ([x, y]) => {
+        // The topmost thing that shows: a faded-out reveal layer doesn't count.
+        for (const e of document.elementsFromPoint(x, y)) {
+          const r = e.closest("[data-reveal]");
+          if (r && Number(getComputedStyle(r).opacity) > 0.5) return `label:${r.dataset.reveal}`;
+          if (!r && e.closest(".slip")) return "card";
+        }
+        return "none";
+      },
+      [x, y],
+    );
+  const rest = await hit();
+  let mid;
+  if (variant === "native") {
+    // Slid right by a, probed in the same task (before the slip glides home).
+    mid = await row.evaluate(
+      (r, [x, y]) => {
+        const a = parseFloat(getComputedStyle(r).getPropertyValue("--a"));
+        r.querySelector(".slip-scroller").scrollTo({ left: a, behavior: "instant" });
+        for (const e of document.elementsFromPoint(x, y)) {
+          const z = e.closest("[data-reveal]");
+          if (z && Number(getComputedStyle(z).opacity) > 0.5) return `label:${z.dataset.reveal}`;
+          if (!z && e.closest(".slip")) return "card";
+        }
+        return "none";
+      },
+      [x, y],
+    );
+    await row.evaluate((r) => {
+      const a = parseFloat(getComputedStyle(r).getPropertyValue("--a"));
+      r.querySelector(".slip-scroller").scrollTo({ left: 2 * a, behavior: "instant" });
+    });
+  } else {
+    const cx = b.x + b.width / 2;
+    await pg.mouse.move(cx, y);
+    await pg.mouse.down();
+    await pg.mouse.move(cx + 60, y, { steps: 10 });
+    await pg.waitForTimeout(250);
+    mid = await hit();
+    await pg.mouse.move(cx, y, { steps: 10 });
+    await pg.mouse.up();
+  }
+  await pg.waitForTimeout(500);
+  return `${rest} → ${mid}`;
+}
 const check = (cond, msg) => {
   console.log(`${cond ? "✓" : "✗"} ${msg}`);
   if (!cond) ok = false;
@@ -119,6 +190,60 @@ try {
   check((await page.locator("span.text-emerald-600").count()) > 0, "new words are shown in green");
   const statusOf = async (i) => (await rows.nth(i).locator("span.tabular-nums").innerText()).trim();
   check((await statusOf(0)) === "new", `an ungraded new word says "new": ${await statusOf(0)}`);
+
+  // Glass: the list fills the window and scrolls under the toolbar and the
+  // help strip, which float over it fixed, translucent and blurred.
+  const glass = await page.evaluate(() => {
+    const list = document.querySelector('[role="list"]');
+    const bars = ["[data-words-top]", "[data-words-help]"].map((q) => {
+      const el = document.querySelector(q);
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      return {
+        fixed: cs.position === "fixed",
+        blur: /blur\(12px\)/.test(cs.backdropFilter || cs.webkitBackdropFilter || ""),
+        alpha: Number(/\/\s*([\d.]+)\s*\)$/.exec(cs.backgroundColor)?.[1] ?? 1),
+      };
+    });
+    const r = list.getBoundingClientRect();
+    return {
+      bars,
+      listFixed: getComputedStyle(list).position === "fixed",
+      full: Math.round(r.top) === 0 && Math.round(r.bottom) === innerHeight,
+      scrollPad: parseFloat(getComputedStyle(list).scrollPaddingTop),
+      tray: document.querySelectorAll('[role="list"] [data-empty-tray][aria-hidden="true"] svg')
+        .length,
+    };
+  });
+  check(
+    glass.bars.every((b) => b && b.fixed && b.blur && b.alpha < 0.7),
+    `the toolbar and the help strip are fixed glass overlays (${JSON.stringify(glass.bars)})`,
+  );
+  check(
+    glass.listFixed && glass.full && glass.scrollPad > 0,
+    `the list fills the window under the overlays, scroll-padded by them (${glass.scrollPad}px)`,
+  );
+  check(glass.tray === 2, `an empty tray fills the over-scroll at both ends (${glass.tray})`);
+  {
+    // Scrolled, a row passes under the toolbar: the bar covers the list.
+    const under = await page.evaluate(async () => {
+      const list = document.querySelector('[role="list"]');
+      const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
+      const before = list.scrollTop;
+      list.scrollTop = before + 120;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const covered = [...list.querySelectorAll('[role="listitem"]')].some((row) => {
+        const b = row.getBoundingClientRect();
+        return b.top < bar.bottom && b.bottom > bar.top;
+      });
+      list.scrollTop = before;
+      return { covered, doc: document.scrollingElement.scrollTop };
+    });
+    check(
+      under.covered && under.doc === 0,
+      `the list scrolls under the glass toolbar; the page itself never scrolls (${JSON.stringify(under)})`,
+    );
+  }
 
   // The term column is fitted to the terms on screen (6–20rem), one width for all rows.
   const termW = await page
@@ -627,13 +752,15 @@ try {
           `${tag} hints follow the last input: touch, keyboard, touch (${seeded} → ${typed} → ${touched})`,
         );
       }
-      const listTop = await m
-        .locator('[role="list"]')
-        .evaluate((el) => el.getBoundingClientRect().top);
+      // The list runs under the glass toolbar; it opens with the first word
+      // just below it, not behind it.
+      const barBottom = await m
+        .locator("[data-words-top]")
+        .evaluate((el) => el.getBoundingClientRect().bottom);
       const firstTop = (await mrows.nth(0).boundingBox()).y;
       check(
-        Math.abs(firstTop - listTop) < 50,
-        `${tag} the list opens with the first word at the top (${Math.round(firstTop - listTop)}px)`,
+        firstTop >= barBottom - 2 && firstTop - barBottom < 50,
+        `${tag} the list opens with the first word just under the toolbar (${Math.round(firstTop - barBottom)}px)`,
       );
       // Parity: the face of a slip — the row itself (A) or the scroller's
       // face (B) — carries the same paper, node line, seam and cords.
@@ -829,10 +956,49 @@ try {
         `${tag} the grade strip sits under the slid row (${under})`,
       );
       await m.waitForTimeout(400);
+      if (variant === "js") {
+        // The reveal: the far detent's grade replaces the first one's in the
+        // same spot (Good → Easy, Hard → Again), and going back restores it.
+        const listTop = (await m.locator('[role="list"]').boundingBox()).y;
+        let b = null;
+        for (let i = 0; !b; i++) {
+          const bi = await mrows.nth(i).boundingBox();
+          if (bi && bi.y > listTop + 200) b = bi;
+        }
+        const [x, y] = [b.x + b.width / 2, b.y + b.height / 2];
+        const shown = () =>
+          m.evaluate(() => {
+            const u = document.querySelector("[data-swipe-underlay]");
+            const side = (slot) =>
+              [...u.querySelectorAll(`[data-reveal-slot="${slot}"] > [data-reveal]`)]
+                .filter((el) => Number(getComputedStyle(el).opacity) > 0.5)
+                .map((el) => el.textContent)
+                .join("+");
+            return `${side("hard")}|${side("good")}`;
+          });
+        await m.mouse.move(x, y);
+        await m.mouse.down();
+        const seen = [];
+        for (const dx of [48, 96, 48, -48, -96, -48]) {
+          await m.mouse.move(x + dx, y, { steps: 10 });
+          await m.waitForTimeout(250);
+          seen.push(await shown());
+        }
+        await m.mouse.move(x, y, { steps: 10 });
+        await m.mouse.up();
+        await m.waitForTimeout(600);
+        check(
+          seen.join(" ") === "Hard|Good Hard|Easy Hard|Good Hard|Good Again|Good Hard|Good",
+          `${tag} a far detent's grade replaces the first one's in place, and back (${seen.join(" ")})`,
+        );
+      }
       if (process.env.QA_SHOTS) {
         // Mid-swipe, held on each level, then back to rest (no grade): a
         // finger held down — a pointer for A, a real touch for B.
-        const listTop = (await m.locator('[role="list"]').boundingBox()).y;
+        // Below the glass toolbar, where the list's own top is now the window's.
+        const listTop = await m
+          .locator("[data-words-top]")
+          .evaluate((el) => el.getBoundingClientRect().bottom);
         let b = null;
         for (let i = 0; !b; i++) {
           const bi = await mrows.nth(i).boundingBox();
@@ -901,9 +1067,66 @@ try {
           `phone: the full screen button works (${fsOn ? "fullscreen" : "hint"})`,
         );
       }
+      const order = await revealOrder(m, variant);
+      check(
+        order === "card → label:3",
+        `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
+      );
       await m.close();
     }
     await phone.close();
+  }
+
+  // iPhone on WebKit, both swipe variants: the page itself never scrolls, and
+  // the list opens with its first word right under the glass toolbar — on
+  // load, on reload, and when the list is shown again (pageshow).
+  {
+    const { webkit, devices } = await import("playwright");
+    const wk = await webkit.launch();
+    const listUrl = page.url();
+    for (const variant of ["js", "native"]) {
+      const tag = `webkit-iphone/${variant}:`;
+      const c = await wk.newContext({
+        ...devices["iPhone 13"],
+        storageState: await ctx.storageState(),
+      });
+      await c.addInitScript(silentAudio);
+      await c.addInitScript((v) => {
+        localStorage.setItem("lk:first-run", "account");
+        localStorage.setItem("lk:swipe-ab", v);
+      }, variant);
+      const w = await c.newPage();
+      w.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
+      const opening = () =>
+        w.evaluate(() => {
+          const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
+          const row = document.querySelector('[role="listitem"]').getBoundingClientRect().top;
+          return {
+            scrollY: Math.round(scrollY),
+            gap: Math.round(row - bar),
+            native: document.querySelectorAll(".slip-native").length > 0,
+          };
+        });
+      for (const when of ["load", "reload"]) {
+        if (when === "load") await w.goto(listUrl, { waitUntil: "networkidle" });
+        else await w.reload({ waitUntil: "networkidle" });
+        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        await w.waitForTimeout(800);
+        const o = await opening();
+        check(
+          o.scrollY === 0 && o.gap >= 0 && o.gap < 4 && o.native === (variant === "native"),
+          `${tag} ${when}: the page doesn't scroll and the first word sits right under the toolbar (${JSON.stringify(o)})`,
+        );
+      }
+      const order = await revealOrder(w, variant);
+      check(
+        order === "card → label:3",
+        `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
+      );
+      await w.close();
+      await c.close();
+    }
+    await wk.close();
   }
 
   // /alphabet: same drill over its own catalog; its lists stay off /words.

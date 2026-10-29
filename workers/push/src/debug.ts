@@ -851,7 +851,7 @@ export class DebugHub {
         ? this.dormant(ws, page, m)
         : send(ws, this.state(page.thread));
     // Only a pairing made for this page's own audience can be answered or sent results.
-    const c = this.controller(m.type === "result" ? m.to : m.pair);
+    const c = this.controller(m.type === "result" || m.type === "chunk" ? m.to : m.pair);
     if (!c || audience(c.a) !== page.thread) return send(ws, this.state(page.thread));
     if (m.type === "allow") {
       const pages = this.grantPages(page, m.pages);
@@ -866,10 +866,11 @@ export class DebugHub {
         : this.allowEval(c.ws, c.a, pages);
     }
     if (m.type === "deny" || m.type === "revoke") return this.end(m.type, c.ws, c.a);
-    // A result goes back only to an approved controller that is still in time.
-    if (m.type !== "result" || !c.a.until || c.a.until <= t) return;
-    const { type: _t, to: _to, ...rest } = m;
-    send(c.ws, { type: "result", ...rest, page: page.label });
+    // A result (or a streamed piece of one) goes back only to an approved
+    // controller that is still in time.
+    if ((m.type !== "result" && m.type !== "chunk") || !c.a.until || c.a.until <= t) return;
+    const { to: _to, ...rest } = m;
+    send(c.ws, { ...rest, page: page.label });
   }
 
   /**

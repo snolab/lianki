@@ -139,3 +139,13 @@ export function restRating(offset: number, a = SWIPE_ROW_PX): SwipeRating | null
   const strong = d > a + 0.5;
   return offset > 0 ? (strong ? 4 : 3) : strong ? 1 : 2;
 }
+
+/**
+ * What the reveal under a sliding slip shows on each side at level `k`. A far
+ * detent's grade replaces the first detent's in the same spot (no stacking):
+ * slid right, Good until Easy; slid left, Hard until Again. Back on the first
+ * detent, its own grade returns.
+ */
+export function revealShown(k: number): { good: 3 | 4; hard: 2 | 1 } {
+  return { good: k >= 2 ? 4 : 3, hard: k <= -2 ? 1 : 2 };
+}
