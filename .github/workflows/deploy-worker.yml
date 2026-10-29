@@ -55,13 +55,14 @@ jobs:
       # never leaves the schema a migration behind the code.
       - name: D1 migrations
         run: bunx wrangler d1 migrations apply lianki --remote
-      # The monitor first: the main Worker names it as its tail consumer.
-      # lianki-push (workers/push) is NOT deployed here: its zone route needs a
-      # Workers Routes permission this token lacks (the step failed and skipped
-      # the main deploy). It changes rarely — deploy it by hand, see
-      # docs/monitoring.md; the main Worker only needs it to exist.
+      # The monitor and the push service first: the main Worker names them
+      # (tail consumer; service binding). lianki-push owns the zone route
+      # lianki.com/api/version/*, so the token needs Zone · Workers Routes ·
+      # Edit on lianki.com (granted 2026-10-29; docs/monitoring.md).
       - name: Deploy the monitor
         run: bunx wrangler deploy -c workers/monitor/wrangler.jsonc
+      - name: Deploy the push service
+        run: bunx wrangler deploy -c workers/push/wrangler.jsonc
       - name: Deploy
         run: bunx wrangler deploy
       # Differential check against lianki.com. Advisory until cutover: Vercel

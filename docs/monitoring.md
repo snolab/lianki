@@ -40,10 +40,12 @@ no secret, no timer. Pages connect only while visible and focused, and get
 the current build on connect. `/api/version/stream` answers pages from the
 old SSE design once with "new version" and asks them not to reconnect.
 
-**Deploying `lianki-push`** is manual (`bunx wrangler deploy -c
-workers/push/wrangler.jsonc` with an account that may edit the zone's
-Workers routes): CI's token cannot, and a failing step there skipped the main
-Worker's deploy. The main Worker's `PUSH` binding only needs it to exist.
+**Deploying `lianki-push`**: CI deploys it after the monitor and before the
+main Worker (`.github/workflows/deploy-worker.yml`). Its zone route needs the
+CI token (`lianki-deploy`) to hold Zone · Workers Routes · Edit on lianki.com,
+granted 2026-10-29; without it the step fails and skips the main deploy (as
+in #240–#242). By hand: `bunx wrangler deploy -c workers/push/wrangler.jsonc`.
+The main Worker's `PUSH` binding only needs it to exist.
 Its own `MAIN` binding (to `lianki`, for the remote-eval owner check below)
 needs the main Worker deployed first when that check changes.
 
@@ -109,9 +111,10 @@ command). The session's local port and a random token are kept in
 
 Every owner page that holds the debug socket also shows a small chat box at
 the bottom right (`app/components/DebugChat.tsx`; collapsed to a pill by
-default on /words). The owner types; the text goes out 5 s after the last
+default on /words). The owner types; the text goes out 3 s after the last
 keystroke (a thin bar drains while it waits), or at once on Enter
-(Shift+Enter is a newline). Nothing is sent in the middle of an IME
+(Shift+Enter is a newline) or when dictation drops in over 10 characters
+ending a sentence (。 . ! ?). The box is translucent until touched. Nothing is sent in the middle of an IME
 composition. The header shows "agent listening (n)" — the approved senders
 connected now. Agent replies are read aloud with `speechSynthesis` (the
 language is guessed from the script: kana → ja, Hangul → ko, other Han →
