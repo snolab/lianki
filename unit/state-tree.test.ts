@@ -379,34 +379,51 @@ describe("the plan in docs/state-tree.md", () => {
     expect(plan.title).toBe("Plan — everything in parallel (2026-10-30)");
     expect(plan.summaries?.zh).toEqual({ done: "捷报频传", doing: "多线并进", next: "蓄势待发" });
     const lanes = plan.children.map((l) => l.assignee?.name);
-    expect(lanes.slice(0, 4)).toEqual([
+    expect(lanes.slice(0, 5)).toEqual([
+      "main-lane",
       "bar-agent",
       "protocol-agent",
       "tree-agent",
-      "roadmap-agent",
+      "rename-agent",
     ]);
-    const bar = plan.children[0];
-    expect(bar.children[0].status).toBe("doing");
-    expect(bar.children[0].assignee?.name).toBe("bar-agent"); // inherited
-    expect(bar.children[1]).toMatchObject({
-      title: "Your OK on the preview",
+    for (const lane of plan.children) expect(lane.summaries?.zh && lane.summaries?.en).toBeTruthy();
+    const [words, bar, protocol] = plan.children;
+    expect(words.children[0]).toMatchObject({
+      status: "doing",
+      assignee: { type: "agent", name: "swipe-agent" },
+    });
+    expect(words.children[1].assignee?.name).toBe("main-lane"); // inherited
+    expect(bar.children[1].note).toBe("hot-loaded, ships with the bar");
+    expect(bar.children[3]).toMatchObject({
+      title: "OK the bar preview",
       needsOwner: true,
       assignee: { type: "human", name: "owner" },
     });
+    expect(protocol.children.map((c) => [c.status, c.doneAt])).toEqual([
+      ["done", "2026-10-30"],
+      ["done", "2026-10-30"],
+      ["open", undefined],
+    ]);
     expect(plan.note).toContain("Critical path:");
-    expect(plan.note).toContain("about 2 agent hours");
   });
-  it("its frontier: an owner decision now, agent work next, summaries in zh and en", () => {
+  it("its frontier: an owner decision now, the swipe check next, summaries in zh and en", () => {
     const zh = frontier(doc, { locale: "zh" });
-    expect(zh.doing?.title).toBe("Your OK on the preview");
+    expect(zh.doing?.title).toBe("Confirm deleting public/proto/cords.html");
     expect(zh.doing?.path).toEqual([plan.title, plan.children[0].title]);
     expect(zh.doing?.summary).toBe("多线并进");
     expect(zh.done?.summary).toBe("捷报频传");
-    expect(zh.next?.title).toBe(
-      "Mic stays on after a page refresh (~25 min; needs your description of the bug)",
-    );
-    expect(zh.next?.assignee?.name).toBe("bar-agent");
+    expect(zh.done?.title).toContain("(#299)"); // the latest (done …)
+    expect(zh.next?.title).toBe("Verify the new swipe via ?swipe=native, then switch your flag");
+    expect(zh.next?.assignee?.name).toBe("main-lane");
     expect(frontier(doc, { locale: "en" }).next?.summary).toBe("Ready to go");
+    const lane = frontier(doc, { locale: "en", scope: [plan.title, plan.children[1].title] });
+    expect(lane.doing?.summary).toBe("Several fixes at once");
+    expect(lane.doing?.items.map((i) => i.assignee?.name)).toEqual([
+      "owner",
+      "bar-agent",
+      "bar-agent",
+      "bar-agent",
+    ]);
   });
   it("lists each item once", () => {
     const titles: string[] = [];
@@ -417,7 +434,7 @@ describe("the plan in docs/state-tree.md", () => {
       });
     walk(doc.children);
     expect(new Set(titles).size).toBe(titles.length);
-    for (const dup of ["#279", "#527", "#300", "#296", "cords.html"])
+    for (const dup of ["#279", "#527", "#300", "#296", "#298", "#299", "#301", "cords.html"])
       expect(titles.filter((t) => t.includes(dup)).length).toBeLessThanOrEqual(
         dup === "cords.html" ? 2 : 1,
       );

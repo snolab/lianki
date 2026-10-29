@@ -36,7 +36,7 @@ Live
   save (SSE `tree`; fs.watch, no polling); a green dot by "Tree" says so.
 -->
 
-# Lianki — state tree (draft, 2026-10-30)
+# Lianki — state tree (2026-10-30)
 
 Legend: [ ] open · [~] in progress · [!] blocked · [x] done · (!) waits on you · → command or link
 
@@ -47,43 +47,70 @@ Legend: [ ] open · [~] in progress · [!] blocked · [x] done · (!) waits on y
 ≈ done: 捷报频传 · doing: 多线并进 · next: 蓄势待发
 ≈en done: Wins keep coming · doing: Many fronts at once · next: Ready to go
 
-- Lane A · chat bar (owns DebugChat bar area, MicButton, tap-gesture, float-lines) @bar-agent
-  - [~] Unified bar + tree button + 2 columns + floating lines + frontier lines (~30 min) → preview on your phone
-  - [ ] (!) Your OK on the preview @owner
-  - [ ] Mic stays on after a page refresh (~25 min; needs your description of the bug)
-- Lane B · chat protocol + log lines (owns wire.ts, hub debug.ts, eval.ts, log rendering, Avatar) @protocol-agent
-  - [~] Avatars #298: resolve the merge conflict (~15 min)
-  - [ ] Node paths on messages, @node addressing, agent↔agent scope (~60 min, after #298)
-- Lane C · state tree (owns state-tree.ts, StateTree, docs/state-tree.md, /api/dev/state-tree) @tree-agent
-  - [~] Text tree MVP in the chat menu + /dev/roadmap, frontier, ≈ summaries (~30 min)
-  - [ ] Live feed (parked branch feat/live-roadmap; resume after MVP, ~60 min + deploy)
-- Lane D · roadmap data (owns dev/roadmap/items.ts) @roadmap-agent
-  - [~] Refresh shipped/doing/deciding/ideas (~10 min) → PR for your review
-- Lane E · /words (owns WordsClient, words CSS, qa-words, public/proto) @main-lane
-  - [ ] Recheck #299 on your iPhone, both swipe modes (~5 min, eval grant)
+- Lane E · /words, new swipe — TOP priority (owns WordsClient, words CSS, qa-words, public/proto) @main-lane
+  ≈ doing: 当务之急 · next: 先验后行
+  ≈en doing: First things first · next: Verify, then switch
+  - [~] New swipe: the native fix — TOP priority @swipe-agent
+  - [ ] Verify the new swipe via ?swipe=native, then switch your flag
   - [ ] (!) Confirm deleting public/proto/cords.html @owner
   - [ ] Delete cords.html + its link + QA check (~10 min, after your confirm)
-  - [ ] (!) Islands split of /words — decide @owner
+- Lane A · chat bar (owns DebugChat bar area, MicButton, tap-gesture, float-lines) @bar-agent
+  ≈ doing: 多管齐下 · next: 静候佳音
+  ≈en doing: Several fixes at once · next: Waiting on your OK
+  - [~] Unified bar preview: bar + tree button + 2 columns + floating lines + frontier lines → preview on your phone
+  - [~] Minimized float fix
+        hot-loaded, ships with the bar
+  - [~] Unread badge fix
+        hot-loaded, ships with the bar
+  - [ ] (!) OK the bar preview @owner
+  - [ ] Ship the bar after your OK
+  - [ ] Mic stays on after a page refresh (needs your description of the bug)
+- Lane B · chat protocol + log lines (owns wire.ts, hub debug.ts, eval.ts, log rendering, Avatar) @protocol-agent
+  ≈ done: 水到渠成 · doing: 待君定夺
+  ≈en done: Landed cleanly · doing: Your call awaits
+  - [x] Avatars #298 (done 2026-10-30)
+  - [x] Node paths on messages, @addressing #303 (done 2026-10-30)
+  - [ ] (!) Node grants: main-only vs common ancestor — decide @owner
+- Lane C · state tree (owns state-tree.ts, StateTree, docs/state-tree.md, /api/dev/state-tree) @tree-agent
+  ≈ doing: 稳扎稳打 · next: 来日方长
+  ≈en doing: Steady build · next: Later, live
+  - [~] State-tree MVP: chat menu + /dev/roadmap, frontier, ≈ summaries, hot data (#304)
+  - [ ] (!) Frontier tap: expand vs jump — decide @owner
+  - [ ] Live feed (parked branch feat/live-roadmap; resume after the MVP)
+- Lane G · rename (owns the user-facing chat strings) @rename-agent
+  ≈ doing: 名正言顺
+  ≈en doing: Names set right
+  - [~] Rename: "debug" out of the UI, 16 locales (#301) — re-merging after conflicts
+- Lane D · roadmap data (owns dev/roadmap/items.ts) @roadmap-agent
+  ≈ doing: 推陈出新
+  ≈en doing: Out with the old
+  - [~] Refresh shipped/doing/deciding/ideas → PR for your review
 - Lane F · liagent release (owns snolab/liagent main, agent-yes pin) @main-lane
+  ≈ doing: 待君定夺 · next: 万事俱备
+  ≈en doing: Your call awaits · next: All set to release
   - [ ] (!) Merge agent-yes #527 @owner
-  - [ ] (!) Review liagent#1 (avatars) @owner
-  - [ ] Merge liagent PRs from lanes B and C, cut v0.1.2, bump the agent-yes pin (~20 min, after B, C and your reviews)
+  - [ ] (!) Review snolab/liagent#1 and snolab/liagent#2 @owner
+  - [ ] liagent #1 and #2 → v0.1.2 + bump the agent-yes pin
 - Merge integration @main-lane
-  - [ ] Merge lanes A+B+C in DebugChat (~20 min, after each lane's PR)
-- Your decisions (no code waits on them unless noted)
-  - [ ] (!) Status-bar colour A/B #279 @owner
-  - [ ] (!) Playwright QA plan — go/no-go @owner
-  - [ ] (!) Auto-start supervisor — go/no-go @owner
-  - [ ] (!) Ship the islands groundwork? @owner
-  - [ ] (!) Mixed-language STT test on iPhone @owner
-  - [ ] (!) Indonesian name TB vs MB @owner
-  - [ ] (!) Stripe secrets + Dashboard (payments) @owner
-  - [x] shot.ts screenshots (#296) (done 2026-10-30)
-  - [x] Embed mode (#300) (done 2026-10-30)
+  ≈ next: 合而为一
+  ≈en next: Bring it together
+  - [ ] Merge lanes A+B+C in DebugChat (after each lane's PR)
+- Your decisions (no code waits on them unless noted) @owner
+  ≈ doing: 待君定夺
+  ≈en doing: Your call awaits
+  - [ ] (!) Review PR #302
+  - [ ] (!) Status-bar colour A/B #279
+  - [ ] (!) Playwright QA plan — go/no-go
+  - [ ] (!) Auto-start supervisor — go/no-go
+  - [ ] (!) Stripe secrets + Dashboard (payments; details below)
+- Shipped 2026-10-30 (any order) @main-lane
+  ≈ done: 捷报频传
+  ≈en done: Wins keep coming
+  - [x] Embed mode for overlay iframes (#300) (done 2026-10-30)
+  - [x] shot.ts device screenshots (#296) (done 2026-10-30)
+  - [x] Natural iOS voices (Tingting/Kyoko/Samantha) (#297) (done 2026-10-30)
 
-Critical path: B #298 fix (15) → node paths (60) → integration (20) → liagent v0.1.2 + pin (20) ≈ 115 agent min, plus your merges/reviews.
-Lane C live feed: 30 + 60 + deploy ≈ 100 agent min, in parallel.
-Total wall-clock: about 2 agent hours, if your decisions don't block a lane.
+Critical path: swipe fix → verify on ?swipe=native → switch the flag; bar → your OK → ship; liagent reviews → v0.1.2 + pin.
 
 ## @owner — your to-do
 ≈ doing: 待君定夺
@@ -107,18 +134,16 @@ Total wall-clock: about 2 agent hours, if your decisions don't block a lane.
 ≈ done: 精益求精
 ≈en done: Polished again
 - [x] Audio prefetch; tap reads word → meaning → example (#291)
-- [x] Glass toolbar + help, tablet glass nav, sleeping tray, 80% over-scroll (#293)
+- [x] Glass toolbar + help, tablet glass nav, sleeping tray, 80% over-scroll (#293) (done 2026-10-30)
 - [x] Faded "back" slip stays opaque (#294)
-- [x] iOS: first card under the toolbar; labels behind the card; page-scroll lock (#299) (done 2026-10-30T01:12)
+- [x] iOS glass: first card under the toolbar; labels behind the card; page-scroll lock (#299) (done 2026-10-30T01:12)
 - [ ] Bamboo-slip prototype (/proto/slip.html) vs shipped swipe — decide @main-lane
 
 ## Learning Partner (chat)
 ≈ done: 声情并茂
 ≈en done: Voice comes alive
-- [x] Hands-free voice, read-aloud queue, barge-in with ducking (#289, #292)
+- [x] Hands-free voice, read-aloud queue, barge-in with ducking (#289, #292) (done 2026-10-30)
 - [x] Mic counts as focus (#295)
-- [~] Rename: "debug" out of the UI, 16 locales (#301) @main-lane
-- [x] Natural iOS voices (Tingting/Kyoko/Samantha) (#297)
 
 ## Dev tools
 - [ ] Iframe-overlay previews vs islands — decide @main-lane
