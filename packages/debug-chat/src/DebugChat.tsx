@@ -428,6 +428,8 @@ export function DebugChat({
   const shiftEnter = useRef(false);
   /** The mic is listening, or has transcripts out: the debounce waits for it. */
   const micOn = useRef(false);
+  /** The mic is on (drives the open log too: iOS drops input focus on a button tap). */
+  const [micActive, setMicActive] = useState(false);
   const micPending = useRef(0);
   /** This browser can capture (the mic button shows inside the input). */
   const [hasMic, setHasMic] = useState(false);
@@ -765,18 +767,18 @@ export function DebugChat({
         data-expanded={typing || undefined}
         onTransitionEnd={() => {
           // Shrunk: land on the newest lines again, now that the height settled.
-          if (!typing) log.current?.scrollTo({ top: log.current.scrollHeight });
+          if (!typing && !micActive) log.current?.scrollTo({ top: log.current.scrollHeight });
           onLogScroll();
         }}
         style={
           fade
             ? {
-                maskImage: typing ? FADE : FADE_SHORT,
-                WebkitMaskImage: typing ? FADE : FADE_SHORT,
+                maskImage: typing || micActive ? FADE : FADE_SHORT,
+                WebkitMaskImage: typing || micActive ? FADE : FADE_SHORT,
               }
             : undefined
         }
-        className={`min-h-12 space-y-0.5 overflow-y-auto px-2 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${typing ? "max-h-[30vh]" : "max-h-[4.1rem]"}`}
+        className={`min-h-12 space-y-0.5 overflow-y-auto px-2 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${typing || micActive ? "max-h-[30vh]" : "max-h-[4.1rem]"}`}
       >
         {messages.length === 0 && (
           <li className="text-gray-500">Type here; it is sent 3 s after you stop.</li>
@@ -987,6 +989,7 @@ export function DebugChat({
                   }}
                   onActive={(on) => {
                     micOn.current = on;
+                    setMicActive(on);
                     arm();
                   }}
                   clipSink={friend ? undefined : clipSinkFrom(read(CLIP_SINK_KEY))}
