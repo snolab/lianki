@@ -921,17 +921,21 @@ function useSyncStatus(): SyncStatus {
     syncListeners.add(setS);
     const online = () => void flushPending();
     const offline = () => void notifySync();
+    // "online" is unreliable on some phones: coming back to the page sends
+    // too. Event-driven only — no polling (an owner rule).
+    const visible = () => document.visibilityState === "visible" && void flushPending();
     window.addEventListener("online", online);
     window.addEventListener("offline", offline);
-    // Ops left from an earlier visit, and a slow heartbeat in case "online"
-    // never fires (it is unreliable on some phones).
+    document.addEventListener("visibilitychange", visible);
+    window.addEventListener("focus", visible);
+    // Ops left from an earlier visit.
     void flushPending();
-    const t = setInterval(() => void flushPending(), 30_000);
     return () => {
       syncListeners.delete(setS);
       window.removeEventListener("online", online);
       window.removeEventListener("offline", offline);
-      clearInterval(t);
+      document.removeEventListener("visibilitychange", visible);
+      window.removeEventListener("focus", visible);
     };
   }, []);
   return s;
