@@ -95,6 +95,9 @@ export const MINIMIZE_FLOAT_MAX_AGE_MS = 10 * 60_000;
  */
 export function createArrivals() {
   const seen = new Map<string, number>();
+  /** Arrival order, by id: 1, 2, 3… (never a clock, so never a tie). */
+  const order = new Map<string, number>();
+  let count = 0;
   let loaded = false;
   return {
     /**
@@ -103,19 +106,43 @@ export function createArrivals() {
      */
     see<M extends { id: string }>(messages: M[], now: number): { fresh: M[]; history: boolean } {
       const fresh = messages.filter((m) => !seen.has(m.id));
-      for (const m of fresh) seen.set(m.id, now);
+      for (const m of fresh) {
+        seen.set(m.id, now);
+        order.set(m.id, ++count);
+      }
       const history = !loaded;
       if (messages.length) loaded = true;
       // Forget ids long gone from the list, so the map stays small.
       if (seen.size > 2 * messages.length + 100) {
         const ids = new Set(messages.map((m) => m.id));
-        for (const id of seen.keys()) if (!ids.has(id)) seen.delete(id);
+        for (const id of seen.keys())
+          if (!ids.has(id)) {
+            seen.delete(id);
+            order.delete(id);
+          }
       }
       return { fresh, history };
     },
     /** When it was first seen here (undefined: never). */
     at: (id: string) => seen.get(id),
+    /** Its place in arrival order (undefined: never seen). */
+    seqOf: (id: string) => order.get(id),
+    /** The last place handed out: everything up to here has arrived. */
+    seq: () => count,
   };
+}
+
+/**
+ * The minimized bar's unread badge: the agent's messages that arrived after
+ * `readSeq` (the arrival order when the chat was last open, or the history
+ * loaded). By arrival, not by list position: a capped list keeps its length.
+ */
+export function countUnread<M extends { id: string; from: string }>(
+  messages: M[],
+  seqOf: (id: string) => number | undefined,
+  readSeq: number,
+): number {
+  return messages.filter((m) => m.from === "agent" && (seqOf(m.id) ?? 0) > readSeq).length;
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   READ_RATE_LATIN,
   FADE_MS,
   MINIMIZE_FLOAT_MAX_AGE_MS,
+  countUnread,
   createArrivals,
   createDwellTimer,
   createFloatLife,
@@ -302,5 +303,28 @@ describe("createFloatLife (dwell, then the slow fade)", () => {
     createFloatLife({ ms: 5, fadeMs: 5, onPhase: (p: string) => seen.push(p) });
     await new Promise((r) => setTimeout(r, 60));
     expect(seen).toEqual(["fade", "gone"]);
+  });
+});
+
+describe("countUnread (the minimized badge)", () => {
+  const msg = (id: string, from = "agent") => ({ id, from, at: 0, text: id });
+
+  it("regression: counts the agent's new lines in a capped list of constant length", () => {
+    const a = createArrivals();
+    const full = Array.from({ length: 50 }, (_, i) => msg(`m${i}`, i % 2 ? "agent" : "owner"));
+    a.see(full, 0);
+    const read = a.seq(); // the history is read
+    expect(countUnread(full, a.seqOf, read)).toBe(0);
+    // Minimized: one own line and two replies push three old ones out.
+    const next = [...full.slice(3), msg("own", "owner"), msg("r1"), msg("r2")];
+    expect(next.length).toBe(full.length);
+    a.see(next, 1);
+    expect(countUnread(next, a.seqOf, read)).toBe(2);
+    // Opened (read up to now): nothing unread.
+    expect(countUnread(next, a.seqOf, a.seq())).toBe(0);
+  });
+
+  it("counts nothing it has never seen", () => {
+    expect(countUnread([msg("x")], () => undefined, 0)).toBe(0);
   });
 });

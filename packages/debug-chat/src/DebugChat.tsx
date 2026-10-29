@@ -25,6 +25,7 @@ import {
   FADE_MS,
   FLOAT_MAX,
   type FloatPhase,
+  countUnread,
   createArrivals,
   createFloatLife,
   dwellMs,
@@ -388,7 +389,8 @@ export function DebugChat({
   /** Re-keys the drain bar on each keystroke; 0 while nothing is waiting. */
   const [armed, setArmed] = useState(0);
   const [offline, setOffline] = useState(false);
-  const [seen, setSeen] = useState(messages.length);
+  /** Arrival order up to which the agent's lines count as read (see countUnread). */
+  const [readSeq, setReadSeq] = useState(0);
   const draftRef = useRef("");
   const composing = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -493,7 +495,6 @@ export function DebugChat({
   }, [typing]);
   useLayoutEffect(() => {
     if (!open) return;
-    setSeen(messages.length);
     const added = messages.length - shown.current;
     shown.current = messages.length;
     // Follow new messages only from the end (or the owner's own, just sent);
@@ -611,6 +612,8 @@ export function DebugChat({
   useEffect(() => {
     const now = Date.now();
     const { fresh, history } = (arrivals.current ??= createArrivals()).see(messages, now);
+    // Open, everything is read; so is the history loading in.
+    if (open || history) setReadSeq(arrivals.current.seq());
     const minimizing = wasOpen.current && !open;
     wasOpen.current = open;
     if (open) {
@@ -738,7 +741,7 @@ export function DebugChat({
   const evalSessions = sessions.filter((x) => x.scope !== "chat");
   /** Room at the input's right end for the busy spinner. */
   const inputPad = busy ? "pe-6" : "pe-2";
-  const unread = messages.slice(seen).filter((m) => m.from === "agent").length;
+  const unread = countUnread(messages, (id) => arrivals.current?.seqOf(id), readSeq);
   /** An agent is listening (the hub's listener count, pushed on every change). */
   const agentOnline = live && listeners > 0;
   // Green: an agent is listening. Amber: connected, but no agent. Grey: no connection.

@@ -525,6 +525,12 @@ try {
         "you:my own line | agent:reply from the future | agent:reply at epoch zero",
       `capped list, skewed clocks: all 3 new lines float (${lines.join(" | ")})`,
     );
+    // The unread badge counts the two replies (not the own line), capped list or not.
+    const badge = await page
+      .locator('[data-testid="debug-chat-pill-unread"]')
+      .textContent()
+      .catch(() => null);
+    check(badge === "2", `capped list: the unread badge counts the 2 replies (${badge})`);
     await page
       .waitForFunction(
         () =>
@@ -535,6 +541,15 @@ try {
       .catch(() => {});
     const fading = await page.locator('[data-testid="debug-chat-float"][data-fading]').count();
     check(fading === 3, `then all 3 fade (${fading} fading)`);
+    // Opened, they are read: minimized again, no badge.
+    await page.click('[data-testid="debug-chat-pill-min"]');
+    await page.waitForSelector('[data-testid="debug-chat"]');
+    await page.click('[data-testid="debug-chat-pill-min"]');
+    await page.waitForSelector('[data-testid="debug-chat-minimized"]');
+    check(
+      (await page.locator('[data-testid="debug-chat-pill-unread"]').count()) === 0,
+      "opened and minimized again: nothing unread",
+    );
     await ctx.close();
   }
 
