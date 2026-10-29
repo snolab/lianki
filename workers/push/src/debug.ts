@@ -63,6 +63,8 @@ import {
   MAX_LABEL,
   OWNER_THREAD,
   PAGE_ENDED,
+  PAGE_GONE_GRACE_MS,
+  PAGES_GONE,
   PENDING_MS,
   type PairInfo,
   type Scope,
@@ -113,8 +115,10 @@ type PageAtt = {
 type ControllerAtt = {
   role: "controller";
   grant?: string;
-  /** Approved for these page ids only ("Authorize this page"); absent = all. */
+  /** Approved for these page ids only ("Authorize this page"); absent = all. Eval only. */
   pages?: string[];
+  /** When none of `pages` was last seen open (cleared when one is back). */
+  goneSince?: number;
   forUser?: string;
   forEmail?: string;
 } & PairInfo;
@@ -205,7 +209,8 @@ export class DebugHub {
    */
   private reach(c: ControllerAtt, thread: string) {
     const all = this.pages(thread);
-    if (!c.pages || thread !== audience(c)) return all;
+    // A chat grant reaches every page (one made before that rule may still carry pages).
+    if (!c.pages || c.scope === "chat" || thread !== audience(c)) return all;
     return all.filter((p) => p.a.id && c.pages?.includes(p.a.id));
   }
 
@@ -401,6 +406,8 @@ export class DebugHub {
         at: this.now(),
       } satisfies PageAtt);
     const thread = audience(att(ws) as PageAtt);
+    // A granted page is back: its pairings' grace clock stops at once.
+    this.sweep();
     // Everyone sees the new page in their list; this one gets its state first.
     send(ws, { ...this.state(thread), self: id });
     send(ws, { type: "history", messages: await this.history(thread) });
@@ -525,7 +532,6 @@ export class DebugHub {
       until: g.until,
       scope: "chat",
       grant: hash,
-      pages: g.pages,
     };
     ws.serializeAttachment(a);
     send(ws, { type: "approved", until: g.until, scope: "chat", resumed: true });
@@ -534,7 +540,37 @@ export class DebugHub {
     this.broadcast();
   }
 
+  /**
+   * Page-scoped eval pairings whose pages are all away: note since when, and
+   * close them (PAGES_GONE) once that is PAGE_GONE_GRACE_MS ago. No timer:
+   * this runs on every event, the way expiry is checked.
+   */
+  private sweep(except?: Socket) {
+    const t = this.now();
+    for (const c of this.sockets("controller", except)) {
+      const { pages, until, scope } = c.a;
+      if (!pages || scope === "chat" || !until || until <= t) continue;
+      const present = this.pages(audience(c.a), except).some(
+        (p) => p.a.id && pages.includes(p.a.id),
+      );
+      if (present) {
+        if (c.a.goneSince) c.ws.serializeAttachment({ ...c.a, goneSince: undefined });
+      } else if (!c.a.goneSince) c.ws.serializeAttachment({ ...c.a, goneSince: t });
+      else if (t - c.a.goneSince >= PAGE_GONE_GRACE_MS) {
+        send(c.ws, {
+          type: "error",
+          error: "the page you were authorized for is gone: pair again",
+        });
+        close(c.ws, PAGES_GONE, "authorized pages gone");
+        console.log(JSON.stringify({ msg: "debug.pages-gone", pair: c.a.pair }));
+        this.broadcast(c.ws);
+      }
+    }
+  }
+
   webSocketMessage(ws: Socket, raw: string | ArrayBuffer): void | Promise<void> {
+    this.sweep();
+    if (ws.readyState !== undefined && ws.readyState > 1) return;
     const a = att(ws);
     if (a?.role === "page") return this.fromPage(ws, a, raw);
     if (a?.role === "controller") return this.fromController(ws, a, raw);
@@ -599,8 +635,9 @@ export class DebugHub {
       if (c.a.until || t - c.a.at >= PENDING_MS) return send(ws, this.state(page.thread));
       // Allow grants what the requester asked for (`scope` from an older page
       // still counts). A friend's answer is always eval on their own pages.
+      // A chat grant is for every page: a phone's page comes and goes with the app.
       return (c.a.scope === "chat" || m.scope === "chat") && !c.a.forUser
-        ? this.allowChat(c.ws, c.a, pages)
+        ? this.allowChat(c.ws, c.a)
         : this.allowEval(c.ws, c.a, pages);
     }
     if (m.type === "deny" || m.type === "revoke") return this.end(m.type, c.ws, c.a);
@@ -664,7 +701,7 @@ export class DebugHub {
 
   /** Add pages to an approved pairing (and every socket sharing its grant); undefined = all. */
   private async widen(a: ControllerAtt, pages: string[] | undefined) {
-    if (!a.pages) return this.broadcast();
+    if (!a.pages || a.scope === "chat") return this.broadcast();
     const next = pages ? [...new Set([...a.pages, ...pages])] : undefined;
     const targets = this.sockets("controller").filter((c) =>
       a.grant ? c.a.grant === a.grant : c.a.pair === a.pair,
@@ -694,12 +731,18 @@ export class DebugHub {
   }
 
   /** "Allow" for chat: 30 days, with a grant token the controller can resume with. */
-  private async allowChat(ws: Socket, a: ControllerAtt, pages?: string[]) {
+  private async allowChat(ws: Socket, a: ControllerAtt) {
     const until = this.now() + CHAT_MS;
     const token = hex(crypto.getRandomValues(new Uint8Array(32)));
     const grant = await hashToken(token);
-    await this.ctx.storage.put(`grant:${grant}`, { label: a.label, until, pages } satisfies Grant);
-    ws.serializeAttachment({ ...a, until, scope: "chat", grant, pages } satisfies ControllerAtt);
+    await this.ctx.storage.put(`grant:${grant}`, { label: a.label, until } satisfies Grant);
+    ws.serializeAttachment({
+      ...a,
+      until,
+      scope: "chat",
+      grant,
+      pages: undefined,
+    } satisfies ControllerAtt);
     send(ws, { type: "approved", until, scope: "chat", token });
     console.log(
       JSON.stringify({ msg: "debug.allow", pair: a.pair, label: a.label, until, scope: "chat" }),
@@ -780,7 +823,8 @@ export class DebugHub {
             head: head(text),
           }),
         );
-        return this.post(said, said.thread === audience(c) ? c.pages : undefined).then(() =>
+        const only = c.scope !== "chat" && said.thread === audience(c) ? c.pages : undefined;
+        return this.post(said, only).then(() =>
           send(ws, { type: "said", id: said.id, thread: said.thread }),
         );
       });
@@ -791,11 +835,13 @@ export class DebugHub {
     const labels: string[] = [];
     // Only the pages of the audience that approved this pairing — or the ones it named.
     const reach = this.reach(c, audience(c));
-    if (c.pages && reach.length === 0) {
-      send(ws, { type: "error", error: "the page you were authorized for is gone: pair again" });
-      close(ws, 4404, "authorized page gone");
-      return this.broadcast(ws);
-    }
+    if (c.pages && reach.length === 0)
+      // Away, not yet for PAGE_GONE_GRACE_MS (sweep() closes it after that).
+      return send(ws, {
+        type: "error",
+        error:
+          "the page you were authorized for is not connected now; the pairing ends if it stays away 5 min",
+      });
     for (const p of reach) {
       if (!matchesTarget(p.a.label, m.value.target)) continue;
       send(p.ws, { type: "eval", id, code: m.value.code, to: c.pair });
@@ -819,6 +865,7 @@ export class DebugHub {
 
   webSocketClose(ws: Socket, code: number) {
     close(ws, code === 1005 ? 1000 : code, "");
+    this.sweep(ws);
     // A page leaving changes its audience's page list; a controller, the sessions.
     this.broadcast(ws);
   }

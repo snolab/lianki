@@ -10,8 +10,10 @@ import {
   workersAiProvider,
   sniffAudioType,
   workersAiSpeech,
+  workersAiTranscribe,
   WORKERS_AI_NOT_CONFIGURED,
 } from "../lib/workers-ai";
+import { STT_PROMPT } from "../lib/stt";
 
 const ENV_KEYS = [
   "CLOUDFLARE_ACCOUNT_ID",
@@ -220,5 +222,108 @@ describe("speech", () => {
       })) as never;
 
     expect(workersAiSpeech({ text: "hi" })).rejects.toThrow(/unparseable JSON/);
+  });
+});
+
+describe("workersAiTranscribe", () => {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const answer = (status: number, body: string) => {
+    calls.length = 0;
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(body, { status });
+    }) as unknown as typeof fetch;
+  };
+  const audio = new Uint8Array([1, 2, 3]);
+
+  it("Nova-3: raw bytes, multilingual unless a language is given", async () => {
+    configure();
+    answer(
+      200,
+      JSON.stringify({
+        result: {
+          results: {
+            channels: [{ alternatives: [{ transcript: " 你好 hello ", languages: ["zh"] }] }],
+          },
+        },
+      }),
+    );
+    expect(
+      await workersAiTranscribe({ audio, mime: "audio/wav", model: "@cf/deepgram/nova-3" }),
+    ).toEqual({
+      text: "你好 hello",
+      language: "zh",
+    });
+    expect(calls[0].url).toBe(
+      "https://api.cloudflare.com/client/v4/accounts/acct123/ai/run/@cf/deepgram/nova-3?language=multi&smart_format=true",
+    );
+    expect((calls[0].init.headers as Record<string, string>)["Content-Type"]).toBe("audio/wav");
+    expect(calls[0].init.body).toBe(audio as unknown as BodyInit);
+    calls.length = 0;
+    await workersAiTranscribe({ audio, mime: "", model: "@cf/deepgram/nova-3", lang: "ja" });
+    expect(calls[0].url).toContain("language=ja");
+    expect((calls[0].init.headers as Record<string, string>)["Content-Type"]).toBe(
+      "application/octet-stream",
+    );
+  });
+
+  it("whisper-large-v3-turbo: JSON with base64 audio; the original whisper: raw bytes", async () => {
+    configure();
+    answer(
+      200,
+      JSON.stringify({ result: { text: "こんにちは", transcription_info: { language: "ja" } } }),
+    );
+    expect(
+      await workersAiTranscribe({
+        audio,
+        mime: "audio/wav",
+        model: "@cf/openai/whisper-large-v3-turbo",
+        lang: "ja-JP",
+      }),
+    ).toEqual({ text: "こんにちは", language: "ja" });
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({
+      audio: "AQID",
+      task: "transcribe",
+      vad_filter: true,
+      language: "ja",
+    });
+    calls.length = 0;
+    await workersAiTranscribe({
+      audio,
+      mime: "audio/webm",
+      model: "@cf/openai/whisper-large-v3-turbo",
+    });
+    // No language: the mixed-script prompt keeps Whisper switching languages.
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({
+      audio: "AQID",
+      task: "transcribe",
+      vad_filter: true,
+      initial_prompt: STT_PROMPT,
+    });
+    answer(200, JSON.stringify({ result: { text: "hi" } }));
+    expect(
+      await workersAiTranscribe({ audio, mime: "audio/webm", model: "@cf/openai/whisper" }),
+    ).toEqual({
+      text: "hi",
+    });
+    expect(calls[0].url).toEndWith("/run/@cf/openai/whisper");
+  });
+
+  it("errors carry the status and the body's head", async () => {
+    configure();
+    answer(400, "bad audio");
+    await expect(
+      workersAiTranscribe({ audio, mime: "audio/wav", model: "@cf/openai/whisper" }),
+    ).rejects.toThrow("Workers AI STT failed (HTTP 400) bad audio");
+    answer(200, "not json");
+    await expect(
+      workersAiTranscribe({ audio, mime: "audio/wav", model: "@cf/openai/whisper" }),
+    ).rejects.toThrow("unparseable JSON");
+    await expect(
+      (async () => {
+        delete process.env.CLOUDFLARE_ACCOUNT_ID;
+        return workersAiTranscribe({ audio, mime: "audio/wav", model: "@cf/openai/whisper" });
+      })(),
+    ).rejects.toThrow(WORKERS_AI_NOT_CONFIGURED);
   });
 });

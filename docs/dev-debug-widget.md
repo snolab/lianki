@@ -147,3 +147,62 @@ messages. Run it by hand with Playwright: open `http://localhost:5180/harness`
 `http://localhost:5180/debug-chat.js`. Then check `[data-debug-widget]` (its
 value is the rev) and edit `DebugChat.tsx`: the rev changes and the new UI
 renders.
+
+## Voice clips and the STT bench
+
+To pick a speech-to-text model on the owner's own voice, the dev server can
+keep the mic's utterances on this machine, and `stt-bench.ts` can replay them
+through every model. Nothing is kept unless the owner turns it on. The clips
+stay in a local folder and never go into the repo or onto the Worker.
+`/api/debug/stt` and the models are in [workers-ai.md](workers-ai.md),
+"Speech to text".
+
+**The sink** (`scripts/dev/clip-sink.ts`, mounted by the dev server):
+
+```bash
+bun scripts/dev/debug-widget-server.ts --port 5180 --tailnet /lianki-widget [--clips-dir <dir>]
+```
+
+The folder is `--clips-dir`, else `LIANKI_CLIPS_DIR`, else
+`lianki-voice-clips` in the home directory.
+
+| Request                      | Does                                                                                                                                                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /clips`                | multipart: `audio` (the blob) and `meta` (JSON `{at?, mime?, durationMs, label, transcript, model?}`). Saves `<ISO time>-<seq>.<ext>` and a `.json` sidecar with the same fields. Answers `{name}`. |
+| `GET /clips/index.json`      | `{clips: [{name, file, at, mime, durationMs, label, transcript, ref?}]}`, oldest first                                                                                                                  |
+| `GET /clips/<file>`          | one clip's audio                                                                                                                                                                                        |
+| `POST /clips/bench?run=<id>` | the bench's raw results, written once as `bench-raw-<id>.json`                                                                                                                                          |
+
+A clip is at most 5 MB, and webm, ogg, m4a, wav or mp3. Cross-origin
+requests are allowed from `https://lianki.com` only (with
+`Access-Control-Allow-Private-Network`). Any other `Origin` gets 403.
+
+The page posts to the sink only when the owner has set
+`localStorage["lk:debug-clip-sink"]` to the server's origin, e.g.
+`https://<machine>.<tailnet>.ts.net/lianki-widget`.
+
+**Reference text.** To score a clip, put what was really said in
+`<name>.ref.txt` next to it. The bench then adds a CER for each model.
+
+**The bench** runs on the owner's debug page through `eval.ts`, so it uses
+the owner's session and the owner's `?model=` override:
+
+```bash
+bun scripts/dev/eval.ts serve &   # pair once (or approve the prompt it shows)
+bun scripts/dev/stt-bench.ts --sink https://<machine>.<tailnet>.ts.net/lianki-widget \
+  [--models @cf/openai/whisper-large-v3-turbo,@cf/deepgram/nova-3] [--target /words] [--clips-dir <dir>]
+```
+
+The page fetches each clip from the sink and POSTs it to
+`/api/debug/stt?model=<m>` once per model. It then posts the raw
+`{clip, model, text, ms, language?, error?}` list back to the sink, because an
+eval answer is too small for it and the run outlives eval's 20 s wait. The
+script watches the folder for that file, so it waits on an event instead of
+polling. It then writes `bench-<time>.json` and `bench-<time>.md` there.
+
+The markdown has two tables. The first has one row per model: runs, errors,
+mean latency, mean CER (over clips with a `.ref.txt`), mean agreement with the
+other models (1 − normalised edit distance), USD per audio minute, and what
+the run cost. The second is clip × model, with each transcript, its latency
+and its CER. Scoring ignores case, width, spaces and punctuation
+(`scripts/dev/stt-bench-lib.ts`, tested in `unit/stt-bench.test.ts`).

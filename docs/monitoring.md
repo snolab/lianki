@@ -86,8 +86,9 @@ at least half the screen on every open page of its audience, so on both
 devices, and answering on one closes it everywhere. It shows the
 requester's label, the 4-hex code the sender prints too, one sentence of what
 Allow grants ("<label> wants to run code on your debug pages for 1 hour" /
-"… wants to chat with you for 30 days"), the audience's open pages with a
-checkbox each (path, device hint; only this page ticked at first), and large
+"… wants to chat with you for 30 days"), for an eval request the audience's
+open pages with a checkbox each (path, device hint; only this page ticked at
+first), and large
 buttons: **Authorize this page** (or "Authorize N pages" / "Authorize all
 pages", following the ticks), **Authorize all pages**, and **Deny**. There is
 no scope choice on the page: Allow grants what was asked for. An eval request
@@ -95,18 +96,26 @@ gets eval and chat for 1 hour on that socket; a chat request gets the 30-day
 grant below. (A page from before still sends `scope:"chat"`, and that still
 counts.)
 
-**Which pages.** `{type:"allow", pair, pages}` carries page ids or `"all"`. A
-page id is the tab's own (`lk:debug-tab` in sessionStorage, sent as `&tab=`),
-so a reload keeps it. The hub grants exactly the ids of this audience's open
+**Which pages.** A chat grant always covers every page of the owner: a
+phone's page drops its socket after 30 s in the background and comes back,
+so a per-page chat grant would keep dying. A chat request's modal therefore
+has no page picker, and the hub ignores `pages` for it (also when resuming a
+grant saved with pages by an earlier version). For eval,
+`{type:"allow", pair, pages}` carries page ids or `"all"`. A page id is the
+tab's own: generated once into `lk:debug-tab` in sessionStorage and sent as
+`&tab=` on every (re)connect, so a reload or a background/foreground cycle
+keeps it, and with it the grant. The hub grants exactly the ids of this audience's open
 pages. With none valid, only the answering page is granted. Only `"all"` also
 covers pages that connect later, and a page from before that sends no `pages`
 means `"all"`. A page-scoped pairing's evals, busy beats and live `say`
 replies (so also read-aloud) reach those pages only; history stays per
 thread. Another page can join later with "Add this page" in the pill's menu
-(the same `allow` sent for an approved pairing), and for a chat grant that is
-saved with the grant, so resumed `say` sockets keep it. If every page an eval
-pairing was granted is gone, its next eval gets `{type:"error"}` and the
-socket closes (4404) so the sender pairs again. **Deny**, **End**, the hour
+(the same `allow` sent for an approved pairing). While every page an eval
+pairing was granted is away, its evals get `{type:"error"}` but it stays
+open; once they have been away for 5 minutes (`PAGE_GONE_GRACE_MS`) the hub
+closes it with 4409 so the sender pairs again. No timer: the hub notes when
+the pages went and checks on the next event of any kind, the way it checks
+expiry; a granted page coming back resets the clock. **Deny**, **End**, the hour
 running out, or the socket closing ends a pairing. One pairing may wait at a time (2 minutes at most), so prompts cannot be
 spammed; with no debug page open the sender is turned away at once.
 
