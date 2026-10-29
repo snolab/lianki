@@ -2471,7 +2471,7 @@ function Study({
                   }}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none border-b ${
                     touch
-                      ? "slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base"
+                      ? "slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base pr-4"
                       : hasExamples
                         ? "grid-cols-[1.25rem_var(--term-w,12rem)_minmax(10rem,1fr)_minmax(12rem,1.4fr)_3.5rem] text-[15px]"
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] text-[15px]"
