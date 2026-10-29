@@ -226,4 +226,20 @@ export class MembershipD1Repo {
       .bind(trialEndsAt.toISOString(), new Date().toISOString(), userId)
       .run();
   }
+
+  async getUserByEmail(email: string): Promise<UserMembershipRow | null> {
+    return await this.db
+      .prepare(
+        "SELECT id, email, trialEndsAt, proEndsAt, createdAt, updatedAt FROM user WHERE lower(email) = lower(?)",
+      )
+      .bind(email)
+      .first<UserMembershipRow>();
+  }
+
+  async setPro(userId: string, proEndsAt: Date): Promise<void> {
+    await this.db
+      .prepare("UPDATE user SET proEndsAt = ?, updatedAt = ? WHERE id = ?")
+      .bind(proEndsAt.toISOString(), new Date().toISOString(), userId)
+      .run();
+  }
 }

@@ -24,7 +24,7 @@ function trialEnd(from = new Date()): Date {
   return end;
 }
 
-function toDate(v: unknown): Date | undefined {
+export function toDate(v: unknown): Date | undefined {
   if (v == null) return undefined;
   const d = new Date(v as string | number | Date);
   return Number.isNaN(d.getTime()) ? undefined : d;
@@ -169,4 +169,13 @@ export async function startTrial(
   store: MembershipStore = currentStore(),
 ): Promise<void> {
   await store.grantTrial(userId, trialEnd());
+}
+
+/**
+ * Pro granted by hand (the owner's /dev/membership): `days` more of Pro,
+ * counted from whichever is later — now, or the end of the Pro already running.
+ */
+export function extendPro(proEndsAt: Date | undefined, days: number, now = new Date()): Date {
+  const from = proEndsAt && proEndsAt > now ? proEndsAt : now;
+  return new Date(from.getTime() + days * 86_400_000);
 }
