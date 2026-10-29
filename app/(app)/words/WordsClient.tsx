@@ -34,6 +34,7 @@ import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/word
 import { createSequencer } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
 import { debugOn, devLog } from "@/lib/debug-client";
+import { useInputModality } from "@/lib/use-input-modality";
 import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
@@ -1359,8 +1360,11 @@ function SortableListRow({
   onToggle,
   onOpen,
   onDeleted,
+  keys,
 }: {
   list: WordList;
+  /** A hardware keyboard is in use: show the row's number key. */
+  keys: boolean;
   depth: number;
   index: number;
   totals: Totals;
@@ -1415,9 +1419,7 @@ function SortableListRow({
       >
         {collapsed ? "▸" : "▾"}
       </button>
-      {index < 9 && (
-        <kbd className="hidden sm:inline text-xs opacity-40 tabular-nums">{index + 1}</kbd>
-      )}
+      {keys && index < 9 && <kbd className="text-xs opacity-40 tabular-nums">{index + 1}</kbd>}
       <button className="flex-1 text-left min-w-0" onClick={() => onOpen(l.id)}>
         <div className="font-medium truncate">
           {isGroup && <Icon name="folder" className="me-1 opacity-70" />}
@@ -1476,6 +1478,8 @@ function ListPicker({
   const groupSource = groupSourceOf(config);
   const isGroup = (l: WordList) => l.source === groupSource;
   const text = useIntlayer("words-page");
+  // Number keys open lists: show them only with a hardware keyboard.
+  const keys = useInputModality() === "keyboard";
   const flat = useMemo(() => flatten(lists), [lists]);
   const [download, setDownload] = useState<{
     done: number;
@@ -1649,7 +1653,7 @@ function ListPicker({
           onClick={() => onOpen(ALL)}
           className="w-full flex items-center gap-3 rounded-lg bg-emerald-500/20 dark:bg-emerald-700/40 hover:bg-emerald-500/30 dark:hover:bg-emerald-700/60 px-4 py-3 text-left"
         >
-          <kbd className="hidden sm:inline text-xs opacity-50">0</kbd>
+          {keys && <kbd className="text-xs opacity-50">0</kbd>}
           <span className="flex-1">
             <span className="font-medium">{text.studyAll}</span>
             <span className="block text-xs opacity-60">{text.studyAllHint}</span>
@@ -1687,6 +1691,7 @@ function ListPicker({
                   onToggle={() => toggle(row.id)}
                   onOpen={onOpen}
                   onDeleted={onDeleted}
+                  keys={keys}
                 />
               ))}
             </SortableContext>
@@ -1824,6 +1829,8 @@ function Study({
   };
   const started = useRef(Date.now());
   const touch = useTouch();
+  /** Hints follow the input used last: keys for a keyboard, gestures for touch. */
+  const modality = useInputModality();
   /**
    * Which touch swipe this device uses (lib/words/swipe-ab.ts): WordRow's JS
    * detents, or — the experimental "New swipe" — NativeSlipRow's native
@@ -2953,7 +2960,10 @@ function Study({
               <>
                 Every word learned. <Icon name="confetti" className="ms-0.5" />
               </>
-            ) : touch ? (
+            ) : modality === null ? null : modality === "touch" ? (
+              // The gestures exist only in the touch layout; a touchscreen
+              // laptop's tap is a click (= Again), and has no swipe to explain.
+              touch &&
               "tap = show + say · hold = listen (loops) · swipe ← a little Hard, far Again · swipe → a little Good, far Easy · ↶ undo"
             ) : help ? (
               "↑↓ / W S / I U move (the focused row shows its meaning) · Space pin · E show all · 1 Again · 2 Hard · 3 Good · 4 Easy (right hand mirrored: L Again · K Hard · J Good · H Easy) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
