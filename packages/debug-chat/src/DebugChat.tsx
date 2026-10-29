@@ -524,7 +524,16 @@ export function DebugChat({
   /** Room at the input's right end: the mic (32px), and the busy spinner left of it. */
   const inputPad = hasMic ? (busy ? "pe-14" : "pe-9") : "pe-6";
   const unread = messages.slice(seen).filter((m) => m.from === "agent").length;
-  const dot = live ? "oklch(0.68 0.16 150)" : "oklch(0.62 0.02 70)";
+  /** An agent is listening (the hub's listener count, pushed on every change). */
+  const agentOnline = live && listeners > 0;
+  // Green: an agent is listening. Amber: connected, but no agent. Grey: no connection.
+  const dot = agentOnline
+    ? "oklch(0.68 0.16 150)"
+    : live
+      ? "oklch(0.75 0.13 75)"
+      : "oklch(0.62 0.02 70)";
+  /** Your lines after the agent last spoke wait for it while it is offline. */
+  const lastAgent = messages.findLastIndex((m) => m.from === "agent");
   const status = notice
     ? "chat unavailable"
     : offline
@@ -533,7 +542,7 @@ export function DebugChat({
         ? "reconnecting…"
         : listeners
           ? `agent listening (${listeners})`
-          : "connected · no agent listening";
+          : "agent offline · messages wait until it is back";
 
   /**
    * The pill: drag it anywhere to move the box. Left, the liagent mark: a tap
@@ -804,7 +813,7 @@ export function DebugChat({
           <li className="text-gray-500">Type here; it is sent 3 s after you stop.</li>
         )}
         {/* A game-style log: one line per message, "name: text", no bubbles. */}
-        {messages.map((m) => (
+        {messages.map((m, i) => (
           // The time only on hover (long press on a phone): name and text are the line.
           <li
             key={m.id}
@@ -822,6 +831,15 @@ export function DebugChat({
               {m.from !== "agent" ? "you" : m.label || "agent"}:
             </span>
             {m.text}
+            {!agentOnline && m.from !== "agent" && i > lastAgent && (
+              <span
+                data-testid="debug-chat-queued"
+                className="ms-1 text-[10px] text-gray-500"
+                title="The agent is offline: this is delivered when it is back"
+              >
+                · waiting for the agent
+              </span>
+            )}
           </li>
         ))}
       </ol>
@@ -913,7 +931,15 @@ export function DebugChat({
                 // 16px: iOS zooms the whole page into any input under 16px.
                 value={draft}
                 maxLength={MAX_CHAT}
-                placeholder={holding ? DRAG_HINT : interim ? "" : "Message the agent…"}
+                placeholder={
+                  holding
+                    ? DRAG_HINT
+                    : interim
+                      ? ""
+                      : agentOnline
+                        ? "Message the agent…"
+                        : "Agent offline — your message waits for it…"
+                }
                 onScroll={(e) => {
                   if (mirror.current) mirror.current.scrollTop = e.currentTarget.scrollTop;
                 }}
