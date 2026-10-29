@@ -8,10 +8,19 @@ import {
   type ChatStrings,
   type PairInfo,
   chatStrings,
+  ROOT_NODE,
+  type Sender,
+  completeNode,
+  lineNode,
+  nodePath,
   pageParts,
+  parseAddress,
+  pathLabel,
 } from "./wire";
 import { getKey, setKey } from "./storage-keys";
 import { LiagentMark } from "./LiagentMark";
+import { Avatar } from "./Avatar";
+import { type AvatarSource, lineAvatar } from "./avatar-rules";
 import {
   CLIP_SINK_KEY,
   VOICE_SENT_EVENT,
@@ -155,6 +164,35 @@ const read = (key: string) => getKey(key);
 const write = (key: string, v: string) => setKey(key, v);
 const synth = () => (typeof speechSynthesis === "undefined" ? null : speechSynthesis);
 
+/** The window event that sets the chat's target node (`detail`: a node path; "/" = main thread). */
+export const CHAT_TARGET_EVENT = "lk:debug-chat-target";
+/**
+ * Address the chat's next messages to a state-tree node (the state tree's
+ * selection calls this), or back to the main thread with "/". Also on
+ * `globalThis.__lkDebugChat.setTarget`, for code that cannot import it.
+ */
+export function setTarget(path: string) {
+  if (typeof window === "undefined") return;
+  keepTarget(nodePath(path) ?? ROOT_NODE);
+  window.dispatchEvent(new CustomEvent(CHAT_TARGET_EVENT, { detail: path }));
+}
+/**
+ * The target outlives the component on the window: a hot-loaded widget
+ * re-mounts on every rebuild (and may mount after a setTarget call).
+ */
+type TargetHolder = { __lkDebugChatTarget?: string };
+const keptTarget = () =>
+  typeof window === "undefined"
+    ? ROOT_NODE
+    : ((window as unknown as TargetHolder).__lkDebugChatTarget ?? ROOT_NODE);
+const keepTarget = (p: string) => {
+  if (typeof window !== "undefined") (window as unknown as TargetHolder).__lkDebugChatTarget = p;
+};
+if (typeof window !== "undefined")
+  (window as unknown as { __lkDebugChat?: { setTarget: typeof setTarget } }).__lkDebugChat = {
+    setTarget,
+  };
+
 
 /**
  * Read an agent reply aloud (voice.ts): queued behind any still being read,
@@ -202,7 +240,10 @@ export type DebugChatProps = {
   live: boolean;
   listeners: number;
   messages: ChatMessage[];
-  onSend: (text: string) => boolean;
+  /** Send a line; `to` is the state-tree node it is addressed to (absent = the main thread). */
+  onSend: (text: string, to?: string) => boolean;
+  /** The nodes listeners are subscribed at: "@/…" completions. */
+  nodes?: string[];
   /** Approved senders, listed in the pill's menu with an End button each. */
   sessions?: PairInfo[];
   onEnd?: (s: PairInfo) => void;
@@ -233,6 +274,15 @@ export type DebugChatProps = {
   onAddPage?: (s: PairInfo) => void;
   /** User-facing strings, localized by the host (English defaults in wire.ts). */
   strings?: Partial<ChatStrings>;
+  /**
+   * The agent's avatar on its lines: the host app's logo, as a URL or an
+   * element. Absent: the agent name's initial.
+   */
+  agentAvatar?: AvatarSource;
+  /** The viewer (hashed id, name, pictures in fallback order): their own lines' avatar. */
+  viewer?: Sender;
+  /** The host's own avatar for a line (its pictures are tried first). */
+  avatarFor?: (m: ChatMessage) => Sender | undefined;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -244,6 +294,9 @@ const QUIET: VoiceState = {
   queued: 0,
   paused: false,
 };
+
+/** A log line's avatar, square: fixed, so a picture loading late shifts nothing. */
+const AVATAR_PX = 18;
 
 /** The input grows to about five lines, then scrolls inside itself. */
 const INPUT_MAX_PX = 128;
@@ -267,6 +320,10 @@ export function DebugChat({
   onOpenPage,
   onAddPage,
   strings,
+  agentAvatar,
+  viewer,
+  avatarFor,
+  nodes = [],
 }: DebugChatProps) {
   const t = chatStrings(strings);
   const [open, setOpen] = useState(() => {
@@ -294,6 +351,20 @@ export function DebugChat({
   const endTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(endTimer.current), []);
   const [draft, setDraft] = useState("");
+  /** The node the next line goes to: the chip in the bar ("/" = the main thread, no chip). */
+  const [target, setTargetState] = useState(keptTarget);
+  const targetRef = useRef(target);
+  const aim = (p: string) => {
+    const n = nodePath(p) ?? ROOT_NODE;
+    targetRef.current = n;
+    keepTarget(n);
+    setTargetState(n);
+  };
+  useEffect(() => {
+    const on = (e: Event) => aim(String((e as CustomEvent).detail ?? ROOT_NODE));
+    window.addEventListener(CHAT_TARGET_EVENT, on);
+    return () => window.removeEventListener(CHAT_TARGET_EVENT, on);
+  }, []);
   /** Re-keys the drain bar on each keystroke; 0 while nothing is waiting. */
   const [armed, setArmed] = useState(0);
   const [offline, setOffline] = useState(false);
@@ -422,9 +493,23 @@ export function DebugChat({
   const submit = (): boolean => {
     clearTimeout(timer.current);
     setArmed(0);
-    const text = draftRef.current.trim();
+    let text = draftRef.current.trim();
+    // A leading "@/words › prefetch " addresses that node, and keeps it as the target.
+    const addr = parseAddress(text);
+    let to = targetRef.current;
+    if (addr) {
+      if (!addr.complete) return false;
+      to = addr.to;
+      aim(to);
+      text = addr.text;
+      if (!text) {
+        draftRef.current = "";
+        setDraft("");
+        return false;
+      }
+    }
     if (!text) return false;
-    if (!sendRef.current(text)) {
+    if (!sendRef.current(text, to === ROOT_NODE ? undefined : to)) {
       setOffline(true);
       return false;
     }
@@ -478,8 +563,15 @@ export function DebugChat({
       settledLen.current = text.length;
       if (burst) return submit();
     }
-    // While the mic listens or transcribes, nothing goes out by the debounce (Enter still sends).
-    if (composing.current || micOn.current || micPending.current || !draftRef.current.trim())
+    // While the mic listens or transcribes, or an "@/node" is half typed, nothing
+    // goes out by the debounce (Enter still sends).
+    if (
+      composing.current ||
+      micOn.current ||
+      micPending.current ||
+      !draftRef.current.trim() ||
+      parseAddress(draftRef.current)?.complete === false
+    )
       return setArmed(0);
     setArmed((n) => n + 1);
     timer.current = setTimeout(submit, DEBOUNCE_MS);
@@ -506,6 +598,20 @@ export function DebugChat({
     setSpeak(v);
     write(SPEAK_KEY, v ? "1" : "0");
     if (!v && !voice().state().mic) voice().stop();
+  };
+
+  /** The draft's "@/…" while it is typed: the listeners' nodes under it, to pick from. */
+  const addressing = /^@\/\S*(?:\s*›\s*\S*)*$/.test(draft) ? parseAddress(draft) : null;
+  const completions = addressing && !addressing.complete ? completeNode(draft, nodes) : [];
+  /** The target a typed "@/node " would set (a preview), else the chip's. */
+  const typed = parseAddress(draft);
+  const preview = typed?.complete === true;
+  const shownTarget = preview && typed ? typed.to : target;
+  const pick = (n: string) => {
+    aim(n);
+    draftRef.current = "";
+    setDraft("");
+    input.current?.focus();
   };
 
   /** A pairing authorized for some pages only, not including this one. */
@@ -831,41 +937,75 @@ export function DebugChat({
               }
             : undefined
         }
-        className={`min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${typing || micActive ? "max-h-[30vh]" : "max-h-[4.1rem]"}`}
+        className={`min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${typing || micActive ? "max-h-[30vh]" : "max-h-[4.4rem]"}`}
       >
         {messages.length === 0 && (
           <li className="text-gray-500">{t.hint}</li>
         )}
-        {/* A game-style log: one line per message, "name: text", no bubbles. */}
-        {messages.map((m, i) => (
-          // The time only on hover (long press on a phone): name and text are the line.
-          <li
-            key={m.id}
-            data-testid="debug-chat-line"
-            data-from={m.from}
-            title={when(m.at)}
-            className="whitespace-pre-wrap break-words leading-snug"
-          >
-            <span
-              className="me-1 font-medium"
-              style={{
-                color: m.from !== "agent" ? "oklch(0.55 0.13 250)" : "oklch(0.55 0.14 150)",
-              }}
+        {/* A game-style log: one line per message, avatar then text, no bubbles. */}
+        {messages.map((m, i) => {
+          const who = lineAvatar(m, {
+            friend,
+            viewer,
+            agentAvatar,
+            avatarFor,
+            agentName: t.name,
+            you: t.you,
+          });
+          // The state-tree node a line belongs to: a muted subtitle and a left border by its hue.
+          const node = lineNode(m);
+          return (
+            // The time only on hover (long press on a phone); the avatar's own title names who.
+            <li
+              key={m.id}
+              data-testid="debug-chat-line"
+              data-from={m.from}
+              data-node={node?.node}
+              title={node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)}
+              className="flex items-start gap-1.5 leading-snug"
+              style={
+                node
+                  ? { borderInlineStart: `2px solid ${node.border}`, paddingInlineStart: 4 }
+                  : undefined
+              }
             >
-              {m.from !== "agent" ? "you" : m.label || "agent"}:
-            </span>
-            {m.text}
-            {!agentOnline && m.from !== "agent" && i > lastAgent && (
-              <span
-                data-testid="debug-chat-queued"
-                className="ms-1 text-[10px] text-gray-500"
-                title={t.waitingTitle}
-              >
-                {t.waiting}
+              {/* Screen readers hear the name once, from the sr-only span. */}
+              <Avatar
+                src={who.src}
+                name={who.name}
+                initialFrom={who.initialFrom}
+                seed={who.seed}
+                size={AVATAR_PX}
+                hidden
+              />
+              <span className="min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
+                {node && (
+                  <span
+                    aria-hidden
+                    data-testid="debug-chat-node"
+                    className="block truncate text-[10px] leading-tight text-gray-500"
+                  >
+                    {node.subtitle}
+                  </span>
+                )}
+                <span className="sr-only">
+                  {who.name}
+                  {node ? ` (${node.subtitle})` : ""}:{" "}
+                </span>
+                {m.text}
+                {!agentOnline && m.from !== "agent" && i > lastAgent && (
+                  <span
+                    data-testid="debug-chat-queued"
+                    className="ms-1 text-[10px] text-gray-500"
+                    title={t.waitingTitle}
+                  >
+                    {t.waiting}
+                  </span>
+                )}
               </span>
-            )}
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ol>
       {warning && (
         <div
@@ -890,6 +1030,60 @@ export function DebugChat({
           {/* The log above is click-through: taps reach the page under it. Only the
           grip and the input take pointer events. */}
           <div data-debug-chat-row className="relative flex items-stretch gap-1">
+            {(shownTarget !== ROOT_NODE || completions.length > 0) && (
+              // The target node (a chip: × back to the main thread) and "@/…" completions.
+              <div className="pointer-events-none absolute start-10 bottom-full mb-1 flex max-w-[calc(100%-4.5rem)] flex-col items-start gap-1">
+                {completions.length > 0 && (
+                  <ul
+                    role="listbox"
+                    aria-label="Nodes to address"
+                    data-testid="debug-chat-nodes"
+                    style={{ background: INPUT_BG }}
+                    className="pointer-events-auto max-w-full list-none overflow-hidden rounded-lg border border-current/25 py-0.5 text-[11px] backdrop-blur"
+                  >
+                    {completions.map((n) => (
+                      <li key={n} role="option" aria-selected={false}>
+                        <button
+                          type="button"
+                          data-testid="debug-chat-node-option"
+                          // Keeps the input's focus.
+                          onPointerDown={(e) => e.preventDefault()}
+                          onClick={() => pick(n)}
+                          className="block w-full truncate px-2 py-0.5 text-start"
+                        >
+                          {pathLabel(n)}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {shownTarget !== ROOT_NODE && (
+                  <span
+                    data-testid="debug-chat-target"
+                    data-node={shownTarget}
+                    style={{
+                      background: INPUT_BG,
+                      borderColor: lineNode({ from: "owner", to: shownTarget })?.border,
+                    }}
+                    className={`pointer-events-auto inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 text-[10px] leading-4 text-gray-600 dark:text-gray-300 ${preview ? "opacity-70" : ""}`}
+                  >
+                    <span className="truncate">→ {pathLabel(shownTarget)}</span>
+                    {!preview && (
+                      <button
+                        type="button"
+                        data-testid="debug-chat-target-clear"
+                        aria-label="Send to the main thread instead"
+                        onPointerDown={(e) => e.preventDefault()}
+                        onClick={() => aim(ROOT_NODE)}
+                        className="leading-none"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </span>
+                )}
+              </div>
+            )}
             {scrolledUp && (
               // The row stays click-through; only the button takes taps.
               <div className="pointer-events-none absolute inset-x-0 bottom-full mb-1 flex justify-end">
@@ -960,9 +1154,11 @@ export function DebugChat({
                     ? DRAG_HINT
                     : interim
                       ? ""
-                      : agentOnline
-                        ? t.message
-                        : t.offline
+                      : target !== ROOT_NODE
+                        ? `Message ${pathLabel(target)}…`
+                        : agentOnline
+                          ? t.message
+                          : t.offline
                 }
                 onScroll={(e) => {
                   if (mirror.current) mirror.current.scrollTop = e.currentTarget.scrollTop;
@@ -1000,10 +1196,19 @@ export function DebugChat({
                   if (composing.current || (e.nativeEvent as InputEvent).isComposing) return;
                   if (shiftEnter.current) return; // Shift+Enter: a newline, as on desktop
                   e.preventDefault();
+                  if (completions[0]) return pick(completions[0]);
                   submit();
                 }}
                 onKeyDown={(e) => {
                   shiftEnter.current = e.key === "Enter" && e.shiftKey;
+                  // "@/wo" + Tab (or Enter): the first completion becomes the target.
+                  if ((e.key === "Tab" || e.key === "Enter") && !e.shiftKey && completions[0]) {
+                    e.preventDefault();
+                    return pick(completions[0]);
+                  }
+                  // Backspace in an empty input drops the target chip.
+                  if (e.key === "Backspace" && !draftRef.current && targetRef.current !== ROOT_NODE)
+                    return aim(ROOT_NODE);
                   if (e.key !== "Enter" || e.shiftKey) return;
                   // Enter that confirms an IME candidate (Safari reports it as 229
                   // after compositionend) must not send.
@@ -1030,8 +1235,8 @@ export function DebugChat({
                 <span
                   role="status"
                   data-testid="debug-chat-busy"
-                  aria-label={`${busy.label || "agent"} is working`}
-                  title={`${busy.label || "agent"} is working`}
+                  aria-label={`${busy.label || t.name} is working`}
+                  title={`${busy.label || t.name} is working`}
                   className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${hasMic ? "end-9" : "end-1.5"}`}
                 >
                   <svg viewBox="0 0 16 16" className="size-3.5 animate-spin" aria-hidden>

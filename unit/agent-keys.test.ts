@@ -114,3 +114,13 @@ describe("chat strings", () => {
     expect(t.chatWith).toBe("Chat with your 学习伙伴");
   });
 });
+
+describe("chat log avatars use the localized names", () => {
+  test("the agent falls back to the feature name; your lines say `you`, localized", async () => {
+    const { lineAvatar } = await import("@lianki/debug-chat/avatar-rules");
+    const base = { id: "1", at: 0, text: "hi" } as Parameters<typeof lineAvatar>[0];
+    const opts = { agentName: "学习伙伴", you: "你" };
+    expect(lineAvatar({ ...base, from: "agent", label: "" }, opts).name).toBe("学习伙伴");
+    expect(lineAvatar({ ...base, from: "owner" }, opts).name).toBe("你");
+  });
+});

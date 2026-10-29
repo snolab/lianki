@@ -45,6 +45,26 @@
  *       eval implies chat; never pairs), and exit: to the owner by default, or to
  *       a friend's thread by user id or email.
  *
+ *   bun scripts/dev/eval.ts say --to /words/audio "text"
+ *       Address a state-tree node instead of a thread (a `--to` starting
+ *       with "/"): its listener gets it, its ancestors observe it. Allowed
+ *       into the sender's own subtree and upward; anything else needs a
+ *       grant (below), else {"type":"error","reason":"out of scope: …"}.
+ *
+ *   bun scripts/dev/eval.ts grant --from /words/prefetch --to /words/audio [--hours 8]
+ *   bun scripts/dev/eval.ts ungrant --from /words/prefetch --to /words/audio
+ *       Let senders within one node address another (or take it back): only
+ *       from a listener whose node holds both — the main one ("/") always may.
+ *
+ *   --task-path /words/prefetch   (or env LIANKI_TASK_PATH)
+ *   --agent <name>                (or env LIANKI_AGENT)
+ *       Where this process sits in the state tree, for `chat`, `serve`,
+ *       `say`, `busy` and `grant`: `chat` hears the lines addressed to that
+ *       node (and, marked "observed": true, to the nodes below it) instead of
+ *       the main thread; `say` lines carry the node as `taskPath` and the
+ *       name as `agentId`, shown under the avatar as "/words › prefetch". A
+ *       sub-agent sets the env vars once. docs/dev-debug-widget.md, "Node paths".
+ *
  *   bun scripts/dev/eval.ts busy [--to <thread|email>] [--label "…"]
  *                                   [--every <s> [--keep] [--max <s>]]
  *       The heartbeat behind the chat's "agent is working" spinner, with the
@@ -88,6 +108,8 @@ import {
 import { homedir, hostname } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
+import { type NodeOpts, chatLine, nodeOpts } from "./node-args";
+import { routeTo } from "@/lib/dev-eval";
 import { type BusyArgs, beatMessage, endsBeat, idleFor, parseBusyArgs } from "./busy";
 import { ENDED, GRANT_INVALID, chatClose, chatStep, serveClose } from "./eval-grant";
 import {
@@ -141,8 +163,22 @@ const target = flag("--target");
 const out = flag("--out");
 const to = flag("--to");
 const forEmail = flag("--for");
+const fromFlag = flag("--from");
+const hoursFlag = flag("--hours");
+const placed = nodeOpts({ taskPath: flag("--task-path"), agent: flag("--agent") });
+if ("error" in placed) {
+  console.error(placed.error);
+  process.exit(2);
+}
+const where: NodeOpts = placed;
 const SESSION = sessionFile(forEmail);
-const { openControl, evalSocket } = controller({ label, labelFlag, forEmail, noPair });
+const { openControl, evalSocket } = controller({
+  label,
+  labelFlag,
+  forEmail,
+  noPair,
+  ...where,
+});
 
 async function serve() {
   let ws: WebSocket | null = await evalSocket();
@@ -246,19 +282,16 @@ function chat(out?: string) {
     console.log(line);
     if (out) appendFileSync(out, `${line}\n`);
   };
-  const emit = (m: Msg) => {
-    if (m.from === "agent" || typeof m.id !== "string" || seen.has(m.id)) return;
+  /** A line routed to this listener (the hub's `observed`, or worked out for history). */
+  const emit = (
+    m: Msg,
+    observed = routeTo(where.node, m.to as string | undefined) === "observed",
+  ) => {
+    if (typeof m.id !== "string" || seen.has(m.id)) return;
+    const line = chatLine(m, where, observed);
+    if (!line) return;
     seen.add(m.id);
-    print({
-      type: "chat",
-      id: m.id,
-      thread: m.thread ?? "owner",
-      email: m.email ?? null,
-      from: m.from,
-      text: m.text,
-      at: new Date(Number(m.at)).toISOString(),
-      label: m.label,
-    });
+    print(line);
   };
   /**
    * No grant, and the owner was asked once already: say so and wait — not
@@ -302,7 +335,7 @@ function chat(out?: string) {
           if (first && typeof h.id === "string") seen.add(h.id);
           else emit(h);
         first = false;
-      } else if (m.type === "chat" && m.message) emit(m.message as Msg);
+      } else if (m.type === "chat" && m.message) emit(m.message as Msg, m.observed === true);
       else if (m.type === "pages-idle" || m.type === "pages-back") {
         // Every page of a thread closed for a minute, or the first one back.
         // The listener stays (its socket is hibernated, it costs nothing) so
@@ -373,14 +406,23 @@ function say(text: string, to?: string): Promise<Msg> {
     ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data)) as Msg;
       if (m.type === "approved")
-        ws.send(JSON.stringify(to ? { type: "say", text, to } : { type: "say", text }));
+        ws.send(
+          JSON.stringify({
+            type: "say",
+            text,
+            ...(to ? { to } : {}),
+            ...(where.node ? { taskPath: where.node } : {}),
+            ...(where.agent ? { agentId: where.agent } : {}),
+          }),
+        );
       else if (m.type === "said") {
         clearTimeout(give);
         ws.close();
         resolve(m);
       } else if (m.type === "error") {
         clearTimeout(give);
-        reject(new Error(String(m.error)));
+        ws.close();
+        reject(new Error(String(m.reason ?? m.error)));
       }
     };
     ws.onclose = (e) => {
@@ -469,7 +511,56 @@ function busy(w: BusyArgs): Promise<void> {
   });
 }
 
+/** A node grant (or its end) from this listener's node; resolves with the hub's ack. */
+function nodeGrant(type: "grant" | "ungrant", from: string, toNode: string, hours?: number) {
+  const grant = chatGrant();
+  if (!grant)
+    return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
+  return new Promise<Msg>((resolve, reject) => {
+    const ws = openControl(grant.token);
+    const give = setTimeout(() => {
+      ws.close();
+      reject(new Error("no answer from the hub within 15 s"));
+    }, 15_000);
+    const done = (fn: () => void) => {
+      clearTimeout(give);
+      ws.close();
+      fn();
+    };
+    ws.onmessage = (e) => {
+      const m = JSON.parse(String(e.data)) as Msg;
+      if (m.type === "approved")
+        ws.send(
+          JSON.stringify({
+            type,
+            from,
+            to: toNode,
+            ...(hours ? { ms: Math.round(hours * 3_600_000) } : {}),
+          }),
+        );
+      else if (m.type === "granted" || m.type === "ungranted") done(() => resolve(m));
+      else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
+    };
+    ws.onclose = (e) => {
+      clearTimeout(give);
+      if (e.code === GRANT_INVALID) rmSync(grant.file, { force: true });
+      reject(new Error(`socket closed (${e.code}${e.reason ? ` ${e.reason}` : ""})`));
+    };
+  });
+}
+
 async function main() {
+  if (args[0] === "grant" || args[0] === "ungrant") {
+    if (!fromFlag || !to) {
+      console.error(
+        `usage: bun scripts/dev/eval.ts ${args[0]} --from /node/a --to /node/b${args[0] === "grant" ? " [--hours 8]" : ""}`,
+      );
+      process.exit(2);
+    }
+    const hours = hoursFlag ? Number(hoursFlag) : undefined;
+    console.log(JSON.stringify(await nodeGrant(args[0], fromFlag, to, hours)));
+    return;
+  }
   if (args[0] === "busy") {
     const w = parseBusyArgs([
       ...args.slice(1),

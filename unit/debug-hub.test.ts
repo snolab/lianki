@@ -15,6 +15,8 @@ import {
   PAGES_IDLE,
   PAGES_IDLE_MS,
   PENDING_MS,
+  type Identity,
+  hashId,
 } from "@/lib/dev-eval";
 
 /** A socket as the hibernation API hands it to the hub, recording what it was sent. */
@@ -145,6 +147,7 @@ function setup() {
     (p.last("state") as { pending: { pair: string } | null }).pending?.pair ?? "";
   return {
     hub,
+    sockets,
     page,
     controller,
     resume,
@@ -332,7 +335,18 @@ describe("DebugHub pairing", () => {
 });
 
 type Chat = {
-  message: { id: string; from: string; label: string; text: string; at: number; thread?: string };
+  message: {
+    id: string;
+    from: string;
+    label: string;
+    text: string;
+    at: number;
+    thread?: string;
+    sender?: unknown;
+    taskPath?: string;
+    agentId?: string;
+    to?: string;
+  };
 };
 const chats = (ws: FakeSocket) =>
   ws.sent.filter((m) => m.type === "chat").map((m) => (m as unknown as Chat).message);
@@ -1903,5 +1917,349 @@ describe("DebugHub presence: pages-idle and pages-back", () => {
     s.tick(PAGE_GONE_GRACE_MS);
     await s.hub.alarm();
     expect(c.closed).toBe(PAGES_GONE);
+  });
+});
+
+describe("DebugHub avatars (sender on chat lines)", () => {
+  const PIC = "https://example.com/avatar.png";
+  /** A page with a full identity, as index.ts hands it over. */
+  const pageAs = async (s: ReturnType<typeof setup>, who: Identity, label = "/words iPhone") => {
+    const ws = new FakeSocket();
+    s.sockets.push(ws);
+    await s.hub.connectPage(
+      ws,
+      new URL(`https://lianki.com/api/version/debug?label=${encodeURIComponent(label)}`),
+      who,
+    );
+    return ws;
+  };
+
+  it("a friend's page hears who it is, and their lines carry it: hashed id, never the email", async () => {
+    const s = setup();
+    const f = await pageAs(s, {
+      userId: "f1",
+      email: "ada@example.com",
+      owner: false,
+      name: "Ada",
+      image: PIC,
+    });
+    const sender = { id: hashId("f1"), name: "Ada", avatars: [PIC] };
+    expect(f.last("me")).toEqual({ type: "me", sender });
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    expect(chats(f).at(-1)?.sender).toEqual(sender);
+    expect(JSON.stringify(f.last("me"))).not.toContain("ada@example.com");
+  });
+
+  it("the owner's lines carry the owner's sender too", async () => {
+    const s = setup();
+    const o = await pageAs(s, { userId: "o1", email: "o@example.com", owner: true, name: "Owner" });
+    expect(o.last("me")).toEqual({ type: "me", sender: { id: hashId("o1"), name: "Owner" } });
+    await s.msg(o, { type: "chat", id: "a", text: "hi" });
+    expect(chats(o).at(-1)?.sender).toEqual({ id: hashId("o1"), name: "Owner" });
+  });
+
+  it("a picture that is not https is dropped; no identity means no sender (as before)", async () => {
+    const s = setup();
+    const f = await pageAs(s, {
+      userId: "f2",
+      email: "",
+      owner: false,
+      image: "http://example.com/a.png",
+    });
+    expect(f.last("me")).toEqual({ type: "me", sender: { id: hashId("f2") } });
+    const p = s.page();
+    await s.msg(p, { type: "chat", id: "b", text: "hi" });
+    expect(p.last("me")).toBeUndefined();
+    expect(chats(p).at(-1)?.sender).toBeUndefined();
+  });
+
+  it("the page's attachment stays under the 2 KB limit at the bounds", async () => {
+    const s = setup();
+    const f = await pageAs(
+      s,
+      {
+        userId: "f3",
+        email: `${"e".repeat(300)}@example.com`,
+        owner: false,
+        name: "名".repeat(200),
+        image: `https://example.com/${"x".repeat(270)}`,
+      },
+      `/${"p".repeat(400)}`,
+    );
+    const bytes = new TextEncoder().encode(JSON.stringify(f.deserializeAttachment())).length;
+    expect(bytes).toBeLessThan(2048);
+  });
+
+  it("index.ts forwards the name (percent-encoded) and picture, and strips a page's own", async () => {
+    const seen: Headers[] = [];
+    const e: Env = {
+      HUB: { idFromName: () => 0, get: () => ({ fetch: async () => new Response("hub") }) },
+      DEBUG: {
+        idFromName: () => 0,
+        get: () => ({
+          fetch: async (r: Request) => {
+            seen.push(r.headers);
+            return new Response("hub");
+          },
+        }),
+      },
+      MAIN: {
+        fetch: async () =>
+          Response.json({
+            userId: "f1",
+            email: "f@example.com",
+            owner: false,
+            name: "山田 Ada",
+            image: PIC,
+          }),
+      },
+    };
+    const req = (h: Record<string, string>) =>
+      new Request("https://lianki.com/api/version/debug", {
+        headers: { upgrade: "websocket", origin: "https://lianki.com", cookie: "s=1", ...h },
+      });
+    await push.fetch(req({ "x-debug-image": "https://example.com/spoof.png" }), e);
+    expect(decodeURIComponent(seen[0].get("x-debug-name") ?? "")).toBe("山田 Ada");
+    expect(seen[0].get("x-debug-image")).toBe(PIC);
+    // An older main Worker says neither: a page's own headers do not get through.
+    e.MAIN = { fetch: async () => Response.json({ userId: "f1", email: "f@x", owner: false }) };
+    await push.fetch(
+      req({ "x-debug-image": "https://example.com/spoof.png", "x-debug-name": "Spoof" }),
+      e,
+    );
+    expect(seen[1].get("x-debug-image")).toBeNull();
+    expect(seen[1].get("x-debug-name")).toBeNull();
+  });
+
+  it("debugIdentity keeps a name and an https picture, and drops anything else", async () => {
+    const req = new Request("https://lianki.com/api/version/debug", {
+      headers: { origin: "https://lianki.com", cookie: "s=1" },
+    });
+    const main = (body: unknown) => ({ fetch: async () => Response.json(body) });
+    expect(
+      await debugIdentity(
+        req,
+        main({ userId: "u", email: "", owner: false, name: "Ada", image: PIC }),
+      ),
+    ).toEqual({ userId: "u", email: "", owner: false, name: "Ada", image: PIC });
+    expect(
+      await debugIdentity(
+        req,
+        main({ userId: "u", email: "", owner: false, name: 3, image: "javascript:x" }),
+      ),
+    ).toEqual({ userId: "u", email: "", owner: false });
+  });
+
+  it("the hub reads the identity headers (a bad name encoding is ignored)", async () => {
+    const s = setup();
+    const r = (name: string) =>
+      new Request("https://lianki.com/api/version/debug?label=/x", {
+        headers: {
+          "x-debug-user": "f9",
+          "x-debug-email": "",
+          "x-debug-owner": "0",
+          "x-debug-name": name,
+          "x-debug-image": PIC,
+        },
+      });
+    // fetch() makes a WebSocketPair, which only the Workers runtime has: stub one.
+    const g = globalThis as { WebSocketPair?: unknown };
+    const had = g.WebSocketPair;
+    const made: FakeSocket[] = [];
+    g.WebSocketPair = class {
+      0 = new FakeSocket();
+      1 = (() => {
+        const ws = new FakeSocket();
+        made.push(ws);
+        return ws;
+      })();
+    };
+    // A 101 Response is refused outside the Workers runtime; the socket is set up by then.
+    const call = (req: Request) => s.hub.fetch(req).catch(() => null);
+    try {
+      await call(r(encodeURIComponent("Ada")));
+      await call(r("%E0%A4%A"));
+    } finally {
+      g.WebSocketPair = had;
+    }
+    expect(made[0]?.last("me")).toEqual({
+      type: "me",
+      sender: { id: hashId("f9"), name: "Ada", avatars: [PIC] },
+    });
+    expect(made[1]?.last("me")).toEqual({
+      type: "me",
+      sender: { id: hashId("f9"), avatars: [PIC] },
+    });
+  });
+});
+
+describe("DebugHub node paths (messages addressed to state-tree nodes)", () => {
+  /**
+   * The owner's page, the main (root) listener, and listeners at the given
+   * nodes, each resumed with the root's chat grant (`?node=&agent=`).
+   */
+  async function tree(...nodes: string[]) {
+    const s = setup();
+    const p = s.page();
+    const root = s.controller("main lane");
+    await s.msg(p, { type: "allow", pair: s.pairOf(p), scope: "chat" });
+    const token = root.last("approved")?.token as string;
+    const at: Record<string, FakeSocket> = {};
+    for (const n of nodes) {
+      const ws = new FakeSocket();
+      s.sockets.push(ws);
+      await s.hub.connectController(
+        ws,
+        new URL(
+          `https://lianki.com/api/version/debug/control?label=sub&node=${encodeURIComponent(n)}&agent=${encodeURIComponent(`agent ${n.split("/").pop()}`)}`,
+        ),
+        token,
+      );
+      at[n] = ws;
+    }
+    return { ...s, p, root, at, token };
+  }
+  const observed = (ws: FakeSocket) =>
+    ws.sent.filter((m) => m.type === "chat").map((m) => m.observed === true);
+
+  it("an owner line to a node reaches that node, its ancestors as observers, and no sibling", async () => {
+    const { p, root, at, msg } = await tree("/words", "/words/prefetch", "/words/audio", "/home");
+    await msg(p, { type: "chat", id: "m1", text: "prefetch more", to: "/words › prefetch" });
+    expect(chats(at["/words/prefetch"])).toMatchObject([{ id: "m1", to: "/words/prefetch" }]);
+    expect(observed(at["/words/prefetch"])).toEqual([false]);
+    expect(chats(at["/words"]).map((m) => m.id)).toEqual(["m1"]);
+    expect(observed(at["/words"])).toEqual([true]);
+    expect(chats(root).map((m) => m.id)).toEqual(["m1"]);
+    expect(observed(root)).toEqual([true]);
+    expect(chats(at["/words/audio"])).toEqual([]);
+    expect(chats(at["/home"])).toEqual([]);
+    // The owner's page shows it, with its target.
+    expect(chats(p).at(-1)).toMatchObject({ id: "m1", to: "/words/prefetch" });
+  });
+
+  it("a main-thread line (no `to`, or '/') reaches the root listener only, as before", async () => {
+    const { p, root, at, msg } = await tree("/words");
+    await msg(p, { type: "chat", id: "m1", text: "hi" });
+    await msg(p, { type: "chat", id: "m2", text: "hi", to: "/" });
+    await msg(p, { type: "chat", id: "m3", text: "bad", to: "/../x" });
+    expect(chats(root).map((m) => [m.id, m.to])).toEqual([
+      ["m1", undefined],
+      ["m2", undefined],
+      ["m3", undefined],
+    ]);
+    expect(observed(root)).toEqual([false, false, false]);
+    expect(chats(at["/words"])).toEqual([]);
+  });
+
+  it("a legacy listener (no ?node) counts as the root and observes every node", async () => {
+    const { p, root, msg } = await tree();
+    await msg(p, { type: "chat", id: "m1", text: "x", to: "/a/b" });
+    expect(chats(root)).toMatchObject([{ id: "m1", to: "/a/b" }]);
+  });
+
+  it("the state lists the listeners' nodes for completions", async () => {
+    const { p } = await tree("/words/prefetch", "/home");
+    expect(p.last("state")?.nodes).toEqual(["/home", "/words/prefetch"]);
+  });
+
+  it("an agent line carries its taskPath and agentId; the socket's node is the default", async () => {
+    const { p, at, msg } = await tree("/words/prefetch");
+    const c = at["/words/prefetch"];
+    await msg(c, { type: "say", text: "warming the cache" });
+    expect(chats(p).at(-1)).toMatchObject({
+      from: "agent",
+      text: "warming the cache",
+      taskPath: "/words/prefetch",
+      agentId: "agent prefetch",
+    });
+    await msg(c, { type: "say", text: "deeper", taskPath: "/words/prefetch/img", agentId: "x9" });
+    expect(chats(p).at(-1)).toMatchObject({ taskPath: "/words/prefetch/img", agentId: "x9" });
+    // Outside its own node: refused.
+    await msg(c, { type: "say", text: "escape", taskPath: "/home" });
+    expect(c.last("error")?.reason).toBe(
+      "taskPath /home is outside this listener's node /words/prefetch",
+    );
+  });
+
+  it("a root agent's line without taskPath is unchanged", async () => {
+    const { p, root, msg } = await tree();
+    await msg(root, { type: "say", text: "plain" });
+    const line = chats(p).at(-1);
+    expect(line?.text).toBe("plain");
+    expect(line?.taskPath).toBeUndefined();
+    expect(line?.agentId).toBeUndefined();
+    expect(line?.to).toBeUndefined();
+  });
+
+  it("agent → agent: into its own subtree, and upward, are allowed", async () => {
+    const { p, root, at, msg } = await tree("/words", "/words/prefetch");
+    await msg(at["/words"], { type: "say", text: "do X", to: "/words/prefetch" });
+    expect(chats(at["/words/prefetch"]).at(-1)).toMatchObject({
+      text: "do X",
+      taskPath: "/words",
+      to: "/words/prefetch",
+    });
+    await msg(at["/words/prefetch"], { type: "say", text: "done", to: "/words" });
+    expect(chats(at["/words"]).at(-1)).toMatchObject({ text: "done", taskPath: "/words/prefetch" });
+    await msg(at["/words/prefetch"], { type: "say", text: "to main", to: "/" });
+    expect(chats(root).at(-1)).toMatchObject({ text: "to main", taskPath: "/words/prefetch" });
+    // The owner's page and the root see all of it.
+    expect(chats(p).map((m) => m.text)).toEqual(["do X", "done", "to main"]);
+    expect(chats(root).map((m) => m.text)).toEqual(["do X", "done", "to main"]);
+  });
+
+  it("agent → a sibling is refused without a grant, naming the common ancestor", async () => {
+    const { p, at, msg } = await tree("/words/prefetch", "/words/audio");
+    await msg(at["/words/prefetch"], { type: "say", text: "hey", to: "/words/audio" });
+    expect(at["/words/prefetch"].last("error")).toMatchObject({
+      type: "error",
+      reason: "out of scope: needs a grant from /words",
+    });
+    expect(chats(at["/words/audio"])).toEqual([]);
+    expect(chats(p)).toEqual([]);
+  });
+
+  it("a grant from the root (or the common ancestor) lets a sibling through until it lapses", async () => {
+    const { root, at, msg, tick } = await tree("/words/prefetch", "/words/audio", "/home");
+    // A listener that does not hold both nodes cannot grant.
+    await msg(at["/home"], { type: "grant", from: "/words/prefetch", to: "/words/audio" });
+    expect(at["/home"].last("error")?.reason).toMatch(/^out of scope/);
+    await msg(root, { type: "grant", from: "/words/prefetch", to: "/words/audio", ms: 60_000 });
+    expect(root.last("granted")).toMatchObject({ from: "/words/prefetch", to: "/words/audio" });
+    await msg(at["/words/prefetch"], { type: "say", text: "hey", to: "/words/audio" });
+    expect(chats(at["/words/audio"]).at(-1)).toMatchObject({
+      text: "hey",
+      taskPath: "/words/prefetch",
+    });
+    // Not the other way round.
+    await msg(at["/words/audio"], { type: "say", text: "back", to: "/words/prefetch" });
+    expect(at["/words/audio"].last("error")?.reason).toMatch(/^out of scope/);
+    tick(60_001);
+    await msg(at["/words/prefetch"], { type: "say", text: "late", to: "/words/audio" });
+    expect(chats(at["/words/audio"]).map((m) => m.text)).toEqual(["hey"]);
+  });
+
+  it("ungrant takes a node grant back", async () => {
+    const { root, at, msg } = await tree("/a", "/b");
+    await msg(root, { type: "grant", from: "/a", to: "/b" });
+    await msg(root, { type: "ungrant", from: "/a", to: "/b" });
+    await msg(at["/a"], { type: "say", text: "x", to: "/b" });
+    expect(at["/a"].last("error")?.reason).toBe("out of scope: needs a grant from /");
+  });
+
+  it("a node listener's history holds only the lines routed to it", async () => {
+    const { hub, p, sockets, msg, token } = await tree();
+    await msg(p, { type: "chat", id: "m1", text: "main" });
+    await msg(p, { type: "chat", id: "m2", text: "for words", to: "/words" });
+    await msg(p, { type: "chat", id: "m3", text: "for home", to: "/home" });
+    const ws = new FakeSocket();
+    sockets.push(ws);
+    await hub.connectController(
+      ws,
+      new URL("https://lianki.com/api/version/debug/control?node=/words"),
+      token,
+    );
+    const h = ws.last("history") as { messages: { id: string }[] };
+    expect(h.messages.map((m) => m.id)).toEqual(["m2"]);
   });
 });
