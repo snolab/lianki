@@ -2353,11 +2353,21 @@ function Study({
   // Only the list scrolls: the page under it stays put.
   useEffect(() => {
     if (!listEl) return;
-    const html = document.documentElement;
-    const prev = html.style.overflow;
-    html.style.overflow = "hidden";
+    // iOS scrolls the document past an html-only overflow lock (the header
+    // plus the body's safe-area padding make it taller than the window), so
+    // body is locked too, with no rubber band, and the page starts at the top.
+    const els = [document.documentElement, document.body];
+    const prev = els.map((el) => [el.style.overflow, el.style.overscrollBehavior]);
+    for (const el of els) {
+      el.style.overflow = "hidden";
+      el.style.overscrollBehavior = "none";
+    }
+    window.scrollTo(0, 0);
     return () => {
-      html.style.overflow = prev;
+      els.forEach((el, i) => {
+        el.style.overflow = prev[i][0];
+        el.style.overscrollBehavior = prev[i][1];
+      });
     };
   }, [listEl]);
   // Keep the cursor in view as it moves, a couple of rows from the edges of
