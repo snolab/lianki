@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { centreWeight, nextGoal, termTarget, weightedQuantile } from "@/lib/words/columns";
+import {
+  centreWeight,
+  nextGoal,
+  termTarget,
+  weightedQuantile,
+  SPLIT_MIN_REM,
+  splitTarget,
+} from "@/lib/words/columns";
 
 const REM = 16;
 
@@ -52,5 +59,24 @@ describe("term column width", () => {
     expect(nextGoal(null, 101, REM)).toBe(104);
     expect(nextGoal(104, 120, REM)).toBe(104);
     expect(nextGoal(104, 140, REM)).toBe(144);
+  });
+});
+
+describe("splitTarget", () => {
+  const rem = 16;
+  const min = SPLIT_MIN_REM * rem;
+  test("both fit: each gets its need, the rest is split evenly", () => {
+    expect(splitTarget(200, 100, 600, rem)).toBe(200 + 150);
+  });
+  test("they do not fit: shared in proportion to need", () => {
+    expect(splitTarget(900, 300, 600, rem)).toBe(450);
+  });
+  test("neither column goes below the minimum", () => {
+    expect(splitTarget(2000, 10, 600, rem)).toBe(600 - min);
+    expect(splitTarget(10, 2000, 600, rem)).toBe(min);
+  });
+  test("too little room, or nothing measured: halves", () => {
+    expect(splitTarget(500, 500, 2 * min - 10, rem)).toBe(min - 5);
+    expect(splitTarget(0, 0, 600, rem)).toBe(300);
   });
 });

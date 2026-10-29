@@ -20,7 +20,14 @@ import { CSS } from "@dnd-kit/utilities";
 import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/words/tree";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
-import { nextGoal, termTarget } from "@/lib/words/columns";
+import {
+  COLUMN_QUANTILE,
+  centreWeight,
+  nextGoal,
+  splitTarget,
+  termTarget,
+  weightedQuantile,
+} from "@/lib/words/columns";
 import { MIN_JERK_EASING, minJerk, moveSeconds, springStep } from "@/lib/words/motion";
 import { CORD_BOW, cordPath, cordPull } from "@/lib/words/cords";
 import {
@@ -2194,6 +2201,31 @@ function Study({
       return w ?? 0;
     };
   }, [touch, config.readingOnBack]);
+  /** Desktop: how wide a row's meaning and example want to be (text-sm, one line). */
+  const measureCells = useMemo(() => {
+    if (typeof document === "undefined") return () => ({ back: 0, ex: 0 });
+    const ctx = document.createElement("canvas").getContext("2d");
+    const family = getComputedStyle(document.body).fontFamily;
+    const cache = new Map<string, { back: number; ex: number }>();
+    return (it: Item) => {
+      const k = keyOf(it);
+      let w = cache.get(k);
+      if (!w && ctx) {
+        ctx.font = `400 14px ${family}`;
+        let back = ctx.measureText(it.back).width;
+        let ex = it.ex ? ctx.measureText(it.ex).width : 0;
+        if (config.readingOnBack && it.reading && it.reading !== it.term)
+          back += 8 + ctx.measureText(it.reading).width;
+        if (it.exTr) {
+          ctx.font = `400 12px ${family}`;
+          ex += 8 + ctx.measureText(it.exTr).width;
+        }
+        w = { back, ex };
+        cache.set(k, w);
+      }
+      return w ?? { back: 0, ex: 0 };
+    };
+  }, [config.readingOnBack]);
   const rem = useMemo(
     () =>
       typeof document === "undefined"
@@ -2204,10 +2236,14 @@ function Study({
   const termGoal = useRef<number | null>(null);
   const termShown = useRef<number | null>(null);
   const termVelocity = useRef(0);
+  // Desktop with examples: the meaning column's share, the same way.
+  const backGoal = useRef<number | null>(null);
+  const backShown = useRef<number | null>(null);
+  const backVelocity = useRef(0);
   useEffect(() => {
     if (!viewH || to <= from) return;
     const centre = scrollTop + viewH / 2;
-    const rows = [];
+    const rows: { width: number; distance: number }[] = [];
     for (let i = from; i < to; i++)
       rows.push({
         width: measureTerm(queue[i]),
@@ -2216,28 +2252,59 @@ function Study({
     termGoal.current = nextGoal(termGoal.current, termTarget(rows, viewH, rem, touch), rem);
     const el = listRef.current;
     if (!el) return;
-    if (termShown.current === null) {
+    const split = !touch && hasExamples;
+    if (split) {
+      const weighted = (f: (c: { back: number; ex: number }) => number) =>
+        weightedQuantile(
+          rows.map((r, k) => [f(measureCells(queue[from + k])), centreWeight(r.distance, viewH)]),
+          COLUMN_QUANTILE,
+        );
+      // The list less padding, marker and status columns, gaps, and the term column.
+      const avail = el.clientWidth - (1 + 1.25 + 3.5 + 2) * rem - termGoal.current;
+      backGoal.current = nextGoal(
+        backGoal.current,
+        splitTarget(weighted((c) => c.back) + rem, weighted((c) => c.ex) + rem, avail, rem),
+        rem,
+      );
+    }
+    if (termShown.current === null || (split && backShown.current === null)) {
       termShown.current = termGoal.current;
       el.style.setProperty("--term-w", `${termShown.current}px`);
+      if (split) {
+        backShown.current = backGoal.current;
+        el.style.setProperty("--back-w", `${backShown.current}px`);
+      }
       return;
     }
     // Glide every row together: one variable, moved by a critically damped
     // spring that keeps its velocity if the goal moves mid-glide.
     let raf = 0;
     let last = performance.now();
-    const step = (now: number) => {
-      const goal = termGoal.current!;
-      const s = springStep(termShown.current!, termVelocity.current, goal, (now - last) / 1000, 14);
-      last = now;
+    /** One spring step of a column toward its goal; true once it has settled. */
+    const glide = (
+      goal: number,
+      shown: { current: number | null },
+      velocity: { current: number },
+      prop: string,
+      dt: number,
+    ) => {
+      const s = springStep(shown.current!, velocity.current, goal, dt, 14);
       const settled = Math.abs(s.x - goal) < 0.5 && Math.abs(s.v) < 5;
-      termShown.current = settled ? goal : s.x;
-      termVelocity.current = settled ? 0 : s.v;
-      el.style.setProperty("--term-w", `${termShown.current}px`);
-      if (!settled) raf = requestAnimationFrame(step);
+      shown.current = settled ? goal : s.x;
+      velocity.current = settled ? 0 : s.v;
+      el.style.setProperty(prop, `${shown.current}px`);
+      return settled;
+    };
+    const step = (now: number) => {
+      const dt = (now - last) / 1000;
+      last = now;
+      const a = glide(termGoal.current!, termShown, termVelocity, "--term-w", dt);
+      const b = !split || glide(backGoal.current!, backShown, backVelocity, "--back-w", dt);
+      if (!a || !b) raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [from, to, scrollTop, viewH, pad, queue, measureTerm, rem, touch]);
+  }, [from, to, scrollTop, viewH, pad, queue, measureTerm, measureCells, hasExamples, rem, touch]);
 
   const done = grades.size;
   const minutes = (Date.now() - started.current) / 60_000;
@@ -2486,7 +2553,7 @@ function Study({
                     touch
                       ? "slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base pr-4"
                       : hasExamples
-                        ? "grid-cols-[1.25rem_var(--term-w,12rem)_minmax(10rem,1fr)_minmax(12rem,1.4fr)_3.5rem] text-[15px]"
+                        ? "grid-cols-[1.25rem_var(--term-w,12rem)_var(--back-w,minmax(10rem,1fr))_minmax(8rem,1fr)_3.5rem] text-[15px]"
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] text-[15px]"
                   } ${rating ? RATING_STYLE[rating] : ""}`}
                   style={{ height: ROW_H }}

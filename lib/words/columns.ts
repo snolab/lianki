@@ -17,7 +17,8 @@ export const TERM_MIN_REM = 6;
 export const TERM_MAX_REM = 20;
 export const TOUCH_TERM_MIN_REM = 5;
 export const TOUCH_TERM_MAX_REM = 12;
-const QUANTILE = 0.85;
+export const COLUMN_QUANTILE = 0.85;
+const QUANTILE = COLUMN_QUANTILE;
 const BAND_REM = 1.5;
 const STEP_REM = 0.5;
 
@@ -57,4 +58,27 @@ export function termTarget(
 export function nextGoal(goal: number | null, target: number, rem: number) {
   if (goal !== null && Math.abs(target - goal) <= BAND_REM * rem) return goal;
   return Math.round(target / (STEP_REM * rem)) * STEP_REM * rem;
+}
+
+/** Neither the meaning nor the example column narrower than this. */
+export const SPLIT_MIN_REM = 8;
+
+/**
+ * Desktop with examples: the meaning column's width (px) out of the `avail`
+ * px the meaning and example columns share. When both fit, each gets what
+ * it needs and the room left over is split evenly; when they do not, the
+ * room is shared in proportion to need — so a stretch of long meanings and
+ * short examples widens the meanings, and the other way round.
+ */
+export function splitTarget(backNeed: number, exNeed: number, avail: number, rem: number) {
+  const min = SPLIT_MIN_REM * rem;
+  if (avail <= 2 * min) return avail / 2;
+  const need = backNeed + exNeed;
+  const back =
+    need <= 0
+      ? avail / 2
+      : need <= avail
+        ? backNeed + (avail - need) / 2
+        : (avail * backNeed) / need;
+  return Math.min(avail - min, Math.max(min, back));
 }
