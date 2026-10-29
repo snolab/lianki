@@ -496,7 +496,9 @@ the old `msg:<seq>` keys, so nothing was lost), the user id for each friend
 (`t:<userId>:msg:<seq>`). Each keeps the last 200. A friend's page gets only
 its own thread — history on connect and new messages — never the owner's
 or another friend's; the owner's pages get only the owner thread. The
-agent's listener (an owner-approved chat grant) hears every thread: each
+agent's listener (an owner-approved chat grant; the main one, at node "/",
+when sub-agents listen at state-tree nodes — [dev-debug-widget.md](dev-debug-widget.md),
+"Node paths") hears every thread: each
 line carries `thread`, `email` and `label` — the page's path plus user
 agent, so the agent knows which page a friend means. A friend's first
 message ever also sends the listener `{type:"friend-new", userId, email}`;

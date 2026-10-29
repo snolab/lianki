@@ -8,13 +8,18 @@
  * host's logo), the viewer's a picture, and two friend lines show the
  * fallback initial (one picture that fails to load, one with none).
  * `?nopic=1` drops the viewer's picture, so their lines show the initial too.
+ * Node paths: two state-tree nodes' agents speak (a subtitle "/words ›
+ * prefetch" and a left border by node), one addresses another ("from →
+ * to"), and the owner's line to a node shows "→ /words › prefetch". Typing
+ * "@/" offers the listed nodes; `?target=/words/prefetch` starts with that chip.
  */
 import { createRoot } from "react-dom/client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ChatMessage } from "@/lib/dev-eval";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
 import { LiagentMark } from "@lianki/debug-chat/LiagentMark";
+import { setTarget } from "@lianki/debug-chat/DebugChat";
 
 /** A made-up profile picture: no network, so the harness works offline. */
 const PIC = `data:image/svg+xml,${encodeURIComponent(
@@ -42,6 +47,47 @@ const FRIENDS: ChatMessage[] = [
   },
 ];
 
+/** Lines from state-tree nodes: two sub-agents, one agent → agent, and the owner's to a node. */
+const NODES: ChatMessage[] = [
+  {
+    id: "n1",
+    from: "agent",
+    label: "sub-agent",
+    agentId: "prefetcher",
+    taskPath: "/words/prefetch",
+    text: "warming audio for the next 20 rows",
+    at: Date.parse("2026-10-29T00:03:00Z"),
+  },
+  {
+    id: "n2",
+    from: "owner",
+    label: "/harness",
+    to: "/words/prefetch",
+    text: "skip the images for now",
+    at: Date.parse("2026-10-29T00:04:00Z"),
+  },
+  {
+    id: "n3",
+    from: "agent",
+    label: "sub-agent",
+    agentId: "audio",
+    taskPath: "/words/audio",
+    text: "TTS cache is cold on iOS",
+    at: Date.parse("2026-10-29T00:05:00Z"),
+  },
+  {
+    id: "n4",
+    from: "agent",
+    label: "sub-agent",
+    agentId: "prefetcher",
+    taskPath: "/words/prefetch",
+    to: "/words/audio",
+    text: "I will fetch those clips first",
+    at: Date.parse("2026-10-29T00:06:00Z"),
+  },
+];
+const HARNESS_NODES = ["/words", "/words/prefetch", "/words/audio", "/home/sites"];
+
 function Harness() {
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     Array.from(
@@ -53,9 +99,13 @@ function Harness() {
         text: `message ${i}`,
         at: Date.parse("2026-10-29T00:00:00Z") + i * 1000,
       }),
-    ).concat(FRIENDS),
+    ).concat(FRIENDS, NODES),
   );
   const q = new URLSearchParams(location.search);
+  const startTarget = q.get("target");
+  useEffect(() => {
+    if (startTarget) setTarget(startTarget);
+  }, [startTarget]);
   const busy = q.has("busy");
   const pending = q.get("pending");
   const record = (key: string, v: unknown) => {
@@ -112,10 +162,18 @@ function Harness() {
           const w = globalThis as { __ended?: string[] };
           (w.__ended ??= []).push(x.pair);
         }}
-        onSend={(text) => {
+        nodes={HARNESS_NODES}
+        onSend={(text, to) => {
           setMessages((l) => [
             ...l,
-            { id: crypto.randomUUID(), from: "owner", label: "/harness", text, at: Date.now() },
+            {
+              id: crypto.randomUUID(),
+              from: "owner",
+              label: "/harness",
+              text,
+              at: Date.now(),
+              ...(to ? { to } : {}),
+            },
           ]);
           return true;
         }}

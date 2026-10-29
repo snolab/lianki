@@ -17,6 +17,7 @@
     "./debug-widget": "./src/debug-widget.ts",
     "./icons": "./src/icons.tsx",
     "./mic": "./src/mic.ts",
+    "./node-path": "./src/node-path.ts",
     "./tap-gesture": "./src/tap-gesture.ts",
     "./wire": "./src/wire.ts",
     "./voice": "./src/voice.ts",

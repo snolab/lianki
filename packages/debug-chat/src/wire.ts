@@ -1,8 +1,11 @@
 /**
  * The debug chat's wire types and the pure helpers its UI uses. The hub and
- * the sender use them too, through lib/dev-eval.ts (which re-exports them):
- * no imports, so the push Worker can bundle this file.
+ * the sender use them too, through lib/dev-eval.ts (which re-exports them).
+ * Its only import is ./node-path (no imports either), so the push Worker can
+ * bundle this file.
  */
+
+export * from "./node-path";
 
 /** Largest chat message (owner's or agent's), in characters. */
 export const MAX_CHAT = 4000;
@@ -47,6 +50,18 @@ export type ChatMessage = {
   thread?: string;
   email?: string;
   sender?: Sender;
+  /**
+   * The state-tree node an agent line comes from ("/words/prefetch"; absent =
+   * the main thread). Shown as a muted subtitle under the agent's avatar.
+   */
+  taskPath?: string;
+  /** The node's assignee that wrote an agent line (≤ MAX_AGENT_ID). */
+  agentId?: string;
+  /**
+   * The node the line is addressed to (absent or "/" = the main thread): the
+   * owner's "@/words › prefetch …", or one agent's line to another node.
+   */
+  to?: string;
 };
 
 /**

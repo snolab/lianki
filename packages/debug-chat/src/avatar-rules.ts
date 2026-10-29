@@ -46,7 +46,7 @@ export type LineAvatar = {
 
 /**
  * A log line's avatar. The agent's is the host app's logo (`agentAvatar`)
- * named by its label. Anyone else's comes from `avatarFor` (the host's
+ * named by its assignee id (`agentId`), else its label. Anyone else's comes from `avatarFor` (the host's
  * resolver), else the line's `sender`; the viewer's own lines (owner lines
  * on the owner's page, friend lines on a friend's) fill the gaps from
  * `viewer` and are named "you". The fallback colour's seed is the sender's
@@ -62,7 +62,8 @@ export function lineAvatar(
   },
 ): LineAvatar {
   if (m.from === "agent") {
-    const name = m.label || "agent";
+    // The node's assignee, when the line names one; else the controller's label.
+    const name = m.agentId || m.label || "agent";
     return { src: opts.agentAvatar, name, initialFrom: name, seed: `agent:${name}`, mine: false };
   }
   const mine = m.from === (opts.friend ? "friend" : "owner");

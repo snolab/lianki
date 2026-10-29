@@ -390,11 +390,19 @@ export function DebugEval() {
       sockRef.current?.send(JSON.stringify({ type: "end-page", id }));
     } catch {}
   };
-  const sendChat = (text: string) => {
+  /** `to`: the state-tree node the line is addressed to (absent = the main thread). */
+  const sendChat = (text: string, to?: string) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return false;
     try {
-      sock.send(JSON.stringify({ type: "chat", id: crypto.randomUUID().slice(0, 12), text }));
+      sock.send(
+        JSON.stringify({
+          type: "chat",
+          id: crypto.randomUUID().slice(0, 12),
+          text,
+          ...(to ? { to } : {}),
+        }),
+      );
       return true;
     } catch {
       return false;
@@ -419,6 +427,7 @@ export function DebugEval() {
           listeners={state?.listeners ?? sessions.length}
           messages={messages}
           onSend={sendChat}
+          nodes={state?.nodes}
           notice={friend === "blocked" ? "Chat is not available for this account." : undefined}
           warning={warning ?? undefined}
           sessions={sessions}
