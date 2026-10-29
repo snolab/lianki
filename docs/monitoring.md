@@ -270,6 +270,8 @@ event. Disconnecting this page takes two taps. Eval and preview sessions keep
 a light End. The menu has no End chat: the chat hibernates and wakes by
 itself.
 
+**Voice commits.** Every final spoken transcript is punctuated, then committed and sent at once (上屏): if Whisper left no stop, `punctuate()` adds one that fits the text (。/？ for CJK, ./? otherwise, a question by its particle or opening word). A short "好" or "OK" goes out too. Partials never send. Typed text arriving in one burst of 3+ characters that ends a sentence (an outside dictation IME) is also sent at once.
+
 **Mic.** A mic button sits inside the input at its right edge
 (`debug-chat-mic`; hidden where the browser lacks getUserMedia or Web Audio).
 One tap turns hands-free listening on; another tap, or Escape, turns it off.
