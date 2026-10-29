@@ -168,15 +168,38 @@ export function isDictationBurst(settledLen: number, draft: string): boolean {
   return draft.length - settledLen >= AUTO_SEND_MIN && ENDS_SENTENCE.test(draft.trim());
 }
 
+const QUESTION_CJK = /(?:吗|嗎|呢|么|麼|吧|か|かな|かしら|の|でしょう|ですか|ますか|니까|나요|까요)$/u;
+const QUESTION_LATIN =
+  /^(?:what|why|how|when|where|who|whom|whose|which|can|could|do|does|did|is|are|was|were|will|would|should|shall|may|might|have|has|had)\b/i;
+const TRAILING_PUNCT = /[\p{P}\s]+$/u;
+
 /**
- * A final transcript lands in the draft: the new draft, and whether to send
- * it now (the whole draft, trimmed, is a sentence of AUTO_SEND_MIN
- * characters or more). Partials never come here; typing never does.
+ * Spoken text always ends a sentence ("auto-punctuate, then commit"): Whisper
+ * usually adds the stop itself; when it doesn't, add one that fits the text —
+ * 。/？ for CJK, ./? otherwise, a question by its particle or opening word.
+ * Text that already ends in any punctuation (…, ～, quotes) is left alone.
+ */
+export function punctuate(text: string): string {
+  const t = text.trim();
+  if (!t || /[\p{P}～]$/u.test(t)) return t;
+  const bare = t.replace(TRAILING_PUNCT, "");
+  if (CJK.test(t)) return t + (QUESTION_CJK.test(bare) ? "？" : "。");
+  return t + (QUESTION_LATIN.test(bare) ? "?" : ".");
+}
+
+/** Letters or digits in any script: something was actually said. */
+const SPOKEN = /[\p{L}\p{N}]/u;
+
+/**
+ * A final transcript lands in the draft, punctuated, and is committed at once
+ * (上屏 + send) whenever it carries any words — a short "好" or "OK" too.
+ * Partials never come here; typing never does (see isDictationBurst).
  */
 export function appendDictation(draft: string, text: string): { draft: string; send: boolean } {
-  const next = joinText(draft, text);
-  const t = next.trim();
-  return { draft: next, send: t.length >= AUTO_SEND_MIN && ENDS_SENTENCE.test(t) };
+  const said = punctuate(text);
+  if (!said) return { draft, send: false };
+  const next = joinText(draft, said);
+  return { draft: next, send: SPOKEN.test(said) && ENDS_SENTENCE.test(next.trim()) };
 }
 
 /** Words (or, in CJK text, characters), and their keys: lowercased, without punctuation. */

@@ -10,6 +10,7 @@ import {
   ENDS_SENTENCE,
   UtteranceQueue,
   appendDictation,
+  punctuate,
   isDictationBurst,
   type VadEvents,
   clipSinkFrom,
@@ -624,32 +625,40 @@ describe("isDictationBurst: typed text that arrived at once", () => {
   });
 });
 
-describe("appendDictation: spoken sentences are sent at once", () => {
-  it("a final that completes a sentence of 10+ characters sends; shorter or unfinished does not", () => {
+describe("appendDictation: spoken finals are punctuated and committed", () => {
+  it("adds a fitting stop when the transcript lacks one", () => {
+    expect(punctuate("Fix the swipe please")).toBe("Fix the swipe please.");
+    expect(punctuate("what time is it")).toBe("what time is it?");
+    expect(punctuate("Is it done")).toBe("Is it done?");
+    expect(punctuate("这个按钮太小了")).toBe("这个按钮太小了。");
+    expect(punctuate("好了吗")).toBe("好了吗？");
+    expect(punctuate("これは何ですか")).toBe("これは何ですか？");
+    expect(punctuate("スワイプを直して")).toBe("スワイプを直して。");
+    expect(punctuate("Already done.")).toBe("Already done.");
+    expect(punctuate("待って…")).toBe("待って…");
+    expect(punctuate("  ")).toBe("");
+  });
+
+  it("every final with words is sent at once, short replies too", () => {
+    expect(appendDictation("", "好")).toEqual({ draft: "好。", send: true });
+    expect(appendDictation("", "OK")).toEqual({ draft: "OK.", send: true });
     expect(appendDictation("", "Fix the swipe please.")).toEqual({
       draft: "Fix the swipe please.",
       send: true,
     });
-    expect(appendDictation("", "Hi there.").send).toBe(true);
-    expect(appendDictation("", "Ok.").send).toBe(true); // 3 characters
-    expect(appendDictation("", "O.").send).toBe(false); // 2
-    expect(appendDictation("", "  は。 ").send).toBe(false); // 2, trimmed
-    expect(appendDictation("", "Fix the swipe please").send).toBe(false);
-    expect(appendDictation("typed so far", "and spoken?")).toEqual({
-      draft: "typed so far and spoken?",
+    expect(appendDictation("typed so far", "and spoken")).toEqual({
+      draft: "typed so far and spoken.",
       send: true,
     });
-    expect(appendDictation("", "スワイプを直してください。").send).toBe(true);
-    expect(appendDictation("", "これは何ですか？").send).toBe(true);
-    expect(appendDictation("", "はい。").send).toBe(true);
-    expect(appendDictation("", "这个按钮太小了！请改大一点").send).toBe(false);
-    expect(AUTO_SEND_MIN).toBe(3);
+    expect(appendDictation("draft", "  ")).toEqual({ draft: "draft", send: false });
+    expect(appendDictation("", "。").send).toBe(false); // punctuation only: nothing said
+    expect(AUTO_SEND_MIN).toBe(3); // still the typed-burst rule
     expect(["。", "．", ".", "!", "?", "！", "？"].every((c) => ENDS_SENTENCE.test(`a${c}`))).toBe(
       true,
     );
   });
 
-  it("with the fake STT: only finals reach the draft, and a finished sentence goes out", async () => {
+  it("with the fake STT: only finals reach the draft, each punctuated and sent", async () => {
     const sent: string[] = [];
     let draft = "";
     const h = harness({
@@ -671,11 +680,12 @@ describe("appendDictation: spoken sentences are sent at once", () => {
     h.v.ev().onSpeechEnd(new Float32Array(RATE * 3));
     h.uploads[1].resolve("Please make the button bigger");
     await h.tick();
-    expect([sent, draft]).toEqual([[], "Please make the button bigger"]);
+    // Each final is punctuated and committed at once, even without a stop.
+    expect([sent, draft]).toEqual([["Please make the button bigger."], ""]);
     h.v.ev().onSpeechStart();
     h.v.ev().onSpeechEnd(new Float32Array(RATE));
-    h.uploads[2].resolve("and blue.");
+    h.uploads[2].resolve("好");
     await h.tick();
-    expect([sent, draft]).toEqual([["Please make the button bigger and blue."], ""]);
+    expect([sent, draft]).toEqual([["Please make the button bigger.", "好。"], ""]);
   });
 });

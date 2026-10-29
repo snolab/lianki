@@ -259,6 +259,9 @@ export type DebugChatProps = {
   onAddPage?: (s: PairInfo) => void;
 };
 
+/** The input grows to about five lines, then scrolls inside itself. */
+const INPUT_MAX_PX = 128;
+
 export function DebugChat({
   live,
   listeners,
@@ -334,8 +337,23 @@ export function DebugChat({
     if (end) setBelow(0);
   };
   const input = useRef<HTMLTextAreaElement | null>(null);
+  /** Dictated text just landed: put the caret after it and show the end. */
+  const caretToEnd = useRef(false);
+  /** The input grows with its text up to INPUT_MAX_PX, then scrolls inside itself. */
+  useLayoutEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, INPUT_MAX_PX)}px`;
+    if (caretToEnd.current) {
+      caretToEnd.current = false;
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [draft]);
   // The log is click-through, so it can't be swiped: a vertical swipe on the
-  // input scrolls it instead (unless the draft itself is long enough to scroll).
+  // empty input scrolls it instead. Only the pill moves the box.
   useEffect(() => {
     const el = input.current;
     if (!el) return;
@@ -347,7 +365,8 @@ export function DebugChat({
     };
     const move = (e: TouchEvent) => {
       const list = log.current;
-      if (!list || el.scrollHeight > el.clientHeight + 1) return;
+      // Empty input: the swipe scrolls the log. With text in it, it scrolls the text.
+      if (!list || el.value.length > 0) return;
       const ny = e.touches[0].clientY;
       if (!swiping && Math.abs(ny - y) < 6) return;
       swiping = true;
@@ -428,6 +447,8 @@ export function DebugChat({
   const shiftEnter = useRef(false);
   /** The mic is listening, or has transcripts out: the debounce waits for it. */
   const micOn = useRef(false);
+  /** The mic is on (drives the open log too: iOS drops input focus on a button tap). */
+  const [micActive, setMicActive] = useState(false);
   const micPending = useRef(0);
   /** This browser can capture (the mic button shows inside the input). */
   const [hasMic, setHasMic] = useState(false);
@@ -438,6 +459,7 @@ export function DebugChat({
   /** A transcript lands in the draft, as typed text would, but is never sent by itself. */
   const dictated = (t: string) => {
     const { draft: next, send } = appendDictation(draftRef.current, t);
+    caretToEnd.current = true;
     draftRef.current = next;
     settledLen.current = next.length; // not a typed "burst"
     setDraft(next);
@@ -502,7 +524,16 @@ export function DebugChat({
   /** Room at the input's right end: the mic (32px), and the busy spinner left of it. */
   const inputPad = hasMic ? (busy ? "pe-14" : "pe-9") : "pe-6";
   const unread = messages.slice(seen).filter((m) => m.from === "agent").length;
-  const dot = live ? "oklch(0.68 0.16 150)" : "oklch(0.62 0.02 70)";
+  /** An agent is listening (the hub's listener count, pushed on every change). */
+  const agentOnline = live && listeners > 0;
+  // Green: an agent is listening. Amber: connected, but no agent. Grey: no connection.
+  const dot = agentOnline
+    ? "oklch(0.68 0.16 150)"
+    : live
+      ? "oklch(0.75 0.13 75)"
+      : "oklch(0.62 0.02 70)";
+  /** Your lines after the agent last spoke wait for it while it is offline. */
+  const lastAgent = messages.findLastIndex((m) => m.from === "agent");
   const status = notice
     ? "chat unavailable"
     : offline
@@ -511,7 +542,7 @@ export function DebugChat({
         ? "reconnecting…"
         : listeners
           ? `agent listening (${listeners})`
-          : "connected · no agent listening";
+          : "agent offline · messages wait until it is back";
 
   /**
    * The pill: drag it anywhere to move the box. Left, the liagent mark: a tap
@@ -765,24 +796,24 @@ export function DebugChat({
         data-expanded={typing || undefined}
         onTransitionEnd={() => {
           // Shrunk: land on the newest lines again, now that the height settled.
-          if (!typing) log.current?.scrollTo({ top: log.current.scrollHeight });
+          if (!typing && !micActive) log.current?.scrollTo({ top: log.current.scrollHeight });
           onLogScroll();
         }}
         style={
           fade
             ? {
-                maskImage: typing ? FADE : FADE_SHORT,
-                WebkitMaskImage: typing ? FADE : FADE_SHORT,
+                maskImage: typing || micActive ? FADE : FADE_SHORT,
+                WebkitMaskImage: typing || micActive ? FADE : FADE_SHORT,
               }
             : undefined
         }
-        className={`min-h-12 space-y-0.5 overflow-y-auto px-2 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${typing ? "max-h-[30vh]" : "max-h-[4.1rem]"}`}
+        className={`min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${typing || micActive ? "max-h-[30vh]" : "max-h-[4.1rem]"}`}
       >
         {messages.length === 0 && (
           <li className="text-gray-500">Type here; it is sent 3 s after you stop.</li>
         )}
         {/* A game-style log: one line per message, "name: text", no bubbles. */}
-        {messages.map((m) => (
+        {messages.map((m, i) => (
           // The time only on hover (long press on a phone): name and text are the line.
           <li
             key={m.id}
@@ -800,6 +831,15 @@ export function DebugChat({
               {m.from !== "agent" ? "you" : m.label || "agent"}:
             </span>
             {m.text}
+            {!agentOnline && m.from !== "agent" && i > lastAgent && (
+              <span
+                data-testid="debug-chat-queued"
+                className="ms-1 text-[10px] text-gray-500"
+                title="The agent is offline: this is delivered when it is back"
+              >
+                · waiting for the agent
+              </span>
+            )}
           </li>
         ))}
       </ol>
@@ -891,7 +931,15 @@ export function DebugChat({
                 // 16px: iOS zooms the whole page into any input under 16px.
                 value={draft}
                 maxLength={MAX_CHAT}
-                placeholder={holding ? DRAG_HINT : interim ? "" : "Message the agent…"}
+                placeholder={
+                  holding
+                    ? DRAG_HINT
+                    : interim
+                      ? ""
+                      : agentOnline
+                        ? "Message the agent…"
+                        : "Agent offline — your message waits for it…"
+                }
                 onScroll={(e) => {
                   if (mirror.current) mirror.current.scrollTop = e.currentTarget.scrollTop;
                 }}
@@ -937,7 +985,8 @@ export function DebugChat({
                   submit();
                 }}
                 style={{ background: INPUT_BG }}
-                className={`pointer-events-auto block min-w-0 flex-1 resize-none rounded-lg border border-current/25 px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
+                // A drag on a long draft scrolls its text, never the page or the box.
+                className={`pointer-events-auto block min-w-0 flex-1 resize-none overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-current/25 px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
               />
               {holding && draft && (
                 // The draft hides the placeholder: the hint sits over it instead.
@@ -987,6 +1036,7 @@ export function DebugChat({
                   }}
                   onActive={(on) => {
                     micOn.current = on;
+                    setMicActive(on);
                     arm();
                   }}
                   clipSink={friend ? undefined : clipSinkFrom(read(CLIP_SINK_KEY))}
