@@ -538,8 +538,11 @@ try {
     // must come from the server instead (stubbed here — no AI call in QA).
     await phone.addInitScript(() => (window.__speechDead = true));
     const ttsAsked = [];
+    const ttsTexts = [];
     await phone.route("**/api/words/tts?*", (r) => {
-      ttsAsked.push(new URL(r.request().url()).searchParams.get("lang"));
+      const q = new URL(r.request().url()).searchParams;
+      ttsAsked.push(q.get("lang"));
+      ttsTexts.push(q.get("text"));
       return r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") });
     });
     /** Variant A's slip look, to hold variant B's against. */
@@ -585,6 +588,14 @@ try {
         );
       }
       await m.waitForTimeout(500); // let the opening scroll settle
+      if (variant === "js") {
+        // Prefetch: the visible rows' audio is fetched before any tap.
+        const firstRow = await mrows.nth(0).innerText();
+        check(
+          ttsTexts.length > 1 && ttsTexts.some((t) => t && firstRow.includes(t)),
+          `${tag} the visible rows' audio is fetched before the first tap (${ttsTexts.length} clips)`,
+        );
+      }
       const listTop = await m
         .locator('[role="list"]')
         .evaluate((el) => el.getBoundingClientRect().top);
@@ -660,7 +671,7 @@ try {
         .catch(() => {});
       check(
         ttsAsked.length > 0 && (await m.evaluate(() => window.__played.length)) > playedBefore,
-        `${tag} speech that never starts falls back to server audio (${ttsAsked.join(",")})`,
+        `${tag} speech that never starts falls back to server audio (${ttsAsked.length} clips asked)`,
       );
       // Focus = that slip's cords come loose (no more green bar).
       check(

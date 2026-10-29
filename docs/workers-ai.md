@@ -223,3 +223,47 @@ A Cloudflare API rate limit makes the upload ~4 clips/s, so a full upload
 takes about four hours. A Whisper transcription of samples matched the text
 for sentences in all seven languages; isolated single syllables are where
 any voice is ambiguous.
+
+## Prefetch and cost
+
+`/words` fetches the audio of the rows on screen and up to two screens below,
+plus the next five in queue order, before they are tapped
+(`lib/words/audio-cache.ts`, an IntersectionObserver in `WordsClient.tsx`).
+A tap reads three clips back to back, ~150 ms apart: the word, its meaning
+(first sense, `lib/words/say-parts.ts`), and the example sentence. Each is its
+own `/api/words/tts` URL in its own language. Prefetch order is all words
+first, then examples, then meanings.
+
+- **Limits.** 3 fetches at once, 300 clips per tab session, an in-memory LRU
+  of 200 blob URLs (revoked on eviction), and nothing at all on Save-Data or
+  2G. A 429 pauses prefetch for its Retry-After. A tap goes ahead of every
+  prefetch. A text with no voice (404 `X-Voice: miss`, or 400) is remembered
+  and goes straight to the browser's speech, for that part only.
+- **HTTP cache.** Every 200 is `private, max-age=31536000, immutable`, so a
+  device fetches a clip once a year at most. It stays `private`, not
+  `public`, because the route is behind sign-in. No ETag is needed, since an
+  immutable response is never revalidated.
+- **Meaning voice.** `MEANING_VOICE` in `lib/words/say-parts.ts` is `"server"`
+  until the owner decides (`"browser"` is free). Meanings are not
+  pre-recorded, so a meaning's first request runs MeloTTS. After that it is
+  an R2 hit for everyone, since the cache key holds no user. Latin-script
+  meanings are read as English, because the bundled lists' glosses are
+  English.
+
+Cost, at list prices on 2026-10-29: MeloTTS $0.0002 / audio minute (18.63
+neurons), R2 class B $0.36 / M (10 M free a month), class A $4.50 / M,
+Workers $0.30 / M requests (10 M included).
+
+| item | count | cost |
+| --- | --- | --- |
+| Meanings to generate, once ever | 19,440 distinct first senses in `public/words` (42,935 entries, avg 10.6 chars ≈ 1 s audio) | 324 min × $0.0002 = **$0.065** (≈ 6,000 neurons, under one day's free 10,000) |
+| …their R2 writes | 19,440 class A | $0.087 once |
+| …their storage | ~1.7 GB if 44.1 kHz WAV | ~$0.03 / month (10 GB free) |
+| A recorded word or example | 1 Worker request + 1 class B | $0.00000066 |
+| A cached meaning | 1 Worker request + 2 class B (voice miss, cache hit) | $0.00000102 |
+| A session that hits the 300-clip cap | ≤ 300 requests + ≤ 600 class B | **≈ $0.0003** |
+
+So the free tiers cover about 16,000 sessions a month at the cap. Real
+sessions are smaller, and a device's HTTP cache serves repeat visits for
+free. The one-time MeloTTS bill for every bundled meaning is under 7 cents.
+Imported lists add their own meanings at about $0.31 per million characters (≈ 94,000 s of audio).

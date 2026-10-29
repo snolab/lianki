@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import { Icon, type IconName } from "@/app/components/icons";
-import { useIntlayer } from "next-intlayer";
+import { useIntlayer, useLocale } from "next-intlayer";
 import {
   closestCenter,
   DndContext,
@@ -30,6 +30,9 @@ import { CSS } from "@dnd-kit/utilities";
 import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/words/tree";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
+import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
+import { createSequencer } from "@/lib/words/sequence";
+import { AudioCache } from "@/lib/words/audio-cache";
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
@@ -556,6 +559,9 @@ const swipePerf = {
   },
 };
 
+/** Rows past the last one near the screen whose audio is fetched ahead too. */
+const PREFETCH_NEXT = 5;
+
 /** How long a word clip takes to fade out when the card changes. */
 const FADE_S = 0.15;
 
@@ -599,6 +605,24 @@ function fadeOut(a: Clip | null) {
   );
 }
 
+/**
+ * Word audio for this tab, shared by every mount of the page: each clip is
+ * fetched once per session (lib/words/audio-cache.ts).
+ */
+let sharedAudio: AudioCache | null = null;
+function wordAudio(): AudioCache {
+  sharedAudio ??= new AudioCache({
+    fetch: (url, init) => fetch(url, init),
+    createObjectURL: (b) => URL.createObjectURL(b),
+    revokeObjectURL: (u) => URL.revokeObjectURL(u),
+    connection: () =>
+      (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
+        .connection,
+    log: devLog,
+  });
+  return sharedAudio;
+}
+
 /** `serverVoice`: always use the server's recordings, never the browser's. */
 function useSpeech(serverVoice = false) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -609,21 +633,16 @@ function useSpeech(serverVoice = false) {
       return true;
     }
   });
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /**
-   * Bumped by stop(). cancel() can fire the old utterance's onend, which would
-   * otherwise schedule the old word again beside the new loop, forever.
+   * Bumped by cancel(). cancel() can fire the old utterance's onend, which
+   * would otherwise go on with the old word beside the new one.
    */
   const generation = useRef(0);
 
   const [available, setAvailable] = useState(false);
   /** Languages the browser failed to speak; the server speaks them instead. */
   const browserDead = useRef(new Set<string>());
-  /** Languages the server has no voice for (or speech is off there). */
-  const serverDead = useRef(new Set<string>());
   const audio = useRef<HTMLAudioElement | null>(null);
-  /** Fetched server audio as blob URLs, by lang + text. */
-  const clips = useRef(new Map<string, string>());
   const watchdog = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     setAvailable(true);
@@ -667,9 +686,9 @@ function useSpeech(serverVoice = false) {
     [voices],
   );
 
-  const stop = useCallback(() => {
+  /** Silence the part playing now; callbacks of what was playing are ignored. */
+  const cancel = useCallback(() => {
     generation.current++;
-    clearTimeout(timer.current);
     clearTimeout(watchdog.current);
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
     // A clip cut mid-word is jarring when the card changes: fade it out.
@@ -677,57 +696,49 @@ function useSpeech(serverVoice = false) {
     audio.current = null;
   }, []);
 
+  type Done = (played: boolean) => void;
+
   /** Play the server's recording of `text`. False when it could not (no voice, limit, offline). */
-  const serverSpeak = useCallback(async (text: string, lang: string, then?: () => void) => {
-    if (serverDead.current.has(lang)) return false;
+  const serverSpeak = useCallback(async (text: string, lang: string, done: Done) => {
     const gen = generation.current;
-    const key = `${lang}:${text}`;
-    let url = clips.current.get(key);
-    if (!url) {
-      const r = await fetch(
-        `/api/words/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}`,
-      ).catch(() => null);
-      devLog({
-        ev: "server",
-        lang,
-        text,
-        status: r?.status ?? "network",
-        voice: r?.headers.get("X-Voice"),
-        type: r?.headers.get("Content-Type"),
-        bytes: r?.headers.get("Content-Length"),
-      });
-      if (!r?.ok) {
-        // X-Voice: miss — only this text has no recording; the language does.
-        if (r && (r.status === 404 || r.status === 503) && r.headers.get("X-Voice") !== "miss")
-          serverDead.current.add(lang);
-        return false;
-      }
-      url = URL.createObjectURL(await r.blob());
-      clips.current.set(key, url);
-      if (clips.current.size > 300) {
-        const [oldKey, oldUrl] = clips.current.entries().next().value!;
-        clips.current.delete(oldKey);
-        URL.revokeObjectURL(oldUrl);
-      }
-    }
+    // Prefetched, most of the time: then it plays at once, still inside the
+    // tap's gesture (no await before play()).
+    const r = wordAudio().peek(lang, text) ?? (await wordAudio().load(lang, text));
+    if (r.kind !== "ok") return false;
     if (gen !== generation.current) return true;
     // A fresh element per clip: the previous one may still be fading out.
-    const a = playable(url);
+    const a = playable(r.url);
     audio.current = a;
-    a.onended = then ?? null;
+    a.onended = () => done(true);
+    a.onerror = () => done(false);
     void a.play().catch(() => {});
     return true;
   }, []);
 
+  /** The browser can say this language itself. */
+  const browserCan = useCallback(
+    (lang: string) =>
+      typeof speechSynthesis !== "undefined" &&
+      !browserDead.current.has(lang) &&
+      voiceFor(lang) !== null,
+    [voiceFor],
+  );
+
+  /** `serverTried`: the server already failed this text — don't ask again. */
   const browserSpeak = useCallback(
-    (text: string, lang: string, then?: () => void) => {
+    (text: string, lang: string, done: Done, serverTried = false) => {
+      const gen = generation.current;
+      const viaServer = () => {
+        if (serverTried) return done(false);
+        void serverSpeak(text, lang, done).then(
+          (ok) => !ok && gen === generation.current && done(false),
+        );
+      };
       // Only a voice of this very language. With none listed (Chrome on
       // Android often lists nothing) the OS picks its default voice — a
       // Japanese voice reading French. The server speaks instead, or nothing.
       const voice = voiceFor(lang);
-      const browser =
-        typeof speechSynthesis !== "undefined" && !browserDead.current.has(lang) && voice !== null;
-      if (!browser) return void serverSpeak(text, lang, then);
+      if (!browserCan(lang) || !voice) return viaServer();
       const u = new SpeechSynthesisUtterance(text);
       u.voice = voice;
       u.lang = voice.lang;
@@ -736,13 +747,12 @@ function useSpeech(serverVoice = false) {
       // Never started (no engine behind the API) or failed outright: the
       // server speaks this language from now on.
       let started = false;
-      const gen = generation.current;
       const fallBack = () => {
         if (started || gen !== generation.current) return;
         clearTimeout(watchdog.current);
         browserDead.current.add(lang);
         speechSynthesis.cancel();
-        void serverSpeak(text, lang, then);
+        viaServer();
       };
       u.onstart = () => {
         started = true;
@@ -752,73 +762,83 @@ function useSpeech(serverVoice = false) {
         if (e.error !== "interrupted" && e.error !== "canceled") fallBack();
       };
       u.onend = () => {
-        if (started) then?.();
+        if (started) done(true);
       };
       clearTimeout(watchdog.current);
       watchdog.current = setTimeout(fallBack, 2000);
       speechSynthesis.speak(u);
     },
-    [voiceFor, serverSpeak],
+    [voiceFor, browserCan, serverSpeak],
   );
 
-  const speak = useCallback(
-    (text: string, lang: string, then?: () => void, force = false) => {
-      if ((!on && !force) || !text) return;
-      devLog({
-        ev: "speak",
-        lang,
-        text,
-        serverVoice,
-        serverDead: [...serverDead.current],
-        browserDead: [...browserDead.current],
-      });
+  /** The server voices this part (rather than the browser). */
+  const viaServer = useCallback(
+    (p: SayPart) =>
+      !wordAudio().isDead(p.lang) &&
+      (p.kind === "meaning" ? MEANING_VOICE === "server" : serverVoice || !browserCan(p.lang)),
+    [serverVoice, browserCan],
+  );
+
+  /** One part; a missing voice falls back to the other engine for this part only. */
+  const say = useCallback(
+    (p: SayPart, done: Done) => {
+      devLog({ ev: "speak", kind: p.kind, lang: p.lang, text: p.text, serverVoice });
       // The server voice by default: browser voices can mislead (Japanese read
       // in a Chinese accent). The browser speaks only where the server can't —
-      // a language it has no voice for, the rate limit, offline.
-      if (serverVoice && !serverDead.current.has(lang)) {
-        const gen = generation.current;
-        void serverSpeak(text, lang, then).then(
-          (ok) => !ok && gen === generation.current && browserSpeak(text, lang, then),
-        );
-        return;
-      }
-      browserSpeak(text, lang, then);
+      // a language or text it has no voice for, the rate limit, offline.
+      if (!viaServer(p)) return browserSpeak(p.text, p.lang, done);
+      const gen = generation.current;
+      void serverSpeak(p.text, p.lang, done).then(
+        (ok) => !ok && gen === generation.current && browserSpeak(p.text, p.lang, done, true),
+      );
     },
-    [on, serverVoice, serverSpeak, browserSpeak],
+    [serverVoice, viaServer, serverSpeak, browserSpeak],
   );
 
-  /** Repeat `text` with a pause until the next call; "" just stops. */
+  const sayRef = useRef(say);
+  sayRef.current = say;
+  const sequencer = useMemo(
+    () =>
+      createSequencer<SayPart>({
+        say: (p, done) => sayRef.current(p, done),
+        cancel,
+        setTimeout: (fn, ms) => setTimeout(fn, ms),
+        clearTimeout: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+      }),
+    [cancel],
+  );
+  const stop = sequencer.stop;
+
   /**
-   * Say `texts` in turn (the word, then its example), pause, repeat — until
-   * the next call; an empty list just stops.
+   * Say `parts` in turn (word, meaning, example), pause, repeat — until the
+   * next call; an empty list just stops.
    */
   const loop = useCallback(
-    (texts: string[], lang: string, force = false) => {
-      stop();
-      const parts = texts.filter(Boolean);
-      if (!parts.length) return;
-      const gen = generation.current;
-      let i = 0;
-      const say = () => gen === generation.current && speak(parts[i], lang, after, force);
-      const after = () => {
-        if (gen !== generation.current) return;
-        i = (i + 1) % parts.length;
-        // A short gap between word and example; a longer one before repeating.
-        timer.current = setTimeout(say, i === 0 ? 1200 : 400);
-      };
+    (parts: SayPart[], force = false) => {
+      if (!on && !force) return stop();
       // A short delay so flicking through rows does not start a word per row.
-      timer.current = setTimeout(say, 250);
+      sequencer.play(
+        parts.filter((p) => p.text),
+        { loop: true, delayMs: 250 },
+      );
       return stop;
     },
-    [speak, stop],
+    [on, sequencer, stop],
   );
 
+  /** Say `parts` once, back to back, now — interrupting whatever was playing. */
   const once = useCallback(
-    (text: string, lang: string, force = false) => {
-      stop();
-      speak(text, lang, undefined, force);
+    (parts: SayPart[], force = false) => {
+      if (!on && !force) return stop();
+      sequencer.play(parts.filter((p) => p.text));
     },
-    [speak, stop],
+    [on, sequencer, stop],
+  );
+
+  /** Fetch the clips of rows about to be tapped (only those the server would voice). */
+  const prefetch = useCallback(
+    (parts: SayPart[]) => wordAudio().prefetch(parts.filter(viaServer)),
+    [viaServer],
   );
 
   const toggle = useCallback(() => {
@@ -832,8 +852,8 @@ function useSpeech(serverVoice = false) {
   }, [stop]);
 
   return useMemo(
-    () => ({ available, on, loop, once, toggle }),
-    [available, on, loop, once, toggle],
+    () => ({ available, on, loop, once, toggle, prefetch }),
+    [available, on, loop, once, toggle, prefetch],
   );
 }
 
@@ -1857,6 +1877,12 @@ function Study({
   /** Read with the server's voice instead of the browser's. Remembered. */
   const [serverVoice, setServerVoice] = usePref("lk:words-server-voice", true);
   const speech = useSpeech(serverVoice);
+  const { locale } = useLocale();
+  /** What a tap, a hold or the focus reads: word → meaning → example. */
+  const partsOf = useCallback(
+    (it: Item) => sayParts(it, it.lang, !!config.readingOnBack, String(locale)),
+    [config.readingOnBack, locale],
+  );
   const base = config.base;
   const listIds = lists.map((l) => l.id).join(",");
   const paramsOf = useMemo(() => new Map(lists.map((l) => [l.id, l.params])), [lists]);
@@ -2196,6 +2222,12 @@ function Study({
   // only the rows in view (plus a margin) are rendered.
   const ROW_H = touch ? 44 : 28;
   const listRef = useRef<HTMLDivElement>(null);
+  /** The list element as state, for effects that must start when it mounts. */
+  const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
+  const setListRef = useCallback((el: HTMLDivElement | null) => {
+    listRef.current = el;
+    setListEl(el);
+  }, []);
   const hintRef = useRef<HTMLDivElement>(null);
   /** What a sliding slip uncovers: the grade of each level (SwipeUnderlay). */
   const underlay = useRef<HTMLDivElement>(null);
@@ -2291,7 +2323,7 @@ function Study({
   useEffect(() => {
     if (!touch || !active || holding !== null || !focusItem) return;
     if (quietFocus.current === focusLine) return void (quietFocus.current = null);
-    speech.once(focusText, focusItem.lang);
+    speech.once([{ kind: "word", text: focusText, lang: focusItem.lang }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [touch, focusLine, focusText]);
 
@@ -2341,10 +2373,62 @@ function Study({
   // is active; paused in a hidden tab or background window.
   const active = usePageActive();
   const focused = !touch && active ? queue[row] : undefined;
-  const say = focused ? spokenText(focused, focused.lang, !!config.readingOnBack) : "";
-  const sayEx = focused?.ex ?? "";
-  const sayLang = focused?.lang ?? "";
-  useEffect(() => speech.loop([say, sayEx], sayLang), [say, sayEx, sayLang, speech]);
+  // Keyed by content: re-rendering the same row must not restart its loop.
+  const focusParts = JSON.stringify(focused ? partsOf(focused) : []);
+  useEffect(() => speech.loop(JSON.parse(focusParts) as SayPart[]), [focusParts, speech]);
+
+  // Prefetch the audio of the rows on screen and up to two screens below,
+  // plus the next few in queue order, so a tap plays at once. The list is
+  // windowed: rows are observed as they mount and let go as they unmount.
+  const nearRows = useRef(new Set<number>());
+  const prefetchNear = useRef(() => {});
+  prefetchNear.current = () => {
+    // Desktop with sound off says nothing (a click grades); a tap always speaks.
+    if (!touch && !speech.on) return;
+    const near = [...nearRows.current].sort((a, b) => a - b);
+    if (!near.length) return;
+    const last = near[near.length - 1];
+    for (let i = last + 1; i <= last + PREFETCH_NEXT && i < queue.length; i++) near.push(i);
+    speech.prefetch(prefetchOrder(near.flatMap((i) => (queue[i] ? [partsOf(queue[i])] : []))));
+  };
+  useEffect(() => prefetchNear.current(), [queue, speech, partsOf]);
+  useEffect(() => {
+    const root = listEl;
+    if (!root || typeof IntersectionObserver === "undefined") return;
+    const rowIndex = (n: Node) =>
+      n instanceof HTMLElement && n.dataset.i !== undefined ? Number(n.dataset.i) : null;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          const i = rowIndex(e.target);
+          if (i === null) continue;
+          if (e.isIntersecting) nearRows.current.add(i);
+          else nearRows.current.delete(i);
+        }
+        prefetchNear.current();
+      },
+      { root, rootMargin: "0px 0px 200% 0px" },
+    );
+    for (const el of root.children) if (rowIndex(el) !== null) io.observe(el);
+    const mo = new MutationObserver((records) => {
+      for (const r of records) {
+        for (const n of r.addedNodes) if (rowIndex(n) !== null) io.observe(n as Element);
+        for (const n of r.removedNodes) {
+          const i = rowIndex(n);
+          if (i === null) continue;
+          io.unobserve(n as Element);
+          nearRows.current.delete(i);
+        }
+      }
+    });
+    mo.observe(root, { childList: true });
+    const near = nearRows.current;
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+      near.clear();
+    };
+  }, [listEl]);
 
   // Windowed rendering: the list is endless, the DOM is not.
   const OVERSCAN = 20;
@@ -2676,7 +2760,7 @@ function Study({
       ) : (
         <>
           <div
-            ref={listRef}
+            ref={setListRef}
             // Phones: edge to edge, no box — the whole screen width is the slips'.
             className={`relative overflow-y-auto overscroll-contain ${
               touch ? "-mx-3 sm:-mx-8" : "rounded-lg border border-black/10 dark:border-white/10"
@@ -2731,8 +2815,7 @@ function Study({
                     // Re-rendering the list for the new focus must not hold up the tap.
                     quietFocus.current = i;
                     startTransition(() => setFocusLine(i));
-                    if (!second)
-                      speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang, true);
+                    if (!second) speech.once(partsOf(it), true);
                     // The second tap undoes the first one's reveal.
                     setRevealed((s) => {
                       const n = new Set(s);
@@ -2751,19 +2834,21 @@ function Study({
                       startTransition(() => setFocusLine(i));
                     }
                     if (swipeSpeak)
-                      speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang);
+                      speech.once([
+                        {
+                          kind: "word",
+                          text: spokenText(it, it.lang, !!config.readingOnBack),
+                          lang: it.lang,
+                        },
+                      ]);
                   }}
                   onHold={() => {
                     setHolding(i);
-                    speech.loop(
-                      [spokenText(it, it.lang, !!config.readingOnBack), it.ex ?? ""],
-                      it.lang,
-                      true,
-                    );
+                    speech.loop(partsOf(it), true);
                   }}
                   onHoldEnd={() => {
                     setHolding(null);
-                    speech.loop([], "");
+                    speech.loop([]);
                   }}
                   onSwipe={(r) => {
                     // The slip glides home meanwhile: the grade's re-render can wait.
@@ -2852,11 +2937,7 @@ function Study({
               onClose={() => setSheet(null)}
               onListen={() => {
                 const it = queue[sheet];
-                speech.loop(
-                  [spokenText(it, it.lang, !!config.readingOnBack), it.ex ?? ""],
-                  it.lang,
-                  true,
-                );
+                speech.loop(partsOf(it), true);
               }}
               onCopy={() => {
                 void navigator.clipboard?.writeText(queue[sheet].term).catch(() => {});
