@@ -10,6 +10,9 @@
 
 import {
   MAX_CHAT,
+  ROOT_NODE,
+  agentIdOf,
+  nodePath,
   type ChatMessage,
   type PageInfo,
   type PairInfo,
@@ -17,7 +20,20 @@ import {
 } from "../packages/debug-chat/src/wire";
 
 export {
+  MAX_AGENT_ID,
   MAX_CHAT,
+  MAX_NODE_PATH,
+  ROOT_NODE,
+  type NodeGrant,
+  agentIdOf,
+  commonAncestor,
+  isWithin,
+  lineNode,
+  mayAddress,
+  nodePath,
+  parseAddress,
+  pathLabel,
+  routeTo,
   allowLabel,
   avatarUrl,
   hashId,
@@ -109,8 +125,26 @@ export type FriendRecord = {
 /** Messages a controller (the sender CLI) may send to the hub. */
 export type ControllerMessage =
   | { type: "eval"; code: string; target?: string }
-  | { type: "say"; text: string; to?: string }
-  | { type: "busy"; to?: string; label?: string };
+  /**
+   * `to`: a friend's thread (user id or email); `node`: a state-tree node to
+   * address instead (a `to` starting with "/"). `taskPath`/`agentId`: the
+   * sender's own node and its assignee (docs/dev-debug-widget.md, "Node paths").
+   */
+  | {
+      type: "say";
+      text: string;
+      to?: string;
+      node?: string;
+      taskPath?: string;
+      agentId?: string;
+    }
+  | { type: "busy"; to?: string; label?: string }
+  /**
+   * Let senders within node `from` address nodes within `to` for `ms` (the
+   * fallback for a scoped grant token): only a listener whose node holds both.
+   */
+  | { type: "grant"; from: string; to: string; ms?: number }
+  | { type: "ungrant"; from: string; to: string };
 /** Messages an owner page may send to the hub. */
 export type PageMessage =
   /**
@@ -120,7 +154,8 @@ export type PageMessage =
    */
   | { type: "allow"; pair: string; scope?: "chat"; pages?: string[] | "all" }
   | { type: "deny" | "revoke"; pair: string }
-  | { type: "chat"; id: string; text: string }
+  /** `to`: the state-tree node it is addressed to (absent = the main thread). */
+  | { type: "chat"; id: string; text: string; to?: string }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
   /** Close another (or this) page of the same audience, from the chat's menu. */
@@ -169,6 +204,8 @@ export type HubState = {
   pages?: PageInfo[];
   /** Which of `pages` is the one receiving this state. */
   self?: string;
+  /** The state-tree nodes listeners are subscribed at (never "/"), for "@/…" completions. */
+  nodes?: string[];
 };
 /** Close code for a page ended from the chat menu; it stays closed until its next visibility or debug event. */
 export const PAGE_ENDED = 4410;
@@ -212,8 +249,38 @@ export function parseControllerMessage(
   if (m?.type === "say") {
     const text = chatText(m.text);
     if (!text) return { ok: false, error: `say needs text of 1–${MAX_CHAT} chars` };
-    const to = str(m.to, 320)?.trim();
-    return { ok: true, value: to ? { type: "say", text, to } : { type: "say", text } };
+    let to = str(m.to, 320)?.trim();
+    // A `to` that is a path addresses a state-tree node; anything else is a thread.
+    let node: string | undefined;
+    if (to?.startsWith("/") || typeof m.node === "string") {
+      node = nodePath(typeof m.node === "string" ? m.node : to);
+      if (!node) return { ok: false, error: `not a node path: ${String(m.node ?? to)}` };
+      if (to?.startsWith("/")) to = undefined;
+      if (node === ROOT_NODE) node = undefined;
+    }
+    const taskPath = m.taskPath === undefined ? undefined : nodePath(m.taskPath);
+    if (m.taskPath !== undefined && !taskPath)
+      return { ok: false, error: `not a node path: ${String(m.taskPath)}` };
+    const agentId = agentIdOf(m.agentId);
+    return {
+      ok: true,
+      value: {
+        type: "say",
+        text,
+        ...(to ? { to } : {}),
+        ...(node ? { node } : {}),
+        ...(taskPath && taskPath !== ROOT_NODE ? { taskPath } : {}),
+        ...(agentId ? { agentId } : {}),
+      },
+    };
+  }
+  if (m?.type === "grant" || m?.type === "ungrant") {
+    const from = nodePath(m.from);
+    const to = nodePath(m.to);
+    if (!from || !to) return { ok: false, error: `${m.type} needs node paths "from" and "to"` };
+    if (m.type === "ungrant") return { ok: true, value: { type: "ungrant", from, to } };
+    const ms = typeof m.ms === "number" && m.ms > 0 ? Math.min(m.ms, CHAT_MS) : undefined;
+    return { ok: true, value: { type: "grant", from, to, ...(ms ? { ms } : {}) } };
   }
   if (m?.type === "busy") {
     const to = str(m.to, 320)?.trim();
@@ -226,7 +293,8 @@ export function parseControllerMessage(
   if (!m || m.type !== "eval")
     return {
       ok: false,
-      error: 'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"} or {"type":"busy"}',
+      error:
+        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"} or {"type":"grant","from","to"}',
     };
   if (typeof m.code !== "string" || !m.code.trim()) return { ok: false, error: "empty code" };
   if (m.code.length > MAX_CODE) return { ok: false, error: `code over ${MAX_CODE} chars` };
@@ -275,7 +343,10 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
   if (m.type === "chat") {
     const id = str(m.id, 64);
     const text = chatText(m.text);
-    return id && text ? { type: "chat", id, text } : null;
+    if (!id || !text) return null;
+    // An address that is not a node path is dropped: the line goes to the main thread.
+    const to = nodePath(m.to);
+    return to && to !== ROOT_NODE ? { type: "chat", id, text, to } : { type: "chat", id, text };
   }
   if (m.type === "result") {
     const id = str(m.id, 64);
