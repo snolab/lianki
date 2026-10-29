@@ -6,7 +6,6 @@ import Link from "next/link";
 import { Icon } from "./icons";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useState } from "react";
-import { appHref } from "@/lib/app-locale";
 
 interface HeaderProps {
   locale: string;
@@ -63,35 +62,23 @@ export function Header({
         {/* Navigation */}
         <nav className="flex items-center gap-4 md:gap-6">
           {/* Learn Button */}
-          <Link
-            href={appHref("/learn", locale)}
-            className="text-base md:text-lg font-medium hover:underline"
-          >
+          <Link href="/learn" className="text-base md:text-lg font-medium hover:underline">
             {learnLabel}
           </Link>
 
           {/* Import Button */}
-          <Link
-            href={appHref("/import", locale)}
-            className="text-base md:text-lg font-medium hover:underline"
-          >
+          <Link href="/import" className="text-base md:text-lg font-medium hover:underline">
             {importLabel}
           </Link>
 
           {/* AI Vocab Button */}
-          <Link
-            href={appHref("/ai-vocab", locale)}
-            className="text-base md:text-lg font-medium hover:underline"
-          >
+          <Link href="/ai-vocab" className="text-base md:text-lg font-medium hover:underline">
             {aiVocabLabel}
           </Link>
 
           {/* Roadmap Button */}
           {roadmapLabel && (
-            <Link
-              href={appHref("/roadmap", locale)}
-              className="text-base md:text-lg font-medium hover:underline"
-            >
+            <Link href="/roadmap" className="text-base md:text-lg font-medium hover:underline">
               {roadmapLabel}
             </Link>
           )}
@@ -151,25 +138,25 @@ export function Header({
                     {user.email}
                   </div>
                   <Link
-                    href={appHref("/list", locale)}
+                    href="/list"
                     className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     {dashboardLabel}
                   </Link>
                   <Link
-                    href={appHref("/profile", locale)}
+                    href="/profile"
                     className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     {profileLabel}
                   </Link>
                   <Link
-                    href={appHref("/preferences", locale)}
+                    href="/preferences"
                     className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     {preferencesLabel}
                   </Link>
                   <Link
-                    href={appHref("/membership", locale)}
+                    href="/membership"
                     className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     {membershipLabel}
@@ -188,7 +175,7 @@ export function Header({
             </div>
           ) : (
             <Link
-              href={appHref("/sign-in", locale)}
+              href="/sign-in"
               className="inline-flex items-center gap-1.5 text-base md:text-lg font-medium hover:underline"
             >
               <Icon name="signIn" className="text-xl" />

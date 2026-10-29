@@ -344,6 +344,20 @@ try {
       (await learn.locator('[data-anki-decks] a[href*="/words/import"]').count()) === 1,
       "/learn's shared decks lead to /words/import",
     );
+    // ?lang= is for an explicit switch only: the app's own links stay bare, and
+    // the language rides on the cookie that the explicit ?lang= just set.
+    const langLinks = await learn
+      .locator('a[href^="/"]')
+      .evaluateAll((as) =>
+        as.map((a) => a.getAttribute("href")).filter((h) => /[?&]lang=/.test(h)),
+      );
+    check(
+      langLinks.length === 0,
+      `app links carry no ?lang= (${langLinks.slice(0, 3).join(", ")})`,
+    );
+    await learn.goto(`${new URL(page.url()).origin}/learn`, { waitUntil: "load" });
+    const bareH1 = (await learn.locator("h1").first().innerText()).trim();
+    check(bareH1 === h1, `a bare /learn after ?lang=fr stays French ("${bareH1}")`);
     await learn.close();
   }
 
@@ -352,6 +366,9 @@ try {
     data: { email: "someone@example.com", days: 7 },
   });
   check(grant.status() === 404, `granting Pro is owner-only (${grant.status()})`);
+  // So is the list of every account.
+  const users = await page.request.get(`${new URL(page.url()).origin}/dev/users`);
+  check(users.status() === 404, `/dev/users is owner-only (${users.status()})`);
 
   // The owner's remote-debug log is the owner's alone.
   const devLog = await page.request.post(`${new URL(page.url()).origin}/api/dev/log`, {

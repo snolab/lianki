@@ -3,7 +3,6 @@ import { Icon } from "@/app/components/icons";
 import Link from "next/link";
 import { getIntlayer } from "intlayer";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
-import { appHref } from "@/lib/app-locale";
 import { appLocale } from "@/lib/app-locale.server";
 import { IMMERSION_DOMAINS, IMMERSION_LANGUAGES } from "@/lib/immersion-sites";
 
@@ -47,7 +46,7 @@ export default async function LabPage() {
         {cards.map((card) => (
           <li key={card.href}>
             <Link
-              href={appHref(card.href, locale)}
+              href={card.href}
               className="block h-full rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-sm transition-colors"
             >
               <Icon name={card.icon} className="text-2xl mb-2 block" />

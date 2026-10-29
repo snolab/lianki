@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { appHref } from "@/lib/app-locale";
 import { FIRST_RUN_KEY, parseChoice, shouldAsk, type FirstRunChoice } from "@/lib/first-run";
 
 export type FirstRunLabels = {
@@ -23,7 +22,7 @@ export type FirstRunLabels = {
  * makes the accessor throw, and a prompt that crashes the shell is worse than
  * one that asks twice.
  */
-export function FirstRunChoice({ locale, labels }: { locale: string; labels: FirstRunLabels }) {
+export function FirstRunChoice({ labels }: { labels: FirstRunLabels }) {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
   const [stored, setStored] = useState<FirstRunChoice | null>(null);
@@ -88,7 +87,7 @@ export function FirstRunChoice({ locale, labels }: { locale: string; labels: Fir
 
         <div className="mt-5 flex flex-col gap-2 sm:flex-row-reverse">
           <Link
-            href={appHref("/sign-in", locale)}
+            href="/sign-in"
             onClick={() => record("account")}
             className="flex-1 rounded-md bg-blue-600 px-4 py-2 text-center text-sm font-medium text-white hover:bg-blue-700"
           >

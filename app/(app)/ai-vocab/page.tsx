@@ -23,12 +23,7 @@ export default async function AiVocabPage() {
   return (
     <div className="flex flex-col">
       <div className="flex-grow">
-        <AiVocabClient
-          locale={locale}
-          title={title}
-          description={description}
-          selectLanguage={selectLanguage}
-        />
+        <AiVocabClient title={title} description={description} selectLanguage={selectLanguage} />
       </div>
     </div>
   );

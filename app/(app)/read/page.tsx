@@ -1,9 +1,7 @@
 import { ReadListClient } from "./ReadListClient";
-import { appLocale } from "@/lib/app-locale.server";
 import { authUserOrNull } from "@/app/signInEmail";
 
 export default async function ReadPage() {
-  const locale = await appLocale();
   const user = await authUserOrNull();
 
   return (
@@ -17,7 +15,7 @@ export default async function ReadPage() {
               ? " Your materials are stored securely in your account."
               : " Sign in to save your materials."}
           </p>
-          <ReadListClient locale={locale} isLoggedIn={!!user} />
+          <ReadListClient isLoggedIn={!!user} />
         </div>
       </div>
     </div>

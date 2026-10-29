@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import AiVocabLangClient from "./AiVocabLangClient";
-import { appHref } from "@/lib/app-locale";
 import { appLocale } from "@/lib/app-locale.server";
 import { authUserOrNull } from "@/app/signInEmail";
 
@@ -40,7 +39,6 @@ export async function generateMetadata({
 
 export default async function AiVocabLangPage({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
-  const locale = await appLocale();
 
   const langInfo = LANGUAGES[lang];
   const user = await authUserOrNull();
@@ -51,7 +49,7 @@ export default async function AiVocabLangPage({ params }: { params: Promise<{ la
         <div className="flex items-center justify-center">
           <div className="text-center">
             <h1 className="text-2xl font-bold mb-4">Language not supported</h1>
-            <a href={appHref("/ai-vocab", locale)} className="text-blue-500 hover:underline">
+            <a href="/ai-vocab" className="text-blue-500 hover:underline">
               ← Back to language selection
             </a>
           </div>
@@ -64,7 +62,6 @@ export default async function AiVocabLangPage({ params }: { params: Promise<{ la
     <div className="flex flex-col">
       <div>
         <AiVocabLangClient
-          locale={locale}
           lang={lang}
           langName={langInfo.name}
           langNativeName={langInfo.nativeName}

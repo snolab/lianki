@@ -4,7 +4,6 @@ import Link from "next/link";
 import { Icon } from "@/app/components/icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useIntlayer } from "next-intlayer";
-import { appHref } from "@/lib/app-locale";
 import { rankSites, siteStats, type SiteStat } from "@/lib/home-sites";
 import {
   IMMERSION_DOMAINS,
@@ -230,7 +229,7 @@ export default function SitesClient({
       {/* Top bar: review + language tabs */}
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <Link
-          href={appHref("/next", locale)}
+          href="/next"
           className="inline-flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2"
         >
           <Icon name="play" />
@@ -355,10 +354,7 @@ export default function SitesClient({
 
       <footer className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
         <span>{t.hint}</span>
-        <Link
-          href={appHref("/lab/immersion", locale)}
-          className="text-blue-600 dark:text-blue-400 hover:underline"
-        >
+        <Link href="/lab/immersion" className="text-blue-600 dark:text-blue-400 hover:underline">
           {t.fullMatrix} →
         </Link>
       </footer>

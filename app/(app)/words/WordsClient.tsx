@@ -10,8 +10,7 @@ import {
   useState,
 } from "react";
 import { Icon, type IconName } from "@/app/components/icons";
-import { useIntlayer, useLocale } from "next-intlayer";
-import { appHref } from "@/lib/app-locale";
+import { useIntlayer } from "next-intlayer";
 import {
   closestCenter,
   DndContext,
@@ -1715,10 +1714,9 @@ function ListPicker({
 /** "Import Anki deck (.apkg)" → /words/import. */
 function ImportLink() {
   const { pickerLink } = useIntlayer("words-import");
-  const { locale } = useLocale();
   return (
     <a
-      href={appHref("/words/import", locale)}
+      href="/words/import"
       className="text-sm px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
     >
       <Icon name="uploadSimple" className="me-1" />

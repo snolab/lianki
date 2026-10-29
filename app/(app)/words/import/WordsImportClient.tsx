@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
-import { appHref } from "@/lib/app-locale";
 import {
   buildEntries,
   guessLang,
@@ -199,7 +198,7 @@ export default function WordsImportClient() {
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-6">
       <div>
-        <a href={appHref("/words", locale)} className="text-sm opacity-70 hover:opacity-100">
+        <a href="/words" className="text-sm opacity-70 hover:opacity-100">
           {t.backToLists}
         </a>
         <h1 className="text-2xl font-semibold mt-2">{t.title}</h1>
@@ -216,7 +215,7 @@ export default function WordsImportClient() {
 
       {signedOut ? (
         <p className={box}>
-          <a href={appHref("/sign-in", locale)} className="underline">
+          <a href="/sign-in" className="underline">
             {t.signIn}
           </a>
         </p>
@@ -344,7 +343,7 @@ function DeckCard({
           <p className="font-medium">{fill(t.imagesWarning, { n: n(built.images) })}</p>
           <p>
             {t.imagesAdvice}{" "}
-            <a href={appHref("/import", locale)} className="underline font-medium">
+            <a href="/import" className="underline font-medium">
               {t.importAsCards} →
             </a>
           </p>
@@ -467,7 +466,7 @@ function DeckCard({
             })}
           </span>
           <a
-            href={appHref(`/words?list=${outcome.listId}`, locale)}
+            href={`/words?list=${outcome.listId}`}
             className="px-3 py-1 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
           >
             {t.openList} →

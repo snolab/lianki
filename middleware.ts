@@ -10,6 +10,8 @@ import {
   localeFromAcceptLanguage,
 } from "@/lib/app-locale";
 
+const YEAR_S = 365 * 24 * 60 * 60;
+
 function appRouteLocale(request: NextRequest): string {
   const requested = request.nextUrl.searchParams.get(LOCALE_PARAM);
   if (requested && isSupportedLocale(requested)) return requested;
@@ -58,14 +60,21 @@ export function middleware(request: NextRequest) {
     headers.set(LOCALE_HEADER, locale);
 
     const response = NextResponse.next({ request: { headers } });
+    // An explicit ?lang= (a language switch, or a shared link) sticks, so the
+    // app's own links can stay bare.
     if (searchParams.get(LOCALE_PARAM) === locale) {
-      response.cookies.set(LOCALE_PARAM, locale, { path: "/", sameSite: "lax" });
+      response.cookies.set(LOCALE_PARAM, locale, { path: "/", sameSite: "lax", maxAge: YEAR_S });
     }
     return response;
   }
 
-  // Landing page and blog keep their /{locale}/ prefix.
-  return intlayerMiddleware(request);
+  // Landing page and blog keep their /{locale}/ prefix. A first visit there
+  // also seeds the app's locale, so a bare /words link from /ja stays Japanese.
+  const response = intlayerMiddleware(request);
+  if (isSupportedLocale(maybeLocale) && !request.cookies.has(LOCALE_PARAM)) {
+    response.cookies.set(LOCALE_PARAM, maybeLocale, { path: "/", sameSite: "lax", maxAge: YEAR_S });
+  }
+  return response;
 }
 
 export const config = {
