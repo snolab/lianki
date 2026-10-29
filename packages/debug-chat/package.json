@@ -5,6 +5,8 @@
   "type": "module",
   "description": "The debug chat widget: chat box, pill, menu, pairing modal, mic, hot-load host. No imports from the app; Lianki passes what it needs as props.",
   "exports": {
+    "./Avatar": "./src/Avatar.tsx",
+    "./avatar-rules": "./src/avatar-rules.ts",
     "./DebugChat": "./src/DebugChat.tsx",
     "./DebugChatHost": "./src/DebugChatHost.tsx",
     "./DebugPairModal": "./src/DebugPairModal.tsx",
@@ -17,6 +19,7 @@
     "./debug-widget": "./src/debug-widget.ts",
     "./icons": "./src/icons.tsx",
     "./mic": "./src/mic.ts",
+    "./node-path": "./src/node-path.ts",
     "./tap-gesture": "./src/tap-gesture.ts",
     "./wire": "./src/wire.ts",
     "./voice": "./src/voice.ts",

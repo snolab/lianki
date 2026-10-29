@@ -7,6 +7,7 @@ import {
   type Heartbeat,
   type HubState,
   type PairInfo,
+  type Sender,
   chunkMessages,
   compile,
   summarize,
@@ -25,6 +26,8 @@ const IDLE_MS = 30_000;
 const TOAST_MS = 4_000;
 /** Route changes settle this long before the socket's label is updated. */
 const RELABEL_MS = 300;
+/** The agent's avatar in the chat log: Lianki's own logo (public/icon-192.png). */
+const AGENT_AVATAR = "/icon-192.png";
 /** sessionStorage: this tab's page id (docs/monitoring.md, "Remote eval"). */
 const TAB_KEY = "lk:debug-tab";
 
@@ -69,6 +72,8 @@ export function DebugEval() {
   /** null on the owner's pages; a friend's chat status otherwise. */
   const [friend, setFriend] = useState<"open" | "blocked" | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  /** Who this page's user is, from the hub on connect: their own lines' avatar. */
+  const [viewer, setViewer] = useState<Sender | undefined>(undefined);
   const sockRef = useRef<WebSocket | null>(null);
   const friendRef = useRef(false);
   /** The owner's page (a state arrived with no friend-status first): may hot-load the widget. */
@@ -202,6 +207,7 @@ export function DebugEval() {
           message?: unknown;
           status?: unknown;
           retryIn?: unknown;
+          sender?: unknown;
         };
         try {
           msg = JSON.parse(String(e.data));
@@ -212,6 +218,10 @@ export function DebugEval() {
           friendRef.current = true;
           setFriend(msg.status === "blocked" ? "blocked" : "open");
           if (msg.status === "blocked") setChat(true);
+          return;
+        }
+        if (msg.type === "me") {
+          if (msg.sender && typeof msg.sender === "object") setViewer(msg.sender as Sender);
           return;
         }
         if (msg.type === "page-ended") {
@@ -380,11 +390,19 @@ export function DebugEval() {
       sockRef.current?.send(JSON.stringify({ type: "end-page", id }));
     } catch {}
   };
-  const sendChat = (text: string) => {
+  /** `to`: the state-tree node the line is addressed to (absent = the main thread). */
+  const sendChat = (text: string, to?: string) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return false;
     try {
-      sock.send(JSON.stringify({ type: "chat", id: crypto.randomUUID().slice(0, 12), text }));
+      sock.send(
+        JSON.stringify({
+          type: "chat",
+          id: crypto.randomUUID().slice(0, 12),
+          text,
+          ...(to ? { to } : {}),
+        }),
+      );
       return true;
     } catch {
       return false;
@@ -409,6 +427,7 @@ export function DebugEval() {
           listeners={state?.listeners ?? sessions.length}
           messages={messages}
           onSend={sendChat}
+          nodes={state?.nodes}
           notice={friend === "blocked" ? "Chat is not available for this account." : undefined}
           warning={warning ?? undefined}
           sessions={sessions}
@@ -418,6 +437,8 @@ export function DebugEval() {
           friend={isFriend}
           treeSource={owner && !isFriend ? "/api/dev/state-tree" : undefined}
           treeRepo="snolab/lianki"
+          agentAvatar={AGENT_AVATAR}
+          viewer={viewer}
         />
       )}
       {/* A pairing request: a big modal on every open page of its audience. */}

@@ -61,10 +61,15 @@ export type ControllerOpts = {
   labelFlag?: string;
   forEmail?: string;
   noPair?: boolean;
+  /** The state-tree node this controller listens and speaks at (`?node=`); absent = "/". */
+  node?: string;
+  /** The node's assignee id (`?agent=`). */
+  agent?: string;
 };
 
 /** The controller socket's plumbing for one process (it pairs at most once). */
-export function controller({ label, labelFlag, forEmail, noPair }: ControllerOpts) {
+export function controller({ label, labelFlag, forEmail, noPair, node, agent }: ControllerOpts) {
+  const where = `${node ? `&node=${encodeURIComponent(node)}` : ""}${agent ? `&agent=${encodeURIComponent(agent)}` : ""}`;
   /** Resuming a grant without --label keeps the label it was approved under. */
   const controlUrl = (
     token?: string,
@@ -72,7 +77,7 @@ export function controller({ label, labelFlag, forEmail, noPair }: ControllerOpt
     scope: "chat" | "eval" = "eval",
     beat = false,
   ) =>
-    `${BASE.replace(/^http/, "ws")}/api/version/debug/control?label=${encodeURIComponent(token ? (labelFlag ?? "") : label)}&scope=${scope}${forEmail ? `&for=${encodeURIComponent(forEmail)}` : ""}${beat ? "&beat=1" : ""}`;
+    `${BASE.replace(/^http/, "ws")}/api/version/debug/control?label=${encodeURIComponent(token ? (labelFlag ?? "") : label)}&scope=${scope}${forEmail ? `&for=${encodeURIComponent(forEmail)}` : ""}${beat ? "&beat=1" : ""}${where}`;
   /**
    * Bun's WebSocket takes headers, so the grant goes in one, never in the URL
    * (the repo type-checks with the DOM lib's constructor, hence the cast).
