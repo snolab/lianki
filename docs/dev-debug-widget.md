@@ -14,7 +14,8 @@ re-exports for the hub and the sender.
 | File (`packages/debug-chat/src/` unless a path is given) | Role                                                     |
 | -------------------------------------------------------- | -------------------------------------------------------- |
 | `debug-chat-widget.ts`                                   | the widget entry: `DebugChat` and `WIDGET_API`           |
-| `DebugChat.tsx`                                          | the chat box: log, input, pill, menu                     |
+| `DebugChat.tsx`                                          | the chat box: log, the bar (controls + input), menu      |
+| `float-lines.ts`                                         | minimized: floating lines, their dwell and timers        |
 | `DebugChatHost.tsx`                                      | the page's loader: import, re-import on reload, fallback |
 | `DebugPairModal.tsx`                                     | the pairing modal                                        |
 | `MicButton.tsx`, `mic.ts`                                | the mic: VAD, STT client, dictation rules                |
@@ -146,7 +147,15 @@ messages. Run it by hand with Playwright: open `http://localhost:5180/harness`
 (`?working=1` shows the spinner) and set the localStorage key to
 `http://localhost:5180/debug-chat.js`. Then check `[data-debug-widget]` (its
 value is the rev) and edit `DebugChat.tsx`: the rev changes and the new UI
-renders.
+renders. `?min` (or `?open`) starts minimized (or expanded), and
+`globalThis.__push(text)` adds a live message.
+
+`node scripts/dev/debug-chat-bar-qa.mjs [--shots <dir>]` does that on its
+own: it starts the server on a free port, loads the hot widget into
+`/harness`, and checks the chat bar expanded and minimized (one container,
+focus order, 16px input, 40px targets, the inert input, the mic clickable and
+its drag gestures, floating lines). getUserMedia is stubbed, so nothing is
+recorded. `--shots` also saves light/dark × expanded/minimized at 390px.
 
 ## Voice clips and the STT bench
 
@@ -166,12 +175,12 @@ bun scripts/dev/debug-widget-server.ts --port 5180 --tailnet /lianki-widget [--c
 The folder is `--clips-dir`, else `LIANKI_CLIPS_DIR`, else
 `lianki-voice-clips` in the home directory.
 
-| Request                      | Does                                                                                                                                                                                                    |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Request                      | Does                                                                                                                                                                                                |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /clips`                | multipart: `audio` (the blob) and `meta` (JSON `{at?, mime?, durationMs, label, transcript, model?}`). Saves `<ISO time>-<seq>.<ext>` and a `.json` sidecar with the same fields. Answers `{name}`. |
-| `GET /clips/index.json`      | `{clips: [{name, file, at, mime, durationMs, label, transcript, ref?}]}`, oldest first                                                                                                                  |
-| `GET /clips/<file>`          | one clip's audio                                                                                                                                                                                        |
-| `POST /clips/bench?run=<id>` | the bench's raw results, written once as `bench-raw-<id>.json`                                                                                                                                          |
+| `GET /clips/index.json`      | `{clips: [{name, file, at, mime, durationMs, label, transcript, ref?}]}`, oldest first                                                                                                              |
+| `GET /clips/<file>`          | one clip's audio                                                                                                                                                                                    |
+| `POST /clips/bench?run=<id>` | the bench's raw results, written once as `bench-raw-<id>.json`                                                                                                                                      |
 
 A clip is at most 5 MB, and webm, ogg, m4a, wav or mp3. Cross-origin
 requests are allowed from `https://lianki.com` only (with

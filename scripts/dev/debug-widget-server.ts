@@ -28,7 +28,14 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { watch } from "node:fs";
 import { resolve } from "node:path";
-import { ROOT, allowOrigin, buildHarness, buildWidget, sse } from "./debug-widget-build";
+import {
+  ROOT,
+  allowOrigin,
+  buildHarness,
+  buildWidget,
+  harnessCss,
+  sse,
+} from "./debug-widget-build";
 import { clipsDir, handleClips } from "./clip-sink";
 
 const argv = Bun.argv.slice(2);
@@ -163,7 +170,7 @@ function startServer() {
       if (url.pathname === "/harness")
         return new Response(
           `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width">` +
-            `<title>debug widget harness</title><style>:root{--background:oklch(0.98 0.01 85);--foreground:oklch(0.2 0.01 60)}</style>` +
+            `<title>debug widget harness</title><style>${harnessCss()}</style>` +
             `<div id=root></div><script type=module src="harness.js"></script>`,
           { headers: { ...h, "content-type": "text/html; charset=utf-8" } },
         );

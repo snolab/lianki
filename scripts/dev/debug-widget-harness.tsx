@@ -3,13 +3,25 @@
  * scripts/dev/debug-widget-server.ts at /harness. It renders the real
  * DebugChatHost (the loader DebugEval uses) with made-up messages, so the
  * import, React sharing and reload can be checked without lianki-push.
- * `?busy=1` shows the heartbeat spinner; `?pending=chat|eval|friend` the pairing modal.
+ * `?busy=1` shows the heartbeat spinner; `?pending=chat|eval|friend` the pairing modal;
+ * `?min` starts minimized (`?open` expanded; neither keeps what was last chosen).
+ * `globalThis.__push(text, from?)` adds a live message, e.g. to float one up
+ * over the minimized bar.
  */
 import { createRoot } from "react-dom/client";
 import { useState } from "react";
 import type { ChatMessage } from "@/lib/dev-eval";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
+
+{
+  // Before the first render: the chat reads it once, when it mounts.
+  const q = new URLSearchParams(location.search);
+  const open = q.has("min") ? "0" : q.has("open") ? "1" : null;
+  try {
+    if (open) localStorage.setItem("lk:debug-chat-open", open);
+  } catch {}
+}
 
 function Harness() {
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
@@ -28,6 +40,20 @@ function Harness() {
     const w = globalThis as unknown as Record<string, unknown[]>;
     (w[key] ??= []).push(v);
   };
+  (globalThis as { __push?: (text: string, from?: "agent" | "owner") => void }).__push = (
+    text,
+    from = "agent",
+  ) =>
+    setMessages((l) => [
+      ...l,
+      {
+        id: crypto.randomUUID(),
+        from,
+        label: from === "agent" ? "agent" : "/harness",
+        text,
+        at: Date.now(),
+      },
+    ]);
   const pages = [
     { id: "p1", label: "/harness Chrome", at: 0 },
     { id: "p2", label: "/words pwa Mozilla/5.0 (iPhone)", at: 0 },

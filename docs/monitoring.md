@@ -264,21 +264,36 @@ session listing carry the current path) and sends the listeners
 JSON line. Silent on the page, never stored, never in the chat log. A
 friend's page can only relabel its own socket.
 
-**The pill and its menu.** No title bar: a small pill at the start of the
-input row (`debug-chat-pill`) has two zones, each at least 32px, with a
-divider. The left zone (`debug-chat-pill-min`) holds the liagent mark
-(`packages/debug-chat/src/LiagentMark.tsx`) and a dot, green while the socket
-is live: a tap minimizes or restores the box (after 280 ms, so that a double
-tap can cancel it), and a double tap opens the menu (`packages/debug-chat/src/tap-gesture.ts`).
-The right zone (`debug-chat-pill-menu`) shows the eval/preview sessions (a
-play icon and their count, pulsing when code just ran) or ⋯; a tap opens the
-menu at once. A drag anywhere on the pill moves the box, and never counts as
-a tap. Minimized, only the pill stays (`debug-chat-minimized`, at 0.6
-opacity, with an unread badge `debug-chat-pill-unread`), where it sat in the
-box and with the same saved offset, so restoring puts the input row back
-there, clamped on screen. While the pill is held, the input shows "drag:
-move · tap: minimize · double-tap or ⋯: menu", as its placeholder, or over
-the draft (`debug-chat-drag-hint`). The menu lists every open debug page of this chat (the
+**The chat bar and its menu.** No title bar: the controls and the input are
+one rounded glass container (`debug-chat-pill`): minimize, connections, mic,
+then the input, in that focus order, each control a 40px tap target
+(`tap-40`). The first control (`debug-chat-pill-min`, with `aria-expanded`)
+holds the liagent mark (`packages/debug-chat/src/LiagentMark.tsx`) and a dot,
+green while the socket is live: a tap minimizes or restores the box (after
+280 ms, so that a double tap can cancel it), and a double tap opens the menu
+(`packages/debug-chat/src/tap-gesture.ts`). The second
+(`debug-chat-pill-menu`) shows the eval/preview sessions (a play icon and
+their count, pulsing when code just ran) or ⋯; a tap opens the menu at once.
+A drag on either, or on the bar's edge, moves the box, and never counts as a
+tap. Minimizing animates the bar's width in 180 ms (two grid columns trading
+`1fr` ⇄ `0fr`; at once under reduced motion) down to its three controls
+(`debug-chat-minimized`, at 0.6 opacity, with an unread badge
+`debug-chat-pill-unread`). The input is then inert and aria-hidden, so it can
+take neither focus nor taps, and the log is hidden. The mic stays mounted with
+its live state, so hands-free voice goes on while minimized.
+
+Minimized, messages float above the bar instead of the log
+(`debug-chat-float`, `packages/debug-chat/src/float-lines.ts`): only those
+that arrive while minimized, newest at the bottom, each fading out (opacity
+only) after `max(2.5 s, 2 × its reading time)`, reading CJK at 6 characters a
+second and anything else at 15. Hovering or touching the lines holds their
+timers. A vertical drag on the mic (locked after 8 px; a horizontal one moves
+the bar, and neither toggles the mic) scrubs back through the history: finger
+down goes back, as the expanded log follows the finger, three lines at a
+time, each dwell starting over on release. ↑/↓ on the focused mic do the same.
+Expanded, a vertical drag on the mic scrolls the log. While a control is held,
+the input shows "drag: move · tap: minimize · double-tap or ⋯: menu", as its
+placeholder, or over the draft (`debug-chat-drag-hint`). The menu lists every open debug page of this chat (the
 owner's own, or a friend's own: the hub's `state` carries `pages: [{id,
 label, at}]` and `self`, rebroadcast when a page connects, leaves or moves).
 Each row shows the path and a device hint ("pwa · Android", "iPhone"). Tapping
@@ -331,11 +346,11 @@ voice session (`packages/debug-chat/src/voice.ts`, kept on `globalThis` so the
 bundled `speakReply` in DebugEval and a hot-loaded chat share it; tested with
 fakes in `unit/voice-session.test.ts`):
 
-- *Queue.* Replies are split into sentences (after 。．！？ and closing
+- _Queue._ Replies are split into sentences (after 。．！？ and closing
   brackets; after . ! ? before a space or the end, so 3.14 stays whole; at
   every newline) and spoken one utterance per sentence, first in first out.
   A new reply waits behind the one being read; it never cuts it off.
-- *Echo, not a held mic* (`lk:voice-aec`, default on): the mic stays open
+- _Echo, not a held mic_ (`lk:voice-aec`, default on): the mic stays open
   while the agent speaks, and the echo is removed in layers, each tunable by
   a named constant: (1) the mic is opened with `echoCancellation`,
   `noiseSuppression` and `autoGainControl` (`AEC_CONSTRAINTS` in
@@ -356,9 +371,9 @@ fakes in `unit/voice-session.test.ts`):
   `localStorage["lk:voice-aec"] = "0"` brings back the old way: the mic holds
   capture while an utterance plays (VAD paused, what it hears dropped) and for
   400 ms after the last one ends, with the old constraints.
-- *Output* (`lk:voice-out`): `"speech"` (default) is the phone's own
+- _Output_ (`lk:voice-out`): `"speech"` (default) is the phone's own
   speechSynthesis. Its volume cannot change mid-utterance on iOS, so a duck
-  applies from the next sentence; and on iOS it is probably *not* in the
+  applies from the next sentence; and on iOS it is probably _not_ in the
   canceller's reference, so how much leaks through is exactly what the guard
   log measures. `"cloud"` fetches each sentence from `/api/words/tts`
   (MeloTTS, cached in R2 after the first time; `en es fr zh ja ko`; ≤ 200
@@ -370,11 +385,11 @@ fakes in `unit/voice-session.test.ts`):
   speechSynthesis instead, that sentence only. Cost: $0.0002 per audio
   minute (18.63 neurons), cache misses only — about 530 minutes of new
   replies a day fit in the free 10,000 neurons.
-- *iOS, honestly:* WebKit's echo canceller is expected to subtract media
+- _iOS, honestly:_ WebKit's echo canceller is expected to subtract media
   element / Web Audio output played by the same page while the mic is open,
   but neither mode has been verified on an iPhone yet. Measure before
   trusting it (below).
-- *Interruptions* stop the utterance and keep the place: the last word
+- _Interruptions_ stop the utterance and keep the place: the last word
   boundary the browser reported (`boundary` events), else the start of that
   utterance; a cloud clip resumes at its `currentTime`, 0.3 s early
   (`RESUME_REWIND_S`). A tap on the mic while the agent speaks releases
@@ -454,7 +469,8 @@ tests:
 - The chat box: `debug-chat` (root), `debug-chat-minimized` (minimized),
   `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-pill-menu`,
   `debug-chat-pill-unread`, `debug-chat-log`, `debug-chat-line` (with
-  `data-from`), `debug-chat-input`, `debug-chat-drag-hint`,
+  `data-from`), `debug-chat-floats`, `debug-chat-float`, `debug-chat-input-slot`,
+  `debug-chat-input`, `debug-chat-drag-hint`,
   `debug-chat-bottom`, `debug-chat-busy`, `debug-chat-mic` (with
   `data-state` and `data-status`), `debug-chat-mic-rec`,
   `debug-chat-mic-pending`, `debug-chat-mic-note`, `debug-chat-notice` and

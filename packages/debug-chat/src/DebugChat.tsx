@@ -20,7 +20,8 @@ import {
 import { DebugMic, canCapture, playSentTick } from "./MicButton";
 import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
 import { cloudOut, outMode } from "./voice-out";
-import { createDragFlag, createTapper } from "./tap-gesture";
+import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
+import { FADE_MS, FLOAT_MAX, createDwellTimer, dwellMs } from "./float-lines";
 import { Icon } from "./icons";
 
 /** Typing pauses this long before the draft is sent. */
@@ -34,10 +35,16 @@ const DEBOUNCE_MS = 3_000;
 const OPEN_KEY = "lk:debug-chat-open";
 /** How long "Tap again to end the chat" waits for the second tap. */
 const END_CONFIRM_MS = 3_000;
-/** In the input while the pill is held. */
+/** In the input while the bar is held. */
 const DRAG_HINT = "drag: move · tap: minimize · double-tap or ⋯: menu";
+/** The mic's extra gesture, for its title and aria-description. */
+const MIC_SCRUB_HINT = "Drag up or down (or press ↑/↓) to scroll back through the chat";
+/** A minimized scrub shows this many lines at a time. */
+const SCRUB_LINES = 3;
+/** Only messages this fresh float up (not a history that loads late). */
+const FLOAT_FRESH_MS = 60_000;
 const POS_KEY = "lk:debug-chat-pos";
-/** The input and its pill: the page shows through at about half. */
+/** The chat bar: the page shows through at about half. */
 const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
 /** Older lines dissolve at the log's top edge (only once there is more than fits). */
 const FADE = "linear-gradient(to bottom, transparent, black 2.5rem)";
@@ -67,7 +74,7 @@ function useDrag() {
   const [holding, setHolding] = useState(false);
   const handle = {
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
-      if ((e.target as HTMLElement).closest("button:not([data-drag-handle])")) return;
+      if ((e.target as HTMLElement).closest("button:not([data-drag-handle]), textarea")) return;
       setHolding(true);
       drag.current = { px: e.clientX, py: e.clientY, x: pos.x, y: pos.y, moved: false };
       dragged.current.down();
@@ -80,9 +87,9 @@ function useDrag() {
       const dy = e.clientY - d.py;
       if (!d.moved && Math.hypot(dx, dy) < 5) return;
       d.moved = true;
-      // Keep the input row (pill + input) on screen, up to the very top under
-      // the notch: its rect at the start, moved by the delta. The click-through
-      // log above it may go off-screen. The collapsed pill is its own row.
+      // Keep the chat bar on screen, up to the very top under the notch: its
+      // rect at the start, moved by the delta. The click-through log above it
+      // may go off-screen.
       const box = e.currentTarget.closest("[data-debug-chat]") as HTMLElement;
       const row = (box.querySelector("[data-debug-chat-row]") ?? box).getBoundingClientRect();
       const left = row.left - (pos.x - d.x);
@@ -109,16 +116,27 @@ function useDrag() {
     style: { touchAction: "none" as const, cursor: "grab" },
   };
   /**
-   * Bring the row (pill + input, or the minimized pill) back on screen, e.g.
-   * after restoring the box where the small mark was, or on a smaller screen.
+   * A press that began elsewhere (the mic, once it locked horizontally) moves
+   * the box from here on, as if it had started on a handle at (px, py).
    */
-  const fit = (box: HTMLElement | null) => {
-    const row = box?.querySelector("[data-debug-chat-row]")?.getBoundingClientRect();
-    if (!row) return;
+  const begin = (px: number, py: number) => {
+    setHolding(true);
+    drag.current = { px, py, x: pos.x, y: pos.y, moved: false };
+  };
+  /**
+   * Bring the chat bar back on screen, e.g. after restoring the box where the
+   * minimized bar was, or on a smaller screen. Expanded, the bar will span the
+   * box (its width still animating now), so the box's own edges count.
+   */
+  const fit = (box: HTMLElement | null, wide: boolean) => {
+    const bar = box?.querySelector("[data-debug-chat-row]")?.getBoundingClientRect();
+    if (!box || !bar) return;
+    const full = box.getBoundingClientRect();
+    const row = { left: wide ? full.left : bar.left, right: wide ? full.right : bar.right };
     const top = safeTop();
     const dx = row.left < 0 ? -row.left : row.right > innerWidth ? innerWidth - row.right : 0;
     const dy =
-      row.top < top ? top - row.top : row.bottom > innerHeight ? innerHeight - row.bottom : 0;
+      bar.top < top ? top - bar.top : bar.bottom > innerHeight ? innerHeight - bar.bottom : 0;
     if (!dx && !dy) return;
     setPos((p) => {
       const next = { x: p.x + dx, y: p.y + dy };
@@ -131,6 +149,7 @@ function useDrag() {
   return {
     offset: { transform: `translate(${pos.x}px, ${pos.y}px)` },
     handle,
+    begin,
     wasDrag,
     holding,
     fit,
@@ -276,11 +295,11 @@ export function DebugChat({
     return v === null ? !location.pathname.startsWith("/words") : v === "1";
   });
   const [speak, setSpeak] = useState(speechEnabled);
-  const { offset, handle, wasDrag, holding, fit } = useDrag();
-  /** The box or the minimized mark: whichever is up is kept on screen. */
+  const { offset, handle, begin, wasDrag, holding, fit } = useDrag();
+  /** The box: its bar is kept on screen, expanded or minimized. */
   const root = useRef<HTMLElement | null>(null);
-  // Only a switch between the box and the mark refits (fit itself is fresh each render).
-  useLayoutEffect(() => fit(root.current), [open]);
+  // Only expanding or minimizing refits (fit itself is fresh each render).
+  useLayoutEffect(() => fit(root.current, open), [open]);
   /** The pill's menu: status, read-aloud, pages, sessions. */
   const [menu, setMenu] = useState(false);
   /** The pill's mark: one tap minimizes or restores, two open the menu (the single waits for a second). */
@@ -498,6 +517,112 @@ export function DebugChat({
     },
     double: () => setMenu((m) => !m),
   };
+  /**
+   * Minimized, the log is hidden and messages float above the bar instead
+   * (float-lines.ts): those that arrive while minimized, or the lines a scrub
+   * on the mic brings back. Each fades on its own after its dwell.
+   */
+  const [floats, setFloats] = useState<ChatMessage[]>([]);
+  /** Bumped on each scrub step and release: every floating line's dwell starts over. */
+  const [floatEpoch, setFloatEpoch] = useState(0);
+  /** Hovered or touched, or a scrub under way: the dwell timers wait. */
+  const [floatHover, setFloatHover] = useState(false);
+  const [scrubbing, setScrubbing] = useState(false);
+  /** How many lines back from the newest the scrub is (0 = the newest SCRUB_LINES). */
+  const back = useRef(0);
+  const floatSeen = useRef(messages.length);
+  useEffect(() => {
+    if (open) {
+      floatSeen.current = messages.length;
+      back.current = 0;
+      setFloats([]);
+      return;
+    }
+    const fresh = messages
+      .slice(Math.min(floatSeen.current, messages.length))
+      .filter((m) => Date.now() - m.at < FLOAT_FRESH_MS);
+    floatSeen.current = messages.length;
+    if (fresh.length)
+      setFloats((f) =>
+        [...f.filter((x) => !fresh.some((y) => y.id === x.id)), ...fresh].slice(-FLOAT_MAX),
+      );
+  }, [messages, open]);
+  const dropFloat = (id: string) =>
+    setFloats((f) => {
+      const next = f.filter((x) => x.id !== id);
+      if (!next.length) back.current = 0;
+      return next;
+    });
+  /** Show the SCRUB_LINES lines that end `n` back from the newest. */
+  const scrubTo = (n: number) => {
+    back.current = n;
+    const end = messages.length - n;
+    setFloats(messages.slice(Math.max(0, end - SCRUB_LINES), end));
+    setFloatEpoch((e) => e + 1);
+  };
+  /**
+   * A press on the mic: a tap toggles it (MicButton); locked vertically it
+   * scrubs the history (minimized) or scrolls the log (expanded); locked
+   * horizontally it moves the box. Either lock swallows the click.
+   */
+  const micAxis = useRef(createAxisLock());
+  const micDragged = useRef(createDragFlag());
+  const micPress = useRef({ x: 0, y: 0, back: 0, scroll: 0 });
+  const micGesture = {
+    description: MIC_SCRUB_HINT,
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+      micAxis.current.down(e.clientX, e.clientY);
+      micDragged.current.down();
+      micPress.current = {
+        x: e.clientX,
+        y: e.clientY,
+        back: floats.length ? back.current : 0,
+        scroll: log.current?.scrollTop ?? 0,
+      };
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => {
+      const was = micAxis.current.axis();
+      const m = micAxis.current.move(e.clientX, e.clientY);
+      if (!m) return;
+      if (m.axis === "x") {
+        if (!was) begin(micPress.current.x, micPress.current.y);
+        handle.onPointerMove(e);
+        return;
+      }
+      if (open) {
+        const list = log.current;
+        if (list) list.scrollTop = micPress.current.scroll - m.dy;
+        return;
+      }
+      if (!was) setScrubbing(true);
+      const n = scrubBack(micPress.current.back, m.dy, Math.max(0, messages.length - 1));
+      if (!was || n !== back.current) scrubTo(n);
+    },
+    onPointerUp: () => {
+      const axis = micAxis.current.up();
+      if (!axis) return;
+      micDragged.current.dragEnded();
+      if (axis === "x") handle.onPointerUp();
+      else if (!open) {
+        setScrubbing(false);
+        setFloatEpoch((e) => e + 1); // the dwell starts over from the release
+      }
+    },
+    onPointerCancel: () => {
+      const axis = micAxis.current.up();
+      if (axis === "x") handle.onPointerCancel();
+      if (axis === "y") setScrubbing(false);
+    },
+    onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (open || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+      e.preventDefault();
+      const from = floats.length ? back.current : -1;
+      const n = Math.max(0, Math.min(Math.max(0, messages.length - 1), from + (e.key === "ArrowUp" ? 1 : -1)));
+      scrubTo(n);
+    },
+    wasDrag: () => micDragged.current.wasDrag(),
+  };
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
   const conns = plural(
     pages.length + sessions.filter((x) => x.scope !== "chat").length,
@@ -525,8 +650,8 @@ export function DebugChat({
     endTimer.current = setTimeout(() => setEndArmed(null), END_CONFIRM_MS);
   };
   const evalSessions = sessions.filter((x) => x.scope !== "chat");
-  /** Room at the input's right end: the mic (32px), and the busy spinner left of it. */
-  const inputPad = hasMic ? (busy ? "pe-14" : "pe-9") : "pe-6";
+  /** Room at the input's right end for the busy spinner. */
+  const inputPad = busy ? "pe-6" : "pe-2";
   const unread = messages.slice(seen).filter((m) => m.from === "agent").length;
   /** An agent is listening (the hub's listener count, pushed on every change). */
   const agentOnline = live && listeners > 0;
@@ -549,19 +674,14 @@ export function DebugChat({
           : "agent offline · messages wait until it is back";
 
   /**
-   * The pill: drag it anywhere to move the box. Left, the liagent mark: a tap
-   * minimizes or restores (after 280 ms), a double tap opens the menu. Right,
-   * the other connections (eval/preview sessions) or ⋯: a tap opens the menu.
-   * Each zone is its own drag handle, so its click still lands on it.
+   * The bar's controls, left of the input: drag any of them (or the bar's
+   * edge) to move the box. The liagent mark: a tap minimizes or restores
+   * (after 280 ms), a double tap opens the menu. The connections (eval/preview
+   * sessions, or ⋯): a tap opens the menu. Each is its own drag handle, so its
+   * click still lands on it. The mic follows them (MicButton).
    */
-  const pill = (
-    <div
-      data-testid="debug-chat-pill"
-      data-debug-chat-pill
-      className={`pointer-events-auto relative flex shrink-0 items-stretch rounded-full border border-current/25 text-gray-600 dark:text-gray-300 ${open ? "" : "opacity-60 transition-opacity active:opacity-100"}`}
-      style={{ background: INPUT_BG }}
-      title={status}
-    >
+  const controls = (
+    <>
       <button
         type="button"
         data-drag-handle
@@ -575,16 +695,15 @@ export function DebugChat({
         }}
         onClick={() => !wasDrag() && gripTaps.current?.tap()}
         style={handle.style}
-        className="relative flex min-h-8 w-8 items-center justify-center rounded-s-full"
+        className="tap-40 relative flex h-8 w-10 shrink-0 items-center justify-center rounded-full"
       >
         <LiagentMark size={18} />
         <span
           aria-hidden
-          className="absolute end-0.5 top-1 size-1.5 rounded-full"
+          className="absolute end-1.5 top-1 size-1.5 rounded-full"
           style={{ background: dot }}
         />
       </button>
-      <span aria-hidden className="my-1.5 w-px bg-current opacity-25" />
       <button
         type="button"
         data-drag-handle
@@ -594,7 +713,7 @@ export function DebugChat({
         {...handle}
         onClick={() => !wasDrag() && setMenu((m) => !m)}
         style={handle.style}
-        className="relative flex min-h-8 min-w-8 items-center justify-center gap-0.5 rounded-e-full px-1 text-[10px] tabular-nums"
+        className="tap-40 relative flex h-8 w-10 shrink-0 items-center justify-center gap-0.5 rounded-full text-[10px] tabular-nums"
       >
         {evalSessions.length > 0 ? (
           <>
@@ -613,16 +732,26 @@ export function DebugChat({
           </span>
         )}
       </button>
-      {!open && unread > 0 && (
-        <span
-          data-testid="debug-chat-pill-unread"
-          className="pointer-events-none absolute -end-1.5 -top-1.5 rounded-full px-1 text-[10px] leading-4 text-white"
-          style={{ background: "oklch(0.55 0.2 260)" }}
-        >
-          {unread}
-        </span>
+      {hasMic && !notice && (
+        // Mounted in both states: hands-free voice goes on while minimized.
+        <DebugMic
+          onText={dictated}
+          onPending={(n, text) => {
+            micPending.current = n;
+            setInterim(text);
+            arm(); // stops a debounce under way, or restarts it once all is in
+          }}
+          onActive={(on) => {
+            micOn.current = on;
+            setMicActive(on);
+            arm();
+          }}
+          clipSink={friend ? undefined : clipSinkFrom(read(CLIP_SINK_KEY))}
+          label={pages.find((p) => p.id === selfPage)?.label ?? location.pathname}
+          gesture={micGesture}
+        />
       )}
-    </div>
+    </>
   );
   /** The menu (the pill's ⋯, or a double tap on its mark), open or minimized. */
   const menuEl = menu && (
@@ -782,31 +911,13 @@ export function DebugChat({
     </div>
   );
 
-  if (!open)
-    return (
-      // Minimized: only the pill, where it sits in the box (same anchor and
-      // offset), so it moves with the box and restores in place.
-      <div
-        ref={(el) => {
-          root.current = el;
-        }}
-        data-debug-chat
-        data-testid="debug-chat-minimized"
-        style={offset}
-        className="pointer-events-none fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] text-xs"
-      >
-        <div data-debug-chat-row className="relative flex">
-          {pill}
-          {menuEl}
-        </div>
-      </div>
-    );
-
   return (
     <section
       ref={root}
       data-debug-chat
-      data-testid="debug-chat"
+      // Minimized keeps its old test id: the bar alone, plus floating lines.
+      data-testid={open ? "debug-chat" : "debug-chat-minimized"}
+      data-minimized={!open || undefined}
       aria-label="Chat with the agent"
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
@@ -814,12 +925,33 @@ export function DebugChat({
       // A live mic counts as focus: the box goes opaque as it does while typing.
       className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] transition-opacity ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none flex-col rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100`}
     >
+      {!open && floats.length > 0 && (
+        // Minimized: the lines that arrived (or a scrub brought back), newest
+        // at the bottom, each fading on its own. Hover or touch holds them.
+        <ol
+          data-testid="debug-chat-floats"
+          aria-live="polite"
+          className="mb-1 flex flex-col items-start gap-0.5"
+        >
+          {floats.map((m) => (
+            <FloatLine
+              key={m.id}
+              m={m}
+              epoch={floatEpoch}
+              paused={floatHover || scrubbing}
+              onHover={setFloatHover}
+              onGone={() => dropFloat(m.id)}
+            />
+          ))}
+        </ol>
+      )}
       <ol
         ref={log}
         data-testid="debug-chat-log"
         onScroll={onLogScroll}
         data-fade={fade || undefined}
         data-expanded={typing || undefined}
+        hidden={!open}
         onTransitionEnd={() => {
           // Shrunk: land on the newest lines again, now that the height settled.
           if (!typing && !micActive) log.current?.scrollTo({ top: log.current.scrollHeight });
@@ -869,7 +1001,7 @@ export function DebugChat({
           </li>
         ))}
       </ol>
-      {warning && (
+      {open && warning && (
         <div
           role="alert"
           data-testid="debug-chat-warning"
@@ -879,203 +1011,291 @@ export function DebugChat({
           {warning}
         </div>
       )}
-      {notice ? (
-        <p
-          role="status"
-          data-testid="debug-chat-notice"
-          className="pointer-events-auto px-2 py-2 text-gray-600 dark:text-gray-400"
-        >
-          {notice}
-        </p>
-      ) : (
-        <>
-          {/* The log above is click-through: taps reach the page under it. Only the
-          grip and the input take pointer events. */}
-          <div data-debug-chat-row className="relative flex items-stretch gap-1">
-            {scrolledUp && (
-              // The row stays click-through; only the button takes taps.
-              <div className="pointer-events-none absolute inset-x-0 bottom-full mb-1 flex justify-end">
-                <button
-                  type="button"
-                  data-testid="debug-chat-bottom"
-                  // Keeps the input's focus, so the log stays open.
-                  onPointerDown={(e) => e.preventDefault()}
-                  aria-label={
-                    below
-                      ? `Scroll to the newest message, ${below} new`
-                      : "Scroll to the newest message"
-                  }
-                  onClick={() =>
-                    log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" })
-                  }
-                  style={{ background: INPUT_BG }}
-                  className="pointer-events-auto relative inline-flex size-6 items-center justify-center rounded-full border border-current/25 text-sm leading-none text-gray-600 dark:text-gray-300"
-                >
-                  ↓
-                  {below > 0 && (
-                    <span
-                      aria-hidden
-                      className="absolute end-0 top-0 size-2 rounded-full"
-                      style={{ background: "oklch(0.6 0.2 22)" }}
-                    />
-                  )}
-                </button>
-              </div>
-            )}
-            {/* No title bar: the pill drags the box, minimizes it and opens the
-            menu (status, read-aloud, pages, sessions). Its dot is the connection.
-            No End chat here: the chat hibernates and wakes by itself. */}
-            {pill}
-            {menuEl}
-            {armed > 0 && (
-              <div
-                key={armed}
-                aria-hidden
-                className="lk-drain absolute inset-x-0 top-0 h-0.5 bg-blue-600/60"
-              />
-            )}
-            <div className="relative flex min-w-0 flex-1">
-              {interim && (
-                // A mirror of the draft, invisible, then the interim text dimmed:
-                // it shows where the transcript will land.
-                <div
-                  ref={mirror}
+      {/* The log above is click-through: taps reach the page under it. Only the
+      bar takes pointer events. Its width animates as two grid columns, the
+      bar's and a spacer's, trading 1fr ⇄ 0fr: minimized, the bar's column is
+      only as wide as its controls (the input's slot is 0 wide). */}
+      <div
+        // 180 ms; reduced motion switches at once.
+        className="relative grid transition-[grid-template-columns] duration-[180ms] ease-out motion-reduce:transition-none"
+        style={{ gridTemplateColumns: open ? "1fr 0fr" : "0fr 1fr" }}
+      >
+        {open && scrolledUp && (
+          // The row stays click-through; only the button takes taps.
+          <div className="pointer-events-none absolute inset-x-0 bottom-full mb-1 flex justify-end">
+            <button
+              type="button"
+              data-testid="debug-chat-bottom"
+              // Keeps the input's focus, so the log stays open.
+              onPointerDown={(e) => e.preventDefault()}
+              aria-label={
+                below ? `Scroll to the newest message, ${below} new` : "Scroll to the newest message"
+              }
+              onClick={() =>
+                log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" })
+              }
+              style={{ background: INPUT_BG }}
+              className="pointer-events-auto relative inline-flex size-6 items-center justify-center rounded-full border border-current/25 text-sm leading-none text-gray-600 dark:text-gray-300"
+            >
+              ↓
+              {below > 0 && (
+                <span
                   aria-hidden
-                  className={`pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words rounded-lg border border-transparent px-2 py-1 text-base ${inputPad}`}
-                >
-                  <span className="invisible">{draft}</span>
-                  <span data-testid="debug-chat-mic-pending" className="text-gray-400">
-                    {joinText(draft, interim).slice(draft.length)}
-                  </span>
-                </div>
-              )}
-              <textarea
-                ref={input}
-                data-testid="debug-chat-input"
-                data-drag-hint={holding || undefined}
-                rows={1}
-                // 16px: iOS zooms the whole page into any input under 16px.
-                value={draft}
-                maxLength={MAX_CHAT}
-                placeholder={
-                  holding
-                    ? DRAG_HINT
-                    : interim
-                      ? ""
-                      : agentOnline
-                        ? "Message the agent…"
-                        : "Agent offline — your message waits for it…"
-                }
-                onScroll={(e) => {
-                  if (mirror.current) mirror.current.scrollTop = e.currentTarget.scrollTop;
-                }}
-                aria-label="Message the agent"
-                onChange={(e) => {
-                  draftRef.current = e.target.value;
-                  setDraft(e.target.value);
-                  setOffline(false);
-                  // Typing pauses the reading; a send (or, mic on, a blur) reads on.
-                  voice().interrupt("typing");
-                  arm();
-                }}
-                onFocus={() => setTyping(true)}
-                onBlur={() => {
-                  setTyping(false);
-                  // Mic on: hands-free, the reading goes on. Off: it was only for the input.
-                  if (voice().state().mic) voice().resume();
-                  else voice().stop();
-                }}
-                onCompositionStart={() => {
-                  composing.current = true;
-                  clearTimeout(timer.current);
-                  setArmed(0);
-                }}
-                onCompositionEnd={() => {
-                  composing.current = false;
-                  arm();
-                }}
-                // Android's keyboards report every key as 229, so Enter never
-                // reaches onKeyDown as "Enter": the line break itself is the cue.
-                onBeforeInput={(e) => {
-                  const type = (e.nativeEvent as InputEvent).inputType;
-                  if (type !== "insertLineBreak" && type !== "insertParagraph") return;
-                  if (composing.current || (e.nativeEvent as InputEvent).isComposing) return;
-                  if (shiftEnter.current) return; // Shift+Enter: a newline, as on desktop
-                  e.preventDefault();
-                  submit();
-                }}
-                onKeyDown={(e) => {
-                  shiftEnter.current = e.key === "Enter" && e.shiftKey;
-                  if (e.key !== "Enter" || e.shiftKey) return;
-                  // Enter that confirms an IME candidate (Safari reports it as 229
-                  // after compositionend) must not send.
-                  if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229) return;
-                  e.preventDefault();
-                  submit();
-                }}
-                style={{ background: INPUT_BG }}
-                // A drag on a long draft scrolls its text, never the page or the box.
-                className={`pointer-events-auto block min-w-0 flex-1 resize-none overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-current/25 px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
-              />
-              {holding && draft && (
-                // The draft hides the placeholder: the hint sits over it instead.
-                <span
-                  data-testid="debug-chat-drag-hint"
-                  className="pointer-events-none absolute inset-x-1 top-0.5 truncate rounded px-1 text-[10px] text-gray-500"
-                  style={{ background: INPUT_BG }}
-                >
-                  {DRAG_HINT}
-                </span>
-              )}
-              {busy && (
-                // Up only while real heartbeats arrive (DebugEval): never a guess.
-                <span
-                  role="status"
-                  data-testid="debug-chat-busy"
-                  aria-label={`${busy.label || "agent"} is working`}
-                  title={`${busy.label || "agent"} is working`}
-                  className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${hasMic ? "end-9" : "end-1.5"}`}
-                >
-                  <svg viewBox="0 0 16 16" className="size-3.5 animate-spin" aria-hidden>
-                    <circle
-                      cx="8"
-                      cy="8"
-                      r="6"
-                      fill="none"
-                      strokeWidth="2"
-                      stroke="oklch(0.6 0.02 70 / 0.35)"
-                    />
-                    <path
-                      d="M8 2a6 6 0 0 1 6 6"
-                      fill="none"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      stroke="oklch(0.55 0.14 150)"
-                    />
-                  </svg>
-                </span>
-              )}
-              {hasMic && (
-                <DebugMic
-                  onText={dictated}
-                  onPending={(n, text) => {
-                    micPending.current = n;
-                    setInterim(text);
-                    arm(); // stops a debounce under way, or restarts it once all is in
-                  }}
-                  onActive={(on) => {
-                    micOn.current = on;
-                    setMicActive(on);
-                    arm();
-                  }}
-                  clipSink={friend ? undefined : clipSinkFrom(read(CLIP_SINK_KEY))}
-                  label={pages.find((p) => p.id === selfPage)?.label ?? location.pathname}
+                  className="absolute end-0 top-0 size-2 rounded-full"
+                  style={{ background: "oklch(0.6 0.2 22)" }}
                 />
               )}
-            </div>
+            </button>
           </div>
-        </>
-      )}
+        )}
+        {/* One container: [minimize | connections | mic] + input. No title bar:
+        the mark drags the box, minimizes it and opens the menu (status,
+        read-aloud, pages, sessions); its dot is the connection. No End chat
+        here: the chat hibernates and wakes by itself. */}
+        <div
+          data-debug-chat-row
+          data-testid="debug-chat-pill"
+          data-debug-chat-pill
+          title={status}
+          // The bar's own edge drags too; its buttons and the input handle themselves.
+          onPointerDown={(e) => {
+            if ((e.target as HTMLElement).closest("button, textarea, p")) return;
+            handle.onPointerDown(e);
+          }}
+          onPointerMove={(e) => e.target === e.currentTarget && handle.onPointerMove(e)}
+          onPointerUp={(e) => e.target === e.currentTarget && handle.onPointerUp()}
+          onPointerCancel={(e) => e.target === e.currentTarget && handle.onPointerCancel()}
+          style={{ background: INPUT_BG }}
+          className={`pointer-events-auto relative flex items-end rounded-[1.125rem] border border-current/25 text-gray-600 backdrop-blur-md backdrop-saturate-150 dark:text-gray-300 ${open ? "p-0.5" : "p-px"}`}
+        >
+          {armed > 0 && (
+            <div
+              key={armed}
+              aria-hidden
+              className="lk-drain absolute inset-x-3 top-0 h-0.5 bg-blue-600/60"
+            />
+          )}
+          {controls}
+          {/* The input: gone while minimized (inert, so it can't take focus or
+          be read), fading out as its slot closes. */}
+          <div
+            data-testid="debug-chat-input-slot"
+            inert={!open}
+            aria-hidden={!open || undefined}
+            className={`relative flex w-0 min-w-0 flex-1 transition-opacity duration-[180ms] ease-out motion-reduce:transition-none ${open ? "opacity-100" : "max-h-8 overflow-hidden opacity-0"}`}
+          >
+            {notice ? (
+              <p
+                role="status"
+                data-testid="debug-chat-notice"
+                className="min-w-0 flex-1 px-2 py-2 text-gray-600 dark:text-gray-400"
+              >
+                {notice}
+              </p>
+            ) : (
+              <>
+                {interim && (
+                  // A mirror of the draft, invisible, then the interim text dimmed:
+                  // it shows where the transcript will land.
+                  <div
+                    ref={mirror}
+                    aria-hidden
+                    className={`pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words border border-transparent px-2 py-1 text-base ${inputPad}`}
+                  >
+                    <span className="invisible">{draft}</span>
+                    <span data-testid="debug-chat-mic-pending" className="text-gray-400">
+                      {joinText(draft, interim).slice(draft.length)}
+                    </span>
+                  </div>
+                )}
+                <textarea
+                  ref={input}
+                  data-testid="debug-chat-input"
+                  data-drag-hint={holding || undefined}
+                  rows={1}
+                  // 16px: iOS zooms the whole page into any input under 16px.
+                  value={draft}
+                  maxLength={MAX_CHAT}
+                  placeholder={
+                    holding
+                      ? DRAG_HINT
+                      : interim
+                        ? ""
+                        : agentOnline
+                          ? "Message the agent…"
+                          : "Agent offline — your message waits for it…"
+                  }
+                  onScroll={(e) => {
+                    if (mirror.current) mirror.current.scrollTop = e.currentTarget.scrollTop;
+                  }}
+                  aria-label="Message the agent"
+                  onChange={(e) => {
+                    draftRef.current = e.target.value;
+                    setDraft(e.target.value);
+                    setOffline(false);
+                    // Typing pauses the reading; a send (or, mic on, a blur) reads on.
+                    voice().interrupt("typing");
+                    arm();
+                  }}
+                  onFocus={() => setTyping(true)}
+                  onBlur={() => {
+                    setTyping(false);
+                    // Mic on: hands-free, the reading goes on. Off: it was only for the input.
+                    if (voice().state().mic) voice().resume();
+                    else voice().stop();
+                  }}
+                  onCompositionStart={() => {
+                    composing.current = true;
+                    clearTimeout(timer.current);
+                    setArmed(0);
+                  }}
+                  onCompositionEnd={() => {
+                    composing.current = false;
+                    arm();
+                  }}
+                  // Android's keyboards report every key as 229, so Enter never
+                  // reaches onKeyDown as "Enter": the line break itself is the cue.
+                  onBeforeInput={(e) => {
+                    const type = (e.nativeEvent as InputEvent).inputType;
+                    if (type !== "insertLineBreak" && type !== "insertParagraph") return;
+                    if (composing.current || (e.nativeEvent as InputEvent).isComposing) return;
+                    if (shiftEnter.current) return; // Shift+Enter: a newline, as on desktop
+                    e.preventDefault();
+                    submit();
+                  }}
+                  onKeyDown={(e) => {
+                    shiftEnter.current = e.key === "Enter" && e.shiftKey;
+                    if (e.key !== "Enter" || e.shiftKey) return;
+                    // Enter that confirms an IME candidate (Safari reports it as 229
+                    // after compositionend) must not send.
+                    if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229) return;
+                    e.preventDefault();
+                    submit();
+                  }}
+                  // A drag on a long draft scrolls its text, never the page or the box.
+                  className={`block min-h-8 min-w-0 flex-1 resize-none overflow-y-auto overscroll-contain touch-pan-y border border-transparent bg-transparent px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
+                />
+                {holding && draft && (
+                  // The draft hides the placeholder: the hint sits over it instead.
+                  <span
+                    data-testid="debug-chat-drag-hint"
+                    className="pointer-events-none absolute inset-x-1 top-0.5 truncate rounded px-1 text-[10px] text-gray-500"
+                    style={{ background: INPUT_BG }}
+                  >
+                    {DRAG_HINT}
+                  </span>
+                )}
+                {busy && (
+                  // Up only while real heartbeats arrive (DebugEval): never a guess.
+                  <span
+                    role="status"
+                    data-testid="debug-chat-busy"
+                    aria-label={`${busy.label || "agent"} is working`}
+                    title={`${busy.label || "agent"} is working`}
+                    className="pointer-events-none absolute end-1.5 top-1/2 -translate-y-1/2"
+                  >
+                    <svg viewBox="0 0 16 16" className="size-3.5 animate-spin" aria-hidden>
+                      <circle
+                        cx="8"
+                        cy="8"
+                        r="6"
+                        fill="none"
+                        strokeWidth="2"
+                        stroke="oklch(0.6 0.02 70 / 0.35)"
+                      />
+                      <path
+                        d="M8 2a6 6 0 0 1 6 6"
+                        fill="none"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        stroke="oklch(0.55 0.14 150)"
+                      />
+                    </svg>
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+          {!open && unread > 0 && (
+            <span
+              data-testid="debug-chat-pill-unread"
+              className="pointer-events-none absolute -end-1.5 -top-1.5 rounded-full px-1 text-[10px] leading-4 text-white"
+              style={{ background: "oklch(0.55 0.2 260)" }}
+            >
+              {unread}
+            </span>
+          )}
+        </div>
+        <span aria-hidden />
+        {menuEl}
+      </div>
     </section>
+  );
+}
+
+/**
+ * One floating line of the minimized chat: "name: text", up for its dwell
+ * (float-lines.ts), then an opacity fade (none under reduced motion). `epoch`
+ * restarts the dwell; `paused` holds it.
+ */
+function FloatLine({
+  m,
+  epoch,
+  paused,
+  onHover,
+  onGone,
+}: {
+  m: ChatMessage;
+  epoch: number;
+  paused: boolean;
+  onHover: (on: boolean) => void;
+  onGone: () => void;
+}) {
+  const [fading, setFading] = useState(false);
+  const timer = useRef<ReturnType<typeof createDwellTimer> | null>(null);
+  const live = useRef({ paused, onGone });
+  live.current = { paused, onGone };
+  useEffect(() => {
+    setFading(false);
+    let gone: ReturnType<typeof setTimeout> | undefined;
+    const t = createDwellTimer({
+      ms: dwellMs(m.text),
+      onDone: () => {
+        if (matchMedia("(prefers-reduced-motion: reduce)").matches) return live.current.onGone();
+        setFading(true);
+        gone = setTimeout(() => live.current.onGone(), FADE_MS);
+      },
+    });
+    if (live.current.paused) t.pause();
+    timer.current = t;
+    return () => {
+      t.cancel();
+      clearTimeout(gone);
+    };
+  }, [epoch, m.id, m.text]);
+  useEffect(() => {
+    if (paused) timer.current?.pause();
+    else timer.current?.resume();
+  }, [paused]);
+  return (
+    <li
+      data-testid="debug-chat-float"
+      data-from={m.from}
+      data-fading={fading || undefined}
+      onPointerEnter={() => onHover(true)}
+      onPointerLeave={() => onHover(false)}
+      onPointerCancel={() => onHover(false)}
+      style={{ background: INPUT_BG }}
+      // FADE_MS; under reduced motion the line is dropped at once instead.
+      className={`${fading ? "opacity-0" : "opacity-100"} transition-opacity duration-[400ms] pointer-events-auto line-clamp-3 max-w-full whitespace-pre-wrap break-words rounded-lg px-2 py-0.5 leading-snug backdrop-blur-md motion-reduce:transition-none`}
+    >
+      <span
+        className="me-1 font-medium"
+        style={{ color: m.from !== "agent" ? "oklch(0.55 0.13 250)" : "oklch(0.55 0.14 150)" }}
+      >
+        {m.from !== "agent" ? "you" : m.label || "agent"}:
+      </span>
+      {m.text}
+    </li>
   );
 }

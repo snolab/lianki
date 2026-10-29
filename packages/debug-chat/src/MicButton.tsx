@@ -222,12 +222,27 @@ export function DebugMic({
   onActive,
   clipSink,
   label,
+  gesture,
 }: {
   onText: (text: string) => void;
   onPending: (n: number, interim: string) => void;
   onActive: (on: boolean) => void;
   clipSink?: string;
   label: string;
+  /**
+   * The chat bar's own press handling (DebugChat): a vertical drag scrubs the
+   * history, a horizontal one moves the bar; `wasDrag` swallows the click that
+   * ends either, so a scrub never toggles the mic.
+   */
+  gesture?: {
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => void;
+    onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => void;
+    onPointerUp: (e: React.PointerEvent<HTMLButtonElement>) => void;
+    onPointerCancel: (e: React.PointerEvent<HTMLButtonElement>) => void;
+    onKeyDown?: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
+    wasDrag: () => boolean;
+    description?: string;
+  };
 }) {
   const [can, setCan] = useState(false);
   const [state, setState] = useState<MicState>("off");
@@ -331,13 +346,13 @@ export function DebugMic({
   const status = micStatus(state, pending, talking);
   const speaking = status === "speaking";
   return (
-    // Inside the input, at its right edge (the input is padded so text never runs under it).
-    <div className="absolute end-0.5 top-1/2 flex -translate-y-1/2">
+    // One of the chat bar's controls, between the connections and the input.
+    <div className="relative flex shrink-0">
       {note && (
         <span
           role="alert"
           data-testid="debug-chat-mic-note"
-          className="pointer-events-none absolute end-0 bottom-full mb-1 whitespace-nowrap text-[10px]"
+          className="pointer-events-none absolute start-0 bottom-full mb-2 whitespace-nowrap text-[10px]"
           style={{ color: "oklch(0.6 0.17 45)" }}
         >
           {note}
@@ -358,9 +373,20 @@ export function DebugMic({
               ? "Recording; tap to stop listening"
               : "Listening; tap to stop"
         }
+        aria-description={gesture?.description}
+        title={gesture?.description}
         // Keeps the input's focus: the log stays open while dictating.
-        onPointerDown={(e) => e.preventDefault()}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          gesture?.onPointerDown(e);
+        }}
+        onPointerMove={gesture?.onPointerMove}
+        onPointerUp={gesture?.onPointerUp}
+        onPointerCancel={gesture?.onPointerCancel}
+        onKeyDown={gesture?.onKeyDown}
         onClick={() => {
+          // The click that ends a scrub or a move is not a tap.
+          if (gesture?.wasDrag()) return;
           setNote(null);
           // Barge in: the reading stops (it reads on later), and capture resumes at once.
           if (speaking) return voice().interrupt("tap");
@@ -371,7 +397,8 @@ export function DebugMic({
           }
           void mic.current?.toggle();
         }}
-        className={`pointer-events-auto relative flex size-8 flex-col items-center justify-center rounded-full text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
+        // 40px wide, and 40px tall to the touch (tap-40); no scrolling under a drag.
+        className={`tap-40 pointer-events-auto relative flex h-8 w-10 touch-none flex-col items-center justify-center rounded-full text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
         style={{ color: state === "off" ? undefined : speaking ? TALK : REC }}
       >
         {speaking ? (
@@ -379,14 +406,14 @@ export function DebugMic({
           <span
             aria-hidden
             data-testid="debug-chat-mic-speaking"
-            className="pointer-events-none absolute inset-0.5 animate-pulse rounded-full"
+            className="pointer-events-none absolute inset-x-1.5 inset-y-0.5 animate-pulse rounded-full"
             style={{ boxShadow: `0 0 0 2px ${TALK}`, animationDuration: "2.4s" }}
           />
         ) : listening && (
           // Steady and faint while listening; red and pulsing while audio is captured.
           <span
             aria-hidden
-            className={`pointer-events-none absolute inset-0.5 rounded-full ${rec ? "animate-pulse" : ""}`}
+            className={`pointer-events-none absolute inset-x-1.5 inset-y-0.5 rounded-full ${rec ? "animate-pulse" : ""}`}
             style={{ boxShadow: `0 0 0 2px ${rec ? REC : "oklch(0.6 0.22 25 / 0.35)"}` }}
           />
         )}
