@@ -430,7 +430,7 @@ export function DebugEval() {
               </span>
               <button
                 type="button"
-                data-testid={s.scope === "chat" ? "debug-menu-end-chat" : "debug-menu-session-end"}
+                data-testid="debug-menu-session-end"
                 onClick={() => answer("revoke", s)}
                 className="rounded-full px-2"
                 style={{ background: "oklch(0.3 0.05 30)" }}

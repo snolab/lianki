@@ -62,14 +62,15 @@ function useDrag() {
       const dy = e.clientY - d.py;
       if (!d.moved && Math.hypot(dx, dy) < 5) return;
       d.moved = true;
-      // Keep the whole box on screen: its rect at the start, moved by the delta.
-      const box = (
-        e.currentTarget.closest("[data-debug-chat]") as HTMLElement
-      ).getBoundingClientRect();
-      const left = box.left - (pos.x - d.x);
-      const top = box.top - (pos.y - d.y);
-      const x = d.x + Math.max(-left, Math.min(innerWidth - box.width - left, dx));
-      const y = d.y + Math.max(-top, Math.min(innerHeight - box.height - top, dy));
+      // Keep the input row (grip + input) on screen, up to the very top under
+      // the notch: its rect at the start, moved by the delta. The click-through
+      // log above it may go off-screen. The collapsed pill is its own row.
+      const box = e.currentTarget.closest("[data-debug-chat]") as HTMLElement;
+      const row = (box.querySelector("[data-debug-chat-row]") ?? box).getBoundingClientRect();
+      const left = row.left - (pos.x - d.x);
+      const top = row.top - (pos.y - d.y);
+      const x = d.x + Math.max(-left, Math.min(innerWidth - row.width - left, dx));
+      const y = d.y + Math.max(safeTop() - top, Math.min(innerHeight - row.height - top, dy));
       setPos({ x, y });
     },
     onPointerUp: () => {
@@ -92,6 +93,16 @@ function useDrag() {
     return d;
   };
   return { offset: { transform: `translate(${pos.x}px, ${pos.y}px)` }, handle, wasDrag };
+}
+
+/** env(safe-area-inset-top) in px (the notch), measured once per drag. */
+function safeTop() {
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;visibility:hidden;padding-top:env(safe-area-inset-top)";
+  document.body.append(probe);
+  const v = Number.parseFloat(getComputedStyle(probe).paddingTop) || 0;
+  probe.remove();
+  return v;
 }
 
 const read = (key: string) => {
@@ -484,7 +495,7 @@ export function DebugChat({
         <>
           {/* The log above is click-through: taps reach the page under it. Only the
           grip and the input take pointer events. */}
-          <div className="relative flex items-stretch gap-1">
+          <div data-debug-chat-row className="relative flex items-stretch gap-1">
             {scrolledUp && (
               // The row stays click-through; only the button takes taps.
               <div className="pointer-events-none absolute inset-x-0 bottom-full mb-1 flex justify-end">

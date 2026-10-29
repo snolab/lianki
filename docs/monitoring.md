@@ -278,7 +278,7 @@ tests:
   `debug-modal-page-check` (`data-page-id`), `debug-modal-allow`,
   `debug-modal-allow-all` and `debug-modal-deny`.
 - DebugEval's fallback (no chat box): `debug-eval`, with
-  `debug-menu-session`, `debug-menu-session-end`, `debug-menu-end-chat` and
+  `debug-menu-session`, `debug-menu-session-end` (chat grants too) and
   `debug-chat-icon-eval` named as above.
 
 **Hot-loading the widget.** The chat box itself can be loaded live from a
