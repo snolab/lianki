@@ -16,14 +16,26 @@
  *       no `serve` session running, it pairs for this one command.
  *
  *   bun scripts/dev/eval.ts chat [--label "…"] [--out <path>]
- *       Listen to the owner's chat box (DebugChat on a debug page). Pairs if
- *       there is no saved grant — prints {"type":"pending","code"} to stdout;
- *       the owner taps "Allow chat for 30 days" — then prints each new owner
- *       message as one JSON line {"type":"chat","id","text","at","label"}
- *       (also appended to --out). Reconnects on close, backing off.
+ *       Listen to every chat thread: the owner's and each friend's (any
+ *       signed-in user on a debug page). Pairs if there is no saved grant —
+ *       prints {"type":"pending","code"} to stdout; the owner taps "Allow chat
+ *       for 30 days" — then prints each new owner or friend message as one
+ *       JSON line {"type":"chat","id","thread","email","from","text","at","label"}
+ *       (thread "owner" or the friend's user id; label = page path + user
+ *       agent), and {"type":"friend-new","userId","email","at"} when someone
+ *       writes for the first time. Also appended to --out. Reconnects on
+ *       close, backing off.
  *
- *   bun scripts/dev/eval.ts say "text"      (or - for stdin)
- *       Reply in the owner's chat box with the saved grant, and exit.
+ *   bun scripts/dev/eval.ts say [--to <thread|email>] "text"      (or - for stdin)
+ *       Reply with the saved grant, and exit: to the owner by default, or to
+ *       a friend's thread by user id or email.
+ *
+ *   bun scripts/dev/eval.ts serve --for <email> [--label "…"]
+ *   bun scripts/dev/eval.ts --for <email> [--target <text>] '<code>'
+ *       The same, on a friend's own debug pages ("Preview"): needs the saved
+ *       chat grant, and the friend's tap on "Allow for 1 hour" on their
+ *       device — tell them the printed code in the chat. That session reaches
+ *       only their pages, never the owner's; it cannot chat.
  *
  * The chat grant token is kept in .debug-chat-token.json at the root of the
  * main checkout (gitignored, mode 600; LIANKI_CHAT_TOKEN_FILE overrides), so
@@ -47,7 +59,16 @@ import { dirname, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 
 const BASE = (process.env.LIANKI_URL ?? "https://lianki.com").replace(/\/+$/, "");
-const SESSION = join(homedir(), ".config", "lianki", "eval-session.json");
+/** The running `serve`'s port and token: one file for the owner, one per friend. */
+const sessionFile = (forEmail?: string) =>
+  join(
+    homedir(),
+    ".config",
+    "lianki",
+    forEmail
+      ? `eval-session-${forEmail.toLowerCase().replace(/[^a-z0-9@._-]/g, "_")}.json`
+      : "eval-session.json",
+  );
 /** How long to wait for the pages' results after sending. */
 const RESULT_MS = 20_000;
 const PAIR_MS = 2 * 60_000;
@@ -77,15 +98,16 @@ const saveToken = (token: string, until: number) => {
   chmodSync(TOKEN_FILE, 0o600);
 };
 /** Resuming a grant without --label keeps the label it was approved under. */
-const controlUrl = (token?: string) =>
-  `${BASE.replace(/^http/, "ws")}/api/version/debug/control?label=${encodeURIComponent(token ? (labelFlag ?? "") : label)}`;
+const controlUrl = (token?: string, forEmail?: string) =>
+  `${BASE.replace(/^http/, "ws")}/api/version/debug/control?label=${encodeURIComponent(token ? (labelFlag ?? "") : label)}${forEmail ? `&for=${encodeURIComponent(forEmail)}` : ""}`;
 /**
  * Bun's WebSocket takes headers, so the grant goes in one, never in the URL
  * (the repo type-checks with the DOM lib's constructor, hence the cast).
+ * `forEmail` asks for a pairing on that friend's pages, which needs the grant.
  */
-const openControl = (token?: string) =>
+const openControl = (token?: string, forEmail?: string) =>
   token
-    ? new WebSocket(controlUrl(token), {
+    ? new WebSocket(controlUrl(token, forEmail), {
         headers: { "x-debug-token": token },
       } as unknown as string[])
     : new WebSocket(controlUrl());
@@ -108,18 +130,34 @@ const labelFlag = flag("--label");
 const label = labelFlag ?? `lianki main lane on ${hostname()}`;
 const target = flag("--target");
 const out = flag("--out");
+const to = flag("--to");
+const forEmail = flag("--for");
+const SESSION = sessionFile(forEmail);
 
 /** Open the controller socket and wait for the owner's answer. */
 function pair(): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const ws = openControl();
+    let ws: WebSocket;
+    if (forEmail) {
+      const token = loadToken();
+      if (!token)
+        return reject(
+          new Error(`--for needs the chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`),
+        );
+      ws = openControl(token, forEmail);
+    } else ws = openControl();
     const give = setTimeout(() => {
       ws.close();
       reject(new Error("no answer on the page within 2 minutes"));
     }, PAIR_MS);
     ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data)) as Msg;
-      if (m.type === "pending")
+      if (m.type === "pending" && forEmail)
+        console.error(
+          `Asking ${forEmail} for a 1-hour preview. Tell them in the chat to allow code  ${m.code}\n` +
+            `  e.g. bun scripts/dev/eval.ts say --to ${forEmail} "Tap Allow on the preview request with code ${m.code}"`,
+        );
+      else if (m.type === "pending")
         console.error(`Pairing as "${label}". On the page, allow code  ${m.code}`);
       else if (m.type === "approved") {
         clearTimeout(give);
@@ -238,18 +276,24 @@ function chat(out?: string) {
   const seen = new Set<string>();
   let first = true;
   let backoff = 1_000;
+  const print = (v: Record<string, unknown>) => {
+    const line = JSON.stringify(v);
+    console.log(line);
+    if (out) appendFileSync(out, `${line}\n`);
+  };
   const emit = (m: Msg) => {
-    if (m.from !== "owner" || typeof m.id !== "string" || seen.has(m.id)) return;
+    if (m.from === "agent" || typeof m.id !== "string" || seen.has(m.id)) return;
     seen.add(m.id);
-    const line = JSON.stringify({
+    print({
       type: "chat",
       id: m.id,
+      thread: m.thread ?? "owner",
+      email: m.email ?? null,
+      from: m.from,
       text: m.text,
       at: new Date(Number(m.at)).toISOString(),
       label: m.label,
     });
-    console.log(line);
-    if (out) appendFileSync(out, `${line}\n`);
   };
   const connect = () => {
     const token = loadToken();
@@ -278,6 +322,13 @@ function chat(out?: string) {
           else emit(h);
         first = false;
       } else if (m.type === "chat" && m.message) emit(m.message as Msg);
+      else if (m.type === "friend-new")
+        print({
+          type: "friend-new",
+          userId: m.userId,
+          email: m.email,
+          at: new Date(Number(m.at)).toISOString(),
+        });
       else if (m.type === "error") console.error(`hub: ${m.error}`);
     };
     ws.onclose = (e) => {
@@ -300,8 +351,8 @@ function chat(out?: string) {
   connect();
 }
 
-/** Reply in the owner's chat box with the saved grant; resolves once the hub has it. */
-function say(text: string): Promise<Msg> {
+/** Reply with the saved grant (to the owner, or `to` a friend); resolves once the hub has it. */
+function say(text: string, to?: string): Promise<Msg> {
   const token = loadToken();
   if (!token)
     return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
@@ -313,7 +364,8 @@ function say(text: string): Promise<Msg> {
     }, 15_000);
     ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data)) as Msg;
-      if (m.type === "approved") ws.send(JSON.stringify({ type: "say", text }));
+      if (m.type === "approved")
+        ws.send(JSON.stringify(to ? { type: "say", text, to } : { type: "say", text }));
       else if (m.type === "said") {
         clearTimeout(give);
         ws.close();
@@ -337,16 +389,16 @@ async function main() {
   if (args[0] === "say") {
     const text = (args[1] === "-" ? await Bun.stdin.text() : (args[1] ?? "")).trim();
     if (!text) {
-      console.error('usage: bun scripts/dev/eval.ts say "text" | -');
+      console.error('usage: bun scripts/dev/eval.ts say [--to <thread|email>] "text" | -');
       process.exit(2);
     }
-    console.log(JSON.stringify(await say(text)));
+    console.log(JSON.stringify(await say(text, to)));
     return;
   }
   const code = args[0] === "-" ? await Bun.stdin.text() : args[0];
   if (!code?.trim()) {
     console.error(
-      "usage: bun scripts/dev/eval.ts [--target <text>] '<code>' | - | serve | chat [--out <file>] | say <text>",
+      "usage: bun scripts/dev/eval.ts [--for <email>] [--target <text>] '<code>' | - | serve [--for <email>] | chat [--out <file>] | say [--to <thread|email>] <text>",
     );
     process.exit(2);
   }

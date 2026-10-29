@@ -20,8 +20,36 @@ export const APPROVAL_MS = 60 * 60_000;
 export const CHAT_MS = 30 * 24 * 60 * 60_000;
 /** Largest chat message (owner's or agent's), in characters. */
 export const MAX_CHAT = 4000;
-/** Chat messages the hub keeps (and sends a page on connect). */
+/** Chat messages the hub keeps per thread (and sends a page on connect). */
 export const CHAT_HISTORY = 200;
+/** A friend may send at most FRIEND_CHAT_MAX messages per FRIEND_CHAT_WINDOW_MS. */
+export const FRIEND_CHAT_MAX = 30;
+export const FRIEND_CHAT_WINDOW_MS = 10 * 60_000;
+/** The owner's chat thread; every other thread is a friend's user id. */
+export const OWNER_THREAD = "owner";
+
+/**
+ * Who a debug page belongs to, as the main Worker's /api/debug/identity says.
+ * The owner's pages see the owner thread and owner pairings; anyone else
+ * signed in is a "friend": their own thread, and only pairings made for them.
+ */
+export type Identity = { userId: string; email: string; owner: boolean };
+
+/** A user id usable as a thread and a storage key: no separators, bounded. */
+export const isUserId = (v: unknown): v is string =>
+  typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) && v !== OWNER_THREAD;
+
+/** A friend who has used the chat, as the hub keeps it (`friend:<userId>`). */
+export type FriendRecord = {
+  email: string;
+  /** First message, epoch ms. */
+  firstSeen: number;
+  /** Latest message, epoch ms. */
+  lastAt: number;
+  count: number;
+  blocked?: boolean;
+  blockedAt?: number;
+};
 
 /**
  * What an approval lets a controller do: "eval" (Allow for 1 hour) runs code
@@ -29,19 +57,25 @@ export const CHAT_HISTORY = 200;
  * messages and may `say`, but cannot eval.
  */
 export type Scope = "eval" | "chat";
-/** One line of the owner ⇄ agent chat, as the hub stores and sends it. */
+/**
+ * One line of a chat thread, as the hub stores and sends it. `thread` is
+ * "owner" or a friend's user id; `email` is the friend's, on their thread.
+ * `label` is the page's path and user agent (or the agent's name).
+ */
 export type ChatMessage = {
   id: string;
-  from: "owner" | "agent";
+  from: "owner" | "friend" | "agent";
   label: string;
   text: string;
   at: number;
+  thread?: string;
+  email?: string;
 };
 
 /** Messages a controller (the sender CLI) may send to the hub. */
 export type ControllerMessage =
   | { type: "eval"; code: string; target?: string }
-  | { type: "say"; text: string };
+  | { type: "say"; text: string; to?: string };
 /** Messages an owner page may send to the hub. */
 export type PageMessage =
   | { type: "allow"; pair: string; scope?: "chat" }
@@ -67,7 +101,17 @@ export type PairInfo = {
   until?: number;
   scope?: Scope;
 };
-export type HubState = { type: "state"; pending: PairInfo | null; sessions: PairInfo[] };
+/**
+ * `listeners`: owner-approved controllers in time (the agent hearing the
+ * chat). `pending` and `sessions` are only the pairings made for this page's
+ * audience — the owner's, or this friend's own.
+ */
+export type HubState = {
+  type: "state";
+  pending: PairInfo | null;
+  sessions: PairInfo[];
+  listeners?: number;
+};
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
 
@@ -89,7 +133,8 @@ export function parseControllerMessage(
   if (m?.type === "say") {
     const text = chatText(m.text);
     if (!text) return { ok: false, error: `say needs text of 1–${MAX_CHAT} chars` };
-    return { ok: true, value: { type: "say", text } };
+    const to = str(m.to, 320)?.trim();
+    return { ok: true, value: to ? { type: "say", text, to } : { type: "say", text } };
   }
   if (!m || m.type !== "eval")
     return { ok: false, error: 'expected {"type":"eval","code":"…"} or {"type":"say","text":"…"}' };

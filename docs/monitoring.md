@@ -46,8 +46,10 @@ CI token (`lianki-deploy`) to hold Zone · Workers Routes · Edit on lianki.com,
 granted 2026-10-29; without it the step fails and skips the main deploy (as
 in #240–#242). By hand: `bunx wrangler deploy -c workers/push/wrangler.jsonc`.
 The main Worker's `PUSH` binding only needs it to exist.
-Its own `MAIN` binding (to `lianki`, for the remote-eval owner check below)
-needs the main Worker deployed first when that check changes.
+Its own `MAIN` binding (to `lianki`, for the debug socket's identity check
+below) needs the main Worker deployed first when that check changes — as it
+did for friends: `/api/debug/identity` must be live before lianki-push asks
+it, or every debug socket is refused (403) until it is.
 
 ## Remote eval (owner debug)
 
@@ -63,10 +65,14 @@ mode (`?debug=1` on any page, or seven quick taps on /words' Settings button; `l
 in localStorage) and the page is visible. lianki-push accepts the socket only
 if its Origin is `https://lianki.com` and the main Worker, asked over the
 `MAIN` service binding with the page's Cookie header, answers
-`/api/dev/whoami` with 200 — that is, `isOwner()` on the session. Anyone
-else gets 403, and `/api/dev/whoami` itself is a 404 for them. A page not in
-debug mode never connects; a refused one does not retry until the next
-visibility or debug event.
+`/api/debug/identity` with `{userId, email, owner}` (`owner` is `isOwner()`
+on the session). A guest gets 401 there and 403 on the socket. lianki-push
+passes who it is to the hub in `x-debug-*` headers it sets itself (a page's
+own are overwritten, a sender's dropped). Signed-in non-owners are
+**friends** (below): their own chat thread, nothing of the owner's.
+`/api/dev/whoami` stays the owner-only check (a 404 for anyone else). A page
+not in debug mode never connects; a refused one, or one the hub closed on
+purpose (4xxx), does not retry until the next visibility or debug event.
 
 **Sending side — pairing, no stored secret.** The sender opens
 `wss://lianki.com/api/version/debug/control?label=…` with no credentials
@@ -125,7 +131,7 @@ first: the first tap or key inside the box unlocks speech.
 
 **Wire.** Page → hub `{type:"chat", id, text}` (text ≤ 4000 chars); sender →
 hub `{type:"say", text}`, acknowledged with `{type:"said", id}`. The hub
-stores each as `{id, from:"owner"|"agent", label, text, at}` — the last 200,
+stores each as `{id, from:"owner"|"friend"|"agent", label, text, at, thread, email?}` — the last 200 per thread (Friends, below),
 one Durable Object storage key each (`msg:<seq>`) — and broadcasts
 `{type:"chat", message}` to every page and every approved sender. A page
 gets `{type:"history", messages}` on connect, a sender on approval, so a
@@ -163,6 +169,83 @@ echo "multi-line reply" | bun scripts/dev/eval.ts say -
 
 The listener reconnects whenever its socket closes, backing off from 1 s to
 a minute; no timer touches the network otherwise.
+
+### Friends
+
+The owner opened the debug chat to friends ("开放给朋友调试用"): any
+signed-in user can put a device in debug mode (`?debug=1`, or seven taps on
+/words' Settings) and chat with the agent right away — no approval step.
+Pieces: the same hub, page and CLI, plus `app/api/debug/identity`, the
+owner's `/dev/friends` page and `app/api/dev/friends` (→ lianki-push
+`/internal/friends` over the `PUSH` binding).
+
+**Threads.** History is per thread: `owner` for the owner's pages (kept at
+the old `msg:<seq>` keys, so nothing was lost), the user id for each friend
+(`t:<userId>:msg:<seq>`). Each keeps the last 200. A friend's page gets only
+its own thread — history on connect and new messages — never the owner's
+or another friend's; the owner's pages get only the owner thread. The
+agent's listener (an owner-approved chat grant) hears every thread: each
+line carries `thread`, `email` and `label` — the page's path plus user
+agent, so the agent knows which page a friend means. A friend's first
+message ever also sends the listener `{type:"friend-new", userId, email}`;
+the agent tells the owner in Slack.
+
+**Limits.** A friend may send 30 messages per 10 minutes; past that the hub
+drops the message and tells the page ("Too many messages…"). The owner has
+no limit. User ids must match `[A-Za-z0-9_-]{1,64}`, so no thread's storage
+prefix can contain another's.
+
+**/dev/friends** (owner-only; a 404 for anyone else, like /dev/users) lists
+everyone who has used the chat — email, first seen, last message, count —
+with **Block**: it closes their sockets at once (4403), refuses their pages
+and messages after, and ends any preview pairing made for them. Unblock
+lets them back. A plain link works from Slack; `?thread=<userId>` shows that
+friend's thread below the table, read-only.
+
+**Preview on a friend's device (eval).** Friends use agent mode to get the
+page they are looking at changed:
+
+1. The friend describes the change in the chat (the line's label says which
+   page and device).
+2. The agent previews it live on the friend's own page by injecting it with
+   eval. That needs **the friend's own consent on their device**: the owner's
+   chat grant does not cover it, and the owner cannot answer for them.
+   `eval.ts serve --for <email>` (it needs the owner's saved chat grant: no
+   one else can raise the prompt) shows "<agent label> wants to preview a
+   change on this page for 1 hour" with a 4-hex code on that friend's debug
+   pages only; the agent tells them the code in the chat. **Allow for 1
+   hour** pairs that sender for that friend's pages alone.
+3. The agent opens a PR with the change.
+4. **The owner approves before anything merges or deploys.** Friend-requested
+   PRs are never merged or deployed without the owner's explicit approval
+   ("部署上线要经过我的审批"); chat feedback goes straight to the agent, code
+   to production does not. This is a process rule for the agent, not code.
+
+**Security model.** Every pairing has one audience — the owner, or one
+friend. Its prompt shows only on that audience's pages, only they can
+Allow/Deny/End it, its evals reach only their pages, and only their pages'
+results reach it. So an owner-approved sender can never run code on a
+friend's device, and a friend-approved one never on the owner's. A pairing
+for a friend is eval only: it hears no chat and cannot `say`. One pairing
+may wait per audience. All of this is unit-tested in
+`unit/debug-hub.test.ts` ("DebugHub friends", "eval scoping").
+
+```bash
+# The listener (as above) now prints every thread; a friend's line looks like
+# {"type":"chat","id":"…","thread":"<userId>","email":"f@x.com","from":"friend",
+#  "text":"…","at":"2026-10-29T…","label":"/words pwa Mozilla/5.0 (Linux; Android …)"}
+bun scripts/dev/eval.ts chat --label "agent on $(hostname -s)" --out /tmp/lianki-chat.jsonl
+
+# Reply to a friend (by email or user id); without --to it goes to the owner.
+bun scripts/dev/eval.ts say --to f@x.com "Thanks — previewing it on your page now."
+
+# Preview on that friend's pages: pair (they tap Allow), then eval as usual.
+bun scripts/dev/eval.ts serve --for f@x.com --label "agent on $(hostname -s)"
+bun scripts/dev/eval.ts --for f@x.com 'document.querySelector("h1").style.fontSize = "2rem"'
+```
+
+A listener that reconnects gets the owner thread's history only; friend
+messages said while it was away are in `/dev/friends?thread=…`.
 
 Fallback, if lianki-push is down: run code in a desktop lianki.com tab of
 the owner's Chrome with `rech eval` — it reaches only that tab, not the phone.

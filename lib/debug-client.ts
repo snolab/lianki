@@ -1,8 +1,10 @@
 /**
- * The owner's remote-debug mode, in the browser. `?debug=1` on any page turns
- * it on for this device (`?debug=0` off); the installed app toggles it with
- * seven quick taps on /words' Settings button. It does nothing for anyone but the owner:
- * /api/dev/log and the debug socket refuse everyone else.
+ * Remote-debug mode, in the browser. `?debug=1` on any page turns it on for
+ * this device (`?debug=0` off); the installed app toggles it with seven quick
+ * taps on /words' Settings button. For the owner it opens remote eval, the
+ * agent chat and /api/dev/log. For any other signed-in user it opens only
+ * their own chat thread with the agent (and a "Preview" prompt when the agent
+ * asks to run code on their device); a guest gets nothing.
  */
 const KEY = "lk:debug";
 /** Fired on window when this tab turns debug mode on or off. */

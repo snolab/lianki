@@ -1,27 +1,34 @@
 /**
- * Who may open an owner debug socket (debug.ts). Kept out of index.ts: a
- * Worker's entry module may export only handlers and Durable Object classes.
+ * Who may open a debug socket (debug.ts). Kept out of index.ts: a Worker's
+ * entry module may export only handlers and Durable Object classes.
  */
+import { type Identity, isUserId } from "../../../lib/dev-eval";
+
 type Fetcher = { fetch(url: string, init?: RequestInit): Promise<Response> };
 
-/** The only origin an owner debug page may connect from. */
+/** The only origin a debug page may connect from. */
 export const DEBUG_ORIGIN = "https://lianki.com";
 
 /**
- * Is this upgrade request the owner's, from a lianki.com page? The cookie is
- * checked by the main Worker itself (/api/dev/whoami → 200 only for the
- * owner), so lianki-push holds no secret and no copy of the owner list.
+ * Who is this upgrade request, from a lianki.com page? The cookie is checked
+ * by the main Worker itself (/api/debug/identity → {userId, email, owner} for
+ * any signed-in user, 401 for a guest), so lianki-push holds no secret and no
+ * copy of the owner list. null = refuse.
  */
-export async function isOwnerSocket(req: Request, main: Fetcher | undefined): Promise<boolean> {
-  if (req.headers.get("origin") !== DEBUG_ORIGIN) return false;
+export async function debugIdentity(
+  req: Request,
+  main: Fetcher | undefined,
+): Promise<Identity | null> {
+  if (req.headers.get("origin") !== DEBUG_ORIGIN) return null;
   const cookie = req.headers.get("cookie");
-  if (!cookie || !main) return false;
+  if (!cookie || !main) return null;
   try {
-    const res = await main.fetch(`${DEBUG_ORIGIN}/api/dev/whoami`, { headers: { cookie } });
-    if (res.status !== 200) return false;
-    const body = (await res.json()) as { owner?: unknown };
-    return body.owner === true;
+    const res = await main.fetch(`${DEBUG_ORIGIN}/api/debug/identity`, { headers: { cookie } });
+    if (res.status !== 200) return null;
+    const body = (await res.json()) as Partial<Record<keyof Identity, unknown>>;
+    if (!isUserId(body.userId) || typeof body.email !== "string") return null;
+    return { userId: body.userId, email: body.email, owner: body.owner === true };
   } catch {
-    return false;
+    return null;
   }
 }

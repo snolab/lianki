@@ -7,6 +7,7 @@ import {
   chatText,
   cleanLabel,
   compile,
+  isUserId,
   matchesTarget,
   parseControllerMessage,
   parsePageMessage,
@@ -177,5 +178,23 @@ describe("reading replies aloud", () => {
     expect(pickVoice(voices, "en-US")?.name).toBe("e");
     expect(pickVoice(voices, "zh-HK")?.name).toBe("b");
     expect(pickVoice(voices, "ja-JP")).toBeUndefined();
+  });
+});
+
+describe("threads", () => {
+  it("say may name a thread to reply in", () => {
+    expect(parseControllerMessage('{"type":"say","text":"hi","to":" a@x.com "}')).toEqual({
+      ok: true,
+      value: { type: "say", text: "hi", to: "a@x.com" },
+    });
+  });
+
+  it("isUserId takes only ids that cannot collide as storage prefixes", () => {
+    expect(isUserId("Ab3_x-9")).toBe(true);
+    expect(isUserId("a:b")).toBe(false);
+    expect(isUserId("")).toBe(false);
+    expect(isUserId("owner")).toBe(false);
+    expect(isUserId("x".repeat(65))).toBe(false);
+    expect(isUserId(42)).toBe(false);
   });
 });

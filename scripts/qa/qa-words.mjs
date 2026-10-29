@@ -375,22 +375,41 @@ try {
     data: "{}",
   });
   check(devLog.status() === 404, `the debug log is owner-only (${devLog.status()})`);
-  // The remote-eval socket (lianki-push) admits a page only if this says the
-  // session is the owner's; a signed-in non-owner must get a 404 here. The
-  // hub's pairing rules are unit-tested (unit/debug-hub.test.ts): lianki-push
-  // is not part of the local Worker.
+  // The owner-only check stays a 404 for anyone else.
   const whoami = await page.request.get(`${new URL(page.url()).origin}/api/dev/whoami`);
+  check(whoami.status() === 404, `/api/dev/whoami is owner-only (${whoami.status()})`);
+  // The debug socket (lianki-push) admits any signed-in user, as whoever
+  // this names: a non-owner is a "friend" with their own chat thread, never
+  // the owner's. The hub's thread and pairing rules are unit-tested
+  // (unit/debug-hub.test.ts): lianki-push is not part of the local Worker,
+  // so the socket never opens here and no chat box shows.
+  const identity = await page.request.get(`${new URL(page.url()).origin}/api/debug/identity`);
+  const who = identity.ok() ? await identity.json() : {};
   check(
-    whoami.status() === 404,
-    `the debug socket's owner check refuses non-owners (${whoami.status()})`,
+    identity.status() === 200 &&
+      who.owner === false &&
+      typeof who.userId === "string" &&
+      !!who.email,
+    `the debug identity names a signed-in non-owner as a friend (${identity.status()} ${JSON.stringify({ owner: who.owner, hasId: !!who.userId })})`,
   );
+  const guest = await browser.newContext();
+  const guestIdentity = await guest.request.get(`${new URL(page.url()).origin}/api/debug/identity`);
+  await guest.close();
+  check(
+    guestIdentity.status() === 401,
+    `the debug identity refuses a guest (${guestIdentity.status()})`,
+  );
+  const friends = await page.request.get(`${new URL(page.url()).origin}/api/dev/friends`);
+  check(friends.status() === 404, `the friends list is owner-only (${friends.status()})`);
+  const friendsPage = await page.request.get(`${new URL(page.url()).origin}/dev/friends`);
+  check(friendsPage.status() === 404, `/dev/friends is owner-only (${friendsPage.status()})`);
   check(
     (await page.locator("[data-debug-eval]").count()) === 0,
-    "a non-owner page (debug on, socket refused) shows no remote-eval UI",
+    "a non-owner page with no debug socket (no lianki-push here) shows no remote-eval UI",
   );
   check(
     (await page.locator("[data-debug-chat]").count()) === 0,
-    "a non-owner page (debug on, socket refused) shows no agent chat box",
+    "a non-owner page with no debug socket (no lianki-push here) shows no chat box",
   );
 
   // A language with pre-rendered clips but none for this text: a 404 the
