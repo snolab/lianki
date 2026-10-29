@@ -157,10 +157,11 @@ ruby rt {
   background:
     linear-gradient(var(--cord-c), var(--cord-c)) 3px 0 / 3px 100% no-repeat,
     linear-gradient(var(--cord-c), var(--cord-c)) right 3px top 0 / 3px 100% no-repeat,
+    /* The seam between slips: under the cords, so they run on unbroken. */
+    linear-gradient(var(--slip-seam), var(--slip-seam)) 0 100% / 100% 1px no-repeat,
     linear-gradient(var(--slip-node), var(--slip-node)) var(--node-x) 0 / 2px 100% no-repeat,
     var(--slip-fib) var(--fx) 0 / 512px 48px repeat,
     var(--slip-c);
-  border-bottom-color: var(--slip-seam);
 }
 /* Shift the shared tile per row so neighbouring slips never repeat the same grain. */
 .slip:nth-child(3n + 1) {
@@ -185,7 +186,7 @@ ruby rt {
 .slip-cord {
   position: absolute;
   top: 0;
-  height: calc(100% + 1px);
+  height: 100%;
   width: 40px;
   overflow: visible;
   pointer-events: none;
