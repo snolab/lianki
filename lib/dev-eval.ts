@@ -121,8 +121,10 @@ export const isPageId = (v: unknown): v is string =>
   typeof v === "string" && /^[A-Za-z0-9_-]{6,40}$/.test(v);
 /**
  * `listeners`: owner-approved controllers in time (the agent hearing the
- * chat). `pages`: this audience's open debug pages; `self`: the receiver's id. `pending` and `sessions` are only the pairings made for this page's
- * audience — the owner's, or this friend's own.
+ * chat), never heartbeat-only sockets (`busy --every`). `pages`: this
+ * audience's open debug pages; `self`: the receiver's id. `pending` and
+ * `sessions` are only the pairings made for this page's audience — the
+ * owner's, or this friend's own.
  */
 export type HubState = {
   type: "state";
@@ -143,6 +145,14 @@ export const PAGE_ENDED = 4410;
  */
 export const PAGE_GONE_GRACE_MS = 5 * 60_000;
 export const PAGES_GONE = 4409;
+/**
+ * A thread with no open page for this long is "idle": the hub tells the
+ * agent ({type:"pages-idle"}) and closes its heartbeat sockets for it. Long
+ * enough to cover a reload or a navigation.
+ */
+export const PAGES_IDLE_MS = 60_000;
+/** Close code for a heartbeat socket whose thread went idle. */
+export const PAGES_IDLE = 4411;
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
 

@@ -71,3 +71,11 @@ export function endsBeat(m: Record<string, unknown>, thread: string | undefined)
   const msg = m.message as { from?: unknown; thread?: unknown };
   return msg.from === "agent" && (msg.thread ?? "owner") === thread;
 }
+
+/**
+ * Whether the hub says the beat's thread went idle (every page closed for a
+ * minute): the beat loop stops then — nobody is there to see the spinner.
+ */
+export function idleFor(m: Record<string, unknown>, thread: string | undefined): boolean {
+  return m.type === "pages-idle" && (!thread || m.thread === thread);
+}

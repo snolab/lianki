@@ -34,7 +34,17 @@
  * Heartbeat. An owner-approved controller sends {type:"busy", to?} while
  * the agent works on a message; the hub passes {type:"busy", label, at}
  * to that one thread's pages (the owner's by default) and acks {type:"beat"}.
- * Nothing is stored: the page's spinner times out on its own.
+ * Nothing is stored: the page's spinner times out on its own. `busy --every`
+ * knocks with `?beat=1`: that socket is heartbeat-only — it keeps its grant
+ * and hears the chat (to stop at the agent's reply), but is not a session in
+ * the menu nor counted in the pages' `listeners` (the "agent offline" cue).
+ *
+ * Presence. When the last page of a thread closes, the hub notes it and sets
+ * the Durable Object alarm for PAGES_IDLE_MS later (a quiet thread has no
+ * other event to check on). Still empty then: the listeners get
+ * {type:"pages-idle", thread, at} and that thread's heartbeat sockets are
+ * closed (PAGES_IDLE). The first page back: {type:"pages-back", thread,
+ * label, at}. Controllers and heartbeat sockets never count as a thread's pages.
  *
  * Chat. A page sends {type:"chat", id, text}; an owner-approved controller
  * sends {type:"say", text, to?}. Each becomes a ChatMessage in its thread
@@ -74,6 +84,8 @@ import {
   PAGE_ENDED,
   PAGE_GONE_GRACE_MS,
   PAGES_GONE,
+  PAGES_IDLE,
+  PAGES_IDLE_MS,
   PENDING_MS,
   type PairInfo,
   type Scope,
@@ -98,6 +110,9 @@ export type Storage = {
   put(key: string, value: unknown): Promise<void>;
   delete(key: string): Promise<boolean>;
   list<T>(opts: { prefix: string; reverse?: boolean; limit?: number }): Promise<Map<string, T>>;
+  /** The Durable Object alarm: one per hub, used only for the pages-idle check. */
+  getAlarm(): Promise<number | null>;
+  setAlarm(at: number): Promise<void>;
 };
 export type DebugState = {
   acceptWebSocket(ws: Socket): void;
@@ -128,6 +143,14 @@ type ControllerAtt = {
   pages?: string[];
   /** When none of `pages` was last seen open (cleared when one is back). */
   goneSince?: number;
+  /**
+   * A heartbeat-only socket (`eval.ts busy`, knocking with `?beat=1`): it
+   * keeps its grant and hears the chat, but is not a session nor a listener
+   * in the pages' count.
+   */
+  beat?: boolean;
+  /** The thread a heartbeat socket last beat for (closed when that thread goes idle). */
+  beatThread?: string;
   forUser?: string;
   forEmail?: string;
 } & PairInfo;
@@ -266,7 +289,8 @@ export class DebugHub {
     const sessions: PairInfo[] = [];
     const held = new Set<string>();
     for (const { a } of this.sockets("controller", except)) {
-      if (audience(a) !== who) continue;
+      // A heartbeat socket is not a session: its grant, if eval, lists as asleep.
+      if (audience(a) !== who || a.beat) continue;
       if (a.grant) held.add(a.grant);
       if (a.until) {
         if (a.until > t) sessions.push(info(a));
@@ -290,7 +314,7 @@ export class DebugHub {
       label: a.label,
       at: a.at ?? 0,
     }));
-    return { type: "state", pending, sessions, listeners: this.listeners(except).length, pages };
+    return { type: "state", pending, sessions, listeners: this.agents(except).length, pages };
   }
 
   /** Every page its audience's state, each told which page it is. */
@@ -316,6 +340,11 @@ export class DebugHub {
     return this.sockets("controller", except).filter(
       (c) => !c.a.forUser && c.a.until && c.a.until > t,
     );
+  }
+
+  /** The listeners the pages count ("agent listening (n)"): never a heartbeat-only socket. */
+  private agents(except?: Socket) {
+    return this.listeners(except).filter((c) => !c.a.beat);
   }
 
   /** One thread's kept chat, oldest first. */
@@ -477,6 +506,7 @@ export class DebugHub {
       await this.loadGrants();
       this.broadcast();
     }
+    await this.pageBack(thread, label);
   }
 
   /**
@@ -602,6 +632,7 @@ export class DebugHub {
       scope,
       grant: hash,
       ...(scope === "eval" && g.pages ? { pages: g.pages } : {}),
+      ...(url.searchParams.get("beat") === "1" ? { beat: true } : {}),
     };
     ws.serializeAttachment(a);
     send(ws, { type: "approved", until: g.until, scope, resumed: true });
@@ -643,7 +674,81 @@ export class DebugHub {
     }
   }
 
+  /**
+   * The last page of `thread` closed: remember since when, and wake up
+   * PAGES_IDLE_MS later (the Durable Object alarm — nothing else would happen
+   * to trigger the check: a quiet thread has no events).
+   */
+  private async markEmpty(thread: string) {
+    const key = `empty:${thread}`;
+    if (!(await this.ctx.storage.get<number>(key))) await this.ctx.storage.put(key, this.now());
+    await this.schedule(this.now() + PAGES_IDLE_MS);
+  }
+
+  /** Make sure the alarm goes off by `at` (one already due is the one running now). */
+  private async schedule(at: number) {
+    const cur = await this.ctx.storage.getAlarm();
+    if (cur === null || cur > at || cur <= this.now()) await this.ctx.storage.setAlarm(at);
+  }
+
+  /** A page of `thread` opened: not empty any more; if it had gone idle, the agent hears it is back. */
+  private async pageBack(thread: string, label: string) {
+    await this.ctx.storage.delete(`empty:${thread}`);
+    if (!(await this.ctx.storage.delete(`idle:${thread}`))) return;
+    const back = { type: "pages-back", thread, label, at: this.now() };
+    for (const { ws } of this.listeners()) send(ws, back);
+    console.log(JSON.stringify({ msg: "debug.pages-back", thread }));
+  }
+
+  private checking?: Promise<void>;
+
+  /**
+   * Threads empty for PAGES_IDLE_MS: tell the agent ({type:"pages-idle"}),
+   * close the heartbeat sockets beating for them, and keep `idle:<thread>` so
+   * the first page back is announced. Run by the alarm, and on every message
+   * (one check at a time, so a thread is announced once).
+   */
+  checkIdle(): Promise<void> {
+    this.checking ??= this.idleNow().finally(() => {
+      this.checking = undefined;
+    });
+    return this.checking;
+  }
+
+  private async idleNow() {
+    const t = this.now();
+    let next: number | null = null;
+    for (const [key, since] of await this.ctx.storage.list<number>({ prefix: "empty:" })) {
+      const thread = key.slice("empty:".length);
+      if (this.pages(thread).length > 0) {
+        await this.ctx.storage.delete(key);
+        continue;
+      }
+      if (t - since < PAGES_IDLE_MS) {
+        next = Math.min(next ?? Infinity, since + PAGES_IDLE_MS);
+        continue;
+      }
+      await this.ctx.storage.delete(key);
+      await this.ctx.storage.put(`idle:${thread}`, t);
+      const idle = { type: "pages-idle", thread, at: t };
+      for (const { ws, a } of this.listeners()) {
+        send(ws, idle);
+        if (a.beat && a.beatThread === thread) close(ws, PAGES_IDLE, "pages idle");
+      }
+      console.log(JSON.stringify({ msg: "debug.pages-idle", thread }));
+    }
+    if (next !== null) await this.schedule(next);
+  }
+
+  /** The Durable Object alarm (set by markEmpty). */
+  async alarm() {
+    this.sweep();
+    await this.checkIdle();
+  }
+
   webSocketMessage(ws: Socket, raw: string | ArrayBuffer): void | Promise<void> {
+    // The alarm is what normally announces an idle thread; any message checks too.
+    this.checkIdle().catch(() => {});
     this.sweep();
     if (ws.readyState !== undefined && ws.readyState > 1) return;
     const a = att(ws);
@@ -932,6 +1037,8 @@ export class DebugHub {
         if ("error" in dest) return send(ws, { type: "error", error: dest.error });
         // Only that thread's pages; not stored, not logged (one every few seconds).
         const pages = this.reach(c, dest.thread);
+        if (c.beat && c.beatThread !== dest.thread)
+          ws.serializeAttachment({ ...c, beatThread: dest.thread } satisfies ControllerAtt);
         const beat = { type: "busy", label: label || c.label, at: t };
         for (const { ws: p } of pages) send(p, beat);
         send(ws, { type: "beat", thread: dest.thread, delivered: pages.length, at: t });
@@ -1002,10 +1109,22 @@ export class DebugHub {
     send(ws, { type: "sent", id, delivered: labels.length, labels });
   }
 
-  webSocketClose(ws: Socket, code: number) {
+  /**
+   * A socket left. A page leaving changes its audience's page list (and may
+   * empty its thread); a controller, the sessions and the listener count —
+   * so every page gets a fresh state either way.
+   */
+  webSocketClose(ws: Socket, code: number): void | Promise<void> {
+    const a = att(ws);
     close(ws, code === 1005 ? 1000 : code, "");
     this.sweep(ws);
-    // A page leaving changes its audience's page list; a controller, the sessions.
     this.broadcast(ws);
+    if (a?.role === "page" && this.pages(a.thread, ws).length === 0)
+      return this.markEmpty(a.thread);
+  }
+
+  /** A socket that errored is gone too (the runtime may not also report a close). */
+  webSocketError(ws: Socket): void | Promise<void> {
+    return this.webSocketClose(ws, 1011);
   }
 }
