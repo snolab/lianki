@@ -423,19 +423,47 @@ export function DebugChat({
   const input = useRef<HTMLTextAreaElement | null>(null);
   /** Dictated text just landed: put the caret after it and show the end. */
   const caretToEnd = useRef(false);
-  /** The input grows with its text up to INPUT_MAX_PX, then scrolls inside itself. */
+  /**
+   * The input grows with its text up to INPUT_MAX_PX (5 lines at 16px), then
+   * scrolls inside itself. Empty, it is one line (rows=1, its CSS min height):
+   * nothing is measured, since a placeholder measured in a narrow slot (the
+   * bar minimized, or mid-transition) wraps to several lines — the 4-line
+   * input seen on iOS. Measured from `height: auto`, and again whenever its
+   * width changes (ResizeObserver: expanding, rotating).
+   */
+  const fitInput = () => {
+    const el = input.current;
+    if (!el) return;
+    el.style.height = "";
+    if (!el.value || el.clientWidth < 40) return;
+    el.style.height = "auto";
+    // scrollHeight leaves out the border; the box's height includes it.
+    const border = el.offsetHeight - el.clientHeight;
+    el.style.height = `${Math.min(el.scrollHeight + border, INPUT_MAX_PX)}px`;
+  };
+  useEffect(() => {
+    const el = input.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let width = el.clientWidth;
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth === width) return;
+      width = el.clientWidth;
+      fitInput();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   useLayoutEffect(() => {
     const el = input.current;
     if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, INPUT_MAX_PX)}px`;
+    fitInput();
     if (caretToEnd.current) {
       caretToEnd.current = false;
       const end = el.value.length;
       el.setSelectionRange(end, end);
       el.scrollTop = el.scrollHeight;
     }
-  }, [draft]);
+  }, [draft, open]);
   // The log is click-through, so it can't be swiped: a vertical swipe on the
   // empty input scrolls it instead. Only the pill moves the box.
   useEffect(() => {
@@ -1169,6 +1197,8 @@ export function DebugChat({
       <div
         // 180 ms; reduced motion switches at once.
         className="relative grid transition-[grid-template-columns] duration-[180ms] ease-out motion-reduce:transition-none"
+        // Expanded: measure the input again at its full width.
+        onTransitionEnd={(e) => e.target === e.currentTarget && fitInput()}
         style={{ gridTemplateColumns: open ? "1fr 0fr" : "0fr 1fr" }}
       >
         {open && scrolledUp && (
@@ -1325,7 +1355,7 @@ export function DebugChat({
                     submit();
                   }}
                   // A drag on a long draft scrolls its text, never the page or the box.
-                  className={`block min-h-8 min-w-0 flex-1 resize-none overflow-y-auto overscroll-contain touch-pan-y border border-transparent bg-transparent px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
+                  className={`block h-[2.125rem] max-h-32 min-h-[2.125rem] min-w-0 flex-1 resize-none self-end overflow-y-auto overscroll-contain touch-pan-y border border-transparent bg-transparent px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
                 />
                 {holding && draft && (
                   // The draft hides the placeholder: the hint sits over it instead.

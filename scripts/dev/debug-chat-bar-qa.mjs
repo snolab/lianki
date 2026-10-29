@@ -187,6 +187,51 @@ try {
     await ctx.close();
   }
 
+  // The input: one line at rest, grows to the cap, back to one line.
+  {
+    const { ctx, page } = await open("?open&offline"); // the longest placeholder
+    const sel = '[data-testid="debug-chat-input"]';
+    const h = () =>
+      page.evaluate((sel) => {
+        const el = document.querySelector(sel);
+        return { h: el.getBoundingClientRect().height, sh: el.scrollHeight, ch: el.clientHeight };
+      }, sel);
+    let r = await h();
+    check(r.h <= 40, `390px, empty: the input is one line (${r.h}px)`);
+    await page.click(sel);
+    // (Enter would send: the lines go in as one paste.)
+    await page.fill(sel, Array.from({ length: 10 }, (_, i) => `line ${i}`).join("\n"));
+    r = await h();
+    check(
+      r.h <= 130 && r.h >= 110 && r.sh > r.ch,
+      `10 lines: capped (${r.h}px) and scrolling inside (${r.sh} > ${r.ch})`,
+    );
+    await page.fill(sel, "");
+    await page.locator(sel).blur();
+    await page.click('[data-testid="debug-chat-pill-min"]');
+    await page.waitForSelector('[data-testid="debug-chat-minimized"]');
+    await page.waitForTimeout(300);
+    await page.click('[data-testid="debug-chat-pill-min"]');
+    await page.waitForSelector('[data-testid="debug-chat"]');
+    await page.waitForTimeout(400);
+    r = await h();
+    check(r.h <= 40, `minimize → expand, empty: one line again (${r.h}px)`);
+    await ctx.close();
+  }
+  // Starting minimized (the input measured at 0 width), then expanded: still one line.
+  {
+    const { ctx, page } = await open("?min&offline");
+    await page.click('[data-testid="debug-chat-pill-min"]');
+    await page.waitForSelector('[data-testid="debug-chat"]');
+    await page.waitForTimeout(400);
+    const hh = await page.evaluate(
+      () =>
+        document.querySelector('[data-testid="debug-chat-input"]').getBoundingClientRect().height,
+    );
+    check(hh <= 40, `opened from minimized: one line (${hh}px)`);
+    await ctx.close();
+  }
+
   // Minimized.
   {
     const { ctx, page } = await open("?min");
