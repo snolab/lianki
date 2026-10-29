@@ -1,6 +1,7 @@
 /**
  * lianki-push — the new-version notice, event-driven end to end
- * (app/components/NewVersionNotice.tsx is the page's side).
+ * (app/components/NewVersionNotice.tsx is the page's side), and the owner's
+ * remote-eval hub (debug.ts; app/components/DebugEval.tsx is the page).
  *
  *   GET  /api/version/ws       WebSocket. On connect: {"build": "<id>"} —
  *                              the build serving now — and again whenever
@@ -9,18 +10,33 @@
  *                              (PUSH), on the first request a new isolate
  *                              serves: body = its build id. A new one is
  *                              stored and pushed to every page; the same one
- *                              again does nothing. Not reachable from the
- *                              internet: no workers.dev URL, and the zone
- *                              route covers /api/version/* only.
+ *                              again does nothing.
  *   GET  /api/version/stream   The old SSE notice, for pages from before:
  *                              one "new version" event, then silence.
+ *   GET  /api/version/debug    WebSocket for the OWNER's debug-mode pages
+ *                              (?label=<path + user agent>). Accepted only
+ *                              from a lianki.com page whose cookie the main
+ *                              Worker (service binding MAIN, /api/dev/whoami)
+ *                              says is the owner's; 403 otherwise.
+ *   GET  /api/version/debug/control
+ *                              WebSocket for the sender (scripts/dev/eval.ts):
+ *                              unauthenticated, and useless until the owner
+ *                              allows it on one of those pages (debug.ts).
  *
- * One VersionHub object holds all sockets with the hibernation API: between
- * deploys it is evicted and the sockets cost nothing. No timers, no polling.
+ * /internal/* is answered only on the binding's own hostname (lianki-push):
+ * there is no workers.dev URL, and the zone route covers /api/version/* only.
+ *
+ * VersionHub holds the version sockets, DebugHub the debug ones, both with
+ * the hibernation API: idle, they are evicted and the sockets cost nothing.
+ * No timers, no polling.
  *
  * Types are declared here rather than taken from @cloudflare/workers-types:
  * the repo's root tsconfig type-checks this folder with the DOM lib.
  */
+import { isOwnerSocket } from "./auth";
+
+export { DebugHub } from "./debug";
+
 type Socket = WebSocket & { accept?: () => void };
 type State = {
   acceptWebSocket(ws: Socket): void;
@@ -29,7 +45,8 @@ type State = {
 };
 type Stub = { fetch(req: Request): Promise<Response> };
 type Namespace = { idFromName(name: string): unknown; get(id: unknown): Stub };
-type Env = { HUB: Namespace };
+type Fetcher = { fetch(url: string, init?: RequestInit): Promise<Response> };
+export type Env = { HUB: Namespace; DEBUG: Namespace; MAIN?: Fetcher };
 declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
 
 const message = (build: string) => JSON.stringify({ build });
@@ -72,16 +89,31 @@ export class VersionHub {
   }
 }
 
+const isInternal = (url: URL) => url.hostname === "lianki-push";
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-    const hub = env.HUB.get(env.HUB.idFromName("version"));
+    const wantsSocket = req.headers.get("upgrade")?.toLowerCase() === "websocket";
     if (url.pathname === "/api/version/ws") {
-      if (req.headers.get("upgrade")?.toLowerCase() !== "websocket")
-        return new Response("WebSocket only", { status: 426 });
-      return hub.fetch(req);
+      if (!wantsSocket) return new Response("WebSocket only", { status: 426 });
+      return env.HUB.get(env.HUB.idFromName("version")).fetch(req);
     }
-    if (url.pathname === "/internal/publish" && req.method === "POST") return hub.fetch(req);
+    if (url.pathname === "/api/version/debug") {
+      if (!wantsSocket) return new Response("WebSocket only", { status: 426 });
+      if (!(await isOwnerSocket(req, env.MAIN))) return new Response("forbidden", { status: 403 });
+      return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(req);
+    }
+    // The sender. Anyone may knock; it can do nothing until the owner allows
+    // it on a page (debug.ts). A browser always sends Origin on a WebSocket,
+    // so refusing one keeps web pages from raising prompts at all.
+    if (url.pathname === "/api/version/debug/control") {
+      if (!wantsSocket) return new Response("WebSocket only", { status: 426 });
+      if (req.headers.get("origin")) return new Response("forbidden", { status: 403 });
+      return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(req);
+    }
+    if (url.pathname === "/internal/publish" && req.method === "POST" && isInternal(url))
+      return env.HUB.get(env.HUB.idFromName("version")).fetch(req);
     // Pages from before the switch listen on the old Server-Sent Events
     // stream. Answer once with a build they are not, so they offer a refresh,
     // and tell EventSource not to come back for a day.

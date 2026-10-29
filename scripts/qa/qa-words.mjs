@@ -348,6 +348,19 @@ try {
     data: "{}",
   });
   check(devLog.status() === 404, `the debug log is owner-only (${devLog.status()})`);
+  // The remote-eval socket (lianki-push) admits a page only if this says the
+  // session is the owner's; a signed-in non-owner must get a 404 here. The
+  // hub's pairing rules are unit-tested (unit/debug-hub.test.ts): lianki-push
+  // is not part of the local Worker.
+  const whoami = await page.request.get(`${new URL(page.url()).origin}/api/dev/whoami`);
+  check(
+    whoami.status() === 404,
+    `the debug socket's owner check refuses non-owners (${whoami.status()})`,
+  );
+  check(
+    (await page.locator("[data-debug-eval]").count()) === 0,
+    "a non-owner page (debug on, socket refused) shows no remote-eval UI",
+  );
 
   // A language with pre-rendered clips but none for this text: a 404 the
   // client must not take as "no voice for Italian".

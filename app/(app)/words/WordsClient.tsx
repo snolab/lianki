@@ -23,6 +23,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/words/tree";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
+import { debugOn, devLog, setDebug } from "@/lib/debug-client";
 import {
   COLUMN_QUANTILE,
   centreWeight,
@@ -460,21 +461,6 @@ const SPEECH_TAG: Record<string, string> = {
 };
 
 /**
- * Remote debugging: /words?debug=1 turns it on for this device (debug=0 off),
- * and what speech decides is posted to /api/dev/log — the Worker logs, for
- * the owner only.
- */
-function debugOn(): boolean {
-  try {
-    const q = new URLSearchParams(location.search).get("debug");
-    if (q !== null) localStorage.setItem("lk:debug", q === "1" ? "1" : "0");
-    return localStorage.getItem("lk:debug") === "1";
-  } catch {
-    return false;
-  }
-}
-
-/**
  * The installed app has no address bar for ?debug=1: seven quick taps on the
  * stats line toggle it instead. Returns [on, tap].
  */
@@ -488,9 +474,7 @@ function useDebugToggle(onChange: (on: boolean) => void): [boolean, () => void] 
     if (taps.current.length < 7) return;
     taps.current = [];
     const next = !debugOn();
-    try {
-      localStorage.setItem("lk:debug", next ? "1" : "0");
-    } catch {}
+    setDebug(next);
     setOn(next);
     onChange(next);
     if (next) devLog({ ev: "debug-on", ua: navigator.userAgent });
@@ -550,17 +534,6 @@ const swipePerf = {
     });
   },
 };
-
-function devLog(event: Record<string, unknown>) {
-  try {
-    if (!debugOn()) return;
-    void fetch("/api/dev/log", {
-      method: "POST",
-      body: JSON.stringify({ at: new Date().toISOString(), ...event }),
-      keepalive: true,
-    }).catch(() => {});
-  } catch {}
-}
 
 /** `serverVoice`: always use the server's recordings, never the browser's. */
 function useSpeech(serverVoice = false) {
