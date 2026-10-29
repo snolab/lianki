@@ -1,4 +1,4 @@
-import { auth } from "@/auth";
+import { auth, hasSessionCookie } from "@/auth";
 import { headers } from "next/headers";
 import { getEmailByToken } from "./getApiTokensCollection";
 
@@ -9,6 +9,9 @@ export async function authEmailOrToken(req: Request): Promise<string | null> {
     const email = await getEmailByToken(token);
     if (email) return email;
   }
-  const session = await auth.api.getSession({ headers: await headers() });
+  const h = await headers();
+  // No session cookie: getSession can only answer null — don't load better-auth.
+  if (!hasSessionCookie(h)) return null;
+  const session = await auth.api.getSession({ headers: h });
   return session?.user?.email ?? null;
 }
