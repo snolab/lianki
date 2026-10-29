@@ -23,12 +23,23 @@
  *       JSON line {"type":"chat","id","thread","email","from","text","at","label"}
  *       (thread "owner" or the friend's user id; label = page path + user
  *       agent), and {"type":"friend-new","userId","email","at"} when someone
- *       writes for the first time. Also appended to --out. Reconnects on
- *       close, backing off.
+ *       writes for the first time, and {"type":"page-changed","thread",
+ *       "email","label","at"} when a debug page navigates (silent on the
+ *       page). Also appended to --out. Reconnects on close, backing off.
  *
  *   bun scripts/dev/eval.ts say [--to <thread|email>] "text"      (or - for stdin)
  *       Reply with the saved grant, and exit: to the owner by default, or to
  *       a friend's thread by user id or email.
+ *
+ *   bun scripts/dev/eval.ts working [--to <thread|email>] [--label "…"]
+ *                                   [--every <s> [--keep] [--max <s>]]
+ *       The heartbeat behind the chat's "agent is working" spinner, with the
+ *       saved grant. Alone: one beat (the spinner shows for 12 s), then exit.
+ *       --every 4: a beat every 4 s until the next agent reply in that thread
+ *       (your `say`; --keep beats on past it), the process is killed, its
+ *       stdin closes (when stdin is a pipe), the socket drops, or --max
+ *       seconds (default 1800) pass. Start it in the background on picking up
+ *       a message; `say` ends it.
  *
  *   bun scripts/dev/eval.ts serve --for <email> [--label "…"]
  *   bun scripts/dev/eval.ts --for <email> [--target <text>] '<code>'
@@ -49,6 +60,7 @@ import {
   appendFileSync,
   chmodSync,
   existsSync,
+  fstatSync,
   mkdirSync,
   readFileSync,
   rmSync,
@@ -57,6 +69,7 @@ import {
 import { homedir, hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
+import { type WorkingArgs, beatMessage, endsBeat, parseWorkingArgs } from "./working";
 
 const BASE = (process.env.LIANKI_URL ?? "https://lianki.com").replace(/\/+$/, "");
 /** The running `serve`'s port and token: one file for the owner, one per friend. */
@@ -322,6 +335,14 @@ function chat(out?: string) {
           else emit(h);
         first = false;
       } else if (m.type === "chat" && m.message) emit(m.message as Msg);
+      else if (m.type === "page-changed")
+        print({
+          type: "page-changed",
+          thread: m.thread ?? "owner",
+          email: m.email ?? null,
+          label: m.label,
+          at: new Date(Number(m.at)).toISOString(),
+        });
       else if (m.type === "friend-new")
         print({
           type: "friend-new",
@@ -383,7 +404,96 @@ function say(text: string, to?: string): Promise<Msg> {
   });
 }
 
+/**
+ * The heartbeat: one beat, or (with `every`) a beat every few seconds until
+ * the agent's reply in that thread, the socket closing, stdin closing (a
+ * pipe), --max, or a kill. The only timer here that touches the network, and
+ * the owner asked for it.
+ */
+function working(w: WorkingArgs): Promise<void> {
+  const token = loadToken();
+  if (!token)
+    return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
+  return new Promise((resolve, reject) => {
+    const ws = openControl(token);
+    let thread: string | undefined;
+    let loop: ReturnType<typeof setInterval> | undefined;
+    let done = false;
+    const stop = (why: string, err?: Error) => {
+      if (done) return;
+      done = true;
+      clearInterval(loop);
+      clearTimeout(give);
+      clearTimeout(cap);
+      try {
+        ws.close();
+      } catch {}
+      if (err) return reject(err);
+      if (w.every) console.error(`working: stopped (${why})`);
+      resolve();
+    };
+    const give = setTimeout(
+      () => stop("", new Error("no answer from the hub within 15 s")),
+      15_000,
+    );
+    const cap = setTimeout(() => stop(`--max ${w.maxSeconds}s`), w.maxSeconds * 1000);
+    const beat = () => ws.send(beatMessage(w));
+    ws.onmessage = (e) => {
+      const m = JSON.parse(String(e.data)) as Msg;
+      if (m.type === "approved") {
+        clearTimeout(give);
+        beat();
+        if (w.every) loop = setInterval(beat, w.every * 1000);
+      } else if (m.type === "beat") {
+        if (!thread) {
+          thread = String(m.thread);
+          console.log(JSON.stringify(m));
+        }
+        if (!w.every) stop("one beat");
+      } else if (w.untilSay && endsBeat(m, thread)) stop("the agent replied");
+      else if (m.type === "error") stop("", new Error(String(m.error)));
+    };
+    ws.onclose = (e) => {
+      if (e.code === 4498) rmSync(TOKEN_FILE, { force: true });
+      stop(
+        `socket closed (${e.code})`,
+        done || thread ? undefined : new Error(`socket closed (${e.code})`),
+      );
+    };
+    if (w.every) {
+      process.on("SIGINT", () => stop("interrupted"));
+      process.on("SIGTERM", () => stop("terminated"));
+      // A pipe on stdin is a lifeline: its end stops the beat. /dev/null or a
+      // terminal is not one (it would end at once, or never).
+      let pipe = false;
+      try {
+        pipe = fstatSync(0).isFIFO();
+      } catch {}
+      if (pipe) {
+        process.stdin.on("end", () => stop("stdin closed"));
+        process.stdin.on("close", () => stop("stdin closed"));
+        process.stdin.resume();
+      }
+    }
+  });
+}
+
 async function main() {
+  if (args[0] === "working") {
+    const w = parseWorkingArgs([
+      ...args.slice(1),
+      ...(to ? ["--to", to] : []),
+      ...(labelFlag ? ["--label", labelFlag] : []),
+    ]);
+    if ("error" in w) {
+      console.error(
+        `${w.error}\nusage: bun scripts/dev/eval.ts working [--to <thread|email>] [--label X] [--every <s> [--keep] [--max <s>]]`,
+      );
+      process.exit(2);
+    }
+    await working(w);
+    process.exit(0);
+  }
   if (args[0] === "serve") return serve();
   if (args[0] === "chat") return chat(out);
   if (args[0] === "say") {

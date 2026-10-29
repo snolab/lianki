@@ -8,6 +8,7 @@ import {
   CHAT_MS,
   FRIEND_CHAT_MAX,
   FRIEND_CHAT_WINDOW_MS,
+  PAGE_ENDED,
   PENDING_MS,
 } from "@/lib/dev-eval";
 
@@ -998,5 +999,175 @@ describe("DebugHub eval scoping between the owner and friends", () => {
     expect((await s.forFriend(token, "nobody@x.com")).closed).toBe(4404);
     b.close(1001);
     expect((await s.forFriend(token, "b@x.com")).closed).toBe(4404);
+  });
+});
+
+describe("DebugHub heartbeat (agent is working)", () => {
+  const agent = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    return c;
+  };
+  const beats = (ws: FakeSocket) => ws.sent.filter((m) => m.type === "working");
+
+  it("goes to the owner's pages only by default, unstored, and is acknowledged", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const f = await s.friend("f1", "f1@x.com");
+    const keys = s.storage.store.size;
+    await s.msg(c, { type: "working" });
+    expect(beats(owner)).toEqual([{ type: "working", label: "agent", at: 1_000_000 }]);
+    expect(beats(f)).toEqual([]);
+    expect(c.last("beat")).toEqual({ type: "beat", thread: "owner", delivered: 1, at: 1_000_000 });
+    expect(s.storage.store.size).toBe(keys);
+  });
+
+  it("goes to one friend's pages with --to, under the given label", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const f = await s.friend("f1", "f1@x.com");
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    const g = await s.friend("f2", "f2@x.com");
+    await s.msg(c, { type: "working", to: "F1@x.com", label: "fixing" });
+    expect(beats(f)).toEqual([{ type: "working", label: "fixing", at: 1_000_000 }]);
+    expect(beats(owner)).toEqual([]);
+    expect(beats(g)).toEqual([]);
+    expect(c.last("beat")?.thread).toBe("f1");
+  });
+
+  it("is refused from an unapproved controller, a friend's pairing, or to nobody", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const token = c.last("approved")?.token as string;
+    const stranger = s.controller("stranger");
+    await s.msg(stranger, { type: "working" });
+    expect(stranger.last("error")?.error).toBe("not approved yet");
+    const f = await s.friend("f1", "f1@x.com");
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    const preview = await s.forFriend(token, "f1@x.com");
+    await s.msg(f, { type: "allow", pair: s.pairOf(f) });
+    await s.msg(preview, { type: "working" });
+    expect(preview.last("error")?.error).toBe("a pairing for a friend cannot chat");
+    await s.msg(c, { type: "working", to: "nobody@x.com" });
+    expect(c.last("error")?.error).toBe("no chat thread for nobody@x.com");
+    expect(beats(owner)).toEqual([]);
+    expect(beats(f)).toEqual([]);
+  });
+});
+
+describe("DebugHub page moves (relabel)", () => {
+  it("relabels only that socket, tells the listeners silently, and later chat carries the new path", async () => {
+    const s = setup();
+    const phone = s.page("/words pwa iPhone");
+    const mac = s.page("/list Macintosh");
+    const c = s.controller("agent");
+    await s.msg(phone, { type: "allow", pair: s.pairOf(phone), scope: "chat" });
+    const before = phone.sent.length;
+    await s.msg(phone, { type: "page", label: "/home pwa iPhone" });
+    expect(c.last("page-changed")).toEqual({
+      type: "page-changed",
+      label: "/home pwa iPhone",
+      thread: "owner",
+      at: 1_000_000,
+    });
+    // Nothing shows on the pages (only the page list in their state), nothing is stored as chat.
+    expect(phone.sent.slice(before).every((m) => m.type === "state")).toBe(true);
+    expect((mac.last("state") as { pages: { label: string }[] }).pages.map((p) => p.label)).toEqual(
+      ["/home pwa iPhone", "/list Macintosh"],
+    );
+    expect(mac.last("page-changed")).toBeUndefined();
+    expect([...s.storage.store.keys()].some((k) => k.startsWith("msg:"))).toBe(false);
+    await s.msg(phone, { type: "chat", id: "m1", text: "here" });
+    expect(chats(c).at(-1)?.label).toBe("/home pwa iPhone");
+    await s.msg(mac, { type: "chat", id: "m2", text: "there" });
+    expect(chats(c).at(-1)?.label).toBe("/list Macintosh");
+    // The same label again is no news.
+    const n = c.sent.length;
+    await s.msg(phone, { type: "page", label: "/home pwa iPhone" });
+    expect(c.sent.length).toBe(n);
+  });
+
+  it("eval targets follow the new path", async () => {
+    const s = setup();
+    const p = s.page("/words iPhone");
+    const c = s.controller("main lane");
+    await s.msg(p, { type: "allow", pair: s.pairOf(p) });
+    await s.msg(p, { type: "page", label: "/home iPhone" });
+    await s.msg(c, { type: "eval", code: "1", target: "/words" });
+    expect(c.last("sent")?.delivered).toBe(0);
+    await s.msg(c, { type: "eval", code: "1", target: "/home" });
+    expect(c.last("sent")?.delivered).toBe(1);
+  });
+
+  it("a friend's page relabels only its own socket; the agent hears thread and email", async () => {
+    const s = setup();
+    const owner = s.page("/words iPhone");
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    const f = await s.friend("f1", "f1@x.com", "/words Android");
+    await s.msg(f, { type: "page", label: "/home Android" });
+    expect(c.last("page-changed")).toEqual({
+      type: "page-changed",
+      label: "/home Android",
+      thread: "f1",
+      email: "f1@x.com",
+      at: 1_000_000,
+    });
+    await s.msg(owner, { type: "chat", id: "o", text: "x" });
+    expect(chats(c).at(-1)?.label).toBe("/words iPhone");
+    await s.msg(f, { type: "chat", id: "f", text: "y" });
+    expect(chats(c).at(-1)?.label).toBe("/home Android");
+  });
+});
+
+describe("DebugHub page list and End page", () => {
+  type St = { pages: { id: string; label: string; at: number }[]; self?: string };
+  const st = (ws: FakeSocket) => ws.last("state") as unknown as St;
+
+  it("the owner's state lists the owner's pages only, with self; a friend's only their own", async () => {
+    const s = setup();
+    const a = s.page("/words iPhone");
+    const b = s.page("/home Macintosh");
+    const f = await s.friend("f1", "f1@x.com", "/words Android");
+    const g = await s.friend("f2", "f2@x.com", "/list Pixel");
+    expect(st(a).pages.map((p) => p.label)).toEqual(["/words iPhone", "/home Macintosh"]);
+    expect(st(a).self).toBe(st(a).pages[0].id);
+    expect(st(b).self).toBe(st(b).pages[1].id);
+    expect(st(f).pages.map((p) => p.label)).toEqual(["/words Android"]);
+    expect(st(g).pages.map((p) => p.label)).toEqual(["/list Pixel"]);
+    expect(st(a).pages[0].at).toBe(1_000_000);
+  });
+
+  it("a page closing updates the others' list", async () => {
+    const s = setup();
+    const a = s.page("/a");
+    const b = s.page("/b");
+    b.close(1001);
+    s.hub.webSocketClose(b, 1001);
+    expect(st(a).pages.map((p) => p.label)).toEqual(["/a"]);
+  });
+
+  it("End page closes that page with PAGE_ENDED, in the same audience only", async () => {
+    const s = setup();
+    const a = s.page("/a");
+    const b = s.page("/b");
+    const f = await s.friend("f1", "f1@x.com", "/f");
+    const bId = st(b).self as string;
+    const fId = st(f).self as string;
+    // A friend cannot end the owner's page, nor the owner a friend's.
+    await s.msg(f, { type: "end-page", id: bId });
+    await s.msg(a, { type: "end-page", id: fId });
+    expect(b.closed).toBeUndefined();
+    expect(f.closed).toBeUndefined();
+    await s.msg(a, { type: "end-page", id: bId });
+    expect(b.last("page-ended")).toEqual({ type: "page-ended" });
+    expect(b.closed).toBe(PAGE_ENDED);
+    expect(st(a).pages.map((p) => p.label)).toEqual(["/a"]);
+    // Ending this page itself works the same way.
+    await s.msg(a, { type: "end-page", id: st(a).self });
+    expect(a.closed).toBe(PAGE_ENDED);
   });
 });

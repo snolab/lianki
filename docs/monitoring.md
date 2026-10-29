@@ -172,6 +172,76 @@ echo "multi-line reply" | bun scripts/dev/eval.ts say -
 The listener reconnects whenever its socket closes, backing off from 1 s to
 a minute; no timer touches the network otherwise.
 
+**Page moves.** The page's socket lives in the root layout, so it outlives
+client-side navigation. On a route change (`usePathname`, plus `popstate` /
+`hashchange`), settled for 300 ms, the page sends `{type:"page", label}`; the
+hub relabels that socket alone (so later chat lines, eval `--target` and the
+session listing carry the current path) and sends the listeners
+`{type:"page-changed", label, thread, email?, at}`, which `chat` prints as a
+JSON line. Silent on the page, never stored, never in the chat log. A
+friend's page can only relabel its own socket.
+
+**The grip and its menu.** The ⠿ grip (2.25rem wide) shows
+`pages·sessions` under the glyph (e.g. `2·1`; the aria-label spells out "2
+pages · 1 session"), and its dot is green while the socket is live. Double
+tap opens the menu. The menu lists every open debug page of this chat (the
+owner's own, or a friend's own: the hub's `state` carries `pages: [{id,
+label, at}]` and `self`, rebroadcast when a page connects, leaves or moves).
+Each row shows the path and a device hint ("pwa · Android", "iPhone"). Tapping
+a row opens that path in this tab with the Next router, since other tabs and
+devices cannot be focused, so the chat survives. Its End
+(`{type:"end-page", id}`) has the hub close that page with 4410 "ended from
+another page"; that page stays closed until its next visibility or debug
+event. Ending this page takes two taps. Eval and preview sessions keep a
+light End. The chat grant itself is listed apart, in red: "End chat with the
+agent (revokes the 30-day grant)", and the first tap only arms it ("Tap again
+to end the chat", 3 s).
+
+**One voice per device.** Every tab of a thread shows every message, but
+only one reads a reply aloud: the focused tab, or else the one focused most
+recently. Tabs agree over `BroadcastChannel("lk-debug-chat")`
+(`lib/debug-chat-tabs.ts`), not the network. Drafts are not synced across
+tabs (that would fight IME composition).
+
+**Scrolling.** Scrolled up, new messages do not pull the log down (your own
+do); a ↓ button at the right of the row above the input (the row stays
+click-through, only the button takes taps) scrolls to the end, with a dot
+when messages arrived below. The log's top edge fades once it overflows.
+
+#### Agent is working (heartbeat)
+
+While the agent works on a message, a small spinner shows at the right end
+of the chat input. It follows a real heartbeat, never a guess: the agent
+sends `{type:"working", to?, label?}` (only an owner-approved controller —
+chat grant or eval — and never a pairing made for a friend); the hub passes
+`{type:"working", label, at}` to that one thread's pages (the owner's by
+default, a friend's with `to`), acks `{type:"beat", thread, delivered}`, and
+stores nothing. The page shows the spinner while its socket is live, the last
+beat arrived under 12 s ago, and no agent reply has landed since that beat
+(`workingLeft` in `lib/dev-eval.ts`; a beat stamped within 1.5 s after a reply
+is the loop's last one, in flight, and is ignored). One local timeout per
+beat re-checks it — no network polling. The beat loop is the one timer that
+touches the network, and the owner asked for it.
+
+```bash
+# One beat (the spinner shows for 12 s):
+bun scripts/dev/eval.ts working [--to f@x.com] [--label "fixing the swipe"]
+
+# What the chat agent runs: start in the background on picking up a message.
+# It beats every 4 s and exits by itself at the next agent reply in that
+# thread (your `say`), or on kill, socket close, a closed stdin pipe, or
+# --max seconds (default 1800). --keep beats on past replies.
+bun scripts/dev/eval.ts working --every 4 [--to f@x.com] &
+bun scripts/dev/eval.ts say "Done — the swipe snaps now."   # the beat stops
+```
+
+The beat process holds a chat-grant socket while it runs, so the page's
+"agent listening (n)" counts it.
+
+**Hot-loading the widget.** The chat box itself can be loaded live from a
+dev server on the owner's pages, to see UI changes without a deploy:
+[dev-debug-widget.md](dev-debug-widget.md).
+
 ### Friends
 
 The owner opened the debug chat to friends ("开放给朋友调试用"): any

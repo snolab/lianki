@@ -26,6 +26,16 @@
  * prompts cannot be spammed. No timers and no polling: expiry is checked
  * whenever the next event arrives, and the CLI gives up on its own clock.
  *
+ * Page moves. A page that navigates client-side (the socket outlives it)
+ * sends {type:"page", label}; the hub relabels that socket alone — later
+ * chat, eval targets and listings use the new path — and tells the listeners
+ * {type:"page-changed", label, thread, at}. Not stored, never in the chat.
+ *
+ * Heartbeat. An owner-approved controller sends {type:"working", to?} while
+ * the agent works on a message; the hub passes {type:"working", label, at}
+ * to that one thread's pages (the owner's by default) and acks {type:"beat"}.
+ * Nothing is stored: the page's spinner times out on its own.
+ *
  * Chat. A page sends {type:"chat", id, text}; an owner-approved controller
  * sends {type:"say", text, to?}. Each becomes a ChatMessage in its thread
  * (the last CHAT_HISTORY per thread, one storage key each), sent to that
@@ -52,6 +62,7 @@ import {
   type Identity,
   MAX_LABEL,
   OWNER_THREAD,
+  PAGE_ENDED,
   PENDING_MS,
   type PairInfo,
   cleanLabel,
@@ -80,8 +91,19 @@ export type DebugState = {
   getWebSockets(): Socket[];
   storage: Storage;
 };
-/** `thread` is "owner" or the friend's user id; `email` is the friend's. */
-type PageAtt = { role: "page"; label: string; thread: string; email?: string };
+/**
+ * `thread` is "owner" or the friend's user id; `email` is the friend's. `id`
+ * names the socket in the chat menu's page list; `at` is when it connected.
+ * (Sockets from before the list have neither: listed without an End.)
+ */
+type PageAtt = {
+  role: "page";
+  label: string;
+  thread: string;
+  email?: string;
+  id?: string;
+  at?: number;
+};
 /**
  * `grant` is the hash of the resumable chat token this socket holds, if any.
  * `forUser`/`forEmail`: the friend this pairing is for; absent = the owner.
@@ -180,15 +202,21 @@ export class DebugHub {
         if (a.until > t) sessions.push(info(a));
       } else if (t - a.at < PENDING_MS) pending = info(a);
     }
-    return { type: "state", pending, sessions, listeners: this.listeners(except).length };
+    const pages = this.pages(who, except).map(({ a }) => ({
+      id: a.id ?? "",
+      label: a.label,
+      at: a.at ?? 0,
+    }));
+    return { type: "state", pending, sessions, listeners: this.listeners(except).length, pages };
   }
 
+  /** Every page its audience's state, each told which page it is. */
   private broadcast(except?: Socket) {
     const by = new Map<string, HubState>();
     for (const { ws, a } of this.sockets("page", except)) {
       let s = by.get(a.thread);
       if (!s) by.set(a.thread, (s = this.state(a.thread, except)));
-      send(ws, s);
+      send(ws, { ...s, self: a.id });
     }
   }
 
@@ -326,6 +354,7 @@ export class DebugHub {
    */
   async connectPage(ws: Socket, url: URL, who?: Identity) {
     const label = cleanLabel(url.searchParams.get("label"), MAX_LABEL);
+    const id = crypto.randomUUID().slice(0, 8);
     if (who && !who.owner) {
       if (!isUserId(who.userId)) return close(ws, 4403, "no identity");
       const rec = await this.ctx.storage.get<FriendRecord>(friendKey(who.userId));
@@ -338,12 +367,23 @@ export class DebugHub {
         label,
         thread: who.userId,
         email: cleanLabel(who.email, 320),
+        id,
+        at: this.now(),
       } satisfies PageAtt);
       send(ws, { type: "friend-status", status: "open" });
-    } else ws.serializeAttachment({ role: "page", label, thread: OWNER_THREAD } satisfies PageAtt);
+    } else
+      ws.serializeAttachment({
+        role: "page",
+        label,
+        thread: OWNER_THREAD,
+        id,
+        at: this.now(),
+      } satisfies PageAtt);
     const thread = audience(att(ws) as PageAtt);
-    send(ws, this.state(thread));
+    // Everyone sees the new page in their list; this one gets its state first.
+    send(ws, { ...this.state(thread), self: id });
     send(ws, { type: "history", messages: await this.history(thread) });
+    this.broadcast(ws);
   }
 
   /**
@@ -474,6 +514,31 @@ export class DebugHub {
     const m = parsePageMessage(raw);
     if (!m) return;
     const t = this.now();
+    if (m.type === "page") {
+      // Only this socket's own label; silent: the agent hears it, the chat never shows it.
+      if (m.label === page.label) return;
+      ws.serializeAttachment({ ...page, label: m.label } satisfies PageAtt);
+      const moved = {
+        type: "page-changed",
+        label: m.label,
+        thread: page.thread,
+        ...(page.email ? { email: page.email } : {}),
+        at: t,
+      };
+      for (const { ws: c } of this.listeners()) send(c, moved);
+      return this.broadcast();
+    }
+    if (m.type === "end-page") {
+      // Only a page of the same audience (the owner's own, or this friend's own).
+      const target = this.pages(page.thread).find((p) => p.a.id && p.a.id === m.id);
+      if (!target) return send(ws, this.state(page.thread));
+      send(target.ws, { type: "page-ended" });
+      close(target.ws, PAGE_ENDED, "ended from another page");
+      console.log(
+        JSON.stringify({ msg: "debug.end-page", thread: page.thread, page: target.a.label }),
+      );
+      return this.broadcast(target.ws);
+    }
     if (m.type === "chat") {
       console.log(
         JSON.stringify({
@@ -615,6 +680,19 @@ export class DebugHub {
     }
     const m = parseControllerMessage(raw);
     if (!m.ok) return send(ws, { type: "error", error: m.error });
+    if (m.value.type === "working") {
+      if (c.forUser)
+        return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
+      const { to, label } = m.value;
+      return this.sayTarget(to).then((dest) => {
+        if ("error" in dest) return send(ws, { type: "error", error: dest.error });
+        // Only that thread's pages; not stored, not logged (one every few seconds).
+        const pages = this.pages(dest.thread);
+        const beat = { type: "working", label: label || c.label, at: t };
+        for (const { ws: p } of pages) send(p, beat);
+        send(ws, { type: "beat", thread: dest.thread, delivered: pages.length, at: t });
+      });
+    }
     if (m.value.type === "say") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
@@ -672,6 +750,7 @@ export class DebugHub {
 
   webSocketClose(ws: Socket, code: number) {
     close(ws, code === 1005 ? 1000 : code, "");
-    if (att(ws)?.role === "controller") this.broadcast(ws);
+    // A page leaving changes its audience's page list; a controller, the sessions.
+    this.broadcast(ws);
   }
 }

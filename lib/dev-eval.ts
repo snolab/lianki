@@ -27,6 +27,14 @@ export const FRIEND_CHAT_MAX = 30;
 export const FRIEND_CHAT_WINDOW_MS = 10 * 60_000;
 /** The owner's chat thread; every other thread is a friend's user id. */
 export const OWNER_THREAD = "owner";
+/** The "agent is working" spinner stops this long after the last heartbeat. */
+export const WORKING_MS = 12_000;
+/**
+ * A beat the hub stamped within this long after an agent reply in the same
+ * thread is the beat loop's last one, still in flight when the reply landed:
+ * it does not restart the spinner.
+ */
+export const WORKING_GRACE_MS = 1_500;
 
 /**
  * Who a debug page belongs to, as the main Worker's /api/debug/identity says.
@@ -75,12 +83,17 @@ export type ChatMessage = {
 /** Messages a controller (the sender CLI) may send to the hub. */
 export type ControllerMessage =
   | { type: "eval"; code: string; target?: string }
-  | { type: "say"; text: string; to?: string };
+  | { type: "say"; text: string; to?: string }
+  | { type: "working"; to?: string; label?: string };
 /** Messages an owner page may send to the hub. */
 export type PageMessage =
   | { type: "allow"; pair: string; scope?: "chat" }
   | { type: "deny" | "revoke"; pair: string }
   | { type: "chat"; id: string; text: string }
+  /** The page moved (client-side navigation): its new label. Never shown in the chat. */
+  | { type: "page"; label: string }
+  /** Close another (or this) page of the same audience, from the chat's menu. */
+  | { type: "end-page"; id: string }
   | {
       type: "result";
       id: string;
@@ -103,7 +116,7 @@ export type PairInfo = {
 };
 /**
  * `listeners`: owner-approved controllers in time (the agent hearing the
- * chat). `pending` and `sessions` are only the pairings made for this page's
+ * chat). `pages`: this audience's open debug pages; `self`: the receiver's id. `pending` and `sessions` are only the pairings made for this page's
  * audience — the owner's, or this friend's own.
  */
 export type HubState = {
@@ -111,7 +124,15 @@ export type HubState = {
   pending: PairInfo | null;
   sessions: PairInfo[];
   listeners?: number;
+  /** This audience's open debug pages (the owner's, or this friend's own). */
+  pages?: PageInfo[];
+  /** Which of `pages` is the one receiving this state. */
+  self?: string;
 };
+/** An open debug page: its socket's id, current label (path…), and when it connected. */
+export type PageInfo = { id: string; label: string; at: number };
+/** Close code for a page ended from the chat menu; it stays closed until its next visibility or debug event. */
+export const PAGE_ENDED = 4410;
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
 
@@ -136,8 +157,19 @@ export function parseControllerMessage(
     const to = str(m.to, 320)?.trim();
     return { ok: true, value: to ? { type: "say", text, to } : { type: "say", text } };
   }
+  if (m?.type === "working") {
+    const to = str(m.to, 320)?.trim();
+    const label = cleanLabel(str(m.label, 80));
+    return {
+      ok: true,
+      value: { type: "working", ...(to ? { to } : {}), ...(label ? { label } : {}) },
+    };
+  }
   if (!m || m.type !== "eval")
-    return { ok: false, error: 'expected {"type":"eval","code":"…"} or {"type":"say","text":"…"}' };
+    return {
+      ok: false,
+      error: 'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"} or {"type":"working"}',
+    };
   if (typeof m.code !== "string" || !m.code.trim()) return { ok: false, error: "empty code" };
   if (m.code.length > MAX_CODE) return { ok: false, error: `code over ${MAX_CODE} chars` };
   const target = str(m.target, MAX_LABEL);
@@ -159,6 +191,14 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
   if (m.type === "deny" || m.type === "revoke") {
     const pair = str(m.pair, 64);
     return pair ? { type: m.type, pair } : null;
+  }
+  if (m.type === "end-page") {
+    const id = str(m.id, 64);
+    return id ? { type: "end-page", id } : null;
+  }
+  if (m.type === "page") {
+    const label = cleanLabel(str(m.label, MAX_LABEL * 2));
+    return label ? { type: "page", label } : null;
   }
   if (m.type === "chat") {
     const id = str(m.id, 64);
@@ -188,6 +228,30 @@ export function chatText(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
   const t = raw.trim();
   return t && t.length <= MAX_CHAT ? t : undefined;
+}
+
+/**
+ * The page's view of the agent's heartbeat. `beatAt` is the hub's stamp on
+ * the last beat and `agentAt` on the last agent reply (both hub clock, so they
+ * compare); `seenAt` is when this page received the beat (its own clock, so
+ * staleness never depends on clock skew).
+ */
+export type Heartbeat = { beatAt: number; seenAt: number };
+
+/**
+ * How much longer the "agent is working" spinner stays up, in ms; 0 = not
+ * working. Up only while the socket is live, a beat arrived less than
+ * WORKING_MS ago, and no agent reply has landed since that beat.
+ */
+export function workingLeft(
+  live: boolean,
+  beat: Heartbeat | null,
+  agentAt: number,
+  now: number,
+): number {
+  if (!live || !beat) return 0;
+  if (beat.beatAt < agentAt + WORKING_GRACE_MS) return 0;
+  return Math.max(0, WORKING_MS - (now - beat.seenAt));
 }
 
 /** The newest `max` messages, oldest first. */
@@ -227,6 +291,29 @@ export function cleanLabel(raw: string | null | undefined, max = MAX_LABEL): str
     .replace(/[\u0000-\u001f\u007f]+/g, " ")
     .trim()
     .slice(0, max);
+}
+
+/**
+ * A page label ("<path> [pwa ]<user agent>") split for the chat's page list:
+ * the path, and a short device hint like "pwa · Android" or "iPhone".
+ */
+export function pageParts(label: string): { path: string; device: string } {
+  const [path = "", ...rest] = label.split(" ");
+  const ua = rest.join(" ");
+  const pwa = rest[0] === "pwa";
+  const device =
+    [
+      ["iPhone", /iPhone/],
+      ["iPad", /iPad/],
+      ["Android", /Android/],
+      ["Mac", /Macintosh|Mac OS X/],
+      ["Windows", /Windows/],
+      ["Linux", /Linux|X11/],
+    ].find(([, re]) => (re as RegExp).test(ua))?.[0] ?? "";
+  return {
+    path: path.startsWith("/") ? path : "/",
+    device: [pwa ? "pwa" : "", device as string].filter(Boolean).join(" · "),
+  };
 }
 
 /** The short code the CLI prints and the prompt shows, so the owner can match them. */

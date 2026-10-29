@@ -1,20 +1,33 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import {
   type ChatMessage,
+  type Heartbeat,
   type HubState,
   type PairInfo,
   compile,
   summarize,
   trimHistory,
+  workingLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
-import { DebugChat, speakReply } from "./DebugChat";
+import { TABS_CHANNEL, joinTabs } from "@/lib/debug-chat-tabs";
+import { speakReply } from "./DebugChat";
+import { DebugChatHost } from "./DebugChatHost";
 
 /** Hidden this long before the socket is dropped. */
 const IDLE_MS = 30_000;
 const TOAST_MS = 4_000;
+/** Route changes settle this long before the socket's label is updated. */
+const RELABEL_MS = 300;
+
+/** This page as the hub and the agent see it: path, `pwa` when installed, user agent. */
+const pageLabel = () => {
+  const standalone = matchMedia?.("(display-mode: standalone)").matches ? "pwa " : "";
+  return `${location.pathname} ${standalone}${navigator.userAgent}`;
+};
 
 /**
  * Remote eval and the agent chat for a debug session (docs/monitoring.md,
@@ -51,6 +64,59 @@ export function DebugEval() {
   const [warning, setWarning] = useState<string | null>(null);
   const sockRef = useRef<WebSocket | null>(null);
   const friendRef = useRef(false);
+  /** The owner's page (a state arrived with no friend-status first): may hot-load the widget. */
+  const [owner, setOwner] = useState(false);
+  /** The agent's heartbeat (docs/monitoring.md, "Agent is working"). */
+  const [working, setWorking] = useState<{ label: string } | null>(null);
+  const beatRef = useRef<(Heartbeat & { label: string }) | null>(null);
+  /** Hub time of the newest agent reply: a beat older than it is stale. */
+  const agentAtRef = useRef(0);
+  const liveRef = useRef(false);
+  const beatTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** One local timeout re-checks the spinner when it would lapse; no network. */
+  const reBeat = () => {
+    clearTimeout(beatTimer.current);
+    const b = beatRef.current;
+    const left = workingLeft(liveRef.current, b, agentAtRef.current, Date.now());
+    setWorking(left > 0 && b ? { label: b.label } : null);
+    if (left > 0) beatTimer.current = setTimeout(reBeat, left + 50);
+  };
+  /** The label the socket was last told (on connect, or by {type:"page"}). */
+  const sentLabel = useRef("");
+  const pathname = usePathname();
+  const router = useRouter();
+  /** This device's tabs agree on one to read replies aloud (BroadcastChannel). */
+  const tabsRef = useRef<ReturnType<typeof joinTabs> | null>(null);
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const join = () => {
+      tabsRef.current = joinTabs(
+        crypto.randomUUID(),
+        new BroadcastChannel(TABS_CHANNEL),
+        () => document.visibilityState === "visible" && document.hasFocus(),
+      );
+    };
+    const leave = () => {
+      tabsRef.current?.leave();
+      tabsRef.current = null;
+    };
+    const focus = () => {
+      if (document.visibilityState === "visible") tabsRef.current?.focus();
+    };
+    const show = (e: PageTransitionEvent) => e.persisted && !tabsRef.current && join();
+    join();
+    window.addEventListener("focus", focus);
+    document.addEventListener("visibilitychange", focus);
+    window.addEventListener("pagehide", leave);
+    window.addEventListener("pageshow", show);
+    return () => {
+      window.removeEventListener("focus", focus);
+      document.removeEventListener("visibilitychange", focus);
+      window.removeEventListener("pagehide", leave);
+      window.removeEventListener("pageshow", show);
+      leave();
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof WebSocket === "undefined") return;
@@ -84,8 +150,8 @@ export function DebugEval() {
 
     const connect = () => {
       if (ws) return;
-      const standalone = matchMedia?.("(display-mode: standalone)").matches ? "pwa " : "";
-      const label = `${location.pathname} ${standalone}${navigator.userAgent}`;
+      const label = pageLabel();
+      sentLabel.current = label;
       const sock = new WebSocket(
         `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug?label=${encodeURIComponent(label)}`,
       );
@@ -93,6 +159,7 @@ export function DebugEval() {
       sockRef.current = sock;
       sock.onopen = () => {
         opened.add(sock);
+        liveRef.current = true;
         setLive(true);
         setChat(true);
         if (!friendRef.current) devLog({ ev: "eval-socket", label });
@@ -119,6 +186,10 @@ export function DebugEval() {
           if (msg.status === "blocked") setChat(true);
           return;
         }
+        if (msg.type === "page-ended") {
+          setWarning("Ended from another page. It reconnects when you come back to this page.");
+          return;
+        }
         if (msg.type === "rate-limited") {
           const min = Math.max(1, Math.ceil(Number(msg.retryIn) / 60_000) || 1);
           setWarning(`Too many messages: that one was not sent. Try again in ${min} min.`);
@@ -126,10 +197,27 @@ export function DebugEval() {
         }
         if (msg.type === "state") {
           setState(msg as HubState);
+          // Friends hear friend-status before any state: no status yet = the owner.
+          if (!friendRef.current) setOwner(true);
+          return;
+        }
+        if (msg.type === "working") {
+          const m = msg as { at?: unknown; label?: unknown };
+          if (typeof m.at !== "number") return;
+          beatRef.current = {
+            beatAt: m.at,
+            seenAt: Date.now(),
+            label: typeof m.label === "string" ? m.label : "agent",
+          };
+          reBeat();
           return;
         }
         if (msg.type === "history" && Array.isArray(msg.messages)) {
-          setMessages(trimHistory(msg.messages as ChatMessage[]));
+          const list = trimHistory(msg.messages as ChatMessage[]);
+          for (const m of list)
+            if (m.from === "agent") agentAtRef.current = Math.max(agentAtRef.current, m.at);
+          setMessages(list);
+          reBeat();
           return;
         }
         if (msg.type === "chat" && msg.message && typeof msg.message === "object") {
@@ -139,8 +227,12 @@ export function DebugEval() {
             list.some((x) => x.id === m.id) ? list : trimHistory([...list, m]),
           );
           // Live replies only: history loaded on connect is never read out.
-          if (m.from === "agent") speakReply(m.text);
-          else setWarning(null);
+          if (m.from === "agent") {
+            agentAtRef.current = Math.max(agentAtRef.current, Number(m.at) || 0);
+            reBeat();
+            // Every tab shows it; only one reads it aloud.
+            if (tabsRef.current?.isSpeaker() ?? true) speakReply(m.text);
+          } else setWarning(null);
           return;
         }
         if (msg.type !== "eval") return;
@@ -156,6 +248,9 @@ export function DebugEval() {
         if (ws !== sock) return;
         ws = null;
         sockRef.current = null;
+        liveRef.current = false;
+        beatRef.current = null;
+        reBeat();
         setLive(false);
         setState(null);
         if (opened.has(sock) && e.code < 4000 && wanted()) connect();
@@ -166,11 +261,15 @@ export function DebugEval() {
       if (!debugOn()) {
         setChat(false);
         setFriend(null);
+        setOwner(false);
         friendRef.current = false;
       }
       const sock = ws;
       ws = null;
       sockRef.current = null;
+      liveRef.current = false;
+      beatRef.current = null;
+      reBeat();
       setLive(false);
       setState(null);
       sock?.close();
@@ -195,9 +294,37 @@ export function DebugEval() {
       window.removeEventListener(DEBUG_EVENT, update);
       window.removeEventListener("storage", onStorage);
       clearTimeout(hideToast);
+      clearTimeout(beatTimer.current);
       disconnect();
     };
   }, []);
+
+  // The socket lives in the root layout, so it outlives client-side
+  // navigation: tell the hub the new path (silently — the agent's side only),
+  // once the route has settled. popstate/hashchange cover what usePathname misses.
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const sock = sockRef.current;
+        const label = pageLabel();
+        if (!sock || sock.readyState !== WebSocket.OPEN || label === sentLabel.current) return;
+        try {
+          sock.send(JSON.stringify({ type: "page", label }));
+          sentLabel.current = label;
+        } catch {}
+      }, RELABEL_MS);
+    };
+    check();
+    window.addEventListener("popstate", check);
+    window.addEventListener("hashchange", check);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("popstate", check);
+      window.removeEventListener("hashchange", check);
+    };
+  }, [pathname]);
 
   const answer = (type: "allow" | "deny" | "revoke", p: PairInfo, scope?: "chat") => {
     try {
@@ -206,6 +333,11 @@ export function DebugEval() {
       );
     } catch {}
     if (!friendRef.current) devLog({ ev: `eval-${type}`, label: p.label, code: p.code, scope });
+  };
+  const endPage = (id: string) => {
+    try {
+      sockRef.current?.send(JSON.stringify({ type: "end-page", id }));
+    } catch {}
   };
   const sendChat = (text: string) => {
     const sock = sockRef.current;
@@ -225,7 +357,13 @@ export function DebugEval() {
   return (
     <>
       {chat && (
-        <DebugChat
+        <DebugChatHost
+          hot={owner && !isFriend}
+          working={working}
+          pages={state?.pages ?? []}
+          selfPage={state?.self}
+          onEndPage={endPage}
+          onOpenPage={(path) => router.push(path)}
           live={live}
           listeners={state?.listeners ?? sessions.length}
           messages={messages}
