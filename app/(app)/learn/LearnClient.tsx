@@ -272,8 +272,17 @@ export default function LearnClient({ locale }: LearnClientProps) {
             </ul>
             <p className="text-sm">
               {t.ankiDecks.importNote}{" "}
-              <Link href={appHref("/import", locale)} className="text-blue-600 hover:underline">
+              <Link
+                href={appHref("/words/import", locale)}
+                className="text-blue-600 hover:underline"
+              >
                 {t.ankiDecks.importLink}
+              </Link>{" "}
+              <Link
+                href={appHref("/import", locale)}
+                className="text-gray-600 dark:text-gray-400 hover:underline"
+              >
+                {t.ankiDecks.importCardsLink}
               </Link>
             </p>
           </section>

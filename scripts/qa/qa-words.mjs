@@ -336,6 +336,10 @@ try {
       h1 !== "Import Learning Materials" && (await deckLinks.count()) >= 10,
       `/learn?lang=fr is translated and lists AnkiWeb decks (h1 "${h1}", ${await deckLinks.count()} links)`,
     );
+    check(
+      (await learn.locator('[data-anki-decks] a[href*="/words/import"]').count()) === 1,
+      "/learn's shared decks lead to /words/import",
+    );
     await learn.close();
   }
 
@@ -678,9 +682,12 @@ try {
     notes: deckNotes,
   });
   await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
-  await page.getByRole("link", { name: /Import Anki deck/ }).click();
+  // By its address: an earlier check visits /learn?lang=fr, and the language sticks.
+  await page.locator('a[href*="/words/import"]').click();
   await page.waitForURL(/\/words\/import/);
-  await page.waitForLoadState("networkidle");
+  check(true, "the /words picker links to /words/import");
+  // Back to English for the checks below.
+  await page.goto(`${BASE}/words/import?lang=en`, { waitUntil: "networkidle" });
   // A real drop: a File in a DataTransfer, dropped on the zone.
   const drop = await page.evaluateHandle(
     (bytes) => {
@@ -765,7 +772,7 @@ try {
       { guid: "n-casa", fields: ["casa", "house", ""] },
     ],
   });
-  await page.goto(`${BASE}/words/import`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/words/import?lang=en`, { waitUntil: "networkidle" });
   await page.locator('input[type="file"]').setInputFiles({
     name: "qa-spanish.apkg",
     mimeType: "application/octet-stream",
