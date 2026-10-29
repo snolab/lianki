@@ -175,6 +175,35 @@ export function DebugChat({
   const composing = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const log = useRef<HTMLOListElement | null>(null);
+  const input = useRef<HTMLTextAreaElement | null>(null);
+  // The log is click-through, so it can't be swiped: a vertical swipe on the
+  // input scrolls it instead (unless the draft itself is long enough to scroll).
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    let y = 0;
+    let swiping = false;
+    const down = (e: TouchEvent) => {
+      y = e.touches[0].clientY;
+      swiping = false;
+    };
+    const move = (e: TouchEvent) => {
+      const list = log.current;
+      if (!list || el.scrollHeight > el.clientHeight + 1) return;
+      const ny = e.touches[0].clientY;
+      if (!swiping && Math.abs(ny - y) < 6) return;
+      swiping = true;
+      list.scrollTop -= ny - y;
+      y = ny;
+      if (e.cancelable) e.preventDefault();
+    };
+    el.addEventListener("touchstart", down, { passive: true });
+    el.addEventListener("touchmove", move, { passive: false });
+    return () => {
+      el.removeEventListener("touchstart", down);
+      el.removeEventListener("touchmove", move);
+    };
+  }, [open]);
   const sendRef = useRef(onSend);
   sendRef.current = onSend;
 
@@ -344,6 +373,7 @@ export function DebugChat({
           />
         )}
         <textarea
+          ref={input}
           rows={2}
           value={draft}
           maxLength={MAX_CHAT}
