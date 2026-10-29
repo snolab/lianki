@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIntlayer } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
+import { PASSES, type PassId } from "@/lib/payments/passes";
+
+const yen = (n: number) =>
+  new Intl.NumberFormat(undefined, { style: "currency", currency: "JPY" }).format(n);
 
 type MembershipTier = "free" | "trial" | "pro";
 
@@ -27,10 +31,36 @@ export default function MembershipClient() {
   const [membership, setMembership] = useState<MembershipInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [passesOnSale, setPassesOnSale] = useState(false);
+  const [buying, setBuying] = useState<PassId | null>(null);
+  const [justPaid, setJustPaid] = useState(false);
 
   useEffect(() => {
     fetchMembership();
+    setJustPaid(new URLSearchParams(window.location.search).has("paid"));
+    fetch("/api/payments/checkout")
+      .then((r) => (r.ok ? r.json() : { enabled: false }))
+      .then((d: { enabled?: boolean }) => setPassesOnSale(Boolean(d.enabled)))
+      .catch(() => {});
   }, []);
+
+  async function buy(passId: PassId) {
+    setBuying(passId);
+    try {
+      const res = await fetch("/api/payments/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passId }),
+      });
+      const data = (await res.json()) as { url?: string };
+      if (!res.ok || !data.url) throw new Error(`checkout ${res.status}`);
+      window.location.assign(data.url);
+    } catch (e) {
+      console.error("Error starting checkout:", e);
+      setError(features.buy.failed.value);
+      setBuying(null);
+    }
+  }
 
   async function fetchMembership() {
     try {
@@ -96,6 +126,12 @@ export default function MembershipClient() {
             </div>
           </div>
         </div>
+
+        {justPaid && (
+          <div className="mb-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 text-green-800 dark:text-green-200">
+            {features.buy.paid.value}
+          </div>
+        )}
 
         {error && (
           <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-red-800 dark:text-red-200">
@@ -190,14 +226,33 @@ export default function MembershipClient() {
                 {features.pro.textToSpeech.value}
               </li>
             </ul>
-            <div className="mt-6 text-center">
-              <a
-                href="/contacts"
-                className="inline-block bg-white text-blue-600 font-semibold px-6 py-2 rounded-lg hover:bg-blue-50 transition-colors"
-              >
-                {features.pro.contactUs.value}
-              </a>
-            </div>
+            {passesOnSale ? (
+              <div className="mt-6 space-y-2">
+                {(["pro-1m", "pro-12m"] as const).map((id) => (
+                  <button
+                    key={id}
+                    onClick={() => buy(id)}
+                    disabled={buying !== null}
+                    className="w-full bg-white text-blue-600 font-semibold px-6 py-2 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-60"
+                  >
+                    {id === "pro-1m"
+                      ? features.buy.oneMonth.value
+                      : features.buy.twelveMonths.value}{" "}
+                    · {yen(PASSES[id].amount)}
+                  </button>
+                ))}
+                <p className="text-xs text-center opacity-90">{features.buy.methods.value}</p>
+              </div>
+            ) : (
+              <div className="mt-6 text-center">
+                <a
+                  href="/contacts"
+                  className="inline-block bg-white text-blue-600 font-semibold px-6 py-2 rounded-lg hover:bg-blue-50 transition-colors"
+                >
+                  {features.pro.contactUs.value}
+                </a>
+              </div>
+            )}
           </div>
         </div>
       </div>
