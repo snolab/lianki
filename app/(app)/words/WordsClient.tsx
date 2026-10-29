@@ -2472,7 +2472,9 @@ function Study({
         </button>
         <span className="font-medium">{title}</span>
         <button
-          className={`px-2 py-0.5 rounded text-xs ${
+          // Tapped seven times fast for debug: iOS must not turn that into a
+          // text selection or a double-tap zoom.
+          className={`select-none touch-manipulation [-webkit-touch-callout:none] px-2 py-0.5 rounded text-xs ${
             settings
               ? "bg-black/20 dark:bg-white/25"
               : "bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
