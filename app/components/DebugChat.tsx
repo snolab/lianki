@@ -302,16 +302,19 @@ export function DebugChat({
         )}
         {/* A game-style log: one line per message, "name: text", no bubbles. */}
         {messages.map((m) => (
-          <li key={m.id} className="whitespace-pre-wrap break-words leading-snug">
+          // The time only on hover (long press on a phone): name and text are the line.
+          <li
+            key={m.id}
+            title={when(m.at)}
+            className="whitespace-pre-wrap break-words leading-snug"
+          >
             <span
               className="me-1 font-medium"
               style={{
                 color: m.from === "owner" ? "oklch(0.55 0.13 250)" : "oklch(0.55 0.14 150)",
               }}
-              title={new Date(m.at).toISOString()}
             >
-              {m.from === "owner" ? "you" : m.label || "agent"}
-              <span className="ms-1 text-[10px] font-normal text-gray-500">{when(m.at)}</span>:
+              {m.from === "owner" ? "you" : m.label || "agent"}:
             </span>
             {m.text}
           </li>
