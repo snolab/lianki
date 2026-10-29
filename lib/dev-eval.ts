@@ -144,6 +144,13 @@ export type HubState = {
 export type PageInfo = { id: string; label: string; at: number };
 /** Close code for a page ended from the chat menu; it stays closed until its next visibility or debug event. */
 export const PAGE_ENDED = 4410;
+/**
+ * An eval pairing granted for some pages only lives on while they are away
+ * (a phone drops its socket when the app is in the background) — until they
+ * have been gone this long; then it is closed with PAGES_GONE, to pair again.
+ */
+export const PAGE_GONE_GRACE_MS = 5 * 60_000;
+export const PAGES_GONE = 4409;
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
 
