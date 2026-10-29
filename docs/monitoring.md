@@ -40,10 +40,12 @@ no secret, no timer. Pages connect only while visible and focused, and get
 the current build on connect. `/api/version/stream` answers pages from the
 old SSE design once with "new version" and asks them not to reconnect.
 
-**Deploying `lianki-push`** is manual (`bunx wrangler deploy -c
-workers/push/wrangler.jsonc` with an account that may edit the zone's
-Workers routes): CI's token cannot, and a failing step there skipped the main
-Worker's deploy. The main Worker's `PUSH` binding only needs it to exist.
+**Deploying `lianki-push`**: CI deploys it after the monitor and before the
+main Worker (`.github/workflows/deploy-worker.yml`). Its zone route needs the
+CI token (`lianki-deploy`) to hold Zone · Workers Routes · Edit on lianki.com,
+granted 2026-10-29; without it the step fails and skips the main deploy (as
+in #240–#242). By hand: `bunx wrangler deploy -c workers/push/wrangler.jsonc`.
+The main Worker's `PUSH` binding only needs it to exist.
 Its own `MAIN` binding (to `lianki`, for the remote-eval owner check below)
 needs the main Worker deployed first when that check changes.
 
