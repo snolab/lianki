@@ -7,7 +7,7 @@ import { isOwner } from "@/lib/owner";
  * doing here, and it lands in the Worker logs (`wrangler tail lianki`) for a
  * remote debugging session. Owner only; anyone else gets a 404.
  */
-const MAX_BODY = 4096;
+const MAX_BODY = 8192;
 
 export const POST = async (req: NextRequest) => {
   const user = await authUserOrNull();

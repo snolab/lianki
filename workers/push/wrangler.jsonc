@@ -11,7 +11,18 @@
   "workers_dev": false,
   "compatibility_date": "2026-10-01",
   "routes": [{ "pattern": "lianki.com/api/version/*", "zone_name": "lianki.com" }],
-  "durable_objects": { "bindings": [{ "name": "HUB", "class_name": "VersionHub" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["VersionHub"] }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "HUB", "class_name": "VersionHub" },
+      { "name": "DEBUG", "class_name": "DebugHub" },
+    ],
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["VersionHub"] },
+    { "tag": "v2", "new_sqlite_classes": ["DebugHub"] },
+  ],
+  // Asks the main Worker whether a debug socket's cookie is the owner's
+  // (/api/dev/whoami). Circular with its PUSH binding to us; that is allowed.
+  "services": [{ "binding": "MAIN", "service": "lianki" }],
   "observability": { "enabled": true },
 }

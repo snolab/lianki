@@ -4,6 +4,7 @@ import { IntlayerServerProvider } from "next-intlayer/server";
 import { cookies, headers } from "next/headers";
 import { ServiceWorkerRegistration } from "./components/ServiceWorkerRegistration";
 import { NewVersionNotice } from "./components/NewVersionNotice";
+import { DebugEval } from "./components/DebugEval";
 
 export const metadata: Metadata = {
   title: "Lianki",
@@ -63,6 +64,7 @@ export default async function RootLayout({
         <IntlayerServerProvider locale={locale}>
           <ServiceWorkerRegistration />
           <NewVersionNotice />
+          <DebugEval />
           {children}
         </IntlayerServerProvider>
       </body>
