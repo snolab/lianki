@@ -6,7 +6,7 @@
  *
  *   bun scripts/dev/eval.ts serve [--label "…"]
  *       Pair once and hold the session (an hour at most): prints a short code
- *       that the page's prompt shows too — the owner taps "Allow for 1 hour"
+ *       that the page's prompt shows too — the owner taps Allow
  *       if they match. Keep it running (in the background); the commands
  *       below then go through it without asking again.
  *
@@ -23,17 +23,28 @@
  *       JSON line {"type":"chat","id","thread","email","from","text","at","label"}
  *       (thread "owner" or the friend's user id; label = page path + user
  *       agent), and {"type":"friend-new","userId","email","at"} when someone
- *       writes for the first time. Also appended to --out. Reconnects on
- *       close, backing off.
+ *       writes for the first time, and {"type":"page-changed","thread",
+ *       "email","label","at"} when a debug page navigates (silent on the
+ *       page). Also appended to --out. Reconnects on close, backing off.
  *
  *   bun scripts/dev/eval.ts say [--to <thread|email>] "text"      (or - for stdin)
  *       Reply with the saved grant, and exit: to the owner by default, or to
  *       a friend's thread by user id or email.
  *
+ *   bun scripts/dev/eval.ts busy [--to <thread|email>] [--label "…"]
+ *                                   [--every <s> [--keep] [--max <s>]]
+ *       The heartbeat behind the chat's "agent is working" spinner, with the
+ *       saved grant. Alone: one beat (the spinner shows for 12 s), then exit.
+ *       --every 4: a beat every 4 s until the next agent reply in that thread
+ *       (your `say`; --keep beats on past it), the process is killed, its
+ *       stdin closes (when stdin is a pipe), the socket drops, or --max
+ *       seconds (default 1800) pass. Start it in the background on picking up
+ *       a message; `say` ends it.
+ *
  *   bun scripts/dev/eval.ts serve --for <email> [--label "…"]
  *   bun scripts/dev/eval.ts --for <email> [--target <text>] '<code>'
  *       The same, on a friend's own debug pages ("Preview"): needs the saved
- *       chat grant, and the friend's tap on "Allow for 1 hour" on their
+ *       chat grant, and the friend's tap on Allow on their
  *       device — tell them the printed code in the chat. That session reaches
  *       only their pages, never the owner's; it cannot chat.
  *
@@ -49,6 +60,7 @@ import {
   appendFileSync,
   chmodSync,
   existsSync,
+  fstatSync,
   mkdirSync,
   readFileSync,
   rmSync,
@@ -57,6 +69,7 @@ import {
 import { homedir, hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
+import { type BusyArgs, beatMessage, endsBeat, parseBusyArgs } from "./busy";
 
 const BASE = (process.env.LIANKI_URL ?? "https://lianki.com").replace(/\/+$/, "");
 /** The running `serve`'s port and token: one file for the owner, one per friend. */
@@ -98,19 +111,21 @@ const saveToken = (token: string, until: number) => {
   chmodSync(TOKEN_FILE, 0o600);
 };
 /** Resuming a grant without --label keeps the label it was approved under. */
-const controlUrl = (token?: string, forEmail?: string) =>
-  `${BASE.replace(/^http/, "ws")}/api/version/debug/control?label=${encodeURIComponent(token ? (labelFlag ?? "") : label)}${forEmail ? `&for=${encodeURIComponent(forEmail)}` : ""}`;
+const controlUrl = (token?: string, forEmail?: string, scope: "chat" | "eval" = "eval") =>
+  `${BASE.replace(/^http/, "ws")}/api/version/debug/control?label=${encodeURIComponent(token ? (labelFlag ?? "") : label)}&scope=${scope}${forEmail ? `&for=${encodeURIComponent(forEmail)}` : ""}`;
 /**
  * Bun's WebSocket takes headers, so the grant goes in one, never in the URL
  * (the repo type-checks with the DOM lib's constructor, hence the cast).
  * `forEmail` asks for a pairing on that friend's pages, which needs the grant.
+ * `scope` is what a fresh pairing asks for: "chat" (the 30-day grant, for the
+ * listener) or "eval" (code and chat for an hour); the owner's Allow grants it.
  */
-const openControl = (token?: string, forEmail?: string) =>
+const openControl = (token?: string, forEmail?: string, scope: "chat" | "eval" = "eval") =>
   token
-    ? new WebSocket(controlUrl(token, forEmail), {
+    ? new WebSocket(controlUrl(token, forEmail, scope), {
         headers: { "x-debug-token": token },
       } as unknown as string[])
-    : new WebSocket(controlUrl());
+    : new WebSocket(controlUrl(undefined, undefined, scope));
 
 const args = process.argv.slice(2);
 // --help is not code to run on the owner's pages: print the usage above.
@@ -158,7 +173,9 @@ function pair(): Promise<WebSocket> {
             `  e.g. bun scripts/dev/eval.ts say --to ${forEmail} "Tap Allow on the preview request with code ${m.code}"`,
         );
       else if (m.type === "pending")
-        console.error(`Pairing as "${label}". On the page, allow code  ${m.code}`);
+        console.error(
+          `Pairing as "${label}" (code and chat, 1 hour). On the page, tap Allow if it shows code  ${m.code}`,
+        );
       else if (m.type === "approved") {
         clearTimeout(give);
         ws.onmessage = null;
@@ -297,13 +314,13 @@ function chat(out?: string) {
   };
   const connect = () => {
     const token = loadToken();
-    const ws = openControl(token);
+    const ws = openControl(token, undefined, "chat");
     ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data)) as Msg;
       if (m.type === "pending") {
         console.log(JSON.stringify({ type: "pending", code: m.code, label }));
         console.error(
-          `Pairing as "${label}". On the page, tap "Allow chat for 30 days" for code  ${m.code}`,
+          `Pairing as "${label}" (chat, 30 days). On the page, tap Allow if it shows code  ${m.code}`,
         );
       } else if (m.type === "approved") {
         backoff = 1_000;
@@ -322,6 +339,14 @@ function chat(out?: string) {
           else emit(h);
         first = false;
       } else if (m.type === "chat" && m.message) emit(m.message as Msg);
+      else if (m.type === "page-changed")
+        print({
+          type: "page-changed",
+          thread: m.thread ?? "owner",
+          email: m.email ?? null,
+          label: m.label,
+          at: new Date(Number(m.at)).toISOString(),
+        });
       else if (m.type === "friend-new")
         print({
           type: "friend-new",
@@ -383,7 +408,96 @@ function say(text: string, to?: string): Promise<Msg> {
   });
 }
 
+/**
+ * The heartbeat: one beat, or (with `every`) a beat every few seconds until
+ * the agent's reply in that thread, the socket closing, stdin closing (a
+ * pipe), --max, or a kill. The only timer here that touches the network, and
+ * the owner asked for it.
+ */
+function busy(w: BusyArgs): Promise<void> {
+  const token = loadToken();
+  if (!token)
+    return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
+  return new Promise((resolve, reject) => {
+    const ws = openControl(token);
+    let thread: string | undefined;
+    let loop: ReturnType<typeof setInterval> | undefined;
+    let done = false;
+    const stop = (why: string, err?: Error) => {
+      if (done) return;
+      done = true;
+      clearInterval(loop);
+      clearTimeout(give);
+      clearTimeout(cap);
+      try {
+        ws.close();
+      } catch {}
+      if (err) return reject(err);
+      if (w.every) console.error(`busy: stopped (${why})`);
+      resolve();
+    };
+    const give = setTimeout(
+      () => stop("", new Error("no answer from the hub within 15 s")),
+      15_000,
+    );
+    const cap = setTimeout(() => stop(`--max ${w.maxSeconds}s`), w.maxSeconds * 1000);
+    const beat = () => ws.send(beatMessage(w));
+    ws.onmessage = (e) => {
+      const m = JSON.parse(String(e.data)) as Msg;
+      if (m.type === "approved") {
+        clearTimeout(give);
+        beat();
+        if (w.every) loop = setInterval(beat, w.every * 1000);
+      } else if (m.type === "beat") {
+        if (!thread) {
+          thread = String(m.thread);
+          console.log(JSON.stringify(m));
+        }
+        if (!w.every) stop("one beat");
+      } else if (w.untilSay && endsBeat(m, thread)) stop("the agent replied");
+      else if (m.type === "error") stop("", new Error(String(m.error)));
+    };
+    ws.onclose = (e) => {
+      if (e.code === 4498) rmSync(TOKEN_FILE, { force: true });
+      stop(
+        `socket closed (${e.code})`,
+        done || thread ? undefined : new Error(`socket closed (${e.code})`),
+      );
+    };
+    if (w.every) {
+      process.on("SIGINT", () => stop("interrupted"));
+      process.on("SIGTERM", () => stop("terminated"));
+      // A pipe on stdin is a lifeline: its end stops the beat. /dev/null or a
+      // terminal is not one (it would end at once, or never).
+      let pipe = false;
+      try {
+        pipe = fstatSync(0).isFIFO();
+      } catch {}
+      if (pipe) {
+        process.stdin.on("end", () => stop("stdin closed"));
+        process.stdin.on("close", () => stop("stdin closed"));
+        process.stdin.resume();
+      }
+    }
+  });
+}
+
 async function main() {
+  if (args[0] === "busy") {
+    const w = parseBusyArgs([
+      ...args.slice(1),
+      ...(to ? ["--to", to] : []),
+      ...(labelFlag ? ["--label", labelFlag] : []),
+    ]);
+    if ("error" in w) {
+      console.error(
+        `${w.error}\nusage: bun scripts/dev/eval.ts busy [--to <thread|email>] [--label X] [--every <s> [--keep] [--max <s>]]`,
+      );
+      process.exit(2);
+    }
+    await busy(w);
+    process.exit(0);
+  }
   if (args[0] === "serve") return serve();
   if (args[0] === "chat") return chat(out);
   if (args[0] === "say") {
