@@ -807,7 +807,7 @@ export function DebugChat({
               }
             : undefined
         }
-        className={`min-h-12 space-y-0.5 overflow-y-auto px-2 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${typing || micActive ? "max-h-[30vh]" : "max-h-[4.1rem]"}`}
+        className={`min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${typing || micActive ? "max-h-[30vh]" : "max-h-[4.1rem]"}`}
       >
         {messages.length === 0 && (
           <li className="text-gray-500">Type here; it is sent 3 s after you stop.</li>
