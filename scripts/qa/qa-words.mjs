@@ -287,6 +287,17 @@ try {
     icons.every((x) => x.startsWith("200:image/")),
     `the seal icons are served (${icons.join(", ")})`,
   );
+  // The page links only the seal's versioned files (the ?v= busts Chrome's
+  // sticky favicon cache) — no Next.js app/favicon.ico left behind.
+  const iconLinks = await page.evaluate(() =>
+    [...document.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]')].map((l) =>
+      l.getAttribute("href"),
+    ),
+  );
+  check(
+    iconLinks.length >= 2 && iconLinks.every((h) => /\?v=\d+$/.test(h ?? "")),
+    `the page links only versioned seal icons (${iconLinks.join(", ")})`,
+  );
 
   // Server word audio validates before any (paid) generation. page.request
   // shares the session but bypasses the QA stub of this route.
