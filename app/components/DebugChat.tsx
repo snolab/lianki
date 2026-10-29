@@ -199,6 +199,8 @@ export function DebugChat({
   };
   /** The draft's length when it last changed outside an IME composition. */
   const settledLen = useRef(0);
+  /** The key going down is Shift+Enter: its line break stays a line break. */
+  const shiftEnter = useRef(false);
   const arm = () => {
     clearTimeout(timer.current);
     if (!composing.current) {
@@ -348,7 +350,18 @@ export function DebugChat({
             composing.current = false;
             arm();
           }}
+          // Android's keyboards report every key as 229, so Enter never
+          // reaches onKeyDown as "Enter": the line break itself is the cue.
+          onBeforeInput={(e) => {
+            const type = (e.nativeEvent as InputEvent).inputType;
+            if (type !== "insertLineBreak" && type !== "insertParagraph") return;
+            if (composing.current || (e.nativeEvent as InputEvent).isComposing) return;
+            if (shiftEnter.current) return; // Shift+Enter: a newline, as on desktop
+            e.preventDefault();
+            submit();
+          }}
           onKeyDown={(e) => {
+            shiftEnter.current = e.key === "Enter" && e.shiftKey;
             if (e.key !== "Enter" || e.shiftKey) return;
             // Enter that confirms an IME candidate (Safari reports it as 229
             // after compositionend) must not send.
