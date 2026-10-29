@@ -2496,14 +2496,30 @@ function Study({
             Undo
           </button>
         )}
+        {/* Seven quick taps toggle debug: unselectable, or Android's
+            double-tap selects the words instead of counting the taps. */}
         <span
-          className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm"
+          className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm select-none touch-manipulation"
           onClick={debugTap}
         >
           {debug && (
-            <span className="mr-1 rounded bg-red-700 px-1 text-white" data-debug-badge>
-              DEBUG
-            </span>
+            <>
+              <span className="mr-1 rounded bg-red-700 px-1 text-white" data-debug-badge>
+                DEBUG
+              </span>
+              {/* Design prototypes, to try on the device itself. */}
+              {["slip", "cords"].map((p) => (
+                <a
+                  key={p}
+                  href={`/proto/${p}`}
+                  data-debug-proto={p}
+                  className="mr-1 underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  proto/{p}
+                </a>
+              ))}
+            </>
           )}
           {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
           {ahead.length - dueLeft} new
@@ -2997,7 +3013,13 @@ function WordRow({
   children: React.ReactNode;
 }) {
   const start = useRef<{ x: number; y: number } | null>(null);
-  const [dx, setDx] = useState(0);
+  /** Sliding sideways: re-renders only as a drag starts and ends. */
+  const [moving, setMoving] = useState(false);
+  /** Where the slip is held now. The drag writes it straight to the row's
+   * style once a frame — a React render per pointermove dropped frames on Android. */
+  const dx = useRef(0);
+  const frame = useRef(0);
+  const shownTint = useRef<ReturnType<typeof swipeRating>>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const held = useRef(false);
   /** The axis this gesture committed to (lib/words/swipe.ts lockAxis). */
@@ -3036,8 +3058,6 @@ function WordRow({
   const samples = useRef<{ t: number; x: number }[]>([]);
   /** The finger's own travel (the row resists beyond a, so they differ). */
   const finger = useRef(0);
-  /** How far the row was when let go: it glides back from there. */
-  const releasedAt = useRef(0);
   /** The tier the row is in now: crossing into another gives a light buzz. */
   const tier = useRef<0 | 1 | 2>(0);
   /** Travel unit: the row's own height (2a of travel each way). */
@@ -3067,11 +3087,35 @@ function WordRow({
       </div>
     );
 
-  // Tinted by where the row would land if released now — what it will grade.
-  const pending = swipeRating(
-    dx ? projectSwipe(finger.current, releaseVelocity(samples.current, performance.now()), a) : 0,
-    a,
-  );
+  /** Moves the slip to dx, tinted by what it would grade if released now. */
+  const paint = () => {
+    frame.current = 0;
+    const el = rowEl.current;
+    if (!el) return;
+    const x = dx.current;
+    el.style.transform = x ? `translateX(${x}px)` : "";
+    const pending = swipeRating(
+      x ? projectSwipe(finger.current, releaseVelocity(samples.current, performance.now()), a) : 0,
+      a,
+    );
+    if (pending !== shownTint.current) {
+      shownTint.current = pending;
+      if (pending) el.style.setProperty("--slip-c", SWIPE_BG[pending]);
+      else el.style.removeProperty("--slip-c");
+    }
+  };
+  /** Back to rest: glide home from where it was let go, minimum jerk. */
+  const release = () => {
+    const el = rowEl.current;
+    cancelAnimationFrame(frame.current);
+    if (el && dx.current) {
+      el.style.transition = `transform ${moveSeconds(dx.current, 6000)}s ${MIN_JERK_EASING}`;
+    }
+    dx.current = 0;
+    paint();
+    if (el) el.style.willChange = "";
+    setMoving(false);
+  };
   return (
     <div
       ref={rowEl}
@@ -3083,12 +3127,7 @@ function WordRow({
         touchAction: "pan-y",
         // A hold is listen mode, not iOS's callout / text-selection menu.
         WebkitTouchCallout: "none",
-        transform: dx ? `translateX(${dx}px)` : undefined,
-        // Following the finger: no easing. Let go: glide home, minimum jerk.
-        transition: start.current
-          ? "none"
-          : `transform ${moveSeconds(releasedAt.current, 6000)}s ${MIN_JERK_EASING}`,
-        ["--slip-c" as string]: pending ? SWIPE_BG[pending] : undefined,
+        // transform, transition and --slip-c are the drag's: paint() writes them.
       }}
       onPointerDown={(e) => {
         start.current = { x: e.clientX, y: e.clientY };
@@ -3119,15 +3158,20 @@ function WordRow({
           if (!axis.current) return;
           // Any real movement is a swipe or a scroll, not a hold.
           if (!held.current) clearTimeout(holdTimer.current);
-          if (axis.current === "h" && !held.current) onSwipeStart?.();
+          if (axis.current === "h" && !held.current) {
+            // Following the finger: no easing, on its own layer.
+            e.currentTarget.style.transition = "none";
+            e.currentTarget.style.willChange = "transform";
+            setMoving(true);
+            onSwipeStart?.();
+          }
         }
         // A scroll stays a scroll however it drifts; a hold stays a hold.
         if (axis.current === "h" && !held.current) {
           const t = performance.now();
-          samples.current = [
-            ...samples.current.filter((s) => t - s.t <= SWIPE_VELOCITY_MS * 2),
-            { t, x },
-          ];
+          const kept = samples.current.filter((s) => t - s.t <= SWIPE_VELOCITY_MS * 2);
+          kept.push({ t, x });
+          samples.current = kept;
           finger.current = x;
           const held2a = clampSwipe(x, a);
           const t2 = swipeTier(held2a, a);
@@ -3136,15 +3180,14 @@ function WordRow({
             navigator.vibrate?.(t2 === 2 ? 12 : 6);
             tier.current = t2;
           }
-          setDx(held2a);
+          dx.current = held2a;
+          frame.current ||= requestAnimationFrame(paint);
         }
       }}
       onPointerUp={(e) => {
         clearTimeout(holdTimer.current);
         swipePerf.stop(axis.current === "h" ? "swipe" : axis.current === "v" ? "scroll" : "tap");
-        const moved = dx;
-        releasedAt.current = moved;
-        setDx(0);
+        release();
         if (!start.current) return;
         start.current = null;
         if (held.current) {
@@ -3174,11 +3217,11 @@ function WordRow({
         if (held.current) onHoldEnd?.();
         held.current = false;
         start.current = null;
-        setDx(0);
+        release();
       }}
     >
       {children}
-      <SlipCords loose={loose} moving={dx !== 0} />
+      <SlipCords loose={loose} moving={moving} />
     </div>
   );
 }

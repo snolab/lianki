@@ -316,7 +316,12 @@ try {
   const stats = page.locator("span", { hasText: /done ·/ }).last();
   for (let k = 0; k < 7; k++) await stats.click();
   check((await page.locator("[data-debug-badge]").count()) === 1, "seven taps turn debug on");
-  for (let k = 0; k < 7; k++) await stats.click();
+  check(
+    (await page.locator('[data-debug-proto="slip"][href="/proto/slip"]').count()) === 1,
+    "debug mode links the design prototypes",
+  );
+  // On the badge's corner: the prototype links sit on this line too now.
+  for (let k = 0; k < 7; k++) await stats.click({ position: { x: 4, y: 4 } });
   check((await page.locator("[data-debug-badge]").count()) === 0, "seven more turn it off");
 
   // /learn speaks the page's language (it used to be English-only) and links
