@@ -271,12 +271,9 @@ export function DebugChat({
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
       style={offset}
-      className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] opacity-60 transition-opacity focus-within:opacity-100 active:opacity-100 flex-col overflow-hidden rounded-xl border border-gray-300 bg-white/95 text-xs text-gray-800 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/95 dark:text-gray-100"
+      className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] opacity-60 transition-opacity focus-within:opacity-100 active:opacity-100 flex-col overflow-hidden rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100"
     >
-      <header
-        {...handle}
-        className="flex select-none items-center gap-1.5 border-b border-gray-200 px-2 py-1 dark:border-gray-800"
-      >
+      <header {...handle} className="flex select-none items-center gap-1.5 px-2 py-1">
         <span className="size-2 shrink-0 rounded-full" style={{ background: dot }} />
         <span
           className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-400"
@@ -337,7 +334,7 @@ export function DebugChat({
           {notice}
         </p>
       ) : (
-        <div className="relative border-t border-gray-200 dark:border-gray-800">
+        <div className="relative">
           {warning && (
             <div
               role="alert"
@@ -395,7 +392,7 @@ export function DebugChat({
               e.preventDefault();
               submit();
             }}
-            className="block w-full resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-gray-400"
+            className="block w-full resize-none rounded-lg border border-current/25 bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-gray-400"
           />
           {(armed > 0 || offline) && (
             <div className="px-2 pb-1 text-[10px] text-gray-500">
