@@ -7,7 +7,7 @@
  * reflects the actual runtime env. Prod stays safe: the deployed Worker has no
  * `.dev.vars`, so it still resolves "production" and the gate stays off.
  */
-function runtimeNodeEnv(): string | undefined {
+export function runtimeNodeEnv(): string | undefined {
   // `globalThis.process` indirection: DefinePlugin only rewrites the literal
   // `process.env.NODE_ENV` member chain, not a dynamic key off globalThis.
   const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;

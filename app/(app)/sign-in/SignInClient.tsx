@@ -1,13 +1,44 @@
 "use client";
 import { Turnstile } from "@marsidev/react-turnstile";
 import type { TurnstileInstance } from "@marsidev/react-turnstile";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useIntlayer } from "next-intlayer";
 import { authClient } from "@/lib/auth-client";
 import { sendSignInCodeAction } from "./actions";
-import { useRouter } from "next/navigation";
+import {
+  defaultPasskeyName,
+  PASSKEY_SUGGESTION_DISMISSED_KEY,
+  passkeyErrorKind,
+} from "@/lib/passkey";
 
-type Step = "email" | "password" | "code";
+type Step = "email" | "password" | "code" | "suggest-passkey";
+
+/** A full load, so every part of the app sees the new session. */
+function goToApp() {
+  window.location.href = "/home";
+}
+
+function suggestionDismissed(): boolean {
+  try {
+    return localStorage.getItem(PASSKEY_SUGGESTION_DISMISSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Offer a passkey right after an email sign-in only where one can be made on
+ * this device (a platform authenticator: Touch ID, Windows Hello, a phone's
+ * screen lock) and the offer was not turned down here before.
+ */
+async function canSuggestPasskey(): Promise<boolean> {
+  if (suggestionDismissed() || typeof PublicKeyCredential === "undefined") return false;
+  try {
+    return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Sign in = sign up: an unknown email gets an account on first sign-in.
@@ -18,10 +49,13 @@ type Step = "email" | "password" | "code";
  * inside an app's built-in browser. The password step exists only
  * when the server allows passwords (dev QA); production never asks for one,
  * since it could not work there.
+ *
+ * Passkeys: a "Sign in with a passkey" button, and — where the browser supports
+ * conditional mediation — the same passkeys offered in the email field's
+ * autofill. After an email sign-in, a one-time, dismissible offer to add one.
  */
 export default function SignInClient({ passwordEnabled }: { passwordEnabled: boolean }) {
   const t = useIntlayer("sign-in-page");
-  const router = useRouter();
   const turnstileRef = useRef<TurnstileInstance | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [turnstileState, setTurnstileState] = useState<"loading" | "ready" | "failed">("loading");
@@ -33,6 +67,69 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
   const [isPending, startTransition] = useTransition();
   const [code, setCode] = useState("");
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+  // Set after mount: the server render cannot know whether WebAuthn exists.
+  const [passkeySupported, setPasskeySupported] = useState(false);
+
+  // Conditional UI: list this site's passkeys in the email field's autofill.
+  // One request on page load (no polling); the browser then waits for the user
+  // to pick one. Any failure or cancellation just leaves the form as it was —
+  // the explicit button aborts this pending request when it starts its own.
+  useEffect(() => {
+    if (typeof PublicKeyCredential === "undefined") return;
+    setPasskeySupported(true);
+    let active = true;
+    (async () => {
+      const available = await PublicKeyCredential.isConditionalMediationAvailable?.().catch(
+        () => false,
+      );
+      if (!available || !active) return;
+      const result = await authClient.signIn.passkey({ autoFill: true });
+      if (active && result?.data && !result.error) goToApp();
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function signInWithPasskey() {
+    setError("");
+    startTransition(async () => {
+      const result = await authClient.signIn.passkey();
+      if (result?.data && !result.error) goToApp();
+      else if (passkeyErrorKind(result?.error) !== "cancelled") setError(t.passkeyFailed.value);
+    });
+  }
+
+  /** After an email/password sign-in: offer a passkey once, or go straight in. */
+  async function afterEmailSignIn() {
+    if (await canSuggestPasskey()) {
+      setError("");
+      setStep("suggest-passkey");
+    } else goToApp();
+  }
+
+  function addPasskeyNow() {
+    setError("");
+    startTransition(async () => {
+      const result = await authClient.passkey.addPasskey({
+        name: defaultPasskeyName(navigator.userAgent),
+      });
+      if (result?.data && !result.error) return goToApp();
+      const kind = passkeyErrorKind(result?.error);
+      // Already has one here: nothing to add, so just carry on.
+      if (kind === "duplicate") return goToApp();
+      if (kind !== "cancelled") setError(t.passkeyAddFailed.value);
+    });
+  }
+
+  function dismissPasskeySuggestion() {
+    try {
+      localStorage.setItem(PASSKEY_SUGGESTION_DISMISSED_KEY, "1");
+    } catch {
+      // private mode: it will simply be offered again next time
+    }
+    goToApp();
+  }
 
   function handleBack() {
     setStep("email");
@@ -58,13 +155,13 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
           if (signUpResult.error) {
             setError(signUpResult.error.message || "Authentication failed");
           } else {
-            router.push("/home");
+            await afterEmailSignIn();
           }
         } else {
           setError(msg || "Sign in failed");
         }
       } else {
-        router.push("/home");
+        await afterEmailSignIn();
       }
     });
   }
@@ -90,8 +187,7 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
     startTransition(async () => {
       const result = await authClient.signIn.emailOtp({ email, otp: code.trim() });
       if (result.error) setError(t.wrongCode.value);
-      // A full load, so every part of the app sees the new session.
-      else window.location.href = "/home";
+      else await afterEmailSignIn();
     });
   }
 
@@ -139,6 +235,40 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
   ) : null;
 
   const blockedNote = t.blockedNote.value;
+
+  if (step === "suggest-passkey") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-5 p-4">
+        <PasskeyIcon className="w-10 h-10" />
+        <div className="text-center space-y-2 max-w-sm">
+          <h1 className="text-xl font-bold">{t.suggestHeading}</h1>
+          <p className="text-sm text-gray-500">{t.suggestBody}</p>
+        </div>
+        <div className="w-full max-w-xs space-y-3">
+          {error && (
+            <p role="alert" className="text-red-500 text-sm">
+              {error}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={addPasskeyNow}
+            disabled={isPending}
+            className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
+          >
+            {isPending ? t.addingPasskey : t.addPasskey}
+          </button>
+          <button
+            type="button"
+            onClick={dismissPasskeySuggestion}
+            className="w-full px-4 py-2.5 text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+          >
+            {t.notNow}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (step === "code") {
     return (
@@ -226,7 +356,8 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
                   id="email"
                   type="email"
                   required
-                  autoComplete="email"
+                  // "webauthn" lets the browser offer passkeys here (conditional UI).
+                  autoComplete="username webauthn"
                   placeholder={t.emailPlaceholder.value}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -256,6 +387,18 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
                 <span className="px-2 bg-[var(--background)] text-gray-400">{t.otherWays}</span>
               </div>
             </div>
+
+            {passkeySupported && (
+              <button
+                type="button"
+                onClick={signInWithPasskey}
+                disabled={isPending}
+                className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+              >
+                <PasskeyIcon className="w-[18px] h-[18px]" />
+                <span>{t.signInWithPasskey}</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -332,6 +475,26 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
         )}
       </div>
     </div>
+  );
+}
+
+function PasskeyIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="9" cy="7" r="4" />
+      <path d="M2 21v-1a6 6 0 0 1 9.5-4.9" />
+      <circle cx="17.5" cy="13.5" r="2.5" />
+      <path d="M17.5 16v5l1.5-1.2M17.5 18.5h1.5" />
+    </svg>
   );
 }
 
