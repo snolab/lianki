@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { isoDay, longDate } from "@/lib/dates";
 
 export interface ReadMaterial {
   id: string;
@@ -82,7 +83,7 @@ export function ReadListClient({ isLoggedIn }: { isLoggedIn: boolean }) {
     if (!importText.trim()) return;
 
     const lines = parseLinesFromContent(importText);
-    const title = importTitle.trim() || `Import ${new Date().toLocaleDateString()}`;
+    const title = importTitle.trim() || `Import ${isoDay()}`;
 
     if (isLoggedIn) {
       try {
@@ -205,8 +206,7 @@ export function ReadListClient({ isLoggedIn }: { isLoggedIn: boolean }) {
               <Link href={`/read/${material.id}`} className="flex-1 min-w-0">
                 <h3 className="font-medium truncate">{material.title}</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {material.lines.length} lines &middot;{" "}
-                  {new Date(material.updatedAt).toLocaleDateString()}
+                  {material.lines.length} lines &middot; {longDate(material.updatedAt)}
                 </p>
               </Link>
               <button

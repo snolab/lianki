@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { longDateTime } from "@/lib/dates";
 
 type View = { email: string; tier: string; trialEndsAt: string | null; proEndsAt: string | null };
 
-const day = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
+const day = (iso: string | null) => (iso ? longDateTime(iso) : "—");
 
 /** Look an account up, see its tier and Pro end, then add days. */
 export default function GrantPro({ defaultEmail }: { defaultEmail: string }) {

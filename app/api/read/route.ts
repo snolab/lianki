@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { saveReadMaterial, listReadMaterials } from "@/lib/getReadMaterialsCollection";
+import { isoDay } from "@/lib/dates";
 
 // GET /api/read - List materials
 export async function GET(request: NextRequest) {
@@ -81,9 +82,7 @@ export async function POST(request: NextRequest) {
     .filter((line: string) => line.length > 0);
 
   const materialTitle =
-    typeof title === "string" && title.length > 0
-      ? title
-      : `Import ${new Date().toLocaleDateString()}`;
+    typeof title === "string" && title.length > 0 ? title : `Import ${isoDay()}`;
 
   const material = await saveReadMaterial(session.user.id, materialTitle, content, lines);
 

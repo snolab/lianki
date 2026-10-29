@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { longDate } from "@/lib/dates";
 
 // Serializable version of ReviewLog — dates may be Date objects or ISO strings
 type SerializedReviewLog = {
@@ -60,7 +61,7 @@ export function ReviewHistory({ logs = [] }: ReviewHistoryProps) {
             <span
               key={i}
               className={`inline-block w-1.5 h-3 ${RATING_COLORS[log.rating as keyof typeof RATING_COLORS]}`}
-              title={`${RATING_NAMES[log.rating as keyof typeof RATING_NAMES]} - ${new Date(log.review).toLocaleDateString()}`}
+              title={`${RATING_NAMES[log.rating as keyof typeof RATING_NAMES]} - ${longDate(log.review)}`}
             />
           ) : (
             <span key={i} className="inline-block w-1.5 h-3 opacity-0">
@@ -91,7 +92,7 @@ export function ReviewHistory({ logs = [] }: ReviewHistoryProps) {
                       {RATING_NAMES[log.rating as keyof typeof RATING_NAMES]}
                     </span>
                     <span className="text-gray-500 dark:text-gray-400">
-                      {date.toLocaleDateString()}{" "}
+                      {longDate(date)}{" "}
                       {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </div>
