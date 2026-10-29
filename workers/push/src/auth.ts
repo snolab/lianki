@@ -2,7 +2,7 @@
  * Who may open a debug socket (debug.ts). Kept out of index.ts: a Worker's
  * entry module may export only handlers and Durable Object classes.
  */
-import { type Identity, isUserId } from "../../../lib/dev-eval";
+import { type Identity, avatarUrl, isUserId } from "../../../lib/dev-eval";
 
 type Fetcher = { fetch(url: string, init?: RequestInit): Promise<Response> };
 
@@ -30,7 +30,14 @@ export async function debugIdentity(
     if (res.status !== 200) return null;
     const body = (await res.json()) as Partial<Record<keyof Identity, unknown>>;
     if (!isUserId(body.userId) || typeof body.email !== "string") return null;
-    return { userId: body.userId, email: body.email, owner: body.owner === true };
+    return {
+      userId: body.userId,
+      email: body.email,
+      owner: body.owner === true,
+      // For the chat's avatars; an older main Worker sends neither.
+      ...(typeof body.name === "string" && body.name ? { name: body.name } : {}),
+      ...(avatarUrl(body.image) ? { image: avatarUrl(body.image) } : {}),
+    };
   } catch {
     return null;
   }

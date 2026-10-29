@@ -67,10 +67,11 @@ mode (`?debug=1` on any page, or seven quick taps on /words' Settings button or 
 in localStorage) and the page is visible. lianki-push accepts the socket only
 if its Origin is `https://lianki.com` and the main Worker, asked over the
 `MAIN` service binding with the page's Cookie header, answers
-`/api/debug/identity` with `{userId, email, owner}` (`owner` is `isOwner()`
-on the session). A guest gets 401 there and 403 on the socket. lianki-push
-passes who it is to the hub in `x-debug-*` headers it sets itself (a page's
-own are overwritten, a sender's dropped). Signed-in non-owners are
+`/api/debug/identity` with `{userId, email, owner, name, image}` (`owner` is
+`isOwner()` on the session; `name` and `image` only draw the chat's avatars,
+docs/dev-debug-widget.md). A guest gets 401 there and 403 on the socket.
+lianki-push passes who it is to the hub in `x-debug-*` headers it sets itself
+(a page's own are removed first, a sender's dropped). Signed-in non-owners are
 **friends** (below): their own chat thread, nothing of the owner's.
 `/api/dev/whoami` stays the owner-only check (a 404 for anyone else). A page
 not in debug mode never connects; a refused one, or one the hub closed on
@@ -331,11 +332,11 @@ voice session (`packages/debug-chat/src/voice.ts`, kept on `globalThis` so the
 bundled `speakReply` in DebugEval and a hot-loaded chat share it; tested with
 fakes in `unit/voice-session.test.ts`):
 
-- *Queue.* Replies are split into sentences (after 。．！？ and closing
+- _Queue._ Replies are split into sentences (after 。．！？ and closing
   brackets; after . ! ? before a space or the end, so 3.14 stays whole; at
   every newline) and spoken one utterance per sentence, first in first out.
   A new reply waits behind the one being read; it never cuts it off.
-- *Echo, not a held mic* (`lk:voice-aec`, default on): the mic stays open
+- _Echo, not a held mic_ (`lk:voice-aec`, default on): the mic stays open
   while the agent speaks, and the echo is removed in layers, each tunable by
   a named constant: (1) the mic is opened with `echoCancellation`,
   `noiseSuppression` and `autoGainControl` (`AEC_CONSTRAINTS` in
@@ -356,9 +357,9 @@ fakes in `unit/voice-session.test.ts`):
   `localStorage["lk:voice-aec"] = "0"` brings back the old way: the mic holds
   capture while an utterance plays (VAD paused, what it hears dropped) and for
   400 ms after the last one ends, with the old constraints.
-- *Output* (`lk:voice-out`): `"speech"` (default) is the phone's own
+- _Output_ (`lk:voice-out`): `"speech"` (default) is the phone's own
   speechSynthesis. Its volume cannot change mid-utterance on iOS, so a duck
-  applies from the next sentence; and on iOS it is probably *not* in the
+  applies from the next sentence; and on iOS it is probably _not_ in the
   canceller's reference, so how much leaks through is exactly what the guard
   log measures. `"cloud"` fetches each sentence from `/api/words/tts`
   (MeloTTS, cached in R2 after the first time; `en es fr zh ja ko`; ≤ 200
@@ -370,11 +371,11 @@ fakes in `unit/voice-session.test.ts`):
   speechSynthesis instead, that sentence only. Cost: $0.0002 per audio
   minute (18.63 neurons), cache misses only — about 530 minutes of new
   replies a day fit in the free 10,000 neurons.
-- *iOS, honestly:* WebKit's echo canceller is expected to subtract media
+- _iOS, honestly:_ WebKit's echo canceller is expected to subtract media
   element / Web Audio output played by the same page while the mic is open,
   but neither mode has been verified on an iPhone yet. Measure before
   trusting it (below).
-- *Interruptions* stop the utterance and keep the place: the last word
+- _Interruptions_ stop the utterance and keep the place: the last word
   boundary the browser reported (`boundary` events), else the start of that
   utterance; a cloud clip resumes at its `currentTime`, 0.3 s early
   (`RESUME_REWIND_S`). A tap on the mic while the agent speaks releases

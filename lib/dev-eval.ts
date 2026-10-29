@@ -19,6 +19,10 @@ import {
 export {
   MAX_CHAT,
   allowLabel,
+  avatarUrl,
+  hashId,
+  senderOf,
+  type Sender,
   pageParts,
   pairSentence,
   pickLang,
@@ -68,7 +72,14 @@ export const BUSY_GRACE_MS = 1_500;
  * The owner's pages see the owner thread and owner pairings; anyone else
  * signed in is a "friend": their own thread, and only pairings made for them.
  */
-export type Identity = { userId: string; email: string; owner: boolean };
+export type Identity = {
+  userId: string;
+  email: string;
+  owner: boolean;
+  /** Display name and picture URL (better-auth's user.name / user.image), when known: the chat's avatars. */
+  name?: string;
+  image?: string;
+};
 
 /** A user id usable as a thread and a storage key: no separators, bounded. */
 export const isUserId = (v: unknown): v is string =>
