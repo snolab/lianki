@@ -120,6 +120,60 @@ try {
   const statusOf = async (i) => (await rows.nth(i).locator("span.tabular-nums").innerText()).trim();
   check((await statusOf(0)) === "new", `an ungraded new word says "new": ${await statusOf(0)}`);
 
+  // Glass: the list fills the window and scrolls under the toolbar and the
+  // help strip, which float over it fixed, translucent and blurred.
+  const glass = await page.evaluate(() => {
+    const list = document.querySelector('[role="list"]');
+    const bars = ["[data-words-top]", "[data-words-help]"].map((q) => {
+      const el = document.querySelector(q);
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      return {
+        fixed: cs.position === "fixed",
+        blur: /blur\(12px\)/.test(cs.backdropFilter || cs.webkitBackdropFilter || ""),
+        alpha: Number(/\/\s*([\d.]+)\s*\)$/.exec(cs.backgroundColor)?.[1] ?? 1),
+      };
+    });
+    const r = list.getBoundingClientRect();
+    return {
+      bars,
+      listFixed: getComputedStyle(list).position === "fixed",
+      full: Math.round(r.top) === 0 && Math.round(r.bottom) === innerHeight,
+      scrollPad: parseFloat(getComputedStyle(list).scrollPaddingTop),
+      tray: document.querySelectorAll('[role="list"] [data-empty-tray][aria-hidden="true"] svg')
+        .length,
+    };
+  });
+  check(
+    glass.bars.every((b) => b && b.fixed && b.blur && b.alpha < 0.7),
+    `the toolbar and the help strip are fixed glass overlays (${JSON.stringify(glass.bars)})`,
+  );
+  check(
+    glass.listFixed && glass.full && glass.scrollPad > 0,
+    `the list fills the window under the overlays, scroll-padded by them (${glass.scrollPad}px)`,
+  );
+  check(glass.tray === 2, `an empty tray fills the over-scroll at both ends (${glass.tray})`);
+  {
+    // Scrolled, a row passes under the toolbar: the bar covers the list.
+    const under = await page.evaluate(async () => {
+      const list = document.querySelector('[role="list"]');
+      const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
+      const before = list.scrollTop;
+      list.scrollTop = before + 120;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const covered = [...list.querySelectorAll('[role="listitem"]')].some((row) => {
+        const b = row.getBoundingClientRect();
+        return b.top < bar.bottom && b.bottom > bar.top;
+      });
+      list.scrollTop = before;
+      return { covered, doc: document.scrollingElement.scrollTop };
+    });
+    check(
+      under.covered && under.doc === 0,
+      `the list scrolls under the glass toolbar; the page itself never scrolls (${JSON.stringify(under)})`,
+    );
+  }
+
   // The term column is fitted to the terms on screen (6–20rem), one width for all rows.
   const termW = await page
     .locator('[role="list"]')
@@ -627,13 +681,15 @@ try {
           `${tag} hints follow the last input: touch, keyboard, touch (${seeded} → ${typed} → ${touched})`,
         );
       }
-      const listTop = await m
-        .locator('[role="list"]')
-        .evaluate((el) => el.getBoundingClientRect().top);
+      // The list runs under the glass toolbar; it opens with the first word
+      // just below it, not behind it.
+      const barBottom = await m
+        .locator("[data-words-top]")
+        .evaluate((el) => el.getBoundingClientRect().bottom);
       const firstTop = (await mrows.nth(0).boundingBox()).y;
       check(
-        Math.abs(firstTop - listTop) < 50,
-        `${tag} the list opens with the first word at the top (${Math.round(firstTop - listTop)}px)`,
+        firstTop >= barBottom - 2 && firstTop - barBottom < 50,
+        `${tag} the list opens with the first word just under the toolbar (${Math.round(firstTop - barBottom)}px)`,
       );
       // Parity: the face of a slip — the row itself (A) or the scroller's
       // face (B) — carries the same paper, node line, seam and cords.
@@ -829,10 +885,49 @@ try {
         `${tag} the grade strip sits under the slid row (${under})`,
       );
       await m.waitForTimeout(400);
+      if (variant === "js") {
+        // The reveal: the far detent's grade replaces the first one's in the
+        // same spot (Good → Easy, Hard → Again), and going back restores it.
+        const listTop = (await m.locator('[role="list"]').boundingBox()).y;
+        let b = null;
+        for (let i = 0; !b; i++) {
+          const bi = await mrows.nth(i).boundingBox();
+          if (bi && bi.y > listTop + 200) b = bi;
+        }
+        const [x, y] = [b.x + b.width / 2, b.y + b.height / 2];
+        const shown = () =>
+          m.evaluate(() => {
+            const u = document.querySelector("[data-swipe-underlay]");
+            const side = (slot) =>
+              [...u.querySelectorAll(`[data-reveal-slot="${slot}"] > [data-reveal]`)]
+                .filter((el) => Number(getComputedStyle(el).opacity) > 0.5)
+                .map((el) => el.textContent)
+                .join("+");
+            return `${side("hard")}|${side("good")}`;
+          });
+        await m.mouse.move(x, y);
+        await m.mouse.down();
+        const seen = [];
+        for (const dx of [48, 96, 48, -48, -96, -48]) {
+          await m.mouse.move(x + dx, y, { steps: 10 });
+          await m.waitForTimeout(250);
+          seen.push(await shown());
+        }
+        await m.mouse.move(x, y, { steps: 10 });
+        await m.mouse.up();
+        await m.waitForTimeout(600);
+        check(
+          seen.join(" ") === "Hard|Good Hard|Easy Hard|Good Hard|Good Again|Good Hard|Good",
+          `${tag} a far detent's grade replaces the first one's in place, and back (${seen.join(" ")})`,
+        );
+      }
       if (process.env.QA_SHOTS) {
         // Mid-swipe, held on each level, then back to rest (no grade): a
         // finger held down — a pointer for A, a real touch for B.
-        const listTop = (await m.locator('[role="list"]').boundingBox()).y;
+        // Below the glass toolbar, where the list's own top is now the window's.
+        const listTop = await m
+          .locator("[data-words-top]")
+          .evaluate((el) => el.getBoundingClientRect().bottom);
         let b = null;
         for (let i = 0; !b; i++) {
           const bi = await mrows.nth(i).boundingBox();
