@@ -49,7 +49,7 @@ export default async function RootLayout({
         />
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&family=Zen+Antique&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&family=Zen+Antique&family=Cormorant+Garamond:wght@500;600&display=swap"
         />
         {/* The paper skin is per device; set it before first paint so the page
             never flashes the default. Key: PAPER_KEY in PaperSkinPicker. */}

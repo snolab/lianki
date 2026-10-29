@@ -26,7 +26,14 @@ export default function HomeClient({
   isLoggedIn: boolean;
 }) {
   const t = useIntlayer("nav-home");
-  const nav = useIntlayer("app-shell").nav as unknown as Record<string, { value: string }>;
+  // Nav labels live in two dictionaries, as in the app shell: landing-page
+  // has learn / aiVocab / polyglot / roadmap, app-shell the rest.
+  const landingNav = useIntlayer("landing-page").nav as unknown as Record<
+    string,
+    { value: string }
+  >;
+  const shellNav = useIntlayer("app-shell").nav as unknown as Record<string, { value: string }>;
+  const nav = { ...landingNav, ...shellNav };
   const [words, setWords] = useState<{ lists: number; due: number } | null>(null);
 
   useEffect(() => {

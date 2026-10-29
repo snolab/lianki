@@ -43,6 +43,18 @@
   --font-antique: "Zen Antique", "LXGW WenKai TC", serif;
 }
 
+/* Cyrillic pages: the Japanese display fonts carry Cyrillic as full-width
+   glyphs, so Russian headings came out spaced letter by letter. A serif with
+   real Cyrillic takes over the display faces there (loaded in app/layout.tsx;
+   only these pages use it, so others never download it). */
+:root:lang(ru),
+:root:lang(uk),
+[lang|="ru"],
+[lang|="uk"] {
+  --font-brush: "Cormorant Garamond", "LXGW WenKai TC", serif;
+  --font-antique: "Cormorant Garamond", "LXGW WenKai TC", serif;
+}
+
 :root {
   /* Seal red (印泥) — the brand colour, as in public/icon.svg. */
   --brand: oklch(0.53 0.207 22.3);
