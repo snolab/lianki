@@ -311,17 +311,16 @@ try {
     ttsStatus.join() === "404,400,400",
     `word audio: no voice → 404, bad text → 400 (${ttsStatus.join()})`,
   );
-  // The installed app has no address bar: seven quick taps on the stats line
-  // toggle the debug log instead.
-  const stats = page.locator("span", { hasText: /done ·/ }).last();
-  for (let k = 0; k < 7; k++) await stats.click();
+  // The installed app has no address bar: seven quick taps on the Settings
+  // button toggle the debug log instead (the stats line stays selectable text).
+  const gear = page.getByRole("button", { name: "Settings" });
+  for (let k = 0; k < 7; k++) await gear.click();
   check((await page.locator("[data-debug-badge]").count()) === 1, "seven taps turn debug on");
   check(
     (await page.locator('[data-debug-proto="slip"][href="/proto/slip"]').count()) === 1,
     "debug mode links the design prototypes",
   );
-  // On the badge's corner: the prototype links sit on this line too now.
-  for (let k = 0; k < 7; k++) await stats.click({ position: { x: 4, y: 4 } });
+  for (let k = 0; k < 7; k++) await gear.click();
   check((await page.locator("[data-debug-badge]").count()) === 0, "seven more turn it off");
 
   // /learn speaks the page's language (it used to be English-only) and links

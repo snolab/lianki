@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useIntlayer } from "next-intlayer/server";
 import { appHref } from "@/lib/app-locale";
 import { appLocale } from "@/lib/app-locale.server";
+import { longDate } from "@/lib/dates";
 
 export default async function PolyglotLayout({ children }: { children: React.ReactNode }) {
   const content = useIntlayer("polyglot-layout");
@@ -65,7 +66,7 @@ export default async function PolyglotLayout({ children }: { children: React.Rea
     <div className="min-h-screen">
       {membership.tier === "trial" && membership.trialEndsAt && (
         <div className="bg-yellow-500 text-black px-4 py-2 text-center text-sm font-medium">
-          {content.banner.trialExpires.value} {membership.trialEndsAt.toLocaleDateString()} —{" "}
+          {content.banner.trialExpires.value} {longDate(membership.trialEndsAt)} —{" "}
           <Link href={appHref("/membership", locale)} className="underline">
             {content.banner.upgradeToPro.value}
           </Link>
@@ -73,7 +74,7 @@ export default async function PolyglotLayout({ children }: { children: React.Rea
       )}
       {membership.tier === "pro" && membership.proEndsAt && (
         <div className="bg-green-600 text-white px-4 py-2 text-center text-sm font-medium">
-          {content.banner.proMemberUntil.value} {membership.proEndsAt.toLocaleDateString()}
+          {content.banner.proMemberUntil.value} {longDate(membership.proEndsAt)}
         </div>
       )}
       {children}

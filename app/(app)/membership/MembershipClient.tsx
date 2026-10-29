@@ -6,6 +6,7 @@ import { useIntlayer } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import { PASSES, type PassId } from "@/lib/payments/passes";
 import { InviteCard } from "./InviteCard";
+import { longDate } from "@/lib/dates";
 
 const yen = (n: number) =>
   new Intl.NumberFormat(undefined, { style: "currency", currency: "JPY" }).format(n);
@@ -159,14 +160,12 @@ export default function MembershipClient() {
               </div>
               {membership.tier === "trial" && membership.trialEndsAt && (
                 <div className="text-sm text-gray-600 dark:text-gray-400">
-                  {currentStatus.trialExpires.value}{" "}
-                  {new Date(membership.trialEndsAt).toLocaleDateString()}
+                  {currentStatus.trialExpires.value} {longDate(membership.trialEndsAt)}
                 </div>
               )}
               {membership.tier === "pro" && membership.proEndsAt && (
                 <div className="text-sm text-gray-600 dark:text-gray-400">
-                  {currentStatus.activeUntil.value}{" "}
-                  {new Date(membership.proEndsAt).toLocaleDateString()}
+                  {currentStatus.activeUntil.value} {longDate(membership.proEndsAt)}
                 </div>
               )}
             </div>

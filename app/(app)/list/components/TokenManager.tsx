@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { longDate } from "@/lib/dates";
 
 type Token = { id: string; name: string; createdAt: string };
 
@@ -74,10 +75,7 @@ export default function TokenManager() {
         {tokens.map((t) => (
           <li key={t.id} className="flex items-center justify-between gap-4 text-sm">
             <span>
-              {t.name}{" "}
-              <span className="text-gray-400 text-xs">
-                · {new Date(t.createdAt).toLocaleDateString()}
-              </span>
+              {t.name} <span className="text-gray-400 text-xs">· {longDate(t.createdAt)}</span>
             </span>
             <button
               onClick={() => revoke(t.id)}

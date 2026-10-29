@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Icon, type IconName } from "@/app/components/icons";
+import { longDateTime } from "@/lib/dates";
 
 type Props = {
   /** MongoDB card count. Pass null/undefined for guest (no cloud storage). */
@@ -30,7 +31,7 @@ function UserscriptBox({ status }: { status: UserscriptStatus | null }) {
   return (
     <div
       className="flex flex-col items-center border border-blue-300 dark:border-blue-700 rounded-md px-3 py-2 min-w-[64px] text-center"
-      title={`Last sync: ${new Date(status.lastSync).toLocaleString()}`}
+      title={`Last sync: ${longDateTime(status.lastSync)}`}
     >
       <Icon name="puzzlePiece" className="text-lg mb-0.5" />
       <span className="text-xs text-gray-500 dark:text-gray-400">Extension</span>

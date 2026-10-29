@@ -469,8 +469,8 @@ const SPEECH_TAG: Record<string, string> = {
 };
 
 /**
- * The installed app has no address bar for ?debug=1: seven quick taps on the
- * stats line toggle it instead. Returns [on, tap].
+ * The installed app has no address bar for ?debug=1: seven quick taps on
+ * the Settings button toggle it instead. Returns [on, tap].
  */
 function useDebugToggle(onChange: (on: boolean) => void): [boolean, () => void] {
   const [on, setOn] = useState(false);
@@ -2479,7 +2479,12 @@ function Study({
               ? "bg-black/20 dark:bg-white/25"
               : "bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
           }`}
-          onClick={() => setSettings((v) => !v)}
+          onClick={() => {
+            setSettings((v) => !v);
+            // Seven quick toggles turn the debug log on or off (the installed
+            // app has no address bar for ?debug).
+            debugTap();
+          }}
           aria-expanded={settings}
           aria-label="Settings"
         >
@@ -2496,12 +2501,7 @@ function Study({
             Undo
           </button>
         )}
-        {/* Seven quick taps toggle debug: unselectable, or Android's
-            double-tap selects the words instead of counting the taps. */}
-        <span
-          className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm select-none touch-manipulation"
-          onClick={debugTap}
-        >
+        <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
           {debug && (
             <>
               <span className="mr-1 rounded bg-red-700 px-1 text-white" data-debug-badge>
@@ -2509,13 +2509,7 @@ function Study({
               </span>
               {/* Design prototypes, to try on the device itself. */}
               {["slip", "cords"].map((p) => (
-                <a
-                  key={p}
-                  href={`/proto/${p}`}
-                  data-debug-proto={p}
-                  className="mr-1 underline"
-                  onClick={(e) => e.stopPropagation()}
-                >
+                <a key={p} href={`/proto/${p}`} data-debug-proto={p} className="mr-1 underline">
                   proto/{p}
                 </a>
               ))}
