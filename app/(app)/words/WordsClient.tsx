@@ -425,6 +425,24 @@ const SPEECH_TAG: Record<string, string> = {
   en: "en-US",
 };
 
+/**
+ * Remote debugging: /words?debug=1 turns it on for this device (debug=0 off),
+ * and what speech decides is posted to /api/dev/log — the Worker logs, for
+ * the owner only.
+ */
+function devLog(event: Record<string, unknown>) {
+  try {
+    const q = new URLSearchParams(location.search).get("debug");
+    if (q !== null) localStorage.setItem("lk:debug", q === "1" ? "1" : "0");
+    if (localStorage.getItem("lk:debug") !== "1") return;
+    void fetch("/api/dev/log", {
+      method: "POST",
+      body: JSON.stringify({ at: new Date().toISOString(), ...event }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {}
+}
+
 /** `serverVoice`: always use the server's recordings, never the browser's. */
 function useSpeech(serverVoice = false) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -511,6 +529,15 @@ function useSpeech(serverVoice = false) {
       const r = await fetch(
         `/api/words/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}`,
       ).catch(() => null);
+      devLog({
+        ev: "server",
+        lang,
+        text,
+        status: r?.status ?? "network",
+        voice: r?.headers.get("X-Voice"),
+        type: r?.headers.get("Content-Type"),
+        bytes: r?.headers.get("Content-Length"),
+      });
       if (!r?.ok) {
         // X-Voice: miss — only this text has no recording; the language does.
         if (r && (r.status === 404 || r.status === 503) && r.headers.get("X-Voice") !== "miss")
@@ -545,6 +572,7 @@ function useSpeech(serverVoice = false) {
       const u = new SpeechSynthesisUtterance(text);
       u.voice = voice;
       u.lang = voice.lang;
+      devLog({ ev: "browser", lang, text, voice: voice.name, voiceLang: voice.lang });
       u.rate = 0.9;
       // Never started (no engine behind the API) or failed outright: the
       // server speaks this language from now on.
@@ -577,6 +605,14 @@ function useSpeech(serverVoice = false) {
   const speak = useCallback(
     (text: string, lang: string, then?: () => void, force = false) => {
       if ((!on && !force) || !text) return;
+      devLog({
+        ev: "speak",
+        lang,
+        text,
+        serverVoice,
+        serverDead: [...serverDead.current],
+        browserDead: [...browserDead.current],
+      });
       // The server voice by default: browser voices can mislead (Japanese read
       // in a Chinese accent). The browser speaks only where the server can't —
       // a language it has no voice for, the rate limit, offline.

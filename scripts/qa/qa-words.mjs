@@ -286,6 +286,12 @@ try {
     ttsStatus.join() === "404,400,400",
     `word audio: no voice → 404, bad text → 400 (${ttsStatus.join()})`,
   );
+  // The owner's remote-debug log is the owner's alone.
+  const devLog = await page.request.post(`${new URL(page.url()).origin}/api/dev/log`, {
+    data: "{}",
+  });
+  check(devLog.status() === 404, `the debug log is owner-only (${devLog.status()})`);
+
   // A language with pre-rendered clips but none for this text: a 404 the
   // client must not take as "no voice for Italian".
   const miss = await page.request.get(
