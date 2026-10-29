@@ -33,6 +33,7 @@ import {
 } from "./float-lines";
 import { Icon } from "./icons";
 import { LINE_HALO, logSurface } from "./log-surface";
+import { type AnchorSide, placeBox } from "./anchor";
 import { TreeFragment, useTreeSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import type { Frontier } from "./frontier-view";
@@ -52,6 +53,8 @@ const END_CONFIRM_MS = 3_000;
 const DRAG_HINT = "drag: move · tap: minimize · double-tap: menu";
 /** The mark's gestures, for its title and aria-description. */
 const MARK_HINT = "Tap: minimize or restore · double-tap: menu · drag: move the chat";
+const ALIGN_ITEMS = { left: "items-start", center: "items-center", right: "items-end" } as const;
+const TEXT_ALIGN = { left: "left", center: "center", right: "right" } as const;
 /** Wide enough for the tree and the log side by side. */
 const WIDE_QUERY = "(min-width: 768px)";
 /**
@@ -171,6 +174,21 @@ function useDrag() {
     holding,
     fit,
   };
+}
+
+/** env(safe-area-inset-left/right) in px (a landscape notch). */
+function safeSides() {
+  const probe = document.createElement("div");
+  probe.style.cssText =
+    "position:fixed;visibility:hidden;padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)";
+  document.body.append(probe);
+  const cs = getComputedStyle(probe);
+  const v = {
+    left: Number.parseFloat(cs.paddingLeft) || 0,
+    right: Number.parseFloat(cs.paddingRight) || 0,
+  };
+  probe.remove();
+  return v;
 }
 
 /** env(safe-area-inset-top) in px (the notch), measured once per drag. */
@@ -350,6 +368,62 @@ export function DebugChat({
   const twoCol = open && tree && wide;
   // Expanding, minimizing or widening refits (fit itself is fresh each render).
   useLayoutEffect(() => fit(root.current, open), [open, twoCol]);
+  /** The floating box's side and left edge (px from the bar row's left), anchor.ts. */
+  const [place, setPlace] = useState<{ side: AnchorSide; left: number }>({
+    side: "left",
+    left: 0,
+  });
+  const rowBox = useRef<HTMLDivElement | null>(null);
+  const barEl = useRef<HTMLDivElement | null>(null);
+  const floatBox = useRef<HTMLDivElement | null>(null);
+  const placeRef = useRef(() => {});
+  placeRef.current = () => {
+    const bar = barEl.current?.getBoundingClientRect();
+    const row = rowBox.current?.getBoundingClientRect();
+    if (!bar || !row) return;
+    const { left: insetLeft, right: insetRight } = safeSides();
+    const p = placeBox({
+      barLeft: bar.left,
+      barRight: bar.right,
+      boxWidth: floatBox.current?.getBoundingClientRect().width ?? 0,
+      vw: document.documentElement.clientWidth || innerWidth,
+      insetLeft,
+      insetRight,
+    });
+    const next = { side: p.side, left: p.left - row.left };
+    setPlace((cur) => (cur.side === next.side && cur.left === next.left ? cur : next));
+  };
+  // Re-placed when what it holds changes, after a drag, and on any resize
+  // (window, rotation, the visual viewport, the box's own size). All events.
+  useLayoutEffect(() => placeRef.current());
+  useEffect(() => {
+    const again = () => {
+      placeRef.current();
+      fitRef.current();
+    };
+    addEventListener("resize", again);
+    addEventListener("orientationchange", again);
+    visualViewport?.addEventListener("resize", again);
+    return () => {
+      removeEventListener("resize", again);
+      removeEventListener("orientationchange", again);
+      visualViewport?.removeEventListener("resize", again);
+    };
+  }, []);
+  /** The box comes and goes: a ref callback watches each one's size. */
+  const boxRo = useRef<ResizeObserver | null>(null);
+  const setFloatBox = (el: HTMLDivElement | null) => {
+    if (floatBox.current === el) return;
+    boxRo.current?.disconnect();
+    floatBox.current = el;
+    if (el && typeof ResizeObserver !== "undefined") {
+      boxRo.current = new ResizeObserver(() => placeRef.current());
+      boxRo.current.observe(el);
+    }
+  };
+  /** Keeps the box on screen (fit) on a resize: wide two columns too. */
+  const fitRef = useRef(() => {});
+  fitRef.current = () => fit(root.current, open);
   /** The tree's scroll, kept across the sheet ⇄ column switch. */
   const treeScroll = useRef(0);
   /** Until the host passes `renderTree`: the dev fragment at lk:tree-src (TreeFragment.tsx). */
@@ -935,6 +1009,46 @@ export function DebugChat({
       </div>
     </div>
   );
+  const floatsEl = floats.length > 0 && (
+        // Minimized: the lines that arrived (or a scrub brought back), newest
+        // at the bottom, each fading on its own. Hover or touch holds them.
+        <ol
+          data-testid="debug-chat-floats"
+          aria-live="polite"
+          className={`flex flex-col gap-0.5 ${ALIGN_ITEMS[place.side]}`}
+        >
+          {floats.map((m) => (
+            <FloatLine
+              key={m.id}
+              m={m}
+              epoch={floatEpoch}
+              paused={floatHover || scrubbing}
+              onHover={setFloatHover}
+              onGone={() => dropFloat(m.id)}
+            />
+          ))}
+        </ol>
+  );
+  /**
+   * Minimized: the floating lines, the frontier and the tree hang over the
+   * bar in one box, on the bar's side of the screen (anchor.ts), clamped
+   * inside the viewport.
+   */
+  const floatBoxEl = !open && (floats.length > 0 || !!frontier || tree) && (
+    <div
+      ref={setFloatBox}
+      data-testid="debug-chat-float-box"
+      data-side={place.side}
+      style={{ left: place.left, textAlign: TEXT_ALIGN[place.side] }}
+      className={`pointer-events-none absolute bottom-full mb-1 flex w-max max-w-[min(20rem,calc(100vw-16px))] flex-col gap-1 ${ALIGN_ITEMS[place.side]}`}
+    >
+      {tree && treePanel(false)}
+      {floatsEl}
+      {frontier && (
+        <FrontierLines frontier={frontier} renderAvatar={renderAvatar} align={place.side} />
+      )}
+    </div>
+  );
   /** The menu (a double tap on the mark), open or minimized. */
   const menuEl = menu && (
     <div
@@ -1109,27 +1223,7 @@ export function DebugChat({
       style={offset}
       className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 transition-opacity ${twoCol ? `w-[min(44rem,calc(100vw-1rem))] ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} ${TWO_COL}` : `flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"}`} pointer-events-none lk-halo text-xs text-gray-800 dark:text-gray-100`}
     >
-      {!open && floats.length > 0 && (
-        // Minimized: the lines that arrived (or a scrub brought back), newest
-        // at the bottom, each fading on its own. Hover or touch holds them.
-        <ol
-          data-testid="debug-chat-floats"
-          aria-live="polite"
-          className="mb-1 flex flex-col items-start gap-0.5"
-        >
-          {floats.map((m) => (
-            <FloatLine
-              key={m.id}
-              m={m}
-              epoch={floatEpoch}
-              paused={floatHover || scrubbing}
-              onHover={setFloatHover}
-              onGone={() => dropFloat(m.id)}
-            />
-          ))}
-        </ol>
-      )}
-      {tree && treePanel(twoCol)}
+      {open && tree && treePanel(twoCol)}
       <ol
         ref={log}
         data-testid="debug-chat-log"
@@ -1179,7 +1273,6 @@ export function DebugChat({
           </li>
         ))}
       </ol>
-      {!open && frontier && <FrontierLines frontier={frontier} renderAvatar={renderAvatar} />}
       {open && warning && (
         <div
           role="alert"
@@ -1195,10 +1288,16 @@ export function DebugChat({
       bar's and a spacer's, trading 1fr ⇄ 0fr: minimized, the bar's column is
       only as wide as its controls (the input's slot is 0 wide). */}
       <div
+        ref={rowBox}
         // 180 ms; reduced motion switches at once.
         className="relative grid transition-[grid-template-columns] duration-[180ms] ease-out motion-reduce:transition-none"
-        // Expanded: measure the input again at its full width.
-        onTransitionEnd={(e) => e.target === e.currentTarget && fitInput()}
+        // Settled: measure the input again at its full width, and place the
+        // floating box against the bar's final size.
+        onTransitionEnd={(e) => {
+          if (e.target !== e.currentTarget) return;
+          fitInput();
+          placeRef.current();
+        }}
         style={{ gridTemplateColumns: open ? "1fr 0fr" : "0fr 1fr" }}
       >
         {open && scrolledUp && (
@@ -1235,6 +1334,7 @@ export function DebugChat({
         read-aloud, pages, sessions); its dot is the connection. No End chat
         here: the chat hibernates and wakes by itself. */}
         <div
+          ref={barEl}
           data-debug-chat-row
           data-testid="debug-chat-pill"
           data-debug-chat-pill
@@ -1410,6 +1510,7 @@ export function DebugChat({
           )}
         </div>
         <span aria-hidden />
+        {floatBoxEl}
         {menuEl}
       </div>
     </section>

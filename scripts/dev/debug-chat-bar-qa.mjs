@@ -729,6 +729,98 @@ try {
     await audioBrowser.close();
   }
 
+  // The floating box hangs on the bar's side: right, left, centre; always on screen.
+  {
+    const { ctx, page } = await open("?min");
+    await page.evaluate(() => window.__push("a short reply"));
+    await page.waitForSelector('[data-testid="debug-chat-float"]');
+    const dragBarTo = async (targetCenter) => {
+      const m = await page.locator('[data-testid="debug-chat-pill-min"]').boundingBox();
+      const bar = await page.locator('[data-testid="debug-chat-pill"]').boundingBox();
+      const dx = targetCenter - (bar.x + bar.width / 2);
+      await page.mouse.move(m.x + m.width / 2, m.y + m.height / 2);
+      await page.mouse.down();
+      for (let i = 1; i <= 10; i++)
+        await page.mouse.move(m.x + m.width / 2 + (dx * i) / 10, m.y + m.height / 2);
+      await page.mouse.up();
+      await page.waitForTimeout(500); // past the double-tap window
+    };
+    const measure = () =>
+      page.evaluate(() => {
+        const r = (s) => document.querySelector(s).getBoundingClientRect();
+        const box = r('[data-testid="debug-chat-float-box"]');
+        const bar = r('[data-testid="debug-chat-pill"]');
+        const el = document.querySelector('[data-testid="debug-chat-float-box"]');
+        return {
+          side: el.dataset.side,
+          align: getComputedStyle(el).textAlign,
+          box: { l: box.left, r: box.right },
+          bar: { l: bar.left, r: bar.right },
+          vw: document.documentElement.clientWidth,
+        };
+      });
+    const inside = (m) => m.box.l >= 8 - 0.5 && m.box.r <= m.vw - 8 + 0.5;
+    await dragBarTo(390);
+    let m = await measure();
+    check(
+      // Right edges together, unless the gutter clamps it.
+      m.side === "right" &&
+        Math.abs(m.box.r - Math.min(m.bar.r, m.vw - 8)) < 1.5 &&
+        m.align === "right" &&
+        inside(m),
+      `bar right: right edges together, text right, on screen (${JSON.stringify(m)})`,
+    );
+    await dragBarTo(0);
+    m = await measure();
+    check(
+      m.side === "left" &&
+        Math.abs(m.box.l - Math.max(m.bar.l, 8)) < 1.5 &&
+        m.align === "left" &&
+        inside(m),
+      `bar left: left edges together, text left, on screen (${JSON.stringify(m)})`,
+    );
+    await dragBarTo(195);
+    m = await measure();
+    check(
+      m.side === "center" &&
+        Math.abs((m.box.l + m.box.r) / 2 - (m.bar.l + m.bar.r) / 2) < 1.5 &&
+        inside(m),
+      `bar in the middle: centred, on screen (${JSON.stringify(m)})`,
+    );
+    // The tree, minimized, with the bar at the right edge: fully on screen.
+    await dragBarTo(390);
+    await page.click('[data-testid="debug-chat-tree-button"]');
+    await page.waitForTimeout(400);
+    const t = await page.evaluate(() => {
+      const tree = document
+        .querySelector('[data-testid="debug-chat-tree"]')
+        .getBoundingClientRect();
+      return { l: tree.left, r: tree.right, vw: document.documentElement.clientWidth };
+    });
+    check(
+      t.l >= 7.5 && t.r <= t.vw - 7.5,
+      `bar right, tree open: the tree is fully on screen (${JSON.stringify(t)})`,
+    );
+    await ctx.close();
+  }
+  // Wide two columns with the box dragged right: clamped on screen.
+  {
+    const { ctx, page } = await open("?open", "light", 1024, 768);
+    await page.click('[data-testid="debug-chat-tree-button"]');
+    await page.waitForTimeout(400);
+    await page.setViewportSize({ width: 800, height: 768 });
+    await page.waitForTimeout(400);
+    const w = await page.evaluate(() => {
+      const r = document.querySelector("[data-debug-chat]").getBoundingClientRect();
+      return { l: r.left, r: r.right, vw: document.documentElement.clientWidth };
+    });
+    check(
+      w.l >= -0.5 && w.r <= w.vw + 0.5,
+      `two columns stay on screen after a resize (${JSON.stringify(w)})`,
+    );
+    await ctx.close();
+  }
+
   // Minimizing floats the latest message for its dwell, from the tap, then fades it.
   {
     const { ctx, page } = await open("?open");

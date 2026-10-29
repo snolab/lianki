@@ -104,15 +104,18 @@ function AgentId({ id }: { id: string }) {
 export function FrontierLines({
   frontier,
   renderAvatar,
+  align = "left",
 }: {
   frontier: Frontier;
   renderAvatar?: RenderAvatar;
+  /** The side the box hangs on (anchor.ts): the lines line up with it. */
+  align?: "left" | "center" | "right";
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const rows = FRONTIER_ROWS.filter((r) => frontier[r.key]?.text);
   if (!rows.length) return null;
   return (
-    <ul data-testid="debug-chat-frontier" className="mb-1 flex list-none flex-col items-start gap-0.5">
+    <ul data-testid="debug-chat-frontier" className={`flex list-none flex-col gap-0.5 ${align === "right" ? "items-end" : align === "center" ? "items-center" : "items-start"}`}>
       {rows.map((r) => {
         const line = frontier[r.key];
         if (!line) return null;
