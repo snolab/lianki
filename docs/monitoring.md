@@ -78,12 +78,36 @@ purpose (4xxx), does not retry until the next visibility or debug event.
 
 **Sending side — pairing, no stored secret.** The sender opens
 `wss://lianki.com/api/version/debug/control?label=…` with no credentials
-(a browser can't: any `Origin` header is refused). It can do nothing until
-the owner answers the prompt that appears on every open debug page:
-"<label> wants to run code on your debug pages", with a 4-hex code the
-sender prints too. **Allow for 1 hour** approves that one socket; **Deny**,
-the session pill's **End**, the hour running out, or the socket closing ends
-it. One pairing may wait at a time (2 minutes at most), so prompts cannot be
+(a browser can't: any `Origin` header is refused). The sender declares what
+it wants with `&scope=chat` (the `chat` listener) or `&scope=eval` (`serve`
+and one-shot evals; the default). It can do nothing until the owner answers
+the **pairing modal** (`app/components/DebugPairModal.tsx`). The modal covers
+at least half the screen on every open page of its audience, so on both
+devices, and answering on one closes it everywhere. It shows the
+requester's label, the 4-hex code the sender prints too, one sentence of what
+Allow grants ("<label> wants to run code on your debug pages for 1 hour" /
+"… wants to chat with you for 30 days"), the audience's open pages with a
+checkbox each (path, device hint; only this page ticked at first), and large
+buttons: **Authorize this page** (or "Authorize N pages" / "Authorize all
+pages", following the ticks), **Authorize all pages**, and **Deny**. There is
+no scope choice on the page: Allow grants what was asked for. An eval request
+gets eval and chat for 1 hour on that socket; a chat request gets the 30-day
+grant below. (A page from before still sends `scope:"chat"`, and that still
+counts.)
+
+**Which pages.** `{type:"allow", pair, pages}` carries page ids or `"all"`. A
+page id is the tab's own (`lk:debug-tab` in sessionStorage, sent as `&tab=`),
+so a reload keeps it. The hub grants exactly the ids of this audience's open
+pages. With none valid, only the answering page is granted. Only `"all"` also
+covers pages that connect later, and a page from before that sends no `pages`
+means `"all"`. A page-scoped pairing's evals, busy beats and live `say`
+replies (so also read-aloud) reach those pages only; history stays per
+thread. Another page can join later with "Add this page" in the grip menu
+(the same `allow` sent for an approved pairing), and for a chat grant that is
+saved with the grant, so resumed `say` sockets keep it. If every page an eval
+pairing was granted is gone, its next eval gets `{type:"error"}` and the
+socket closes (4404) so the sender pairs again. **Deny**, **End**, the hour
+running out, or the socket closing ends a pairing. One pairing may wait at a time (2 minutes at most), so prompts cannot be
 spammed; with no debug page open the sender is turned away at once.
 
 **Running.** The approved sender sends `{type:"eval", code, target?}`; the
@@ -139,13 +163,14 @@ one Durable Object storage key each (`msg:<seq>`) — and broadcasts
 gets `{type:"history", messages}` on connect, a sender on approval, so a
 reload, a second device or a reconnecting listener sees what it missed.
 
-**Scopes.** The pairing prompt has two answers. **Allow for 1 hour** = eval
-and chat on that socket. **Allow chat for 30 days** = chat only: the sender
+**Scopes.** An eval pairing (1 hour) = eval and chat on that socket. A chat
+pairing (`chat` asks with `scope=chat`; 30 days) = chat only: the sender
 hears the owner's messages and may `say`, but an eval is refused. It is the
 one that survives reconnects: the hub hands the sender a random 256-bit
 **grant token** once, and keeps only its SHA-256 (`grant:<hash>` →
-`{label, until}`). A sender that connects with the header `x-debug-token:
-<token>` is back in chat scope without a prompt (even with no page open)
+`{label, until, pages?}`). A sender that connects with the header `x-debug-token:
+<token>` (or `x-liagent-token`, the liagent CLI's name for it; if both are
+sent they must match, else 400) is back in chat scope without a prompt (even with no page open)
 until the grant expires; a wrong or lapsed token is closed with 4498. The CLI
 keeps the token in `.debug-chat-token.json` at the root of the main checkout
 (gitignored, mode 600; `LIANKI_CHAT_TOKEN_FILE` overrides). **End** on the
@@ -161,7 +186,7 @@ has no pill: it lapses after 30 days, or ends at once by deleting the file
 ```bash
 # Listen (in the background): one JSON line per new owner message on stdout
 # — {"type":"chat","id","text","at","label"} — also appended to --out. The
-# first time it prints {"type":"pending","code"}: tap "Allow chat for 30 days".
+# first time it prints {"type":"pending","code"}: tap Authorize in the modal.
 bun scripts/dev/eval.ts chat --label "agent on $(hostname -s)" --out /tmp/lianki-chat.jsonl
 
 # Reply (uses the saved grant; exits once the hub has it):
@@ -171,6 +196,97 @@ echo "multi-line reply" | bun scripts/dev/eval.ts say -
 
 The listener reconnects whenever its socket closes, backing off from 1 s to
 a minute; no timer touches the network otherwise.
+
+**Page moves.** The page's socket lives in the root layout, so it outlives
+client-side navigation. On a route change (`usePathname`, plus `popstate` /
+`hashchange`), settled for 300 ms, the page sends `{type:"page", label}`; the
+hub relabels that socket alone (so later chat lines, eval `--target` and the
+session listing carry the current path) and sends the listeners
+`{type:"page-changed", label, thread, email?, at}`, which `chat` prints as a
+JSON line. Silent on the page, never stored, never in the chat log. A
+friend's page can only relabel its own socket.
+
+**The grip and its menu.** The ⠿ grip (2.25rem wide) shows
+`pages·sessions` under the glyph (e.g. `2·1`; the aria-label spells out "2
+pages · 1 session"), and its dot is green while the socket is live. Double
+tap opens the menu. The menu lists every open debug page of this chat (the
+owner's own, or a friend's own: the hub's `state` carries `pages: [{id,
+label, at}]` and `self`, rebroadcast when a page connects, leaves or moves).
+Each row shows the path and a device hint ("pwa · Android", "iPhone"). Tapping
+a row opens that path in this tab with the Next router, since other tabs and
+devices cannot be focused, so the chat survives. Its End
+(`{type:"end-page", id}`) has the hub close that page with 4410 "ended from
+another page"; that page stays closed until its next visibility or debug
+event. Ending this page takes two taps. Eval and preview sessions keep a
+light End. The chat grant itself is listed apart, in red: "End chat with the
+agent (revokes the 30-day grant)", and the first tap only arms it ("Tap again
+to end the chat", 3 s).
+
+**One voice per device.** Every tab of a thread shows every message, but
+only one reads a reply aloud: the focused tab, or else the one focused most
+recently. Tabs agree over `BroadcastChannel("lk-debug-chat")`
+(`lib/debug-chat-tabs.ts`), not the network. Drafts are not synced across
+tabs (that would fight IME composition).
+
+**Scrolling.** Scrolled up, new messages do not pull the log down (your own
+do); a ↓ button at the right of the row above the input (the row stays
+click-through, only the button takes taps) scrolls to the end, with a dot
+when messages arrived below. The log's top edge fades once it overflows.
+
+#### Agent is busy (heartbeat)
+
+While the agent works on a message, a small spinner shows at the right end
+of the chat input. It follows a real heartbeat, never a guess: the agent
+sends `{type:"busy", to?, label?}` (named as in liagent; only an owner-approved controller —
+chat grant or eval — and never a pairing made for a friend); the hub passes
+`{type:"busy", label, at}` to that one thread's pages (the owner's by
+default, a friend's with `to`), acks `{type:"beat", thread, delivered}`, and
+stores nothing. The page shows the spinner while its socket is live, the last
+beat arrived under 12 s ago, and no agent reply has landed since that beat
+(`busyLeft` in `lib/dev-eval.ts`; a beat stamped within 1.5 s after a reply
+is the loop's last one, in flight, and is ignored). One local timeout per
+beat re-checks it — no network polling. The beat loop is the one timer that
+touches the network, and the owner asked for it.
+
+```bash
+# One beat (the spinner shows for 12 s):
+bun scripts/dev/eval.ts busy [--to f@x.com] [--label "fixing the swipe"]
+
+# What the chat agent runs: start in the background on picking up a message.
+# It beats every 4 s and exits by itself at the next agent reply in that
+# thread (your `say`), or on kill, socket close, a closed stdin pipe, or
+# --max seconds (default 1800). --keep beats on past replies.
+bun scripts/dev/eval.ts busy --every 4 [--to f@x.com] &
+bun scripts/dev/eval.ts say "Done — the swipe snaps now."   # the beat stops
+```
+
+The beat process holds a chat-grant socket while it runs, so the page's
+"agent listening (n)" counts it.
+
+**Test ids.** Every part of the debug UI has a `data-testid`, for evals and
+tests:
+
+- The chat box: `debug-chat` (root), `debug-chat-pill` (collapsed),
+  `debug-chat-log`, `debug-chat-line` (with `data-from`), `debug-chat-input`,
+  `debug-chat-grip`, `debug-chat-grip-count`, `debug-chat-icons`,
+  `debug-chat-icon-eval`, `debug-chat-bottom`, `debug-chat-busy`,
+  `debug-chat-notice` and `debug-chat-warning`.
+- The grip menu: `debug-menu`, `debug-menu-status`, `debug-menu-note` (where
+  the widget came from, or why it fell back), `debug-menu-speak`,
+  `debug-menu-minimize`, `debug-menu-page` (`data-self` on this one),
+  `debug-menu-page-open`, `debug-menu-page-end`, `debug-menu-session`,
+  `debug-menu-session-add`, `debug-menu-session-end` and
+  `debug-menu-end-chat`.
+- The pairing modal: `debug-modal`, `debug-modal-code`, `debug-modal-pages`,
+  `debug-modal-page-check` (`data-page-id`), `debug-modal-allow`,
+  `debug-modal-allow-all` and `debug-modal-deny`.
+- DebugEval's fallback (no chat box): `debug-eval`, with
+  `debug-menu-session`, `debug-menu-session-end`, `debug-menu-end-chat` and
+  `debug-chat-icon-eval` named as above.
+
+**Hot-loading the widget.** The chat box itself can be loaded live from a
+dev server on the owner's pages, to see UI changes without a deploy:
+[dev-debug-widget.md](dev-debug-widget.md).
 
 ### Friends
 
@@ -215,8 +331,9 @@ page they are looking at changed:
    `eval.ts serve --for <email>` (it needs the owner's saved chat grant: no
    one else can raise the prompt) shows "<agent label> wants to preview a
    change on this page for 1 hour" with a 4-hex code on that friend's debug
-   pages only; the agent tells them the code in the chat. **Allow for 1
-   hour** pairs that sender for that friend's pages alone.
+   pages only, in the same big modal, listing only their own pages; the
+   agent tells them the code in the chat. **Authorize** pairs that sender
+   for the ticked pages of that friend alone, for 1 hour.
 3. The agent opens a PR with the change.
 4. **The owner approves before anything merges or deploys.** Friend-requested
    PRs are never merged or deployed without the owner's explicit approval

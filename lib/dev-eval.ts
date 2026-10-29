@@ -27,6 +27,14 @@ export const FRIEND_CHAT_MAX = 30;
 export const FRIEND_CHAT_WINDOW_MS = 10 * 60_000;
 /** The owner's chat thread; every other thread is a friend's user id. */
 export const OWNER_THREAD = "owner";
+/** The "agent is working" spinner stops this long after the last heartbeat. */
+export const BUSY_MS = 12_000;
+/**
+ * A beat the hub stamped within this long after an agent reply in the same
+ * thread is the beat loop's last one, still in flight when the reply landed:
+ * it does not restart the spinner.
+ */
+export const BUSY_GRACE_MS = 1_500;
 
 /**
  * Who a debug page belongs to, as the main Worker's /api/debug/identity says.
@@ -75,12 +83,22 @@ export type ChatMessage = {
 /** Messages a controller (the sender CLI) may send to the hub. */
 export type ControllerMessage =
   | { type: "eval"; code: string; target?: string }
-  | { type: "say"; text: string; to?: string };
+  | { type: "say"; text: string; to?: string }
+  | { type: "busy"; to?: string; label?: string };
 /** Messages an owner page may send to the hub. */
 export type PageMessage =
-  | { type: "allow"; pair: string; scope?: "chat" }
+  /**
+   * `pages`: the page ids the grant covers, or "all" (also every page that
+   * connects later). Absent (a page from before) = "all". `scope` is the old
+   * page's choice; the requester's own scope is what counts now.
+   */
+  | { type: "allow"; pair: string; scope?: "chat"; pages?: string[] | "all" }
   | { type: "deny" | "revoke"; pair: string }
   | { type: "chat"; id: string; text: string }
+  /** The page moved (client-side navigation): its new label. Never shown in the chat. */
+  | { type: "page"; label: string }
+  /** Close another (or this) page of the same audience, from the chat's menu. */
+  | { type: "end-page"; id: string }
   | {
       type: "result";
       id: string;
@@ -100,10 +118,16 @@ export type PairInfo = {
   at: number;
   until?: number;
   scope?: Scope;
+  /** The page ids an approved pairing reaches; absent = all this audience's pages. */
+  pages?: string[];
 };
+
+/** A page id: the tab's own (sessionStorage), so a reload keeps its grants. */
+export const isPageId = (v: unknown): v is string =>
+  typeof v === "string" && /^[A-Za-z0-9_-]{6,40}$/.test(v);
 /**
  * `listeners`: owner-approved controllers in time (the agent hearing the
- * chat). `pending` and `sessions` are only the pairings made for this page's
+ * chat). `pages`: this audience's open debug pages; `self`: the receiver's id. `pending` and `sessions` are only the pairings made for this page's
  * audience — the owner's, or this friend's own.
  */
 export type HubState = {
@@ -111,7 +135,15 @@ export type HubState = {
   pending: PairInfo | null;
   sessions: PairInfo[];
   listeners?: number;
+  /** This audience's open debug pages (the owner's, or this friend's own). */
+  pages?: PageInfo[];
+  /** Which of `pages` is the one receiving this state. */
+  self?: string;
 };
+/** An open debug page: its socket's id, current label (path…), and when it connected. */
+export type PageInfo = { id: string; label: string; at: number };
+/** Close code for a page ended from the chat menu; it stays closed until its next visibility or debug event. */
+export const PAGE_ENDED = 4410;
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
 
@@ -136,8 +168,19 @@ export function parseControllerMessage(
     const to = str(m.to, 320)?.trim();
     return { ok: true, value: to ? { type: "say", text, to } : { type: "say", text } };
   }
+  if (m?.type === "busy") {
+    const to = str(m.to, 320)?.trim();
+    const label = cleanLabel(str(m.label, 80));
+    return {
+      ok: true,
+      value: { type: "busy", ...(to ? { to } : {}), ...(label ? { label } : {}) },
+    };
+  }
   if (!m || m.type !== "eval")
-    return { ok: false, error: 'expected {"type":"eval","code":"…"} or {"type":"say","text":"…"}' };
+    return {
+      ok: false,
+      error: 'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"} or {"type":"busy"}',
+    };
   if (typeof m.code !== "string" || !m.code.trim()) return { ok: false, error: "empty code" };
   if (m.code.length > MAX_CODE) return { ok: false, error: `code over ${MAX_CODE} chars` };
   const target = str(m.target, MAX_LABEL);
@@ -154,11 +197,30 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
   if (m.type === "allow") {
     const pair = str(m.pair, 64);
     if (!pair) return null;
-    return m.scope === "chat" ? { type: "allow", pair, scope: "chat" } : { type: "allow", pair };
+    const pages =
+      m.pages === "all"
+        ? "all"
+        : Array.isArray(m.pages)
+          ? m.pages.filter(isPageId).slice(0, 50)
+          : undefined;
+    return {
+      type: "allow",
+      pair,
+      ...(m.scope === "chat" ? { scope: "chat" as const } : {}),
+      ...(pages ? { pages } : {}),
+    };
   }
   if (m.type === "deny" || m.type === "revoke") {
     const pair = str(m.pair, 64);
     return pair ? { type: m.type, pair } : null;
+  }
+  if (m.type === "end-page") {
+    const id = str(m.id, 64);
+    return id ? { type: "end-page", id } : null;
+  }
+  if (m.type === "page") {
+    const label = cleanLabel(str(m.label, MAX_LABEL * 2));
+    return label ? { type: "page", label } : null;
   }
   if (m.type === "chat") {
     const id = str(m.id, 64);
@@ -188,6 +250,30 @@ export function chatText(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
   const t = raw.trim();
   return t && t.length <= MAX_CHAT ? t : undefined;
+}
+
+/**
+ * The page's view of the agent's heartbeat. `beatAt` is the hub's stamp on
+ * the last beat and `agentAt` on the last agent reply (both hub clock, so they
+ * compare); `seenAt` is when this page received the beat (its own clock, so
+ * staleness never depends on clock skew).
+ */
+export type Heartbeat = { beatAt: number; seenAt: number };
+
+/**
+ * How much longer the "agent is working" spinner stays up, in ms; 0 = not
+ * working. Up only while the socket is live, a beat arrived less than
+ * BUSY_MS ago, and no agent reply has landed since that beat.
+ */
+export function busyLeft(
+  live: boolean,
+  beat: Heartbeat | null,
+  agentAt: number,
+  now: number,
+): number {
+  if (!live || !beat) return 0;
+  if (beat.beatAt < agentAt + BUSY_GRACE_MS) return 0;
+  return Math.max(0, BUSY_MS - (now - beat.seenAt));
 }
 
 /** The newest `max` messages, oldest first. */
@@ -227,6 +313,44 @@ export function cleanLabel(raw: string | null | undefined, max = MAX_LABEL): str
     .replace(/[\u0000-\u001f\u007f]+/g, " ")
     .trim()
     .slice(0, max);
+}
+
+/**
+ * A page label ("<path> [pwa ]<user agent>") split for the chat's page list:
+ * the path, and a short device hint like "pwa · Android" or "iPhone".
+ */
+export function pageParts(label: string): { path: string; device: string } {
+  const [path = "", ...rest] = label.split(" ");
+  const ua = rest.join(" ");
+  const pwa = rest[0] === "pwa";
+  const device =
+    [
+      ["iPhone", /iPhone/],
+      ["iPad", /iPad/],
+      ["Android", /Android/],
+      ["Mac", /Macintosh|Mac OS X/],
+      ["Windows", /Windows/],
+      ["Linux", /Linux|X11/],
+    ].find(([, re]) => (re as RegExp).test(ua))?.[0] ?? "";
+  return {
+    path: path.startsWith("/") ? path : "/",
+    device: [pwa ? "pwa" : "", device as string].filter(Boolean).join(" · "),
+  };
+}
+
+/** What Allow grants, in one sentence (the requester declared its scope when it knocked). */
+export function pairSentence(p: Pick<PairInfo, "label" | "scope">, friend: boolean): string {
+  if (friend) return `${p.label} wants to preview a change on this page for 1 hour.`;
+  return p.scope === "chat"
+    ? `${p.label} wants to chat with you for 30 days.`
+    : `${p.label} wants to run code on your debug pages for 1 hour.`;
+}
+
+/** The pairing modal's Allow button, for the pages ticked. */
+export function allowLabel(ticked: number, total: number, selfTicked: boolean): string {
+  if (total > 1 && ticked === total) return "Authorize all pages";
+  if (ticked === 1 && selfTicked) return "Authorize this page";
+  return ticked === 1 ? "Authorize 1 page" : `Authorize ${ticked} pages`;
 }
 
 /** The short code the CLI prints and the prompt shows, so the owner can match them. */
