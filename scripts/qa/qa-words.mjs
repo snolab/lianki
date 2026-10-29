@@ -318,6 +318,26 @@ try {
   for (let k = 0; k < 7; k++) await stats.click();
   check((await page.locator("[data-debug-badge]").count()) === 0, "seven more turn it off");
 
+  // /learn speaks the page's language (it used to be English-only) and links
+  // AnkiWeb's shared decks for each language we teach.
+  {
+    const learn = await ctx.newPage();
+    await learn.goto(`${new URL(page.url()).origin}/learn?lang=fr`, { waitUntil: "load" });
+    const deckLinks = learn.locator(
+      '[data-anki-decks] a[href^="https://ankiweb.net/shared/decks"]',
+    );
+    await deckLinks
+      .first()
+      .waitFor({ timeout: 15000 })
+      .catch(() => {});
+    const h1 = (await learn.locator("h1").first().innerText()).trim();
+    check(
+      h1 !== "Import Learning Materials" && (await deckLinks.count()) >= 10,
+      `/learn?lang=fr is translated and lists AnkiWeb decks (h1 "${h1}", ${await deckLinks.count()} links)`,
+    );
+    await learn.close();
+  }
+
   // The owner's remote-debug log is the owner's alone.
   const devLog = await page.request.post(`${new URL(page.url()).origin}/api/dev/log`, {
     data: "{}",
