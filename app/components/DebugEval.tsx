@@ -199,7 +199,14 @@ export function DebugEval() {
   return (
     <>
       {chat && (
-        <DebugChat live={live} listeners={sessions.length} messages={messages} onSend={sendChat} />
+        <DebugChat
+          live={live}
+          listeners={sessions.length}
+          messages={messages}
+          onSend={sendChat}
+          sessions={sessions}
+          onEnd={(x) => answer("revoke", x)}
+        />
       )}
       <div
         aria-live="polite"
@@ -253,25 +260,27 @@ export function DebugEval() {
             </div>
           </div>
         )}
-        {sessions.map((s) => (
-          <div
-            key={s.pair}
-            className="flex items-center gap-2 rounded-full py-0.5 pl-2 pr-0.5"
-            style={{ background: "oklch(0.55 0.15 30 / 0.9)" }}
-          >
-            <span title={`until ${new Date(s.until ?? 0).toISOString()}`}>
-              {s.scope === "chat" ? "chat" : "eval"}: {s.label} · {s.code}
-            </span>
-            <button
-              type="button"
-              onClick={() => answer("revoke", s)}
-              className="rounded-full px-2"
-              style={{ background: "oklch(0.3 0.05 30)" }}
+        {/* With the chat box up, the sessions live in its grip menu instead. */}
+        {!chat &&
+          sessions.map((s) => (
+            <div
+              key={s.pair}
+              className="flex items-center gap-2 rounded-full py-0.5 pl-2 pr-0.5"
+              style={{ background: "oklch(0.55 0.15 30 / 0.9)" }}
             >
-              End
-            </button>
-          </div>
-        ))}
+              <span title={`until ${new Date(s.until ?? 0).toISOString()}`}>
+                {s.scope === "chat" ? "chat" : "eval"}: {s.label} · {s.code}
+              </span>
+              <button
+                type="button"
+                onClick={() => answer("revoke", s)}
+                className="rounded-full px-2"
+                style={{ background: "oklch(0.3 0.05 30)" }}
+              >
+                End
+              </button>
+            </div>
+          ))}
         {toast && (
           <span
             className="pointer-events-none rounded px-2 py-0.5 shadow"

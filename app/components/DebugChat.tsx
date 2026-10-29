@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { type ChatMessage, MAX_CHAT, pickLang, pickVoice } from "@/lib/dev-eval";
+import { type ChatMessage, MAX_CHAT, type PairInfo, pickLang, pickVoice } from "@/lib/dev-eval";
 import { Icon } from "./icons";
 
 /** Typing pauses this long before the draft is sent. */
@@ -154,11 +154,16 @@ export function DebugChat({
   listeners,
   messages,
   onSend,
+  sessions = [],
+  onEnd,
 }: {
   live: boolean;
   listeners: number;
   messages: ChatMessage[];
   onSend: (text: string) => boolean;
+  /** Approved senders, listed in the grip's menu with an End button each. */
+  sessions?: PairInfo[];
+  onEnd?: (s: PairInfo) => void;
 }) {
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
@@ -260,11 +265,13 @@ export function DebugChat({
 
   const unread = messages.slice(seen).filter((m) => m.from === "agent").length;
   const dot = live ? "oklch(0.68 0.16 150)" : "oklch(0.62 0.02 70)";
-  const status = !live
-    ? "reconnecting…"
-    : listeners
-      ? `agent listening (${listeners})`
-      : "connected · no agent listening";
+  const status = offline
+    ? "not connected — your draft is kept"
+    : !live
+      ? "reconnecting…"
+      : listeners
+        ? `agent listening (${listeners})`
+        : "connected · no agent listening";
 
   if (!open)
     return (
@@ -383,6 +390,16 @@ export function DebugChat({
               <span className="w-[1em] text-center">–</span>
               Minimize
             </button>
+            {sessions.map((x) => (
+              <div key={x.pair} className="flex items-center gap-2 px-3 py-1 text-gray-500">
+                <span className="min-w-0 flex-1 truncate">
+                  {x.scope === "chat" ? "chat" : "eval"}: {x.label} · {x.code}
+                </span>
+                <button type="button" onClick={() => onEnd?.(x)} className="underline">
+                  End
+                </button>
+              </div>
+            ))}
           </div>
         )}
         {armed > 0 && (
@@ -392,57 +409,54 @@ export function DebugChat({
             className="lk-drain absolute inset-x-0 top-0 h-0.5 bg-blue-600/60"
           />
         )}
-        <textarea
-          ref={input}
-          rows={1}
-          value={draft}
-          maxLength={MAX_CHAT}
-          placeholder="Message the agent…"
-          aria-label="Message the agent"
-          onChange={(e) => {
-            draftRef.current = e.target.value;
-            setDraft(e.target.value);
-            setOffline(false);
-            cancelSpeech();
-            arm();
-          }}
-          onCompositionStart={() => {
-            composing.current = true;
-            clearTimeout(timer.current);
-            setArmed(0);
-          }}
-          onCompositionEnd={() => {
-            composing.current = false;
-            arm();
-          }}
-          // Android's keyboards report every key as 229, so Enter never
-          // reaches onKeyDown as "Enter": the line break itself is the cue.
-          onBeforeInput={(e) => {
-            const type = (e.nativeEvent as InputEvent).inputType;
-            if (type !== "insertLineBreak" && type !== "insertParagraph") return;
-            if (composing.current || (e.nativeEvent as InputEvent).isComposing) return;
-            if (shiftEnter.current) return; // Shift+Enter: a newline, as on desktop
-            e.preventDefault();
-            submit();
-          }}
-          onKeyDown={(e) => {
-            shiftEnter.current = e.key === "Enter" && e.shiftKey;
-            if (e.key !== "Enter" || e.shiftKey) return;
-            // Enter that confirms an IME candidate (Safari reports it as 229
-            // after compositionend) must not send.
-            if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229) return;
-            e.preventDefault();
-            submit();
-          }}
-          style={{ background: INPUT_BG }}
-          className="pointer-events-auto block min-w-0 flex-1 resize-none rounded-lg border border-current/25 px-2 py-1.5 text-sm outline-none placeholder:text-gray-400"
-        />
-      </div>
-      {(armed > 0 || offline) && (
-        <div className="px-2 pb-1 text-[10px] text-gray-500">
-          {offline ? "not connected — kept; it will go when you type again" : "sending in 3s"}
+        <div className="relative flex min-w-0 flex-1">
+          <textarea
+            ref={input}
+            rows={1}
+            value={draft}
+            maxLength={MAX_CHAT}
+            placeholder="Message the agent…"
+            aria-label="Message the agent"
+            onChange={(e) => {
+              draftRef.current = e.target.value;
+              setDraft(e.target.value);
+              setOffline(false);
+              cancelSpeech();
+              arm();
+            }}
+            onCompositionStart={() => {
+              composing.current = true;
+              clearTimeout(timer.current);
+              setArmed(0);
+            }}
+            onCompositionEnd={() => {
+              composing.current = false;
+              arm();
+            }}
+            // Android's keyboards report every key as 229, so Enter never
+            // reaches onKeyDown as "Enter": the line break itself is the cue.
+            onBeforeInput={(e) => {
+              const type = (e.nativeEvent as InputEvent).inputType;
+              if (type !== "insertLineBreak" && type !== "insertParagraph") return;
+              if (composing.current || (e.nativeEvent as InputEvent).isComposing) return;
+              if (shiftEnter.current) return; // Shift+Enter: a newline, as on desktop
+              e.preventDefault();
+              submit();
+            }}
+            onKeyDown={(e) => {
+              shiftEnter.current = e.key === "Enter" && e.shiftKey;
+              if (e.key !== "Enter" || e.shiftKey) return;
+              // Enter that confirms an IME candidate (Safari reports it as 229
+              // after compositionend) must not send.
+              if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229) return;
+              e.preventDefault();
+              submit();
+            }}
+            style={{ background: INPUT_BG }}
+            className="pointer-events-auto block min-w-0 flex-1 resize-none pe-6 rounded-lg border border-current/25 px-2 py-1.5 text-sm outline-none placeholder:text-gray-400"
+          />
         </div>
-      )}
+      </div>
     </section>
   );
 }
