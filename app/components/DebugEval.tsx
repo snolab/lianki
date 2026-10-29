@@ -435,6 +435,8 @@ export function DebugEval() {
           onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
           evalRan={!!toast}
           friend={isFriend}
+          treeSource={owner && !isFriend ? "/api/dev/state-tree" : undefined}
+          treeRepo="snolab/lianki"
           agentAvatar={AGENT_AVATAR}
           viewer={viewer}
         />
