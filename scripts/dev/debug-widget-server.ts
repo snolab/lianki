@@ -18,6 +18,9 @@
  *                        rebuild that changed it — the page holds one EventSource
  *   GET /harness         a local host page for tests (no lianki-push needed)
  *   GET /health          {rev, origin, buildError, clients}
+ *   POST /clips, GET /clips/index.json, GET /clips/<file>
+ *                        the mic's voice clips, kept on this machine only, in
+ *                        --clips-dir (default ~/lianki-voice-clips); scripts/dev/clip-sink.ts
  *
  * Then, on the owner's page (debug mode):
  *   localStorage.setItem("lk:debug-widget-src", "<origin>/debug-chat.js"); location.reload()
@@ -26,6 +29,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { watch } from "node:fs";
 import { resolve } from "node:path";
 import { ROOT, allowOrigin, buildHarness, buildWidget, sse } from "./debug-widget-build";
+import { clipsDir, handleClips } from "./clip-sink";
 
 const argv = Bun.argv.slice(2);
 const flag = (name: string, fallback = "") => {
@@ -60,6 +64,8 @@ if (TUNNEL && !flag("origin")) {
   process.exit(1);
 }
 
+/** Where the mic's clips are kept: --clips-dir, LIANKI_CLIPS_DIR, or ~/lianki-voice-clips. */
+const CLIPS = flag("clips-dir") ? resolve(flag("clips-dir")) : clipsDir();
 const log = (msg: string) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${msg}`);
 
 let code = "";
@@ -117,6 +123,9 @@ function startServer() {
     idleTimeout: 0,
     async fetch(req) {
       const url = new URL(req.url);
+      // The mic's voice clips (scripts/dev/clip-sink.ts): lianki.com only, kept on this machine.
+      const clip = await handleClips(req, CLIPS);
+      if (clip) return clip;
       const h = cors(req);
       if (req.method === "OPTIONS")
         return new Response(null, {

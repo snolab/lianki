@@ -25,6 +25,20 @@ Models are env-overridable, so a model change needs no deploy of new code:
 | `WORKERS_AI_MODEL_HQ` | `@cf/openai/gpt-oss-120b` | `gpt-4o` |
 | `WORKERS_AI_TTS_MODEL` | `@cf/myshell-ai/melotts` | `tts-1` |
 
+Speech to text is not env-overridable: its models are a whitelist in
+`lib/stt.ts` (see "Speech to text" below).
+
+| STT model | role | USD / audio minute | neurons / min |
+| --- | --- | --- | --- |
+| `@cf/openai/whisper-large-v3-turbo` | default | 0.000513 | 46.63 |
+| `@cf/openai/whisper` | fallback | 0.000453 | 41.14 |
+| `@cf/deepgram/nova-3` | owner's `?model=` / bench only | 0.0052 (REST); 0.0092 over websocket | 472.73 |
+
+From [the pricing page](https://developers.cloudflare.com/workers-ai/platform/pricing/)
+on 2026-10-29, at $0.011 per 1,000 neurons above the free 10,000 a day. The
+page rounds both Whispers to $0.0005; the figures above are the neurons
+worked out, and match `wrangler ai models --json` for turbo and Nova-3.
+
 ## Why REST and not a binding
 
 Production runs on **Vercel** behind Cloudflare's proxy (`x-vercel-id` is
@@ -82,6 +96,72 @@ drop-in for `tts-1`:
   keep being served as if current — the same text sounding different depending on
   cache age, with nothing in the key to explain why. Existing cached entries are
   simply never hit again; they are not deleted.
+
+## Speech to text
+
+`POST /api/debug/stt` transcribes one utterance for the debug chat's mic
+(`lib/stt-handler.ts`, `lib/stt.ts`, `workersAiTranscribe` in
+`lib/workers-ai.ts`).
+
+```
+POST /api/debug/stt[?model=<id>][&lang=<bcp47>]
+Content-Type: audio/webm | audio/ogg | audio/mp4 | audio/wav | audio/mpeg   (codecs= ignored)
+<raw audio bytes, ≤ 2 MiB>
+
+200 {"text": "…", "model": "@cf/openai/whisper-large-v3-turbo", "ms": 812, "language": "ja"}
+401 guest · 405 not POST · 415 other type · 413 too large · 400 empty
+429 over the limit (Retry-After) · 502 the model(s) failed
+```
+
+- **Who.** Any signed-in user. 120 requests per user per 10 minutes (the
+  owner 600, for the bench). The limiter is `lib/rateLimit.ts`, as for the
+  other AI routes: per isolate, so a spread-out burst can get a little more.
+- **Model.** `?model=` is honoured for the owner only (`isOwner`), and only
+  from `STT_MODELS`; everyone else, and any other value, gets the default.
+  No language hint by default; `?lang=` is optional.
+- **Fallback.** When the default fails, the fallback is tried once. A model
+  the owner named explicitly is not replaced, so the bench sees real errors.
+- **Logs.** `debug.stt` with model, bytes, ms and the transcript's length.
+  Never the audio or the text.
+
+### Which model, and why
+
+Measured on 2026-10-29 against the live API, with the word lists' recorded
+example sentences (VOICEVOX ja, Kokoro zh/en, pulled from R2) and a WAV of
+ja → en → zh back to back:
+
+| clip | whisper-large-v3-turbo | whisper | nova-3 `language=multi` |
+| --- | --- | --- | --- |
+| ja 君を生かすも殺すも僕次第だ。 | exact | 君を**イカス**も殺すも**ぼく**次第だ | exact, but a space between every word |
+| zh 学生去学校，肩上背着书包。 | exact | traditional, 竟然讓…書報 | **""** |
+| en | exact | exact | exact |
+| ja + en | en only; **both with the prompt** | romaji + en | en only |
+| ja + en + zh | all three (zh mostly simplified) | garbled ja, en, zh | en only |
+
+So the default is **whisper-large-v3-turbo**, which is also the cheapest.
+**Nova-3 on Workers AI has no Chinese**: `language=zh` is refused ("No such
+model/language/tier combination"), and `multi` or `detect_language` answers
+an empty transcript. Its multilingual mode covers en/es/fr/de/hi/ru/pt/ja/it/nl.
+It stays on the owner's list for the bench, since it may do better on the
+owner's real ja/en speech; its Japanese spaces are removed (`joinCjk`).
+
+Whisper settles on one language per window, so without a hint it dropped
+the Japanese from a ja + en clip. `STT_PROMPT`, an `initial_prompt` that
+itself mixes 日本語, English and 中文, fixed that, and did not leak into a
+clip of silence. It is sent only when no `?lang=` is given.
+
+Request formats, all verified live: turbo takes JSON with the audio in
+base64; Whisper and Nova-3 take the raw bytes with their Content-Type, Nova-3
+its options as query parameters. MP3, M4A (AAC) and WAV were tested; WebM/Opus
+(what Chrome's MediaRecorder makes) was not, as no encoder was at hand. If
+turbo rejects it, Whisper is tried next.
+
+Production is the Worker now, not Vercel, but it still calls the REST API
+with `CLOUDFLARE_AI_TOKEN` (a Worker secret), like the other AI calls. An
+`env.AI` binding would drop the token, but is not needed for this.
+
+The bench for the owner's own voice is in
+[dev-debug-widget.md](dev-debug-widget.md), "Voice clips and the STT bench".
 
 ## Not migrated
 
