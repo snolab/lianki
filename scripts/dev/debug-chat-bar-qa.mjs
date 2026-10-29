@@ -482,6 +482,40 @@ try {
     await ctx.close();
   }
 
+  // The interim tree source: lk:tree-src, fetched and sanitized, shown as the log.
+  {
+    const { ctx, page } = await open("?open&notree");
+    await page.evaluate((u) => localStorage.setItem("lk:tree-src", u), `${ORIGIN}/tree-frag.html`);
+    await page.click('[data-testid="debug-chat-tree-button"]');
+    await page
+      .waitForSelector('[data-testid="debug-chat-tree-fragment"] details', { timeout: 5000 })
+      .catch(() => {});
+    const t = await page.evaluate(() => {
+      const frag = document.querySelector('[data-testid="debug-chat-tree-fragment"]');
+      const w = frag?.querySelector(".w");
+      return {
+        text: frag?.textContent ?? "",
+        waiting: w ? [getComputedStyle(w).color, getComputedStyle(w).fontWeight] : null,
+        done: frag?.querySelector(".ok")
+          ? getComputedStyle(frag.querySelector(".ok")).opacity
+          : null,
+        bad: frag ? frag.querySelectorAll("script, a, [onclick], [style*=red]").length : -1,
+      };
+    });
+    await page.click('[data-testid="debug-chat-tree-fragment"] li.w').catch(() => {});
+    const xss = await page.evaluate(() => window.__treeXss ?? 0);
+    check(
+      t.text.includes("interim tree source"),
+      "lk:tree-src: the fragment shows in the tree panel",
+    );
+    check(
+      t.waiting?.[0].startsWith("oklch(0.62 0.17 35") && Number(t.waiting?.[1]) >= 700,
+      `.w is orange and bold (${t.waiting})`,
+    );
+    check(t.done === "0.6", `.ok is dimmed (${t.done})`);
+    check(t.bad === 0 && xss === 0, `no script, link or handler survives (${t.bad}, ${xss})`);
+    await ctx.close();
+  }
   {
     const { ctx, page } = await open("?open&notree");
     await page.click('[data-testid="debug-chat-tree-button"]');

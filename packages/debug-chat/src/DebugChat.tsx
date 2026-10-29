@@ -33,6 +33,7 @@ import {
 } from "./float-lines";
 import { Icon } from "./icons";
 import { LINE_HALO, logSurface } from "./log-surface";
+import { TreeFragment, useTreeSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import type { Frontier } from "./frontier-view";
 
@@ -351,6 +352,8 @@ export function DebugChat({
   useLayoutEffect(() => fit(root.current, open), [open, twoCol]);
   /** The tree's scroll, kept across the sheet ⇄ column switch. */
   const treeScroll = useRef(0);
+  /** Until the host passes `renderTree`: the dev fragment at lk:tree-src (TreeFragment.tsx). */
+  const fetchedTree = useTreeSource(tree && !renderTree);
   /** The tree overflows (or is scrolled): its top edge fades, as the log's. */
   const [treeFade, setTreeFade] = useState(false);
   const treeBodyEl = useRef<HTMLDivElement | null>(null);
@@ -893,11 +896,14 @@ export function DebugChat({
         onScroll={onTreeScroll}
         {...logSurface({ expanded: typing || micActive, fade: treeFade })}
       >
-        {renderTree?.() ?? (
-          <p data-testid="debug-chat-tree-empty" className="text-gray-500">
-            No tree source
-          </p>
-        )}
+        {renderTree?.() ??
+          (fetchedTree ? (
+            <TreeFragment state={fetchedTree} />
+          ) : (
+            <p data-testid="debug-chat-tree-empty" className="text-gray-500">
+              No tree source
+            </p>
+          ))}
       </div>
     </div>
   );

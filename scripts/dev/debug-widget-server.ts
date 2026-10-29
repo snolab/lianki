@@ -174,6 +174,12 @@ function startServer() {
             `<div id=root></div><script type=module src="harness.js"></script>`,
           { headers: { ...h, "content-type": "text/html; charset=utf-8" } },
         );
+      if (url.pathname === "/tree-frag.html")
+        // A sample state-tree fragment for /harness (lk:tree-src), with a script
+        // and a handler in it that the widget's sanitizer must drop.
+        return new Response(SAMPLE_TREE, {
+          headers: { ...h, "content-type": "text/html; charset=utf-8" },
+        });
       if (url.pathname === "/harness.js")
         return new Response(await buildHarness(), {
           headers: { ...h, "content-type": "text/javascript; charset=utf-8" },
@@ -187,6 +193,15 @@ function startServer() {
     },
   });
 }
+
+const SAMPLE_TREE = `<div class="f"><b class="w">waiting on you: review the bar</b><br>
+<span class="d">doing: tree source</span></div>
+<details open><summary class="d">lianki</summary><ul>
+<li class="ok">unified chat bar</li>
+<li class="d">interim tree source<script>window.__treeXss = 1</script></li>
+<li class="w" onclick="window.__treeXss = 2">owner review</li>
+<li>next: StateTree<a href="javascript:window.__treeXss=3">link</a></li>
+</ul></details>`;
 
 /** Watch what the widget is built from (the build's own inputs), rebuild, push `reload`. */
 function startWatch() {
