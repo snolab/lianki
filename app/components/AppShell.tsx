@@ -4,7 +4,7 @@ import Image from "next/image";
 import { BrandName } from "./BrandName";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { APP_NAV, NAV_GROUPS, activeNavKey, type NavGroup } from "@/lib/app-nav";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { FirstRunChoice, type FirstRunLabels } from "./FirstRunChoice";
@@ -21,7 +21,7 @@ export type ShellUser = {
 
 export type ShellLabels = Record<string, string> & {
   groups: Record<NavGroup, string>;
-  ui: { menu: string; collapse: string; expand: string };
+  ui: { menu: string; collapse: string; expand: string; closeMenu: string };
 };
 
 interface AppShellProps {
@@ -51,8 +51,43 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
     }
   }, []);
 
-  // Route change closes the mobile drawer; it is an overlay, not a destination.
-  useEffect(() => setDrawerOpen(false), [pathname]);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  // Route change closes the mobile drawer and the profile menu; they are
+  // overlays, not destinations.
+  useEffect(() => {
+    setDrawerOpen(false);
+    setIsProfileOpen(false);
+  }, [pathname]);
+
+  // The profile menu closes on a press outside it and on Escape. Blur alone is
+  // not enough: iOS Safari does not focus a button on tap, so the trigger never
+  // blurs there. Presses inside (the trigger, the 10-tap name row) are ignored.
+  useEffect(() => {
+    if (!isProfileOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!profileRef.current?.contains(e.target as Node)) setIsProfileOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsProfileOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [isProfileOpen]);
+
+  // Escape closes the mobile drawer, as it would any modal dialog.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
 
   function toggleCollapsed() {
     setCollapsed((prev) => {
@@ -90,7 +125,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
                     <Link
                       href={item.href}
                       aria-current={isActive ? "page" : undefined}
-                      title={collapsed ? label : undefined}
+                      title={label}
                       className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                         isActive
                           ? "font-semibold text-gray-900 dark:text-gray-100"
@@ -101,7 +136,13 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
                       <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
                         {isActive ? <SealIcon name={item.icon} /> : <Icon name={item.icon} />}
                       </span>
-                      {collapsed ? <span className="sr-only">{label}</span> : <span>{label}</span>}
+                      {collapsed ? (
+                        <span className="sr-only">{label}</span>
+                      ) : (
+                        // One line, always: a long label (fr "Listes de mots")
+                        // wrapped and ran into the next row on iOS.
+                        <span className="min-w-0 truncate">{label}</span>
+                      )}
                     </Link>
                   </li>
                 );
@@ -147,11 +188,17 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
         <div className="ms-auto flex items-center gap-3">
           <LanguageSwitcher />
           {user ? (
-            <div className="relative">
+            <div className="relative" ref={profileRef}>
               <button
                 data-profile-menu
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
-                onBlur={() => setTimeout(() => setIsProfileOpen(false), 150)}
+                // Keyboard: tabbing out of the menu closes it. A press on
+                // something unfocusable gives no relatedTarget; the pointerdown
+                // listener above decides those.
+                onBlur={(e) => {
+                  const to = e.relatedTarget as Node | null;
+                  if (to && !profileRef.current?.contains(to)) setIsProfileOpen(false);
+                }}
                 aria-expanded={isProfileOpen}
                 className="flex items-center gap-2 text-sm font-medium hover:opacity-80 transition-opacity"
               >
@@ -169,13 +216,20 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
               </button>
 
               {isProfileOpen && (
-                <div className="absolute end-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50">
+                <div
+                  // A link chosen in the menu closes it, even when it points at
+                  // the page already open (no route change to do it).
+                  onClick={(e) => {
+                    if ((e.target as Element).closest("a")) setIsProfileOpen(false);
+                  }}
+                  className="absolute end-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50"
+                >
                   {/* Hidden: ten quick taps on your own name toggle debug mode.
-                      pointerdown keeps focus on the menu button, so the menu
-                      stays open between taps. */}
+                      The taps land inside the menu, so it stays open; mousedown
+                      is cancelled so a desktop click doesn't move focus. */}
                   <div
                     data-debug-name
-                    onPointerDown={(e) => e.preventDefault()}
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={debugTap}
                     className="select-none touch-manipulation px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 truncate"
                   >
@@ -222,14 +276,20 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
 
         {/* Mobile drawer */}
         {drawerOpen && (
-          <div className="md:hidden fixed inset-0 z-40 flex">
+          <div
+            className="md:hidden fixed inset-0 z-40 flex"
+            role="dialog"
+            aria-modal="true"
+            aria-label={labels.ui.menu}
+            data-drawer
+          >
             <button
               type="button"
-              aria-label={labels.ui.collapse}
+              aria-label={labels.ui.closeMenu}
               className="absolute inset-0 bg-black/40"
               onClick={() => setDrawerOpen(false)}
             />
-            <div className="relative w-64 max-w-[80%] h-full overflow-y-auto bg-white dark:bg-gray-900 border-e border-gray-200 dark:border-gray-800">
+            <div className="relative w-64 max-w-[80%] h-full overflow-y-auto pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] bg-white dark:bg-gray-900 border-e border-gray-200 dark:border-gray-800">
               {sidebar}
             </div>
           </div>

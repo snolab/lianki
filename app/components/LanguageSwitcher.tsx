@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useLocale } from "next-intlayer";
+import { useIntlayer, useLocale } from "next-intlayer";
 import { usePathname } from "next/navigation";
 import { LOCALE_PARAM, isAppRoute } from "@/lib/app-locale";
 import { LANGUAGES, isSupportedLocale } from "@/lib/constants";
@@ -10,6 +10,7 @@ export function LanguageSwitcher() {
   const [isOpen, setIsOpen] = useState(false);
   const [browserLangs, setBrowserLangs] = useState<string[]>([]);
   const { locale: currentLocale } = useLocale();
+  const text = useIntlayer("language-switcher");
   const pathname = usePathname();
 
   // Get browser's preferred languages
@@ -54,8 +55,10 @@ export function LanguageSwitcher() {
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="text-lg font-medium hover:underline flex items-center gap-2"
-        aria-label="Switch language"
+        // A 40px hit area around the 20px glyph; -m-2.5 keeps the header compact.
+        className="text-lg font-medium hover:underline flex items-center gap-2 min-h-10 min-w-10 justify-center -m-2.5 p-2.5"
+        aria-label={text.switchLanguage.value}
+        title={text.switchLanguage.value}
       >
         <svg
           className="w-5 h-5"
@@ -87,11 +90,11 @@ export function LanguageSwitcher() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Select Language</h2>
+              <h2 className="text-xl font-semibold">{text.title}</h2>
               <button
                 onClick={() => setIsOpen(false)}
-                className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                aria-label="Close"
+                className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 p-2 -m-2"
+                aria-label={text.close.value}
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -140,12 +143,12 @@ export function LanguageSwitcher() {
                         <div className="flex flex-col items-end gap-1">
                           {isCurrent && (
                             <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">
-                              Current
+                              {text.current}
                             </span>
                           )}
                           {isBrowserPreferred && !isCurrent && (
                             <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">
-                              Preferred
+                              {text.preferred}
                             </span>
                           )}
                           {!supported && (

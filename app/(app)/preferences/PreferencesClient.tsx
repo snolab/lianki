@@ -46,7 +46,7 @@ export default function PreferencesClient() {
   async function fetchPreferences() {
     try {
       const res = await fetch("/api/preferences");
-      if (!res.ok) throw new Error(errors.failedToFetch);
+      if (!res.ok) throw new Error(errors.failedToFetch.value);
       const data = await res.json();
       setPatterns(data.mobileExcludePatterns || []);
       setReviewOrder(asReviewOrder(data.reviewOrder));
@@ -55,7 +55,7 @@ export default function PreferencesClient() {
       setWatchTracking(data.watchTracking !== false);
     } catch (error) {
       console.error("Error fetching preferences:", error);
-      alert(errors.failedToLoad);
+      alert(errors.failedToLoad.value);
     } finally {
       setLoading(false);
     }
@@ -73,11 +73,11 @@ export default function PreferencesClient() {
           watchTracking,
         }),
       });
-      if (!res.ok) throw new Error(errors.failedToSave);
-      alert(success.saved);
+      if (!res.ok) throw new Error(errors.failedToSave.value);
+      alert(success.saved.value);
     } catch (error) {
       console.error("Error saving preferences:", error);
-      alert(errors.failedToSave);
+      alert(errors.failedToSave.value);
     } finally {
       setSaving(false);
     }
@@ -91,7 +91,7 @@ export default function PreferencesClient() {
       try {
         new RegExp(newPattern);
       } catch (e) {
-        alert(errors.invalidRegex);
+        alert(errors.invalidRegex.value);
         return;
       }
     }
@@ -121,15 +121,15 @@ export default function PreferencesClient() {
   function getPatternExamples(type: FilterType, isRegex: boolean): string {
     if (isRegex) {
       return {
-        domain: examples.domainRegex,
-        title: examples.titleRegex,
-        url: examples.urlRegex,
+        domain: examples.domainRegex.value,
+        title: examples.titleRegex.value,
+        url: examples.urlRegex.value,
       }[type];
     }
     return {
-      domain: examples.domainPlain,
-      title: examples.titlePlain,
-      url: examples.urlPlain,
+      domain: examples.domainPlain.value,
+      title: examples.titlePlain.value,
+      url: examples.urlPlain.value,
     }[type];
   }
 
@@ -304,7 +304,7 @@ export default function PreferencesClient() {
                   addPattern();
                 }
               }}
-              placeholder={String(mobileFilters.patternPlaceholder).replace("{type}", newType)}
+              placeholder={mobileFilters.patternPlaceholder.value.replace("{type}", newType)}
               className="w-full bg-gray-800 border border-gray-700 rounded px-4 py-2 text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
             />
             <p className="text-xs text-gray-500 mt-2">{getPatternExamples(newType, isRegex)}</p>

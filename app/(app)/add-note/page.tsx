@@ -17,8 +17,11 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function AddNotePage() {
+  const { metadata } = getIntlayer("add-note-page", await appLocale());
   return (
     <div className="flex flex-col">
+      {/* The page is a bare status line, so the heading is for screen readers. */}
+      <h1 className="sr-only">{metadata.title}</h1>
       <div className="flex-grow">
         <AddNoteClient />
       </div>

@@ -1360,6 +1360,7 @@ function SortableListRow({
     transition,
     isDragging,
   } = useSortable({ id: l.id });
+  const text = useIntlayer("words-page");
   return (
     <div
       ref={setNodeRef}
@@ -1411,10 +1412,11 @@ function SortableListRow({
         className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
         onClick={() => onOpen(l.id)}
       >
-        Study
+        {text.study}
       </button>
       <button
-        className="text-xs opacity-40 hover:opacity-80"
+        // A 40px hit area (tap-40) around the small label.
+        className="tap-40 text-xs opacity-40 hover:opacity-80"
         onClick={async () => {
           const what = isGroup
             ? `Delete group "${l.name}"? The lists inside it are kept and move up a level.`
@@ -1424,7 +1426,7 @@ function SortableListRow({
           onDeleted();
         }}
       >
-        delete
+        {text.delete}
       </button>
     </div>
   );
@@ -1453,6 +1455,7 @@ function ListPicker({
 }) {
   const groupSource = groupSourceOf(config);
   const isGroup = (l: WordList) => l.source === groupSource;
+  const text = useIntlayer("words-page");
   const flat = useMemo(() => flatten(lists), [lists]);
   const [download, setDownload] = useState<{
     done: number;
@@ -1628,8 +1631,8 @@ function ListPicker({
         >
           <kbd className="hidden sm:inline text-xs opacity-50">0</kbd>
           <span className="flex-1">
-            <span className="font-medium">Study all lists together</span>
-            <span className="block text-xs opacity-60">New words come in the order below.</span>
+            <span className="font-medium">{text.studyAll}</span>
+            <span className="block text-xs opacity-60">{text.studyAllHint}</span>
           </span>
           <span className="text-xs opacity-70 tabular-nums">
             {studyable.reduce((n, l) => n + l.due, 0)} due
@@ -2139,6 +2142,7 @@ function Study({
         });
     })();
   };
+  const text = useIntlayer("words-page");
   const [debug, debugTap] = useDebugToggle(
     useCallback((on: boolean) => setNotice(on ? "Debug log on" : "Debug log off"), []),
   );
@@ -2192,6 +2196,7 @@ function Study({
   // only the rows in view (plus a margin) are rendered.
   const ROW_H = touch ? 44 : 28;
   const listRef = useRef<HTMLDivElement>(null);
+  const hintRef = useRef<HTMLDivElement>(null);
   /** What a sliding slip uncovers: the grade of each level (SwipeUnderlay). */
   const underlay = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -2218,8 +2223,12 @@ function Study({
     const fit = () => {
       const el = listRef.current;
       if (!el) return;
-      // Fill down to the bottom of the window, leaving room for the key hints.
-      setViewH(Math.max(160, window.innerHeight - el.getBoundingClientRect().top - 40));
+      // Fill down to the bottom of the window, leaving room for the key hints
+      // and, on a phone, the home indicator: the hint row pads itself by
+      // env(safe-area-inset-bottom), so its padding is that inset in px.
+      const hint = hintRef.current;
+      const inset = hint ? parseFloat(getComputedStyle(hint).paddingBottom) || 0 : 0;
+      setViewH(Math.max(160, window.innerHeight - el.getBoundingClientRect().top - 40 - inset));
       setMeasured(true);
     };
     fit();
@@ -2492,14 +2501,14 @@ function Study({
     // Full width: wide screens get room for longer explanations.
     <div className="w-full px-3 py-4 sm:px-8 sm:py-6">
       <div className="sticky top-0 z-10 -mx-3 sm:-mx-8 px-3 sm:px-8 py-2 mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm bg-[var(--background)] backdrop-blur">
-        <button className="opacity-60 hover:opacity-100 whitespace-nowrap" onClick={onExit}>
-          ← lists
+        <button className="tap-40 opacity-60 hover:opacity-100 whitespace-nowrap" onClick={onExit}>
+          {text.backToLists}
         </button>
         <span className="font-medium">{title}</span>
         <button
           // Tapped seven times fast for debug: iOS must not turn that into a
           // text selection or a double-tap zoom.
-          className={`select-none touch-manipulation [-webkit-touch-callout:none] px-2 py-0.5 rounded text-xs ${
+          className={`tap-40 select-none touch-manipulation [-webkit-touch-callout:none] px-2 py-0.5 rounded text-xs ${
             settings
               ? "bg-black/20 dark:bg-white/25"
               : "bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
@@ -2511,19 +2520,19 @@ function Study({
             debugTap();
           }}
           aria-expanded={settings}
-          aria-label="Settings"
+          aria-label={text.settings.value}
         >
           <Icon name="gearSix" className="me-1" />
-          Settings
+          {text.settings}
         </button>
         {touch && (
           <button
-            className="px-2 py-0.5 rounded text-xs bg-black/10 dark:bg-white/10"
+            className="tap-40 px-2 py-0.5 rounded text-xs bg-black/10 dark:bg-white/10"
             onClick={() => undo()}
-            aria-label="Undo"
+            aria-label={text.undo.value}
           >
             <Icon name="arrowCounterClockwise" className="me-1" />
-            Undo
+            {text.undo}
           </button>
         )}
         <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
@@ -2855,7 +2864,10 @@ function Study({
               }}
             />
           )}
-          <div className="mt-2 text-[11px] opacity-50">
+          <div
+            ref={hintRef}
+            className="mt-2 pb-[env(safe-area-inset-bottom)] text-[11px] opacity-50"
+          >
             {exhausted && ahead.length === 0 ? (
               <>
                 Every word learned. <Icon name="confetti" className="ms-0.5" />
