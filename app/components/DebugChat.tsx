@@ -246,7 +246,7 @@ export function DebugChat({
           handle.onPointerDown(e);
         }}
         aria-label={`Open chat with the agent${unread ? `, ${unread} new` : ""}`}
-        className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex items-center opacity-60 transition-opacity active:opacity-100 gap-1.5 rounded-full border border-gray-300 bg-white/95 px-3 py-1 text-xs text-gray-700 shadow dark:border-gray-700 dark:bg-gray-900/95 dark:text-gray-200"
+        className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex items-center lk-halo opacity-60 transition-opacity active:opacity-100 gap-1.5 px-3 py-1 text-xs text-gray-700 dark:text-gray-200"
       >
         <span className="size-2 rounded-full" style={{ background: dot }} />
         chat
@@ -296,24 +296,24 @@ export function DebugChat({
           –
         </button>
       </header>
-      <ol ref={log} className="max-h-[30vh] min-h-12 space-y-1.5 overflow-y-auto px-2 py-1.5">
+      <ol ref={log} className="max-h-[30vh] min-h-12 space-y-0.5 overflow-y-auto px-2 py-1.5">
         {messages.length === 0 && (
           <li className="text-gray-500">Type here; it is sent 3 s after you stop.</li>
         )}
+        {/* A game-style log: one line per message, "name: text", no bubbles. */}
         {messages.map((m) => (
-          <li key={m.id} className={m.from === "owner" ? "text-right" : ""}>
-            <div className="text-[10px] text-gray-500" title={new Date(m.at).toISOString()}>
-              {m.from === "owner" ? "you" : m.label || "agent"} · {when(m.at)}
-            </div>
-            <div
-              className={`inline-block max-w-full whitespace-pre-wrap break-words rounded-lg px-2 py-1 text-left ${
-                m.from === "owner"
-                  ? "bg-gray-100 dark:bg-gray-800"
-                  : "bg-blue-50 text-gray-900 dark:bg-blue-950 dark:text-gray-100"
-              }`}
+          <li key={m.id} className="whitespace-pre-wrap break-words leading-snug">
+            <span
+              className="me-1 font-medium"
+              style={{
+                color: m.from === "owner" ? "oklch(0.55 0.13 250)" : "oklch(0.55 0.14 150)",
+              }}
+              title={new Date(m.at).toISOString()}
             >
-              {m.text}
-            </div>
+              {m.from === "owner" ? "you" : m.label || "agent"}
+              <span className="ms-1 text-[10px] font-normal text-gray-500">{when(m.at)}</span>:
+            </span>
+            {m.text}
           </li>
         ))}
       </ol>
