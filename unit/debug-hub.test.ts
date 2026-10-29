@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { DebugHub, type Socket } from "@/workers/push/src/debug";
+import { DebugHub, type Socket, type Storage, hashToken } from "@/workers/push/src/debug";
 import push, { type Env, VersionHub } from "@/workers/push/src/index";
 import { isOwnerSocket } from "@/workers/push/src/auth";
-import { APPROVAL_MS, PENDING_MS } from "@/lib/dev-eval";
+import { APPROVAL_MS, CHAT_HISTORY, CHAT_MS, PENDING_MS } from "@/lib/dev-eval";
 
 /** A socket as the hibernation API hands it to the hub, recording what it was sent. */
 class FakeSocket implements Socket {
@@ -28,18 +28,49 @@ class FakeSocket implements Socket {
   }
 }
 
+/** Durable Object storage's key-value API, in memory (keys sorted as the real one does). */
+function fakeStorage(
+  store = new Map<string, unknown>(),
+): Storage & { store: Map<string, unknown> } {
+  return {
+    store,
+    get: async <T>(k: string) => structuredClone(store.get(k)) as T | undefined,
+    put: async (k, v) => void store.set(k, structuredClone(v)),
+    delete: async (k) => store.delete(k),
+    list: async <T>({
+      prefix,
+      reverse,
+      limit,
+    }: {
+      prefix: string;
+      reverse?: boolean;
+      limit?: number;
+    }) => {
+      let keys = [...store.keys()].filter((k) => k.startsWith(prefix)).sort();
+      if (reverse) keys.reverse();
+      if (limit !== undefined) keys = keys.slice(0, limit);
+      return new Map(keys.map((k) => [k, structuredClone(store.get(k)) as T]));
+    },
+  };
+}
+
 function setup() {
   const sockets: FakeSocket[] = [];
   let t = 1_000_000;
+  const storage = fakeStorage();
   const hub = new DebugHub(
-    { acceptWebSocket: (ws) => sockets.push(ws as FakeSocket), getWebSockets: () => sockets },
+    {
+      acceptWebSocket: (ws) => sockets.push(ws as FakeSocket),
+      getWebSockets: () => sockets,
+      storage,
+    },
     undefined,
     () => t,
   );
   const page = (label = "/words pwa iPhone") => {
     const ws = new FakeSocket();
     sockets.push(ws);
-    hub.connectPage(
+    void hub.connectPage(
       ws,
       new URL(`https://lianki.com/api/version/debug?label=${encodeURIComponent(label)}`),
     );
@@ -48,16 +79,36 @@ function setup() {
   const controller = (label = "main lane") => {
     const ws = new FakeSocket();
     sockets.push(ws);
-    hub.connectController(
+    void hub.connectController(
       ws,
       new URL(`https://lianki.com/api/version/debug/control?label=${encodeURIComponent(label)}`),
+    );
+    return ws;
+  };
+  /** A controller reconnecting with a grant token (resolves once the hub has checked it). */
+  const resume = async (token: string, label = "") => {
+    const ws = new FakeSocket();
+    sockets.push(ws);
+    await hub.connectController(
+      ws,
+      new URL(`https://lianki.com/api/version/debug/control?label=${encodeURIComponent(label)}`),
+      token,
     );
     return ws;
   };
   const msg = (ws: FakeSocket, m: unknown) => hub.webSocketMessage(ws, JSON.stringify(m));
   const pairOf = (p: FakeSocket) =>
     (p.last("state") as { pending: { pair: string } | null }).pending?.pair ?? "";
-  return { hub, page, controller, msg, pairOf, tick: (ms: number) => (t += ms) };
+  return {
+    hub,
+    page,
+    controller,
+    resume,
+    msg,
+    pairOf,
+    storage,
+    tick: (ms: number) => (t += ms),
+  };
 }
 
 describe("DebugHub pairing", () => {
@@ -180,6 +231,156 @@ describe("DebugHub pairing", () => {
   });
 });
 
+type Chat = { message: { id: string; from: string; label: string; text: string; at: number } };
+const chats = (ws: FakeSocket) =>
+  ws.sent.filter((m) => m.type === "chat").map((m) => (m as unknown as Chat).message);
+
+describe("DebugHub chat", () => {
+  it("an owner message reaches every page and every approved controller, not a pending one", async () => {
+    const { page, controller, msg, pairOf } = setup();
+    const phone = page();
+    const mac = page("/list Macintosh");
+    const approved = controller("agent");
+    await msg(phone, { type: "allow", pair: pairOf(phone) });
+    const waiting = controller("stranger");
+    await msg(phone, { type: "chat", id: "m1", text: "  hello agent  " });
+    for (const ws of [phone, mac, approved])
+      expect(chats(ws)).toEqual([
+        { id: "m1", from: "owner", label: "/words pwa iPhone", text: "hello agent", at: 1_000_000 },
+      ]);
+    expect(chats(waiting)).toEqual([]);
+  });
+
+  it("a controller's say reaches the pages and is acknowledged", async () => {
+    const { page, controller, msg, pairOf } = setup();
+    const p = page();
+    const c = controller("main lane");
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    await msg(c, { type: "say", text: "on it" });
+    expect(chats(p).at(-1)).toMatchObject({ from: "agent", label: "main lane", text: "on it" });
+    expect(c.last("said")?.id).toBe(chats(p).at(-1)?.id as string);
+  });
+
+  it("an unapproved controller cannot say", async () => {
+    const { page, controller, msg } = setup();
+    const p = page();
+    const c = controller();
+    await msg(c, { type: "say", text: "hi" });
+    expect(c.last("error")?.error).toBe("not approved yet");
+    expect(chats(p)).toEqual([]);
+  });
+
+  it("a reloaded page gets the history; only the last CHAT_HISTORY are kept", async () => {
+    const { hub, page, msg, storage } = setup();
+    const p = page();
+    for (let i = 0; i < CHAT_HISTORY + 5; i++)
+      await msg(p, { type: "chat", id: `m${i}`, text: `${i}` });
+    const again = page();
+    await hub.history();
+    const h = again.last("history") as { messages: { id: string }[] };
+    expect(h.messages).toHaveLength(CHAT_HISTORY);
+    expect(h.messages[0].id).toBe("m5");
+    expect(h.messages.at(-1)?.id).toBe(`m${CHAT_HISTORY + 4}`);
+    expect([...storage.store.keys()].filter((k) => k.startsWith("msg:"))).toHaveLength(
+      CHAT_HISTORY,
+    );
+  });
+
+  it("malformed or oversized chat is dropped", async () => {
+    const { page, msg } = setup();
+    const p = page();
+    await msg(p, { type: "chat", id: "x", text: "   " });
+    await msg(p, { type: "chat", id: "y", text: "a".repeat(4001) });
+    await msg(p, { type: "chat", text: "no id" });
+    expect(chats(p)).toEqual([]);
+  });
+});
+
+describe("DebugHub chat-only grants", () => {
+  /** Pair a controller and answer "Allow chat for 30 days"; returns the token it was handed. */
+  const chatPair = async (s: ReturnType<typeof setup>, p: FakeSocket) => {
+    const c = s.controller("listener");
+    await s.msg(p, { type: "allow", pair: s.pairOf(p), scope: "chat" });
+    return { c, token: c.last("approved")?.token as string };
+  };
+
+  it("Allow chat grants chat but not eval, and hands out a token stored only hashed", async () => {
+    const s = setup();
+    const p = s.page();
+    const { c, token } = await chatPair(s, p);
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+    expect(c.last("approved")).toMatchObject({ scope: "chat", until: 1_000_000 + CHAT_MS });
+    expect(c.last("history")).toEqual({ type: "history", messages: [] });
+    expect(s.storage.store.get(`grant:${await hashToken(token)}`)).toEqual({
+      label: "listener",
+      until: 1_000_000 + CHAT_MS,
+    });
+    expect(JSON.stringify([...s.storage.store.entries()])).not.toContain(token);
+    await s.msg(c, { type: "eval", code: "document.cookie" });
+    expect(c.last("error")?.error).toContain("chat-only");
+    expect(p.last("eval")).toBeUndefined();
+    await s.msg(p, { type: "chat", id: "m1", text: "hi" });
+    expect(chats(c).map((m) => m.text)).toEqual(["hi"]);
+    const sessions = (p.last("state") as { sessions: { scope: string }[] }).sessions;
+    expect(sessions.map((x) => x.scope)).toEqual(["chat"]);
+  });
+
+  it("Allow for 1 hour grants eval and chat, with no token", async () => {
+    const s = setup();
+    const p = s.page();
+    const c = s.controller();
+    await s.msg(p, { type: "allow", pair: s.pairOf(p) });
+    expect(c.last("approved")).toMatchObject({ scope: "eval" });
+    expect(c.last("approved")?.token).toBeUndefined();
+    expect(c.last("history")).toBeTruthy();
+  });
+
+  it("the token resumes chat scope with no prompt, even with no page open", async () => {
+    const s = setup();
+    const p = s.page();
+    const { c, token } = await chatPair(s, p);
+    await s.msg(p, { type: "chat", id: "m1", text: "while you were away" });
+    c.close(1006);
+    p.close(1001);
+    const again = await s.resume(token);
+    expect(again.last("approved")).toMatchObject({ scope: "chat", resumed: true });
+    expect(again.last("pending")).toBeUndefined();
+    expect(
+      (again.last("history") as { messages: { id: string }[] }).messages.map((m) => m.id),
+    ).toEqual(["m1"]);
+    await s.msg(again, { type: "say", text: "back" });
+    expect(again.last("said")).toBeTruthy();
+    await s.msg(again, { type: "eval", code: "1" });
+    expect(again.last("error")?.error).toContain("chat-only");
+  });
+
+  it("a wrong or expired token is refused with 4498", async () => {
+    const s = setup();
+    const p = s.page();
+    const { token } = await chatPair(s, p);
+    const wrong = await s.resume("0".repeat(64));
+    expect(wrong.closed).toBe(4498);
+    s.tick(CHAT_MS + 1);
+    const late = await s.resume(token);
+    expect(late.closed).toBe(4498);
+    expect(s.storage.store.has(`grant:${await hashToken(token)}`)).toBe(false);
+  });
+
+  it("End revokes the grant and closes every socket holding it", async () => {
+    const s = setup();
+    const p = s.page();
+    const { c, token } = await chatPair(s, p);
+    const other = await s.resume(token);
+    const sessions = (p.last("state") as { sessions: { pair: string }[] }).sessions;
+    expect(sessions).toHaveLength(2);
+    await s.msg(p, { type: "revoke", pair: sessions[1].pair });
+    expect(c.closed).toBe(4401);
+    expect(other.closed).toBe(4401);
+    expect(s.storage.store.has(`grant:${await hashToken(token)}`)).toBe(false);
+    expect((await s.resume(token)).closed).toBe(4498);
+  });
+});
+
 describe("lianki-push debug routes", () => {
   const upgrade = (path: string, headers: Record<string, string> = {}) =>
     new Request(`https://lianki.com${path}`, { headers: { upgrade: "websocket", ...headers } });
@@ -252,6 +453,7 @@ describe("DebugHub.fetch", () => {
     const hub = new DebugHub({
       acceptWebSocket: (ws) => sockets.push(ws as FakeSocket),
       getWebSockets: () => sockets,
+      storage: fakeStorage(),
     });
     const res = await hub.fetch(new Request("https://lianki.com/api/version/debug?label=p"));
     expect(res.status).toBe(101);
@@ -262,6 +464,22 @@ describe("DebugHub.fetch", () => {
     hub.webSocketClose(ctl, 1005);
     expect(ctl.closed).toBe(1000);
     expect((page.last("state") as { pending: unknown }).pending).toBeNull();
+    expect(page.last("history")).toEqual({ type: "history", messages: [] });
+  });
+
+  it("passes the grant token header to the hub", async () => {
+    const sockets: FakeSocket[] = [];
+    const hub = new DebugHub({
+      acceptWebSocket: (ws) => sockets.push(ws as FakeSocket),
+      getWebSockets: () => sockets,
+      storage: fakeStorage(),
+    });
+    await hub.fetch(
+      new Request("https://lianki.com/api/version/debug/control?label=c", {
+        headers: { "x-debug-token": "nope" },
+      }),
+    );
+    expect(sockets[0].closed).toBe(4498);
   });
 });
 

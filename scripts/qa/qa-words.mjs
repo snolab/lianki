@@ -322,6 +322,22 @@ try {
   );
   for (let k = 0; k < 7; k++) await gear.click();
   check((await page.locator("[data-debug-badge]").count()) === 0, "seven more turn it off");
+  // The same hidden switch on every page: ten quick taps on your own name in
+  // the profile menu (the menu stays open between taps).
+  {
+    const flag = () => page.evaluate(() => localStorage.getItem("lk:debug"));
+    await page.locator("[data-profile-menu]").click();
+    const name = page.locator("[data-debug-name]");
+    await name.waitFor({ timeout: 5000 });
+    for (let k = 0; k < 10; k++) await name.click();
+    const on = await flag();
+    for (let k = 0; k < 10; k++) await name.click();
+    check(
+      on === "1" && (await flag()) === "0",
+      `ten taps on your name in the profile menu toggle debug (${on})`,
+    );
+    await page.keyboard.press("Escape");
+  }
 
   // /learn speaks the page's language (it used to be English-only) and links
   // AnkiWeb's shared decks for each language we teach.
@@ -387,6 +403,10 @@ try {
   check(
     (await page.locator("[data-debug-eval]").count()) === 0,
     "a non-owner page (debug on, socket refused) shows no remote-eval UI",
+  );
+  check(
+    (await page.locator("[data-debug-chat]").count()) === 0,
+    "a non-owner page (debug on, socket refused) shows no agent chat box",
   );
 
   // A language with pre-rendered clips but none for this text: a 404 the

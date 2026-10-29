@@ -30,7 +30,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/words/tree";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
-import { debugOn, devLog, setDebug } from "@/lib/debug-client";
+import { debugOn, devLog } from "@/lib/debug-client";
+import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
   centreWeight,
@@ -501,28 +502,6 @@ const SPEECH_TAG: Record<string, string> = {
   ru: "ru-RU",
   en: "en-US",
 };
-
-/**
- * The installed app has no address bar for ?debug=1: seven quick taps on
- * the Settings button toggle it instead. Returns [on, tap].
- */
-function useDebugToggle(onChange: (on: boolean) => void): [boolean, () => void] {
-  const [on, setOn] = useState(false);
-  useEffect(() => setOn(debugOn()), []);
-  const taps = useRef<number[]>([]);
-  const tap = useCallback(() => {
-    const now = Date.now();
-    taps.current = [...taps.current.filter((t) => now - t < 3000), now];
-    if (taps.current.length < 7) return;
-    taps.current = [];
-    const next = !debugOn();
-    setDebug(next);
-    setOn(next);
-    onChange(next);
-    if (next) devLog({ ev: "debug-on", ua: navigator.userAgent });
-  }, [onChange]);
-  return [on, tap];
-}
 
 /**
  * Debug-only swipe profiler: frame times while a finger is on a slip, plus
