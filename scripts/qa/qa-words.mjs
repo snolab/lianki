@@ -270,6 +270,13 @@ try {
   await page.getByRole("switch", { name: "Server voice" }).click();
   await page.getByRole("button", { name: "Settings" }).click();
 
+  // Hints follow the input: a keyboard was used, so key hints, no gestures.
+  const deskHint = await page.locator("text=? all keys").count();
+  check(
+    deskHint === 1 && (await page.locator("text=/tap = show/").count()) === 0,
+    "with a keyboard the hints are keys, not gestures",
+  );
+
   // The installed app's scope is the whole site: /words opened from the home
   // screen must not fall outside it (iOS then shows the address bar).
   const manifest = await page.evaluate(async () => (await fetch("/manifest.json")).json());
@@ -537,9 +544,14 @@ try {
     // This phone's speech API never speaks, like Firefox on Android: words
     // must come from the server instead (stubbed here — no AI call in QA).
     await phone.addInitScript(() => (window.__speechDead = true));
+    // A phone of its own: not the desktop's remembered keyboard.
+    await phone.addInitScript(() => localStorage.removeItem("lk:input-modality"));
     const ttsAsked = [];
+    const ttsTexts = [];
     await phone.route("**/api/words/tts?*", (r) => {
-      ttsAsked.push(new URL(r.request().url()).searchParams.get("lang"));
+      const q = new URL(r.request().url()).searchParams;
+      ttsAsked.push(q.get("lang"));
+      ttsTexts.push(q.get("text"));
       return r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") });
     });
     /** Variant A's slip look, to hold variant B's against. */
@@ -585,6 +597,36 @@ try {
         );
       }
       await m.waitForTimeout(500); // let the opening scroll settle
+      if (variant === "js") {
+        // Prefetch: the visible rows' audio is fetched before any tap.
+        const firstRow = await mrows.nth(0).innerText();
+        check(
+          ttsTexts.length > 1 && ttsTexts.some((t) => t && firstRow.includes(t)),
+          `${tag} the visible rows' audio is fetched before the first tap (${ttsTexts.length} clips)`,
+        );
+        // Hints follow the input used last: gestures on a phone, keys once a
+        // hardware keyboard is used, gestures again after a touch.
+        const gestures = () => m.locator("text=/tap = show/").count();
+        const keys = () => m.locator("text=? all keys").count();
+        const seeded = [await gestures(), await keys()].join();
+        await m.keyboard.press("Shift");
+        await m
+          .locator("text=? all keys")
+          .waitFor({ timeout: 3000 })
+          .catch(() => {});
+        const typed = [await gestures(), await keys()].join();
+        const hint = await m.locator("text=? all keys").boundingBox();
+        if (hint) await m.touchscreen.tap(hint.x + 5, hint.y + 5);
+        await m
+          .locator("text=/tap = show/")
+          .waitFor({ timeout: 3000 })
+          .catch(() => {});
+        const touched = [await gestures(), await keys()].join();
+        check(
+          seeded === "1,0" && typed === "0,1" && touched === "1,0",
+          `${tag} hints follow the last input: touch, keyboard, touch (${seeded} → ${typed} → ${touched})`,
+        );
+      }
       const listTop = await m
         .locator('[role="list"]')
         .evaluate((el) => el.getBoundingClientRect().top);
@@ -660,7 +702,7 @@ try {
         .catch(() => {});
       check(
         ttsAsked.length > 0 && (await m.evaluate(() => window.__played.length)) > playedBefore,
-        `${tag} speech that never starts falls back to server audio (${ttsAsked.join(",")})`,
+        `${tag} speech that never starts falls back to server audio (${ttsAsked.length} clips asked)`,
       );
       // Focus = that slip's cords come loose (no more green bar).
       check(

@@ -12,8 +12,8 @@ export type SwipeRating = 1 | 2 | 3 | 4;
  *
  *   t = f / L,   x = a · (t − c·sin(2πt) / 2π)
  *
- * whose slope dx/df = 1 − c·cos(2πt) is 1 − c (0.25) on a level — it holds,
- * yet gives a little — and 1 + c (1.75) between levels, where the row slides
+ * whose slope dx/df = 1 − c·cos(2πt) is 1 − c (0.1) on a level — it holds,
+ * yet gives a little — and 1 + c (1.9) between levels, where the row slides
  * into the next one. Past level 2 it stretches at SWIPE_STRETCH, to a hard
  * stop. The level itself has hysteresis: it changes only once t is
  * SWIPE_HYSTERESIS past the midpoint, so a finger resting on a boundary
@@ -25,8 +25,18 @@ export const SWIPE_START = 16;
 export const SWIPE_ROW_PX = 44;
 /** Finger travel per level, in rows. */
 export const SWIPE_LEVEL = 1;
-/** How strongly a level holds: the row follows 1 − c of the finger on a level. */
-export const SWIPE_SNAP = 0.75;
+/**
+ * How strongly the detents pull, relative to the first tuning (c = 0.75,
+ * spring ω = 25): the A/B knob. It scales the hold on a level (SWIPE_SNAP)
+ * and the release spring (SWIPE_SPRING). It does not touch the level
+ * thresholds or the flick's coast, so a fling skips no more easily.
+ */
+export const SNAP_STRENGTH = 1.2;
+/**
+ * How strongly a level holds: the row follows 1 − c of the finger on a level.
+ * Capped below 1, where the row would stop following the finger at all.
+ */
+export const SWIPE_SNAP = Math.min(0.95, Math.round(75 * SNAP_STRENGTH) / 100);
 export const SWIPE_HYSTERESIS = 0.1;
 /** Past the last level the row follows this much of the finger… */
 export const SWIPE_STRETCH = 0.3;
@@ -79,7 +89,7 @@ export function releaseLevel(finger: number, v: number, held: number, a = SWIPE_
  * move), ω = SWIPE_SPRING rad/s, sampled into a CSS easing over the time it
  * takes to settle — the compositor runs it, no script per frame.
  */
-export const SWIPE_SPRING = 25;
+export const SWIPE_SPRING = 25 * SNAP_STRENGTH;
 const SETTLE = 7.4; // ωt at which (1 + ωt)e^−ωt < 0.5%
 export const SWIPE_RETURN_S = SETTLE / SWIPE_SPRING;
 export const springProgress = (t: number) =>
