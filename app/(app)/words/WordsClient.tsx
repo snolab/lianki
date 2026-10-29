@@ -203,15 +203,16 @@ type Item = Entry & {
 /** Identity of a card across lists: the same term may be in two of them. */
 const keyOf = (it: { listId: string; term: string }) => `${it.listId}\u0000${it.term}`;
 
+/**
+ * 1–4 for the left hand; the right hand mirrors it, so the outer fingers
+ * agree: L K J H = Again Hard Good Easy (1 and L are both the outer edge's
+ * Again). W/S move, like the arrows.
+ */
 const KEY_RATING: Record<string, Rating> = {
-  KeyA: 1,
-  KeyH: 1,
-  KeyS: 2,
-  KeyJ: 2,
-  KeyW: 3,
-  KeyK: 3,
-  KeyD: 4,
-  KeyL: 4,
+  KeyL: 1,
+  KeyK: 2,
+  KeyJ: 3,
+  KeyH: 4,
   Digit1: 1,
   Digit2: 2,
   Digit3: 3,
@@ -979,7 +980,7 @@ export type DrillConfig = {
 const WORDS: DrillConfig = {
   base: "/words",
   title: "Word lists",
-  intro: "An endless list: grade each word with A / S / W / D — it is saved at once. Z undoes.",
+  intro: "An endless list: grade each word with 1 / 2 / 3 / 4 — it is saved at once. Z undoes.",
   readingOnBack: true,
 };
 
@@ -1980,11 +1981,11 @@ function Study({
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
       // Holding a key repeats movement only, never grading or undo.
-      const moves = ["ArrowDown", "ArrowUp", "KeyF", "KeyU", "KeyR", "KeyI"];
+      const moves = ["ArrowDown", "ArrowUp", "KeyS", "KeyW", "KeyU", "KeyI"];
       if (e.repeat && !moves.includes(e.code)) return e.preventDefault();
-      // R/I up, F/U down: home-row alternatives to the arrows for either hand.
-      if (["ArrowDown", "KeyF", "KeyU"].includes(e.code)) moveRow(row + 1);
-      else if (["ArrowUp", "KeyR", "KeyI"].includes(e.code)) moveRow(row - 1);
+      // W/S (left hand) and I/U (right hand) move like the arrows.
+      if (["ArrowDown", "KeyS", "KeyU"].includes(e.code)) moveRow(row + 1);
+      else if (["ArrowUp", "KeyW", "KeyI"].includes(e.code)) moveRow(row - 1);
       else if (e.code === "Space")
         setRevealed((s) => {
           const n = new Set(s);
@@ -2569,8 +2570,8 @@ function Study({
               : touch
                 ? "tap = show + say · hold = listen (loops) · swipe ← a little Hard, far Again · swipe → a little Good, far Easy · ↶ undo"
                 : help
-                  ? "↑↓ / R F / I U move (the focused row shows its meaning) · Space pin · E show all · A Again · S Hard · W Good · D Easy (also H/J/K/L, 1–4) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
-                  : "A Again · S Hard · W Good · D Easy · Z undo · ? all keys"}
+                  ? "↑↓ / W S / I U move (the focused row shows its meaning) · Space pin · E show all · 1 Again · 2 Hard · 3 Good · 4 Easy (right hand mirrored: L Again · K Hard · J Good · H Easy) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
+                  : "1 Again · 2 Hard · 3 Good · 4 Easy · Z undo · ? all keys"}
           </div>
         </>
       )}

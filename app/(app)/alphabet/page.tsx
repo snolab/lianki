@@ -18,7 +18,7 @@ const ALPHABET: DrillConfig = {
   base: "/alphabets",
   title: "Alphabets",
   intro:
-    "Symbol → sound and sound → symbol, in one endless list. Grade each with A / S / W / D; Z undoes.",
+    "Symbol → sound and sound → symbol, in one endless list. Grade each with 1 / 2 / 3 / 4; Z undoes.",
 };
 
 export default function AlphabetPage() {

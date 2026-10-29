@@ -6,8 +6,10 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { AppShell, type ShellLabels, type ShellUser } from "@/app/components/AppShell";
 import type { FirstRunLabels } from "@/app/components/FirstRunChoice";
 import { IntlayerClientProvider } from "../IntlayerClientProvider";
+import { announceBuild } from "@/lib/announce-build";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  announceBuild();
   const locale = await appLocale();
   const lang = LANG_TAGS[locale] ?? locale;
   const dir = isRTLLocale(locale) ? "rtl" : "ltr";
