@@ -4,6 +4,7 @@ import { authUser } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
 import { appHref } from "@/lib/app-locale";
 import { appLocale } from "@/lib/app-locale.server";
+import PasskeysCard from "./PasskeysCard";
 
 export default async function ProfilePage() {
   const user = await authUser();
@@ -41,6 +42,7 @@ export default async function ProfilePage() {
             </p>
           )}
         </div>
+        <PasskeysCard />
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
           <h2 className="text-2xl font-semibold mb-4">{sessionDetails}</h2>
           <pre className="text-sm overflow-x-auto">

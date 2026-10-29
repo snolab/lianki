@@ -25,7 +25,32 @@ the mail.
 
 `auth.ts` enables email+password **only** when `NODE_ENV !== production` **and**
 `DEV_EMAIL_PASSWORD_AUTH=1`, so it can never be on in the deployed app.
-Production is passwordless: magic link + GitHub/Google.
+Production is passwordless: email code, magic link, passkeys + GitHub/Google.
+
+## Passkeys
+
+better-auth's passkey plugin (`@better-auth/passkey`, pinned to the
+better-auth version), table `passkey` (`db/migrations/0011_passkey.sql`). No
+secrets or settings: it is always on.
+
+- **Relying party** is decided in `lib/passkey.ts`, not left to the plugin:
+  without a base URL the plugin falls back to `localhost`, which would fail
+  every production ceremony. A localhost base URL (qa:all's random port via
+  `.dev.vars`, `next dev`) is its own RP on that exact origin; anything else —
+  `https://lianki.com` from wrangler.jsonc, or no base URL at all in
+  production — is `lianki.com`, with the apex and
+  `www` as allowed origins. A passkey made on one RP never works on another,
+  so local passkeys and production ones are separate.
+- **Sign-in page**: a "Sign in with a passkey" button, plus conditional UI —
+  the email field is `autocomplete="username webauthn"` and one autofill
+  request starts on page load. After an email (or dev password) sign-in on a
+  device with a platform authenticator, a one-time offer to add a passkey;
+  "Not now" is remembered in localStorage on that device.
+- **Profile page** lists, adds, renames and deletes passkeys. Adding one needs
+  a _fresh_ session (better-auth `freshAge`, 1 day since the session was last
+  refreshed); otherwise the card asks the user to sign in again.
+- QA: `scripts/qa/qa-ui.mjs` drives the whole loop with a CDP virtual
+  authenticator.
 
 ## Google OAuth
 

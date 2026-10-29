@@ -8,6 +8,7 @@ import { nextCookies } from "better-auth/next-js";
 // ~13 copies in the Worker bundle, all parsed on an isolate's first request.
 import { emailOTP } from "better-auth/plugins/email-otp";
 import { magicLink } from "better-auth/plugins/magic-link";
+import { passkey } from "@better-auth/passkey";
 import { stripGrantedScopesHook } from "@/lib/google-auth-url";
 import { Kysely } from "kysely";
 import { D1Dialect } from "kysely-d1";
@@ -16,7 +17,8 @@ import { trustedOrigins } from "@/lib/trusted-origins";
 import { mailLocale, signInMail } from "@/lib/sign-in-mail";
 import { db, mongoClient } from "./app/db";
 import { dbBackend, getD1 } from "./lib/d1";
-import { passwordAuthEnabled } from "./lib/auth-env";
+import { passwordAuthEnabled, runtimeNodeEnv } from "./lib/auth-env";
+import { PASSKEY_RP_NAME, passkeyRelyingParty } from "./lib/passkey";
 
 // The heavy half of auth: better-auth, its plugins, zod, kysely. Only ever
 // reached through the dynamic import in ./auth.ts, so it is one shared async
@@ -54,6 +56,21 @@ async function sendSignInMail(
     );
     throw err;
   }
+}
+
+/**
+ * Passkeys: the relying party is `lianki.com` in production and the exact
+ * localhost origin in dev/QA — see lib/passkey.ts for why it is not left to the
+ * plugin. Anything but an explicit dev/test NODE_ENV counts as production, so a
+ * missing env can only ever pick the real domain.
+ */
+function passkeyPlugin() {
+  const env = runtimeNodeEnv();
+  const { rpID, origin } = passkeyRelyingParty(
+    process.env.BETTER_AUTH_BASE_URL ?? process.env.BETTER_AUTH_URL ?? process.env.NEXTAUTH_URL,
+    env !== "development" && env !== "test",
+  );
+  return passkey({ rpID, rpName: PASSKEY_RP_NAME, origin });
 }
 
 /** Backend-agnostic better-auth options (everything except `database`). */
@@ -132,6 +149,10 @@ function baseOptions() {
             }),
           ]
         : []),
+      // Sign in with a passkey (Touch ID, Windows Hello, a phone's screen lock),
+      // added from the profile page or right after an email sign-in. Always on:
+      // unlike mail it needs no provider. Table: db/migrations/0011_passkey.sql.
+      passkeyPlugin(),
       nextCookies(), // must be last — handles Set-Cookie in server actions
     ],
   };

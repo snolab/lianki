@@ -96,6 +96,9 @@ try {
     null,
     { timeout: 20000 },
   );
+  // Sign-in ends in a full page load of /home; let it land, or the goto below
+  // aborts it mid-flight (net::ERR_ABORTED).
+  await page.waitForURL((u) => /\/home|\/list/.test(u.toString()), { timeout: 20000 });
   check(true, "signed in");
 
   // Only errors on the page under test count; sign-in's local Turnstile stub is noisy.
