@@ -4,51 +4,86 @@
 export type SwipeRating = 1 | 2 | 3 | 4;
 
 /**
- * Touch grading by where a row comes to rest, in units of the row's height
- * `a`: the row travels at most 2a either way (a hard stop). Up to a it
- * follows the finger 1:1; beyond a it resists — each finger px moves it
- * SWIPE_RESIST px, like a rubber band — so the far grade takes a deliberate
- * push: about 2.25a of finger (≈100 px on a phone), since the owner found
- * Again/Easy too easy to fall into at 1.4a. Resting within SWIPE_STRONG·a is the milder grade, beyond it the
- * stronger: ← Hard / ← Again, → Good / → Easy. Under SWIPE_START px is no
- * grade at all, so a touch that barely moves never grades.
+ * Touch grading by detents (snap levels), in units of the row's height `a`:
+ * level 0 (no grade), ±1 (← Hard / → Good), ±2 (← Again / → Easy). One
+ * level is SWIPE_LEVEL·a of finger travel.
+ *
+ * While dragging, the row follows a smooth staircase of the finger:
+ *
+ *   t = f / L,   x = a · (t − c·sin(2πt) / 2π)
+ *
+ * whose slope dx/df = 1 − c·cos(2πt) is 1 − c (0.25) on a level — it holds,
+ * yet gives a little — and 1 + c (1.75) between levels, where the row slides
+ * into the next one. Past level 2 it stretches at SWIPE_STRETCH, to a hard
+ * stop. The level itself has hysteresis: it changes only once t is
+ * SWIPE_HYSTERESIS past the midpoint, so a finger resting on a boundary
+ * never flickers between grades (0 → 1 at 0.6L ≈ 26 px, 1 → 2 at 1.6L ≈ 70 px).
+ * Under SWIPE_START px is no grade at all, so a touch that barely moves never grades.
  */
 export const SWIPE_START = 16;
-/** The row height on touch: 2a of travel each way. */
+/** The row height on touch. */
 export const SWIPE_ROW_PX = 44;
-export const SWIPE_RESIST = 0.4;
-export const SWIPE_STRONG = 1.5;
-/** 0 = no grade, 1 = the milder grade, 2 = the stronger — of a row position. */
-export function swipeTier(dx: number, a = SWIPE_ROW_PX): 0 | 1 | 2 {
-  const d = Math.abs(dx);
-  return d < SWIPE_START ? 0 : d <= SWIPE_STRONG * a ? 1 : 2;
-}
-export const swipeRating = (dx: number, a = SWIPE_ROW_PX): SwipeRating | null => {
-  const t = swipeTier(dx, a);
-  if (!t) return null;
-  return dx < 0 ? (t === 2 ? 1 : 2) : t === 2 ? 4 : 3;
-};
-/** The row's position for a finger travel: 1:1 up to a, resisted beyond, stopped at 2a. */
-export function clampSwipe(finger: number, a = SWIPE_ROW_PX) {
+/** Finger travel per level, in rows. */
+export const SWIPE_LEVEL = 1;
+/** How strongly a level holds: the row follows 1 − c of the finger on a level. */
+export const SWIPE_SNAP = 0.75;
+export const SWIPE_HYSTERESIS = 0.1;
+/** Past the last level the row follows this much of the finger… */
+export const SWIPE_STRETCH = 0.3;
+/** …up to this many rows out. */
+export const SWIPE_STOP = 2.5;
+export const SWIPE_MAX_LEVEL = 2;
+
+export type SwipeLevel = -2 | -1 | 0 | 1 | 2;
+
+/** The row's position for a finger travel `finger`: the snapping staircase. */
+export function snapSwipe(finger: number, a = SWIPE_ROW_PX) {
+  const L = SWIPE_LEVEL * a;
   const f = Math.abs(finger);
-  const r = f <= a ? f : Math.min(2 * a, a + (f - a) * SWIPE_RESIST);
-  return Math.sign(finger) * r;
+  const top = SWIPE_MAX_LEVEL * L;
+  const x =
+    f <= top
+      ? a * (f / L - (SWIPE_SNAP * Math.sin((2 * Math.PI * f) / L)) / (2 * Math.PI))
+      : Math.min(SWIPE_STOP * a, SWIPE_MAX_LEVEL * a + (f - top) * SWIPE_STRETCH);
+  return Math.sign(finger) * x;
 }
+
+/** The level after finger travel `finger`, from level `from`: hysteresis both ways. */
+export function swipeLevel(finger: number, from: number = 0, a = SWIPE_ROW_PX): SwipeLevel {
+  const t = finger / (SWIPE_LEVEL * a);
+  let k = from;
+  while (k < SWIPE_MAX_LEVEL && t > k + 0.5 + SWIPE_HYSTERESIS) k++;
+  while (k > -SWIPE_MAX_LEVEL && t < k - 0.5 - SWIPE_HYSTERESIS) k--;
+  return k as SwipeLevel;
+}
+
+/** The grade a level gives: ← Again (−2) / Hard (−1), → Good (1) / Easy (2). */
+export const levelRating = (k: number): SwipeRating | null =>
+  k === 0 ? null : k < 0 ? (k <= -2 ? 1 : 2) : k >= 2 ? 4 : 3;
+
 /**
- * Swipes follow physics: the grade comes from where the row would come to
- * rest if let go, not just where the finger lifted — a quick flick travels
- * further. Exponential deceleration, as iOS scroll views do: at rate `d` per
- * ms, a release at v px/ms coasts v·d/(1−d) px more (of finger travel, so
- * the coast meets the same resistance). 0.97 coasts ~32 px per 1 px/ms: a
- * casual flick stays on the milder grade, only a hard one (≳2.5 px/ms)
- * reaches the far grade. (0.99, then 0.98, made flicks land there too often.)
+ * A flick carries on: the finger's speed adds v·SWIPE_COAST_MS of travel at
+ * release — but it moves the level at most one step past where it was held,
+ * so no flick lands on Again/Easy from rest.
  */
-export const SWIPE_DECAY = 0.97;
+export const SWIPE_COAST_MS = 30;
 /** Velocity is measured over the last stretch of the gesture only. */
 export const SWIPE_VELOCITY_MS = 100;
-/** Where the row would come to rest after a release from finger travel `finger`. */
-export const projectSwipe = (finger: number, v: number, a = SWIPE_ROW_PX) =>
-  clampSwipe(finger + (v * SWIPE_DECAY) / (1 - SWIPE_DECAY), a);
+export function releaseLevel(finger: number, v: number, held: number, a = SWIPE_ROW_PX) {
+  const k = swipeLevel(finger + v * SWIPE_COAST_MS, held, a);
+  return Math.max(held - 1, Math.min(held + 1, k)) as SwipeLevel;
+}
+
+/**
+ * The release: back home on a critically damped spring (as the column widths
+ * move), ω = SWIPE_SPRING rad/s, sampled into a CSS easing over the time it
+ * takes to settle — the compositor runs it, no script per frame.
+ */
+export const SWIPE_SPRING = 25;
+const SETTLE = 7.4; // ωt at which (1 + ωt)e^−ωt < 0.5%
+export const SWIPE_RETURN_S = SETTLE / SWIPE_SPRING;
+export const springProgress = (t: number) =>
+  t >= 1 ? 1 : 1 - (1 + SETTLE * t) * Math.exp(-SETTLE * t);
 /** px/ms over the recent samples; 0 if the finger stopped before lifting. */
 export function releaseVelocity(samples: { t: number; x: number }[], now: number) {
   const recent = samples.filter((s) => now - s.t <= SWIPE_VELOCITY_MS);
@@ -71,9 +106,26 @@ export function lockAxis(x: number, y: number): Axis | null {
   return Math.abs(x) > 1.5 * Math.abs(y) ? "h" : "v";
 }
 
-/** The grade a sideways gesture gives when released: distance + coasting. */
-export function releaseRating(finger: number, v: number, a = SWIPE_ROW_PX): SwipeRating | null {
+/** The grade a sideways gesture gives when released from level `held`. */
+export function releaseRating(
+  finger: number,
+  v: number,
+  held: number = swipeLevel(finger),
+  a = SWIPE_ROW_PX,
+): SwipeRating | null {
   // Speed alone must not grade a twitch.
   if (Math.abs(finger) < SWIPE_START) return null;
-  return swipeRating(projectSwipe(finger, v, a), a);
+  return levelRating(releaseLevel(finger, v, held, a));
+}
+
+/**
+ * Variant B (NativeSlipRow): the grade of where a native scroller came to
+ * rest, `offset` px from centre (+ = slid right). Same tiers as above: under
+ * SWIPE_START nothing, within a ← Hard / → Good, beyond it ← Again / → Easy.
+ */
+export function restRating(offset: number, a = SWIPE_ROW_PX): SwipeRating | null {
+  const d = Math.abs(offset);
+  if (d < SWIPE_START) return null;
+  const strong = d > a + 0.5;
+  return offset > 0 ? (strong ? 4 : 3) : strong ? 1 : 2;
 }
