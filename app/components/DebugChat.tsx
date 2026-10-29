@@ -11,6 +11,8 @@ import {
   pickVoice,
 } from "@/lib/dev-eval";
 import { LiagentMark } from "@lianki/debug-chat/LiagentMark";
+import { CLIP_SINK_KEY, clipSinkFrom, joinText } from "@lianki/debug-chat/mic";
+import { DebugMic, canCapture } from "@lianki/debug-chat/MicButton";
 import { createDragFlag, createTapper } from "@/lib/tap-gesture";
 import { Icon } from "./icons";
 
@@ -401,6 +403,23 @@ export function DebugChat({
   const settledLen = useRef(0);
   /** The key going down is Shift+Enter: its line break stays a line break. */
   const shiftEnter = useRef(false);
+  /** The mic is listening, or has transcripts out: the debounce waits for it. */
+  const micOn = useRef(false);
+  const micPending = useRef(0);
+  /** This browser can capture (the mic button shows inside the input). */
+  const [hasMic, setHasMic] = useState(false);
+  useEffect(() => setHasMic(canCapture()), []);
+  /** Dimmed after the draft: partial transcripts, or "…" for those still out. */
+  const [interim, setInterim] = useState("");
+  const mirror = useRef<HTMLDivElement | null>(null);
+  /** A transcript lands in the draft, as typed text would, but is never sent by itself. */
+  const dictated = (t: string) => {
+    draftRef.current = joinText(draftRef.current, t);
+    settledLen.current = draftRef.current.length; // not a dictation "burst": no auto-send
+    setDraft(draftRef.current);
+    setOffline(false);
+    arm();
+  };
   const arm = () => {
     clearTimeout(timer.current);
     if (!composing.current) {
@@ -409,7 +428,9 @@ export function DebugChat({
       settledLen.current = text.length;
       if (burst && ENDS_SENTENCE.test(text.trim())) return submit();
     }
-    if (composing.current || !draftRef.current.trim()) return setArmed(0);
+    // While the mic listens or transcribes, nothing goes out by the debounce (Enter still sends).
+    if (composing.current || micOn.current || micPending.current || !draftRef.current.trim())
+      return setArmed(0);
     setArmed((n) => n + 1);
     timer.current = setTimeout(submit, DEBOUNCE_MS);
   };
@@ -452,6 +473,8 @@ export function DebugChat({
     endTimer.current = setTimeout(() => setEndArmed(null), END_CONFIRM_MS);
   };
   const evalSessions = sessions.filter((x) => x.scope !== "chat");
+  /** Room at the input's right end: the mic (32px), and the busy spinner left of it. */
+  const inputPad = hasMic ? (busy ? "pe-14" : "pe-9") : "pe-6";
   const unread = messages.slice(seen).filter((m) => m.from === "agent").length;
   const dot = live ? "oklch(0.68 0.16 150)" : "oklch(0.62 0.02 70)";
   const status = notice
@@ -805,6 +828,20 @@ export function DebugChat({
               />
             )}
             <div className="relative flex min-w-0 flex-1">
+              {interim && (
+                // A mirror of the draft, invisible, then the interim text dimmed:
+                // it shows where the transcript will land.
+                <div
+                  ref={mirror}
+                  aria-hidden
+                  className={`pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words rounded-lg border border-transparent px-2 py-1 text-base ${inputPad}`}
+                >
+                  <span className="invisible">{draft}</span>
+                  <span data-testid="debug-chat-mic-pending" className="text-gray-400">
+                    {joinText(draft, interim).slice(draft.length)}
+                  </span>
+                </div>
+              )}
               <textarea
                 ref={input}
                 data-testid="debug-chat-input"
@@ -813,7 +850,10 @@ export function DebugChat({
                 // 16px: iOS zooms the whole page into any input under 16px.
                 value={draft}
                 maxLength={MAX_CHAT}
-                placeholder={holding ? DRAG_HINT : "Message the agent…"}
+                placeholder={holding ? DRAG_HINT : interim ? "" : "Message the agent…"}
+                onScroll={(e) => {
+                  if (mirror.current) mirror.current.scrollTop = e.currentTarget.scrollTop;
+                }}
                 aria-label="Message the agent"
                 onChange={(e) => {
                   draftRef.current = e.target.value;
@@ -852,7 +892,7 @@ export function DebugChat({
                   submit();
                 }}
                 style={{ background: INPUT_BG }}
-                className="pointer-events-auto block min-w-0 flex-1 resize-none pe-6 rounded-lg border border-current/25 px-2 py-1 text-base outline-none placeholder:text-gray-400"
+                className={`pointer-events-auto block min-w-0 flex-1 resize-none rounded-lg border border-current/25 px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
               />
               {holding && draft && (
                 // The draft hides the placeholder: the hint sits over it instead.
@@ -871,7 +911,7 @@ export function DebugChat({
                   data-testid="debug-chat-busy"
                   aria-label={`${busy.label || "agent"} is working`}
                   title={`${busy.label || "agent"} is working`}
-                  className="pointer-events-none absolute end-1.5 top-1/2 -translate-y-1/2"
+                  className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${hasMic ? "end-9" : "end-1.5"}`}
                 >
                   <svg viewBox="0 0 16 16" className="size-3.5 animate-spin" aria-hidden>
                     <circle
@@ -891,6 +931,22 @@ export function DebugChat({
                     />
                   </svg>
                 </span>
+              )}
+              {hasMic && (
+                <DebugMic
+                  onText={dictated}
+                  onPending={(n, text) => {
+                    micPending.current = n;
+                    setInterim(text);
+                    arm(); // stops a debounce under way, or restarts it once all is in
+                  }}
+                  onActive={(on) => {
+                    micOn.current = on;
+                    arm();
+                  }}
+                  clipSink={friend ? undefined : clipSinkFrom(read(CLIP_SINK_KEY))}
+                  label={pages.find((p) => p.id === selfPage)?.label ?? location.pathname}
+                />
               )}
             </div>
           </div>

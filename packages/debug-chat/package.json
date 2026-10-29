@@ -5,7 +5,9 @@
   "type": "module",
   "description": "The debug chat widget's parts, kept apart so they can move to their own repo: no imports from the app.",
   "exports": {
-    "./LiagentMark": "./src/LiagentMark.tsx"
+    "./LiagentMark": "./src/LiagentMark.tsx",
+    "./mic": "./src/mic.ts",
+    "./MicButton": "./src/MicButton.tsx"
   },
   "peerDependencies": {
     "react": "*"

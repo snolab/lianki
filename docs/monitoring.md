@@ -234,6 +234,32 @@ event. Disconnecting this page takes two taps. Eval and preview sessions keep
 a light End. The menu has no End chat: the chat hibernates and wakes by
 itself.
 
+**Mic.** A mic button sits inside the input at its right edge
+(`debug-chat-mic`; hidden where the browser lacks getUserMedia or Web Audio).
+One tap turns hands-free listening on; another tap, or Escape, turns it off.
+A voice-activity detector cuts speech into utterances: Silero VAD
+(`@ricky0123/vad-web@0.0.30` on `onnxruntime-web@1.22.0`), loaded from
+jsDelivr at those pinned versions on the first tap only (the ORT wasm is
+~11 MB, too big to self-host), or, if that fails to load, an energy threshold
+on the raw signal. Each utterance (at most 30 s; longer speech is cut and
+goes on) is encoded as 16 kHz mono WAV and POSTed to `/api/debug/stt` as soon
+as it ends; requests run in parallel and the text is appended to the draft
+in the order spoken, with a faint "…" where a result is pending. Speech over
+3 s also sends rolling partial chunks (every 2.5 s, overlapping by 1.5 s);
+their merged text shows dimmed until the final text replaces it, and a 429
+stops them until the next turn-on. Nothing is sent by the mic: the debounce
+waits while listening or while transcripts are out, and Enter sends as
+usual. While audio is captured the button has a red pulsing ring and "REC"
+(`debug-chat-mic-rec`); listening but quiet, a faint steady ring. Read-aloud
+is paused while listening and resumed after. A short note
+(`debug-chat-mic-note`) says when the mic is refused or missing, or the
+route answers 401 (listening stops) or 429. On the owner's pages, if
+localStorage `lk:debug-clip-sink` holds an https (or localhost) URL, each
+final utterance is also POSTed as multipart (`audio`, and `meta` JSON
+`{at, mime, durationMs, label, transcript, model}`) to `<sink>/clips`,
+silently. The code is in `packages/debug-chat/src/` (`mic.ts`, the logic,
+tested with fakes in `unit/mic.test.ts`; `MicButton.tsx`, the browser glue).
+
 **One voice per device.** Every tab of a thread shows every message, but
 only one reads a reply aloud: the focused tab, or else the one focused most
 recently. Tabs agree over `BroadcastChannel("lk-debug-chat")`
@@ -282,7 +308,9 @@ tests:
   `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-pill-menu`,
   `debug-chat-pill-unread`, `debug-chat-log`, `debug-chat-line` (with
   `data-from`), `debug-chat-input`, `debug-chat-drag-hint`,
-  `debug-chat-bottom`, `debug-chat-busy`, `debug-chat-notice` and
+  `debug-chat-bottom`, `debug-chat-busy`, `debug-chat-mic` (with
+  `data-state` and `data-status`), `debug-chat-mic-rec`,
+  `debug-chat-mic-pending`, `debug-chat-mic-note`, `debug-chat-notice` and
   `debug-chat-warning`.
 - The pill's menu: `debug-menu`, `debug-menu-status`, `debug-menu-note` (where
   the widget came from, or why it fell back), `debug-menu-speak`,
