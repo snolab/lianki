@@ -169,7 +169,8 @@ ruby rt {
   --fx: -343px;
 }
 .slip-touch {
-  --node-x: calc(0.5rem + var(--term-w, 8rem) + 0.25rem);
+  /* padding + stamp column + gaps + the fitted term width */
+  --node-x: calc(0.5rem + 1rem + 0.75rem + var(--term-w, 8rem));
 }
 .slip-again {
   --slip-c: var(--slip-again);

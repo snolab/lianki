@@ -2372,7 +2372,7 @@ function Study({
                   }}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none border-b ${
                     touch
-                      ? "slip-touch grid-cols-[var(--term-w,8rem)_1fr_3rem] text-base"
+                      ? "slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base"
                       : hasExamples
                         ? "grid-cols-[1.25rem_var(--term-w,12rem)_minmax(10rem,1fr)_minmax(12rem,1.4fr)_3.5rem] text-[15px]"
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] text-[15px]"
@@ -2385,7 +2385,14 @@ function Study({
                   }`}
                   style={{ height: ROW_H }}
                 >
-                  {!touch && <span className="text-[10px] opacity-40">{i === row ? "▸" : ""}</span>}
+                  {/* The grade, stamped like a small seal (盖章) at the slip's left end. */}
+                  <span className="flex justify-center text-[10px]" data-stamp-cell>
+                    {rating ? (
+                      <i key={rating} className="lk-stamp" aria-label={RATING_LABEL[rating]} />
+                    ) : !touch && i === row ? (
+                      <span className="opacity-40">▸</span>
+                    ) : null}
+                  </span>
                   <Glance
                     active={glancing}
                     title={it.reading ? `${it.term} ${it.reading}` : it.term}
@@ -2434,10 +2441,6 @@ function Study({
                     title={rating ? RATING_LABEL[rating] : "due"}
                   >
                     {status(it, i)}
-                    {/* The grade, stamped like a small seal (盖章). */}
-                    {rating && (
-                      <i key={rating} className="lk-stamp" aria-label={RATING_LABEL[rating]} />
-                    )}
                   </span>
                 </WordRow>
               );
