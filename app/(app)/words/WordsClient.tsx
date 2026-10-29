@@ -2287,15 +2287,42 @@ function Study({
   // scrolled well past the middle (or to the touch focus line). Row positions
   // and the windowing below are all offset by it.
   const pad = Math.round(viewH * OVERSCROLL_FRACTION);
-  const startedAtTop = useRef(false);
+  // Open with the first row just under the glass toolbar, not half a screen
+  // down. Re-applied until the person moves the list themselves: whenever the
+  // list element is (re)mounted (the queue can reload, e.g. from the offline
+  // copy and then the server), the measured heights or the over-scroll
+  // change (fonts, safe areas and the toolbar settle late on iOS), and on
+  // pageshow (a restored page). Events only — nothing polls.
+  const opened = useRef<{ el: HTMLElement | null; moved: boolean }>({ el: null, moved: false });
+  const [shownAt, setShownAt] = useState(0);
+  useEffect(() => {
+    const again = () => setShownAt((n) => n + 1);
+    window.addEventListener("pageshow", again);
+    return () => window.removeEventListener("pageshow", again);
+  }, []);
+  useEffect(() => {
+    if (!listEl) return;
+    const moved = () => {
+      if (opened.current.el === listEl) opened.current.moved = true;
+    };
+    const opts = { passive: true, capture: true } as const;
+    listEl.addEventListener("pointerdown", moved, opts);
+    listEl.addEventListener("touchstart", moved, opts);
+    listEl.addEventListener("wheel", moved, opts);
+    window.addEventListener("keydown", moved, opts);
+    return () => {
+      listEl.removeEventListener("pointerdown", moved, opts);
+      listEl.removeEventListener("touchstart", moved, opts);
+      listEl.removeEventListener("wheel", moved, opts);
+      window.removeEventListener("keydown", moved, opts);
+    };
+  }, [listEl]);
   useLayoutEffect(() => {
-    // Open with the first row at the top, not half a screen down.
-    const el = listRef.current;
-    if (!el || startedAtTop.current || !listReady || !measured) return;
-    startedAtTop.current = true;
-    // ...just under the glass toolbar, not behind it.
-    el.scrollTop = pad - barRef.current.top;
-  }, [listReady, measured, pad]);
+    if (!listEl || !listReady || !measured) return;
+    if (opened.current.el !== listEl) opened.current = { el: listEl, moved: false };
+    if (opened.current.moved) return;
+    listEl.scrollTop = pad - bar.top;
+  }, [listEl, listReady, measured, pad, bar.top, shownAt]);
   // The list fills the window (.lk-words-list); the toolbar and the help strip
   // float over it. Measured whenever any of them changes size (settings open,
   // hints change, the window turns), never polled.

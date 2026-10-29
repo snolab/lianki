@@ -1001,6 +1001,53 @@ try {
     await phone.close();
   }
 
+  // iPhone on WebKit, both swipe variants: the page itself never scrolls, and
+  // the list opens with its first word right under the glass toolbar — on
+  // load, on reload, and when the list is shown again (pageshow).
+  {
+    const { webkit, devices } = await import("playwright");
+    const wk = await webkit.launch();
+    const listUrl = page.url();
+    for (const variant of ["js", "native"]) {
+      const tag = `webkit-iphone/${variant}:`;
+      const c = await wk.newContext({
+        ...devices["iPhone 13"],
+        storageState: await ctx.storageState(),
+      });
+      await c.addInitScript(silentAudio);
+      await c.addInitScript((v) => {
+        localStorage.setItem("lk:first-run", "account");
+        localStorage.setItem("lk:swipe-ab", v);
+      }, variant);
+      const w = await c.newPage();
+      w.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
+      const opening = () =>
+        w.evaluate(() => {
+          const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
+          const row = document.querySelector('[role="listitem"]').getBoundingClientRect().top;
+          return {
+            scrollY: Math.round(scrollY),
+            gap: Math.round(row - bar),
+            native: document.querySelectorAll(".slip-native").length > 0,
+          };
+        });
+      for (const when of ["load", "reload"]) {
+        if (when === "load") await w.goto(listUrl, { waitUntil: "networkidle" });
+        else await w.reload({ waitUntil: "networkidle" });
+        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        await w.waitForTimeout(800);
+        const o = await opening();
+        check(
+          o.scrollY === 0 && o.gap >= 0 && o.gap < 4 && o.native === (variant === "native"),
+          `${tag} ${when}: the page doesn't scroll and the first word sits right under the toolbar (${JSON.stringify(o)})`,
+        );
+      }
+      await w.close();
+      await c.close();
+    }
+    await wk.close();
+  }
+
   // /alphabet: same drill over its own catalog; its lists stay off /words.
   await page.goto(`${BASE}/alphabet`, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "ja", exact: true }).click();
