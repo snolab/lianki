@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { APP_NAV } from "@/lib/app-nav";
 import { Icon } from "@/app/components/icons";
+import { loadCatalog } from "@/lib/words/catalog-cache";
 
 /** Learning features shown as entries below the word lists. */
 const EXPLORE = ["alphabet", "learn", "aiVocab", "polyglot", "selfIntro", "read", "roadmap"];
@@ -31,12 +32,28 @@ export default function HomeClient({ isLoggedIn }: { isLoggedIn: boolean }) {
 
   useEffect(() => {
     if (!isLoggedIn) return;
-    fetch("/api/words/lists")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { lists?: { due?: number; source?: string }[] } | null) => {
-        const lists = (d?.lists ?? []).filter((l) => !l.source?.startsWith("group:"));
-        setWords({ lists: lists.length, due: lists.reduce((s, l) => s + (l.due ?? 0), 0) });
-      })
+    // Count what /words shows and "Continue" studies: lists from the
+    // vocabulary catalog plus Anki imports. word_lists also holds /alphabet's
+    // lists, which made this read 41 due while /words said 16.
+    Promise.all([
+      fetch("/api/words/lists").then((r) => (r.ok ? r.json() : null)),
+      loadCatalog<{ lists?: { id: string }[] }>("/words/index.json").catch(() => null),
+    ])
+      .then(
+        ([d, catalog]: [
+          { lists?: { due?: number; source?: string }[] } | null,
+          { lists?: { id: string }[] } | null,
+        ]) => {
+          const ids = new Set((catalog?.lists ?? []).map((c) => c.id));
+          // No catalog (offline, first visit): fall back to every non-group list.
+          const lists = (d?.lists ?? []).filter((l) =>
+            catalog
+              ? !!l.source && (ids.has(l.source) || l.source.startsWith("anki:"))
+              : !l.source?.startsWith("group:"),
+          );
+          setWords({ lists: lists.length, due: lists.reduce((s, l) => s + (l.due ?? 0), 0) });
+        },
+      )
       .catch(() => setWords({ lists: 0, due: 0 }));
   }, [isLoggedIn]);
 
