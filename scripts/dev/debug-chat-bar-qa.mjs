@@ -5,7 +5,8 @@
  * on a free port, loads the hot widget (so its Tailwind CSS is there too), and
  * checks, expanded and minimized:
  *
- *   - one container: minimize → connections → mic → input, in tab order
+ *   - one container: minimize → connections → input → mic, in tab order
+ *     (minimized: minimize → connections → mic)
  *   - the input is 16px or more (iOS zooms into anything smaller)
  *   - each control is a 40px tap target
  *   - minimized, the input is inert: it cannot take focus, and Tab skips it
@@ -124,6 +125,11 @@ try {
         ),
         expanded: q("debug-chat-pill-min").getAttribute("aria-expanded"),
         width: bar.getBoundingClientRect().width,
+        // The mic sits at the far right, after the input.
+        micRight:
+          bar.getBoundingClientRect().right - q("debug-chat-mic").getBoundingClientRect().right,
+        micAfterInput:
+          q("debug-chat-mic").getBoundingClientRect().left >= ta.getBoundingClientRect().right - 1,
       };
     });
     check(r.inBar, "expanded: controls and input share one container");
@@ -133,9 +139,17 @@ try {
       `controls are ≥ 40px tap targets (${r.targets.join(", ")})`,
     );
     check(r.expanded === "true", "minimize button has aria-expanded=true");
+    check(
+      r.micAfterInput && r.micRight < 6,
+      `expanded: the mic is at the far right, after the input (${r.micRight}px from the edge)`,
+    );
+    // Tag the mic node: it must be the same one after minimizing.
+    await page.evaluate(() => {
+      document.querySelector('[data-testid="debug-chat-mic"]').__qaTag = 1;
+    });
     const order = await tabOrder(page);
     check(
-      order.join() === "debug-chat-pill-min,debug-chat-pill-menu,debug-chat-mic,debug-chat-input",
+      order.join() === "debug-chat-pill-min,debug-chat-pill-menu,debug-chat-input,debug-chat-mic",
       `expanded focus order: ${order.join(" → ")}`,
     );
     // Tap the mark: minimizes after the double-tap window, the bar shrinks.
@@ -146,6 +160,21 @@ try {
       () => document.querySelector('[data-testid="debug-chat-pill"]').getBoundingClientRect().width,
     );
     check(w < r.width / 2, `minimizing shrinks the bar (${r.width} → ${w}px)`);
+    const m = await page.evaluate(() => {
+      const q = (id) => document.querySelector(`[data-testid="${id}"]`);
+      const mic = q("debug-chat-mic");
+      return {
+        same: mic.__qaTag === 1,
+        nextToMenu:
+          mic.getBoundingClientRect().left -
+          q("debug-chat-pill-menu").getBoundingClientRect().right,
+      };
+    });
+    check(m.same, "the mic is the same DOM node across minimize");
+    check(
+      Math.abs(m.nextToMenu) < 4,
+      `minimized: the mic sits right after the connections (${m.nextToMenu}px)`,
+    );
     if (SHOTS) {
       await page.click('[data-testid="debug-chat-pill-min"]');
       await page.waitForSelector('[data-testid="debug-chat"]');
@@ -179,7 +208,8 @@ try {
     check(r.expanded === "false", "minimize button has aria-expanded=false");
     const order = await tabOrder(page);
     check(
-      !order.includes("debug-chat-input"),
+      order.slice(0, 3).join() === "debug-chat-pill-min,debug-chat-pill-menu,debug-chat-mic" &&
+        !order.includes("debug-chat-input"),
       `minimized focus order skips the input: ${order.join(" → ")}`,
     );
 

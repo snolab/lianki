@@ -265,8 +265,8 @@ JSON line. Silent on the page, never stored, never in the chat log. A
 friend's page can only relabel its own socket.
 
 **The chat bar and its menu.** No title bar: the controls and the input are
-one rounded glass container (`debug-chat-pill`): minimize, connections, mic,
-then the input, in that focus order, each control a 40px tap target
+one rounded glass container (`debug-chat-pill`): minimize, connections, the
+input, then the mic at the far right, in that focus order, each control a 40px tap target
 (`tap-40`). The first control (`debug-chat-pill-min`, with `aria-expanded`)
 holds the liagent mark (`packages/debug-chat/src/LiagentMark.tsx`) and a dot,
 green while the socket is live: a tap minimizes or restores the box (after
@@ -277,7 +277,8 @@ their count, pulsing when code just ran) or ⋯; a tap opens the menu at once.
 A drag on either, or on the bar's edge, moves the box, and never counts as a
 tap. Minimizing animates the bar's width in 180 ms (two grid columns trading
 `1fr` ⇄ `0fr`; at once under reduced motion) down to its three controls
-(`debug-chat-minimized`, at 0.6 opacity, with an unread badge
+(`debug-chat-minimized`, at 0.6 opacity; the input's slot closes to 0, so the
+mic, always the same node, slides in beside the connections; with an unread badge
 `debug-chat-pill-unread`). The input is then inert and aria-hidden, so it can
 take neither focus nor taps, and the log is hidden. The mic stays mounted with
 its live state, so hands-free voice goes on while minimized.

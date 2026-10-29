@@ -346,13 +346,13 @@ export function DebugMic({
   const status = micStatus(state, pending, talking);
   const speaking = status === "speaking";
   return (
-    // One of the chat bar's controls, between the connections and the input.
+    // The chat bar's last control, right of the input.
     <div className="relative flex shrink-0">
       {note && (
         <span
           role="alert"
           data-testid="debug-chat-mic-note"
-          className="pointer-events-none absolute start-0 bottom-full mb-2 whitespace-nowrap text-[10px]"
+          className="pointer-events-none absolute end-0 bottom-full mb-2 whitespace-nowrap text-[10px]"
           style={{ color: "oklch(0.6 0.17 45)" }}
         >
           {note}

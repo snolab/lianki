@@ -678,7 +678,7 @@ export function DebugChat({
    * edge) to move the box. The liagent mark: a tap minimizes or restores
    * (after 280 ms), a double tap opens the menu. The connections (eval/preview
    * sessions, or ⋯): a tap opens the menu. Each is its own drag handle, so its
-   * click still lands on it. The mic follows them (MicButton).
+   * click still lands on it. The mic is the bar's last control (micEl).
    */
   const controls = (
     <>
@@ -732,8 +732,18 @@ export function DebugChat({
           </span>
         )}
       </button>
+    </>
+  );
+  /**
+   * The mic, after the input: at the bar's far right when expanded, and next
+   * to the connections when minimized (the input's slot is 0 wide then). It is
+   * always this one node, so its live state and gestures survive the switch.
+   */
+  const micEl = (
+    <>
       {hasMic && !notice && (
-        // Mounted in both states: hands-free voice goes on while minimized.
+        // Mounted in both states, as the same node: hands-free voice goes on
+        // while minimized.
         <DebugMic
           onText={dictated}
           onPending={(n, text) => {
@@ -1048,7 +1058,8 @@ export function DebugChat({
             </button>
           </div>
         )}
-        {/* One container: [minimize | connections | mic] + input. No title bar:
+        {/* One container: [minimize | connections | input | mic]; minimized, the
+        input's slot closes to 0 and leaves [minimize | connections | mic]. No title bar:
         the mark drags the box, minimizes it and opens the menu (status,
         read-aloud, pages, sessions); its dot is the connection. No End chat
         here: the chat hibernates and wakes by itself. */}
@@ -1216,6 +1227,7 @@ export function DebugChat({
               </>
             )}
           </div>
+          {micEl}
           {!open && unread > 0 && (
             <span
               data-testid="debug-chat-pill-unread"
