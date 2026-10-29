@@ -54,7 +54,7 @@ function Harness() {
       <DebugChatHost
         hot
         live
-        listeners={1}
+        listeners={q.has("offline") ? 0 : 1}
         messages={messages}
         busy={busy ? { label: "agent" } : null}
         sessions={[
