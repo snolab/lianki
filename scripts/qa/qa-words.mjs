@@ -154,10 +154,10 @@ try {
       .locator("span.text-sm")
       .first()
       .evaluate((el) => el.className.includes("slip-blank"));
-  await page.keyboard.press("f");
-  check(!(await blurred(1)) && (await blurred(0)), "F moves down and reveals the focused row");
-  await page.keyboard.press("r");
-  check(!(await blurred(0)), "R moves back up");
+  await page.keyboard.press("s");
+  check(!(await blurred(1)) && (await blurred(0)), "S moves down and reveals the focused row");
+  await page.keyboard.press("w");
+  check(!(await blurred(0)), "W moves back up");
 
   const listsNow = async () =>
     (await page.evaluate(async () => (await fetch("/api/words/lists")).json())).lists.find(
@@ -168,8 +168,8 @@ try {
 
   // Each grade is saved at once — no screens, no Next.
   let res = reviewed();
-  await page.keyboard.press("a");
-  check((await (await res).status()) === 200, "A saves that one word immediately");
+  await page.keyboard.press("1");
+  check((await (await res).status()) === 200, "1 saves that one word immediately");
   check(
     (await rows.nth(0).locator("[data-stamp-cell] .lk-stamp").count()) === 1,
     "a graded slip gets a small seal at its left end",
@@ -200,15 +200,15 @@ try {
   );
 
   // Going back and grading again re-grades: still one card, one review.
-  await page.keyboard.press("r");
+  await page.keyboard.press("w");
   res = reviewed();
-  await page.keyboard.press("d");
+  await page.keyboard.press("4");
   await res;
   let l = await listsNow();
   check(l?.cards === 1, `re-grading keeps one card (${l?.cards})`);
 
   // Z undoes it: the word is new again.
-  await page.keyboard.press("r");
+  await page.keyboard.press("w");
   const undone = page.waitForResponse((r) => r.url().includes("/undo"));
   await page.keyboard.press("z");
   check((await (await undone).status()) === 200, "Z undoes the focused word on the server");
@@ -242,7 +242,7 @@ try {
     "Server voice is on by default",
   );
   await page.getByRole("button", { name: "Settings" }).click();
-  await page.keyboard.press("f");
+  await page.keyboard.press("s");
   await page
     .waitForFunction(() => window.__played.length > 0, null, { timeout: 5000 })
     .catch(() => {});
@@ -256,7 +256,7 @@ try {
     window.__played.length = 0;
     window.__spoken.length = 0;
   });
-  await page.keyboard.press("f");
+  await page.keyboard.press("s");
   await page
     .waitForFunction(() => window.__played.length > 0, null, { timeout: 5000 })
     .catch(() => {});
@@ -323,40 +323,27 @@ try {
     `word audio: a missing clip is a per-text miss (${miss.status()} ${miss.headers()["x-voice"]})`,
   );
 
-  // New-version notice: the stream names the serving build at once…
-  const head = await page.evaluate(async () => {
-    const ac = new AbortController();
-    const r = await fetch("/api/version/stream", { signal: ac.signal });
-    const { value } = await r.body.getReader().read();
-    ac.abort();
-    return `${r.headers.get("content-type")}|${new TextDecoder().decode(value)}`;
-  });
-  check(
-    head.startsWith("text/event-stream") && head.includes("event: version"),
-    "the version stream names the build on connect",
-  );
-  // …and a page from an older build offers a refresh.
-  await page.route("**/api/version/stream", (r) =>
-    r.fulfill({
-      contentType: "text/event-stream",
-      body: "retry: 600000\nevent: version\ndata: some-newer-build\n\n",
-    }),
+  // New-version notice: lianki-push (workers/push) names the serving build
+  // over a WebSocket; a page from an older build offers a refresh. The push
+  // service is not part of the local Worker, so the socket is mocked here.
+  await page.routeWebSocket("**/api/version/ws", (ws) =>
+    ws.send(JSON.stringify({ build: "some-newer-build" })),
   );
   await page.evaluate(() => localStorage.setItem("lk:version-notice", "1"));
   await page.reload({ waitUntil: "load" });
   await page.bringToFront();
   const notice = page.getByRole("button", { name: "New version · Refresh" });
   await notice.waitFor({ timeout: 10000 }).catch(() => {});
-  check(await notice.isVisible(), "a newer build on the server shows a Refresh button");
+  check(await notice.isVisible(), "a newer build pushed over the socket shows a Refresh button");
   await page.evaluate(() => localStorage.removeItem("lk:version-notice"));
-  await page.unroute("**/api/version/stream");
+  await page.unrouteAll({ behavior: "ignoreErrors" }).catch(() => {});
   await page.reload({ waitUntil: "networkidle" });
   await rows.first().waitFor({ timeout: 15000 });
 
   // Endless: grade 60 words in a row; more keep coming and all are saved.
   // 40 ms apart: still far faster than a person, slow enough for loading to keep up.
   for (let i = 0; i < 60; i++) {
-    await page.keyboard.press("w");
+    await page.keyboard.press("3");
     await page.waitForTimeout(40);
   }
   // Grades go out one by one from the sync queue: wait for the last to land.
@@ -396,7 +383,7 @@ try {
     .waitFor({ timeout: 20000 });
   await ctx.setOffline(true);
   for (let i = 0; i < 3; i++) {
-    await page.keyboard.press("w");
+    await page.keyboard.press("3");
     await page.waitForTimeout(60);
   }
   await page.waitForTimeout(500);
@@ -575,7 +562,7 @@ try {
   const sent = page.waitForResponse(
     (r) => r.url().includes("/review") && r.request().method() === "POST",
   );
-  await page.keyboard.press("w");
+  await page.keyboard.press("3");
   check((await sent).status() === 200, "study all: a graded word saves");
 
   // Drag the second list above the first by its handle; the order is saved.

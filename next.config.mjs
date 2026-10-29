@@ -3,7 +3,8 @@ import { withIntlayer } from "next-intlayer/server";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Which build this is, inlined into server and client alike: a page whose
-  // id differs from the server's is out of date (app/api/version/stream).
+  // id differs from the one lianki-push announces is out of date (workers/push;
+  // CI publishes this same value after each deploy).
   env: {
     NEXT_PUBLIC_BUILD_ID: (process.env.GITHUB_SHA ?? `local-${Date.now()}`).slice(0, 20),
   },

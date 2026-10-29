@@ -26,6 +26,9 @@
   // Every request's wall/CPU time, status and exceptions go to lianki-monitor
   // (workers/monitor), which keeps metrics and posts alerts to Slack #lianki.
   "tail_consumers": [{ "service": "lianki-monitor" }],
+  // lianki-push (workers/push): a new build announces itself through this,
+  // and open pages hear it over their WebSocket (lib/announce-build.ts).
+  "services": [{ "binding": "PUSH", "service": "lianki-push" }],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

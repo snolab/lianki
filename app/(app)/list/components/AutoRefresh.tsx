@@ -15,12 +15,11 @@ import { useRouter } from "next/navigation";
  * scroll position, focus and client state survive, so a refresh that lands while
  * you are reading is not disruptive.
  *
- * Three triggers, cheapest first:
+ * Event-driven only — no polling (an owner rule for the whole system):
  *  - returning to the tab (the common case: review elsewhere, come back)
  *  - the userscript writing its status key, which it does after each sync
- *  - a slow poll, only while the tab is actually visible
  */
-export function AutoRefresh({ intervalMs = 30_000 }: { intervalMs?: number }) {
+export function AutoRefresh() {
   const router = useRouter();
   // Refreshing on every focus event is wasteful when tabbing back and forth.
   const lastRef = useRef(0);
@@ -47,17 +46,12 @@ export function AutoRefresh({ intervalMs = 30_000 }: { intervalMs?: number }) {
     window.addEventListener("focus", onVisible);
     window.addEventListener("storage", onStorage);
 
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") refresh(intervalMs - 1_000);
-    }, intervalMs);
-
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
       window.removeEventListener("storage", onStorage);
-      clearInterval(timer);
     };
-  }, [router, intervalMs]);
+  }, [router]);
 
   return null;
 }

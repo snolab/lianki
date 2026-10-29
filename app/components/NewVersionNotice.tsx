@@ -3,53 +3,77 @@
 import { useEffect, useState } from "react";
 
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev";
-/** Hidden or unfocused this long before the stream is dropped. */
+/** Hidden or unfocused this long before the socket is dropped. */
 const IDLE_MS = 30_000;
 
 /**
- * "New version — Refresh" once a deploy lands (see app/api/version/stream).
+ * "New version — Refresh" once a deploy lands, pushed — never polled — by
+ * lianki-push (workers/push): a WebSocket that names the serving build on
+ * connect and again when CI publishes a new one.
  *
  * Connected only while the page is visible and focused. Leaving it drops the
- * connection after IDLE_MS (debounced: a quick switch away and back keeps
- * the same one); coming back reconnects at once, and the build id it hears
- * covers any deploy made meanwhile.
+ * socket after IDLE_MS (debounced: a quick switch away and back keeps the
+ * same one); coming back reconnects at once, and the build id it hears on
+ * connect covers any deploy made meanwhile. A socket the network drops is
+ * reopened on that event, if the page is still in use — no timers.
  */
 export function NewVersionNotice() {
   const [stale, setStale] = useState(false);
 
   useEffect(() => {
-    if (typeof EventSource === "undefined") return;
-    // An open stream means the network is never idle, which test runners
+    if (typeof WebSocket === "undefined") return;
+    // An open socket means the network is never idle, which test runners
     // wait for: under automation, only when a test asks for it.
     try {
       if (navigator.webdriver && localStorage.getItem("lk:version-notice") !== "1") return;
     } catch {
       return;
     }
-    let es: EventSource | null = null;
+    let ws: WebSocket | null = null;
     let idle: ReturnType<typeof setTimeout> | undefined;
     let done = false;
 
     const connect = () => {
-      if (es || done) return;
-      es = new EventSource("/api/version/stream");
-      es.addEventListener("version", (e) => {
-        if ((e as MessageEvent<string>).data === BUILD_ID) return;
+      if (ws || done) return;
+      const sock = new WebSocket(
+        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/ws`,
+      );
+      ws = sock;
+      sock.onopen = () => opened.add(sock);
+      sock.onmessage = (e) => {
+        let build: unknown;
+        try {
+          build = JSON.parse(String(e.data)).build;
+        } catch {
+          return;
+        }
+        if (typeof build !== "string" || build === BUILD_ID) return;
         done = true;
         setStale(true);
         disconnect();
-      });
+      };
+      // Dropped by the network (or never opened): reopen on that event if
+      // the page is in use; otherwise the next focus does it.
+      sock.onclose = () => {
+        if (ws !== sock) return;
+        ws = null;
+        if (!done && active() && !failedFast(sock)) connect();
+      };
     };
+    /** A socket that closed before it ever opened: no push service here (dev, QA). */
+    const opened = new WeakSet<WebSocket>();
+    const failedFast = (sock: WebSocket) => !opened.has(sock);
     const disconnect = () => {
       clearTimeout(idle);
-      es?.close();
-      es = null;
+      const sock = ws;
+      ws = null;
+      sock?.close();
     };
     const active = () => document.visibilityState === "visible" && document.hasFocus();
     const update = () => {
       clearTimeout(idle);
       if (active()) connect();
-      else if (es) idle = setTimeout(disconnect, IDLE_MS);
+      else if (ws) idle = setTimeout(disconnect, IDLE_MS);
     };
 
     update();

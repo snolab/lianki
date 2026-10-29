@@ -28,3 +28,14 @@ SELECT blob2 AS path, quantileWeighted(0.95)(double1, _sample_interval) AS p95_m
 FROM lianki_metrics WHERE index1 = 'req' AND timestamp > NOW() - INTERVAL '1' DAY
 GROUP BY path ORDER BY n DESC
 ```
+
+## New-version push (`lianki-push`)
+
+`workers/push`: one Durable Object holds every open page's WebSocket
+(`/api/version/ws`, hibernation API — idle sockets cost nothing). The first
+request a new isolate of the main Worker serves announces its build id over
+the `PUSH` service binding (`lib/announce-build.ts`); a new id is stored and
+pushed to every page, which then shows "New version · Refresh". No CI step,
+no secret, no timer. Pages connect only while visible and focused, and get
+the current build on connect. `/api/version/stream` answers pages from the
+old SSE design once with "new version" and asks them not to reconnect.

@@ -1,0 +1,17 @@
+// lianki-push: tells open pages that a new build is serving — pushed, never
+// polled. One Durable Object holds every page's WebSocket with the hibernation
+// API (an idle socket costs nothing). A new build announces itself over the
+// main Worker's service binding and the object pushes it to all of them.
+// Routed in front of the main Worker for /api/version/* only; no workers.dev
+// URL, so /internal/publish is reachable through the binding alone.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "lianki-push",
+  "main": "src/index.ts",
+  "workers_dev": false,
+  "compatibility_date": "2026-10-01",
+  "routes": [{ "pattern": "lianki.com/api/version/*", "zone_name": "lianki.com" }],
+  "durable_objects": { "bindings": [{ "name": "HUB", "class_name": "VersionHub" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["VersionHub"] }],
+  "observability": { "enabled": true },
+}
