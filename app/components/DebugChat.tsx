@@ -11,7 +11,13 @@ import {
   pickVoice,
 } from "@/lib/dev-eval";
 import { LiagentMark } from "@lianki/debug-chat/LiagentMark";
-import { CLIP_SINK_KEY, clipSinkFrom, joinText } from "@lianki/debug-chat/mic";
+import {
+  CLIP_SINK_KEY,
+  ENDS_SENTENCE as SENTENCE_END,
+  appendDictation,
+  clipSinkFrom,
+  joinText,
+} from "@lianki/debug-chat/mic";
 import { DebugMic, canCapture } from "@lianki/debug-chat/MicButton";
 import { createDragFlag, createTapper } from "@/lib/tap-gesture";
 import { Icon } from "./icons";
@@ -23,7 +29,8 @@ const DEBOUNCE_MS = 3_000;
  * ending a sentence goes out at once, without waiting for the debounce.
  */
 const BURST_CHARS = 10;
-const ENDS_SENTENCE = /[。．.!?！？]$/;
+// One rule for typed bursts and spoken sentences: 。．.!?！？ (lib in the package).
+const ENDS_SENTENCE = SENTENCE_END;
 const OPEN_KEY = "lk:debug-chat-open";
 /** How long "Tap again to end the chat" waits for the second tap. */
 const END_CONFIRM_MS = 3_000;
@@ -414,10 +421,13 @@ export function DebugChat({
   const mirror = useRef<HTMLDivElement | null>(null);
   /** A transcript lands in the draft, as typed text would, but is never sent by itself. */
   const dictated = (t: string) => {
-    draftRef.current = joinText(draftRef.current, t);
-    settledLen.current = draftRef.current.length; // not a dictation "burst": no auto-send
-    setDraft(draftRef.current);
+    const { draft: next, send } = appendDictation(draftRef.current, t);
+    draftRef.current = next;
+    settledLen.current = next.length; // not a typed "burst"
+    setDraft(next);
     setOffline(false);
+    // A spoken sentence goes out at once; anything else waits for the usual rules.
+    if (send) return submit();
     arm();
   };
   const arm = () => {

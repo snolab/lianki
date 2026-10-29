@@ -247,9 +247,11 @@ as it ends; requests run in parallel and the text is appended to the draft
 in the order spoken, with a faint "…" where a result is pending. Speech over
 3 s also sends rolling partial chunks (every 2.5 s, overlapping by 1.5 s);
 their merged text shows dimmed until the final text replaces it, and a 429
-stops them until the next turn-on. Nothing is sent by the mic: the debounce
-waits while listening or while transcripts are out, and Enter sends as
-usual. While audio is captured the button has a red pulsing ring and "REC"
+stops them until the next turn-on. A final transcript that leaves the
+draft a sentence of 10 characters or more (trimmed, ending in 。．.!?！？) is
+sent at once (`appendDictation`); otherwise the debounce waits while
+listening or while transcripts are out, partials never send, and Enter sends
+as usual. While audio is captured the button has a red pulsing ring and "REC"
 (`debug-chat-mic-rec`); listening but quiet, a faint steady ring. Read-aloud
 is paused while listening and resumed after. A short note
 (`debug-chat-mic-note`) says when the mic is refused or missing, or the

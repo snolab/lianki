@@ -151,6 +151,22 @@ export function joinText(a: string, b: string): string {
   return CJK.test(a.at(-1) as string) && CJK.test(t[0]) ? a + t : `${a} ${t}`;
 }
 
+/** A draft ending a sentence (any script's full stop, ! or ?). */
+export const ENDS_SENTENCE = /[。．.!?！？]$/;
+/** Spoken sentences go out at once from this many characters (trimmed). */
+export const AUTO_SEND_MIN = 10;
+
+/**
+ * A final transcript lands in the draft: the new draft, and whether to send
+ * it now (the whole draft, trimmed, is a sentence of AUTO_SEND_MIN
+ * characters or more). Partials never come here; typing never does.
+ */
+export function appendDictation(draft: string, text: string): { draft: string; send: boolean } {
+  const next = joinText(draft, text);
+  const t = next.trim();
+  return { draft: next, send: t.length >= AUTO_SEND_MIN && ENDS_SENTENCE.test(t) };
+}
+
 /** Words (or, in CJK text, characters), and their keys: lowercased, without punctuation. */
 function tokens(s: string): { raw: string[]; key: string[]; cjk: boolean } {
   const cjk = CJK.test(s);

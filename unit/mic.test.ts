@@ -6,7 +6,10 @@ import {
   RATE,
   SttError,
   type UploadInfo,
+  AUTO_SEND_MIN,
+  ENDS_SENTENCE,
   UtteranceQueue,
+  appendDictation,
   type VadEvents,
   clipSinkFrom,
   createMic,
@@ -594,7 +597,7 @@ describe("postStt, postClip and the clip sink", () => {
       transcript: "你好 world",
       model: "m",
     });
-    const no = fakeFetch(0, "", true);
+    const no = fakeFetch(0, "");
     await postClip("https://sink.example", wav, { at: 0, durationMs: 1, label: "" }, no.f);
     const meta = JSON.parse((no.calls[0].init.body as FormData).get("meta") as string);
     expect([meta.transcript, "model" in meta]).toEqual(["", false]);
@@ -605,5 +608,57 @@ describe("postStt, postClip and the clip sink", () => {
     expect(clipSinkFrom("http://localhost:5180")).toBe("http://localhost:5180");
     expect(clipSinkFrom("http://evil.example")).toBeUndefined();
     expect(clipSinkFrom(null)).toBeUndefined();
+  });
+});
+
+describe("appendDictation: spoken sentences are sent at once", () => {
+  it("a final that completes a sentence of 10+ characters sends; shorter or unfinished does not", () => {
+    expect(appendDictation("", "Fix the swipe please.")).toEqual({
+      draft: "Fix the swipe please.",
+      send: true,
+    });
+    expect(appendDictation("", "Hi there.").send).toBe(false); // 9 characters
+    expect(appendDictation("", "Fix the swipe please").send).toBe(false);
+    expect(appendDictation("typed so far", "and spoken?")).toEqual({
+      draft: "typed so far and spoken?",
+      send: true,
+    });
+    expect(appendDictation("", "スワイプを直してください。").send).toBe(true);
+    expect(appendDictation("", "これは何ですか？").send).toBe(false); // 8 characters
+    expect(appendDictation("", "这个按钮太小了！请改大一点").send).toBe(false);
+    expect(AUTO_SEND_MIN).toBe(10);
+    expect(["。", "．", ".", "!", "?", "！", "？"].every((c) => ENDS_SENTENCE.test(`a${c}`))).toBe(
+      true,
+    );
+  });
+
+  it("with the fake STT: only finals reach the draft, and a finished sentence goes out", async () => {
+    const sent: string[] = [];
+    let draft = "";
+    const h = harness({
+      onText: (t) => {
+        const r = appendDictation(draft, t);
+        draft = r.draft;
+        if (r.send) {
+          sent.push(draft);
+          draft = "";
+        }
+      },
+    });
+    await h.mic.toggle();
+    h.v.ev().onSpeechStart();
+    h.speak(3);
+    h.uploads[0].resolve("Please make the button."); // a partial: never sent
+    await h.tick();
+    expect(sent).toEqual([]);
+    h.v.ev().onSpeechEnd(new Float32Array(RATE * 3));
+    h.uploads[1].resolve("Please make the button bigger");
+    await h.tick();
+    expect([sent, draft]).toEqual([[], "Please make the button bigger"]);
+    h.v.ev().onSpeechStart();
+    h.v.ev().onSpeechEnd(new Float32Array(RATE));
+    h.uploads[2].resolve("and blue.");
+    await h.tick();
+    expect([sent, draft]).toEqual([["Please make the button bigger and blue."], ""]);
   });
 });
