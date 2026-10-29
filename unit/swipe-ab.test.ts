@@ -22,6 +22,23 @@ const memory = () => {
 };
 
 describe("swipe variant", () => {
+  test("no storage, or storage that throws: js, and nothing breaks", () => {
+    expect(swipeVariant()).toBe("js");
+    setSwipeVariant("native");
+    expect(swipeAbTag()).toBe("ab=js");
+    const broken = {
+      getItem: () => {
+        throw new Error("denied");
+      },
+      setItem: () => {
+        throw new Error("denied");
+      },
+    };
+    expect(swipeVariant(broken)).toBe("js");
+    expect(() => setSwipeVariant("native", broken)).not.toThrow();
+    expect(swipeAbTag(broken)).toBe("ab=js");
+  });
+
   test("js unless turned on; remembered", () => {
     const s = memory();
     expect(swipeVariant(s)).toBe("js");
