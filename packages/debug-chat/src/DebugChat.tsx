@@ -605,8 +605,10 @@ export function DebugChat({
   /** The draft's "@/…" while it is typed: the listeners' nodes under it, to pick from. */
   const addressing = /^@\/\S*(?:\s*›\s*\S*)*$/.test(draft) ? parseAddress(draft) : null;
   const completions = addressing && !addressing.complete ? completeNode(draft, nodes) : [];
-  /** The target the draft's "@/…" would set, else the chip's. */
-  const shownTarget = addressing ? addressing.to : (parseAddress(draft)?.to ?? target);
+  /** The target a typed "@/node " would set (a preview), else the chip's. */
+  const typed = parseAddress(draft);
+  const preview = typed?.complete === true;
+  const shownTarget = preview && typed ? typed.to : target;
   const pick = (n: string) => {
     aim(n);
     draftRef.current = "";
@@ -1058,10 +1060,10 @@ export function DebugChat({
                       background: INPUT_BG,
                       borderColor: lineNode({ from: "owner", to: shownTarget })?.border,
                     }}
-                    className={`pointer-events-auto inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 text-[10px] leading-4 text-gray-600 dark:text-gray-300 ${addressing ? "opacity-70" : ""}`}
+                    className={`pointer-events-auto inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 text-[10px] leading-4 text-gray-600 dark:text-gray-300 ${preview ? "opacity-70" : ""}`}
                   >
                     <span className="truncate">→ {pathLabel(shownTarget)}</span>
-                    {!addressing && (
+                    {!preview && (
                       <button
                         type="button"
                         data-testid="debug-chat-target-clear"
