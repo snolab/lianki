@@ -6,6 +6,9 @@ import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import TokenManager from "../list/components/TokenManager";
 import { PaperSkinPicker } from "@/app/components/PaperSkinPicker";
+import { useDebugToggle } from "@/app/components/useDebugToggle";
+
+const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev";
 
 type FilterType = "domain" | "title" | "url";
 
@@ -38,6 +41,8 @@ export default function PreferencesClient() {
   const [isRegex, setIsRegex] = useState(false);
   const [reviewOrder, setReviewOrder] = useState<ReviewOrder>(DEFAULT_REVIEW_ORDER);
   const [watchTracking, setWatchTracking] = useState(true);
+  // Hidden: seven quick taps on the version line toggle debug mode.
+  const [debug, debugTap] = useDebugToggle();
 
   useEffect(() => {
     fetchPreferences();
@@ -360,6 +365,15 @@ export default function PreferencesClient() {
           {saving ? save.saving : save.saveButton}
         </button>
       </div>
+
+      <p
+        className="mt-12 select-none touch-manipulation text-center text-xs tabular-nums opacity-40"
+        onClick={debugTap}
+        data-build-line
+      >
+        Lianki {BUILD_ID.slice(0, 12)}
+        {debug && " · debug"}
+      </p>
     </div>
   );
 }

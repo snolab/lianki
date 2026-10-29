@@ -322,6 +322,23 @@ try {
   );
   for (let k = 0; k < 7; k++) await gear.click();
   check((await page.locator("[data-debug-badge]").count()) === 0, "seven more turn it off");
+  // The same hidden switch, reachable from any page: the version line at the
+  // bottom of /preferences.
+  {
+    const prefs = await ctx.newPage();
+    await prefs.goto(`${new URL(page.url()).origin}/preferences`, { waitUntil: "load" });
+    const line = prefs.locator("[data-build-line]");
+    await line.waitFor({ timeout: 15000 });
+    const flag = () => prefs.evaluate(() => localStorage.getItem("lk:debug"));
+    for (let k = 0; k < 7; k++) await line.click();
+    const on = await flag();
+    for (let k = 0; k < 7; k++) await line.click();
+    check(
+      on === "1" && (await flag()) === "0",
+      `seven taps on /preferences' version line toggle debug (${on})`,
+    );
+    await prefs.close();
+  }
 
   // /learn speaks the page's language (it used to be English-only) and links
   // AnkiWeb's shared decks for each language we teach.
