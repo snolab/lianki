@@ -1,5 +1,6 @@
 "use client";
 
+import { voiceQuality } from "@lianki/debug-chat/wire";
 import {
   startTransition,
   useCallback,
@@ -686,13 +687,13 @@ function useSpeech(serverVoice = false) {
       const tag = SPEECH_TAG[lang]?.toLowerCase();
       // The language's own region first (ja-JP, not a ja voice of elsewhere).
       const exact = vs.filter((v) => norm(v) === tag);
-      return (
-        exact.find((v) => v.localService) ??
-        exact[0] ??
-        vs.find((v) => v.localService) ??
-        vs[0] ??
-        null
-      );
+      // Natural voices first: iOS lists robotic Eloquence and novelty voices first.
+      const best = (pool: SpeechSynthesisVoice[]) => {
+        const q = Math.max(-1, ...pool.map(voiceQuality));
+        const top = pool.filter((v) => voiceQuality(v) === q);
+        return top.find((v) => v.localService) ?? top[0];
+      };
+      return best(exact) ?? best(vs) ?? null;
     },
     [voices],
   );

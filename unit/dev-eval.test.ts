@@ -315,3 +315,31 @@ describe("pairing: requested scope, pages, wording", () => {
     expect(allowLabel(1, 3, false)).toBe("Authorize 1 page");
   });
 });
+
+it("pickVoice skips iOS Eloquence and novelty voices", () => {
+  const vs = [
+    { lang: "zh-CN", name: "Eddy", default: true, voiceURI: "com.apple.eloquence.zh-CN.Eddy" },
+    {
+      lang: "zh-CN",
+      name: "Tingting",
+      default: true,
+      voiceURI: "com.apple.voice.compact.zh-CN.Tingting",
+    },
+    {
+      lang: "en-US",
+      name: "Bahh",
+      default: true,
+      voiceURI: "com.apple.speech.synthesis.voice.Bahh",
+    },
+    {
+      lang: "en-US",
+      name: "Samantha",
+      default: true,
+      voiceURI: "com.apple.voice.compact.en-US.Samantha",
+    },
+    { lang: "en-US", name: "Ava", default: true, voiceURI: "com.apple.voice.premium.en-US.Ava" },
+  ];
+  expect(pickVoice(vs, "zh-CN")?.name).toBe("Tingting");
+  expect(pickVoice(vs, "en-US")?.name).toBe("Ava");
+  expect(pickVoice(vs.slice(0, 1), "zh-CN")?.name).toBe("Eddy");
+});
