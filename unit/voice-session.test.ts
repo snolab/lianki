@@ -1,15 +1,25 @@
 import { describe, expect, it } from "bun:test";
+import { ECHO_WINDOW_MS } from "@lianki/debug-chat/echo";
 import {
+  BARGE_IN_MS,
+  BARGE_IN_PROB,
+  CHUNK_MAX,
+  DUCK_ATTACK_MS,
+  DUCK_LEVEL,
+  DUCK_RELEASE_MS,
   IDLE_RESUME_MS,
   RESUME_TAIL_MS,
   SPEAK_KEY,
   type UtterLike,
+  chunk,
   createVoice,
+  isBargeIn,
   sentences,
   speakHere,
   speechEnabled,
   voice,
 } from "@lianki/debug-chat/voice";
+import { RESUME_REWIND_S, createCloudOut } from "@lianki/debug-chat/voice-out";
 
 describe("sentences", () => {
   it("cuts Latin text after . ! ? before a space or the end, keeping 3.14 and e.g. whole", () => {
@@ -362,5 +372,402 @@ describe("voice(): the browser session, shared on globalThis", () => {
         else g[k] = x;
       }
     }
+  });
+});
+
+// ── Echo-cancelled barge-in: ducking, the barge-in judge, the cloud route ──
+
+/** A GainNode in memory: its value follows each set or ramp at once; the calls are kept. */
+function fakeGain() {
+  const calls: [string, number, number][] = [];
+  const gain = {
+    value: 1,
+    cancelScheduledValues: (t: number) => void calls.push(["cancel", 0, t]),
+    setValueAtTime(v: number, t: number) {
+      calls.push(["set", v, t]);
+      gain.value = v;
+    },
+    linearRampToValueAtTime(v: number, t: number) {
+      calls.push(["ramp", v, t]);
+      gain.value = v;
+    },
+  };
+  return { gain, calls, connect: (n: unknown) => n };
+}
+
+/** An <audio> element in memory: load() waits for the test to fire loadedmetadata. */
+class FakeEl {
+  src = "";
+  currentTime = 0;
+  volume = 1;
+  preload = "";
+  paused = true;
+  refuse = false;
+  plays: { src: string; at: number }[] = [];
+  onended: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onloadedmetadata: (() => void) | null = null;
+  play() {
+    if (this.refuse)
+      return Promise.reject(Object.assign(new Error("no"), { name: "NotAllowedError" }));
+    this.paused = false;
+    this.plays.push({ src: this.src, at: this.currentTime });
+    return Promise.resolve();
+  }
+  pause() {
+    this.paused = true;
+  }
+  load() {
+    this.currentTime = 0;
+  }
+}
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+/** The session with the real cloud output over fakes (fetch, element, AudioContext, GainNode). */
+function cloudHarness(
+  o: { aec?: boolean; mode?: "speech" | "cloud"; status?: (text: string) => number } = {},
+) {
+  const h0 = { t: 0 };
+  const el = new FakeEl();
+  const g = fakeGain();
+  const ctx = {
+    currentTime: 0,
+    destination: {},
+    resume: () => Promise.resolve(),
+    createGain: () => g,
+    createMediaElementSource: () => ({ connect: (n: unknown) => n }),
+  };
+  const fetched: string[] = [];
+  const cloud = createCloudOut({
+    fetch: async (url) => {
+      fetched.push(url);
+      const text = new URL(url, "https://x").searchParams.get("text") ?? "";
+      const status = o.status?.(text) ?? 200;
+      return {
+        ok: status === 200,
+        status,
+        headers: { get: (k: string) => (k === "X-Voice" && status === 404 ? "miss" : null) },
+        blob: async () => new Blob([text]),
+      };
+    },
+    element: () => el,
+    ctx: () => ctx,
+    toUrl: (b) => `blob:${(b as Blob).size}`,
+    revoke: () => {},
+  });
+  const spoken: (UtterLike & { lang: string })[] = [];
+  let cancels = 0;
+  const timers: { f: () => void; ms: number; live: boolean }[] = [];
+  const logs: Record<string, unknown>[] = [];
+  const flags = { aec: o.aec ?? true, mode: o.mode ?? "cloud" };
+  const v = createVoice({
+    synth: () => ({
+      speak: (u) => void spoken.push(u as UtterLike & { lang: string }),
+      cancel: () => void cancels++,
+    }),
+    utter: (text, lang) =>
+      ({ text, lang, onend: null, onerror: null, onboundary: null }) as UtterLike,
+    enabled: () => true,
+    here: () => false,
+    cloud: () => cloud,
+    mode: () => flags.mode,
+    aec: () => flags.aec,
+    now: () => h0.t,
+    log: (e) => void logs.push(e),
+    setTimer: (f, ms) => {
+      const t = { f, ms, live: true };
+      timers.push(t);
+      return t;
+    },
+    clearTimer: (t) => {
+      if (t) (t as { live: boolean }).live = false;
+    },
+  });
+  const fire = (ms: number) => {
+    for (const t of timers.filter((x) => x.live && x.ms === ms)) {
+      t.live = false;
+      t.f();
+    }
+  };
+  const live = (ms: number) => timers.some((t) => t.live && t.ms === ms);
+  /** Let the fetch settle and the clip's metadata arrive. */
+  const loaded = async () => {
+    await tick();
+    el.onloadedmetadata?.();
+    await tick();
+  };
+  return {
+    v,
+    el,
+    g,
+    ctx,
+    fetched,
+    spoken,
+    logs,
+    fire,
+    live,
+    flags,
+    h0,
+    loaded,
+    cancels: () => cancels,
+  };
+}
+
+describe("voice session: chunks and the barge-in judge", () => {
+  it("cuts a sentence over CHUNK_MAX after a clause mark, else a space, else hard", () => {
+    expect(chunk("short one.")).toEqual(["short one."]);
+    const long = `${"a".repeat(50)}, ${"b ".repeat(80)}end.`;
+    const parts = chunk(long, CHUNK_MAX);
+    expect(parts.every((p) => p.length <= CHUNK_MAX)).toBe(true);
+    expect(parts.join(" ").replace(/\s+/g, " ")).toBe(long.replace(/\s+/g, " "));
+    expect(chunk("x".repeat(25), 10)).toEqual(["x".repeat(10), "x".repeat(10), "x".repeat(5)]);
+    expect(chunk("一二三四五、六七八九十一二三四五", 10)).toEqual([
+      "一二三四五、",
+      "六七八九十一二三四五",
+    ]);
+    expect(chunk("aaaa bbbb cccc dddd", 10)).toEqual(["aaaa bbbb", "cccc dddd"]);
+  });
+
+  it("a barge-in needs the VAD's mean probability over BARGE_IN_PROB (none known: yes)", () => {
+    expect(isBargeIn([])).toBe(true);
+    expect(isBargeIn([0.9, 0.95, 0.8])).toBe(true);
+    expect(isBargeIn([0.55, 0.6, 0.5])).toBe(false);
+    expect(isBargeIn([BARGE_IN_PROB])).toBe(true);
+  });
+});
+
+describe("voice session: ducking and barge-in (cloud route, fake GainNode)", () => {
+  it("duck → restore: the user's voice ducks the clip over DUCK_ATTACK_MS, and its end restores it", async () => {
+    const h = cloudHarness();
+    h.v.setMic(true);
+    h.v.reply("The first sentence. The second one.");
+    await h.loaded();
+    expect(h.el.plays).toHaveLength(1);
+    expect(h.g.gain.value).toBe(1);
+    expect(h.v.state()).toMatchObject({ speaking: true, hold: false, ducked: false });
+    h.ctx.currentTime = 2;
+    h.v.userSpeech();
+    expect(h.g.calls.at(-1)).toEqual(["ramp", DUCK_LEVEL, 2 + DUCK_ATTACK_MS / 1000]);
+    expect(h.v.state()).toMatchObject({ ducked: true, paused: false, speaking: true });
+    expect(h.el.paused).toBe(false); // keeps playing, quieter
+    expect(h.live(BARGE_IN_MS)).toBe(true);
+    h.ctx.currentTime = 2.5;
+    h.v.userIdle(); // speech end before BARGE_IN_MS
+    expect(h.g.calls.at(-1)).toEqual(["ramp", 1, 2.5 + DUCK_RELEASE_MS / 1000]);
+    expect(h.v.state()).toMatchObject({ ducked: false, paused: false });
+    expect(h.live(BARGE_IN_MS)).toBe(false);
+    expect(h.live(IDLE_RESUME_MS)).toBe(false);
+    expect(h.logs.some((l) => l.ev === "voice-duck" && l.route === "audio")).toBe(true);
+  });
+
+  it("duck → sustained → hard-pause, and the clip resumes by its offset", async () => {
+    const h = cloudHarness();
+    h.v.setMic(true);
+    h.v.reply("The first sentence. The second one.");
+    await h.loaded();
+    h.v.userSpeech();
+    for (const p of [0.9, 0.85, 0.95]) h.v.userFrame(p);
+    h.el.currentTime = 1.8;
+    h.fire(BARGE_IN_MS);
+    expect(h.el.paused).toBe(true);
+    expect(h.v.state()).toMatchObject({ paused: true, ducked: false, speaking: false, queued: 2 });
+    expect(h.logs.find((l) => l.ev === "voice-barge-in")?.prob).toBeCloseTo(0.9, 5);
+    // The user finishes: read on after the idle, from where the clip stopped (less the rewind), at full volume.
+    h.v.userIdle();
+    h.fire(IDLE_RESUME_MS);
+    await h.loaded();
+    expect(h.el.plays.at(-1)?.at).toBeCloseTo(1.8 - RESUME_REWIND_S, 5);
+    expect(h.g.gain.value).toBe(1);
+    expect(h.fetched).toHaveLength(2); // the 1st sentence once (cached), the 2nd prefetched
+    // Ends: on to the next sentence, from its start.
+    h.el.onended?.();
+    await h.loaded();
+    expect(h.el.plays.at(-1)).toMatchObject({ at: 0 });
+    expect(h.el.src).toBe(`blob:${"The second one.".length}`);
+  });
+
+  it("weak speech (likely echo) stays ducked and is judged again; a later strong window barges in", async () => {
+    const h = cloudHarness();
+    h.v.setMic(true);
+    h.v.reply("Hello there.");
+    await h.loaded();
+    h.v.userSpeech();
+    for (const p of [0.55, 0.6]) h.v.userFrame(p);
+    h.fire(BARGE_IN_MS);
+    expect(h.v.state()).toMatchObject({ ducked: true, paused: false });
+    expect(h.live(BARGE_IN_MS)).toBe(true);
+    expect(h.logs.some((l) => l.ev === "voice-duck-hold")).toBe(true);
+    h.v.userSpeech(); // a second start while ducked: no second duck
+    expect(h.logs.filter((l) => l.ev === "voice-duck")).toHaveLength(1);
+    h.v.userFrame(0.9);
+    h.fire(BARGE_IN_MS);
+    expect(h.v.state()).toMatchObject({ ducked: false, paused: true });
+  });
+
+  it("a tap or Stop reading while ducked ends the duck", async () => {
+    const h = cloudHarness();
+    h.v.setMic(true);
+    h.v.reply("One. Two.");
+    await h.loaded();
+    h.v.userSpeech();
+    h.v.interrupt("tap");
+    expect(h.v.state()).toMatchObject({ ducked: false, paused: true });
+    h.v.resume();
+    await h.loaded();
+    h.v.userSpeech();
+    h.v.stop();
+    expect(h.v.state()).toMatchObject({ ducked: false, queued: 0, speaking: false });
+  });
+
+  it("speech mode: the duck applies from the next sentence (iOS cannot change an utterance's volume)", () => {
+    const h = cloudHarness({ mode: "speech" });
+    h.v.setMic(true);
+    h.v.reply("One. Two. Three.");
+    expect(h.spoken[0].volume).toBeUndefined();
+    h.v.userSpeech();
+    expect(h.v.state().ducked).toBe(true);
+    h.spoken[0].onend?.();
+    expect(h.spoken[1].volume).toBe(DUCK_LEVEL);
+    h.v.userIdle();
+    h.spoken[1].onend?.();
+    expect(h.spoken[2].volume).toBeUndefined();
+    expect(h.v.mode()).toBe("speech");
+    expect(h.logs[0]).toMatchObject({ ev: "voice-out", out: "speech", route: "speech" });
+  });
+
+  it("speech mode: sustained speech pauses at the last word boundary", () => {
+    const h = cloudHarness({ mode: "speech" });
+    h.v.setMic(true);
+    h.v.reply("The quick brown fox.");
+    h.spoken[0].onboundary?.({ charIndex: 10, name: "word" });
+    h.v.userSpeech();
+    h.fire(BARGE_IN_MS);
+    expect(h.cancels()).toBe(1);
+    h.v.resume();
+    expect(h.spoken.at(-1)?.text).toBe("brown fox.");
+  });
+
+  it("aec off: the old way — capture held while the agent speaks, user speech pauses at once", () => {
+    const h = cloudHarness({ mode: "speech", aec: false });
+    h.v.setMic(true);
+    h.v.reply("One. Two.");
+    expect(h.v.state()).toMatchObject({ speaking: true, hold: true });
+    h.v.userSpeech();
+    expect(h.v.state()).toMatchObject({ ducked: false, paused: true, hold: false });
+    expect(h.v.aec()).toBe(false);
+  });
+
+  it("no utterance playing: the user's speech interrupts as before", () => {
+    const h = cloudHarness({ mode: "speech" });
+    h.v.setMic(true);
+    h.v.userSpeech(); // nothing queued: a no-op
+    expect(h.v.state()).toMatchObject({ paused: false, ducked: false });
+    h.v.reply("Hi.");
+    h.v.interrupt("typing");
+    h.v.userSpeech(); // paused, nothing playing: another pause reason, no duck
+    expect(h.v.state()).toMatchObject({ paused: true, ducked: false });
+  });
+});
+
+describe("voice session: the cloud route falls back to speech per sentence", () => {
+  it("a 404 miss or a refused play: that sentence is spoken", async () => {
+    const h = cloudHarness({ status: (t) => (t.startsWith("Missing") ? 404 : 200) });
+    h.v.setMic(true);
+    h.v.reply("Missing clip. Fine clip.");
+    await tick();
+    expect(h.spoken.map((u) => u.text)).toEqual(["Missing clip."]);
+    expect(h.logs.find((l) => l.fallback)).toMatchObject({
+      ev: "voice-out",
+      out: "cloud",
+      route: "speech",
+      fallback: "http 404 miss",
+    });
+    h.spoken[0].onend?.();
+    await h.loaded();
+    expect(h.el.plays).toHaveLength(1);
+    h.el.onended?.();
+    // The element refuses to play (no gesture yet on iOS).
+    h.el.refuse = true;
+    h.v.reply("Refused here.");
+    await h.loaded();
+    expect(h.spoken.at(-1)?.text).toBe("Refused here.");
+    expect(h.logs.at(-1)).toMatchObject({ fallback: "play NotAllowedError" });
+  });
+
+  it("a fallback with no speechSynthesis skips the sentence", async () => {
+    const h = cloudHarness({ status: () => 503 });
+    const v = createVoice({
+      synth: () => null,
+      utter: () => ({}) as UtterLike,
+      enabled: () => true,
+      here: () => true,
+      cloud: () =>
+        createCloudOut({
+          fetch: async () => ({
+            ok: false,
+            status: 503,
+            headers: { get: () => null },
+            blob: async () => new Blob(),
+          }),
+          element: () => h.el,
+          ctx: () => null,
+        }),
+      mode: () => "cloud",
+    });
+    expect(v.reply("Nothing can say this.")).toBe(true);
+    await tick();
+    await tick();
+    expect(v.state()).toMatchObject({ queued: 0 });
+  });
+});
+
+describe("voice session: the echo check", () => {
+  it("matches what the agent said in the window, and says whether it was audible during the utterance", () => {
+    const h = cloudHarness({ mode: "speech" });
+    h.v.setMic(true);
+    h.h0.t = 1_000;
+    h.v.reply("I pushed the branch to origin.");
+    h.h0.t = 3_000;
+    const during = h.v.echoCheck("pushed the branch to origin", 1_500);
+    expect(during).toMatchObject({ drop: true, during: true, score: 1 });
+    h.spoken[0].onend?.();
+    h.h0.t = 3_000 + ECHO_WINDOW_MS - 100;
+    expect(h.v.echoCheck("pushed the branch to origin", 500)).toMatchObject({
+      drop: true,
+      during: false,
+    });
+    h.h0.t = 3_000 + ECHO_WINDOW_MS + 2_000;
+    expect(h.v.echoCheck("pushed the branch to origin", 500)).toMatchObject({
+      drop: false,
+      during: false,
+    });
+    expect(h.v.echoCheck("something else entirely", 0).drop).toBe(false);
+  });
+
+  it("a dropped echo that caused a barge-in reads on at once", async () => {
+    const h = cloudHarness();
+    h.v.setMic(true);
+    h.v.reply("A long sentence here. And more.");
+    await h.loaded();
+    h.v.userSpeech();
+    h.fire(BARGE_IN_MS);
+    expect(h.v.state().paused).toBe(true);
+    h.v.echoDropped();
+    expect(h.v.state().paused).toBe(false);
+    // Paused by typing: an echo drop does not resume it.
+    h.v.interrupt("typing");
+    h.v.echoDropped();
+    expect(h.v.state().paused).toBe(true);
+  });
+
+  it("setLog redirects the debug events; log() goes there too", () => {
+    const h = cloudHarness({ mode: "speech" });
+    const seen: unknown[] = [];
+    h.v.setLog((e) => seen.push(e));
+    h.v.log({ ev: "x" });
+    h.v.setMic(true);
+    h.v.reply("Hi.");
+    expect(seen).toEqual([{ ev: "x" }, expect.objectContaining({ ev: "voice-out" })]);
   });
 });

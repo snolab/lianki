@@ -742,9 +742,9 @@ describe("createMic: hold while the agent speaks", () => {
     expect(h.v.did).toEqual(["start"]);
   });
 
-  it("micStatus shows the agent speaking only while listening", () => {
+  it("micStatus shows the agent speaking only while listening; the user talking over it wins", () => {
     expect(micStatus("listening", 0, true)).toBe("speaking");
-    expect(micStatus("capturing", 0, true)).toBe("speaking");
+    expect(micStatus("capturing", 0, true)).toBe("capturing");
     expect(micStatus("off", 0, true)).toBe("idle");
     expect(micStatus("loading", 0, true)).toBe("loading");
     expect(micStatus("listening", 0, false)).toBe("listening");

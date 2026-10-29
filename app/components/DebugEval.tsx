@@ -112,6 +112,8 @@ export function DebugEval() {
     };
     const show = (e: PageTransitionEvent) => e.persisted && !tabsRef.current && join();
     join();
+    // Voice diagnostics (output route, echo-guard drops, AEC settings) go to /api/dev/log.
+    voice().setLog((ev) => devLog(ev));
     // A tab with the mic on reads replies aloud (hands-free), whichever is focused.
     const unsub = voice().subscribe((s) => tabsRef.current?.mic(s.mic));
     window.addEventListener("focus", focus);
