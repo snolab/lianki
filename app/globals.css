@@ -174,6 +174,8 @@ ruby rt {
   --node-x: calc(0.5rem + 1.25rem + 0.75rem + var(--term-w, 12rem));
   --fx: 0px;
   background:
+    /* A veil in the page colour dims a slip that stays opaque (.lk-back). */
+    linear-gradient(var(--slip-veil, transparent), var(--slip-veil, transparent)),
     linear-gradient(var(--cord-c), var(--cord-c)) 3px 0 / 3px 100% no-repeat,
     linear-gradient(var(--cord-c), var(--cord-c)) right 3px top 0 / 3px 100% no-repeat,
     /* The seam between slips: under the cords, so they run on unbroken. */
@@ -405,12 +407,15 @@ ruby rt {
 }
 
 /* A word whose countdown ran out and was put back further down the list:
- * this slip, already answered, fades; the copy below is the one to answer. */
+ * this slip, already answered, fades; the copy below is the one to answer.
+ * Faded with a veil and muted ink, never opacity: a see-through slip shows
+ * the grade colours of the swipe reveal behind it. */
 .lk-back {
   opacity: 0.7;
 }
 [role="listitem"]:has(.lk-back) {
-  opacity: 0.5;
+  --slip-veil: oklch(from var(--background) l c h / 0.5);
+  color: color-mix(in oklch, currentColor 55%, var(--background));
 }
 
 /* The slip's action sheet (/words, double tap): slides up, minimum jerk. */
