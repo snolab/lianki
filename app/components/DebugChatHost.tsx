@@ -19,10 +19,13 @@ type Chat = ComponentType<DebugChatProps>;
 type Hot = { Chat?: Chat; note?: string; rev?: string };
 const STYLE_ID = "lk-debug-widget-css";
 
-/** A real dynamic import the bundler leaves alone (the app sets no CSP). */
-const importer = new Function("u", "return import(u)") as (
-  u: string,
-) => Promise<Record<string, unknown>>;
+/**
+ * A real dynamic import the bundler leaves alone (the app sets no CSP).
+ * Built on first use, in the browser only: Workers refuse code from strings,
+ * so doing this at module scope would break server rendering.
+ */
+const importer = (u: string) =>
+  (new Function("u", "return import(u)") as (u: string) => Promise<Record<string, unknown>>)(u);
 
 function setCss(css: string | null) {
   let el = document.getElementById(STYLE_ID);
