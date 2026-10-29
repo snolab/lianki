@@ -86,3 +86,4 @@ that are expensive to rediscover.
 | Sync/offline architecture                                 | [docs/sync-architecture.md](docs/sync-architecture.md)         |
 | Sync conflicts, deletions, tombstones                     | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)           |
 | Metrics, slowness and error alerts (Slack #lianki)        | [docs/monitoring.md](docs/monitoring.md)                       |
+| Payments, Pro passes, Stripe                              | [docs/payments.md](docs/payments.md)                           |
