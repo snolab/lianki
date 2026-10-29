@@ -718,6 +718,7 @@ export function DebugChat({
                 ref={input}
                 data-testid="debug-chat-input"
                 rows={1}
+                // 16px: iOS zooms the whole page into any input under 16px.
                 value={draft}
                 maxLength={MAX_CHAT}
                 placeholder="Message the agent…"
