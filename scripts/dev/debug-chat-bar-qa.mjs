@@ -459,6 +459,40 @@ try {
     await ctx.close();
   }
 
+  // Regression (iPhone, 1761627): with the history capped (same length every
+  // time) and skewed timestamps, every new line while minimized still floats.
+  {
+    const { ctx, page } = await open("?min&cap=30");
+    await page.evaluate(() => {
+      const day = 86_400_000;
+      window.__push("my own line", "owner", Date.now() - day);
+      window.__push("reply from the future", "agent", Date.now() + day);
+      window.__push("reply at epoch zero", "agent", 0);
+    });
+    const float = page.locator('[data-testid="debug-chat-float"]');
+    await float
+      .nth(2)
+      .waitFor({ timeout: 3000 })
+      .catch(() => {});
+    const lines = await float.allTextContents();
+    check(
+      lines.join(" | ") ===
+        "you:my own line | agent:reply from the future | agent:reply at epoch zero",
+      `capped list, skewed clocks: all 3 new lines float (${lines.join(" | ")})`,
+    );
+    await page
+      .waitForFunction(
+        () =>
+          document.querySelectorAll('[data-testid="debug-chat-float"][data-fading]').length === 3,
+        null,
+        { timeout: 6000 },
+      )
+      .catch(() => {});
+    const fading = await page.locator('[data-testid="debug-chat-float"][data-fading]').count();
+    check(fading === 3, `then all 3 fade (${fading} fading)`);
+    await ctx.close();
+  }
+
   // Minimizing floats the latest message for its dwell, from the tap, then fades it.
   {
     const { ctx, page } = await open("?open");

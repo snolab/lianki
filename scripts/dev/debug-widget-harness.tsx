@@ -5,8 +5,8 @@
  * import, React sharing and reload can be checked without lianki-push.
  * `?busy=1` shows the heartbeat spinner; `?pending=chat|eval|friend` the pairing modal;
  * `?notree` passes no state tree content, `?nofrontier` no frontier lines; `?min` starts minimized (`?open` expanded; neither keeps what was last chosen).
- * `globalThis.__push(text, from?)` adds a live message, e.g. to float one up
- * over the minimized bar.
+ * `globalThis.__push(text, from?, at?)` adds a live message (`at` may be skewed), e.g. to float one up
+ * over the minimized bar; `?cap=N` caps the list at N, as the app does.
  */
 import { createRoot } from "react-dom/client";
 import { useState } from "react";
@@ -40,20 +40,24 @@ function Harness() {
     const w = globalThis as unknown as Record<string, unknown[]>;
     (w[key] ??= []).push(v);
   };
-  (globalThis as { __push?: (text: string, from?: "agent" | "owner") => void }).__push = (
-    text,
-    from = "agent",
-  ) =>
-    setMessages((l) => [
-      ...l,
-      {
+  // `?cap=N` keeps only the last N, as the app's trimHistory does: once
+  // full, the list stays the same length as new lines come in.
+  const cap = Number(q.get("cap")) || 0;
+  const add = (l: ChatMessage[], m: ChatMessage) => (cap ? [...l, m].slice(-cap) : [...l, m]);
+  (
+    globalThis as {
+      __push?: (text: string, from?: "agent" | "owner", at?: number) => void;
+    }
+  ).__push = (text, from = "agent", at = Date.now()) =>
+    setMessages((l) =>
+      add(l, {
         id: crypto.randomUUID(),
         from,
         label: from === "agent" ? "agent" : "/harness",
         text,
-        at: Date.now(),
-      },
-    ]);
+        at,
+      }),
+    );
   const pages = [
     { id: "p1", label: "/harness Chrome", at: 0 },
     { id: "p2", label: "/words pwa Mozilla/5.0 (iPhone)", at: 0 },
@@ -107,10 +111,15 @@ function Harness() {
           (w.__ended ??= []).push(x.pair);
         }}
         onSend={(text) => {
-          setMessages((l) => [
-            ...l,
-            { id: crypto.randomUUID(), from: "owner", label: "/harness", text, at: Date.now() },
-          ]);
+          setMessages((l) =>
+            add(l, {
+              id: crypto.randomUUID(),
+              from: "owner",
+              label: "/harness",
+              text,
+              at: Date.now(),
+            }),
+          );
           return true;
         }}
       />

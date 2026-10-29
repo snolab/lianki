@@ -84,17 +84,54 @@ export function createDwellTimer(d: {
   };
 }
 
-/** The latest message floats on minimize only if it is at most this old. */
+/** The latest message floats on minimize only if it arrived at most this long ago. */
 export const MINIMIZE_FLOAT_MAX_AGE_MS = 10 * 60_000;
 
 /**
- * At the moment the chat is minimized, the latest message (from anyone) is
- * treated as unread and floats, unless it is older than
- * MINIMIZE_FLOAT_MAX_AGE_MS. Its dwell starts then, not when it arrived.
+ * When this widget first saw each message, by id — this device's clock, never
+ * the message's own `at` (another clock, which may be skewed). New messages
+ * are told by id, not by the list's length: the host caps its history, so
+ * once full the list stays the same length as new lines push old ones out.
  */
-export function minimizeFloat<M extends { at: number }>(messages: M[], now: number): M | null {
+export function createArrivals() {
+  const seen = new Map<string, number>();
+  let loaded = false;
+  return {
+    /**
+     * The messages not seen before, in order. The first non-empty list is the
+     * history: it is recorded, but `history` says not to float it.
+     */
+    see<M extends { id: string }>(messages: M[], now: number): { fresh: M[]; history: boolean } {
+      const fresh = messages.filter((m) => !seen.has(m.id));
+      for (const m of fresh) seen.set(m.id, now);
+      const history = !loaded;
+      if (messages.length) loaded = true;
+      // Forget ids long gone from the list, so the map stays small.
+      if (seen.size > 2 * messages.length + 100) {
+        const ids = new Set(messages.map((m) => m.id));
+        for (const id of seen.keys()) if (!ids.has(id)) seen.delete(id);
+      }
+      return { fresh, history };
+    },
+    /** When it was first seen here (undefined: never). */
+    at: (id: string) => seen.get(id),
+  };
+}
+
+/**
+ * At the moment the chat is minimized, the latest message (from anyone) is
+ * treated as unread and floats, unless it arrived here more than
+ * MINIMIZE_FLOAT_MAX_AGE_MS ago. Its dwell starts then, not when it arrived.
+ */
+export function minimizeFloat<M extends { id: string }>(
+  messages: M[],
+  now: number,
+  arrivedAt: (id: string) => number | undefined,
+): M | null {
   const last = messages.at(-1);
-  return last && now - last.at <= MINIMIZE_FLOAT_MAX_AGE_MS ? last : null;
+  if (!last) return null;
+  const at = arrivedAt(last.id);
+  return at !== undefined && now - at <= MINIMIZE_FLOAT_MAX_AGE_MS ? last : null;
 }
 
 /**

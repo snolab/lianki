@@ -25,6 +25,7 @@ import {
   FADE_MS,
   FLOAT_MAX,
   type FloatPhase,
+  createArrivals,
   createFloatLife,
   dwellMs,
   minimizeFloat,
@@ -62,8 +63,6 @@ const SHEET_BG = "color-mix(in oklch, var(--background) 85%, transparent)";
 const MIC_SCRUB_HINT = "Drag up or down (or press ↑/↓) to scroll back through the chat";
 /** A minimized scrub shows this many lines at a time. */
 const SCRUB_LINES = 3;
-/** Only messages this fresh float up (not a history that loads late). */
-const FLOAT_FRESH_MS = 60_000;
 const POS_KEY = "lk:debug-chat-pos";
 /** The chat bar: the page shows through at about half. */
 const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
@@ -610,13 +609,16 @@ export function DebugChat({
   const [scrubbing, setScrubbing] = useState(false);
   /** How many lines back from the newest the scrub is (0 = the newest SCRUB_LINES). */
   const back = useRef(0);
-  const floatSeen = useRef(messages.length);
+  /** When each message first reached this widget (float-lines.ts createArrivals). */
+  const arrivals = useRef<ReturnType<typeof createArrivals> | null>(null);
+  arrivals.current ??= createArrivals();
   const wasOpen = useRef(open);
   useEffect(() => {
+    const now = Date.now();
+    const { fresh, history } = (arrivals.current ??= createArrivals()).see(messages, now);
     const minimizing = wasOpen.current && !open;
     wasOpen.current = open;
     if (open) {
-      floatSeen.current = messages.length;
       back.current = 0;
       setFloats([]);
       return;
@@ -624,20 +626,17 @@ export function DebugChat({
     if (minimizing) {
       // Just minimized: the latest message floats as if unread, its dwell
       // starting now (its FloatLine mounts with this render).
-      floatSeen.current = messages.length;
-      const last = minimizeFloat(messages, Date.now());
+      const last = minimizeFloat(messages, now, arrivals.current.at);
       setFloats(last ? [last] : []);
       setFloatEpoch((e) => e + 1);
       return;
     }
-    const fresh = messages
-      .slice(Math.min(floatSeen.current, messages.length))
-      .filter((m) => Date.now() - m.at < FLOAT_FRESH_MS);
-    floatSeen.current = messages.length;
-    if (fresh.length)
-      setFloats((f) =>
-        [...f.filter((x) => !fresh.some((y) => y.id === x.id)), ...fresh].slice(-FLOAT_MAX),
-      );
+    // Every message that reaches us while minimized floats, either way (own
+    // sends, typed or spoken, and replies) — never the history loading in.
+    if (history || !fresh.length) return;
+    setFloats((f) =>
+      [...f.filter((x) => !fresh.some((y) => y.id === x.id)), ...fresh].slice(-FLOAT_MAX),
+    );
   }, [messages, open]);
   const dropFloat = (id: string) =>
     setFloats((f) => {
