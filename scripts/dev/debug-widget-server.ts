@@ -177,7 +177,7 @@ function startServer() {
       if (url.pathname === "/tree-frag.html")
         // A sample state-tree fragment for /harness (lk:tree-src), with a script
         // and a handler in it that the widget's sanitizer must drop.
-        return new Response(SAMPLE_TREE, {
+        return new Response(SAMPLE_TREE.replace("{n}", String(++treeFetches)), {
           headers: { ...h, "content-type": "text/html; charset=utf-8" },
         });
       if (url.pathname === "/harness.js")
@@ -194,7 +194,9 @@ function startServer() {
   });
 }
 
-const SAMPLE_TREE = `<div class="f"><b class="w">waiting on you: review the bar</b><br>
+/** How many times the sample tree was fetched (shown in it, so a refetch is visible). */
+let treeFetches = 0;
+const SAMPLE_TREE = `<div class="f"><span class="n">fetch {n}</span> <b class="w">waiting on you: review the bar</b><br>
 <span class="d">doing: tree source</span></div>
 <details open><summary class="d">lianki</summary><ul>
 <li class="ok">unified chat bar</li>

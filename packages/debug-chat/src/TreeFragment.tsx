@@ -62,7 +62,14 @@ export function useTreeSource(active: boolean): TreeState | null {
     const ctl = new AbortController();
     const load = async () => {
       try {
-        const r = await fetch(u.href, { cache: "no-store", credentials: "omit", signal: ctl.signal });
+        // A fresh `t` on every load: iOS may serve a cached fragment despite no-store.
+        const url = new URL(u);
+        url.searchParams.set("t", String(Date.now()));
+        const r = await fetch(url.href, {
+          cache: "no-store",
+          credentials: "omit",
+          signal: ctl.signal,
+        });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const text = await r.text();
         if (text.length > TREE_MAX_BYTES) throw new Error("too large");

@@ -559,6 +559,31 @@ try {
     );
     check(t.done === "0.6", `.ok is dimmed (${t.done})`);
     check(t.bad === 0 && xss === 0, `no script, link or handler survives (${t.bad}, ${xss})`);
+    // Closed and opened again: fetched again (the server counts), the new one shown.
+    const count = () =>
+      page.evaluate(() =>
+        Number(
+          /fetch (\d+)/.exec(
+            document.querySelector('[data-testid="debug-chat-tree-fragment"]')?.textContent ?? "",
+          )?.[1],
+        ),
+      );
+    const n1 = await count();
+    await page.click('[data-testid="debug-chat-tree-button"]');
+    await page.waitForTimeout(300);
+    await page.click('[data-testid="debug-chat-tree-button"]');
+    await page
+      .waitForFunction(
+        (n) =>
+          /fetch (\d+)/.exec(
+            document.querySelector('[data-testid="debug-chat-tree-fragment"]')?.textContent ?? "",
+          )?.[1] > n,
+        n1,
+        { timeout: 5000 },
+      )
+      .catch(() => {});
+    const n2 = await count();
+    check(n2 > n1, `reopened: the fragment is fetched again and replaced (fetch ${n1} → ${n2})`);
     await ctx.close();
   }
   {
