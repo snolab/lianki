@@ -28,7 +28,10 @@ export function DebugPairModal({
   const [ticked, setTicked] = useState<Set<string>>(() => new Set(selfPage ? [selfPage] : []));
   // A new request starts again from "this page only".
   useEffect(() => setTicked(new Set(selfPage ? [selfPage] : [])), [pending.pair, selfPage]);
-  const ids = pages.map((p) => p.id).filter(Boolean);
+  // A chat grant always covers every page (a phone's page comes and goes with
+  // the app), so a chat request has no page picker: Allow means all.
+  const listed = !friend && pending.scope === "chat" ? [] : pages;
+  const ids = listed.map((p) => p.id).filter(Boolean);
   const all = ids.length > 0 && ids.every((id) => ticked.has(id));
   const toggle = (id: string) =>
     setTicked((t) => {
@@ -79,7 +82,7 @@ export function DebugPairModal({
             className="min-h-0 flex-1 overflow-y-auto rounded-lg"
             style={{ background: "oklch(0.27 0.02 260)", maxHeight: "40vh" }}
           >
-            {pages.map((pg) => {
+            {listed.map((pg) => {
               const { path, device } = pageParts(pg.label);
               const self = pg.id === selfPage;
               return (
