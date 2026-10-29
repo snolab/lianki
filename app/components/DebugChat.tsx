@@ -25,8 +25,6 @@ const OPEN_KEY = "lk:debug-chat-open";
 const END_CONFIRM_MS = 3_000;
 const SPEAK_KEY = "lk:debug-chat-speak";
 const POS_KEY = "lk:debug-chat-pos";
-/** twoStep's key for the single "End chat" row. */
-const END_CHAT = "end-chat";
 /** The input and its grip: the page shows through at about half. */
 const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
 /** Older lines dissolve at the log's top edge (only once there is more than fits). */
@@ -353,8 +351,6 @@ export function DebugChat({
   const addable = (x: PairInfo) => !!x.pages && !!selfPage && !x.pages.includes(selfPage);
   const reachNote = (x: PairInfo) =>
     x.pages ? ` · ${x.pages.length === 1 ? "1 page" : `${x.pages.length} pages`} only` : "";
-  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-  const conns = `${plural(pages.length, "page")} · ${plural(sessions.length, "session")}`;
   /** First tap arms (END_CONFIRM_MS), the second does it. */
   const twoStep = (key: string, act: () => void) => {
     clearTimeout(endTimer.current);
@@ -365,8 +361,6 @@ export function DebugChat({
     setEndArmed(key);
     endTimer.current = setTimeout(() => setEndArmed(null), END_CONFIRM_MS);
   };
-  /** Chat-scope grants: one chat per user, ended together by one row. */
-  const chats = sessions.filter((x) => x.scope === "chat");
   const unread = messages.slice(seen).filter((m) => m.from === "agent").length;
   const dot = live ? "oklch(0.68 0.16 150)" : "oklch(0.62 0.02 70)";
   const status = notice
@@ -520,12 +514,13 @@ export function DebugChat({
               </div>
             )}
             {/* No title bar: the grip drags the box, and a double tap on it opens
-            the menu (status, read-aloud, minimize). Its dot is the connection. */}
+            the menu (status, read-aloud, minimize). Its dot is the connection.
+            No End chat here: the chat hibernates and wakes by itself. */}
             <button
               type="button"
               data-drag-handle
               data-testid="debug-chat-grip"
-              aria-label={`Drag the chat box; ${conns}; double tap for its menu`}
+              aria-label="Drag the chat box; double tap for its menu"
               aria-expanded={menu}
               title={status}
               {...handle}
@@ -538,13 +533,7 @@ export function DebugChat({
               style={{ ...handle.style, background: INPUT_BG }}
               className="pointer-events-auto relative flex w-9 shrink-0 flex-col items-center justify-center rounded-lg border border-current/25 text-base leading-none text-gray-500"
             >
-              ⠿{/* Pages·sessions under the glyph (e.g. "2·1"); spelled out in the label. */}
-              <span
-                data-testid="debug-chat-grip-count"
-                className="text-[9px] leading-none tabular-nums"
-              >
-                {pages.length}·{sessions.length}
-              </span>
+              ⠿
               <span
                 aria-hidden
                 className="absolute end-0.5 top-0.5 size-1.5 rounded-full"
@@ -686,27 +675,6 @@ export function DebugChat({
                       Let the agent's chat reach this page too{reachNote(x)}
                     </button>
                   ))}
-                {/* The chat is shared per user: one red row ends it, revoking every
-                chat grant at once. Apart, in red, two taps. */}
-                {chats.length > 0 && (
-                  <button
-                    type="button"
-                    data-testid="debug-menu-end-chat"
-                    data-armed={endArmed === END_CHAT || undefined}
-                    title={chats.map((x) => `chat: ${x.label} · ${x.code}`).join("\n")}
-                    onClick={() => twoStep(END_CHAT, () => chats.forEach((x) => onEnd?.(x)))}
-                    className="mx-2 my-1 rounded px-2 py-1 text-start font-medium"
-                    style={{
-                      color: "oklch(0.98 0 0)",
-                      background:
-                        endArmed === END_CHAT ? "oklch(0.5 0.21 25)" : "oklch(0.58 0.19 25 / 0.85)",
-                    }}
-                  >
-                    {endArmed === END_CHAT
-                      ? "Tap again to end the chat"
-                      : "End chat with the agent (revokes the 30-day grant)"}
-                  </button>
-                )}
               </div>
             )}
             {armed > 0 && (

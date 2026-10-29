@@ -206,21 +206,19 @@ session listing carry the current path) and sends the listeners
 JSON line. Silent on the page, never stored, never in the chat log. A
 friend's page can only relabel its own socket.
 
-**The grip and its menu.** The ⠿ grip (2.25rem wide) shows
-`pages·sessions` under the glyph (e.g. `2·1`; the aria-label spells out "2
-pages · 1 session"), and its dot is green while the socket is live. Double
+**The grip and its menu.** The ⠿ grip (2.25rem wide) shows only the glyph
+and a dot, green while the socket is live. Double
 tap opens the menu. The menu lists every open debug page of this chat (the
 owner's own, or a friend's own: the hub's `state` carries `pages: [{id,
 label, at}]` and `self`, rebroadcast when a page connects, leaves or moves).
 Each row shows the path and a device hint ("pwa · Android", "iPhone"). Tapping
 a row opens that path in this tab with the Next router, since other tabs and
-devices cannot be focused, so the chat survives. Its End
+devices cannot be focused, so the chat survives. Its light "disconnect"
 (`{type:"end-page", id}`) has the hub close that page with 4410 "ended from
 another page"; that page stays closed until its next visibility or debug
-event. Ending this page takes two taps. Eval and preview sessions keep a
-light End. The chat grant itself is listed apart, in red: "End chat with the
-agent (revokes the 30-day grant)", and the first tap only arms it ("Tap again
-to end the chat", 3 s).
+event. Disconnecting this page takes two taps. Eval and preview sessions keep
+a light End. The menu has no End chat: the chat hibernates and wakes by
+itself.
 
 **One voice per device.** Every tab of a thread shows every message, but
 only one reads a reply aloud: the focused tab, or else the one focused most
@@ -268,15 +266,14 @@ tests:
 
 - The chat box: `debug-chat` (root), `debug-chat-pill` (collapsed),
   `debug-chat-log`, `debug-chat-line` (with `data-from`), `debug-chat-input`,
-  `debug-chat-grip`, `debug-chat-grip-count`, `debug-chat-icons`,
+  `debug-chat-grip`, `debug-chat-icons`,
   `debug-chat-icon-eval`, `debug-chat-bottom`, `debug-chat-busy`,
   `debug-chat-notice` and `debug-chat-warning`.
 - The grip menu: `debug-menu`, `debug-menu-status`, `debug-menu-note` (where
   the widget came from, or why it fell back), `debug-menu-speak`,
   `debug-menu-minimize`, `debug-menu-page` (`data-self` on this one),
   `debug-menu-page-open`, `debug-menu-page-end`, `debug-menu-session`,
-  `debug-menu-session-add`, `debug-menu-session-end` and
-  `debug-menu-end-chat`.
+  `debug-menu-session-add` and `debug-menu-session-end`.
 - The pairing modal: `debug-modal`, `debug-modal-code`, `debug-modal-pages`,
   `debug-modal-page-check` (`data-page-id`), `debug-modal-allow`,
   `debug-modal-allow-all` and `debug-modal-deny`.
