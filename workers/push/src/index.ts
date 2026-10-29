@@ -131,9 +131,14 @@ export default {
       const who = await debugIdentity(req, env.MAIN);
       if (!who) return new Response("forbidden", { status: 403 });
       const headers = new Headers(req.headers);
+      // Only what the main Worker said: a page cannot claim any of these itself.
+      for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
       headers.set(IDENTITY_HEADERS.user, who.userId);
       headers.set(IDENTITY_HEADERS.email, who.email);
       headers.set(IDENTITY_HEADERS.owner, who.owner ? "1" : "0");
+      // A header holds bytes, not any name: percent-encoded.
+      if (who.name) headers.set(IDENTITY_HEADERS.name, encodeURIComponent(who.name));
+      if (who.image) headers.set(IDENTITY_HEADERS.image, who.image);
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
     }
     if (

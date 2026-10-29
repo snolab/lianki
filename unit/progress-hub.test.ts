@@ -239,7 +239,61 @@ describe("CLI args", () => {
         "--pr",
         "#299",
       ]),
-    ).toMatchObject({ status: "done", pct: 40, pr: 299, task: "Ship it" });
+    ).toMatchObject({
+      cmd: "report",
+      report: { status: "done", pct: 40, pr: 299, task: "Ship it" },
+    });
+    expect(
+      parseProgressArgs([
+        "--agent=o",
+        "--human",
+        "--path",
+        "/words/a",
+        "--task",
+        "t",
+        "--status",
+        "waiting-owner",
+        "--kind",
+        "decision",
+        "--rev",
+        "3",
+        "--token",
+        "tk",
+      ]),
+    ).toEqual({
+      cmd: "report",
+      token: "tk",
+      report: {
+        id: "/words/a",
+        parent: "/words",
+        assignee: { type: "human", name: "o" },
+        task: "t",
+        status: "waiting-owner",
+        kind: "decision",
+        rev: 3,
+      },
+    });
+    expect(parseProgressArgs(["--path", "/a", "--id", "/b", "--agent", "a"])).toBeInstanceOf(Error);
+    expect(parseProgressArgs(["--agent", "a", "--task", "t"])).toBeInstanceOf(Error);
+    expect(parseProgressArgs(["grant", "--node", "/words", "--agent", "w"])).toEqual({
+      cmd: "grant",
+      node: "/words",
+      agent: "w",
+      ttl: "8h",
+    });
+    expect(
+      parseProgressArgs(["grant", "--node", "/w", "--agent", "w", "--ttl", "x"]),
+    ).toBeInstanceOf(Error);
+    expect(parseProgressArgs(["grant", "--node", "Bad"])).toBeInstanceOf(Error);
+    expect(parseProgressArgs(["grant", "--node", "/w"])).toBeInstanceOf(Error);
+    expect(parseProgressArgs(["resolve", "--id", "/@owner/x", "--note", "B"])).toEqual({
+      cmd: "resolve",
+      id: "/@owner/x",
+      note: "B",
+    });
+    expect(parseProgressArgs(["resolve", "--id", "/x"])).toEqual({ cmd: "resolve", id: "/x" });
+    expect(parseProgressArgs(["resolve"])).toBeInstanceOf(Error);
+    expect(parseProgressArgs(["show", "--token=t"])).toEqual({ cmd: "show", token: "t" });
     expect(parseProgressArgs(["oops"])).toBeInstanceOf(Error);
     expect(parseProgressArgs(["--agent"])).toBeInstanceOf(Error);
     expect(parseProgressArgs(["--pct", "x"])).toBeInstanceOf(Error);

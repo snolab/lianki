@@ -21,6 +21,8 @@ re-exports for the hub and the sender.
 | `debug-widget.ts`                                        | shared rules: allowed URLs, cache-busting, module checks |
 | `debug-chat-tabs.ts`, `tap-gesture.ts`                   | one voice per device; taps and drags                     |
 | `wire.ts`, `icons.tsx`, `LiagentMark.tsx`                | wire types and helpers; icons; the liagent mark          |
+| `Avatar.tsx`, `avatar-rules.ts`                          | the log's avatars: the component; its pure rules         |
+| `node-path.ts`                                           | state-tree node paths: validation, routing, rendering    |
 | `scripts/dev/debug-widget-build.ts`                      | Bun.build with React from the page, plus Tailwind CSS    |
 | `scripts/dev/debug-widget-server.ts`                     | serve, watch, SSE `reload`, tailnet or tunnel            |
 | `scripts/dev/debug-widget-harness.tsx`                   | `/harness`: a local host page for tests                  |
@@ -133,6 +135,172 @@ userscript loader apply ([dev-userscript-loader.md](dev-userscript-loader.md)):
 the server binds `::`, and if the tunnel is remotely managed, its port must
 match. The URL is public, but it serves only the widget code.
 
+## Avatars
+
+Each log line starts with an 18px round avatar instead of a name. Who it
+shows:
+
+| Line                         | Avatar                                                |
+| ---------------------------- | ----------------------------------------------------- |
+| the agent's                  | the `agentAvatar` prop: Lianki passes `/icon-192.png` |
+| the viewer's own             | the `viewer` prop, then the line's `sender`           |
+| anyone else's (owner/friend) | the host's `avatarFor(m)`, then the line's `sender`   |
+
+Each person's pictures are tried in order: the app's own avatar (Lianki
+keeps none, so this step is empty), then the sign-in provider's image
+(better-auth's `user.image`; Google gives a letter avatar even to accounts
+without a photo). A picture that fails to load (`onError`) falls through to
+the next, and after the last to a generated one: the name's initial on
+`oklch(0.7 0.12 <hue>)`, the hue from a hash of the person's id (the hub's
+hashed user id, never the email), the letter near-black or white, whichever
+contrasts more (at least 4.5:1 on every hue; `unit/chat-avatars.test.ts`).
+
+Pictures load with `referrerPolicy="no-referrer"` (Google's need it) and
+`loading="lazy"`, at a fixed size in inline styles, so a late load shifts
+nothing and the avatar keeps its shape on a page without the widget's CSS.
+The visible name is gone; an `sr-only` span keeps it ("you: …", "Ada: …"),
+so screen readers still hear who said what. The avatar itself has `alt` /
+`aria-label` set to the name and is `aria-hidden` in the log, so the name is
+read once; its `title` is the hover tooltip.
+
+**Where `sender` comes from.** `/api/debug/identity` also answers `name` and
+`image`; lianki-push passes them to the hub as `x-debug-name`
+(percent-encoded) and `x-debug-image` (https only, at most 300 characters,
+since the page's socket attachment must stay under 2 KB). The hub keeps a
+`Sender` per page (`{id: hashId(userId), name, avatars}`), sends it to that
+page on connect as `{type:"me", sender}` (DebugEval passes it as `viewer`),
+and puts it on every line the page sends. Both fields are optional: older
+lines and pages, and an older main Worker, get the initial.
+
+## Node paths
+
+Messages are addressed to **state-tree nodes**, and a node's **assignee** (an
+agent or a human) receives them. A node path is route-like: `/words/prefetch`,
+shown in the chat as `/words › prefetch`. The root, `/`, is the main thread,
+where everything went before node paths. So a sub-agent can post in the same
+chat window as the main agent, and every line says which node it came from.
+The pure rules are in `packages/debug-chat/src/node-path.ts` (re-exported by
+`wire.ts` and `lib/dev-eval.ts`), tested in `unit/node-path.test.ts`; the hub's
+routing is tested in `unit/debug-hub.test.ts`, "DebugHub node paths".
+
+**Fields.** Every field is optional, and lines and listeners without them
+work as before.
+
+| Field              | On                          | Meaning                                                          |
+| ------------------ | --------------------------- | ---------------------------------------------------------------- |
+| `taskPath`         | an agent's line             | the sender's node, e.g. `/words/prefetch`                        |
+| `agentId`          | an agent's line             | the node's assignee, e.g. `prefetcher`                           |
+| `to`               | an owner's or agent's line  | the node it is addressed to; absent or `/` = the main thread     |
+| `observed`         | the `chat` envelope         | delivered to an ancestor of `to`, not to `to` itself             |
+| `?node=`/`?agent=` | the controller's socket URL | the node a listener subscribes at, and its assignee              |
+| `nodes`            | the pages' `state`          | the listeners' nodes (never `/`), for the input's completions    |
+
+The hub validates every path the same way: it trims it, splits it on `/` or
+`›`, accepts only the characters `A–Z a–z 0–9 . _ ~ -` in each segment, refuses
+`.` and `..`, and caps the result at 80 characters. A path that is too long is
+refused, never truncated, since a cut path would name another node. An
+`agentId` is trimmed and cut to 40 characters of letters, digits, `._@:+-` and
+spaces. A bad `taskPath` or node `to` from an agent is an error. A bad `to`
+from a page is dropped, and that line goes to the main thread.
+
+**Routing.** A line addressed to node P (the hub's `post`) is delivered:
+
+- to the listeners at P exactly;
+- to the listeners at an ancestor of P, marked `observed: true`. The main
+  listener, at `/`, is an ancestor of every node, so it sees everything and
+  nothing is lost;
+- to no listener at a sibling or a descendant of P.
+
+A listener from before node paths has no `?node=`, so it counts as `/`. A
+main-thread line (no `to`) reaches only the `/` listeners, as before. A node
+listener's history on connect holds only the lines routed to it. The owner's
+pages get every line of the thread, whatever its node.
+
+**Agent → agent.** An agent's `say` with a `to` that starts with `/`
+addresses that node; any other `to` is still a friend's thread. The
+sender's node is its line's `taskPath`, else its socket's `?node=`. The
+`taskPath` must lie within the socket's node, if the socket has one. The send
+is allowed when one of these holds:
+
+1. P is inside the sender's own subtree;
+2. P is the sender's parent or another ancestor, including `/`: replying
+   upward is always allowed;
+3. a live **node grant** covers the sender's node and P.
+
+Otherwise the hub answers
+`{type:"error", reason:"out of scope: needs a grant from /words"}`, naming the
+common ancestor. A node grant, `{type:"grant", from, to, ms?}`, lets every
+sender within `from` address every node within `to`, for 8 hours by default
+and 30 days at most. `{type:"ungrant", from, to}` takes it back. Only a
+listener whose node holds both `from` and `to` may grant (the main listener
+always may), and the hub stores it as `ngrant:<from>><to>`. The live-roadmap
+hub's HMAC-scoped tokens (`lib/progress-token.ts`) are not on `main` yet, so
+there is no `--grant <token>`; the main listener's approval is the only way
+for now.
+
+**CLI** (`scripts/dev/eval.ts`; `scripts/dev/node-args.ts` holds its pure parts):
+
+```bash
+# A sub-agent sets its place once:
+export LIANKI_TASK_PATH=/words/prefetch LIANKI_AGENT=prefetcher
+bun scripts/dev/eval.ts chat                      # hears /words/prefetch (and below, observed)
+bun scripts/dev/eval.ts say "warming the cache"   # shown as "/words › prefetch" under the avatar
+bun scripts/dev/eval.ts say --to /words "done"    # upward: always allowed
+# Flags win over the env vars:
+bun scripts/dev/eval.ts --task-path /words --agent words say --to /words/prefetch "do X"
+# From the main listener: let one sibling address another
+bun scripts/dev/eval.ts grant --from /words/prefetch --to /words/audio [--hours 8]
+bun scripts/dev/eval.ts ungrant --from /words/prefetch --to /words/audio
+```
+
+`chat` prints each line with its `to`, `taskPath`, `agentId` and, when
+observed, `"observed": true`. It skips its own lines and the agents' replies
+to the main thread, as before, but prints agent lines addressed to a node.
+
+**In the widget.**
+
+- **An agent's line** shows the agent's avatar, then a small muted subtitle
+  with its node (`/words › prefetch`), then the text. An agent-to-agent line
+  is tagged `from → to`, e.g. `/words › prefetch → /words › audio`. The
+  avatar's name is the `agentId`, else the label.
+- **The owner's own line** to a node shows `→ /words › prefetch`.
+- **Telling streams apart.** Every line with a node has a 2px left border in
+  `oklch(0.7 0.09 <hue>)`, with the hue hashed from the node's path. Lines
+  from different nodes therefore alternate colours.
+- **Accessibility.** The line's tooltip and its sr-only text include the
+  node, e.g. "prefetcher (/words › prefetch): …".
+- **No node.** A line with neither a node nor a target renders exactly as
+  before.
+- **Addressing a node.** Type `@/words › prefetch ` (or `@/words/prefetch `)
+  at the start of the input. While you type `@/…`, a list offers the
+  connected listeners' nodes (Tab or Enter picks the first). Sending makes
+  that node the **target**.
+- **The target chip.** The target shows as a small chip above the input,
+  `→ /words › prefetch ×`. Its × (or Backspace in an empty input) goes back
+  to the main thread, which is the default and shows no chip.
+- **`setTarget(path)`** (exported by `DebugChat.tsx` and the widget module,
+  and on `window.__lkDebugChat.setTarget`) sets the target from outside. It
+  is meant for the state tree: selecting a node will target it. The target
+  is kept on `window`, so a hot reload keeps it.
+
+## The state tree, live
+
+The chat's Tree view (menu → Tree; `docs/state-tree.md`) normally shows the
+copy bundled at commit time, from `GET /api/dev/state-tree`. While the widget
+is hot-loaded, the same dev server also serves the working tree's
+`docs/state-tree.md` at `/state-tree.md` (CORS for lianki.com) and sends a
+`tree` event on `/events` whenever it is saved (`fs.watch` on `docs/`, no
+polling). `DebugChatHost` then hands the chat a feed
+(`pickTreeSource` / `hotTreeSource` in `debug-widget.ts`) that fetches it on
+open and on each `tree` event, so an edit reaches the owner's open page in
+about a second, with no commit or deploy. A green dot next to "Tree" means the
+data is live; if the dev server cannot serve the file, the feed falls back to
+the bundled copy and the dot is gone.
+
+`treeSource` accepts a URL, a function returning markdown or nodes, or
+`{subscribe(onUpdate) → unsubscribe}`: the WebSocket progress feed
+(`feat/live-roadmap`, parked) will be another such feed.
+
 ## Testing
 
 `bun test unit/debug-widget.test.ts` covers the URL rules, the module checks,
@@ -142,7 +310,14 @@ must export `DebugChat`, and must ship CSS and a stable rev.
 The debug chat cannot show in local QA, because the page's socket goes to
 lianki-push, which `wrangler dev` does not run. The loader is therefore tested
 end to end on `/harness`, which renders the real `DebugChatHost` with made-up
-messages. Run it by hand with Playwright: open `http://localhost:5180/harness`
+messages. It shows every kind of avatar: the agent's (an element, the
+liagent mark, standing in for the host's logo), the viewer's picture, and
+two friends' initials (one picture that fails to load, one with none);
+`?nopic=1` drops the viewer's picture, so their lines show the initial too.
+It also shows node-path lines: two nodes' agents, one agent addressing
+another, and the owner's line to a node. Typing `@/` there offers its nodes,
+and `?target=/words/prefetch` starts with that chip.
+Run it by hand with Playwright: open `http://localhost:5180/harness`
 (`?working=1` shows the spinner) and set the localStorage key to
 `http://localhost:5180/debug-chat.js`. Then check `[data-debug-widget]` (its
 value is the rev) and edit `DebugChat.tsx`: the rev changes and the new UI

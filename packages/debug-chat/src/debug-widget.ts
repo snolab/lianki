@@ -65,3 +65,84 @@ export function failNote(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   return `dev widget failed (${msg.slice(0, 120)}); using the built-in chat`;
 }
+
+// ── The state tree, live from the same dev server ────────────────────────────
+
+/** The working tree's docs/state-tree.md, served next to the module. */
+export const treeUrl = (src: URL) => new URL("state-tree.md", src).href;
+
+/** A tree source that pushes: `subscribe(onUpdate)` returns its unsubscribe (StateTree.tsx). */
+export type TreeFeed = {
+  subscribe: (
+    onUpdate: (markdown: string, meta: { live: boolean }) => void,
+    onError?: (e: unknown) => void,
+  ) => () => void;
+};
+
+type FeedDeps = {
+  fetch: (url: string, init?: RequestInit) => Promise<Response>;
+  EventSource: new (url: string) => {
+    addEventListener(type: string, fn: () => void): void;
+    close(): void;
+  };
+};
+const browserDeps = (): FeedDeps => ({
+  fetch: globalThis.fetch.bind(globalThis),
+  EventSource: globalThis.EventSource,
+});
+
+/**
+ * The tree from the dev server: fetched on subscribe and again on each SSE
+ * `tree` event (the server watches the file; nothing polls). If the dev
+ * server cannot serve it, `fallback` (the bundled copy's URL) is used, marked
+ * not live.
+ */
+export function hotTreeSource(src: URL, fallback?: string, deps = browserDeps()): TreeFeed {
+  return {
+    subscribe(onUpdate, onError) {
+      let alive = true;
+      const get = async (url: string) => {
+        const r = await deps.fetch(url, { cache: "no-store", credentials: "same-origin" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
+      };
+      const load = async () => {
+        try {
+          const md = await get(treeUrl(src));
+          if (alive) onUpdate(md, { live: true });
+        } catch (e) {
+          if (!fallback) return alive && onError?.(e);
+          try {
+            const md = await get(fallback);
+            if (alive) onUpdate(md, { live: false });
+          } catch (e2) {
+            if (alive) onError?.(e2);
+          }
+        }
+      };
+      void load();
+      const es = new deps.EventSource(eventsUrl(src));
+      es.addEventListener("tree", () => void load());
+      return () => {
+        alive = false;
+        es.close();
+      };
+    },
+  };
+}
+
+/**
+ * The chat's tree source: with hot-loading on (`raw` is an allowed
+ * lk:debug-widget-src), the dev server's live copy; otherwise `fallback` as
+ * given. No fallback (not the owner): no tree at all.
+ */
+export function pickTreeSource<T>(
+  raw: string | null | undefined,
+  fallback: T | undefined,
+  deps?: FeedDeps,
+): T | TreeFeed | undefined {
+  if (fallback === undefined) return undefined;
+  const src = widgetSrc(raw);
+  if (!src) return fallback;
+  return hotTreeSource(src, typeof fallback === "string" ? fallback : undefined, deps);
+}
