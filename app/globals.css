@@ -353,3 +353,15 @@ ruby rt {
     animation: none;
   }
 }
+
+/* The debug chat's "sending in 5s" bar (app/components/DebugChat.tsx): it
+ * drains over the debounce, restarted (re-keyed) on every keystroke. */
+.lk-drain {
+  transform-origin: left;
+  animation: lk-drain 5s linear both;
+}
+@keyframes lk-drain {
+  to {
+    transform: scaleX(0);
+  }
+}

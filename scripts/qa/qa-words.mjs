@@ -388,6 +388,10 @@ try {
     (await page.locator("[data-debug-eval]").count()) === 0,
     "a non-owner page (debug on, socket refused) shows no remote-eval UI",
   );
+  check(
+    (await page.locator("[data-debug-chat]").count()) === 0,
+    "a non-owner page (debug on, socket refused) shows no agent chat box",
+  );
 
   // A language with pre-rendered clips but none for this text: a 404 the
   // client must not take as "no voice for Italian".

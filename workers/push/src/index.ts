@@ -21,7 +21,10 @@
  *   GET  /api/version/debug/control
  *                              WebSocket for the sender (scripts/dev/eval.ts):
  *                              unauthenticated, and useless until the owner
- *                              allows it on one of those pages (debug.ts).
+ *                              allows it on one of those pages (debug.ts) —
+ *                              or it presents a live chat grant in the
+ *                              x-debug-token header. The same sockets carry
+ *                              the owner ⇄ agent chat.
  *
  * /internal/* is answered only on the binding's own hostname (lianki-push):
  * there is no workers.dev URL, and the zone route covers /api/version/* only.

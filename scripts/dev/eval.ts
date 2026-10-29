@@ -15,13 +15,35 @@
  *       agent — contains <text>) and print each page's result as JSON. With
  *       no `serve` session running, it pairs for this one command.
  *
+ *   bun scripts/dev/eval.ts chat [--label "…"] [--out <path>]
+ *       Listen to the owner's chat box (DebugChat on a debug page). Pairs if
+ *       there is no saved grant — prints {"type":"pending","code"} to stdout;
+ *       the owner taps "Allow chat for 30 days" — then prints each new owner
+ *       message as one JSON line {"type":"chat","id","text","at","label"}
+ *       (also appended to --out). Reconnects on close, backing off.
+ *
+ *   bun scripts/dev/eval.ts say "text"      (or - for stdin)
+ *       Reply in the owner's chat box with the saved grant, and exit.
+ *
+ * The chat grant token is kept in .debug-chat-token.json at the root of the
+ * main checkout (gitignored, mode 600; LIANKI_CHAT_TOKEN_FILE overrides), so
+ * every worktree shares it. "End" on the page revokes it.
+ *
  * `code` is an expression (`document.title`) or a function body (`return x`);
- * `await` works in both. No secret is stored anywhere: approval is per
- * socket, on the owner's device. LIANKI_URL overrides https://lianki.com.
+ * `await` works in both. Eval approval is per socket, on the owner's device:
+ * no secret is stored for it. LIANKI_URL overrides https://lianki.com.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, hostname } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 
 const BASE = (process.env.LIANKI_URL ?? "https://lianki.com").replace(/\/+$/, "");
@@ -32,6 +54,42 @@ const PAIR_MS = 2 * 60_000;
 
 type Msg = Record<string, unknown> & { type?: string };
 
+/** The chat grant token, shared by every worktree: the main checkout's root. */
+function tokenFile() {
+  if (process.env.LIANKI_CHAT_TOKEN_FILE) return resolve(process.env.LIANKI_CHAT_TOKEN_FILE);
+  const git = Bun.spawnSync(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], {
+    cwd: import.meta.dir,
+  });
+  const common = git.success ? git.stdout.toString().trim() : "";
+  const root = common ? dirname(common) : join(import.meta.dir, "..", "..");
+  return join(root, ".debug-chat-token.json");
+}
+const TOKEN_FILE = tokenFile();
+const loadToken = () => {
+  try {
+    return (JSON.parse(readFileSync(TOKEN_FILE, "utf8")) as { token?: string }).token;
+  } catch {
+    return undefined;
+  }
+};
+const saveToken = (token: string, until: number) => {
+  writeFileSync(TOKEN_FILE, JSON.stringify({ token, until: new Date(until).toISOString() }));
+  chmodSync(TOKEN_FILE, 0o600);
+};
+/** Resuming a grant without --label keeps the label it was approved under. */
+const controlUrl = (token?: string) =>
+  `${BASE.replace(/^http/, "ws")}/api/version/debug/control?label=${encodeURIComponent(token ? (labelFlag ?? "") : label)}`;
+/**
+ * Bun's WebSocket takes headers, so the grant goes in one, never in the URL
+ * (the repo type-checks with the DOM lib's constructor, hence the cast).
+ */
+const openControl = (token?: string) =>
+  token
+    ? new WebSocket(controlUrl(token), {
+        headers: { "x-debug-token": token },
+      } as unknown as string[])
+    : new WebSocket(controlUrl());
+
 const args = process.argv.slice(2);
 const flag = (name: string) => {
   const i = args.indexOf(name);
@@ -40,14 +98,15 @@ const flag = (name: string) => {
   args.splice(i, 2);
   return v;
 };
-const label = flag("--label") ?? `lianki main lane on ${hostname()}`;
+const labelFlag = flag("--label");
+const label = labelFlag ?? `lianki main lane on ${hostname()}`;
 const target = flag("--target");
+const out = flag("--out");
 
 /** Open the controller socket and wait for the owner's answer. */
 function pair(): Promise<WebSocket> {
-  const url = `${BASE.replace(/^http/, "ws")}/api/version/debug/control?label=${encodeURIComponent(label)}`;
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url);
+    const ws = openControl();
     const give = setTimeout(() => {
       ws.close();
       reject(new Error("no answer on the page within 2 minutes"));
@@ -164,11 +223,125 @@ async function viaSession(code: string): Promise<Msg[] | null> {
   return out.results ?? [];
 }
 
+/**
+ * Listen to the owner's chat: one JSON line per new owner message, on stdout
+ * and appended to --out. Resumes with the saved grant; pairs when there is
+ * none (or it was refused). Reconnects only when the socket closes.
+ */
+function chat(out?: string) {
+  const seen = new Set<string>();
+  let first = true;
+  let backoff = 1_000;
+  const emit = (m: Msg) => {
+    if (m.from !== "owner" || typeof m.id !== "string" || seen.has(m.id)) return;
+    seen.add(m.id);
+    const line = JSON.stringify({
+      type: "chat",
+      id: m.id,
+      text: m.text,
+      at: new Date(Number(m.at)).toISOString(),
+      label: m.label,
+    });
+    console.log(line);
+    if (out) appendFileSync(out, `${line}\n`);
+  };
+  const connect = () => {
+    const token = loadToken();
+    const ws = openControl(token);
+    ws.onmessage = (e) => {
+      const m = JSON.parse(String(e.data)) as Msg;
+      if (m.type === "pending") {
+        console.log(JSON.stringify({ type: "pending", code: m.code, label }));
+        console.error(
+          `Pairing as "${label}". On the page, tap "Allow chat for 30 days" for code  ${m.code}`,
+        );
+      } else if (m.type === "approved") {
+        backoff = 1_000;
+        if (typeof m.token === "string") saveToken(m.token, Number(m.until));
+        const until = new Date(Number(m.until)).toISOString();
+        console.error(
+          `${m.resumed ? "Resumed" : "Approved"} (${m.scope}) until ${until}.${
+            m.scope === "eval" ? " No grant saved: a reconnect after this will ask again." : ""
+          }`,
+        );
+      } else if (m.type === "history" && Array.isArray(m.messages)) {
+        // What was said before this listener started is not new; what was
+        // said while it was reconnecting is.
+        for (const h of m.messages as Msg[])
+          if (first && typeof h.id === "string") seen.add(h.id);
+          else emit(h);
+        first = false;
+      } else if (m.type === "chat" && m.message) emit(m.message as Msg);
+      else if (m.type === "error") console.error(`hub: ${m.error}`);
+    };
+    ws.onclose = (e) => {
+      if (e.code === 4498) {
+        // The grant is gone (ended, or expired): forget it and pair afresh.
+        rmSync(TOKEN_FILE, { force: true });
+        console.error("Saved chat grant refused; pairing again.");
+        return connect();
+      }
+      if (e.code === 4401 || e.code === 4403) {
+        if (e.code === 4401) rmSync(TOKEN_FILE, { force: true });
+        console.error(e.code === 4401 ? "Ended on the page." : "Denied on the page.");
+        process.exit(0);
+      }
+      console.error(`socket closed (${e.code}); reconnecting in ${backoff / 1000}s`);
+      setTimeout(connect, backoff);
+      backoff = Math.min(backoff * 2, 60_000);
+    };
+  };
+  connect();
+}
+
+/** Reply in the owner's chat box with the saved grant; resolves once the hub has it. */
+function say(text: string): Promise<Msg> {
+  const token = loadToken();
+  if (!token)
+    return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
+  return new Promise((resolve, reject) => {
+    const ws = openControl(token);
+    const give = setTimeout(() => {
+      ws.close();
+      reject(new Error("no answer from the hub within 15 s"));
+    }, 15_000);
+    ws.onmessage = (e) => {
+      const m = JSON.parse(String(e.data)) as Msg;
+      if (m.type === "approved") ws.send(JSON.stringify({ type: "say", text }));
+      else if (m.type === "said") {
+        clearTimeout(give);
+        ws.close();
+        resolve(m);
+      } else if (m.type === "error") {
+        clearTimeout(give);
+        reject(new Error(String(m.error)));
+      }
+    };
+    ws.onclose = (e) => {
+      clearTimeout(give);
+      if (e.code === 4498) rmSync(TOKEN_FILE, { force: true });
+      reject(new Error(`socket closed (${e.code}${e.reason ? ` ${e.reason}` : ""})`));
+    };
+  });
+}
+
 async function main() {
   if (args[0] === "serve") return serve();
+  if (args[0] === "chat") return chat(out);
+  if (args[0] === "say") {
+    const text = (args[1] === "-" ? await Bun.stdin.text() : (args[1] ?? "")).trim();
+    if (!text) {
+      console.error('usage: bun scripts/dev/eval.ts say "text" | -');
+      process.exit(2);
+    }
+    console.log(JSON.stringify(await say(text)));
+    return;
+  }
   const code = args[0] === "-" ? await Bun.stdin.text() : args[0];
   if (!code?.trim()) {
-    console.error("usage: bun scripts/dev/eval.ts [--target <text>] '<code>' | - | serve");
+    console.error(
+      "usage: bun scripts/dev/eval.ts [--target <text>] '<code>' | - | serve | chat [--out <file>] | say <text>",
+    );
     process.exit(2);
   }
   let results = await viaSession(code);

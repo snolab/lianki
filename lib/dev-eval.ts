@@ -16,12 +16,37 @@ export const MAX_LABEL = 300;
 export const PENDING_MS = 2 * 60_000;
 /** How long an approved controller may send code. */
 export const APPROVAL_MS = 60 * 60_000;
+/** How long "Allow chat" lasts — and its resumable grant token. */
+export const CHAT_MS = 30 * 24 * 60 * 60_000;
+/** Largest chat message (owner's or agent's), in characters. */
+export const MAX_CHAT = 4000;
+/** Chat messages the hub keeps (and sends a page on connect). */
+export const CHAT_HISTORY = 200;
+
+/**
+ * What an approval lets a controller do: "eval" (Allow for 1 hour) runs code
+ * and chats; "chat" (Allow chat for 30 days) only chats — it hears the owner's
+ * messages and may `say`, but cannot eval.
+ */
+export type Scope = "eval" | "chat";
+/** One line of the owner ⇄ agent chat, as the hub stores and sends it. */
+export type ChatMessage = {
+  id: string;
+  from: "owner" | "agent";
+  label: string;
+  text: string;
+  at: number;
+};
 
 /** Messages a controller (the sender CLI) may send to the hub. */
-export type ControllerMessage = { type: "eval"; code: string; target?: string };
+export type ControllerMessage =
+  | { type: "eval"; code: string; target?: string }
+  | { type: "say"; text: string };
 /** Messages an owner page may send to the hub. */
 export type PageMessage =
-  | { type: "allow" | "deny" | "revoke"; pair: string }
+  | { type: "allow"; pair: string; scope?: "chat" }
+  | { type: "deny" | "revoke"; pair: string }
+  | { type: "chat"; id: string; text: string }
   | {
       type: "result";
       id: string;
@@ -34,7 +59,14 @@ export type PageMessage =
     };
 
 /** What the hub tells pages: the pairing waiting for an answer, and the approved sessions. */
-export type PairInfo = { pair: string; code: string; label: string; at: number; until?: number };
+export type PairInfo = {
+  pair: string;
+  code: string;
+  label: string;
+  at: number;
+  until?: number;
+  scope?: Scope;
+};
 export type HubState = { type: "state"; pending: PairInfo | null; sessions: PairInfo[] };
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
@@ -54,7 +86,13 @@ export function parseControllerMessage(
   raw: unknown,
 ): { ok: true; value: ControllerMessage } | { ok: false; error: string } {
   const m = parse(raw);
-  if (!m || m.type !== "eval") return { ok: false, error: 'expected {"type":"eval","code":"…"}' };
+  if (m?.type === "say") {
+    const text = chatText(m.text);
+    if (!text) return { ok: false, error: `say needs text of 1–${MAX_CHAT} chars` };
+    return { ok: true, value: { type: "say", text } };
+  }
+  if (!m || m.type !== "eval")
+    return { ok: false, error: 'expected {"type":"eval","code":"…"} or {"type":"say","text":"…"}' };
   if (typeof m.code !== "string" || !m.code.trim()) return { ok: false, error: "empty code" };
   if (m.code.length > MAX_CODE) return { ok: false, error: `code over ${MAX_CODE} chars` };
   const target = str(m.target, MAX_LABEL);
@@ -68,9 +106,19 @@ export function parseControllerMessage(
 export function parsePageMessage(raw: unknown): PageMessage | null {
   const m = parse(raw);
   if (!m) return null;
-  if (m.type === "allow" || m.type === "deny" || m.type === "revoke") {
+  if (m.type === "allow") {
+    const pair = str(m.pair, 64);
+    if (!pair) return null;
+    return m.scope === "chat" ? { type: "allow", pair, scope: "chat" } : { type: "allow", pair };
+  }
+  if (m.type === "deny" || m.type === "revoke") {
     const pair = str(m.pair, 64);
     return pair ? { type: m.type, pair } : null;
+  }
+  if (m.type === "chat") {
+    const id = str(m.id, 64);
+    const text = chatText(m.text);
+    return id && text ? { type: "chat", id, text } : null;
   }
   if (m.type === "result") {
     const id = str(m.id, 64);
@@ -88,6 +136,44 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     };
   }
   return null;
+}
+
+/** A chat message's text: trimmed, non-empty, at most MAX_CHAT characters; else undefined. */
+export function chatText(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const t = raw.trim();
+  return t && t.length <= MAX_CHAT ? t : undefined;
+}
+
+/** The newest `max` messages, oldest first. */
+export function trimHistory(list: ChatMessage[], max = CHAT_HISTORY): ChatMessage[] {
+  return list.length > max ? list.slice(list.length - max) : list;
+}
+
+/**
+ * The language to read a reply in, from its script alone: any kana is
+ * Japanese, Hangul Korean, other Han Chinese (zh-CN), and everything else
+ * English.
+ */
+export function pickLang(text: string): "ja-JP" | "ko-KR" | "zh-CN" | "en-US" {
+  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return "ja-JP";
+  if (/\p{Script=Hangul}/u.test(text)) return "ko-KR";
+  if (/\p{Script=Han}/u.test(text)) return "zh-CN";
+  return "en-US";
+}
+
+/** An installed voice for `lang`: the exact locale first, then the same language. */
+export function pickVoice<V extends { lang: string; default?: boolean }>(
+  voices: readonly V[],
+  lang: string,
+): V | undefined {
+  const norm = (l: string) => l.replace(/_/g, "-").toLowerCase();
+  const want = norm(lang);
+  const base = want.split("-")[0];
+  const exact = voices.filter((v) => norm(v.lang) === want);
+  const same = voices.filter((v) => norm(v.lang).split("-")[0] === base);
+  const pool = exact.length ? exact : same;
+  return pool.find((v) => v.default) ?? pool[0];
 }
 
 /** A label shown to the owner: one line, printable, bounded. */
