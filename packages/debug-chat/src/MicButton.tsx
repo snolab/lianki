@@ -16,6 +16,16 @@ import {
   scheduleTick,
 } from "./mic";
 import { voice } from "./voice";
+import {
+  aecOn,
+  appliedSettings,
+  audioCtx,
+  cloudOut,
+  existingCtx,
+  micConstraints,
+  noteTrack,
+  outMode,
+} from "./voice-out";
 
 /**
  * Silero VAD (@ricky0123/vad-web) and its ONNX runtime, from jsDelivr at pinned
@@ -30,26 +40,12 @@ const REC = "oklch(0.6 0.22 25)";
 const TALK = "oklch(0.62 0.14 250)";
 
 /**
- * The page's one AudioContext for the mic: the energy fallback records
- * through it, and the send tick plays on it. Made on the mic tap (a gesture,
- * which iOS needs), suspended while the mic is off.
- */
-let audio: AudioContext | null = null;
-function audioCtx(): AudioContext | null {
-  if (audio) return audio;
-  const Ctx =
-    globalThis.AudioContext ??
-    (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  return Ctx ? (audio = new Ctx()) : null;
-}
-
-/**
  * The soft tick for a spoken sentence sent by itself (scheduleTick), on the
  * mic's AudioContext; never while the agent speaks, never without the mic
  * (so typed sends are silent). Web Audio only, so a muted iPhone stays quiet.
  */
 export function playSentTick(): boolean {
-  const c = audio;
+  const c = existingCtx();
   if (!c || c.state === "closed" || voice().state().speaking) return false;
   void c.resume().then(
     () => scheduleTick(c as unknown as Parameters<typeof scheduleTick>[0]),
@@ -79,10 +75,17 @@ const script = (src: string) =>
     document.head.append(s);
   });
 
-const micStream = () =>
-  navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
-  });
+/**
+ * The mic, with echo cancellation, noise suppression and auto gain on
+ * (lk:voice-aec; voice-out.ts). vad-web is handed this stream (getStream),
+ * so these are the constraints it runs with. What the browser applied is kept
+ * for the per-utterance debug log.
+ */
+const micStream = async () => {
+  const s = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(aecOn()) });
+  noteTrack(s);
+  return s;
+};
 const stop = (s: MediaStream) => {
   for (const t of s.getTracks()) t.stop();
 };
@@ -111,7 +114,8 @@ async function silero(ev: VadEvents): Promise<Vad> {
       onSpeechStart: ev.onSpeechStart,
       onSpeechEnd: ev.onSpeechEnd,
       onVADMisfire: ev.onMisfire,
-      onFrameProcessed: (_p: unknown, frame: Float32Array) => ev.onFrame?.(frame),
+      onFrameProcessed: (p: { isSpeech?: number } | undefined, frame: Float32Array) =>
+        ev.onFrame?.(frame, p?.isSpeech),
     });
     return {
       start: () => v.start(),
@@ -205,10 +209,12 @@ export const canCapture = () =>
  * with its transcript, to build a local test set. Hidden where the browser
  * cannot capture.
  *
- * Hands-free (voice.ts): while the mic is on, replies are always read aloud;
- * while one is read, capture is held (a slow blue ring, "agent speaking") and
- * a tap cuts the reply short and listens at once. The user starting to speak
- * interrupts the reading too; it reads on once they are done.
+ * Hands-free (voice.ts): while the mic is on, replies are always read aloud
+ * (a slow blue ring, "agent speaking"), and a tap cuts the reply short. With
+ * echo cancellation (lk:voice-aec, default) the mic stays open: the user
+ * talking over the agent ducks it, and keeps it paused past BARGE_IN_MS; each
+ * transcript goes through the echo guard first. With it off, capture is held
+ * while the agent speaks, as before.
  */
 export function DebugMic({
   onText,
@@ -227,7 +233,7 @@ export function DebugMic({
   const [state, setState] = useState<MicState>("off");
   const [pending, setPending] = useState(0);
   const [note, setNote] = useState<string | null>(null);
-  /** The agent's reply is being read (voice session): capture is held. */
+  /** The agent's reply is being read (voice session). */
   const [talking, setTalking] = useState(false);
   const cb = useRef({ onText, onPending, onActive, clipSink, label });
   cb.current = { onText, onPending, onActive, clipSink, label };
@@ -244,11 +250,12 @@ export function DebugMic({
         setState(s);
         const active = s !== "off";
         v.setMic(active);
-        // The user starts talking: the reading stops (and reads on once they are done).
-        if (s === "capturing") v.interrupt("speech");
+        // The user starts talking: over the agent it ducks (a barge-in if they
+        // keep going), else the reading pauses; it reads on once they are done.
+        if (s === "capturing") v.userSpeech();
         else if (last === "capturing") v.userIdle();
         last = s;
-        if (!active) void audio?.suspend().catch(() => {});
+        if (!active && !v.state().speaking) void existingCtx()?.suspend().catch(() => {});
         cb.current.onActive(active);
       },
       onText: (t) => cb.current.onText(t),
@@ -257,11 +264,31 @@ export function DebugMic({
         cb.current.onPending(n, interim);
       },
       onError: (e) => setNote(micErrorNote(e)),
+      onProb: (p) => v.userFrame(p),
       upload: async (wav, { durationMs, partial }) => {
         const at = Date.now();
         const sink = partial ? undefined : cb.current.clipSink;
         try {
           const out = await postStt(wav);
+          // The text guard: the agent's own words that leaked past the AEC are dropped.
+          const echo = v.echoCheck(out.text, durationMs);
+          if (!partial)
+            v.log({
+              ev: "voice-utt",
+              out: v.mode(),
+              aec: v.aec(),
+              settings: appliedSettings(),
+              durationMs,
+              during: echo.during,
+              drop: echo.drop,
+              score: echo.score,
+              text: out.text.slice(0, 80),
+              against: echo.drop ? echo.against?.slice(0, 80) : undefined,
+            });
+          if (echo.drop) {
+            if (!partial) v.echoDropped();
+            return "";
+          }
           if (sink)
             void postClip(sink, wav, {
               at,
@@ -277,12 +304,13 @@ export function DebugMic({
         }
       },
     });
-    const follow = (speaking: boolean) => {
-      setTalking(speaking);
-      mic.current?.hold(speaking);
+    const follow = (x: { speaking: boolean; hold: boolean }) => {
+      setTalking(x.speaking);
+      // Only with lk:voice-aec off: else the mic stays open and the user can barge in.
+      mic.current?.hold(x.hold);
     };
-    follow(v.state().speaking);
-    const unsub = v.subscribe((x) => follow(x.speaking));
+    follow(v.state());
+    const unsub = v.subscribe(follow);
     return () => {
       unsub();
       const m = mic.current;
@@ -336,8 +364,11 @@ export function DebugMic({
           setNote(null);
           // Barge in: the reading stops (it reads on later), and capture resumes at once.
           if (speaking) return voice().interrupt("tap");
-          // Made in this gesture, so iOS lets it play the send tick later.
-          if (state === "off") void audioCtx()?.resume().catch(() => {});
+          // Made in this gesture, so iOS lets it play the send tick (and cloud replies) later.
+          if (state === "off") {
+            void audioCtx()?.resume().catch(() => {});
+            if (outMode() === "cloud") cloudOut()?.unlock();
+          }
           void mic.current?.toggle();
         }}
         className={`pointer-events-auto relative flex size-8 flex-col items-center justify-center rounded-full text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}

@@ -34,10 +34,13 @@ export type MicStatus =
   | "transcribing"
   | "speaking";
 
-/** `speaking`: the agent's reply is being read while the mic is on (capture is held). */
+/**
+ * `speaking`: the agent's reply is being read while the mic is on. Capturing
+ * wins: with echo cancellation the user can talk over the agent.
+ */
 export function micStatus(state: MicState, pending: number, speaking = false): MicStatus {
-  if (speaking && (state === "listening" || state === "capturing")) return "speaking";
   if (state === "capturing") return "capturing";
+  if (speaking && state === "listening") return "speaking";
   if (pending > 0) return "transcribing";
   if (state === "off") return "idle";
   return state;
@@ -56,8 +59,11 @@ export type VadEvents = {
   onSpeechEnd(samples: Float32Array): void;
   /** Speech seemed to start but was too short to keep. */
   onMisfire(): void;
-  /** Every frame heard (16 kHz), for the partials; only those while capturing are kept. */
-  onFrame?(frame: Float32Array): void;
+  /**
+   * Every frame heard (16 kHz), for the partials; only those while capturing
+   * are kept. `prob`: the VAD's speech probability for it (Silero only).
+   */
+  onFrame?(frame: Float32Array, prob?: number): void;
 };
 export type VadFactory = (ev: VadEvents) => Promise<Vad>;
 
@@ -365,6 +371,8 @@ export function createMic(d: {
   onText: (text: string) => void;
   onPending: (n: number, interim: string) => void;
   onError?: (e: unknown) => void;
+  /** Each frame's speech probability while capturing (the barge-in judge, voice.ts). */
+  onProb?: (prob: number) => void;
   /** Rolling partial chunks for long utterances (on unless false). */
   partials?: boolean;
   setTimer?: (f: () => void, ms: number) => unknown;
@@ -450,8 +458,9 @@ export function createMic(d: {
       clearTimer(cap);
       cap = setTimer(() => void vad?.flush(), MAX_UTTERANCE_MS);
     },
-    onFrame(frame) {
+    onFrame(frame, prob) {
       if (g !== gen || state !== "capturing") return;
+      if (prob !== undefined) d.onProb?.(prob);
       live.push(frame);
       liveLen += frame.length;
       sincePartial += frame.length;

@@ -19,6 +19,7 @@ import {
 } from "./mic";
 import { DebugMic, canCapture, playSentTick } from "./MicButton";
 import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
+import { cloudOut, outMode } from "./voice-out";
 import { createDragFlag, createTapper } from "./tap-gesture";
 import { Icon } from "./icons";
 
@@ -179,6 +180,8 @@ function unlockSpeech() {
   if (unlocked || !s) return;
   unlocked = true;
   s.speak(new SpeechSynthesisUtterance(""));
+  // The cloud voice's <audio> element too (lk:voice-out = "cloud").
+  if (outMode() === "cloud") cloudOut()?.unlock();
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -237,7 +240,14 @@ export type DebugChatProps = {
 };
 
 /** The voice session before the page has one (server render, first paint). */
-const QUIET: VoiceState = { mic: false, speaking: false, queued: 0, paused: false };
+const QUIET: VoiceState = {
+  mic: false,
+  speaking: false,
+  hold: false,
+  ducked: false,
+  queued: 0,
+  paused: false,
+};
 
 /** The input grows to about five lines, then scrolls inside itself. */
 const INPUT_MAX_PX = 128;

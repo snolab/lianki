@@ -335,20 +335,72 @@ fakes in `unit/voice-session.test.ts`):
   brackets; after . ! ? before a space or the end, so 3.14 stays whole; at
   every newline) and spoken one utterance per sentence, first in first out.
   A new reply waits behind the one being read; it never cuts it off.
-- *No echo loop.* While an utterance plays, the mic holds capture: the VAD is
-  paused, speech under way and anything handed over meanwhile is dropped, and
-  partials stop (`hold` in `mic.ts`). Capture resumes 400 ms after the last
-  queued utterance ends — on its `end`/`error` events and a one-shot timer,
-  never polling.
+- *Echo, not a held mic* (`lk:voice-aec`, default on): the mic stays open
+  while the agent speaks, and the echo is removed in layers, each tunable by
+  a named constant: (1) the mic is opened with `echoCancellation`,
+  `noiseSuppression` and `autoGainControl` (`AEC_CONSTRAINTS` in
+  `voice-out.ts`; vad-web is handed that stream); (2) in cloud mode the reply
+  is page audio, so the canceller has a reference (below); (3) a text guard
+  (`echo.ts`) drops a transcript whose similarity to a sentence the agent
+  spoke in the last 10 s (`ECHO_WINDOW_MS`) is ≥ 0.6 (`ECHO_SIMILARITY`;
+  Dice over character trigrams, bigrams for CJK, after stripping case,
+  punctuation and spaces), or that is a substring of one (transcripts under
+  4 characters only on an exact match, so a user's "OK" survives);
+  (4) ducking and barge-in: the VAD hearing the user over the agent ramps the
+  agent down to 25 % (`DUCK_LEVEL`) over 80 ms (`DUCK_ATTACK_MS`) and keeps
+  reading; when the user stops it comes back over 200 ms (`DUCK_RELEASE_MS`).
+  Only if they keep talking for 1.5 s (`BARGE_IN_MS`), with Silero's mean
+  speech probability over that window ≥ 0.7 (`BARGE_IN_PROB`; weaker speech
+  stays ducked and is judged again), is it a barge-in: the reading pauses and
+  resumes as below. The utterance is transcribed and sent either way.
+  `localStorage["lk:voice-aec"] = "0"` brings back the old way: the mic holds
+  capture while an utterance plays (VAD paused, what it hears dropped) and for
+  400 ms after the last one ends, with the old constraints.
+- *Output* (`lk:voice-out`): `"speech"` (default) is the phone's own
+  speechSynthesis. Its volume cannot change mid-utterance on iOS, so a duck
+  applies from the next sentence; and on iOS it is probably *not* in the
+  canceller's reference, so how much leaks through is exactly what the guard
+  log measures. `"cloud"` fetches each sentence from `/api/words/tts`
+  (MeloTTS, cached in R2 after the first time; `en es fr zh ja ko`; ≤ 200
+  characters, so longer sentences are cut at a clause or space —
+  `CHUNK_MAX`) and plays it through one `<audio>` element routed through the
+  mic's AudioContext and a GainNode (iOS ignores `element.volume`). The next
+  sentence is fetched while one plays. A sentence the cloud cannot voice (an
+  HTTP error, `X-Voice: miss`, offline, or `play()` refused) is read by
+  speechSynthesis instead, that sentence only. Cost: $0.0002 per audio
+  minute (18.63 neurons), cache misses only — about 1,000 minutes of new
+  replies a day fit in the free 10,000 neurons.
+- *iOS, honestly:* WebKit's echo canceller is expected to subtract media
+  element / Web Audio output played by the same page while the mic is open,
+  but neither mode has been verified on an iPhone yet. Measure before
+  trusting it (below).
 - *Interruptions* stop the utterance and keep the place: the last word
   boundary the browser reported (`boundary` events), else the start of that
-  utterance. A tap on the mic while the agent speaks (barge-in) releases
-  capture at once and reads on after 1.5 s of quiet; the user starting to
-  speak (only possible while capture is live, i.e. not mid-utterance) pauses
-  it until their line is sent, or 1.5 s after it ends; typing pauses it until
+  utterance; a cloud clip resumes at its `currentTime`, 0.3 s early
+  (`RESUME_REWIND_S`). A tap on the mic while the agent speaks releases
+  capture at once and reads on after 1.5 s of quiet; a barge-in (above; or,
+  with `lk:voice-aec` off, the user starting to speak between utterances)
+  pauses it until their line is sent, or 1.5 s after it ends — at once if the
+  guard drops the transcript as echo; typing pauses it until
   a send or, mic on, a blur. Sending keeps the queue — the replies are still
   relevant. "Stop reading" in the pill's menu (`debug-menu-stop-reading`,
   shown while anything is queued) clears it.
+
+**Measuring the echo (owner, iPhone).** Turn debug mode on, then in the
+console or via remote eval set the mode and reload:
+`localStorage.setItem("lk:voice-out", "speech" | "cloud")`,
+`localStorage.setItem("lk:voice-aec", "1" | "0")`. Each final utterance logs
+one `voice-utt` event to `/api/dev/log` (`wrangler tail lianki`):
+`{out, aec, settings, durationMs, during, drop, score, text, against}` —
+`settings` is `track.getSettings()` (did the browser actually apply
+echoCancellation?), `during` whether the agent was audible during the
+utterance, `drop`/`score` the guard's verdict. Each sentence read logs
+`voice-out` `{out, route, fallback?}` (route `audio` or `speech`, and why a
+cloud sentence fell back); ducking logs `voice-duck`, `voice-duck-hold`
+(weak speech, kept ducked) and `voice-barge-in` (with the mean `prob`).
+Echo rate per mode = `voice-utt` with `during && drop` ÷ `voice-utt` with
+`during`, read over a few replies talked over and a few left alone; a
+`voice-barge-in` followed by a dropped transcript is echo pausing the reading.
 
 **One voice per device.** Every tab of a thread shows every message, but
 only one reads a reply aloud: a tab with the mic on (the latest to turn it
