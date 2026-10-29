@@ -171,6 +171,16 @@ try {
     (await rows.nth(0).locator("[data-stamp-cell] .lk-stamp").count()) === 1,
     "a graded slip gets a small seal at its left end",
   );
+  // Desktop: the cursor's slip is the loose one; a right click opens its sheet.
+  const loose = page.locator('[role="listitem"].slip-loose');
+  check((await loose.count()) === 1, "the cursor's slip is the one loose slip");
+  await loose.click({ button: "right" });
+  check(
+    (await page.locator("[data-slip-sheet]").count()) === 1,
+    "a right click opens the slip's sheet",
+  );
+  await page.keyboard.press("Escape");
+  check((await page.locator("[data-slip-sheet]").count()) === 0, "Escape closes the sheet");
   await shot(page, "words-desktop-graded");
   check(
     /^\d+(\.\d)?(s|m|h|d|mo|y)$/.test(await statusOf(0)),
@@ -461,6 +471,28 @@ try {
       ttsAsked.length > 0 && (await m.evaluate(() => window.__played.length)) > 0,
       `phone: speech that never starts falls back to server audio (${ttsAsked.join(",")})`,
     );
+    // Focus = that slip's cords come loose (no more green bar).
+    check(
+      (await mrows.nth(0).getAttribute("class")).includes("slip-loose") &&
+        (await m.locator('[role="listitem"].slip-loose').count()) === 1,
+      "phone: the tapped slip is the one loose slip",
+    );
+    // A double tap opens the slip's other actions in a sheet; it does not
+    // change what the slip shows.
+    await m.waitForTimeout(400); // not part of the tap above
+    const shownBefore = await blurredM();
+    await m.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+    await m
+      .locator("[data-slip-sheet]")
+      .waitFor({ timeout: 3000 })
+      .catch(() => {});
+    check(
+      (await m.locator("[data-slip-sheet]").count()) === 1,
+      "phone: a double tap opens the sheet",
+    );
+    check((await blurredM()) === shownBefore, "phone: the double tap leaves the reveal as it was");
+    await m.getByRole("button", { name: "Cancel" }).click();
+    check((await m.locator("[data-slip-sheet]").count()) === 0, "phone: Cancel closes the sheet");
     // Swipe vs scroll: a steep drag is a scroll and never grades; a clearly
     // sideways drag grades.
     const mStatus = async (i) =>
