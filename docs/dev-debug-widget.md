@@ -133,6 +133,24 @@ userscript loader apply ([dev-userscript-loader.md](dev-userscript-loader.md)):
 the server binds `::`, and if the tunnel is remotely managed, its port must
 match. The URL is public, but it serves only the widget code.
 
+## The state tree, live
+
+The chat's Tree view (menu → Tree; `docs/state-tree.md`) normally shows the
+copy bundled at commit time, from `GET /api/dev/state-tree`. While the widget
+is hot-loaded, the same dev server also serves the working tree's
+`docs/state-tree.md` at `/state-tree.md` (CORS for lianki.com) and sends a
+`tree` event on `/events` whenever it is saved (`fs.watch` on `docs/`, no
+polling). `DebugChatHost` then hands the chat a feed
+(`pickTreeSource` / `hotTreeSource` in `debug-widget.ts`) that fetches it on
+open and on each `tree` event, so an edit reaches the owner's open page in
+about a second, with no commit or deploy. A green dot next to "Tree" means the
+data is live; if the dev server cannot serve the file, the feed falls back to
+the bundled copy and the dot is gone.
+
+`treeSource` accepts a URL, a function returning markdown or nodes, or
+`{subscribe(onUpdate) → unsubscribe}`: the WebSocket progress feed
+(`feat/live-roadmap`, parked) will be another such feed.
+
 ## Testing
 
 `bun test unit/debug-widget.test.ts` covers the URL rules, the module checks,

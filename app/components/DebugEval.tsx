@@ -416,6 +416,8 @@ export function DebugEval() {
           onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
           evalRan={!!toast}
           friend={isFriend}
+          treeSource={owner && !isFriend ? "/api/dev/state-tree" : undefined}
+          treeRepo="snolab/lianki"
         />
       )}
       {/* A pairing request: a big modal on every open page of its audience. */}

@@ -22,6 +22,7 @@ import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
 import { cloudOut, outMode } from "./voice-out";
 import { createDragFlag, createTapper } from "./tap-gesture";
 import { Icon } from "./icons";
+import { StateTreeFromSource, type TreeSource, type TreeStrings, treeStrings } from "./StateTree";
 
 /** Typing pauses this long before the draft is sent. */
 const DEBOUNCE_MS = 3_000;
@@ -237,6 +238,16 @@ export type DebugChatProps = {
   onOpenPage?: (path: string) => void;
   /** Add this page to a pairing that was authorized for other pages only. */
   onAddPage?: (s: PairInfo) => void;
+  /**
+   * The state tree (StateTree.tsx): a URL serving its markdown, or a function
+   * returning markdown or nodes. Set, the menu gets a "Tree" entry that swaps
+   * the log for it; loaded when it opens and again each time the menu opens.
+   */
+  treeSource?: TreeSource;
+  /** `owner/repo` that a bare `#123` in the tree links to. */
+  treeRepo?: string;
+  /** The tree's strings, localized by the host (English defaults). */
+  treeStrings?: Partial<TreeStrings>;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -270,6 +281,9 @@ export function DebugChat({
   onEndPage,
   onOpenPage,
   onAddPage,
+  treeSource,
+  treeRepo,
+  treeStrings: treeText,
 }: DebugChatProps) {
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
@@ -283,6 +297,13 @@ export function DebugChat({
   useLayoutEffect(() => fit(root.current), [open]);
   /** The pill's menu: status, read-aloud, pages, sessions. */
   const [menu, setMenu] = useState(false);
+  /** The state tree is up in place of the log; bumped each time the menu opens (a reload). */
+  const [tree, setTree] = useState(false);
+  const [treeRev, setTreeRev] = useState(0);
+  useEffect(() => {
+    if (menu) setTreeRev((n) => n + 1);
+  }, [menu]);
+  const treeUp = tree && !!treeSource;
   /** The pill's mark: one tap minimizes or restores, two open the menu (the single waits for a second). */
   const gripAct = useRef({ single: () => {}, double: () => {} });
   const gripTaps = useRef<ReturnType<typeof createTapper> | null>(null);
@@ -673,6 +694,25 @@ export function DebugChat({
           Stop reading{vs.queued > 1 ? ` (${vs.queued} sentences left)` : ""}
         </button>
       )}
+      {treeSource && (
+        <button
+          type="button"
+          role="menuitemcheckbox"
+          aria-checked={treeUp}
+          data-testid="debug-menu-tree"
+          onClick={() => {
+            setMenu(false);
+            setTree(!treeUp);
+            if (!open) toggle(true);
+          }}
+          className="flex items-center gap-2 px-3 py-1.5 text-start"
+        >
+          <span aria-hidden className="w-[1em] text-center">
+            ☰
+          </span>
+          {treeStrings(treeText).tree}
+        </button>
+      )}
       <button
         type="button"
         role="menuitem"
@@ -812,10 +852,26 @@ export function DebugChat({
       onKeyDown={unlockSpeech}
       style={offset}
       // A live mic counts as focus: the box goes opaque as it does while typing.
-      className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] transition-opacity ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none flex-col rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100`}
+      className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] transition-opacity ${micActive || treeUp ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none flex-col rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100`}
     >
+      {treeUp && (
+        <div
+          data-testid="debug-chat-tree"
+          style={{ background: "color-mix(in oklch, var(--background) 88%, transparent)" }}
+          className="pointer-events-auto mb-1 max-h-[55vh] overflow-y-auto overscroll-contain rounded-lg border border-current/25 px-1 pb-1 backdrop-blur"
+        >
+          <StateTreeFromSource
+            source={treeSource}
+            reload={treeRev}
+            repo={treeRepo}
+            strings={treeText}
+            onBack={() => setTree(false)}
+          />
+        </div>
+      )}
       <ol
         ref={log}
+        hidden={treeUp || undefined}
         data-testid="debug-chat-log"
         onScroll={onLogScroll}
         data-fade={fade || undefined}

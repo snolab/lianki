@@ -10,6 +10,7 @@ import { useState } from "react";
 import type { ChatMessage } from "@/lib/dev-eval";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
+import { STATE_TREE_MD } from "@/lib/state-tree.generated";
 
 function Harness() {
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
@@ -63,6 +64,9 @@ function Harness() {
         ]}
         pages={pages}
         selfPage="p1"
+        // The Tree view (menu → Tree) shows docs/state-tree.md.
+        treeSource={() => STATE_TREE_MD}
+        treeRepo="snolab/lianki"
         onOpenPage={(path) => {
           const w = globalThis as { __opened?: string[] };
           (w.__opened ??= []).push(path);

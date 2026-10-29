@@ -76,6 +76,7 @@ that are expensive to rediscover.
 | Working on                                                    | Read                                                                |
 | ------------------------------------------------------------- | ------------------------------------------------------------------- |
 | Running or setting up the app locally, QA suites              | [DEVELOPMENT.md](DEVELOPMENT.md)                                    |
+| What's in flight / waiting on the owner                       | [docs/state-tree.md](docs/state-tree.md)                            |
 | Landing changes, CI, branch protection, post-deploy QA        | [docs/shipping.md](docs/shipping.md)                                |
 | Finding your way around the code                              | [docs/repo-map.md](docs/repo-map.md)                                |
 | Secrets, auth, OAuth config                                   | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                |
