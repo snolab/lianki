@@ -7,6 +7,7 @@ import {
   type Heartbeat,
   type HubState,
   type PairInfo,
+  chunkMessages,
   compile,
   summarize,
   trimHistory,
@@ -144,7 +145,16 @@ export function DebugEval() {
       const t0 = performance.now();
       let result: Record<string, unknown>;
       try {
-        const value = await compile(code)();
+        // `$lk.send(data)` streams a piece too big for the result (a screenshot)
+        // back ahead of it, in chunks (scripts/dev/shot.ts).
+        let part = 0;
+        const value = await compile(code)({
+          send(data) {
+            const n = part++;
+            for (const m of chunkMessages(id, to, n, String(data))) sock.send(JSON.stringify(m));
+            return n;
+          },
+        });
         result = { ok: true, ms: Math.round(performance.now() - t0), value: summarize(value) };
       } catch (e) {
         const err = e instanceof Error ? e : new Error(String(e));

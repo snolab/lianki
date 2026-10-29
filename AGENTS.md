@@ -73,19 +73,20 @@ unrelated — a Cloudflare tunnel to the local userscript dev server.
 Read the relevant file before working in that area — each one carries decisions
 that are expensive to rediscover.
 
-| Working on                                                | Read                                                           |
-| --------------------------------------------------------- | -------------------------------------------------------------- |
-| Running or setting up the app locally, QA suites          | [DEVELOPMENT.md](DEVELOPMENT.md)                               |
-| Landing changes, CI, branch protection, post-deploy QA    | [docs/shipping.md](docs/shipping.md)                           |
-| Finding your way around the code                          | [docs/repo-map.md](docs/repo-map.md)                           |
-| Secrets, auth, OAuth config                               | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)           |
-| Anything calling an LLM or TTS                            | [docs/workers-ai.md](docs/workers-ai.md)                       |
-| The userscript's dev loader (hot reload over a CF tunnel) | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md) |
-| The debug chat widget (packages/debug-chat), hot-loading  | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)           |
-| Blog posts                                                | [blog/AGENTS.md](blog/AGENTS.md)                               |
-| The Chrome extension, and publishing it                   | [packages/ext/README.md](packages/ext/README.md)               |
-| Sync/offline architecture                                 | [docs/sync-architecture.md](docs/sync-architecture.md)         |
-| Sync conflicts, deletions, tombstones                     | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)           |
-| Metrics, slowness and error alerts (Slack #lianki)        | [docs/monitoring.md](docs/monitoring.md)                       |
-| Payments, Pro passes, Stripe, invites, gift codes         | [docs/payments.md](docs/payments.md)                           |
-| UI layout: content fills the screen, glass overlays      | [docs/design-principles.md](docs/design-principles.md)         |
+| Working on                                                    | Read                                                                |
+| ------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Running or setting up the app locally, QA suites              | [DEVELOPMENT.md](DEVELOPMENT.md)                                    |
+| Landing changes, CI, branch protection, post-deploy QA        | [docs/shipping.md](docs/shipping.md)                                |
+| Finding your way around the code                              | [docs/repo-map.md](docs/repo-map.md)                                |
+| Secrets, auth, OAuth config                                   | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                |
+| Anything calling an LLM or TTS                                | [docs/workers-ai.md](docs/workers-ai.md)                            |
+| The userscript's dev loader (hot reload over a CF tunnel)     | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)      |
+| The debug chat widget (packages/debug-chat), hot-loading      | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
+| Screenshots of the owner's phone page (`scripts/dev/shot.ts`) | [docs/dev-debug-widget.md](docs/dev-debug-widget.md), "Screenshots" |
+| Blog posts                                                    | [blog/AGENTS.md](blog/AGENTS.md)                                    |
+| The Chrome extension, and publishing it                       | [packages/ext/README.md](packages/ext/README.md)                    |
+| Sync/offline architecture                                     | [docs/sync-architecture.md](docs/sync-architecture.md)              |
+| Sync conflicts, deletions, tombstones                         | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
+| Metrics, slowness and error alerts (Slack #lianki)            | [docs/monitoring.md](docs/monitoring.md)                            |
+| Payments, Pro passes, Stripe, invites, gift codes             | [docs/payments.md](docs/payments.md)                                |
+| UI layout: content fills the screen, glass overlays           | [docs/design-principles.md](docs/design-principles.md)              |
