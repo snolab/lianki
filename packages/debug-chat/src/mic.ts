@@ -153,8 +153,20 @@ export function joinText(a: string, b: string): string {
 
 /** A draft ending a sentence (any script's full stop, ! or ?). */
 export const ENDS_SENTENCE = /[。．.!?！？]$/;
-/** Spoken sentences go out at once from this many characters (trimmed). */
-export const AUTO_SEND_MIN = 10;
+/**
+ * Spoken (or IME-dictated) sentences go out at once from this many characters
+ * (trimmed): typing arrives a character at a time, so 3 at once is dictation.
+ */
+export const AUTO_SEND_MIN = 3;
+
+/**
+ * Typed text that arrived at once (an outside dictation IME): AUTO_SEND_MIN
+ * or more characters since the draft last settled, and the draft now ends a
+ * sentence. Then it is sent at once.
+ */
+export function isDictationBurst(settledLen: number, draft: string): boolean {
+  return draft.length - settledLen >= AUTO_SEND_MIN && ENDS_SENTENCE.test(draft.trim());
+}
 
 /**
  * A final transcript lands in the draft: the new draft, and whether to send

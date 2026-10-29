@@ -10,6 +10,7 @@ import {
   ENDS_SENTENCE,
   UtteranceQueue,
   appendDictation,
+  isDictationBurst,
   type VadEvents,
   clipSinkFrom,
   createMic,
@@ -611,22 +612,38 @@ describe("postStt, postClip and the clip sink", () => {
   });
 });
 
+describe("isDictationBurst: typed text that arrived at once", () => {
+  it("3+ characters at once ending a sentence is dictation; typing a character at a time is not", () => {
+    expect(isDictationBurst(0, "Ok.")).toBe(true);
+    expect(isDictationBurst(5, "hello world.")).toBe(true);
+    expect(isDictationBurst(10, "hello world.")).toBe(false); // 2 new characters
+    expect(isDictationBurst(0, "はい。")).toBe(true);
+    expect(isDictationBurst(0, "これは？ ")).toBe(true); // trailing space trimmed
+    expect(isDictationBurst(0, "no stop")).toBe(false);
+    expect(isDictationBurst(11, "hello world.")).toBe(false); // one key
+  });
+});
+
 describe("appendDictation: spoken sentences are sent at once", () => {
   it("a final that completes a sentence of 10+ characters sends; shorter or unfinished does not", () => {
     expect(appendDictation("", "Fix the swipe please.")).toEqual({
       draft: "Fix the swipe please.",
       send: true,
     });
-    expect(appendDictation("", "Hi there.").send).toBe(false); // 9 characters
+    expect(appendDictation("", "Hi there.").send).toBe(true);
+    expect(appendDictation("", "Ok.").send).toBe(true); // 3 characters
+    expect(appendDictation("", "O.").send).toBe(false); // 2
+    expect(appendDictation("", "  は。 ").send).toBe(false); // 2, trimmed
     expect(appendDictation("", "Fix the swipe please").send).toBe(false);
     expect(appendDictation("typed so far", "and spoken?")).toEqual({
       draft: "typed so far and spoken?",
       send: true,
     });
     expect(appendDictation("", "スワイプを直してください。").send).toBe(true);
-    expect(appendDictation("", "これは何ですか？").send).toBe(false); // 8 characters
+    expect(appendDictation("", "これは何ですか？").send).toBe(true);
+    expect(appendDictation("", "はい。").send).toBe(true);
     expect(appendDictation("", "这个按钮太小了！请改大一点").send).toBe(false);
-    expect(AUTO_SEND_MIN).toBe(10);
+    expect(AUTO_SEND_MIN).toBe(3);
     expect(["。", "．", ".", "!", "?", "！", "？"].every((c) => ENDS_SENTENCE.test(`a${c}`))).toBe(
       true,
     );

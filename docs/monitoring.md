@@ -145,8 +145,9 @@ Every owner page that holds the debug socket also shows a small chat box at
 the bottom right (`app/components/DebugChat.tsx`; collapsed to a pill by
 default on /words). The owner types; the text goes out 3 s after the last
 keystroke (a thin bar drains while it waits), or at once on Enter
-(Shift+Enter is a newline) or when dictation drops in over 10 characters
-ending a sentence (。 . ! ?). The box is translucent until touched. Nothing is sent in the middle of an IME
+(Shift+Enter is a newline) or when dictation drops in 3 or more characters at
+once ending a sentence (。．.!?！？; keyboards and IMEs edit a character at a
+time). The box is translucent until touched. While the input is not focused, the log shows only its last 3 lines (scrolled to the end, top edge faded, still click-through); focusing the input opens it to 30vh, in 150 ms (instantly with reduced motion), and the ↓ button keeps the input focused. Nothing is sent in the middle of an IME
 composition. The header shows "agent listening (n)" — the approved senders
 connected now. Agent replies are read aloud with `speechSynthesis` (the
 language is guessed from the script: kana → ja, Hangul → ko, other Han →
@@ -248,7 +249,7 @@ in the order spoken, with a faint "…" where a result is pending. Speech over
 3 s also sends rolling partial chunks (every 2.5 s, overlapping by 1.5 s);
 their merged text shows dimmed until the final text replaces it, and a 429
 stops them until the next turn-on. A final transcript that leaves the
-draft a sentence of 10 characters or more (trimmed, ending in 。．.!?！？) is
+draft a sentence of 3 characters or more (trimmed, ending in 。．.!?！？) is
 sent at once (`appendDictation`); otherwise the debounce waits while
 listening or while transcripts are out, partials never send, and Enter sends
 as usual. While audio is captured the button has a red pulsing ring and "REC"

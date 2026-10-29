@@ -13,8 +13,8 @@ import {
 import { LiagentMark } from "@lianki/debug-chat/LiagentMark";
 import {
   CLIP_SINK_KEY,
-  ENDS_SENTENCE as SENTENCE_END,
   appendDictation,
+  isDictationBurst,
   clipSinkFrom,
   joinText,
 } from "@lianki/debug-chat/mic";
@@ -25,12 +25,11 @@ import { Icon } from "./icons";
 /** Typing pauses this long before the draft is sent. */
 const DEBOUNCE_MS = 3_000;
 /**
- * Dictation lands as one burst: more than BURST_CHARS arriving at once and
- * ending a sentence goes out at once, without waiting for the debounce.
+ * Dictation lands as one burst: AUTO_SEND_MIN (3) or more characters arriving
+ * at once and ending a sentence (。．.!?！？) go out at once, without waiting
+ * for the debounce (isDictationBurst). Keyboards and IMEs edit a character at
+ * a time, so 3 at once is dictation. Spoken sentences follow the same rule.
  */
-const BURST_CHARS = 10;
-// One rule for typed bursts and spoken sentences: 。．.!?！？ (lib in the package).
-const ENDS_SENTENCE = SENTENCE_END;
 const OPEN_KEY = "lk:debug-chat-open";
 /** How long "Tap again to end the chat" waits for the second tap. */
 const END_CONFIRM_MS = 3_000;
@@ -42,6 +41,8 @@ const POS_KEY = "lk:debug-chat-pos";
 const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
 /** Older lines dissolve at the log's top edge (only once there is more than fits). */
 const FADE = "linear-gradient(to bottom, transparent, black 2.5rem)";
+/** The compact log (input not focused) fades over less, so its 3 lines stay legible. */
+const FADE_SHORT = "linear-gradient(to bottom, transparent, black 0.9rem)";
 
 /**
  * Drag the box (by its header, or the collapsed pill) anywhere on screen: an
@@ -218,8 +219,8 @@ function when(at: number) {
  * The owner ⇄ agent chat (docs/monitoring.md, "Chat with the agent"): a small
  * box at the bottom right of a debug-mode page that holds the debug socket.
  * Whatever is typed goes out DEBOUNCE_MS after the last keystroke (or at once
- * on Enter; Shift+Enter is a newline; or at once when dictation drops in more
- * than BURST_CHARS ending a sentence), never in the middle of an IME
+ * on Enter; Shift+Enter is a newline; or at once when dictation drops in
+ * 3+ characters ending a sentence), never in the middle of an IME
  * composition. Translucent until touched or typed in. Replies appear in the log above and are read aloud (the
  * speaker toggle turns that off). Text only — nothing is rendered as HTML.
  */
@@ -318,6 +319,11 @@ export function DebugChat({
   const shown = useRef(messages.length);
   /** The log overflows (or is scrolled): its top edge fades. */
   const [fade, setFade] = useState(false);
+  /**
+   * The input has focus: the log opens to 30vh. Otherwise it shows only the
+   * last 3 lines, scrolled to the end.
+   */
+  const [typing, setTyping] = useState(false);
   const onLogScroll = () => {
     const el = log.current;
     if (!el) return;
@@ -377,6 +383,16 @@ export function DebugChat({
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
   }, []);
+  // Compact again (the input lost focus): back to the newest lines.
+  useLayoutEffect(() => {
+    if (typing) return;
+    const el = log.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight });
+    atEnd.current = true;
+    setScrolledUp(false);
+    setBelow(0);
+  }, [typing]);
   useLayoutEffect(() => {
     if (!open) return;
     setSeen(messages.length);
@@ -434,9 +450,9 @@ export function DebugChat({
     clearTimeout(timer.current);
     if (!composing.current) {
       const text = draftRef.current;
-      const burst = text.length - settledLen.current > BURST_CHARS;
+      const burst = isDictationBurst(settledLen.current, text);
       settledLen.current = text.length;
-      if (burst && ENDS_SENTENCE.test(text.trim())) return submit();
+      if (burst) return submit();
     }
     // While the mic listens or transcribes, nothing goes out by the debounce (Enter still sends).
     if (composing.current || micOn.current || micPending.current || !draftRef.current.trim())
@@ -746,8 +762,21 @@ export function DebugChat({
         data-testid="debug-chat-log"
         onScroll={onLogScroll}
         data-fade={fade || undefined}
-        style={fade ? { maskImage: FADE, WebkitMaskImage: FADE } : undefined}
-        className="max-h-[30vh] min-h-12 space-y-0.5 overflow-y-auto px-2 py-1.5"
+        data-expanded={typing || undefined}
+        onTransitionEnd={() => {
+          // Shrunk: land on the newest lines again, now that the height settled.
+          if (!typing) log.current?.scrollTo({ top: log.current.scrollHeight });
+          onLogScroll();
+        }}
+        style={
+          fade
+            ? {
+                maskImage: typing ? FADE : FADE_SHORT,
+                WebkitMaskImage: typing ? FADE : FADE_SHORT,
+              }
+            : undefined
+        }
+        className={`min-h-12 space-y-0.5 overflow-y-auto px-2 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${typing ? "max-h-[30vh]" : "max-h-[4.1rem]"}`}
       >
         {messages.length === 0 && (
           <li className="text-gray-500">Type here; it is sent 3 s after you stop.</li>
@@ -803,6 +832,8 @@ export function DebugChat({
                 <button
                   type="button"
                   data-testid="debug-chat-bottom"
+                  // Keeps the input's focus, so the log stays open.
+                  onPointerDown={(e) => e.preventDefault()}
                   aria-label={
                     below
                       ? `Scroll to the newest message, ${below} new`
@@ -872,7 +903,11 @@ export function DebugChat({
                   cancelSpeech();
                   arm();
                 }}
-                onBlur={cancelSpeech}
+                onFocus={() => setTyping(true)}
+                onBlur={() => {
+                  setTyping(false);
+                  cancelSpeech();
+                }}
                 onCompositionStart={() => {
                   composing.current = true;
                   clearTimeout(timer.current);
