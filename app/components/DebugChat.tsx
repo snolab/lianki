@@ -156,6 +156,7 @@ export function DebugChat({
   onSend,
   sessions = [],
   onEnd,
+  inside,
 }: {
   live: boolean;
   listeners: number;
@@ -164,6 +165,8 @@ export function DebugChat({
   /** Approved senders, listed in the grip's menu with an End button each. */
   sessions?: PairInfo[];
   onEnd?: (s: PairInfo) => void;
+  /** Debug notices shown inside the box (the pairing prompt, "eval ran"). */
+  inside?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
@@ -330,6 +333,9 @@ export function DebugChat({
           </li>
         ))}
       </ol>
+      {inside && (
+        <div className="pointer-events-auto flex flex-col gap-1 px-1 pb-1 text-xs">{inside}</div>
+      )}
       {/* The log above is click-through: taps reach the page under it. Only the
           grip and the input take pointer events. */}
       <div className="relative flex items-stretch gap-1">

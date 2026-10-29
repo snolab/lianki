@@ -196,6 +196,66 @@ export function DebugEval() {
   const pending = state?.pending ?? null;
   const sessions = state?.sessions ?? [];
   if (!live && !toast && !chat) return null;
+  // The pairing prompt and the "eval ran" note: inside the chat box when it is
+  // up (nothing debug floats on the page then), else in the corner.
+  const promptEl = (
+    <div className="flex flex-col items-start gap-1" style={{ color: "oklch(0.98 0 0)" }}>
+      {pending && (
+        <div
+          role="alertdialog"
+          aria-label="Remote eval request"
+          className="rounded-lg p-3 shadow-lg"
+          style={{ background: "oklch(0.28 0.06 30 / 0.97)" }}
+        >
+          <p className="mb-1">
+            <b>{pending.label}</b> wants to run code on your debug pages, or to chat.
+          </p>
+          <p className="mb-2">
+            Code{" "}
+            <b className="font-mono text-sm" style={{ letterSpacing: "0.1em" }}>
+              {pending.code}
+            </b>{" "}
+            — allow only if your terminal shows the same.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => answer("allow", pending)}
+              className="rounded px-3 py-1"
+              style={{ background: "oklch(0.55 0.15 145)" }}
+            >
+              Allow for 1 hour
+            </button>
+            <button
+              type="button"
+              onClick={() => answer("allow", pending, "chat")}
+              className="rounded px-3 py-1"
+              style={{ background: "oklch(0.5 0.1 230)" }}
+              title="Chat only: it hears what you type in the chat box and can reply, but cannot run code"
+            >
+              Allow chat for 30 days
+            </button>
+            <button
+              type="button"
+              onClick={() => answer("deny", pending)}
+              className="rounded px-3 py-1"
+              style={{ background: "oklch(0.45 0.02 260)" }}
+            >
+              Deny
+            </button>
+          </div>
+        </div>
+      )}
+      {toast && (
+        <span
+          className="pointer-events-none rounded px-2 py-0.5 shadow"
+          style={{ background: "oklch(0.25 0.02 260 / 0.9)" }}
+        >
+          {toast}
+        </span>
+      )}
+    </div>
+  );
   return (
     <>
       {chat && (
@@ -206,63 +266,18 @@ export function DebugEval() {
           onSend={sendChat}
           sessions={sessions}
           onEnd={(x) => answer("revoke", x)}
+          inside={pending || toast ? promptEl : null}
         />
       )}
-      <div
-        aria-live="polite"
-        data-debug-eval
-        className="fixed bottom-2 left-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-start gap-1 text-xs"
-        style={{ color: "oklch(0.98 0 0)" }}
-      >
-        {pending && (
-          <div
-            role="alertdialog"
-            aria-label="Remote eval request"
-            className="rounded-lg p-3 shadow-lg"
-            style={{ background: "oklch(0.28 0.06 30 / 0.97)" }}
-          >
-            <p className="mb-1">
-              <b>{pending.label}</b> wants to run code on your debug pages, or to chat.
-            </p>
-            <p className="mb-2">
-              Code{" "}
-              <b className="font-mono text-sm" style={{ letterSpacing: "0.1em" }}>
-                {pending.code}
-              </b>{" "}
-              — allow only if your terminal shows the same.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => answer("allow", pending)}
-                className="rounded px-3 py-1"
-                style={{ background: "oklch(0.55 0.15 145)" }}
-              >
-                Allow for 1 hour
-              </button>
-              <button
-                type="button"
-                onClick={() => answer("allow", pending, "chat")}
-                className="rounded px-3 py-1"
-                style={{ background: "oklch(0.5 0.1 230)" }}
-                title="Chat only: it hears what you type in the chat box and can reply, but cannot run code"
-              >
-                Allow chat for 30 days
-              </button>
-              <button
-                type="button"
-                onClick={() => answer("deny", pending)}
-                className="rounded px-3 py-1"
-                style={{ background: "oklch(0.45 0.02 260)" }}
-              >
-                Deny
-              </button>
-            </div>
-          </div>
-        )}
-        {/* With the chat box up, the sessions live in its grip menu instead. */}
-        {!chat &&
-          sessions.map((s) => (
+      {!chat && (
+        <div
+          aria-live="polite"
+          data-debug-eval
+          className="fixed bottom-2 left-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-start gap-1 text-xs"
+          style={{ color: "oklch(0.98 0 0)" }}
+        >
+          {promptEl}
+          {sessions.map((s) => (
             <div
               key={s.pair}
               className="flex items-center gap-2 rounded-full py-0.5 pl-2 pr-0.5"
@@ -281,15 +296,8 @@ export function DebugEval() {
               </button>
             </div>
           ))}
-        {toast && (
-          <span
-            className="pointer-events-none rounded px-2 py-0.5 shadow"
-            style={{ background: "oklch(0.25 0.02 260 / 0.9)" }}
-          >
-            {toast}
-          </span>
-        )}
-      </div>
+        </div>
+      )}
     </>
   );
 }
