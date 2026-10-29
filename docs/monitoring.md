@@ -207,8 +207,15 @@ JSON line. Silent on the page, never stored, never in the chat log. A
 friend's page can only relabel its own socket.
 
 **The grip and its menu.** The ⠿ grip (2.25rem wide) shows only the glyph
-and a dot, green while the socket is live. Double
-tap opens the menu. The menu lists every open debug page of this chat (the
+and a dot, green while the socket is live. Drag it to move the box; a tap
+minimizes the box (after 280 ms, so that a double tap can cancel it; the
+collapsed pill restores on a tap); a double tap opens the menu
+(`lib/tap-gesture.ts`). While the grip is held, the input shows "drag: move
+· tap: minimize · double-tap: menu", as its placeholder, or over the draft
+(`debug-chat-drag-hint`). Right after the grip, each eval or preview session
+has a button (a 32px target around a 16px icon, `debug-chat-icon-eval`, which
+pulses when code just ran): a tap opens the menu scrolled to that session's
+row, where its End is, and a long press shows its label. The menu lists every open debug page of this chat (the
 owner's own, or a friend's own: the hub's `state` carries `pages: [{id,
 label, at}]` and `self`, rebroadcast when a page connects, leaves or moves).
 Each row shows the path and a device hint ("pwa · Android", "iPhone"). Tapping
@@ -266,7 +273,7 @@ tests:
 
 - The chat box: `debug-chat` (root), `debug-chat-pill` (collapsed),
   `debug-chat-log`, `debug-chat-line` (with `data-from`), `debug-chat-input`,
-  `debug-chat-grip`, `debug-chat-icons`,
+  `debug-chat-grip`, `debug-chat-drag-hint`, `debug-chat-icons`,
   `debug-chat-icon-eval`, `debug-chat-bottom`, `debug-chat-busy`,
   `debug-chat-notice` and `debug-chat-warning`.
 - The grip menu: `debug-menu`, `debug-menu-status`, `debug-menu-note` (where

@@ -10,6 +10,7 @@ import {
   pickLang,
   pickVoice,
 } from "@/lib/dev-eval";
+import { createTapper } from "@/lib/tap-gesture";
 import { Icon } from "./icons";
 
 /** Typing pauses this long before the draft is sent. */
@@ -24,7 +25,11 @@ const OPEN_KEY = "lk:debug-chat-open";
 /** How long "Tap again to end the chat" waits for the second tap. */
 const END_CONFIRM_MS = 3_000;
 const SPEAK_KEY = "lk:debug-chat-speak";
+/** In the input while the grip is held. */
+const DRAG_HINT = "drag: move · tap: minimize · double-tap: menu";
 const POS_KEY = "lk:debug-chat-pos";
+/** Holding a session icon this long shows its label. */
+const LONG_PRESS_MS = 500;
 /** The input and its grip: the page shows through at about half. */
 const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
 /** Older lines dissolve at the log's top edge (only once there is more than fits). */
@@ -48,9 +53,12 @@ function useDrag() {
     null,
   );
   const dragged = useRef(false);
+  /** The grip is held down: the input shows how to use it. */
+  const [holding, setHolding] = useState(false);
   const handle = {
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
       if ((e.target as HTMLElement).closest("button:not([data-drag-handle])")) return;
+      setHolding(true);
       drag.current = { px: e.clientX, py: e.clientY, x: pos.x, y: pos.y, moved: false };
       dragged.current = false;
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -74,6 +82,7 @@ function useDrag() {
       setPos({ x, y });
     },
     onPointerUp: () => {
+      setHolding(false);
       const d = drag.current;
       drag.current = null;
       if (!d?.moved) return;
@@ -83,7 +92,10 @@ function useDrag() {
         return p;
       });
     },
-    onPointerCancel: () => (drag.current = null),
+    onPointerCancel: () => {
+      setHolding(false);
+      drag.current = null;
+    },
     style: { touchAction: "none" as const, cursor: "grab" },
   };
   /** The click that ends a drag is not a click. */
@@ -92,7 +104,12 @@ function useDrag() {
     dragged.current = false;
     return d;
   };
-  return { offset: { transform: `translate(${pos.x}px, ${pos.y}px)` }, handle, wasDrag };
+  return {
+    offset: { transform: `translate(${pos.x}px, ${pos.y}px)` },
+    handle,
+    wasDrag,
+    holding,
+  };
 }
 
 /** env(safe-area-inset-top) in px (the notch), measured once per drag. */
@@ -231,14 +248,36 @@ export function DebugChat({
     return v === null ? !location.pathname.startsWith("/words") : v === "1";
   });
   const [speak, setSpeak] = useState(speechEnabled);
-  const { offset, handle, wasDrag } = useDrag();
+  const { offset, handle, wasDrag, holding } = useDrag();
   /** The grip's menu (double tap): status, read-aloud, minimize. */
   const [menu, setMenu] = useState(false);
-  const lastGripTap = useRef(0);
+  /** The grip: one tap minimizes, two open the menu (the single waits for a second). */
+  const gripAct = useRef({ single: () => {}, double: () => {} });
+  const gripTaps = useRef<ReturnType<typeof createTapper> | null>(null);
+  gripTaps.current ??= createTapper({
+    onSingle: () => gripAct.current.single(),
+    onDouble: () => gripAct.current.double(),
+  });
+  useEffect(() => () => gripTaps.current?.cancel(), []);
   /** The chat session whose End was tapped once: a second tap within END_CONFIRM_MS ends it. */
   const [endArmed, setEndArmed] = useState<string | null>(null);
   const endTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(endTimer.current), []);
+  /** The session whose icon was tapped: the menu opens scrolled to its row. */
+  const [focusPair, setFocusPair] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!menu) return setFocusPair(null);
+    if (!focusPair) return;
+    menuRef.current
+      ?.querySelector(`[data-pair="${CSS.escape(focusPair)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [menu, focusPair]);
+  /** A session icon's label, shown on a long press. */
+  const [tip, setTip] = useState<string | null>(null);
+  const tipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const tipShown = useRef(false);
+  useEffect(() => () => clearTimeout(tipTimer.current), []);
   const [draft, setDraft] = useState("");
   /** Re-keys the drain bar on each keystroke; 0 while nothing is waiting. */
   const [armed, setArmed] = useState(0);
@@ -351,6 +390,13 @@ export function DebugChat({
     setOpen(v);
     write(OPEN_KEY, v ? "1" : "0");
   };
+  gripAct.current = {
+    single: () => {
+      setMenu(false);
+      toggle(false);
+    },
+    double: () => setMenu((m) => !m),
+  };
   const toggleSpeak = () => {
     const v = !speak;
     setSpeak(v);
@@ -372,6 +418,7 @@ export function DebugChat({
     setEndArmed(key);
     endTimer.current = setTimeout(() => setEndArmed(null), END_CONFIRM_MS);
   };
+  const evalSessions = sessions.filter((x) => x.scope !== "chat");
   const unread = messages.slice(seen).filter((m) => m.from === "agent").length;
   const dot = live ? "oklch(0.68 0.16 150)" : "oklch(0.62 0.02 70)";
   const status = notice
@@ -419,27 +466,6 @@ export function DebugChat({
       style={offset}
       className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] opacity-60 transition-opacity focus-within:opacity-100 active:opacity-100 pointer-events-none flex-col rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100"
     >
-      {(evalRan || sessions.some((x) => x.scope !== "chat")) && (
-        <div
-          aria-label="Debug connections"
-          data-testid="debug-chat-icons"
-          className="flex items-center gap-1 px-2 pt-1"
-        >
-          {sessions
-            .filter((x) => x.scope !== "chat")
-            .map((x) => (
-              <span
-                key={x.pair}
-                data-testid="debug-chat-icon-eval"
-                title={`${friend ? "preview" : "eval"}: ${x.label} · ${x.code}`}
-                className={`inline-flex size-4 items-center justify-center rounded-full text-[9px] text-white ${evalRan ? "animate-pulse" : "opacity-70"}`}
-                style={{ background: "oklch(0.55 0.15 30)" }}
-              >
-                <Icon name="play" />
-              </span>
-            ))}
-        </div>
-      )}
       <ol
         ref={log}
         data-testid="debug-chat-log"
@@ -524,23 +550,18 @@ export function DebugChat({
                 </button>
               </div>
             )}
-            {/* No title bar: the grip drags the box, and a double tap on it opens
-            the menu (status, read-aloud, minimize). Its dot is the connection.
+            {/* No title bar: the grip drags the box, a tap minimizes it, and a
+            double tap opens the menu (status, read-aloud, minimize). Its dot is the connection.
             No End chat here: the chat hibernates and wakes by itself. */}
             <button
               type="button"
               data-drag-handle
               data-testid="debug-chat-grip"
-              aria-label="Drag the chat box; double tap for its menu"
+              aria-label="Chat grip: drag to move, tap to minimize, double tap for the menu"
               aria-expanded={menu}
               title={status}
               {...handle}
-              onClick={(e) => {
-                if (wasDrag()) return;
-                const second = e.timeStamp - lastGripTap.current < 350;
-                lastGripTap.current = second ? 0 : e.timeStamp;
-                if (second) setMenu((m) => !m);
-              }}
+              onClick={() => !wasDrag() && gripTaps.current?.tap()}
               style={{ ...handle.style, background: INPUT_BG }}
               className="pointer-events-auto relative flex w-9 shrink-0 flex-col items-center justify-center rounded-lg border border-current/25 text-base leading-none text-gray-500"
             >
@@ -551,12 +572,76 @@ export function DebugChat({
                 style={{ background: dot }}
               />
             </button>
+            {/* Eval/preview sessions: a button each (32px target), right after the
+            grip. A tap opens the menu at that session's row (its End); a long
+            press shows its label. The row between controls stays click-through. */}
+            {evalSessions.length > 0 && (
+              <div
+                aria-label="Debug connections"
+                data-testid="debug-chat-icons"
+                className="flex shrink-0 items-center"
+              >
+                {evalSessions.map((x) => {
+                  const label = `${friend ? "preview" : "eval"}: ${x.label} · ${x.code}`;
+                  return (
+                    <button
+                      key={x.pair}
+                      type="button"
+                      data-testid="debug-chat-icon-eval"
+                      aria-label={label}
+                      title={label}
+                      onPointerDown={() => {
+                        clearTimeout(tipTimer.current);
+                        tipShown.current = false;
+                        tipTimer.current = setTimeout(() => {
+                          tipShown.current = true;
+                          setTip(x.pair);
+                        }, LONG_PRESS_MS);
+                      }}
+                      onPointerUp={() => clearTimeout(tipTimer.current)}
+                      onPointerLeave={() => {
+                        clearTimeout(tipTimer.current);
+                        setTip(null);
+                      }}
+                      onContextMenu={(e) => e.preventDefault()}
+                      onClick={() => {
+                        if (tipShown.current) {
+                          tipShown.current = false;
+                          return setTip(null);
+                        }
+                        setFocusPair(x.pair);
+                        setMenu(true);
+                      }}
+                      className="pointer-events-auto relative inline-flex min-h-8 w-8 items-center justify-center"
+                    >
+                      <span
+                        aria-hidden
+                        className={`inline-flex size-4 items-center justify-center rounded-full text-[9px] text-white ${evalRan ? "animate-pulse" : "opacity-70"}`}
+                        style={{ background: "oklch(0.55 0.15 30)" }}
+                      >
+                        <Icon name="play" />
+                      </span>
+                      {tip === x.pair && (
+                        <span
+                          role="tooltip"
+                          className="pointer-events-none absolute bottom-full start-0 mb-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] text-gray-700 dark:text-gray-200"
+                          style={{ background: INPUT_BG }}
+                        >
+                          {label}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {menu && (
               <div
+                ref={menuRef}
                 role="menu"
                 data-testid="debug-menu"
                 style={{ background: INPUT_BG }}
-                className="pointer-events-auto absolute bottom-full start-0 mb-1 flex min-w-48 flex-col rounded-lg border border-current/25 py-1 text-xs backdrop-blur"
+                className="pointer-events-auto absolute bottom-full start-0 mb-1 flex max-h-[60vh] min-w-48 flex-col overflow-y-auto rounded-lg border border-current/25 py-1 text-xs backdrop-blur"
               >
                 <span
                   data-testid="debug-menu-status"
@@ -646,7 +731,14 @@ export function DebugChat({
                     <div
                       key={x.pair}
                       data-testid="debug-menu-session"
+                      data-pair={x.pair}
+                      data-focus={focusPair === x.pair || undefined}
                       className="flex items-center gap-2 px-3 py-1 text-gray-500"
+                      style={
+                        focusPair === x.pair
+                          ? { background: "oklch(0.55 0.15 30 / 0.15)" }
+                          : undefined
+                      }
                     >
                       <span className="min-w-0 flex-1 truncate">
                         {friend ? "preview" : "eval"}: {x.label} · {x.code}
@@ -699,11 +791,12 @@ export function DebugChat({
               <textarea
                 ref={input}
                 data-testid="debug-chat-input"
+                data-drag-hint={holding || undefined}
                 rows={1}
                 // 16px: iOS zooms the whole page into any input under 16px.
                 value={draft}
                 maxLength={MAX_CHAT}
-                placeholder="Message the agent…"
+                placeholder={holding ? DRAG_HINT : "Message the agent…"}
                 aria-label="Message the agent"
                 onChange={(e) => {
                   draftRef.current = e.target.value;
@@ -743,6 +836,16 @@ export function DebugChat({
                 style={{ background: INPUT_BG }}
                 className="pointer-events-auto block min-w-0 flex-1 resize-none pe-6 rounded-lg border border-current/25 px-2 py-1 text-base outline-none placeholder:text-gray-400"
               />
+              {holding && draft && (
+                // The draft hides the placeholder: the hint sits over it instead.
+                <span
+                  data-testid="debug-chat-drag-hint"
+                  className="pointer-events-none absolute inset-x-1 top-0.5 truncate rounded px-1 text-[10px] text-gray-500"
+                  style={{ background: INPUT_BG }}
+                >
+                  {DRAG_HINT}
+                </span>
+              )}
               {busy && (
                 // Up only while real heartbeats arrive (DebugEval): never a guess.
                 <span
