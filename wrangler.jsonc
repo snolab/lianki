@@ -12,6 +12,11 @@
   // via .env.local.
   "vars": {
     "DB_BACKEND": "d1",
+    // better-auth's baseURL. Unset, it is inferred per request and every new
+    // isolate logs "Base URL could not be determined". `www` 308s to the apex
+    // before Next runs, so the apex is the only origin auth ever serves.
+    // Locally, .dev.vars overrides this (qa:all writes its own port there).
+    "BETTER_AUTH_BASE_URL": "https://lianki.com",
     // Comma-separated. Gates owner-only internal pages (/dev/roadmap); empty
     // means nobody passes. See lib/owner.ts.
     "OWNER_EMAILS": "snomiao@gmail.com"

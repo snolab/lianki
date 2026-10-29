@@ -1,5 +1,5 @@
 import DIE from "phpdie";
-import { auth } from "@/auth";
+import { auth, hasSessionCookie } from "@/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { appHref } from "@/lib/app-locale";
@@ -11,13 +11,17 @@ export async function authEmail() {
 }
 
 export async function authUser() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) redirect(appHref("/sign-in", await appLocale()));
-  return session.user;
+  const user = await authUserOrNull();
+  if (!user) redirect(appHref("/sign-in", await appLocale()));
+  return user;
 }
 
 /** For API routes: returns null instead of redirecting when unauthenticated. */
 export async function authUserOrNull() {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const h = await headers();
+  // A guest has no session cookie, and then getSession can only answer null:
+  // skip it, so a guest's request never loads better-auth at all.
+  if (!hasSessionCookie(h)) return null;
+  const session = await auth.api.getSession({ headers: h });
   return session?.user ?? null;
 }
