@@ -5,6 +5,8 @@ import { cookies, headers } from "next/headers";
 import { ServiceWorkerRegistration } from "./components/ServiceWorkerRegistration";
 import { NewVersionNotice } from "./components/NewVersionNotice";
 import { DebugEval } from "./components/DebugEval";
+import { LOCALE_HEADER, resolveLocale } from "@/lib/app-locale";
+import { LANG_TAGS } from "@/lib/constants";
 
 export const metadata: Metadata = {
   title: "Lianki",
@@ -30,6 +32,11 @@ export const viewport: Viewport = { themeColor: "#c8102e", viewportFit: "cover" 
 
 async function getRootLocale() {
   const h = await headers();
+  // App routes resolve their locale in middleware (?lang= / cookie /
+  // Accept-Language) and pass it in LOCALE_HEADER; <html lang> must match the
+  // UI they render, not intlayer's prefix locale.
+  const appLang = h.get(LOCALE_HEADER);
+  if (appLang) return resolveLocale(appLang);
   const c = await cookies();
   return h.get("x-intlayer-locale") ?? c.get("INTLAYER_LOCALE")?.value ?? "en";
 }
@@ -41,7 +48,7 @@ export default async function RootLayout({
 }>) {
   const locale = await getRootLocale();
   return (
-    <html lang={locale} suppressHydrationWarning>
+    <html lang={LANG_TAGS[locale] ?? locale} suppressHydrationWarning>
       <head>
         {/* Calligraphy theme fonts (all OFL). Both are sliced by unicode-range, so a
             page fetches only the chunks for the characters it shows — CJK fonts are
