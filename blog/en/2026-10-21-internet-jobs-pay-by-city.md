@@ -277,7 +277,6 @@ Whatever you pick, the way to get to working fluency is the same: lots of real r
 - [STATEC Luxembourg, Structure of Earnings Survey 2022](https://lustat.statec.lu/)
 - [Statbel, Structure of Earnings 2022](https://statbel.fgov.be/en/themes/work-training/wages-and-labourcost) (regional medians via [IWEPS](https://www.iweps.be/))
 - [World Bank, PPP conversion factor, private consumption](https://data.worldbank.org/indicator/PA.NUS.PRVT.PP)
-- [Data, per-source notes and script for this post](https://github.com/snolab/lianki/tree/main/blog/data/internet-wages)
 
 ---
 

@@ -367,7 +367,7 @@ Lianki浮动按钮使用**Shadow DOM**（自v2.19.2起）完全隔离于页面CS
 - ✅ 保持脚本更新到最新版本
 - ⚠️ 避免从未知站点安装随机脚本
 
-Lianki是**开源**的，仅请求必要的权限：
+Lianki用户脚本仅请求必要的权限：
 
 - 访问所有网站（从任何页面添加卡片）
 - 连接到lianki.com服务器（用于同步）
@@ -430,9 +430,7 @@ Lianki是**开源**的，仅请求必要的权限：
 
 遇到问题？我们在这里帮助您：
 
-- 🐛 **报告错误**：[GitHub Issues](https://github.com/snolab/lianki/issues)
-- 💬 **提出问题**：[GitHub Discussions](https://github.com/snolab/lianki/discussions)
-- 📧 **联系我们**：通过[联系表单](https://www.lianki.com/contact)
+- 🐛 **报告错误或提出问题**：通过[联系页面](https://lianki.com/contacts)
 - 📖 **文档**：[Lianki Docs](https://www.lianki.com)
 
 ---
