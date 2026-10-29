@@ -66,9 +66,10 @@ test.describe("Public pages", () => {
     expect(errors).toHaveLength(0);
   });
 
-  test("/contact renders contact form", async ({ page }) => {
+  test("/contacts renders contact form; /contact redirects there", async ({ page }) => {
     const errors = collectErrors(page);
     await page.goto(url("/contact"));
+    await expect(page).toHaveURL(/\/contacts$/);
     await expect(page.locator("form, [role=form]")).toBeVisible();
     await expect(
       page.locator("button[type=submit], button").filter({ hasText: /send|submit/i }),
@@ -338,6 +339,7 @@ test.describe("Route availability", () => {
     "/en",
     "/en/blog",
     "/contact",
+    "/contacts",
     "/self-intro",
     "/home",
     "/sites",

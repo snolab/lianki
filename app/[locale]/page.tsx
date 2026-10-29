@@ -1,6 +1,5 @@
 import { getIntlayer } from "intlayer";
 import Link from "next/link";
-import ContactForm from "../ContactForm";
 import { Header } from "../components/Header";
 import { authUser } from "../signInEmail";
 import { appHref } from "@/lib/app-locale";
@@ -12,27 +11,6 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
   // declared them, which left the sign-in link empty.
   const shellNav = getIntlayer("app-shell", locale).nav;
   const rawContact = getIntlayer("contact-form", locale);
-
-  // Create plain object to ensure proper serialization to client component
-  const contactContent = {
-    title: rawContact.title,
-    nameLabel: rawContact.nameLabel,
-    namePlaceholder: rawContact.namePlaceholder,
-    emailLabel: rawContact.emailLabel,
-    emailPlaceholder: rawContact.emailPlaceholder,
-    phoneLabel: rawContact.phoneLabel,
-    phonePlaceholder: rawContact.phonePlaceholder,
-    messageLabel: rawContact.messageLabel,
-    messagePlaceholder: rawContact.messagePlaceholder,
-    optional: rawContact.optional,
-    template1: rawContact.template1,
-    template2: rawContact.template2,
-    template3: rawContact.template3,
-    sendButton: rawContact.sendButton,
-    sending: rawContact.sending,
-    successMessage: rawContact.successMessage,
-    errorMessage: rawContact.errorMessage,
-  } as const;
 
   // Try to get user if logged in (optional)
   let user = null;
@@ -115,8 +93,12 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
           </div>
         </section>
 
-        {/* Contact Section */}
-        <ContactForm content={contactContent} />
+        {/* Contact: the form has its own page. */}
+        <section className="py-8 px-4 text-center">
+          <Link href={appHref("/contacts", locale)} className="text-blue-600 hover:underline">
+            {rawContact.title} →
+          </Link>
+        </section>
       </main>
 
       {/* Footer */}
