@@ -342,7 +342,7 @@ itself.
 
 **Voice commits.** Every final spoken transcript is punctuated, then committed and sent at once (上屏), with a soft tick: two sine tones (880 Hz, then 1320 Hz 30 ms later) through one gain, 5 ms attack to 0.08 and an exponential decay, 80 ms in all (`scheduleTick` in `mic.ts`, tested with a fake AudioContext), played on the mic's own AudioContext (made on the mic tap, a gesture) and never while the agent speaks. It is Web Audio only, no `<audio>` element, so a muted iPhone stays silent. Typed sends make no sound. Each spoken send also fires `lk:voice-sent` on `window` (`detail.sound`: whether the tick played): if Whisper left no stop, `punctuate()` adds one that fits the text (。/？ for CJK, ./? otherwise, a question by its particle or opening word). A short "好" or "OK" goes out too. Partials never send. Typed text arriving in one burst of 3+ characters that ends a sentence (an outside dictation IME) is also sent at once.
 
-**Mic.** A mic button sits inside the input at its right edge
+**Mic.** A mic button sits at the chat bar's right end
 (`debug-chat-mic`; hidden where the browser lacks getUserMedia or Web Audio).
 One tap turns hands-free listening on; another tap, or Escape, turns it off.
 A voice-activity detector cuts speech into utterances: Silero VAD
@@ -371,6 +371,20 @@ final utterance is also POSTed as multipart (`audio`, and `meta` JSON
 `{at, mime, durationMs, label, transcript, model}`) to `<sink>/clips`,
 silently. The code is in `packages/debug-chat/src/` (`mic.ts`, the logic,
 tested with fakes in `unit/mic.test.ts`; `MicButton.tsx`, the browser glue).
+
+**The mic outlives the widget.** The stream, the VAD and the transcripts on
+their way live in one page-wide session on `globalThis.__lkMic`
+(`packages/debug-chat/src/mic-session.ts`, versioned; an older one is retired
+and its stream reused). A hot swap, a React remount or a client-side route
+change (DebugEval is in the root layout) re-attaches to it: same stream, no
+second getUserMedia, still listening. Only an explicit off (a tap, Escape)
+stops it. On a real reload, sessionStorage `lk:agent:mic` ("1" while this tab
+has the mic on; per tab) makes it try to resume without a gesture: with the
+microphone permission granted, or the query unsupported (iOS), and the
+AudioContext running, it listens again and logs `{ev: "mic-resume", path:
+"auto", ok: true, permission}`; otherwise the button shows a dashed ring,
+"Tap to resume listening", and logs `{ev: "mic-resume", path: "tap", reason}`
+(`permission prompt|denied`, `audio context suspended`, or the error's name).
 
 **Hands-free voice.** Mic on means read-aloud on: while it listens, every
 agent reply is read, whatever the focus rule or the speaker toggle says (the

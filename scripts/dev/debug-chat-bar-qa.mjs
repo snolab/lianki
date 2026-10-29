@@ -632,6 +632,103 @@ try {
     await ctx.close();
   }
 
+  // The mic outlives the widget: a remount (hot swap) keeps the same live stream;
+  // a reload resumes by itself when it may, else waits for a tap. getUserMedia is
+  // a fake here: a silent MediaStreamDestination, so nothing is ever recorded.
+  {
+    // Audio may start without a gesture here (as on a page the browser trusts):
+    // the auto path. Headless Chrome's default keeps it suspended (the tap path).
+    const audioBrowser = await chromium.launch({
+      args: ["--autoplay-policy=no-user-gesture-required"],
+    });
+    const ctx = await audioBrowser.newContext({ viewport: { width: 390, height: 844 } });
+    await ctx.route(/cdn\.jsdelivr\.net/, (r) => r.abort()); // no Silero: the energy fallback
+    await ctx.addInitScript((src) => {
+      localStorage.setItem("lk:debug-widget-src", src);
+      localStorage.setItem("lk:debug-chat-open", "1");
+      window.__gum = 0;
+      navigator.mediaDevices.getUserMedia = async () => {
+        window.__gum++;
+        const ac = new AudioContext();
+        return ac.createMediaStreamDestination().stream; // silent, not the mic
+      };
+    }, `${ORIGIN}/debug-chat.js`);
+    const page = await ctx.newPage();
+    await page.goto(`${ORIGIN}/harness`);
+    await page.waitForSelector("[data-debug-widget] [data-debug-chat]", { timeout: 30_000 });
+    const mic = '[data-testid="debug-chat-mic"]';
+    await page.click(mic);
+    await page
+      .waitForSelector(`${mic}[data-state="listening"]`, { timeout: 10_000 })
+      .catch(() => {});
+    const before = await page.evaluate(() => ({
+      id: globalThis.__lkMic?.stream()?.id,
+      gum: window.__gum,
+      flag: sessionStorage.getItem("lk:agent:mic"),
+    }));
+    check(
+      before.id && before.gum === 1 && before.flag === "1",
+      `mic on: one stream (${before.id}), flag set`,
+    );
+    await page.evaluate(() => window.__remount());
+    await page.waitForTimeout(300);
+    const after = await page.evaluate(() => ({
+      id: globalThis.__lkMic?.stream()?.id,
+      live: globalThis.__lkMic
+        ?.stream()
+        ?.getTracks()
+        .every((t) => t.readyState === "live"),
+      gum: window.__gum,
+      state: document.querySelector('[data-testid="debug-chat-mic"]')?.dataset.state,
+    }));
+    check(
+      after.id === before.id && after.live && after.gum === 1 && after.state === "listening",
+      `remounted (hot swap): same live stream, getUserMedia once, still listening (${JSON.stringify(after)})`,
+    );
+    // A real reload, the permission not granted: "tap to resume".
+    await page.reload();
+    await page.waitForSelector(`${mic}[data-resume]`, { timeout: 30_000 }).catch(() => {});
+    const r1 = await page.evaluate(() => ({
+      label: document.querySelector('[data-testid="debug-chat-mic"]')?.getAttribute("aria-label"),
+      dashed: !!document.querySelector('[data-testid="debug-chat-mic-resume"]'),
+      log: window.__devLog?.filter((e) => e.ev === "mic-resume"),
+      gum: window.__gum,
+    }));
+    check(
+      r1.label === "Tap to resume listening" && r1.dashed && r1.gum === 0,
+      `reloaded, not granted: tap to resume (${r1.label}; ${JSON.stringify(r1.log)})`,
+    );
+    await page.click(mic);
+    await page
+      .waitForSelector(`${mic}[data-state="listening"]`, { timeout: 10_000 })
+      .catch(() => {});
+    check(
+      (await page.getAttribute(mic, "data-state")) === "listening",
+      "one tap resumes listening",
+    );
+    // Granted: the reload resumes by itself.
+    await ctx.grantPermissions(["microphone"], { origin: ORIGIN });
+    await page.reload();
+    await page
+      .waitForSelector(`${mic}[data-state="listening"]`, { timeout: 30_000 })
+      .catch(() => {});
+    const r2 = await page.evaluate(() => ({
+      state: document.querySelector('[data-testid="debug-chat-mic"]')?.dataset.state,
+      log: window.__devLog?.filter((e) => e.ev === "mic-resume"),
+    }));
+    check(
+      r2.state === "listening" && r2.log?.[0]?.path === "auto",
+      `reloaded, granted: resumed by itself (${JSON.stringify(r2.log)})`,
+    );
+    // Escape (an explicit off) clears the flag: the next reload stays off.
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(`${mic}[data-state="off"]`, { timeout: 5000 }).catch(() => {});
+    const flag = await page.evaluate(() => sessionStorage.getItem("lk:agent:mic"));
+    check(flag === null, "an explicit off clears the reload flag");
+    await ctx.close();
+    await audioBrowser.close();
+  }
+
   // Minimizing floats the latest message for its dwell, from the tap, then fades it.
   {
     const { ctx, page } = await open("?open");

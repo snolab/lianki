@@ -4,7 +4,8 @@
  * DebugChatHost (the loader DebugEval uses) with made-up messages, so the
  * import, React sharing and reload can be checked without lianki-push.
  * `?busy=1` shows the heartbeat spinner; `?pending=chat|eval|friend` the pairing modal;
- * `?notree` passes no state tree content, `?nofrontier` no frontier lines; `?min` starts minimized (`?open` expanded; neither keeps what was last chosen).
+ * `__remount()` remounts the chat (a hot swap); `__devLog` collects the voice
+ * session's debug events. `?notree` passes no state tree content, `?nofrontier` no frontier lines; `?min` starts minimized (`?open` expanded; neither keeps what was last chosen).
  * `globalThis.__push(text, from?, at?)` adds a live message (`at` may be skewed), e.g. to float one up
  * over the minimized bar; `?cap=N` caps the list at N, as the app does.
  */
@@ -13,6 +14,7 @@ import { useState } from "react";
 import type { ChatMessage } from "@/lib/dev-eval";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
+import { voice } from "@lianki/debug-chat/voice";
 
 {
   // Before the first render: the chat reads it once, when it mounts.
@@ -23,7 +25,16 @@ import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
   } catch {}
 }
 
+// The devLog stand-in: the voice session's debug events (e.g. mic-resume) land here.
+voice().setLog((ev) => {
+  const w = globalThis as { __devLog?: unknown[] };
+  (w.__devLog ??= []).push(ev);
+});
+
 function Harness() {
+  /** `__remount()`: the chat unmounts and mounts again, as a hot swap does. */
+  const [gen, setGen] = useState(0);
+  (globalThis as { __remount?: () => void }).__remount = () => setGen((g) => g + 1);
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     Array.from({ length: 30 }, (_, i) => ({
       id: `h${i}`,
@@ -82,6 +93,7 @@ function Harness() {
         />
       )}
       <DebugChatHost
+        key={gen}
         hot
         live
         listeners={q.has("offline") ? 0 : 1}
