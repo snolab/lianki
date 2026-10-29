@@ -21,6 +21,11 @@ const VOLUME = 0.06;
 let ctx: AudioContext | null = null;
 let last: GainNode | null = null;
 
+/** The page's one AudioContext (grade tones, and the fades of word clips). */
+export function sharedAudioContext(): AudioContext | null {
+  return audio();
+}
+
 function audio(): AudioContext | null {
   if (typeof window === "undefined") return null;
   const AC =
