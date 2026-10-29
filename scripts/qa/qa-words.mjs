@@ -1,6 +1,7 @@
 // Word lists (/words) end to end on the D1 Worker: sign up, add a catalog list,
 // grade one screen by exception, and check what the server stored.
 import { chromium } from "playwright";
+import { buildApkg } from "./apkg-fixture.mjs";
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 // QA_SHOTS=<dir>: also save screenshots of the list, to look at the layout.
 const shot = (pg, name) =>
@@ -335,6 +336,10 @@ try {
       h1 !== "Import Learning Materials" && (await deckLinks.count()) >= 10,
       `/learn?lang=fr is translated and lists AnkiWeb decks (h1 "${h1}", ${await deckLinks.count()} links)`,
     );
+    check(
+      (await learn.locator('[data-anki-decks] a[href*="/words/import"]').count()) === 1,
+      "/learn's shared decks lead to /words/import",
+    );
     await learn.close();
   }
 
@@ -663,6 +668,141 @@ try {
   await page.goto(`${BASE}/words?list=all`, { waitUntil: "networkidle" });
   await rows.first().waitFor({ timeout: 15000 });
   check((await rows.count()) > 0, "study all works with groups present");
+
+  // ── /words/import: an Anki deck dropped in becomes a word list ──
+  const deckNotes = [
+    { guid: "n-hola", fields: ["<b>hola</b>", "hello", "¡Hola, amigo!"] },
+    { guid: "n-gato", fields: ["gato", 'cat <img src="cat.jpg">', ""] },
+    { guid: "n-perro", fields: ["perro [sound:perro.mp3]", "dog", ""] },
+  ];
+  const apkg = await buildApkg({
+    deck: "QA Spanish",
+    deckId: 1700000000777,
+    fields: ["Front", "Back", "Example"],
+    notes: deckNotes,
+  });
+  await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
+  // By its address: an earlier check visits /learn?lang=fr, and the language sticks.
+  await page.locator('a[href*="/words/import"]').click();
+  await page.waitForURL(/\/words\/import/);
+  check(true, "the /words picker links to /words/import");
+  // Back to English for the checks below.
+  await page.goto(`${BASE}/words/import?lang=en`, { waitUntil: "networkidle" });
+  // A real drop: a File in a DataTransfer, dropped on the zone.
+  const drop = await page.evaluateHandle(
+    (bytes) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([new Uint8Array(bytes)], "qa-spanish.apkg"));
+      return dt;
+    },
+    [...apkg],
+  );
+  await page.dispatchEvent('[data-testid="apkg-drop"]', "drop", { dataTransfer: drop });
+  const deckCard = page.locator('[data-testid="apkg-deck"]');
+  await deckCard.waitFor({ timeout: 15000 });
+  check(
+    (await deckCard.locator("h2").innerText()) === "QA Spanish",
+    "a dropped .apkg shows its deck",
+  );
+  const preview = await page.locator('[data-testid="apkg-preview"]').innerText();
+  check(
+    preview.includes("hola") && !preview.includes("<b>") && !preview.includes("[sound:"),
+    "the preview is plain text (HTML and [sound:] stripped)",
+  );
+  check(
+    (await page.locator('[data-testid="apkg-images"]').count()) === 1 &&
+      (await page.locator('[data-testid="apkg-images"] a[href*="/import"]').count()) === 1,
+    "a deck with images warns, and offers Lianki cards (/import)",
+  );
+  check(
+    (await page.locator('select[data-role="term"]').inputValue()) === "0" &&
+      (await page.locator('select[data-role="ex"]').inputValue()) === "2",
+    "fields are mapped from their names (Front → word, Example → example)",
+  );
+  check(
+    (await deckCard.locator("select").nth(0).inputValue()) === "es",
+    "the language is guessed from the words (es)",
+  );
+  await shot(page, "words-import-desktop");
+  if (process.env.QA_SHOTS) {
+    const size = page.viewportSize();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(300);
+    await page.screenshot({
+      path: `${process.env.QA_SHOTS}/words-import-phone.png`,
+      fullPage: true,
+    });
+    await page.setViewportSize(size);
+  }
+  await page.getByRole("button", { name: "Import", exact: true }).click();
+  const done = page.locator('[data-testid="apkg-done"]');
+  await done.waitFor({ timeout: 15000 });
+  check((await done.innerText()).includes("3 added"), `import: ${await done.innerText()}`);
+  const imported = (
+    await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
+  ).find((x) => x.source === "anki:1700000000777");
+  check(imported?.size === 3, `the imported list holds 3 words (${imported?.size})`);
+
+  await done.getByRole("link").click();
+  await page.waitForURL(/[?&]list=/);
+  await rows.first().waitFor({ timeout: 15000 });
+  const firstTerm = await rows.nth(0).locator("span").first().innerText();
+  check(
+    (await page.locator('[role="list"]').innerText()).includes("hola"),
+    `the imported list opens in /words (first: ${firstTerm})`,
+  );
+  await shot(page, "words-import-list");
+  res = reviewed();
+  await page.keyboard.press("3");
+  check((await (await res).status()) === 200, "a word of the imported list is graded");
+  const graded = (
+    await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
+  ).find((x) => x.id === imported.id);
+  check(graded?.cards === 1, `the grade is stored (${graded?.cards} card)`);
+
+  // Re-import the deck, changed: one word renamed, one added — updated in
+  // place, nothing doubled, the review kept.
+  const apkg2 = await buildApkg({
+    deck: "QA Spanish",
+    deckId: 1700000000777,
+    fields: ["Front", "Back", "Example"],
+    notes: [
+      { guid: "n-hola", fields: ["hola", "hello; hi", "¡Hola, amigo!"] },
+      ...deckNotes.slice(1),
+      { guid: "n-casa", fields: ["casa", "house", ""] },
+    ],
+  });
+  await page.goto(`${BASE}/words/import?lang=en`, { waitUntil: "networkidle" });
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "qa-spanish.apkg",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from(apkg2),
+  });
+  await deckCard.waitFor({ timeout: 15000 });
+  check(
+    (await deckCard.locator("select").last().inputValue()) === imported.id,
+    "re-importing the same deck targets its list",
+  );
+  await page.getByRole("button", { name: "Import", exact: true }).click();
+  await done.waitFor({ timeout: 15000 });
+  const again = await done.innerText();
+  check(again.includes("1 added") && again.includes("1 updated"), `re-import syncs: ${again}`);
+  const after2 = (
+    await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
+  ).filter((x) => x.source === "anki:1700000000777");
+  check(
+    after2.length === 1 && after2[0].size === 4 && after2[0].cards === 1,
+    `one list, 4 words, the review kept (${JSON.stringify(after2.map((x) => [x.size, x.cards]))})`,
+  );
+  const entries = await page.evaluate(
+    async (id) => (await (await fetch(`/api/words/lists/${id}/entries`)).json()).entries,
+    imported.id,
+  );
+  check(
+    entries.find((e) => e.term === "hola")?.back === "hello; hi",
+    "a changed meaning is updated",
+  );
+
   check(errs.length === 0, `no page errors${errs.length ? ": " + errs.join(" | ") : ""}`);
 } catch (e) {
   check(false, `threw: ${e.message}`);

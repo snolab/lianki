@@ -19,6 +19,7 @@
         "d3": "^7.9.0",
         "enhanced-ms": "^4.2.0",
         "furigana-sewer": "^0.0.3",
+        "fzstd": "0.1.1",
         "globe.gl": "^2.45.0",
         "gray-matter": "^4.0.3",
         "idb": "^8.0.3",
@@ -1833,6 +1834,8 @@
     "functions-have-names": ["functions-have-names@1.2.3", "", {}, "sha512-xckBUXyTIqT97tq2x2AMb+g163b5JFysYk0x4qxNFwbfQkmNZoiRHb6sPzI9/QV33WeuvVYBUIiD4NzNIyqaRQ=="],
 
     "furigana-sewer": ["furigana-sewer@0.0.3", "", { "peerDependencies": { "typescript": "^5.9.2" } }, "sha512-2qFTg65Rl81vFQNgktq0J6BkR2JUxiv3l2OPx7BRoGcHvtcbrXVpWVGZRZ0GTB532JfExiQlDB/ipd/RBKEPWQ=="],
+
+    "fzstd": ["fzstd@0.1.1", "", {}, "sha512-dkuVSOKKwh3eas5VkJy1AW1vFpet8TA/fGmVA5krThl8YcOVE/8ZIoEA1+U1vEn5ckxxhLirSdY837azmbaNHA=="],
 
     "generate-function": ["generate-function@2.3.1", "", { "dependencies": { "is-property": "^1.0.2" } }, "sha512-eeB5GfMNeevm/GRYq20ShmsaGcmI81kIX2K9XQx5miC8KdHaC6Jm0qQ8ZNeGOi7wYB8OsdxKs+Y2oVuTFuVwKQ=="],
 
