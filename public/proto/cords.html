@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>编绳松开 prototype</title>
+<!--
+  Prototype: focus = the cords of one slip come loose.
+
+  The two cords run straight through every slip (tied). The focused slip's
+  cord segments slacken into curves and the slip lifts a little; only a loose
+  slip slides sideways. Touching a tied slip loosens it in the same touch, so
+  a swipe needs no extra step. While it slides, the slack cords are dragged
+  along — their ends stay tied to the neighbours. A double tap opens the
+  slip's other actions (edit / delete, later) — the cords sit at the screen's
+  edges, too far to reach on a phone.
+
+  Motion: minimum-jerk (10t³ − 15t⁴ + 6t⁵), ~200 ms.
+-->
+<style>
+:root {
+  --a: 52px;
+  --paper: oklch(0.965 0.018 85);
+  --ink: oklch(0.25 0.02 60);
+  --slip: oklch(0.88 0.056 84);
+  --cord: oklch(0.45 0.12 35);
+  --node: oklch(0.45 0.06 70 / 0.18);
+  --seam: oklch(0.55 0.05 70 / 0.35);
+  --seal: oklch(0.52 0.2 25);
+  --again: oklch(0.55 0.19 25);
+  --hard: oklch(0.62 0.13 70);
+  --good: oklch(0.55 0.13 155);
+  --easy: oklch(0.55 0.13 240);
+  --fib: url(/paper/bamboo-light.webp);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: oklch(0.18 0.01 60);
+    --ink: oklch(0.92 0.01 85);
+    --slip: oklch(0.42 0.069 61.5);
+    --cord: oklch(0.5 0.12 35);
+    --node: oklch(0.15 0.02 60 / 0.35);
+    --seam: oklch(0.12 0.01 60 / 0.8);
+    --fib: url(/paper/bamboo-dark.webp);
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--paper); color: var(--ink);
+  font-family: "LXGW WenKai TC", "Hiragino Mincho ProN", "Songti TC", serif; }
+header { position: sticky; top: 0; z-index: 3; padding: 10px 14px; background: var(--paper);
+  font: 13px/1.5 -apple-system, system-ui, sans-serif; border-bottom: 1px solid oklch(0.5 0 0 / 0.15); }
+header b { color: var(--seal); }
+#log { opacity: 0.7; min-height: 1.5em; }
+.list { position: relative; padding: 8px 0 40vh; touch-action: pan-y; }
+
+.slip {
+  position: relative;
+  height: var(--a);
+  border-bottom: 1px solid var(--seam);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.face {
+  position: absolute; inset: 0;
+  display: grid; grid-template-columns: 1.2rem 7.5rem 1fr 3rem; align-items: center; gap: 8px;
+  padding: 0 16px 0 14px;
+  background:
+    linear-gradient(var(--node), var(--node)) calc(14px + 1.2rem + 8px + 7.5rem + 4px) 0 / 2px 100% no-repeat,
+    var(--fib) 0 0 / 512px 48px repeat,
+    var(--slip);
+  transition: box-shadow 200ms, transform 200ms;
+  transition-timing-function: linear(0, 0.0086, 0.058, 0.163, 0.31, 0.5, 0.69, 0.837, 0.942, 0.991, 1);
+  will-change: transform;
+}
+.slip.loose .face {
+  box-shadow: 0 6px 14px -6px oklch(0.2 0.03 50 / 0.45), 0 1px 0 oklch(1 0 0 / 0.4) inset;
+  z-index: 1;
+}
+.term { font-size: 19px; color: oklch(0.5 0.12 155); }
+@media (prefers-color-scheme: dark) { .term { color: oklch(0.82 0.13 155); } }
+.back { font-size: 14px; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.back.blank { color: transparent; border-bottom: 1.5px dashed oklch(0.45 0.03 60 / 0.35); height: 0.2em; }
+.due { font: 11px/1 -apple-system, system-ui, sans-serif; text-align: right; opacity: 0.5; }
+.stamp { width: 0.95em; height: 0.95em; border-radius: 2px; transform: rotate(-6deg); justify-self: center;
+  box-shadow: inset 0 0 0 1.5px oklch(1 0 0 / 0.5); visibility: hidden; }
+.stamp[style] { visibility: visible; }
+
+/* The cords: one SVG per slip edge, drawn above the face. */
+svg.cord { position: absolute; top: -1px; height: calc(100% + 2px); width: 40px; overflow: visible;
+  pointer-events: none; z-index: 2; }
+svg.cord.l { left: 0; }
+svg.cord.r { right: 0; }
+svg.cord path { fill: none; stroke: var(--cord); stroke-width: 3; stroke-linecap: round; }
+.menu { position: absolute; right: 48px; top: 50%; translate: 0 -50%; z-index: 4; display: none; gap: 6px; }
+.menu.open { display: flex; }
+.menu button { font: 13px -apple-system, system-ui, sans-serif; border: 0; border-radius: 6px; padding: 6px 10px;
+  background: var(--paper); color: var(--ink); box-shadow: 0 2px 8px oklch(0 0 0 / 0.2); }
+</style>
+</head>
+<body>
+<header>
+  <b>编绳松开 = 聚焦</b> · 点一片竹简：它的编绳松开、竹简微微抬起。只有松开的竹简能左右滑；直接滑一片绑着的竹简，会先松开再跟手。双击松开的竹简打开更多操作（以后放编辑 / 删除）。
+  <div id="log">&nbsp;</div>
+</header>
+<div class="list" id="list"></div>
+<script>
+const WORDS = [
+  ["chose", "thing"], ["comment", "how; what"], ["bon", "good"], ["merci", "thank you"],
+  ["juste", "just; fair"], ["très", "very"], ["jamais", "never"], ["été", "summer; been"],
+  ["toujours", "always; still"], ["rien", "nothing"], ["peut-être", "maybe"], ["encore", "again; still"],
+  ["maintenant", "now"], ["quelque chose", "something"], ["parce que", "because"], ["vraiment", "really"],
+];
+const list = document.getElementById("list");
+const log = document.getElementById("log");
+const a = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--a"));
+const MJ = (t) => t * t * t * (10 - 15 * t + 6 * t * t);
+const GRADE = [["Again", "var(--again)", "1m"], ["Hard", "var(--hard)", "6m"], ["Good", "var(--good)", "1d"], ["Easy", "var(--easy)", "4d"]];
+
+/** A cord segment: ends pinned at top and bottom, middle at (x + bow) — straight when bow is 0. */
+function cordPath(x, h, bow, shift) {
+  const mx = x + bow + shift;
+  return `M ${x} 0 C ${x + (mx - x) * 0.2} ${h * 0.25}, ${mx} ${h * 0.35}, ${mx} ${h * 0.5} S ${x + (mx - x) * 0.2} ${h * 0.75}, ${x} ${h}`;
+}
+
+const slips = WORDS.map(([term, back], i) => {
+  const el = document.createElement("div");
+  el.className = "slip";
+  el.innerHTML = `
+    <div class="face"><i class="stamp"></i><span class="term">${term}</span>
+      <span class="back blank">${back}</span><span class="due">new</span></div>
+    <svg class="cord l"><path/></svg><svg class="cord r"><path/></svg>
+    <div class="menu"><button>编辑</button><button>删除</button></div>`;
+  list.append(el);
+  return { el, face: el.querySelector(".face"), paths: el.querySelectorAll("path"),
+    menu: el.querySelector(".menu"),
+    back: el.querySelector(".back"), due: el.querySelector(".due"), stamp: el.querySelector(".stamp"),
+    slack: 0, dx: 0, anim: 0 };
+});
+
+/** Draw both cords of a slip for its slack (0 tied … 1 loose) and slide offset. */
+function draw(s) {
+  const h = s.el.offsetHeight + 2;
+  const w = s.el.offsetWidth;
+  const bow = 9 * s.slack;
+  // The loose cords follow the slip as it slides, up to their slack.
+  const pull = Math.max(-28, Math.min(28, s.dx)) * s.slack;
+  s.paths[0].setAttribute("d", cordPath(5, h, bow, pull));
+  s.paths[1].setAttribute("d", cordPath(35, h, -bow, pull));
+  s.face.style.transform = `translateX(${s.dx}px) translateY(${-1.5 * s.slack}px)`;
+}
+
+/** Ease a slip's slack (and offset) to a target with minimum jerk. */
+function ease(s, slack, dx = s.dx, ms = 200) {
+  cancelAnimationFrame(s.anim);
+  const s0 = s.slack, d0 = s.dx, t0 = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - t0) / ms), k = MJ(t);
+    s.slack = s0 + (slack - s0) * k;
+    s.dx = d0 + (dx - d0) * k;
+    draw(s);
+    if (t < 1) s.anim = requestAnimationFrame(step);
+  };
+  s.anim = requestAnimationFrame(step);
+}
+
+let focused = null;
+function focus(s) {
+  if (focused === s) return;
+  if (focused) { focused.el.classList.remove("loose"); focused.menu.classList.remove("open"); ease(focused, 0, 0); }
+  focused = s;
+  s.el.classList.add("loose");
+  ease(s, 1);
+}
+
+function grade(s, g) {
+  const [name, color, due] = GRADE[g];
+  s.stamp.style.background = color;
+  s.due.textContent = due;
+  s.due.style.color = color;
+  s.due.style.opacity = 1;
+  log.textContent = `${s.el.querySelector(".term").textContent} → ${name}`;
+  if (navigator.vibrate) navigator.vibrate(8);
+}
+
+// Pointer: tap = loosen + reveal; horizontal drag = slide (loosening first if tied).
+for (const s of slips) {
+  draw(s);
+  let x0 = 0, y0 = 0, axis = null, id = null;
+  s.el.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".menu")) return;
+    id = e.pointerId; x0 = e.clientX; y0 = e.clientY; axis = null;
+    focus(s);
+  });
+  s.el.addEventListener("pointermove", (e) => {
+    if (e.pointerId !== id) return;
+    const dx = e.clientX - x0, dy = e.clientY - y0;
+    if (!axis && Math.hypot(dx, dy) > 10) {
+      axis = Math.abs(dx) > 1.5 * Math.abs(dy) ? "x" : "y";
+      if (axis === "x") s.el.setPointerCapture(id);
+    }
+    if (axis !== "x") return;
+    cancelAnimationFrame(s.anim);
+    // Stop at ±2a, with resistance past a.
+    const A = a(), m = Math.abs(dx), sign = Math.sign(dx);
+    s.dx = sign * Math.min(2 * A, m <= A ? m : A + (m - A) * 0.5);
+    s.slack = 1;
+    draw(s);
+  });
+  const end = (e) => {
+    if (e.pointerId !== id) return;
+    id = null;
+    if (axis === "x") {
+      const A = a(), d = s.dx;
+      if (Math.abs(d) > 16) grade(s, d < 0 ? (d < -1.2 * A ? 0 : 1) : (d > 1.2 * A ? 3 : 2));
+      ease(s, 1, 0, 260);
+    } else if (!axis) {
+      // Double tap: the slip's other actions (and the first tap's reveal undone).
+      const now = performance.now();
+      if (now - (s.lastTap ?? 0) < 300) {
+        s.back.classList.toggle("blank");
+        s.menu.classList.add("open");
+        s.lastTap = 0;
+      } else {
+        s.back.classList.toggle("blank");
+        s.menu.classList.remove("open");
+        s.lastTap = now;
+      }
+    }
+  };
+  s.el.addEventListener("pointerup", end);
+  s.el.addEventListener("pointercancel", end);
+  s.menu.addEventListener("click", (e) => {
+    if (e.target.tagName === "BUTTON") { log.textContent = `${e.target.textContent}（原型：不做事）`; s.menu.classList.remove("open"); }
+  });
+}
+addEventListener("resize", () => slips.forEach(draw));
+focus(slips[2]);
+</script>
+</body>
+</html>
