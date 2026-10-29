@@ -2192,6 +2192,7 @@ function Study({
   // only the rows in view (plus a margin) are rendered.
   const ROW_H = touch ? 44 : 28;
   const listRef = useRef<HTMLDivElement>(null);
+  const hintRef = useRef<HTMLDivElement>(null);
   /** What a sliding slip uncovers: the grade of each level (SwipeUnderlay). */
   const underlay = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -2218,8 +2219,12 @@ function Study({
     const fit = () => {
       const el = listRef.current;
       if (!el) return;
-      // Fill down to the bottom of the window, leaving room for the key hints.
-      setViewH(Math.max(160, window.innerHeight - el.getBoundingClientRect().top - 40));
+      // Fill down to the bottom of the window, leaving room for the key hints
+      // and, on a phone, the home indicator: the hint row pads itself by
+      // env(safe-area-inset-bottom), so its padding is that inset in px.
+      const hint = hintRef.current;
+      const inset = hint ? parseFloat(getComputedStyle(hint).paddingBottom) || 0 : 0;
+      setViewH(Math.max(160, window.innerHeight - el.getBoundingClientRect().top - 40 - inset));
       setMeasured(true);
     };
     fit();
@@ -2855,7 +2860,10 @@ function Study({
               }}
             />
           )}
-          <div className="mt-2 text-[11px] opacity-50">
+          <div
+            ref={hintRef}
+            className="mt-2 pb-[env(safe-area-inset-bottom)] text-[11px] opacity-50"
+          >
             {exhausted && ahead.length === 0 ? (
               <>
                 Every word learned. <Icon name="confetti" className="ms-0.5" />

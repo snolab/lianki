@@ -229,7 +229,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
               className="absolute inset-0 bg-black/40"
               onClick={() => setDrawerOpen(false)}
             />
-            <div className="relative w-64 max-w-[80%] h-full overflow-y-auto bg-white dark:bg-gray-900 border-e border-gray-200 dark:border-gray-800">
+            <div className="relative w-64 max-w-[80%] h-full overflow-y-auto pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] bg-white dark:bg-gray-900 border-e border-gray-200 dark:border-gray-800">
               {sidebar}
             </div>
           </div>

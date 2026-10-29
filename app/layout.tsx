@@ -21,8 +21,12 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: "Lianki", statusBarStyle: "default" },
 };
 
-/** Seal red (印泥), the brand colour: browser chrome on phones. */
-export const viewport: Viewport = { themeColor: "#c8102e" };
+/**
+ * Seal red (印泥), the brand colour: browser chrome on phones.
+ * viewportFit "cover" lets the page run under the notch and home indicator and
+ * makes env(safe-area-inset-*) real; fixed bars pad themselves with it.
+ */
+export const viewport: Viewport = { themeColor: "#c8102e", viewportFit: "cover" };
 
 async function getRootLocale() {
   const h = await headers();

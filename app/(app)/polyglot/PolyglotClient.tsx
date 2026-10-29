@@ -578,7 +578,7 @@ export default function PolyglotPage() {
         </div>
 
         {/* Save Button */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 shadow-lg">
+        <div className="fixed bottom-0 left-0 right-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 shadow-lg">
           <div className="max-w-7xl mx-auto flex items-center gap-4">
             <div className="text-sm text-gray-600 dark:text-gray-400">
               {Object.values(matrix).reduce((sum, row) => sum + Object.keys(row).length, 0)} cells
