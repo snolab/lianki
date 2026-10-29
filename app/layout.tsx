@@ -22,7 +22,14 @@ export const metadata: Metadata = {
 };
 
 /** Seal red (印泥), the brand colour: browser chrome on phones. */
-export const viewport: Viewport = { themeColor: "#c8102e" };
+// The status bar (and the notch around it) takes the page's paper colour, not
+// the seal red, light and dark alike (--background in globals.css).
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "oklch(0.945 0.02 82)" },
+    { media: "(prefers-color-scheme: dark)", color: "oklch(0.18 0.01 65)" },
+  ],
+};
 
 async function getRootLocale() {
   const h = await headers();
