@@ -8,6 +8,71 @@ import { Icon } from "./icons";
 const DEBOUNCE_MS = 5_000;
 const OPEN_KEY = "lk:debug-chat-open";
 const SPEAK_KEY = "lk:debug-chat-speak";
+const POS_KEY = "lk:debug-chat-pos";
+
+/**
+ * Drag the box (by its header, or the collapsed pill) anywhere on screen: an
+ * offset from its bottom-right home, kept on screen and remembered. A press
+ * that moves under 5 px is still a click.
+ */
+function useDrag() {
+  const [pos, setPos] = useState<{ x: number; y: number }>(() => {
+    try {
+      const v = JSON.parse(read(POS_KEY) ?? "null") as { x: number; y: number } | null;
+      return v && Number.isFinite(v.x) && Number.isFinite(v.y) ? v : { x: 0, y: 0 };
+    } catch {
+      return { x: 0, y: 0 };
+    }
+  });
+  const drag = useRef<{ px: number; py: number; x: number; y: number; moved: boolean } | null>(
+    null,
+  );
+  const dragged = useRef(false);
+  const handle = {
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
+      if ((e.target as HTMLElement).closest("button:not([data-drag-handle])")) return;
+      drag.current = { px: e.clientX, py: e.clientY, x: pos.x, y: pos.y, moved: false };
+      dragged.current = false;
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
+      const d = drag.current;
+      if (!d) return;
+      const dx = e.clientX - d.px;
+      const dy = e.clientY - d.py;
+      if (!d.moved && Math.hypot(dx, dy) < 5) return;
+      d.moved = true;
+      // Keep the whole box on screen: its rect at the start, moved by the delta.
+      const box = (
+        e.currentTarget.closest("[data-debug-chat]") as HTMLElement
+      ).getBoundingClientRect();
+      const left = box.left - (pos.x - d.x);
+      const top = box.top - (pos.y - d.y);
+      const x = d.x + Math.max(-left, Math.min(innerWidth - box.width - left, dx));
+      const y = d.y + Math.max(-top, Math.min(innerHeight - box.height - top, dy));
+      setPos({ x, y });
+    },
+    onPointerUp: () => {
+      const d = drag.current;
+      drag.current = null;
+      if (!d?.moved) return;
+      dragged.current = true;
+      setPos((p) => {
+        write(POS_KEY, JSON.stringify(p));
+        return p;
+      });
+    },
+    onPointerCancel: () => (drag.current = null),
+    style: { touchAction: "none" as const, cursor: "grab" },
+  };
+  /** The click that ends a drag is not a click. */
+  const wasDrag = () => {
+    const d = dragged.current;
+    dragged.current = false;
+    return d;
+  };
+  return { offset: { transform: `translate(${pos.x}px, ${pos.y}px)` }, handle, wasDrag };
+}
 
 const read = (key: string) => {
   try {
@@ -91,6 +156,7 @@ export function DebugChat({
     return v === null ? !location.pathname.startsWith("/words") : v === "1";
   });
   const [speak, setSpeak] = useState(speechEnabled);
+  const { offset, handle, wasDrag } = useDrag();
   const [draft, setDraft] = useState("");
   /** Re-keys the drain bar on each keystroke; 0 while nothing is waiting. */
   const [armed, setArmed] = useState(0);
@@ -153,8 +219,14 @@ export function DebugChat({
       <button
         type="button"
         data-debug-chat
-        onClick={() => toggle(true)}
-        onPointerDown={unlockSpeech}
+        data-drag-handle
+        {...handle}
+        style={{ ...handle.style, ...offset }}
+        onClick={() => !wasDrag() && toggle(true)}
+        onPointerDown={(e) => {
+          unlockSpeech();
+          handle.onPointerDown(e);
+        }}
         aria-label={`Open chat with the agent${unread ? `, ${unread} new` : ""}`}
         className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex items-center gap-1.5 rounded-full border border-gray-300 bg-white/95 px-3 py-1 text-xs text-gray-700 shadow dark:border-gray-700 dark:bg-gray-900/95 dark:text-gray-200"
       >
@@ -172,9 +244,13 @@ export function DebugChat({
       aria-label="Chat with the agent"
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
+      style={offset}
       className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-xl border border-gray-300 bg-white/95 text-xs text-gray-800 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/95 dark:text-gray-100"
     >
-      <header className="flex items-center gap-1.5 border-b border-gray-200 px-2 py-1 dark:border-gray-800">
+      <header
+        {...handle}
+        className="flex select-none items-center gap-1.5 border-b border-gray-200 px-2 py-1 dark:border-gray-800"
+      >
         <span className="size-2 shrink-0 rounded-full" style={{ background: dot }} />
         <span
           className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-400"

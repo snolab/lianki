@@ -91,6 +91,12 @@ const openControl = (token?: string) =>
     : new WebSocket(controlUrl());
 
 const args = process.argv.slice(2);
+// --help is not code to run on the owner's pages: print the usage above.
+if (args[0] === "--help" || args[0] === "-h") {
+  const src = readFileSync(new URL(import.meta.url).pathname, "utf8");
+  console.log(src.slice(src.indexOf("/**"), src.indexOf("*/") + 2));
+  process.exit(0);
+}
 const flag = (name: string) => {
   const i = args.indexOf(name);
   if (i === -1) return undefined;
