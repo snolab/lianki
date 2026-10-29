@@ -191,7 +191,7 @@ export default function MembershipClient() {
             </ul>
             <div className="mt-6 text-center">
               <a
-                href="/contact"
+                href="/contacts"
                 className="inline-block bg-white text-blue-600 font-semibold px-6 py-2 rounded-lg hover:bg-blue-50 transition-colors"
               >
                 {features.pro.contactUs.value}
