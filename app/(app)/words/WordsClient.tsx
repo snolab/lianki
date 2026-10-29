@@ -39,21 +39,25 @@ import {
   termTarget,
   weightedQuantile,
 } from "@/lib/words/columns";
-import { MIN_JERK_EASING, minJerk, moveSeconds, springStep } from "@/lib/words/motion";
+import { MIN_JERK_EASING, cssLinear, minJerk, moveSeconds, springStep } from "@/lib/words/motion";
 import { CORD_BOW, cordPath, cordPull } from "@/lib/words/cords";
 import {
   type Axis,
+  type SwipeLevel,
+  levelRating,
   lockAxis,
-  projectSwipe,
+  releaseLevel,
   releaseRating,
   releaseVelocity,
-  SWIPE_DECAY,
-  SWIPE_RESIST,
-  SWIPE_STRONG,
+  snapSwipe,
+  springProgress,
+  swipeLevel,
+  SWIPE_COAST_MS,
+  SWIPE_HYSTERESIS,
+  SWIPE_LEVEL,
+  SWIPE_RETURN_S,
+  SWIPE_SNAP,
   SWIPE_VELOCITY_MS,
-  swipeRating,
-  swipeTier,
-  clampSwipe,
 } from "@/lib/words/swipe";
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
 import { idbAdd, idbAll, idbDelete, idbGet, idbPut, type PendingOp } from "@/lib/words/idb";
@@ -94,7 +98,9 @@ const HOLD_MS = 300;
  * sent in batches — every 20 swipes, when study opens, and by beacon when
  * the page is hidden. The older local-only log (lk:swipe-log) goes up once.
  */
-const SWIPE_PARAMS = `decay=${SWIPE_DECAY};resist=${SWIPE_RESIST};strong=${SWIPE_STRONG}`;
+const SWIPE_PARAMS = `snap=${SWIPE_SNAP};level=${SWIPE_LEVEL};hyst=${SWIPE_HYSTERESIS};coast=${SWIPE_COAST_MS}`;
+/** A released slip springs home: the critically damped spring, as a CSS easing. */
+const SPRING_EASING = cssLinear(springProgress, 32);
 type SwipeRow = {
   at: string;
   finger: number;
@@ -2824,8 +2830,8 @@ function Study({
 }
 
 /**
- * One row. On touch, tap = onTap and a horizontal swipe grades by distance
- * (see swipeRating); the row follows the finger, tinted the colour of the
+ * One row. On touch, tap = onTap and a horizontal swipe grades by the level
+ * it snaps to (lib/words/swipe.ts snapSwipe); the row follows the finger, tinted the colour of the
  * grade it will give (no label: colour and the grade tone say enough). Rows only claim horizontal drags (touch-action: pan-y), so vertical
  * scrolling stays native.
  */
@@ -2914,7 +2920,16 @@ function SlipSheet({
  * of minimum jerk. Runs frames only while easing or while the slip is off
  * its rest position.
  */
-function SlipCords({ loose, moving }: { loose: boolean; moving: boolean }) {
+function SlipCords({
+  loose,
+  moving,
+  pos,
+}: {
+  loose: boolean;
+  moving: boolean;
+  /** The slip's position at a moment (touch rows); none = it never slides. */
+  pos?: React.RefObject<(now: number) => number>;
+}) {
   const host = useRef<HTMLSpanElement>(null);
   const slack = useRef(0);
   useEffect(() => {
@@ -2933,8 +2948,7 @@ function SlipCords({ loose, moving }: { loose: boolean; moving: boolean }) {
       slack.current = from + (to - from) * minJerk(t);
       const h = row.offsetHeight;
       const w = row.offsetWidth;
-      const m = getComputedStyle(row).transform;
-      const x = m && m !== "none" ? new DOMMatrixReadOnly(m).m41 : 0;
+      const x = pos?.current(now) ?? 0;
       const pull = cordPull(x, slack.current, h);
       const bow = CORD_BOW * h * slack.current;
       el.style.transform = x ? `translateX(${-x}px)` : "";
@@ -2950,7 +2964,7 @@ function SlipCords({ loose, moving }: { loose: boolean; moving: boolean }) {
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [loose, moving]);
+  }, [loose, moving, pos]);
   return (
     <span
       ref={host}
@@ -3013,7 +3027,10 @@ function WordRow({
    * style once a frame — a React render per pointermove dropped frames on Android. */
   const dx = useRef(0);
   const frame = useRef(0);
-  const shownTint = useRef<ReturnType<typeof swipeRating>>(null);
+  const shownTint = useRef<ReturnType<typeof levelRating>>(null);
+  /** Where the slip is at a given moment, for its cords: the finger while
+   * dragging, then the return spring — no reading the transform back. */
+  const pos = useRef<(now: number) => number>(() => 0);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const held = useRef(false);
   /** The axis this gesture committed to (lib/words/swipe.ts lockAxis). */
@@ -3052,9 +3069,9 @@ function WordRow({
   const samples = useRef<{ t: number; x: number }[]>([]);
   /** The finger's own travel (the row resists beyond a, so they differ). */
   const finger = useRef(0);
-  /** The tier the row is in now: crossing into another gives a light buzz. */
-  const tier = useRef<0 | 1 | 2>(0);
-  /** Travel unit: the row's own height (2a of travel each way). */
+  /** The level the slip has snapped to: crossing into another gives a light buzz. */
+  const level = useRef<SwipeLevel>(0);
+  /** Travel unit: the row's own height. */
   const a = typeof style.height === "number" ? style.height : 44;
   if (swipePerf.on && touch) swipePerf.renders++;
 
@@ -3088,22 +3105,23 @@ function WordRow({
     if (!el) return;
     const x = dx.current;
     el.style.transform = x ? `translateX(${x}px)` : "";
-    const pending = swipeRating(
-      x ? projectSwipe(finger.current, releaseVelocity(samples.current, performance.now()), a) : 0,
-      a,
-    );
+    // Tinted by the level it has snapped to: what it grades if let go now.
+    const pending = x ? levelRating(level.current) : null;
     if (pending !== shownTint.current) {
       shownTint.current = pending;
       if (pending) el.style.setProperty("--slip-c", SWIPE_BG[pending]);
       else el.style.removeProperty("--slip-c");
     }
   };
-  /** Back to rest: glide home from where it was let go, minimum jerk. */
+  /** Back to rest: spring home from where it was let go, on the compositor. */
   const release = () => {
     const el = rowEl.current;
     cancelAnimationFrame(frame.current);
-    if (el && dx.current) {
-      el.style.transition = `transform ${moveSeconds(dx.current, 6000)}s ${MIN_JERK_EASING}`;
+    const x0 = dx.current;
+    if (el && x0) {
+      el.style.transition = `transform ${SWIPE_RETURN_S}s ${SPRING_EASING}`;
+      const t0 = performance.now();
+      pos.current = (now) => x0 * (1 - springProgress((now - t0) / 1000 / SWIPE_RETURN_S));
     }
     dx.current = 0;
     paint();
@@ -3128,7 +3146,7 @@ function WordRow({
         samples.current = [{ t: performance.now(), x: 0 }];
         held.current = false;
         axis.current = null;
-        tier.current = 0;
+        level.current = 0;
         finger.current = 0;
         catching.current = scrolling?.() ?? false;
         swipePerf.start();
@@ -3156,6 +3174,7 @@ function WordRow({
             // Following the finger: no easing, on its own layer.
             e.currentTarget.style.transition = "none";
             e.currentTarget.style.willChange = "transform";
+            pos.current = () => dx.current;
             setMoving(true);
             onSwipeStart?.();
           }
@@ -3167,14 +3186,13 @@ function WordRow({
           kept.push({ t, x });
           samples.current = kept;
           finger.current = x;
-          const held2a = clampSwipe(x, a);
-          const t2 = swipeTier(held2a, a);
-          if (t2 !== tier.current) {
-            // A light tick at each threshold, either way (Android; iOS has no API).
-            navigator.vibrate?.(t2 === 2 ? 12 : 6);
-            tier.current = t2;
+          const k = swipeLevel(x, level.current, a);
+          if (k !== level.current) {
+            // A light tick at each level, either way (Android; iOS has no API).
+            navigator.vibrate?.(Math.abs(k) === 2 ? 12 : 6);
+            level.current = k;
           }
-          dx.current = held2a;
+          dx.current = snapSwipe(x, a);
           frame.current ||= requestAnimationFrame(paint);
         }
       }}
@@ -3192,11 +3210,11 @@ function WordRow({
         }
         if (axis.current === "h") {
           const v = releaseVelocity(samples.current, performance.now());
-          const r = releaseRating(finger.current, v, a);
+          const r = releaseRating(finger.current, v, level.current, a);
           logSwipe({
             finger: finger.current,
             v,
-            projected: projectSwipe(finger.current, v, a),
+            projected: releaseLevel(finger.current, v, level.current, a) * a,
             rating: r,
             a,
           });
@@ -3215,7 +3233,7 @@ function WordRow({
       }}
     >
       {children}
-      <SlipCords loose={loose} moving={moving} />
+      <SlipCords loose={loose} moving={moving} pos={pos} />
     </div>
   );
 }
