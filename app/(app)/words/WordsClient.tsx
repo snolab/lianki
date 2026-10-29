@@ -560,6 +560,13 @@ const swipePerf = {
   },
 };
 
+/**
+ * How far past the first or last row the list scrolls, as a fraction of its
+ * height: the first row can be pulled down to 80% of the way down the list,
+ * the last up to 20% from the top.
+ */
+const OVERSCROLL_FRACTION = 0.8;
+
 /** Rows past the last one near the screen whose audio is fetched ahead too. */
 const PREFETCH_NEXT = 5;
 
@@ -2246,10 +2253,11 @@ function Study({
   /** viewH holds the real measured height (the opening scroll depends on it). */
   const [measured, setMeasured] = useState(false);
   const listReady = !loading && !loadError && queue.length > 0;
-  // Half a screen of empty space above the first row and below the last, so
-  // any row — the first included — can be scrolled to the middle (or to the
-  // touch focus line). Row positions below are offset by it.
-  const pad = Math.round(viewH / 2);
+  // Empty space above the first row and below the last (OVERSCROLL_FRACTION
+  // of the list's height), so any row — the first and last included — can be
+  // scrolled well past the middle (or to the touch focus line). Row positions
+  // and the windowing below are all offset by it.
+  const pad = Math.round(viewH * OVERSCROLL_FRACTION);
   const startedAtTop = useRef(false);
   useLayoutEffect(() => {
     // Open with the first row at the top, not half a screen down.
@@ -2303,8 +2311,9 @@ function Study({
       if (!ready.length || !el) return;
       if (touchingList.current || performance.now() - lastScrollAt.current < 400) return;
       later.current = later.current.filter((x) => x.due > now);
-      const half = Math.round(el.clientHeight / 2);
-      const below = Math.floor((el.scrollTop - half + el.clientHeight) / ROW_H) + 1;
+      // The list's top spacer (`pad`), from the live height.
+      const top = Math.round(el.clientHeight * OVERSCROLL_FRACTION);
+      const below = Math.floor((el.scrollTop - top + el.clientHeight) / ROW_H) + 1;
       // Updaters stay pure (Strict Mode runs them twice): the insertion point
       // is fixed here, from the queue length as last rendered.
       const at = Math.max(0, Math.min(queueLen.current, below));
