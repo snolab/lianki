@@ -15,6 +15,8 @@ const ENDS_SENTENCE = /[。．.!?！？]$/;
 const OPEN_KEY = "lk:debug-chat-open";
 const SPEAK_KEY = "lk:debug-chat-speak";
 const POS_KEY = "lk:debug-chat-pos";
+/** The input and its grip: the page shows through at about half. */
+const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
 
 /**
  * Drag the box (by its header, or the collapsed pill) anywhere on screen: an
@@ -179,6 +181,35 @@ export function DebugChat({
   const composing = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const log = useRef<HTMLOListElement | null>(null);
+  const input = useRef<HTMLTextAreaElement | null>(null);
+  // The log is click-through, so it can't be swiped: a vertical swipe on the
+  // input scrolls it instead (unless the draft itself is long enough to scroll).
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    let y = 0;
+    let swiping = false;
+    const down = (e: TouchEvent) => {
+      y = e.touches[0].clientY;
+      swiping = false;
+    };
+    const move = (e: TouchEvent) => {
+      const list = log.current;
+      if (!list || el.scrollHeight > el.clientHeight + 1) return;
+      const ny = e.touches[0].clientY;
+      if (!swiping && Math.abs(ny - y) < 6) return;
+      swiping = true;
+      list.scrollTop -= ny - y;
+      y = ny;
+      if (e.cancelable) e.preventDefault();
+    };
+    el.addEventListener("touchstart", down, { passive: true });
+    el.addEventListener("touchmove", move, { passive: false });
+    return () => {
+      el.removeEventListener("touchstart", down);
+      el.removeEventListener("touchmove", move);
+    };
+  }, [open]);
   const sendRef = useRef(onSend);
   sendRef.current = onSend;
 
@@ -254,7 +285,7 @@ export function DebugChat({
           handle.onPointerDown(e);
         }}
         aria-label={`Open chat with the agent${unread ? `, ${unread} new` : ""}`}
-        className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex items-center opacity-60 transition-opacity active:opacity-100 gap-1.5 rounded-full border border-gray-300 bg-white/95 px-3 py-1 text-xs text-gray-700 shadow dark:border-gray-700 dark:bg-gray-900/95 dark:text-gray-200"
+        className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex items-center lk-halo opacity-60 transition-opacity active:opacity-100 gap-1.5 px-3 py-1 text-xs text-gray-700 dark:text-gray-200"
       >
         <span className="size-2 rounded-full" style={{ background: dot }} />
         chat
@@ -271,9 +302,9 @@ export function DebugChat({
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
       style={offset}
-      className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] opacity-60 transition-opacity focus-within:opacity-100 active:opacity-100 flex-col overflow-hidden rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100"
+      className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] opacity-60 transition-opacity focus-within:opacity-100 active:opacity-100 pointer-events-none flex-col overflow-hidden rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100"
     >
-      <header {...handle} className="flex select-none items-center gap-1.5 px-2 py-1">
+      <header className="flex select-none items-center gap-1.5 px-2 py-1 [&_button]:pointer-events-auto">
         <span className="size-2 shrink-0 rounded-full" style={{ background: dot }} />
         <span
           className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-400"
@@ -304,24 +335,27 @@ export function DebugChat({
           –
         </button>
       </header>
-      <ol ref={log} className="max-h-[30vh] min-h-12 space-y-1.5 overflow-y-auto px-2 py-1.5">
+      <ol ref={log} className="max-h-[30vh] min-h-12 space-y-0.5 overflow-y-auto px-2 py-1.5">
         {messages.length === 0 && (
           <li className="text-gray-500">Type here; it is sent 3 s after you stop.</li>
         )}
+        {/* A game-style log: one line per message, "name: text", no bubbles. */}
         {messages.map((m) => (
-          <li key={m.id} className={m.from !== "agent" ? "text-right" : ""}>
-            <div className="text-[10px] text-gray-500" title={new Date(m.at).toISOString()}>
-              {m.from !== "agent" ? "you" : m.label || "agent"} · {when(m.at)}
-            </div>
-            <div
-              className={`inline-block max-w-full whitespace-pre-wrap break-words rounded-lg px-2 py-1 text-left ${
-                m.from !== "agent"
-                  ? "bg-gray-100 dark:bg-gray-800"
-                  : "bg-blue-50 text-gray-900 dark:bg-blue-950 dark:text-gray-100"
-              }`}
+          // The time only on hover (long press on a phone): name and text are the line.
+          <li
+            key={m.id}
+            title={when(m.at)}
+            className="whitespace-pre-wrap break-words leading-snug"
+          >
+            <span
+              className="me-1 font-medium"
+              style={{
+                color: m.from !== "agent" ? "oklch(0.55 0.13 250)" : "oklch(0.55 0.14 150)",
+              }}
             >
-              {m.text}
-            </div>
+              {m.from !== "agent" ? "you" : m.label || "agent"}:
+            </span>
+            {m.text}
           </li>
         ))}
       </ol>
@@ -329,12 +363,12 @@ export function DebugChat({
         <p
           role="status"
           data-debug-chat-notice
-          className="border-t border-gray-200 px-2 py-2 text-gray-600 dark:border-gray-800 dark:text-gray-400"
+          className="pointer-events-auto px-2 py-2 text-gray-600 dark:text-gray-400"
         >
           {notice}
         </p>
       ) : (
-        <div className="relative">
+        <>
           {warning && (
             <div
               role="alert"
@@ -344,62 +378,79 @@ export function DebugChat({
               {warning}
             </div>
           )}
-          {armed > 0 && (
-            <div
-              key={armed}
-              aria-hidden
-              className="lk-drain absolute inset-x-0 top-0 h-0.5 bg-blue-600/60"
+          {/* The log above is click-through: taps reach the page under it. Only the
+          grip and the input take pointer events. */}
+          <div className="relative flex items-stretch gap-1">
+            <button
+              type="button"
+              data-drag-handle
+              aria-label="Drag the chat box"
+              title="Drag"
+              {...handle}
+              style={{ ...handle.style, background: INPUT_BG }}
+              className="pointer-events-auto shrink-0 rounded-lg border border-current/25 px-1.5 text-base leading-none text-gray-500"
+            >
+              ⠿
+            </button>
+            {armed > 0 && (
+              <div
+                key={armed}
+                aria-hidden
+                className="lk-drain absolute inset-x-0 top-0 h-0.5 bg-blue-600/60"
+              />
+            )}
+            <textarea
+              ref={input}
+              rows={2}
+              value={draft}
+              maxLength={MAX_CHAT}
+              placeholder="Message the agent…"
+              aria-label="Message the agent"
+              onChange={(e) => {
+                draftRef.current = e.target.value;
+                setDraft(e.target.value);
+                setOffline(false);
+                cancelSpeech();
+                arm();
+              }}
+              onCompositionStart={() => {
+                composing.current = true;
+                clearTimeout(timer.current);
+                setArmed(0);
+              }}
+              onCompositionEnd={() => {
+                composing.current = false;
+                arm();
+              }}
+              // Android's keyboards report every key as 229, so Enter never
+              // reaches onKeyDown as "Enter": the line break itself is the cue.
+              onBeforeInput={(e) => {
+                const type = (e.nativeEvent as InputEvent).inputType;
+                if (type !== "insertLineBreak" && type !== "insertParagraph") return;
+                if (composing.current || (e.nativeEvent as InputEvent).isComposing) return;
+                if (shiftEnter.current) return; // Shift+Enter: a newline, as on desktop
+                e.preventDefault();
+                submit();
+              }}
+              onKeyDown={(e) => {
+                shiftEnter.current = e.key === "Enter" && e.shiftKey;
+                if (e.key !== "Enter" || e.shiftKey) return;
+                // Enter that confirms an IME candidate (Safari reports it as 229
+                // after compositionend) must not send.
+                if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229) return;
+                e.preventDefault();
+                submit();
+              }}
+              style={{ background: INPUT_BG }}
+              className="pointer-events-auto block min-w-0 flex-1 resize-none rounded-lg border border-current/25 px-2 py-1.5 text-sm outline-none placeholder:text-gray-400"
             />
-          )}
-          <textarea
-            rows={2}
-            value={draft}
-            maxLength={MAX_CHAT}
-            placeholder="Message the agent…"
-            aria-label="Message the agent"
-            onChange={(e) => {
-              draftRef.current = e.target.value;
-              setDraft(e.target.value);
-              setOffline(false);
-              cancelSpeech();
-              arm();
-            }}
-            onCompositionStart={() => {
-              composing.current = true;
-              clearTimeout(timer.current);
-              setArmed(0);
-            }}
-            onCompositionEnd={() => {
-              composing.current = false;
-              arm();
-            }}
-            // Android's keyboards report every key as 229, so Enter never
-            // reaches onKeyDown as "Enter": the line break itself is the cue.
-            onBeforeInput={(e) => {
-              const type = (e.nativeEvent as InputEvent).inputType;
-              if (type !== "insertLineBreak" && type !== "insertParagraph") return;
-              if (composing.current || (e.nativeEvent as InputEvent).isComposing) return;
-              if (shiftEnter.current) return; // Shift+Enter: a newline, as on desktop
-              e.preventDefault();
-              submit();
-            }}
-            onKeyDown={(e) => {
-              shiftEnter.current = e.key === "Enter" && e.shiftKey;
-              if (e.key !== "Enter" || e.shiftKey) return;
-              // Enter that confirms an IME candidate (Safari reports it as 229
-              // after compositionend) must not send.
-              if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229) return;
-              e.preventDefault();
-              submit();
-            }}
-            className="block w-full resize-none rounded-lg border border-current/25 bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-gray-400"
-          />
+          </div>
           {(armed > 0 || offline) && (
             <div className="px-2 pb-1 text-[10px] text-gray-500">
               {offline ? "not connected — kept; it will go when you type again" : "sending in 3s"}
             </div>
           )}
-        </div>
+        </>
       )}
     </section>
   );

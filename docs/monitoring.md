@@ -63,7 +63,7 @@ page), `scripts/dev/eval.ts` (the sender), `lib/dev-eval.ts` (shared rules).
 
 **Receiving side — the owner's pages.** A page opens
 `wss://lianki.com/api/version/debug` only while this device is in debug
-mode (`?debug=1` on any page, or seven quick taps on /words' Settings button; `lk:debug`
+mode (`?debug=1` on any page, or seven quick taps on /words' Settings button or ten on your own name in the profile menu; `lk:debug`
 in localStorage) and the page is visible. lianki-push accepts the socket only
 if its Origin is `https://lianki.com` and the main Worker, asked over the
 `MAIN` service binding with the page's Cookie header, answers

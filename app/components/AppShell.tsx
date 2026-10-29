@@ -9,6 +9,7 @@ import { APP_NAV, NAV_GROUPS, activeNavKey, type NavGroup } from "@/lib/app-nav"
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { FirstRunChoice, type FirstRunLabels } from "./FirstRunChoice";
 import { Icon, SealIcon } from "./icons";
+import { useDebugToggle } from "./useDebugToggle";
 
 const SIDEBAR_KEY = "lk:sidebar";
 
@@ -38,6 +39,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [debug, debugTap] = useDebugToggle(undefined, 10);
 
   // Read the persisted collapse state after mount — reading localStorage during
   // render would desync SSR and hydration.
@@ -147,6 +149,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
           {user ? (
             <div className="relative">
               <button
+                data-profile-menu
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
                 onBlur={() => setTimeout(() => setIsProfileOpen(false), 150)}
                 aria-expanded={isProfileOpen}
@@ -167,8 +170,17 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
 
               {isProfileOpen && (
                 <div className="absolute end-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50">
-                  <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 truncate">
+                  {/* Hidden: ten quick taps on your own name toggle debug mode.
+                      pointerdown keeps focus on the menu button, so the menu
+                      stays open between taps. */}
+                  <div
+                    data-debug-name
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={debugTap}
+                    className="select-none touch-manipulation px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 truncate"
+                  >
                     {user.email}
+                    {debug && " · debug"}
                   </div>
                   <MenuLink href="/list">{labels.dashboard}</MenuLink>
                   <MenuLink href="/profile">{labels.profile}</MenuLink>
