@@ -178,12 +178,14 @@ connected now, never a heartbeat-only `busy` socket; at 0 it reads
 "connected · no agent listening". The hub sends every page a fresh `state` whenever a sender
 connects, is approved, ends, expires or its socket closes or errors, so the
 count follows the event, never a poll. Agent replies are read aloud with `speechSynthesis` (the
-language is guessed from the script: kana → ja, Hangul → ko, other Han →
-zh-CN, else en), one after another; typing cancels what is being read, and
-the speaker button turns it off for the device (`lk:debug-chat-speak`). Only
-replies arriving live are read, never the history, and only while the
-chat input has focus in a visible tab (checked as each reply arrives);
-focus leaving the input or the tab hiding stops the reading. iOS needs a gesture
+language is guessed from the reply's script: kana → ja, Hangul → ko, other
+Han → zh-CN, else en), in a first-in first-out queue, one utterance per
+sentence (Hands-free voice, below); the speaker button turns it off for the
+device (`lk:debug-chat-speak`). Only replies arriving live are read, never
+the history. With the mic off, a reply is read only while the chat input has
+focus in a visible tab (checked as each reply arrives); typing pauses the
+reading, a send resumes it, and focus leaving the input or the tab hiding
+stops it. With the mic on, every reply is read (below). iOS needs a gesture
 first: the first tap or key inside the box unlocks speech.
 
 **Wire.** Page → hub `{type:"chat", id, text}` (text ≤ 4000 chars); sender →
@@ -288,6 +290,8 @@ event. Disconnecting this page takes two taps. Eval and preview sessions keep
 a light End. The menu has no End chat: the chat hibernates and wakes by
 itself.
 
+**Voice commits.** Every final spoken transcript is punctuated, then committed and sent at once (上屏), with a soft tick: two sine tones (880 Hz, then 1320 Hz 30 ms later) through one gain, 5 ms attack to 0.08 and an exponential decay, 80 ms in all (`scheduleTick` in `mic.ts`, tested with a fake AudioContext), played on the mic's own AudioContext (made on the mic tap, a gesture) and never while the agent speaks. It is Web Audio only, no `<audio>` element, so a muted iPhone stays silent. Typed sends make no sound. Each spoken send also fires `lk:voice-sent` on `window` (`detail.sound`: whether the tick played): if Whisper left no stop, `punctuate()` adds one that fits the text (。/？ for CJK, ./? otherwise, a question by its particle or opening word). A short "好" or "OK" goes out too. Partials never send. Typed text arriving in one burst of 3+ characters that ends a sentence (an outside dictation IME) is also sent at once.
+
 **Mic.** A mic button sits inside the input at its right edge
 (`debug-chat-mic`; hidden where the browser lacks getUserMedia or Web Audio).
 One tap turns hands-free listening on; another tap, or Escape, turns it off.
@@ -306,8 +310,10 @@ draft a sentence of 3 characters or more (trimmed, ending in 。．.!?！？) is
 sent at once (`appendDictation`); otherwise the debounce waits while
 listening or while transcripts are out, partials never send, and Enter sends
 as usual. While audio is captured the button has a red pulsing ring and "REC"
-(`debug-chat-mic-rec`); listening but quiet, a faint steady ring. Read-aloud
-is paused while listening and resumed after. A short note
+(`debug-chat-mic-rec`); listening but quiet, a faint steady ring; while the
+agent's reply is read, a slow blue ring (`debug-chat-mic-speaking`,
+`data-status="speaking"`, labelled "Agent speaking; tap to interrupt and
+talk"). Replies are read aloud while listening (Hands-free voice). A short note
 (`debug-chat-mic-note`) says when the mic is refused or missing, or the
 route answers 401 (listening stops) or 429. On the owner's pages, if
 localStorage `lk:debug-clip-sink` holds an https (or localhost) URL, each
@@ -316,9 +322,37 @@ final utterance is also POSTed as multipart (`audio`, and `meta` JSON
 silently. The code is in `packages/debug-chat/src/` (`mic.ts`, the logic,
 tested with fakes in `unit/mic.test.ts`; `MicButton.tsx`, the browser glue).
 
+**Hands-free voice.** Mic on means read-aloud on: while it listens, every
+agent reply is read, whatever the focus rule or the speaker toggle says (the
+toggle shows "Replies read aloud (mic on)" and is locked; the stored setting
+is never touched, so it is back as it was when the mic stops, and a reading
+the focus rule would not allow stops with the mic). The rules live in one
+voice session (`packages/debug-chat/src/voice.ts`, kept on `globalThis` so the
+bundled `speakReply` in DebugEval and a hot-loaded chat share it; tested with
+fakes in `unit/voice-session.test.ts`):
+
+- *Queue.* Replies are split into sentences (after 。．！？ and closing
+  brackets; after . ! ? before a space or the end, so 3.14 stays whole; at
+  every newline) and spoken one utterance per sentence, first in first out.
+  A new reply waits behind the one being read; it never cuts it off.
+- *No echo loop.* While an utterance plays, the mic holds capture: the VAD is
+  paused, speech under way and anything handed over meanwhile is dropped, and
+  partials stop (`hold` in `mic.ts`). Capture resumes 400 ms after the last
+  queued utterance ends — on its `end`/`error` events and a one-shot timer,
+  never polling.
+- *Interruptions* stop the utterance and keep the place: the last word
+  boundary the browser reported (`boundary` events), else the start of that
+  utterance. A tap on the mic while the agent speaks (barge-in) releases
+  capture at once and reads on after 1.5 s of quiet; the user starting to
+  speak (only possible while capture is live, i.e. not mid-utterance) pauses
+  it until their line is sent, or 1.5 s after it ends; typing pauses it until
+  a send or, mic on, a blur. Sending keeps the queue — the replies are still
+  relevant. "Stop reading" in the pill's menu (`debug-menu-stop-reading`,
+  shown while anything is queued) clears it.
+
 **One voice per device.** Every tab of a thread shows every message, but
-only one reads a reply aloud: the focused tab, or else the one focused most
-recently. Tabs agree over `BroadcastChannel("lk-debug-chat")`
+only one reads a reply aloud: a tab with the mic on (the latest to turn it
+on), else the focused tab, or else the one focused most recently. Tabs agree over `BroadcastChannel("lk-debug-chat")`
 (`packages/debug-chat/src/debug-chat-tabs.ts`), not the network. Drafts are not synced across
 tabs (that would fight IME composition).
 

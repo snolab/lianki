@@ -13,7 +13,9 @@ import {
   postClip,
   postStt,
   resample,
+  scheduleTick,
 } from "./mic";
+import { voice } from "./voice";
 
 /**
  * Silero VAD (@ricky0123/vad-web) and its ONNX runtime, from jsDelivr at pinned
@@ -24,6 +26,37 @@ import {
 const ORT = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/";
 const VAD = "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/";
 const REC = "oklch(0.6 0.22 25)";
+/** The agent speaking (capture held): a calm blue, unlike the red of REC. */
+const TALK = "oklch(0.62 0.14 250)";
+
+/**
+ * The page's one AudioContext for the mic: the energy fallback records
+ * through it, and the send tick plays on it. Made on the mic tap (a gesture,
+ * which iOS needs), suspended while the mic is off.
+ */
+let audio: AudioContext | null = null;
+function audioCtx(): AudioContext | null {
+  if (audio) return audio;
+  const Ctx =
+    globalThis.AudioContext ??
+    (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  return Ctx ? (audio = new Ctx()) : null;
+}
+
+/**
+ * The soft tick for a spoken sentence sent by itself (scheduleTick), on the
+ * mic's AudioContext; never while the agent speaks, never without the mic
+ * (so typed sends are silent). Web Audio only, so a muted iPhone stays quiet.
+ */
+export function playSentTick(): boolean {
+  const c = audio;
+  if (!c || c.state === "closed" || voice().state().speaking) return false;
+  void c.resume().then(
+    () => scheduleTick(c as unknown as Parameters<typeof scheduleTick>[0]),
+    () => {},
+  );
+  return true;
+}
 
 type MicVAD = {
   start(): Promise<void>;
@@ -101,10 +134,8 @@ async function silero(ev: VadEvents): Promise<Vad> {
 /** The fallback: an energy threshold on the raw microphone signal (lib/mic.ts energyGate). */
 async function energy(ev: VadEvents): Promise<Vad> {
   const stream = await micStream();
-  const Ctx =
-    globalThis.AudioContext ??
-    (globalThis as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-  const ctx = new Ctx();
+  const ctx = audioCtx();
+  if (!ctx) throw new Error("no Web Audio");
   const src = ctx.createMediaStreamSource(stream);
   // ScriptProcessor is deprecated but everywhere, and needs no worklet file.
   const node = ctx.createScriptProcessor(2048, 1, 1);
@@ -132,6 +163,7 @@ async function energy(ev: VadEvents): Promise<Vad> {
     },
     pause: () => {
       on = false;
+      emit(gate.flush()); // held: the mic drops it
     },
     flush: () => emit(gate.flush()),
     destroy: () => {
@@ -139,7 +171,6 @@ async function energy(ev: VadEvents): Promise<Vad> {
       node.disconnect();
       src.disconnect();
       stop(stream);
-      return ctx.close();
     },
   };
 }
@@ -155,13 +186,6 @@ const MicIcon = ({ fill }: { fill: boolean }) => (
     <path d={fill ? MIC_PATH.fill : MIC_PATH.regular} />
   </svg>
 );
-
-/** Pause the agent's read-aloud while listening (the mic would hear it), resume after. */
-function holdSpeech(on: boolean) {
-  if (typeof speechSynthesis === "undefined") return;
-  if (on) speechSynthesis.pause();
-  else speechSynthesis.resume();
-}
 
 /** The browser can capture: getUserMedia and Web Audio. */
 export const canCapture = () =>
@@ -180,6 +204,11 @@ export const canCapture = () =>
  * `clipSink` (the owner's dev server) each utterance is also posted there,
  * with its transcript, to build a local test set. Hidden where the browser
  * cannot capture.
+ *
+ * Hands-free (voice.ts): while the mic is on, replies are always read aloud;
+ * while one is read, capture is held (a slow blue ring, "agent speaking") and
+ * a tap cuts the reply short and listens at once. The user starting to speak
+ * interrupts the reading too; it reads on once they are done.
  */
 export function DebugMic({
   onText,
@@ -198,19 +227,28 @@ export function DebugMic({
   const [state, setState] = useState<MicState>("off");
   const [pending, setPending] = useState(0);
   const [note, setNote] = useState<string | null>(null);
+  /** The agent's reply is being read (voice session): capture is held. */
+  const [talking, setTalking] = useState(false);
   const cb = useRef({ onText, onPending, onActive, clipSink, label });
   cb.current = { onText, onPending, onActive, clipSink, label };
   const mic = useRef<ReturnType<typeof createMic> | null>(null);
 
   useEffect(() => {
     setCan(canCapture());
+    const v = voice();
+    let last: MicState = "off";
     mic.current = createMic({
       load: silero,
       fallback: energy,
       onState: (s) => {
         setState(s);
         const active = s !== "off";
-        holdSpeech(active);
+        v.setMic(active);
+        // The user starts talking: the reading stops (and reads on once they are done).
+        if (s === "capturing") v.interrupt("speech");
+        else if (last === "capturing") v.userIdle();
+        last = s;
+        if (!active) void audio?.suspend().catch(() => {});
         cb.current.onActive(active);
       },
       onText: (t) => cb.current.onText(t),
@@ -239,7 +277,14 @@ export function DebugMic({
         }
       },
     });
+    const follow = (speaking: boolean) => {
+      setTalking(speaking);
+      mic.current?.hold(speaking);
+    };
+    follow(v.state().speaking);
+    const unsub = v.subscribe((x) => follow(x.speaking));
     return () => {
+      unsub();
       const m = mic.current;
       if (m && m.state() !== "off") void m.off();
     };
@@ -255,6 +300,8 @@ export function DebugMic({
   if (!can) return null;
   const rec = state === "capturing";
   const listening = state === "listening" || rec;
+  const status = micStatus(state, pending, talking);
+  const speaking = status === "speaking";
   return (
     // Inside the input, at its right edge (the input is padded so text never runs under it).
     <div className="absolute end-0.5 top-1/2 flex -translate-y-1/2">
@@ -272,12 +319,14 @@ export function DebugMic({
         type="button"
         data-testid="debug-chat-mic"
         data-state={state}
-        data-status={micStatus(state, pending)}
+        data-status={status}
         aria-pressed={state !== "off"}
         aria-label={
           state === "off"
             ? "Dictate: listen and type what you say"
-            : rec
+            : speaking
+              ? "Agent speaking; tap to interrupt and talk"
+              : rec
               ? "Recording; tap to stop listening"
               : "Listening; tap to stop"
         }
@@ -285,12 +334,24 @@ export function DebugMic({
         onPointerDown={(e) => e.preventDefault()}
         onClick={() => {
           setNote(null);
+          // Barge in: the reading stops (it reads on later), and capture resumes at once.
+          if (speaking) return voice().interrupt("tap");
+          // Made in this gesture, so iOS lets it play the send tick later.
+          if (state === "off") void audioCtx()?.resume().catch(() => {});
           void mic.current?.toggle();
         }}
         className={`pointer-events-auto relative flex size-8 flex-col items-center justify-center rounded-full text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
-        style={{ color: state === "off" ? undefined : REC }}
+        style={{ color: state === "off" ? undefined : speaking ? TALK : REC }}
       >
-        {listening && (
+        {speaking ? (
+          // The agent speaks: a slow blue ring, so it is never mistaken for REC.
+          <span
+            aria-hidden
+            data-testid="debug-chat-mic-speaking"
+            className="pointer-events-none absolute inset-0.5 animate-pulse rounded-full"
+            style={{ boxShadow: `0 0 0 2px ${TALK}`, animationDuration: "2.4s" }}
+          />
+        ) : listening && (
           // Steady and faint while listening; red and pulsing while audio is captured.
           <span
             aria-hidden
