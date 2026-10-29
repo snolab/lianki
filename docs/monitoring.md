@@ -368,7 +368,7 @@ fakes in `unit/voice-session.test.ts`):
   sentence is fetched while one plays. A sentence the cloud cannot voice (an
   HTTP error, `X-Voice: miss`, offline, or `play()` refused) is read by
   speechSynthesis instead, that sentence only. Cost: $0.0002 per audio
-  minute (18.63 neurons), cache misses only — about 1,000 minutes of new
+  minute (18.63 neurons), cache misses only — about 530 minutes of new
   replies a day fit in the free 10,000 neurons.
 - *iOS, honestly:* WebKit's echo canceller is expected to subtract media
   element / Web Audio output played by the same page while the mic is open,
