@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { BrandName } from "./BrandName";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -139,7 +140,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a tiny static SVG */}
           <img src="/icon.svg" alt="" width={28} height={28} className="rounded-md" />
-          <span className="font-brush font-normal tracking-wider">{appName}</span>
+          <BrandName appName={appName} />
         </Link>
 
         <div className="ms-auto flex items-center gap-3">
