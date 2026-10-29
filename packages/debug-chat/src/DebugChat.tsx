@@ -5,9 +5,12 @@ import {
   type ChatMessage,
   MAX_CHAT,
   type PageInfo,
+  type ChatStrings,
   type PairInfo,
+  chatStrings,
   pageParts,
 } from "./wire";
+import { getKey, setKey } from "./storage-keys";
 import { LiagentMark } from "./LiagentMark";
 import {
   CLIP_SINK_KEY,
@@ -147,18 +150,9 @@ function safeTop() {
   return v;
 }
 
-const read = (key: string) => {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-};
-const write = (key: string, v: string) => {
-  try {
-    localStorage.setItem(key, v);
-  } catch {}
-};
+/** Legacy `lk:debug*` names; storage-keys reads `lk:agent*` first and writes both. */
+const read = (key: string) => getKey(key);
+const write = (key: string, v: string) => setKey(key, v);
 const synth = () => (typeof speechSynthesis === "undefined" ? null : speechSynthesis);
 
 
@@ -237,6 +231,8 @@ export type DebugChatProps = {
   onOpenPage?: (path: string) => void;
   /** Add this page to a pairing that was authorized for other pages only. */
   onAddPage?: (s: PairInfo) => void;
+  /** User-facing strings, localized by the host (English defaults in wire.ts). */
+  strings?: Partial<ChatStrings>;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -270,7 +266,9 @@ export function DebugChat({
   onEndPage,
   onOpenPage,
   onAddPage,
+  strings,
 }: DebugChatProps) {
+  const t = chatStrings(strings);
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
     return v === null ? !location.pathname.startsWith("/words") : v === "1";
@@ -807,7 +805,7 @@ export function DebugChat({
       ref={root}
       data-debug-chat
       data-testid="debug-chat"
-      aria-label="Chat with the agent"
+      aria-label={t.chatWith}
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
       style={offset}
@@ -836,7 +834,7 @@ export function DebugChat({
         className={`min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${typing || micActive ? "max-h-[30vh]" : "max-h-[4.1rem]"}`}
       >
         {messages.length === 0 && (
-          <li className="text-gray-500">Type here; it is sent 3 s after you stop.</li>
+          <li className="text-gray-500">{t.hint}</li>
         )}
         {/* A game-style log: one line per message, "name: text", no bubbles. */}
         {messages.map((m, i) => (
@@ -861,9 +859,9 @@ export function DebugChat({
               <span
                 data-testid="debug-chat-queued"
                 className="ms-1 text-[10px] text-gray-500"
-                title="The agent is offline: this is delivered when it is back"
+                title={t.waitingTitle}
               >
-                · waiting for the agent
+                {t.waiting}
               </span>
             )}
           </li>
@@ -963,13 +961,13 @@ export function DebugChat({
                     : interim
                       ? ""
                       : agentOnline
-                        ? "Message the agent…"
-                        : "Agent offline — your message waits for it…"
+                        ? t.message
+                        : t.offline
                 }
                 onScroll={(e) => {
                   if (mirror.current) mirror.current.scrollTop = e.currentTarget.scrollTop;
                 }}
-                aria-label="Message the agent"
+                aria-label={t.message.replace(/…$/, "")}
                 onChange={(e) => {
                   draftRef.current = e.target.value;
                   setDraft(e.target.value);

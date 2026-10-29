@@ -1,16 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getKey } from "@lianki/debug-chat/storage-keys";
 
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev";
 
-/** Debug turned on for this device (seven taps on /words' stats line, or ?debug=1). */
+/** Debug turned on for this device (seven taps on /words' stats line, or ?debug=1 / ?agent=1). */
 function debugDevice(): boolean {
-  try {
-    return localStorage.getItem("lk:debug") === "1";
-  } catch {
-    return false;
-  }
+  return getKey("lk:debug") === "1";
 }
 /** Hidden or unfocused this long before the socket is dropped. */
 const IDLE_MS = 30_000;

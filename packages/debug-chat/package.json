@@ -19,7 +19,8 @@
     "./wire": "./src/wire.ts",
     "./voice": "./src/voice.ts",
     "./voice-out": "./src/voice-out.ts",
-    "./echo": "./src/echo.ts"
+    "./echo": "./src/echo.ts",
+    "./storage-keys": "./src/storage-keys.ts"
   },
   "peerDependencies": {
     "react": "*",

@@ -2187,8 +2187,13 @@ function Study({
     })();
   };
   const text = useIntlayer("words-page");
+  // The debug mode's user-facing name: "Learning Partner" (learning-partner.content.ts).
+  const partner = useIntlayer("learning-partner");
+  const partnerName = partner.name.value;
+  const partnerOn = partner.on.value.replace("{name}", partnerName);
+  const partnerOff = partner.off.value.replace("{name}", partnerName);
   const [debug, debugTap] = useDebugToggle(
-    useCallback((on: boolean) => setNotice(on ? "Debug log on" : "Debug log off"), []),
+    useCallback((on: boolean) => setNotice(on ? partnerOn : partnerOff), [partnerOn, partnerOff]),
   );
   useEffect(() => {
     if (!notice) return;
@@ -2721,7 +2726,7 @@ function Study({
             {debug && (
               <>
                 <span className="mr-1 rounded bg-red-700 px-1 text-white" data-debug-badge>
-                  DEBUG
+                  {partnerName}
                 </span>
                 {/* Design prototypes, to try on the device itself. */}
                 {["slip", "cords"].map((p) => (

@@ -37,6 +37,7 @@
 import { ECHO_WINDOW_MS, type EchoScore, echoScore } from "./echo";
 import { aecOn, cloudOut, outMode } from "./voice-out";
 import { pickLang, pickVoice } from "./wire";
+import { getKey } from "./storage-keys";
 
 /** Capture resumes this long after the last utterance ends (the room's echo; hold mode). */
 export const RESUME_TAIL_MS = 400;
@@ -534,11 +535,7 @@ const synth = () =>
 
 /** Whether agent replies are read aloud on this device (on unless turned off). */
 export const speechEnabled = () => {
-  try {
-    return localStorage.getItem(SPEAK_KEY) !== "0";
-  } catch {
-    return true;
-  }
+  return getKey(SPEAK_KEY) !== "0";
 };
 
 /**

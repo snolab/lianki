@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { IntlayerServerProvider } from "next-intlayer/server";
+import { getIntlayer } from "intlayer";
 import { cookies, headers } from "next/headers";
 import { ServiceWorkerRegistration } from "./components/ServiceWorkerRegistration";
 import { NewVersionNotice } from "./components/NewVersionNotice";
-import { DebugEval } from "./components/DebugEval";
+import { DebugEval, type PartnerStrings } from "./components/DebugEval";
 import { LOCALE_HEADER, resolveLocale } from "@/lib/app-locale";
 import { LANG_TAGS } from "@/lib/constants";
 
@@ -47,6 +48,13 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await getRootLocale();
+  // The chat's user-facing name and strings ("Learning Partner"; code: debug).
+  const partner = Object.fromEntries(
+    Object.entries(getIntlayer("learning-partner", locale as never)).map(([k, v]) => [
+      k,
+      String(v),
+    ]),
+  ) as unknown as PartnerStrings;
   return (
     <html lang={LANG_TAGS[locale] ?? locale} suppressHydrationWarning>
       <head>
@@ -75,7 +83,7 @@ export default async function RootLayout({
         <IntlayerServerProvider locale={locale}>
           <ServiceWorkerRegistration />
           <NewVersionNotice />
-          <DebugEval />
+          <DebugEval strings={partner} />
           {children}
         </IntlayerServerProvider>
       </body>

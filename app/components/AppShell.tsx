@@ -10,6 +10,7 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import { FirstRunChoice, type FirstRunLabels } from "./FirstRunChoice";
 import { Icon, SealIcon } from "./icons";
 import { useDebugToggle } from "./useDebugToggle";
+import { useIntlayer } from "next-intlayer";
 
 const SIDEBAR_KEY = "lk:sidebar";
 
@@ -40,6 +41,8 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [debug, debugTap] = useDebugToggle(undefined, 10);
+  /** The debug chat's user-facing name ("Learning Partner"), shown while it is on. */
+  const partner = useIntlayer("learning-partner");
 
   // Read the persisted collapse state after mount — reading localStorage during
   // render would desync SSR and hydration.
@@ -241,7 +244,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
                     className="select-none touch-manipulation px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 truncate"
                   >
                     {user.email}
-                    {debug && " · debug"}
+                    {debug && ` · ${partner.name.value}`}
                   </div>
                   <MenuLink href="/list">{labels.dashboard}</MenuLink>
                   <MenuLink href="/profile">{labels.profile}</MenuLink>

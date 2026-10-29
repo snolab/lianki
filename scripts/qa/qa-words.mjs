@@ -400,6 +400,78 @@ try {
     await page.keyboard.press("Escape");
   }
 
+  // Users know debug mode as their "Learning Partner" (docs/dev-debug-widget.md,
+  // "Naming"): with it on (via the ?agent=1 alias), no visible text on /words,
+  // /profile or /preferences says "debug". Owner-only dev pages are exempt.
+  {
+    const origin = new URL(page.url()).origin;
+    const tab = await ctx.newPage();
+    const debugText = () =>
+      tab.evaluate(() => {
+        const hits = [];
+        const shown = (el) => {
+          if (!el) return false;
+          const r = el.getBoundingClientRect();
+          const cs = getComputedStyle(el);
+          return r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && cs.display !== "none";
+        };
+        const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+          const el = n.parentElement;
+          if (!el || el.closest("script,style,noscript")) continue;
+          if (/debug/i.test(n.textContent ?? "") && shown(el)) hits.push(n.textContent.trim());
+        }
+        for (const el of document.querySelectorAll("[aria-label],[title],[placeholder]")) {
+          for (const at of ["aria-label", "title", "placeholder"]) {
+            const v = el.getAttribute(at);
+            if (v && /debug/i.test(v)) hits.push(`${at}=${v}`);
+          }
+        }
+        return hits;
+      });
+    const seen = {};
+    for (const path of ["/words?agent=1", "/profile", "/preferences", "/words"]) {
+      await tab.goto(`${origin}${path}`, { waitUntil: "load" });
+      if (path.startsWith("/words"))
+        await tab
+          .locator("[data-debug-badge]")
+          .waitFor({ timeout: 10000 })
+          .catch(() => {});
+      else await tab.waitForTimeout(1500);
+      if (path === "/words") {
+        await tab
+          .locator("[data-profile-menu]")
+          .click()
+          .catch(() => {});
+        await tab
+          .locator("[data-debug-name]")
+          .waitFor({ timeout: 5000 })
+          .catch(() => {});
+      }
+      seen[path] = await debugText();
+    }
+    const flag = await tab.evaluate(() => [
+      localStorage.getItem("lk:agent"),
+      localStorage.getItem("lk:debug"),
+    ]);
+    const badge = (
+      await tab
+        .locator("[data-debug-badge]")
+        .innerText()
+        .catch(() => "")
+    ).trim();
+    check(
+      flag.join() === "1,1" && badge === "Learning Partner",
+      `?agent=1 turns the learning partner on under both keys (${flag.join()}, badge "${badge}")`,
+    );
+    check(
+      Object.values(seen).every((h) => h.length === 0),
+      `no visible "debug" on /words, /profile, /preferences with the feature on (${JSON.stringify(seen)})`,
+    );
+    await tab.goto(`${origin}/words?agent=0`, { waitUntil: "load" });
+    await tab.close();
+  }
+
   // /learn speaks the page's language (it used to be English-only) and links
   // AnkiWeb's shared decks for each language we teach.
   {
