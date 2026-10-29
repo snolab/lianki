@@ -6,6 +6,12 @@ import { Icon } from "./icons";
 
 /** Typing pauses this long before the draft is sent. */
 const DEBOUNCE_MS = 3_000;
+/**
+ * Dictation lands as one burst: more than BURST_CHARS arriving at once and
+ * ending a sentence goes out at once, without waiting for the debounce.
+ */
+const BURST_CHARS = 10;
+const ENDS_SENTENCE = /[。．.!?！？]$/;
 const OPEN_KEY = "lk:debug-chat-open";
 const SPEAK_KEY = "lk:debug-chat-speak";
 const POS_KEY = "lk:debug-chat-pos";
@@ -136,8 +142,9 @@ function when(at: number) {
  * The owner ⇄ agent chat (docs/monitoring.md, "Chat with the agent"): a small
  * box at the bottom right of a debug-mode page that holds the debug socket.
  * Whatever is typed goes out DEBOUNCE_MS after the last keystroke (or at once
- * on Enter; Shift+Enter is a newline), never in the middle of an IME
- * composition. Replies appear in the log above and are read aloud (the
+ * on Enter; Shift+Enter is a newline; or at once when dictation drops in more
+ * than BURST_CHARS ending a sentence), never in the middle of an IME
+ * composition. Translucent until touched or typed in. Replies appear in the log above and are read aloud (the
  * speaker toggle turns that off). Text only — nothing is rendered as HTML.
  */
 export function DebugChat({
@@ -187,10 +194,19 @@ export function DebugChat({
     if (!sendRef.current(text)) return setOffline(true);
     setOffline(false);
     draftRef.current = "";
+    settledLen.current = 0;
     setDraft("");
   };
+  /** The draft's length when it last changed outside an IME composition. */
+  const settledLen = useRef(0);
   const arm = () => {
     clearTimeout(timer.current);
+    if (!composing.current) {
+      const text = draftRef.current;
+      const burst = text.length - settledLen.current > BURST_CHARS;
+      settledLen.current = text.length;
+      if (burst && ENDS_SENTENCE.test(text.trim())) return submit();
+    }
     if (composing.current || !draftRef.current.trim()) return setArmed(0);
     setArmed((n) => n + 1);
     timer.current = setTimeout(submit, DEBOUNCE_MS);
@@ -228,7 +244,7 @@ export function DebugChat({
           handle.onPointerDown(e);
         }}
         aria-label={`Open chat with the agent${unread ? `, ${unread} new` : ""}`}
-        className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex items-center gap-1.5 rounded-full border border-gray-300 bg-white/95 px-3 py-1 text-xs text-gray-700 shadow dark:border-gray-700 dark:bg-gray-900/95 dark:text-gray-200"
+        className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex items-center opacity-60 transition-opacity active:opacity-100 gap-1.5 rounded-full border border-gray-300 bg-white/95 px-3 py-1 text-xs text-gray-700 shadow dark:border-gray-700 dark:bg-gray-900/95 dark:text-gray-200"
       >
         <span className="size-2 rounded-full" style={{ background: dot }} />
         chat
@@ -245,7 +261,7 @@ export function DebugChat({
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
       style={offset}
-      className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-xl border border-gray-300 bg-white/95 text-xs text-gray-800 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/95 dark:text-gray-100"
+      className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] opacity-60 transition-opacity focus-within:opacity-100 active:opacity-100 flex-col overflow-hidden rounded-xl border border-gray-300 bg-white/95 text-xs text-gray-800 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/95 dark:text-gray-100"
     >
       <header
         {...handle}
