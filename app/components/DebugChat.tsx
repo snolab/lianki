@@ -509,6 +509,7 @@ export function DebugChat({
               <textarea
                 ref={input}
                 rows={1}
+                // 16px: iOS zooms the whole page into any input under 16px.
                 value={draft}
                 maxLength={MAX_CHAT}
                 placeholder="Message the agent…"
@@ -549,7 +550,7 @@ export function DebugChat({
                   submit();
                 }}
                 style={{ background: INPUT_BG }}
-                className="pointer-events-auto block min-w-0 flex-1 resize-none pe-6 rounded-lg border border-current/25 px-2 py-1.5 text-sm outline-none placeholder:text-gray-400"
+                className="pointer-events-auto block min-w-0 flex-1 resize-none pe-6 rounded-lg border border-current/25 px-2 py-1 text-base outline-none placeholder:text-gray-400"
               />
             </div>
           </div>
