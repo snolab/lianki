@@ -126,6 +126,76 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   }
 }
 
+// 5c0. Regressions from the iOS device QA (2026-10-29).
+{
+  // /list delete buttons once read "[object Object]" (IntlayerNode in an
+  // attribute). Add a card so /list renders one.
+  const added = await page.evaluate(async () => {
+    const r = await fetch("/api/fsrs/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: "https://example.com/qa-ui-delete", title: "QA delete" }),
+    });
+    return r.status;
+  });
+  await page.goto(`${BASE}/list`, { waitUntil: "networkidle" });
+  const del = page.locator("li > button:last-child").first();
+  const title = added === 200 ? await del.getAttribute("title").catch(() => null) : null;
+  const label = added === 200 ? await del.getAttribute("aria-label").catch(() => null) : null;
+  check(
+    !!title && !!label && !/object Object/.test(title + label),
+    `/list delete button has a real title and label ("${title}" / "${label}", add HTTP ${added})`,
+  );
+
+  // <html lang> follows the app locale (it read "en" under a French UI).
+  await page.goto(`${BASE}/home?lang=fr`, { waitUntil: "networkidle" });
+  const lang = await page.evaluate(() => document.documentElement.lang);
+  check(lang === "fr", `<html lang> is the app locale on /home?lang=fr (${lang})`);
+  // ?lang= sticks in a cookie: switch back so the English names below match.
+  await page.goto(`${BASE}/home?lang=en`, { waitUntil: "networkidle" });
+
+  // Phone width: the drawer is a modal dialog that Escape closes, and the
+  // profile menu closes on a tap outside it (iOS never blurs its trigger).
+  const phone = await ctx.newPage();
+  await phone.setViewportSize({ width: 414, height: 848 });
+  await phone.goto(`${BASE}/home`, { waitUntil: "networkidle" });
+  await phone.getByRole("button", { name: "Menu", exact: true }).click();
+  const drawer = phone.locator('[data-drawer][role="dialog"][aria-modal="true"]');
+  const opened = await drawer
+    .waitFor({ timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
+  const backdrop = await phone.getByRole("button", { name: "Close menu" }).count();
+  await phone.keyboard.press("Escape");
+  const closed = await drawer
+    .waitFor({ state: "detached", timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
+  check(
+    opened && backdrop === 1 && closed,
+    `drawer: a modal dialog, backdrop "Close menu", Escape closes it (${opened}/${backdrop}/${closed})`,
+  );
+
+  await phone.locator("[data-profile-menu]").click();
+  const name = phone.locator("[data-debug-name]");
+  await name.waitFor({ timeout: 5000 });
+  await name.click();
+  const stillOpen = await name.isVisible();
+  // A plain tap on the page heading, outside the menu. Not locator.click():
+  // that refuses because the open menu overlaps the point.
+  const h1Box = await phone.locator("h1").first().boundingBox();
+  await phone.mouse.click(h1Box.x + 4, h1Box.y + h1Box.height / 2);
+  const shut = await name
+    .waitFor({ state: "detached", timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
+  check(
+    stillOpen && shut,
+    `profile menu: a tap on the name keeps it open, a tap outside closes it (${stillOpen}/${shut})`,
+  );
+  await phone.close();
+}
+
 // 5c. Passkeys: add one on the profile page, rename it, sign out, sign back in
 // with it, then delete it.
 {

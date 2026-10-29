@@ -374,6 +374,9 @@ try {
     await learn.goto(`${new URL(page.url()).origin}/learn`, { waitUntil: "load" });
     const bareH1 = (await learn.locator("h1").first().innerText()).trim();
     check(bareH1 === h1, `a bare /learn after ?lang=fr stays French ("${bareH1}")`);
+    // Back to English: /words is translated now too, and the checks below
+    // find its buttons by their English names.
+    await learn.goto(`${new URL(page.url()).origin}/learn?lang=en`, { waitUntil: "load" });
     await learn.close();
   }
 
