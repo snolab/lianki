@@ -365,3 +365,11 @@ ruby rt {
     transform: scaleX(0);
   }
 }
+
+/* Text over the page with no box behind it (the debug chat): a halo in the
+ * page colour keeps it legible on any background. */
+.lk-halo {
+  text-shadow:
+    0 0 3px var(--background),
+    0 0 6px var(--background);
+}
