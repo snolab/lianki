@@ -307,11 +307,7 @@ ruby rt {
 /* An unrevealed meaning is a blank left to be written in (留白), not blurred text. */
 .slip-blank {
   color: transparent;
-  background-image: repeating-linear-gradient(
-    90deg,
-    var(--foreground) 0 4px,
-    transparent 4px 8px
-  );
+  background-image: repeating-linear-gradient(90deg, var(--foreground) 0 4px, transparent 4px 8px);
   background-size: 100% 1px;
   background-repeat: no-repeat;
   background-position: 0 55%;
@@ -339,7 +335,33 @@ ruby rt {
   --ink-hard: oklch(0.6 0.14 70);
   --ink-good: oklch(0.52 0.12 150);
   --ink-easy: oklch(0.52 0.12 245);
-  --min-jerk: linear(0, 0.0007, 0.0051, 0.0161, 0.0355, 0.0645, 0.1035, 0.1522, 0.2099, 0.2752, 0.3466, 0.4222, 0.5, 0.5778, 0.6534, 0.7248, 0.7901, 0.8478, 0.8965, 0.9355, 0.9645, 0.9839, 0.9949, 0.9993, 1);
+  --min-jerk: linear(
+    0,
+    0.0007,
+    0.0051,
+    0.0161,
+    0.0355,
+    0.0645,
+    0.1035,
+    0.1522,
+    0.2099,
+    0.2752,
+    0.3466,
+    0.4222,
+    0.5,
+    0.5778,
+    0.6534,
+    0.7248,
+    0.7901,
+    0.8478,
+    0.8965,
+    0.9355,
+    0.9645,
+    0.9839,
+    0.9949,
+    0.9993,
+    1
+  );
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -470,4 +492,154 @@ ruby rt {
   top: 50%;
   height: max(100%, 40px);
   transform: translateY(-50%);
+}
+
+/* Glass overlays (docs/design-principles.md): toolbars, help strips and the
+ * tablet nav float over the content in the page's own colour, blurred. Where
+ * backdrop-filter is missing, or the user asks for less transparency, they go
+ * near-opaque instead. */
+:root {
+  --glass-bg: oklch(0.945 0.02 82 / 0.55);
+  --glass-bg-solid: oklch(0.945 0.02 82 / 0.9);
+  --glass-line: oklch(0.22 0.015 65 / 0.14);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --glass-bg: oklch(0.18 0.01 65 / 0.55);
+    --glass-bg-solid: oklch(0.18 0.01 65 / 0.9);
+    --glass-line: oklch(0.92 0.02 82 / 0.14);
+  }
+}
+.lk-glass {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  backdrop-filter: blur(12px) saturate(1.4);
+  text-shadow:
+    0 0 3px var(--background),
+    0 0 6px var(--background);
+}
+/* The header sits below the status bar (body pads it); its glass reaches up
+ * behind the notch, where the /words list also runs. */
+.lk-glass-bleed-top::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 100%;
+  height: env(safe-area-inset-top);
+  background: inherit;
+  -webkit-backdrop-filter: inherit;
+  backdrop-filter: inherit;
+}
+
+/* Tablet (768–1279px): the app nav floats over the content as glass and takes
+ * no layout width; the content is padded by its width (--nav-w, AppShell), so
+ * at rest nothing is covered while a swiped card slides under it. Phones keep
+ * the drawer, desktops the in-flow sidebar. */
+@media (min-width: 48rem) and (max-width: 79.99rem) {
+  .lk-nav-overlay {
+    position: fixed;
+    top: calc(3.5rem + env(safe-area-inset-top));
+    bottom: 0;
+    inset-inline-start: 0;
+    z-index: 30;
+    overflow-y: auto;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-color: var(--glass-line);
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    backdrop-filter: blur(12px) saturate(1.4);
+    text-shadow:
+      0 0 3px var(--background),
+      0 0 6px var(--background);
+  }
+  .lk-nav-pad {
+    padding-inline-start: var(--nav-w, 0px);
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lk-glass,
+  .lk-nav-overlay {
+    background: var(--glass-bg-solid);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .lk-glass,
+  .lk-nav-overlay {
+    background: var(--glass-bg-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* /words: the list fills the window edge to edge, under the header, the
+ * toolbar, the help strip and (tablet) the nav. Only the list scrolls. */
+.lk-words-list {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  --gutter: 0px;
+  padding-inline-start: max(var(--gutter), env(safe-area-inset-left));
+  padding-inline-end: max(var(--gutter), env(safe-area-inset-right));
+}
+.lk-words-list[data-touch="false"] {
+  --gutter: 0.75rem;
+}
+@media (min-width: 40rem) {
+  .lk-words-list[data-touch="false"] {
+    --gutter: 2rem;
+  }
+}
+@media (min-width: 48rem) and (max-width: 79.99rem) {
+  .lk-words-list {
+    padding-inline-start: calc(var(--nav-w, 0px) + var(--gutter));
+  }
+}
+@media (min-width: 80rem) {
+  .lk-words-list {
+    inset-inline-start: var(--nav-w, 0px);
+  }
+}
+/* The toolbar and the help strip span the content area: the full width on a
+ * phone, beside the nav from the tablet up. */
+.lk-words-bar {
+  position: fixed;
+  z-index: 20;
+  inset-inline: 0;
+  padding-inline-start: max(0.75rem, env(safe-area-inset-left));
+  padding-inline-end: max(0.75rem, env(safe-area-inset-right));
+}
+@media (min-width: 40rem) {
+  .lk-words-bar {
+    padding-inline: 2rem;
+  }
+}
+@media (min-width: 48rem) {
+  .lk-words-bar {
+    inset-inline-start: var(--nav-w, 0px);
+  }
+}
+
+/* The empty tray in the list's over-scroll: a card asleep. Static unless
+ * motion is welcome, then a short fade in. */
+.lk-tray {
+  --ink: oklch(0.62 0.02 260);
+  --soft: oklch(0.95 0.01 260);
+  --card: oklch(1 0 0);
+  --accent: oklch(0.7 0.08 250);
+}
+@media (prefers-color-scheme: dark) {
+  .lk-tray {
+    --soft: oklch(0.24 0.015 260);
+    --card: oklch(0.28 0.015 260);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lk-tray svg {
+    animation: lk-tray-in 0.6s ease-out both;
+  }
+}
+@keyframes lk-tray-in {
+  from {
+    opacity: 0;
+  }
 }
