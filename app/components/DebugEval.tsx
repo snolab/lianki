@@ -17,10 +17,12 @@ const IDLE_MS = 30_000;
 const TOAST_MS = 4_000;
 
 /**
- * Remote eval for the owner's debug session (docs/monitoring.md, "Remote eval
- * (owner debug)"). Only while this device is in debug mode (`lk:debug`) and
- * the page is visible, it holds a WebSocket to lianki-push's
- * /api/version/debug, which accepts it only for the owner's session.
+ * Remote eval and the agent chat for a debug session (docs/monitoring.md,
+ * "Remote eval (owner debug)" and "Friends"). Only while this device is in
+ * debug mode (`lk:debug`) and the page is visible, it holds a WebSocket to
+ * lianki-push's /api/version/debug, which accepts any signed-in user: the
+ * owner gets the owner's thread and pairings, anyone else (a friend) their
+ * own thread and only pairings made for them — shown as a "Preview" request.
  *
  * A sender (scripts/dev/eval.ts) asking to pair shows up here as a prompt with
  * its label and a short code it prints too; nothing runs unless the owner
@@ -44,7 +46,11 @@ export function DebugEval() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   /** The chat box stays up across reconnects, until debug mode is turned off. */
   const [chat, setChat] = useState(false);
+  /** null on the owner's pages; a friend's chat status otherwise. */
+  const [friend, setFriend] = useState<"open" | "blocked" | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const sockRef = useRef<WebSocket | null>(null);
+  const friendRef = useRef(false);
 
   useEffect(() => {
     if (typeof WebSocket === "undefined") return;
@@ -70,7 +76,7 @@ export function DebugEval() {
           stack: (err.stack ?? "").slice(0, 2000),
         };
       }
-      devLog({ ev: "eval-result", id, ...result });
+      if (!friendRef.current) devLog({ ev: "eval-result", id, ...result });
       try {
         sock.send(JSON.stringify({ type: "result", id, to, ...result }));
       } catch {}
@@ -89,7 +95,7 @@ export function DebugEval() {
         opened.add(sock);
         setLive(true);
         setChat(true);
-        devLog({ ev: "eval-socket", label });
+        if (!friendRef.current) devLog({ ev: "eval-socket", label });
       };
       sock.onmessage = (e) => {
         let msg: {
@@ -99,10 +105,23 @@ export function DebugEval() {
           code?: unknown;
           messages?: unknown;
           message?: unknown;
+          status?: unknown;
+          retryIn?: unknown;
         };
         try {
           msg = JSON.parse(String(e.data));
         } catch {
+          return;
+        }
+        if (msg.type === "friend-status") {
+          friendRef.current = true;
+          setFriend(msg.status === "blocked" ? "blocked" : "open");
+          if (msg.status === "blocked") setChat(true);
+          return;
+        }
+        if (msg.type === "rate-limited") {
+          const min = Math.max(1, Math.ceil(Number(msg.retryIn) / 60_000) || 1);
+          setWarning(`Too many messages: that one was not sent. Try again in ${min} min.`);
           return;
         }
         if (msg.type === "state") {
@@ -121,6 +140,7 @@ export function DebugEval() {
           );
           // Live replies only: history loaded on connect is never read out.
           if (m.from === "agent") speakReply(m.text);
+          else setWarning(null);
           return;
         }
         if (msg.type !== "eval") return;
@@ -129,20 +149,25 @@ export function DebugEval() {
         void run(sock, msg.id, msg.to, msg.code);
       };
       // Dropped by the network: reopen on that event if still wanted. One
-      // that never opened was refused (not the owner, or no push service
-      // here): leave it until the next visibility or debug event.
-      sock.onclose = () => {
+      // that never opened was refused (a guest, or no push service here), and
+      // one the hub closed on purpose (4xxx: blocked) stays closed: leave it
+      // until the next visibility or debug event.
+      sock.onclose = (e) => {
         if (ws !== sock) return;
         ws = null;
         sockRef.current = null;
         setLive(false);
         setState(null);
-        if (opened.has(sock) && wanted()) connect();
+        if (opened.has(sock) && e.code < 4000 && wanted()) connect();
       };
     };
     const disconnect = () => {
       clearTimeout(idle);
-      if (!debugOn()) setChat(false);
+      if (!debugOn()) {
+        setChat(false);
+        setFriend(null);
+        friendRef.current = false;
+      }
       const sock = ws;
       ws = null;
       sockRef.current = null;
@@ -180,7 +205,7 @@ export function DebugEval() {
         JSON.stringify(scope ? { type, pair: p.pair, scope } : { type, pair: p.pair }),
       );
     } catch {}
-    devLog({ ev: `eval-${type}`, label: p.label, code: p.code, scope });
+    if (!friendRef.current) devLog({ ev: `eval-${type}`, label: p.label, code: p.code, scope });
   };
   const sendChat = (text: string) => {
     const sock = sockRef.current;
@@ -195,82 +220,27 @@ export function DebugEval() {
 
   const pending = state?.pending ?? null;
   const sessions = state?.sessions ?? [];
+  const isFriend = friend !== null;
   if (!live && !toast && !chat) return null;
-  // The pairing prompt and the "eval ran" note: inside the chat box when it is
-  // up (nothing debug floats on the page then), else in the corner.
-  const promptEl = (
-    <div className="flex flex-col items-start gap-1" style={{ color: "oklch(0.98 0 0)" }}>
-      {pending && (
-        <div
-          role="alertdialog"
-          aria-label="Remote eval request"
-          className="rounded-lg p-3 shadow-lg"
-          style={{ background: "oklch(0.28 0.06 30 / 0.97)" }}
-        >
-          <p className="mb-1">
-            <b>{pending.label}</b> wants to run code on your debug pages, or to chat.
-          </p>
-          <p className="mb-2">
-            Code{" "}
-            <b className="font-mono text-sm" style={{ letterSpacing: "0.1em" }}>
-              {pending.code}
-            </b>{" "}
-            — allow only if your terminal shows the same.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => answer("allow", pending)}
-              className="rounded px-3 py-1"
-              style={{ background: "oklch(0.55 0.15 145)" }}
-            >
-              Allow for 1 hour
-            </button>
-            <button
-              type="button"
-              onClick={() => answer("allow", pending, "chat")}
-              className="rounded px-3 py-1"
-              style={{ background: "oklch(0.5 0.1 230)" }}
-              title="Chat only: it hears what you type in the chat box and can reply, but cannot run code"
-            >
-              Allow chat for 30 days
-            </button>
-            <button
-              type="button"
-              onClick={() => answer("deny", pending)}
-              className="rounded px-3 py-1"
-              style={{ background: "oklch(0.45 0.02 260)" }}
-            >
-              Deny
-            </button>
-          </div>
-        </div>
-      )}
-      {toast && (
-        <span
-          className="pointer-events-none rounded px-2 py-0.5 shadow"
-          style={{ background: "oklch(0.25 0.02 260 / 0.9)" }}
-        >
-          {toast}
-        </span>
-      )}
-    </div>
-  );
   return (
     <>
       {chat && (
         <DebugChat
           live={live}
-          listeners={sessions.length}
+          listeners={state?.listeners ?? sessions.length}
           messages={messages}
           onSend={sendChat}
+          notice={friend === "blocked" ? "Chat is not available for this account." : undefined}
+          warning={warning ?? undefined}
           sessions={sessions}
           onEnd={(x) => answer("revoke", x)}
           pending={pending}
           onAnswer={answer}
           evalRan={!!toast}
+          friend={isFriend}
         />
       )}
+      {/* With the chat box up, all of this lives inside it (nothing debug floats on the page). */}
       {!chat && (
         <div
           aria-live="polite"
@@ -278,7 +248,90 @@ export function DebugEval() {
           className="fixed bottom-2 left-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-start gap-1 text-xs"
           style={{ color: "oklch(0.98 0 0)" }}
         >
-          {promptEl}
+          {pending && isFriend && (
+            <div
+              role="alertdialog"
+              aria-label="Preview request"
+              data-debug-preview
+              className="rounded-lg p-3 shadow-lg"
+              style={{ background: "oklch(0.3 0.06 250 / 0.97)" }}
+            >
+              <p className="mb-1">
+                <b>{pending.label}</b> wants to preview a change on this page for 1 hour.
+              </p>
+              <p className="mb-2">
+                It can run code on your debug pages until then. Code{" "}
+                <b className="font-mono text-sm" style={{ letterSpacing: "0.1em" }}>
+                  {pending.code}
+                </b>{" "}
+                — allow only if the agent told you the same in the chat.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => answer("allow", pending)}
+                  className="rounded px-3 py-1"
+                  style={{ background: "oklch(0.55 0.15 145)" }}
+                >
+                  Allow for 1 hour
+                </button>
+                <button
+                  type="button"
+                  onClick={() => answer("deny", pending)}
+                  className="rounded px-3 py-1"
+                  style={{ background: "oklch(0.45 0.02 260)" }}
+                >
+                  Deny
+                </button>
+              </div>
+            </div>
+          )}
+          {pending && !isFriend && (
+            <div
+              role="alertdialog"
+              aria-label="Remote eval request"
+              className="rounded-lg p-3 shadow-lg"
+              style={{ background: "oklch(0.28 0.06 30 / 0.97)" }}
+            >
+              <p className="mb-1">
+                <b>{pending.label}</b> wants to run code on your debug pages, or to chat.
+              </p>
+              <p className="mb-2">
+                Code{" "}
+                <b className="font-mono text-sm" style={{ letterSpacing: "0.1em" }}>
+                  {pending.code}
+                </b>{" "}
+                — allow only if your terminal shows the same.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => answer("allow", pending)}
+                  className="rounded px-3 py-1"
+                  style={{ background: "oklch(0.55 0.15 145)" }}
+                >
+                  Allow for 1 hour
+                </button>
+                <button
+                  type="button"
+                  onClick={() => answer("allow", pending, "chat")}
+                  className="rounded px-3 py-1"
+                  style={{ background: "oklch(0.5 0.1 230)" }}
+                  title="Chat only: it hears what you type in the chat box and can reply, but cannot run code"
+                >
+                  Allow chat for 30 days
+                </button>
+                <button
+                  type="button"
+                  onClick={() => answer("deny", pending)}
+                  className="rounded px-3 py-1"
+                  style={{ background: "oklch(0.45 0.02 260)" }}
+                >
+                  Deny
+                </button>
+              </div>
+            </div>
+          )}
           {sessions.map((s) => (
             <div
               key={s.pair}
@@ -286,7 +339,7 @@ export function DebugEval() {
               style={{ background: "oklch(0.55 0.15 30 / 0.9)" }}
             >
               <span title={`until ${new Date(s.until ?? 0).toISOString()}`}>
-                {s.scope === "chat" ? "chat" : "eval"}: {s.label} · {s.code}
+                {isFriend ? "preview" : s.scope === "chat" ? "chat" : "eval"}: {s.label} · {s.code}
               </span>
               <button
                 type="button"
@@ -298,6 +351,14 @@ export function DebugEval() {
               </button>
             </div>
           ))}
+          {toast && (
+            <span
+              className="pointer-events-none rounded px-2 py-0.5 shadow"
+              style={{ background: "oklch(0.25 0.02 260 / 0.9)" }}
+            >
+              {toast}
+            </span>
+          )}
         </div>
       )}
     </>

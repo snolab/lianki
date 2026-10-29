@@ -159,6 +159,9 @@ export function DebugChat({
   pending = null,
   onAnswer,
   evalRan = false,
+  friend = false,
+  notice,
+  warning,
 }: {
   live: boolean;
   listeners: number;
@@ -172,6 +175,12 @@ export function DebugChat({
   onAnswer?: (type: "allow" | "deny", p: PairInfo, scope?: "chat") => void;
   /** Code just ran on this page: the eval icon pulses for a moment. */
   evalRan?: boolean;
+  /** A friend's page: pairings are previews (no chat scope to grant). */
+  friend?: boolean;
+  /** Shown instead of the input when this account cannot chat (blocked). */
+  notice?: string;
+  /** A one-line note above the input (a message dropped by the rate limit). */
+  warning?: string;
 }) {
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
@@ -273,13 +282,15 @@ export function DebugChat({
 
   const unread = messages.slice(seen).filter((m) => m.from === "agent").length;
   const dot = live ? "oklch(0.68 0.16 150)" : "oklch(0.62 0.02 70)";
-  const status = offline
-    ? "not connected — your draft is kept"
-    : !live
-      ? "reconnecting…"
-      : listeners
-        ? `agent listening (${listeners})`
-        : "connected · no agent listening";
+  const status = notice
+    ? "chat unavailable"
+    : offline
+      ? "not connected — your draft is kept"
+      : !live
+        ? "reconnecting…"
+        : listeners
+          ? `agent listening (${listeners})`
+          : "connected · no agent listening";
 
   if (!open)
     return (
@@ -321,7 +332,7 @@ export function DebugChat({
             .map((x) => (
               <span
                 key={x.pair}
-                title={`eval: ${x.label} · ${x.code}`}
+                title={`${friend ? "preview" : "eval"}: ${x.label} · ${x.code}`}
                 className={`inline-flex size-4 items-center justify-center rounded-full text-[9px] text-white ${evalRan ? "animate-pulse" : "opacity-70"}`}
                 style={{ background: "oklch(0.55 0.15 30)" }}
               >
@@ -335,7 +346,11 @@ export function DebugChat({
               aria-label={`${pending.label} wants to run code or chat; code ${pending.code}`}
               className="pointer-events-auto inline-flex items-center gap-1 rounded-full py-0.5 ps-1.5 pe-0.5 text-[10px] text-white"
               style={{ background: "oklch(0.45 0.12 30)" }}
-              title={`${pending.label} wants to run code on your debug pages, or to chat. Allow only if your terminal shows the same code.`}
+              title={
+                friend
+                  ? `${pending.label} wants to preview a change on this page for 1 hour. Allow only if the agent told you the same code in the chat.`
+                  : `${pending.label} wants to run code on your debug pages, or to chat. Allow only if your terminal shows the same code.`
+              }
             >
               <Icon name="lock" />
               <b className="font-mono tracking-wider">{pending.code}</b>
@@ -348,15 +363,17 @@ export function DebugChat({
               >
                 1h
               </button>
-              <button
-                type="button"
-                onClick={() => onAnswer?.("allow", pending, "chat")}
-                className="rounded-full px-1.5"
-                style={{ background: "oklch(0.5 0.1 230)" }}
-                title="Chat only, for 30 days"
-              >
-                chat
-              </button>
+              {!friend && (
+                <button
+                  type="button"
+                  onClick={() => onAnswer?.("allow", pending, "chat")}
+                  className="rounded-full px-1.5"
+                  style={{ background: "oklch(0.5 0.1 230)" }}
+                  title="Chat only, for 30 days"
+                >
+                  chat
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onAnswer?.("deny", pending)}
@@ -385,142 +402,159 @@ export function DebugChat({
             <span
               className="me-1 font-medium"
               style={{
-                color: m.from === "owner" ? "oklch(0.55 0.13 250)" : "oklch(0.55 0.14 150)",
+                color: m.from !== "agent" ? "oklch(0.55 0.13 250)" : "oklch(0.55 0.14 150)",
               }}
             >
-              {m.from === "owner" ? "you" : m.label || "agent"}:
+              {m.from !== "agent" ? "you" : m.label || "agent"}:
             </span>
             {m.text}
           </li>
         ))}
       </ol>
-      {/* The log above is click-through: taps reach the page under it. Only the
-          grip and the input take pointer events. */}
-      <div className="relative flex items-stretch gap-1">
-        {/* No title bar: the grip drags the box, and a double tap on it opens
-            the menu (status, read-aloud, minimize). Its dot is the connection. */}
-        <button
-          type="button"
-          data-drag-handle
-          aria-label="Drag the chat box; double tap for its menu"
-          aria-expanded={menu}
-          title={status}
-          {...handle}
-          onClick={(e) => {
-            if (wasDrag()) return;
-            const second = e.timeStamp - lastGripTap.current < 350;
-            lastGripTap.current = second ? 0 : e.timeStamp;
-            if (second) setMenu((m) => !m);
-          }}
-          style={{ ...handle.style, background: INPUT_BG }}
-          className="pointer-events-auto relative shrink-0 rounded-lg border border-current/25 px-1.5 text-base leading-none text-gray-500"
-        >
-          ⠿
-          <span
-            aria-hidden
-            className="absolute end-0.5 top-0.5 size-1.5 rounded-full"
-            style={{ background: dot }}
-          />
-        </button>
-        {menu && (
-          <div
-            role="menu"
-            data-debug-chat-menu
-            style={{ background: INPUT_BG }}
-            className="pointer-events-auto absolute bottom-full start-0 mb-1 flex min-w-48 flex-col rounded-lg border border-current/25 py-1 text-xs backdrop-blur"
-          >
-            <span className="px-3 py-1 text-gray-500" aria-live="polite">
-              {status}
-            </span>
-            <button
-              type="button"
-              role="menuitemcheckbox"
-              aria-checked={speak}
-              onClick={toggleSpeak}
-              className="flex items-center gap-2 px-3 py-1.5 text-start"
-            >
-              <Icon name="speakerHigh" weight={speak ? "fill" : "regular"} />
-              {speak ? "Replies read aloud" : "Replies silent"}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenu(false);
-                toggle(false);
-              }}
-              className="flex items-center gap-2 px-3 py-1.5 text-start"
-            >
-              <span className="w-[1em] text-center">–</span>
-              Minimize
-            </button>
-            {sessions.map((x) => (
-              <div key={x.pair} className="flex items-center gap-2 px-3 py-1 text-gray-500">
-                <span className="min-w-0 flex-1 truncate">
-                  {x.scope === "chat" ? "chat" : "eval"}: {x.label} · {x.code}
-                </span>
-                <button type="button" onClick={() => onEnd?.(x)} className="underline">
-                  End
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        {armed > 0 && (
-          <div
-            key={armed}
-            aria-hidden
-            className="lk-drain absolute inset-x-0 top-0 h-0.5 bg-blue-600/60"
-          />
-        )}
-        <div className="relative flex min-w-0 flex-1">
-          <textarea
-            ref={input}
-            rows={1}
-            value={draft}
-            maxLength={MAX_CHAT}
-            placeholder="Message the agent…"
-            aria-label="Message the agent"
-            onChange={(e) => {
-              draftRef.current = e.target.value;
-              setDraft(e.target.value);
-              setOffline(false);
-              cancelSpeech();
-              arm();
-            }}
-            onCompositionStart={() => {
-              composing.current = true;
-              clearTimeout(timer.current);
-              setArmed(0);
-            }}
-            onCompositionEnd={() => {
-              composing.current = false;
-              arm();
-            }}
-            // Android's keyboards report every key as 229, so Enter never
-            // reaches onKeyDown as "Enter": the line break itself is the cue.
-            onBeforeInput={(e) => {
-              const type = (e.nativeEvent as InputEvent).inputType;
-              if (type !== "insertLineBreak" && type !== "insertParagraph") return;
-              if (composing.current || (e.nativeEvent as InputEvent).isComposing) return;
-              if (shiftEnter.current) return; // Shift+Enter: a newline, as on desktop
-              e.preventDefault();
-              submit();
-            }}
-            onKeyDown={(e) => {
-              shiftEnter.current = e.key === "Enter" && e.shiftKey;
-              if (e.key !== "Enter" || e.shiftKey) return;
-              // Enter that confirms an IME candidate (Safari reports it as 229
-              // after compositionend) must not send.
-              if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229) return;
-              e.preventDefault();
-              submit();
-            }}
-            style={{ background: INPUT_BG }}
-            className="pointer-events-auto block min-w-0 flex-1 resize-none pe-6 rounded-lg border border-current/25 px-2 py-1.5 text-sm outline-none placeholder:text-gray-400"
-          />
+      {warning && (
+        <div role="alert" className="px-2 pt-1 text-[10px]" style={{ color: "oklch(0.6 0.17 45)" }}>
+          {warning}
         </div>
-      </div>
+      )}
+      {notice ? (
+        <p
+          role="status"
+          data-debug-chat-notice
+          className="pointer-events-auto px-2 py-2 text-gray-600 dark:text-gray-400"
+        >
+          {notice}
+        </p>
+      ) : (
+        <>
+          {/* The log above is click-through: taps reach the page under it. Only the
+          grip and the input take pointer events. */}
+          <div className="relative flex items-stretch gap-1">
+            {/* No title bar: the grip drags the box, and a double tap on it opens
+            the menu (status, read-aloud, minimize). Its dot is the connection. */}
+            <button
+              type="button"
+              data-drag-handle
+              aria-label="Drag the chat box; double tap for its menu"
+              aria-expanded={menu}
+              title={status}
+              {...handle}
+              onClick={(e) => {
+                if (wasDrag()) return;
+                const second = e.timeStamp - lastGripTap.current < 350;
+                lastGripTap.current = second ? 0 : e.timeStamp;
+                if (second) setMenu((m) => !m);
+              }}
+              style={{ ...handle.style, background: INPUT_BG }}
+              className="pointer-events-auto relative shrink-0 rounded-lg border border-current/25 px-1.5 text-base leading-none text-gray-500"
+            >
+              ⠿
+              <span
+                aria-hidden
+                className="absolute end-0.5 top-0.5 size-1.5 rounded-full"
+                style={{ background: dot }}
+              />
+            </button>
+            {menu && (
+              <div
+                role="menu"
+                data-debug-chat-menu
+                style={{ background: INPUT_BG }}
+                className="pointer-events-auto absolute bottom-full start-0 mb-1 flex min-w-48 flex-col rounded-lg border border-current/25 py-1 text-xs backdrop-blur"
+              >
+                <span className="px-3 py-1 text-gray-500" aria-live="polite">
+                  {status}
+                </span>
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={speak}
+                  onClick={toggleSpeak}
+                  className="flex items-center gap-2 px-3 py-1.5 text-start"
+                >
+                  <Icon name="speakerHigh" weight={speak ? "fill" : "regular"} />
+                  {speak ? "Replies read aloud" : "Replies silent"}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    toggle(false);
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 text-start"
+                >
+                  <span className="w-[1em] text-center">–</span>
+                  Minimize
+                </button>
+                {sessions.map((x) => (
+                  <div key={x.pair} className="flex items-center gap-2 px-3 py-1 text-gray-500">
+                    <span className="min-w-0 flex-1 truncate">
+                      {x.scope === "chat" ? "chat" : "eval"}: {x.label} · {x.code}
+                    </span>
+                    <button type="button" onClick={() => onEnd?.(x)} className="underline">
+                      End
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {armed > 0 && (
+              <div
+                key={armed}
+                aria-hidden
+                className="lk-drain absolute inset-x-0 top-0 h-0.5 bg-blue-600/60"
+              />
+            )}
+            <div className="relative flex min-w-0 flex-1">
+              <textarea
+                ref={input}
+                rows={1}
+                value={draft}
+                maxLength={MAX_CHAT}
+                placeholder="Message the agent…"
+                aria-label="Message the agent"
+                onChange={(e) => {
+                  draftRef.current = e.target.value;
+                  setDraft(e.target.value);
+                  setOffline(false);
+                  cancelSpeech();
+                  arm();
+                }}
+                onCompositionStart={() => {
+                  composing.current = true;
+                  clearTimeout(timer.current);
+                  setArmed(0);
+                }}
+                onCompositionEnd={() => {
+                  composing.current = false;
+                  arm();
+                }}
+                // Android's keyboards report every key as 229, so Enter never
+                // reaches onKeyDown as "Enter": the line break itself is the cue.
+                onBeforeInput={(e) => {
+                  const type = (e.nativeEvent as InputEvent).inputType;
+                  if (type !== "insertLineBreak" && type !== "insertParagraph") return;
+                  if (composing.current || (e.nativeEvent as InputEvent).isComposing) return;
+                  if (shiftEnter.current) return; // Shift+Enter: a newline, as on desktop
+                  e.preventDefault();
+                  submit();
+                }}
+                onKeyDown={(e) => {
+                  shiftEnter.current = e.key === "Enter" && e.shiftKey;
+                  if (e.key !== "Enter" || e.shiftKey) return;
+                  // Enter that confirms an IME candidate (Safari reports it as 229
+                  // after compositionend) must not send.
+                  if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229) return;
+                  e.preventDefault();
+                  submit();
+                }}
+                style={{ background: INPUT_BG }}
+                className="pointer-events-auto block min-w-0 flex-1 resize-none pe-6 rounded-lg border border-current/25 px-2 py-1.5 text-sm outline-none placeholder:text-gray-400"
+              />
+            </div>
+          </div>
+        </>
+      )}
     </section>
   );
 }

@@ -32,6 +32,13 @@ export default async function LabPage() {
       blurb: experiments.immersion.blurb,
       stat: `${IMMERSION_DOMAINS.length} topics × ${IMMERSION_LANGUAGES.length} languages`,
     },
+    {
+      href: "/words",
+      icon: "arrowsLeftRight" as const,
+      title: experiments.swipe.title,
+      blurb: experiments.swipe.blurb,
+      stat: experiments.swipe.howTo,
+    },
   ];
 
   return (

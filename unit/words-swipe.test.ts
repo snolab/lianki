@@ -1,49 +1,64 @@
 import { describe, expect, test } from "bun:test";
 import {
-  clampSwipe,
+  levelRating,
   lockAxis,
-  projectSwipe,
+  releaseLevel,
   releaseRating,
   releaseVelocity,
-  swipeRating,
-  swipeTier,
+  snapSwipe,
+  springProgress,
+  swipeLevel,
 } from "@/lib/words/swipe";
 
-describe("swipe physics", () => {
-  test("tiers by resting position: mild up to 1.5a, strong beyond; 2a is the stop", () => {
-    const a = 44;
-    expect(swipeRating(0, a)).toBeNull();
-    expect(swipeRating(10, a)).toBeNull();
-    expect(swipeRating(30, a)).toBe(3);
-    expect(swipeRating(66, a)).toBe(3);
-    expect(swipeRating(67, a)).toBe(4);
-    expect(swipeRating(-30, a)).toBe(2);
-    expect(swipeRating(-80, a)).toBe(1);
-    expect(swipeTier(5)).toBe(0);
-    expect(swipeTier(-60)).toBe(1);
-    expect(swipeTier(-70)).toBe(2);
+describe("swipe detents", () => {
+  const a = 44;
+  test("the row snaps: a quarter of the finger on a level, 1.75× between", () => {
+    expect(snapSwipe(0, a)).toBe(0);
+    expect(snapSwipe(44, a)).toBeCloseTo(44, 6);
+    expect(snapSwipe(-88, a)).toBeCloseTo(-88, 6);
+    // On a level the row gives a little; between levels it slides on.
+    const slope = (f: number) => (snapSwipe(f + 0.01, a) - snapSwipe(f, a)) / 0.01;
+    expect(slope(44)).toBeCloseTo(0.25, 2);
+    expect(slope(22)).toBeCloseTo(1.75, 2);
+    // Smooth through every level: no jumps.
+    for (let f = -120; f < 120; f += 0.5)
+      expect(Math.abs(snapSwipe(f + 0.5, a) - snapSwipe(f, a))).toBeLessThan(1);
   });
 
-  test("beyond a the row resists; it stops at 2a", () => {
-    const a = 44;
-    expect(clampSwipe(30, a)).toBe(30);
-    expect(clampSwipe(64, a)).toBe(52); // 20px past a moves 8
-    expect(clampSwipe(-500, a)).toBe(-88);
-    // An 80px drag stays mild; reaching strong takes ~2.25a (99px) of finger.
-    expect(swipeRating(clampSwipe(80, a), a)).toBe(3);
-    expect(swipeRating(clampSwipe(100, a), a)).toBe(4);
+  test("past the last level it stretches, then stops", () => {
+    expect(snapSwipe(98, a)).toBeCloseTo(88 + 10 * 0.3, 6);
+    expect(snapSwipe(-500, a)).toBe(-110);
   });
 
-  test("a flick coasts further than a slow drag, but never past the stop", () => {
-    expect(swipeRating(projectSwipe(30, 0.05))).toBe(3);
-    expect(swipeRating(projectSwipe(30, 0.5))).toBe(3);
-    expect(swipeRating(projectSwipe(30, 1))).toBe(3);
-    expect(swipeRating(projectSwipe(30, 2.5))).toBe(4);
-    expect(swipeRating(projectSwipe(-30, -1.2))).toBe(2);
-    expect(swipeRating(projectSwipe(-30, -2.5))).toBe(1);
-    expect(projectSwipe(30, 50)).toBe(88);
+  test("levels have hysteresis: 0→1 at 0.6L, 1→2 at 1.6L, and back the same", () => {
+    expect(swipeLevel(26, 0, a)).toBe(0);
+    expect(swipeLevel(27, 0, a)).toBe(1);
+    expect(swipeLevel(70, 1, a)).toBe(1);
+    expect(swipeLevel(71, 1, a)).toBe(2);
+    expect(swipeLevel(66, 2, a)).toBe(2); // resting on the line keeps the level
+    expect(swipeLevel(61, 2, a)).toBe(1);
+    expect(swipeLevel(-71, 0, a)).toBe(-2);
+    expect(swipeLevel(500, 0, a)).toBe(2);
+    expect([-2, -1, 0, 1, 2].map(levelRating)).toEqual([1, 2, null, 3, 4]);
   });
 
+  test("a flick moves at most one level past where it was held", () => {
+    expect(releaseLevel(30, 0, 1, a)).toBe(1);
+    expect(releaseLevel(30, 3, 1, a)).toBe(2);
+    expect(releaseLevel(5, 10, 0, a)).toBe(1);
+    expect(releaseLevel(-30, -3, -1, a)).toBe(-2);
+  });
+
+  test("the return spring settles at 1 and never overshoots", () => {
+    expect(springProgress(0)).toBe(0);
+    expect(springProgress(1)).toBe(1);
+    let last = 0;
+    for (let t = 0; t <= 1; t += 0.05) {
+      expect(springProgress(t)).toBeGreaterThanOrEqual(last);
+      last = springProgress(t);
+    }
+    expect(springProgress(0.95)).toBeGreaterThan(0.99);
+  });
   test("release velocity: recent samples only, zero after a pause", () => {
     const s = [
       { t: 0, x: 0 },
@@ -78,12 +93,12 @@ describe("swipe vs scroll", () => {
 
   test("a twitch never grades, however fast", () => {
     expect(releaseRating(10, 3)).toBeNull();
-    expect(releaseRating(20, 1.5)).toBe(3);
-    expect(releaseRating(20, 3)).toBe(4);
-    expect(releaseRating(20, 0)).toBe(3);
-    expect(releaseRating(20, 0.5)).toBe(3);
+    // Held on no level: a slow lift grades nothing, a flick only the mild grade.
+    expect(releaseRating(20, 0)).toBeNull();
+    expect(releaseRating(20, 3)).toBe(3);
+    expect(releaseRating(30, 0)).toBe(3);
+    expect(releaseRating(30, 3, 1)).toBe(4);
     expect(releaseRating(-50, 0)).toBe(2);
-    expect(releaseRating(-70, 0)).toBe(2);
-    expect(releaseRating(-110, 0)).toBe(1);
+    expect(releaseRating(-80, 0)).toBe(1);
   });
 });
