@@ -43,7 +43,7 @@ the output changed it sends `reload`. The page re-imports
 `debug-chat.js?v=<rev>` and re-mounts the widget. The messages, the socket
 and the pairings live in DebugEval and are passed in as props. Position,
 open/closed and read-aloud are in localStorage. A re-mount loses none of it,
-only a half-typed draft. The grip's menu (double tap) says
+only a half-typed draft. The pill's menu (its ⋯) says
 `dev widget: <host> · <rev>`, or why it fell back.
 
 ## How it works

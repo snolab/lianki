@@ -88,6 +88,9 @@ describe("the widget build", () => {
     expect(candidates('className="a b-[1px]" x={`c ${d}`}')).toEqual(
       expect.arrayContaining(["a", "b-[1px]", "c"]),
     );
+    expect(candidates('className="w-[min(20rem,calc(100vw-1rem))]"')).toContain(
+      "w-[min(20rem,calc(100vw-1rem))]",
+    );
     expect(themeBlock("x{} @theme { --a: 1; .b { c: d } } y{}")).toBe(
       "@theme { --a: 1; .b { c: d } }",
     );

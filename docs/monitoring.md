@@ -102,7 +102,7 @@ pages. With none valid, only the answering page is granted. Only `"all"` also
 covers pages that connect later, and a page from before that sends no `pages`
 means `"all"`. A page-scoped pairing's evals, busy beats and live `say`
 replies (so also read-aloud) reach those pages only; history stays per
-thread. Another page can join later with "Add this page" in the grip menu
+thread. Another page can join later with "Add this page" in the pill's menu
 (the same `allow` sent for an approved pairing), and for a chat grant that is
 saved with the grant, so resumed `say` sockets keep it. If every page an eval
 pairing was granted is gone, its next eval gets `{type:"error"}` and the
@@ -208,16 +208,21 @@ session listing carry the current path) and sends the listeners
 JSON line. Silent on the page, never stored, never in the chat log. A
 friend's page can only relabel its own socket.
 
-**The grip and its menu.** The ⠿ grip (2.25rem wide) shows only the glyph
-and a dot, green while the socket is live. Drag it to move the box; a tap
-minimizes the box (after 280 ms, so that a double tap can cancel it; the
-collapsed pill restores on a tap); a double tap opens the menu
-(`lib/tap-gesture.ts`). While the grip is held, the input shows "drag: move
-· tap: minimize · double-tap: menu", as its placeholder, or over the draft
-(`debug-chat-drag-hint`). Right after the grip, each eval or preview session
-has a button (a 32px target around a 16px icon, `debug-chat-icon-eval`, which
-pulses when code just ran): a tap opens the menu scrolled to that session's
-row, where its End is, and a long press shows its label. The menu lists every open debug page of this chat (the
+**The pill and its menu.** No title bar: a small pill at the start of the
+input row (`debug-chat-pill`) has two zones, each at least 32px, with a
+divider. The left zone (`debug-chat-pill-min`) holds the liagent mark
+(`packages/debug-chat/src/LiagentMark.tsx`) and a dot, green while the socket
+is live: a tap minimizes or restores the box (after 280 ms, so that a double
+tap can cancel it), and a double tap opens the menu (`lib/tap-gesture.ts`).
+The right zone (`debug-chat-pill-menu`) shows the eval/preview sessions (a
+play icon and their count, pulsing when code just ran) or ⋯; a tap opens the
+menu at once. A drag anywhere on the pill moves the box, and never counts as
+a tap. Minimized, only the pill stays (`debug-chat-minimized`, at 0.6
+opacity, with an unread badge `debug-chat-pill-unread`), where it sat in the
+box and with the same saved offset, so restoring puts the input row back
+there, clamped on screen. While the pill is held, the input shows "drag:
+move · tap: minimize · double-tap or ⋯: menu", as its placeholder, or over
+the draft (`debug-chat-drag-hint`). The menu lists every open debug page of this chat (the
 owner's own, or a friend's own: the hub's `state` carries `pages: [{id,
 label, at}]` and `self`, rebroadcast when a page connects, leaves or moves).
 Each row shows the path and a device hint ("pwa · Android", "iPhone"). Tapping
@@ -273,12 +278,13 @@ The beat process holds a chat-grant socket while it runs, so the page's
 **Test ids.** Every part of the debug UI has a `data-testid`, for evals and
 tests:
 
-- The chat box: `debug-chat` (root), `debug-chat-pill` (collapsed),
-  `debug-chat-log`, `debug-chat-line` (with `data-from`), `debug-chat-input`,
-  `debug-chat-grip`, `debug-chat-drag-hint`, `debug-chat-icons`,
-  `debug-chat-icon-eval`, `debug-chat-bottom`, `debug-chat-busy`,
-  `debug-chat-notice` and `debug-chat-warning`.
-- The grip menu: `debug-menu`, `debug-menu-status`, `debug-menu-note` (where
+- The chat box: `debug-chat` (root), `debug-chat-minimized` (minimized),
+  `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-pill-menu`,
+  `debug-chat-pill-unread`, `debug-chat-log`, `debug-chat-line` (with
+  `data-from`), `debug-chat-input`, `debug-chat-drag-hint`,
+  `debug-chat-bottom`, `debug-chat-busy`, `debug-chat-notice` and
+  `debug-chat-warning`.
+- The pill's menu: `debug-menu`, `debug-menu-status`, `debug-menu-note` (where
   the widget came from, or why it fell back), `debug-menu-speak`,
   `debug-menu-minimize`, `debug-menu-page` (`data-self` on this one),
   `debug-menu-page-open`, `debug-menu-page-end`, `debug-menu-session`,
@@ -288,7 +294,7 @@ tests:
   `debug-modal-allow-all` and `debug-modal-deny`.
 - DebugEval's fallback (no chat box): `debug-eval`, with
   `debug-menu-session`, `debug-menu-session-end` (chat grants too) and
-  `debug-chat-icon-eval` named as above.
+  `debug-chat-icon-eval` (its eval icon).
 
 **Hot-loading the widget.** The chat box itself can be loaded live from a
 dev server on the owner's pages, to see UI changes without a deploy:

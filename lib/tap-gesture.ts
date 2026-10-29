@@ -34,3 +34,31 @@ export function createTapper(d: {
     },
   };
 }
+
+/** How long after a drag ends its click is still "the click that ended a drag". */
+export const DRAG_CLICK_MS = 400;
+
+/**
+ * Tells the click that ends a drag from a real tap. The flag is cleared by
+ * the next pointerdown and expires after DRAG_CLICK_MS, so a browser that
+ * sends no click after a touch drag (iOS) never swallows the next tap.
+ */
+export function createDragFlag(now: () => number = Date.now) {
+  let endedAt: number | null = null;
+  return {
+    /** A press starts: whatever came before is over. */
+    down() {
+      endedAt = null;
+    },
+    /** A press that moved has ended. */
+    dragEnded() {
+      endedAt = now();
+    },
+    /** For the click that follows: was it the end of a drag? (Read once.) */
+    wasDrag() {
+      const d = endedAt !== null && now() - endedAt < DRAG_CLICK_MS;
+      endedAt = null;
+      return d;
+    },
+  };
+}

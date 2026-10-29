@@ -57,9 +57,9 @@ export function reactFromPage(): BunPlugin {
   };
 }
 
-/** Class-name candidates in source text, for Tailwind (it drops what is not a utility). */
+/** Class-name candidates in source text, for Tailwind (it drops what is not a utility). Commas stay: w-[min(20rem,calc(100vw-1rem))]. */
 export function candidates(src: string): string[] {
-  return [...new Set(src.split(/[\s"'`{}<>;,]+/).filter((t) => t && t.length < 200))];
+  return [...new Set(src.split(/[\s"'`{}<>;]+/).filter((t) => t && t.length < 200))];
 }
 
 /** The first top-level `@theme { … }` block of a stylesheet (the app's palette). */

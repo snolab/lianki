@@ -10,7 +10,8 @@ import {
   pickLang,
   pickVoice,
 } from "@/lib/dev-eval";
-import { createTapper } from "@/lib/tap-gesture";
+import { LiagentMark } from "@lianki/debug-chat/LiagentMark";
+import { createDragFlag, createTapper } from "@/lib/tap-gesture";
 import { Icon } from "./icons";
 
 /** Typing pauses this long before the draft is sent. */
@@ -25,12 +26,10 @@ const OPEN_KEY = "lk:debug-chat-open";
 /** How long "Tap again to end the chat" waits for the second tap. */
 const END_CONFIRM_MS = 3_000;
 const SPEAK_KEY = "lk:debug-chat-speak";
-/** In the input while the grip is held. */
-const DRAG_HINT = "drag: move · tap: minimize · double-tap: menu";
+/** In the input while the pill is held. */
+const DRAG_HINT = "drag: move · tap: minimize · double-tap or ⋯: menu";
 const POS_KEY = "lk:debug-chat-pos";
-/** Holding a session icon this long shows its label. */
-const LONG_PRESS_MS = 500;
-/** The input and its grip: the page shows through at about half. */
+/** The input and its pill: the page shows through at about half. */
 const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
 /** Older lines dissolve at the log's top edge (only once there is more than fits). */
 const FADE = "linear-gradient(to bottom, transparent, black 2.5rem)";
@@ -52,15 +51,16 @@ function useDrag() {
   const drag = useRef<{ px: number; py: number; x: number; y: number; moved: boolean } | null>(
     null,
   );
-  const dragged = useRef(false);
-  /** The grip is held down: the input shows how to use it. */
+  /** The click that ends a drag is not a tap (cleared on the next press, or after 400 ms). */
+  const dragged = useRef(createDragFlag());
+  /** The pill is held down: the input shows how to use it. */
   const [holding, setHolding] = useState(false);
   const handle = {
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
       if ((e.target as HTMLElement).closest("button:not([data-drag-handle])")) return;
       setHolding(true);
       drag.current = { px: e.clientX, py: e.clientY, x: pos.x, y: pos.y, moved: false };
-      dragged.current = false;
+      dragged.current.down();
       e.currentTarget.setPointerCapture(e.pointerId);
     },
     onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
@@ -70,7 +70,7 @@ function useDrag() {
       const dy = e.clientY - d.py;
       if (!d.moved && Math.hypot(dx, dy) < 5) return;
       d.moved = true;
-      // Keep the input row (grip + input) on screen, up to the very top under
+      // Keep the input row (pill + input) on screen, up to the very top under
       // the notch: its rect at the start, moved by the delta. The click-through
       // log above it may go off-screen. The collapsed pill is its own row.
       const box = e.currentTarget.closest("[data-debug-chat]") as HTMLElement;
@@ -86,7 +86,7 @@ function useDrag() {
       const d = drag.current;
       drag.current = null;
       if (!d?.moved) return;
-      dragged.current = true;
+      dragged.current.dragEnded();
       setPos((p) => {
         write(POS_KEY, JSON.stringify(p));
         return p;
@@ -98,17 +98,32 @@ function useDrag() {
     },
     style: { touchAction: "none" as const, cursor: "grab" },
   };
-  /** The click that ends a drag is not a click. */
-  const wasDrag = () => {
-    const d = dragged.current;
-    dragged.current = false;
-    return d;
+  /**
+   * Bring the row (pill + input, or the minimized pill) back on screen, e.g.
+   * after restoring the box where the small mark was, or on a smaller screen.
+   */
+  const fit = (box: HTMLElement | null) => {
+    const row = box?.querySelector("[data-debug-chat-row]")?.getBoundingClientRect();
+    if (!row) return;
+    const top = safeTop();
+    const dx = row.left < 0 ? -row.left : row.right > innerWidth ? innerWidth - row.right : 0;
+    const dy =
+      row.top < top ? top - row.top : row.bottom > innerHeight ? innerHeight - row.bottom : 0;
+    if (!dx && !dy) return;
+    setPos((p) => {
+      const next = { x: p.x + dx, y: p.y + dy };
+      write(POS_KEY, JSON.stringify(next));
+      return next;
+    });
   };
+  /** The click that ends a drag is not a click. */
+  const wasDrag = () => dragged.current.wasDrag();
   return {
     offset: { transform: `translate(${pos.x}px, ${pos.y}px)` },
     handle,
     wasDrag,
     holding,
+    fit,
   };
 }
 
@@ -204,7 +219,7 @@ export type DebugChatProps = {
   listeners: number;
   messages: ChatMessage[];
   onSend: (text: string) => boolean;
-  /** Approved senders, listed in the grip's menu with an End button each. */
+  /** Approved senders, listed in the pill's menu with an End button each. */
   sessions?: PairInfo[];
   onEnd?: (s: PairInfo) => void;
   /** Code just ran on this page: the eval icon pulses for a moment. */
@@ -220,7 +235,7 @@ export type DebugChatProps = {
    * from real beats only): a spinner at the right end of the input.
    */
   busy?: { label: string } | null;
-  /** A line in the grip's menu (where this widget was loaded from, or why not). */
+  /** A line in the pill's menu (where this widget was loaded from, or why not). */
   note?: string;
   /** This audience's open debug pages (tabs, devices), one row each in the menu. */
   pages?: PageInfo[];
@@ -258,10 +273,14 @@ export function DebugChat({
     return v === null ? !location.pathname.startsWith("/words") : v === "1";
   });
   const [speak, setSpeak] = useState(speechEnabled);
-  const { offset, handle, wasDrag, holding } = useDrag();
-  /** The grip's menu (double tap): status, read-aloud, minimize. */
+  const { offset, handle, wasDrag, holding, fit } = useDrag();
+  /** The box or the minimized mark: whichever is up is kept on screen. */
+  const root = useRef<HTMLElement | null>(null);
+  // Only a switch between the box and the mark refits (fit itself is fresh each render).
+  useLayoutEffect(() => fit(root.current), [open]);
+  /** The pill's menu: status, read-aloud, pages, sessions. */
   const [menu, setMenu] = useState(false);
-  /** The grip: one tap minimizes, two open the menu (the single waits for a second). */
+  /** The pill's mark: one tap minimizes or restores, two open the menu (the single waits for a second). */
   const gripAct = useRef({ single: () => {}, double: () => {} });
   const gripTaps = useRef<ReturnType<typeof createTapper> | null>(null);
   gripTaps.current ??= createTapper({
@@ -273,21 +292,6 @@ export function DebugChat({
   const [endArmed, setEndArmed] = useState<string | null>(null);
   const endTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(endTimer.current), []);
-  /** The session whose icon was tapped: the menu opens scrolled to its row. */
-  const [focusPair, setFocusPair] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!menu) return setFocusPair(null);
-    if (!focusPair) return;
-    menuRef.current
-      ?.querySelector(`[data-pair="${CSS.escape(focusPair)}"]`)
-      ?.scrollIntoView({ block: "nearest" });
-  }, [menu, focusPair]);
-  /** A session icon's label, shown on a long press. */
-  const [tip, setTip] = useState<string | null>(null);
-  const tipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const tipShown = useRef(false);
-  useEffect(() => () => clearTimeout(tipTimer.current), []);
   const [draft, setDraft] = useState("");
   /** Re-keys the drain bar on each keystroke; 0 while nothing is waiting. */
   const [armed, setArmed] = useState(0);
@@ -417,10 +421,15 @@ export function DebugChat({
   gripAct.current = {
     single: () => {
       setMenu(false);
-      toggle(false);
+      toggle(!open);
     },
     double: () => setMenu((m) => !m),
   };
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const conns = plural(
+    pages.length + sessions.filter((x) => x.scope !== "chat").length,
+    "connection",
+  );
   const toggleSpeak = () => {
     const v = !speak;
     setSpeak(v);
@@ -455,33 +464,242 @@ export function DebugChat({
           ? `agent listening (${listeners})`
           : "connected · no agent listening";
 
-  if (!open)
-    return (
+  /**
+   * The pill: drag it anywhere to move the box. Left, the liagent mark: a tap
+   * minimizes or restores (after 280 ms), a double tap opens the menu. Right,
+   * the other connections (eval/preview sessions) or ⋯: a tap opens the menu.
+   * Each zone is its own drag handle, so its click still lands on it.
+   */
+  const pill = (
+    <div
+      data-testid="debug-chat-pill"
+      data-debug-chat-pill
+      className={`pointer-events-auto relative flex shrink-0 items-stretch rounded-full border border-current/25 text-gray-600 dark:text-gray-300 ${open ? "" : "opacity-60 transition-opacity active:opacity-100"}`}
+      style={{ background: INPUT_BG }}
+      title={status}
+    >
       <button
         type="button"
-        data-debug-chat
-        data-testid="debug-chat-pill"
         data-drag-handle
+        data-testid="debug-chat-pill-min"
+        aria-label={open ? "Minimize chat" : `Restore chat${unread ? `, ${unread} new` : ""}`}
+        aria-expanded={open}
         {...handle}
-        style={{ ...handle.style, ...offset }}
-        onClick={() => !wasDrag() && toggle(true)}
         onPointerDown={(e) => {
           unlockSpeech();
           handle.onPointerDown(e);
         }}
-        aria-label={`Open chat with the agent${unread ? `, ${unread} new` : ""}`}
-        className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex items-center lk-halo opacity-60 transition-opacity active:opacity-100 gap-1.5 px-3 py-1 text-xs text-gray-700 dark:text-gray-200"
+        onClick={() => !wasDrag() && gripTaps.current?.tap()}
+        style={handle.style}
+        className="relative flex min-h-8 w-8 items-center justify-center rounded-s-full"
       >
-        <span className="size-2 rounded-full" style={{ background: dot }} />
-        chat
-        {unread > 0 && (
-          <span className="rounded-full bg-blue-600 px-1.5 text-[10px] text-white">{unread}</span>
+        <LiagentMark size={18} />
+        <span
+          aria-hidden
+          className="absolute end-0.5 top-1 size-1.5 rounded-full"
+          style={{ background: dot }}
+        />
+      </button>
+      <span aria-hidden className="my-1.5 w-px bg-current opacity-25" />
+      <button
+        type="button"
+        data-drag-handle
+        data-testid="debug-chat-pill-menu"
+        aria-label={`Open chat menu (${conns})`}
+        aria-expanded={menu}
+        {...handle}
+        onClick={() => !wasDrag() && setMenu((m) => !m)}
+        style={handle.style}
+        className="relative flex min-h-8 min-w-8 items-center justify-center gap-0.5 rounded-e-full px-1 text-[10px] tabular-nums"
+      >
+        {evalSessions.length > 0 ? (
+          <>
+            <span
+              aria-hidden
+              className={`inline-flex size-3.5 items-center justify-center rounded-full text-[8px] text-white ${evalRan ? "animate-pulse" : "opacity-80"}`}
+              style={{ background: "oklch(0.55 0.15 30)" }}
+            >
+              <Icon name="play" />
+            </span>
+            {evalSessions.length}
+          </>
+        ) : (
+          <span aria-hidden className="text-sm leading-none">
+            ⋯
+          </span>
         )}
       </button>
+      {!open && unread > 0 && (
+        <span
+          data-testid="debug-chat-pill-unread"
+          className="pointer-events-none absolute -end-1.5 -top-1.5 rounded-full px-1 text-[10px] leading-4 text-white"
+          style={{ background: "oklch(0.55 0.2 260)" }}
+        >
+          {unread}
+        </span>
+      )}
+    </div>
+  );
+  /** The menu (the pill's ⋯, or a double tap on its mark), open or minimized. */
+  const menuEl = menu && (
+    <div
+      role="menu"
+      data-testid="debug-menu"
+      style={{ background: INPUT_BG }}
+      className="pointer-events-auto absolute bottom-full start-0 mb-1 flex max-h-[60vh] min-w-48 flex-col overflow-y-auto rounded-lg border border-current/25 py-1 text-xs backdrop-blur"
+    >
+      <span data-testid="debug-menu-status" className="px-3 py-1 text-gray-500" aria-live="polite">
+        {status}
+      </span>
+      {note && (
+        <span data-testid="debug-menu-note" className="px-3 py-1 text-gray-500">
+          {note}
+        </span>
+      )}
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        data-testid="debug-menu-speak"
+        aria-checked={speak}
+        title="Replies are read aloud while you're typing here (the input has focus)"
+        onClick={toggleSpeak}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
+      >
+        <Icon name="speakerHigh" weight={speak ? "fill" : "regular"} />
+        {speak ? "Replies read aloud" : "Replies silent"}
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        data-testid="debug-menu-minimize"
+        onClick={() => {
+          setMenu(false);
+          toggle(false);
+        }}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
+      >
+        <span className="w-[1em] text-center">–</span>
+        Minimize
+      </button>
+      {/* Every open page of this chat; ending this one asks twice. */}
+      {pages.map((pg) => {
+        const self = pg.id === selfPage;
+        const key = `page:${pg.id}`;
+        const { path, device } = pageParts(pg.label);
+        return (
+          <div
+            key={pg.id || pg.label}
+            data-testid="debug-menu-page"
+            data-self={self || undefined}
+            className="flex items-center gap-2 px-3 py-1 text-gray-500"
+          >
+            {/* Tap: open that path here (other tabs and devices can't be focused). */}
+            <button
+              type="button"
+              data-testid="debug-menu-page-open"
+              title={pg.label}
+              onClick={() => {
+                setMenu(false);
+                if (!self) onOpenPage?.(path);
+              }}
+              className="flex min-w-0 flex-1 items-baseline gap-1.5 text-start"
+            >
+              <span className="truncate text-gray-700 dark:text-gray-200">{path}</span>
+              <span className="shrink-0 text-[10px]">
+                {[device, self ? "this page" : ""].filter(Boolean).join(" · ")}
+              </span>
+            </button>
+            {pg.id && (
+              <button
+                type="button"
+                data-testid="debug-menu-page-end"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (self) twoStep(key, () => onEndPage?.(pg.id));
+                  else onEndPage?.(pg.id);
+                }}
+                className="text-[10px] underline opacity-70"
+                style={endArmed === key ? { color: "oklch(0.58 0.19 25)" } : undefined}
+              >
+                {endArmed === key ? "tap again" : "disconnect"}
+              </button>
+            )}
+          </div>
+        );
+      })}
+      {sessions
+        .filter((x) => x.scope !== "chat")
+        .map((x) => (
+          <div
+            key={x.pair}
+            data-testid="debug-menu-session"
+            data-pair={x.pair}
+            className="flex items-center gap-2 px-3 py-1 text-gray-500"
+          >
+            <span className="min-w-0 flex-1 truncate">
+              {friend ? "preview" : "eval"}: {x.label} · {x.code}
+              {reachNote(x)}
+            </span>
+            {addable(x) && (
+              <button
+                type="button"
+                data-testid="debug-menu-session-add"
+                onClick={() => onAddPage?.(x)}
+                className="underline"
+              >
+                Add this page
+              </button>
+            )}
+            <button
+              type="button"
+              data-testid="debug-menu-session-end"
+              onClick={() => onEnd?.(x)}
+              className="underline"
+            >
+              End
+            </button>
+          </div>
+        ))}
+      {/* Ending the chat grant ends the chat itself: apart, in red, two taps. */}
+      {sessions
+        .filter((x) => x.scope === "chat" && addable(x))
+        .map((x) => (
+          <button
+            key={`add-${x.pair}`}
+            type="button"
+            data-testid="debug-menu-session-add"
+            onClick={() => onAddPage?.(x)}
+            className="px-3 py-1 text-start text-gray-500 underline"
+          >
+            Let the agent's chat reach this page too{reachNote(x)}
+          </button>
+        ))}
+    </div>
+  );
+
+  if (!open)
+    return (
+      // Minimized: only the pill, where it sits in the box (same anchor and
+      // offset), so it moves with the box and restores in place.
+      <div
+        ref={(el) => {
+          root.current = el;
+        }}
+        data-debug-chat
+        data-testid="debug-chat-minimized"
+        style={offset}
+        className="pointer-events-none fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] text-xs"
+      >
+        <div data-debug-chat-row className="relative flex">
+          {pill}
+          {menuEl}
+        </div>
+      </div>
     );
 
   return (
     <section
+      ref={root}
       data-debug-chat
       data-testid="debug-chat"
       aria-label="Chat with the agent"
@@ -574,237 +792,11 @@ export function DebugChat({
                 </button>
               </div>
             )}
-            {/* No title bar: the grip drags the box, a tap minimizes it, and a
-            double tap opens the menu (status, read-aloud, minimize). Its dot is the connection.
+            {/* No title bar: the pill drags the box, minimizes it and opens the
+            menu (status, read-aloud, pages, sessions). Its dot is the connection.
             No End chat here: the chat hibernates and wakes by itself. */}
-            <button
-              type="button"
-              data-drag-handle
-              data-testid="debug-chat-grip"
-              aria-label="Chat grip: drag to move, tap to minimize, double tap for the menu"
-              aria-expanded={menu}
-              title={status}
-              {...handle}
-              onClick={() => !wasDrag() && gripTaps.current?.tap()}
-              style={{ ...handle.style, background: INPUT_BG }}
-              className="pointer-events-auto relative flex w-9 shrink-0 flex-col items-center justify-center rounded-lg border border-current/25 text-base leading-none text-gray-500"
-            >
-              ⠿
-              <span
-                aria-hidden
-                className="absolute end-0.5 top-0.5 size-1.5 rounded-full"
-                style={{ background: dot }}
-              />
-            </button>
-            {/* Eval/preview sessions: a button each (32px target), right after the
-            grip. A tap opens the menu at that session's row (its End); a long
-            press shows its label. The row between controls stays click-through. */}
-            {evalSessions.length > 0 && (
-              <div
-                aria-label="Debug connections"
-                data-testid="debug-chat-icons"
-                className="flex shrink-0 items-center"
-              >
-                {evalSessions.map((x) => {
-                  const label = `${friend ? "preview" : "eval"}: ${x.label} · ${x.code}`;
-                  return (
-                    <button
-                      key={x.pair}
-                      type="button"
-                      data-testid="debug-chat-icon-eval"
-                      aria-label={label}
-                      title={label}
-                      onPointerDown={() => {
-                        clearTimeout(tipTimer.current);
-                        tipShown.current = false;
-                        tipTimer.current = setTimeout(() => {
-                          tipShown.current = true;
-                          setTip(x.pair);
-                        }, LONG_PRESS_MS);
-                      }}
-                      onPointerUp={() => clearTimeout(tipTimer.current)}
-                      onPointerLeave={() => {
-                        clearTimeout(tipTimer.current);
-                        setTip(null);
-                      }}
-                      onContextMenu={(e) => e.preventDefault()}
-                      onClick={() => {
-                        if (tipShown.current) {
-                          tipShown.current = false;
-                          return setTip(null);
-                        }
-                        setFocusPair(x.pair);
-                        setMenu(true);
-                      }}
-                      className="pointer-events-auto relative inline-flex min-h-8 w-8 items-center justify-center"
-                    >
-                      <span
-                        aria-hidden
-                        className={`inline-flex size-4 items-center justify-center rounded-full text-[9px] text-white ${evalRan ? "animate-pulse" : "opacity-70"}`}
-                        style={{ background: "oklch(0.55 0.15 30)" }}
-                      >
-                        <Icon name="play" />
-                      </span>
-                      {tip === x.pair && (
-                        <span
-                          role="tooltip"
-                          className="pointer-events-none absolute bottom-full start-0 mb-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] text-gray-700 dark:text-gray-200"
-                          style={{ background: INPUT_BG }}
-                        >
-                          {label}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {menu && (
-              <div
-                ref={menuRef}
-                role="menu"
-                data-testid="debug-menu"
-                style={{ background: INPUT_BG }}
-                className="pointer-events-auto absolute bottom-full start-0 mb-1 flex max-h-[60vh] min-w-48 flex-col overflow-y-auto rounded-lg border border-current/25 py-1 text-xs backdrop-blur"
-              >
-                <span
-                  data-testid="debug-menu-status"
-                  className="px-3 py-1 text-gray-500"
-                  aria-live="polite"
-                >
-                  {status}
-                </span>
-                {note && (
-                  <span data-testid="debug-menu-note" className="px-3 py-1 text-gray-500">
-                    {note}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  role="menuitemcheckbox"
-                  data-testid="debug-menu-speak"
-                  aria-checked={speak}
-                  title="Replies are read aloud while you're typing here (the input has focus)"
-                  onClick={toggleSpeak}
-                  className="flex items-center gap-2 px-3 py-1.5 text-start"
-                >
-                  <Icon name="speakerHigh" weight={speak ? "fill" : "regular"} />
-                  {speak ? "Replies read aloud" : "Replies silent"}
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  data-testid="debug-menu-minimize"
-                  onClick={() => {
-                    setMenu(false);
-                    toggle(false);
-                  }}
-                  className="flex items-center gap-2 px-3 py-1.5 text-start"
-                >
-                  <span className="w-[1em] text-center">–</span>
-                  Minimize
-                </button>
-                {/* Every open page of this chat; ending this one asks twice. */}
-                {pages.map((pg) => {
-                  const self = pg.id === selfPage;
-                  const key = `page:${pg.id}`;
-                  const { path, device } = pageParts(pg.label);
-                  return (
-                    <div
-                      key={pg.id || pg.label}
-                      data-testid="debug-menu-page"
-                      data-self={self || undefined}
-                      className="flex items-center gap-2 px-3 py-1 text-gray-500"
-                    >
-                      {/* Tap: open that path here (other tabs and devices can't be focused). */}
-                      <button
-                        type="button"
-                        data-testid="debug-menu-page-open"
-                        title={pg.label}
-                        onClick={() => {
-                          setMenu(false);
-                          if (!self) onOpenPage?.(path);
-                        }}
-                        className="flex min-w-0 flex-1 items-baseline gap-1.5 text-start"
-                      >
-                        <span className="truncate text-gray-700 dark:text-gray-200">{path}</span>
-                        <span className="shrink-0 text-[10px]">
-                          {[device, self ? "this page" : ""].filter(Boolean).join(" · ")}
-                        </span>
-                      </button>
-                      {pg.id && (
-                        <button
-                          type="button"
-                          data-testid="debug-menu-page-end"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (self) twoStep(key, () => onEndPage?.(pg.id));
-                            else onEndPage?.(pg.id);
-                          }}
-                          className="text-[10px] underline opacity-70"
-                          style={endArmed === key ? { color: "oklch(0.58 0.19 25)" } : undefined}
-                        >
-                          {endArmed === key ? "tap again" : "disconnect"}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-                {sessions
-                  .filter((x) => x.scope !== "chat")
-                  .map((x) => (
-                    <div
-                      key={x.pair}
-                      data-testid="debug-menu-session"
-                      data-pair={x.pair}
-                      data-focus={focusPair === x.pair || undefined}
-                      className="flex items-center gap-2 px-3 py-1 text-gray-500"
-                      style={
-                        focusPair === x.pair
-                          ? { background: "oklch(0.55 0.15 30 / 0.15)" }
-                          : undefined
-                      }
-                    >
-                      <span className="min-w-0 flex-1 truncate">
-                        {friend ? "preview" : "eval"}: {x.label} · {x.code}
-                        {reachNote(x)}
-                      </span>
-                      {addable(x) && (
-                        <button
-                          type="button"
-                          data-testid="debug-menu-session-add"
-                          onClick={() => onAddPage?.(x)}
-                          className="underline"
-                        >
-                          Add this page
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        data-testid="debug-menu-session-end"
-                        onClick={() => onEnd?.(x)}
-                        className="underline"
-                      >
-                        End
-                      </button>
-                    </div>
-                  ))}
-                {/* Ending the chat grant ends the chat itself: apart, in red, two taps. */}
-                {sessions
-                  .filter((x) => x.scope === "chat" && addable(x))
-                  .map((x) => (
-                    <button
-                      key={`add-${x.pair}`}
-                      type="button"
-                      data-testid="debug-menu-session-add"
-                      onClick={() => onAddPage?.(x)}
-                      className="px-3 py-1 text-start text-gray-500 underline"
-                    >
-                      Let the agent's chat reach this page too{reachNote(x)}
-                    </button>
-                  ))}
-              </div>
-            )}
+            {pill}
+            {menuEl}
             {armed > 0 && (
               <div
                 key={armed}

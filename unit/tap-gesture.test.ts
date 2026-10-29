@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { DOUBLE_TAP_MS, createTapper } from "@/lib/tap-gesture";
+import { DOUBLE_TAP_MS, DRAG_CLICK_MS, createDragFlag, createTapper } from "@/lib/tap-gesture";
 
 /** Fake timers: `advance(ms)` runs what falls due. */
 function clock() {
@@ -93,5 +93,63 @@ describe("createTapper: single vs double tap", () => {
     t.cancel();
     await new Promise((r) => setTimeout(r, 10));
     expect(did).toEqual(["s"]);
+  });
+});
+
+describe("createDragFlag: the click after a drag", () => {
+  it("the click that ends a drag is not a tap; the next one is", () => {
+    let t = 0;
+    const f = createDragFlag(() => t);
+    f.down();
+    f.dragEnded();
+    expect(f.wasDrag()).toBe(true);
+    f.down();
+    expect(f.wasDrag()).toBe(false);
+  });
+
+  it("no click after a touch drag (iOS): the next press clears it", () => {
+    let t = 0;
+    const f = createDragFlag(() => t);
+    f.down();
+    f.dragEnded();
+    t += 50;
+    f.down(); // the next tap's press
+    expect(f.wasDrag()).toBe(false);
+  });
+
+  it("expires after DRAG_CLICK_MS even without a press", () => {
+    let t = 0;
+    const f = createDragFlag(() => t);
+    f.dragEnded();
+    t += DRAG_CLICK_MS;
+    expect(f.wasDrag()).toBe(false);
+    f.dragEnded();
+    t += DRAG_CLICK_MS - 1;
+    expect(f.wasDrag()).toBe(true);
+    expect(f.wasDrag()).toBe(false); // read once
+  });
+
+  it("a double tap right after a drag needs only two taps", () => {
+    let t = 0;
+    const f = createDragFlag(() => t);
+    const did: string[] = [];
+    const tapper = createTapper({
+      onSingle: () => did.push("single"),
+      onDouble: () => did.push("double"),
+      setTimer: () => 0,
+      clearTimer: () => {},
+    });
+    const click = () => !f.wasDrag() && tapper.tap();
+    f.down();
+    t += 300;
+    f.dragEnded(); // touch drag: no click follows
+    t += 500;
+    f.down();
+    click();
+    t += 100;
+    f.down();
+    click();
+    expect(did).toEqual(["double"]);
+    expect(createDragFlag().wasDrag()).toBe(false);
   });
 });
