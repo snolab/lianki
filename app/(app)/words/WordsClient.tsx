@@ -62,6 +62,7 @@ import {
   SWIPE_LEVEL,
   SWIPE_RETURN_S,
   SWIPE_SNAP,
+  SWIPE_SPRING,
   SWIPE_VELOCITY_MS,
 } from "@/lib/words/swipe";
 import { setSwipeVariant, swipeAbTag, swipeVariant, type SwipeVariant } from "@/lib/words/swipe-ab";
@@ -108,7 +109,7 @@ const HOLD_MS = 300;
  * UNDO_AFTER_SWIPE_MS of a swipe's grade). A swipe with rating null slid but
  * graded nothing.
  */
-const SWIPE_PARAMS = `snap=${SWIPE_SNAP};level=${SWIPE_LEVEL};hyst=${SWIPE_HYSTERESIS};coast=${SWIPE_COAST_MS}`;
+const SWIPE_PARAMS = `snap=${SWIPE_SNAP};spring=${SWIPE_SPRING};level=${SWIPE_LEVEL};hyst=${SWIPE_HYSTERESIS};coast=${SWIPE_COAST_MS}`;
 /** A released slip springs home: the critically damped spring, as a CSS easing. */
 const SPRING_EASING = cssLinear(springProgress, 32);
 type SwipeRow = {

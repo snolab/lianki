@@ -8,21 +8,34 @@ import {
   snapSwipe,
   springProgress,
   swipeLevel,
+  SNAP_STRENGTH,
+  SWIPE_RETURN_S,
+  SWIPE_SNAP,
+  SWIPE_SPRING,
 } from "@/lib/words/swipe";
 
 describe("swipe detents", () => {
   const a = 44;
-  test("the row snaps: a quarter of the finger on a level, 1.75× between", () => {
+  test("the row snaps: a tenth of the finger on a level, 1.9× between", () => {
     expect(snapSwipe(0, a)).toBe(0);
     expect(snapSwipe(44, a)).toBeCloseTo(44, 6);
     expect(snapSwipe(-88, a)).toBeCloseTo(-88, 6);
     // On a level the row gives a little; between levels it slides on.
     const slope = (f: number) => (snapSwipe(f + 0.01, a) - snapSwipe(f, a)) / 0.01;
-    expect(slope(44)).toBeCloseTo(0.25, 2);
-    expect(slope(22)).toBeCloseTo(1.75, 2);
+    expect(slope(44)).toBeCloseTo(1 - SWIPE_SNAP, 2);
+    expect(SWIPE_SNAP).toBeCloseTo(0.9, 6);
+    expect(slope(22)).toBeCloseTo(1 + SWIPE_SNAP, 2);
     // Smooth through every level: no jumps.
     for (let f = -120; f < 120; f += 0.5)
       expect(Math.abs(snapSwipe(f + 0.5, a) - snapSwipe(f, a))).toBeLessThan(1);
+  });
+
+  test("SNAP_STRENGTH pulls ~20% harder than the first tuning, never past c = 1", () => {
+    expect(SNAP_STRENGTH).toBeGreaterThan(1);
+    expect(SWIPE_SNAP).toBeLessThan(1);
+    expect(SWIPE_SPRING).toBeCloseTo(30, 6);
+    // The stiffer spring settles in under the old 0.296 s.
+    expect(SWIPE_RETURN_S).toBeLessThan(7.4 / 25);
   });
 
   test("past the last level it stretches, then stops", () => {
