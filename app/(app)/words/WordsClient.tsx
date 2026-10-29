@@ -850,6 +850,8 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 type SyncStatus = { pending: number; online: boolean };
 const syncListeners = new Set<(s: SyncStatus) => void>();
 let flushing = false;
+/** An op was queued while a pass was sending: send again when it ends. */
+let flushAgain = false;
 let attempt = 0;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -862,9 +864,13 @@ async function notifySync() {
 
 /** Send waiting ops in the order they were made; stop at the first network failure. */
 async function flushPending() {
-  if (flushing) return;
+  // Already sending: ops queued meanwhile go out in another pass right after
+  // (nothing else would send them — there is no polling).
+  if (flushing) return void (flushAgain = true);
   flushing = true;
+  flushAgain = false;
   clearTimeout(retryTimer);
+  let retrying = false;
   try {
     const ops = sendOrder(await idbAll<PendingOp>("pending"));
     for (const o of ops) {
@@ -883,6 +889,7 @@ async function flushPending() {
       const next = afterSend(status);
       if (next === "retry") {
         retryTimer = setTimeout(flushPending, backoff(attempt++));
+        retrying = true;
         break;
       }
       attempt = 0;
@@ -895,6 +902,7 @@ async function flushPending() {
     flushing = false;
     await notifySync();
   }
+  if (flushAgain && !retrying) void flushPending();
 }
 
 /** Queue an op and try to send it now. */
