@@ -1,4 +1,5 @@
 import { authUser } from "@/app/signInEmail";
+import { Icon } from "@/app/components/icons";
 import { getUserMembership } from "@/lib/membership";
 import { localeRedirect } from "@/lib/locale-redirect";
 import Link from "next/link";
@@ -32,7 +33,7 @@ export default async function PolyglotLayout({ children }: { children: React.Rea
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
         <div className="max-w-md w-full text-center">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
-            <div className="text-6xl mb-4">🔒</div>
+            <Icon name="lock" className="text-6xl mb-4 text-gray-400" />
             <h1 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">
               {content.accessDenied.title.value}
             </h1>

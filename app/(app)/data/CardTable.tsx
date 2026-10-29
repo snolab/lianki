@@ -116,9 +116,9 @@ export default function CardTable(props: Props) {
             className="rounded-md border border-gray-300 dark:border-gray-600 bg-transparent px-2 py-1"
           >
             <option value="cloud" disabled={!cloudAvailable}>
-              ☁️ Cloud{cloudAvailable ? "" : " (sign in)"}
+              Cloud{cloudAvailable ? "" : " (sign in)"}
             </option>
-            <option value="local">🗂️ Local</option>
+            <option value="local">Local</option>
           </select>
         </div>
       </div>

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useIntlayer } from "next-intlayer";
+import { Icon } from "@/app/components/icons";
 import { invalidateHeatmapCache } from "../actions";
 
 export default function RefreshHeatmapButton() {
@@ -28,9 +29,10 @@ export default function RefreshHeatmapButton() {
     <button
       onClick={handleRefresh}
       disabled={isRefreshing}
-      className="ml-4 px-3 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-700 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className="ml-4 inline-flex items-center gap-1.5 px-3 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-700 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       title={refreshHeatmapTitle}
     >
+      <Icon name="arrowClockwise" className={isRefreshing ? "animate-spin" : ""} />
       {isRefreshing ? refreshing : refresh}
     </button>
   );

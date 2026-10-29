@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { Icon } from "@/app/components/icons";
 import { useIntlayer } from "next-intlayer";
 import { dueMs } from "@/app/ems";
 import { SyncStatusBanner } from "./SyncStatusBanner";
@@ -224,11 +225,11 @@ export default function GuestListClient({ locale }: { locale: string }) {
                 </a>
                 {isSynced ? (
                   <span className="flex-shrink-0 text-green-500 text-xs" title="Synced to cloud">
-                    ☁️
+                    <Icon name="cloud" label="Synced to cloud" />
                   </span>
                 ) : (
                   <span className="flex-shrink-0 text-gray-400 text-xs" title="Local only">
-                    💾
+                    <Icon name="floppyDisk" label="Local only" />
                   </span>
                 )}
                 <button
@@ -241,10 +242,11 @@ export default function GuestListClient({ locale }: { locale: string }) {
                     setCards((prev) => prev.filter((c) => c.url !== url));
                   }}
                 >
-                  🗑
+                  <Icon name="trash" label="Delete this card" />
                 </button>
                 <button
                   className="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs px-1"
+                  aria-label="Delete all cards from this site"
                   title={`Delete all cards from ${(() => {
                     try {
                       return new URL(url).hostname;
@@ -273,7 +275,8 @@ export default function GuestListClient({ locale }: { locale: string }) {
                     );
                   }}
                 >
-                  🗑🌐
+                  <Icon name="trash" />
+                  <Icon name="globe" />
                 </button>
               </li>
             );

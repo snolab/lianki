@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Icon } from "@/app/components/icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { appHref } from "@/lib/app-locale";
@@ -81,7 +82,7 @@ function SiteRow({
             : "text-gray-300 dark:text-gray-700 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-amber-400"
         }`}
       >
-        ★
+        <Icon name="star" weight={pinned ? "fill" : "regular"} />
       </button>
       <a
         href={site.url}
@@ -232,7 +233,7 @@ export default function SitesClient({
           href={appHref("/next", locale)}
           className="inline-flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2"
         >
-          <span aria-hidden>▶</span>
+          <Icon name="play" />
           {t.review}
           {totalDue > 0 && (
             <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs tabular-nums">
@@ -262,7 +263,7 @@ export default function SitesClient({
               >
                 {l.code === focus && (
                   <span aria-hidden className="me-1">
-                    ★
+                    <Icon name="star" weight="fill" />
                   </span>
                 )}
                 <span lang={l.code}>{l.native}</span>
@@ -294,7 +295,7 @@ export default function SitesClient({
                     title={labels.unpin}
                     className="text-amber-500 text-sm leading-none"
                   >
-                    ★
+                    <Icon name="star" weight="fill" />
                   </button>
                 )}
                 <a

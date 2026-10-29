@@ -119,7 +119,9 @@ test.describe("Public pages", () => {
     await page.goto(url("/sites"));
     // Playwright's en-US browser lands on the English tab, starred.
     await expect(page.getByRole("tab", { selected: true })).toContainText("English");
-    await expect(page.getByRole("tab", { selected: true })).toContainText("★");
+    await expect(
+      page.getByRole("tab", { selected: true }).locator("[data-icon='star']"),
+    ).toHaveCount(1);
     await expect(page.locator("a[href='https://www.quora.com']")).toBeVisible();
     await expect(page.locator("main a[href*='/next']")).toBeVisible();
     // Switching tabs swaps the whole grid to that language
@@ -149,7 +151,12 @@ test.describe("Public pages", () => {
     await expect(page.locator("table")).toBeVisible();
     // Playwright sends Accept-Language: en-US, so English is the default and
     // highlighted column; everything else starts switched off.
-    await expect(page.locator("thead th").filter({ hasText: /English/ })).toContainText("★");
+    await expect(
+      page
+        .locator("thead th")
+        .filter({ hasText: /English/ })
+        .locator("[data-icon='star']"),
+    ).toHaveCount(1);
     await expect(page.locator("a[href='https://www.quora.com']")).toBeVisible();
     await expect(page.locator("thead th").filter({ hasText: /Deutsch/ })).toHaveCount(0);
     // Toggling a language on adds its column (and its sites)

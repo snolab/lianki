@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Icon, type IconName } from "@/app/components/icons";
 import {
   closestCenter,
   DndContext,
@@ -1266,7 +1267,7 @@ function SortableListRow({
       )}
       <button className="flex-1 text-left min-w-0" onClick={() => onOpen(l.id)}>
         <div className="font-medium truncate">
-          {isGroup && "📁 "}
+          {isGroup && <Icon name="folder" className="me-1 opacity-70" />}
           {l.name}
         </div>
         <div className="text-xs opacity-60 tabular-nums">
@@ -1470,7 +1471,8 @@ function ListPicker({
               className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-50"
               title="Save every list and today's due words on this device, to study without a network"
             >
-              ⬇ Download for offline
+              <Icon name="downloadSimple" className="me-1" />
+              Download for offline
             </button>
           )}
           {download && !offline && (
@@ -2340,7 +2342,8 @@ function Study({
           aria-expanded={settings}
           aria-label="Settings"
         >
-          ⚙ Settings
+          <Icon name="gearSix" className="me-1" />
+          Settings
         </button>
         {touch && (
           <button
@@ -2348,7 +2351,8 @@ function Study({
             onClick={() => undo()}
             aria-label="Undo"
           >
-            ↶ Undo
+            <Icon name="arrowCounterClockwise" className="me-1" />
+            Undo
           </button>
         )}
         <span
@@ -2461,7 +2465,14 @@ function Study({
         <div className="opacity-60">Loading…</div>
       ) : queue.length === 0 ? (
         <div className="py-8 text-center text-lg">
-          {exhausted ? "Every word learned. 🎉" : "Loading more…"}
+          {exhausted ? (
+            <>
+              Every word learned.{" "}
+              <Icon name="confetti" className="ms-1 text-blue-600 dark:text-blue-400" />
+            </>
+          ) : (
+            "Loading more…"
+          )}
         </div>
       ) : (
         <>
@@ -2640,13 +2651,17 @@ function Study({
             />
           )}
           <div className="mt-2 text-[11px] opacity-50">
-            {exhausted && ahead.length === 0
-              ? "Every word learned. 🎉"
-              : touch
-                ? "tap = show + say · hold = listen (loops) · swipe ← a little Hard, far Again · swipe → a little Good, far Easy · ↶ undo"
-                : help
-                  ? "↑↓ / W S / I U move (the focused row shows its meaning) · Space pin · E show all · 1 Again · 2 Hard · 3 Good · 4 Easy (right hand mirrored: L Again · K Hard · J Good · H Easy) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
-                  : "1 Again · 2 Hard · 3 Good · 4 Easy · Z undo · ? all keys"}
+            {exhausted && ahead.length === 0 ? (
+              <>
+                Every word learned. <Icon name="confetti" className="ms-0.5" />
+              </>
+            ) : touch ? (
+              "tap = show + say · hold = listen (loops) · swipe ← a little Hard, far Again · swipe → a little Good, far Easy · ↶ undo"
+            ) : help ? (
+              "↑↓ / W S / I U move (the focused row shows its meaning) · Space pin · E show all · 1 Again · 2 Hard · 3 Good · 4 Easy (right hand mirrored: L Again · K Hard · J Good · H Easy) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
+            ) : (
+              "1 Again · 2 Hard · 3 Good · 4 Easy · Z undo · ? all keys"
+            )}
           </div>
         </>
       )}
@@ -2687,9 +2702,9 @@ function SlipSheet({
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [onClose]);
-  const actions: [string, string, () => void][] = [
-    ["🔊", "Listen again (loops)", onListen],
-    ["⧉", "Copy the word", onCopy],
+  const actions: [IconName, string, () => void][] = [
+    ["speakerHigh", "Listen again (loops)", onListen],
+    ["copy", "Copy the word", onCopy],
   ];
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-label="Word actions" data-slip-sheet>
@@ -2711,7 +2726,7 @@ function SlipSheet({
                   onClose();
                 }}
               >
-                <span className="w-6 text-center opacity-80">{icon}</span>
+                <Icon name={icon} className="w-6 text-xl opacity-80" />
                 {label}
               </button>
             </li>

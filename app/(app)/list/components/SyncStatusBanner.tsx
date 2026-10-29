@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { Icon, type IconName } from "@/app/components/icons";
 
 type Props = {
   /** MongoDB card count. Pass null/undefined for guest (no cloud storage). */
@@ -14,10 +15,10 @@ type UserscriptStatus = {
   lastSync: number;
 };
 
-function Box({ icon, label, count }: { icon: string; label: string; count: number | null }) {
+function Box({ icon, label, count }: { icon: IconName; label: string; count: number | null }) {
   return (
     <div className="flex flex-col items-center border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 min-w-[64px] text-center">
-      <span className="text-lg leading-none mb-0.5">{icon}</span>
+      <Icon name={icon} className="text-lg mb-0.5" />
       <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
       <span className="font-mono font-bold text-sm">{count === null ? "…" : count}</span>
     </div>
@@ -31,7 +32,7 @@ function UserscriptBox({ status }: { status: UserscriptStatus | null }) {
       className="flex flex-col items-center border border-blue-300 dark:border-blue-700 rounded-md px-3 py-2 min-w-[64px] text-center"
       title={`Last sync: ${new Date(status.lastSync).toLocaleString()}`}
     >
-      <span className="text-lg leading-none mb-0.5">🧩</span>
+      <Icon name="puzzlePiece" className="text-lg mb-0.5" />
       <span className="text-xs text-gray-500 dark:text-gray-400">Extension</span>
       <span className="font-mono font-bold text-sm">v{status.version}</span>
       <span className="text-xs text-gray-400">{status.cardCount} cards</span>
@@ -78,13 +79,13 @@ export function SyncStatusBanner({ mongoCount }: Props) {
     <div className="flex items-center gap-2 flex-wrap">
       <UserscriptBox status={userscript} />
       {userscript && <span className="text-gray-400 text-lg">→</span>}
-      <Box icon="💾" label="Script" count={gmCount} />
+      <Box icon="floppyDisk" label="Script" count={gmCount} />
       <span className="text-gray-400 text-lg">→</span>
-      <Box icon="🗂️" label="Local" count={idbCount} />
+      <Box icon="folderSimple" label="Local" count={idbCount} />
       {!isGuest && (
         <>
           <span className="text-gray-400 text-lg">→</span>
-          <Box icon="☁️" label="Cloud" count={mongoCount} />
+          <Box icon="cloud" label="Cloud" count={mongoCount} />
         </>
       )}
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { Icon } from "@/app/components/icons";
 import dynamic from "next/dynamic";
 import type { RoadmapGoalDTO as RoadmapGoal } from "@/types/roadmap";
 import type { RoadmapProgress } from "@/types/roadmap";
@@ -144,7 +145,7 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
                       className="ml-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs shrink-0"
                       title="Delete"
                     >
-                      ✕
+                      <Icon name="x" label="Delete" />
                     </button>
                   </div>
                 </li>
@@ -209,7 +210,7 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
                               : "bg-gray-200 text-gray-500"
                         }`}
                       >
-                        {node.maturityRate >= 1 ? "✓" : node.order + 1}
+                        {node.maturityRate >= 1 ? <Icon name="check" /> : node.order + 1}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-gray-900">{node.title}</div>
@@ -231,7 +232,7 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
 
           {!selectedGoal && !loadingProgress && goals.length === 0 && (
             <div className="text-center py-16 text-gray-400">
-              <div className="text-4xl mb-3">🗺️</div>
+              <Icon name="mapTrifold" className="text-4xl mb-3" />
               <div className="text-sm">Enter a topic above to generate your first roadmap</div>
             </div>
           )}
