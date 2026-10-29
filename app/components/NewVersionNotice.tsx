@@ -3,6 +3,15 @@
 import { useEffect, useState } from "react";
 
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev";
+
+/** Debug turned on for this device (seven taps on /words' stats line, or ?debug=1). */
+function debugDevice(): boolean {
+  try {
+    return localStorage.getItem("lk:debug") === "1";
+  } catch {
+    return false;
+  }
+}
 /** Hidden or unfocused this long before the socket is dropped. */
 const IDLE_MS = 30_000;
 
@@ -49,8 +58,11 @@ export function NewVersionNotice() {
         }
         if (typeof build !== "string" || build === BUILD_ID) return;
         done = true;
-        setStale(true);
         disconnect();
+        // The owner's debug devices pick up a deploy by themselves — so a fix can
+        // be tried on the phone without anyone tapping Refresh.
+        if (debugDevice()) return void setTimeout(() => location.reload(), 1500);
+        setStale(true);
       };
       // Dropped by the network (or never opened): reopen on that event if
       // the page is in use; otherwise the next focus does it.
