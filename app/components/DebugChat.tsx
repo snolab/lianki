@@ -140,13 +140,23 @@ const synth = () => (typeof speechSynthesis === "undefined" ? null : speechSynth
 const speechEnabled = () => read(SPEAK_KEY) !== "0";
 
 /**
+ * Replies are read only to someone typing here: this tab is visible and the
+ * chat input has focus (checked as each reply arrives).
+ */
+export function speakHere() {
+  if (typeof document === "undefined" || document.visibilityState !== "visible") return false;
+  return document.activeElement?.getAttribute("data-testid") === "debug-chat-input";
+}
+
+/**
  * Read an agent reply aloud, after any still being read: the language comes
  * from its script (pickLang), with a matching installed voice if there is one.
- * Only ever called for a reply that arrived live, never for history.
+ * Only ever called for a reply that arrived live, never for history, and
+ * only while speakHere().
  */
 export function speakReply(text: string) {
   const s = synth();
-  if (!s || !speechEnabled()) return;
+  if (!s || !speechEnabled() || !speakHere()) return;
   const u = new SpeechSynthesisUtterance(text);
   u.lang = pickLang(text);
   const voice = pickVoice(s.getVoices(), u.lang);
@@ -339,6 +349,20 @@ export function DebugChat({
   useEffect(() => {
     synth()?.getVoices(); // starts loading them, so the first reply finds one
     return () => clearTimeout(timer.current);
+  }, []);
+  // A reply that arrived while nobody is typing here is not read: this also
+  // silences a page whose speakReply predates the focus rule (a hot-loaded widget).
+  const heard = useRef(messages.length);
+  useLayoutEffect(() => {
+    const fresh = messages.slice(heard.current);
+    heard.current = messages.length;
+    if (fresh.some((m) => m.from === "agent") && !speakHere()) cancelSpeech();
+  }, [messages]);
+  // Focus leaving the input, or the tab hiding, stops the reading.
+  useEffect(() => {
+    const hide = () => document.visibilityState !== "visible" && cancelSpeech();
+    document.addEventListener("visibilitychange", hide);
+    return () => document.removeEventListener("visibilitychange", hide);
   }, []);
   useLayoutEffect(() => {
     if (!open) return;
@@ -660,6 +684,7 @@ export function DebugChat({
                   role="menuitemcheckbox"
                   data-testid="debug-menu-speak"
                   aria-checked={speak}
+                  title="Replies are read aloud while you're typing here (the input has focus)"
                   onClick={toggleSpeak}
                   className="flex items-center gap-2 px-3 py-1.5 text-start"
                 >
@@ -805,6 +830,7 @@ export function DebugChat({
                   cancelSpeech();
                   arm();
                 }}
+                onBlur={cancelSpeech}
                 onCompositionStart={() => {
                   composing.current = true;
                   clearTimeout(timer.current);

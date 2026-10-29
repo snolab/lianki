@@ -152,7 +152,9 @@ connected now. Agent replies are read aloud with `speechSynthesis` (the
 language is guessed from the script: kana → ja, Hangul → ko, other Han →
 zh-CN, else en), one after another; typing cancels what is being read, and
 the speaker button turns it off for the device (`lk:debug-chat-speak`). Only
-replies arriving live are read, never the history. iOS needs a gesture
+replies arriving live are read, never the history, and only while the
+chat input has focus in a visible tab (checked as each reply arrives);
+focus leaving the input or the tab hiding stops the reading. iOS needs a gesture
 first: the first tap or key inside the box unlocks speech.
 
 **Wire.** Page → hub `{type:"chat", id, text}` (text ≤ 4000 chars); sender →
