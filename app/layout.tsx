@@ -11,8 +11,10 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   // The seal (煉, 印泥 red) — public/icon.svg; PNGs for home screens.
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }, { url: "/favicon.ico" }],
-    apple: "/apple-icon.png",
+    // ?v= busts browsers' sticky favicon caches (Chrome kept showing the old
+    // Next.js icon). Bump it whenever the icon files change.
+    icon: [{ url: "/icon.svg?v=2", type: "image/svg+xml" }, { url: "/favicon.ico?v=2" }],
+    apple: "/apple-icon.png?v=2",
   },
   // Opened from the iPhone home screen, Lianki runs without Safari's address bar.
   appleWebApp: { capable: true, title: "Lianki", statusBarStyle: "default" },
