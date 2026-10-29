@@ -67,10 +67,11 @@ mode (`?debug=1` on any page, or seven quick taps on /words' Settings button or 
 in localStorage) and the page is visible. lianki-push accepts the socket only
 if its Origin is `https://lianki.com` and the main Worker, asked over the
 `MAIN` service binding with the page's Cookie header, answers
-`/api/debug/identity` with `{userId, email, owner}` (`owner` is `isOwner()`
-on the session). A guest gets 401 there and 403 on the socket. lianki-push
-passes who it is to the hub in `x-debug-*` headers it sets itself (a page's
-own are overwritten, a sender's dropped). Signed-in non-owners are
+`/api/debug/identity` with `{userId, email, owner, name, image}` (`owner` is
+`isOwner()` on the session; `name` and `image` only draw the chat's avatars,
+docs/dev-debug-widget.md). A guest gets 401 there and 403 on the socket.
+lianki-push passes who it is to the hub in `x-debug-*` headers it sets itself
+(a page's own are removed first, a sender's dropped). Signed-in non-owners are
 **friends** (below): their own chat thread, nothing of the owner's.
 `/api/dev/whoami` stays the owner-only check (a 404 for anyone else). A page
 not in debug mode never connects; a refused one, or one the hub closed on

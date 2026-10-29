@@ -7,7 +7,7 @@
  *
  *   page        A signed-in user's page in debug mode (app/components/DebugEval.tsx).
  *               index.ts has already asked the main Worker who it is and
- *               passes that on (x-debug-user/-email/-owner). Each page
+ *               passes that on (x-debug-user/-email/-owner/-name/-image). Each page
  *               belongs to a thread: "owner" for the owner's pages, the
  *               user id for anyone else (a "friend").
  *   controller  The sender (scripts/dev/eval.ts). Unauthenticated, so it can
@@ -55,6 +55,13 @@
  * per FRIEND_CHAT_WINDOW_MS; the owner can Block one (/dev/friends →
  * /internal/friends), which closes their sockets and refuses them after.
  *
+ * Avatars. index.ts also passes the user's name and picture (x-debug-name,
+ * percent-encoded, and x-debug-image, from better-auth's user.image). The
+ * page keeps them as a Sender (wire.ts: the user id hashed, never the
+ * email), hears it on connect as {type:"me", sender}, and every line it
+ * sends carries it as `sender`. Agent lines have none: the widget draws the
+ * host app's logo. Older lines and pages without either still work.
+ *
  * Resumable grants. The owner's Allow hands the controller a random grant
  * token; only its SHA-256 is stored (`grant:<hash>`), and reconnecting with
  * it (header x-debug-token, or x-liagent-token via index.ts) restores what
@@ -89,12 +96,14 @@ import {
   PENDING_MS,
   type PairInfo,
   type Scope,
+  type Sender,
   cleanLabel,
   isPageId,
   isUserId,
   matchesTarget,
   parseControllerMessage,
   parsePageMessage,
+  senderOf,
   shortCode,
 } from "../../../lib/dev-eval";
 
@@ -129,6 +138,8 @@ type PageAtt = {
   label: string;
   thread: string;
   email?: string;
+  /** Who the page's user is, for the avatars on their lines (hashed id, name, picture). */
+  sender?: Sender;
   id?: string;
   at?: number;
 };
@@ -172,6 +183,9 @@ export const IDENTITY_HEADERS = {
   user: "x-debug-user",
   email: "x-debug-email",
   owner: "x-debug-owner",
+  /** Percent-encoded display name, and picture URL: the chat's avatars only. */
+  name: "x-debug-name",
+  image: "x-debug-image",
 } as const;
 type Att = PageAtt | ControllerAtt;
 declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
@@ -399,7 +413,18 @@ export class DebugHub {
       const userId = h.get(IDENTITY_HEADERS.user) ?? "";
       const owner = h.get(IDENTITY_HEADERS.owner) === "1";
       if (!owner && !isUserId(userId)) return new Response("forbidden", { status: 403 });
-      who = { userId, email: h.get(IDENTITY_HEADERS.email) ?? "", owner };
+      let name = "";
+      try {
+        name = decodeURIComponent(h.get(IDENTITY_HEADERS.name) ?? "");
+      } catch {}
+      const image = h.get(IDENTITY_HEADERS.image) ?? "";
+      who = {
+        userId,
+        email: h.get(IDENTITY_HEADERS.email) ?? "",
+        owner,
+        ...(name ? { name } : {}),
+        ...(image ? { image } : {}),
+      };
     }
     const pair = new WebSocketPair();
     const ws = pair[1];
@@ -470,6 +495,16 @@ export class DebugHub {
     // The tab's own id (kept across reloads), so "this page" grants survive them.
     const tab = url.searchParams.get("tab");
     const id = isPageId(tab) ? tab : crypto.randomUUID().slice(0, 8);
+    // For the avatars: a hashed id, the name, the picture. Never the email.
+    const sender = who
+      ? senderOf({
+          userId: who.userId,
+          email: who.email,
+          name: who.name,
+          avatars: [who.image],
+        })
+      : undefined;
+    const me = sender && Object.keys(sender).length ? { sender } : {};
     if (who && !who.owner) {
       if (!isUserId(who.userId)) return close(ws, 4403, "no identity");
       const rec = await this.ctx.storage.get<FriendRecord>(friendKey(who.userId));
@@ -482,6 +517,7 @@ export class DebugHub {
         label,
         thread: who.userId,
         email: cleanLabel(who.email, 320),
+        ...me,
         id,
         at: this.now(),
       } satisfies PageAtt);
@@ -491,10 +527,13 @@ export class DebugHub {
         role: "page",
         label,
         thread: OWNER_THREAD,
+        ...me,
         id,
         at: this.now(),
       } satisfies PageAtt);
     const thread = audience(att(ws) as PageAtt);
+    // The page's own avatar (older pages ignore an unknown type).
+    if (me.sender) send(ws, { type: "me", sender: me.sender });
     // A granted page is back: its pairings' grace clock stops at once.
     this.sweep();
     // Everyone sees the new page in their list; this one gets its state first.
@@ -803,6 +842,7 @@ export class DebugHub {
         text: m.text,
         at: t,
         thread: OWNER_THREAD,
+        ...(page.sender ? { sender: page.sender } : {}),
       });
     }
     // A sleeping eval grant (listed to the owner's pages only): End, or add a page.
@@ -870,7 +910,16 @@ export class DebugHub {
       console.log(JSON.stringify({ msg: "debug.friend-new", userId, email }));
       for (const l of this.listeners()) send(l.ws, { type: "friend-new", userId, email, at: t });
     }
-    return this.post({ id, from: "friend", label: page.label, text, at: t, thread: userId, email });
+    return this.post({
+      id,
+      from: "friend",
+      label: page.label,
+      text,
+      at: t,
+      thread: userId,
+      email,
+      ...(page.sender ? { sender: page.sender } : {}),
+    });
   }
 
   /**

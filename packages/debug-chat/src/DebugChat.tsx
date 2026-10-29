@@ -6,9 +6,12 @@ import {
   MAX_CHAT,
   type PageInfo,
   type PairInfo,
+  type Sender,
   pageParts,
 } from "./wire";
 import { LiagentMark } from "./LiagentMark";
+import { Avatar } from "./Avatar";
+import { type AvatarSource, lineAvatar } from "./avatar-rules";
 import {
   CLIP_SINK_KEY,
   VOICE_SENT_EVENT,
@@ -237,6 +240,15 @@ export type DebugChatProps = {
   onOpenPage?: (path: string) => void;
   /** Add this page to a pairing that was authorized for other pages only. */
   onAddPage?: (s: PairInfo) => void;
+  /**
+   * The agent's avatar on its lines: the host app's logo, as a URL or an
+   * element. Absent: the agent name's initial.
+   */
+  agentAvatar?: AvatarSource;
+  /** The viewer (hashed id, name, pictures in fallback order): their own lines' avatar. */
+  viewer?: Sender;
+  /** The host's own avatar for a line (its pictures are tried first). */
+  avatarFor?: (m: ChatMessage) => Sender | undefined;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -248,6 +260,9 @@ const QUIET: VoiceState = {
   queued: 0,
   paused: false,
 };
+
+/** A log line's avatar, square: fixed, so a picture loading late shifts nothing. */
+const AVATAR_PX = 18;
 
 /** The input grows to about five lines, then scrolls inside itself. */
 const INPUT_MAX_PX = 128;
@@ -270,6 +285,9 @@ export function DebugChat({
   onEndPage,
   onOpenPage,
   onAddPage,
+  agentAvatar,
+  viewer,
+  avatarFor,
 }: DebugChatProps) {
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
@@ -833,41 +851,48 @@ export function DebugChat({
               }
             : undefined
         }
-        className={`min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${typing || micActive ? "max-h-[30vh]" : "max-h-[4.1rem]"}`}
+        className={`min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${typing || micActive ? "max-h-[30vh]" : "max-h-[4.4rem]"}`}
       >
         {messages.length === 0 && (
           <li className="text-gray-500">Type here; it is sent 3 s after you stop.</li>
         )}
-        {/* A game-style log: one line per message, "name: text", no bubbles. */}
-        {messages.map((m, i) => (
-          // The time only on hover (long press on a phone): name and text are the line.
-          <li
-            key={m.id}
-            data-testid="debug-chat-line"
-            data-from={m.from}
-            title={when(m.at)}
-            className="whitespace-pre-wrap break-words leading-snug"
-          >
-            <span
-              className="me-1 font-medium"
-              style={{
-                color: m.from !== "agent" ? "oklch(0.55 0.13 250)" : "oklch(0.55 0.14 150)",
-              }}
+        {/* A game-style log: one line per message, avatar then text, no bubbles. */}
+        {messages.map((m, i) => {
+          const who = lineAvatar(m, { friend, viewer, agentAvatar, avatarFor });
+          return (
+            // The time only on hover (long press on a phone); the avatar's own title names who.
+            <li
+              key={m.id}
+              data-testid="debug-chat-line"
+              data-from={m.from}
+              title={when(m.at)}
+              className="flex items-start gap-1.5 leading-snug"
             >
-              {m.from !== "agent" ? "you" : m.label || "agent"}:
-            </span>
-            {m.text}
-            {!agentOnline && m.from !== "agent" && i > lastAgent && (
-              <span
-                data-testid="debug-chat-queued"
-                className="ms-1 text-[10px] text-gray-500"
-                title="The agent is offline: this is delivered when it is back"
-              >
-                · waiting for the agent
+              {/* Screen readers hear the name once, from the sr-only span. */}
+              <Avatar
+                src={who.src}
+                name={who.name}
+                initialFrom={who.initialFrom}
+                seed={who.seed}
+                size={AVATAR_PX}
+                hidden
+              />
+              <span className="min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
+                <span className="sr-only">{who.name}: </span>
+                {m.text}
+                {!agentOnline && m.from !== "agent" && i > lastAgent && (
+                  <span
+                    data-testid="debug-chat-queued"
+                    className="ms-1 text-[10px] text-gray-500"
+                    title="The agent is offline: this is delivered when it is back"
+                  >
+                    · waiting for the agent
+                  </span>
+                )}
               </span>
-            )}
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ol>
       {warning && (
         <div

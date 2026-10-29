@@ -21,6 +21,7 @@ re-exports for the hub and the sender.
 | `debug-widget.ts`                                        | shared rules: allowed URLs, cache-busting, module checks |
 | `debug-chat-tabs.ts`, `tap-gesture.ts`                   | one voice per device; taps and drags                     |
 | `wire.ts`, `icons.tsx`, `LiagentMark.tsx`                | wire types and helpers; icons; the liagent mark          |
+| `Avatar.tsx`, `avatar-rules.ts`                          | the log's avatars: the component; its pure rules         |
 | `scripts/dev/debug-widget-build.ts`                      | Bun.build with React from the page, plus Tailwind CSS    |
 | `scripts/dev/debug-widget-server.ts`                     | serve, watch, SSE `reload`, tailnet or tunnel            |
 | `scripts/dev/debug-widget-harness.tsx`                   | `/harness`: a local host page for tests                  |
@@ -133,6 +134,43 @@ userscript loader apply ([dev-userscript-loader.md](dev-userscript-loader.md)):
 the server binds `::`, and if the tunnel is remotely managed, its port must
 match. The URL is public, but it serves only the widget code.
 
+## Avatars
+
+Each log line starts with an 18px round avatar instead of a name. Who it
+shows:
+
+| Line                         | Avatar                                                |
+| ---------------------------- | ----------------------------------------------------- |
+| the agent's                  | the `agentAvatar` prop: Lianki passes `/icon-192.png` |
+| the viewer's own             | the `viewer` prop, then the line's `sender`           |
+| anyone else's (owner/friend) | the host's `avatarFor(m)`, then the line's `sender`   |
+
+Each person's pictures are tried in order: the app's own avatar (Lianki
+keeps none, so this step is empty), then the sign-in provider's image
+(better-auth's `user.image`; Google gives a letter avatar even to accounts
+without a photo). A picture that fails to load (`onError`) falls through to
+the next, and after the last to a generated one: the name's initial on
+`oklch(0.7 0.12 <hue>)`, the hue from a hash of the person's id (the hub's
+hashed user id, never the email), the letter near-black or white, whichever
+contrasts more (at least 4.5:1 on every hue; `unit/chat-avatars.test.ts`).
+
+Pictures load with `referrerPolicy="no-referrer"` (Google's need it) and
+`loading="lazy"`, at a fixed size in inline styles, so a late load shifts
+nothing and the avatar keeps its shape on a page without the widget's CSS.
+The visible name is gone; an `sr-only` span keeps it ("you: …", "Ada: …"),
+so screen readers still hear who said what. The avatar itself has `alt` /
+`aria-label` set to the name and is `aria-hidden` in the log, so the name is
+read once; its `title` is the hover tooltip.
+
+**Where `sender` comes from.** `/api/debug/identity` also answers `name` and
+`image`; lianki-push passes them to the hub as `x-debug-name`
+(percent-encoded) and `x-debug-image` (https only, at most 300 characters,
+since the page's socket attachment must stay under 2 KB). The hub keeps a
+`Sender` per page (`{id: hashId(userId), name, avatars}`), sends it to that
+page on connect as `{type:"me", sender}` (DebugEval passes it as `viewer`),
+and puts it on every line the page sends. Both fields are optional: older
+lines and pages, and an older main Worker, get the initial.
+
 ## Testing
 
 `bun test unit/debug-widget.test.ts` covers the URL rules, the module checks,
@@ -142,7 +180,11 @@ must export `DebugChat`, and must ship CSS and a stable rev.
 The debug chat cannot show in local QA, because the page's socket goes to
 lianki-push, which `wrangler dev` does not run. The loader is therefore tested
 end to end on `/harness`, which renders the real `DebugChatHost` with made-up
-messages. Run it by hand with Playwright: open `http://localhost:5180/harness`
+messages. It shows every kind of avatar: the agent's (an element, the
+liagent mark, standing in for the host's logo), the viewer's picture, and
+two friends' initials (one picture that fails to load, one with none);
+`?nopic=1` drops the viewer's picture, so their lines show the initial too.
+Run it by hand with Playwright: open `http://localhost:5180/harness`
 (`?working=1` shows the spinner) and set the localStorage key to
 `http://localhost:5180/debug-chat.js`. Then check `[data-debug-widget]` (its
 value is the rev) and edit `DebugChat.tsx`: the rev changes and the new UI
