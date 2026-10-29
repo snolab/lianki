@@ -5,7 +5,7 @@ import { type ChatMessage, MAX_CHAT, pickLang, pickVoice } from "@/lib/dev-eval"
 import { Icon } from "./icons";
 
 /** Typing pauses this long before the draft is sent. */
-const DEBOUNCE_MS = 5_000;
+const DEBOUNCE_MS = 3_000;
 const OPEN_KEY = "lk:debug-chat-open";
 const SPEAK_KEY = "lk:debug-chat-speak";
 const POS_KEY = "lk:debug-chat-pos";
@@ -283,7 +283,7 @@ export function DebugChat({
       </header>
       <ol ref={log} className="max-h-[30vh] min-h-12 space-y-1.5 overflow-y-auto px-2 py-1.5">
         {messages.length === 0 && (
-          <li className="text-gray-500">Type here; it is sent 5 s after you stop.</li>
+          <li className="text-gray-500">Type here; it is sent 3 s after you stop.</li>
         )}
         {messages.map((m) => (
           <li key={m.id} className={m.from === "owner" ? "text-right" : ""}>
@@ -344,7 +344,7 @@ export function DebugChat({
         />
         {(armed > 0 || offline) && (
           <div className="px-2 pb-1 text-[10px] text-gray-500">
-            {offline ? "not connected — kept; it will go when you type again" : "sending in 5s"}
+            {offline ? "not connected — kept; it will go when you type again" : "sending in 3s"}
           </div>
         )}
       </div>

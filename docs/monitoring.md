@@ -109,7 +109,7 @@ command). The session's local port and a random token are kept in
 
 Every owner page that holds the debug socket also shows a small chat box at
 the bottom right (`app/components/DebugChat.tsx`; collapsed to a pill by
-default on /words). The owner types; the text goes out 5 s after the last
+default on /words). The owner types; the text goes out 3 s after the last
 keystroke (a thin bar drains while it waits), or at once on Enter
 (Shift+Enter is a newline). Nothing is sent in the middle of an IME
 composition. The header shows "agent listening (n)" — the approved senders
