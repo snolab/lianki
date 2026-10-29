@@ -498,6 +498,112 @@ try {
     await ctx.close();
   }
 
+  // The frontier: three lines just above the minimized bar.
+  {
+    const { ctx, page } = await open("?min");
+    await page.evaluate(() => window.__push("a float above the frontier"));
+    await page.waitForSelector('[data-testid="debug-chat-float"]');
+    const f = await page.evaluate(() => {
+      const q = (s) => document.querySelector(s);
+      const lines = [...document.querySelectorAll('[data-testid="debug-chat-frontier-line"]')];
+      const r = (el) => el.getBoundingClientRect();
+      const doing = q('[data-status="doing"]');
+      const id = doing.querySelector('[data-testid="debug-chat-frontier-id"]');
+      return {
+        statuses: lines.map((l) => l.dataset.status).join(),
+        text: lines.map((l) => l.querySelector("button").textContent).join(" | "),
+        aboveBar:
+          r(q('[data-testid="debug-chat-frontier"]')).bottom <=
+          r(q('[data-testid="debug-chat-pill"]')).top,
+        floatsAbove:
+          r(q('[data-testid="debug-chat-floats"]')).bottom <=
+          r(q('[data-testid="debug-chat-frontier"]')).top + 1,
+        oneLine: lines.every((l) => r(l).height < 30),
+        avatar: doing.querySelector('[role="img"]')?.getAttribute("aria-label"),
+        idShort: id?.textContent,
+        idTitle: id?.getAttribute("title"),
+        humanIds: [
+          ...document.querySelectorAll(
+            '[data-status="done"] [data-testid="debug-chat-frontier-id"]',
+          ),
+        ].length,
+        collapsed: !q('[data-testid="debug-chat-frontier-items"]'),
+      };
+    });
+    check(f.statuses === "done,doing,next", `minimized: three frontier lines (${f.text})`);
+    check(f.aboveBar && f.floatsAbove, "they sit just above the bar, floating lines above them");
+    check(f.oneLine, "each is one line");
+    check(f.text.includes("多线并进〔3〕"), "a group shows its summary and 〔count〕");
+    check(f.avatar === "Agent: main lane", `in progress shows who, labelled (${f.avatar})`);
+    check(
+      f.idShort === "7f3a9c" && f.idTitle === "agent id: lane-main-7f3a9c",
+      `the agent id at the right: ${f.idShort}, full in its title`,
+    );
+    check(f.collapsed, "groups start collapsed");
+    // Tap: expands in place to list the items, with breadcrumbs and avatars.
+    await page.click('[data-status="doing"] button');
+    const items = await page
+      .locator('[data-testid="debug-chat-frontier-items"] > li')
+      .allTextContents();
+    check(
+      items.length === 3 && items[0].includes("chat › bar › minimized"),
+      `tap expands the group (${items.join(" / ")})`,
+    );
+    const humanLabel = await page
+      .locator('[data-testid="debug-chat-frontier-items"] [aria-label="Person: Ada"]')
+      .count();
+    check(humanLabel === 1, "a human item shows a person avatar, and no id");
+    const shot = SHOTS ? join(SHOTS, "frontier-expanded-light.png") : null;
+    if (shot) await page.screenshot({ path: shot });
+    await page.click('[data-status="doing"] button');
+    check(
+      (await page.locator('[data-testid="debug-chat-frontier-items"]').count()) === 0,
+      "a second tap collapses it",
+    );
+    // Expanded again: the lines go (the tree has it all); minimized again: collapsed.
+    await page.click('[data-status="doing"] button');
+    await page.click('[data-testid="debug-chat-pill-min"]');
+    await page.waitForSelector('[data-testid="debug-chat"]');
+    check(
+      (await page.locator('[data-testid="debug-chat-frontier"]').count()) === 0,
+      "expanded: no frontier lines",
+    );
+    await page.click('[data-testid="debug-chat-pill-min"]');
+    await page.waitForSelector('[data-testid="debug-chat-minimized"]');
+    check(
+      (await page.locator('[data-testid="debug-chat-frontier-items"]').count()) === 0,
+      "minimized again: the group is collapsed",
+    );
+    await ctx.close();
+  }
+  // Long press (touch) on the agent id shows the full one.
+  {
+    const ctx = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    await ctx.addInitScript(
+      (src) => localStorage.setItem("lk:debug-widget-src", src),
+      `${ORIGIN}/debug-chat.js`,
+    );
+    const page = await ctx.newPage();
+    await page.goto(`${ORIGIN}/harness?min`);
+    await page.waitForSelector('[data-testid="debug-chat-frontier-id"]', { timeout: 30_000 });
+    const box = await page.locator('[data-testid="debug-chat-frontier-id"]').boundingBox();
+    const cdp = await ctx.newCDPSession(page);
+    const pt = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [pt] });
+    await page.waitForTimeout(700);
+    const full = await page
+      .locator('[data-testid="debug-chat-frontier-id-full"]')
+      .textContent()
+      .catch(() => null);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    check(full === "lane-main-7f3a9c", `a long press on the id shows it in full (${full})`);
+    await ctx.close();
+  }
+
   // A live message floats above the minimized bar.
   {
     const { ctx, page } = await open("?min");

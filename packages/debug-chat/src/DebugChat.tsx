@@ -30,6 +30,8 @@ import {
   minimizeFloat,
 } from "./float-lines";
 import { Icon } from "./icons";
+import { FrontierLines, type RenderAvatar } from "./Frontier";
+import type { Frontier } from "./frontier-view";
 
 /** Typing pauses this long before the draft is sent. */
 const DEBOUNCE_MS = 3_000;
@@ -277,6 +279,13 @@ export type DebugChatProps = {
   onAddPage?: (s: PairInfo) => void;
   /** The state tree sheet's content (the tree button); without it, "No tree source". */
   renderTree?: () => ReactNode;
+  /**
+   * Minimized, three lines above the bar: the last done, in progress, next
+   * (Frontier.tsx). Computed by the host.
+   */
+  frontier?: Frontier;
+  /** Draws an assignee's avatar (the host's Avatar); else an initial on a hashed colour. */
+  renderAvatar?: RenderAvatar;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -311,6 +320,8 @@ export function DebugChat({
   onOpenPage,
   onAddPage,
   renderTree,
+  frontier,
+  renderAvatar,
 }: DebugChatProps) {
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
@@ -1157,6 +1168,7 @@ export function DebugChat({
           </li>
         ))}
       </ol>
+      {!open && frontier && <FrontierLines frontier={frontier} renderAvatar={renderAvatar} />}
       {open && warning && (
         <div
           role="alert"

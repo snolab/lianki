@@ -4,7 +4,7 @@
  * DebugChatHost (the loader DebugEval uses) with made-up messages, so the
  * import, React sharing and reload can be checked without lianki-push.
  * `?busy=1` shows the heartbeat spinner; `?pending=chat|eval|friend` the pairing modal;
- * `?notree` passes no state tree content; `?min` starts minimized (`?open` expanded; neither keeps what was last chosen).
+ * `?notree` passes no state tree content, `?nofrontier` no frontier lines; `?min` starts minimized (`?open` expanded; neither keeps what was last chosen).
  * `globalThis.__push(text, from?)` adds a live message, e.g. to float one up
  * over the minimized bar.
  */
@@ -91,6 +91,8 @@ function Harness() {
         selfPage="p1"
         // A small static outline for the state tree sheet (`?notree`: none).
         renderTree={q.has("notree") ? undefined : () => <HarnessTree />}
+        // Minimized: a single title, a group (collapsed; tap to list it), a next.
+        frontier={q.has("nofrontier") ? undefined : FRONTIER}
         onOpenPage={(path) => {
           const w = globalThis as { __opened?: string[] };
           (w.__opened ??= []).push(path);
@@ -115,6 +117,34 @@ function Harness() {
     </>
   );
 }
+
+/** Static frontier lines for the minimized bar: one agent and one human at work. */
+const FRONTIER = {
+  done: { text: "Unified chat bar" },
+  doing: {
+    text: "多线并进",
+    count: 3,
+    assignee: { type: "agent" as const, name: "main lane", id: "lane-main-7f3a9c" },
+    items: [
+      {
+        title: "Frontier lines",
+        path: "chat › bar › minimized",
+        assignee: { type: "agent" as const, name: "main lane", id: "lane-main-7f3a9c" },
+      },
+      {
+        title: "Avatars in the log",
+        path: "chat › log",
+        assignee: { type: "agent" as const, name: "avatar lane", id: "lane-avatar-2b81d0" },
+      },
+      {
+        title: "Review the preview",
+        path: "owner › review",
+        assignee: { type: "human" as const, name: "Ada" },
+      },
+    ],
+  },
+  next: { text: "Tree source from the state tree" },
+};
 
 /** A stand-in for the state tree: a small static outline. */
 function HarnessTree() {

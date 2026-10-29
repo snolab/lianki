@@ -16,6 +16,7 @@ re-exports for the hub and the sender.
 | `debug-chat-widget.ts`                                   | the widget entry: `DebugChat` and `WIDGET_API`           |
 | `DebugChat.tsx`                                          | the chat box: log, the bar (controls + input), menu      |
 | `float-lines.ts`                                         | minimized: floating lines, their dwell and timers        |
+| `Frontier.tsx`, `frontier-view.ts`                       | minimized: the ✓ ▶ › frontier lines and their rules      |
 | `DebugChatHost.tsx`                                      | the page's loader: import, re-import on reload, fallback |
 | `DebugPairModal.tsx`                                     | the pairing modal                                        |
 | `MicButton.tsx`, `mic.ts`                                | the mic: VAD, STT client, dictation rules                |
@@ -147,7 +148,8 @@ messages. Run it by hand with Playwright: open `http://localhost:5180/harness`
 (`?working=1` shows the spinner) and set the localStorage key to
 `http://localhost:5180/debug-chat.js`. Then check `[data-debug-widget]` (its
 value is the rev) and edit `DebugChat.tsx`: the rev changes and the new UI
-renders. `?min` (or `?open`) starts minimized (or expanded), and
+renders. `?min` (or `?open`) starts minimized (or expanded), `?notree` and
+`?nofrontier` leave out the static tree and frontier, and
 `globalThis.__push(text)` adds a live message.
 
 `node scripts/dev/debug-chat-bar-qa.mjs [--shots <dir>]` does that on its

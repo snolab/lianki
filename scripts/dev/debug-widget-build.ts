@@ -187,7 +187,7 @@ export function harnessCss(): string {
   // A slice of Tailwind's preflight, in its layer (below the widget's utilities).
   const base =
     "@layer theme, base, components, utilities;\n@layer base{*,::before,::after{box-sizing:border-box;border:0 solid;margin:0;padding:0}" +
-    "button,textarea{font:inherit;color:inherit;background:transparent}ol{list-style:none}[hidden]{display:none!important}" +
+    "button,textarea{font:inherit;color:inherit;background:transparent}ol,ul{list-style:none}[hidden]{display:none!important}" +
     "body{background:var(--background);color:var(--foreground);font-family:system-ui,sans-serif;line-height:1.5}}";
   return `${base}\n${kept.join("\n")}`;
 }

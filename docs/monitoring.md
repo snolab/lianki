@@ -295,7 +295,22 @@ the same node, slides in beside the tree button. The input is then inert and
 aria-hidden, so it can take neither focus nor taps, and the log is hidden.
 The mic keeps its live state, so hands-free voice goes on while minimized.
 
-Minimized, messages float above the bar instead of the log
+Minimized, the host's frontier (`frontier` prop, `packages/debug-chat/src/Frontier.tsx`)
+sits just above the bar as up to three one-line glass lines
+(`debug-chat-frontier-line`, `data-status`): "✓" the last done, "▶" in
+progress, "›" next. A group shows its summary (an idiom such as 多线并进) and
+its count as 〔7〕; groups start collapsed, and a tap lists the items in place
+(title and breadcrumb, scrolling past about six; `debug-chat-frontier-items`),
+another tap or minimizing again closes it. The in-progress line shows who is
+on it as a 16px avatar (the host's `renderAvatar`, else the initial on a
+hashed oklch colour, labelled with the name), and an agent's id at its right
+end: the last 6 characters, monospace, the full id in its title and on a
+long press. Only agents' ids are shown, and only opaque slugs: an id with a
+dot, colon or slash, or over 64 characters, is hidden
+(`packages/debug-chat/src/frontier-view.ts`). Expanded, the lines go: the
+tree has it all.
+
+Minimized, messages float above the frontier instead of the log
 (`debug-chat-float`, `packages/debug-chat/src/float-lines.ts`): the latest
 message at the moment of minimizing (unless over 10 minutes old), and those
 that arrive while minimized, newest at the bottom. Each stays fully visible

@@ -113,3 +113,41 @@ export const SCRUB_STEP_PX = 28;
 export function scrubBack(startBack: number, dy: number, max: number, step = SCRUB_STEP_PX) {
   return Math.max(0, Math.min(max, startBack + Math.trunc(dy / step)));
 }
+
+/**
+ * A press held for `ms` (500 by default) without moving off: `onLong` fires
+ * once. `down` starts it; `up` or `cancel` (the press ended or moved away)
+ * stops it. Timers are injected for tests.
+ */
+export function createLongPress(d: {
+  onLong: () => void;
+  ms?: number;
+  setTimer?: (f: () => void, ms: number) => unknown;
+  clearTimer?: (t: unknown) => void;
+}) {
+  const setTimer = d.setTimer ?? ((f, ms) => setTimeout(f, ms));
+  const clearTimer = d.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
+  let t: unknown = null;
+  let fired = false;
+  const stop = () => {
+    if (t !== null) clearTimer(t);
+    t = null;
+  };
+  return {
+    down() {
+      stop();
+      fired = false;
+      t = setTimer(() => {
+        t = null;
+        fired = true;
+        d.onLong();
+      }, d.ms ?? 500);
+    },
+    /** The press ended: whether it was a long press. */
+    up() {
+      stop();
+      return fired;
+    },
+    cancel: stop,
+  };
+}
