@@ -117,3 +117,15 @@ export function releaseRating(
   if (Math.abs(finger) < SWIPE_START) return null;
   return levelRating(releaseLevel(finger, v, held, a));
 }
+
+/**
+ * Variant B (NativeSlipRow): the grade of where a native scroller came to
+ * rest, `offset` px from centre (+ = slid right). Same tiers as above: under
+ * SWIPE_START nothing, within a ← Hard / → Good, beyond it ← Again / → Easy.
+ */
+export function restRating(offset: number, a = SWIPE_ROW_PX): SwipeRating | null {
+  const d = Math.abs(offset);
+  if (d < SWIPE_START) return null;
+  const strong = d > a + 0.5;
+  return offset > 0 ? (strong ? 4 : 3) : strong ? 1 : 2;
+}

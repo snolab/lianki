@@ -481,7 +481,10 @@ try {
   const synced = await cardsReach(63, 20000);
   check(synced === 63, `back online, the offline grades reach the server (${synced})`);
 
-  // Phone: holding a row reveals it (listen mode); letting go hides it again.
+  // Phone, once per swipe implementation: "js" (WordRow, JS detents — the
+  // default) and "native" (NativeSlipRow, the experimental "New swipe" — each
+  // slip a native horizontal scroller, turned on by its Settings switch).
+  // Both must look and behave the same; only the gesture mechanism differs.
   {
     const { devices } = await import("playwright");
     const phone = await browser.newContext({
@@ -497,145 +500,325 @@ try {
       ttsAsked.push(new URL(r.request().url()).searchParams.get("lang"));
       return r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") });
     });
-    const m = await phone.newPage();
-    await m.goto(page.url(), { waitUntil: "networkidle" });
-    const mrows = m.locator('[role="listitem"]');
-    await mrows.first().waitFor({ timeout: 15000 });
-    await m.waitForTimeout(500); // let the opening scroll settle
-    const listTop = await m
-      .locator('[role="list"]')
-      .evaluate((el) => el.getBoundingClientRect().top);
-    const firstTop = (await mrows.nth(0).boundingBox()).y;
-    check(
-      Math.abs(firstTop - listTop) < 50,
-      `phone: the list opens with the first word at the top (${Math.round(firstTop - listTop)}px)`,
-    );
-    const blurredM = () =>
-      mrows
-        .nth(0)
-        .locator("span.text-sm")
-        .first()
-        .evaluate((el) => el.className.includes("slip-blank"));
-    const box = await mrows.nth(0).boundingBox();
-    await m.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await m.mouse.down();
-    await m.waitForTimeout(500);
-    const whileHeld = !(await blurredM());
-    const spoken = await m.evaluate(() => window.__spoken.length + window.__played.length);
-    check(spoken > 0, `phone: holding speaks the word (${spoken} utterances)`);
-
-    await m.mouse.up();
-    await m.waitForTimeout(100);
-    check(whileHeld && (await blurredM()), "phone: holding a row reveals it, releasing hides it");
-    await shot(m, "words-phone");
-    // A tap says the word once (releasing a hold stops speech, so tap here).
-    await m.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    await m
-      .waitForFunction(() => window.__played.length > 0, null, { timeout: 6000 })
-      .catch(() => {});
-    check(
-      ttsAsked.length > 0 && (await m.evaluate(() => window.__played.length)) > 0,
-      `phone: speech that never starts falls back to server audio (${ttsAsked.join(",")})`,
-    );
-    // Focus = that slip's cords come loose (no more green bar).
-    check(
-      (await mrows.nth(0).getAttribute("class")).includes("slip-loose") &&
-        (await m.locator('[role="listitem"].slip-loose').count()) === 1,
-      "phone: the tapped slip is the one loose slip",
-    );
-    // A double tap opens the slip's other actions in a sheet; it does not
-    // change what the slip shows.
-    await m.waitForTimeout(400); // not part of the tap above
-    const shownBefore = await blurredM();
-    await m.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
-    await m
-      .locator("[data-slip-sheet]")
-      .waitFor({ timeout: 3000 })
-      .catch(() => {});
-    check(
-      (await m.locator("[data-slip-sheet]").count()) === 1,
-      "phone: a double tap opens the sheet",
-    );
-    check((await blurredM()) === shownBefore, "phone: the double tap leaves the reveal as it was");
-    // Phones have no example column: the sheet shows the example sentence.
-    check(
-      (await m.locator("[data-slip-sheet] [data-sheet-example]").count()) === 1,
-      "phone: the sheet shows the word's example sentence",
-    );
-    await m.getByRole("button", { name: "Cancel" }).click();
-    check((await m.locator("[data-slip-sheet]").count()) === 0, "phone: Cancel closes the sheet");
-    // Swipe vs scroll: a steep drag is a scroll and never grades; a clearly
-    // sideways drag grades.
-    const mStatus = async (i) =>
-      (await mrows.nth(i).locator("span.tabular-nums").innerText()).trim();
-    const drag = async (i, dx, dy) => {
-      const b = await mrows.nth(i).boundingBox();
-      const x = b.x + b.width / 2;
-      const y = b.y + b.height / 2;
-      await m.mouse.move(x, y);
-      await m.mouse.down();
-      for (let k = 1; k <= 8; k++) await m.mouse.move(x + (dx * k) / 8, y + (dy * k) / 8);
-      await m.waitForTimeout(80); // stop before lifting: distance, not a flick
-      await m.mouse.up();
-      await m.waitForTimeout(400);
-    };
-    const before = await mStatus(3);
-    await drag(3, 40, 45);
-    check((await mStatus(3)) === before, `phone: a diagonal drag does not grade (${before})`);
-    await drag(3, 70, 4);
-    const after = await mStatus(3);
-    check(after !== before, `phone: a sideways drag grades (${before} → ${after})`);
-    // What the slip uncovered: the list's grade strip, put under that row.
-    const under = await m.evaluate(() => {
-      const u = document.querySelector("[data-swipe-underlay]");
-      const row = document.querySelectorAll('[role="listitem"]')[3];
-      return u && row
-        ? `${getComputedStyle(u).visibility}:${u.offsetTop === row.offsetTop}:${u.querySelectorAll("[data-reveal]").length}`
-        : "missing";
-    });
-    check(under === "visible:true:4", `phone: the grade strip sits under the slid row (${under})`);
-    if (process.env.QA_SHOTS) {
-      // Mid-swipe, held on each level, then back to rest (no grade).
-      const b = await mrows.nth(5).boundingBox();
-      const [x, y] = [b.x + b.width / 2, b.y + b.height / 2];
-      await m.mouse.move(x, y);
-      await m.mouse.down();
-      for (const [dx, name] of [
-        [48, "good"],
-        [96, "easy"],
-        [-48, "hard"],
-        [-96, "again"],
-      ]) {
-        await m.mouse.move(x + dx, y, { steps: 10 });
-        await m.waitForTimeout(150);
-        await m.screenshot({ path: `${process.env.QA_SHOTS}/swipe-${name}.png` });
+    /** Variant A's slip look, to hold variant B's against. */
+    let lookA = null;
+    for (const variant of ["js", "native"]) {
+      const tag = `phone/${variant}:`;
+      const m = await phone.newPage();
+      m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
+      await m.goto(page.url(), { waitUntil: "networkidle" });
+      const mrows = m.locator('[role="listitem"]');
+      await mrows.first().waitFor({ timeout: 15000 });
+      if (variant === "native") {
+        // The experimental switch, under its own heading in Settings.
+        await m.getByRole("button", { name: "Settings" }).click();
+        check(
+          (await m.locator("[data-experimental]").innerText()).includes("It may change or go away"),
+          `${tag} Settings has an Experimental section with its note`,
+        );
+        const sw = m.getByRole("switch", { name: "New swipe" });
+        check(
+          (await sw.getAttribute("aria-checked")) === "false",
+          `${tag} New swipe is off by default`,
+        );
+        await sw.click();
+        await m.getByRole("button", { name: "Settings" }).click();
+        await m.locator('[data-swipe="native"]').first().waitFor({ timeout: 5000 });
+        check(
+          (await m.evaluate(() => localStorage.getItem("lk:swipe-ab"))) === "native" &&
+            (await m.locator('[data-swipe="native"]').count()) === (await mrows.count()),
+          `${tag} the switch turns every row native at once, and is remembered`,
+        );
+        // Back to the top, as a fresh page would open.
+        await m.reload({ waitUntil: "networkidle" });
+        await mrows.first().waitFor({ timeout: 15000 });
+        check(
+          (await m.locator('[data-swipe="native"]').count()) > 0,
+          `${tag} still native after a reload`,
+        );
+      } else {
+        check(
+          (await m.locator('[data-swipe="native"]').count()) === 0,
+          `${tag} rows are WordRow by default`,
+        );
       }
-      await m.mouse.move(x, y, { steps: 10 });
-      await m.mouse.up();
-      await m.waitForTimeout(400);
-    }
-    // Swipe telemetry is queued and the server takes it.
-    const tele = await m.evaluate(async () => {
-      const queued = JSON.parse(localStorage.getItem("lk:swipe-unsent") ?? "[]");
-      const r = await fetch("/api/words/telemetry", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ swipes: queued.slice(0, 5) }),
+      await m.waitForTimeout(500); // let the opening scroll settle
+      const listTop = await m
+        .locator('[role="list"]')
+        .evaluate((el) => el.getBoundingClientRect().top);
+      const firstTop = (await mrows.nth(0).boundingBox()).y;
+      check(
+        Math.abs(firstTop - listTop) < 50,
+        `${tag} the list opens with the first word at the top (${Math.round(firstTop - listTop)}px)`,
+      );
+      // Parity: the face of a slip — the row itself (A) or the scroller's
+      // face (B) — carries the same paper, node line, seam and cords.
+      const look = await m.evaluate(() => {
+        const faces = [...document.querySelectorAll('[role="listitem"]')]
+          .slice(0, 3)
+          .map((r) => r.querySelector(".slip-face") ?? r);
+        const cs = faces.map((f) => getComputedStyle(f));
+        const scroller = document.querySelector('[role="listitem"] .slip-scroller');
+        return {
+          image: cs[0].backgroundImage,
+          size: cs[0].backgroundSize,
+          classes: faces[0].className
+            .split(/\s+/)
+            .filter((c) => /^slip|^grid|^text-base|^pr-/.test(c) && c !== "slip-face")
+            .sort()
+            .join(" "),
+          // The grain shifts per row.
+          grains: new Set(cs.map((c) => c.backgroundPosition)).size,
+          cords: faces.every((f) => f.querySelector("[data-cords]")),
+          width: Math.round(faces[0].getBoundingClientRect().width),
+          left: Math.round(faces[0].getBoundingClientRect().left),
+          centred: scroller ? Math.round(scroller.scrollLeft) : null,
+        };
       });
-      return `${queued.length}:${r.status}`;
-    });
-    check(/^[1-9]\d*:200$/.test(tele), `phone: swipe telemetry is queued and stored (${tele})`);
+      check(
+        look.image.includes("bamboo") && look.cords && look.grains === 3,
+        `${tag} slips have the bamboo paper, cords, and a grain per row (${look.grains})`,
+      );
+      if (variant === "js") lookA = look;
+      else {
+        check(
+          look.image === lookA.image &&
+            look.size === lookA.size &&
+            look.classes === lookA.classes &&
+            look.width === lookA.width &&
+            look.left === lookA.left,
+          `${tag} the face matches A's slip: background layers, classes, place (${look.classes} · ${look.width}px@${look.left})`,
+        );
+        check(look.centred === 88, `${tag} each slip starts centred (scrollLeft ${look.centred})`);
+      }
+      await shot(m, `ab-${variant}-rest`);
+      const blurredM = () =>
+        mrows
+          .nth(0)
+          .locator("span.text-sm")
+          .first()
+          .evaluate((el) => el.className.includes("slip-blank"));
+      const box = await mrows.nth(0).boundingBox();
+      await m.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await m.mouse.down();
+      await m.waitForTimeout(500);
+      const whileHeld = !(await blurredM());
+      const spoken = await m.evaluate(() => window.__spoken.length + window.__played.length);
+      check(spoken > 0, `${tag} holding speaks the word (${spoken} utterances)`);
 
-    // Full screen: the API where there is one, else the Add to Home Screen hint.
-    await m.getByRole("button", { name: "Settings" }).click();
-    await m.getByRole("switch", { name: "Full screen" }).click();
-    await m.waitForTimeout(300);
-    const fsOn = await m.evaluate(() => !!document.fullscreenElement);
-    const hint = await m.getByText("Add to Home Screen", { exact: false }).count();
-    check(
-      fsOn || hint > 0,
-      `phone: the full screen button works (${fsOn ? "fullscreen" : "hint"})`,
-    );
+      await m.mouse.up();
+      await m.waitForTimeout(100);
+      check(whileHeld && (await blurredM()), `${tag} holding a row reveals it, releasing hides it`);
+      if (variant === "js") await shot(m, "words-phone");
+      // A tap says the word once (releasing a hold stops speech, so tap here).
+      const playedBefore = await m.evaluate(() => window.__played.length);
+      await m.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await m
+        .waitForFunction((n) => window.__played.length > n, playedBefore, { timeout: 6000 })
+        .catch(() => {});
+      check(
+        ttsAsked.length > 0 && (await m.evaluate(() => window.__played.length)) > playedBefore,
+        `${tag} speech that never starts falls back to server audio (${ttsAsked.join(",")})`,
+      );
+      // Focus = that slip's cords come loose (no more green bar).
+      check(
+        (await mrows.nth(0).getAttribute("class")).includes("slip-loose") &&
+          (await m.locator('[role="listitem"].slip-loose').count()) === 1 &&
+          (await mrows.nth(0).locator('[data-cords="loose"]').count()) === 1,
+        `${tag} the tapped slip is the one loose slip`,
+      );
+      // A double tap opens the slip's other actions in a sheet; it does not
+      // change what the slip shows.
+      await m.waitForTimeout(400); // not part of the tap above
+      const shownBefore = await blurredM();
+      await m.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+      await m
+        .locator("[data-slip-sheet]")
+        .waitFor({ timeout: 3000 })
+        .catch(() => {});
+      check(
+        (await m.locator("[data-slip-sheet]").count()) === 1,
+        `${tag} a double tap opens the sheet`,
+      );
+      check(
+        (await blurredM()) === shownBefore,
+        `${tag} the double tap leaves the reveal as it was`,
+      );
+      // Phones have no example column: the sheet shows the example sentence.
+      check(
+        (await m.locator("[data-slip-sheet] [data-sheet-example]").count()) === 1,
+        `${tag} the sheet shows the word's example sentence`,
+      );
+      await m.getByRole("button", { name: "Cancel" }).click();
+      check((await m.locator("[data-slip-sheet]").count()) === 0, `${tag} Cancel closes the sheet`);
+      // Swipe vs scroll: a steep drag is a scroll and never grades; a clearly
+      // sideways drag grades. A: pointer drags (WordRow reads pointer events).
+      // B: real touches through CDP, so Chromium's own gesture code scrolls the
+      // slip — axis latching, snapping and scrollend are the browser's.
+      const mStatus = async (i) =>
+        (await mrows.nth(i).locator("span.tabular-nums").innerText()).trim();
+      const cdp = variant === "native" ? await phone.newCDPSession(m) : null;
+      const touch = (type, x, y) =>
+        cdp.send("Input.dispatchTouchEvent", {
+          type,
+          touchPoints: type === "touchEnd" ? [] : [{ x, y }],
+        });
+      const drag = async (i, dx, dy) => {
+        const b = await mrows.nth(i).boundingBox();
+        const x = b.x + b.width / 2;
+        const y = b.y + b.height / 2;
+        if (cdp) {
+          await touch("touchStart", x, y);
+          for (let k = 1; k <= 8; k++) {
+            await touch("touchMove", x + (dx * k) / 8, y + (dy * k) / 8);
+            await m.waitForTimeout(16);
+          }
+          await m.waitForTimeout(80);
+          await touch("touchEnd");
+          await m.waitForTimeout(900); // snap, scrollend, glide home
+          return;
+        }
+        await m.mouse.move(x, y);
+        await m.mouse.down();
+        for (let k = 1; k <= 8; k++) await m.mouse.move(x + (dx * k) / 8, y + (dy * k) / 8);
+        await m.waitForTimeout(80); // stop before lifting: distance, not a flick
+        await m.mouse.up();
+        await m.waitForTimeout(400);
+      };
+      const before = await mStatus(3);
+      await drag(3, 40, 45);
+      check((await mStatus(3)) === before, `${tag} a diagonal drag does not grade (${before})`);
+      await drag(3, 70, 4);
+      const after = await mStatus(3);
+      check(after !== before, `${tag} a sideways drag grades (${before} → ${after})`);
+      // An undo right after a swipe (undoing it) is logged against the variant.
+      await m.getByRole("button", { name: "Undo" }).click();
+      const undoRow = await m.evaluate(() =>
+        JSON.parse(localStorage.getItem("lk:swipe-unsent") ?? "[]")
+          .map((r) => r.params)
+          .find((p) => p.includes("ev=undo") && p.includes(`ab=`)),
+      );
+      check(
+        !!undoRow && undoRow.includes(`ab=${variant}`),
+        `${tag} an undo within 5 s of a swipe is logged (${undoRow})`,
+      );
+      if (cdp) {
+        // It glided home, and the list scrolled on by a row as in A.
+        const home = await m.evaluate(() =>
+          Math.round(document.querySelectorAll(".slip-scroller")[3].scrollLeft),
+        );
+        check(home === 88, `${tag} the graded slip glides home (scrollLeft ${home})`);
+        // A vertical drag on a slip scrolls the list.
+        const top0 = await m.locator('[role="list"]').evaluate((el) => el.scrollTop);
+        await drag(6, 0, -120);
+        const top1 = await m.locator('[role="list"]').evaluate((el) => el.scrollTop);
+        check(
+          top1 > top0 + 40,
+          `${tag} a vertical drag on a slip scrolls the list (${top0} → ${top1})`,
+        );
+      }
+      // What the slip uncovers: A's list-wide grade strip put under that row;
+      // B's strip of the same zones, held still behind the face.
+      const under = await m.evaluate((native) => {
+        const rows = document.querySelectorAll('[role="listitem"]');
+        if (native) {
+          const r = rows[3];
+          const strip = r?.querySelector("[data-swipe-strip]");
+          const s = r?.querySelector(".slip-scroller");
+          if (!strip || !s) return "missing";
+          // Slid right by a: the strip must not move with the face.
+          s.scrollTo({ left: 44, behavior: "instant" });
+          const still = Math.round(
+            strip.getBoundingClientRect().left - r.getBoundingClientRect().left,
+          );
+          s.scrollTo({ left: 88, behavior: "instant" });
+          return `${getComputedStyle(strip).visibility}:${still === 0}:${strip.querySelectorAll("[data-reveal]").length}`;
+        }
+        const u = document.querySelector("[data-swipe-underlay]");
+        const row = rows[3];
+        return u && row
+          ? `${getComputedStyle(u).visibility}:${u.offsetTop === row.offsetTop}:${u.querySelectorAll("[data-reveal]").length}`
+          : "missing";
+      }, variant === "native");
+      check(
+        under === "visible:true:4",
+        `${tag} the grade strip sits under the slid row (${under})`,
+      );
+      await m.waitForTimeout(400);
+      if (process.env.QA_SHOTS) {
+        // Mid-swipe, held on each level, then back to rest (no grade): a
+        // finger held down — a pointer for A, a real touch for B.
+        const listTop = (await m.locator('[role="list"]').boundingBox()).y;
+        let b = null;
+        for (let i = 0; !b; i++) {
+          const bi = await mrows.nth(i).boundingBox();
+          if (bi && bi.y > listTop + 88) b = bi;
+        }
+        const [x, y] = [b.x + b.width / 2, b.y + b.height / 2];
+        if (cdp) await touch("touchStart", x, y);
+        else {
+          await m.mouse.move(x, y);
+          await m.mouse.down();
+        }
+        for (const [dx, name] of [
+          [48, "good"],
+          [96, "easy"],
+          [-48, "hard"],
+          [-96, "again"],
+        ]) {
+          if (cdp)
+            for (let k = 1; k <= 10; k++) {
+              await touch("touchMove", x + dx + (k < 10 ? (k - 10) * 3 : 0), y);
+              await m.waitForTimeout(16);
+            }
+          else await m.mouse.move(x + dx, y, { steps: 10 });
+          await m.waitForTimeout(150);
+          await m.screenshot({ path: `${process.env.QA_SHOTS}/ab-${variant}-mid-${name}.png` });
+        }
+        if (cdp) {
+          for (let k = 1; k <= 10; k++) {
+            await touch("touchMove", x - 96 + (96 * k) / 10, y);
+            await m.waitForTimeout(16);
+          }
+          await m.waitForTimeout(100);
+          await touch("touchEnd");
+        } else {
+          await m.mouse.move(x, y, { steps: 10 });
+          await m.mouse.up();
+        }
+        await m.waitForTimeout(600);
+      }
+      // Swipe telemetry is queued, tagged with the variant, and the server takes it.
+      const tele = await m.evaluate(async () => {
+        const queued = JSON.parse(localStorage.getItem("lk:swipe-unsent") ?? "[]");
+        const r = await fetch("/api/words/telemetry", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ swipes: queued.slice(-5) }),
+        });
+        return `${queued.length}:${r.status}:${/;ab=(\w+)/.exec(queued.at(-1)?.params ?? "")?.[1]}`;
+      });
+      check(
+        new RegExp(`^[1-9]\\d*:200:${variant}$`).test(tele),
+        `${tag} swipe telemetry is queued, tagged and stored (${tele})`,
+      );
+      // Sent already: the next variant's checks read only their own rows.
+      await m.evaluate(() => localStorage.removeItem("lk:swipe-unsent"));
+
+      if (variant === "native") {
+        // Full screen: the API where there is one, else the Add to Home Screen hint.
+        await m.getByRole("button", { name: "Settings" }).click();
+        await m.getByRole("switch", { name: "Full screen" }).click();
+        await m.waitForTimeout(300);
+        const fsOn = await m.evaluate(() => !!document.fullscreenElement);
+        const hint = await m.getByText("Add to Home Screen", { exact: false }).count();
+        check(
+          fsOn || hint > 0,
+          `phone: the full screen button works (${fsOn ? "fullscreen" : "hint"})`,
+        );
+      }
+      await m.close();
+    }
     await phone.close();
   }
 

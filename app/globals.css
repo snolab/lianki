@@ -195,6 +195,82 @@ ruby rt {
     0 6px 14px -6px oklch(0.2 0.03 50 / 0.45),
     inset 0 1px 0 oklch(1 0 0 / 0.35);
 }
+/* The experimental "New swipe" (NativeSlipRow, /words): the same slip as
+ * above, as the face of its own horizontal scroller. The track is 2a of
+ * slack, the face, 2a of slack; snap points at scrollLeft 0, a … 4a are the
+ * levels. The browser does the gesture; nothing here runs per frame. */
+.slip-native {
+  position: relative;
+}
+.slip-scroller {
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  /* No double-tap zoom: a double tap opens the slip's sheet. */
+  touch-action: pan-x pan-y;
+  scroll-timeline: --slip-x x;
+}
+.slip-scroller::-webkit-scrollbar {
+  display: none;
+}
+.slip-track {
+  position: relative;
+  height: 100%;
+  width: calc(100% + 4 * var(--a));
+}
+/* What the slip uncovers (SwipeUnderlay's zones): held still behind it. */
+.slip-strip {
+  position: sticky;
+  left: 0;
+  width: calc(100% - 4 * var(--a));
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--slip-seam);
+}
+.slip-snap {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  scroll-snap-align: start;
+}
+.slip-face {
+  position: absolute;
+  top: 0;
+  left: calc(2 * var(--a));
+  width: calc(100% - 4 * var(--a));
+  height: 100%;
+}
+/* The grain offset follows the row, as .slip:nth-child does for WordRow. */
+.slip-native:nth-child(3n) .slip {
+  --fx: 0px;
+}
+.slip-native:nth-child(3n + 1) .slip {
+  --fx: -171px;
+}
+.slip-native:nth-child(3n + 2) .slip {
+  --fx: -343px;
+}
+/* Loose cords stay pinned while the face slides: counter-moved by the
+ * scroll position. Without scroll-driven animations they ride with it. */
+@supports (animation-timeline: scroll()) {
+  .slip-pin {
+    animation: slip-pin linear both;
+    animation-timeline: --slip-x;
+  }
+}
+@keyframes slip-pin {
+  from {
+    transform: translateX(calc(-2 * var(--a)));
+  }
+  to {
+    transform: translateX(calc(2 * var(--a)));
+  }
+}
 .slip-cord {
   position: absolute;
   top: 0;

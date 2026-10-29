@@ -48,6 +48,7 @@ import {
   releaseLevel,
   releaseRating,
   releaseVelocity,
+  restRating,
   snapSwipe,
   springProgress,
   swipeLevel,
@@ -58,6 +59,7 @@ import {
   SWIPE_SNAP,
   SWIPE_VELOCITY_MS,
 } from "@/lib/words/swipe";
+import { setSwipeVariant, swipeAbTag, swipeVariant, type SwipeVariant } from "@/lib/words/swipe-ab";
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
 import { idbAdd, idbAll, idbDelete, idbGet, idbPut, type PendingOp } from "@/lib/words/idb";
 import {
@@ -96,6 +98,10 @@ const HOLD_MS = 300;
  * would rest, the grade, and the tuning in force. Queued in localStorage and
  * sent in batches — every 20 swipes, when study opens, and by beacon when
  * the page is hidden. The older local-only log (lk:swipe-log) goes up once.
+ * Each row's params end with the A/B tag (lib/words/swipe-ab.ts), and two
+ * kinds of rows are events, not swipes: `ev=undo` (an undo within
+ * UNDO_AFTER_SWIPE_MS of a swipe's grade). A swipe with rating null slid but
+ * graded nothing.
  */
 const SWIPE_PARAMS = `snap=${SWIPE_SNAP};level=${SWIPE_LEVEL};hyst=${SWIPE_HYSTERESIS};coast=${SWIPE_COAST_MS}`;
 /** A released slip springs home: the critically damped spring, as a CSS easing. */
@@ -118,13 +124,22 @@ function readJson<T>(key: string): T[] {
     return [];
   }
 }
+/** Variant B's tuning, for its telemetry rows: the browser's scroll snapping. */
+const NATIVE_PARAMS = "scroll-snap";
+/** An undo this soon after a swipe graded counts against that swipe. */
+const UNDO_AFTER_SWIPE_MS = 5000;
+let lastSwipeGrade = { at: 0, a: 44 };
 function logSwipe(e: {
   finger: number;
   v: number;
   projected: number;
   rating: Rating | null;
   a: number;
+  /** The tuning in force; default: variant A's detents. */
+  params?: string;
+  ev?: "undo";
 }) {
+  if (e.rating) lastSwipeGrade = { at: Date.now(), a: e.a };
   const unsent = readJson<SwipeRow>(UNSENT);
   unsent.push({
     at: new Date().toISOString(),
@@ -133,12 +148,27 @@ function logSwipe(e: {
     projected: Math.round(e.projected * 10) / 10,
     rating: e.rating,
     a: e.a,
-    params: SWIPE_PARAMS,
+    params: `${e.params ?? SWIPE_PARAMS};${swipeAbTag()}${e.ev ? `;ev=${e.ev}` : ""}`,
   });
   try {
     localStorage.setItem(UNSENT, JSON.stringify(unsent.slice(-400)));
   } catch {}
   if (unsent.length >= 20) flushSwipes();
+}
+/** An undo: logged when it comes within UNDO_AFTER_SWIPE_MS of a swipe's grade. */
+function logUndoAfterSwipe() {
+  if (Date.now() - lastSwipeGrade.at > UNDO_AFTER_SWIPE_MS) return;
+  const variantParams = swipeVariant() === "native" ? NATIVE_PARAMS : SWIPE_PARAMS;
+  lastSwipeGrade.at = 0;
+  logSwipe({
+    finger: 0,
+    v: 0,
+    projected: 0,
+    rating: null,
+    a: lastSwipeGrade.a,
+    params: variantParams,
+    ev: "undo",
+  });
 }
 function flushSwipes(beacon = false) {
   let legacy: SwipeRow[] = [];
@@ -1792,6 +1822,14 @@ function Study({
   };
   const started = useRef(Date.now());
   const touch = useTouch();
+  /**
+   * Which touch swipe this device uses (lib/words/swipe-ab.ts): WordRow's JS
+   * detents, or — the experimental "New swipe" — NativeSlipRow's native
+   * scroll snapping. Read after mount.
+   */
+  const [swipeAb, setSwipeAb] = useState<SwipeVariant>("js");
+  useEffect(() => setSwipeAb(swipeVariant()), []);
+  const native = touch && swipeAb === "native";
   /** Phone full screen. Remembered: once on, the first touch of a later study re-enters it. */
   const fs = useFullscreen();
   const [fsHint, setFsHint] = useState(false);
@@ -2096,6 +2134,7 @@ function Study({
     const target = grades.has(at) ? at : focusedOnly ? -1 : (gradeLog.current.at(-1) ?? -1);
     if (target < 0) return;
     const it = queue[target];
+    if (touch) logUndoAfterSwipe();
     tone("undo");
     gradeLog.current = gradeLog.current.filter((x) => x !== target);
     setGrades((g) => {
@@ -2589,6 +2628,28 @@ function Study({
                 hint="Hide the address bar while studying"
               />
             )}
+            {touch && (
+              <div className="w-full pt-1" data-experimental>
+                <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
+                  Experimental
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <TogglePill
+                    on={swipeAb === "native"}
+                    onChange={(on) => {
+                      const v = on ? "native" : "js";
+                      setSwipeVariant(v);
+                      setSwipeAb(v);
+                    }}
+                    label="New swipe"
+                    hint="Swipes done by the browser's own scrolling"
+                  />
+                  <span className="text-xs opacity-60">
+                    Native scrolling swipe. It may change or go away.
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2647,7 +2708,7 @@ function Study({
             onPointerUp={touch ? resumeFullscreen : undefined}
             role="list"
           >
-            {touch && <SwipeUnderlay ref={underlay} />}
+            {touch && !native && <SwipeUnderlay ref={underlay} />}
             <div style={{ height: pad + from * ROW_H }} />
             {queue.slice(from, to).map((it, k) => {
               const i = from + k;
@@ -2657,8 +2718,10 @@ function Study({
               const show = showAll || revealed.has(i) || (!touch && i === row) || holding === i;
               // The row being read: long cells slide to show their end.
               const glancing = touch ? holding === i || i === focusLine : i === row;
+              // The A/B test's variant B: same props, the browser does the gesture.
+              const Row = native ? NativeSlipRow : WordRow;
               return (
-                <WordRow
+                <Row
                   key={i}
                   index={i}
                   touch={touch}
@@ -2789,7 +2852,7 @@ function Study({
                   >
                     {status(it, i)}
                   </span>
-                </WordRow>
+                </Row>
               );
             })}
             <div style={{ height: (queue.length - to) * ROW_H + pad }} />
@@ -2994,6 +3057,21 @@ function SlipCords({
  * slip only moves over it.
  */
 function SwipeUnderlay({ ref }: { ref: React.RefObject<HTMLDivElement | null> }) {
+  return (
+    <div
+      ref={ref}
+      aria-hidden
+      data-swipe-underlay
+      className="pointer-events-none absolute inset-x-0 overflow-hidden"
+      style={{ visibility: "hidden", background: "var(--slip-seam)" }}
+    >
+      <GradeZones />
+    </div>
+  );
+}
+
+/** The strip's zones, in a row-wide box with --a set: shared by SwipeUnderlay and NativeSlipRow. */
+function GradeZones() {
   const zone = (r: Rating, side: "left" | "right", from: string, width: string) => (
     <span
       data-reveal={r}
@@ -3004,38 +3082,16 @@ function SwipeUnderlay({ ref }: { ref: React.RefObject<HTMLDivElement | null> })
     </span>
   );
   return (
-    <div
-      ref={ref}
-      aria-hidden
-      data-swipe-underlay
-      className="pointer-events-none absolute inset-x-0 overflow-hidden"
-      style={{ visibility: "hidden", background: "var(--slip-seam)" }}
-    >
+    <>
       {zone(3, "left", "0px", "var(--a)")}
       {zone(4, "left", "var(--a)", "calc(var(--a) * 1.5)")}
       {zone(2, "right", "0px", "var(--a)")}
       {zone(1, "right", "var(--a)", "calc(var(--a) * 1.5)")}
-    </div>
+    </>
   );
 }
 
-function WordRow({
-  index,
-  touch,
-  loose = false,
-  onHover,
-  onTap,
-  onMore,
-  onSwipe,
-  onSwipeStart,
-  onHold,
-  onHoldEnd,
-  scrolling,
-  underlay,
-  className,
-  style,
-  children,
-}: {
+type RowProps = {
   index: number;
   touch: boolean;
   /** Focused: its cords come loose (and only a loose slip slides). */
@@ -3058,7 +3114,25 @@ function WordRow({
   className: string;
   style: React.CSSProperties;
   children: React.ReactNode;
-}) {
+};
+
+function WordRow({
+  index,
+  touch,
+  loose = false,
+  onHover,
+  onTap,
+  onMore,
+  onSwipe,
+  onSwipeStart,
+  onHold,
+  onHoldEnd,
+  scrolling,
+  underlay,
+  className,
+  style,
+  children,
+}: RowProps) {
   const start = useRef<{ x: number; y: number } | null>(null);
   /** Sliding sideways: re-renders only as a drag starts and ends. */
   const [moving, setMoving] = useState(false);
@@ -3276,6 +3350,233 @@ function WordRow({
     >
       {children}
       <SlipCords loose={loose} moving={moving} pos={pos} />
+    </div>
+  );
+}
+
+/**
+ * Variant B of the swipe A/B test (lib/words/swipe-ab.ts): WordRow's slip,
+ * but each row is its own horizontal scroller (public/proto/slip.html). The
+ * browser locks the axis, follows the finger, coasts, snaps to the levels at
+ * 0, ±a, ±2a and stops hard at ±2a — all on the compositor; script runs only
+ * as a gesture starts and ends. What the slip uncovers is the same grade
+ * strip as SwipeUnderlay, held still behind the face (sticky); its cords stay
+ * pinned by a scroll-driven animation; it glides home by a smooth scroll.
+ * Touch only: desktop rows are always WordRow.
+ */
+function NativeSlipRow({
+  index,
+  loose = false,
+  onTap,
+  onSwipe,
+  onSwipeStart,
+  onHold,
+  onHoldEnd,
+  scrolling,
+  className,
+  style,
+  children,
+}: RowProps) {
+  const a = typeof style.height === "number" ? style.height : 44;
+  const scroller = useRef<HTMLDivElement>(null);
+  // Rows mount as the list scrolls: each starts centred before it is painted.
+  useLayoutEffect(() => {
+    if (scroller.current) scroller.current.scrollLeft = 2 * a;
+  }, [a]);
+  // The listeners below are attached once; they call the latest props.
+  const props = useRef({ onTap, onSwipe, onSwipeStart, onHold, onHoldEnd, scrolling });
+  props.current = { onTap, onSwipe, onSwipeStart, onHold, onHoldEnd, scrolling };
+  if (swipePerf.on) swipePerf.renders++;
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const home = 2 * a;
+    /**
+     * One gesture's state. `panned`: the browser took the touch over
+     * (pointercancel) — a slide or a list scroll; `moved`: this slip scrolled
+     * under the finger — a slide; `caught`: the touch landed on a slip
+     * still gliding home.
+     */
+    const g = {
+      touching: false,
+      panned: false,
+      moved: false,
+      caught: false,
+      /** A steep drag: a scroll, never a grade (lockAxis, as WordRow). */
+      steep: false,
+      returning: false,
+      held: false,
+      catching: false,
+      x0: 0,
+      y0: 0,
+      finger: 0,
+      hold: undefined as ReturnType<typeof setTimeout> | undefined,
+    };
+    const hasScrollEnd = "onscrollend" in window;
+    const glideHome = () => {
+      g.returning = true;
+      el.scrollTo({ left: home, behavior: "smooth" });
+    };
+    /** The scroller came to rest: grade where it landed, then glide home. */
+    const settle = () => {
+      if (g.touching) return; // still under the finger: the gesture isn't over
+      const offset = home - el.scrollLeft; // + = slid right
+      if (g.returning) {
+        if (Math.abs(offset) < 1) g.returning = false;
+        return;
+      }
+      // Only a slide this gesture made grades (not a glide caught by a tap,
+      // nor a steep drag the browser let slide anyway).
+      const swiped = g.panned && g.moved && !g.steep;
+      g.panned = g.moved = false;
+      if (g.steep) return void glideHome();
+      if (!swiped) return void (Math.abs(offset) >= 1 && glideHome());
+      const r = restRating(offset, a);
+      swipePerf.stop(r ? "swipe" : "swipe-cancel");
+      logSwipe({ finger: g.finger, v: 0, projected: offset, rating: r, a, params: NATIVE_PARAMS });
+      if (Math.abs(offset) >= 1) glideHome();
+      if (r) props.current.onSwipe(r);
+    };
+    /** The first scroll under the finger: a slide (a vertical drag never scrolls this). */
+    const slid = () => {
+      g.moved = true;
+      if (!g.caught && !g.steep) props.current.onSwipeStart?.();
+    };
+    const touchstart = (e: TouchEvent) => {
+      g.touching = true;
+      g.caught = g.returning;
+      g.returning = false;
+      g.panned = g.moved = false;
+      g.x0 = e.touches[0].clientX;
+      g.y0 = e.touches[0].clientY;
+      g.finger = 0;
+      g.steep = false;
+      swipePerf.start();
+      el.addEventListener("scroll", slid, { once: true, passive: true });
+      el.addEventListener("touchmove", axis, { passive: false });
+    };
+    /**
+     * The browser hands a diagonal drag to this slip when it can scroll that
+     * way at all; WordRow's rule is stricter (lockAxis: clearly sideways).
+     * Decided once per gesture, before the browser starts scrolling (this
+     * listener blocks only until then): a steep drag locks the slip, so the
+     * list scrolls instead.
+     */
+    const axis = (e: TouchEvent) => {
+      const t = e.touches[0];
+      const locked = t && lockAxis(t.clientX - g.x0, t.clientY - g.y0);
+      if (!locked) return;
+      el.removeEventListener("touchmove", axis);
+      if (locked === "v") {
+        g.steep = true;
+        el.style.overflowX = "hidden";
+      }
+    };
+    const touchend = (e: TouchEvent) => {
+      if (e.touches.length) return;
+      g.touching = false;
+      g.finger = (e.changedTouches[0]?.clientX ?? g.x0) - g.x0;
+      el.removeEventListener("scroll", slid);
+      el.removeEventListener("touchmove", axis);
+      if (g.steep && !g.held) el.style.overflowX = "";
+      if (!g.moved) swipePerf.stop(g.panned ? "scroll" : "tap");
+      // No scrollend: lifted while resting on a level, the quiet timer has
+      // already run (and waited for the finger). scrollend comes after the lift.
+      if (!hasScrollEnd)
+        setTimeout(() => {
+          const k = el.scrollLeft / a;
+          if (!g.touching && Math.abs(k - Math.round(k)) < 1 / a) settle();
+        }, 50);
+    };
+    const pointerdown = (e: PointerEvent) => {
+      g.held = false;
+      g.catching = props.current.scrolling?.() ?? false;
+      clearTimeout(g.hold);
+      if (g.catching) return;
+      g.hold = setTimeout(() => {
+        g.held = true;
+        // A hold stays a hold: the slip no longer slides until the finger lifts.
+        el.style.overflowX = "hidden";
+        props.current.onHold?.();
+      }, HOLD_MS);
+    };
+    const endHold = () => {
+      clearTimeout(g.hold);
+      if (!g.held) return false;
+      g.held = false;
+      el.style.overflowX = "";
+      props.current.onHoldEnd?.();
+      return true;
+    };
+    const pointerup = (e: PointerEvent) => {
+      if (endHold()) return;
+      // The browser never took the touch over: a tap — unless it caught a fling.
+      if (!g.panned && !g.catching) props.current.onTap(e.timeStamp);
+    };
+    const pointercancel = () => {
+      // Scrolling began (this slip or the list): not a tap, not a hold.
+      g.panned = true;
+      endHold();
+    };
+    const snapping = () => g.touching && navigator.vibrate?.(6);
+    // Older Safari has no scrollend: no scroll for 150 ms counts as settled.
+    let quiet: ReturnType<typeof setTimeout> | undefined;
+    const scrolled = () => {
+      clearTimeout(quiet);
+      quiet = setTimeout(settle, 150);
+    };
+    el.addEventListener("touchstart", touchstart, { passive: true });
+    el.addEventListener("touchend", touchend, { passive: true });
+    el.addEventListener("touchcancel", touchend, { passive: true });
+    el.addEventListener("pointerdown", pointerdown);
+    el.addEventListener("pointerup", pointerup);
+    el.addEventListener("pointercancel", pointercancel);
+    el.addEventListener("scrollsnapchanging", snapping);
+    if (hasScrollEnd) el.addEventListener("scrollend", settle);
+    else el.addEventListener("scroll", scrolled, { passive: true });
+    return () => {
+      clearTimeout(g.hold);
+      clearTimeout(quiet);
+      el.removeEventListener("touchstart", touchstart);
+      el.removeEventListener("touchend", touchend);
+      el.removeEventListener("touchcancel", touchend);
+      el.removeEventListener("pointerdown", pointerdown);
+      el.removeEventListener("pointerup", pointerup);
+      el.removeEventListener("pointercancel", pointercancel);
+      el.removeEventListener("scrollsnapchanging", snapping);
+      el.removeEventListener("scrollend", settle);
+      el.removeEventListener("scroll", scrolled);
+      el.removeEventListener("scroll", slid);
+      el.removeEventListener("touchmove", axis);
+    };
+  }, [a]);
+  return (
+    <div
+      role="listitem"
+      data-i={index}
+      data-swipe="native"
+      // The wrapper lifts the focused slip (z-index, shadow): the scroller
+      // would clip a shadow drawn by the face.
+      className={`slip-native ${loose ? "slip-loose" : ""}`}
+      style={{ height: style.height, ["--a" as string]: `${a}px` }}
+    >
+      <div ref={scroller} className="slip-scroller" style={{ WebkitTouchCallout: "none" }}>
+        <div className="slip-track">
+          <div aria-hidden className="slip-strip" data-swipe-strip>
+            <GradeZones />
+          </div>
+          {[0, 1, 2, 3, 4].map((k) => (
+            <i key={k} className="slip-snap" style={{ left: k * a }} />
+          ))}
+          <div className={`slip-face ${className} ${loose ? "slip-loose" : ""}`}>
+            {children}
+            {/* Counter-moved by the scroll position (CSS): the cords stay pinned. */}
+            <span className="slip-pin pointer-events-none absolute inset-0">
+              <SlipCords loose={loose} moving={false} />
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
