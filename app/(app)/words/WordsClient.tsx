@@ -430,11 +430,43 @@ const SPEECH_TAG: Record<string, string> = {
  * and what speech decides is posted to /api/dev/log — the Worker logs, for
  * the owner only.
  */
-function devLog(event: Record<string, unknown>) {
+function debugOn(): boolean {
   try {
     const q = new URLSearchParams(location.search).get("debug");
     if (q !== null) localStorage.setItem("lk:debug", q === "1" ? "1" : "0");
-    if (localStorage.getItem("lk:debug") !== "1") return;
+    return localStorage.getItem("lk:debug") === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The installed app has no address bar for ?debug=1: seven quick taps on the
+ * stats line toggle it instead. Returns [on, tap].
+ */
+function useDebugToggle(onChange: (on: boolean) => void): [boolean, () => void] {
+  const [on, setOn] = useState(false);
+  useEffect(() => setOn(debugOn()), []);
+  const taps = useRef<number[]>([]);
+  const tap = useCallback(() => {
+    const now = Date.now();
+    taps.current = [...taps.current.filter((t) => now - t < 3000), now];
+    if (taps.current.length < 7) return;
+    taps.current = [];
+    const next = !debugOn();
+    try {
+      localStorage.setItem("lk:debug", next ? "1" : "0");
+    } catch {}
+    setOn(next);
+    onChange(next);
+    if (next) devLog({ ev: "debug-on", ua: navigator.userAgent });
+  }, [onChange]);
+  return [on, tap];
+}
+
+function devLog(event: Record<string, unknown>) {
+  try {
+    if (!debugOn()) return;
     void fetch("/api/dev/log", {
       method: "POST",
       body: JSON.stringify({ at: new Date().toISOString(), ...event }),
@@ -1920,6 +1952,9 @@ function Study({
         });
     })();
   };
+  const [debug, debugTap] = useDebugToggle(
+    useCallback((on: boolean) => setNotice(on ? "Debug log on" : "Debug log off"), []),
+  );
   useEffect(() => {
     if (!notice) return;
     const t = setTimeout(() => setNotice(null), 2500);
@@ -2228,7 +2263,15 @@ function Study({
             ↶ Undo
           </button>
         )}
-        <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
+        <span
+          className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm"
+          onClick={debugTap}
+        >
+          {debug && (
+            <span className="mr-1 rounded bg-red-700 px-1 text-white" data-debug-badge>
+              DEBUG
+            </span>
+          )}
           {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
           {ahead.length - dueLeft} new
           {sync.pending > 0 ? (

@@ -286,6 +286,14 @@ try {
     ttsStatus.join() === "404,400,400",
     `word audio: no voice → 404, bad text → 400 (${ttsStatus.join()})`,
   );
+  // The installed app has no address bar: seven quick taps on the stats line
+  // toggle the debug log instead.
+  const stats = page.locator("span", { hasText: /done ·/ }).last();
+  for (let k = 0; k < 7; k++) await stats.click();
+  check((await page.locator("[data-debug-badge]").count()) === 1, "seven taps turn debug on");
+  for (let k = 0; k < 7; k++) await stats.click();
+  check((await page.locator("[data-debug-badge]").count()) === 0, "seven more turn it off");
+
   // The owner's remote-debug log is the owner's alone.
   const devLog = await page.request.post(`${new URL(page.url()).origin}/api/dev/log`, {
     data: "{}",
