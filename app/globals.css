@@ -168,6 +168,9 @@ ruby rt {
   }
 }
 .slip {
+  /* Above the grade reveal behind it (SwipeUnderlay / .slip-strip, z 0): the
+   * labels show only as the slip slides away, never on top of it. */
+  z-index: 1;
   --slip-c: var(--slip-base);
   --cord-c: var(--slip-cord);
   /* term/meaning boundary: padding + marker column + gaps + the fitted term width */
@@ -199,7 +202,7 @@ ruby rt {
  * slip lifts a little off its neighbours. */
 .slip-loose {
   --cord-c: transparent;
-  z-index: 1;
+  z-index: 2;
   box-shadow:
     0 6px 14px -6px oklch(0.2 0.03 50 / 0.45),
     inset 0 1px 0 oklch(1 0 0 / 0.35);
@@ -210,6 +213,12 @@ ruby rt {
  * levels. The browser does the gesture; nothing here runs per frame. */
 .slip-native {
   position: relative;
+  /* Each row stacks its own strip and face; the reveal can't escape above it. */
+  isolation: isolate;
+}
+[data-swipe-underlay] {
+  z-index: 0;
+  isolation: isolate;
 }
 .slip-scroller {
   height: 100%;
@@ -239,6 +248,8 @@ ruby rt {
   overflow: hidden;
   pointer-events: none;
   background: var(--slip-seam);
+  z-index: 0;
+  isolation: isolate;
 }
 .slip-snap {
   position: absolute;

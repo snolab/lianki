@@ -80,6 +80,77 @@ page.on("pageerror", (e) => {
   if (!e.message.includes("Turnstile")) errs.push("PAGEERROR " + e.message);
 });
 let ok = true;
+
+/**
+ * The grade reveal paints behind its slip: at rest the point over a label's
+ * spot hits the card; slid away (Good uncovered), it hits the label. The
+ * reveal ignores pointers, so they are let through for the probe only (the
+ * page is closed right after).
+ */
+async function revealOrder(pg, variant) {
+  await pg.addStyleTag({
+    content:
+      "[data-swipe-underlay],[data-swipe-strip],[data-reveal-slot],[data-reveal],[data-reveal] *{pointer-events:auto!important}",
+  });
+  const barB = await pg
+    .locator("[data-words-top]")
+    .evaluate((el) => el.getBoundingClientRect().bottom);
+  const rows = pg.locator('[role="listitem"]');
+  let i = 0;
+  let b = null;
+  for (; !b; i++) {
+    const bi = await rows.nth(i).boundingBox();
+    if (bi && bi.y > barB + 100) b = bi;
+  }
+  const row = rows.nth(i - 1);
+  const [x, y] = [b.x + 20, b.y + b.height / 2];
+  const hit = () =>
+    pg.evaluate(
+      ([x, y]) => {
+        // The topmost thing that shows: a faded-out reveal layer doesn't count.
+        for (const e of document.elementsFromPoint(x, y)) {
+          const r = e.closest("[data-reveal]");
+          if (r && Number(getComputedStyle(r).opacity) > 0.5) return `label:${r.dataset.reveal}`;
+          if (!r && e.closest(".slip")) return "card";
+        }
+        return "none";
+      },
+      [x, y],
+    );
+  const rest = await hit();
+  let mid;
+  if (variant === "native") {
+    // Slid right by a, probed in the same task (before the slip glides home).
+    mid = await row.evaluate(
+      (r, [x, y]) => {
+        const a = parseFloat(getComputedStyle(r).getPropertyValue("--a"));
+        r.querySelector(".slip-scroller").scrollTo({ left: a, behavior: "instant" });
+        for (const e of document.elementsFromPoint(x, y)) {
+          const z = e.closest("[data-reveal]");
+          if (z && Number(getComputedStyle(z).opacity) > 0.5) return `label:${z.dataset.reveal}`;
+          if (!z && e.closest(".slip")) return "card";
+        }
+        return "none";
+      },
+      [x, y],
+    );
+    await row.evaluate((r) => {
+      const a = parseFloat(getComputedStyle(r).getPropertyValue("--a"));
+      r.querySelector(".slip-scroller").scrollTo({ left: 2 * a, behavior: "instant" });
+    });
+  } else {
+    const cx = b.x + b.width / 2;
+    await pg.mouse.move(cx, y);
+    await pg.mouse.down();
+    await pg.mouse.move(cx + 60, y, { steps: 10 });
+    await pg.waitForTimeout(250);
+    mid = await hit();
+    await pg.mouse.move(cx, y, { steps: 10 });
+    await pg.mouse.up();
+  }
+  await pg.waitForTimeout(500);
+  return `${rest} → ${mid}`;
+}
 const check = (cond, msg) => {
   console.log(`${cond ? "✓" : "✗"} ${msg}`);
   if (!cond) ok = false;
@@ -996,6 +1067,11 @@ try {
           `phone: the full screen button works (${fsOn ? "fullscreen" : "hint"})`,
         );
       }
+      const order = await revealOrder(m, variant);
+      check(
+        order === "card → label:3",
+        `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
+      );
       await m.close();
     }
     await phone.close();
@@ -1042,6 +1118,11 @@ try {
           `${tag} ${when}: the page doesn't scroll and the first word sits right under the toolbar (${JSON.stringify(o)})`,
         );
       }
+      const order = await revealOrder(w, variant);
+      check(
+        order === "card → label:3",
+        `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
+      );
       await w.close();
       await c.close();
     }
