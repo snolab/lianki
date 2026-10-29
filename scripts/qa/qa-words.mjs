@@ -140,11 +140,61 @@ async function revealOrder(pg, variant) {
     });
   } else {
     const cx = b.x + b.width / 2;
+    // A press within 120ms of a list scroll catches a fling (no slide), and
+    // one held 300ms before moving is a hold (no slide): start only once the
+    // list has been still a while, and go past the slop on the first move.
+    await pg.evaluate(
+      () =>
+        new Promise((done) => {
+          const list = document.querySelector('[role="list"]');
+          let t;
+          const quiet = () => {
+            clearTimeout(t);
+            t = setTimeout(() => {
+              list.removeEventListener("scroll", quiet);
+              done();
+            }, 300);
+          };
+          list.addEventListener("scroll", quiet, { passive: true });
+          quiet();
+        }),
+    );
     await pg.mouse.move(cx, y);
     await pg.mouse.down();
-    await pg.mouse.move(cx + 60, y, { steps: 10 });
-    await pg.waitForTimeout(250);
+    await pg.mouse.move(cx + 20, y);
+    await pg.mouse.move(cx + 60, y, { steps: 4 });
+    // Headless WebKit can stall its rendering updates once the slip gets its
+    // own layer (will-change) mid-drag: no requestAnimationFrame runs, the
+    // queued pointermoves are coalesced away, and the slip is never painted
+    // off its spot — the probe then sees the card (CI main runs, and 5 of 5
+    // local runs with extra observers attached). A screenshot forces a
+    // rendering update; the app's own rAF paint then runs as on a device.
+    await pg.screenshot();
+    // The label fades in (150ms); a loaded runner may take longer to paint.
+    await pg
+      .waitForFunction(
+        ([x, y]) =>
+          document
+            .elementsFromPoint(x, y)
+            .some(
+              (e) =>
+                Number(getComputedStyle(e.closest("[data-reveal]") ?? e).opacity) > 0.5 &&
+                e.closest("[data-reveal]"),
+            ),
+        [x, y],
+        { timeout: 2000 },
+      )
+      .catch(() => {});
     mid = await hit();
+    if (mid !== "label:3") {
+      // Why not: the slip's transform and the underlay's state.
+      const why = await pg.evaluate(() => {
+        const u = document.querySelector("[data-swipe-underlay]");
+        const moved = document.querySelector('[role="list"] [style*="translate"]');
+        return `transform=${moved?.style.transform ?? "none"} underlay=${u?.style.visibility}`;
+      });
+      mid += ` (${why})`;
+    }
     await pg.mouse.move(cx, y, { steps: 10 });
     await pg.mouse.up();
   }
