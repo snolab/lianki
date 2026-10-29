@@ -9,6 +9,8 @@ import {
   FRIEND_CHAT_MAX,
   FRIEND_CHAT_WINDOW_MS,
   PAGE_ENDED,
+  PAGE_GONE_GRACE_MS,
+  PAGES_GONE,
   PENDING_MS,
 } from "@/lib/dev-eval";
 
@@ -1246,7 +1248,26 @@ describe("DebugHub requested scope and per-page grants", () => {
     expect(evals(later)).toHaveLength(1);
   });
 
-  it("another page can be added later, also to a chat grant (kept for resumes)", async () => {
+  it("another page can be added to an eval grant later", async () => {
+    const s = setup();
+    const a = s.page("/a");
+    const b = s.page("/b");
+    const ctl = knock(s, "eval");
+    await s.msg(a, { type: "allow", pair: s.pairOf(a), pages: [st(a).self] });
+    await s.msg(ctl, { type: "eval", code: "1" });
+    expect([a, b].map((w) => evals(w).length)).toEqual([1, 0]);
+    const pair = (st(b) as unknown as { sessions: { pair: string }[] }).sessions[0].pair;
+    await s.msg(b, { type: "allow", pair, pages: [st(b).self] });
+    await s.msg(ctl, { type: "eval", code: "2" });
+    expect([a, b].map((w) => evals(w).length)).toEqual([2, 1]);
+    // "all" from a page widens it to every page, also later ones.
+    await s.msg(b, { type: "allow", pair, pages: "all" });
+    const c = s.page("/c");
+    await s.msg(ctl, { type: "eval", code: "3" });
+    expect(evals(c)).toHaveLength(1);
+  });
+
+  it("a chat grant always covers every page, whatever the answer asked", async () => {
     const s = setup();
     const a = s.page("/a");
     const b = s.page("/b");
@@ -1254,23 +1275,46 @@ describe("DebugHub requested scope and per-page grants", () => {
     await s.msg(a, { type: "allow", pair: s.pairOf(a), pages: [st(a).self] });
     const token = ctl.last("approved")?.token as string;
     await s.msg(ctl, { type: "say", text: "one" });
-    expect(chats(b)).toEqual([]);
+    await s.msg(ctl, { type: "busy" });
+    expect([a, b].map((w) => chats(w).length)).toEqual([1, 1]);
+    expect(b.last("busy")).toBeDefined();
+    const later = s.page("/later");
+    const again = await s.resume(token);
+    await s.msg(again, { type: "say", text: "two" });
+    expect(chats(later).map((m) => m.text)).toEqual(["two"]);
+    // A widen on a chat grant changes nothing.
     const pair = (st(b) as unknown as { sessions: { pair: string }[] }).sessions[0].pair;
     await s.msg(b, { type: "allow", pair, pages: [st(b).self] });
-    await s.msg(ctl, { type: "say", text: "two" });
-    expect(chats(b).map((m) => m.text)).toEqual(["two"]);
-    // A `say` that resumes the grant later reaches both, a third page not.
-    const c = s.page("/c");
-    const again = await s.resume(token);
-    await s.msg(again, { type: "say", text: "three" });
-    expect([a, b, c].map((w) => chats(w).at(-1)?.text)).toEqual(["three", "three", undefined]);
-    // "all" from a page widens it to every page.
-    await s.msg(c, { type: "allow", pair, pages: "all" });
-    await s.msg(ctl, { type: "say", text: "four" });
-    expect(chats(c).at(-1)?.text).toBe("four");
+    await s.msg(ctl, { type: "say", text: "three" });
+    expect([a, b, later].map((w) => chats(w).at(-1)?.text)).toEqual(["three", "three", "three"]);
   });
 
-  it("an eval grant whose pages are all gone says so and closes, to pair again", async () => {
+  it("the granted page coming back (same tab id) keeps the grant", async () => {
+    const s = setup();
+    const tab = (id: string) => {
+      const ws = new FakeSocket();
+      (s.hub as unknown as { ctx: { getWebSockets(): FakeSocket[] } }).ctx.getWebSockets().push(ws);
+      void s.hub.connectPage(
+        ws,
+        new URL(`https://lianki.com/api/version/debug?label=/words&tab=${id}`),
+      );
+      return ws;
+    };
+    const phone = tab("phone-tab-1");
+    const ctl = knock(s, "eval");
+    await s.msg(phone, { type: "allow", pair: s.pairOf(phone), pages: ["phone-tab-1"] });
+    // The app goes to the background: the socket drops; it comes back with the same id.
+    phone.close(1001);
+    s.hub.webSocketClose(phone, 1001);
+    s.tick(60_000);
+    const back = tab("phone-tab-1");
+    await s.msg(ctl, { type: "eval", code: "1" });
+    expect(ctl.last("sent")?.delivered).toBe(1);
+    expect(evals(back)).toHaveLength(1);
+    expect(ctl.closed).toBeUndefined();
+  });
+
+  it("all granted pages away: an error but no close, until 5 min have passed", async () => {
     const s = setup();
     const a = s.page("/a");
     const b = s.page("/b");
@@ -1278,10 +1322,48 @@ describe("DebugHub requested scope and per-page grants", () => {
     await s.msg(a, { type: "allow", pair: s.pairOf(a), pages: [st(a).self] });
     a.close(1001);
     s.hub.webSocketClose(a, 1001);
+    s.tick(PAGE_GONE_GRACE_MS - 1);
     await s.msg(ctl, { type: "eval", code: "1" });
-    expect(ctl.last("error")?.error).toBe("the page you were authorized for is gone: pair again");
-    expect(ctl.closed).toBe(4404);
+    expect(String(ctl.last("error")?.error)).toContain("not connected now");
+    expect(ctl.closed).toBeUndefined();
     expect(evals(b)).toEqual([]);
+    s.tick(1);
+    // The next event of any kind closes it; no timer is involved.
+    await s.msg(b, { type: "chat", id: "x", text: "hi" });
+    expect(ctl.last("error")?.error).toBe("the page you were authorized for is gone: pair again");
+    expect(ctl.closed).toBe(PAGES_GONE);
+  });
+
+  it("the grace restarts when a granted page was back in between", async () => {
+    const s = setup();
+    const tab = (id: string) => {
+      const ws = new FakeSocket();
+      (s.hub as unknown as { ctx: { getWebSockets(): FakeSocket[] } }).ctx.getWebSockets().push(ws);
+      void s.hub.connectPage(
+        ws,
+        new URL(`https://lianki.com/api/version/debug?label=/a&tab=${id}`),
+      );
+      return ws;
+    };
+    const a = tab("tab-aaaaaa");
+    const other = s.page("/other");
+    const ctl = knock(s, "eval");
+    await s.msg(a, { type: "allow", pair: s.pairOf(a), pages: ["tab-aaaaaa"] });
+    a.close(1001);
+    s.hub.webSocketClose(a, 1001);
+    s.tick(PAGE_GONE_GRACE_MS - 10);
+    const back = tab("tab-aaaaaa");
+    await Promise.resolve();
+    back.close(1001);
+    s.hub.webSocketClose(back, 1001);
+    s.tick(20);
+    await s.msg(other, { type: "chat", id: "y", text: "hi" });
+    expect(ctl.closed).toBeUndefined();
+    // Past the grace, even the controller's own message closes it rather than running.
+    s.tick(PAGE_GONE_GRACE_MS);
+    await s.msg(ctl, { type: "eval", code: "1" });
+    expect(ctl.closed).toBe(PAGES_GONE);
+    expect(ctl.last("sent")).toBeUndefined();
   });
 
   it("an empty or foreign list falls back to the answering page; a friend's ids never cover the owner's", async () => {
