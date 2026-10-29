@@ -2266,12 +2266,12 @@ function Study({
                 on={serverVoice}
                 onChange={setServerVoice}
                 label="Server voice"
-                hint="Use Lianki's voices (en, es, fr, it, pt, zh, ja, ko) instead of the browser's"
+                hint="Use Lianki's voices (en, es, fr, de, it, pt, ru, zh, ja, ko) instead of the browser's"
               />
             )}
             {speech.on && serverVoice && (
               <span className="w-full text-xs opacity-60" data-voice-credit>
-                Voices: VOICEVOX:No.7 (Japanese) · Kokoro · MeloTTS
+                Voices: VOICEVOX:No.7 (Japanese) · Kokoro · Piper (Thorsten-Voice, Dmitri) · MeloTTS
               </span>
             )}
             <TogglePill

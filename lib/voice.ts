@@ -23,4 +23,6 @@ export const VOICE_CREDITS: Record<string, string> = {
   it: "Kokoro",
   pt: "Kokoro",
   zh: "Kokoro",
+  de: "Piper (Thorsten-Voice)",
+  ru: "Piper (Dmitri)",
 };

@@ -278,7 +278,7 @@ try {
   // Server word audio validates before any (paid) generation. page.request
   // shares the session but bypasses the QA stub of this route.
   const ttsStatus = await Promise.all(
-    ["lang=de&text=Haus", "lang=fr&text=", `lang=fr&text=${"a".repeat(201)}`].map(async (q) =>
+    ["lang=th&text=%E0%B8%81", "lang=fr&text=", `lang=fr&text=${"a".repeat(201)}`].map(async (q) =>
       (await page.request.get(`${new URL(page.url()).origin}/api/words/tts?${q}`)).status(),
     ),
   );
