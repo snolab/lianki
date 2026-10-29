@@ -281,6 +281,8 @@ export function DebugMic({
               ? "Recording; tap to stop listening"
               : "Listening; tap to stop"
         }
+        // Keeps the input's focus: the log stays open while dictating.
+        onPointerDown={(e) => e.preventDefault()}
         onClick={() => {
           setNote(null);
           void mic.current?.toggle();
