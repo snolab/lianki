@@ -1008,7 +1008,7 @@ describe("DebugHub heartbeat (agent is working)", () => {
     await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
     return c;
   };
-  const beats = (ws: FakeSocket) => ws.sent.filter((m) => m.type === "working");
+  const beats = (ws: FakeSocket) => ws.sent.filter((m) => m.type === "busy");
 
   it("goes to the owner's pages only by default, unstored, and is acknowledged", async () => {
     const s = setup();
@@ -1016,8 +1016,8 @@ describe("DebugHub heartbeat (agent is working)", () => {
     const c = await agent(s, owner);
     const f = await s.friend("f1", "f1@x.com");
     const keys = s.storage.store.size;
-    await s.msg(c, { type: "working" });
-    expect(beats(owner)).toEqual([{ type: "working", label: "agent", at: 1_000_000 }]);
+    await s.msg(c, { type: "busy" });
+    expect(beats(owner)).toEqual([{ type: "busy", label: "agent", at: 1_000_000 }]);
     expect(beats(f)).toEqual([]);
     expect(c.last("beat")).toEqual({ type: "beat", thread: "owner", delivered: 1, at: 1_000_000 });
     expect(s.storage.store.size).toBe(keys);
@@ -1030,8 +1030,8 @@ describe("DebugHub heartbeat (agent is working)", () => {
     const f = await s.friend("f1", "f1@x.com");
     await s.msg(f, { type: "chat", id: "a", text: "hi" });
     const g = await s.friend("f2", "f2@x.com");
-    await s.msg(c, { type: "working", to: "F1@x.com", label: "fixing" });
-    expect(beats(f)).toEqual([{ type: "working", label: "fixing", at: 1_000_000 }]);
+    await s.msg(c, { type: "busy", to: "F1@x.com", label: "fixing" });
+    expect(beats(f)).toEqual([{ type: "busy", label: "fixing", at: 1_000_000 }]);
     expect(beats(owner)).toEqual([]);
     expect(beats(g)).toEqual([]);
     expect(c.last("beat")?.thread).toBe("f1");
@@ -1043,15 +1043,15 @@ describe("DebugHub heartbeat (agent is working)", () => {
     const c = await agent(s, owner);
     const token = c.last("approved")?.token as string;
     const stranger = s.controller("stranger");
-    await s.msg(stranger, { type: "working" });
+    await s.msg(stranger, { type: "busy" });
     expect(stranger.last("error")?.error).toBe("not approved yet");
     const f = await s.friend("f1", "f1@x.com");
     await s.msg(f, { type: "chat", id: "a", text: "hi" });
     const preview = await s.forFriend(token, "f1@x.com");
     await s.msg(f, { type: "allow", pair: s.pairOf(f) });
-    await s.msg(preview, { type: "working" });
+    await s.msg(preview, { type: "busy" });
     expect(preview.last("error")?.error).toBe("a pairing for a friend cannot chat");
-    await s.msg(c, { type: "working", to: "nobody@x.com" });
+    await s.msg(c, { type: "busy", to: "nobody@x.com" });
     expect(c.last("error")?.error).toBe("no chat thread for nobody@x.com");
     expect(beats(owner)).toEqual([]);
     expect(beats(f)).toEqual([]);
@@ -1169,5 +1169,175 @@ describe("DebugHub page list and End page", () => {
     // Ending this page itself works the same way.
     await s.msg(a, { type: "end-page", id: st(a).self });
     expect(a.closed).toBe(PAGE_ENDED);
+  });
+});
+
+describe("DebugHub requested scope and per-page grants", () => {
+  /** A controller knocking with ?scope=…; a page answers. */
+  const knock = (s: ReturnType<typeof setup>, scope?: string, label = "agent") => {
+    const ws = new FakeSocket();
+
+    (s.hub as unknown as { ctx: { getWebSockets(): FakeSocket[] } }).ctx.getWebSockets().push(ws);
+    void s.hub.connectController(
+      ws,
+      new URL(
+        `https://lianki.com/api/version/debug/control?label=${label}${scope ? `&scope=${scope}` : ""}`,
+      ),
+    );
+    return ws;
+  };
+  type St = { pages: { id: string }[]; self: string; pending: { scope?: string } | null };
+  const st = (ws: FakeSocket) => ws.last("state") as unknown as St;
+  const evals = (ws: FakeSocket) => ws.sent.filter((m) => m.type === "eval");
+
+  it("Allow grants the scope the requester asked for", async () => {
+    const s = setup();
+    const p = s.page();
+    const chat = knock(s, "chat");
+    expect(st(p).pending?.scope).toBe("chat");
+    await s.msg(p, { type: "allow", pair: s.pairOf(p) });
+    expect(chat.last("approved")).toMatchObject({ scope: "chat" });
+    expect(typeof chat.last("approved")?.token).toBe("string");
+    const ev = knock(s);
+    expect(st(p).pending?.scope).toBe("eval");
+    await s.msg(p, { type: "allow", pair: s.pairOf(p) });
+    expect(ev.last("approved")).toMatchObject({ scope: "eval" });
+    // An older page's explicit chat choice still counts.
+    const old = knock(s, "eval");
+    await s.msg(p, { type: "allow", pair: s.pairOf(p), scope: "chat" });
+    expect(old.last("approved")).toMatchObject({ scope: "chat" });
+  });
+
+  it("a subset grant reaches exactly those pages — eval, busy and say — and not later ones", async () => {
+    const s = setup();
+    const a = s.page("/a");
+    const b = s.page("/b");
+    const c = s.page("/c");
+    const ctl = knock(s, "eval");
+    const [ia, ib] = [st(a).self, st(b).self];
+    await s.msg(a, { type: "allow", pair: s.pairOf(a), pages: [ia, ib, "nosuchpage"] });
+    expect(ctl.last("approved")).toMatchObject({ scope: "eval" });
+    expect((st(c) as unknown as { sessions: { pages: string[] }[] }).sessions[0].pages).toEqual([
+      ia,
+      ib,
+    ]);
+    const d = s.page("/d");
+    await s.msg(ctl, { type: "eval", code: "1" });
+    expect(ctl.last("sent")?.delivered).toBe(2);
+    expect([a, b, c, d].map((w) => evals(w).length)).toEqual([1, 1, 0, 0]);
+    await s.msg(ctl, { type: "busy" });
+    expect([a, b, c, d].map((w) => w.sent.filter((m) => m.type === "busy").length)).toEqual([
+      1, 1, 0, 0,
+    ]);
+    await s.msg(ctl, { type: "say", text: "hi" });
+    expect([a, b, c, d].map((w) => chats(w).length)).toEqual([1, 1, 0, 0]);
+    // History is still the thread's.
+    expect(chats(a)[0].text).toBe("hi");
+  });
+
+  it("'all' reaches every page, also ones that connect later", async () => {
+    const s = setup();
+    const a = s.page("/a");
+    const ctl = knock(s, "eval");
+    await s.msg(a, { type: "allow", pair: s.pairOf(a), pages: "all" });
+    const later = s.page("/later");
+    await s.msg(ctl, { type: "eval", code: "1" });
+    expect(ctl.last("sent")?.delivered).toBe(2);
+    expect(evals(later)).toHaveLength(1);
+  });
+
+  it("another page can be added later, also to a chat grant (kept for resumes)", async () => {
+    const s = setup();
+    const a = s.page("/a");
+    const b = s.page("/b");
+    const ctl = knock(s, "chat");
+    await s.msg(a, { type: "allow", pair: s.pairOf(a), pages: [st(a).self] });
+    const token = ctl.last("approved")?.token as string;
+    await s.msg(ctl, { type: "say", text: "one" });
+    expect(chats(b)).toEqual([]);
+    const pair = (st(b) as unknown as { sessions: { pair: string }[] }).sessions[0].pair;
+    await s.msg(b, { type: "allow", pair, pages: [st(b).self] });
+    await s.msg(ctl, { type: "say", text: "two" });
+    expect(chats(b).map((m) => m.text)).toEqual(["two"]);
+    // A `say` that resumes the grant later reaches both, a third page not.
+    const c = s.page("/c");
+    const again = await s.resume(token);
+    await s.msg(again, { type: "say", text: "three" });
+    expect([a, b, c].map((w) => chats(w).at(-1)?.text)).toEqual(["three", "three", undefined]);
+    // "all" from a page widens it to every page.
+    await s.msg(c, { type: "allow", pair, pages: "all" });
+    await s.msg(ctl, { type: "say", text: "four" });
+    expect(chats(c).at(-1)?.text).toBe("four");
+  });
+
+  it("an eval grant whose pages are all gone says so and closes, to pair again", async () => {
+    const s = setup();
+    const a = s.page("/a");
+    const b = s.page("/b");
+    const ctl = knock(s, "eval");
+    await s.msg(a, { type: "allow", pair: s.pairOf(a), pages: [st(a).self] });
+    a.close(1001);
+    s.hub.webSocketClose(a, 1001);
+    await s.msg(ctl, { type: "eval", code: "1" });
+    expect(ctl.last("error")?.error).toBe("the page you were authorized for is gone: pair again");
+    expect(ctl.closed).toBe(4404);
+    expect(evals(b)).toEqual([]);
+  });
+
+  it("an empty or foreign list falls back to the answering page; a friend's ids never cover the owner's", async () => {
+    const s = setup();
+    const a = s.page("/a");
+    const b = s.page("/b");
+    const f = await s.friend("f1", "f1@x.com", "/f");
+    const ctl = knock(s, "eval");
+    await s.msg(a, { type: "allow", pair: s.pairOf(a), pages: [st(f).self] });
+    await s.msg(ctl, { type: "eval", code: "1" });
+    expect([a, b, f].map((w) => evals(w).length)).toEqual([1, 0, 0]);
+  });
+
+  it("a page's tab id survives a reconnect, so its grant does", async () => {
+    const s = setup();
+    const ws = new FakeSocket();
+    (s.hub as unknown as { ctx: { getWebSockets(): FakeSocket[] } }).ctx.getWebSockets().push(ws);
+    await s.hub.connectPage(
+      ws,
+      new URL("https://lianki.com/api/version/debug?label=/a&tab=tab-123456"),
+    );
+    expect(st(ws).self).toBe("tab-123456");
+    const bad = new FakeSocket();
+    (s.hub as unknown as { ctx: { getWebSockets(): FakeSocket[] } }).ctx.getWebSockets().push(bad);
+    await s.hub.connectPage(bad, new URL("https://lianki.com/api/version/debug?label=/b&tab=x:y"));
+    expect(st(bad).self).not.toBe("x:y");
+  });
+});
+
+describe("lianki-push: x-liagent-token is an alias of x-debug-token", () => {
+  const seen: (string | null)[] = [];
+  const env: Env = {
+    HUB: { idFromName: () => 0, get: () => ({ fetch: async () => new Response("v") }) },
+    DEBUG: {
+      idFromName: () => 0,
+      get: () => ({
+        fetch: async (r: Request) => {
+          seen.push(r.headers.get("x-debug-token"), r.headers.get("x-liagent-token"));
+          return new Response("debug");
+        },
+      }),
+    },
+  };
+  const go = (headers: Record<string, string>) =>
+    push.fetch(
+      new Request("https://lianki.com/api/version/debug/control", {
+        headers: { upgrade: "websocket", ...headers },
+      }),
+      env,
+    );
+  it("passes either one on as x-debug-token; refuses two that differ", async () => {
+    seen.length = 0;
+    expect((await go({ "x-liagent-token": "t1" })).status).toBe(200);
+    expect((await go({ "x-debug-token": "t2" })).status).toBe(200);
+    expect((await go({ "x-debug-token": "t3", "x-liagent-token": "t3" })).status).toBe(200);
+    expect(seen).toEqual(["t1", null, "t2", null, "t3", null]);
+    expect((await go({ "x-debug-token": "a", "x-liagent-token": "b" })).status).toBe(400);
   });
 });

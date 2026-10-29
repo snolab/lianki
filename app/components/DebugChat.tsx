@@ -169,9 +169,6 @@ export type DebugChatProps = {
   /** Approved senders, listed in the grip's menu with an End button each. */
   sessions?: PairInfo[];
   onEnd?: (s: PairInfo) => void;
-  /** A sender waiting for the owner's answer: one compact line in the icon row. */
-  pending?: PairInfo | null;
-  onAnswer?: (type: "allow" | "deny", p: PairInfo, scope?: "chat") => void;
   /** Code just ran on this page: the eval icon pulses for a moment. */
   evalRan?: boolean;
   /** A friend's page: pairings are previews (no chat scope to grant). */
@@ -184,7 +181,7 @@ export type DebugChatProps = {
    * The agent's heartbeat says it is working on a message (DebugEval decides,
    * from real beats only): a spinner at the right end of the input.
    */
-  working?: { label: string } | null;
+  busy?: { label: string } | null;
   /** A line in the grip's menu (where this widget was loaded from, or why not). */
   note?: string;
   /** This audience's open debug pages (tabs, devices), one row each in the menu. */
@@ -195,6 +192,8 @@ export type DebugChatProps = {
   onEndPage?: (id: string) => void;
   /** Open a path in this tab (client-side, so the chat and its socket stay). */
   onOpenPage?: (path: string) => void;
+  /** Add this page to a pairing that was authorized for other pages only. */
+  onAddPage?: (s: PairInfo) => void;
 };
 
 export function DebugChat({
@@ -204,18 +203,17 @@ export function DebugChat({
   onSend,
   sessions = [],
   onEnd,
-  pending = null,
-  onAnswer,
   evalRan = false,
   friend = false,
   notice,
   warning,
-  working = null,
+  busy = null,
   note,
   pages = [],
   selfPage,
   onEndPage,
   onOpenPage,
+  onAddPage,
 }: DebugChatProps) {
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
@@ -349,6 +347,10 @@ export function DebugChat({
     if (!v) synth()?.cancel();
   };
 
+  /** A pairing authorized for some pages only, not including this one. */
+  const addable = (x: PairInfo) => !!x.pages && !!selfPage && !x.pages.includes(selfPage);
+  const reachNote = (x: PairInfo) =>
+    x.pages ? ` · ${x.pages.length === 1 ? "1 page" : `${x.pages.length} pages`} only` : "";
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
   const conns = `${plural(pages.length, "page")} · ${plural(sessions.length, "session")}`;
   /** First tap arms (END_CONFIRM_MS), the second does it. */
@@ -378,6 +380,7 @@ export function DebugChat({
       <button
         type="button"
         data-debug-chat
+        data-testid="debug-chat-pill"
         data-drag-handle
         {...handle}
         style={{ ...handle.style, ...offset }}
@@ -400,19 +403,25 @@ export function DebugChat({
   return (
     <section
       data-debug-chat
+      data-testid="debug-chat"
       aria-label="Chat with the agent"
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
       style={offset}
       className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] opacity-60 transition-opacity focus-within:opacity-100 active:opacity-100 pointer-events-none flex-col rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100"
     >
-      {(pending || evalRan || sessions.some((x) => x.scope !== "chat")) && (
-        <div aria-label="Debug connections" className="flex items-center gap-1 px-2 pt-1">
+      {(evalRan || sessions.some((x) => x.scope !== "chat")) && (
+        <div
+          aria-label="Debug connections"
+          data-testid="debug-chat-icons"
+          className="flex items-center gap-1 px-2 pt-1"
+        >
           {sessions
             .filter((x) => x.scope !== "chat")
             .map((x) => (
               <span
                 key={x.pair}
+                data-testid="debug-chat-icon-eval"
                 title={`${friend ? "preview" : "eval"}: ${x.label} · ${x.code}`}
                 className={`inline-flex size-4 items-center justify-center rounded-full text-[9px] text-white ${evalRan ? "animate-pulse" : "opacity-70"}`}
                 style={{ background: "oklch(0.55 0.15 30)" }}
@@ -420,56 +429,11 @@ export function DebugChat({
                 <Icon name="play" />
               </span>
             ))}
-          {pending && (
-            // A sender asks to pair: one line, its code and the three answers.
-            <span
-              role="alertdialog"
-              aria-label={`${pending.label} wants to run code or chat; code ${pending.code}`}
-              className="pointer-events-auto inline-flex items-center gap-1 rounded-full py-0.5 ps-1.5 pe-0.5 text-[10px] text-white"
-              style={{ background: "oklch(0.45 0.12 30)" }}
-              title={
-                friend
-                  ? `${pending.label} wants to preview a change on this page for 1 hour. Allow only if the agent told you the same code in the chat.`
-                  : `${pending.label} wants to run code on your debug pages, or to chat. Allow only if your terminal shows the same code.`
-              }
-            >
-              <Icon name="lock" />
-              <b className="font-mono tracking-wider">{pending.code}</b>
-              <button
-                type="button"
-                onClick={() => onAnswer?.("allow", pending)}
-                className="rounded-full px-1.5"
-                style={{ background: "oklch(0.55 0.15 145)" }}
-                title="Allow code and chat for 1 hour"
-              >
-                1h
-              </button>
-              {!friend && (
-                <button
-                  type="button"
-                  onClick={() => onAnswer?.("allow", pending, "chat")}
-                  className="rounded-full px-1.5"
-                  style={{ background: "oklch(0.5 0.1 230)" }}
-                  title="Chat only, for 30 days"
-                >
-                  chat
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => onAnswer?.("deny", pending)}
-                className="rounded-full px-1.5"
-                style={{ background: "oklch(0.4 0.02 260)" }}
-                aria-label="Deny"
-              >
-                ✕
-              </button>
-            </span>
-          )}
         </div>
       )}
       <ol
         ref={log}
+        data-testid="debug-chat-log"
         onScroll={onLogScroll}
         data-fade={fade || undefined}
         style={fade ? { maskImage: FADE, WebkitMaskImage: FADE } : undefined}
@@ -483,6 +447,8 @@ export function DebugChat({
           // The time only on hover (long press on a phone): name and text are the line.
           <li
             key={m.id}
+            data-testid="debug-chat-line"
+            data-from={m.from}
             title={when(m.at)}
             className="whitespace-pre-wrap break-words leading-snug"
           >
@@ -499,14 +465,19 @@ export function DebugChat({
         ))}
       </ol>
       {warning && (
-        <div role="alert" className="px-2 pt-1 text-[10px]" style={{ color: "oklch(0.6 0.17 45)" }}>
+        <div
+          role="alert"
+          data-testid="debug-chat-warning"
+          className="px-2 pt-1 text-[10px]"
+          style={{ color: "oklch(0.6 0.17 45)" }}
+        >
           {warning}
         </div>
       )}
       {notice ? (
         <p
           role="status"
-          data-debug-chat-notice
+          data-testid="debug-chat-notice"
           className="pointer-events-auto px-2 py-2 text-gray-600 dark:text-gray-400"
         >
           {notice}
@@ -521,7 +492,7 @@ export function DebugChat({
               <div className="pointer-events-none absolute inset-x-0 bottom-full mb-1 flex justify-end">
                 <button
                   type="button"
-                  data-debug-chat-bottom
+                  data-testid="debug-chat-bottom"
                   aria-label={
                     below
                       ? `Scroll to the newest message, ${below} new`
@@ -549,6 +520,7 @@ export function DebugChat({
             <button
               type="button"
               data-drag-handle
+              data-testid="debug-chat-grip"
               aria-label={`Drag the chat box; ${conns}; double tap for its menu`}
               aria-expanded={menu}
               title={status}
@@ -563,7 +535,10 @@ export function DebugChat({
               className="pointer-events-auto relative flex w-9 shrink-0 flex-col items-center justify-center rounded-lg border border-current/25 text-base leading-none text-gray-500"
             >
               ⠿{/* Pages·sessions under the glyph (e.g. "2·1"); spelled out in the label. */}
-              <span data-debug-chat-count className="text-[9px] leading-none tabular-nums">
+              <span
+                data-testid="debug-chat-grip-count"
+                className="text-[9px] leading-none tabular-nums"
+              >
                 {pages.length}·{sessions.length}
               </span>
               <span
@@ -575,21 +550,26 @@ export function DebugChat({
             {menu && (
               <div
                 role="menu"
-                data-debug-chat-menu
+                data-testid="debug-menu"
                 style={{ background: INPUT_BG }}
                 className="pointer-events-auto absolute bottom-full start-0 mb-1 flex min-w-48 flex-col rounded-lg border border-current/25 py-1 text-xs backdrop-blur"
               >
-                <span className="px-3 py-1 text-gray-500" aria-live="polite">
+                <span
+                  data-testid="debug-menu-status"
+                  className="px-3 py-1 text-gray-500"
+                  aria-live="polite"
+                >
                   {status}
                 </span>
                 {note && (
-                  <span data-debug-chat-note className="px-3 py-1 text-gray-500">
+                  <span data-testid="debug-menu-note" className="px-3 py-1 text-gray-500">
                     {note}
                   </span>
                 )}
                 <button
                   type="button"
                   role="menuitemcheckbox"
+                  data-testid="debug-menu-speak"
                   aria-checked={speak}
                   onClick={toggleSpeak}
                   className="flex items-center gap-2 px-3 py-1.5 text-start"
@@ -600,6 +580,7 @@ export function DebugChat({
                 <button
                   type="button"
                   role="menuitem"
+                  data-testid="debug-menu-minimize"
                   onClick={() => {
                     setMenu(false);
                     toggle(false);
@@ -617,13 +598,14 @@ export function DebugChat({
                   return (
                     <div
                       key={pg.id || pg.label}
-                      data-debug-chat-page={self ? "self" : "other"}
+                      data-testid="debug-menu-page"
+                      data-self={self || undefined}
                       className="flex items-center gap-2 px-3 py-1 text-gray-500"
                     >
                       {/* Tap: open that path here (other tabs and devices can't be focused). */}
                       <button
                         type="button"
-                        data-debug-chat-open={path}
+                        data-testid="debug-menu-page-open"
                         title={pg.label}
                         onClick={() => {
                           setMenu(false);
@@ -639,6 +621,7 @@ export function DebugChat({
                       {pg.id && (
                         <button
                           type="button"
+                          data-testid="debug-menu-page-end"
                           onClick={(e) => {
                             e.stopPropagation();
                             if (self) twoStep(key, () => onEndPage?.(pg.id));
@@ -656,23 +639,57 @@ export function DebugChat({
                 {sessions
                   .filter((x) => x.scope !== "chat")
                   .map((x) => (
-                    <div key={x.pair} className="flex items-center gap-2 px-3 py-1 text-gray-500">
+                    <div
+                      key={x.pair}
+                      data-testid="debug-menu-session"
+                      className="flex items-center gap-2 px-3 py-1 text-gray-500"
+                    >
                       <span className="min-w-0 flex-1 truncate">
                         {friend ? "preview" : "eval"}: {x.label} · {x.code}
+                        {reachNote(x)}
                       </span>
-                      <button type="button" onClick={() => onEnd?.(x)} className="underline">
+                      {addable(x) && (
+                        <button
+                          type="button"
+                          data-testid="debug-menu-session-add"
+                          onClick={() => onAddPage?.(x)}
+                          className="underline"
+                        >
+                          Add this page
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        data-testid="debug-menu-session-end"
+                        onClick={() => onEnd?.(x)}
+                        className="underline"
+                      >
                         End
                       </button>
                     </div>
                   ))}
                 {/* Ending the chat grant ends the chat itself: apart, in red, two taps. */}
                 {sessions
+                  .filter((x) => x.scope === "chat" && addable(x))
+                  .map((x) => (
+                    <button
+                      key={`add-${x.pair}`}
+                      type="button"
+                      data-testid="debug-menu-session-add"
+                      onClick={() => onAddPage?.(x)}
+                      className="px-3 py-1 text-start text-gray-500 underline"
+                    >
+                      Let the agent's chat reach this page too{reachNote(x)}
+                    </button>
+                  ))}
+                {sessions
                   .filter((x) => x.scope === "chat")
                   .map((x) => (
                     <button
                       key={x.pair}
                       type="button"
-                      data-debug-chat-end={endArmed === x.pair ? "armed" : "idle"}
+                      data-testid="debug-menu-end-chat"
+                      data-armed={endArmed === x.pair || undefined}
                       title={`chat: ${x.label} · ${x.code}`}
                       onClick={() => twoStep(x.pair, () => onEnd?.(x))}
                       className="mx-2 my-1 rounded px-2 py-1 text-start font-medium"
@@ -699,6 +716,7 @@ export function DebugChat({
             <div className="relative flex min-w-0 flex-1">
               <textarea
                 ref={input}
+                data-testid="debug-chat-input"
                 rows={1}
                 value={draft}
                 maxLength={MAX_CHAT}
@@ -742,13 +760,13 @@ export function DebugChat({
                 style={{ background: INPUT_BG }}
                 className="pointer-events-auto block min-w-0 flex-1 resize-none pe-6 rounded-lg border border-current/25 px-2 py-1 text-base outline-none placeholder:text-gray-400"
               />
-              {working && (
+              {busy && (
                 // Up only while real heartbeats arrive (DebugEval): never a guess.
                 <span
                   role="status"
-                  data-debug-chat-working
-                  aria-label={`${working.label || "agent"} is working`}
-                  title={`${working.label || "agent"} is working`}
+                  data-testid="debug-chat-busy"
+                  aria-label={`${busy.label || "agent"} is working`}
+                  title={`${busy.label || "agent"} is working`}
                   className="pointer-events-none absolute end-1.5 top-1/2 -translate-y-1/2"
                 >
                   <svg viewBox="0 0 16 16" className="size-3.5 animate-spin" aria-hidden>

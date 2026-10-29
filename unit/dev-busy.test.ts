@@ -1,49 +1,49 @@
 import { describe, expect, it } from "bun:test";
 import {
-  WORKING_EVERY_MAX,
-  WORKING_MAX_S,
+  BUSY_EVERY_MAX,
+  BUSY_MAX_S,
   beatMessage,
   endsBeat,
-  parseWorkingArgs,
-} from "@/scripts/dev/working";
+  parseBusyArgs,
+} from "@/scripts/dev/busy";
 
-describe("eval.ts working: arguments", () => {
+describe("eval.ts busy: arguments", () => {
   it("one beat by default; --every loops and stops at the agent's reply", () => {
-    expect(parseWorkingArgs([])).toEqual({ untilSay: true, maxSeconds: WORKING_MAX_S });
-    expect(parseWorkingArgs(["--every", "4", "--to", "f@x.com", "--label", "fixing"])).toEqual({
+    expect(parseBusyArgs([])).toEqual({ untilSay: true, maxSeconds: BUSY_MAX_S });
+    expect(parseBusyArgs(["--every", "4", "--to", "f@x.com", "--label", "fixing"])).toEqual({
       every: 4,
       to: "f@x.com",
       label: "fixing",
       untilSay: true,
-      maxSeconds: WORKING_MAX_S,
+      maxSeconds: BUSY_MAX_S,
     });
-    expect(parseWorkingArgs(["--every", "0.2", "--keep", "--max", "60"])).toEqual({
+    expect(parseBusyArgs(["--every", "0.2", "--keep", "--max", "60"])).toEqual({
       every: 1,
       untilSay: false,
       maxSeconds: 60,
     });
-    expect(parseWorkingArgs(["--keep", "--until-say"])).toMatchObject({ untilSay: true });
+    expect(parseBusyArgs(["--keep", "--until-say"])).toMatchObject({ untilSay: true });
   });
 
   it("refuses what would break the spinner or is not understood", () => {
-    expect(parseWorkingArgs(["--every", String(WORKING_EVERY_MAX + 1)])).toEqual({
-      error: `--every must be at most ${WORKING_EVERY_MAX} s, or the spinner lapses`,
+    expect(parseBusyArgs(["--every", String(BUSY_EVERY_MAX + 1)])).toEqual({
+      error: `--every must be at most ${BUSY_EVERY_MAX} s, or the spinner lapses`,
     });
-    expect(parseWorkingArgs(["--every", "soon"])).toEqual({
+    expect(parseBusyArgs(["--every", "soon"])).toEqual({
       error: "--every needs a number of seconds",
     });
-    expect(parseWorkingArgs(["--max", "-1"])).toEqual({ error: "--max needs a number of seconds" });
-    expect(parseWorkingArgs(["--to"])).toEqual({ error: "--to needs a value" });
-    expect(parseWorkingArgs(["--label", "--keep"])).toEqual({ error: "--label needs a value" });
-    expect(parseWorkingArgs(["now"])).toEqual({ error: "unknown argument now" });
+    expect(parseBusyArgs(["--max", "-1"])).toEqual({ error: "--max needs a number of seconds" });
+    expect(parseBusyArgs(["--to"])).toEqual({ error: "--to needs a value" });
+    expect(parseBusyArgs(["--label", "--keep"])).toEqual({ error: "--label needs a value" });
+    expect(parseBusyArgs(["now"])).toEqual({ error: "unknown argument now" });
   });
 });
 
-describe("eval.ts working: wire", () => {
+describe("eval.ts busy: wire", () => {
   it("beatMessage carries only what was given", () => {
-    expect(JSON.parse(beatMessage({}))).toEqual({ type: "working" });
+    expect(JSON.parse(beatMessage({}))).toEqual({ type: "busy" });
     expect(JSON.parse(beatMessage({ to: "f@x.com", label: "x" }))).toEqual({
-      type: "working",
+      type: "busy",
       to: "f@x.com",
       label: "x",
     });

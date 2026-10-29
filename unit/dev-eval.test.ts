@@ -4,8 +4,8 @@ import {
   MAX_CHAT,
   MAX_CODE,
   MAX_LABEL,
-  WORKING_GRACE_MS,
-  WORKING_MS,
+  BUSY_GRACE_MS,
+  BUSY_MS,
   type ChatMessage,
   chatText,
   cleanLabel,
@@ -20,7 +20,10 @@ import {
   summarize,
   trimHistory,
   pageParts,
-  workingLeft,
+  busyLeft,
+  allowLabel,
+  isPageId,
+  pairSentence,
 } from "@/lib/dev-eval";
 
 describe("parseControllerMessage", () => {
@@ -206,17 +209,17 @@ describe("threads", () => {
 
 describe("heartbeat and page messages", () => {
   it("parses a working beat with an optional thread and label", () => {
-    expect(parseControllerMessage('{"type":"working"}')).toEqual({
+    expect(parseControllerMessage('{"type":"busy"}')).toEqual({
       ok: true,
-      value: { type: "working" },
+      value: { type: "busy" },
     });
     expect(
       parseControllerMessage(
-        JSON.stringify({ type: "working", to: " f@x.com ", label: "fix\nng", junk: 1 }),
+        JSON.stringify({ type: "busy", to: " f@x.com ", label: "fix\nng", junk: 1 }),
       ),
-    ).toEqual({ ok: true, value: { type: "working", to: "f@x.com", label: "fix ng" } });
-    const r = parseControllerMessage(JSON.stringify({ type: "working", label: "x".repeat(500) }));
-    expect(r.ok && r.value.type === "working" && r.value.label?.length).toBe(80);
+    ).toEqual({ ok: true, value: { type: "busy", to: "f@x.com", label: "fix ng" } });
+    const r = parseControllerMessage(JSON.stringify({ type: "busy", label: "x".repeat(500) }));
+    expect(r.ok && r.value.type === "busy" && r.value.label?.length).toBe(80);
   });
 
   it("parses a page relabel: cleaned, bounded, never empty", () => {
@@ -241,17 +244,17 @@ describe("heartbeat and page messages", () => {
     expect(parsePageMessage('{"type":"end-page"}')).toBeNull();
   });
 
-  it("workingLeft: live, recent, and newer than the last agent reply", () => {
+  it("busyLeft: live, recent, and newer than the last agent reply", () => {
     const beat = { beatAt: 50_000, seenAt: 1_000 };
-    expect(workingLeft(true, beat, 0, 1_000)).toBe(WORKING_MS);
-    expect(workingLeft(true, beat, 0, 1_000 + WORKING_MS - 1)).toBe(1);
-    expect(workingLeft(true, beat, 0, 1_000 + WORKING_MS)).toBe(0);
-    expect(workingLeft(false, beat, 0, 1_000)).toBe(0);
-    expect(workingLeft(true, null, 0, 1_000)).toBe(0);
+    expect(busyLeft(true, beat, 0, 1_000)).toBe(BUSY_MS);
+    expect(busyLeft(true, beat, 0, 1_000 + BUSY_MS - 1)).toBe(1);
+    expect(busyLeft(true, beat, 0, 1_000 + BUSY_MS)).toBe(0);
+    expect(busyLeft(false, beat, 0, 1_000)).toBe(0);
+    expect(busyLeft(true, null, 0, 1_000)).toBe(0);
     // A reply after the beat stops it; a beat just after a reply is the loop's last one.
-    expect(workingLeft(true, beat, 50_001, 1_000)).toBe(0);
-    expect(workingLeft(true, beat, 50_000 - WORKING_GRACE_MS + 1, 1_000)).toBe(0);
-    expect(workingLeft(true, beat, 50_000 - WORKING_GRACE_MS, 1_000)).toBe(WORKING_MS);
+    expect(busyLeft(true, beat, 50_001, 1_000)).toBe(0);
+    expect(busyLeft(true, beat, 50_000 - BUSY_GRACE_MS + 1, 1_000)).toBe(0);
+    expect(busyLeft(true, beat, 50_000 - BUSY_GRACE_MS, 1_000)).toBe(BUSY_MS);
   });
 });
 
@@ -271,5 +274,44 @@ describe("pageParts", () => {
     expect(pageParts("/a Mozilla/5.0 (X11; Linux x86_64)").device).toBe("Linux");
     expect(pageParts("/a curl/8")).toEqual({ path: "/a", device: "" });
     expect(pageParts("")).toEqual({ path: "/", device: "" });
+  });
+});
+
+describe("pairing: requested scope, pages, wording", () => {
+  it("allow carries page ids or 'all'; junk ids are dropped", () => {
+    expect(parsePageMessage('{"type":"allow","pair":"p","pages":"all"}')).toEqual({
+      type: "allow",
+      pair: "p",
+      pages: "all",
+    });
+    expect(
+      parsePageMessage(JSON.stringify({ type: "allow", pair: "p", pages: ["abc123", "x:y", 5] })),
+    ).toEqual({ type: "allow", pair: "p", pages: ["abc123"] });
+    expect(parsePageMessage('{"type":"allow","pair":"p","pages":"some"}')).toEqual({
+      type: "allow",
+      pair: "p",
+    });
+    expect(isPageId("tab-123456")).toBe(true);
+    expect(isPageId("short")).toBe(false);
+  });
+
+  it("pairSentence says what Allow grants", () => {
+    expect(pairSentence({ label: "agent", scope: "chat" }, false)).toBe(
+      "agent wants to chat with you for 30 days.",
+    );
+    expect(pairSentence({ label: "lane", scope: "eval" }, false)).toBe(
+      "lane wants to run code on your debug pages for 1 hour.",
+    );
+    expect(pairSentence({ label: "agent", scope: "eval" }, true)).toBe(
+      "agent wants to preview a change on this page for 1 hour.",
+    );
+  });
+
+  it("allowLabel follows the ticks", () => {
+    expect(allowLabel(1, 1, true)).toBe("Authorize this page");
+    expect(allowLabel(1, 3, true)).toBe("Authorize this page");
+    expect(allowLabel(3, 3, true)).toBe("Authorize all pages");
+    expect(allowLabel(2, 3, true)).toBe("Authorize 2 pages");
+    expect(allowLabel(1, 3, false)).toBe("Authorize 1 page");
   });
 });

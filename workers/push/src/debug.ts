@@ -31,8 +31,8 @@
  * chat, eval targets and listings use the new path — and tells the listeners
  * {type:"page-changed", label, thread, at}. Not stored, never in the chat.
  *
- * Heartbeat. An owner-approved controller sends {type:"working", to?} while
- * the agent works on a message; the hub passes {type:"working", label, at}
+ * Heartbeat. An owner-approved controller sends {type:"busy", to?} while
+ * the agent works on a message; the hub passes {type:"busy", label, at}
  * to that one thread's pages (the owner's by default) and acks {type:"beat"}.
  * Nothing is stored: the page's spinner times out on its own.
  *
@@ -65,7 +65,9 @@ import {
   PAGE_ENDED,
   PENDING_MS,
   type PairInfo,
+  type Scope,
   cleanLabel,
+  isPageId,
   isUserId,
   matchesTarget,
   parseControllerMessage,
@@ -111,10 +113,13 @@ type PageAtt = {
 type ControllerAtt = {
   role: "controller";
   grant?: string;
+  /** Approved for these page ids only ("Authorize this page"); absent = all. */
+  pages?: string[];
   forUser?: string;
   forEmail?: string;
 } & PairInfo;
-type Grant = { label: string; until: number };
+/** `pages`: the owner's page ids it reaches (absent = all). */
+type Grant = { label: string; until: number; pages?: string[] };
 /** A friend's chat rate window. */
 type Rate = { start: number; count: number };
 /** The header a controller resumes its chat grant with. */
@@ -145,8 +150,11 @@ const close = (ws: Socket, code: number, reason: string) => {
     ws.close(code, reason);
   } catch {}
 };
-const info = ({ pair, code, label, at, until, scope }: ControllerAtt): PairInfo =>
-  until ? { pair, code, label, at, until, scope: scope ?? "eval" } : { pair, code, label, at };
+/** A pairing as pages see it: `scope` is what was granted, or (pending) what is asked for. */
+const info = ({ pair, code, label, at, until, scope, pages }: ControllerAtt): PairInfo =>
+  until
+    ? { pair, code, label, at, until, scope: scope ?? "eval", ...(pages ? { pages } : {}) }
+    : { pair, code, label, at, scope: scope ?? "eval" };
 const hex = (b: ArrayBuffer | Uint8Array) =>
   Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join("");
 export const hashToken = async (token: string) =>
@@ -189,6 +197,16 @@ export class DebugHub {
   /** The pages of one thread. */
   private pages(thread: string, except?: Socket) {
     return this.sockets("page", except).filter((p) => p.a.thread === thread);
+  }
+
+  /**
+   * The pages of `thread` a controller reaches live: all of them, unless it
+   * was authorized for some pages only and this is its own audience's thread.
+   */
+  private reach(c: ControllerAtt, thread: string) {
+    const all = this.pages(thread);
+    if (!c.pages || thread !== audience(c)) return all;
+    return all.filter((p) => p.a.id && c.pages?.includes(p.a.id));
   }
 
   /** What one audience's pages see: its own pairings, and how many agents listen. */
@@ -246,14 +264,15 @@ export class DebugHub {
   }
 
   /** Keep one chat message (dropping its thread's oldest past CHAT_HISTORY) and send it on. */
-  private async post(m: ChatMessage & { thread: string }) {
+  private async post(m: ChatMessage & { thread: string }, only?: string[]) {
     const { seq: seqKey } = threadKeys(m.thread);
     const seq = ((await this.ctx.storage.get<number>(seqKey)) ?? 0) + 1;
     await this.ctx.storage.put(seqKey, seq);
     await this.ctx.storage.put(msgKey(m.thread, seq), m);
     if (seq > CHAT_HISTORY) await this.ctx.storage.delete(msgKey(m.thread, seq - CHAT_HISTORY));
     const out = { type: "chat", message: m };
-    for (const { ws } of this.pages(m.thread)) send(ws, out);
+    for (const { ws, a } of this.pages(m.thread))
+      if (!only || (a.id && only.includes(a.id))) send(ws, out);
     for (const { ws } of this.listeners()) send(ws, out);
   }
 
@@ -354,7 +373,9 @@ export class DebugHub {
    */
   async connectPage(ws: Socket, url: URL, who?: Identity) {
     const label = cleanLabel(url.searchParams.get("label"), MAX_LABEL);
-    const id = crypto.randomUUID().slice(0, 8);
+    // The tab's own id (kept across reloads), so "this page" grants survive them.
+    const tab = url.searchParams.get("tab");
+    const id = isPageId(tab) ? tab : crypto.randomUUID().slice(0, 8);
     if (who && !who.owner) {
       if (!isUserId(who.userId)) return close(ws, 4403, "no identity");
       const rec = await this.ctx.storage.get<FriendRecord>(friendKey(who.userId));
@@ -391,6 +412,8 @@ export class DebugHub {
    * pairing, and only an owner-approved grant may ask. With just a grant
    * token it is back in chat scope at once. Otherwise it waits for the
    * owner: one pending pairing per audience, and only with a page to ask.
+   * `?scope=chat` asks for the 30-day chat grant; anything else for eval
+   * (and chat) for an hour. Allow grants exactly what was asked.
    */
   async connectController(ws: Socket, url: URL, token?: string | null) {
     const forKey = url.searchParams.get("for")?.trim();
@@ -402,7 +425,8 @@ export class DebugHub {
       send(ws, { type: "error", error: "no owner page in debug mode is open" });
       return close(ws, 4404, "no debug page");
     }
-    this.knock(ws, { label });
+    const scope = url.searchParams.get("scope") === "chat" ? "chat" : "eval";
+    this.knock(ws, { label, scope });
   }
 
   /** Make room for one audience's pairing: false (and `ws` closed) if one is still waiting. */
@@ -421,7 +445,10 @@ export class DebugHub {
     return true;
   }
 
-  private knock(ws: Socket, extra: { label: string; forUser?: string; forEmail?: string }) {
+  private knock(
+    ws: Socket,
+    extra: { label: string; scope: Scope; forUser?: string; forEmail?: string },
+  ) {
     const a: ControllerAtt = {
       role: "controller",
       pair: crypto.randomUUID(),
@@ -437,6 +464,7 @@ export class DebugHub {
         pair: a.pair,
         code: a.code,
         label: a.label,
+        scope: a.scope,
         for: a.forUser,
       }),
     );
@@ -474,6 +502,7 @@ export class DebugHub {
     }
     this.knock(ws, {
       label: cleanLabel(url.searchParams.get("label"), 80) || live.g.label,
+      scope: "eval",
       forUser: f.userId,
       forEmail: f.email,
     });
@@ -496,6 +525,7 @@ export class DebugHub {
       until: g.until,
       scope: "chat",
       grant: hash,
+      pages: g.pages,
     };
     ws.serializeAttachment(a);
     send(ws, { type: "approved", until: g.until, scope: "chat", resumed: true });
@@ -563,11 +593,15 @@ export class DebugHub {
     const c = this.controller(m.type === "result" ? m.to : m.pair);
     if (!c || audience(c.a) !== page.thread) return send(ws, this.state(page.thread));
     if (m.type === "allow") {
+      const pages = this.grantPages(page, m.pages);
+      // Approved already: another page joins its grant ("Authorize this page" later).
+      if (c.a.until && c.a.until > t) return this.widen(c.a, pages);
       if (c.a.until || t - c.a.at >= PENDING_MS) return send(ws, this.state(page.thread));
-      // A friend's answer is always eval on their own pages, never a chat grant.
-      return m.scope === "chat" && !c.a.forUser
-        ? this.allowChat(c.ws, c.a)
-        : this.allowEval(c.ws, c.a);
+      // Allow grants what the requester asked for (`scope` from an older page
+      // still counts). A friend's answer is always eval on their own pages.
+      return (c.a.scope === "chat" || m.scope === "chat") && !c.a.forUser
+        ? this.allowChat(c.ws, c.a, pages)
+        : this.allowEval(c.ws, c.a, pages);
     }
     if (m.type === "deny" || m.type === "revoke") return this.end(m.type, c.ws, c.a);
     // A result goes back only to an approved controller that is still in time.
@@ -616,10 +650,39 @@ export class DebugHub {
     return this.post({ id, from: "friend", label: page.label, text, at: t, thread: userId, email });
   }
 
-  /** "Allow for 1 hour": eval (and, for the owner, chat), for this socket only. */
-  private allowEval(ws: Socket, a: ControllerAtt) {
+  /**
+   * The page ids an Allow covers: "all" (or nothing said, from an older page)
+   * is undefined = every page, now and later; a list keeps only this
+   * audience's open pages, and never comes out empty (at least the answering one).
+   */
+  private grantPages(page: PageAtt, want: string[] | "all" | undefined) {
+    if (want === undefined || want === "all") return undefined;
+    const open = new Set(this.pages(page.thread).map((p) => p.a.id));
+    const ids = want.filter((id) => open.has(id));
+    return ids.length ? [...new Set(ids)] : page.id ? [page.id] : undefined;
+  }
+
+  /** Add pages to an approved pairing (and every socket sharing its grant); undefined = all. */
+  private async widen(a: ControllerAtt, pages: string[] | undefined) {
+    if (!a.pages) return this.broadcast();
+    const next = pages ? [...new Set([...a.pages, ...pages])] : undefined;
+    const targets = this.sockets("controller").filter((c) =>
+      a.grant ? c.a.grant === a.grant : c.a.pair === a.pair,
+    );
+    for (const c of targets)
+      c.ws.serializeAttachment({ ...c.a, pages: next } satisfies ControllerAtt);
+    if (a.grant) {
+      const g = await this.ctx.storage.get<Grant>(`grant:${a.grant}`);
+      if (g) await this.ctx.storage.put(`grant:${a.grant}`, { ...g, pages: next } satisfies Grant);
+    }
+    console.log(JSON.stringify({ msg: "debug.widen", pair: a.pair, pages: next ?? "all" }));
+    this.broadcast();
+  }
+
+  /** "Allow" for eval: code (and, for the owner, chat) for an hour, on this socket only. */
+  private allowEval(ws: Socket, a: ControllerAtt, pages?: string[]) {
     const until = this.now() + APPROVAL_MS;
-    ws.serializeAttachment({ ...a, until, scope: "eval" } satisfies ControllerAtt);
+    ws.serializeAttachment({ ...a, until, scope: "eval", pages } satisfies ControllerAtt);
     send(ws, { type: "approved", until, scope: "eval", for: a.forEmail });
     console.log(
       JSON.stringify({ msg: "debug.allow", pair: a.pair, label: a.label, until, for: a.forUser }),
@@ -630,13 +693,13 @@ export class DebugHub {
     return this.history().then((messages) => send(ws, { type: "history", messages }));
   }
 
-  /** "Allow chat for 30 days": chat only, with a grant token the controller can resume with. */
-  private async allowChat(ws: Socket, a: ControllerAtt) {
+  /** "Allow" for chat: 30 days, with a grant token the controller can resume with. */
+  private async allowChat(ws: Socket, a: ControllerAtt, pages?: string[]) {
     const until = this.now() + CHAT_MS;
     const token = hex(crypto.getRandomValues(new Uint8Array(32)));
     const grant = await hashToken(token);
-    await this.ctx.storage.put(`grant:${grant}`, { label: a.label, until } satisfies Grant);
-    ws.serializeAttachment({ ...a, until, scope: "chat", grant } satisfies ControllerAtt);
+    await this.ctx.storage.put(`grant:${grant}`, { label: a.label, until, pages } satisfies Grant);
+    ws.serializeAttachment({ ...a, until, scope: "chat", grant, pages } satisfies ControllerAtt);
     send(ws, { type: "approved", until, scope: "chat", token });
     console.log(
       JSON.stringify({ msg: "debug.allow", pair: a.pair, label: a.label, until, scope: "chat" }),
@@ -680,15 +743,15 @@ export class DebugHub {
     }
     const m = parseControllerMessage(raw);
     if (!m.ok) return send(ws, { type: "error", error: m.error });
-    if (m.value.type === "working") {
+    if (m.value.type === "busy") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
       const { to, label } = m.value;
       return this.sayTarget(to).then((dest) => {
         if ("error" in dest) return send(ws, { type: "error", error: dest.error });
         // Only that thread's pages; not stored, not logged (one every few seconds).
-        const pages = this.pages(dest.thread);
-        const beat = { type: "working", label: label || c.label, at: t };
+        const pages = this.reach(c, dest.thread);
+        const beat = { type: "busy", label: label || c.label, at: t };
         for (const { ws: p } of pages) send(p, beat);
         send(ws, { type: "beat", thread: dest.thread, delivered: pages.length, at: t });
       });
@@ -717,7 +780,7 @@ export class DebugHub {
             head: head(text),
           }),
         );
-        return this.post(said).then(() =>
+        return this.post(said, said.thread === audience(c) ? c.pages : undefined).then(() =>
           send(ws, { type: "said", id: said.id, thread: said.thread }),
         );
       });
@@ -726,8 +789,14 @@ export class DebugHub {
       return send(ws, { type: "error", error: "this session is chat-only: it cannot eval" });
     const id = crypto.randomUUID().slice(0, 8);
     const labels: string[] = [];
-    // Only the pages of the audience that approved this pairing.
-    for (const p of this.pages(audience(c))) {
+    // Only the pages of the audience that approved this pairing — or the ones it named.
+    const reach = this.reach(c, audience(c));
+    if (c.pages && reach.length === 0) {
+      send(ws, { type: "error", error: "the page you were authorized for is gone: pair again" });
+      close(ws, 4404, "authorized page gone");
+      return this.broadcast(ws);
+    }
+    for (const p of reach) {
       if (!matchesTarget(p.a.label, m.value.target)) continue;
       send(p.ws, { type: "eval", id, code: m.value.code, to: c.pair });
       labels.push(p.a.label);

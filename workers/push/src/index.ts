@@ -25,7 +25,8 @@
  *                              unauthenticated, and useless until the owner
  *                              allows it on one of those pages (debug.ts) —
  *                              or it presents a live chat grant in the
- *                              x-debug-token header. The same sockets carry
+ *                              x-debug-token header (or x-liagent-token, its
+ *                              alias; both must match). The same sockets carry
  *                              the agent's side of the chat.
  *   GET/POST /internal/friends The main Worker's owner-only /api/dev/friends,
  *                              over its PUSH binding: list chat users, read
@@ -126,6 +127,13 @@ export default {
       if (req.headers.get("origin")) return new Response("forbidden", { status: 403 });
       const headers = new Headers(req.headers);
       for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
+      // liagent's CLI resumes a chat grant with x-liagent-token: the same token.
+      const ours = headers.get("x-debug-token");
+      const theirs = headers.get("x-liagent-token");
+      if (ours && theirs && ours !== theirs)
+        return new Response("x-debug-token and x-liagent-token differ", { status: 400 });
+      if (theirs && !ours) headers.set("x-debug-token", theirs);
+      headers.delete("x-liagent-token");
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
     }
     if (url.pathname.startsWith("/internal/friends") && isInternal(url))

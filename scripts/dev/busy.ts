@@ -1,11 +1,11 @@
 /**
- * The pure pieces of `bun scripts/dev/eval.ts working` — the agent's heartbeat
+ * The pure pieces of `bun scripts/dev/eval.ts busy` — the agent's heartbeat
  * behind the chat's "agent is working" spinner (docs/monitoring.md, "Agent is
  * working"). No I/O here: eval.ts does the socket, the timer and stdin.
  */
-import { WORKING_MS } from "../../lib/dev-eval";
+import { BUSY_MS } from "../../lib/dev-eval";
 
-export type WorkingArgs = {
+export type BusyArgs = {
   to?: string;
   label?: string;
   /** Seconds between beats; absent = send one beat and exit. */
@@ -17,16 +17,16 @@ export type WorkingArgs = {
 };
 
 /** A forgotten beat loop stops on its own after this long. */
-export const WORKING_MAX_S = 30 * 60;
+export const BUSY_MAX_S = 30 * 60;
 /** Longest gap between beats that still keeps the spinner up. */
-export const WORKING_EVERY_MAX = Math.floor(WORKING_MS / 1000) - 2;
+export const BUSY_EVERY_MAX = Math.floor(BUSY_MS / 1000) - 2;
 
 /**
- * Parse `working [--to <email>] [--label X] [--every <s>] [--keep] [--max <s>]`
- * (everything after the word `working`).
+ * Parse `busy [--to <email>] [--label X] [--every <s>] [--keep] [--max <s>]`
+ * (everything after the word `busy`).
  */
-export function parseWorkingArgs(argv: string[]): WorkingArgs | { error: string } {
-  const out: WorkingArgs = { untilSay: true, maxSeconds: WORKING_MAX_S };
+export function parseBusyArgs(argv: string[]): BusyArgs | { error: string } {
+  const out: BusyArgs = { untilSay: true, maxSeconds: BUSY_MAX_S };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const val = () => {
@@ -41,8 +41,8 @@ export function parseWorkingArgs(argv: string[]): WorkingArgs | { error: string 
         const n = Number(val());
         if (!Number.isFinite(n) || n <= 0) return { error: `${a} needs a number of seconds` };
         if (a === "--max") out.maxSeconds = n;
-        else if (n > WORKING_EVERY_MAX)
-          return { error: `--every must be at most ${WORKING_EVERY_MAX} s, or the spinner lapses` };
+        else if (n > BUSY_EVERY_MAX)
+          return { error: `--every must be at most ${BUSY_EVERY_MAX} s, or the spinner lapses` };
         else out.every = Math.max(1, n);
       } else if (a === "--until-say") out.untilSay = true;
       else if (a === "--keep") out.untilSay = false;
@@ -55,9 +55,9 @@ export function parseWorkingArgs(argv: string[]): WorkingArgs | { error: string 
 }
 
 /** The beat sent to the hub. */
-export const beatMessage = (a: Pick<WorkingArgs, "to" | "label">) =>
+export const beatMessage = (a: Pick<BusyArgs, "to" | "label">) =>
   JSON.stringify({
-    type: "working",
+    type: "busy",
     ...(a.to ? { to: a.to } : {}),
     ...(a.label ? { label: a.label } : {}),
   });

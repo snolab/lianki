@@ -10,18 +10,21 @@ import {
   compile,
   summarize,
   trimHistory,
-  workingLeft,
+  busyLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
 import { TABS_CHANNEL, joinTabs } from "@/lib/debug-chat-tabs";
 import { speakReply } from "./DebugChat";
 import { DebugChatHost } from "./DebugChatHost";
+import { DebugPairModal } from "./DebugPairModal";
 
 /** Hidden this long before the socket is dropped. */
 const IDLE_MS = 30_000;
 const TOAST_MS = 4_000;
 /** Route changes settle this long before the socket's label is updated. */
 const RELABEL_MS = 300;
+/** sessionStorage: this tab's page id (docs/monitoring.md, "Remote eval"). */
+const TAB_KEY = "lk:debug-tab";
 
 /** This page as the hub and the agent see it: path, `pwa` when installed, user agent. */
 const pageLabel = () => {
@@ -67,7 +70,7 @@ export function DebugEval() {
   /** The owner's page (a state arrived with no friend-status first): may hot-load the widget. */
   const [owner, setOwner] = useState(false);
   /** The agent's heartbeat (docs/monitoring.md, "Agent is working"). */
-  const [working, setWorking] = useState<{ label: string } | null>(null);
+  const [busy, setBusy] = useState<{ label: string } | null>(null);
   const beatRef = useRef<(Heartbeat & { label: string }) | null>(null);
   /** Hub time of the newest agent reply: a beat older than it is stale. */
   const agentAtRef = useRef(0);
@@ -77,8 +80,8 @@ export function DebugEval() {
   const reBeat = () => {
     clearTimeout(beatTimer.current);
     const b = beatRef.current;
-    const left = workingLeft(liveRef.current, b, agentAtRef.current, Date.now());
-    setWorking(left > 0 && b ? { label: b.label } : null);
+    const left = busyLeft(liveRef.current, b, agentAtRef.current, Date.now());
+    setBusy(left > 0 && b ? { label: b.label } : null);
     if (left > 0) beatTimer.current = setTimeout(reBeat, left + 50);
   };
   /** The label the socket was last told (on connect, or by {type:"page"}). */
@@ -152,8 +155,14 @@ export function DebugEval() {
       if (ws) return;
       const label = pageLabel();
       sentLabel.current = label;
+      // This tab's id, kept across reloads, so a "this page" grant survives one.
+      let tab = "";
+      try {
+        tab = sessionStorage.getItem(TAB_KEY) ?? "";
+        if (!tab) sessionStorage.setItem(TAB_KEY, (tab = crypto.randomUUID().slice(0, 12)));
+      } catch {}
       const sock = new WebSocket(
-        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug?label=${encodeURIComponent(label)}`,
+        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}`,
       );
       ws = sock;
       sockRef.current = sock;
@@ -201,7 +210,7 @@ export function DebugEval() {
           if (!friendRef.current) setOwner(true);
           return;
         }
-        if (msg.type === "working") {
+        if (msg.type === "busy") {
           const m = msg as { at?: unknown; label?: unknown };
           if (typeof m.at !== "number") return;
           beatRef.current = {
@@ -326,13 +335,25 @@ export function DebugEval() {
     };
   }, [pathname]);
 
-  const answer = (type: "allow" | "deny" | "revoke", p: PairInfo, scope?: "chat") => {
+  /**
+   * Answer a pairing. Allow carries the pages it covers (ids, or "all"), and
+   * `scope: "chat"` for a chat request too, so a hub from before requested
+   * scopes still grants the right thing.
+   */
+  const answer = (type: "allow" | "deny" | "revoke", p: PairInfo, pages?: string[] | "all") => {
+    const scope = type === "allow" && p.scope === "chat" && !friendRef.current ? "chat" : undefined;
     try {
       sockRef.current?.send(
-        JSON.stringify(scope ? { type, pair: p.pair, scope } : { type, pair: p.pair }),
+        JSON.stringify({
+          type,
+          pair: p.pair,
+          ...(scope ? { scope } : {}),
+          ...(type === "allow" && pages ? { pages } : {}),
+        }),
       );
     } catch {}
-    if (!friendRef.current) devLog({ ev: `eval-${type}`, label: p.label, code: p.code, scope });
+    if (!friendRef.current)
+      devLog({ ev: `eval-${type}`, label: p.label, code: p.code, scope, pages });
   };
   const endPage = (id: string) => {
     try {
@@ -359,7 +380,7 @@ export function DebugEval() {
       {chat && (
         <DebugChatHost
           hot={owner && !isFriend}
-          working={working}
+          busy={busy}
           pages={state?.pages ?? []}
           selfPage={state?.self}
           onEndPage={endPage}
@@ -372,107 +393,35 @@ export function DebugEval() {
           warning={warning ?? undefined}
           sessions={sessions}
           onEnd={(x) => answer("revoke", x)}
-          pending={pending}
-          onAnswer={answer}
+          onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
           evalRan={!!toast}
           friend={isFriend}
         />
       )}
-      {/* With the chat box up, all of this lives inside it (nothing debug floats on the page). */}
+      {/* A pairing request: a big modal on every open page of its audience. */}
+      {pending && (
+        <DebugPairModal
+          pending={pending}
+          friend={isFriend}
+          pages={state?.pages ?? []}
+          selfPage={state?.self}
+          onAllow={(pages) => answer("allow", pending, pages)}
+          onDeny={() => answer("deny", pending)}
+        />
+      )}
+      {/* With the chat box up, the rest lives inside it (nothing debug floats on the page). */}
       {!chat && (
         <div
           aria-live="polite"
           data-debug-eval
+          data-testid="debug-eval"
           className="fixed bottom-2 left-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-start gap-1 text-xs"
           style={{ color: "oklch(0.98 0 0)" }}
         >
-          {pending && isFriend && (
-            <div
-              role="alertdialog"
-              aria-label="Preview request"
-              data-debug-preview
-              className="rounded-lg p-3 shadow-lg"
-              style={{ background: "oklch(0.3 0.06 250 / 0.97)" }}
-            >
-              <p className="mb-1">
-                <b>{pending.label}</b> wants to preview a change on this page for 1 hour.
-              </p>
-              <p className="mb-2">
-                It can run code on your debug pages until then. Code{" "}
-                <b className="font-mono text-sm" style={{ letterSpacing: "0.1em" }}>
-                  {pending.code}
-                </b>{" "}
-                — allow only if the agent told you the same in the chat.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => answer("allow", pending)}
-                  className="rounded px-3 py-1"
-                  style={{ background: "oklch(0.55 0.15 145)" }}
-                >
-                  Allow for 1 hour
-                </button>
-                <button
-                  type="button"
-                  onClick={() => answer("deny", pending)}
-                  className="rounded px-3 py-1"
-                  style={{ background: "oklch(0.45 0.02 260)" }}
-                >
-                  Deny
-                </button>
-              </div>
-            </div>
-          )}
-          {pending && !isFriend && (
-            <div
-              role="alertdialog"
-              aria-label="Remote eval request"
-              className="rounded-lg p-3 shadow-lg"
-              style={{ background: "oklch(0.28 0.06 30 / 0.97)" }}
-            >
-              <p className="mb-1">
-                <b>{pending.label}</b> wants to run code on your debug pages, or to chat.
-              </p>
-              <p className="mb-2">
-                Code{" "}
-                <b className="font-mono text-sm" style={{ letterSpacing: "0.1em" }}>
-                  {pending.code}
-                </b>{" "}
-                — allow only if your terminal shows the same.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => answer("allow", pending)}
-                  className="rounded px-3 py-1"
-                  style={{ background: "oklch(0.55 0.15 145)" }}
-                >
-                  Allow for 1 hour
-                </button>
-                <button
-                  type="button"
-                  onClick={() => answer("allow", pending, "chat")}
-                  className="rounded px-3 py-1"
-                  style={{ background: "oklch(0.5 0.1 230)" }}
-                  title="Chat only: it hears what you type in the chat box and can reply, but cannot run code"
-                >
-                  Allow chat for 30 days
-                </button>
-                <button
-                  type="button"
-                  onClick={() => answer("deny", pending)}
-                  className="rounded px-3 py-1"
-                  style={{ background: "oklch(0.45 0.02 260)" }}
-                >
-                  Deny
-                </button>
-              </div>
-            </div>
-          )}
           {sessions.map((s) => (
             <div
               key={s.pair}
+              data-testid="debug-menu-session"
               className="flex items-center gap-2 rounded-full py-0.5 pl-2 pr-0.5"
               style={{ background: "oklch(0.55 0.15 30 / 0.9)" }}
             >
@@ -481,6 +430,7 @@ export function DebugEval() {
               </span>
               <button
                 type="button"
+                data-testid={s.scope === "chat" ? "debug-menu-end-chat" : "debug-menu-session-end"}
                 onClick={() => answer("revoke", s)}
                 className="rounded-full px-2"
                 style={{ background: "oklch(0.3 0.05 30)" }}
@@ -491,6 +441,7 @@ export function DebugEval() {
           ))}
           {toast && (
             <span
+              data-testid="debug-chat-icon-eval"
               className="pointer-events-none rounded px-2 py-0.5 shadow"
               style={{ background: "oklch(0.25 0.02 260 / 0.9)" }}
             >
