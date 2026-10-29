@@ -24,6 +24,9 @@ export async function debugIdentity(
   if (!cookie || !main) return null;
   try {
     const res = await main.fetch(`${DEBUG_ORIGIN}/api/debug/identity`, { headers: { cookie } });
+    // A main Worker from before friends has no such route: ask the old
+    // owner-only check, so deploying lianki-push first never locks the owner out.
+    if (res.status === 404) return await ownerFallback(main, cookie);
     if (res.status !== 200) return null;
     const body = (await res.json()) as Partial<Record<keyof Identity, unknown>>;
     if (!isUserId(body.userId) || typeof body.email !== "string") return null;
@@ -31,4 +34,16 @@ export async function debugIdentity(
   } catch {
     return null;
   }
+}
+
+/**
+ * The pre-friends check: /api/dev/whoami answers 200 {owner:true} for the
+ * owner only. That is the owner (whose user id and email it does not say, and
+ * the hub does not need for the owner thread); anything else is refused.
+ */
+async function ownerFallback(main: Fetcher, cookie: string): Promise<Identity | null> {
+  const res = await main.fetch(`${DEBUG_ORIGIN}/api/dev/whoami`, { headers: { cookie } });
+  if (res.status !== 200) return null;
+  const body = (await res.json()) as { owner?: unknown };
+  return body.owner === true ? { userId: "owner", email: "", owner: true } : null;
 }

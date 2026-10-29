@@ -47,9 +47,11 @@ granted 2026-10-29; without it the step fails and skips the main deploy (as
 in #240–#242). By hand: `bunx wrangler deploy -c workers/push/wrangler.jsonc`.
 The main Worker's `PUSH` binding only needs it to exist.
 Its own `MAIN` binding (to `lianki`, for the debug socket's identity check
-below) needs the main Worker deployed first when that check changes — as it
-did for friends: `/api/debug/identity` must be live before lianki-push asks
-it, or every debug socket is refused (403) until it is.
+below) does not care which deploys first: when `/api/debug/identity` answers 404
+(a main Worker from before friends), lianki-push falls back to the old
+owner-only `/api/dev/whoami`, so the owner's pages keep connecting and
+friends are refused until the new main Worker is live. Any other failure
+still refuses the socket.
 
 ## Remote eval (owner debug)
 

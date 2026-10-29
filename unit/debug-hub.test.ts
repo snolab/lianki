@@ -503,6 +503,49 @@ describe("lianki-push debug routes", () => {
     expect(seen[1].get("x-debug-owner")).toBeNull();
   });
 
+  it("an old main Worker (no identity route) falls back to the owner-only whoami", async () => {
+    const req = upgrade("/api/version/debug", { origin: "https://lianki.com", cookie: "s=1" });
+    const old = (whoami: Response, calls: string[] = []) => ({
+      fetch: async (url: string) => {
+        calls.push(url);
+        return url.endsWith("/api/debug/identity") ? new Response("", { status: 404 }) : whoami;
+      },
+    });
+    const calls: string[] = [];
+    expect(await debugIdentity(req, old(Response.json({ owner: true }), calls))).toEqual({
+      userId: "owner",
+      email: "",
+      owner: true,
+    });
+    expect(calls).toEqual([
+      "https://lianki.com/api/debug/identity",
+      "https://lianki.com/api/dev/whoami",
+    ]);
+    expect(await debugIdentity(req, old(new Response("", { status: 404 })))).toBeNull();
+    expect(await debugIdentity(req, old(Response.json({ owner: false })))).toBeNull();
+    // Through the router, the owner page reaches the hub as the owner.
+    const seen: Headers[] = [];
+    const stub = { fetch: async () => new Response("hub") };
+    const res = await push.fetch(req, {
+      HUB: { idFromName: () => 0, get: () => stub },
+      DEBUG: {
+        idFromName: () => 0,
+        get: () => ({
+          fetch: async (r: Request) => {
+            seen.push(r.headers);
+            return new Response("hub");
+          },
+        }),
+      },
+      MAIN: old(Response.json({ owner: true })),
+    });
+    expect(res.status).toBe(200);
+    expect(seen[0].get("x-debug-owner")).toBe("1");
+    // Any other answer from the identity route is not a reason to fall back.
+    const down = { fetch: async () => new Response("", { status: 500 }) };
+    expect(await debugIdentity(req, down)).toBeNull();
+  });
+
   it("a malformed identity answer is refused", async () => {
     const req = upgrade("/api/version/debug", { origin: "https://lianki.com", cookie: "s=1" });
     const main = (body: unknown) => ({ fetch: async () => Response.json(body) });
