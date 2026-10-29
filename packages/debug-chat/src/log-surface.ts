@@ -19,3 +19,13 @@ export function logSurface({ expanded, fade }: { expanded: boolean; fade: boolea
     className: `min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${expanded ? "max-h-[30vh]" : "max-h-[4.1rem]"}`,
   };
 }
+
+/**
+ * A stronger halo for lines floating straight over the page (the minimized
+ * chat's floating and frontier lines): text only, never a fill. Layers of
+ * text-shadow in the page colour; where --background is missing the whole
+ * declaration is dropped, so it can only fall back to no halo, never a box.
+ */
+export const LINE_HALO = [1, 2, 4, 8]
+  .map((px) => `0 0 ${px}px var(--background)`)
+  .join(", ");

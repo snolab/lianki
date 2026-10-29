@@ -12,10 +12,11 @@ import {
   shortId,
   shownAgentId,
 } from "./frontier-view";
+import { LINE_HALO } from "./log-surface";
 import { createLongPress } from "./tap-gesture";
 
-/** Glass for the lines, as the chat bar's. */
-const GLASS = "color-mix(in oklch, var(--background) 55%, transparent)";
+/** The full-id popover's glass (a popover, not a line: it keeps a fill). */
+const GLASS = "color-mix(in oklch, var(--background) 85%, transparent)";
 
 /** Draws an assignee's avatar at `size` px (the host's real Avatar, once it has one). */
 export type RenderAvatar = (a: Assignee, size: number) => ReactNode;
@@ -126,8 +127,9 @@ export function FrontierLines({
             data-testid="debug-chat-frontier-line"
             data-status={r.key}
             data-expanded={expanded || undefined}
-            style={{ background: GLASS }}
-            className="pointer-events-auto max-w-full min-w-0 rounded-lg backdrop-blur-md"
+            // Text only, with a strong halo: no background, no box.
+            style={{ textShadow: LINE_HALO }}
+            className="pointer-events-auto max-w-full min-w-0"
           >
             <div className="flex min-w-0 items-center">
               <button
@@ -136,7 +138,7 @@ export function FrontierLines({
                 aria-label={`${r.label}: ${line.text}${count ? `, ${line.count} items` : ""}`}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => group && setOpenKey(expanded ? null : r.key)}
-                className={`flex min-w-0 items-center gap-1 py-0.5 ps-2 text-start ${id ? "" : "pe-2"} ${group ? "" : "cursor-default"}`}
+                className={`flex min-w-0 items-center gap-1 py-0.5 text-start ${id ? "" : "pe-1"} ${group ? "" : "cursor-default"}`}
               >
                 <span aria-hidden className="w-3 shrink-0 text-center opacity-70">
                   {r.mark}

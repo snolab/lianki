@@ -32,7 +32,7 @@ import {
   minimizeFloat,
 } from "./float-lines";
 import { Icon } from "./icons";
-import { logSurface } from "./log-surface";
+import { LINE_HALO, logSurface } from "./log-surface";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import type { Frontier } from "./frontier-view";
 
@@ -1449,10 +1449,11 @@ function FloatLine({
       onPointerEnter={() => onHover(true)}
       onPointerLeave={() => onHover(false)}
       onPointerCancel={() => onHover(false)}
-      style={{ background: INPUT_BG, transitionDuration: `${FADE_MS}ms` }}
+      // Text only, with a strong halo: no background, no box (they float over the page).
+      style={{ textShadow: LINE_HALO, transitionDuration: `${FADE_MS}ms` }}
       // The fade runs FADE_MS (ease-out, opacity only); held (touched), the line
       // snaps back to full at once. Reduced motion: no fade, it just goes.
-      className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto line-clamp-3 max-w-full whitespace-pre-wrap break-words rounded-lg px-2 py-0.5 leading-snug backdrop-blur-md motion-reduce:transition-none`}
+      className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto line-clamp-3 max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
     >
       <span
         className="me-1 font-medium"

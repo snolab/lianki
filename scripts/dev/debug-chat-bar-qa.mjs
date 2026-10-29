@@ -627,6 +627,38 @@ try {
     check(f.statuses === "done,doing,next", `minimized: three frontier lines (${f.text})`);
     check(f.aboveBar && f.floatsAbove, "they sit just above the bar, floating lines above them");
     check(f.oneLine, "each is one line");
+    // Text only over the page: no fill, no box, no blur; a halo instead.
+    const look = await page.evaluate(() =>
+      [
+        ...document.querySelectorAll(
+          '[data-testid="debug-chat-float"], [data-testid="debug-chat-frontier-line"]',
+        ),
+      ].map((el) => {
+        const cs = getComputedStyle(el);
+        return {
+          bg: cs.backgroundColor,
+          image: cs.backgroundImage,
+          border: cs.borderTopWidth,
+          blur: cs.backdropFilter ?? cs.webkitBackdropFilter ?? "none",
+          halo: cs.textShadow,
+        };
+      }),
+    );
+    check(
+      look.length >= 4 &&
+        look.every(
+          (l) =>
+            l.bg === "rgba(0, 0, 0, 0)" &&
+            l.image === "none" &&
+            l.border === "0px" &&
+            (l.blur === "none" || l.blur === ""),
+        ),
+      `floating and frontier lines: transparent, no box (${[...new Set(look.map((l) => `${l.bg} ${l.border} ${l.blur}`))].join("; ")})`,
+    );
+    check(
+      look.every((l) => l.halo !== "none" && l.halo.split("px,").length >= 4),
+      "and a strong halo in the page colour",
+    );
     check(f.text.includes("多线并进〔3〕"), "a group shows its summary and 〔count〕");
     check(f.avatar === "Agent: main lane", `in progress shows who, labelled (${f.avatar})`);
     check(
