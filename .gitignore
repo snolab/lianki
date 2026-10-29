@@ -43,6 +43,8 @@ yarn-error.log*
 .env.staging
 # wrangler dev local secrets (used by `bun run qa:all`) — keep .dev.vars.example
 .dev.vars
+# the debug chat's resumable grant (scripts/dev/eval.ts chat) — a credential
+.debug-chat-token.json
 
 # backup and temporary files
 *_bak.ts

@@ -105,5 +105,61 @@ Without a running `serve`, each command pairs for itself (one prompt per
 command). The session's local port and a random token are kept in
 `~/.config/lianki/eval-session.json` (mode 600) while `serve` runs.
 
+### Chat with the agent
+
+Every owner page that holds the debug socket also shows a small chat box at
+the bottom right (`app/components/DebugChat.tsx`; collapsed to a pill by
+default on /words). The owner types; the text goes out 5 s after the last
+keystroke (a thin bar drains while it waits), or at once on Enter
+(Shift+Enter is a newline). Nothing is sent in the middle of an IME
+composition. The header shows "agent listening (n)" — the approved senders
+connected now. Agent replies are read aloud with `speechSynthesis` (the
+language is guessed from the script: kana → ja, Hangul → ko, other Han →
+zh-CN, else en), one after another; typing cancels what is being read, and
+the speaker button turns it off for the device (`lk:debug-chat-speak`). Only
+replies arriving live are read, never the history. iOS needs a gesture
+first: the first tap or key inside the box unlocks speech.
+
+**Wire.** Page → hub `{type:"chat", id, text}` (text ≤ 4000 chars); sender →
+hub `{type:"say", text}`, acknowledged with `{type:"said", id}`. The hub
+stores each as `{id, from:"owner"|"agent", label, text, at}` — the last 200,
+one Durable Object storage key each (`msg:<seq>`) — and broadcasts
+`{type:"chat", message}` to every page and every approved sender. A page
+gets `{type:"history", messages}` on connect, a sender on approval, so a
+reload, a second device or a reconnecting listener sees what it missed.
+
+**Scopes.** The pairing prompt has two answers. **Allow for 1 hour** = eval
+and chat on that socket. **Allow chat for 30 days** = chat only: the sender
+hears the owner's messages and may `say`, but an eval is refused. It is the
+one that survives reconnects: the hub hands the sender a random 256-bit
+**grant token** once, and keeps only its SHA-256 (`grant:<hash>` →
+`{label, until}`). A sender that connects with the header `x-debug-token:
+<token>` is back in chat scope without a prompt (even with no page open)
+until the grant expires; a wrong or lapsed token is closed with 4498. The CLI
+keeps the token in `.debug-chat-token.json` at the root of the main checkout
+(gitignored, mode 600; `LIANKI_CHAT_TOKEN_FILE` overrides). **End** on the
+session pill deletes the grant and closes every socket using it; the
+listener then exits and forgets the token. A grant whose listener is offline
+has no pill: it lapses after 30 days, or ends at once by deleting the file
+— or reconnect and End it.
+
+**Logs.** `debug.chat` (owner message: page, length, first 80 chars),
+`debug.say` (agent reply: sender, length, first 80 chars), `debug.resume`
+(a grant used to reconnect), in `wrangler tail lianki-push`.
+
+```bash
+# Listen (in the background): one JSON line per new owner message on stdout
+# — {"type":"chat","id","text","at","label"} — also appended to --out. The
+# first time it prints {"type":"pending","code"}: tap "Allow chat for 30 days".
+bun scripts/dev/eval.ts chat --label "agent on $(hostname -s)" --out /tmp/lianki-chat.jsonl
+
+# Reply (uses the saved grant; exits once the hub has it):
+bun scripts/dev/eval.ts say "On it — fixing the swipe now."
+echo "multi-line reply" | bun scripts/dev/eval.ts say -
+```
+
+The listener reconnects whenever its socket closes, backing off from 1 s to
+a minute; no timer touches the network otherwise.
+
 Fallback, if lianki-push is down: run code in a desktop lianki.com tab of
 the owner's Chrome with `rech eval` — it reaches only that tab, not the phone.
