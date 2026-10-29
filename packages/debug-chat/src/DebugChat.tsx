@@ -857,8 +857,8 @@ export function DebugChat({
       {treeUp && (
         <div
           data-testid="debug-chat-tree"
-          style={{ background: "color-mix(in oklch, var(--background) 88%, transparent)" }}
-          className="pointer-events-auto mb-1 max-h-[55vh] overflow-y-auto overscroll-contain rounded-lg border border-current/25 px-1 pb-1 backdrop-blur"
+          // Lines like the log's: no box, the section's halo; scrolls inside itself.
+          className="pointer-events-auto max-h-[45vh] overflow-y-auto overscroll-contain py-1.5"
         >
           <StateTreeFromSource
             source={treeSource}

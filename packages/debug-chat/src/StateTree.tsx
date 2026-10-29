@@ -21,7 +21,10 @@ import {
  * badge on `(!)` items, assignees, a copy button for each action, linked PRs,
  * counts on collapsed branches, the frontier rows (✓ ▶ ›) highlighted, and a
  * "Needs me" toggle (remembered on this device) that keeps only the `(!)`
- * items and their ancestors. Light and dark; every control is 40px tall.
+ * items and their ancestors. It looks like the chat log: plain text lines
+ * (no boxes, no background; the host's container gives the halo), indented
+ * by depth; each line takes taps (pointer-events: auto) and the small
+ * controls have a 40px invisible hit area. Light and dark.
  * Generic: the host passes the strings (English defaults), locale and repo.
  *
  * FrontierLines is the three-line summary (✓ done, ▶ in progress, › next)
@@ -133,8 +136,6 @@ const INK: Record<TreeStatus, string> = {
   done: "oklch(0.62 0.15 150)",
 };
 const LINK_INK = "oklch(0.58 0.15 255)";
-/** Frontier rows: a faint wash of the status colour. */
-const wash = (c: string) => `color-mix(in oklch, ${c} 14%, transparent)`;
 
 const fill = (s: string, n: number) => s.replace("{n}", String(n));
 
@@ -169,7 +170,7 @@ const BACK = "M10 3.5 5.5 8 10 12.5";
 function StatusGlyph({ status, t }: { status: TreeStatus; t: TreeStrings }) {
   return (
     <span className="mt-[2px]" role="img" aria-label={t[status]} style={{ color: INK[status] }}>
-      <Svg d={BOX}>
+      <Svg d={BOX} size={12}>
         {status === "done" && <path d="M5 8.2l2 2 4-4.4" />}
         {status === "doing" && <path d="M5 5h3v6H5Z" fill="currentColor" stroke="none" />}
         {status === "blocked" && <path d="M8 5v3.6M8 11h.01" />}
@@ -193,7 +194,7 @@ function Title({ node }: { node: TreeNode }) {
         target="_blank"
         rel="noreferrer"
         onClick={(e) => e.stopPropagation()}
-        className="-my-2 inline-block py-2 tabular-nums underline decoration-1 underline-offset-2"
+        className="tabular-nums underline decoration-1 underline-offset-2"
         style={{ color: LINK_INK }}
       >
         {l.text}
@@ -214,8 +215,8 @@ function Title({ node }: { node: TreeNode }) {
 function Badge({ children }: { children: ReactNode }) {
   return (
     <span
-      className="ms-1.5 inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 align-[0.05em] text-[10px] font-semibold leading-4 text-white"
-      style={{ background: ACCENT }}
+      className="ms-1.5 inline-flex shrink-0 items-center gap-0.5 align-[0.05em] text-[10px] font-semibold"
+      style={{ color: ACCENT }}
     >
       {children}
     </span>
@@ -255,10 +256,10 @@ function CopyButton({ text, t }: { text: string; t: TreeStrings }) {
           () => {},
         );
       }}
-      className="flex size-10 shrink-0 items-center justify-center rounded-lg border-0 bg-transparent text-inherit opacity-70 hover:opacity-100"
+      className="relative after:absolute after:-inset-2.5 after:content-[''] ms-1 inline-flex shrink-0 items-center border-0 bg-transparent p-0 align-[-0.15em] text-inherit opacity-60 hover:opacity-100"
       style={done ? { color: INK.done } : undefined}
     >
-      <Svg d={done ? TICK : COPY} />
+      <Svg d={done ? TICK : COPY} size={12} />
     </button>
   );
 }
@@ -266,8 +267,8 @@ function CopyButton({ text, t }: { text: string; t: TreeStrings }) {
 function Action({ text, t }: { text: string; t: TreeStrings }) {
   const url = /^https?:\/\/\S+$/.test(text) ? text : null;
   return (
-    <div className="flex items-center gap-1 ps-5">
-      <code className="min-w-0 flex-1 whitespace-pre-wrap break-all rounded bg-current/[0.06] px-1.5 py-1 font-mono text-[11px] leading-snug">
+    <div className="pointer-events-auto ps-4 leading-snug">
+      <code className="whitespace-pre-wrap break-all font-mono text-[11px] opacity-80">
         {url ? (
           <a href={url} target="_blank" rel="noreferrer" style={{ color: LINK_INK }}>
             {text}
@@ -333,16 +334,16 @@ function Item({
       {branch ? (
         <span
           aria-hidden
-          className={`mt-[3px] transition-transform motion-reduce:transition-none ${shut ? "" : "rotate-90"}`}
+          className={`mt-[2px] transition-transform motion-reduce:transition-none ${shut ? "" : "rotate-90"}`}
         >
-          <Svg d={CHEVRON} size={14} />
+          <Svg d={CHEVRON} size={12} />
         </span>
       ) : (
-        <span aria-hidden className="w-3.5 shrink-0" />
+        <span aria-hidden className="w-3 shrink-0" />
       )}
       {node.status && <StatusGlyph status={node.status} t={t} />}
       <span
-        className={`min-w-0 flex-1 break-words ${heading ? "font-semibold" : ""} ${node.status === "done" && !mark ? "opacity-60" : ""}`}
+        className={`min-w-0 flex-1 break-words ${heading ? "font-semibold" : ""} ${node.status === "done" && !mark ? "opacity-60" : ""} ${mark ? "font-medium" : ""}`}
       >
         {mark && (
           <span
@@ -376,10 +377,8 @@ function Item({
       </span>
     </>
   );
-  const rowClass = `flex min-h-10 w-full items-start gap-1.5 rounded-md py-2.5 text-start leading-snug ${mark ? "-mx-1 px-1" : ""}`;
-  const rowStyle = mark
-    ? { background: wash(mark.color), boxShadow: `inset 2px 0 0 ${mark.color}` }
-    : undefined;
+  // A log line: plain text, no box. Only the line itself takes taps.
+  const rowClass = "pointer-events-auto flex w-full items-start gap-1 text-start leading-snug";
   const kids: ItemCtx = { ...ctx, parentWho: node.assignee };
   return (
     <li
@@ -402,23 +401,22 @@ function Item({
             onToggle(path);
           }}
           className={`${rowClass} cursor-pointer select-none`}
-          style={rowStyle}
         >
           {row}
         </div>
       ) : (
-        <div className={rowClass} style={rowStyle}>
+        <div className={rowClass}>
           {row}
         </div>
       )}
       {node.note && (
-        <p className="-mt-1.5 whitespace-pre-line pb-1.5 ps-5 text-[11px] opacity-60">{node.note}</p>
+        <p className="m-0 whitespace-pre-line ps-4 leading-snug opacity-60">{node.note}</p>
       )}
       {node.action?.split("\n").map((a, i) => (
         <Action key={i} text={a} t={t} />
       ))}
       {branch && !shut && (
-        <ul className="ms-[7px] list-none border-s border-current/15 ps-2.5">
+        <ul className="m-0 list-none space-y-0.5 p-0 ps-3">
           {node.children.map((c, i) => (
             <Item
               key={`${i}:${c.title}`}
@@ -505,8 +503,8 @@ export function StateTree({
   const total = countOpen(doc).needsOwner;
   const ctx: ItemCtx = { collapsed, onToggle, marks: frontierMarks(frontier(doc, { locale }), t), t };
   return (
-    <div data-testid="state-tree" className="text-xs">
-      <div className="flex items-center gap-1">
+    <div data-testid="state-tree" className="space-y-0.5 text-xs leading-snug">
+      <div className="pointer-events-auto flex items-center gap-2">
         {onBack && (
           <button
             type="button"
@@ -514,12 +512,12 @@ export function StateTree({
             aria-label={t.back}
             title={t.back}
             onClick={onBack}
-            className="flex size-10 shrink-0 items-center justify-center rounded-lg border-0 bg-transparent text-inherit"
+            className="relative inline-flex shrink-0 items-center border-0 bg-transparent p-0 text-inherit after:absolute after:-inset-2.5 after:content-['']"
           >
-            <Svg d={BACK} />
+            <Svg d={BACK} size={12} />
           </button>
         )}
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 font-semibold">
           <span className="truncate">{t.tree}</span>
           {live && (
             <span
@@ -537,26 +535,23 @@ export function StateTree({
           data-testid="state-tree-needs-me"
           aria-pressed={needsMe}
           onClick={toggleNeedsMe}
-          className="flex min-h-10 shrink-0 items-center gap-1 rounded-full border-0 px-3 font-medium"
-          style={
-            needsMe
-              ? { background: ACCENT, color: "white" }
-              : { background: "transparent", boxShadow: `inset 0 0 0 1.5px ${ACCENT}`, color: ACCENT }
-          }
+          className={`relative inline-flex shrink-0 items-center gap-0.5 border-0 bg-transparent p-0 text-[10px] font-semibold after:absolute after:-inset-2.5 after:content-[''] ${needsMe ? "underline underline-offset-2" : "opacity-70"}`}
+          style={{ color: ACCENT }}
         >
-          <Svg d={FLAG} size={12} />
+          <Svg d={FLAG} size={10} />
+          {needsMe ? "✓ " : ""}
           {t.needsMe}
           {total > 0 && <span className="tabular-nums">· {total}</span>}
         </button>
       </div>
       {status ? (
-        <p data-testid="state-tree-status" role="status" className="py-3 opacity-60">
+        <p data-testid="state-tree-status" role="status" className="m-0 opacity-60">
           {status}
         </p>
       ) : shown.length === 0 ? (
-        <p className="py-3 opacity-60">{needsMe ? t.nothingNeedsYou : t.empty}</p>
+        <p className="m-0 opacity-60">{needsMe ? t.nothingNeedsYou : t.empty}</p>
       ) : (
-        <ul className="m-0 list-none p-0">
+        <ul className="m-0 list-none space-y-0.5 p-0">
           {shown.map((n, i) => (
             <Item key={`${i}:${n.title}`} node={n} path={String(i)} titles={[]} depth={0} ctx={ctx} />
           ))}
@@ -695,17 +690,17 @@ export function FrontierLines({
                 type="button"
                 aria-expanded={expanded}
                 onClick={() => setOpen(expanded ? null : key)}
-                className="flex min-h-6 w-full items-center gap-1 border-0 bg-transparent p-0 text-start text-inherit"
+                className="pointer-events-auto flex w-full items-center gap-1 border-0 bg-transparent p-0 text-start text-inherit"
               >
                 {body}
               </button>
             ) : (
-              <div className="flex min-h-6 items-center gap-1">{body}</div>
+              <div className="flex items-center gap-1">{body}</div>
             )}
             {expanded && (
-              <ul data-testid={`frontier-${key}-items`} className="ms-4 list-none border-s border-current/15 ps-2">
+              <ul data-testid={`frontier-${key}-items`} className="m-0 list-none p-0 ps-4">
                 {e.items.map((it, i) => (
-                  <li key={i} className="flex gap-1 py-0.5" title={crumbs(it.path)}>
+                  <li key={i} className="flex gap-1" title={crumbs(it.path)}>
                     <span className="min-w-0 truncate">{it.title}</span>
                     {it.assignee && (
                       <span className="shrink-0 text-[10px] opacity-60">
