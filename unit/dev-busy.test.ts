@@ -4,6 +4,7 @@ import {
   BUSY_MAX_S,
   beatMessage,
   endsBeat,
+  idleFor,
   parseBusyArgs,
 } from "@/scripts/dev/busy";
 
@@ -62,5 +63,14 @@ describe("eval.ts busy: wire", () => {
     expect(endsBeat(chat("agent", "owner"), undefined)).toBe(false);
     expect(endsBeat({ type: "history", messages: [] }, "owner")).toBe(false);
     expect(endsBeat({ type: "chat" }, "owner")).toBe(false);
+  });
+});
+
+describe("eval.ts busy: pages-idle", () => {
+  it("stops for its own thread going idle, not another's", () => {
+    expect(idleFor({ type: "pages-idle", thread: "owner" }, "owner")).toBe(true);
+    expect(idleFor({ type: "pages-idle", thread: "f1" }, "owner")).toBe(false);
+    expect(idleFor({ type: "pages-idle", thread: "owner" }, undefined)).toBe(true);
+    expect(idleFor({ type: "pages-back", thread: "owner" }, "owner")).toBe(false);
   });
 });

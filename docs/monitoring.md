@@ -174,7 +174,10 @@ keystroke (a thin bar drains while it waits), or at once on Enter
 once ending a sentence (。．.!?！？; keyboards and IMEs edit a character at a
 time). The box is translucent until touched. While the input is not focused, the log shows only its last 3 lines (scrolled to the end, top edge faded, still click-through); focusing the input opens it to 30vh, in 150 ms (instantly with reduced motion), and the ↓ button keeps the input focused. Nothing is sent in the middle of an IME
 composition. The header shows "agent listening (n)" — the approved senders
-connected now. Agent replies are read aloud with `speechSynthesis` (the
+connected now, never a heartbeat-only `busy` socket; at 0 it reads
+"connected · no agent listening". The hub sends every page a fresh `state` whenever a sender
+connects, is approved, ends, expires or its socket closes or errors, so the
+count follows the event, never a poll. Agent replies are read aloud with `speechSynthesis` (the
 language is guessed from the script: kana → ja, Hangul → ko, other Han →
 zh-CN, else en), one after another; typing cancels what is being read, and
 the speaker button turns it off for the device (`lk:debug-chat-speak`). Only
@@ -234,6 +237,21 @@ and if that pairing goes unanswered, is refused, or its grant is refused
 again, it prints `{"type":"error"}` (stdout and `--out`) and stays idle
 without asking the owner again until it is restarted, or another run saves
 a chat grant (a file event; no polling).
+
+**Presence (pages-idle / pages-back).** The hub counts each thread's open
+pages (controllers and heartbeat sockets never count). When the last one
+closes it stores `empty:<thread>` and sets the Durable Object alarm 60 s
+ahead (`PAGES_IDLE_MS`, enough for a reload or a navigation; a quiet thread
+has no other event to check on, so this is the one alarm). Still empty then,
+the listeners get `{type:"pages-idle", thread, at}` and the heartbeat
+sockets beating for that thread are closed (4411, `PAGES_IDLE`), so
+`busy --every` exits. A page back inside the 60 s clears it silently; the
+first page back after idle sends `{type:"pages-back", thread, label, at}`
+(once). Any message also runs the check, and the alarm also runs the 4409
+sweep. `chat` prints both as JSON lines and stays connected (hibernated, it
+costs nothing) so pages-back can wake the agent; `chat --exit-on-idle`
+exits on pages-idle instead. The red "End chat" in the menu is still the way
+to end it for good. Logs: `debug.pages-idle`, `debug.pages-back`.
 
 **Page moves.** The page's socket lives in the root layout, so it outlives
 client-side navigation. On a route change (`usePathname`, plus `popstate` /
@@ -330,14 +348,19 @@ bun scripts/dev/eval.ts busy [--to f@x.com] [--label "fixing the swipe"]
 
 # What the chat agent runs: start in the background on picking up a message.
 # It beats every 4 s and exits by itself at the next agent reply in that
-# thread (your `say`), or on kill, socket close, a closed stdin pipe, or
-# --max seconds (default 1800). --keep beats on past replies.
+# thread (your `say`), or on kill, socket close, a closed stdin pipe, every
+# page of the thread closed for a minute (pages-idle), or --max seconds
+# (default 1800). --keep beats on past replies.
 bun scripts/dev/eval.ts busy --every 4 [--to f@x.com] &
 bun scripts/dev/eval.ts say "Done — the swipe snaps now."   # the beat stops
 ```
 
-The beat process holds a chat-grant socket while it runs, so the page's
-"agent listening (n)" counts it.
+The beat process holds a grant socket while it runs, knocking with
+`?beat=1`: the hub marks it heartbeat-only, so it keeps its grant and hears
+the chat (to stop at the reply) but is not listed as a session in the menu
+nor counted in "agent listening (n)" — a beat alone reads as "no agent
+listening". On an eval grant, that grant stays listed as asleep (`idle`), so
+End still reaches it.
 
 **Test ids.** Every part of the debug UI has a `data-testid`, for evals and
 tests:

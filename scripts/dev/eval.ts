@@ -21,7 +21,7 @@
  *
  *   --no-pair  fail instead of asking the owner (for the chat agent).
  *
- *   bun scripts/dev/eval.ts chat [--label "…"] [--out <path>]
+ *   bun scripts/dev/eval.ts chat [--label "…"] [--out <path>] [--exit-on-idle]
  *       Listen to every chat thread: the owner's and each friend's (any
  *       signed-in user on a debug page). Pairs if there is no saved grant —
  *       prints {"type":"pending","code"} to stdout; the owner taps "Allow chat
@@ -31,10 +31,14 @@
  *       agent), and {"type":"friend-new","userId","email","at"} when someone
  *       writes for the first time, and {"type":"page-changed","thread",
  *       "email","label","at"} when a debug page navigates (silent on the
- *       page). Also appended to --out. Reconnects on close, backing off, by
- *       resuming the grant: it pairs at most once per run. With no grant
- *       left after that it prints {"type":"error"} and waits, without asking
- *       again, until restarted or a grant is saved by another run.
+ *       page), {"type":"pages-idle","thread","at"} when every page of a
+ *       thread has been closed for a minute and {"type":"pages-back",
+ *       "thread","label","at"} when one opens again. It stays connected
+ *       through idle (--exit-on-idle exits instead). Also appended to
+ *       --out. Reconnects on close, backing off, by resuming the grant: it
+ *       pairs at most once per run. With no grant left after that it prints
+ *       {"type":"error"} and waits, without asking again, until restarted or
+ *       a grant is saved by another run.
  *
  *   bun scripts/dev/eval.ts say [--to <thread|email>] "text"      (or - for stdin)
  *       Reply with the saved grant (the chat grant, else the eval grant:
@@ -47,9 +51,11 @@
  *       saved grant. Alone: one beat (the spinner shows for 12 s), then exit.
  *       --every 4: a beat every 4 s until the next agent reply in that thread
  *       (your `say`; --keep beats on past it), the process is killed, its
- *       stdin closes (when stdin is a pipe), the socket drops, or --max
+ *       stdin closes (when stdin is a pipe), every page of the thread has
+ *       been closed for a minute (pages-idle), the socket drops, or --max
  *       seconds (default 1800) pass. Start it in the background on picking up
- *       a message; `say` ends it.
+ *       a message; `say` ends it. Its socket is heartbeat-only (?beat=1): it
+ *       is neither a session in the menu nor counted as "agent listening".
  *
  *   bun scripts/dev/eval.ts serve --for <email> [--label "…"]
  *   bun scripts/dev/eval.ts --for <email> [--target <text>] '<code>'
@@ -82,7 +88,7 @@ import {
 import { homedir, hostname } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
-import { type BusyArgs, beatMessage, endsBeat, parseBusyArgs } from "./busy";
+import { type BusyArgs, beatMessage, endsBeat, idleFor, parseBusyArgs } from "./busy";
 import {
   ENDED,
   GRANT_INVALID,
@@ -146,18 +152,29 @@ const chatGrant = () => {
   return ev ? { token: ev, file: EVAL_TOKEN_FILE } : undefined;
 };
 /** Resuming a grant without --label keeps the label it was approved under. */
-const controlUrl = (token?: string, forEmail?: string, scope: "chat" | "eval" = "eval") =>
-  `${BASE.replace(/^http/, "ws")}/api/version/debug/control?label=${encodeURIComponent(token ? (labelFlag ?? "") : label)}&scope=${scope}${forEmail ? `&for=${encodeURIComponent(forEmail)}` : ""}`;
+const controlUrl = (
+  token?: string,
+  forEmail?: string,
+  scope: "chat" | "eval" = "eval",
+  beat = false,
+) =>
+  `${BASE.replace(/^http/, "ws")}/api/version/debug/control?label=${encodeURIComponent(token ? (labelFlag ?? "") : label)}&scope=${scope}${forEmail ? `&for=${encodeURIComponent(forEmail)}` : ""}${beat ? "&beat=1" : ""}`;
 /**
  * Bun's WebSocket takes headers, so the grant goes in one, never in the URL
  * (the repo type-checks with the DOM lib's constructor, hence the cast).
  * `forEmail` asks for a pairing on that friend's pages, which needs the grant.
  * `scope` is what a fresh pairing asks for: "chat" (the 30-day grant, for the
- * listener) or "eval" (code and chat for an hour); the owner's Allow grants it.
+ * listener) or "eval" (code and chat for 8 hours); the owner's Allow grants it.
+ * `beat`: a heartbeat-only socket (`busy`), not a session nor a listener.
  */
-const openControl = (token?: string, forEmail?: string, scope: "chat" | "eval" = "eval") =>
+const openControl = (
+  token?: string,
+  forEmail?: string,
+  scope: "chat" | "eval" = "eval",
+  beat = false,
+) =>
   token
-    ? new WebSocket(controlUrl(token, forEmail, scope), {
+    ? new WebSocket(controlUrl(token, forEmail, scope, beat), {
         headers: { "x-debug-token": token },
       } as unknown as string[])
     : new WebSocket(controlUrl(undefined, undefined, scope));
@@ -183,6 +200,8 @@ const boolFlag = (name: string) => {
   return true;
 };
 const noPair = boolFlag("--no-pair");
+/** chat: exit on {type:"pages-idle"} instead of staying for pages-back. */
+const exitOnIdle = boolFlag("--exit-on-idle");
 const labelFlag = flag("--label");
 const label = labelFlag ?? `lianki main lane on ${hostname()}`;
 const target = flag("--target");
@@ -487,7 +506,21 @@ function chat(out?: string) {
           else emit(h);
         first = false;
       } else if (m.type === "chat" && m.message) emit(m.message as Msg);
-      else if (m.type === "page-changed")
+      else if (m.type === "pages-idle" || m.type === "pages-back") {
+        // Every page of a thread closed for a minute, or the first one back.
+        // The listener stays (its socket is hibernated, it costs nothing) so
+        // pages-back can wake the agent, unless --exit-on-idle.
+        print({
+          type: m.type,
+          thread: m.thread ?? "owner",
+          ...(m.type === "pages-back" ? { label: m.label } : {}),
+          at: new Date(Number(m.at)).toISOString(),
+        });
+        if (m.type === "pages-idle" && exitOnIdle) {
+          console.error(`Pages idle (${String(m.thread)}); exiting (--exit-on-idle).`);
+          process.exit(0);
+        }
+      } else if (m.type === "page-changed")
         print({
           type: "page-changed",
           thread: m.thread ?? "owner",
@@ -573,7 +606,8 @@ function busy(w: BusyArgs): Promise<void> {
   if (!grant)
     return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
   return new Promise((resolve, reject) => {
-    const ws = openControl(grant.token);
+    // Heartbeat-only: not a session in the menu, not "agent listening".
+    const ws = openControl(grant.token, undefined, "chat", true);
     let thread: string | undefined;
     let loop: ReturnType<typeof setInterval> | undefined;
     let done = false;
@@ -609,6 +643,7 @@ function busy(w: BusyArgs): Promise<void> {
         }
         if (!w.every) stop("one beat");
       } else if (w.untilSay && endsBeat(m, thread)) stop("the agent replied");
+      else if (idleFor(m, thread)) stop("every page of the thread closed");
       else if (m.type === "error") stop("", new Error(String(m.error)));
     };
     ws.onclose = (e) => {
@@ -667,7 +702,7 @@ async function main() {
   const code = args[0] === "-" ? await Bun.stdin.text() : args[0];
   if (!code?.trim()) {
     console.error(
-      "usage: bun scripts/dev/eval.ts [--for <email>] [--target <text>] [--no-pair] '<code>' | - | serve [--for <email>] [--no-pair] | chat [--out <file>] | say [--to <thread|email>] <text>",
+      "usage: bun scripts/dev/eval.ts [--for <email>] [--target <text>] [--no-pair] '<code>' | - | serve [--for <email>] [--no-pair] | chat [--out <file>] [--exit-on-idle] | say [--to <thread|email>] <text>",
     );
     process.exit(2);
   }

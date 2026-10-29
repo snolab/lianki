@@ -12,6 +12,8 @@ import {
   PAGE_ENDED,
   PAGE_GONE_GRACE_MS,
   PAGES_GONE,
+  PAGES_IDLE,
+  PAGES_IDLE_MS,
   PENDING_MS,
 } from "@/lib/dev-eval";
 
@@ -42,9 +44,16 @@ class FakeSocket implements Socket {
 /** Durable Object storage's key-value API, in memory (keys sorted as the real one does). */
 function fakeStorage(
   store = new Map<string, unknown>(),
-): Storage & { store: Map<string, unknown> } {
+): Storage & { store: Map<string, unknown>; alarm: number | null } {
   return {
     store,
+    alarm: null,
+    async getAlarm() {
+      return this.alarm;
+    },
+    async setAlarm(at: number) {
+      this.alarm = at;
+    },
     get: async <T>(k: string) => structuredClone(store.get(k)) as T | undefined,
     put: async (k, v) => void store.set(k, structuredClone(v)),
     delete: async (k) => store.delete(k),
@@ -1614,5 +1623,235 @@ describe("DebugHub resumable eval grants (no re-prompt until EVAL_GRANT_MS)", ()
     await s.msg(f, { type: "chat", id: "a", text: "hi" });
     const p = await s.forFriend(token, "f1@x.com");
     expect(p.last("pending")).toBeTruthy();
+  });
+});
+
+/** Connect a heartbeat-only socket (`busy --every`, `?beat=1`) with a grant token. */
+const beatSocket = async (s: ReturnType<typeof setup>, token: string) => {
+  const ws = new FakeSocket();
+  (s.hub as unknown as { ctx: { getWebSockets(): FakeSocket[] } }).ctx.getWebSockets().push(ws);
+  await s.hub.connectController(
+    ws,
+    new URL("https://lianki.com/api/version/debug/control?label=&scope=chat&beat=1"),
+    token,
+  );
+  return ws;
+};
+type Counted = { sessions: { code: string }[]; listeners: number };
+const counted = (p: FakeSocket) => p.last("state") as unknown as Counted;
+
+describe("DebugHub heartbeat-only sockets", () => {
+  it("a busy --every socket (?beat=1) keeps its grant and hears the chat, but is no session or listener", async () => {
+    const s = setup();
+    const p = s.page();
+    const c = s.controller("agent");
+    await s.msg(p, { type: "allow", pair: s.pairOf(p), scope: "chat" });
+    const token = c.last("approved")?.token as string;
+    expect([counted(p).sessions.length, counted(p).listeners]).toEqual([1, 1]);
+    const beat = await beatSocket(s, token);
+    expect(beat.last("approved")).toMatchObject({ scope: "chat", resumed: true });
+    expect([counted(p).sessions.length, counted(p).listeners]).toEqual([1, 1]);
+    await s.msg(beat, { type: "busy" });
+    expect(p.last("busy")).toBeDefined();
+    await s.msg(c, { type: "say", text: "done" });
+    expect(chats(beat).at(-1)?.text).toBe("done");
+    // A plain resume (say) is still a session while it is open.
+    await s.resume(token);
+    expect(counted(p).sessions).toHaveLength(2);
+    expect(counted(p).listeners).toBe(2);
+  });
+
+  it("a beat alone is not the agent: the pages read 'offline' (0 listeners)", async () => {
+    const s = setup();
+    const p = s.page();
+    const c = s.controller("agent");
+    await s.msg(p, { type: "allow", pair: s.pairOf(p), scope: "chat" });
+    const token = c.last("approved")?.token as string;
+    const beat = await beatSocket(s, token);
+    c.close(1001);
+    await s.hub.webSocketClose(c, 1001);
+    expect(counted(p).listeners).toBe(0);
+    expect(counted(p).sessions).toEqual([]);
+    // It still beats and hears the chat.
+    await s.msg(beat, { type: "busy" });
+    expect(beat.last("beat")).toMatchObject({ thread: "owner", delivered: 1 });
+  });
+
+  it("a beat on an eval grant leaves that grant listed as asleep, so End still reaches it", async () => {
+    const s = setup();
+    const p = s.page();
+    const c = s.controller("agent");
+    await s.msg(p, { type: "allow", pair: s.pairOf(p), pages: "all" });
+    const token = c.last("approved")?.token as string;
+    c.close(1001);
+    await s.hub.webSocketClose(c, 1001);
+    const beat = await beatSocket(s, token);
+    expect(beat.last("approved")).toMatchObject({ scope: "eval", resumed: true });
+    const { sessions, listeners } = counted(p);
+    expect([sessions.map((x) => x.code), listeners]).toEqual([["idle"], 0]);
+    const pair = (p.last("state") as { sessions: { pair: string }[] }).sessions[0].pair;
+    await s.msg(p, { type: "revoke", pair });
+    expect(beat.closed).toBe(4401);
+  });
+
+  it("pages get a fresh state each time a listener connects or leaves", async () => {
+    const s = setup();
+    const p = s.page();
+    const c = s.controller("agent");
+    await s.msg(p, { type: "allow", pair: s.pairOf(p), scope: "chat" });
+    const token = c.last("approved")?.token as string;
+    expect(counted(p).listeners).toBe(1);
+    const second = await s.resume(token);
+    expect(counted(p).listeners).toBe(2);
+    second.close(1001);
+    await s.hub.webSocketClose(second, 1001);
+    expect(counted(p).listeners).toBe(1);
+    // An errored socket is gone too.
+    await s.hub.webSocketError(c);
+    expect(counted(p).listeners).toBe(0);
+  });
+});
+
+describe("DebugHub presence: pages-idle and pages-back", () => {
+  /** An owner page, the agent's chat listener and its heartbeat socket. */
+  const world = async () => {
+    const s = setup();
+    const p = s.page("/words");
+    const c = s.controller("agent");
+    await s.msg(p, { type: "allow", pair: s.pairOf(p), scope: "chat" });
+    const token = c.last("approved")?.token as string;
+    const beat = await beatSocket(s, token);
+    await s.msg(beat, { type: "busy" });
+    const gone = async (ws: FakeSocket) => {
+      ws.close(1001);
+      await s.hub.webSocketClose(ws, 1001);
+    };
+    return { s, p, c, beat, gone };
+  };
+  const idles = (ws: FakeSocket) => ws.sent.filter((m) => m.type === "pages-idle");
+  const connect = async (s: ReturnType<typeof setup>, label: string) => {
+    const ws = new FakeSocket();
+    (s.hub as unknown as { ctx: { getWebSockets(): FakeSocket[] } }).ctx.getWebSockets().push(ws);
+    await s.hub.connectPage(
+      ws,
+      new URL(`https://lianki.com/api/version/debug?label=${encodeURIComponent(label)}`),
+    );
+    return ws;
+  };
+
+  it("the last page closing sets the alarm; 60 s later the agent hears pages-idle and the beat is closed", async () => {
+    const { s, p, c, beat, gone } = await world();
+    await gone(p);
+    expect(s.storage.alarm).toBe(1_000_000 + PAGES_IDLE_MS);
+    s.tick(PAGES_IDLE_MS - 1);
+    await s.hub.alarm();
+    expect(idles(c)).toEqual([]);
+    s.tick(1);
+    await s.hub.alarm();
+    expect(idles(c)).toEqual([
+      { type: "pages-idle", thread: "owner", at: 1_000_000 + PAGES_IDLE_MS },
+    ]);
+    expect(idles(beat)).toHaveLength(1);
+    expect(beat.closed).toBe(PAGES_IDLE);
+    expect(c.closed).toBeUndefined();
+    // Announced once.
+    await s.hub.alarm();
+    expect(idles(c)).toHaveLength(1);
+  });
+
+  it("a reload inside the grace is not idle, and not 'back' either", async () => {
+    const { s, p, c, beat, gone } = await world();
+    await gone(p);
+    s.tick(30_000);
+    await connect(s, "/words");
+    s.tick(PAGES_IDLE_MS);
+    await s.hub.alarm();
+    expect(idles(c)).toEqual([]);
+    expect(c.last("pages-back")).toBeUndefined();
+    expect(beat.closed).toBeUndefined();
+  });
+
+  it("the first page after idle is announced as pages-back, with its label, once", async () => {
+    const { s, p, c, gone } = await world();
+    await gone(p);
+    s.tick(PAGES_IDLE_MS);
+    await s.hub.alarm();
+    await connect(s, "/home pwa");
+    expect(c.last("pages-back")).toEqual({
+      type: "pages-back",
+      thread: "owner",
+      label: "/home pwa",
+      at: 1_000_000 + PAGES_IDLE_MS,
+    });
+    await connect(s, "/x");
+    expect(c.sent.filter((m) => m.type === "pages-back")).toHaveLength(1);
+  });
+
+  it("counts pages only: controllers and beat sockets neither keep a thread alive nor empty it", async () => {
+    const { s, p, c, beat, gone } = await world();
+    const other = s.page("/list");
+    await gone(p);
+    expect(s.storage.alarm).toBeNull();
+    await gone(beat);
+    await gone(c);
+    expect(s.storage.alarm).toBeNull();
+    await gone(other);
+    expect(s.storage.alarm).toBe(1_000_000 + PAGES_IDLE_MS);
+  });
+
+  it("each thread on its own: a friend's going idle leaves the owner's beat alone", async () => {
+    const { s, c, beat } = await world();
+    const f = await s.friend("f1", "f1@x.com", "/f");
+    f.close(1001);
+    await s.hub.webSocketClose(f, 1001);
+    s.tick(10_000);
+    // Another owner page leaves later, the first still open: the alarm stays at the earliest.
+    const o = s.page("/o2");
+    o.close(1001);
+    await s.hub.webSocketClose(o, 1001);
+    expect(s.storage.alarm).toBe(1_000_000 + PAGES_IDLE_MS);
+    s.tick(PAGES_IDLE_MS - 10_000);
+    await s.hub.alarm();
+    expect(idles(c).map((m) => m.thread)).toEqual(["f1"]);
+    expect(beat.closed).toBeUndefined();
+  });
+
+  it("a thread not yet due re-arms the alarm for its own time", async () => {
+    const s = setup();
+    const a = s.page("/a");
+    const f = await s.friend("f1", "f1@x.com", "/f");
+    f.close(1001);
+    await s.hub.webSocketClose(f, 1001);
+    s.tick(20_000);
+    a.close(1001);
+    await s.hub.webSocketClose(a, 1001);
+    s.tick(PAGES_IDLE_MS - 20_000);
+    await s.hub.alarm();
+    expect(s.storage.alarm).toBe(1_000_000 + 20_000 + PAGES_IDLE_MS);
+  });
+
+  it("a message checks too, without waiting for the alarm", async () => {
+    const { s, p, c, gone } = await world();
+    await gone(p);
+    s.tick(PAGES_IDLE_MS);
+    await s.msg(c, { type: "busy" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(idles(c)).toHaveLength(1);
+  });
+
+  it("the alarm also runs the 4409 grace for page-scoped eval pairings", async () => {
+    const s = setup();
+    const p = s.page("/a");
+    const c = s.controller("agent");
+    await s.msg(p, {
+      type: "allow",
+      pair: s.pairOf(p),
+      pages: [(p.last("state") as { self: string }).self],
+    });
+    p.close(1001);
+    await s.hub.webSocketClose(p, 1001);
+    s.tick(PAGE_GONE_GRACE_MS);
+    await s.hub.alarm();
+    expect(c.closed).toBe(PAGES_GONE);
   });
 });
