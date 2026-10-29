@@ -343,6 +343,12 @@ try {
     await learn.close();
   }
 
+  // Granting Pro by hand is the owner's alone too.
+  const grant = await page.request.post(`${new URL(page.url()).origin}/api/dev/membership`, {
+    data: { email: "someone@example.com", days: 7 },
+  });
+  check(grant.status() === 404, `granting Pro is owner-only (${grant.status()})`);
+
   // The owner's remote-debug log is the owner's alone.
   const devLog = await page.request.post(`${new URL(page.url()).origin}/api/dev/log`, {
     data: "{}",
