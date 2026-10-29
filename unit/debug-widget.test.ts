@@ -7,7 +7,7 @@ import {
   loadWidget,
   widgetSrc,
   widgetUrl,
-} from "@/lib/debug-widget";
+} from "@lianki/debug-chat/debug-widget";
 import {
   allowOrigin,
   buildHarness,
@@ -112,7 +112,7 @@ describe("the widget build", () => {
     expect(b.code).toMatch(/export\s*{[^}]*DebugChat/);
     expect(b.code).toContain(`export const rev = "${b.rev}"`);
     expect(b.css).toContain(".animate-spin");
-    expect(b.inputs.some((p) => p.endsWith("app/components/DebugChat.tsx"))).toBe(true);
+    expect(b.inputs.some((p) => p.endsWith("packages/debug-chat/src/DebugChat.tsx"))).toBe(true);
     expect((await buildWidget()).rev).toBe(b.rev);
   }, 30_000);
 

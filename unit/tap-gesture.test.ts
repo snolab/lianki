@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { DOUBLE_TAP_MS, DRAG_CLICK_MS, createDragFlag, createTapper } from "@/lib/tap-gesture";
+import {
+  DOUBLE_TAP_MS,
+  DRAG_CLICK_MS,
+  createDragFlag,
+  createTapper,
+} from "@lianki/debug-chat/tap-gesture";
 
 /** Fake timers: `advance(ms)` runs what falls due. */
 function clock() {

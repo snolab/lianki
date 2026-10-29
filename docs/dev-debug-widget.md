@@ -1,18 +1,29 @@
 # Hot-loading the debug chat widget
 
-See a change to the debug chat box (`app/components/DebugChat.tsx`) live on
+See a change to the debug chat box (`packages/debug-chat/src/DebugChat.tsx`) live on
 the owner's phone, seconds after saving and without merge or deploy. The page
 stays on lianki.com, so the debug socket, the chat history and the owner's
 data all keep working. Only the widget module comes from your machine.
 
-| File                                     | Role                                                      |
-| ---------------------------------------- | --------------------------------------------------------- |
-| `app/components/debug-chat-widget.ts`    | the widget entry: `DebugChat` and `WIDGET_API`            |
-| `app/components/DebugChatHost.tsx`       | the page's loader: import, re-import on reload, fallback  |
-| `lib/debug-widget.ts`                    | shared rules: allowed URLs, cache-busting, module checks  |
-| `scripts/dev/debug-widget-build.ts`      | Bun.build with React from the page, plus Tailwind CSS     |
-| `scripts/dev/debug-widget-server.ts`     | serve, watch, SSE `reload`, tailnet or tunnel             |
-| `scripts/dev/debug-widget-harness.tsx`   | `/harness`: a local host page for tests                   |
+The widget lives in its own workspace package, `packages/debug-chat`
+(`@lianki/debug-chat`), which imports nothing from the app, so it can move to
+its own repo as is. Lianki passes what it needs as `DebugChatProps`; the wire
+types and the UI helpers are in `src/wire.ts`, which `lib/dev-eval.ts`
+re-exports for the hub and the sender.
+
+| File (`packages/debug-chat/src/` unless a path is given) | Role                                                     |
+| -------------------------------------------------------- | -------------------------------------------------------- |
+| `debug-chat-widget.ts`                                   | the widget entry: `DebugChat` and `WIDGET_API`           |
+| `DebugChat.tsx`                                          | the chat box: log, input, pill, menu                     |
+| `DebugChatHost.tsx`                                      | the page's loader: import, re-import on reload, fallback |
+| `DebugPairModal.tsx`                                     | the pairing modal                                        |
+| `MicButton.tsx`, `mic.ts`                                | the mic: VAD, STT client, dictation rules                |
+| `debug-widget.ts`                                        | shared rules: allowed URLs, cache-busting, module checks |
+| `debug-chat-tabs.ts`, `tap-gesture.ts`                   | one voice per device; taps and drags                     |
+| `wire.ts`, `icons.tsx`, `LiagentMark.tsx`                | wire types and helpers; icons; the liagent mark          |
+| `scripts/dev/debug-widget-build.ts`                      | Bun.build with React from the page, plus Tailwind CSS    |
+| `scripts/dev/debug-widget-server.ts`                     | serve, watch, SSE `reload`, tailnet or tunnel            |
+| `scripts/dev/debug-widget-harness.tsx`                   | `/harness`: a local host page for tests                  |
 
 ## Use it
 
@@ -32,10 +43,14 @@ Then, on the owner's page in debug mode, run this once in the console, or
 with `bun scripts/dev/eval.ts`:
 
 ```js
-localStorage.setItem("lk:debug-widget-src", "https://my-mac.example-tailnet.ts.net/lianki-widget/debug-chat.js");
+localStorage.setItem(
+  "lk:debug-widget-src",
+  "https://my-mac.example-tailnet.ts.net/lianki-widget/debug-chat.js",
+);
 location.reload();
 // back to the built-in chat:
-localStorage.removeItem("lk:debug-widget-src"); location.reload();
+localStorage.removeItem("lk:debug-widget-src");
+location.reload();
 ```
 
 Save `DebugChat.tsx` (or anything it imports): the server rebuilds, and if
@@ -57,7 +72,7 @@ page renders it as `<Remote {...props}/>` inside its own tree, behind an
 error boundary. So there is no second React copy, no second root, and context
 and events work as usual. The cost is that the widget must stay a React
 component with the props `DebugChatProps`. `WIDGET_API` (in
-`lib/debug-widget.ts`) is bumped when that contract changes, and a page that
+`packages/debug-chat/src/debug-widget.ts`) is bumped when that contract changes, and a page that
 expects another version falls back.
 
 **Who honours it.** It applies only on the owner's pages: a page knows it is

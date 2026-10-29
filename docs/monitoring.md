@@ -81,7 +81,7 @@ purpose (4xxx), does not retry until the next visibility or debug event.
 (a browser can't: any `Origin` header is refused). The sender declares what
 it wants with `&scope=chat` (the `chat` listener) or `&scope=eval` (`serve`
 and one-shot evals; the default). It can do nothing until the owner answers
-the **pairing modal** (`app/components/DebugPairModal.tsx`). The modal covers
+the **pairing modal** (`packages/debug-chat/src/DebugPairModal.tsx`). The modal covers
 at least half the screen on every open page of its audience, so on both
 devices, and answering on one closes it everywhere. It shows the
 requester's label, the 4-hex code the sender prints too, one sentence of what
@@ -142,7 +142,7 @@ command). The session's local port and a random token are kept in
 ### Chat with the agent
 
 Every owner page that holds the debug socket also shows a small chat box at
-the bottom right (`app/components/DebugChat.tsx`; collapsed to a pill by
+the bottom right (`packages/debug-chat/src/DebugChat.tsx`; collapsed to a pill by
 default on /words). The owner types; the text goes out 3 s after the last
 keystroke (a thin bar drains while it waits), or at once on Enter
 (Shift+Enter is a newline) or when dictation drops in 3 or more characters at
@@ -214,7 +214,7 @@ input row (`debug-chat-pill`) has two zones, each at least 32px, with a
 divider. The left zone (`debug-chat-pill-min`) holds the liagent mark
 (`packages/debug-chat/src/LiagentMark.tsx`) and a dot, green while the socket
 is live: a tap minimizes or restores the box (after 280 ms, so that a double
-tap can cancel it), and a double tap opens the menu (`lib/tap-gesture.ts`).
+tap can cancel it), and a double tap opens the menu (`packages/debug-chat/src/tap-gesture.ts`).
 The right zone (`debug-chat-pill-menu`) shows the eval/preview sessions (a
 play icon and their count, pulsing when code just ran) or ⋯; a tap opens the
 menu at once. A drag anywhere on the pill moves the box, and never counts as
@@ -266,7 +266,7 @@ tested with fakes in `unit/mic.test.ts`; `MicButton.tsx`, the browser glue).
 **One voice per device.** Every tab of a thread shows every message, but
 only one reads a reply aloud: the focused tab, or else the one focused most
 recently. Tabs agree over `BroadcastChannel("lk-debug-chat")`
-(`lib/debug-chat-tabs.ts`), not the network. Drafts are not synced across
+(`packages/debug-chat/src/debug-chat-tabs.ts`), not the network. Drafts are not synced across
 tabs (that would fight IME composition).
 
 **Scrolling.** Scrolled up, new messages do not pull the log down (your own

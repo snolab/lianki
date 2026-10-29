@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { joinTabs, speakerTab } from "@/lib/debug-chat-tabs";
+import { joinTabs, speakerTab } from "@lianki/debug-chat/debug-chat-tabs";
 
 /** BroadcastChannel in memory: a post reaches every other member, never the sender. */
 function bus() {

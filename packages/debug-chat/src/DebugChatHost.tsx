@@ -12,7 +12,7 @@ import {
   loadWidget,
   widgetSrc,
   widgetUrl,
-} from "@/lib/debug-widget";
+} from "./debug-widget";
 import { DebugChat, type DebugChatProps } from "./DebugChat";
 
 type Chat = ComponentType<DebugChatProps>;

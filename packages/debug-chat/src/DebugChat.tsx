@@ -9,17 +9,17 @@ import {
   pageParts,
   pickLang,
   pickVoice,
-} from "@/lib/dev-eval";
-import { LiagentMark } from "@lianki/debug-chat/LiagentMark";
+} from "./wire";
+import { LiagentMark } from "./LiagentMark";
 import {
   CLIP_SINK_KEY,
   appendDictation,
   isDictationBurst,
   clipSinkFrom,
   joinText,
-} from "@lianki/debug-chat/mic";
-import { DebugMic, canCapture } from "@lianki/debug-chat/MicButton";
-import { createDragFlag, createTapper } from "@/lib/tap-gesture";
+} from "./mic";
+import { DebugMic, canCapture } from "./MicButton";
+import { createDragFlag, createTapper } from "./tap-gesture";
 import { Icon } from "./icons";
 
 /** Typing pauses this long before the draft is sent. */

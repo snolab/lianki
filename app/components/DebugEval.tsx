@@ -13,10 +13,10 @@ import {
   busyLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
-import { TABS_CHANNEL, joinTabs } from "@/lib/debug-chat-tabs";
-import { speakReply } from "./DebugChat";
-import { DebugChatHost } from "./DebugChatHost";
-import { DebugPairModal } from "./DebugPairModal";
+import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
+import { speakReply } from "@lianki/debug-chat/DebugChat";
+import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
+import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
 
 /** Hidden this long before the socket is dropped. */
 const IDLE_MS = 30_000;

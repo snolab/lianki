@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { type PageInfo, type PairInfo, allowLabel, pageParts, pairSentence } from "@/lib/dev-eval";
+import { type PageInfo, type PairInfo, allowLabel, pageParts, pairSentence } from "./wire";
 
 /**
  * The pairing request, as a modal on every open page of its audience (both

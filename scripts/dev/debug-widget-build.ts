@@ -7,10 +7,10 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { BunPlugin } from "bun";
 import { compile } from "tailwindcss";
-import { REACT_GLOBAL } from "../../lib/debug-widget";
+import { REACT_GLOBAL } from "../../packages/debug-chat/src/debug-widget";
 
 export const ROOT = resolve(import.meta.dir, "..", "..");
-export const WIDGET_ENTRY = resolve(ROOT, "app/components/debug-chat-widget.ts");
+export const WIDGET_ENTRY = resolve(ROOT, "packages/debug-chat/src/debug-chat-widget.ts");
 export const HARNESS_ENTRY = resolve(ROOT, "scripts/dev/debug-widget-harness.tsx");
 
 const IDENT = /^[A-Za-z_$][\w$]*$/;

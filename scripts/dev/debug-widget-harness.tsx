@@ -8,8 +8,8 @@
 import { createRoot } from "react-dom/client";
 import { useState } from "react";
 import type { ChatMessage } from "@/lib/dev-eval";
-import { DebugChatHost } from "@/app/components/DebugChatHost";
-import { DebugPairModal } from "@/app/components/DebugPairModal";
+import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
+import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
 
 function Harness() {
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
