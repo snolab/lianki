@@ -46,7 +46,7 @@ export const GET = async (req: NextRequest) => {
     const clip = await getVoiceClip(voiceKey(lang, text));
     if (clip)
       return new Response(Buffer.from(clip), {
-        headers: { "Content-Type": "audio/mpeg", ...CACHE_HEADERS },
+        headers: { "Content-Type": "audio/mpeg", "X-Voice": "recorded", ...CACHE_HEADERS },
       });
   } catch (err) {
     logSanitizedError("words.tts.voice.lookup", err, {});
@@ -70,7 +70,11 @@ export const GET = async (req: NextRequest) => {
     const cached = await getCachedTTS(key);
     if (cached)
       return new Response(Buffer.from(cached), {
-        headers: { "Content-Type": sniffAudioType(Buffer.from(cached)), ...CACHE_HEADERS },
+        headers: {
+          "Content-Type": sniffAudioType(Buffer.from(cached)),
+          "X-Voice": "melotts-cached",
+          ...CACHE_HEADERS,
+        },
       });
   } catch (err) {
     logSanitizedError("words.tts.cache.lookup", err, {});
@@ -95,7 +99,9 @@ export const GET = async (req: NextRequest) => {
     } catch (err) {
       logSanitizedError("words.tts.cache.save", err, {});
     }
-    return new Response(audio, { headers: { "Content-Type": contentType, ...CACHE_HEADERS } });
+    return new Response(audio, {
+      headers: { "Content-Type": contentType, "X-Voice": "melotts", ...CACHE_HEADERS },
+    });
   } catch (err) {
     logSanitizedError("words.tts.generate", err, {});
     return NextResponse.json({ error: "Failed to generate speech" }, { status: 502 });

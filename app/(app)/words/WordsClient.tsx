@@ -425,6 +425,24 @@ const SPEECH_TAG: Record<string, string> = {
   en: "en-US",
 };
 
+/**
+ * Remote debugging: /words?debug=1 turns it on for this device (debug=0 off),
+ * and what speech decides is posted to /api/dev/log — the Worker logs, for
+ * the owner only.
+ */
+function devLog(event: Record<string, unknown>) {
+  try {
+    const q = new URLSearchParams(location.search).get("debug");
+    if (q !== null) localStorage.setItem("lk:debug", q === "1" ? "1" : "0");
+    if (localStorage.getItem("lk:debug") !== "1") return;
+    void fetch("/api/dev/log", {
+      method: "POST",
+      body: JSON.stringify({ at: new Date().toISOString(), ...event }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {}
+}
+
 /** `serverVoice`: always use the server's recordings, never the browser's. */
 function useSpeech(serverVoice = false) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -511,6 +529,15 @@ function useSpeech(serverVoice = false) {
       const r = await fetch(
         `/api/words/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}`,
       ).catch(() => null);
+      devLog({
+        ev: "server",
+        lang,
+        text,
+        status: r?.status ?? "network",
+        voice: r?.headers.get("X-Voice"),
+        type: r?.headers.get("Content-Type"),
+        bytes: r?.headers.get("Content-Length"),
+      });
       if (!r?.ok) {
         // X-Voice: miss — only this text has no recording; the language does.
         if (r && (r.status === 404 || r.status === 503) && r.headers.get("X-Voice") !== "miss")
@@ -545,6 +572,7 @@ function useSpeech(serverVoice = false) {
       const u = new SpeechSynthesisUtterance(text);
       u.voice = voice;
       u.lang = voice.lang;
+      devLog({ ev: "browser", lang, text, voice: voice.name, voiceLang: voice.lang });
       u.rate = 0.9;
       // Never started (no engine behind the API) or failed outright: the
       // server speaks this language from now on.
@@ -577,6 +605,14 @@ function useSpeech(serverVoice = false) {
   const speak = useCallback(
     (text: string, lang: string, then?: () => void, force = false) => {
       if ((!on && !force) || !text) return;
+      devLog({
+        ev: "speak",
+        lang,
+        text,
+        serverVoice,
+        serverDead: [...serverDead.current],
+        browserDead: [...browserDead.current],
+      });
       // The server voice by default: browser voices can mislead (Japanese read
       // in a Chinese accent). The browser speaks only where the server can't —
       // a language it has no voice for, the rate limit, offline.
@@ -2230,12 +2266,12 @@ function Study({
                 on={serverVoice}
                 onChange={setServerVoice}
                 label="Server voice"
-                hint="Use Lianki's voices (en, es, fr, it, pt, zh, ja, ko) instead of the browser's"
+                hint="Use Lianki's voices (en, es, fr, de, it, pt, ru, zh, ja, ko) instead of the browser's"
               />
             )}
             {speech.on && serverVoice && (
               <span className="w-full text-xs opacity-60" data-voice-credit>
-                Voices: VOICEVOX:No.7 (Japanese) · Kokoro · MeloTTS
+                Voices: VOICEVOX:No.7 (Japanese) · Kokoro · Piper (Thorsten-Voice, Dmitri) · MeloTTS
               </span>
             )}
             <TogglePill
@@ -2372,7 +2408,7 @@ function Study({
                   }}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none border-b ${
                     touch
-                      ? "slip-touch grid-cols-[var(--term-w,8rem)_1fr_3rem] text-base"
+                      ? "slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base"
                       : hasExamples
                         ? "grid-cols-[1.25rem_var(--term-w,12rem)_minmax(10rem,1fr)_minmax(12rem,1.4fr)_3.5rem] text-[15px]"
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] text-[15px]"
@@ -2385,7 +2421,14 @@ function Study({
                   }`}
                   style={{ height: ROW_H }}
                 >
-                  {!touch && <span className="text-[10px] opacity-40">{i === row ? "▸" : ""}</span>}
+                  {/* The grade, stamped like a small seal (盖章) at the slip's left end. */}
+                  <span className="flex justify-center text-[10px]" data-stamp-cell>
+                    {rating ? (
+                      <i key={rating} className="lk-stamp" aria-label={RATING_LABEL[rating]} />
+                    ) : !touch && i === row ? (
+                      <span className="opacity-40">▸</span>
+                    ) : null}
+                  </span>
                   <Glance
                     active={glancing}
                     title={it.reading ? `${it.term} ${it.reading}` : it.term}
@@ -2434,10 +2477,6 @@ function Study({
                     title={rating ? RATING_LABEL[rating] : "due"}
                   >
                     {status(it, i)}
-                    {/* The grade, stamped like a small seal (盖章). */}
-                    {rating && (
-                      <i key={rating} className="lk-stamp" aria-label={RATING_LABEL[rating]} />
-                    )}
                   </span>
                 </WordRow>
               );

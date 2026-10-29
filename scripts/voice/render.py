@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
 Render the clips listed by texts.ts to MP3, offline, with open voices:
-VOICEVOX (Japanese, its engine on :50021) and Kokoro (en es fr it pt zh).
+VOICEVOX (Japanese, its engine on :50021), Kokoro (en es fr it pt zh) and
+Piper (de ru; voice files in $PIPER_DIR, default ~/.cache/lianki-voice/piper).
 Resumable: a clip already on disk is skipped.
 
   python scripts/voice/render.py texts.jsonl out/ [lang ...]
 
 Writes out/<key> (the R2 key, voice/<lang>/<sha>.mp3). Needs kokoro,
-misaki[zh,ja], lameenc, numpy, soundfile — see docs/workers-ai.md.
+misaki[zh,ja], piper-tts, lameenc, numpy, soundfile — see docs/workers-ai.md.
 """
 import io, json, os, sys, urllib.parse, urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -17,6 +18,10 @@ VV = "http://127.0.0.1:50021"
 VV_SPEAKER = 30  # No.7 アナウンス: clear standard Japanese. Credit "VOICEVOX:No.7".
 KOKORO = {"en": ("a", "af_heart"), "es": ("e", "ef_dora"), "fr": ("f", "ff_siwis"),
           "it": ("i", "if_sara"), "pt": ("p", "pf_dora"), "zh": ("z", "zf_xiaobei")}
+
+# Both CC0 (Thorsten-Voice; OHF-Voice datasets).
+PIPER = {"de": "de_DE-thorsten-high", "ru": "ru_RU-dmitri-medium"}
+PIPER_DIR = os.environ.get("PIPER_DIR", os.path.expanduser("~/.cache/lianki-voice/piper"))
 
 
 def mp3(pcm: np.ndarray, rate: int) -> bytes:
@@ -76,12 +81,26 @@ def kokoro(item) -> bytes:
     return mp3(np.concatenate(parts), 24000)
 
 
+piper_voices = {}
+
+
+def piper(item) -> bytes:
+    from piper import PiperVoice
+    lang = item["lang"]
+    if lang not in piper_voices:
+        piper_voices[lang] = PiperVoice.load(os.path.join(PIPER_DIR, PIPER[lang] + ".onnx"))
+    chunks = list(piper_voices[lang].synthesize(item["text"]))
+    if not chunks:
+        raise ValueError("no audio")
+    return mp3(np.concatenate([c.audio_float_array for c in chunks]), chunks[0].sample_rate)
+
+
 def main():
     src, out, *langs = sys.argv[1:]
     items = [json.loads(l) for l in open(src)]
     todo = [i for i in items
             if (not langs or i["lang"] in langs)
-            and (i["lang"] == "ja" or i["lang"] in KOKORO)
+            and (i["lang"] == "ja" or i["lang"] in KOKORO or i["lang"] in PIPER)
             and not os.path.exists(os.path.join(out, i["key"]))]
     print(f"{len(todo)} clips to render", flush=True)
 
@@ -108,8 +127,10 @@ def main():
         futures = [pool.submit(one, i, japanese) for i in ja]
         # Kokoro runs on this thread meanwhile (one model, not thread-safe).
         for i in todo:
-            if i["lang"] != "ja":
+            if i["lang"] in KOKORO:
                 one(i, kokoro)
+            elif i["lang"] in PIPER:
+                one(i, piper)
         for f in futures:
             f.result()
 

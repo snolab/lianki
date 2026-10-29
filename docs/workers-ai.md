@@ -120,7 +120,8 @@ every word, reading and example sentence in `public/words` and
 | ja                     | VOICEVOX engine, No.7 (アナウンス) | free incl. commercial; credit "VOICEVOX:No.7" |
 | en es fr it pt zh      | Kokoro-82M                          | Apache-2.0                              |
 | ko                     | none yet — MeloTTS on demand        |                                         |
-| de ru                  | none yet — browser voice            |                                         |
+| de                     | Piper, de_DE-thorsten-high          | CC0                                     |
+| ru                     | Piper, ru_RU-dmitri-medium          | CC0                                     |
 
 The credit is shown under the words page's settings while the server voice
 is on. For a Japanese kana reading the engine is given the written word
@@ -132,7 +133,8 @@ To render and upload (resumable, incremental):
 ```bash
 bun scripts/voice/texts.ts > texts.jsonl
 # VOICEVOX engine (github.com/VOICEVOX/voicevox_engine releases) running on :50021
-uv venv -p 3.12 && uv pip install kokoro "misaki[zh,ja]" soundfile lameenc
+uv venv -p 3.12 && uv pip install kokoro "misaki[zh,ja]" piper-tts soundfile lameenc
+(cd ~/.cache/lianki-voice/piper && python -m piper.download_voices de_DE-thorsten-high ru_RU-dmitri-medium)
 python scripts/voice/render.py texts.jsonl ~/.cache/lianki-voice/out [lang ...]
 bun scripts/voice/upload.ts ~/.cache/lianki-voice/out
 ```

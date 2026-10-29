@@ -2,6 +2,9 @@
 // grade one screen by exception, and check what the server stored.
 import { chromium } from "playwright";
 const BASE = process.env.QA_BASE || "http://localhost:3000";
+// QA_SHOTS=<dir>: also save screenshots of the list, to look at the layout.
+const shot = (pg, name) =>
+  process.env.QA_SHOTS ? pg.screenshot({ path: `${process.env.QA_SHOTS}/${name}.png` }) : null;
 const EMAIL = `qa+words${Date.now()}@lianki.test`;
 const PW = "qa-test-pass-1234";
 
@@ -165,9 +168,10 @@ try {
   await page.keyboard.press("a");
   check((await (await res).status()) === 200, "A saves that one word immediately");
   check(
-    (await rows.nth(0).locator(".lk-stamp").count()) === 1,
-    "a graded slip gets a small seal at its right end",
+    (await rows.nth(0).locator("[data-stamp-cell] .lk-stamp").count()) === 1,
+    "a graded slip gets a small seal at its left end",
   );
+  await shot(page, "words-desktop-graded");
   check(
     /^\d+(\.\d)?(s|m|h|d|mo|y)$/.test(await statusOf(0)),
     `it shows when it returns: ${await statusOf(0)}`,
@@ -274,7 +278,7 @@ try {
   // Server word audio validates before any (paid) generation. page.request
   // shares the session but bypasses the QA stub of this route.
   const ttsStatus = await Promise.all(
-    ["lang=de&text=Haus", "lang=fr&text=", `lang=fr&text=${"a".repeat(201)}`].map(async (q) =>
+    ["lang=th&text=%E0%B8%81", "lang=fr&text=", `lang=fr&text=${"a".repeat(201)}`].map(async (q) =>
       (await page.request.get(`${new URL(page.url()).origin}/api/words/tts?${q}`)).status(),
     ),
   );
@@ -282,6 +286,12 @@ try {
     ttsStatus.join() === "404,400,400",
     `word audio: no voice → 404, bad text → 400 (${ttsStatus.join()})`,
   );
+  // The owner's remote-debug log is the owner's alone.
+  const devLog = await page.request.post(`${new URL(page.url()).origin}/api/dev/log`, {
+    data: "{}",
+  });
+  check(devLog.status() === 404, `the debug log is owner-only (${devLog.status()})`);
+
   // A language with pre-rendered clips but none for this text: a 404 the
   // client must not take as "no voice for Italian".
   const miss = await page.request.get(
@@ -433,6 +443,7 @@ try {
     await m.mouse.up();
     await m.waitForTimeout(100);
     check(whileHeld && (await blurredM()), "phone: holding a row reveals it, releasing hides it");
+    await shot(m, "words-phone");
     // A tap says the word once (releasing a hold stops speech, so tap here).
     await m.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     await m
