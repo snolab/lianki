@@ -885,10 +885,49 @@ try {
         `${tag} the grade strip sits under the slid row (${under})`,
       );
       await m.waitForTimeout(400);
+      if (variant === "js") {
+        // The reveal: the far detent's grade replaces the first one's in the
+        // same spot (Good → Easy, Hard → Again), and going back restores it.
+        const listTop = (await m.locator('[role="list"]').boundingBox()).y;
+        let b = null;
+        for (let i = 0; !b; i++) {
+          const bi = await mrows.nth(i).boundingBox();
+          if (bi && bi.y > listTop + 200) b = bi;
+        }
+        const [x, y] = [b.x + b.width / 2, b.y + b.height / 2];
+        const shown = () =>
+          m.evaluate(() => {
+            const u = document.querySelector("[data-swipe-underlay]");
+            const side = (slot) =>
+              [...u.querySelectorAll(`[data-reveal-slot="${slot}"] > [data-reveal]`)]
+                .filter((el) => Number(getComputedStyle(el).opacity) > 0.5)
+                .map((el) => el.textContent)
+                .join("+");
+            return `${side("hard")}|${side("good")}`;
+          });
+        await m.mouse.move(x, y);
+        await m.mouse.down();
+        const seen = [];
+        for (const dx of [48, 96, 48, -48, -96, -48]) {
+          await m.mouse.move(x + dx, y, { steps: 10 });
+          await m.waitForTimeout(250);
+          seen.push(await shown());
+        }
+        await m.mouse.move(x, y, { steps: 10 });
+        await m.mouse.up();
+        await m.waitForTimeout(600);
+        check(
+          seen.join(" ") === "Hard|Good Hard|Easy Hard|Good Hard|Good Again|Good Hard|Good",
+          `${tag} a far detent's grade replaces the first one's in place, and back (${seen.join(" ")})`,
+        );
+      }
       if (process.env.QA_SHOTS) {
         // Mid-swipe, held on each level, then back to rest (no grade): a
         // finger held down — a pointer for A, a real touch for B.
-        const listTop = (await m.locator('[role="list"]').boundingBox()).y;
+        // Below the glass toolbar, where the list's own top is now the window's.
+        const listTop = await m
+          .locator("[data-words-top]")
+          .evaluate((el) => el.getBoundingClientRect().bottom);
         let b = null;
         for (let i = 0; !b; i++) {
           const bi = await mrows.nth(i).boundingBox();

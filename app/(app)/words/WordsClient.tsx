@@ -58,6 +58,7 @@ import {
   snapSwipe,
   springProgress,
   swipeLevel,
+  revealShown,
   SWIPE_COAST_MS,
   SWIPE_HYSTERESIS,
   SWIPE_LEVEL,
@@ -3248,23 +3249,54 @@ function SwipeUnderlay({ ref }: { ref: React.RefObject<HTMLDivElement | null> })
 
 /** The strip's zones, in a row-wide box with --a set: shared by SwipeUnderlay and NativeSlipRow. */
 function GradeZones() {
-  const zone = (r: Rating, side: "left" | "right", from: string, width: string) => (
+  // One slot per side, the width of both detents. Its first detent's grade
+  // shows until the slip reaches the far detent; then the far grade takes
+  // over the same spot (crossfade + a short slide, CSS .lk-reveal), and
+  // gives it back on the way home. The container's data-good / data-hard
+  // (showReveal) pick which.
+  const layer = (r: Rating, side: "left" | "right", far: boolean) => (
     <span
       data-reveal={r}
-      className="absolute inset-y-0 flex items-center justify-center text-[11px] font-medium opacity-90"
-      style={{ [side]: from, width, background: SWIPE_BG[r] }}
+      data-far={far ? "" : undefined}
+      className="lk-reveal absolute inset-0"
+      style={{ background: SWIPE_BG[r] }}
     >
-      {RATING_LABEL[r]}
+      <span
+        className="absolute inset-y-0 flex items-center justify-center text-[11px] font-medium opacity-90"
+        style={{ [side]: 0, width: "var(--a)" }}
+      >
+        {RATING_LABEL[r]}
+      </span>
     </span>
   );
   return (
     <>
-      {zone(3, "left", "0px", "var(--a)")}
-      {zone(4, "left", "var(--a)", "calc(var(--a) * 1.5)")}
-      {zone(2, "right", "0px", "var(--a)")}
-      {zone(1, "right", "var(--a)", "calc(var(--a) * 1.5)")}
+      <span
+        data-reveal-slot="good"
+        className="absolute inset-y-0 left-0 overflow-hidden"
+        style={{ width: "calc(var(--a) * 2.5)" }}
+      >
+        {layer(3, "left", false)}
+        {layer(4, "left", true)}
+      </span>
+      <span
+        data-reveal-slot="hard"
+        className="absolute inset-y-0 right-0 overflow-hidden"
+        style={{ width: "calc(var(--a) * 2.5)" }}
+      >
+        {layer(2, "right", false)}
+        {layer(1, "right", true)}
+      </span>
     </>
   );
+}
+
+/** Point a GradeZones container at level `k`: which grade each side shows. */
+function showReveal(el: HTMLElement | null | undefined, k: number) {
+  if (!el) return;
+  const s = revealShown(k);
+  if (el.dataset.good !== String(s.good)) el.dataset.good = String(s.good);
+  if (el.dataset.hard !== String(s.hard)) el.dataset.hard = String(s.hard);
 }
 
 type RowProps = {
@@ -3470,6 +3502,7 @@ function WordRow({
               u.style.right = "auto";
               u.style.width = `${row.offsetWidth}px`;
               u.style.setProperty("--a", `${a}px`);
+              showReveal(u, 0);
               u.style.visibility = "visible";
             }
             setMoving(true);
@@ -3488,6 +3521,7 @@ function WordRow({
             // A light tick at each level, either way (Android; iOS has no API).
             navigator.vibrate?.(Math.abs(k) === 2 ? 12 : 6);
             level.current = k;
+            showReveal(underlay?.current, k);
           }
           dx.current = snapSwipe(x, a);
           frame.current ||= requestAnimationFrame(paint);
@@ -3706,6 +3740,12 @@ function NativeSlipRow({
       clearTimeout(quiet);
       quiet = setTimeout(settle, 150);
     };
+    // The reveal follows the detent the slip is nearest (the far one's grade
+    // takes over the first one's spot).
+    const strip = el.querySelector<HTMLElement>("[data-swipe-strip]");
+    const reveal = () =>
+      showReveal(strip, Math.max(-2, Math.min(2, Math.round((home - el.scrollLeft) / a))));
+    el.addEventListener("scroll", reveal, { passive: true });
     el.addEventListener("touchstart", touchstart, { passive: true });
     el.addEventListener("touchend", touchend, { passive: true });
     el.addEventListener("touchcancel", touchend, { passive: true });
@@ -3727,6 +3767,7 @@ function NativeSlipRow({
       el.removeEventListener("scrollsnapchanging", snapping);
       el.removeEventListener("scrollend", settle);
       el.removeEventListener("scroll", scrolled);
+      el.removeEventListener("scroll", reveal);
       el.removeEventListener("scroll", slid);
       el.removeEventListener("touchmove", axis);
     };

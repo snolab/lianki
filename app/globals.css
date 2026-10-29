@@ -643,3 +643,36 @@ ruby rt {
     opacity: 0;
   }
 }
+
+/* The swipe reveal (GradeZones): a far detent's grade replaces the first
+ * one's in the same spot. ~150 ms crossfade, the incoming one sliding in 10px
+ * along the swipe; transform and opacity only (compositor, no layout).
+ * Instant under reduced motion. */
+.lk-reveal {
+  transition:
+    opacity 150ms ease-out,
+    transform 150ms ease-out;
+}
+.lk-reveal[data-far] {
+  opacity: 0;
+}
+[data-reveal-slot="good"] > .lk-reveal[data-far] {
+  transform: translateX(-10px);
+}
+[data-reveal-slot="hard"] > .lk-reveal[data-far] {
+  transform: translateX(10px);
+}
+[data-good="4"] [data-reveal="3"],
+[data-hard="1"] [data-reveal="2"] {
+  opacity: 0;
+}
+[data-good="4"] [data-reveal="4"],
+[data-hard="1"] [data-reveal="1"] {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-reveal {
+    transition: none;
+  }
+}
