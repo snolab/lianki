@@ -18,7 +18,7 @@ account settles in JPY.
    `checkout.session.async_payment_succeeded`) to
    `POST /api/payments/stripe-webhook`. The signature is checked with Web
    Crypto (`lib/payments/stripe.ts`), then `lib/payments/fulfil.ts` writes a
-   `payment` row (keyed by the session id, `db/migrations/0012_payments.sql`)
+   `payment` row (keyed by the session id, `db/migrations/0013_payments.sql`)
    and the new `proEndsAt` in one D1 batch. A redelivered event is a no-op.
 
 No Stripe SDK: a fetch call and an HMAC are all it needs, and nothing
