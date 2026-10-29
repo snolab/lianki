@@ -456,3 +456,18 @@ ruby rt {
     0 0 3px var(--background),
     0 0 6px var(--background);
 }
+
+/* A 40px-tall hit area around a small control, without changing how it looks:
+   an invisible ::before, centred on the control, takes the taps. iOS QA found
+   18-20px buttons (/words delete, review Settings / Undo) hard to hit. */
+.tap-40 {
+  position: relative;
+}
+.tap-40::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  height: max(100%, 40px);
+  transform: translateY(-50%);
+}
