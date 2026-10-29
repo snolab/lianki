@@ -2,7 +2,6 @@ import { getIntlayer } from "intlayer";
 import Link from "next/link";
 import { Header } from "../components/Header";
 import { authUser } from "../signInEmail";
-import { appHref } from "@/lib/app-locale";
 
 export default async function LandingPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -47,7 +46,7 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
           <Link
             // Signed in: Home (navigation + onboarding). Guests land on the
             // card list, which works without an account.
-            href={appHref(user ? "/home" : "/list", locale)}
+            href={user ? "/home" : "/list"}
             className="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700"
           >
             {hero.cta}
@@ -95,7 +94,7 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
 
         {/* Contact: the form has its own page. */}
         <section className="py-8 px-4 text-center">
-          <Link href={appHref("/contacts", locale)} className="text-blue-600 hover:underline">
+          <Link href="/contacts" className="text-blue-600 hover:underline">
             {rawContact.title} →
           </Link>
         </section>

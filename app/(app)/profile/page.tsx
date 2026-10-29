@@ -2,7 +2,6 @@ import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { authUser } from "@/app/signInEmail";
 import { getIntlayer } from "intlayer";
-import { appHref } from "@/lib/app-locale";
 import { appLocale } from "@/lib/app-locale.server";
 import PasskeysCard from "./PasskeysCard";
 
@@ -73,10 +72,10 @@ export default async function ProfilePage() {
           </pre>
         </div>
         <div className="flex gap-4">
-          <a href={appHref("/preferences", locale)} className="text-blue-500 hover:text-blue-600">
+          <a href="/preferences" className="text-blue-500 hover:text-blue-600">
             {editPreferences}
           </a>
-          <a href={appHref("/list", locale)} className="text-blue-500 hover:text-blue-600">
+          <a href="/list" className="text-blue-500 hover:text-blue-600">
             {backToHome}
           </a>
         </div>

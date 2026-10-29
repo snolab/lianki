@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { appHref } from "@/lib/app-locale";
 
 export interface ReadMaterial {
   id: string;
@@ -44,7 +43,7 @@ function saveLocalMaterials(materials: ReadMaterial[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(materials));
 }
 
-export function ReadListClient({ locale, isLoggedIn }: { locale: string; isLoggedIn: boolean }) {
+export function ReadListClient({ isLoggedIn }: { isLoggedIn: boolean }) {
   const router = useRouter();
   const [materials, setMaterials] = useState<ReadMaterial[]>([]);
   const [isImporting, setIsImporting] = useState(false);
@@ -97,7 +96,7 @@ export function ReadListClient({ locale, isLoggedIn }: { locale: string; isLogge
           setImportText("");
           setImportTitle("");
           setIsImporting(false);
-          router.push(appHref(`/read/${newMaterial.id}`, locale));
+          router.push(`/read/${newMaterial.id}`);
         }
       } catch (err) {
         console.error("Failed to save material:", err);
@@ -119,7 +118,7 @@ export function ReadListClient({ locale, isLoggedIn }: { locale: string; isLogge
       setImportText("");
       setImportTitle("");
       setIsImporting(false);
-      router.push(appHref(`/read/${newMaterial.id}`, locale));
+      router.push(`/read/${newMaterial.id}`);
     }
   };
 
@@ -203,7 +202,7 @@ export function ReadListClient({ locale, isLoggedIn }: { locale: string; isLogge
               key={material.id}
               className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
             >
-              <Link href={appHref(`/read/${material.id}`, locale)} className="flex-1 min-w-0">
+              <Link href={`/read/${material.id}`} className="flex-1 min-w-0">
                 <h3 className="font-medium truncate">{material.title}</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {material.lines.length} lines &middot;{" "}

@@ -340,6 +340,20 @@ try {
       (await learn.locator('[data-anki-decks] a[href*="/words/import"]').count()) === 1,
       "/learn's shared decks lead to /words/import",
     );
+    // ?lang= is for an explicit switch only: the app's own links stay bare, and
+    // the language rides on the cookie that the explicit ?lang= just set.
+    const langLinks = await learn
+      .locator('a[href^="/"]')
+      .evaluateAll((as) =>
+        as.map((a) => a.getAttribute("href")).filter((h) => /[?&]lang=/.test(h)),
+      );
+    check(
+      langLinks.length === 0,
+      `app links carry no ?lang= (${langLinks.slice(0, 3).join(", ")})`,
+    );
+    await learn.goto(`${new URL(page.url()).origin}/learn`, { waitUntil: "load" });
+    const bareH1 = (await learn.locator("h1").first().innerText()).trim();
+    check(bareH1 === h1, `a bare /learn after ?lang=fr stays French ("${bareH1}")`);
     await learn.close();
   }
 

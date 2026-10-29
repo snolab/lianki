@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { appHref } from "@/lib/app-locale";
 
 const LANGUAGES = [
   { code: "ja", name: "日本語", nativeName: "Japanese" },
@@ -19,22 +18,16 @@ const LANGUAGES = [
 ];
 
 interface AiVocabClientProps {
-  locale: string;
   title: string;
   description: string;
   selectLanguage: string;
 }
 
-export default function AiVocabClient({
-  locale,
-  title,
-  description,
-  selectLanguage,
-}: AiVocabClientProps) {
+export default function AiVocabClient({ title, description, selectLanguage }: AiVocabClientProps) {
   const router = useRouter();
 
   function handleSelectLanguage(langCode: string) {
-    router.push(appHref(`/ai-vocab/${langCode}`, locale));
+    router.push(`/ai-vocab/${langCode}`);
   }
 
   return (

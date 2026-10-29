@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { APP_NAV, NAV_GROUPS, activeNavKey, type NavGroup } from "@/lib/app-nav";
-import { appHref } from "@/lib/app-locale";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { FirstRunChoice, type FirstRunLabels } from "./FirstRunChoice";
 import { Icon, SealIcon } from "./icons";
@@ -87,7 +86,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
                 return (
                   <li key={item.key}>
                     <Link
-                      href={appHref(item.href, locale)}
+                      href={item.href}
                       aria-current={isActive ? "page" : undefined}
                       title={collapsed ? label : undefined}
                       className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
@@ -171,10 +170,10 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
                   <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 truncate">
                     {user.email}
                   </div>
-                  <MenuLink href={appHref("/list", locale)}>{labels.dashboard}</MenuLink>
-                  <MenuLink href={appHref("/profile", locale)}>{labels.profile}</MenuLink>
-                  <MenuLink href={appHref("/preferences", locale)}>{labels.preferences}</MenuLink>
-                  <MenuLink href={appHref("/membership", locale)}>{labels.membership}</MenuLink>
+                  <MenuLink href="/list">{labels.dashboard}</MenuLink>
+                  <MenuLink href="/profile">{labels.profile}</MenuLink>
+                  <MenuLink href="/preferences">{labels.preferences}</MenuLink>
+                  <MenuLink href="/membership">{labels.membership}</MenuLink>
                   <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
                     <Link
                       href="/auth/logout"
@@ -189,7 +188,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
             </div>
           ) : (
             <Link
-              href={appHref("/sign-in", locale)}
+              href="/sign-in"
               className="inline-flex items-center gap-1.5 text-sm font-medium hover:underline"
             >
               <Icon name="signIn" className="text-lg" />
@@ -228,7 +227,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
       </div>
 
       {/* Signed-out only: a signed-in visitor answered this by signing in. */}
-      {user === null && firstRun && <FirstRunChoice locale={locale} labels={firstRun} />}
+      {user === null && firstRun && <FirstRunChoice labels={firstRun} />}
     </div>
   );
 }

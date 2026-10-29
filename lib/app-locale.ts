@@ -50,10 +50,3 @@ export function localeFromAcceptLanguage(header: string | null): string {
   }
   return DEFAULT_LOCALE;
 }
-
-export function appHref(path: string, locale: string): string {
-  if (locale === DEFAULT_LOCALE) return path;
-  const [base, hash] = path.split("#");
-  const sep = base.includes("?") ? "&" : "?";
-  return `${base}${sep}${LOCALE_PARAM}=${locale}${hash ? `#${hash}` : ""}`;
-}

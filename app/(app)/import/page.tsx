@@ -6,7 +6,6 @@ import YamlImportSection from "./YamlImportSection";
 import PasteLinksSection from "./PasteLinksSection";
 import { authEmail } from "@/app/signInEmail";
 import { appLocale } from "@/lib/app-locale.server";
-import { appHref } from "@/lib/app-locale";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +57,7 @@ export default async function ImportPage() {
           <YamlImportSection />
           <p className="mt-8 text-sm text-gray-500 dark:text-gray-400">
             Looking for exports, bulk delete or the storage overview?{" "}
-            <a href={appHref("/data", locale)} className="underline font-medium">
+            <a href="/data" className="underline font-medium">
               Full data tools →
             </a>
           </p>

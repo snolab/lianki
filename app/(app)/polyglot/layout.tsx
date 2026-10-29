@@ -4,12 +4,9 @@ import { getUserMembership } from "@/lib/membership";
 import { localeRedirect } from "@/lib/locale-redirect";
 import Link from "next/link";
 import { useIntlayer } from "next-intlayer/server";
-import { appHref } from "@/lib/app-locale";
-import { appLocale } from "@/lib/app-locale.server";
 
 export default async function PolyglotLayout({ children }: { children: React.ReactNode }) {
   const content = useIntlayer("polyglot-layout");
-  const locale = await appLocale();
 
   // Get authenticated user or redirect to sign-in
   let user;
@@ -42,13 +39,13 @@ export default async function PolyglotLayout({ children }: { children: React.Rea
             </p>
             <div className="space-y-3">
               <Link
-                href={appHref("/membership", locale)}
+                href="/membership"
                 className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
               >
                 {content.accessDenied.upgradeToPro.value}
               </Link>
               <Link
-                href={appHref("/list", locale)}
+                href="/list"
                 className="block w-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-semibold py-3 px-6 rounded-lg transition-colors"
               >
                 {content.accessDenied.backToHome.value}
@@ -66,7 +63,7 @@ export default async function PolyglotLayout({ children }: { children: React.Rea
       {membership.tier === "trial" && membership.trialEndsAt && (
         <div className="bg-yellow-500 text-black px-4 py-2 text-center text-sm font-medium">
           {content.banner.trialExpires.value} {membership.trialEndsAt.toLocaleDateString()} —{" "}
-          <Link href={appHref("/membership", locale)} className="underline">
+          <Link href="/membership" className="underline">
             {content.banner.upgradeToPro.value}
           </Link>
         </div>
