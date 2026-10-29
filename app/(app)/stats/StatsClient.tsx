@@ -105,10 +105,10 @@ export default function StatsClient() {
       const body = await r.json().catch(() => ({}));
       // 501 means the server has no YOUTUBE_API_KEY. Say that plainly rather
       // than "failed" — it is a deployment gap the user can actually fix.
-      if (r.status === 501) setIdentifyMsg(String(c.needsApiKey));
+      if (r.status === 501) setIdentifyMsg(c.needsApiKey.value);
       else if (!r.ok) setIdentifyMsg(`HTTP ${r.status}${body?.error ? ` — ${body.error}` : ""}`);
       else {
-        setIdentifyMsg(`${c.identified}: ${body.labelled ?? 0}/${body.checked ?? 0}`);
+        setIdentifyMsg(`${c.identified.value}: ${body.labelled ?? 0}/${body.checked ?? 0}`);
         await load();
       }
     } catch (e) {
@@ -140,7 +140,7 @@ export default function StatsClient() {
               { label: c.streak, value: String(data.streak) },
               { label: c.videos, value: String(data.videos) },
             ].map((s) => (
-              <div key={String(s.label)} className="rounded-lg bg-white/5 p-4">
+              <div key={s.label.value} className="rounded-lg bg-white/5 p-4">
                 <div className="text-2xl font-semibold tabular-nums">{s.value}</div>
                 <div className="text-xs opacity-70">{s.label}</div>
                 {s.hint && (
