@@ -1023,6 +1023,28 @@ try {
     await ctx.close();
   }
 
+  // Reading speed: 1× / 1.25× / 1.5× / 2× in the menu, 1.5× by default, per device.
+  {
+    const { ctx, page } = await open("?open");
+    await page.dblclick('[data-testid="debug-chat-pill-min"]');
+    await page.waitForSelector('[data-testid="debug-menu-rate"]');
+    const opts = await page.$$eval('[data-testid="debug-menu-rate"] [role="radio"]', (els) =>
+      els.map((e) => `${e.textContent}${e.getAttribute("aria-checked") === "true" ? "*" : ""}`),
+    );
+    check(
+      opts.join(" ") === "1× 1.25× 1.5×* 2×",
+      `speed control, 1.5× by default (${opts.join(" ")})`,
+    );
+    await page.click('[data-testid="debug-menu-rate"] [data-rate="2"]');
+    const saved = await page.evaluate(() => localStorage.getItem("lk:agent-speech-rate"));
+    const checked = await page.getAttribute(
+      '[data-testid="debug-menu-rate"] [data-rate="2"]',
+      "aria-checked",
+    );
+    check(saved === "2" && checked === "true", `2× picked and saved (${saved})`);
+    await ctx.close();
+  }
+
   // A live message floats above the minimized bar.
   {
     const { ctx, page } = await open("?min");

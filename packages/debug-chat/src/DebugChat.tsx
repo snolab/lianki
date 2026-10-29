@@ -33,6 +33,7 @@ import {
 } from "./float-lines";
 import { Icon } from "./icons";
 import { LINE_HALO, logSurface } from "./log-surface";
+import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
 import { type AnchorSide, placeBox } from "./anchor";
 import { TreeFragment, useTreeSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
@@ -342,6 +343,8 @@ export function DebugChat({
     return v === null ? !location.pathname.startsWith("/words") : v === "1";
   });
   const [speak, setSpeak] = useState(speechEnabled);
+  /** How fast replies are read (speech-rate.ts; per device, default 1.5×). */
+  const [rate, setRate] = useState(speechRate);
   const { offset, handle, begin, wasDrag, holding, fit } = useDrag();
   /** The box: its bar is kept on screen, expanded or minimized. */
   const root = useRef<HTMLElement | null>(null);
@@ -1083,6 +1086,31 @@ export function DebugChat({
         <Icon name="speakerHigh" weight={speak || vs.mic ? "fill" : "regular"} />
         {vs.mic ? "Replies read aloud (mic on)" : speak ? "Replies read aloud" : "Replies silent"}
       </button>
+      {/* Reading speed, per device: from the next sentence on. */}
+      <div
+        role="radiogroup"
+        aria-label="Reading speed"
+        data-testid="debug-menu-rate"
+        className="flex items-center gap-1 px-3 py-1"
+      >
+        <span className="me-1 text-gray-500">Speed</span>
+        {SPEECH_RATES.map((r) => (
+          <button
+            key={r}
+            type="button"
+            role="radio"
+            aria-checked={rate === r}
+            data-rate={r}
+            onClick={() => {
+              setSpeechRate(r);
+              setRate(r);
+            }}
+            className={`tap-40 rounded px-1.5 py-0.5 tabular-nums ${rate === r ? "font-semibold underline underline-offset-2" : "opacity-70"}`}
+          >
+            {r}×
+          </button>
+        ))}
+      </div>
       {vs.queued > 0 && (
         <button
           type="button"

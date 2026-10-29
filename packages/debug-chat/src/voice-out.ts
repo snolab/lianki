@@ -96,6 +96,12 @@ export type ElementLike = {
   volume: number;
   preload: string;
   paused: boolean;
+  /** The reading speed; load() resets it to defaultPlaybackRate, so both are set. */
+  playbackRate?: number;
+  defaultPlaybackRate?: number;
+  /** Keep the voice's pitch at any speed (and Safari's prefixed name). */
+  preservesPitch?: boolean;
+  webkitPreservesPitch?: boolean;
   onended: (() => void) | null;
   onerror: (() => void) | null;
   onloadedmetadata: (() => void) | null;
@@ -259,6 +265,12 @@ export function createCloudOut(d: {
             a.onloadedmetadata = null;
             // Resume by offset: where the interrupted clip stopped (else its start).
             a.currentTime = s.at;
+            // The speed, pitch kept (a resume after a duck keeps it: it is per play).
+            const rate = s.rate ?? 1;
+            a.defaultPlaybackRate = rate;
+            a.playbackRate = rate;
+            a.preservesPitch = true;
+            a.webkitPreservesPitch = true;
             a.play().catch((e: unknown) => {
               if (live()) ev.onfail?.(`play ${(e as Error)?.name ?? "error"}`);
             });
