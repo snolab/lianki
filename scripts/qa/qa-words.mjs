@@ -362,6 +362,9 @@ try {
     data: { email: "someone@example.com", days: 7 },
   });
   check(grant.status() === 404, `granting Pro is owner-only (${grant.status()})`);
+  // So is the list of every account.
+  const users = await page.request.get(`${new URL(page.url()).origin}/dev/users`);
+  check(users.status() === 404, `/dev/users is owner-only (${users.status()})`);
 
   // The owner's remote-debug log is the owner's alone.
   const devLog = await page.request.post(`${new URL(page.url()).origin}/api/dev/log`, {

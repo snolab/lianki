@@ -12,7 +12,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false, nocache: true },
 };
 
-export default async function DevMembershipPage() {
+export default async function DevMembershipPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ email?: string }>;
+}) {
   const user = await authUserOrNull();
   if (!isOwner(user?.email)) notFound();
   return (
@@ -22,7 +26,7 @@ export default async function DevMembershipPage() {
         给任意账号加 Pro 天数：从「现在」和「当前 Pro
         到期日」两者较晚的那个开始往后加。每次发放都记日志。
       </p>
-      <GrantPro defaultEmail={user!.email!} />
+      <GrantPro defaultEmail={(await searchParams).email ?? user!.email!} />
     </main>
   );
 }
