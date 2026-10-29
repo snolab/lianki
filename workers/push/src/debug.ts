@@ -45,16 +45,25 @@
  * per FRIEND_CHAT_WINDOW_MS; the owner can Block one (/dev/friends →
  * /internal/friends), which closes their sockets and refuses them after.
  *
- * "Allow chat for 30 days" approves with scope "chat" (no eval) and hands the
- * controller a random grant token; only its SHA-256 is stored
- * (`grant:<hash>`), and reconnecting with it (header x-debug-token) restores
- * the scope without a prompt until it expires or "End" revokes it.
+ * Resumable grants. The owner's Allow hands the controller a random grant
+ * token; only its SHA-256 is stored (`grant:<hash>`), and reconnecting with
+ * it (header x-debug-token, or x-liagent-token via index.ts) restores what
+ * was granted without a prompt until it expires or End revokes it:
+ *   "Allow chat for 30 days"  scope "chat" (no eval), CHAT_MS.
+ *   "Allow" for eval          scope "eval" (and chat), EVAL_GRANT_MS, with the
+ *                             page ids it covers (or all) — so a sender that
+ *                             disconnects, or is closed because its pages
+ *                             were away (PAGES_GONE), comes back silently.
+ * A stored eval grant with no socket holding it is still listed in the owner
+ * pages' sessions (code "idle"), so End reaches it while it sleeps. A
+ * friend's preview pairing is never stored: one socket, APPROVAL_MS.
  */
 import {
   APPROVAL_MS,
   CHAT_HISTORY,
   CHAT_MS,
   type ChatMessage,
+  EVAL_GRANT_MS,
   FRIEND_CHAT_MAX,
   FRIEND_CHAT_WINDOW_MS,
   type FriendRecord,
@@ -122,8 +131,15 @@ type ControllerAtt = {
   forUser?: string;
   forEmail?: string;
 } & PairInfo;
-/** `pages`: the owner's page ids it reaches (absent = all). */
-type Grant = { label: string; until: number; pages?: string[] };
+/**
+ * A stored grant (`grant:<sha256 of its token>`). `scope` absent = "chat"
+ * (grants from before eval grants were stored). `pages`: the owner's page ids
+ * an eval grant reaches (absent = all). `at`: when it was allowed.
+ */
+type Grant = { label: string; until: number; scope?: Scope; pages?: string[]; at?: number };
+/** A sleeping eval grant's pair id in the pages' state: "g:" + the start of its hash. */
+const DORMANT = "g:";
+const dormantPair = (hash: string) => `${DORMANT}${hash.slice(0, 40)}`;
 /** A friend's chat rate window. */
 type Rate = { start: number; count: number };
 /** The header a controller resumes its chat grant with. */
@@ -181,6 +197,14 @@ const msgKey = (thread: string, seq: number) =>
 const friendKey = (userId: string) => `friend:${userId}`;
 
 export class DebugHub {
+  /**
+   * Every stored grant by hash: read once per instance (an evicted hub reads
+   * it again), then kept in step with each write. Only the pages' listing of
+   * sleeping eval grants reads it; a resume always asks storage itself.
+   */
+  private grants?: Map<string, Grant>;
+  private loadingGrants?: Promise<void>;
+
   constructor(
     private ctx: DebugState,
     _env?: unknown,
@@ -214,17 +238,53 @@ export class DebugHub {
     return all.filter((p) => p.a.id && c.pages?.includes(p.a.id));
   }
 
+  private loadGrants(): Promise<void> {
+    if (this.grants) return Promise.resolve();
+    this.loadingGrants ??= this.ctx.storage.list<Grant>({ prefix: "grant:" }).then((m) => {
+      this.grants = new Map([...m].map(([k, g]) => [k.slice("grant:".length), g]));
+      this.loadingGrants = undefined;
+    });
+    return this.loadingGrants;
+  }
+
+  private async putGrant(hash: string, g: Grant) {
+    await this.loadGrants();
+    await this.ctx.storage.put(`grant:${hash}`, g);
+    this.grants?.set(hash, g);
+  }
+
+  private async dropGrant(hash: string) {
+    await this.loadGrants();
+    await this.ctx.storage.delete(`grant:${hash}`);
+    this.grants?.delete(hash);
+  }
+
   /** What one audience's pages see: its own pairings, and how many agents listen. */
   private state(who: string, except?: Socket): HubState {
     const t = this.now();
     let pending: PairInfo | null = null;
     const sessions: PairInfo[] = [];
+    const held = new Set<string>();
     for (const { a } of this.sockets("controller", except)) {
       if (audience(a) !== who) continue;
+      if (a.grant) held.add(a.grant);
       if (a.until) {
         if (a.until > t) sessions.push(info(a));
       } else if (t - a.at < PENDING_MS) pending = info(a);
     }
+    // The owner's eval grants that no socket holds now: asleep, but End reaches them.
+    if (who === OWNER_THREAD)
+      for (const [hash, g] of this.grants ?? [])
+        if (g.scope === "eval" && g.until > t && !held.has(hash))
+          sessions.push({
+            pair: dormantPair(hash),
+            code: "idle",
+            label: g.label,
+            at: g.at ?? 0,
+            until: g.until,
+            scope: "eval",
+            ...(g.pages ? { pages: g.pages } : {}),
+          });
     const pages = this.pages(who, except).map(({ a }) => ({
       id: a.id ?? "",
       label: a.label,
@@ -412,15 +472,20 @@ export class DebugHub {
     send(ws, { ...this.state(thread), self: id });
     send(ws, { type: "history", messages: await this.history(thread) });
     this.broadcast(ws);
+    // First page since the hub woke: list the sleeping eval grants too.
+    if (!this.grants && thread === OWNER_THREAD) {
+      await this.loadGrants();
+      this.broadcast();
+    }
   }
 
   /**
    * A controller knocks. `?for=<email>` asks a friend's pages for an eval
    * pairing, and only an owner-approved grant may ask. With just a grant
-   * token it is back in chat scope at once. Otherwise it waits for the
-   * owner: one pending pairing per audience, and only with a page to ask.
-   * `?scope=chat` asks for the 30-day chat grant; anything else for eval
-   * (and chat) for an hour. Allow grants exactly what was asked.
+   * token it is back in its grant's scope (and pages) at once. Otherwise it
+   * waits for the owner: one pending pairing per audience, and only with a
+   * page to ask. `?scope=chat` asks for the 30-day chat grant; anything else
+   * for eval (and chat) for EVAL_GRANT_MS. Allow grants exactly what was asked.
    */
   async connectController(ws: Socket, url: URL, token?: string | null) {
     const forKey = url.searchParams.get("for")?.trim();
@@ -483,7 +548,7 @@ export class DebugHub {
     const hash = await hashToken(token.slice(0, 256));
     const g = await this.ctx.storage.get<Grant>(`grant:${hash}`);
     if (g && g.until > this.now()) return { hash, g };
-    if (g) await this.ctx.storage.delete(`grant:${hash}`);
+    if (g) await this.dropGrant(hash);
     return null;
   }
 
@@ -515,14 +580,18 @@ export class DebugHub {
     });
   }
 
-  /** Reconnecting with a grant token: chat scope again, no prompt — or 4498 if it is not live. */
+  /**
+   * Reconnecting with a grant token: its scope (and an eval grant's pages)
+   * again, no prompt, even with no page open — or 4498 if it is not live.
+   */
   private async resume(ws: Socket, url: URL, token: string) {
     const live = await this.liveGrant(token);
     if (!live) {
-      send(ws, { type: "error", error: "chat grant is not valid (expired or ended)" });
+      send(ws, { type: "error", error: "grant is not valid (expired or ended)" });
       return close(ws, 4498, "grant invalid");
     }
     const { hash, g } = live;
+    const scope: Scope = g.scope === "eval" ? "eval" : "chat";
     const a: ControllerAtt = {
       role: "controller",
       pair: crypto.randomUUID(),
@@ -530,20 +599,24 @@ export class DebugHub {
       label: cleanLabel(url.searchParams.get("label"), 80) || g.label,
       at: this.now(),
       until: g.until,
-      scope: "chat",
+      scope,
       grant: hash,
+      ...(scope === "eval" && g.pages ? { pages: g.pages } : {}),
     };
     ws.serializeAttachment(a);
-    send(ws, { type: "approved", until: g.until, scope: "chat", resumed: true });
+    send(ws, { type: "approved", until: g.until, scope, resumed: true });
     send(ws, { type: "history", messages: await this.history() });
-    console.log(JSON.stringify({ msg: "debug.resume", pair: a.pair, label: a.label }));
+    console.log(JSON.stringify({ msg: "debug.resume", pair: a.pair, label: a.label, scope }));
+    await this.loadGrants();
     this.broadcast();
   }
 
   /**
    * Page-scoped eval pairings whose pages are all away: note since when, and
    * close them (PAGES_GONE) once that is PAGE_GONE_GRACE_MS ago. No timer:
-   * this runs on every event, the way expiry is checked.
+   * this runs on every event, the way expiry is checked. Only the socket
+   * closes: a stored grant stays, so its sender resumes with the token,
+   * without a prompt, once a page is back.
    */
   private sweep(except?: Socket) {
     const t = this.now();
@@ -559,7 +632,9 @@ export class DebugHub {
       else if (t - c.a.goneSince >= PAGE_GONE_GRACE_MS) {
         send(c.ws, {
           type: "error",
-          error: "the page you were authorized for is gone: pair again",
+          error: c.a.grant
+            ? "the page you were authorized for is gone: your grant stays, reconnect with its token when the page is back"
+            : "the page you were authorized for is gone: pair again",
         });
         close(c.ws, PAGES_GONE, "authorized pages gone");
         console.log(JSON.stringify({ msg: "debug.pages-gone", pair: c.a.pair }));
@@ -625,6 +700,11 @@ export class DebugHub {
         thread: OWNER_THREAD,
       });
     }
+    // A sleeping eval grant (listed to the owner's pages only): End, or add a page.
+    if ((m.type === "revoke" || m.type === "allow") && m.pair.startsWith(DORMANT))
+      return page.thread === OWNER_THREAD
+        ? this.dormant(ws, page, m)
+        : send(ws, this.state(page.thread));
     // Only a pairing made for this page's own audience can be answered or sent results.
     const c = this.controller(m.type === "result" ? m.to : m.pair);
     if (!c || audience(c.a) !== page.thread) return send(ws, this.state(page.thread));
@@ -710,24 +790,78 @@ export class DebugHub {
       c.ws.serializeAttachment({ ...c.a, pages: next } satisfies ControllerAtt);
     if (a.grant) {
       const g = await this.ctx.storage.get<Grant>(`grant:${a.grant}`);
-      if (g) await this.ctx.storage.put(`grant:${a.grant}`, { ...g, pages: next } satisfies Grant);
+      if (g) await this.putGrant(a.grant, { ...g, pages: next } satisfies Grant);
     }
     console.log(JSON.stringify({ msg: "debug.widen", pair: a.pair, pages: next ?? "all" }));
     this.broadcast();
   }
 
-  /** "Allow" for eval: code (and, for the owner, chat) for an hour, on this socket only. */
-  private allowEval(ws: Socket, a: ControllerAtt, pages?: string[]) {
-    const until = this.now() + APPROVAL_MS;
-    ws.serializeAttachment({ ...a, until, scope: "eval", pages } satisfies ControllerAtt);
-    send(ws, { type: "approved", until, scope: "eval", for: a.forEmail });
+  /**
+   * "Allow" for eval. The owner's: code and chat for EVAL_GRANT_MS, with a
+   * grant token the controller resumes with (pages and all). A friend's
+   * preview: code only, for APPROVAL_MS, on this socket only — no token.
+   */
+  private async allowEval(ws: Socket, a: ControllerAtt, pages?: string[]) {
+    const t = this.now();
+    if (a.forUser) {
+      const until = t + APPROVAL_MS;
+      ws.serializeAttachment({ ...a, until, scope: "eval", pages } satisfies ControllerAtt);
+      send(ws, { type: "approved", until, scope: "eval", for: a.forEmail });
+      console.log(
+        JSON.stringify({ msg: "debug.allow", pair: a.pair, label: a.label, until, for: a.forUser }),
+      );
+      // A pairing for a friend is eval only: it is handed no chat.
+      return this.broadcast();
+    }
+    const until = t + EVAL_GRANT_MS;
+    const token = hex(crypto.getRandomValues(new Uint8Array(32)));
+    const grant = await hashToken(token);
+    await this.putGrant(grant, {
+      label: a.label,
+      until,
+      scope: "eval",
+      at: t,
+      ...(pages ? { pages } : {}),
+    } satisfies Grant);
+    ws.serializeAttachment({ ...a, until, scope: "eval", pages, grant } satisfies ControllerAtt);
+    send(ws, { type: "approved", until, scope: "eval", token });
     console.log(
-      JSON.stringify({ msg: "debug.allow", pair: a.pair, label: a.label, until, for: a.forUser }),
+      JSON.stringify({ msg: "debug.allow", pair: a.pair, label: a.label, until, scope: "eval" }),
     );
     this.broadcast();
-    // A pairing for a friend is eval only: it is handed no chat.
-    if (a.forUser) return;
-    return this.history().then((messages) => send(ws, { type: "history", messages }));
+    send(ws, { type: "history", messages: await this.history() });
+  }
+
+  /** End (revoke) a sleeping eval grant, or add the answering page to it. */
+  private async dormant(
+    ws: Socket,
+    page: PageAtt,
+    m: { type: string; pair: string; pages?: string[] | "all" },
+  ) {
+    await this.loadGrants();
+    const prefix = m.pair.slice(DORMANT.length);
+    const found =
+      prefix.length === 40 ? [...(this.grants ?? [])].find(([h]) => h.startsWith(prefix)) : null;
+    if (!found || found[1].scope !== "eval") return send(ws, this.state(page.thread));
+    const [hash, g] = found;
+    if (m.type === "revoke") {
+      await this.dropGrant(hash);
+      // Nothing should hold it (it was listed as asleep), but close any that does.
+      for (const c of this.sockets("controller"))
+        if (c.a.grant === hash) {
+          send(c.ws, { type: "revoked" });
+          close(c.ws, 4401, "revoke");
+        }
+      console.log(JSON.stringify({ msg: "debug.revoke", grant: "idle", label: g.label }));
+      return this.broadcast();
+    }
+    if (g.pages) {
+      const more = this.grantPages(page, m.pages);
+      const next = more ? [...new Set([...g.pages, ...more])] : undefined;
+      await this.putGrant(hash, { ...g, pages: next });
+      console.log(JSON.stringify({ msg: "debug.widen", grant: "idle", pages: next ?? "all" }));
+    }
+    this.broadcast();
   }
 
   /** "Allow" for chat: 30 days, with a grant token the controller can resume with. */
@@ -735,7 +869,7 @@ export class DebugHub {
     const until = this.now() + CHAT_MS;
     const token = hex(crypto.getRandomValues(new Uint8Array(32)));
     const grant = await hashToken(token);
-    await this.ctx.storage.put(`grant:${grant}`, { label: a.label, until } satisfies Grant);
+    await this.putGrant(grant, { label: a.label, until } satisfies Grant);
     ws.serializeAttachment({
       ...a,
       until,
@@ -751,7 +885,10 @@ export class DebugHub {
     send(ws, { type: "history", messages: await this.history() });
   }
 
-  /** Deny a pairing, or End a session — and with it the grant behind it, on every socket using it. */
+  /**
+   * Deny a pairing, or End a session — and with it the stored grant behind it
+   * (chat or eval), on every socket using it: the token resumes nothing after.
+   */
   private end(kind: "deny" | "revoke", ws: Socket, a: ControllerAtt): void | Promise<void> {
     const targets = a.grant
       ? this.sockets("controller").filter((c) => c.a.grant === a.grant)
@@ -761,8 +898,9 @@ export class DebugHub {
       close(c.ws, kind === "deny" ? 4403 : 4401, kind);
     }
     console.log(JSON.stringify({ msg: `debug.${kind}`, pair: a.pair, label: a.label }));
-    this.broadcast(ws);
-    if (a.grant) return this.ctx.storage.delete(`grant:${a.grant}`).then(() => undefined);
+    if (!a.grant) return this.broadcast(ws);
+    const hash = a.grant;
+    return this.dropGrant(hash).then(() => this.broadcast(ws));
   }
 
   /** Where an agent's `say` goes: the owner's thread, or a friend's by user id or email. */
@@ -839,8 +977,9 @@ export class DebugHub {
       // Away, not yet for PAGE_GONE_GRACE_MS (sweep() closes it after that).
       return send(ws, {
         type: "error",
-        error:
-          "the page you were authorized for is not connected now; the pairing ends if it stays away 5 min",
+        error: c.grant
+          ? "the page you were authorized for is not connected now; this socket closes if it stays away 5 min (the grant stays: reconnect with its token)"
+          : "the page you were authorized for is not connected now; the pairing ends if it stays away 5 min",
       });
     for (const p of reach) {
       if (!matchesTarget(p.a.label, m.value.target)) continue;

@@ -24,7 +24,8 @@
  *                              WebSocket for the sender (scripts/dev/eval.ts):
  *                              unauthenticated, and useless until the owner
  *                              allows it on one of those pages (debug.ts) —
- *                              or it presents a live chat grant in the
+ *                              or it presents a live grant (chat, or eval:
+ *                              the page set comes back too) in the
  *                              x-debug-token header (or x-liagent-token, its
  *                              alias; both must match). The same sockets carry
  *                              the agent's side of the chat.
@@ -127,7 +128,7 @@ export default {
       if (req.headers.get("origin")) return new Response("forbidden", { status: 403 });
       const headers = new Headers(req.headers);
       for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
-      // liagent's CLI resumes a chat grant with x-liagent-token: the same token.
+      // liagent's CLI resumes a grant (chat or eval) with x-liagent-token: the same token.
       const ours = headers.get("x-debug-token");
       const theirs = headers.get("x-liagent-token");
       if (ours && theirs && ours !== theirs)

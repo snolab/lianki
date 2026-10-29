@@ -5,6 +5,7 @@ import { debugIdentity } from "@/workers/push/src/auth";
 import {
   APPROVAL_MS,
   CHAT_HISTORY,
+  EVAL_GRANT_MS,
   CHAT_MS,
   FRIEND_CHAT_MAX,
   FRIEND_CHAT_WINDOW_MS,
@@ -167,12 +168,12 @@ describe("DebugHub pairing", () => {
     expect(state.pending.code).toBe(c.last("pending")?.code as string);
   });
 
-  it("after Allow, code reaches the pages and results come back", () => {
+  it("after Allow, code reaches the pages and results come back", async () => {
     const { page, controller, msg, pairOf } = setup();
     const p = page();
     const c = controller();
     const pair = pairOf(p);
-    msg(p, { type: "allow", pair });
+    await msg(p, { type: "allow", pair });
     expect(c.last("approved")).toBeTruthy();
     msg(c, { type: "eval", code: "1+1" });
     const ev = p.last("eval") as { id: string; code: string; to: string };
@@ -187,12 +188,12 @@ describe("DebugHub pairing", () => {
     });
   });
 
-  it("only pages whose label contains the target get the code", () => {
+  it("only pages whose label contains the target get the code", async () => {
     const { page, controller, msg, pairOf } = setup();
     const phone = page("/words pwa iPhone");
     const mac = page("/list Macintosh");
     const c = controller();
-    msg(phone, { type: "allow", pair: pairOf(phone) });
+    await msg(phone, { type: "allow", pair: pairOf(phone) });
     msg(c, { type: "eval", code: "1", target: "iphone" });
     expect(phone.last("eval")).toBeTruthy();
     expect(mac.last("eval")).toBeUndefined();
@@ -208,13 +209,13 @@ describe("DebugHub pairing", () => {
     expect((p.last("state") as { pending: unknown }).pending).toBeNull();
   });
 
-  it("End revokes an approved session", () => {
+  it("End revokes an approved session", async () => {
     const { page, controller, msg, pairOf } = setup();
     const p = page();
     const c = controller();
     const pair = pairOf(p);
-    msg(p, { type: "allow", pair });
-    msg(p, { type: "revoke", pair });
+    await msg(p, { type: "allow", pair });
+    await msg(p, { type: "revoke", pair });
     expect(c.closed).toBe(4401);
     expect((p.last("state") as { sessions: unknown[] }).sessions).toHaveLength(0);
   });
@@ -241,15 +242,19 @@ describe("DebugHub pairing", () => {
     expect(c.last("approved")).toBeUndefined();
   });
 
-  it("approval runs out after an hour", () => {
+  it("the owner's eval approval runs out after EVAL_GRANT_MS (8 hours)", async () => {
     const { page, controller, msg, pairOf, tick } = setup();
     const p = page();
     const c = controller();
-    msg(p, { type: "allow", pair: pairOf(p) });
-    tick(APPROVAL_MS + 1);
-    msg(c, { type: "eval", code: "1" });
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    expect(EVAL_GRANT_MS).toBe(8 * 60 * 60_000);
+    tick(EVAL_GRANT_MS - 1);
+    await msg(c, { type: "eval", code: "1" });
+    expect(c.closed).toBeUndefined();
+    tick(2);
+    await msg(c, { type: "eval", code: "2" });
     expect(c.closed).toBe(4408);
-    expect(p.last("eval")).toBeUndefined();
+    expect(p.sent.filter((m) => m.type === "eval").map((m) => m.code)).toEqual(["1"]);
   });
 
   it("with no owner page open, a controller is turned away", () => {
@@ -370,13 +375,21 @@ describe("DebugHub chat-only grants", () => {
     expect(sessions.map((x) => x.scope)).toEqual(["chat"]);
   });
 
-  it("Allow for 1 hour grants eval and chat, with no token", async () => {
+  it("Allow for eval grants eval and chat for 8 hours, with a token stored only hashed", async () => {
     const s = setup();
     const p = s.page();
     const c = s.controller();
     await s.msg(p, { type: "allow", pair: s.pairOf(p) });
-    expect(c.last("approved")).toMatchObject({ scope: "eval" });
-    expect(c.last("approved")?.token).toBeUndefined();
+    expect(c.last("approved")).toMatchObject({ scope: "eval", until: 1_000_000 + EVAL_GRANT_MS });
+    const token = c.last("approved")?.token as string;
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+    expect(s.storage.store.get(`grant:${await hashToken(token)}`)).toEqual({
+      label: "main lane",
+      until: 1_000_000 + EVAL_GRANT_MS,
+      scope: "eval",
+      at: 1_000_000,
+    });
+    expect(JSON.stringify([...s.storage.store.entries()])).not.toContain(token);
     expect(c.last("history")).toBeTruthy();
   });
 
@@ -1330,7 +1343,7 @@ describe("DebugHub requested scope and per-page grants", () => {
     s.tick(1);
     // The next event of any kind closes it; no timer is involved.
     await s.msg(b, { type: "chat", id: "x", text: "hi" });
-    expect(ctl.last("error")?.error).toBe("the page you were authorized for is gone: pair again");
+    expect(String(ctl.last("error")?.error)).toContain("the page you were authorized for is gone");
     expect(ctl.closed).toBe(PAGES_GONE);
   });
 
@@ -1421,5 +1434,185 @@ describe("lianki-push: x-liagent-token is an alias of x-debug-token", () => {
     expect((await go({ "x-debug-token": "t3", "x-liagent-token": "t3" })).status).toBe(200);
     expect(seen).toEqual(["t1", null, "t2", null, "t3", null]);
     expect((await go({ "x-debug-token": "a", "x-liagent-token": "b" })).status).toBe(400);
+  });
+});
+
+describe("DebugHub resumable eval grants (no re-prompt until EVAL_GRANT_MS)", () => {
+  type Sess = { pair: string; code: string; label: string; scope?: string; pages?: string[] };
+  type St = { pending: { pair: string } | null; sessions: Sess[]; self: string };
+  const st = (ws: FakeSocket) => ws.last("state") as unknown as St;
+  const evals = (ws: FakeSocket) => ws.sent.filter((m) => m.type === "eval");
+  /** An owner page with a stable tab id (sessionStorage), as DebugEval connects. */
+  const tab = async (s: ReturnType<typeof setup>, id: string, label = "/words") => {
+    const ws = new FakeSocket();
+    (s.hub as unknown as { ctx: { getWebSockets(): FakeSocket[] } }).ctx.getWebSockets().push(ws);
+    await s.hub.connectPage(
+      ws,
+      new URL(`https://lianki.com/api/version/debug?label=${label}&tab=${id}`),
+    );
+    return ws;
+  };
+  const leave = (s: ReturnType<typeof setup>, ws: FakeSocket, code = 1001) => {
+    ws.close(code);
+    s.hub.webSocketClose(ws, code);
+  };
+  /** Pair an eval controller and Allow it for `pages` (default: the answering page only). */
+  const grant = async (
+    s: ReturnType<typeof setup>,
+    p: FakeSocket,
+    pages: string[] | "all" = [st(p).self],
+  ) => {
+    const c = s.controller("agent");
+    await s.msg(p, { type: "allow", pair: s.pairOf(p), pages });
+    return { c, token: c.last("approved")?.token as string };
+  };
+  const prompts = (p: FakeSocket) =>
+    p.sent.filter((m) => m.type === "state" && (m as unknown as St).pending).length;
+
+  it("the token resumes eval scope and the page set, with no prompt", async () => {
+    const s = setup();
+    const phone = await tab(s, "phone-tab-1", "/words pwa iPhone");
+    const mac = await tab(s, "mac-tab-01", "/list Macintosh");
+    const { c, token } = await grant(s, phone);
+    expect(prompts(phone)).toBe(1);
+    leave(s, c, 1006);
+    s.tick(EVAL_GRANT_MS - 60_000);
+    const again = await s.resume(token);
+    expect(again.last("approved")).toMatchObject({
+      scope: "eval",
+      resumed: true,
+      until: 1_000_000 + EVAL_GRANT_MS,
+    });
+    expect(again.last("pending")).toBeUndefined();
+    expect(prompts(phone)).toBe(1);
+    expect(prompts(mac)).toBe(1);
+    expect(st(mac).sessions.map((x) => x.pages)).toEqual([["phone-tab-1"]]);
+    await s.msg(again, { type: "eval", code: "1" });
+    expect([phone, mac].map((w) => evals(w).length)).toEqual([1, 0]);
+    // Eval implies chat.
+    await s.msg(again, { type: "say", text: "hi" });
+    expect(again.last("said")).toBeTruthy();
+  });
+
+  it("an expired eval grant is refused with 4498 and deleted", async () => {
+    const s = setup();
+    const p = await tab(s, "tab-aaaaaa");
+    const { c, token } = await grant(s, p, "all");
+    leave(s, c);
+    s.tick(EVAL_GRANT_MS + 1);
+    const late = await s.resume(token);
+    expect(late.closed).toBe(4498);
+    expect(s.storage.store.has(`grant:${await hashToken(token)}`)).toBe(false);
+  });
+
+  it("End on the live session deletes the grant: the token resumes nothing", async () => {
+    const s = setup();
+    const p = await tab(s, "tab-aaaaaa");
+    const { c, token } = await grant(s, p);
+    const other = await s.resume(token);
+    await s.msg(p, { type: "revoke", pair: st(p).sessions[0].pair });
+    expect(c.closed).toBe(4401);
+    expect(other.closed).toBe(4401);
+    expect(s.storage.store.has(`grant:${await hashToken(token)}`)).toBe(false);
+    expect((await s.resume(token)).closed).toBe(4498);
+    expect(st(p).sessions).toEqual([]);
+  });
+
+  it("Deny stores nothing; a denied sender has no token to come back with", async () => {
+    const s = setup();
+    const p = await tab(s, "tab-aaaaaa");
+    const c = s.controller("agent");
+    await s.msg(p, { type: "deny", pair: s.pairOf(p) });
+    expect(c.closed).toBe(4403);
+    expect([...s.storage.store.keys()].filter((k) => k.startsWith("grant:"))).toEqual([]);
+  });
+
+  it("pages gone closes the socket but keeps the grant; the page back = a silent resume", async () => {
+    const s = setup();
+    const phone = await tab(s, "phone-tab-1");
+    const other = await tab(s, "other-tab-1", "/other");
+    const { c, token } = await grant(s, phone);
+    leave(s, phone);
+    s.tick(PAGE_GONE_GRACE_MS);
+    await s.msg(other, { type: "chat", id: "x", text: "hi" });
+    expect(c.closed).toBe(PAGES_GONE);
+    expect(String(c.last("error")?.error)).toContain("your grant stays");
+    expect(s.storage.store.has(`grant:${await hashToken(token)}`)).toBe(true);
+    // Asleep, it is still listed to the owner's pages, so End reaches it.
+    expect(st(other).sessions).toMatchObject([{ code: "idle", scope: "eval" }]);
+    const back = await tab(s, "phone-tab-1");
+    const again = await s.resume(token);
+    expect(again.last("approved")).toMatchObject({ scope: "eval", resumed: true });
+    await s.msg(again, { type: "eval", code: "1" });
+    expect([back, other].map((w) => evals(w).length)).toEqual([1, 0]);
+    expect(prompts(back) + prompts(other)).toBe(1);
+  });
+
+  it("a sleeping grant can be ended from the menu, also after the hub was evicted", async () => {
+    const s = setup();
+    const p = await tab(s, "tab-aaaaaa");
+    const { c, token } = await grant(s, p);
+    leave(s, c, 1006);
+    leave(s, p);
+    // Eviction: the in-memory copy is gone; the next page reads storage again.
+    (s.hub as unknown as { grants?: unknown }).grants = undefined;
+    const q = await tab(s, "tab-aaaaaa");
+    const idle = st(q).sessions;
+    expect(idle).toMatchObject([{ code: "idle", label: "agent", pages: ["tab-aaaaaa"] }]);
+    expect(idle[0].pair.startsWith("g:")).toBe(true);
+    expect(idle[0].pair).not.toContain(await hashToken(token));
+    await s.msg(q, { type: "revoke", pair: idle[0].pair });
+    expect(s.storage.store.has(`grant:${await hashToken(token)}`)).toBe(false);
+    expect(st(q).sessions).toEqual([]);
+    expect((await s.resume(token)).closed).toBe(4498);
+  });
+
+  it("pages added to a grant (live or asleep) are kept for the next resume", async () => {
+    const s = setup();
+    const a = await tab(s, "tab-aaaaaa", "/a");
+    const b = await tab(s, "tab-bbbbbb", "/b");
+    const { c, token } = await grant(s, a);
+    await s.msg(b, { type: "allow", pair: st(b).sessions[0].pair, pages: [st(b).self] });
+    leave(s, c);
+    const cc = await tab(s, "tab-cccccc", "/c");
+    await s.msg(cc, { type: "allow", pair: st(cc).sessions[0].pair, pages: [st(cc).self] });
+    const again = await s.resume(token);
+    await s.msg(again, { type: "eval", code: "1" });
+    expect([a, b, cc].map((w) => evals(w).length)).toEqual([1, 1, 1]);
+  });
+
+  it("a friend never sees the owner's sleeping grant, nor can End it", async () => {
+    const s = setup();
+    const p = await tab(s, "tab-aaaaaa");
+    const { c, token } = await grant(s, p);
+    leave(s, c);
+    const pair = st(p).sessions[0].pair;
+    const f = await s.friend("f1", "f1@x.com");
+    expect((f.last("state") as unknown as St).sessions).toEqual([]);
+    await s.msg(f, { type: "revoke", pair });
+    expect(s.storage.store.has(`grant:${await hashToken(token)}`)).toBe(true);
+  });
+
+  it("a friend's preview stays one socket for an hour: no token is handed out", async () => {
+    const s = setup();
+    const owner = await tab(s, "tab-aaaaaa");
+    const chat = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    const f = await s.friend("f1", "f1@x.com");
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    const p = await s.forFriend(chat.last("approved")?.token as string, "f1@x.com");
+    await s.msg(f, { type: "allow", pair: (f.last("state") as unknown as St).pending?.pair ?? "" });
+    expect(p.last("approved")).toMatchObject({ scope: "eval", until: 1_000_000 + APPROVAL_MS });
+    expect(p.last("approved")?.token).toBeUndefined();
+  });
+
+  it("an eval grant's token may also ask a friend for a preview (eval implies chat)", async () => {
+    const s = setup();
+    const owner = await tab(s, "tab-aaaaaa");
+    const { token } = await grant(s, owner);
+    const f = await s.friend("f1", "f1@x.com");
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    const p = await s.forFriend(token, "f1@x.com");
+    expect(p.last("pending")).toBeTruthy();
   });
 });

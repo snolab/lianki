@@ -42,7 +42,9 @@ const pageLabel = () => {
  *
  * A sender (scripts/dev/eval.ts) asking to pair shows up here as a prompt with
  * its label and a short code it prints too; nothing runs unless the owner
- * allows it, for an hour at most, and "End" revokes it. Code it sends arrives
+ * allows it — for 8 hours at most (resumable with its token, so it is not
+ * asked again in that time), or an hour for a friend's preview — and "End"
+ * revokes it. Code it sends arrives
  * as {id, code, to}; it is run here, and the result (or error) goes back over
  * the socket to the sender and to /api/dev/log (Worker logs).
  *

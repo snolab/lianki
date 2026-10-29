@@ -8,7 +8,7 @@
 export const MAX_CHAT = 4000;
 
 /**
- * What an approval lets a controller do: "eval" (Allow for 1 hour) runs code
+ * What an approval lets a controller do: "eval" (Allow for 8 hours) runs code
  * and chats; "chat" (Allow chat for 30 days) only chats — it hears the owner's
  * messages and may `say`, but cannot eval.
  */
@@ -98,7 +98,7 @@ export function pairSentence(p: Pick<PairInfo, "label" | "scope">, friend: boole
   if (friend) return `${p.label} wants to preview a change on this page for 1 hour.`;
   return p.scope === "chat"
     ? `${p.label} wants to chat with you for 30 days.`
-    : `${p.label} wants to run code on your debug pages for 1 hour.`;
+    : `${p.label} wants to run code on your debug pages for 8 hours.`;
 }
 
 /** The pairing modal's Allow button, for the pages ticked. */

@@ -45,6 +45,7 @@ yarn-error.log*
 .dev.vars
 # the debug chat's resumable grant (scripts/dev/eval.ts chat) — a credential
 .debug-chat-token.json
+.debug-eval-token.json
 
 # backup and temporary files
 *_bak.ts

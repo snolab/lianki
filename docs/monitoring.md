@@ -76,7 +76,7 @@ own are overwritten, a sender's dropped). Signed-in non-owners are
 not in debug mode never connects; a refused one, or one the hub closed on
 purpose (4xxx), does not retry until the next visibility or debug event.
 
-**Sending side — pairing, no stored secret.** The sender opens
+**Sending side — pairing once, then a resumable grant.** The sender opens
 `wss://lianki.com/api/version/debug/control?label=…` with no credentials
 (a browser can't: any `Origin` header is refused). The sender declares what
 it wants with `&scope=chat` (the `chat` listener) or `&scope=eval` (`serve`
@@ -85,16 +85,17 @@ the **pairing modal** (`packages/debug-chat/src/DebugPairModal.tsx`). The modal 
 at least half the screen on every open page of its audience, so on both
 devices, and answering on one closes it everywhere. It shows the
 requester's label, the 4-hex code the sender prints too, one sentence of what
-Allow grants ("<label> wants to run code on your debug pages for 1 hour" /
+Allow grants ("<label> wants to run code on your debug pages for 8 hours" /
 "… wants to chat with you for 30 days"), for an eval request the audience's
 open pages with a checkbox each (path, device hint; only this page ticked at
 first), and large
 buttons: **Authorize this page** (or "Authorize N pages" / "Authorize all
 pages", following the ticks), **Authorize all pages**, and **Deny**. There is
 no scope choice on the page: Allow grants what was asked for. An eval request
-gets eval and chat for 1 hour on that socket; a chat request gets the 30-day
-grant below. (A page from before still sends `scope:"chat"`, and that still
-counts.)
+gets the 8-hour **eval grant** (`EVAL_GRANT_MS`; eval and chat); a chat
+request gets the 30-day chat grant. Both are resumable (Scopes, below), so
+the owner is asked once per sender, not once per command or per reconnect.
+(A page from before still sends `scope:"chat"`, and that still counts.)
 
 **Which pages.** A chat grant always covers every page of the owner: a
 phone's page drops its socket after 30 s in the background and comes back,
@@ -113,11 +114,14 @@ thread. Another page can join later with "Add this page" in the pill's menu
 (the same `allow` sent for an approved pairing). While every page an eval
 pairing was granted is away, its evals get `{type:"error"}` but it stays
 open; once they have been away for 5 minutes (`PAGE_GONE_GRACE_MS`) the hub
-closes it with 4409 so the sender pairs again. No timer: the hub notes when
-the pages went and checks on the next event of any kind, the way it checks
-expiry; a granted page coming back resets the clock. **Deny**, **End**, the hour
-running out, or the socket closing ends a pairing. One pairing may wait at a time (2 minutes at most), so prompts cannot be
-spammed; with no debug page open the sender is turned away at once.
+closes that socket with 4409. Only the socket: the stored grant (and its
+page ids) stays, so the sender reconnects with its token — silently — once
+a page is back. No timer: the hub notes when the pages went and checks on
+the next event of any kind, the way it checks expiry; a granted page coming
+back resets the clock. **Deny** or **End** deletes the grant; the 8 hours
+running out ends it. One pairing may wait at a time (2 minutes at most), so
+prompts cannot be spammed; with no debug page open the sender is turned
+away at once.
 
 **Running.** The approved sender sends `{type:"eval", code, target?}`; the
 hub gives it an id and passes `{id, code}` to each page whose label (path,
@@ -134,19 +138,31 @@ in the main Worker's (`wrangler tail lianki`, `dev.client` with
 `ev: "eval-result"`).
 
 ```bash
-# Pair once and keep the session (run it in the background); approve the
-# printed code on the device.
+# Pair once (or resume the saved grant) and keep the session (run it in the
+# background); approve the printed code on the device if it asks.
 bun scripts/dev/eval.ts serve --label "lianki main lane on $(hostname -s)"
 
-# Then, as often as needed for the next hour:
+# Then, as often as needed for the next 8 hours:
 bun scripts/dev/eval.ts 'document.title'
 bun scripts/dev/eval.ts --target iPhone 'return [location.href, innerWidth, innerHeight]'
 echo 'localStorage.length' | bun scripts/dev/eval.ts -
+# An agent that must never prompt: fail instead.
+bun scripts/dev/eval.ts --no-pair 'document.title'
 ```
 
-Without a running `serve`, each command pairs for itself (one prompt per
-command). The session's local port and a random token are kept in
-`~/.config/lianki/eval-session.json` (mode 600) while `serve` runs.
+**Never asking twice.** The rules (`scripts/dev/eval-grant.ts`, unit-tested
+in `unit/dev-eval-grant.test.ts`): `serve` and one-shot evals save the eval
+grant in `.debug-eval-token.json` beside the chat token (main checkout root,
+gitignored, mode 600; `LIANKI_EVAL_TOKEN_FILE` overrides) and always try it
+first. Only when it is missing, expired or refused (4498) do they pair, and
+then at most once per process: a one-shot waits for that one answer and
+never retries; a resume that fails for another reason (network) fails
+rather than prompting. `--no-pair` fails instead of pairing. A `serve` whose
+socket drops (4409, a deploy, the network) keeps running and resumes with
+the token on the next command; End or Deny stops it. Without a running
+`serve`, each command resumes the saved grant. The session's local port and
+a random token are kept in `~/.config/lianki/eval-session.json` (mode 600)
+while `serve` runs.
 
 ### Chat with the agent
 
@@ -175,21 +191,26 @@ one Durable Object storage key each (`msg:<seq>`) — and broadcasts
 gets `{type:"history", messages}` on connect, a sender on approval, so a
 reload, a second device or a reconnecting listener sees what it missed.
 
-**Scopes.** An eval pairing (1 hour) = eval and chat on that socket. A chat
-pairing (`chat` asks with `scope=chat`; 30 days) = chat only: the sender
-hears the owner's messages and may `say`, but an eval is refused. It is the
-one that survives reconnects: the hub hands the sender a random 256-bit
+**Scopes.** An eval grant (8 hours, `EVAL_GRANT_MS`) = eval and chat. A
+chat grant (`chat` asks with `scope=chat`; 30 days) = chat only: the sender
+hears the owner's messages and may `say`, but an eval is refused. Both
+survive reconnects: on Allow the hub hands the sender a random 256-bit
 **grant token** once, and keeps only its SHA-256 (`grant:<hash>` →
-`{label, until, pages?}`). A sender that connects with the header `x-debug-token:
-<token>` (or `x-liagent-token`, the liagent CLI's name for it; if both are
-sent they must match, else 400) is back in chat scope without a prompt (even with no page open)
-until the grant expires; a wrong or lapsed token is closed with 4498. The CLI
-keeps the token in `.debug-chat-token.json` at the root of the main checkout
-(gitignored, mode 600; `LIANKI_CHAT_TOKEN_FILE` overrides). **End** on the
-session pill deletes the grant and closes every socket using it; the
-listener then exits and forgets the token. A grant whose listener is offline
-has no pill: it lapses after 30 days, or ends at once by deleting the file
-— or reconnect and End it.
+`{label, until, scope?, pages?, at?}`; no `scope` = chat). A sender that
+connects with the header `x-debug-token: <token>` (or `x-liagent-token`, the
+liagent CLI's name for it; if both are sent they must match, else 400) is
+back in that grant's scope — for eval, with its page ids — without a prompt
+(even with no page open) until it expires; a wrong or lapsed token is closed
+with 4498. The CLI keeps the chat token in `.debug-chat-token.json` and the
+eval token in `.debug-eval-token.json` at the root of the main checkout
+(gitignored, mode 600). `say` and `busy` use the chat grant, else the eval
+grant, and never pair. **End** on the session deletes the grant and closes
+every socket using it; the listener then exits and forgets the token. An
+eval grant no socket holds is still listed in the owner pages' menu (code
+`idle`, pair `g:<start of its hash>`), so End — or Add this page — reaches
+it while it sleeps. A chat grant whose listener is offline is not listed: it
+lapses after 30 days, or ends at once by deleting the file — or reconnect
+and End it. A friend's preview (below) is never stored: one socket, 1 hour.
 
 **Logs.** `debug.chat` (owner message: page, length, first 80 chars),
 `debug.say` (agent reply: sender, length, first 80 chars), `debug.resume`
@@ -207,7 +228,12 @@ echo "multi-line reply" | bun scripts/dev/eval.ts say -
 ```
 
 The listener reconnects whenever its socket closes, backing off from 1 s to
-a minute; no timer touches the network otherwise.
+a minute, by resuming its grant; no timer touches the network otherwise. It
+pairs at most once per run: if its grant is refused (4498) it pairs once,
+and if that pairing goes unanswered, is refused, or its grant is refused
+again, it prints `{"type":"error"}` (stdout and `--out`) and stays idle
+without asking the owner again until it is restarted, or another run saves
+a chat grant (a file event; no polling).
 
 **Page moves.** The page's socket lives in the root layout, so it outlives
 client-side navigation. On a route change (`usePathname`, plus `popstate` /
@@ -385,7 +411,10 @@ page they are looking at changed:
    change on this page for 1 hour" with a 4-hex code on that friend's debug
    pages only, in the same big modal, listing only their own pages; the
    agent tells them the code in the chat. **Authorize** pairs that sender
-   for the ticked pages of that friend alone, for 1 hour.
+   for the ticked pages of that friend alone, for 1 hour. (It needs the
+   owner's chat grant — or the eval grant, which implies chat.) A preview
+   pairing is not saved: each new `serve --for` or one-shot `--for` process
+   asks the friend again, once; `--no-pair` makes it fail instead.
 3. The agent opens a PR with the change.
 4. **The owner approves before anything merges or deploys.** Friend-requested
    PRs are never merged or deployed without the owner's explicit approval

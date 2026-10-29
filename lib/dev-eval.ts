@@ -37,8 +37,14 @@ export const MAX_RESULT = 4000;
 export const MAX_LABEL = 300;
 /** How long the owner has to answer a pairing prompt. */
 export const PENDING_MS = 2 * 60_000;
-/** How long an approved controller may send code. */
+/** How long a friend's approved preview pairing may send code (one socket, no token). */
 export const APPROVAL_MS = 60 * 60_000;
+/**
+ * How long the owner's "Allow" for eval lasts — and its resumable grant token:
+ * the sender reconnects with it (x-debug-token) without a new prompt until
+ * then, or until End revokes it.
+ */
+export const EVAL_GRANT_MS = 8 * 60 * 60_000;
 /** How long "Allow chat" lasts — and its resumable grant token. */
 export const CHAT_MS = 30 * 24 * 60 * 60_000;
 /** Chat messages the hub keeps per thread (and sends a page on connect). */
