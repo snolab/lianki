@@ -39,3 +39,8 @@ pushed to every page, which then shows "New version · Refresh". No CI step,
 no secret, no timer. Pages connect only while visible and focused, and get
 the current build on connect. `/api/version/stream` answers pages from the
 old SSE design once with "new version" and asks them not to reconnect.
+
+**Deploying `lianki-push`** is manual (`bunx wrangler deploy -c
+workers/push/wrangler.jsonc` with an account that may edit the zone's
+Workers routes): CI's token cannot, and a failing step there skipped the main
+Worker's deploy. The main Worker's `PUSH` binding only needs it to exist.
