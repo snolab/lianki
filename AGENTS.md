@@ -82,6 +82,7 @@ that are expensive to rediscover.
 | Anything calling an LLM or TTS                            | [docs/workers-ai.md](docs/workers-ai.md)                       |
 | The userscript's dev loader (hot reload over a CF tunnel) | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md) |
 | The debug chat widget (packages/debug-chat), hot-loading  | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)           |
+| Hot islands: swappable components, shared state           | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)             |
 | Blog posts                                                | [blog/AGENTS.md](blog/AGENTS.md)                               |
 | The Chrome extension, and publishing it                   | [packages/ext/README.md](packages/ext/README.md)               |
 | Sync/offline architecture                                 | [docs/sync-architecture.md](docs/sync-architecture.md)         |

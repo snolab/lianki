@@ -18,6 +18,9 @@ import { speakReply } from "@lianki/debug-chat/DebugChat";
 import { voice } from "@lianki/debug-chat/voice";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
+import { grantUntil } from "@/lib/islands/rules";
+import { islandStore } from "@/lib/islands/store";
+import { useIslands } from "@/lib/islands/useIslands";
 
 /** Hidden this long before the socket is dropped. */
 const IDLE_MS = 30_000;
@@ -91,6 +94,8 @@ export function DebugEval() {
   const sentLabel = useRef("");
   const pathname = usePathname();
   const router = useRouter();
+  // Hot islands (docs/dev-hot-islands.md): on only with the code-run grant below.
+  useIslands();
   /** This device's tabs agree on one to read replies aloud (BroadcastChannel). */
   const tabsRef = useRef<ReturnType<typeof joinTabs> | null>(null);
   useEffect(() => {
@@ -214,7 +219,11 @@ export function DebugEval() {
         if (msg.type === "state") {
           setState(msg as HubState);
           // Friends hear friend-status before any state: no status yet = the owner.
-          if (!friendRef.current) setOwner(true);
+          if (!friendRef.current) {
+            setOwner(true);
+            // Hot islands follow the owner's code-run grant for this page.
+            islandStore.setGrant(grantUntil(msg as HubState, Date.now()));
+          }
           return;
         }
         if (msg.type === "busy") {
@@ -276,6 +285,7 @@ export function DebugEval() {
     const disconnect = () => {
       clearTimeout(idle);
       if (!debugOn()) {
+        islandStore.setGrant(null);
         setChat(false);
         setFriend(null);
         setOwner(false);
