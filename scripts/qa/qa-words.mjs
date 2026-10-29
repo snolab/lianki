@@ -512,6 +512,11 @@ try {
       "phone: a double tap opens the sheet",
     );
     check((await blurredM()) === shownBefore, "phone: the double tap leaves the reveal as it was");
+    // Phones have no example column: the sheet shows the example sentence.
+    check(
+      (await m.locator("[data-slip-sheet] [data-sheet-example]").count()) === 1,
+      "phone: the sheet shows the word's example sentence",
+    );
     await m.getByRole("button", { name: "Cancel" }).click();
     check((await m.locator("[data-slip-sheet]").count()) === 0, "phone: Cancel closes the sheet");
     // Swipe vs scroll: a steep drag is a scroll and never grades; a clearly
