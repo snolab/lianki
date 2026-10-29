@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Hot-load the debug chat widget onto the owner's lianki.com pages
- * (docs/dev-debug-widget.md): build DebugChat on its own, watch it, and tell
+ * (docs/dev-debug-widget.md): build DebugChat on its own, watch packages/debug-chat (and app/components, lib), and tell
  * the pages to re-import it after each change. The page stays on lianki.com;
  * only the widget comes from here.
  *
@@ -184,7 +184,7 @@ function startServer() {
 /** Watch what the widget is built from (the build's own inputs), rebuild, push `reload`. */
 function startWatch() {
   let t: ReturnType<typeof setTimeout> | undefined;
-  const dirs = ["app/components", "lib"].map((d) => resolve(ROOT, d));
+  const dirs = ["packages/debug-chat", "app/components", "lib"].map((d) => resolve(ROOT, d));
   for (const dir of dirs)
     watch(dir, { recursive: true }, (_e, file) => {
       if (!file || !inputs.includes(resolve(dir, file))) return;

@@ -81,7 +81,7 @@ purpose (4xxx), does not retry until the next visibility or debug event.
 (a browser can't: any `Origin` header is refused). The sender declares what
 it wants with `&scope=chat` (the `chat` listener) or `&scope=eval` (`serve`
 and one-shot evals; the default). It can do nothing until the owner answers
-the **pairing modal** (`app/components/DebugPairModal.tsx`). The modal covers
+the **pairing modal** (`packages/debug-chat/src/DebugPairModal.tsx`). The modal covers
 at least half the screen on every open page of its audience, so on both
 devices, and answering on one closes it everywhere. It shows the
 requester's label, the 4-hex code the sender prints too, one sentence of what
@@ -109,7 +109,7 @@ pages. With none valid, only the answering page is granted. Only `"all"` also
 covers pages that connect later, and a page from before that sends no `pages`
 means `"all"`. A page-scoped pairing's evals, busy beats and live `say`
 replies (so also read-aloud) reach those pages only; history stays per
-thread. Another page can join later with "Add this page" in the grip menu
+thread. Another page can join later with "Add this page" in the pill's menu
 (the same `allow` sent for an approved pairing). While every page an eval
 pairing was granted is away, its evals get `{type:"error"}` but it stays
 open; once they have been away for 5 minutes (`PAGE_GONE_GRACE_MS`) the hub
@@ -151,17 +151,20 @@ command). The session's local port and a random token are kept in
 ### Chat with the agent
 
 Every owner page that holds the debug socket also shows a small chat box at
-the bottom right (`app/components/DebugChat.tsx`; collapsed to a pill by
+the bottom right (`packages/debug-chat/src/DebugChat.tsx`; collapsed to a pill by
 default on /words). The owner types; the text goes out 3 s after the last
 keystroke (a thin bar drains while it waits), or at once on Enter
-(Shift+Enter is a newline) or when dictation drops in over 10 characters
-ending a sentence (。 . ! ?). The box is translucent until touched. Nothing is sent in the middle of an IME
+(Shift+Enter is a newline) or when dictation drops in 3 or more characters at
+once ending a sentence (。．.!?！？; keyboards and IMEs edit a character at a
+time). The box is translucent until touched. While the input is not focused, the log shows only its last 3 lines (scrolled to the end, top edge faded, still click-through); focusing the input opens it to 30vh, in 150 ms (instantly with reduced motion), and the ↓ button keeps the input focused. Nothing is sent in the middle of an IME
 composition. The header shows "agent listening (n)" — the approved senders
 connected now. Agent replies are read aloud with `speechSynthesis` (the
 language is guessed from the script: kana → ja, Hangul → ko, other Han →
 zh-CN, else en), one after another; typing cancels what is being read, and
 the speaker button turns it off for the device (`lk:debug-chat-speak`). Only
-replies arriving live are read, never the history. iOS needs a gesture
+replies arriving live are read, never the history, and only while the
+chat input has focus in a visible tab (checked as each reply arrives);
+focus leaving the input or the tab hiding stops the reading. iOS needs a gesture
 first: the first tap or key inside the box unlocks speech.
 
 **Wire.** Page → hub `{type:"chat", id, text}` (text ≤ 4000 chars); sender →
@@ -215,26 +218,64 @@ session listing carry the current path) and sends the listeners
 JSON line. Silent on the page, never stored, never in the chat log. A
 friend's page can only relabel its own socket.
 
-**The grip and its menu.** The ⠿ grip (2.25rem wide) shows
-`pages·sessions` under the glyph (e.g. `2·1`; the aria-label spells out "2
-pages · 1 session"), and its dot is green while the socket is live. Double
-tap opens the menu. The menu lists every open debug page of this chat (the
+**The pill and its menu.** No title bar: a small pill at the start of the
+input row (`debug-chat-pill`) has two zones, each at least 32px, with a
+divider. The left zone (`debug-chat-pill-min`) holds the liagent mark
+(`packages/debug-chat/src/LiagentMark.tsx`) and a dot, green while the socket
+is live: a tap minimizes or restores the box (after 280 ms, so that a double
+tap can cancel it), and a double tap opens the menu (`packages/debug-chat/src/tap-gesture.ts`).
+The right zone (`debug-chat-pill-menu`) shows the eval/preview sessions (a
+play icon and their count, pulsing when code just ran) or ⋯; a tap opens the
+menu at once. A drag anywhere on the pill moves the box, and never counts as
+a tap. Minimized, only the pill stays (`debug-chat-minimized`, at 0.6
+opacity, with an unread badge `debug-chat-pill-unread`), where it sat in the
+box and with the same saved offset, so restoring puts the input row back
+there, clamped on screen. While the pill is held, the input shows "drag:
+move · tap: minimize · double-tap or ⋯: menu", as its placeholder, or over
+the draft (`debug-chat-drag-hint`). The menu lists every open debug page of this chat (the
 owner's own, or a friend's own: the hub's `state` carries `pages: [{id,
 label, at}]` and `self`, rebroadcast when a page connects, leaves or moves).
 Each row shows the path and a device hint ("pwa · Android", "iPhone"). Tapping
 a row opens that path in this tab with the Next router, since other tabs and
-devices cannot be focused, so the chat survives. Its End
+devices cannot be focused, so the chat survives. Its light "disconnect"
 (`{type:"end-page", id}`) has the hub close that page with 4410 "ended from
 another page"; that page stays closed until its next visibility or debug
-event. Ending this page takes two taps. Eval and preview sessions keep a
-light End. The chat grant itself is listed apart, in red: "End chat with the
-agent (revokes the 30-day grant)", and the first tap only arms it ("Tap again
-to end the chat", 3 s).
+event. Disconnecting this page takes two taps. Eval and preview sessions keep
+a light End. The menu has no End chat: the chat hibernates and wakes by
+itself.
+
+**Mic.** A mic button sits inside the input at its right edge
+(`debug-chat-mic`; hidden where the browser lacks getUserMedia or Web Audio).
+One tap turns hands-free listening on; another tap, or Escape, turns it off.
+A voice-activity detector cuts speech into utterances: Silero VAD
+(`@ricky0123/vad-web@0.0.30` on `onnxruntime-web@1.22.0`), loaded from
+jsDelivr at those pinned versions on the first tap only (the ORT wasm is
+~11 MB, too big to self-host), or, if that fails to load, an energy threshold
+on the raw signal. Each utterance (at most 30 s; longer speech is cut and
+goes on) is encoded as 16 kHz mono WAV and POSTed to `/api/debug/stt` as soon
+as it ends; requests run in parallel and the text is appended to the draft
+in the order spoken, with a faint "…" where a result is pending. Speech over
+3 s also sends rolling partial chunks (every 2.5 s, overlapping by 1.5 s);
+their merged text shows dimmed until the final text replaces it, and a 429
+stops them until the next turn-on. A final transcript that leaves the
+draft a sentence of 3 characters or more (trimmed, ending in 。．.!?！？) is
+sent at once (`appendDictation`); otherwise the debounce waits while
+listening or while transcripts are out, partials never send, and Enter sends
+as usual. While audio is captured the button has a red pulsing ring and "REC"
+(`debug-chat-mic-rec`); listening but quiet, a faint steady ring. Read-aloud
+is paused while listening and resumed after. A short note
+(`debug-chat-mic-note`) says when the mic is refused or missing, or the
+route answers 401 (listening stops) or 429. On the owner's pages, if
+localStorage `lk:debug-clip-sink` holds an https (or localhost) URL, each
+final utterance is also POSTed as multipart (`audio`, and `meta` JSON
+`{at, mime, durationMs, label, transcript, model}`) to `<sink>/clips`,
+silently. The code is in `packages/debug-chat/src/` (`mic.ts`, the logic,
+tested with fakes in `unit/mic.test.ts`; `MicButton.tsx`, the browser glue).
 
 **One voice per device.** Every tab of a thread shows every message, but
 only one reads a reply aloud: the focused tab, or else the one focused most
 recently. Tabs agree over `BroadcastChannel("lk-debug-chat")`
-(`lib/debug-chat-tabs.ts`), not the network. Drafts are not synced across
+(`packages/debug-chat/src/debug-chat-tabs.ts`), not the network. Drafts are not synced across
 tabs (that would fight IME composition).
 
 **Scrolling.** Scrolled up, new messages do not pull the log down (your own
@@ -275,23 +316,25 @@ The beat process holds a chat-grant socket while it runs, so the page's
 **Test ids.** Every part of the debug UI has a `data-testid`, for evals and
 tests:
 
-- The chat box: `debug-chat` (root), `debug-chat-pill` (collapsed),
-  `debug-chat-log`, `debug-chat-line` (with `data-from`), `debug-chat-input`,
-  `debug-chat-grip`, `debug-chat-grip-count`, `debug-chat-icons`,
-  `debug-chat-icon-eval`, `debug-chat-bottom`, `debug-chat-busy`,
-  `debug-chat-notice` and `debug-chat-warning`.
-- The grip menu: `debug-menu`, `debug-menu-status`, `debug-menu-note` (where
+- The chat box: `debug-chat` (root), `debug-chat-minimized` (minimized),
+  `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-pill-menu`,
+  `debug-chat-pill-unread`, `debug-chat-log`, `debug-chat-line` (with
+  `data-from`), `debug-chat-input`, `debug-chat-drag-hint`,
+  `debug-chat-bottom`, `debug-chat-busy`, `debug-chat-mic` (with
+  `data-state` and `data-status`), `debug-chat-mic-rec`,
+  `debug-chat-mic-pending`, `debug-chat-mic-note`, `debug-chat-notice` and
+  `debug-chat-warning`.
+- The pill's menu: `debug-menu`, `debug-menu-status`, `debug-menu-note` (where
   the widget came from, or why it fell back), `debug-menu-speak`,
   `debug-menu-minimize`, `debug-menu-page` (`data-self` on this one),
   `debug-menu-page-open`, `debug-menu-page-end`, `debug-menu-session`,
-  `debug-menu-session-add`, `debug-menu-session-end` and
-  `debug-menu-end-chat`.
+  `debug-menu-session-add` and `debug-menu-session-end`.
 - The pairing modal: `debug-modal`, `debug-modal-code`, `debug-modal-pages`,
   `debug-modal-page-check` (`data-page-id`), `debug-modal-allow`,
   `debug-modal-allow-all` and `debug-modal-deny`.
 - DebugEval's fallback (no chat box): `debug-eval`, with
-  `debug-menu-session`, `debug-menu-session-end`, `debug-menu-end-chat` and
-  `debug-chat-icon-eval` named as above.
+  `debug-menu-session`, `debug-menu-session-end` (chat grants too) and
+  `debug-chat-icon-eval` (its eval icon).
 
 **Hot-loading the widget.** The chat box itself can be loaded live from a
 dev server on the owner's pages, to see UI changes without a deploy:

@@ -1,10 +1,33 @@
 /**
  * Remote eval for the owner's debug session — the shared, pure pieces: the
  * debug hub (workers/push/src/debug.ts), the page (app/components/DebugEval.tsx)
- * and the sender (scripts/dev/eval.ts). No imports: the push Worker bundles it.
+ * and the sender (scripts/dev/eval.ts). Its only import is the chat widget's
+ * wire types and UI helpers (packages/debug-chat/src/wire.ts, re-exported
+ * here), by a relative path: the push Worker bundles it.
  *
  * Flow and security model: docs/monitoring.md, "Remote eval (owner debug)".
  */
+
+import {
+  MAX_CHAT,
+  type ChatMessage,
+  type PageInfo,
+  type PairInfo,
+  type Scope,
+} from "../packages/debug-chat/src/wire";
+
+export {
+  MAX_CHAT,
+  allowLabel,
+  pageParts,
+  pairSentence,
+  pickLang,
+  pickVoice,
+  type ChatMessage,
+  type PageInfo,
+  type PairInfo,
+  type Scope,
+} from "../packages/debug-chat/src/wire";
 
 /** Largest `code` accepted, in characters. */
 export const MAX_CODE = 16 * 1024;
@@ -18,8 +41,6 @@ export const PENDING_MS = 2 * 60_000;
 export const APPROVAL_MS = 60 * 60_000;
 /** How long "Allow chat" lasts — and its resumable grant token. */
 export const CHAT_MS = 30 * 24 * 60 * 60_000;
-/** Largest chat message (owner's or agent's), in characters. */
-export const MAX_CHAT = 4000;
 /** Chat messages the hub keeps per thread (and sends a page on connect). */
 export const CHAT_HISTORY = 200;
 /** A friend may send at most FRIEND_CHAT_MAX messages per FRIEND_CHAT_WINDOW_MS. */
@@ -59,27 +80,6 @@ export type FriendRecord = {
   blockedAt?: number;
 };
 
-/**
- * What an approval lets a controller do: "eval" (Allow for 1 hour) runs code
- * and chats; "chat" (Allow chat for 30 days) only chats — it hears the owner's
- * messages and may `say`, but cannot eval.
- */
-export type Scope = "eval" | "chat";
-/**
- * One line of a chat thread, as the hub stores and sends it. `thread` is
- * "owner" or a friend's user id; `email` is the friend's, on their thread.
- * `label` is the page's path and user agent (or the agent's name).
- */
-export type ChatMessage = {
-  id: string;
-  from: "owner" | "friend" | "agent";
-  label: string;
-  text: string;
-  at: number;
-  thread?: string;
-  email?: string;
-};
-
 /** Messages a controller (the sender CLI) may send to the hub. */
 export type ControllerMessage =
   | { type: "eval"; code: string; target?: string }
@@ -110,18 +110,6 @@ export type PageMessage =
       ms?: number;
     };
 
-/** What the hub tells pages: the pairing waiting for an answer, and the approved sessions. */
-export type PairInfo = {
-  pair: string;
-  code: string;
-  label: string;
-  at: number;
-  until?: number;
-  scope?: Scope;
-  /** The page ids an approved pairing reaches; absent = all this audience's pages. */
-  pages?: string[];
-};
-
 /** A page id: the tab's own (sessionStorage), so a reload keeps its grants. */
 export const isPageId = (v: unknown): v is string =>
   typeof v === "string" && /^[A-Za-z0-9_-]{6,40}$/.test(v);
@@ -140,8 +128,6 @@ export type HubState = {
   /** Which of `pages` is the one receiving this state. */
   self?: string;
 };
-/** An open debug page: its socket's id, current label (path…), and when it connected. */
-export type PageInfo = { id: string; label: string; at: number };
 /** Close code for a page ended from the chat menu; it stays closed until its next visibility or debug event. */
 export const PAGE_ENDED = 4410;
 /**
@@ -288,76 +274,12 @@ export function trimHistory(list: ChatMessage[], max = CHAT_HISTORY): ChatMessag
   return list.length > max ? list.slice(list.length - max) : list;
 }
 
-/**
- * The language to read a reply in, from its script alone: any kana is
- * Japanese, Hangul Korean, other Han Chinese (zh-CN), and everything else
- * English.
- */
-export function pickLang(text: string): "ja-JP" | "ko-KR" | "zh-CN" | "en-US" {
-  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return "ja-JP";
-  if (/\p{Script=Hangul}/u.test(text)) return "ko-KR";
-  if (/\p{Script=Han}/u.test(text)) return "zh-CN";
-  return "en-US";
-}
-
-/** An installed voice for `lang`: the exact locale first, then the same language. */
-export function pickVoice<V extends { lang: string; default?: boolean }>(
-  voices: readonly V[],
-  lang: string,
-): V | undefined {
-  const norm = (l: string) => l.replace(/_/g, "-").toLowerCase();
-  const want = norm(lang);
-  const base = want.split("-")[0];
-  const exact = voices.filter((v) => norm(v.lang) === want);
-  const same = voices.filter((v) => norm(v.lang).split("-")[0] === base);
-  const pool = exact.length ? exact : same;
-  return pool.find((v) => v.default) ?? pool[0];
-}
-
 /** A label shown to the owner: one line, printable, bounded. */
 export function cleanLabel(raw: string | null | undefined, max = MAX_LABEL): string {
   return (raw ?? "")
     .replace(/[\u0000-\u001f\u007f]+/g, " ")
     .trim()
     .slice(0, max);
-}
-
-/**
- * A page label ("<path> [pwa ]<user agent>") split for the chat's page list:
- * the path, and a short device hint like "pwa · Android" or "iPhone".
- */
-export function pageParts(label: string): { path: string; device: string } {
-  const [path = "", ...rest] = label.split(" ");
-  const ua = rest.join(" ");
-  const pwa = rest[0] === "pwa";
-  const device =
-    [
-      ["iPhone", /iPhone/],
-      ["iPad", /iPad/],
-      ["Android", /Android/],
-      ["Mac", /Macintosh|Mac OS X/],
-      ["Windows", /Windows/],
-      ["Linux", /Linux|X11/],
-    ].find(([, re]) => (re as RegExp).test(ua))?.[0] ?? "";
-  return {
-    path: path.startsWith("/") ? path : "/",
-    device: [pwa ? "pwa" : "", device as string].filter(Boolean).join(" · "),
-  };
-}
-
-/** What Allow grants, in one sentence (the requester declared its scope when it knocked). */
-export function pairSentence(p: Pick<PairInfo, "label" | "scope">, friend: boolean): string {
-  if (friend) return `${p.label} wants to preview a change on this page for 1 hour.`;
-  return p.scope === "chat"
-    ? `${p.label} wants to chat with you for 30 days.`
-    : `${p.label} wants to run code on your debug pages for 1 hour.`;
-}
-
-/** The pairing modal's Allow button, for the pages ticked. */
-export function allowLabel(ticked: number, total: number, selfTicked: boolean): string {
-  if (total > 1 && ticked === total) return "Authorize all pages";
-  if (ticked === 1 && selfTicked) return "Authorize this page";
-  return ticked === 1 ? "Authorize 1 page" : `Authorize ${ticked} pages`;
 }
 
 /** The short code the CLI prints and the prompt shows, so the owner can match them. */

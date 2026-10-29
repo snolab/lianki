@@ -1,0 +1,25 @@
+{
+  "name": "@lianki/debug-chat",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The debug chat widget: chat box, pill, menu, pairing modal, mic, hot-load host. No imports from the app; Lianki passes what it needs as props.",
+  "exports": {
+    "./DebugChat": "./src/DebugChat.tsx",
+    "./DebugChatHost": "./src/DebugChatHost.tsx",
+    "./DebugPairModal": "./src/DebugPairModal.tsx",
+    "./LiagentMark": "./src/LiagentMark.tsx",
+    "./MicButton": "./src/MicButton.tsx",
+    "./debug-chat-tabs": "./src/debug-chat-tabs.ts",
+    "./debug-chat-widget": "./src/debug-chat-widget.ts",
+    "./debug-widget": "./src/debug-widget.ts",
+    "./icons": "./src/icons.tsx",
+    "./mic": "./src/mic.ts",
+    "./tap-gesture": "./src/tap-gesture.ts",
+    "./wire": "./src/wire.ts"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-dom": "*"
+  }
+}

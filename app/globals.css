@@ -437,7 +437,7 @@ ruby rt {
   }
 }
 
-/* The debug chat's "sending in 5s" bar (app/components/DebugChat.tsx): it
+/* The debug chat's "sending in 5s" bar (packages/debug-chat/src/DebugChat.tsx): it
  * drains over the debounce, restarted (re-keyed) on every keystroke. */
 .lk-drain {
   transform-origin: left;

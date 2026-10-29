@@ -1,6 +1,6 @@
 /**
  * Hot-loading the debug chat widget from a dev server (docs/dev-debug-widget.md)
- * — the pure pieces shared by the page (app/components/DebugChatHost.tsx) and
+ * — the pure pieces shared by the page (DebugChatHost.tsx) and
  * the dev server (scripts/dev/debug-widget-server.ts). No imports.
  *
  * The widget module is DebugChat built on its own as ESM, with every `react`

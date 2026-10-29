@@ -84,6 +84,14 @@
       "name": "@lianki/core",
       "version": "0.0.0",
     },
+    "packages/debug-chat": {
+      "name": "@lianki/debug-chat",
+      "version": "0.0.0",
+      "peerDependencies": {
+        "react": "*",
+        "react-dom": "*",
+      },
+    },
     "packages/desktop": {
       "name": "@lianki/desktop",
       "version": "0.1.0",
@@ -538,6 +546,8 @@
     "@levischuck/tiny-cbor": ["@levischuck/tiny-cbor@0.2.11", "", {}, "sha512-llBRm4dT4Z89aRsm6u2oEZ8tfwL/2l6BwpZ7JcyieouniDECM5AqNgr/y08zalEIvW3RSK4upYyybDcmjXqAow=="],
 
     "@lianki/core": ["@lianki/core@workspace:packages/core"],
+
+    "@lianki/debug-chat": ["@lianki/debug-chat@workspace:packages/debug-chat"],
 
     "@lianki/desktop": ["@lianki/desktop@workspace:packages/desktop"],
 
