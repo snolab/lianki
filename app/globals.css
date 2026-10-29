@@ -681,3 +681,15 @@ ruby rt {
     transition: none;
   }
 }
+
+/* Embed mode (app/layout.tsx): content only, see-through, for overlay iframes. */
+html[data-embed] header,
+html[data-embed] nav,
+html[data-embed] footer,
+html[data-embed] [data-debug-chat] {
+  display: none !important;
+}
+html[data-embed],
+html[data-embed] body {
+  background: transparent !important;
+}
