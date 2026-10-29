@@ -210,7 +210,7 @@ test.describe("app shell", () => {
   test("the active route is marked for assistive tech", async ({ page }) => {
     await page.goto(`${BASE}/data`);
     const current = page.locator('nav a[aria-current="page"]').first();
-    await expect(current).toHaveText("💾Data");
+    await expect(current).toHaveText("Data");
   });
 
   test("the collapsed sidebar survives a reload", async ({ page }) => {

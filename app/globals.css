@@ -283,8 +283,28 @@ ruby rt {
     opacity: 0;
   }
 }
+/* The selected icon (app/components/icons.tsx SealIcon): a seal-red stamp
+ * with the glyph carved out, so the paper shows through — nothing is painted
+ * behind it. Pressed on with the same settle as the grade stamps. */
+.lk-seal {
+  display: inline-block;
+  flex: none;
+  width: 1.5em;
+  height: 1.5em;
+  margin: -0.25em;
+  color: var(--brand);
+  transform: rotate(-4deg);
+  animation: lk-seal 260ms var(--min-jerk) both;
+}
+@keyframes lk-seal {
+  from {
+    transform: rotate(-4deg) scale(1.6);
+    opacity: 0;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .lk-stamp {
+  .lk-stamp,
+  .lk-seal {
     animation: none;
   }
 }
