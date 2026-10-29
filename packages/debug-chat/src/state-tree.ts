@@ -138,7 +138,7 @@ function node(raw: string, opts: ParseOptions): TreeNode {
   let status: TreeStatus | undefined;
   const box = BOX.exec(text);
   if (box) {
-    status = STATUS[box[1]];
+    status = STATUS[box[1]!];
     text = text.slice(box[0].length);
   }
   const needsOwner = OWNER.test(text);
@@ -159,8 +159,8 @@ function node(raw: string, opts: ParseOptions): TreeNode {
   }
   if (needsOwner) n.needsOwner = true;
   if (unordered) n.unordered = true;
-  if (at) n.doneAt = at[1].replace(" ", "T");
-  if (who) n.assignee = assigneeOf(who[1], who[2]);
+  if (at) n.doneAt = at[1]!.replace(" ", "T");
+  if (who) n.assignee = assigneeOf(who[1]!, who[2]);
   return n;
 }
 
@@ -169,7 +169,7 @@ function parseSummary(text: string): TreeSummary {
   const out: TreeSummary = {};
   for (const part of text.split(/\s*[·|]\s*/)) {
     const m = /^(done|doing|next)\s*[:：]\s*(.+)$/i.exec(part.trim());
-    if (m) out[m[1].toLowerCase() as keyof TreeSummary] = m[2].trim();
+    if (m) out[m[1]!.toLowerCase() as keyof TreeSummary] = m[2]!.trim();
   }
   return out;
 }
@@ -209,7 +209,7 @@ export function parseTreeDoc(md: string, opts: ParseOptions = {}): TreeNode {
     if (!line.trim()) continue;
     const h = HEADING.exec(line);
     if (h) {
-      heading = node(h[1], opts);
+      heading = node(h[1]!, opts);
       root.children.push(heading);
       stack = [];
       last = { indent: -1, node: heading };
@@ -223,11 +223,11 @@ export function parseTreeDoc(md: string, opts: ParseOptions = {}): TreeNode {
       continue;
     }
     const it = ITEM.exec(line);
-    if (it && !ACTION.test(it[2]) && !SUMMARY.test(it[2])) {
-      const indent = indentOf(it[1]);
-      const n = node(it[2], opts);
-      while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
-      const parent = stack.length ? stack[stack.length - 1].node : (heading ?? root);
+    if (it && !ACTION.test(it[2]!) && !SUMMARY.test(it[2]!)) {
+      const indent = indentOf(it[1]!);
+      const n = node(it[2]!, opts);
+      while (stack.length && stack[stack.length - 1]!.indent >= indent) stack.pop();
+      const parent = stack.length ? stack[stack.length - 1]!.node : (heading ?? root);
       parent.children.push(n);
       stack.push({ indent, node: n });
       last = { indent, node: n };
@@ -238,7 +238,7 @@ export function parseTreeDoc(md: string, opts: ParseOptions = {}): TreeNode {
     const sum = SUMMARY.exec(body);
     // Before any heading or item, a ≈ line is the whole tree's.
     if (sum && !last && !root.children.length) {
-      addSummary(root, sum[1], sum[2]);
+      addSummary(root, sum[1], sum[2]!);
       continue;
     }
     // A continuation line: belongs to the last item if it is indented past it
@@ -249,9 +249,9 @@ export function parseTreeDoc(md: string, opts: ParseOptions = {}): TreeNode {
     const under = !!last && (last.indent < 0 || indent > last.indent);
     if (!under && (!heading || a)) continue;
     const target = under ? last!.node : heading!;
-    if (sum) addSummary(target, sum[1], sum[2]);
+    if (sum) addSummary(target, sum[1], sum[2]!);
     else if (a) {
-      const act = a[1].trim();
+      const act = a[1]!.trim();
       if (!act) continue;
       target.action = target.action ? `${target.action}\n${act}` : act;
       for (const l of findLinks(act, opts))
@@ -357,7 +357,7 @@ function walk(root: TreeNode): Walked[] {
 /** The summary list to try: the locale, its language, zh, en. */
 export function localeChain(locale?: string): string[] {
   const l = (locale ?? "").toLowerCase();
-  return [...new Set([l, l.split("-")[0], "zh", "en"].filter(Boolean))];
+  return [...new Set([l, l.split("-")[0] ?? "", "zh", "en"].filter(Boolean))];
 }
 
 /** The deepest common ancestor of the group with a summary for `key`, in the first locale it has. */
@@ -366,21 +366,26 @@ function summaryFor(
   key: keyof TreeSummary,
   locales: string[],
 ): string | undefined {
-  let common = group[0].chain;
+  let common = group[0]!.chain;
   for (const g of group) {
     let i = 0;
     while (i < common.length && i < g.chain.length && common[i] === g.chain[i]) i++;
     common = common.slice(0, i);
   }
   for (let i = common.length - 1; i >= 0; i--) {
-    const s = common[i].summaries;
+    const s = common[i]!.summaries;
     if (!s) continue;
     for (const l of locales) if (s[l]?.[key]) return s[l][key];
   }
   return undefined;
 }
 
-const strip = ({ chain: _, ...it }: Walked): FrontierItem => it;
+/** The item without its ancestor nodes. */
+function strip(w: Walked): FrontierItem {
+  const it: FrontierItem = { node: w.node, path: w.path, title: w.title };
+  if (w.assignee) it.assignee = w.assignee;
+  return it;
+}
 
 function entry(
   group: Walked[],
@@ -418,19 +423,19 @@ export function frontier(input: TreeNode | TreeNode[], opts: FrontierOptions = {
     const pick = dated.length
       ? dated.reduce((a, b) => (b.node.doneAt! >= a.node.doneAt! ? b : a))
       : done[done.length - 1];
-    out.done = entry(done, pick, "done", locales);
+    out.done = entry(done, pick!, "done", locales);
   }
 
   const owner = all.filter((w) => w.node.needsOwner && w.node.status !== "done");
   const doing = [...owner, ...all.filter((w) => w.node.status === "doing" && !w.node.needsOwner)];
-  if (doing.length) out.doing = entry(doing, doing[0], "doing", locales);
+  if (doing.length) out.doing = entry(doing, doing[0]!, "doing", locales);
 
   const next = all.filter((w) => w.node.status === "open" && !w.node.needsOwner);
   if (next.length) {
     // The first not started after the item in progress (when that is an agent's).
-    const now = out.doing && !out.doing.node.needsOwner ? all.indexOf(doing[0]) : -1;
+    const now = out.doing && !out.doing.node.needsOwner ? all.indexOf(doing[0]!) : -1;
     const pick = next.find((w) => all.indexOf(w) > now) ?? next[0];
-    out.next = entry(next, pick, "next", locales);
+    out.next = entry(next, pick!, "next", locales);
   }
   return out;
 }
