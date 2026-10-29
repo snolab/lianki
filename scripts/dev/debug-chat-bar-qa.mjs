@@ -272,7 +272,10 @@ try {
     const during = await page.locator('[data-testid="debug-chat-float"]').allTextContents();
     await page.mouse.up();
     check(during.length > 0, `scrub shows earlier lines (${during.at(-1) ?? "none"})`);
-    check(during.at(-1) !== "agent:message 29", "dragging down goes back past the newest line");
+    check(
+      !during.at(-1)?.includes("I will fetch those clips first"),
+      "dragging down goes back past the newest line",
+    );
     check((await page.evaluate(() => window.__gum)) === 0, "a scrub does not toggle the mic");
     // A horizontal drag on the mic moves the bar, and does not toggle it either.
     const before = await page.locator('[data-testid="debug-chat-pill"]').boundingBox();
@@ -305,10 +308,17 @@ try {
     await page.keyboard.press("ArrowUp");
     await page.keyboard.press("ArrowUp");
     const lines = await page.locator('[data-testid="debug-chat-float"]').allTextContents();
-    check(lines.at(-1) === "you:message 28", `ArrowUp on the mic scrubs (${lines.at(-1)})`);
+    // (The harness's last two lines: "TTS cache is cold on iOS", "I will fetch those clips first".)
+    check(
+      !!lines.at(-1)?.includes("TTS cache is cold on iOS"),
+      `ArrowUp on the mic scrubs (${lines.at(-1)})`,
+    );
     await page.keyboard.press("ArrowDown");
     const lines2 = await page.locator('[data-testid="debug-chat-float"]').allTextContents();
-    check(lines2.at(-1) === "agent:message 29", "ArrowDown comes back to the newest");
+    check(
+      !!lines2.at(-1)?.includes("I will fetch those clips first"),
+      "ArrowDown comes back to the newest",
+    );
     await ctx.close();
   }
 
@@ -410,7 +420,7 @@ try {
       () =>
         getComputedStyle(document.querySelector('[data-testid="debug-chat-tree-body"]')).maxHeight,
     );
-    check(compact === `${4.1 * 16}px`, `unfocused: compact, as the log (${compact})`);
+    check(compact === `${4.4 * 16}px`, `unfocused: compact, as the log (${compact})`);
     await page.click(sel("debug-chat-tree-close"));
     await settle();
     // Never both: tree, then a double tap on the mark (menu) — the tree closes.

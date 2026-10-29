@@ -168,6 +168,9 @@ ruby rt {
   }
 }
 .slip {
+  /* Above the grade reveal behind it (SwipeUnderlay / .slip-strip, z 0): the
+   * labels show only as the slip slides away, never on top of it. */
+  z-index: 1;
   --slip-c: var(--slip-base);
   --cord-c: var(--slip-cord);
   /* term/meaning boundary: padding + marker column + gaps + the fitted term width */
@@ -199,7 +202,7 @@ ruby rt {
  * slip lifts a little off its neighbours. */
 .slip-loose {
   --cord-c: transparent;
-  z-index: 1;
+  z-index: 2;
   box-shadow:
     0 6px 14px -6px oklch(0.2 0.03 50 / 0.45),
     inset 0 1px 0 oklch(1 0 0 / 0.35);
@@ -210,8 +213,17 @@ ruby rt {
  * levels. The browser does the gesture; nothing here runs per frame. */
 .slip-native {
   position: relative;
+  /* Each row stacks its own strip and face; the reveal can't escape above it. */
+  isolation: isolate;
+}
+[data-swipe-underlay] {
+  z-index: 0;
+  isolation: isolate;
 }
 .slip-scroller {
+  /* Above the strip behind it; see-through except for the face. */
+  position: relative;
+  z-index: 1;
   height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
@@ -230,15 +242,16 @@ ruby rt {
   height: 100%;
   width: calc(100% + 4 * var(--a));
 }
-/* What the slip uncovers (SwipeUnderlay's zones): held still behind it. */
+/* What the slip uncovers (SwipeUnderlay's zones): a sibling under the
+ * scroller, so it never scrolls and can't paint over the face. */
 .slip-strip {
-  position: sticky;
-  left: 0;
-  width: calc(100% - 4 * var(--a));
-  height: 100%;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   pointer-events: none;
   background: var(--slip-seam);
+  z-index: 0;
+  isolation: isolate;
 }
 .slip-snap {
   position: absolute;
@@ -604,6 +617,22 @@ ruby rt {
     inset-inline-start: var(--nav-w, 0px);
   }
 }
+/* While the list is up (WordsClient), the page is exactly the window: the
+ * list is the only scroller. min-h-screen (100vh) plus the body's safe-area
+ * padding made the document taller than the window on an iPhone, and iOS
+ * scrolled it by the difference even through overflow: hidden. */
+html.lk-page-lock,
+html.lk-page-lock body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+html.lk-page-lock body {
+  box-sizing: border-box;
+  height: 100dvh;
+}
+html.lk-page-lock .min-h-screen {
+  min-height: 0;
+}
 /* The toolbar and the help strip span the content area: the full width on a
  * phone, beside the nav from the tablet up. */
 .lk-words-bar {
@@ -622,6 +651,19 @@ ruby rt {
   .lk-words-bar {
     inset-inline-start: var(--nav-w, 0px);
   }
+}
+
+/* Settings: a glass sheet that drops below the toolbar and scrolls itself. */
+.lk-words-sheet {
+  z-index: 21;
+  /* Nearly opaque: the rows under it must not read through its text. */
+  background: var(--glass-bg-solid);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Embed mode hides the header: the toolbar moves up into its place. */
+html[data-embed] [data-words-top] {
+  top: env(safe-area-inset-top) !important;
 }
 
 /* The empty tray in the list's over-scroll: a card asleep. Static unless
@@ -680,4 +722,16 @@ ruby rt {
   .lk-reveal {
     transition: none;
   }
+}
+
+/* Embed mode (app/layout.tsx): content only, see-through, for overlay iframes. */
+html[data-embed] header,
+html[data-embed] nav,
+html[data-embed] footer,
+html[data-embed] [data-debug-chat] {
+  display: none !important;
+}
+html[data-embed],
+html[data-embed] body {
+  background: transparent !important;
 }

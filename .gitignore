@@ -72,3 +72,4 @@ test-results/
 .wt-*/
 # rech/Playwright browser snapshots (may contain sensitive page content)
 .playwright-cli-multi-tab/
+.shots/

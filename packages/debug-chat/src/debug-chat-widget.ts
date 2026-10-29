@@ -5,5 +5,5 @@
  * (the Tailwind utilities it uses) and `rev`. The page renders DebugChat in
  * its own tree (DebugChatHost.tsx). Never imported by the app.
  */
-export { DebugChat } from "./DebugChat";
+export { CHAT_TARGET_EVENT, DebugChat, setTarget } from "./DebugChat";
 export { WIDGET_API } from "./debug-widget";

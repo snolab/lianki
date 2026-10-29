@@ -80,6 +80,77 @@ page.on("pageerror", (e) => {
   if (!e.message.includes("Turnstile")) errs.push("PAGEERROR " + e.message);
 });
 let ok = true;
+
+/**
+ * The grade reveal paints behind its slip: at rest the point over a label's
+ * spot hits the card; slid away (Good uncovered), it hits the label. The
+ * reveal ignores pointers, so they are let through for the probe only (the
+ * page is closed right after).
+ */
+async function revealOrder(pg, variant) {
+  await pg.addStyleTag({
+    content:
+      "[data-swipe-underlay],[data-swipe-strip],[data-reveal-slot],[data-reveal],[data-reveal] *{pointer-events:auto!important}",
+  });
+  const barB = await pg
+    .locator("[data-words-top]")
+    .evaluate((el) => el.getBoundingClientRect().bottom);
+  const rows = pg.locator('[role="listitem"]');
+  let i = 0;
+  let b = null;
+  for (; !b; i++) {
+    const bi = await rows.nth(i).boundingBox();
+    if (bi && bi.y > barB + 100) b = bi;
+  }
+  const row = rows.nth(i - 1);
+  const [x, y] = [b.x + 20, b.y + b.height / 2];
+  const hit = () =>
+    pg.evaluate(
+      ([x, y]) => {
+        // The topmost thing that shows: a faded-out reveal layer doesn't count.
+        for (const e of document.elementsFromPoint(x, y)) {
+          const r = e.closest("[data-reveal]");
+          if (r && Number(getComputedStyle(r).opacity) > 0.5) return `label:${r.dataset.reveal}`;
+          if (!r && e.closest(".slip")) return "card";
+        }
+        return "none";
+      },
+      [x, y],
+    );
+  const rest = await hit();
+  let mid;
+  if (variant === "native") {
+    // Slid right by a, probed in the same task (before the slip glides home).
+    mid = await row.evaluate(
+      (r, [x, y]) => {
+        const a = parseFloat(getComputedStyle(r).getPropertyValue("--a"));
+        r.querySelector(".slip-scroller").scrollTo({ left: a, behavior: "instant" });
+        for (const e of document.elementsFromPoint(x, y)) {
+          const z = e.closest("[data-reveal]");
+          if (z && Number(getComputedStyle(z).opacity) > 0.5) return `label:${z.dataset.reveal}`;
+          if (!z && e.closest(".slip")) return "card";
+        }
+        return "none";
+      },
+      [x, y],
+    );
+    await row.evaluate((r) => {
+      const a = parseFloat(getComputedStyle(r).getPropertyValue("--a"));
+      r.querySelector(".slip-scroller").scrollTo({ left: 2 * a, behavior: "instant" });
+    });
+  } else {
+    const cx = b.x + b.width / 2;
+    await pg.mouse.move(cx, y);
+    await pg.mouse.down();
+    await pg.mouse.move(cx + 60, y, { steps: 10 });
+    await pg.waitForTimeout(250);
+    mid = await hit();
+    await pg.mouse.move(cx, y, { steps: 10 });
+    await pg.mouse.up();
+  }
+  await pg.waitForTimeout(500);
+  return `${rest} → ${mid}`;
+}
 const check = (cond, msg) => {
   console.log(`${cond ? "✓" : "✗"} ${msg}`);
   if (!cond) ok = false;
@@ -996,9 +1067,186 @@ try {
           `phone: the full screen button works (${fsOn ? "fullscreen" : "hint"})`,
         );
       }
+      const order = await revealOrder(m, variant);
+      check(
+        order === "card → label:3",
+        `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
+      );
       await m.close();
     }
     await phone.close();
+  }
+
+  // iPhone on WebKit, both swipe variants: the page itself never scrolls, and
+  // the list opens with its first word right under the glass toolbar — on
+  // load, on reload, and when the list is shown again (pageshow).
+  {
+    const { webkit, devices } = await import("playwright");
+    const wk = await webkit.launch();
+    const listUrl = page.url();
+    for (const variant of ["js", "native"]) {
+      const tag = `webkit-iphone/${variant}:`;
+      const c = await wk.newContext({
+        ...devices["iPhone 13"],
+        storageState: await ctx.storageState(),
+      });
+      await c.addInitScript(silentAudio);
+      await c.addInitScript((v) => {
+        localStorage.setItem("lk:first-run", "account");
+        localStorage.setItem("lk:swipe-ab", v);
+      }, variant);
+      const w = await c.newPage();
+      w.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
+      const opening = () =>
+        w.evaluate(() => {
+          const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
+          const row = document.querySelector('[role="listitem"]').getBoundingClientRect().top;
+          return {
+            scrollY: Math.round(scrollY),
+            gap: Math.round(row - bar),
+            native: document.querySelectorAll(".slip-native").length > 0,
+          };
+        });
+      for (const when of ["load", "reload"]) {
+        if (when === "load") await w.goto(listUrl, { waitUntil: "networkidle" });
+        else await w.reload({ waitUntil: "networkidle" });
+        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        await w.waitForTimeout(800);
+        const o = await opening();
+        check(
+          o.scrollY === 0 && o.gap >= 0 && o.gap < 4 && o.native === (variant === "native"),
+          `${tag} ${when}: the page doesn't scroll and the first word sits right under the toolbar (${JSON.stringify(o)})`,
+        );
+      }
+      const order = await revealOrder(w, variant);
+      check(
+        order === "card → label:3",
+        `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
+      );
+      // The owner's iPhone PWA (414×848, a 48px status bar). env(safe-area-*)
+      // can't be emulated, so the body's safe-area padding and the toolbar's
+      // offset stand in for it — that padding once made the page 48px taller
+      // than the window, and iOS left it scrolled by that much.
+      await w.setViewportSize({ width: 414, height: 848 });
+      await w.addInitScript(() =>
+        document.addEventListener("DOMContentLoaded", () => {
+          const st = document.createElement("style");
+          st.textContent = "body{padding-top:48px!important}[data-words-top]{top:104px!important}";
+          document.head.append(st);
+        }),
+      );
+      await w.reload({ waitUntil: "networkidle" });
+      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+      await w.waitForTimeout(800);
+      const layout = () =>
+        w.evaluate(() => {
+          const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
+          const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
+          return {
+            scrollY: Math.round(scrollY),
+            docH: document.documentElement.scrollHeight,
+            innerH: innerHeight,
+            barH: Math.round(bar.height),
+            gap: Math.round(row.top - bar.bottom),
+            sheet: !!document.querySelector("[data-words-settings]"),
+          };
+        });
+      const pageFits = (o) => o.scrollY === 0 && o.docH <= o.innerH;
+      let o = await layout();
+      check(
+        pageFits(o) && o.gap >= 0 && o.gap < 4,
+        `${tag} 414×848 + safe area: the page is exactly the window, first word under the toolbar (${JSON.stringify(o)})`,
+      );
+      const gear = w.getByRole("button", { name: "Settings" });
+      await gear.click();
+      await w.waitForTimeout(400);
+      o = await layout();
+      check(
+        o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,
+        `${tag} settings open in their own sheet: the toolbar stays ≤72px and the list doesn't move (${JSON.stringify(o)})`,
+      );
+      await gear.click();
+      await w.waitForTimeout(400);
+      o = await layout();
+      check(
+        !o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,
+        `${tag} settings closed: the first word is still right under the toolbar (${JSON.stringify(o)})`,
+      );
+      if (variant === "native") {
+        // At rest the face covers the label strip; a completed swipe (the
+        // touch sequence iOS gives: touchstart, pointercancel as the scroller
+        // takes over, a scroll to the Good level, touchend resting there)
+        // grades and glides back to centre.
+        const s = await w.evaluate(async () => {
+          const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
+          const row = [...document.querySelectorAll(".slip-native")].find(
+            (x) => x.getBoundingClientRect().top > bar + 60,
+          );
+          const b = row.getBoundingClientRect();
+          const y = b.top + b.height / 2;
+          const face = (x) => !!document.elementFromPoint(x, y)?.closest(".slip-face");
+          const sc = row.querySelector(".slip-scroller");
+          const a = parseFloat(getComputedStyle(row).getPropertyValue("--a"));
+          const out = {
+            rest: sc.scrollLeft,
+            a,
+            faceAtRest: face(b.left + 20) && face(b.right - 20),
+          };
+          const fire = (type, x) => {
+            const e = new Event(type, { bubbles: true });
+            const t = [{ clientX: x, clientY: y }];
+            Object.defineProperty(e, "touches", { value: type === "touchend" ? [] : t });
+            Object.defineProperty(e, "changedTouches", { value: t });
+            sc.dispatchEvent(e);
+          };
+          fire("touchstart", 100);
+          sc.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+          sc.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true }));
+          sc.scrollTo({ left: a, behavior: "instant" });
+          await new Promise((r) => setTimeout(r, 50));
+          out.slid = sc.scrollLeft;
+          fire("touchend", 100 + a);
+          await new Promise((r) => setTimeout(r, 1500));
+          out.after = sc.scrollLeft;
+          out.faceAfter = face(b.left + 20);
+          out.graded = !!row.querySelector(".slip-face .lk-stamp");
+          return out;
+        });
+        check(
+          s.faceAtRest && s.rest === 2 * s.a,
+          `${tag} at rest the slip's face covers its label strip (${JSON.stringify(s)})`,
+        );
+        check(
+          s.slid === s.a && s.graded && Math.abs(s.after - s.rest) < 1 && s.faceAfter,
+          `${tag} a completed swipe grades and the slip returns to centre (${JSON.stringify(s)})`,
+        );
+      } else {
+        // ?swipe=native: that page load only, never stored — also in an iframe.
+        const sep = listUrl.includes("?") ? "&" : "?";
+        await w.goto(`${listUrl}${sep}swipe=native`, { waitUntil: "networkidle" });
+        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        const forced = await w.evaluate(() => ({
+          native: document.querySelectorAll(".slip-native").length > 0,
+          stored: localStorage.getItem("lk:swipe-ab"),
+        }));
+        await w.setContent(
+          `<iframe src="${listUrl}${sep}swipe=native&embed=1" style="width:414px;height:700px"></iframe>`,
+        );
+        const fr = w.frameLocator("iframe");
+        await fr.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        const framed = await fr.locator(".slip-native").count();
+        await w.goto(listUrl, { waitUntil: "networkidle" });
+        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        const plain = await w.locator(".slip-native").count();
+        check(
+          forced.native && forced.stored === "js" && framed > 0 && plain === 0,
+          `${tag} ?swipe=native applies to that load only (iframe too) and is never stored (${JSON.stringify({ ...forced, framed, plain })})`,
+        );
+      }
+      await w.close();
+      await c.close();
+    }
+    await wk.close();
   }
 
   // /alphabet: same drill over its own catalog; its lists stay off /words.

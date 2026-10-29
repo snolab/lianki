@@ -16,7 +16,7 @@ export function logSurface({ expanded, fade }: { expanded: boolean; fade: boolea
   const mask = expanded ? FADE : FADE_SHORT;
   return {
     style: fade ? { maskImage: mask, WebkitMaskImage: mask } : undefined,
-    className: `min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${expanded ? "max-h-[30vh]" : "max-h-[4.1rem]"}`,
+    className: `min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${expanded ? "max-h-[30vh]" : "max-h-[4.4rem]"}`,
   };
 }
 

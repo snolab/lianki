@@ -1,5 +1,6 @@
 "use client";
 
+import { voiceQuality } from "@lianki/debug-chat/wire";
 import {
   startTransition,
   useCallback,
@@ -686,13 +687,13 @@ function useSpeech(serverVoice = false) {
       const tag = SPEECH_TAG[lang]?.toLowerCase();
       // The language's own region first (ja-JP, not a ja voice of elsewhere).
       const exact = vs.filter((v) => norm(v) === tag);
-      return (
-        exact.find((v) => v.localService) ??
-        exact[0] ??
-        vs.find((v) => v.localService) ??
-        vs[0] ??
-        null
-      );
+      // Natural voices first: iOS lists robotic Eloquence and novelty voices first.
+      const best = (pool: SpeechSynthesisVoice[]) => {
+        const q = Math.max(-1, ...pool.map(voiceQuality));
+        const top = pool.filter((v) => voiceQuality(v) === q);
+        return top.find((v) => v.localService) ?? top[0];
+      };
+      return best(exact) ?? best(vs) ?? null;
     },
     [voices],
   );
@@ -2287,15 +2288,42 @@ function Study({
   // scrolled well past the middle (or to the touch focus line). Row positions
   // and the windowing below are all offset by it.
   const pad = Math.round(viewH * OVERSCROLL_FRACTION);
-  const startedAtTop = useRef(false);
+  // Open with the first row just under the glass toolbar, not half a screen
+  // down. Re-applied until the person moves the list themselves: whenever the
+  // list element is (re)mounted (the queue can reload, e.g. from the offline
+  // copy and then the server), the measured heights or the over-scroll
+  // change (fonts, safe areas and the toolbar settle late on iOS), and on
+  // pageshow (a restored page). Events only — nothing polls.
+  const opened = useRef<{ el: HTMLElement | null; moved: boolean }>({ el: null, moved: false });
+  const [shownAt, setShownAt] = useState(0);
+  useEffect(() => {
+    const again = () => setShownAt((n) => n + 1);
+    window.addEventListener("pageshow", again);
+    return () => window.removeEventListener("pageshow", again);
+  }, []);
+  useEffect(() => {
+    if (!listEl) return;
+    const moved = () => {
+      if (opened.current.el === listEl) opened.current.moved = true;
+    };
+    const opts = { passive: true, capture: true } as const;
+    listEl.addEventListener("pointerdown", moved, opts);
+    listEl.addEventListener("touchstart", moved, opts);
+    listEl.addEventListener("wheel", moved, opts);
+    window.addEventListener("keydown", moved, opts);
+    return () => {
+      listEl.removeEventListener("pointerdown", moved, opts);
+      listEl.removeEventListener("touchstart", moved, opts);
+      listEl.removeEventListener("wheel", moved, opts);
+      window.removeEventListener("keydown", moved, opts);
+    };
+  }, [listEl]);
   useLayoutEffect(() => {
-    // Open with the first row at the top, not half a screen down.
-    const el = listRef.current;
-    if (!el || startedAtTop.current || !listReady || !measured) return;
-    startedAtTop.current = true;
-    // ...just under the glass toolbar, not behind it.
-    el.scrollTop = pad - barRef.current.top;
-  }, [listReady, measured, pad]);
+    if (!listEl || !listReady || !measured) return;
+    if (opened.current.el !== listEl) opened.current = { el: listEl, moved: false };
+    if (opened.current.moved) return;
+    listEl.scrollTop = pad - bar.top;
+  }, [listEl, listReady, measured, pad, bar.top, shownAt]);
   // The list fills the window (.lk-words-list); the toolbar and the help strip
   // float over it. Measured whenever any of them changes size (settings open,
   // hints change, the window turns), never polled.
@@ -2326,11 +2354,25 @@ function Study({
   // Only the list scrolls: the page under it stays put.
   useEffect(() => {
     if (!listEl) return;
-    const html = document.documentElement;
-    const prev = html.style.overflow;
-    html.style.overflow = "hidden";
+    // The page is exactly the window while the list is up (.lk-page-lock):
+    // no overflow, no rubber band, and no taller-than-the-window document
+    // (min-h-screen plus the body's safe-area padding made it 48px taller on
+    // an iPhone, and iOS left it scrolled by that much).
+    const root = document.documentElement;
+    root.classList.add("lk-page-lock");
+    const top = () => {
+      if (window.scrollY || root.scrollTop) window.scrollTo(0, 0);
+    };
+    top();
+    // Again once the lock has laid out, and whenever iOS moves the page anyway
+    // (the keyboard, a restored page): the list is the only scroller.
+    queueMicrotask(top);
+    const raf = requestAnimationFrame(top);
+    window.addEventListener("scroll", top, { passive: true });
     return () => {
-      html.style.overflow = prev;
+      cancelAnimationFrame(raf);
+      root.classList.remove("lk-page-lock");
+      window.removeEventListener("scroll", top);
     };
   }, [listEl]);
   // Keep the cursor in view as it moves, a couple of rows from the edges of
@@ -2748,92 +2790,102 @@ function Study({
               </span>
             )}
           </span>
-          {settings && (
-            <div className="w-full flex flex-wrap gap-2 pt-1 pb-1" aria-label="Study settings">
-              <TogglePill
-                on={showAll}
-                onChange={setShowAll}
-                label="Show all meanings"
-                hint="Every meaning visible, not only the focused row (E)"
-              />
-              {speech.available && (
-                <TogglePill
-                  on={speech.on}
-                  onChange={() => speech.toggle()}
-                  label="Read cards aloud"
-                  hint="Speak the word and its example (V)"
-                />
-              )}
-              {speech.on && (
-                <TogglePill
-                  on={serverVoice}
-                  onChange={setServerVoice}
-                  label="Server voice"
-                  hint="Use Lianki's voices (en, es, fr, de, it, pt, ru, zh, ja, ko) instead of the browser's"
-                />
-              )}
-              {speech.on && serverVoice && (
-                <span className="w-full text-xs opacity-60" data-voice-credit>
-                  Voices: VOICEVOX:No.7 (Japanese) · Kokoro · Piper (Thorsten-Voice, Dmitri) ·
-                  MeloTTS
-                </span>
-              )}
-              <TogglePill
-                on={tones}
-                onChange={setTones}
-                label="Grade tones"
-                hint="A short tone per grade, for studying without looking"
-              />
-              {touch && (
-                <TogglePill
-                  on={swipeSpeak}
-                  onChange={setSwipeSpeak}
-                  label="Speak on swipe"
-                  hint="Say the word as a swipe starts"
-                />
-              )}
-              {touch && !fs.standalone && (
-                <TogglePill
-                  on={fs.active}
-                  onChange={toggleFullscreen}
-                  label="Full screen"
-                  hint="Hide the address bar while studying"
-                />
-              )}
-              {touch && (
-                <div className="w-full pt-1" data-experimental>
-                  <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
-                    Experimental
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <TogglePill
-                      on={swipeAb === "native"}
-                      onChange={(on) => {
-                        const v = on ? "native" : "js";
-                        setSwipeVariant(v);
-                        setSwipeAb(v);
-                      }}
-                      label="New swipe"
-                      hint="Swipes done by the browser's own scrolling"
-                    />
-                    <span className="text-xs opacity-60">
-                      Native scrolling swipe. It may change or go away.
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
         </div>
         {syncError && <div className="text-red-500 text-sm mt-1">Not saved: {syncError}</div>}
         {notice && <div className="text-amber-600 dark:text-amber-300 text-sm mt-1">{notice}</div>}
-        {fsHint && (
-          <div className="text-sm mt-1 opacity-80" onClick={() => setFsHint(false)}>
-            This browser can&apos;t hide its address bar for a page. On iPhone: Share → Add to Home
-            Screen, then open Lianki from the home screen — it runs without the address bar.
-          </div>
-        )}
       </div>
+
+      {settings && (
+        <div
+          // Its own glass sheet under the toolbar, not part of it: the
+          // toolbar (and the list's scroll-padding under it) stays one
+          // size, and a long sheet scrolls inside itself.
+          data-words-settings
+          className="lk-words-bar lk-words-sheet lk-glass border-b border-[var(--glass-line)] py-2 text-sm"
+          style={{ top: bar.top, maxHeight: `calc(100dvh - ${bar.top + bar.bottom + 16}px)` }}
+          aria-label="Study settings"
+        >
+          <div className="flex flex-wrap gap-2">
+            <TogglePill
+              on={showAll}
+              onChange={setShowAll}
+              label="Show all meanings"
+              hint="Every meaning visible, not only the focused row (E)"
+            />
+            {speech.available && (
+              <TogglePill
+                on={speech.on}
+                onChange={() => speech.toggle()}
+                label="Read cards aloud"
+                hint="Speak the word and its example (V)"
+              />
+            )}
+            {speech.on && (
+              <TogglePill
+                on={serverVoice}
+                onChange={setServerVoice}
+                label="Server voice"
+                hint="Use Lianki's voices (en, es, fr, de, it, pt, ru, zh, ja, ko) instead of the browser's"
+              />
+            )}
+            {speech.on && serverVoice && (
+              <span className="w-full text-xs opacity-60" data-voice-credit>
+                Voices: VOICEVOX:No.7 (Japanese) · Kokoro · Piper (Thorsten-Voice, Dmitri) · MeloTTS
+              </span>
+            )}
+            <TogglePill
+              on={tones}
+              onChange={setTones}
+              label="Grade tones"
+              hint="A short tone per grade, for studying without looking"
+            />
+            {touch && (
+              <TogglePill
+                on={swipeSpeak}
+                onChange={setSwipeSpeak}
+                label="Speak on swipe"
+                hint="Say the word as a swipe starts"
+              />
+            )}
+            {touch && !fs.standalone && (
+              <TogglePill
+                on={fs.active}
+                onChange={toggleFullscreen}
+                label="Full screen"
+                hint="Hide the address bar while studying"
+              />
+            )}
+            {touch && (
+              <div className="w-full pt-1" data-experimental>
+                <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
+                  Experimental
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <TogglePill
+                    on={swipeAb === "native"}
+                    onChange={(on) => {
+                      const v = on ? "native" : "js";
+                      setSwipeVariant(v);
+                      setSwipeAb(v);
+                    }}
+                    label="New swipe"
+                    hint="Swipes done by the browser's own scrolling"
+                  />
+                  <span className="text-xs opacity-60">
+                    Native scrolling swipe. It may change or go away.
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+          {fsHint && (
+            <div className="text-sm mt-2 opacity-80" onClick={() => setFsHint(false)}>
+              This browser can&apos;t hide its address bar for a page. On iPhone: Share → Add to
+              Home Screen, then open Lianki from the home screen — it runs without the address bar.
+            </div>
+          )}
+        </div>
+      )}
 
       {loadError ? (
         <div className="space-y-3 py-8 text-center">
@@ -3695,13 +3747,16 @@ function NativeSlipRow({
       el.removeEventListener("touchmove", axis);
       if (g.steep && !g.held) el.style.overflowX = "";
       if (!g.moved) swipePerf.stop(g.panned ? "scroll" : "tap");
-      // No scrollend: lifted while resting on a level, the quiet timer has
-      // already run (and waited for the finger). scrollend comes after the lift.
-      if (!hasScrollEnd)
-        setTimeout(() => {
-          const k = el.scrollLeft / a;
-          if (!g.touching && Math.abs(k - Math.round(k)) < 1 / a) settle();
-        }, 50);
+      // Lifted while resting on a level, nothing more scrolls: no scrollend
+      // follows (WebKit fires it while the finger is still down, and settle
+      // waited for the lift), and without scrollend the quiet timer has
+      // already run. Settle here, or the slip would stay slid off its face,
+      // its grade label showing. A slip still coasting is between levels:
+      // its own scrollend / quiet timer settles it.
+      setTimeout(() => {
+        const k = el.scrollLeft / a;
+        if (!g.touching && !g.returning && Math.abs(k - Math.round(k)) < 1 / a) settle();
+      }, 50);
     };
     const pointerdown = (e: PointerEvent) => {
       g.held = false;
@@ -3742,7 +3797,7 @@ function NativeSlipRow({
     };
     // The reveal follows the detent the slip is nearest (the far one's grade
     // takes over the first one's spot).
-    const strip = el.querySelector<HTMLElement>("[data-swipe-strip]");
+    const strip = el.parentElement?.querySelector<HTMLElement>("[data-swipe-strip]");
     const reveal = () =>
       showReveal(strip, Math.max(-2, Math.min(2, Math.round((home - el.scrollLeft) / a))));
     el.addEventListener("scroll", reveal, { passive: true });
@@ -3782,11 +3837,14 @@ function NativeSlipRow({
       className={`slip-native ${loose ? "slip-loose" : ""}`}
       style={{ height: style.height, ["--a" as string]: `${a}px` }}
     >
+      {/* Behind the scroller, not inside it: the face (opaque, above) uncovers
+          it only by sliding away. A sticky strip inside the scroller painted
+          over the face on iOS (WebKit composites sticky layers on their own). */}
+      <div aria-hidden className="slip-strip" data-swipe-strip>
+        <GradeZones />
+      </div>
       <div ref={scroller} className="slip-scroller" style={{ WebkitTouchCallout: "none" }}>
         <div className="slip-track">
-          <div aria-hidden className="slip-strip" data-swipe-strip>
-            <GradeZones />
-          </div>
           {[0, 1, 2, 3, 4].map((k) => (
             <i key={k} className="slip-snap" style={{ left: k * a }} />
           ))}

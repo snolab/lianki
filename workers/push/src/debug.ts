@@ -7,7 +7,7 @@
  *
  *   page        A signed-in user's page in debug mode (app/components/DebugEval.tsx).
  *               index.ts has already asked the main Worker who it is and
- *               passes that on (x-debug-user/-email/-owner). Each page
+ *               passes that on (x-debug-user/-email/-owner/-name/-image). Each page
  *               belongs to a thread: "owner" for the owner's pages, the
  *               user id for anyone else (a "friend").
  *   controller  The sender (scripts/dev/eval.ts). Unauthenticated, so it can
@@ -55,6 +55,26 @@
  * per FRIEND_CHAT_WINDOW_MS; the owner can Block one (/dev/friends →
  * /internal/friends), which closes their sockets and refuses them after.
  *
+ * Avatars. index.ts also passes the user's name and picture (x-debug-name,
+ * percent-encoded, and x-debug-image, from better-auth's user.image). The
+ * page keeps them as a Sender (wire.ts: the user id hashed, never the
+ * email), hears it on connect as {type:"me", sender}, and every line it
+ * sends carries it as `sender`. Agent lines have none: the widget draws the
+ * host app's logo. Older lines and pages without either still work.
+ *
+ * Node paths. Messages are addressed to state-tree nodes ("/words/prefetch");
+ * a node's assignee (an agent or a human) receives them. A controller
+ * subscribes at a node with `?node=<path>&agent=<id>` (absent = "/", the
+ * main thread, as before). A chat line with `to: P` (the owner's "@/words …",
+ * or an agent's `say` to "/…") reaches the listeners at P, and every
+ * ancestor's as `observed: true` — so the root's sees everything; siblings
+ * and descendants never. An agent line carries its `taskPath` and `agentId`.
+ * An agent may address its own subtree and any ancestor; anything else needs
+ * a node grant ({type:"grant", from, to}) from a listener whose node holds
+ * both (the root's always may), else {type:"error", reason:"out of scope…"}.
+ * Node grants are stored as `ngrant:<from>><to>`. The owner's pages see
+ * every line, whatever its node.
+ *
  * Resumable grants. The owner's Allow hands the controller a random grant
  * token; only its SHA-256 is stored (`grant:<hash>`), and reconnecting with
  * it (header x-debug-token, or x-liagent-token via index.ts) restores what
@@ -80,7 +100,9 @@ import {
   type HubState,
   type Identity,
   MAX_LABEL,
+  type NodeGrant,
   OWNER_THREAD,
+  ROOT_NODE,
   PAGE_ENDED,
   PAGE_GONE_GRACE_MS,
   PAGES_GONE,
@@ -89,12 +111,19 @@ import {
   PENDING_MS,
   type PairInfo,
   type Scope,
+  type Sender,
+  agentIdOf,
   cleanLabel,
   isPageId,
+  isWithin,
+  mayAddress,
+  nodePath,
   isUserId,
   matchesTarget,
   parseControllerMessage,
   parsePageMessage,
+  routeTo,
+  senderOf,
   shortCode,
 } from "../../../lib/dev-eval";
 
@@ -129,6 +158,8 @@ type PageAtt = {
   label: string;
   thread: string;
   email?: string;
+  /** Who the page's user is, for the avatars on their lines (hashed id, name, picture). */
+  sender?: Sender;
   id?: string;
   at?: number;
 };
@@ -153,6 +184,10 @@ type ControllerAtt = {
   beatThread?: string;
   forUser?: string;
   forEmail?: string;
+  /** The state-tree node this listener is subscribed at (`?node=`); absent = "/". */
+  node?: string;
+  /** The node's assignee (`?agent=`): the agent's id on its lines. */
+  assignee?: string;
 } & PairInfo;
 /**
  * A stored grant (`grant:<sha256 of its token>`). `scope` absent = "chat"
@@ -172,6 +207,9 @@ export const IDENTITY_HEADERS = {
   user: "x-debug-user",
   email: "x-debug-email",
   owner: "x-debug-owner",
+  /** Percent-encoded display name, and picture URL: the chat's avatars only. */
+  name: "x-debug-name",
+  image: "x-debug-image",
 } as const;
 type Att = PageAtt | ControllerAtt;
 declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
@@ -218,6 +256,19 @@ const threadKeys = (thread: string) =>
 const msgKey = (thread: string, seq: number) =>
   `${threadKeys(thread).prefix}${String(seq).padStart(12, "0")}`;
 const friendKey = (userId: string) => `friend:${userId}`;
+const nodeGrantKey = (from: string, to: string) => `ngrant:${from}>${to}`;
+/** Where a controller listens, from its knock: `?node=` (a node path) and `?agent=`. */
+const whereOf = (url: URL) => {
+  const node = nodePath(url.searchParams.get("node") ?? undefined);
+  const assignee = agentIdOf(url.searchParams.get("agent") ?? undefined);
+  return {
+    ...(node && node !== ROOT_NODE ? { node } : {}),
+    ...(assignee ? { assignee } : {}),
+  };
+};
+/** A history as one listener sees it: only the lines routed to its node. */
+const forNode = (list: ChatMessage[], node?: string) =>
+  node ? list.filter((m) => routeTo(node, m.to)) : list;
 
 export class DebugHub {
   /**
@@ -314,7 +365,16 @@ export class DebugHub {
       label: a.label,
       at: a.at ?? 0,
     }));
-    return { type: "state", pending, sessions, listeners: this.agents(except).length, pages };
+    const agents = this.agents(except);
+    const nodes = [...new Set(agents.map((c) => c.a.node).filter((n): n is string => !!n))].sort();
+    return {
+      type: "state",
+      pending,
+      sessions,
+      listeners: agents.length,
+      pages,
+      ...(nodes.length ? { nodes } : {}),
+    };
   }
 
   /** Every page its audience's state, each told which page it is. */
@@ -367,7 +427,21 @@ export class DebugHub {
     const out = { type: "chat", message: m };
     for (const { ws, a } of this.pages(m.thread))
       if (!only || (a.id && only.includes(a.id))) send(ws, out);
-    for (const { ws } of this.listeners()) send(ws, out);
+    // Listeners by node: that node's, and its ancestors' as observers (the root's sees all).
+    for (const { ws, a } of this.listeners()) {
+      const route = routeTo(a.node, m.to);
+      if (route) send(ws, route === "observed" ? { ...out, observed: true } : out);
+    }
+  }
+
+  /** The live node grants (`ngrant:`), lapsed ones dropped as they are met. */
+  private async nodeGrants(): Promise<NodeGrant[]> {
+    const t = this.now();
+    const out: NodeGrant[] = [];
+    for (const [k, g] of await this.ctx.storage.list<NodeGrant>({ prefix: "ngrant:" }))
+      if (g.until > t) out.push(g);
+      else await this.ctx.storage.delete(k);
+    return out;
   }
 
   /** Everyone who has used the chat, most recent first. */
@@ -399,7 +473,18 @@ export class DebugHub {
       const userId = h.get(IDENTITY_HEADERS.user) ?? "";
       const owner = h.get(IDENTITY_HEADERS.owner) === "1";
       if (!owner && !isUserId(userId)) return new Response("forbidden", { status: 403 });
-      who = { userId, email: h.get(IDENTITY_HEADERS.email) ?? "", owner };
+      let name = "";
+      try {
+        name = decodeURIComponent(h.get(IDENTITY_HEADERS.name) ?? "");
+      } catch {}
+      const image = h.get(IDENTITY_HEADERS.image) ?? "";
+      who = {
+        userId,
+        email: h.get(IDENTITY_HEADERS.email) ?? "",
+        owner,
+        ...(name ? { name } : {}),
+        ...(image ? { image } : {}),
+      };
     }
     const pair = new WebSocketPair();
     const ws = pair[1];
@@ -470,6 +555,16 @@ export class DebugHub {
     // The tab's own id (kept across reloads), so "this page" grants survive them.
     const tab = url.searchParams.get("tab");
     const id = isPageId(tab) ? tab : crypto.randomUUID().slice(0, 8);
+    // For the avatars: a hashed id, the name, the picture. Never the email.
+    const sender = who
+      ? senderOf({
+          userId: who.userId,
+          email: who.email,
+          name: who.name,
+          avatars: [who.image],
+        })
+      : undefined;
+    const me = sender && Object.keys(sender).length ? { sender } : {};
     if (who && !who.owner) {
       if (!isUserId(who.userId)) return close(ws, 4403, "no identity");
       const rec = await this.ctx.storage.get<FriendRecord>(friendKey(who.userId));
@@ -482,6 +577,7 @@ export class DebugHub {
         label,
         thread: who.userId,
         email: cleanLabel(who.email, 320),
+        ...me,
         id,
         at: this.now(),
       } satisfies PageAtt);
@@ -491,10 +587,13 @@ export class DebugHub {
         role: "page",
         label,
         thread: OWNER_THREAD,
+        ...me,
         id,
         at: this.now(),
       } satisfies PageAtt);
     const thread = audience(att(ws) as PageAtt);
+    // The page's own avatar (older pages ignore an unknown type).
+    if (me.sender) send(ws, { type: "me", sender: me.sender });
     // A granted page is back: its pairings' grace clock stops at once.
     this.sweep();
     // Everyone sees the new page in their list; this one gets its state first.
@@ -528,7 +627,7 @@ export class DebugHub {
       return close(ws, 4404, "no debug page");
     }
     const scope = url.searchParams.get("scope") === "chat" ? "chat" : "eval";
-    this.knock(ws, { label, scope });
+    this.knock(ws, { label, scope, ...whereOf(url) });
   }
 
   /** Make room for one audience's pairing: false (and `ws` closed) if one is still waiting. */
@@ -549,7 +648,14 @@ export class DebugHub {
 
   private knock(
     ws: Socket,
-    extra: { label: string; scope: Scope; forUser?: string; forEmail?: string },
+    extra: {
+      label: string;
+      scope: Scope;
+      forUser?: string;
+      forEmail?: string;
+      node?: string;
+      assignee?: string;
+    },
   ) {
     const a: ControllerAtt = {
       role: "controller",
@@ -633,10 +739,11 @@ export class DebugHub {
       grant: hash,
       ...(scope === "eval" && g.pages ? { pages: g.pages } : {}),
       ...(url.searchParams.get("beat") === "1" ? { beat: true } : {}),
+      ...whereOf(url),
     };
     ws.serializeAttachment(a);
     send(ws, { type: "approved", until: g.until, scope, resumed: true });
-    send(ws, { type: "history", messages: await this.history() });
+    send(ws, { type: "history", messages: forNode(await this.history(), a.node) });
     console.log(JSON.stringify({ msg: "debug.resume", pair: a.pair, label: a.label, scope }));
     await this.loadGrants();
     this.broadcast();
@@ -793,8 +900,10 @@ export class DebugHub {
           thread: page.thread,
           len: m.text.length,
           head: head(m.text),
+          ...(m.to ? { to: m.to } : {}),
         }),
       );
+      // A friend's line is always their own thread's: no node addressing there.
       if (page.thread !== OWNER_THREAD) return this.friendChat(ws, page, m.id, m.text);
       return this.post({
         id: m.id,
@@ -803,6 +912,8 @@ export class DebugHub {
         text: m.text,
         at: t,
         thread: OWNER_THREAD,
+        ...(page.sender ? { sender: page.sender } : {}),
+        ...(m.to ? { to: m.to } : {}),
       });
     }
     // A sleeping eval grant (listed to the owner's pages only): End, or add a page.
@@ -811,7 +922,7 @@ export class DebugHub {
         ? this.dormant(ws, page, m)
         : send(ws, this.state(page.thread));
     // Only a pairing made for this page's own audience can be answered or sent results.
-    const c = this.controller(m.type === "result" ? m.to : m.pair);
+    const c = this.controller(m.type === "result" || m.type === "chunk" ? m.to : m.pair);
     if (!c || audience(c.a) !== page.thread) return send(ws, this.state(page.thread));
     if (m.type === "allow") {
       const pages = this.grantPages(page, m.pages);
@@ -826,10 +937,11 @@ export class DebugHub {
         : this.allowEval(c.ws, c.a, pages);
     }
     if (m.type === "deny" || m.type === "revoke") return this.end(m.type, c.ws, c.a);
-    // A result goes back only to an approved controller that is still in time.
-    if (m.type !== "result" || !c.a.until || c.a.until <= t) return;
-    const { type: _t, to: _to, ...rest } = m;
-    send(c.ws, { type: "result", ...rest, page: page.label });
+    // A result (or a streamed piece of one) goes back only to an approved
+    // controller that is still in time.
+    if ((m.type !== "result" && m.type !== "chunk") || !c.a.until || c.a.until <= t) return;
+    const { to: _to, ...rest } = m;
+    send(c.ws, { ...rest, page: page.label });
   }
 
   /**
@@ -869,7 +981,16 @@ export class DebugHub {
       console.log(JSON.stringify({ msg: "debug.friend-new", userId, email }));
       for (const l of this.listeners()) send(l.ws, { type: "friend-new", userId, email, at: t });
     }
-    return this.post({ id, from: "friend", label: page.label, text, at: t, thread: userId, email });
+    return this.post({
+      id,
+      from: "friend",
+      label: page.label,
+      text,
+      at: t,
+      thread: userId,
+      email,
+      ...(page.sender ? { sender: page.sender } : {}),
+    });
   }
 
   /**
@@ -934,7 +1055,7 @@ export class DebugHub {
       JSON.stringify({ msg: "debug.allow", pair: a.pair, label: a.label, until, scope: "eval" }),
     );
     this.broadcast();
-    send(ws, { type: "history", messages: await this.history() });
+    send(ws, { type: "history", messages: forNode(await this.history(), a.node) });
   }
 
   /** End (revoke) a sleeping eval grant, or add the answering page to it. */
@@ -987,7 +1108,7 @@ export class DebugHub {
       JSON.stringify({ msg: "debug.allow", pair: a.pair, label: a.label, until, scope: "chat" }),
     );
     this.broadcast();
-    send(ws, { type: "history", messages: await this.history() });
+    send(ws, { type: "history", messages: forNode(await this.history(), a.node) });
   }
 
   /**
@@ -1019,6 +1140,35 @@ export class DebugHub {
     return { thread: f.userId, email: f.email };
   }
 
+  /**
+   * A node grant (the fallback for a scoped token): senders within `from` may
+   * address nodes within `to`, for `ms` (EVAL_GRANT_MS by default). Only a
+   * listener whose node holds both may grant it or take it back; the root's always may.
+   */
+  private async nodeGrant(
+    ws: Socket,
+    c: ControllerAtt,
+    m: { type: "grant" | "ungrant"; from: string; to: string; ms?: number },
+  ) {
+    const home = c.node ?? ROOT_NODE;
+    if (!isWithin(m.from, home) || !isWithin(m.to, home)) {
+      const reason = `out of scope: a listener at ${home} cannot grant ${m.from} → ${m.to}`;
+      return send(ws, { type: "error", error: reason, reason });
+    }
+    const key = nodeGrantKey(m.from, m.to);
+    if (m.type === "ungrant") {
+      await this.ctx.storage.delete(key);
+      console.log(JSON.stringify({ msg: "debug.node-ungrant", from: m.from, to: m.to }));
+      return send(ws, { type: "ungranted", from: m.from, to: m.to });
+    }
+    const until = this.now() + (m.ms ?? EVAL_GRANT_MS);
+    await this.ctx.storage.put(key, { from: m.from, to: m.to, until } satisfies NodeGrant);
+    console.log(
+      JSON.stringify({ msg: "debug.node-grant", from: m.from, to: m.to, until, by: home }),
+    );
+    send(ws, { type: "granted", from: m.from, to: m.to, until });
+  }
+
   private fromController(ws: Socket, c: ControllerAtt, raw: unknown): void | Promise<void> {
     const t = this.now();
     if (!c.until) return send(ws, { type: "error", error: "not approved yet" });
@@ -1044,12 +1194,33 @@ export class DebugHub {
         send(ws, { type: "beat", thread: dest.thread, delivered: pages.length, at: t });
       });
     }
+    if (m.value.type === "grant" || m.value.type === "ungrant") {
+      if (c.forUser)
+        return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
+      return this.nodeGrant(ws, c, m.value);
+    }
     if (m.value.type === "say") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
-      const { text, to } = m.value;
-      return this.sayTarget(to).then((dest) => {
+      const { text, to, node, agentId } = m.value;
+      // The sender's node: what the line says, within the node its socket listens at.
+      const home = c.node ?? ROOT_NODE;
+      const from = m.value.taskPath ?? home;
+      if (!isWithin(from, home)) {
+        const reason = `taskPath ${from} is outside this listener's node ${home}`;
+        return send(ws, { type: "error", error: reason, reason });
+      }
+      if (node && to) {
+        const reason = "address a thread or a node, not both";
+        return send(ws, { type: "error", error: reason, reason });
+      }
+      const scoped = node
+        ? this.nodeGrants().then((grants) => mayAddress(from, node, grants, t))
+        : Promise.resolve({ ok: true as const });
+      return Promise.all([scoped, this.sayTarget(to)]).then(([scope, dest]) => {
+        if (!scope.ok) return send(ws, { type: "error", error: scope.error, reason: scope.error });
         if ("error" in dest) return send(ws, { type: "error", error: dest.error });
+        const who = agentId ?? c.assignee;
         const said: ChatMessage & { thread: string } = {
           id: crypto.randomUUID().slice(0, 8),
           from: "agent",
@@ -1057,6 +1228,9 @@ export class DebugHub {
           text,
           at: t,
           ...dest,
+          ...(from !== ROOT_NODE ? { taskPath: from } : {}),
+          ...(who ? { agentId: who } : {}),
+          ...(node ? { to: node } : {}),
         };
         console.log(
           JSON.stringify({
@@ -1064,6 +1238,8 @@ export class DebugHub {
             pair: c.pair,
             controller: c.label,
             thread: said.thread,
+            ...(said.taskPath ? { taskPath: said.taskPath } : {}),
+            ...(said.to ? { to: said.to } : {}),
             len: text.length,
             head: head(text),
           }),

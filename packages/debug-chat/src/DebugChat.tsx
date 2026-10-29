@@ -6,9 +6,18 @@ import {
   MAX_CHAT,
   type PageInfo,
   type PairInfo,
+  ROOT_NODE,
+  type Sender,
+  completeNode,
+  lineNode,
+  nodePath,
   pageParts,
+  parseAddress,
+  pathLabel,
 } from "./wire";
 import { LiagentMark } from "./LiagentMark";
+import { Avatar } from "./Avatar";
+import { type AvatarSource, lineAvatar } from "./avatar-rules";
 import {
   CLIP_SINK_KEY,
   VOICE_SENT_EVENT,
@@ -35,9 +44,17 @@ import { Icon } from "./icons";
 import { LINE_HALO, logSurface } from "./log-surface";
 import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
 import { type AnchorSide, placeBox } from "./anchor";
-import { TreeFragment, useTreeSource } from "./TreeFragment";
+import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import type { Frontier } from "./frontier-view";
+import {
+  StateTree,
+  type TreeSource,
+  type TreeStrings,
+  treeStrings,
+  useTreeSource,
+} from "./StateTree";
+import { type TreeNode, crumbs, frontier as frontierOf } from "./state-tree";
 
 /** Typing pauses this long before the draft is sent. */
 const DEBOUNCE_MS = 3_000;
@@ -56,6 +73,29 @@ const DRAG_HINT = "drag: move · tap: minimize · double-tap: menu";
 const MARK_HINT = "Tap: minimize or restore · double-tap: menu · drag: move the chat";
 const ALIGN_ITEMS = { left: "items-start", center: "items-center", right: "items-end" } as const;
 const TEXT_ALIGN = { left: "left", center: "center", right: "right" } as const;
+/**
+ * The minimized bar's lines from a tree (state-tree.ts frontier()), in the
+ * shape the bar draws (frontier-view.ts): a group as its ≈ summary and count,
+ * its items with breadcrumbs and assignees; one item as its title.
+ */
+function toFrontierView(root: TreeNode | null): Frontier | undefined {
+  if (!root) return undefined;
+  const f = frontierOf(root);
+  const line = (e: (typeof f)["done"]) =>
+    e && {
+      text: e.count > 1 && e.summary ? e.summary : e.title,
+      count: e.count,
+      assignee: e.assignee,
+      items:
+        e.count > 1 ? e.items.map((it) => ({ title: it.title, path: crumbs(it.path), assignee: it.assignee })) : undefined,
+    };
+  const out: Frontier = {};
+  if (f.done) out.done = line(f.done);
+  if (f.doing) out.doing = line(f.doing);
+  if (f.next) out.next = line(f.next);
+  return out.done || out.doing || out.next ? out : undefined;
+}
+
 /** Wide enough for the tree and the log side by side. */
 const WIDE_QUERY = "(min-width: 768px)";
 /**
@@ -152,6 +192,9 @@ function useDrag() {
   const fit = (box: HTMLElement | null, wide: boolean) => {
     const bar = box?.querySelector("[data-debug-chat-row]")?.getBoundingClientRect();
     if (!box || !bar) return;
+    // Not laid out as the overlay yet (a hot-loaded widget's CSS still on its
+    // way): its rect means nothing, and a refit would save a wild offset.
+    if (getComputedStyle(box).position !== "fixed") return;
     const full = box.getBoundingClientRect();
     const row = { left: wide ? full.left : bar.left, right: wide ? full.right : bar.right };
     const top = safeTop();
@@ -216,6 +259,35 @@ const write = (key: string, v: string) => {
 };
 const synth = () => (typeof speechSynthesis === "undefined" ? null : speechSynthesis);
 
+/** The window event that sets the chat's target node (`detail`: a node path; "/" = main thread). */
+export const CHAT_TARGET_EVENT = "lk:debug-chat-target";
+/**
+ * Address the chat's next messages to a state-tree node (the state tree's
+ * selection calls this), or back to the main thread with "/". Also on
+ * `globalThis.__lkDebugChat.setTarget`, for code that cannot import it.
+ */
+export function setTarget(path: string) {
+  if (typeof window === "undefined") return;
+  keepTarget(nodePath(path) ?? ROOT_NODE);
+  window.dispatchEvent(new CustomEvent(CHAT_TARGET_EVENT, { detail: path }));
+}
+/**
+ * The target outlives the component on the window: a hot-loaded widget
+ * re-mounts on every rebuild (and may mount after a setTarget call).
+ */
+type TargetHolder = { __lkDebugChatTarget?: string };
+const keptTarget = () =>
+  typeof window === "undefined"
+    ? ROOT_NODE
+    : ((window as unknown as TargetHolder).__lkDebugChatTarget ?? ROOT_NODE);
+const keepTarget = (p: string) => {
+  if (typeof window !== "undefined") (window as unknown as TargetHolder).__lkDebugChatTarget = p;
+};
+if (typeof window !== "undefined")
+  (window as unknown as { __lkDebugChat?: { setTarget: typeof setTarget } }).__lkDebugChat = {
+    setTarget,
+  };
+
 
 /**
  * Read an agent reply aloud (voice.ts): queued behind any still being read,
@@ -263,7 +335,10 @@ export type DebugChatProps = {
   live: boolean;
   listeners: number;
   messages: ChatMessage[];
-  onSend: (text: string) => boolean;
+  /** Send a line; `to` is the state-tree node it is addressed to (absent = the main thread). */
+  onSend: (text: string, to?: string) => boolean;
+  /** The nodes listeners are subscribed at: "@/…" completions. */
+  nodes?: string[];
   /** Approved senders, listed in the pill's menu with an End button each. */
   sessions?: PairInfo[];
   onEnd?: (s: PairInfo) => void;
@@ -292,15 +367,39 @@ export type DebugChatProps = {
   onOpenPage?: (path: string) => void;
   /** Add this page to a pairing that was authorized for other pages only. */
   onAddPage?: (s: PairInfo) => void;
-  /** The state tree sheet's content (the tree button); without it, "No tree source". */
+  /**
+   * The tree panel's content, overriding `treeSource` (a host's own view).
+   * Without either: the dev fragment at lk:tree-src, else "No tree source".
+   */
   renderTree?: () => ReactNode;
   /**
    * Minimized, three lines above the bar: the last done, in progress, next
-   * (Frontier.tsx). Computed by the host.
+   * (Frontier.tsx). Overrides the lines computed from `treeSource`
+   * (state-tree.ts frontier()).
    */
   frontier?: Frontier;
   /** Draws an assignee's avatar (the host's Avatar); else an initial on a hashed colour. */
   renderAvatar?: RenderAvatar;
+  /**
+   * The state tree (StateTree.tsx): a URL serving its markdown, or a function
+   * returning markdown or nodes, or a feed. Shown by the tree button (and
+   * the menu's "Tree"); loaded again each time the tree opens. Its frontier
+   * feeds the minimized bar's lines.
+   */
+  treeSource?: TreeSource;
+  /** `owner/repo` that a bare `#123` in the tree links to. */
+  treeRepo?: string;
+  /** The tree's strings, localized by the host (English defaults). */
+  treeStrings?: Partial<TreeStrings>;
+  /**
+   * The agent's avatar on its lines: the host app's logo, as a URL or an
+   * element. Absent: the agent name's initial.
+   */
+  agentAvatar?: AvatarSource;
+  /** The viewer (hashed id, name, pictures in fallback order): their own lines' avatar. */
+  viewer?: Sender;
+  /** The host's own avatar for a line (its pictures are tried first). */
+  avatarFor?: (m: ChatMessage) => Sender | undefined;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -312,6 +411,9 @@ const QUIET: VoiceState = {
   queued: 0,
   paused: false,
 };
+
+/** A log line's avatar, square: fixed, so a picture loading late shifts nothing. */
+const AVATAR_PX = 18;
 
 /** The input grows to about five lines, then scrolls inside itself. */
 const INPUT_MAX_PX = 128;
@@ -337,6 +439,13 @@ export function DebugChat({
   renderTree,
   frontier,
   renderAvatar,
+  treeSource,
+  treeRepo,
+  treeStrings: treeText,
+  agentAvatar,
+  viewer,
+  avatarFor,
+  nodes = [],
 }: DebugChatProps) {
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
@@ -429,8 +538,17 @@ export function DebugChat({
   fitRef.current = () => fit(root.current, open);
   /** The tree's scroll, kept across the sheet ⇄ column switch. */
   const treeScroll = useRef(0);
-  /** Until the host passes `renderTree`: the dev fragment at lk:tree-src (TreeFragment.tsx). */
-  const fetchedTree = useTreeSource(tree && !renderTree);
+  /** Bumped each time the tree opens: the source loads again (never polled). */
+  const [treeRev, setTreeRev] = useState(0);
+  useEffect(() => {
+    if (tree) setTreeRev((n) => n + 1);
+  }, [tree]);
+  /** The host's tree (StateTree.tsx), loaded while it is open or the bar shows its frontier. */
+  const treeData = useTreeSource(treeSource, treeRev, treeRepo);
+  /** Without a host tree: the dev fragment at lk:tree-src (TreeFragment.tsx). */
+  const fetchedTree = useFragmentSource(tree && !renderTree && !treeSource);
+  /** The minimized bar's lines: the host's, else the tree's frontier. */
+  const shownFrontier = frontier ?? toFrontierView(treeData.root);
   /** The tree overflows (or is scrolled): its top edge fades, as the log's. */
   const [treeFade, setTreeFade] = useState(false);
   const treeBodyEl = useRef<HTMLDivElement | null>(null);
@@ -466,6 +584,20 @@ export function DebugChat({
   const endTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(endTimer.current), []);
   const [draft, setDraft] = useState("");
+  /** The node the next line goes to: the chip in the bar ("/" = the main thread, no chip). */
+  const [target, setTargetState] = useState(keptTarget);
+  const targetRef = useRef(target);
+  const aim = (p: string) => {
+    const n = nodePath(p) ?? ROOT_NODE;
+    targetRef.current = n;
+    keepTarget(n);
+    setTargetState(n);
+  };
+  useEffect(() => {
+    const on = (e: Event) => aim(String((e as CustomEvent).detail ?? ROOT_NODE));
+    window.addEventListener(CHAT_TARGET_EVENT, on);
+    return () => window.removeEventListener(CHAT_TARGET_EVENT, on);
+  }, []);
   /** Re-keys the drain bar on each keystroke; 0 while nothing is waiting. */
   const [armed, setArmed] = useState(0);
   const [offline, setOffline] = useState(false);
@@ -622,9 +754,23 @@ export function DebugChat({
   const submit = (): boolean => {
     clearTimeout(timer.current);
     setArmed(0);
-    const text = draftRef.current.trim();
+    let text = draftRef.current.trim();
+    // A leading "@/words › prefetch " addresses that node, and keeps it as the target.
+    const addr = parseAddress(text);
+    let to = targetRef.current;
+    if (addr) {
+      if (!addr.complete) return false;
+      to = addr.to;
+      aim(to);
+      text = addr.text;
+      if (!text) {
+        draftRef.current = "";
+        setDraft("");
+        return false;
+      }
+    }
     if (!text) return false;
-    if (!sendRef.current(text)) {
+    if (!sendRef.current(text, to === ROOT_NODE ? undefined : to)) {
       setOffline(true);
       return false;
     }
@@ -682,8 +828,15 @@ export function DebugChat({
       settledLen.current = text.length;
       if (burst) return submit();
     }
-    // While the mic listens or transcribes, nothing goes out by the debounce (Enter still sends).
-    if (composing.current || micOn.current || micPending.current || !draftRef.current.trim())
+    // While the mic listens or transcribes, or an "@/node" is half typed, nothing
+    // goes out by the debounce (Enter still sends).
+    if (
+      composing.current ||
+      micOn.current ||
+      micPending.current ||
+      !draftRef.current.trim() ||
+      parseAddress(draftRef.current)?.complete === false
+    )
       return setArmed(0);
     setArmed((n) => n + 1);
     timer.current = setTimeout(submit, DEBOUNCE_MS);
@@ -830,6 +983,20 @@ export function DebugChat({
     setSpeak(v);
     write(SPEAK_KEY, v ? "1" : "0");
     if (!v && !voice().state().mic) voice().stop();
+  };
+
+  /** The draft's "@/…" while it is typed: the listeners' nodes under it, to pick from. */
+  const addressing = /^@\/\S*(?:\s*›\s*\S*)*$/.test(draft) ? parseAddress(draft) : null;
+  const completions = addressing && !addressing.complete ? completeNode(draft, nodes) : [];
+  /** The target a typed "@/node " would set (a preview), else the chip's. */
+  const typed = parseAddress(draft);
+  const preview = typed?.complete === true;
+  const shownTarget = preview && typed ? typed.to : target;
+  const pick = (n: string) => {
+    aim(n);
+    draftRef.current = "";
+    setDraft("");
+    input.current?.focus();
   };
 
   /** A pairing authorized for some pages only, not including this one. */
@@ -1002,7 +1169,21 @@ export function DebugChat({
         {...logSurface({ expanded: typing || micActive, fade: treeFade })}
       >
         {renderTree?.() ??
-          (fetchedTree ? (
+          (treeSource ? (
+            <StateTree
+              root={treeData.root ?? undefined}
+              live={treeData.live}
+              repo={treeRepo}
+              strings={treeText}
+              status={
+                treeData.error
+                  ? `${treeStrings(treeText).failed} (${treeData.error})`
+                  : treeData.root
+                    ? undefined
+                    : treeStrings(treeText).loading
+              }
+            />
+          ) : fetchedTree ? (
             <TreeFragment state={fetchedTree} />
           ) : (
             <p data-testid="debug-chat-tree-empty" className="text-gray-500">
@@ -1037,7 +1218,7 @@ export function DebugChat({
    * bar in one box, on the bar's side of the screen (anchor.ts), clamped
    * inside the viewport.
    */
-  const floatBoxEl = !open && (floats.length > 0 || !!frontier || tree) && (
+  const floatBoxEl = !open && (floats.length > 0 || !!shownFrontier || tree) && (
     <div
       ref={setFloatBox}
       data-testid="debug-chat-float-box"
@@ -1047,8 +1228,8 @@ export function DebugChat({
     >
       {tree && treePanel(false)}
       {floatsEl}
-      {frontier && (
-        <FrontierLines frontier={frontier} renderAvatar={renderAvatar} align={place.side} />
+      {shownFrontier && (
+        <FrontierLines frontier={shownFrontier} renderAvatar={renderAvatar} align={place.side} />
       )}
     </div>
   );
@@ -1124,6 +1305,22 @@ export function DebugChat({
         >
           <span aria-hidden className="inline-block size-2.5 rounded-sm bg-current" />
           Stop reading{vs.queued > 1 ? ` (${vs.queued} sentences left)` : ""}
+        </button>
+      )}
+      {treeSource && (
+        <button
+          type="button"
+          role="menuitemcheckbox"
+          aria-checked={tree}
+          data-testid="debug-menu-tree"
+          // The tree button's panel (one panel at a time: the menu closes).
+          onClick={() => setPanel("tree")}
+          className="flex items-center gap-2 px-3 py-1.5 text-start"
+        >
+          <span aria-hidden className="w-[1em] text-center">
+            ☰
+          </span>
+          {treeStrings(treeText).tree}
         </button>
       )}
       <button
@@ -1270,36 +1467,63 @@ export function DebugChat({
         {messages.length === 0 && (
           <li className="text-gray-500">Type here; it is sent 3 s after you stop.</li>
         )}
-        {/* A game-style log: one line per message, "name: text", no bubbles. */}
-        {messages.map((m, i) => (
-          // The time only on hover (long press on a phone): name and text are the line.
-          <li
-            key={m.id}
-            data-testid="debug-chat-line"
-            data-from={m.from}
-            title={when(m.at)}
-            className="whitespace-pre-wrap break-words leading-snug"
-          >
-            <span
-              className="me-1 font-medium"
-              style={{
-                color: m.from !== "agent" ? "oklch(0.55 0.13 250)" : "oklch(0.55 0.14 150)",
-              }}
+        {/* A game-style log: one line per message, avatar then text, no bubbles. */}
+        {messages.map((m, i) => {
+          const who = lineAvatar(m, { friend, viewer, agentAvatar, avatarFor });
+          // The state-tree node a line belongs to: a muted subtitle and a left border by its hue.
+          const node = lineNode(m);
+          return (
+            // The time only on hover (long press on a phone); the avatar's own title names who.
+            <li
+              key={m.id}
+              data-testid="debug-chat-line"
+              data-from={m.from}
+              data-node={node?.node}
+              title={node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)}
+              className="flex items-start gap-1.5 leading-snug"
+              style={
+                node
+                  ? { borderInlineStart: `2px solid ${node.border}`, paddingInlineStart: 4 }
+                  : undefined
+              }
             >
-              {m.from !== "agent" ? "you" : m.label || "agent"}:
-            </span>
-            {m.text}
-            {!agentOnline && m.from !== "agent" && i > lastAgent && (
-              <span
-                data-testid="debug-chat-queued"
-                className="ms-1 text-[10px] text-gray-500"
-                title="The agent is offline: this is delivered when it is back"
-              >
-                · waiting for the agent
+              {/* Screen readers hear the name once, from the sr-only span. */}
+              <Avatar
+                src={who.src}
+                name={who.name}
+                initialFrom={who.initialFrom}
+                seed={who.seed}
+                size={AVATAR_PX}
+                hidden
+              />
+              <span className="min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
+                {node && (
+                  <span
+                    aria-hidden
+                    data-testid="debug-chat-node"
+                    className="block truncate text-[10px] leading-tight text-gray-500"
+                  >
+                    {node.subtitle}
+                  </span>
+                )}
+                <span className="sr-only">
+                  {who.name}
+                  {node ? ` (${node.subtitle})` : ""}:{" "}
+                </span>
+                {m.text}
+                {!agentOnline && m.from !== "agent" && i > lastAgent && (
+                  <span
+                    data-testid="debug-chat-queued"
+                    className="ms-1 text-[10px] text-gray-500"
+                    title="The agent is offline: this is delivered when it is back"
+                  >
+                    · waiting for the agent
+                  </span>
+                )}
               </span>
-            )}
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ol>
       {open && warning && (
         <div
@@ -1328,6 +1552,60 @@ export function DebugChat({
         }}
         style={{ gridTemplateColumns: open ? "1fr 0fr" : "0fr 1fr" }}
       >
+        {open && (shownTarget !== ROOT_NODE || completions.length > 0) && (
+          // The target node (a chip: × back to the main thread) and "@/…" completions.
+          <div className="pointer-events-none absolute start-20 bottom-full mb-1 flex max-w-[calc(100%-6rem)] flex-col items-start gap-1">
+            {completions.length > 0 && (
+              <ul
+                role="listbox"
+                aria-label="Nodes to address"
+                data-testid="debug-chat-nodes"
+                style={{ background: INPUT_BG }}
+                className="pointer-events-auto max-w-full list-none overflow-hidden rounded-lg border border-current/25 py-0.5 text-[11px] backdrop-blur"
+              >
+                {completions.map((n) => (
+                  <li key={n} role="option" aria-selected={false}>
+                    <button
+                      type="button"
+                      data-testid="debug-chat-node-option"
+                      // Keeps the input's focus.
+                      onPointerDown={(e) => e.preventDefault()}
+                      onClick={() => pick(n)}
+                      className="block w-full truncate px-2 py-0.5 text-start"
+                    >
+                      {pathLabel(n)}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {shownTarget !== ROOT_NODE && (
+              <span
+                data-testid="debug-chat-target"
+                data-node={shownTarget}
+                style={{
+                  background: INPUT_BG,
+                  borderColor: lineNode({ from: "owner", to: shownTarget })?.border,
+                }}
+                className={`pointer-events-auto inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 text-[10px] leading-4 text-gray-600 dark:text-gray-300 ${preview ? "opacity-70" : ""}`}
+              >
+                <span className="truncate">→ {pathLabel(shownTarget)}</span>
+                {!preview && (
+                  <button
+                    type="button"
+                    data-testid="debug-chat-target-clear"
+                    aria-label="Send to the main thread instead"
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={() => aim(ROOT_NODE)}
+                    className="leading-none"
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
+            )}
+          </div>
+        )}
         {open && scrolledUp && (
           // The row stays click-through; only the button takes taps.
           <div className="pointer-events-none absolute inset-x-0 bottom-full mb-1 flex justify-end">
@@ -1431,9 +1709,11 @@ export function DebugChat({
                       ? DRAG_HINT
                       : interim
                         ? ""
-                        : agentOnline
-                          ? "Message the agent…"
-                          : "Agent offline — your message waits for it…"
+                        : target !== ROOT_NODE
+                          ? `Message ${pathLabel(target)}…`
+                          : agentOnline
+                            ? "Message the agent…"
+                            : "Agent offline — your message waits for it…"
                   }
                   onScroll={(e) => {
                     if (mirror.current) mirror.current.scrollTop = e.currentTarget.scrollTop;
@@ -1471,10 +1751,19 @@ export function DebugChat({
                     if (composing.current || (e.nativeEvent as InputEvent).isComposing) return;
                     if (shiftEnter.current) return; // Shift+Enter: a newline, as on desktop
                     e.preventDefault();
+                    if (completions[0]) return pick(completions[0]);
                     submit();
                   }}
                   onKeyDown={(e) => {
                     shiftEnter.current = e.key === "Enter" && e.shiftKey;
+                    // "@/wo" + Tab (or Enter): the first completion becomes the target.
+                    if ((e.key === "Tab" || e.key === "Enter") && !e.shiftKey && completions[0]) {
+                      e.preventDefault();
+                      return pick(completions[0]);
+                    }
+                    // Backspace in an empty input drops the target chip.
+                    if (e.key === "Backspace" && !draftRef.current && targetRef.current !== ROOT_NODE)
+                      return aim(ROOT_NODE);
                     if (e.key !== "Enter" || e.shiftKey) return;
                     // Enter that confirms an IME candidate (Safari reports it as 229
                     // after compositionend) must not send.

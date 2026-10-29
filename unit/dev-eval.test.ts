@@ -2,12 +2,15 @@ import { describe, expect, it } from "bun:test";
 import {
   CHAT_HISTORY,
   MAX_CHAT,
+  MAX_CHUNK,
+  MAX_CHUNKS,
   MAX_CODE,
   MAX_LABEL,
   BUSY_GRACE_MS,
   BUSY_MS,
   type ChatMessage,
   chatText,
+  chunkMessages,
   cleanLabel,
   compile,
   isUserId,
@@ -110,6 +113,71 @@ describe("compile", () => {
 
   it("rejects with the thrown error", async () => {
     expect(compile("throw new Error('nope')")()).rejects.toThrow("nope");
+  });
+
+  it("hands the code $lk, the page's streaming context", async () => {
+    const sent: string[] = [];
+    const lk = { send: (d: string) => sent.push(d) - 1 };
+    expect(await compile("$lk.send('a') + $lk.send('b')")(lk)).toBe(1);
+    expect(sent).toEqual(["a", "b"]);
+    expect(await compile("typeof $lk")()).toBe("undefined");
+  });
+});
+
+describe("streamed chunks", () => {
+  it("cuts a piece into ordered chunks that join back to it", () => {
+    const data = "abcdefghij";
+    const ms = chunkMessages("e1", "p1", 2, data, 4);
+    expect(ms.map((m) => [m.seq, m.total, m.data])).toEqual([
+      [0, 3, "abcd"],
+      [1, 3, "efgh"],
+      [2, 3, "ij"],
+    ]);
+    expect(
+      ms.every((m) => m.type === "chunk" && m.id === "e1" && m.to === "p1" && m.part === 2),
+    ).toBe(true);
+    expect(ms.map((m) => m.data).join("")).toBe(data);
+  });
+
+  it("sends an empty piece as one empty chunk, and refuses one too large", () => {
+    expect(chunkMessages("e", "p", 0, "")).toEqual([
+      { type: "chunk", id: "e", to: "p", part: 0, seq: 0, total: 1, data: "" },
+    ]);
+    expect(() => chunkMessages("e", "p", 0, "x".repeat(MAX_CHUNKS + 1), 1)).toThrow("too large");
+  });
+
+  it("the hub accepts a full-size chunk, though it is far over the usual message size", () => {
+    const [m] = chunkMessages("e", "p", 0, "A".repeat(MAX_CHUNK));
+    expect(JSON.stringify(m).length).toBeGreaterThan(MAX_CODE + 2048);
+    expect(parsePageMessage(JSON.stringify(m))).toEqual(m);
+    // Data that JSON escapes still fits.
+    const [esc] = chunkMessages("e", "p", 0, "\u0001".repeat(MAX_CHUNK));
+    expect(parsePageMessage(JSON.stringify(esc))).toEqual(esc);
+  });
+
+  it("drops a malformed chunk, and any other message that large", () => {
+    const ok = { type: "chunk" as const, id: "e", to: "p", part: 0, seq: 0, total: 1, data: "x" };
+    expect(parsePageMessage(JSON.stringify(ok))).toEqual(ok);
+    for (const bad of [
+      { ...ok, id: undefined },
+      { ...ok, to: "" },
+      { ...ok, part: -1 },
+      { ...ok, part: 1.5 },
+      { ...ok, seq: 1 },
+      { ...ok, total: 0 },
+      { ...ok, total: MAX_CHUNKS + 1 },
+      { ...ok, data: 5 },
+      { ...ok, data: "x".repeat(MAX_CHUNK + 1) },
+    ])
+      expect(parsePageMessage(JSON.stringify(bad))).toBeNull();
+    const big = JSON.stringify({
+      type: "chat",
+      id: "c",
+      text: "x",
+      pad: "y".repeat(MAX_CODE + 2048),
+    });
+    expect(parsePageMessage(big)).toBeNull();
+    expect(parsePageMessage("x".repeat(MAX_CHUNK * 7))).toBeNull();
   });
 });
 
@@ -314,4 +382,32 @@ describe("pairing: requested scope, pages, wording", () => {
     expect(allowLabel(2, 3, true)).toBe("Authorize 2 pages");
     expect(allowLabel(1, 3, false)).toBe("Authorize 1 page");
   });
+});
+
+it("pickVoice skips iOS Eloquence and novelty voices", () => {
+  const vs = [
+    { lang: "zh-CN", name: "Eddy", default: true, voiceURI: "com.apple.eloquence.zh-CN.Eddy" },
+    {
+      lang: "zh-CN",
+      name: "Tingting",
+      default: true,
+      voiceURI: "com.apple.voice.compact.zh-CN.Tingting",
+    },
+    {
+      lang: "en-US",
+      name: "Bahh",
+      default: true,
+      voiceURI: "com.apple.speech.synthesis.voice.Bahh",
+    },
+    {
+      lang: "en-US",
+      name: "Samantha",
+      default: true,
+      voiceURI: "com.apple.voice.compact.en-US.Samantha",
+    },
+    { lang: "en-US", name: "Ava", default: true, voiceURI: "com.apple.voice.premium.en-US.Ava" },
+  ];
+  expect(pickVoice(vs, "zh-CN")?.name).toBe("Tingting");
+  expect(pickVoice(vs, "en-US")?.name).toBe("Ava");
+  expect(pickVoice(vs.slice(0, 1), "zh-CN")?.name).toBe("Eddy");
 });

@@ -45,6 +45,26 @@
  *       eval implies chat; never pairs), and exit: to the owner by default, or to
  *       a friend's thread by user id or email.
  *
+ *   bun scripts/dev/eval.ts say --to /words/audio "text"
+ *       Address a state-tree node instead of a thread (a `--to` starting
+ *       with "/"): its listener gets it, its ancestors observe it. Allowed
+ *       into the sender's own subtree and upward; anything else needs a
+ *       grant (below), else {"type":"error","reason":"out of scope: …"}.
+ *
+ *   bun scripts/dev/eval.ts grant --from /words/prefetch --to /words/audio [--hours 8]
+ *   bun scripts/dev/eval.ts ungrant --from /words/prefetch --to /words/audio
+ *       Let senders within one node address another (or take it back): only
+ *       from a listener whose node holds both — the main one ("/") always may.
+ *
+ *   --task-path /words/prefetch   (or env LIANKI_TASK_PATH)
+ *   --agent <name>                (or env LIANKI_AGENT)
+ *       Where this process sits in the state tree, for `chat`, `serve`,
+ *       `say`, `busy` and `grant`: `chat` hears the lines addressed to that
+ *       node (and, marked "observed": true, to the nodes below it) instead of
+ *       the main thread; `say` lines carry the node as `taskPath` and the
+ *       name as `agentId`, shown under the avatar as "/words › prefetch". A
+ *       sub-agent sets the env vars once. docs/dev-debug-widget.md, "Node paths".
+ *
  *   bun scripts/dev/eval.ts busy [--to <thread|email>] [--label "…"]
  *                                   [--every <s> [--keep] [--max <s>]]
  *       The heartbeat behind the chat's "agent is working" spinner, with the
@@ -86,21 +106,23 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir, hostname } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
+import { type NodeOpts, chatLine, nodeOpts } from "./node-args";
+import { routeTo } from "@/lib/dev-eval";
 import { type BusyArgs, beatMessage, endsBeat, idleFor, parseBusyArgs } from "./busy";
+import { ENDED, GRANT_INVALID, chatClose, chatStep, serveClose } from "./eval-grant";
 import {
-  ENDED,
-  GRANT_INVALID,
-  chatClose,
-  chatStep,
-  evalStep,
-  grantFileBody,
-  readGrantFile,
-  serveClose,
-} from "./eval-grant";
+  EVAL_TOKEN_FILE,
+  type Msg,
+  TOKEN_FILE,
+  chatGrant,
+  controller,
+  loadToken,
+  run,
+  saveTo,
+} from "./eval-socket";
 
-const BASE = (process.env.LIANKI_URL ?? "https://lianki.com").replace(/\/+$/, "");
 /** The running `serve`'s port and token: one file for the owner, one per friend. */
 const sessionFile = (forEmail?: string) =>
   join(
@@ -111,73 +133,6 @@ const sessionFile = (forEmail?: string) =>
       ? `eval-session-${forEmail.toLowerCase().replace(/[^a-z0-9@._-]/g, "_")}.json`
       : "eval-session.json",
   );
-/** How long to wait for the pages' results after sending. */
-const RESULT_MS = 20_000;
-const PAIR_MS = 2 * 60_000;
-
-type Msg = Record<string, unknown> & { type?: string };
-
-/** The main checkout's root, shared by every worktree: where the grant tokens live. */
-function mainRoot() {
-  const git = Bun.spawnSync(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], {
-    cwd: import.meta.dir,
-  });
-  const common = git.success ? git.stdout.toString().trim() : "";
-  return common ? dirname(common) : join(import.meta.dir, "..", "..");
-}
-const tokenFile = (name: string, env: string) =>
-  process.env[env] ? resolve(process.env[env]) : join(mainRoot(), name);
-/** The chat grant (30 days, chat only). */
-const TOKEN_FILE = tokenFile(".debug-chat-token.json", "LIANKI_CHAT_TOKEN_FILE");
-/** The eval grant (8 hours, eval and chat). */
-const EVAL_TOKEN_FILE = tokenFile(".debug-eval-token.json", "LIANKI_EVAL_TOKEN_FILE");
-const loadFrom = (file: string) => {
-  let text: string | undefined;
-  try {
-    text = readFileSync(file, "utf8");
-  } catch {}
-  return readGrantFile(text, Date.now());
-};
-const saveTo = (file: string, token: string, until: number) => {
-  writeFileSync(file, grantFileBody(token, until), { mode: 0o600 });
-  chmodSync(file, 0o600);
-};
-const loadToken = () => loadFrom(TOKEN_FILE);
-const loadEvalToken = () => loadFrom(EVAL_TOKEN_FILE);
-/** A grant that may chat: the chat grant, else the eval grant (eval implies chat). */
-const chatGrant = () => {
-  const chat = loadToken();
-  if (chat) return { token: chat, file: TOKEN_FILE };
-  const ev = loadEvalToken();
-  return ev ? { token: ev, file: EVAL_TOKEN_FILE } : undefined;
-};
-/** Resuming a grant without --label keeps the label it was approved under. */
-const controlUrl = (
-  token?: string,
-  forEmail?: string,
-  scope: "chat" | "eval" = "eval",
-  beat = false,
-) =>
-  `${BASE.replace(/^http/, "ws")}/api/version/debug/control?label=${encodeURIComponent(token ? (labelFlag ?? "") : label)}&scope=${scope}${forEmail ? `&for=${encodeURIComponent(forEmail)}` : ""}${beat ? "&beat=1" : ""}`;
-/**
- * Bun's WebSocket takes headers, so the grant goes in one, never in the URL
- * (the repo type-checks with the DOM lib's constructor, hence the cast).
- * `forEmail` asks for a pairing on that friend's pages, which needs the grant.
- * `scope` is what a fresh pairing asks for: "chat" (the 30-day grant, for the
- * listener) or "eval" (code and chat for 8 hours); the owner's Allow grants it.
- * `beat`: a heartbeat-only socket (`busy`), not a session nor a listener.
- */
-const openControl = (
-  token?: string,
-  forEmail?: string,
-  scope: "chat" | "eval" = "eval",
-  beat = false,
-) =>
-  token
-    ? new WebSocket(controlUrl(token, forEmail, scope, beat), {
-        headers: { "x-debug-token": token },
-      } as unknown as string[])
-    : new WebSocket(controlUrl(undefined, undefined, scope));
 
 const args = process.argv.slice(2);
 // --help is not code to run on the owner's pages: print the usage above.
@@ -208,144 +163,22 @@ const target = flag("--target");
 const out = flag("--out");
 const to = flag("--to");
 const forEmail = flag("--for");
+const fromFlag = flag("--from");
+const hoursFlag = flag("--hours");
+const placed = nodeOpts({ taskPath: flag("--task-path"), agent: flag("--agent") });
+if ("error" in placed) {
+  console.error(placed.error);
+  process.exit(2);
+}
+const where: NodeOpts = placed;
 const SESSION = sessionFile(forEmail);
-
-/**
- * Open the controller socket and wait for the owner's answer — once: a
- * timeout, Deny or close rejects, and nothing here asks again. The owner's
- * Allow hands over the eval grant, saved for the next run.
- */
-function pair(): Promise<WebSocket> {
-  return new Promise((resolve, reject) => {
-    let ws: WebSocket;
-    if (forEmail) {
-      const grant = chatGrant();
-      if (!grant)
-        return reject(
-          new Error(`--for needs the chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`),
-        );
-      ws = openControl(grant.token, forEmail);
-    } else ws = openControl();
-    const give = setTimeout(() => {
-      ws.close();
-      reject(new Error("no answer on the page within 2 minutes"));
-    }, PAIR_MS);
-    ws.onmessage = (e) => {
-      const m = JSON.parse(String(e.data)) as Msg;
-      if (m.type === "pending" && forEmail)
-        console.error(
-          `Asking ${forEmail} for a 1-hour preview. Tell them in the chat to allow code  ${m.code}\n` +
-            `  e.g. bun scripts/dev/eval.ts say --to ${forEmail} "Tap Allow on the preview request with code ${m.code}"`,
-        );
-      else if (m.type === "pending")
-        console.error(
-          `Pairing as "${label}" (code and chat, 8 hours). On the page, tap Allow if it shows code  ${m.code}`,
-        );
-      else if (m.type === "approved") {
-        clearTimeout(give);
-        ws.onmessage = null;
-        if (!forEmail && typeof m.token === "string")
-          saveTo(EVAL_TOKEN_FILE, m.token, Number(m.until));
-        console.error(`Approved until ${new Date(Number(m.until)).toLocaleTimeString()}.`);
-        resolve(ws);
-      } else if (m.type === "error" || m.type === "denied" || m.type === "expired") {
-        clearTimeout(give);
-        reject(new Error(String(m.error ?? m.type)));
-      }
-    };
-    ws.onclose = (e) => {
-      clearTimeout(give);
-      reject(new Error(`socket closed (${e.code}${e.reason ? ` ${e.reason}` : ""})`));
-    };
-  });
-}
-
-/**
- * Reconnect with the saved eval grant: the approved socket, or `rejected`
- * when the hub no longer knows the token (4498). Never prompts.
- */
-function resumeEval(token: string): Promise<{ ws: WebSocket } | { rejected: true }> {
-  return new Promise((resolve, reject) => {
-    const ws = openControl(token);
-    const give = setTimeout(() => {
-      ws.close();
-      reject(new Error("no answer from the hub within 15 s"));
-    }, 15_000);
-    ws.onmessage = (e) => {
-      const m = JSON.parse(String(e.data)) as Msg;
-      if (m.type !== "approved") return;
-      clearTimeout(give);
-      ws.onmessage = null;
-      ws.onclose = null;
-      if (m.scope !== "eval") {
-        ws.close();
-        return reject(new Error(`${EVAL_TOKEN_FILE} holds a ${String(m.scope)} grant, not eval`));
-      }
-      console.error(`Resumed the eval grant until ${new Date(Number(m.until)).toLocaleString()}.`);
-      resolve({ ws });
-    };
-    ws.onclose = (e) => {
-      clearTimeout(give);
-      if (e.code === GRANT_INVALID) resolve({ rejected: true });
-      else reject(new Error(`socket closed (${e.code}${e.reason ? ` ${e.reason}` : ""})`));
-    };
-  });
-}
-
-/** Whether this process has asked the owner already: it does so at most once. */
-let paired = false;
-
-/**
- * An approved eval socket: the saved grant first; a pairing only when there
- * is none or the hub refused it, at most once per process, never with
- * --no-pair. A resume that fails for any other reason (network) fails —
- * it never falls back to prompting. (evalStep has the rules.)
- */
-async function evalSocket(): Promise<WebSocket> {
-  const token = forEmail ? undefined : loadEvalToken();
-  let step = evalStep({ token, noPair, paired });
-  if (step.kind === "resume") {
-    const r = await resumeEval(step.token);
-    if ("ws" in r) return r.ws;
-    rmSync(EVAL_TOKEN_FILE, { force: true });
-    console.error("Saved eval grant refused (expired or ended).");
-    step = evalStep({ token, rejected: true, noPair, paired });
-  }
-  if (step.kind === "fail") throw new Error(step.error);
-  paired = true;
-  return pair();
-}
-
-/** Send one command over an approved socket; resolve with every page's result. */
-function run(ws: WebSocket, code: string, target?: string): Promise<Msg[]> {
-  return new Promise((resolve, reject) => {
-    let id: string | undefined;
-    let expected = Infinity;
-    const results: Msg[] = [];
-    const done = () => {
-      clearTimeout(give);
-      ws.removeEventListener("message", on);
-      resolve(results);
-    };
-    const give = setTimeout(done, RESULT_MS);
-    const on = (e: MessageEvent) => {
-      const m = JSON.parse(String(e.data)) as Msg;
-      if (m.type === "sent" && !id) {
-        id = String(m.id);
-        expected = Number(m.delivered);
-        console.error(`eval ${id}: delivered to ${expected} page(s)`);
-      } else if (m.type === "result" && m.id === id) results.push(m);
-      else if (m.type === "error" || m.type === "expired" || m.type === "revoked") {
-        clearTimeout(give);
-        ws.removeEventListener("message", on);
-        return reject(new Error(String(m.error ?? m.type)));
-      }
-      if (results.length >= expected) done();
-    };
-    ws.addEventListener("message", on);
-    ws.send(JSON.stringify({ type: "eval", code, target }));
-  });
-}
+const { openControl, evalSocket } = controller({
+  label,
+  labelFlag,
+  forEmail,
+  noPair,
+  ...where,
+});
 
 async function serve() {
   let ws: WebSocket | null = await evalSocket();
@@ -449,19 +282,16 @@ function chat(out?: string) {
     console.log(line);
     if (out) appendFileSync(out, `${line}\n`);
   };
-  const emit = (m: Msg) => {
-    if (m.from === "agent" || typeof m.id !== "string" || seen.has(m.id)) return;
+  /** A line routed to this listener (the hub's `observed`, or worked out for history). */
+  const emit = (
+    m: Msg,
+    observed = routeTo(where.node, m.to as string | undefined) === "observed",
+  ) => {
+    if (typeof m.id !== "string" || seen.has(m.id)) return;
+    const line = chatLine(m, where, observed);
+    if (!line) return;
     seen.add(m.id);
-    print({
-      type: "chat",
-      id: m.id,
-      thread: m.thread ?? "owner",
-      email: m.email ?? null,
-      from: m.from,
-      text: m.text,
-      at: new Date(Number(m.at)).toISOString(),
-      label: m.label,
-    });
+    print(line);
   };
   /**
    * No grant, and the owner was asked once already: say so and wait — not
@@ -505,7 +335,7 @@ function chat(out?: string) {
           if (first && typeof h.id === "string") seen.add(h.id);
           else emit(h);
         first = false;
-      } else if (m.type === "chat" && m.message) emit(m.message as Msg);
+      } else if (m.type === "chat" && m.message) emit(m.message as Msg, m.observed === true);
       else if (m.type === "pages-idle" || m.type === "pages-back") {
         // Every page of a thread closed for a minute, or the first one back.
         // The listener stays (its socket is hibernated, it costs nothing) so
@@ -576,14 +406,23 @@ function say(text: string, to?: string): Promise<Msg> {
     ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data)) as Msg;
       if (m.type === "approved")
-        ws.send(JSON.stringify(to ? { type: "say", text, to } : { type: "say", text }));
+        ws.send(
+          JSON.stringify({
+            type: "say",
+            text,
+            ...(to ? { to } : {}),
+            ...(where.node ? { taskPath: where.node } : {}),
+            ...(where.agent ? { agentId: where.agent } : {}),
+          }),
+        );
       else if (m.type === "said") {
         clearTimeout(give);
         ws.close();
         resolve(m);
       } else if (m.type === "error") {
         clearTimeout(give);
-        reject(new Error(String(m.error)));
+        ws.close();
+        reject(new Error(String(m.reason ?? m.error)));
       }
     };
     ws.onclose = (e) => {
@@ -672,7 +511,56 @@ function busy(w: BusyArgs): Promise<void> {
   });
 }
 
+/** A node grant (or its end) from this listener's node; resolves with the hub's ack. */
+function nodeGrant(type: "grant" | "ungrant", from: string, toNode: string, hours?: number) {
+  const grant = chatGrant();
+  if (!grant)
+    return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
+  return new Promise<Msg>((resolve, reject) => {
+    const ws = openControl(grant.token);
+    const give = setTimeout(() => {
+      ws.close();
+      reject(new Error("no answer from the hub within 15 s"));
+    }, 15_000);
+    const done = (fn: () => void) => {
+      clearTimeout(give);
+      ws.close();
+      fn();
+    };
+    ws.onmessage = (e) => {
+      const m = JSON.parse(String(e.data)) as Msg;
+      if (m.type === "approved")
+        ws.send(
+          JSON.stringify({
+            type,
+            from,
+            to: toNode,
+            ...(hours ? { ms: Math.round(hours * 3_600_000) } : {}),
+          }),
+        );
+      else if (m.type === "granted" || m.type === "ungranted") done(() => resolve(m));
+      else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
+    };
+    ws.onclose = (e) => {
+      clearTimeout(give);
+      if (e.code === GRANT_INVALID) rmSync(grant.file, { force: true });
+      reject(new Error(`socket closed (${e.code}${e.reason ? ` ${e.reason}` : ""})`));
+    };
+  });
+}
+
 async function main() {
+  if (args[0] === "grant" || args[0] === "ungrant") {
+    if (!fromFlag || !to) {
+      console.error(
+        `usage: bun scripts/dev/eval.ts ${args[0]} --from /node/a --to /node/b${args[0] === "grant" ? " [--hours 8]" : ""}`,
+      );
+      process.exit(2);
+    }
+    const hours = hoursFlag ? Number(hoursFlag) : undefined;
+    console.log(JSON.stringify(await nodeGrant(args[0], fromFlag, to, hours)));
+    return;
+  }
   if (args[0] === "busy") {
     const w = parseBusyArgs([
       ...args.slice(1),
