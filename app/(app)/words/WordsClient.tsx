@@ -21,7 +21,8 @@ import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/wor
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
 import { nextGoal, termTarget } from "@/lib/words/columns";
-import { MIN_JERK_EASING, moveSeconds, springStep } from "@/lib/words/motion";
+import { MIN_JERK_EASING, minJerk, moveSeconds, springStep } from "@/lib/words/motion";
+import { CORD_BOW, cordPath, cordPull } from "@/lib/words/cords";
 import {
   type Axis,
   lockAxis,
@@ -1602,6 +1603,11 @@ function Study({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** The row whose other actions are open (double tap / right click). */
+  const [sheet, setSheet] = useState<number | null>(null);
+  const lastTap = useRef({ i: -1, t: 0 });
+  const sheetOpen = useRef(false);
+  sheetOpen.current = sheet !== null;
   const sync = useSyncStatus();
   /** The queue was built from the offline copy. */
   const [offlineCopy, setOfflineCopy] = useState(false);
@@ -1964,6 +1970,8 @@ function Study({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const row = rowRef.current;
+      // The action sheet is open: its keys are its own (Escape closes it).
+      if (sheetOpen.current) return;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
@@ -2412,26 +2420,38 @@ function Study({
                   key={i}
                   index={i}
                   touch={touch}
+                  loose={touch ? i === focusLine : i === row}
                   onHover={() => moveRow(i)}
+                  onMore={() => setSheet(i)}
                   scrolling={scrollingNow}
                   // Desktop click = Again; on touch a tap reveals and reads it.
-                  onTap={() =>
-                    touch
-                      ? // A tap focuses the row, as the cursor does on desktop.
-                        (setFocusLine(i),
-                        speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang, true),
-                        setRevealed((s) => {
-                          const n = new Set(s);
-                          if (n.has(i)) n.delete(i);
-                          else n.add(i);
-                          return n;
-                        }))
-                      : grade(i, 1)
-                  }
-                  onSwipeStart={() =>
-                    swipeSpeak &&
-                    speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang)
-                  }
+                  onTap={(now) => {
+                    if (!touch) return grade(i, 1);
+                    // A double tap: the slip's other actions, in a sheet. Timed
+                    // by the events themselves: a slow render after the first
+                    // tap must not stretch the gap.
+                    const second = lastTap.current.i === i && now - lastTap.current.t < 300;
+                    lastTap.current = second ? { i: -1, t: 0 } : { i, t: now };
+                    // A tap focuses the row (loosens its cords), as the cursor
+                    // does on desktop; it reveals the answer and says the word.
+                    setFocusLine(i);
+                    if (!second)
+                      speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang, true);
+                    // The second tap undoes the first one's reveal.
+                    setRevealed((s) => {
+                      const n = new Set(s);
+                      if (n.has(i)) n.delete(i);
+                      else n.add(i);
+                      return n;
+                    });
+                    if (second) setSheet(i);
+                  }}
+                  onSwipeStart={() => {
+                    // Only a loose slip slides: a swipe on a tied one loosens it first.
+                    if (touch) setFocusLine(i);
+                    if (swipeSpeak)
+                      speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang);
+                  }}
                   onHold={() => {
                     setHolding(i);
                     speech.loop(
@@ -2446,7 +2466,7 @@ function Study({
                   }}
                   onSwipe={(r) => {
                     grade(i, r);
-                    if (touch && i === focusLine) setFocusLine(Math.min(queue.length - 1, i + 1));
+                    if (touch) setFocusLine(Math.min(queue.length - 1, i + 1));
                     if (swipeScroll) listRef.current?.scrollBy({ top: ROW_H, behavior: "smooth" });
                   }}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none border-b ${
@@ -2455,13 +2475,7 @@ function Study({
                       : hasExamples
                         ? "grid-cols-[1.25rem_var(--term-w,12rem)_minmax(10rem,1fr)_minmax(12rem,1.4fr)_3.5rem] text-[15px]"
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] text-[15px]"
-                  } ${rating ? RATING_STYLE[rating] : ""} ${
-                    i === row && !touch
-                      ? "outline outline-2 -outline-offset-2 outline-blue-600"
-                      : touch && i === focusLine
-                        ? "shadow-[inset_3px_0_0_0] shadow-emerald-500"
-                        : ""
-                  }`}
+                  } ${rating ? RATING_STYLE[rating] : ""}`}
                   style={{ height: ROW_H }}
                 >
                   {/* The grade, stamped like a small seal (盖章) at the slip's left end. */}
@@ -2526,6 +2540,25 @@ function Study({
             })}
             <div style={{ height: (queue.length - to) * ROW_H + pad }} />
           </div>
+          {sheet !== null && queue[sheet] && (
+            <SlipSheet
+              item={queue[sheet]}
+              status={status(queue[sheet], sheet)}
+              onClose={() => setSheet(null)}
+              onListen={() => {
+                const it = queue[sheet];
+                speech.loop(
+                  [spokenText(it, it.lang, !!config.readingOnBack), it.ex ?? ""],
+                  it.lang,
+                  true,
+                );
+              }}
+              onCopy={() => {
+                void navigator.clipboard?.writeText(queue[sheet].term).catch(() => {});
+                setNotice(`Copied “${queue[sheet].term}”`);
+              }}
+            />
+          )}
           <div className="mt-2 text-[11px] opacity-50">
             {exhausted && ahead.length === 0
               ? "Every word learned. 🎉"
@@ -2547,11 +2580,138 @@ function Study({
  * grade it will give (no label: colour and the grade tone say enough). Rows only claim horizontal drags (touch-action: pan-y), so vertical
  * scrolling stays native.
  */
+/**
+ * A slip's other actions, in a sheet from the bottom of the screen — a slip
+ * is too small to hold them. Only what works today; editing, suspending and
+ * deleting a card join when they exist.
+ */
+function SlipSheet({
+  item,
+  status,
+  onClose,
+  onListen,
+  onCopy,
+}: {
+  item: Item;
+  status: React.ReactNode;
+  onClose: () => void;
+  onListen: () => void;
+  onCopy: () => void;
+}) {
+  // The tap that opened the sheet may be followed by one more (a quick third
+  // tap): that one lands on the scrim and must not close it at once.
+  const openedAt = useRef(performance.now());
+  const dismiss = () => performance.now() - openedAt.current > 350 && onClose();
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [onClose]);
+  const actions: [string, string, () => void][] = [
+    ["🔊", "Listen again (loops)", onListen],
+    ["⧉", "Copy the word", onCopy],
+  ];
+  return (
+    <div className="fixed inset-0 z-50" role="dialog" aria-label="Word actions" data-slip-sheet>
+      <div className="absolute inset-0 bg-black/30 lk-fade-in" onClick={dismiss} />
+      <div className="absolute inset-x-0 bottom-0 mx-auto max-w-lg rounded-t-2xl bg-[var(--background)] px-4 pt-2 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-8px_30px_oklch(0_0_0/0.25)] lk-sheet-in">
+        <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-current opacity-20" />
+        <div className="flex items-baseline gap-3 border-b border-black/10 dark:border-white/10 px-1 pb-3">
+          <b className="text-2xl font-normal">{item.term}</b>
+          <span className="truncate opacity-70">{item.back}</span>
+          <small className="ml-auto shrink-0 text-xs opacity-60">{status}</small>
+        </div>
+        <ul className="mt-1">
+          {actions.map(([icon, label, run]) => (
+            <li key={label}>
+              <button
+                className="flex w-full items-center gap-4 rounded-lg px-2 py-3 text-left active:bg-black/10 dark:active:bg-white/10"
+                onClick={() => {
+                  run();
+                  onClose();
+                }}
+              >
+                <span className="w-6 text-center opacity-80">{icon}</span>
+                {label}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <button
+          className="mt-2 w-full rounded-xl bg-black/10 dark:bg-white/10 py-3 font-semibold"
+          onClick={onClose}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The focused slip's binding cords, come loose: drawn over the slip, pinned at
+ * its top and bottom (counter-moved against the slip's slide), bowing inward
+ * and dragged along as the slip slides. Loosening and tightening take 200 ms
+ * of minimum jerk. Runs frames only while easing or while the slip is off
+ * its rest position.
+ */
+function SlipCords({ loose, moving }: { loose: boolean; moving: boolean }) {
+  const host = useRef<HTMLSpanElement>(null);
+  const slack = useRef(0);
+  useEffect(() => {
+    const el = host.current;
+    const row = el?.parentElement;
+    if (!el || !row) return;
+    const [left, right] = Array.from(el.querySelectorAll("path"));
+    const from = slack.current;
+    const to = loose ? 1 : 0;
+    const t0 = performance.now();
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let raf = 0;
+    const frame = (now: number) => {
+      const t = still ? 1 : Math.min(1, (now - t0) / 200);
+      slack.current = from + (to - from) * minJerk(t);
+      const h = row.offsetHeight + 1;
+      const w = row.offsetWidth;
+      const m = getComputedStyle(row).transform;
+      const x = m && m !== "none" ? new DOMMatrixReadOnly(m).m41 : 0;
+      const pull = cordPull(x, slack.current, h);
+      const bow = CORD_BOW * h * slack.current;
+      el.style.transform = x ? `translateX(${-x}px)` : "";
+      el.style.visibility = slack.current > 0.001 ? "visible" : "hidden";
+      left.setAttribute("d", cordPath(4.5, h, bow, pull));
+      right.setAttribute("d", cordPath(35.5, h, -bow, pull));
+      right.parentElement!.style.left = `${w - 40}px`;
+      if (t < 1 || x !== 0 || moving) raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [loose, moving]);
+  return (
+    <span
+      ref={host}
+      aria-hidden
+      data-cords={loose ? "loose" : "tied"}
+      className="pointer-events-none absolute inset-0"
+      style={{ visibility: "hidden" }}
+    >
+      <svg className="slip-cord" style={{ left: 0 }}>
+        <path />
+      </svg>
+      <svg className="slip-cord" style={{ left: 0 }}>
+        <path />
+      </svg>
+    </span>
+  );
+}
+
 function WordRow({
   index,
   touch,
+  loose = false,
   onHover,
   onTap,
+  onMore,
   onSwipe,
   onSwipeStart,
   onHold,
@@ -2563,8 +2723,13 @@ function WordRow({
 }: {
   index: number;
   touch: boolean;
+  /** Focused: its cords come loose (and only a loose slip slides). */
+  loose?: boolean;
   onHover: () => void;
-  onTap: () => void;
+  /** `at`: when the finger lifted (the event's own time, not when it was handled). */
+  onTap: (at: number) => void;
+  /** The slip's other actions (desktop: right click). */
+  onMore?: () => void;
   onSwipe: (r: Rating) => void;
   /** The finger has started moving sideways (a grade is being decided). */
   onSwipeStart?: () => void;
@@ -2633,11 +2798,17 @@ function WordRow({
         // at a resting pointer when rows re-render, which would otherwise yank
         // the cursor back under the mouse after every key press.
         onMouseMove={(e) => (e.movementX || e.movementY) && onHover()}
-        onClick={onTap}
-        className={className}
+        onClick={(e) => onTap(e.timeStamp)}
+        onContextMenu={(e) => {
+          if (!onMore) return;
+          e.preventDefault();
+          onMore();
+        }}
+        className={`relative ${className} ${loose ? "slip-loose" : ""}`}
         style={style}
       >
         {children}
+        <SlipCords loose={loose} moving={false} />
       </div>
     );
 
@@ -2651,7 +2822,7 @@ function WordRow({
       ref={rowEl}
       role="listitem"
       data-i={index}
-      className={`relative ${className}`}
+      className={`relative ${className} ${loose ? "slip-loose" : ""}`}
       style={{
         ...style,
         touchAction: "pan-y",
@@ -2712,7 +2883,7 @@ function WordRow({
           setDx(held2a);
         }
       }}
-      onPointerUp={() => {
+      onPointerUp={(e) => {
         clearTimeout(holdTimer.current);
         const moved = dx;
         releasedAt.current = moved;
@@ -2738,7 +2909,7 @@ function WordRow({
           if (r) onSwipe(r);
         }
         // Never moved past the slop: a tap — unless it was catching a fling.
-        else if (axis.current === null && !catching.current) onTap();
+        else if (axis.current === null && !catching.current) onTap(e.timeStamp);
       }}
       onPointerCancel={() => {
         clearTimeout(holdTimer.current);
@@ -2749,6 +2920,7 @@ function WordRow({
       }}
     >
       {children}
+      <SlipCords loose={loose} moving={dx !== 0} />
     </div>
   );
 }

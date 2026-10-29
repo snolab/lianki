@@ -92,18 +92,52 @@ svg.cord { position: absolute; top: -1px; height: calc(100% + 2px); width: 40px;
 svg.cord.l { left: 0; }
 svg.cord.r { right: 0; }
 svg.cord path { fill: none; stroke: var(--cord); stroke-width: 3; stroke-linecap: round; }
-.menu { position: absolute; right: 48px; top: 50%; translate: 0 -50%; z-index: 4; display: none; gap: 6px; }
-.menu.open { display: flex; }
-.menu button { font: 13px -apple-system, system-ui, sans-serif; border: 0; border-radius: 6px; padding: 6px 10px;
-  background: var(--paper); color: var(--ink); box-shadow: 0 2px 8px oklch(0 0 0 / 0.2); }
+/* Double tap: a sheet of the slip's other actions — a slip is too small to hold them. */
+.scrim { position: fixed; inset: 0; z-index: 10; background: oklch(0.15 0.02 50 / 0.35);
+  opacity: 0; pointer-events: none; transition: opacity 200ms; }
+.scrim.open { opacity: 1; pointer-events: auto; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 11; padding: 10px 16px calc(16px + env(safe-area-inset-bottom));
+  background: var(--paper); border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px oklch(0 0 0 / 0.25);
+  translate: 0 105%; transition: translate 240ms linear(0, 0.0086, 0.058, 0.163, 0.31, 0.5, 0.69, 0.837, 0.942, 0.991, 1);
+  font: 15px/1.4 -apple-system, system-ui, sans-serif; }
+.sheet.open { translate: 0 0; }
+.sheet .grip { width: 36px; height: 4px; border-radius: 2px; margin: 0 auto 12px; background: oklch(0.5 0 0 / 0.3); }
+.sheet .card { display: flex; align-items: baseline; gap: 12px; padding: 4px 4px 12px;
+  border-bottom: 1px solid oklch(0.5 0 0 / 0.15); }
+.sheet .card b { font: 400 24px "LXGW WenKai TC", "Hiragino Mincho ProN", serif; color: oklch(0.5 0.12 155); }
+@media (prefers-color-scheme: dark) { .sheet .card b { color: oklch(0.82 0.13 155); } }
+.sheet .card span { opacity: 0.7; }
+.sheet .card small { margin-left: auto; opacity: 0.55; font-size: 12px; }
+.sheet ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.sheet li button { width: 100%; display: flex; gap: 14px; align-items: center; border: 0; background: none;
+  padding: 13px 6px; font: inherit; color: var(--ink); text-align: left; border-radius: 8px; }
+.sheet li button:active { background: oklch(0.5 0 0 / 0.1); }
+.sheet li button i { font-style: normal; width: 1.4em; text-align: center; opacity: 0.8; }
+.sheet li button.danger { color: var(--again); }
+.sheet .cancel { margin-top: 6px; width: 100%; border: 0; border-radius: 10px; padding: 12px;
+  font: 600 15px -apple-system, system-ui, sans-serif; background: oklch(0.5 0 0 / 0.1); color: var(--ink); }
 </style>
 </head>
 <body>
 <header>
-  <b>编绳松开 = 聚焦</b> · 点一片竹简：它的编绳松开、竹简微微抬起。只有松开的竹简能左右滑；直接滑一片绑着的竹简，会先松开再跟手。双击松开的竹简打开更多操作（以后放编辑 / 删除）。
+  <b>编绳松开 = 聚焦</b> · 点一片竹简：它的编绳松开、竹简微微抬起。只有松开的竹简能左右滑；直接滑一片绑着的竹简，会先松开再跟手。双击竹简弹出更多操作（编辑、删除等）。
   <div id="log">&nbsp;</div>
 </header>
 <div class="list" id="list"></div>
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-label="More actions">
+  <div class="grip"></div>
+  <div class="card"><b id="sheetTerm"></b><span id="sheetBack"></span><small id="sheetDue"></small></div>
+  <ul>
+    <li><button><i>✎</i>编辑卡片</button></li>
+    <li><button><i>🔊</i>换个声音再听</button></li>
+    <li><button><i>⏸</i>暂停（不再出现，直到恢复）</button></li>
+    <li><button><i>↺</i>重置学习进度</button></li>
+    <li><button><i>⧉</i>复制单词</button></li>
+    <li><button class="danger"><i>🗑</i>删除</button></li>
+  </ul>
+  <button class="cancel">取消</button>
+</div>
 <script>
 const WORDS = [
   ["chose", "thing"], ["comment", "how; what"], ["bon", "good"], ["merci", "thank you"],
@@ -130,11 +164,10 @@ const slips = WORDS.map(([term, back], i) => {
     <div class="face"><i class="stamp"></i><span class="term">${term}</span>
       <span class="back blank">${back}</span><span class="due">new</span></div>
     <svg class="cord l"><path/></svg><svg class="cord r"><path/></svg>
-    <div class="menu"><button>编辑</button><button>删除</button></div>`;
+`;
   list.append(el);
   return { el, face: el.querySelector(".face"), paths: el.querySelectorAll("path"),
-    menu: el.querySelector(".menu"),
-    back: el.querySelector(".back"), due: el.querySelector(".due"), stamp: el.querySelector(".stamp"),
+    term, back: el.querySelector(".back"), due: el.querySelector(".due"), stamp: el.querySelector(".stamp"),
     slack: 0, dx: 0, anim: 0 };
 });
 
@@ -167,7 +200,7 @@ function ease(s, slack, dx = s.dx, ms = 200) {
 let focused = null;
 function focus(s) {
   if (focused === s) return;
-  if (focused) { focused.el.classList.remove("loose"); focused.menu.classList.remove("open"); ease(focused, 0, 0); }
+  if (focused) { focused.el.classList.remove("loose"); ease(focused, 0, 0); }
   focused = s;
   s.el.classList.add("loose");
   ease(s, 1);
@@ -188,7 +221,6 @@ for (const s of slips) {
   draw(s);
   let x0 = 0, y0 = 0, axis = null, id = null;
   s.el.addEventListener("pointerdown", (e) => {
-    if (e.target.closest(".menu")) return;
     id = e.pointerId; x0 = e.clientX; y0 = e.clientY; axis = null;
     focus(s);
   });
@@ -219,21 +251,32 @@ for (const s of slips) {
       const now = performance.now();
       if (now - (s.lastTap ?? 0) < 300) {
         s.back.classList.toggle("blank");
-        s.menu.classList.add("open");
+        openSheet(s);
         s.lastTap = 0;
       } else {
         s.back.classList.toggle("blank");
-        s.menu.classList.remove("open");
         s.lastTap = now;
       }
     }
   };
   s.el.addEventListener("pointerup", end);
   s.el.addEventListener("pointercancel", end);
-  s.menu.addEventListener("click", (e) => {
-    if (e.target.tagName === "BUTTON") { log.textContent = `${e.target.textContent}（原型：不做事）`; s.menu.classList.remove("open"); }
-  });
 }
+const sheet = document.getElementById("sheet"), scrim = document.getElementById("scrim");
+function openSheet(s) {
+  document.getElementById("sheetTerm").textContent = s.el.querySelector(".term").textContent;
+  document.getElementById("sheetBack").textContent = s.back.textContent;
+  document.getElementById("sheetDue").textContent = s.due.textContent;
+  sheet.classList.add("open"); scrim.classList.add("open");
+}
+const closeSheet = () => { sheet.classList.remove("open"); scrim.classList.remove("open"); };
+scrim.addEventListener("click", closeSheet);
+sheet.addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (!b.classList.contains("cancel")) log.textContent = `${b.textContent.trim()}（原型：不做事）`;
+  closeSheet();
+});
 addEventListener("resize", () => slips.forEach(draw));
 focus(slips[2]);
 </script>

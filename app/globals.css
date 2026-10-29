@@ -150,12 +150,13 @@ ruby rt {
 }
 .slip {
   --slip-c: var(--slip-base);
+  --cord-c: var(--slip-cord);
   /* term/meaning boundary: padding + marker column + gaps + the fitted term width */
   --node-x: calc(0.5rem + 1.25rem + 0.75rem + var(--term-w, 12rem));
   --fx: 0px;
   background:
-    linear-gradient(var(--slip-cord), var(--slip-cord)) 3px 0 / 3px 100% no-repeat,
-    linear-gradient(var(--slip-cord), var(--slip-cord)) right 3px top 0 / 3px 100% no-repeat,
+    linear-gradient(var(--cord-c), var(--cord-c)) 3px 0 / 3px 100% no-repeat,
+    linear-gradient(var(--cord-c), var(--cord-c)) right 3px top 0 / 3px 100% no-repeat,
     linear-gradient(var(--slip-node), var(--slip-node)) var(--node-x) 0 / 2px 100% no-repeat,
     var(--slip-fib) var(--fx) 0 / 512px 48px repeat,
     var(--slip-c);
@@ -171,6 +172,29 @@ ruby rt {
 .slip-touch {
   /* padding + stamp column + gaps + the fitted term width */
   --node-x: calc(0.5rem + 1rem + 0.75rem + var(--term-w, 8rem));
+}
+/* Focus = this slip's cords come loose (SlipCords draws them slack) and the
+ * slip lifts a little off its neighbours. */
+.slip-loose {
+  --cord-c: transparent;
+  z-index: 1;
+  box-shadow:
+    0 6px 14px -6px oklch(0.2 0.03 50 / 0.45),
+    inset 0 1px 0 oklch(1 0 0 / 0.35);
+}
+.slip-cord {
+  position: absolute;
+  top: 0;
+  height: calc(100% + 1px);
+  width: 40px;
+  overflow: visible;
+  pointer-events: none;
+}
+.slip-cord path {
+  fill: none;
+  stroke: var(--slip-cord);
+  stroke-width: 3;
+  stroke-linecap: round;
 }
 .slip-again {
   --slip-c: var(--slip-again);
@@ -271,4 +295,28 @@ ruby rt {
 }
 [role="listitem"]:has(.lk-back) {
   opacity: 0.5;
+}
+
+/* The slip's action sheet (/words, double tap): slides up, minimum jerk. */
+.lk-sheet-in {
+  animation: lk-sheet-in 240ms var(--min-jerk) both;
+}
+@keyframes lk-sheet-in {
+  from {
+    translate: 0 100%;
+  }
+}
+.lk-fade-in {
+  animation: lk-fade-in 200ms linear both;
+}
+@keyframes lk-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-sheet-in,
+  .lk-fade-in {
+    animation: none;
+  }
 }
