@@ -98,3 +98,44 @@ describe("joinTabs: one tab reads replies aloud", () => {
     expect(a.isSpeaker()).toBe(true);
   });
 });
+
+describe("joinTabs: a tab with the mic on reads aloud", () => {
+  it("the mic tab speaks even unfocused; the latest mic wins; off or leaving gives it back", () => {
+    const chan = bus();
+    let t = 100;
+    const focus = { a: true, b: false, c: false };
+    const a = joinTabs(
+      "a",
+      chan(),
+      () => focus.a,
+      () => t,
+    );
+    const b = joinTabs(
+      "b",
+      chan(),
+      () => focus.b,
+      () => t,
+    );
+    expect([a.isSpeaker(), b.isSpeaker()]).toEqual([true, false]);
+    t = 200;
+    b.mic(true);
+    b.mic(true); // no change
+    expect([a.isSpeaker(), b.isSpeaker()]).toEqual([false, true]);
+    // A newcomer hears about the mic too.
+    const c = joinTabs(
+      "c",
+      chan(),
+      () => focus.c,
+      () => t,
+    );
+    expect(c.isSpeaker()).toBe(false);
+    t = 300;
+    a.mic(true);
+    expect([a.isSpeaker(), b.isSpeaker(), c.isSpeaker()]).toEqual([true, false, false]);
+    a.mic(false);
+    expect([a.isSpeaker(), b.isSpeaker()]).toEqual([false, true]);
+    b.leave();
+    // No mic left: back to focus.
+    expect([a.isSpeaker(), c.isSpeaker()]).toEqual([true, false]);
+  });
+});

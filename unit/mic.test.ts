@@ -26,6 +26,9 @@ import {
   postStt,
   resample,
   rms,
+  scheduleTick,
+  TICK_GAIN,
+  TICK_MS,
 } from "@lianki/debug-chat/mic";
 
 const domErr = (name: string) => Object.assign(new Error(name), { name });
@@ -687,5 +690,115 @@ describe("appendDictation: spoken finals are punctuated and committed", () => {
     h.uploads[2].resolve("好");
     await h.tick();
     expect([sent, draft]).toEqual([["Please make the button bigger.", "好。"], ""]);
+  });
+});
+
+describe("createMic: hold while the agent speaks", () => {
+  it("capture is paused and dropped, then resumes; speech begun before the hold is dropped", async () => {
+    const h = harness();
+    await h.mic.toggle();
+    h.v.ev().onSpeechStart();
+    h.speak(4); // long enough for a partial
+    expect(h.uploads.filter((u) => u.partial)).toHaveLength(1);
+    h.mic.hold(true);
+    expect(h.mic.held()).toBe(true);
+    expect(h.mic.state()).toBe("listening");
+    await h.tick();
+    expect(h.v.did.at(-1)).toBe("pause");
+    // The VAD's submit-on-pause, and anything it hears while held: dropped.
+    h.v.ev().onSpeechEnd(new Float32Array(RATE));
+    h.v.ev().onSpeechStart();
+    h.speak(5);
+    h.v.ev().onSpeechEnd(new Float32Array(RATE));
+    expect(h.mic.state()).toBe("listening");
+    expect(h.uploads.filter((u) => !u.partial)).toHaveLength(0);
+    expect(h.uploads.filter((u) => u.partial)).toHaveLength(1); // partials stopped too
+    h.mic.hold(false);
+    await h.tick();
+    expect(h.v.did.at(-1)).toBe("start");
+    // A late submit from before the hold (no fresh start): still dropped.
+    h.v.ev().onSpeechEnd(new Float32Array(RATE));
+    expect(h.uploads.filter((u) => !u.partial)).toHaveLength(0);
+    // New speech after the hold is heard as usual.
+    h.v.ev().onSpeechStart();
+    expect(h.mic.state()).toBe("capturing");
+    h.v.ev().onSpeechEnd(new Float32Array(RATE));
+    expect(h.uploads.filter((u) => !u.partial)).toHaveLength(1);
+    // The partial's reserved seq was released: the queue does not wait on it.
+    h.uploads.at(-1)?.resolve("hello");
+    await h.tick();
+    expect(h.texts).toEqual(["hello"]);
+  });
+
+  it("held when turned on: the VAD is not started until the hold ends", async () => {
+    const h = harness();
+    h.mic.hold(true);
+    await h.mic.toggle();
+    expect(h.mic.state()).toBe("listening");
+    expect(h.v.did).toEqual([]);
+    h.mic.hold(false);
+    h.mic.hold(false); // no change
+    await h.tick();
+    expect(h.v.did).toEqual(["start"]);
+  });
+
+  it("micStatus shows the agent speaking only while listening", () => {
+    expect(micStatus("listening", 0, true)).toBe("speaking");
+    expect(micStatus("capturing", 0, true)).toBe("speaking");
+    expect(micStatus("off", 0, true)).toBe("idle");
+    expect(micStatus("loading", 0, true)).toBe("loading");
+    expect(micStatus("listening", 0, false)).toBe("listening");
+  });
+});
+
+describe("scheduleTick: the voice-send sound", () => {
+  it("schedules two sine oscillators through one gain with a fast attack and exponential decay", () => {
+    const calls: string[] = [];
+    const oscs: { type: string; hz: number; start: number; stop: number; to: unknown }[] = [];
+    const gain = {
+      gain: {
+        setValueAtTime: (v: number, t: number) => calls.push(`set ${v} ${t}`),
+        linearRampToValueAtTime: (v: number, t: number) => calls.push(`lin ${v} ${t}`),
+        exponentialRampToValueAtTime: (v: number, t: number) => calls.push(`exp ${v} ${t}`),
+      },
+      connect: (n: unknown) => calls.push(`gain→${n}`),
+    };
+    const ctx = {
+      currentTime: 10,
+      destination: "out",
+      createGain: () => gain,
+      createOscillator: () => {
+        const o = { type: "", hz: 0, start: -1, stop: -1, to: null as unknown };
+        oscs.push(o);
+        return {
+          set type(v: string) {
+            o.type = v;
+          },
+          get type() {
+            return o.type;
+          },
+          frequency: { setValueAtTime: (v: number) => (o.hz = v) },
+          connect: (n: unknown) => (o.to = n),
+          start: (t: number) => void (o.start = t),
+          stop: (t: number) => void (o.stop = t),
+        };
+      },
+    };
+    const end = scheduleTick(ctx);
+    expect(end).toBeCloseTo(10 + TICK_MS / 1000);
+    expect(TICK_MS).toBeGreaterThanOrEqual(60);
+    expect(TICK_MS).toBeLessThanOrEqual(90);
+    expect(calls).toEqual([
+      "set 0.0001 10",
+      `lin ${TICK_GAIN} 10.005`,
+      `exp 0.0001 ${end}`,
+      "gain→out",
+    ]);
+    expect(oscs.map((o) => [o.type, o.hz, o.to === gain, o.stop])).toEqual([
+      ["sine", 880, true, end],
+      ["sine", 1320, true, end],
+    ]);
+    expect(oscs[0].start).toBe(10);
+    expect(oscs[1].start).toBeCloseTo(10.03);
   });
 });

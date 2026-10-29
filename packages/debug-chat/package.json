@@ -16,7 +16,8 @@
     "./icons": "./src/icons.tsx",
     "./mic": "./src/mic.ts",
     "./tap-gesture": "./src/tap-gesture.ts",
-    "./wire": "./src/wire.ts"
+    "./wire": "./src/wire.ts",
+    "./voice": "./src/voice.ts"
   },
   "peerDependencies": {
     "react": "*",

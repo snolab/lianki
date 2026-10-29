@@ -7,18 +7,18 @@ import {
   type PageInfo,
   type PairInfo,
   pageParts,
-  pickLang,
-  pickVoice,
 } from "./wire";
 import { LiagentMark } from "./LiagentMark";
 import {
   CLIP_SINK_KEY,
+  VOICE_SENT_EVENT,
   appendDictation,
   isDictationBurst,
   clipSinkFrom,
   joinText,
 } from "./mic";
-import { DebugMic, canCapture } from "./MicButton";
+import { DebugMic, canCapture, playSentTick } from "./MicButton";
+import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
 import { createDragFlag, createTapper } from "./tap-gesture";
 import { Icon } from "./icons";
 
@@ -33,7 +33,6 @@ const DEBOUNCE_MS = 3_000;
 const OPEN_KEY = "lk:debug-chat-open";
 /** How long "Tap again to end the chat" waits for the second tap. */
 const END_CONFIRM_MS = 3_000;
-const SPEAK_KEY = "lk:debug-chat-speak";
 /** In the input while the pill is held. */
 const DRAG_HINT = "drag: move · tap: minimize · double-tap or ⋯: menu";
 const POS_KEY = "lk:debug-chat-pos";
@@ -161,38 +160,16 @@ const write = (key: string, v: string) => {
 };
 const synth = () => (typeof speechSynthesis === "undefined" ? null : speechSynthesis);
 
-/** Whether agent replies are read aloud on this device (on unless turned off). */
-const speechEnabled = () => read(SPEAK_KEY) !== "0";
 
 /**
- * Replies are read only to someone typing here: this tab is visible and the
- * chat input has focus (checked as each reply arrives).
- */
-export function speakHere() {
-  if (typeof document === "undefined" || document.visibilityState !== "visible") return false;
-  return document.activeElement?.getAttribute("data-testid") === "debug-chat-input";
-}
-
-/**
- * Read an agent reply aloud, after any still being read: the language comes
- * from its script (pickLang), with a matching installed voice if there is one.
- * Only ever called for a reply that arrived live, never for history, and
- * only while speakHere().
+ * Read an agent reply aloud (voice.ts): queued behind any still being read,
+ * one utterance per sentence, in the voice its script suggests. Only ever
+ * called for a reply that arrived live, never for history. With the mic on it
+ * is always read; otherwise only to someone typing here with the speaker on.
+ * DebugEval calls this bundled copy; the hot-loaded chat shares the session.
  */
 export function speakReply(text: string) {
-  const s = synth();
-  if (!s || !speechEnabled() || !speakHere()) return;
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = pickLang(text);
-  const voice = pickVoice(s.getVoices(), u.lang);
-  if (voice) u.voice = voice;
-  s.speak(u);
-}
-
-/** Drop whatever is being read and queued — the owner has started typing. */
-function cancelSpeech() {
-  const s = synth();
-  if (s && (s.speaking || s.pending)) s.cancel();
+  voice().reply(text);
 }
 
 let unlocked = false;
@@ -258,6 +235,9 @@ export type DebugChatProps = {
   /** Add this page to a pairing that was authorized for other pages only. */
   onAddPage?: (s: PairInfo) => void;
 };
+
+/** The voice session before the page has one (server render, first paint). */
+const QUIET: VoiceState = { mic: false, speaking: false, queued: 0, paused: false };
 
 /** The input grows to about five lines, then scrolls inside itself. */
 const INPUT_MAX_PX = 128;
@@ -388,17 +368,17 @@ export function DebugChat({
     synth()?.getVoices(); // starts loading them, so the first reply finds one
     return () => clearTimeout(timer.current);
   }, []);
-  // A reply that arrived while nobody is typing here is not read: this also
-  // silences a page whose speakReply predates the focus rule (a hot-loaded widget).
-  const heard = useRef(messages.length);
-  useLayoutEffect(() => {
-    const fresh = messages.slice(heard.current);
-    heard.current = messages.length;
-    if (fresh.some((m) => m.from === "agent") && !speakHere()) cancelSpeech();
-  }, [messages]);
-  // Focus leaving the input, or the tab hiding, stops the reading.
+  /** The voice session (voice.ts): mic on, reading, sentences queued. */
+  const [vs, setVs] = useState<VoiceState>(QUIET);
   useEffect(() => {
-    const hide = () => document.visibilityState !== "visible" && cancelSpeech();
+    const v = voice();
+    setVs(v.state());
+    return v.subscribe(setVs);
+  }, []);
+  // The tab hiding stops the reading — unless the mic is on (hands-free).
+  useEffect(() => {
+    const hide = () =>
+      document.visibilityState !== "visible" && !voice().state().mic && voice().stop();
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
   }, []);
@@ -430,16 +410,23 @@ export function DebugChat({
     if (el) setFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
   }, [messages, open]);
 
-  const submit = () => {
+  /** Send the draft; true when it went out. */
+  const submit = (): boolean => {
     clearTimeout(timer.current);
     setArmed(0);
     const text = draftRef.current.trim();
-    if (!text) return;
-    if (!sendRef.current(text)) return setOffline(true);
+    if (!text) return false;
+    if (!sendRef.current(text)) {
+      setOffline(true);
+      return false;
+    }
     setOffline(false);
+    // Sent: an interruption is over, and the queue (still relevant) reads on.
+    voice().resume();
     draftRef.current = "";
     settledLen.current = 0;
     setDraft("");
+    return true;
   };
   /** The draft's length when it last changed outside an IME composition. */
   const settledLen = useRef(0);
@@ -464,8 +451,15 @@ export function DebugChat({
     settledLen.current = next.length; // not a typed "burst"
     setDraft(next);
     setOffline(false);
-    // A spoken sentence goes out at once; anything else waits for the usual rules.
-    if (send) return submit();
+    // A spoken sentence goes out at once, with a soft tick (typed sends are silent);
+    // anything else waits for the usual rules.
+    if (send) {
+      if (submit()) {
+        const sound = playSentTick();
+        window.dispatchEvent(new CustomEvent(VOICE_SENT_EVENT, { detail: { sound } }));
+      }
+      return;
+    }
     arm();
   };
   const arm = () => {
@@ -503,7 +497,7 @@ export function DebugChat({
     const v = !speak;
     setSpeak(v);
     write(SPEAK_KEY, v ? "1" : "0");
-    if (!v) synth()?.cancel();
+    if (!v && !voice().state().mic) voice().stop();
   };
 
   /** A pairing authorized for some pages only, not including this one. */
@@ -640,14 +634,35 @@ export function DebugChat({
         type="button"
         role="menuitemcheckbox"
         data-testid="debug-menu-speak"
-        aria-checked={speak}
-        title="Replies are read aloud while you're typing here (the input has focus)"
-        onClick={toggleSpeak}
-        className="flex items-center gap-2 px-3 py-1.5 text-start"
+        // The mic forces read-aloud on for its session; the setting itself is kept.
+        aria-checked={speak || vs.mic}
+        aria-disabled={vs.mic}
+        title={
+          vs.mic
+            ? "The mic is on: replies are always read aloud (your setting is back when it stops)"
+            : "Replies are read aloud while you're typing here (the input has focus)"
+        }
+        onClick={() => !vs.mic && toggleSpeak()}
+        className={`flex items-center gap-2 px-3 py-1.5 text-start ${vs.mic ? "opacity-70" : ""}`}
       >
-        <Icon name="speakerHigh" weight={speak ? "fill" : "regular"} />
-        {speak ? "Replies read aloud" : "Replies silent"}
+        <Icon name="speakerHigh" weight={speak || vs.mic ? "fill" : "regular"} />
+        {vs.mic ? "Replies read aloud (mic on)" : speak ? "Replies read aloud" : "Replies silent"}
       </button>
+      {vs.queued > 0 && (
+        <button
+          type="button"
+          role="menuitem"
+          data-testid="debug-menu-stop-reading"
+          onClick={() => {
+            voice().stop();
+            setMenu(false);
+          }}
+          className="flex items-center gap-2 px-3 py-1.5 text-start"
+        >
+          <span aria-hidden className="inline-block size-2.5 rounded-sm bg-current" />
+          Stop reading{vs.queued > 1 ? ` (${vs.queued} sentences left)` : ""}
+        </button>
+      )}
       <button
         type="button"
         role="menuitem"
@@ -948,13 +963,16 @@ export function DebugChat({
                   draftRef.current = e.target.value;
                   setDraft(e.target.value);
                   setOffline(false);
-                  cancelSpeech();
+                  // Typing pauses the reading; a send (or, mic on, a blur) reads on.
+                  voice().interrupt("typing");
                   arm();
                 }}
                 onFocus={() => setTyping(true)}
                 onBlur={() => {
                   setTyping(false);
-                  cancelSpeech();
+                  // Mic on: hands-free, the reading goes on. Off: it was only for the input.
+                  if (voice().state().mic) voice().resume();
+                  else voice().stop();
                 }}
                 onCompositionStart={() => {
                   composing.current = true;
