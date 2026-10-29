@@ -309,22 +309,24 @@ export function DebugChat({
       style={offset}
       className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] opacity-60 transition-opacity focus-within:opacity-100 active:opacity-100 pointer-events-none flex-col rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100"
     >
-      {/* One small icon per live session (eval or chat), in the click-through
+      {/* One small icon per other live session (eval; not the chat itself), in the click-through
           top of the box; End lives in the grip's menu. */}
-      {sessions.length > 0 && (
+      {sessions.some((x) => x.scope !== "chat") && (
         <div aria-label="Active debug sessions" className="flex gap-1 px-2 pt-1 opacity-70">
-          {sessions.map((x) => (
-            <span
-              key={x.pair}
-              title={`${x.scope === "chat" ? "chat" : "eval"}: ${x.label} · ${x.code}`}
-              className="inline-flex size-4 items-center justify-center rounded-full text-[9px] text-white"
-              style={{
-                background: x.scope === "chat" ? "oklch(0.55 0.1 230)" : "oklch(0.55 0.15 30)",
-              }}
-            >
-              <Icon name={x.scope === "chat" ? "envelopeSimple" : "play"} />
-            </span>
-          ))}
+          {sessions
+            .filter((x) => x.scope !== "chat")
+            .map((x) => (
+              <span
+                key={x.pair}
+                title={`${x.scope === "chat" ? "chat" : "eval"}: ${x.label} · ${x.code}`}
+                className="inline-flex size-4 items-center justify-center rounded-full text-[9px] text-white"
+                style={{
+                  background: x.scope === "chat" ? "oklch(0.55 0.1 230)" : "oklch(0.55 0.15 30)",
+                }}
+              >
+                <Icon name={x.scope === "chat" ? "envelopeSimple" : "play"} />
+              </span>
+            ))}
         </div>
       )}
       <ol ref={log} className="max-h-[30vh] min-h-12 space-y-0.5 overflow-y-auto px-2 py-1.5">
