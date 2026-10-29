@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Icon, type IconName } from "@/app/components/icons";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { appHref } from "@/lib/app-locale";
@@ -1727,7 +1735,6 @@ function Study({
   /** Touch: the row being held (listen mode) — revealed and looped while held. */
   const [holding, setHolding] = useState<number | null>(null);
   /** After a swipe grades a row, scroll the list down one row. Remembered. */
-  const [swipeScroll, setSwipeScroll] = usePref("lk:words-swipe-scroll", false);
   /** Grade tones for eyes-free study. Remembered; on unless turned off. */
   const [tones, setTones] = usePref("lk:words-grade-tones", true);
   useEffect(() => unlockGradeTones(), []);
@@ -2201,8 +2208,11 @@ function Study({
   }, [ROW_H]);
   const focusItem = touch ? queue[focusLine] : undefined;
   const focusText = focusItem ? spokenText(focusItem, focusItem.lang, !!config.readingOnBack) : "";
+  /** The focus moved by a tap or a swipe that already said the word: don't say it twice. */
+  const quietFocus = useRef<number | null>(null);
   useEffect(() => {
     if (!touch || !active || holding !== null || !focusItem) return;
+    if (quietFocus.current === focusLine) return void (quietFocus.current = null);
     speech.once(focusText, focusItem.lang);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [touch, focusLine, focusText]);
@@ -2508,14 +2518,6 @@ function Study({
                 hint="Say the word as a swipe starts"
               />
             )}
-            {touch && (
-              <TogglePill
-                on={swipeScroll}
-                onChange={setSwipeScroll}
-                label="Scroll after swipe"
-                hint="Move the list down one row after a swipe grades it"
-              />
-            )}
             {touch && !fs.standalone && (
               <TogglePill
                 on={fs.active}
@@ -2610,7 +2612,9 @@ function Study({
                     lastTap.current = second ? { i: -1, t: 0 } : { i, t: now };
                     // A tap focuses the row (loosens its cords), as the cursor
                     // does on desktop; it reveals the answer and says the word.
-                    setFocusLine(i);
+                    // Re-rendering the list for the new focus must not hold up the tap.
+                    quietFocus.current = i;
+                    startTransition(() => setFocusLine(i));
                     if (!second)
                       speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang, true);
                     // The second tap undoes the first one's reveal.
@@ -2624,7 +2628,12 @@ function Study({
                   }}
                   onSwipeStart={() => {
                     // Only a loose slip slides: a swipe on a tied one loosens it first.
-                    if (touch) setFocusLine(i);
+                    // A low-priority update: the finger must keep moving the slip
+                    // while the list re-renders (iOS showed 50–160 ms frames).
+                    if (touch) {
+                      quietFocus.current = i;
+                      startTransition(() => setFocusLine(i));
+                    }
                     if (swipeSpeak)
                       speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang);
                   }}
@@ -2641,9 +2650,13 @@ function Study({
                     speech.loop([], "");
                   }}
                   onSwipe={(r) => {
-                    grade(i, r);
-                    if (touch) setFocusLine(Math.min(queue.length - 1, i + 1));
-                    if (swipeScroll) listRef.current?.scrollBy({ top: ROW_H, behavior: "smooth" });
+                    // The slip glides home meanwhile: the grade's re-render can wait.
+                    startTransition(() => {
+                      grade(i, r);
+                      if (touch) setFocusLine(Math.min(queue.length - 1, i + 1));
+                    });
+                    // The next word slides up under the thumb.
+                    listRef.current?.scrollBy({ top: ROW_H, behavior: "smooth" });
                   }}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none ${
                     touch
@@ -2801,6 +2814,16 @@ function SlipSheet({
           <span className="truncate opacity-70">{item.back}</span>
           <small className="ml-auto shrink-0 text-xs opacity-60">{status}</small>
         </div>
+        {/* Phones have no example column: the sheet is where the example shows. */}
+        {item.ex && (
+          <div
+            className="border-b border-black/10 dark:border-white/10 px-1 py-3"
+            data-sheet-example
+          >
+            <div lang={item.lang}>{item.ex}</div>
+            {item.exTr && <div className="mt-1 text-sm opacity-60">{item.exTr}</div>}
+          </div>
+        )}
         <ul className="mt-1">
           {actions.map(([icon, label, run]) => (
             <li key={label}>
