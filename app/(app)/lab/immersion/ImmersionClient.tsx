@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Icon } from "@/app/components/icons";
 import { useIntlayer } from "next-intlayer";
 import {
   IMMERSION_DOMAINS,
@@ -65,7 +66,7 @@ function LangHeader({
     <>
       {focused && (
         <span aria-hidden className="me-1 text-blue-600 dark:text-blue-400">
-          ★
+          <Icon name="star" weight="fill" />
         </span>
       )}
       <span lang={lang.code}>{lang.native}</span>
@@ -195,7 +196,10 @@ export default function ImmersionClient({ preferred }: { preferred: ImmersionLan
 
   return (
     <main className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-2">🗺 {t.heading}</h1>
+      <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
+        <Icon name="mapTrifold" />
+        {t.heading}
+      </h1>
       <p className="text-gray-600 dark:text-gray-400 max-w-3xl mb-6">{t.intro}</p>
 
       {/* Controls */}
@@ -221,7 +225,7 @@ export default function ImmersionClient({ preferred }: { preferred: ImmersionLan
               >
                 {l.code === focus && (
                   <span aria-hidden className="me-1">
-                    ★
+                    <Icon name="star" weight="fill" />
                   </span>
                 )}
                 <span lang={l.code}>{l.native}</span>
@@ -251,7 +255,7 @@ export default function ImmersionClient({ preferred }: { preferred: ImmersionLan
             }`}
           >
             <span aria-hidden className="me-1.5">
-              ⇄
+              <Icon name="arrowsLeftRight" />
             </span>
             {t.transpose}
           </button>

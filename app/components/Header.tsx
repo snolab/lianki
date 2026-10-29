@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { Icon } from "./icons";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useState } from "react";
 import { appHref } from "@/lib/app-locale";
@@ -175,8 +176,9 @@ export function Header({
                   <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
                     <Link
                       href="/auth/logout"
-                      className="block px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
                     >
+                      <Icon name="signOut" />
                       {signOutLabel}
                     </Link>
                   </div>
@@ -186,8 +188,9 @@ export function Header({
           ) : (
             <Link
               href={appHref("/sign-in", locale)}
-              className="text-base md:text-lg font-medium hover:underline"
+              className="inline-flex items-center gap-1.5 text-base md:text-lg font-medium hover:underline"
             >
+              <Icon name="signIn" className="text-xl" />
               {signInLabel}
             </Link>
           )}

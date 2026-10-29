@@ -13,8 +13,8 @@ export const metadata: Metadata = {
   icons: {
     // ?v= busts browsers' sticky favicon caches (Chrome kept showing the old
     // Next.js icon). Bump it whenever the icon files change.
-    icon: [{ url: "/icon.svg?v=2", type: "image/svg+xml" }, { url: "/favicon.ico?v=2" }],
-    apple: "/apple-icon.png?v=2",
+    icon: [{ url: "/icon.svg?v=3", type: "image/svg+xml" }, { url: "/favicon.ico?v=3" }],
+    apple: "/apple-icon.png?v=3",
   },
   // Opened from the iPhone home screen, Lianki runs without Safari's address bar.
   appleWebApp: { capable: true, title: "Lianki", statusBarStyle: "default" },

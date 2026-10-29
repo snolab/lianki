@@ -1,6 +1,7 @@
 "use client";
 
 import type { StoreStats } from "@/app/lib/notesAdmin";
+import { Icon, type IconName } from "@/app/components/icons";
 import type { LocalSnapshot, UserscriptStatus } from "@/app/lib/localStore";
 
 type Props = {
@@ -24,17 +25,15 @@ function StoreCard({
   where,
   children,
 }: {
-  icon: string;
+  icon: IconName;
   name: string;
   where: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex-1 min-w-[10rem] rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-      <div className="flex items-baseline gap-2 mb-1">
-        <span aria-hidden className="text-lg leading-none">
-          {icon}
-        </span>
+      <div className="flex items-center gap-2 mb-1">
+        <Icon name={icon} className="text-lg" />
         <h3 className="font-semibold">{name}</h3>
       </div>
       <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{where}</p>
@@ -74,7 +73,7 @@ export default function StoreConsole({
       </h2>
 
       <div className="flex flex-wrap gap-4">
-        <StoreCard icon="💾" name="Script" where="Userscript (GM storage)">
+        <StoreCard icon="floppyDisk" name="Script" where="Userscript (GM storage)">
           {script ? (
             <>
               <Stat label="Cards" value={script.cardCount} />
@@ -87,14 +86,14 @@ export default function StoreConsole({
           )}
         </StoreCard>
 
-        <StoreCard icon="🗂️" name="Local" where="This browser (IndexedDB)">
+        <StoreCard icon="folderSimple" name="Local" where="This browser (IndexedDB)">
           <Stat label="Cards" value={local ? local.cards.length : "…"} />
           <Stat label="Unsynced" value={local ? localDirty : "…"} />
           <Stat label="Script count" value={local?.gmCount ?? "—"} />
         </StoreCard>
 
         <StoreCard
-          icon="☁️"
+          icon="cloud"
           name="Cloud"
           where={cloud ? cloud.backend.toUpperCase() : "Signed out"}
         >

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIntlayer } from "next-intlayer";
+import { Icon } from "@/app/components/icons";
 
 type MembershipTier = "free" | "trial" | "pro";
 
@@ -84,7 +85,7 @@ export default function MembershipClient() {
         {/* 90-day trial notice */}
         <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
           <div className="flex items-start gap-3">
-            <span className="text-2xl">🎁</span>
+            <Icon name="gift" className="text-2xl text-blue-600 dark:text-blue-300" />
             <div>
               <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-1">
                 {newUserBenefit.title.value}
@@ -109,9 +110,9 @@ export default function MembershipClient() {
           </h2>
           <div className="flex items-center gap-4 mb-4">
             <div className="text-5xl">
-              {membership.tier === "pro" && "⭐"}
-              {membership.tier === "trial" && "🎁"}
-              {membership.tier === "free" && "👤"}
+              {membership.tier === "pro" && <Icon name="star" />}
+              {membership.tier === "trial" && <Icon name="gift" />}
+              {membership.tier === "free" && <Icon name="user" />}
             </div>
             <div>
               <div className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -150,19 +151,19 @@ export default function MembershipClient() {
             </h3>
             <ul className="space-y-3 text-gray-700 dark:text-gray-300">
               <li className="flex items-start">
-                <span className="text-green-500 mr-2">✓</span>
+                <Icon name="check" className="text-green-500 mr-2 mt-1" />
                 {features.free.basicSpacedRepetition.value}
               </li>
               <li className="flex items-start">
-                <span className="text-green-500 mr-2">✓</span>
+                <Icon name="check" className="text-green-500 mr-2 mt-1" />
                 {features.free.unlimitedCards.value}
               </li>
               <li className="flex items-start">
-                <span className="text-green-500 mr-2">✓</span>
+                <Icon name="check" className="text-green-500 mr-2 mt-1" />
                 {features.free.videoSpeedControl.value}
               </li>
               <li className="flex items-start">
-                <span className="text-red-500 mr-2">✗</span>
+                <Icon name="x" className="text-red-500 mr-2 mt-1" />
                 {features.free.noPolyglot.value}
               </li>
             </ul>
@@ -173,19 +174,19 @@ export default function MembershipClient() {
             <h3 className="text-xl font-bold mb-4">{currentStatus.pro.value}</h3>
             <ul className="space-y-3">
               <li className="flex items-start">
-                <span className="mr-2">✓</span>
+                <Icon name="check" className="mr-2 mt-1" />
                 {features.pro.allFreeFeatures.value}
               </li>
               <li className="flex items-start">
-                <span className="mr-2">✓</span>
+                <Icon name="check" className="mr-2 mt-1" />
                 {features.pro.polyglotLearning.value}
               </li>
               <li className="flex items-start">
-                <span className="mr-2">✓</span>
+                <Icon name="check" className="mr-2 mt-1" />
                 {features.pro.aiTranslations.value}
               </li>
               <li className="flex items-start">
-                <span className="mr-2">✓</span>
+                <Icon name="check" className="mr-2 mt-1" />
                 {features.pro.textToSpeech.value}
               </li>
             </ul>

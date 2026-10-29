@@ -9,12 +9,15 @@
  * `href` is a bare app path; the shell runs it through `appHref()` so the
  * `?lang=` app-route locale survives navigation.
  */
+import type { IconName } from "@/app/components/icons";
+
 export type NavGroup = "main" | "advanced" | "data" | "account";
 
 export type NavItem = {
   key: string;
   href: string;
-  icon: string;
+  /** A Phosphor icon, drawn by app/components/icons.tsx. */
+  icon: IconName;
   group: NavGroup;
 };
 
@@ -22,24 +25,24 @@ export type NavItem = {
 // page-card features (immersion sites, reviewing pages, the card list with
 // its userscript install) sit under "Advanced".
 export const APP_NAV: NavItem[] = [
-  { key: "home", href: "/home", icon: "🏠", group: "main" },
-  { key: "words", href: "/words", icon: "🔤", group: "main" },
-  { key: "alphabet", href: "/alphabet", icon: "🔡", group: "main" },
-  { key: "learn", href: "/learn", icon: "🎓", group: "main" },
-  { key: "aiVocab", href: "/ai-vocab", icon: "🧠", group: "main" },
-  { key: "polyglot", href: "/polyglot", icon: "🌍", group: "main" },
-  { key: "selfIntro", href: "/self-intro", icon: "🗣", group: "main" },
-  { key: "read", href: "/read", icon: "📖", group: "main" },
-  { key: "roadmap", href: "/roadmap", icon: "🗺", group: "main" },
-  { key: "sites", href: "/sites", icon: "🌐", group: "advanced" },
-  { key: "review", href: "/next", icon: "▶", group: "advanced" },
-  { key: "cards", href: "/list", icon: "📚", group: "advanced" },
-  { key: "addNote", href: "/add-note", icon: "➕", group: "advanced" },
-  { key: "lab", href: "/lab", icon: "🧪", group: "advanced" },
-  { key: "import", href: "/import", icon: "⬆", group: "data" },
-  { key: "data", href: "/data", icon: "💾", group: "data" },
-  { key: "preferences", href: "/preferences", icon: "⚙", group: "account" },
-  { key: "membership", href: "/membership", icon: "★", group: "account" },
+  { key: "home", href: "/home", icon: "house", group: "main" },
+  { key: "words", href: "/words", icon: "textAa", group: "main" },
+  { key: "alphabet", href: "/alphabet", icon: "textAUnderline", group: "main" },
+  { key: "learn", href: "/learn", icon: "graduationCap", group: "main" },
+  { key: "aiVocab", href: "/ai-vocab", icon: "brain", group: "main" },
+  { key: "polyglot", href: "/polyglot", icon: "globeHemisphereWest", group: "main" },
+  { key: "selfIntro", href: "/self-intro", icon: "userSound", group: "main" },
+  { key: "read", href: "/read", icon: "bookOpen", group: "main" },
+  { key: "roadmap", href: "/roadmap", icon: "mapTrifold", group: "main" },
+  { key: "sites", href: "/sites", icon: "globe", group: "advanced" },
+  { key: "review", href: "/next", icon: "play", group: "advanced" },
+  { key: "cards", href: "/list", icon: "cards", group: "advanced" },
+  { key: "addNote", href: "/add-note", icon: "plusCircle", group: "advanced" },
+  { key: "lab", href: "/lab", icon: "flask", group: "advanced" },
+  { key: "import", href: "/import", icon: "uploadSimple", group: "data" },
+  { key: "data", href: "/data", icon: "database", group: "data" },
+  { key: "preferences", href: "/preferences", icon: "gearSix", group: "account" },
+  { key: "membership", href: "/membership", icon: "star", group: "account" },
 ];
 
 export const NAV_GROUPS: NavGroup[] = ["main", "advanced", "data", "account"];

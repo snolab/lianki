@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "@/app/components/icons";
 import { useRouter } from "next/navigation";
 import { appHref } from "@/lib/app-locale";
 
@@ -258,7 +259,7 @@ export default function AiVocabLangClient({
                   className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0 mt-1"
                   title="Generate another sentence"
                 >
-                  ↻
+                  <Icon name="arrowClockwise" label="Generate another sentence" />
                 </button>
               )}
             </div>

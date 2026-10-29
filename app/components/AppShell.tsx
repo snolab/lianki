@@ -8,6 +8,7 @@ import { APP_NAV, NAV_GROUPS, activeNavKey, type NavGroup } from "@/lib/app-nav"
 import { appHref } from "@/lib/app-locale";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { FirstRunChoice, type FirstRunLabels } from "./FirstRunChoice";
+import { Icon, SealIcon } from "./icons";
 
 const SIDEBAR_KEY = "lk:sidebar";
 
@@ -90,12 +91,13 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
                       title={collapsed ? label : undefined}
                       className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                         isActive
-                          ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                          ? "font-semibold text-gray-900 dark:text-gray-100"
                           : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                       } ${collapsed ? "justify-center" : ""}`}
                     >
-                      <span aria-hidden className="text-base leading-none w-5 text-center">
-                        {item.icon}
+                      {/* Style C: an ink line icon; the current page's is stamped in seal red. */}
+                      <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
+                        {isActive ? <SealIcon name={item.icon} /> : <Icon name={item.icon} />}
                       </span>
                       {collapsed ? <span className="sr-only">{label}</span> : <span>{label}</span>}
                     </Link>
@@ -175,8 +177,9 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
                   <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
                     <Link
                       href="/auth/logout"
-                      className="block px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
                     >
+                      <Icon name="signOut" />
                       {labels.signOut}
                     </Link>
                   </div>
@@ -186,8 +189,9 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
           ) : (
             <Link
               href={appHref("/sign-in", locale)}
-              className="text-sm font-medium hover:underline"
+              className="inline-flex items-center gap-1.5 text-sm font-medium hover:underline"
             >
+              <Icon name="signIn" className="text-lg" />
               {labels.signIn}
             </Link>
           )}

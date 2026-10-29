@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "@/app/components/icons";
 import { useIntlayer } from "next-intlayer";
 
 interface DeleteButtonProps {
@@ -48,7 +49,7 @@ export default function DeleteButton({ url, title }: DeleteButtonProps) {
       className="ml-2 px-2 py-1 text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
       title={deleteCardTitle}
     >
-      {isDeleting ? "..." : "🗑"}
+      {isDeleting ? "..." : <Icon name="trash" label={deleteCardTitle} className="text-sm" />}
     </button>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "@/app/components/icons";
 import Globe3D from "./Globe3D";
 
 type Language = {
@@ -524,7 +525,7 @@ export default function PolyglotPage() {
                                         }}
                                         className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded text-xs hover:bg-blue-200 dark:hover:bg-blue-800"
                                       >
-                                        ▶ Q
+                                        <Icon name="play" className="me-1" />Q
                                       </button>
                                     )}
                                   </div>
@@ -541,7 +542,7 @@ export default function PolyglotPage() {
                                         }}
                                         className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 rounded text-xs hover:bg-green-200 dark:hover:bg-green-800"
                                       >
-                                        ▶ A
+                                        <Icon name="play" className="me-1" />A
                                       </button>
                                     )}
                                   </div>

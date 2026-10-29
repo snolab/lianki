@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Icon } from "@/app/components/icons";
 import Link from "next/link";
 import { getIntlayer } from "intlayer";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
@@ -27,7 +28,7 @@ export default async function LabPage() {
   const cards = [
     {
       href: "/lab/immersion",
-      icon: "🗺",
+      icon: "mapTrifold" as const,
       title: experiments.immersion.title,
       blurb: experiments.immersion.blurb,
       stat: `${IMMERSION_DOMAINS.length} topics × ${IMMERSION_LANGUAGES.length} languages`,
@@ -36,7 +37,10 @@ export default async function LabPage() {
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-2">🧪 {heading}</h1>
+      <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
+        <Icon name="flask" />
+        {heading}
+      </h1>
       <p className="text-gray-600 dark:text-gray-400 mb-8">{intro}</p>
 
       <ul className="grid gap-4 sm:grid-cols-2">
@@ -46,9 +50,7 @@ export default async function LabPage() {
               href={appHref(card.href, locale)}
               className="block h-full rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-sm transition-colors"
             >
-              <div className="text-2xl mb-2" aria-hidden>
-                {card.icon}
-              </div>
+              <Icon name={card.icon} className="text-2xl mb-2 block" />
               <h2 className="text-lg font-semibold mb-1">{card.title}</h2>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{card.blurb}</p>
               <p className="text-xs font-medium text-blue-600 dark:text-blue-400">{card.stat}</p>

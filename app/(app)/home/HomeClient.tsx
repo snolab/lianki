@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { appHref } from "@/lib/app-locale";
 import { APP_NAV } from "@/lib/app-nav";
+import { Icon } from "@/app/components/icons";
 
 /** Learning features shown as entries below the word lists. */
 const EXPLORE = ["alphabet", "learn", "aiVocab", "polyglot", "selfIntro", "read", "roadmap"];
@@ -50,7 +51,7 @@ export default function HomeClient({
       {/* Word lists: the main path. */}
       <section className="rounded-2xl border border-black/10 dark:border-white/10 p-5 sm:p-6 space-y-4">
         <h2 className="text-xl font-semibold flex items-center gap-2">
-          <span aria-hidden>🔤</span>
+          <Icon name="textAa" />
           {t.wordsTitle}
         </h2>
         {started ? (
@@ -96,7 +97,7 @@ export default function HomeClient({
                 href={appHref(item(k).href, locale)}
                 className="flex items-center gap-2 rounded-xl border border-black/10 dark:border-white/10 px-4 py-3 hover:bg-black/5 dark:hover:bg-white/5"
               >
-                <span aria-hidden>{item(k).icon}</span>
+                <Icon name={item(k).icon} className="text-lg opacity-80" />
                 <span className="font-medium">{label(k)}</span>
               </Link>
             </li>
@@ -115,7 +116,7 @@ export default function HomeClient({
                 href={appHref(item(k).href, locale)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 dark:border-white/10 px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5"
               >
-                <span aria-hidden>{item(k).icon}</span>
+                <Icon name={item(k).icon} className="opacity-80" />
                 {label(k)}
               </Link>
             </li>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { stringify } from "yaml";
 import { EXPORT_VERSION, serializeNoteForExport } from "@/lib/yaml-export";
 import YamlImportSection from "../import/YamlImportSection";
+import { Icon } from "@/app/components/icons";
 import type { LocalCard } from "@/app/lib/localStore";
 
 type Props = {
@@ -69,7 +70,8 @@ export default function BackupSection({ heading, exportLabel, isLoggedIn, localC
             href="/api/export/yaml"
             className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800"
           >
-            ⬇ {exportLabel} — cloud
+            <Icon name="downloadSimple" className="me-1.5" />
+            {exportLabel} — cloud
           </a>
         ) : null}
         <button
@@ -78,7 +80,8 @@ export default function BackupSection({ heading, exportLabel, isLoggedIn, localC
           disabled={busy || localCards.length === 0}
           className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          ⬇ {exportLabel} — local ({localCards.length})
+          <Icon name="downloadSimple" className="me-1.5" />
+          {exportLabel} — local ({localCards.length})
         </button>
       </div>
       <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">

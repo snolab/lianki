@@ -1,5 +1,6 @@
 "use client";
 import { Turnstile } from "@marsidev/react-turnstile";
+import { Icon } from "@/app/components/icons";
 import type { TurnstileInstance } from "@marsidev/react-turnstile";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useIntlayer } from "next-intlayer";
@@ -273,7 +274,7 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
   if (step === "code") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-5 p-4">
-        <div className="text-4xl">✉️</div>
+        <Icon name="envelopeSimple" className="text-4xl text-gray-500" />
         <div className="text-center space-y-1">
           <p className="text-sm text-gray-500">{t.codeSentTo}</p>
           <p className="font-medium">{email}</p>
