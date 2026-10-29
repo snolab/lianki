@@ -259,6 +259,9 @@ export type DebugChatProps = {
   onAddPage?: (s: PairInfo) => void;
 };
 
+/** The input grows to about five lines, then scrolls inside itself. */
+const INPUT_MAX_PX = 128;
+
 export function DebugChat({
   live,
   listeners,
@@ -334,8 +337,23 @@ export function DebugChat({
     if (end) setBelow(0);
   };
   const input = useRef<HTMLTextAreaElement | null>(null);
+  /** Dictated text just landed: put the caret after it and show the end. */
+  const caretToEnd = useRef(false);
+  /** The input grows with its text up to INPUT_MAX_PX, then scrolls inside itself. */
+  useLayoutEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, INPUT_MAX_PX)}px`;
+    if (caretToEnd.current) {
+      caretToEnd.current = false;
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [draft]);
   // The log is click-through, so it can't be swiped: a vertical swipe on the
-  // input scrolls it instead (unless the draft itself is long enough to scroll).
+  // empty input scrolls it instead. Only the pill moves the box.
   useEffect(() => {
     const el = input.current;
     if (!el) return;
@@ -347,7 +365,8 @@ export function DebugChat({
     };
     const move = (e: TouchEvent) => {
       const list = log.current;
-      if (!list || el.scrollHeight > el.clientHeight + 1) return;
+      // Empty input: the swipe scrolls the log. With text in it, it scrolls the text.
+      if (!list || el.value.length > 0) return;
       const ny = e.touches[0].clientY;
       if (!swiping && Math.abs(ny - y) < 6) return;
       swiping = true;
@@ -440,6 +459,7 @@ export function DebugChat({
   /** A transcript lands in the draft, as typed text would, but is never sent by itself. */
   const dictated = (t: string) => {
     const { draft: next, send } = appendDictation(draftRef.current, t);
+    caretToEnd.current = true;
     draftRef.current = next;
     settledLen.current = next.length; // not a typed "burst"
     setDraft(next);
@@ -939,7 +959,8 @@ export function DebugChat({
                   submit();
                 }}
                 style={{ background: INPUT_BG }}
-                className={`pointer-events-auto block min-w-0 flex-1 resize-none rounded-lg border border-current/25 px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
+                // A drag on a long draft scrolls its text, never the page or the box.
+                className={`pointer-events-auto block min-w-0 flex-1 resize-none overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-current/25 px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
               />
               {holding && draft && (
                 // The draft hides the placeholder: the hint sits over it instead.
