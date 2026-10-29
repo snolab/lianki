@@ -7,7 +7,6 @@ import {
   treeDefaults,
   uiStrings,
 } from "@lianki/debug-chat/ui-strings";
-import { TREE_STRINGS_EN } from "@lianki/debug-chat/StateTree";
 
 describe("ui strings", () => {
   it("picks Chinese for zh pages, English otherwise", () => {
@@ -25,7 +24,8 @@ describe("ui strings", () => {
   });
 
   it("covers every string of the English tables", () => {
-    expect(Object.keys(TREE_ZH).sort()).toEqual(Object.keys(TREE_STRINGS_EN).sort());
+    // (TreeStrings is a type: tsc checks TREE_ZH has every key; StateTree.tsx stays unloaded here.)
+    expect(Object.values(TREE_ZH).every((v) => typeof v === "string" && v.length > 0)).toBe(true);
     expect(Object.keys(UI_ZH).sort()).toEqual(Object.keys(UI_EN).sort());
     expect(TREE_ZH.openCount).toContain("{n}");
   });
