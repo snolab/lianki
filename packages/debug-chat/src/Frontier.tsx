@@ -14,6 +14,7 @@ import {
 } from "./frontier-view";
 import { LINE_HALO } from "./log-surface";
 import { createLongPress } from "./tap-gesture";
+import { BLINK, uiStrings } from "./ui-strings";
 
 /** The full-id popover's glass (a popover, not a line: it keeps a fill). */
 const GLASS = "color-mix(in oklch, var(--background) 85%, transparent)";
@@ -112,6 +113,7 @@ export function FrontierLines({
   align?: "left" | "center" | "right";
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const ui = uiStrings();
   const rows = FRONTIER_ROWS.filter((r) => frontier[r.key]?.text);
   if (!rows.length) return null;
   return (
@@ -138,16 +140,21 @@ export function FrontierLines({
               <button
                 type="button"
                 aria-expanded={group ? expanded : undefined}
-                aria-label={`${r.label}: ${line.text}${count ? `, ${line.count} items` : ""}`}
+                aria-label={`${ui[r.key === "done" ? "lastDone" : r.key === "doing" ? "nowDoing" : "upNext"]}: ${line.text}${count ? `, ${line.count} ${ui.items}` : ""}`}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => group && setOpenKey(expanded ? null : r.key)}
                 className={`flex min-w-0 items-center gap-1 py-0.5 text-start ${id ? "" : "pe-1"} ${group ? "" : "cursor-default"}`}
               >
-                <span aria-hidden className="w-3 shrink-0 text-center opacity-70">
+                <span
+                  aria-hidden
+                  className={`w-3 shrink-0 text-center opacity-70 ${r.key === "doing" ? BLINK : ""}`}
+                >
                   {r.mark}
                 </span>
                 {r.key === "doing" && line.assignee && (
-                  <AvatarSlot a={line.assignee} render={renderAvatar} />
+                  <span className={BLINK}>
+                    <AvatarSlot a={line.assignee} render={renderAvatar} />
+                  </span>
                 )}
                 <span className="min-w-0 truncate">{line.text}</span>
                 {count && (

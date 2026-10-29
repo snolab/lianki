@@ -285,17 +285,27 @@ count on it, pulsing when code just ran) toggles the state tree
 (`debug-chat-tree`, content from the `renderTree` prop, else "No tree
 source"). Only one of the menu and the tree is open at a time.
 The tree is shown as the log is, with no box: translucent text with the halo,
-click-through except for rows that take the pointer, the same top-edge fade
-and the same heights (compact at rest, 30vh while the input has focus or the
-mic is on) — both use `logSurface` (`packages/debug-chat/src/log-surface.ts`).
-On a phone, or minimized, it takes the log's place (`data-mode="inline"`).
-From 768px wide, with the chat open, the box widens to
-`min(44rem, 100vw - 1rem)` and shows `tree | log` side by side, each
-scrolling on its own, with the bar across both (`data-mode="column"`,
-switched by a `matchMedia` change event; the tree's scroll carries over). A
-small ✕ (`debug-chat-tree-close`), Escape or the tree button close it; taps
+click-through except for the rows (`log-surface.ts`). With a `treeSource` it
+is a row of top-level chips (title, status glyph, 〔open count〕; the row
+scrolls sideways) with one branch open below it as indented lines
+(`TreeChips.tsx`), driven by `treeNav` (`tree-nav.ts`): a focused node, a
+depth per node along the one open branch, end-stops at leaves (and
+min(3, subtree height)) and at the top row. Expanded, the tree heads the
+chat's one column, the messages below it, one scroller (newest at the
+bottom); minimized it heads the floating box. On the tree button a
+horizontal drag (locked after 8 px) moves through 40 px detents — right
+opens the focused node a level per cell, left folds it — previewed live,
+resisting past a limit, committed on release; a tap toggles the tree; ←/→/↑/↓
+on the focused button move the focus. An expand scrolls the new rows into
+view unless the user is scrolling; a fold keeps the focused row in place.
+In-progress items (the ◐ glyph, the ▶ frontier line, a fragment's `.d`)
+blink gently (opacity 1 → 0.35, 1.6 s; none under reduced motion). On a
+`zh` page the widget's and the tree's strings are Chinese
+(`ui-strings.ts`) unless the host passes its own. Without a `treeSource`:
+`renderTree`, else the lk:tree-src fragment. A small ✕
+(`debug-chat-tree-close`), Escape or the tree button close it; taps
 elsewhere are the page's. It never takes the input's focus or its draft, and
-its Escape never stops the mic. A drag on the mark, the tree button, or the bar's edge moves the box,
+its Escape never stops the mic. A drag on the mark or the bar's edge moves the box,
 and never counts as a tap.
 
 Minimizing animates the bar's width in 180 ms (two grid columns trading

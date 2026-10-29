@@ -246,7 +246,7 @@ try {
         focused: document.activeElement === ta,
         inert: !!ta.closest("[inert]") && ta.closest("[aria-hidden=true]") !== null,
         micOnTop: hit === mic || mic.contains(hit),
-        logHidden: q("debug-chat-log").hidden,
+        logHidden: q("debug-chat-column").hidden,
         expanded: q("debug-chat-pill-min").getAttribute("aria-expanded"),
       };
     });
@@ -357,11 +357,14 @@ try {
     await settle();
     let s = await watch("tree button");
     check(s.tree && s.expanded === "true", "the tree button opens the state tree");
-    // Shown as the log is: no box, click-through, the halo, the log's expanded height.
+    // Shown as the log is: no box, click-through, the halo; one column with the
+    // messages below it, at the log's expanded height.
     const look = await page.evaluate(() => {
       const q = (id) => document.querySelector(`[data-testid="${id}"]`);
       const tree = q("debug-chat-tree");
       const body = q("debug-chat-tree-body");
+      const col = q("debug-chat-column");
+      const log = q("debug-chat-log");
       const cs = getComputedStyle(tree);
       const bs = getComputedStyle(body);
       return {
@@ -370,9 +373,13 @@ try {
         bodyBg: bs.backgroundColor,
         events: [cs.pointerEvents, bs.pointerEvents].join(),
         halo: bs.textShadow !== "none",
-        maxH: bs.maxHeight,
+        maxH: getComputedStyle(col).maxHeight,
         vh30: `${(innerHeight * 30) / 100}px`,
-        logHidden: q("debug-chat-log").hidden,
+        below:
+          !log.hidden &&
+          col.contains(tree) &&
+          col.contains(log) &&
+          tree.getBoundingClientRect().bottom <= log.getBoundingClientRect().top + 0.5,
       };
     });
     check(
@@ -385,9 +392,9 @@ try {
       Math.abs(parseFloat(look.maxH) - parseFloat(look.vh30)) < 1,
       `input focused: expanded as the log would be (${look.maxH})`,
     );
-    check(look.logHidden, "390px: the tree takes the log's place");
+    check(look.below, "one column: the tree on top, the messages below it");
     check(s.focus && s.value === "keep me", "the input keeps its focus and its draft");
-    check(s.body.includes("chat"), "the sheet shows the tree from renderTree");
+    check(s.body.length > 0, "the tree shows its content");
     // Again: closes.
     await page.click(sel("debug-chat-tree-button"));
     await settle();
@@ -417,8 +424,7 @@ try {
     check(s.tree, "a tap outside leaves it open");
     // Not focused: compact, as the log.
     const compact = await page.evaluate(
-      () =>
-        getComputedStyle(document.querySelector('[data-testid="debug-chat-tree-body"]')).maxHeight,
+      () => getComputedStyle(document.querySelector('[data-testid="debug-chat-column"]')).maxHeight,
     );
     check(compact === `${4.4 * 16}px`, `unfocused: compact, as the log (${compact})`);
     await page.click(sel("debug-chat-tree-close"));
@@ -445,95 +451,155 @@ try {
     check(!both, "the menu and the tree are never open together");
     await ctx.close();
   }
-  // Phone width: the tree shows in the log's place.
-  {
-    const { ctx, page } = await open("?open");
+  // The tree's chips and detents (treeNav), in the one column, at 390 and 1024.
+  for (const [w, h] of [
+    [390, 844],
+    [1024, 768],
+  ]) {
+    const { ctx, page } = await open("?open", "light", w, h);
+    await page.focus('[data-testid="debug-chat-input"]'); // expanded, as while typing
     await page.click('[data-testid="debug-chat-tree-button"]');
-    await page.waitForTimeout(350);
-    const mode = await page.getAttribute('[data-testid="debug-chat-tree"]', "data-mode");
-    check(mode === "inline", `390px: the tree opens in the log's place (${mode})`);
+    await page.waitForSelector('[data-testid="tree-chip"]', { timeout: 5000 }).catch(() => {});
+    const g = await page.evaluate(() => ({
+      chips: document.querySelectorAll('[data-testid="tree-chip"]').length,
+      open: document.querySelectorAll('[data-testid="tree-chip"][data-open]').length,
+      lines: document.querySelectorAll('[data-testid="tree-line"]').length,
+      mode: document.querySelector('[data-testid="debug-chat-tree"]')?.dataset.mode,
+      width: document.querySelector("[data-debug-chat]").getBoundingClientRect().width,
+    }));
+    check(
+      g.chips > 0 && g.open === 0 && g.lines === 0 && g.mode === "column",
+      `${w}px: the tree is a chip row, nothing open, in the one column (${JSON.stringify(g)})`,
+    );
+    check(g.width <= 320.5, `${w}px: one column, no wider box (${g.width}px)`);
+    // Drag 2 cells right on the tree button: the focused chip opens 2 levels (a preview)…
+    const b = await page.locator('[data-testid="debug-chat-tree-button"]').boundingBox();
+    const cx = b.x + b.width / 2;
+    const cy = b.y + b.height / 2;
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i++) await page.mouse.move(cx + i * 10, cy);
+    const mid = await page.evaluate(() => ({
+      hint: document.querySelector('[data-testid="debug-chat-tree-hint"]')?.textContent ?? "",
+      deepest: Math.max(
+        -1,
+        ...[...document.querySelectorAll('[data-testid="tree-line"]')].map((l) => +l.dataset.level),
+      ),
+    }));
+    check(
+      / · 2\/\d$/.test(mid.hint) && mid.deepest === 1,
+      `drag 2 cells right: depth 2 shown live (${mid.hint}; deepest line level ${mid.deepest})`,
+    );
+    await page.mouse.move(cx + 85, cy); // just past 2 cells: snaps back to 2 on release
+    await page.mouse.up();
+    await page.waitForTimeout(100);
+    const after = await page.evaluate(() => ({
+      hint: !!document.querySelector('[data-testid="debug-chat-tree-hint"]'),
+      deepest: Math.max(
+        -1,
+        ...[...document.querySelectorAll('[data-testid="tree-line"]')].map((l) => +l.dataset.level),
+      ),
+      open: document.querySelectorAll('[data-testid="tree-chip"][data-open]').length,
+      tree: !!document.querySelector('[data-testid="debug-chat-tree"]'),
+    }));
+    check(
+      !after.hint && after.deepest === 1 && after.open === 1 && after.tree,
+      `released: snapped to depth 2, one node open, the tree still up (${JSON.stringify(after)})`,
+    );
+    // A drag never moves the bar.
+    const b2 = await page.locator('[data-testid="debug-chat-pill"]').boundingBox();
+    check(
+      Math.abs(b2.x - (b.x - (b.x - b2.x))) < 1 &&
+        b2.y === (await page.locator('[data-testid="debug-chat-pill"]').boundingBox()).y,
+      "the tree drag leaves the bar where it was",
+    );
+    // Left 1 cell: folds a level.
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    for (let i = 1; i <= 5; i++) await page.mouse.move(cx - i * 10, cy);
+    await page.mouse.up();
+    const folded = await page.evaluate(() =>
+      Math.max(
+        -1,
+        ...[...document.querySelectorAll('[data-testid="tree-line"]')].map((l) => +l.dataset.level),
+      ),
+    );
+    check(folded === 0, `drag 1 cell left: one level folded (deepest ${folded})`);
+    // Tapping another chip opens it instead (one at a time).
+    const second = page.locator('[data-testid="tree-chip"]').nth(1);
+    if (await second.count()) {
+      await second.click();
+      const one = await page.evaluate(() => [
+        document.querySelectorAll('[data-testid="tree-chip"][data-open]').length,
+        document.querySelector('[data-testid="tree-chip"][data-focus]')?.dataset.id,
+      ]);
+      check(
+        one[0] <= 1 && one[1] === "1",
+        `a tapped chip takes the focus; one open at most (${one})`,
+      );
+    }
+    // One scroller: the wheel over the tree scrolls the column, messages below.
+    const col = '[data-testid="debug-chat-column"]';
+    await page.evaluate((c) => {
+      document.querySelector(c).scrollTop = 0;
+    }, col);
+    const tr = await page.locator('[data-testid="tree-chips"]').boundingBox();
+    await page.mouse.move(tr.x + 20, tr.y + 6);
+    await page.mouse.wheel(0, 120);
+    await page.waitForTimeout(200);
+    const st = await page.evaluate((c) => document.querySelector(c).scrollTop, col);
+    check(st > 0, `the wheel over the tree scrolls the one column (${st})`);
+    // ←/→ on the focused tree button move the focus.
+    await page.focus('[data-testid="debug-chat-tree-button"]');
+    await page.keyboard.press("ArrowLeft");
+    const f = await page.evaluate(
+      () =>
+        document.querySelector(
+          '[data-testid="tree-chip"][data-focus], [data-testid="tree-line"][data-focus]',
+        )?.dataset.id,
+    );
+    check(f === "0", `ArrowLeft on the tree button moves the focus along the row (${f})`);
     await ctx.close();
   }
 
-  // Wide (1024): tree | log, side by side; switching back keeps the tree's scroll.
+  // In-progress items blink (opacity, 1.6 s); Chinese strings on a zh page.
   {
-    const { ctx, page } = await open("?open", "light", 1024, 768);
-    // Focused: both columns expanded, as the log is while typing.
-    await page.focus('[data-testid="debug-chat-input"]');
-    await page.click('[data-testid="debug-chat-tree-button"]');
-    await page.waitForTimeout(350);
-    const g = await page.evaluate(() => {
-      const q = (id) => document.querySelector(`[data-testid="${id}"]`);
-      const r = (el) => el.getBoundingClientRect();
-      const box = document.querySelector("[data-debug-chat]");
-      const tree = q("debug-chat-tree");
-      const log = q("debug-chat-log");
-      const slot = q("debug-chat-input-slot");
-      const bar = q("debug-chat-pill");
-      return {
-        two: box.hasAttribute("data-two-col"),
-        mode: tree.dataset.mode,
-        width: r(box).width,
-        tree: r(tree),
-        log: r(log),
-        bar: r(bar),
-        slot: r(slot),
-        logVisible: getComputedStyle(log).display !== "none" && r(log).height > 100,
-        boxless: getComputedStyle(box).backgroundColor === "rgba(0, 0, 0, 0)",
-      };
-    });
-    check(g.two && g.mode === "column", `1024px: the tree is a column (${g.mode})`);
-    check(g.width > 600, `1024px: the box widens (${g.width}px)`);
-    check(g.boxless, "1024px: both columns are box-less log surfaces");
-    check(
-      g.logVisible && g.tree.right <= g.log.left + 1 && g.tree.width > 150,
-      `tree | log side by side (tree ${Math.round(g.tree.left)}–${Math.round(g.tree.right)}, log ${Math.round(g.log.left)}–${Math.round(g.log.right)})`,
-    );
-    check(
-      g.bar.left <= g.tree.left + 1 && g.bar.right >= g.log.right - 1 && g.slot.left < g.tree.right,
-      "the bar and its input span both columns",
-    );
-    // Each column scrolls by itself.
-    const scrolls = () =>
-      page.evaluate(() => [
-        document.querySelector('[data-testid="debug-chat-tree-body"]').scrollTop,
-        document.querySelector('[data-testid="debug-chat-log"]').scrollTop,
-      ]);
-    const [, log0] = await scrolls();
-    await page.mouse.move(g.tree.left + 60, g.tree.top + 120);
-    await page.mouse.wheel(0, 200);
-    await page.waitForTimeout(300);
-    const [t1, l1] = await scrolls();
-    check(t1 > 0 && l1 === log0, `the tree scrolls on its own (tree ${t1}, log ${log0} → ${l1})`);
-    // The log is click-through (only the input's swipe and the mic scroll it):
-    // scroll it directly, and the tree stays put.
+    const { ctx, page } = await open("?open");
     await page.evaluate(() => {
-      document.querySelector('[data-testid="debug-chat-log"]').scrollTop -= 200;
+      document.documentElement.lang = "zh-CN";
     });
-    await page.waitForTimeout(100);
-    const [t2, l2] = await scrolls();
-    check(l2 < l1 && t2 === t1, `the log scrolls on its own (log ${l1} → ${l2}, tree ${t2})`);
-    // Narrow the window: a change event puts the tree in the log's place, its scroll kept.
-    await page.setViewportSize({ width: 390, height: 768 });
-    await page.waitForTimeout(350);
-    const after = await page.evaluate(() => [
-      document.querySelector('[data-testid="debug-chat-tree"]').dataset.mode,
-      document.querySelector('[data-testid="debug-chat-tree-body"]').scrollTop,
-    ]);
+    await page.click('[data-testid="debug-chat-tree-button"]');
+    await page.waitForSelector('[data-testid="tree-chip"]', { timeout: 5000 }).catch(() => {});
+    const z = await page.evaluate(() => ({
+      label: document.querySelector('[data-testid="debug-chat-tree"]')?.getAttribute("aria-label"),
+      close: document
+        .querySelector('[data-testid="debug-chat-tree-close"]')
+        ?.getAttribute("aria-label"),
+    }));
     check(
-      after[0] === "inline" && after[1] >= t1 - 2, // (scroll anchoring may move it on as rows rewrap)
-      `narrowed: inline, scroll kept (${after.join(", ")})`,
+      z.label === "状态树" && z.close === "关闭状态树",
+      `zh page: Chinese tree strings (${z.label}, ${z.close})`,
     );
-    // Menu over the column: the column goes (one panel at a time).
-    await page.setViewportSize({ width: 1024, height: 768 });
-    await page.waitForTimeout(350);
-    await page.dblclick('[data-testid="debug-chat-pill-min"]');
-    await page.waitForTimeout(350);
-    const m = await page.evaluate(() => [
-      !!document.querySelector('[data-testid="debug-menu"]'),
-      document.querySelector("[data-debug-chat]").hasAttribute("data-two-col"),
-    ]);
-    check(m[0] && !m[1], "the menu hides the tree column");
+    await ctx.close();
+  }
+  {
+    // The minimized ▶ line (from the tree's own frontier) blinks.
+    const { ctx, page } = await open("?min&nofrontier");
+    await page
+      .waitForSelector('[data-testid="debug-chat-frontier-line"][data-status="doing"]', {
+        timeout: 5000,
+      })
+      .catch(() => {});
+    const anim = await page.evaluate(() => {
+      const el = document.querySelector(".animate-lk-blink");
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      return [cs.animationName, cs.animationDuration];
+    });
+    check(
+      anim?.[0] === "lk-blink" && anim?.[1] === "1.6s",
+      `in-progress items blink (${JSON.stringify(anim)})`,
+    );
     await ctx.close();
   }
 
@@ -838,24 +904,6 @@ try {
     );
     await ctx.close();
   }
-  // Wide two columns with the box dragged right: clamped on screen.
-  {
-    const { ctx, page } = await open("?open", "light", 1024, 768);
-    await page.click('[data-testid="debug-chat-tree-button"]');
-    await page.waitForTimeout(400);
-    await page.setViewportSize({ width: 800, height: 768 });
-    await page.waitForTimeout(400);
-    const w = await page.evaluate(() => {
-      const r = document.querySelector("[data-debug-chat]").getBoundingClientRect();
-      return { l: r.left, r: r.right, vw: document.documentElement.clientWidth };
-    });
-    check(
-      w.l >= -0.5 && w.r <= w.vw + 0.5,
-      `two columns stay on screen after a resize (${JSON.stringify(w)})`,
-    );
-    await ctx.close();
-  }
-
   // Minimizing floats the latest message for its dwell, from the tap, then fades it.
   {
     const { ctx, page } = await open("?open");

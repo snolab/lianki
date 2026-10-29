@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   type ChatMessage,
   MAX_CHAT,
@@ -42,13 +42,23 @@ import {
 } from "./float-lines";
 import { Icon } from "./icons";
 import { LINE_HALO, logSurface } from "./log-surface";
+import { treeDefaults, uiStrings } from "./ui-strings";
+import { TreeChips, navIndexOf } from "./TreeChips";
+import {
+  type TreeNavEvent,
+  type TreeNavState,
+  dragCells,
+  dragOffset,
+  initialNav,
+  maxDetent,
+  treeNav,
+} from "./tree-nav";
 import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
 import { type AnchorSide, placeBox } from "./anchor";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import type { Frontier } from "./frontier-view";
 import {
-  StateTree,
   type TreeSource,
   type TreeStrings,
   treeStrings,
@@ -96,14 +106,14 @@ function toFrontierView(root: TreeNode | null): Frontier | undefined {
   return out.done || out.doing || out.next ? out : undefined;
 }
 
-/** Wide enough for the tree and the log side by side. */
-const WIDE_QUERY = "(min-width: 768px)";
-/**
- * Two columns, `tree | log`, with everything else (warning, bar) spanning
- * both. Placed from the box, so the log's own markup stays as it is.
- */
-const TWO_COL =
-  "grid grid-cols-[2fr_3fr] items-end gap-x-3 *:col-span-2 [&_[data-tree-col]]:col-span-1 [&_[data-testid=debug-chat-log]]:col-span-1";
+/** Surface props with extra classes. */
+const withClass = <T extends { className: string }>(p: T, cls: string): T => ({
+  ...p,
+  className: `${p.className} ${cls}`,
+});
+/** The tree button's gestures, for its title and aria-description. */
+const TREE_HINT =
+  "Tap: show or hide the state tree · drag right: open the focused node deeper · drag left: fold it · arrow keys: move";
 /** The mic's extra gesture, for its title and aria-description. */
 const MIC_SCRUB_HINT = "Drag up or down (or press ↑/↓) to scroll back through the chat";
 /** A minimized scrub shows this many lines at a time. */
@@ -441,7 +451,7 @@ export function DebugChat({
   renderAvatar,
   treeSource,
   treeRepo,
-  treeStrings: treeText,
+  treeStrings: hostTreeText,
   agentAvatar,
   viewer,
   avatarFor,
@@ -467,19 +477,8 @@ export function DebugChat({
   const menu = panel === "menu";
   const tree = panel === "tree";
   const setMenu = (v: boolean) => setPanel((p) => (v ? "menu" : p === "menu" ? "none" : p));
-  /** A wide screen (768px and up): the open tree is a column beside the log. */
-  const [wide, setWide] = useState(false);
-  useEffect(() => {
-    const mq = matchMedia(WIDE_QUERY);
-    setWide(mq.matches);
-    const change = (e: MediaQueryListEvent) => setWide(e.matches);
-    mq.addEventListener("change", change);
-    return () => mq.removeEventListener("change", change);
-  }, []);
-  /** Wide, open and the tree up: `tree | log` side by side. */
-  const twoCol = open && tree && wide;
-  // Expanding, minimizing or widening refits (fit itself is fresh each render).
-  useLayoutEffect(() => fit(root.current, open), [open, twoCol]);
+  // Expanding, minimizing or opening the tree refits (fit itself is fresh each render).
+  useLayoutEffect(() => fit(root.current, open), [open, tree]);
   /** The floating box's side and left edge (px from the bar row's left), anchor.ts. */
   const [place, setPlace] = useState<{ side: AnchorSide; left: number }>({
     side: "left",
@@ -533,7 +532,7 @@ export function DebugChat({
       boxRo.current.observe(el);
     }
   };
-  /** Keeps the box on screen (fit) on a resize: wide two columns too. */
+  /** Keeps the box on screen (fit) on a resize. */
   const fitRef = useRef(() => {});
   fitRef.current = () => fit(root.current, open);
   /** The tree's scroll, kept across the sheet ⇄ column switch. */
@@ -547,6 +546,61 @@ export function DebugChat({
   const treeData = useTreeSource(treeSource, treeRev, treeRepo);
   /** Without a host tree: the dev fragment at lk:tree-src (TreeFragment.tsx). */
   const fetchedTree = useFragmentSource(tree && !renderTree && !treeSource);
+  /** The widget's strings for the page's language (ui-strings.ts), under the host's. */
+  const ui = uiStrings();
+  const treeText = { ...treeDefaults(), ...hostTreeText };
+  /** The tree as treeNav sees it (index-path ids), and where its focus and depths are. */
+  const navIx = useMemo(() => navIndexOf(treeData.root), [treeData.root]);
+  const [nav, setNav] = useState<TreeNavState>(() => initialNav(navIx.ix));
+  // A reloaded tree keeps the focus if that node is still there.
+  useEffect(() => {
+    setNav((s) =>
+      s.focusId !== null && navIx.ix.parent.has(s.focusId) ? s : initialNav(navIx.ix),
+    );
+  }, [navIx]);
+  /** Rows' tops before a nav step, to keep the focused one in place when it folds. */
+  const navBefore = useRef<{ tops: Map<string, number>; expand: boolean } | null>(null);
+  /** The user scrolled the column just now: a nav step does not scroll it. */
+  const userScrollAt = useRef(0);
+  const depthSum = (e: Readonly<Record<string, number>>) =>
+    Object.values(e).reduce((a, b) => a + b, 0);
+  const navTo = (ev: TreeNavEvent) => {
+    const el = log.current;
+    const tops = new Map<string, number>();
+    for (const r of el?.querySelectorAll<HTMLElement>("[data-testid=tree-chips] [data-id]") ?? [])
+      tops.set(r.dataset.id!, r.getBoundingClientRect().top);
+    setNav((s) => {
+      const next = treeNav(navIx.ix, s, ev);
+      navBefore.current = { tops, expand: depthSum(next.expanded) > depthSum(s.expanded) };
+      return next;
+    });
+  };
+  // After a step: an expand brings the focused node and its new children into
+  // view (unless the user is scrolling); a fold keeps the focused row in place.
+  useLayoutEffect(() => {
+    const b = navBefore.current;
+    navBefore.current = null;
+    const el = log.current;
+    if (!b || !el || !open || nav.focusId === null) return;
+    const row = el.querySelector<HTMLElement>(`[data-testid=tree-chips] [data-id="${nav.focusId}"]`);
+    if (!row) return;
+    if (b.expand) {
+      if (Date.now() - userScrollAt.current < 600) return;
+      const branch = row.closest("li") ?? row;
+      const lines = el.querySelectorAll<HTMLElement>(
+        `[data-testid=tree-line][data-id^="${nav.focusId}."]`,
+      );
+      const last = lines[lines.length - 1] ?? branch;
+      const top = row.getBoundingClientRect().top;
+      const bottom = last.getBoundingClientRect().bottom;
+      const box = el.getBoundingClientRect();
+      if (bottom > box.bottom) el.scrollTop += Math.min(bottom - box.bottom, top - box.top);
+      else if (top < box.top) el.scrollTop -= box.top - top;
+    } else {
+      const was = b.tops.get(nav.focusId);
+      if (was !== undefined) el.scrollTop += row.getBoundingClientRect().top - was;
+    }
+  }, [nav, open]);
   /** The minimized bar's lines: the host's, else the tree's frontier. */
   const shownFrontier = frontier ?? toFrontierView(treeData.root);
   /** The tree overflows (or is scrolled): its top edge fades, as the log's. */
@@ -606,7 +660,8 @@ export function DebugChat({
   const draftRef = useRef("");
   const composing = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const log = useRef<HTMLOListElement | null>(null);
+  /** The chat's one scroller: the tree (when open) and the log. */
+  const log = useRef<HTMLDivElement | null>(null);
   /** The log is scrolled to its end (new messages follow it there). */
   const atEnd = useRef(true);
   const [scrolledUp, setScrolledUp] = useState(false);
@@ -793,7 +848,7 @@ export function DebugChat({
   // The tree's fade follows its size: on opening, switching mode, expanding.
   useLayoutEffect(() => {
     if (tree) onTreeScroll();
-  }, [tree, twoCol, typing, micActive]);
+  }, [tree, open, typing, micActive]);
   const micPending = useRef(0);
   /** This browser can capture (the mic button shows inside the input). */
   const [hasMic, setHasMic] = useState(false);
@@ -973,6 +1028,74 @@ export function DebugChat({
     },
     wasDrag: () => micDragged.current.wasDrag(),
   };
+  /**
+   * The tree button: a tap opens or closes the tree; a horizontal drag (axis
+   * locked after 8 px) moves the tree's focused node through its detents —
+   * right opens it a level per cell, left folds it (tree-nav.ts) — with a
+   * live preview, resisting past a limit, committed on release. A vertical
+   * drag does nothing; it never moves the bar (the mark does). ←/→/↑/↓ on the
+   * focused button navigate the open tree.
+   */
+  const treeAxis = useRef(createAxisLock());
+  const treeDragged = useRef(createDragFlag());
+  const treePress = useRef({ cells: 0, limitAt: null as number | null });
+  const navRef = useRef(nav);
+  navRef.current = nav;
+  const [treeHint, setTreeHint] = useState<{ text: string; offset: number } | null>(null);
+  const hintFor = (s: TreeNavState, dx: number, limitAt: number | null) => {
+    const id = s.focusId;
+    const node = id === null ? undefined : navIx.byId.get(id);
+    const depth = id === null ? 0 : (s.expanded[id] ?? 0);
+    const max = id === null ? 0 : maxDetent(navIx.ix, id);
+    return {
+      text: node ? `${node.title} · ${depth}/${max}` : "—",
+      offset: Math.round(dragOffset(dx, limitAt ?? undefined) * 0.25),
+    };
+  };
+  const treeGesture = {
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+      treeAxis.current.down(e.clientX, e.clientY);
+      treeDragged.current.down();
+      treePress.current = { cells: 0, limitAt: null };
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => {
+      const was = treeAxis.current.axis();
+      const m = treeAxis.current.move(e.clientX, e.clientY);
+      if (!m || m.axis !== "x" || !treeSource || renderTree) return;
+      let s = navRef.current;
+      if (!was) {
+        if (!tree) setPanel("tree");
+        s = treeNav(navIx.ix, s, { type: "dragStart" });
+      }
+      const p = treePress.current;
+      const cells = dragCells(m.dx, p.cells);
+      p.cells = cells;
+      const next = treeNav(navIx.ix, s, { type: "dragMove", cells });
+      // Where the limit was met: past it the hint only rubber-bands.
+      p.limitAt = next.atLimit ? (p.limitAt ?? cells - Math.sign(cells)) : null;
+      navRef.current = next;
+      navTo({ type: "dragStart" });
+      navTo({ type: "dragMove", cells });
+      setTreeHint(hintFor(next, m.dx, p.limitAt));
+    },
+    onPointerUp: () => {
+      const axis = treeAxis.current.up();
+      if (!axis) return;
+      treeDragged.current.dragEnded();
+      if (axis === "x") navTo({ type: "dragEnd" });
+      setTreeHint(null);
+    },
+    onPointerCancel: () => {
+      if (treeAxis.current.up() === "x") navTo({ type: "dragCancel" });
+      setTreeHint(null);
+    },
+    onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (!tree || !e.key.startsWith("Arrow")) return;
+      e.preventDefault();
+      navTo({ type: "key", key: e.key });
+    },
+  };
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
   const conns = plural(
     pages.length + sessions.filter((x) => x.scope !== "chat").length,
@@ -1072,19 +1195,30 @@ export function DebugChat({
       </button>
       <button
         type="button"
-        data-drag-handle
         data-testid="debug-chat-tree-button"
-        aria-label="State tree"
-        aria-description={evalSessions.length ? conns : undefined}
+        aria-label={ui.stateTree}
+        aria-description={`${TREE_HINT}${evalSessions.length ? ` · ${conns}` : ""}`}
+        title={TREE_HINT}
         aria-expanded={tree}
         aria-controls="debug-chat-tree"
-        {...handle}
-        // Keeps the input's focus (and its draft): the sheet only looks.
+        // Keeps the input's focus (and its draft): the tree only looks.
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => !wasDrag() && setPanel((p) => (p === "tree" ? "none" : "tree"))}
-        style={handle.style}
+        {...treeGesture}
+        onClick={() => !treeDragged.current.wasDrag() && setPanel((p) => (p === "tree" ? "none" : "tree"))}
+        style={{ touchAction: "none" }}
         className="tap-40 relative flex h-8 w-10 shrink-0 items-center justify-center rounded-full text-base"
       >
+        {treeHint && (
+          // While dragging: the focused node and the depth it would open to.
+          <span
+            role="status"
+            data-testid="debug-chat-tree-hint"
+            className="pointer-events-none absolute start-0 bottom-full mb-2 whitespace-nowrap text-[10px] lk-halo"
+            style={{ transform: `translateX(${treeHint.offset}px)` }}
+          >
+            {treeHint.text}
+          </span>
+        )}
         <TreeIcon />
         {evalSessions.length > 0 && (
           // The eval/preview sessions, as before: their count, pulsing when code just ran.
@@ -1129,68 +1263,77 @@ export function DebugChat({
       )}
     </>
   );
+  /** What the tree panel shows: the host's view, the tree's chips, the dev fragment, or why none. */
+  const treeContent =
+    renderTree?.() ??
+    (treeSource ? (
+      <TreeChips
+        root={treeData.root}
+        nav={nav}
+        ix={navIx.ix}
+        byId={navIx.byId}
+        onNav={navTo}
+        empty={treeStrings(treeText).empty}
+        status={
+          treeData.error
+            ? `${treeStrings(treeText).failed} (${treeData.error})`
+            : treeData.root
+              ? undefined
+              : treeStrings(treeText).loading
+        }
+      />
+    ) : fetchedTree ? (
+      <TreeFragment state={fetchedTree} />
+    ) : (
+      <p data-testid="debug-chat-tree-empty" className="text-gray-500">
+        {ui.noTreeSource}
+      </p>
+    ));
   /**
    * The state tree, shown as the log is (log-surface.ts): no box, translucent
-   * text with the halo, click-through except for rows that opt in, the same
-   * fade and the same compact/expanded rule. On a phone (or minimized) it
-   * takes the log's place; on a wide screen with the chat open it is the left
-   * column beside the log (`twoCol`). Its scroll carries over between the
-   * two; ✕ (or the tree button, or Escape) closes it, never taking the
-   * input's focus. Fades in (opacity; at once under reduced motion).
+   * text with the halo, click-through except for rows that opt in. Expanded,
+   * it heads the chat's one column (the messages below it, one scroller);
+   * minimized, it heads the floating box and scrolls by itself. ✕ (or the tree
+   * button, or Escape) closes it, never taking the input's focus. Fades in
+   * (opacity; at once under reduced motion).
    */
-  const treePanel = (column: boolean) => (
+  const treePanel = (floating: boolean) => (
     <div
       id="debug-chat-tree"
       role="region"
-      aria-label="State tree"
+      aria-label={ui.stateTree}
       data-testid="debug-chat-tree"
-      data-mode={column ? "column" : "inline"}
-      data-tree-col={column || undefined}
-      className="pointer-events-none relative flex min-w-0 flex-col transition-opacity duration-[180ms] starting:opacity-0 motion-reduce:transition-none"
+      data-mode={floating ? "floating" : "column"}
+      className="pointer-events-none relative flex w-full min-w-0 max-w-full flex-row-reverse items-start transition-opacity duration-[180ms] starting:opacity-0 motion-reduce:transition-none"
     >
       <button
         type="button"
         data-testid="debug-chat-tree-close"
-        aria-label="Close the state tree"
+        aria-label={ui.closeTree}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => setPanel("none")}
-        className="tap-40 pointer-events-auto absolute end-0 top-0 z-10 px-1.5 text-[10px] text-gray-500"
+        // Beside the tree, never over it (first in the DOM, last on screen).
+        className="tap-40 pointer-events-auto shrink-0 px-1.5 text-[10px] text-gray-500"
       >
         ✕
       </button>
-      <div
-        ref={(el) => {
-          // The inline tree and the column are different nodes: the scroll carries over.
-          if (el && el !== treeBodyEl.current) el.scrollTop = treeScroll.current;
-          treeBodyEl.current = el;
-        }}
-        data-testid="debug-chat-tree-body"
-        onScroll={onTreeScroll}
-        {...logSurface({ expanded: typing || micActive, fade: treeFade })}
-      >
-        {renderTree?.() ??
-          (treeSource ? (
-            <StateTree
-              root={treeData.root ?? undefined}
-              live={treeData.live}
-              repo={treeRepo}
-              strings={treeText}
-              status={
-                treeData.error
-                  ? `${treeStrings(treeText).failed} (${treeData.error})`
-                  : treeData.root
-                    ? undefined
-                    : treeStrings(treeText).loading
-              }
-            />
-          ) : fetchedTree ? (
-            <TreeFragment state={fetchedTree} />
-          ) : (
-            <p data-testid="debug-chat-tree-empty" className="text-gray-500">
-              No tree source
-            </p>
-          ))}
-      </div>
+      {floating ? (
+        <div
+          ref={(el) => {
+            if (el && el !== treeBodyEl.current) el.scrollTop = treeScroll.current;
+            treeBodyEl.current = el;
+          }}
+          data-testid="debug-chat-tree-body"
+          onScroll={onTreeScroll}
+          {...withClass(logSurface({ expanded: typing || micActive, fade: treeFade }), "min-w-0 flex-1")}
+        >
+          {treeContent}
+        </div>
+      ) : (
+        <div data-testid="debug-chat-tree-body" className="min-w-0 flex-1 pb-1">
+          {treeContent}
+        </div>
+      )}
     </div>
   );
   const floatsEl = floats.length > 0 && (
@@ -1226,7 +1369,7 @@ export function DebugChat({
       style={{ left: place.left, textAlign: TEXT_ALIGN[place.side] }}
       className={`pointer-events-none absolute bottom-full mb-1 flex w-max max-w-[min(20rem,calc(100vw-16px))] flex-col gap-1 ${ALIGN_ITEMS[place.side]}`}
     >
-      {tree && treePanel(false)}
+      {tree && treePanel(true)}
       {floatsEl}
       {shownFrontier && (
         <FrontierLines frontier={shownFrontier} renderAvatar={renderAvatar} align={place.side} />
@@ -1443,26 +1586,36 @@ export function DebugChat({
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
       // A live mic counts as focus: the box goes opaque as it does while typing.
-      // Wide with the tree open: twice as wide, two columns, opaque glass.
-      data-two-col={twoCol || undefined}
       style={offset}
-      className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 transition-opacity ${twoCol ? `w-[min(44rem,calc(100vw-1rem))] ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} ${TWO_COL}` : `flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"}`} pointer-events-none lk-halo text-xs text-gray-800 dark:text-gray-100`}
+      className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo text-xs text-gray-800 dark:text-gray-100`}
     >
-      {open && tree && treePanel(twoCol)}
-      <ol
+      {/* One column, one scroller: the state tree (when open) on top, the
+      messages below it, the newest at the bottom. Hidden minimized. */}
+      <div
         ref={log}
-        data-testid="debug-chat-log"
+        data-testid="debug-chat-column"
         onScroll={onLogScroll}
+        onWheel={() => {
+          userScrollAt.current = Date.now();
+        }}
+        onTouchMove={() => {
+          userScrollAt.current = Date.now();
+        }}
         data-fade={fade || undefined}
         data-expanded={typing || undefined}
-        // Hidden minimized, and on a phone while the tree shows in its place.
-        hidden={!open || (tree && !twoCol)}
-        onTransitionEnd={() => {
+        hidden={!open}
+        onTransitionEnd={(e) => {
+          if (e.target !== e.currentTarget) return;
           // Shrunk: land on the newest lines again, now that the height settled.
           if (!typing && !micActive) log.current?.scrollTo({ top: log.current.scrollHeight });
           onLogScroll();
         }}
         {...logSurface({ expanded: typing || micActive, fade })}
+      >
+      {open && tree && treePanel(false)}
+      <ol
+        data-testid="debug-chat-log"
+        className="m-0 list-none space-y-0.5 p-0"
       >
         {messages.length === 0 && (
           <li className="text-gray-500">Type here; it is sent 3 s after you stop.</li>
@@ -1525,6 +1678,7 @@ export function DebugChat({
           );
         })}
       </ol>
+      </div>
       {open && warning && (
         <div
           role="alert"

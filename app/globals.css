@@ -10,6 +10,17 @@
  * seal button and `dark:bg-gray-900` is ink. Same ordinal lightness as stock
  * Tailwind, so existing contrast pairs keep working in both modes. */
 @theme {
+  /* In-progress items blink gently (the debug chat's tree and frontier): opacity only. */
+  --animate-lk-blink: lk-blink 1.6s ease-in-out infinite;
+  @keyframes lk-blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
   --color-gray-50: oklch(0.975 0.012 85);
   --color-gray-100: oklch(0.95 0.018 82);
   --color-gray-200: oklch(0.91 0.022 80);

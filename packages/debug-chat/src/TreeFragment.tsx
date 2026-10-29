@@ -10,6 +10,7 @@ import {
   treeClassStyle,
   treeSrc,
 } from "./tree-source";
+import { BLINK } from "./ui-strings";
 
 const read = (key: string) => {
   try {
@@ -28,7 +29,11 @@ function render(nodes: TreeNode[], key = ""): ReactNode[] {
       n.tag,
       {
         key: `${key}${i}`,
-        className: [n.cls, interactive ? "pointer-events-auto" : ""].filter(Boolean).join(" ") || undefined,
+        // .d (doing) blinks gently, as in-progress items do everywhere.
+        className:
+          [n.cls, interactive ? "pointer-events-auto" : "", /(^| )d( |$)/.test(n.cls ?? "") ? BLINK : ""]
+            .filter(Boolean)
+            .join(" ") || undefined,
         style: treeClassStyle(n.cls),
       },
       ...render(n.children, `${key}${i}.`),
