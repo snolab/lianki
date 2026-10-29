@@ -374,7 +374,7 @@ export function DebugChat({
         )}
         <textarea
           ref={input}
-          rows={2}
+          rows={1}
           value={draft}
           maxLength={MAX_CHAT}
           placeholder="Message the agent…"
