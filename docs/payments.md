@@ -50,3 +50,28 @@ review asks for them), and the owner's 資格外活動許可.
 - WeChat Pay on Stripe shows a QR code even on phones, and does not work inside
   WeChat's in-app browser.
 - No refunds UI: refund in the Dashboard and shorten `proEndsAt` by hand.
+
+## Invites and gift codes
+
+Rules (owner, 2026-10-29) live in `lib/referrals/rules.ts`; the D1 side in
+`lib/referrals/store.ts`, tables in `db/migrations/0014_referrals.sql`.
+
+- **Invite link** `lianki.com/i/CODE`: one code per user, made on first view
+  of `/membership`. The route leaves an httpOnly `lk_invite` cookie (30 days)
+  and sends the visitor to sign in; the app layout renders `InviteClaim` for a
+  signed-in user with that cookie, which POSTs `/api/invite` to claim it.
+- **Invitee**: +30 trial days (90 → 120). Only accounts at most 72 h old can
+  be invited, and only once.
+- **Inviter**: +30 Pro days when the invitee is _active_ (reviewed — page cards
+  or words — on 7 distinct UTC days within 30 days of the invite), +30 more on
+  the invitee's first pass. At most `YEARLY_CAP_DAYS` (365, provisional) per
+  rolling year; a capped reward is still recorded (0 days) so it settles.
+- **When it is checked**: no timers. Activation is settled when the invitee
+  reads `/api/membership/status` or the inviter opens `/membership`
+  (`GET /api/invite`); the purchase bonus in the Stripe webhook.
+- **Gift codes**: the owner makes them at `/dev/gift-codes` (N days × M uses,
+  optional expiry); anyone redeems on `/membership`, once per code. Not
+  counted against the invite cap.
+
+Every reward is a `membership_grant` row with UNIQUE (reason, refId), so each
+is given once however often the checks run.
