@@ -57,17 +57,34 @@ export function pickLang(text: string): "ja-JP" | "ko-KR" | "zh-CN" | "en-US" {
 }
 
 /** An installed voice for `lang`: the exact locale first, then the same language. */
-export function pickVoice<V extends { lang: string; default?: boolean }>(
-  voices: readonly V[],
-  lang: string,
-): V | undefined {
+/**
+ * How natural a voice sounds, higher is better. iOS lists its Eloquence
+ * voices (Eddy, Flo, Grandma, …) and the novelty ones (Bahh, Bubbles,
+ * Zarvox, …) first for most languages, and marks every voice `default`, so
+ * "the first voice of the language" sounds robotic or silly there. Prefer
+ * Premium/Enhanced, then the regular named voice (Samantha, Tingting, Kyoko).
+ */
+export function voiceQuality(v: { voiceURI?: string; name?: string; localService?: boolean }): number {
+  const uri = (v.voiceURI ?? "").toLowerCase();
+  if (uri.includes("eloquence") || uri.includes("speech.synthesis.voice.")) return 0;
+  if (uri.includes("premium")) return 4;
+  if (uri.includes("enhanced")) return 3;
+  if (uri.includes("siri")) return 3;
+  return 2;
+}
+
+export function pickVoice<
+  V extends { lang: string; default?: boolean; voiceURI?: string; name?: string },
+>(voices: readonly V[], lang: string): V | undefined {
   const norm = (l: string) => l.replace(/_/g, "-").toLowerCase();
   const want = norm(lang);
   const base = want.split("-")[0];
   const exact = voices.filter((v) => norm(v.lang) === want);
   const same = voices.filter((v) => norm(v.lang).split("-")[0] === base);
   const pool = exact.length ? exact : same;
-  return pool.find((v) => v.default) ?? pool[0];
+  const best = Math.max(-1, ...pool.map(voiceQuality));
+  const top = pool.filter((v) => voiceQuality(v) === best);
+  return top.find((v) => v.default) ?? top[0];
 }
 
 /**
