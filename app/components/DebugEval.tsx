@@ -266,7 +266,9 @@ export function DebugEval() {
           onSend={sendChat}
           sessions={sessions}
           onEnd={(x) => answer("revoke", x)}
-          inside={pending || toast ? promptEl : null}
+          pending={pending}
+          onAnswer={answer}
+          evalRan={!!toast}
         />
       )}
       {!chat && (

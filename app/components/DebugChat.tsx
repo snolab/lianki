@@ -156,7 +156,9 @@ export function DebugChat({
   onSend,
   sessions = [],
   onEnd,
-  inside,
+  pending = null,
+  onAnswer,
+  evalRan = false,
 }: {
   live: boolean;
   listeners: number;
@@ -165,8 +167,11 @@ export function DebugChat({
   /** Approved senders, listed in the grip's menu with an End button each. */
   sessions?: PairInfo[];
   onEnd?: (s: PairInfo) => void;
-  /** Debug notices shown inside the box (the pairing prompt, "eval ran"). */
-  inside?: React.ReactNode;
+  /** A sender waiting for the owner's answer: one compact line in the icon row. */
+  pending?: PairInfo | null;
+  onAnswer?: (type: "allow" | "deny", p: PairInfo, scope?: "chat") => void;
+  /** Code just ran on this page: the eval icon pulses for a moment. */
+  evalRan?: boolean;
 }) {
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
@@ -309,24 +314,60 @@ export function DebugChat({
       style={offset}
       className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] opacity-60 transition-opacity focus-within:opacity-100 active:opacity-100 pointer-events-none flex-col rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100"
     >
-      {/* One small icon per other live session (eval; not the chat itself), in the click-through
-          top of the box; End lives in the grip's menu. */}
-      {sessions.some((x) => x.scope !== "chat") && (
-        <div aria-label="Active debug sessions" className="flex gap-1 px-2 pt-1 opacity-70">
+      {(pending || evalRan || sessions.some((x) => x.scope !== "chat")) && (
+        <div aria-label="Debug connections" className="flex items-center gap-1 px-2 pt-1">
           {sessions
             .filter((x) => x.scope !== "chat")
             .map((x) => (
               <span
                 key={x.pair}
-                title={`${x.scope === "chat" ? "chat" : "eval"}: ${x.label} · ${x.code}`}
-                className="inline-flex size-4 items-center justify-center rounded-full text-[9px] text-white"
-                style={{
-                  background: x.scope === "chat" ? "oklch(0.55 0.1 230)" : "oklch(0.55 0.15 30)",
-                }}
+                title={`eval: ${x.label} · ${x.code}`}
+                className={`inline-flex size-4 items-center justify-center rounded-full text-[9px] text-white ${evalRan ? "animate-pulse" : "opacity-70"}`}
+                style={{ background: "oklch(0.55 0.15 30)" }}
               >
-                <Icon name={x.scope === "chat" ? "envelopeSimple" : "play"} />
+                <Icon name="play" />
               </span>
             ))}
+          {pending && (
+            // A sender asks to pair: one line, its code and the three answers.
+            <span
+              role="alertdialog"
+              aria-label={`${pending.label} wants to run code or chat; code ${pending.code}`}
+              className="pointer-events-auto inline-flex items-center gap-1 rounded-full py-0.5 ps-1.5 pe-0.5 text-[10px] text-white"
+              style={{ background: "oklch(0.45 0.12 30)" }}
+              title={`${pending.label} wants to run code on your debug pages, or to chat. Allow only if your terminal shows the same code.`}
+            >
+              <Icon name="lock" />
+              <b className="font-mono tracking-wider">{pending.code}</b>
+              <button
+                type="button"
+                onClick={() => onAnswer?.("allow", pending)}
+                className="rounded-full px-1.5"
+                style={{ background: "oklch(0.55 0.15 145)" }}
+                title="Allow code and chat for 1 hour"
+              >
+                1h
+              </button>
+              <button
+                type="button"
+                onClick={() => onAnswer?.("allow", pending, "chat")}
+                className="rounded-full px-1.5"
+                style={{ background: "oklch(0.5 0.1 230)" }}
+                title="Chat only, for 30 days"
+              >
+                chat
+              </button>
+              <button
+                type="button"
+                onClick={() => onAnswer?.("deny", pending)}
+                className="rounded-full px-1.5"
+                style={{ background: "oklch(0.4 0.02 260)" }}
+                aria-label="Deny"
+              >
+                ✕
+              </button>
+            </span>
+          )}
         </div>
       )}
       <ol ref={log} className="max-h-[30vh] min-h-12 space-y-0.5 overflow-y-auto px-2 py-1.5">
@@ -353,9 +394,6 @@ export function DebugChat({
           </li>
         ))}
       </ol>
-      {inside && (
-        <div className="pointer-events-auto flex flex-col gap-1 px-1 pb-1 text-xs">{inside}</div>
-      )}
       {/* The log above is click-through: taps reach the page under it. Only the
           grip and the input take pointer events. */}
       <div className="relative flex items-stretch gap-1">
