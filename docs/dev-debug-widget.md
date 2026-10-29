@@ -16,6 +16,7 @@ re-exports for the hub and the sender.
 | `debug-chat-widget.ts`                                   | the widget entry: `DebugChat` and `WIDGET_API`           |
 | `DebugChat.tsx`                                          | the chat box: log, the bar (controls + input), menu      |
 | `float-lines.ts`                                         | minimized: floating lines, their dwell and timers        |
+| `log-surface.ts`                                         | the log's display, shared by the log and the state tree  |
 | `Frontier.tsx`, `frontier-view.ts`                       | minimized: the ✓ ▶ › frontier lines and their rules      |
 | `DebugChatHost.tsx`                                      | the page's loader: import, re-import on reload, fallback |
 | `DebugPairModal.tsx`                                     | the pairing modal                                        |

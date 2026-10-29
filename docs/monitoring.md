@@ -276,15 +276,19 @@ tap can cancel it), and a double tap opens the menu — the only way to it
 (`debug-chat-tree-button`, "State tree", with the eval/preview sessions'
 count on it, pulsing when code just ran) toggles the state tree
 (`debug-chat-tree`, content from the `renderTree` prop, else "No tree
-source"). Only one of the menu and the tree is open at a time. On a phone, or
-minimized, the tree is a glass sheet over the log, anchored to the bar, up to
-60dvh (`data-mode="sheet"`); ✕, Escape, the button again or a tap outside
-close it. From 768px wide, with the chat open, it is a column instead: the
-box widens to `min(44rem, 100vw - 1rem)` and shows `tree | log` side by side,
-each scrolling on its own, with the bar across both (`data-mode="column"`,
-switched by a `matchMedia` change event; the tree's scroll carries over).
-Neither takes the input's focus or its draft, and Escape there never stops the
-mic. A drag on the mark, the tree button, or the bar's edge moves the box,
+source"). Only one of the menu and the tree is open at a time.
+The tree is shown as the log is, with no box: translucent text with the halo,
+click-through except for rows that take the pointer, the same top-edge fade
+and the same heights (compact at rest, 30vh while the input has focus or the
+mic is on) — both use `logSurface` (`packages/debug-chat/src/log-surface.ts`).
+On a phone, or minimized, it takes the log's place (`data-mode="inline"`).
+From 768px wide, with the chat open, the box widens to
+`min(44rem, 100vw - 1rem)` and shows `tree | log` side by side, each
+scrolling on its own, with the bar across both (`data-mode="column"`,
+switched by a `matchMedia` change event; the tree's scroll carries over). A
+small ✕ (`debug-chat-tree-close`), Escape or the tree button close it; taps
+elsewhere are the page's. It never takes the input's focus or its draft, and
+its Escape never stops the mic. A drag on the mark, the tree button, or the bar's edge moves the box,
 and never counts as a tap.
 
 Minimizing animates the bar's width in 180 ms (two grid columns trading
@@ -499,7 +503,7 @@ tests:
 
 - The chat box: `debug-chat` (root), `debug-chat-minimized` (minimized),
   `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-tree-button`,
-  `debug-chat-tree` (with `data-mode`), `debug-chat-tree-body`,
+  `debug-chat-tree` (with `data-mode`: `inline` or `column`), `debug-chat-tree-body`,
   `debug-chat-tree-close`, `debug-chat-tree-empty`,
   `debug-chat-pill-unread`, `debug-chat-log`, `debug-chat-line` (with
   `data-from`), `debug-chat-floats`, `debug-chat-float`, `debug-chat-input-slot`,

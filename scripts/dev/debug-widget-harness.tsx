@@ -176,7 +176,12 @@ function HarnessTree() {
   return (
     <ul data-testid="harness-tree" className="list-none space-y-0.5 font-mono text-[11px]">
       {rows.map(([depth, key, value]) => (
-        <li key={`${depth}${key}`} style={{ paddingInlineStart: `${depth}rem` }}>
+        <li
+          key={`${depth}${key}`}
+          // Rows take the pointer (the tree is otherwise click-through), so it scrolls.
+          className="pointer-events-auto"
+          style={{ paddingInlineStart: `${depth}rem` }}
+        >
           <span className="opacity-60">{depth ? "└ " : ""}</span>
           {key}
           {value && <span className="opacity-60">: {value}</span>}

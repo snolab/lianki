@@ -31,6 +31,7 @@ import {
   minimizeFloat,
 } from "./float-lines";
 import { Icon } from "./icons";
+import { logSurface } from "./log-surface";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import type { Frontier } from "./frontier-view";
 
@@ -56,9 +57,7 @@ const WIDE_QUERY = "(min-width: 768px)";
  * both. Placed from the box, so the log's own markup stays as it is.
  */
 const TWO_COL =
-  "grid grid-cols-[2fr_3fr] gap-x-2 gap-y-1 rounded-xl border border-current/25 p-2 backdrop-blur-md backdrop-saturate-150 *:col-span-2 [&_[data-tree-col]]:col-span-1 [&_[data-testid=debug-chat-log]]:col-span-1 [&_[data-testid=debug-chat-log]]:pointer-events-auto [&_[data-testid=debug-chat-log]]:h-[min(60dvh,28rem)] [&_[data-testid=debug-chat-log]]:max-h-[min(60dvh,28rem)]";
-/** The tree sheet: the page colour at 0.85, so its text stays legible over anything. */
-const SHEET_BG = "color-mix(in oklch, var(--background) 85%, transparent)";
+  "grid grid-cols-[2fr_3fr] items-end gap-x-3 *:col-span-2 [&_[data-tree-col]]:col-span-1 [&_[data-testid=debug-chat-log]]:col-span-1";
 /** The mic's extra gesture, for its title and aria-description. */
 const MIC_SCRUB_HINT = "Drag up or down (or press ↑/↓) to scroll back through the chat";
 /** A minimized scrub shows this many lines at a time. */
@@ -66,10 +65,6 @@ const SCRUB_LINES = 3;
 const POS_KEY = "lk:debug-chat-pos";
 /** The chat bar: the page shows through at about half. */
 const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
-/** Older lines dissolve at the log's top edge (only once there is more than fits). */
-const FADE = "linear-gradient(to bottom, transparent, black 2.5rem)";
-/** The compact log (input not focused) fades over less, so its 3 lines stay legible. */
-const FADE_SHORT = "linear-gradient(to bottom, transparent, black 0.9rem)";
 
 /**
  * Drag the box (by its header, or the collapsed pill) anywhere on screen: an
@@ -355,13 +350,18 @@ export function DebugChat({
   useLayoutEffect(() => fit(root.current, open), [open, twoCol]);
   /** The tree's scroll, kept across the sheet ⇄ column switch. */
   const treeScroll = useRef(0);
-  /** The tree's content stays mounted until the sheet has faded out. */
-  const [treeBody, setTreeBody] = useState(false);
-  useEffect(() => {
-    if (tree) setTreeBody(true);
-  }, [tree]);
-  // Escape or a tap outside the chat closes the tree. Escape is caught before
-  // the mic's own Escape (which turns it off): closing the sheet never does.
+  /** The tree overflows (or is scrolled): its top edge fades, as the log's. */
+  const [treeFade, setTreeFade] = useState(false);
+  const treeBodyEl = useRef<HTMLDivElement | null>(null);
+  const onTreeScroll = () => {
+    const el = treeBodyEl.current;
+    if (!el) return;
+    treeScroll.current = el.scrollTop;
+    setTreeFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
+  };
+  // Escape closes the tree. It is caught before the mic's own Escape (which
+  // turns it off): closing the tree never does. (The tree is click-through, as
+  // the log: taps outside it are the page's, and leave it open.)
   useEffect(() => {
     if (!tree) return;
     const key = (e: KeyboardEvent) => {
@@ -369,18 +369,9 @@ export function DebugChat({
       e.stopPropagation();
       setPanel("none");
     };
-    const down = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setPanel("none");
-    };
     window.addEventListener("keydown", key, true);
-    // The sheet floats over the page: a tap outside closes it. The column is
-    // part of the box, and stays until its button, ✕ or Escape.
-    if (!twoCol) document.addEventListener("pointerdown", down, true);
-    return () => {
-      window.removeEventListener("keydown", key, true);
-      document.removeEventListener("pointerdown", down, true);
-    };
-  }, [tree, twoCol]);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [tree]);
   /** The pill's mark: one tap minimizes or restores, two open the menu (the single waits for a second). */
   const gripAct = useRef({ single: () => {}, double: () => {} });
   const gripTaps = useRef<ReturnType<typeof createTapper> | null>(null);
@@ -544,6 +535,10 @@ export function DebugChat({
   const micOn = useRef(false);
   /** The mic is on (drives the open log too: iOS drops input focus on a button tap). */
   const [micActive, setMicActive] = useState(false);
+  // The tree's fade follows its size: on opening, switching mode, expanding.
+  useLayoutEffect(() => {
+    if (tree) onTreeScroll();
+  }, [tree, twoCol, typing, micActive]);
   const micPending = useRef(0);
   /** This browser can capture (the mic button shows inside the input). */
   const [hasMic, setHasMic] = useState(false);
@@ -857,62 +852,49 @@ export function DebugChat({
     </>
   );
   /**
-   * The state tree. On a phone (or minimized): a glass sheet over the log,
-   * anchored to the bar, up to 60dvh, sliding and fading in (transform and
-   * opacity; at once under reduced motion). On a wide screen with the chat
-   * open: the left column beside the log (`twoCol`). Either way it scrolls
-   * inside, keeps its scroll across the switch, and its buttons never take the
-   * input's focus.
+   * The state tree, shown as the log is (log-surface.ts): no box, translucent
+   * text with the halo, click-through except for rows that opt in, the same
+   * fade and the same compact/expanded rule. On a phone (or minimized) it
+   * takes the log's place; on a wide screen with the chat open it is the left
+   * column beside the log (`twoCol`). Its scroll carries over between the
+   * two; ✕ (or the tree button, or Escape) closes it, never taking the
+   * input's focus. Fades in (opacity; at once under reduced motion).
    */
   const treePanel = (column: boolean) => (
     <div
       id="debug-chat-tree"
-      role={column ? "region" : "dialog"}
+      role="region"
       aria-label="State tree"
       data-testid="debug-chat-tree"
-      data-mode={column ? "column" : "sheet"}
+      data-mode={column ? "column" : "inline"}
       data-tree-col={column || undefined}
-      data-open={tree || undefined}
-      inert={!tree}
-      aria-hidden={!tree || undefined}
-      onTransitionEnd={(e) => e.target === e.currentTarget && !tree && setTreeBody(false)}
-      style={{ background: SHEET_BG }}
-      className={
-        column
-          ? "pointer-events-auto flex h-[min(60dvh,28rem)] min-w-0 flex-col overflow-hidden rounded-lg border border-current/25 text-gray-800 dark:text-gray-100"
-          : `pointer-events-auto absolute inset-x-0 bottom-full z-10 mb-1 flex max-h-[60dvh] flex-col overflow-hidden rounded-xl border border-current/25 text-gray-800 backdrop-blur-md backdrop-saturate-150 transition-[opacity,transform,visibility] duration-[180ms] ease-out motion-reduce:transition-none dark:text-gray-100 ${tree ? "translate-y-0 opacity-100" : "invisible translate-y-2 opacity-0"}`
-      }
+      className="pointer-events-none relative flex min-w-0 flex-col transition-opacity duration-[180ms] starting:opacity-0 motion-reduce:transition-none"
     >
-      <div className="flex items-center gap-1 border-b border-current/15 ps-3 pe-1">
-        <span className="flex-1 py-1 font-medium">State tree</span>
-        <button
-          type="button"
-          data-testid="debug-chat-tree-close"
-          aria-label="Close the state tree"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setPanel("none")}
-          className="tap-40 flex h-7 w-10 items-center justify-center text-sm"
-        >
-          ✕
-        </button>
-      </div>
-      <div
-        data-testid="debug-chat-tree-body"
-        // The sheet and the column are different nodes: the scroll carries over.
-        ref={(el) => {
-          if (el) el.scrollTop = treeScroll.current;
-        }}
-        onScroll={(e) => {
-          treeScroll.current = e.currentTarget.scrollTop;
-        }}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2"
+      <button
+        type="button"
+        data-testid="debug-chat-tree-close"
+        aria-label="Close the state tree"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setPanel("none")}
+        className="tap-40 pointer-events-auto absolute end-0 top-0 z-10 px-1.5 text-[10px] text-gray-500"
       >
-        {(column || treeBody) &&
-          (renderTree?.() ?? (
-            <p data-testid="debug-chat-tree-empty" className="text-gray-500">
-              No tree source
-            </p>
-          ))}
+        ✕
+      </button>
+      <div
+        ref={(el) => {
+          // The inline tree and the column are different nodes: the scroll carries over.
+          if (el && el !== treeBodyEl.current) el.scrollTop = treeScroll.current;
+          treeBodyEl.current = el;
+        }}
+        data-testid="debug-chat-tree-body"
+        onScroll={onTreeScroll}
+        {...logSurface({ expanded: typing || micActive, fade: treeFade })}
+      >
+        {renderTree?.() ?? (
+          <p data-testid="debug-chat-tree-empty" className="text-gray-500">
+            No tree source
+          </p>
+        )}
       </div>
     </div>
   );
@@ -1084,11 +1066,11 @@ export function DebugChat({
       aria-label="Chat with the agent"
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
-      // A live mic (or the open tree) counts as focus: the box goes opaque as while typing.
+      // A live mic counts as focus: the box goes opaque as it does while typing.
       // Wide with the tree open: twice as wide, two columns, opaque glass.
       data-two-col={twoCol || undefined}
-      style={twoCol ? { ...offset, background: SHEET_BG } : offset}
-      className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 transition-opacity ${twoCol ? `w-[min(44rem,calc(100vw-1rem))] opacity-100 ${TWO_COL}` : `flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl ${micActive || tree ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"}`} pointer-events-none lk-halo text-xs text-gray-800 dark:text-gray-100`}
+      style={offset}
+      className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 transition-opacity ${twoCol ? `w-[min(44rem,calc(100vw-1rem))] ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} ${TWO_COL}` : `flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"}`} pointer-events-none lk-halo text-xs text-gray-800 dark:text-gray-100`}
     >
       {!open && floats.length > 0 && (
         // Minimized: the lines that arrived (or a scrub brought back), newest
@@ -1110,28 +1092,21 @@ export function DebugChat({
           ))}
         </ol>
       )}
-      {twoCol && treePanel(true)}
+      {tree && treePanel(twoCol)}
       <ol
         ref={log}
         data-testid="debug-chat-log"
         onScroll={onLogScroll}
         data-fade={fade || undefined}
         data-expanded={typing || undefined}
-        hidden={!open}
+        // Hidden minimized, and on a phone while the tree shows in its place.
+        hidden={!open || (tree && !twoCol)}
         onTransitionEnd={() => {
           // Shrunk: land on the newest lines again, now that the height settled.
           if (!typing && !micActive) log.current?.scrollTo({ top: log.current.scrollHeight });
           onLogScroll();
         }}
-        style={
-          fade
-            ? {
-                maskImage: typing || micActive ? FADE : FADE_SHORT,
-                WebkitMaskImage: typing || micActive ? FADE : FADE_SHORT,
-              }
-            : undefined
-        }
-        className={`min-h-12 space-y-0.5 overflow-y-auto px-0 py-1.5 transition-[max-height] duration-150 ease-out motion-reduce:transition-none ${typing || micActive ? "max-h-[30vh]" : "max-h-[4.1rem]"}`}
+        {...logSurface({ expanded: typing || micActive, fade })}
       >
         {messages.length === 0 && (
           <li className="text-gray-500">Type here; it is sent 3 s after you stop.</li>
@@ -1396,7 +1371,6 @@ export function DebugChat({
           )}
         </div>
         <span aria-hidden />
-        {!twoCol && treePanel(false)}
         {menuEl}
       </div>
     </section>

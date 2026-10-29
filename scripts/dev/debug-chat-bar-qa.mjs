@@ -7,9 +7,10 @@
  *
  *   - one container: mark → tree → input → mic, in tab order
  *     (minimized: mark → tree → mic)
- *   - the tree button opens and closes the state tree sheet (also ✕, Escape,
- *     a tap outside) without taking the input's focus or its draft; the menu
- *     (double tap on the mark) and the sheet are never open together
+ *   - the tree button opens and closes the state tree (also ✕ and Escape)
+ *     without taking the input's focus or its draft; the tree is shown as the
+ *     log is (no box, click-through, the same fade and heights); the menu
+ *     (double tap on the mark) and the tree are never open together
  *   - the input is 16px or more (iOS zooms into anything smaller)
  *   - each control is a 40px tap target
  *   - minimized, the input is inert: it cannot take focus, and Tab skips it
@@ -266,7 +267,7 @@ try {
     await ctx.close();
   }
 
-  // The state tree sheet, and the one-panel rule.
+  // The state tree, and the one-panel rule.
   {
     const { ctx, page } = await open("?open");
     const sel = (id) => `[data-testid="${id}"]`;
@@ -276,7 +277,7 @@ try {
         const sheet = q("debug-chat-tree");
         const ta = q("debug-chat-input");
         return {
-          tree: !!sheet && getComputedStyle(sheet).visibility !== "hidden" && !sheet.inert,
+          tree: !!sheet,
           menu: !!q("debug-menu"),
           focus: document.activeElement === ta,
           value: ta.value,
@@ -300,7 +301,36 @@ try {
     await page.click(sel("debug-chat-tree-button"));
     await settle();
     let s = await watch("tree button");
-    check(s.tree && s.expanded === "true", "the tree button opens the state tree sheet");
+    check(s.tree && s.expanded === "true", "the tree button opens the state tree");
+    // Shown as the log is: no box, click-through, the halo, the log's expanded height.
+    const look = await page.evaluate(() => {
+      const q = (id) => document.querySelector(`[data-testid="${id}"]`);
+      const tree = q("debug-chat-tree");
+      const body = q("debug-chat-tree-body");
+      const cs = getComputedStyle(tree);
+      const bs = getComputedStyle(body);
+      return {
+        bg: cs.backgroundColor,
+        border: cs.borderTopWidth,
+        bodyBg: bs.backgroundColor,
+        events: [cs.pointerEvents, bs.pointerEvents].join(),
+        halo: bs.textShadow !== "none",
+        maxH: bs.maxHeight,
+        vh30: `${(innerHeight * 30) / 100}px`,
+        logHidden: q("debug-chat-log").hidden,
+      };
+    });
+    check(
+      look.bg === "rgba(0, 0, 0, 0)" && look.bodyBg === "rgba(0, 0, 0, 0)" && look.border === "0px",
+      `no box: no background or border (${look.bg}, ${look.border})`,
+    );
+    check(look.events === "none,none", `click-through as the log (${look.events})`);
+    check(look.halo, "translucent text with the halo");
+    check(
+      Math.abs(parseFloat(look.maxH) - parseFloat(look.vh30)) < 1,
+      `input focused: expanded as the log would be (${look.maxH})`,
+    );
+    check(look.logHidden, "390px: the tree takes the log's place");
     check(s.focus && s.value === "keep me", "the input keeps its focus and its draft");
     check(s.body.includes("chat"), "the sheet shows the tree from renderTree");
     // Again: closes.
@@ -323,13 +353,21 @@ try {
     await settle();
     s = await watch("escape");
     check(!s.tree && s.value === "keep me", "Escape closes it");
-    // A tap outside closes.
+    // A tap outside is the page's: the tree stays (it is click-through, as the log).
     await page.click(sel("debug-chat-tree-button"));
     await settle();
     await page.mouse.click(40, 120);
     await settle();
     s = await watch("outside");
-    check(!s.tree, "a tap outside closes it");
+    check(s.tree, "a tap outside leaves it open");
+    // Not focused: compact, as the log.
+    const compact = await page.evaluate(
+      () =>
+        getComputedStyle(document.querySelector('[data-testid="debug-chat-tree-body"]')).maxHeight,
+    );
+    check(compact === `${4.1 * 16}px`, `unfocused: compact, as the log (${compact})`);
+    await page.click(sel("debug-chat-tree-close"));
+    await settle();
     // Never both: tree, then a double tap on the mark (menu) — the tree closes.
     await page.click(sel("debug-chat-tree-button"));
     await settle();
@@ -349,22 +387,24 @@ try {
       await settle();
       await watch(`double tap ${i}`);
     }
-    check(!both, "the menu and the tree sheet are never open together");
+    check(!both, "the menu and the tree are never open together");
     await ctx.close();
   }
-  // Phone width: the tree is a sheet.
+  // Phone width: the tree shows in the log's place.
   {
     const { ctx, page } = await open("?open");
     await page.click('[data-testid="debug-chat-tree-button"]');
     await page.waitForTimeout(350);
     const mode = await page.getAttribute('[data-testid="debug-chat-tree"]', "data-mode");
-    check(mode === "sheet", `390px: the tree opens as a sheet (${mode})`);
+    check(mode === "inline", `390px: the tree opens in the log's place (${mode})`);
     await ctx.close();
   }
 
   // Wide (1024): tree | log, side by side; switching back keeps the tree's scroll.
   {
     const { ctx, page } = await open("?open", "light", 1024, 768);
+    // Focused: both columns expanded, as the log is while typing.
+    await page.focus('[data-testid="debug-chat-input"]');
     await page.click('[data-testid="debug-chat-tree-button"]');
     await page.waitForTimeout(350);
     const g = await page.evaluate(() => {
@@ -384,10 +424,12 @@ try {
         bar: r(bar),
         slot: r(slot),
         logVisible: getComputedStyle(log).display !== "none" && r(log).height > 100,
+        boxless: getComputedStyle(box).backgroundColor === "rgba(0, 0, 0, 0)",
       };
     });
     check(g.two && g.mode === "column", `1024px: the tree is a column (${g.mode})`);
     check(g.width > 600, `1024px: the box widens (${g.width}px)`);
+    check(g.boxless, "1024px: both columns are box-less log surfaces");
     check(
       g.logVisible && g.tree.right <= g.log.left + 1 && g.tree.width > 150,
       `tree | log side by side (tree ${Math.round(g.tree.left)}–${Math.round(g.tree.right)}, log ${Math.round(g.log.left)}–${Math.round(g.log.right)})`,
@@ -408,12 +450,15 @@ try {
     await page.waitForTimeout(300);
     const [t1, l1] = await scrolls();
     check(t1 > 0 && l1 === log0, `the tree scrolls on its own (tree ${t1}, log ${log0} → ${l1})`);
-    await page.mouse.move(g.log.left + 60, g.log.top + 120);
-    await page.mouse.wheel(0, -200);
-    await page.waitForTimeout(300);
+    // The log is click-through (only the input's swipe and the mic scroll it):
+    // scroll it directly, and the tree stays put.
+    await page.evaluate(() => {
+      document.querySelector('[data-testid="debug-chat-log"]').scrollTop -= 200;
+    });
+    await page.waitForTimeout(100);
     const [t2, l2] = await scrolls();
     check(l2 < l1 && t2 === t1, `the log scrolls on its own (log ${l1} → ${l2}, tree ${t2})`);
-    // Narrow the window: a change event switches to the sheet, the tree's scroll kept.
+    // Narrow the window: a change event puts the tree in the log's place, its scroll kept.
     await page.setViewportSize({ width: 390, height: 768 });
     await page.waitForTimeout(350);
     const after = await page.evaluate(() => [
@@ -421,8 +466,8 @@ try {
       document.querySelector('[data-testid="debug-chat-tree-body"]').scrollTop,
     ]);
     check(
-      after[0] === "sheet" && after[1] >= t1 - 2, // (scroll anchoring may move it on as rows rewrap)
-      `narrowed: a sheet, scroll kept (${after.join(", ")})`,
+      after[0] === "inline" && after[1] >= t1 - 2, // (scroll anchoring may move it on as rows rewrap)
+      `narrowed: inline, scroll kept (${after.join(", ")})`,
     );
     // Menu over the column: the column goes (one panel at a time).
     await page.setViewportSize({ width: 1024, height: 768 });
@@ -442,7 +487,7 @@ try {
     await page.click('[data-testid="debug-chat-tree-button"]');
     await page.waitForTimeout(350);
     const empty = await page.locator('[data-testid="debug-chat-tree-empty"]').textContent();
-    check(empty === "No tree source", "with no tree source, the sheet says so");
+    check(empty === "No tree source", "with no tree source, the tree says so");
     await ctx.close();
   }
   {
@@ -657,6 +702,7 @@ try {
     mkdirSync(SHOTS, { recursive: true });
     for (const scheme of ["light", "dark"]) {
       const { ctx, page } = await open("?open", scheme, 1024, 768);
+      await page.focus('[data-testid="debug-chat-input"]'); // expanded, as while typing
       await page.click('[data-testid="debug-chat-tree-button"]');
       await page.waitForTimeout(350);
       const file = join(SHOTS, `desktop-two-col-${scheme}.png`);
@@ -668,6 +714,7 @@ try {
       for (const state of ["expanded", "minimized", "tree"]) {
         const { ctx, page } = await open(state === "minimized" ? "?min" : "?open", scheme);
         if (state === "tree") {
+          await page.focus('[data-testid="debug-chat-input"]');
           await page.click('[data-testid="debug-chat-tree-button"]');
           await page.waitForTimeout(350);
         }
