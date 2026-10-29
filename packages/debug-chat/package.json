@@ -24,7 +24,16 @@
     "./wire": "./src/wire.ts",
     "./voice": "./src/voice.ts",
     "./voice-out": "./src/voice-out.ts",
-    "./echo": "./src/echo.ts"
+    "./echo": "./src/echo.ts",
+    "./anchor": "./src/anchor.ts",
+    "./detent": "./src/detent.ts",
+    "./float-lines": "./src/float-lines.ts",
+    "./frontier-view": "./src/frontier-view.ts",
+    "./log-surface": "./src/log-surface.ts",
+    "./mic-session": "./src/mic-session.ts",
+    "./speech-rate": "./src/speech-rate.ts",
+    "./tree-source": "./src/tree-source.ts",
+    "./tree-nav": "./src/tree-nav.ts"
   },
   "peerDependencies": {
     "react": "*",
