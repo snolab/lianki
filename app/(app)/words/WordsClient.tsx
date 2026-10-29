@@ -2469,7 +2469,7 @@ function Study({
                     if (touch) setFocusLine(Math.min(queue.length - 1, i + 1));
                     if (swipeScroll) listRef.current?.scrollBy({ top: ROW_H, behavior: "smooth" });
                   }}
-                  className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none border-b ${
+                  className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none ${
                     touch
                       ? "slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base pr-4"
                       : hasExamples
@@ -2671,7 +2671,7 @@ function SlipCords({ loose, moving }: { loose: boolean; moving: boolean }) {
     const frame = (now: number) => {
       const t = still ? 1 : Math.min(1, (now - t0) / 200);
       slack.current = from + (to - from) * minJerk(t);
-      const h = row.offsetHeight + 1;
+      const h = row.offsetHeight;
       const w = row.offsetWidth;
       const m = getComputedStyle(row).transform;
       const x = m && m !== "none" ? new DOMMatrixReadOnly(m).m41 : 0;
