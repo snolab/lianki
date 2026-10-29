@@ -15,6 +15,8 @@ const ENDS_SENTENCE = /[。．.!?！？]$/;
 const OPEN_KEY = "lk:debug-chat-open";
 const SPEAK_KEY = "lk:debug-chat-speak";
 const POS_KEY = "lk:debug-chat-pos";
+/** The input and its grip: the page shows through at about half. */
+const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
 
 /**
  * Drag the box (by its header, or the collapsed pill) anywhere on screen: an
@@ -263,9 +265,9 @@ export function DebugChat({
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
       style={offset}
-      className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] opacity-60 transition-opacity focus-within:opacity-100 active:opacity-100 flex-col overflow-hidden rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100"
+      className="fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] opacity-60 transition-opacity focus-within:opacity-100 active:opacity-100 pointer-events-none flex-col overflow-hidden rounded-xl lk-halo text-xs text-gray-800 dark:text-gray-100"
     >
-      <header {...handle} className="flex select-none items-center gap-1.5 px-2 py-1">
+      <header className="flex select-none items-center gap-1.5 px-2 py-1 [&_button]:pointer-events-auto">
         <span className="size-2 shrink-0 rounded-full" style={{ background: dot }} />
         <span
           className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-400"
@@ -320,7 +322,20 @@ export function DebugChat({
           </li>
         ))}
       </ol>
-      <div className="relative border-t border-gray-200 dark:border-gray-800">
+      {/* The log above is click-through: taps reach the page under it. Only the
+          grip and the input take pointer events. */}
+      <div className="relative flex items-stretch gap-1">
+        <button
+          type="button"
+          data-drag-handle
+          aria-label="Drag the chat box"
+          title="Drag"
+          {...handle}
+          style={{ ...handle.style, background: INPUT_BG }}
+          className="pointer-events-auto shrink-0 rounded-lg border border-current/25 px-1.5 text-base leading-none text-gray-500"
+        >
+          ⠿
+        </button>
         {armed > 0 && (
           <div
             key={armed}
@@ -369,14 +384,15 @@ export function DebugChat({
             e.preventDefault();
             submit();
           }}
-          className="block w-full resize-none rounded-lg border border-current/25 bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-gray-400"
+          style={{ background: INPUT_BG }}
+          className="pointer-events-auto block min-w-0 flex-1 resize-none rounded-lg border border-current/25 px-2 py-1.5 text-sm outline-none placeholder:text-gray-400"
         />
-        {(armed > 0 || offline) && (
-          <div className="px-2 pb-1 text-[10px] text-gray-500">
-            {offline ? "not connected — kept; it will go when you type again" : "sending in 3s"}
-          </div>
-        )}
       </div>
+      {(armed > 0 || offline) && (
+        <div className="px-2 pb-1 text-[10px] text-gray-500">
+          {offline ? "not connected — kept; it will go when you type again" : "sending in 3s"}
+        </div>
+      )}
     </section>
   );
 }
