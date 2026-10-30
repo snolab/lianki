@@ -583,7 +583,15 @@ try {
       Object.values(seen).every((h) => h.length === 0),
       `no visible "debug" on /profile, /preferences or the menu with it on (${JSON.stringify(seen)})`,
     );
+    // ?agent=0 is applied after hydration, which can come after "load": wait
+    // for the flag itself, or closing the tab can leave the Learning Partner
+    // on for every later check (the version notice then auto-reloads).
     await tab.goto(`${origin}/profile?agent=0`, { waitUntil: "load" });
+    await tab.waitForFunction(
+      () => localStorage.getItem("lk:agent") === "0" && localStorage.getItem("lk:debug") === "0",
+      null,
+      { timeout: 15000 },
+    );
     await tab.close();
   }
 
@@ -695,15 +703,48 @@ try {
   await page.routeWebSocket("**/api/version/ws", (ws) =>
     ws.send(JSON.stringify({ build: "some-newer-build" })),
   );
+  // A Learning Partner device reloads by itself instead of showing the
+  // button: this check is about a user's device, so the flag must be off.
+  const partnerFlags = () =>
+    page.evaluate(() => [localStorage.getItem("lk:agent"), localStorage.getItem("lk:debug")]);
+  const partnerBefore = await partnerFlags();
+  check(
+    !partnerBefore.includes("1"),
+    `the Learning Partner is off before the version notice check (${partnerBefore.join()})`,
+  );
   await page.evaluate(() => localStorage.setItem("lk:version-notice", "1"));
   await page.reload({ waitUntil: "load" });
   await page.bringToFront();
   const notice = page.getByRole("button", { name: "New version · Refresh" });
-  await notice.waitFor({ timeout: 10000 }).catch(() => {});
+  await notice.waitFor({ timeout: 15000 }).catch(() => {});
   check(await notice.isVisible(), "a newer build pushed over the socket shows a Refresh button");
-  await page.evaluate(() => localStorage.removeItem("lk:version-notice"));
+  // With the Learning Partner on, the page reloads itself once for that
+  // build; when the reload still hears the old build is stale, it shows the
+  // button rather than reloading again and again.
+  {
+    await page.evaluate(() => {
+      for (const k of ["lk:agent", "lk:debug"]) localStorage.setItem(k, "1");
+      sessionStorage.removeItem("lk:reloaded-for");
+    });
+    let loads = 0;
+    const onLoad = () => loads++;
+    page.on("load", onLoad);
+    await page.reload({ waitUntil: "load" });
+    await notice.waitFor({ timeout: 20000 }).catch(() => {});
+    const shown = await notice.isVisible().catch(() => false);
+    await page.waitForTimeout(3000); // a second auto-reload would land in here
+    page.off("load", onLoad);
+    check(
+      shown && loads === 2,
+      `a Learning Partner device reloads once for a new build, then shows Refresh (loads ${loads}, shown ${shown})`,
+    );
+  }
+  await page.evaluate(() => {
+    localStorage.removeItem("lk:version-notice");
+    for (const k of ["lk:agent", "lk:debug"]) localStorage.setItem(k, "0");
+  });
   await page.unrouteAll({ behavior: "ignoreErrors" }).catch(() => {});
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "load" });
   await rows.first().waitFor({ timeout: 15000 });
 
   // Endless: grade 60 words in a row; more keep coming and all are saved.
