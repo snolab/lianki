@@ -55,7 +55,7 @@ import {
 } from "./float-lines";
 import { Icon, POLISHED_ICON } from "./icons";
 import { PolishedMark } from "./PolishedMark";
-import { LINE_HALO, fullLogHeight, keepEndGap, logSurface } from "./log-surface";
+import { LINE_HALO, fullLogBox, fullLogHeight, keepEndGap, logSurface } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
 import { TreeChips } from "./TreeChips";
 import { keepTree, navIndexOf, restoreTree } from "./tree-keep";
@@ -260,6 +260,8 @@ function useDrag() {
 
 /** The full-screen log's wipe in and out (and its sheet's fade). */
 const WIPE = "clip-path 200ms ease-out";
+/** The input-started full-screen log fades in and out, as the bar does the other way. */
+const FADE = "opacity 200ms ease-out";
 /** The glass sheet behind the full-screen log (design-principles.md): page colour, blurred. */
 const SHEET_BG = "color-mix(in oklch, var(--background) 60%, transparent)";
 const SHEET_BG_SOLID = "color-mix(in oklch, var(--background) 90%, transparent)";
@@ -292,6 +294,16 @@ function safeSides() {
     left: Number.parseFloat(cs.paddingLeft) || 0,
     right: Number.parseFloat(cs.paddingRight) || 0,
   };
+  probe.remove();
+  return v;
+}
+
+/** env(safe-area-inset-bottom) in px (the home indicator), measured once per drag. */
+function safeBottom() {
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;visibility:hidden;padding-bottom:env(safe-area-inset-bottom)";
+  document.body.append(probe);
+  const v = Number.parseFloat(getComputedStyle(probe).paddingBottom) || 0;
   probe.remove();
   return v;
 }
@@ -891,16 +903,54 @@ export function DebugChat({
    * left up over the page would need its own way out.
    */
   const [fullLog, setFullLog] = useState<"off" | "on" | "leaving">("off");
-  const fullRef = useRef({ maxH: 0, fromH: 0, gap: 0, lastDy: 0 });
+  const fullRef = useRef<{
+    maxH: number;
+    fromH: number;
+    gap: number;
+    lastDy: number;
+    /** From the empty input: the log's own box (fullLogBox, section-relative px). */
+    box: { left: number; width: number; bottom: number; height: number; hideBar: boolean } | null;
+  }>({ maxH: 0, fromH: 0, gap: 0, lastDy: 0, box: null });
   const wasFull = useRef(false);
   const reducedMotion = () =>
     typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   const logDrag = {
-    start: () => {
+    /**
+     * `from: "input"` (the empty input): the log takes its size-snapped box
+     * (log-surface.ts fullLogBox): on a narrow screen it spans the whole
+     * screen and the bar steps aside; on a wide one it keeps its width and
+     * only grows to the full height. From the mic, the bar stays (the finger
+     * is on it) and the log only grows upward, as before.
+     */
+    start: (from: "mic" | "input" = "mic") => {
       const el = log.current;
       if (!el || !open) return;
       const r = el.getBoundingClientRect();
+      const sec = root.current?.getBoundingClientRect();
+      let box: (typeof fullRef.current)["box"] = null;
+      if (from === "input" && sec) {
+        const vv = typeof visualViewport === "undefined" ? null : visualViewport;
+        const sides = safeSides();
+        const b = fullLogBox({
+          vw: document.documentElement.clientWidth || innerWidth,
+          vh: innerHeight,
+          visibleTop: vv?.offsetTop ?? 0,
+          visibleBottom: vv ? vv.offsetTop + vv.height : innerHeight,
+          safe: { top: notch.current, bottom: safeBottom(), left: sides.left, right: sides.right },
+          log: { left: r.left, width: r.width, bottom: r.bottom, height: r.height },
+        });
+        // Section-relative: the box's bottom and left edges do not move when
+        // the log leaves the flow (the box hangs from its bottom).
+        box = {
+          left: b.left - sec.left,
+          width: b.width,
+          bottom: sec.bottom - b.bottom,
+          height: b.bottom - b.top,
+          hideBar: b.hideBar,
+        };
+      }
       fullRef.current = {
+        box,
         maxH: fullLogHeight({
           bottom: r.bottom,
           height: r.height,
@@ -922,19 +972,32 @@ export function DebugChat({
     },
     end: () => setFullLog((s) => (s === "on" ? "leaving" : s)),
   };
-  /** The log's surface props, full screen: its height lifted to the visible top. */
-  const fullSurface = (p: ReturnType<typeof logSurface>) =>
-    fullLog === "off"
-      ? p
-      : {
-          ...p,
-          style: {
-            ...p.style,
-            maxHeight: fullRef.current.maxH,
-            // The height switches at once; only the wipe animates.
-            transition: reducedMotion() ? "none" : WIPE,
-          },
-        };
+  /** The log's surface props, full screen: lifted to the visible top, or its own snapped box. */
+  const fullSurface = (p: ReturnType<typeof logSurface>) => {
+    if (fullLog === "off") return p;
+    const box = fullRef.current.box;
+    const transition = reducedMotion() ? "none" : box ? FADE : WIPE;
+    return {
+      ...p,
+      style: {
+        ...p.style,
+        // The size switches at once; only the wipe (or the fade) animates.
+        transition,
+        ...(box
+          ? {
+              position: "absolute" as const,
+              left: box.left,
+              width: box.width,
+              bottom: box.bottom,
+              height: box.height,
+              maxHeight: box.height,
+            }
+          : { maxHeight: fullRef.current.maxH }),
+      },
+    };
+  };
+  /** The bar steps aside while the log spans the screen (fullLogBox hideBar). */
+  const barAside = fullLog === "on" && !!fullRef.current.box?.hideBar;
   /**
    * The empty input takes the same vertical drag (with a draft, a drag is the
    * draft's own: it scrolls or selects its text). A tap still focuses it.
@@ -950,7 +1013,7 @@ export function DebugChat({
       if (!m || m.axis !== "y") return;
       if (!was) {
         e.currentTarget.setPointerCapture?.(e.pointerId);
-        logDrag.start();
+        logDrag.start("input");
       }
       logDrag.move(m.dy);
     },
@@ -978,8 +1041,18 @@ export function DebugChat({
         clientHeight: el.clientHeight,
         gap: fullRef.current.gap,
       });
+      if (reducedMotion()) return;
+      if (fullRef.current.box) {
+        // Its own box (it may be wider, its lines rewrapped): a fade in.
+        el.style.transition = "none";
+        el.style.opacity = "0";
+        void el.offsetHeight;
+        el.style.transition = FADE;
+        el.style.opacity = "1";
+        return;
+      }
       const h = revealed();
-      if (!h || reducedMotion()) return;
+      if (!h) return;
       el.style.transition = "none";
       el.style.clipPath = `inset(${h}px 0 0 0)`;
       void el.offsetHeight; // the start of the wipe, once per switch
@@ -988,8 +1061,9 @@ export function DebugChat({
     } else if (fullLog === "leaving") {
       fullRef.current.gap = el.scrollHeight - el.scrollTop - el.clientHeight;
       const h = revealed();
-      if (!h || reducedMotion()) return setFullLog("off");
-      el.style.clipPath = `inset(${h}px 0 0 0)`;
+      if (reducedMotion() || (!h && !fullRef.current.box)) return setFullLog("off");
+      if (fullRef.current.box) el.style.opacity = "0";
+      else el.style.clipPath = `inset(${h}px 0 0 0)`;
       // transitionend ends it (below); a one-shot fallback if it never fires.
       const t = setTimeout(() => setFullLog((s) => (s === "leaving" ? "off" : s)), 320);
       return () => clearTimeout(t);
@@ -997,8 +1071,11 @@ export function DebugChat({
       // Back to its resting height at once (the wipe already hid the rest):
       // the newest lines when idle, as the compact log always shows; typing,
       // the lines that were at its bottom edge.
+      const faded = !!fullRef.current.box && !reducedMotion();
+      fullRef.current.box = null;
       el.style.transition = "none";
       el.style.clipPath = "";
+      el.style.opacity = faded ? "0" : "";
       el.scrollTop =
         typing || micActive
           ? keepEndGap({
@@ -1008,7 +1085,11 @@ export function DebugChat({
             })
           : el.scrollHeight;
       void el.offsetHeight;
-      el.style.transition = "";
+      if (faded) {
+        // Back in its place: the compact log fades in where it rests.
+        el.style.transition = FADE;
+        el.style.opacity = "1";
+      } else el.style.transition = "";
       onLogScroll();
     }
   }, [fullLog]);
@@ -2067,8 +2148,13 @@ export function DebugChat({
         onTransitionEnd={(e) => {
           if (e.target !== e.currentTarget) return;
           // The full-screen log's wipe out ended: back to its resting height.
-          if (e.propertyName === "clip-path") {
+          if (e.propertyName === "clip-path" || e.propertyName === "opacity") {
             if (fullLog === "leaving") setFullLog("off");
+            // The fade back in ended: the inline styles go.
+            else if (fullLog === "off" && e.propertyName === "opacity") {
+              e.currentTarget.style.transition = "";
+              e.currentTarget.style.opacity = "";
+            }
             return;
           }
           // Shrunk: land on the newest lines again, now that the height settled.
@@ -2281,7 +2367,12 @@ export function DebugChat({
           onPointerMove={(e) => e.target === e.currentTarget && handle.onPointerMove(e)}
           onPointerUp={(e) => e.target === e.currentTarget && handle.onPointerUp()}
           onPointerCancel={(e) => e.target === e.currentTarget && handle.onPointerCancel()}
-          style={{ background: INPUT_BG }}
+          style={{
+            background: INPUT_BG,
+            // Aside while the log spans the screen; it keeps the pointer (captured).
+            opacity: barAside ? 0 : undefined,
+            transition: reducedMotion() ? undefined : FADE,
+          }}
           className={`pointer-events-auto relative flex items-end rounded-[1.125rem] border border-current/25 text-gray-600 backdrop-blur-md backdrop-saturate-150 dark:text-gray-300 ${open ? "p-0.5" : "p-px"}`}
         >
           {armed > 0 && (
