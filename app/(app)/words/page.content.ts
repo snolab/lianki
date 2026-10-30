@@ -497,6 +497,42 @@ const wordsPageContent = {
       mr: "प्रत्येक श्रेणीसाठी छोटा ध्वनी, न पाहता अभ्यासासाठी",
       ko: "평가마다 짧은 소리가 나서 화면을 보지 않고 학습할 수 있습니다",
     }),
+    animationsOff: t({
+      en: "Turn off animations",
+      zh: "关闭动画",
+      hi: "एनिमेशन बंद करें",
+      es: "Desactivar animaciones",
+      fr: "Désactiver les animations",
+      ar: "إيقاف الحركات",
+      bn: "অ্যানিমেশন বন্ধ করুন",
+      pt: "Desativar animações",
+      ru: "Отключить анимацию",
+      ur: "اینیمیشن بند کریں",
+      id: "Matikan animasi",
+      de: "Animationen ausschalten",
+      ja: "アニメーションをオフ",
+      sw: "Zima michoro hai",
+      mr: "ॲनिमेशन बंद करा",
+      ko: "애니메이션 끄기",
+    }),
+    animationsOffHint: t({
+      en: "No sliding, fading or springing anywhere in the app, on this device. Follows your system setting until you change it",
+      zh: "在此设备上，整个应用不再有滑动、淡入淡出或弹动效果。在你更改之前，跟随系统设置",
+      hi: "इस डिवाइस पर पूरे ऐप में कोई खिसकना, धुंधला होना या उछलना नहीं। जब तक आप न बदलें, सिस्टम सेटिंग के अनुसार",
+      es: "Nada se desliza, se desvanece ni rebota en la app, en este dispositivo. Sigue el ajuste del sistema hasta que lo cambies",
+      fr: "Plus de glissements, de fondus ni de rebonds dans l’app, sur cet appareil. Suit le réglage du système tant que vous ne le changez pas",
+      ar: "لا انزلاق ولا تلاشي ولا ارتداد في أي مكان من التطبيق على هذا الجهاز. يتبع إعداد النظام حتى تغيّره",
+      bn: "এই ডিভাইসে অ্যাপের কোথাও সরে যাওয়া, মিলিয়ে যাওয়া বা লাফানো নেই। আপনি না বদলানো পর্যন্ত সিস্টেমের সেটিং মেনে চলে",
+      pt: "Nada desliza, esmaece ou quica no app, neste dispositivo. Segue o ajuste do sistema até você mudar",
+      ru: "Никаких сдвигов, затуханий и пружин во всём приложении на этом устройстве. Пока вы не измените, следует настройке системы",
+      ur: "اس آلے پر پوری ایپ میں کوئی سرکنا، مدھم ہونا یا اچھلنا نہیں۔ جب تک آپ نہ بدلیں، سسٹم کی ترتیب کے مطابق",
+      id: "Tanpa geser, pudar, atau pantulan di seluruh aplikasi, di perangkat ini. Mengikuti setelan sistem sampai Anda mengubahnya",
+      de: "Kein Gleiten, Ausblenden oder Federn in der ganzen App, auf diesem Gerät. Folgt der Systemeinstellung, bis du sie änderst",
+      ja: "この端末では、アプリ全体でスライド・フェード・弾む動きをなくします。変更するまではシステムの設定に従います",
+      sw: "Hakuna kuteleza, kufifia wala kudunda popote kwenye programu, kwenye kifaa hiki. Hufuata mpangilio wa mfumo hadi uubadilishe",
+      mr: "या उपकरणावर संपूर्ण ॲपमध्ये सरकणे, फिके होणे किंवा उसळणे नाही. तुम्ही बदलेपर्यंत सिस्टमच्या सेटिंगनुसार",
+      ko: "이 기기에서 앱 전체의 미끄러짐, 페이드, 튕김 효과를 없앱니다. 바꾸기 전까지는 시스템 설정을 따릅니다",
+    }),
     speakOnSwipe: t({
       en: "Speak on swipe",
       zh: "滑动时朗读",
@@ -1563,3 +1599,18 @@ const wordsPageContent = {
 } satisfies DeclarationContent;
 
 export default wordsPageContent;
+
+/**
+ * Context for translators (the owner, 2026-10-30: every string travels with
+ * where it appears, what it is for and how it is used). One entry per key,
+ * read with the source text whenever the key is translated or reworded.
+ * Keys added before the rule are being filled in as they are touched.
+ */
+export const wordsPageContext: Partial<Record<keyof typeof wordsPageContent.content, string>> = {
+  animationsOff:
+    '/words study, Settings sheet: the label of an on/off switch (a pill). On = this device shows no animation anywhere in the app: no transitions, fades, slides or spring motion. Short, an imperative or a noun phrase, like the other switch labels ("Speak on swipe", "Full screen").',
+  animationsOffHint:
+    '/words study, Settings sheet: the tooltip (title attribute) of the "Turn off animations" switch. Explains that it covers the whole app, only on this device, and that until the person flips it, it follows the operating system\'s reduce-motion setting. One or two plain sentences, no final period, like the other hints.',
+  showAllHint:
+    '/words study, Settings sheet: the tooltip of the "Show all meanings" switch. On = every row shows its back (meaning and example) and reading aloud reads the back too, not only the word. (E) is the keyboard shortcut; keep it.',
+};

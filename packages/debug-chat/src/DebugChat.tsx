@@ -2156,7 +2156,10 @@ function FloatLine({
     setPhase("dwell");
     const l = createFloatLife({
       ms: dwellMs(m.text),
-      reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+      // The app's "Turn off animations" (lib/motion-pref.ts) sets data-motion="off".
+      reducedMotion:
+        document.documentElement.dataset.motion === "off" ||
+        matchMedia("(prefers-reduced-motion: reduce)").matches,
       paused: live.current.paused,
       onPhase: (p) => (p === "gone" ? live.current.onGone() : setPhase(p)),
     });

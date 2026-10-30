@@ -1159,10 +1159,25 @@ try {
         (await blurredM()) === shownBefore,
         `${tag} the double tap leaves the reveal as it was`,
       );
-      // Phones have no example column: the sheet shows the example sentence.
+      // The sheet shows the example in full, and the word's tags (its list,
+      // the list's level), which the row never shows.
       check(
         (await m.locator("[data-slip-sheet] [data-sheet-example]").count()) === 1,
         `${tag} the sheet shows the word's example sentence`,
+      );
+      check(
+        (await m.locator("[data-slip-sheet] [data-sheet-tags] span").count()) > 0,
+        `${tag} the sheet shows the word's tags`,
+      );
+      // One row = the whole card: front, then the back (meaning, then the
+      // example), in the row's fixed height, so the windowing stays exact.
+      const unified = await mrows.nth(0).evaluate((el) => ({
+        example: el.querySelectorAll("[data-row-back] [data-row-example]").length,
+        h: Math.round(el.getBoundingClientRect().height),
+      }));
+      check(
+        unified.example === 1 && unified.h === 44,
+        `${tag} the row shows the example under the meaning, at the fixed height (${JSON.stringify(unified)})`,
       );
       await m.getByRole("button", { name: "Cancel" }).click();
       check((await m.locator("[data-slip-sheet]").count()) === 0, `${tag} Cancel closes the sheet`);

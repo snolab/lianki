@@ -1,3 +1,4 @@
+import { MOTION_BOOT_SCRIPT } from "@/lib/motion-boot";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { IntlayerServerProvider } from "next-intlayer/server";
@@ -85,6 +86,8 @@ export default async function RootLayout({
             __html: `try{var p=localStorage.getItem("lk:paper");if(p)document.documentElement.dataset.paper=p}catch(e){}`,
           }}
         />
+        {/* "Turn off animations" (lib/motion-pref.ts), before first paint. */}
+        <script dangerouslySetInnerHTML={{ __html: MOTION_BOOT_SCRIPT }} />
         {/* Embed mode: inside an iframe (an overlay preview) or with ?embed=1, the
             page shows its content only, on a transparent background. */}
         <script
