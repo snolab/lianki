@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { launchPersistentSilent } from "../scripts/qa/silent.mjs";
 
 // Integration smoke test for the MV3 extension: build packages/ext, load the
 // unpacked dist/ into real Chromium, navigate to a matched page, and assert the
@@ -23,7 +24,7 @@ test("MV3 content script loads and runs in Chromium", async () => {
   const userDataDir = await mkdtemp(join(tmpdir(), "lianki-ext-"));
   let context: BrowserContext | undefined;
   try {
-    context = await chromium.launchPersistentContext(userDataDir, {
+    context = await launchPersistentSilent(chromium, userDataDir, {
       headless: false,
       args: [
         `--disable-extensions-except=${distPath}`,

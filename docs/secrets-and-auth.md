@@ -4,8 +4,9 @@
 
 - secretlint runs pre-commit; gitleaks scans the **full history** in CI. Run it
   locally with `bun run scan:secrets`; config in `.gitleaks.toml`.
-- `.env.local` and `.dev.vars` are gitignored and unrecoverable — never delete
-  them. `.dev.vars` is auto-created from `.dev.vars.example` on the first
+- `.env.local` and `.dev.vars` are gitignored and have no other copy — never
+  delete them (encrypted backup proposed in
+  [secrets-backup-plan.md](secrets-backup-plan.md), not done yet). `.dev.vars` is auto-created from `.dev.vars.example` on the first
   `qa:all` run.
 
 ## Magic-link email
@@ -98,7 +99,10 @@ lianki-push passes it on, and `/api/debug/identity` answers with the **owner**
 Since 2026-10-31 02:11 JST (the owner typed "1同意"), the same header also
 works on `/api/words/tts` and `/api/debug/stt`, as the owner, so the dev page
 can read words aloud and transcribe without Workers AI credentials on the
-Mac. These are the only routes that accept it (`lib/dev-bridge-user.ts`).
+Mac. Since 2026-10-31 (owner, decision D in docs/prefs-sync.md) it also
+works on `/api/prefs`, read and write, so the dev page and lianki.com share
+his settings. These are the only routes that accept it
+(`lib/dev-bridge-user.ts`).
 
 - A wrong value gets 401, with no fall back to the cookie.
 - Unset, or shorter than 32 characters, the bridge is shut.

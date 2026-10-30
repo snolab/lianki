@@ -9,6 +9,7 @@ import { IntlayerClientProvider } from "../IntlayerClientProvider";
 import { announceBuild } from "@/lib/announce-build";
 import { cookies } from "next/headers";
 import { InviteClaim } from "@/app/components/InviteClaim";
+import { PrefSync } from "@/app/components/PrefSync";
 import { INVITE_COOKIE } from "@/lib/referrals/cookie";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -48,6 +49,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             firstRun={firstRun}
           >
             {pendingInvite && <InviteClaim />}
+            <PrefSync signedIn={Boolean(user)} />
             {children}
           </AppShell>
         </div>

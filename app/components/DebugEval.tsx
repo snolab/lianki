@@ -26,6 +26,12 @@ import { speakReply } from "@lianki/debug-chat/DebugChat";
 import { voice } from "@lianki/debug-chat/voice";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
+import {
+  type PageErrorReporter,
+  createPageErrorReporter,
+  installPageErrorHooks,
+  typedText,
+} from "@lianki/debug-chat/page-errors";
 import { grantUntil } from "@/lib/islands/rules";
 import { islandStore } from "@/lib/islands/store";
 import { useIslands } from "@/lib/islands/useIslands";
@@ -39,6 +45,10 @@ const RELABEL_MS = 300;
 const AGENT_AVATAR = "/icon-192.png";
 /** sessionStorage: this tab's page id (docs/monitoring.md, "Remote eval"). */
 const TAB_KEY = "lk:debug-tab";
+/** The build the page runs, on each page-error ("dev" under next dev). */
+const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev";
+/** The chat lines cut out of page errors: the latest this many. */
+const SENSITIVE_LINES = 50;
 
 /** This page as the hub and the agent see it: path, `pwa` when installed, user agent. */
 const pageLabel = () => {
@@ -88,6 +98,11 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
   const [viewer, setViewer] = useState<Sender | undefined>(undefined);
   const sockRef = useRef<WebSocket | null>(null);
   const friendRef = useRef(false);
+  /** The chat's lines, for page-errors to cut out (never sent with an error). */
+  const messagesRef = useRef<ChatMessage[]>([]);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
   /** The owner's page (a state arrived with no friend-status first): may hot-load the widget. */
   const [owner, setOwner] = useState(false);
   /** The agent's heartbeat (docs/monitoring.md, "Agent is working"). */
@@ -158,6 +173,24 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
     let idle: ReturnType<typeof setTimeout> | undefined;
     let hideToast: ReturnType<typeof setTimeout> | undefined;
     const opened = new WeakSet<WebSocket>();
+    // Page errors (docs/dev-debug-widget.md, "Page errors"): hooked while the
+    // socket is wanted, queued until the hub says this is the owner's page,
+    // dropped for good on a friend's.
+    const newReporter = () =>
+      createPageErrorReporter({
+        rev: BUILD_ID,
+        pagePath: () => location.pathname,
+        sensitive: () => [
+          ...typedText(document),
+          ...messagesRef.current.slice(-SENSITIVE_LINES).map((m) => m.text),
+        ],
+      });
+    let reporter: PageErrorReporter = newReporter();
+    let unhook: (() => void) | null = null;
+    const unhookErrors = () => {
+      unhook?.();
+      unhook = null;
+    };
 
     const run = async (sock: WebSocket, id: string, to: string, code: string) => {
       clearTimeout(hideToast);
@@ -193,6 +226,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
 
     const connect = () => {
       if (ws) return;
+      if (!unhook && !friendRef.current) unhook = installPageErrorHooks(window, reporter);
       const label = pageLabel();
       sentLabel.current = label;
       // This tab's id, kept across reloads, so a "this page" grant survives one.
@@ -232,6 +266,9 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
         }
         if (msg.type === "friend-status") {
           friendRef.current = true;
+          // Never a friend's errors: nothing queued is sent, nothing more is kept.
+          reporter.disable();
+          unhookErrors();
           setFriend(msg.status === "blocked" ? "blocked" : "open");
           if (msg.status === "blocked") setChat(true);
           return;
@@ -254,6 +291,10 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           // Friends hear friend-status before any state: no status yet = the owner.
           if (!friendRef.current) {
             setOwner(true);
+            reporter.attach((m) => {
+              if (sock.readyState !== WebSocket.OPEN) throw new Error("socket closed");
+              sock.send(JSON.stringify(m));
+            });
             // Hot islands follow the owner's code-run grant for this page.
             islandStore.setGrant(grantUntil(msg as HubState, Date.now()));
           }
@@ -320,6 +361,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
       sock.onclose = (e) => {
         if (ws !== sock) return;
         ws = null;
+        reporter.detach();
         sockRef.current = null;
         liveRef.current = false;
         beatRef.current = null;
@@ -331,12 +373,17 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
     };
     const disconnect = () => {
       clearTimeout(idle);
+      reporter.detach();
       if (!debugOn()) {
         islandStore.setGrant(null);
         setChat(false);
         setFriend(null);
         setOwner(false);
         friendRef.current = false;
+        // Debug mode off: no hooks, and a fresh reporter for next time.
+        unhookErrors();
+        reporter.disable();
+        reporter = newReporter();
       }
       const sock = ws;
       ws = null;
@@ -370,6 +417,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
       clearTimeout(hideToast);
       clearTimeout(beatTimer.current);
       disconnect();
+      unhookErrors();
     };
   }, []);
 
