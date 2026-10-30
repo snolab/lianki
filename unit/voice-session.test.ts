@@ -167,6 +167,23 @@ describe("voice session: the queue", () => {
     expect(h.texts().at(-1)).toBe("B.");
   });
 
+  it("onStart hears each sentence begin playing, but not a dropped one's late start", () => {
+    const h = harness();
+    let starts = 0;
+    const off = h.v.onStart(() => starts++);
+    h.v.setMic(true);
+    h.v.reply("One. Two.");
+    h.spoken[0].onstart?.();
+    expect(starts).toBe(1);
+    h.v.stop();
+    h.spoken[0].onstart?.(); // stopped: its epoch is gone
+    expect(starts).toBe(1);
+    off();
+    h.v.reply("Three.");
+    h.spoken.at(-1)?.onstart?.();
+    expect(starts).toBe(1);
+  });
+
   it("stop() clears the queue (Stop reading)", () => {
     const h = harness();
     h.v.setMic(true);

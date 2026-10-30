@@ -18,6 +18,7 @@
     "./debug-chat-widget": "./src/debug-chat-widget.ts",
     "./debug-widget": "./src/debug-widget.ts",
     "./icons": "./src/icons.tsx",
+    "./latency": "./src/latency.ts",
     "./mic": "./src/mic.ts",
     "./node-path": "./src/node-path.ts",
     "./tap-gesture": "./src/tap-gesture.ts",

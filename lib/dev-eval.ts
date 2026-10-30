@@ -18,6 +18,8 @@ import {
   type PairInfo,
   type Scope,
   type MessageSource,
+  type VoiceTiming,
+  cleanTiming,
 } from "../packages/debug-chat/src/wire";
 
 export {
@@ -55,6 +57,8 @@ export {
   applyEdit,
   dictatedDraft,
   draftSource,
+  type VoiceTiming,
+  cleanTiming,
 } from "../packages/debug-chat/src/wire";
 
 /** Largest `code` accepted, in characters. */
@@ -169,7 +173,15 @@ export type PageMessage =
   | { type: "deny" | "revoke"; pair: string }
   /** `to`: the state-tree node it is addressed to (absent = the main thread). */
   /** `source: "stt"`: sent from the widget's mic, unchanged (absent = typed). */
-  | { type: "chat"; id: string; text: string; to?: string; source?: MessageSource }
+  /** `timing`: a voice line's timestamps (VoiceTiming), kept on the stored line. */
+  | {
+      type: "chat";
+      id: string;
+      text: string;
+      to?: string;
+      source?: MessageSource;
+      timing?: VoiceTiming;
+    }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
   /** Close another (or this) page of the same audience, from the chat's menu. */
@@ -367,12 +379,14 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     if (!id || !text) return null;
     // An address that is not a node path is dropped: the line goes to the main thread.
     const to = nodePath(m.to);
+    const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
     return {
       type: "chat",
       id,
       text,
       ...(to && to !== ROOT_NODE ? { to } : {}),
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
+      ...(timing ? { timing } : {}),
     };
   }
   if (m.type === "result") {

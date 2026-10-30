@@ -140,6 +140,8 @@ export type UtterLike = {
   rate?: number;
   onend: ((e?: unknown) => void) | null;
   onerror: ((e?: unknown) => void) | null;
+  /** The browser began speaking it (the latency record's t_audible). */
+  onstart?: ((e?: unknown) => void) | null;
   onboundary: ((e: { charIndex: number; name?: string }) => void) | null;
 };
 export type SynthLike = { speak(u: UtterLike): void; cancel(): void };
@@ -153,6 +155,8 @@ export type Playback = {
   volume(level: number, ms: number): void;
 };
 export type PlayEvents = {
+  /** It started playing (audible): the voice latency record (latency.ts). */
+  onstart?(): void;
   onend(): void;
   onerror(): void;
   /** The cloud could not voice it (fetch, language, length, play refused): read it with speech. */
@@ -239,6 +243,8 @@ export function createVoice(d: {
   let duck: { timer: unknown; probs: number[] } | null = null;
   const said: Said[] = [];
   const subs = new Set<(s: VoiceState) => void>();
+  /** Told each time a sentence starts playing (latency.ts). */
+  const starts = new Set<() => void>();
 
   const state = (): VoiceState => ({
     mic,
@@ -276,6 +282,7 @@ export function createVoice(d: {
     };
     u.onend = () => ev.onend();
     u.onerror = () => ev.onerror();
+    u.onstart = () => ev.onstart?.();
     s.speak(u);
     return {
       route: "speech",
@@ -313,6 +320,10 @@ export function createVoice(d: {
     const info = { lang: head.lang, chars: head.text.length };
     // A failure that is not ours (we only cancel after bumping the epoch) moves on too.
     const ev: PlayEvents = {
+      onstart: () => {
+        if (e !== epoch) return;
+        for (const f of starts) f();
+      },
       onend: done,
       onerror: done,
       onfail: (reason) => {
@@ -417,6 +428,11 @@ export function createVoice(d: {
     subscribe(f: (s: VoiceState) => void) {
       subs.add(f);
       return () => void subs.delete(f);
+    },
+    /** `f` runs each time a sentence starts playing (audible), on either route. */
+    onStart(f: () => void) {
+      starts.add(f);
+      return () => void starts.delete(f);
     },
     /** Where the debug events go (DebugEval passes devLog). */
     setLog(f: (ev: Record<string, unknown>) => void) {

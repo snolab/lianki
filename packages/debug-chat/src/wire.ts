@@ -72,6 +72,12 @@ export type ChatMessage = {
   raw?: string;
   /** Set when the agent polished the line: when, by which agent, and how many times. */
   edited?: EditMark;
+  /**
+   * A voice line's timestamps on the sender's clock (VoiceTiming; the page's
+   * latency record, packages/debug-chat/src/latency.ts). Optional: older pages
+   * send none, and an older hub drops it.
+   */
+  timing?: VoiceTiming;
 };
 
 /** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */
@@ -378,4 +384,57 @@ export function dictatedDraft(prev: string, pure: string | null, next: string): 
  */
 export function draftSource(draft: string, pure: string | null): MessageSource | undefined {
   return pure !== null && draft === pure && !!draft.trim() ? "stt" : undefined;
+}
+
+/**
+ * A voice line's timestamps (Date.now() on the sending page) and the STT
+ * server's own ms, carried on the owner line's envelope so the hub and the
+ * listener can see where an utterance spent its time. Every field is
+ * optional; `t_sent` is always there on a page that sends one.
+ *
+ * t_lastVoice   the last frame the VAD scored as speech (Silero only)
+ * t_speechEnd   the VAD ended the utterance (after its silence timeout)
+ * t_uploadStart the WAV POST to /api/debug/stt began
+ * t_sttDone     its transcript came back
+ * t_shown       the transcript landed in the input (上屏)
+ * t_sent        the line went out on the socket
+ * sttServerMs   the route's own transcription time (SttResult.ms)
+ * audioMs       the utterance's length
+ */
+export type VoiceTiming = {
+  t_lastVoice?: number;
+  t_speechEnd?: number;
+  t_uploadStart?: number;
+  t_sttDone?: number;
+  t_shown?: number;
+  t_sent?: number;
+  sttServerMs?: number;
+  audioMs?: number;
+};
+export const VOICE_TIMING_KEYS = [
+  "t_lastVoice",
+  "t_speechEnd",
+  "t_uploadStart",
+  "t_sttDone",
+  "t_shown",
+  "t_sent",
+  "sttServerMs",
+  "audioMs",
+] as const satisfies readonly (keyof VoiceTiming)[];
+
+/**
+ * A VoiceTiming from the wire, or undefined: only the known keys, each a
+ * finite non-negative number (rounded to whole ms); anything else is dropped.
+ */
+export function cleanTiming(raw: unknown): VoiceTiming | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: VoiceTiming = {};
+  let any = false;
+  for (const k of VOICE_TIMING_KEYS) {
+    const v = (raw as Record<string, unknown>)[k];
+    if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1e14) continue;
+    out[k] = Math.round(v);
+    any = true;
+  }
+  return any ? out : undefined;
 }

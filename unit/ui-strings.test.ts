@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   TREE_ZH,
   UI_EN,
+  UI_JA,
   UI_ZH,
   isZh,
   treeDefaults,
@@ -18,7 +19,8 @@ describe("ui strings", () => {
     expect(isZh(null)).toBe(false);
     expect(isZh(undefined)).toBe(false); // no document in tests
     expect(uiStrings("zh-CN")).toBe(UI_ZH);
-    expect(uiStrings("ja")).toBe(UI_EN);
+    expect(uiStrings("ja")).toBe(UI_JA);
+    expect(uiStrings("en")).toBe(UI_EN);
     expect(treeDefaults("zh")).toBe(TREE_ZH);
     expect(treeDefaults("en")).toEqual({});
   });
@@ -27,6 +29,7 @@ describe("ui strings", () => {
     // (TreeStrings is a type: tsc checks TREE_ZH has every key; StateTree.tsx stays unloaded here.)
     expect(Object.values(TREE_ZH).every((v) => typeof v === "string" && v.length > 0)).toBe(true);
     expect(Object.keys(UI_ZH).sort()).toEqual(Object.keys(UI_EN).sort());
+    expect(Object.keys(UI_JA).sort()).toEqual(Object.keys(UI_EN).sort());
     expect(TREE_ZH.openCount).toContain("{n}");
   });
 });

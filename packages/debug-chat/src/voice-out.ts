@@ -271,9 +271,12 @@ export function createCloudOut(d: {
             a.playbackRate = rate;
             a.preservesPitch = true;
             a.webkitPreservesPitch = true;
-            a.play().catch((e: unknown) => {
-              if (live()) ev.onfail?.(`play ${(e as Error)?.name ?? "error"}`);
-            });
+            a.play().then(
+              () => live() && ev.onstart?.(),
+              (e: unknown) => {
+                if (live()) ev.onfail?.(`play ${(e as Error)?.name ?? "error"}`);
+              },
+            );
           };
           a.src = url;
           a.load();

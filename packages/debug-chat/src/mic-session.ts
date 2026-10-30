@@ -18,6 +18,7 @@
  * Everything that touches the browser is injected (MicDeps), so this is
  * unit-tested with fakes.
  */
+import type { UttMarks } from "./latency";
 import { type MicState, type UploadInfo, type Vad, type VadEvents, createMic } from "./mic";
 
 /** globalThis key of the session. */
@@ -62,6 +63,8 @@ export type MicDeps = {
   /** Try to get the AudioContext running without a gesture; false if it stays suspended. */
   resumeAudio?: () => Promise<boolean>;
   log?: (ev: Record<string, unknown>) => void;
+  /** A final utterance's timestamps (createMic's `timing`; latency.ts). */
+  timing?: (seq: number, marks: UttMarks) => void;
 };
 
 type Listener = (v: MicView) => void;
@@ -137,6 +140,7 @@ export function createMicSession(
     onError: (e) => emit({ error: e }),
     onProb: (p) => deps.onProb?.(p),
     log: (ev) => deps.log?.(ev),
+    timing: (seq, m) => deps.timing?.(seq, m),
   });
   const unhold = deps.subscribeHold?.((h) => mic.hold(h));
 
