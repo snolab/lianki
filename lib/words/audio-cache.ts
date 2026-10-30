@@ -10,8 +10,14 @@
  *   goes straight to the browser's speech for those.
  * - Prefetch runs at most `maxConcurrent` fetches at once and `maxSession`
  *   in all; never on Save-Data or a 2G connection; and pauses for a 429's
- *   Retry-After. A tap (`load`) always goes first: it takes the slot of the
- *   newest prefetch when all are busy, and is never aborted.
+ *   Retry-After. Only clips that cost something count toward `maxSession`:
+ *   a prefetch aborted before it was answered, a recording or a MeloTTS
+ *   clip already in R2 (`X-Voice: recorded`, `melotts-cached`) do not — so a
+ *   long session of a word list never runs the prefetch dry. A tap (`load`)
+ *   always goes first: it takes the slot of the newest prefetch when all
+ *   are busy, and is never aborted.
+ * - `warm` is a tap on every part of a row at once: the meaning and the
+ *   example are fetched while the word plays, not one after the other.
  *
  * Pure: the browser is passed in, so the queue is unit-tested with fakes
  * (unit/words-audio-cache.test.ts).
@@ -43,6 +49,9 @@ export type AudioCacheDeps = {
   maxClips?: number;
 };
 
+/** Served without generating anything: no cost to prefetch. */
+const FREE_VOICES = new Set(["recorded", "melotts-cached"]);
+
 export const ttsUrl = (lang: string, text: string) =>
   `/api/words/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}`;
 
@@ -52,6 +61,8 @@ type Flight = {
   req: ClipReq;
   ctrl: AbortController;
   priority: boolean;
+  /** Started as a prefetch: counted toward `maxSession` (a tap may have taken it over since). */
+  counted: boolean;
   promise: Promise<ClipResult>;
 };
 
@@ -79,7 +90,9 @@ export class AudioCache {
   constructor(deps: AudioCacheDeps) {
     this.d = {
       now: () => Date.now(),
-      maxConcurrent: 3,
+      // HTTP/2: one connection carries them all. Each clip is latency-bound
+      // (~0.1 s, almost all of it waiting), so more at once fills sooner.
+      maxConcurrent: 6,
       maxSession: 300,
       maxClips: 200,
       ...deps,
@@ -130,6 +143,8 @@ export class AudioCache {
       if (!f.priority && !want.has(key)) {
         this.flights.delete(key);
         f.ctrl.abort();
+        // Never answered, so never paid for: scrolling past rows must not use up the session.
+        this.started--;
       }
     const seen = new Set<string>();
     this.queue = reqs.filter((r) => {
@@ -173,6 +188,11 @@ export class AudioCache {
     return this.start(req, true);
   }
 
+  /** Every part of what is about to play, fetched now and together, ahead of every prefetch. */
+  warm(reqs: ClipReq[]): void {
+    for (const r of reqs) if (r.text) void this.load(r.lang, r.text);
+  }
+
   private pump() {
     while (
       this.queue.length &&
@@ -182,13 +202,13 @@ export class AudioCache {
       this.started++;
       void this.start(this.queue.shift()!, false);
     }
-    if (this.started >= this.d.maxSession) this.queue = [];
+    // At the cap the queue waits: a prefetch that cost nothing gives its place back.
   }
 
   private start(req: ClipReq, priority: boolean): Promise<ClipResult> {
     const key = keyOf(req);
     const ctrl = new AbortController();
-    const flight = { req, ctrl, priority } as Flight;
+    const flight = { req, ctrl, priority, counted: !priority } as Flight;
     flight.promise = this.d
       .fetch(ttsUrl(req.lang, req.text), { signal: ctrl.signal })
       .then((r) => this.settle(req, r, flight))
@@ -214,6 +234,9 @@ export class AudioCache {
     });
     if (r.ok) {
       const url = this.d.createObjectURL(await r.blob());
+      // A prefetch of a clip that was ready anyway cost nothing: give it back.
+      // (After the body: one aborted mid-download was given back already.)
+      if (flight.counted && FREE_VOICES.has(voice ?? "")) this.started--;
       this.clips.set(key, url);
       while (this.clips.size > this.d.maxClips) {
         const [oldKey, oldUrl] = this.clips.entries().next().value!;

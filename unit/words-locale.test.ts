@@ -59,13 +59,33 @@ describe.each([
   });
 });
 
-describe("WordsClient", () => {
-  const src = readFileSync(new URL("../app/(app)/words/WordsClient.tsx", import.meta.url), "utf8");
+// The study view and the islands it renders (lib/words/islands). SwipeTuner
+// is exempt: a debug-mode panel of physics tokens for tuning on the phone,
+// never shown to learners. SwipeCard, SwipeCue and SwipeFeelSource render no
+// text; they are scanned so that stays true.
+const UI_FILES = [
+  "app/(app)/words/WordsClient.tsx",
+  "lib/words/islands/SwipeGrades.tsx",
+  "lib/words/islands/SwipeCard.tsx",
+  "lib/words/islands/SwipeCue.tsx",
+  "lib/words/islands/SwipeFeelSource.tsx",
+];
+
+describe.each(UI_FILES)("%s", (file) => {
+  const src = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
 
   it("takes labels, hints and titles from words-page, not string literals", () => {
     const literals = [...src.matchAll(/\b(label|hint|title|aria-label|placeholder)="([^"]*)"/g)]
       .filter(([, , v]) => /[A-Za-z]{2}/.test(v))
       .map(([m]) => m);
     expect(literals).toEqual([]);
+  });
+
+  it("has no English words as JSX text or as a grade-name table", () => {
+    const text = [...src.matchAll(/(?<![=-])>\s*([A-Z][a-z]+(?: [A-Za-z]+)*)\s*</g)].map(
+      ([, t]) => t,
+    );
+    const tables = [...src.matchAll(/\{\s*1:\s*"Again"/g)].map(([m]) => m);
+    expect([...text, ...tables]).toEqual([]);
   });
 });

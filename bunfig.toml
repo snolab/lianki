@@ -53,4 +53,9 @@ coveragePathIgnorePatterns = [
   "lib/rateLimit.ts",
   "lib/repos/d1Repos.ts",
   "lib/repos/fsrsNotesD1.ts",
+  # The swipe core's React/DOM glue (contexts, pointer and touch wiring,
+  # timers, rAF). Its logic is in pure files held to 90% here
+  # (swipe-physics, swipe-machine, swipe-feel); the glue needs a browser and is
+  # covered by qa-words' phone checks (light and heavy, both swipes).
+  "lib/words/swipe-core.tsx",
 ]

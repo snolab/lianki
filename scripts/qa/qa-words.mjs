@@ -1313,6 +1313,86 @@ try {
       );
       await m.close();
     }
+    // The heavy feel (lib/words/swipe-feel.ts, docs/swipe-core.md), opt-in per
+    // device, here by `?feel=heavy` for one page load: on both swipes the
+    // dragged slip lifts, a sideways drag grades by the same tiers, the slip
+    // springs home, and its telemetry says which feel it was.
+    for (const variant of ["js", "native"]) {
+      const tag = `phone/${variant}+heavy:`;
+      const m = await phone.newPage();
+      m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
+      const u = new URL(page.url());
+      u.searchParams.set("swipe", variant);
+      u.searchParams.set("feel", "heavy");
+      await m.goto(u.href, { waitUntil: "networkidle" });
+      await m.evaluate(() => localStorage.removeItem("lk:swipe-unsent"));
+      const mrows = m.locator('[role="listitem"]');
+      await mrows.nth(3).waitFor({ timeout: 15000 });
+      const cdp = variant === "native" ? await phone.newCDPSession(m) : null;
+      const touch = (type, x, y) =>
+        cdp.send("Input.dispatchTouchEvent", {
+          type,
+          touchPoints: type === "touchEnd" ? [] : [{ x, y }],
+        });
+      const b = await mrows.nth(3).boundingBox();
+      const [x, y] = [b.x + b.width / 2, b.y + b.height / 2];
+      const to = async (dx) => {
+        if (cdp)
+          for (let k = 1; k <= 8; k++) {
+            await touch("touchMove", x + (dx * k) / 8, y);
+            await m.waitForTimeout(16);
+          }
+        else for (let k = 1; k <= 8; k++) await m.mouse.move(x + (dx * k) / 8, y);
+      };
+      if (cdp) await touch("touchStart", x, y);
+      else {
+        await m.mouse.move(x, y);
+        await m.mouse.down();
+      }
+      await to(70);
+      await m.waitForTimeout(250);
+      const lifted = await m.evaluate(
+        () => document.querySelectorAll('[data-swipe-cue="up"]').length,
+      );
+      check(lifted === 1, `${tag} the dragged slip lifts (${lifted} lifted)`);
+      if (process.env.QA_SHOTS)
+        for (const scheme of ["light", "dark"]) {
+          await m.emulateMedia({ colorScheme: scheme });
+          await m.waitForTimeout(100);
+          await m.screenshot({
+            path: `${process.env.QA_SHOTS}/heavy-${variant}-mid-good-${scheme}.png`,
+          });
+        }
+      if (cdp) await touch("touchEnd");
+      else await m.mouse.up();
+      await m.waitForTimeout(1500);
+      const rest = await m.evaluate((native) => {
+        const row = document.querySelectorAll('[role="listitem"]')[3];
+        const sc = row.querySelector(".slip-scroller");
+        return native
+          ? `${Math.round(sc.scrollLeft)}:${sc.style.overflowX || "-"}:${sc.style.scrollSnapType || "-"}`
+          : getComputedStyle(row).transform;
+      }, !!cdp);
+      check(
+        cdp ? rest === "88:-:-" : rest === "none",
+        `${tag} the slip springs home and gives the scroller back (${rest})`,
+      );
+      const params = await m.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("lk:swipe-unsent") ?? "[]")
+            .filter((r) => !r.params.includes(";ev="))
+            .map((r) => `${r.rating}|${r.params}`)
+            .at(-1) ?? "",
+      );
+      check(
+        params.startsWith("3|") &&
+          params.includes(`ab=${variant}`) &&
+          params.includes("feel=heavy") &&
+          (!cdp || params.includes("scroll-snap+spring")),
+        `${tag} it grades Good and its telemetry names the feel (${params})`,
+      );
+      await m.close();
+    }
     await phone.close();
   }
 

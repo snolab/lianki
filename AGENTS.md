@@ -37,6 +37,10 @@ build of `app/**` with `DB_BACKEND=d1`. It is attached by a Worker **route**
 `lianki.com/*` on the zone; the DNS record still points at Vercel underneath,
 so the route alone decides. A second route covers `www.lianki.com/*`, so that
 hostname is the **Worker** too — it 308s to the apex with no `x-vercel-id`.
+Two narrower routes go to small Workers first: `lianki.com/api/version/*` to
+`lianki-push` (`workers/push`) and `lianki.com/api/words/tts*` to
+`lianki-voice` (`workers/voice`: recorded word clips at the edge; the rest
+passed on to `lianki`). A recorded clip never shows in `wrangler tail lianki`.
 
 | signal                                        | reading                                                         |
 | --------------------------------------------- | --------------------------------------------------------------- |
@@ -94,6 +98,8 @@ that are expensive to rediscover.
 | The owner's local streaming speech-to-text (mic → his Mac)    | [docs/local-stt.md](docs/local-stt.md)                              |
 | The userscript's dev loader (hot reload over a CF tunnel)     | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)      |
 | The debug chat widget (packages/debug-chat), hot-loading      | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
+| Hot islands: swappable components, shared state               | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                  |
+| The /words swipe: headless core, UI islands, feel presets     | [docs/swipe-core.md](docs/swipe-core.md)                            |
 | Screenshots of the owner's phone page (`scripts/dev/shot.ts`) | [docs/dev-debug-widget.md](docs/dev-debug-widget.md), "Screenshots" |
 | Blog posts                                                    | [blog/AGENTS.md](blog/AGENTS.md)                                    |
 | The Chrome extension, and publishing it                       | [packages/ext/README.md](packages/ext/README.md)                    |
