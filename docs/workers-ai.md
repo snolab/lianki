@@ -264,15 +264,28 @@ A tap reads three clips back to back, ~150 ms apart: the word, its meaning
 own `/api/words/tts` URL in its own language. Prefetch order is all words
 first, then examples, then meanings.
 
-- **Limits.** 3 fetches at once, 300 clips per tab session, an in-memory LRU
-  of 200 blob URLs (revoked on eviction), and nothing at all on Save-Data or
-  2G. A 429 pauses prefetch for its Retry-After. A tap goes ahead of every
-  prefetch. A text with no voice (404 `X-Voice: miss`, or 400) is remembered
-  and goes straight to the browser's speech, for that part only.
-- **HTTP cache.** Every 200 is `private, max-age=31536000, immutable`, so a
-  device fetches a clip once a year at most. It stays `private`, not
-  `public`, because the route is behind sign-in. No ETag is needed, since an
-  immutable response is never revalidated.
+- **Limits.** 6 fetches at once, 300 _generated_ clips per tab session (a
+  recording, a MeloTTS clip already in R2, or a prefetch aborted because its
+  row scrolled away does not count), an in-memory LRU of 200 blob URLs
+  (revoked on eviction), and nothing at all on Save-Data or 2G. A 429 pauses
+  prefetch for its Retry-After. A tap goes ahead of every prefetch, and
+  fetches all three parts of its row at once (`warm`): the meaning and the
+  example arrive while the word plays. A text with no voice (404
+  `X-Voice: miss`, or 400) is remembered and goes straight to the browser's
+  speech, for that part only.
+- **Edge Worker for recordings.** `lianki-voice` (`workers/voice`, a few KB)
+  owns the zone route `lianki.com/api/words/tts*`. A recorded clip comes from
+  Cloudflare's edge cache or R2 with no session lookup and no Next.js —
+  `public, max-age=31536000, immutable`, with an ETag. Anything else
+  (meanings, MeloTTS languages, texts not in a list, errors) is passed
+  unchanged to the main Worker over its `MAIN` binding, and the route below
+  answers it. Measured before (2026-10-30, `lianki_metrics`): a warm clip
+  77–150 ms in the Worker (D1 session + R2), and one request in ten landed on
+  a new isolate of the 23 MB main Worker, 1–2.5 s to first byte. Its timings
+  are under `index1 = 'voice'` in `lianki_metrics`.
+- **HTTP cache.** A recording is `public`; a MeloTTS clip `private` (it is
+  behind sign-in), both `max-age=31536000, immutable`, so a device fetches a
+  clip once a year at most.
 - **Meaning voice.** `MEANING_VOICE` in `lib/words/say-parts.ts` is `"server"`
   until the owner decides (`"browser"` is free). Meanings are not
   pre-recorded, so a meaning's first request runs MeloTTS. After that it is

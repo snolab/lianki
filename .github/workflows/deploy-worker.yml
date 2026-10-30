@@ -67,6 +67,10 @@ jobs:
         run: bunx wrangler deploy -c workers/monitor/wrangler.jsonc
       - name: Deploy the push service
         run: bunx wrangler deploy -c workers/push/wrangler.jsonc
+      # lianki-voice owns the zone route lianki.com/api/words/tts* (word clips
+      # at the edge, workers/voice) and passes the rest to the main Worker.
+      - name: Deploy the voice service
+        run: bunx wrangler deploy -c workers/voice/wrangler.jsonc
       - name: Deploy
         run: bunx wrangler deploy
       # Differential check against lianki.com. Advisory until cutover: Vercel
