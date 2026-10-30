@@ -3,7 +3,8 @@
 The touch swipe on /words is split in three parts:
 
 1. **A headless core.** It covers the gesture, the physics and the grade.
-   It is pure where it can be, built into the app, and never hot-swapped.
+   It is pure where it can be, built into the app, and not hot-swapped yet
+   (the plan to make it swappable: [hot-core.md](hot-core.md)).
 2. **UI islands.** These are the card, its lift, what it uncovers, the feel
    source and the tuner. Each is a plain component that reads the core
    through React context. Each one can be swapped on its own with hot islands
