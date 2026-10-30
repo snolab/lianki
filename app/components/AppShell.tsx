@@ -11,8 +11,17 @@ import { FirstRunChoice, type FirstRunLabels } from "./FirstRunChoice";
 import { Icon, SealIcon } from "./icons";
 import { useDebugToggle } from "./useDebugToggle";
 import { useIntlayer } from "next-intlayer";
+import { useUi } from "@lianki/ui-state";
+import { island } from "@/lib/islands/Island";
+import { navUi, setDrawerOpen } from "@/lib/nav/ui-store";
+import { BottomNav } from "./nav/BottomNav";
+import { NavDrawerExtra } from "./nav/NavDrawerExtra";
 
 const SIDEBAR_KEY = "lk:sidebar";
+
+/** The bottom island and the nav's extra rows (docs/bottom-nav.md): hot-swappable slots. */
+const BottomNavIsland = island("nav.bottom", BottomNav);
+const NavDrawerIsland = island("nav.drawer", NavDrawerExtra);
 
 export type ShellUser = {
   name: string;
@@ -38,7 +47,8 @@ interface AppShellProps {
 export function AppShell({ locale, appName, labels, user, firstRun, children }: AppShellProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  // The nav store (lib/nav/ui-store.ts): the bottom island opens the drawer too.
+  const drawerOpen = useUi(navUi, (s) => s.drawerOpen);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [debug, debugTap] = useDebugToggle(undefined, 10);
   /** The debug chat's user-facing name ("Learning Partner"), shown while it is on. */
@@ -104,11 +114,12 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
 
   const active = activeNavKey(pathname);
 
-  const sidebar = (
+  const sidebar = (place: "drawer" | "sidebar") => (
     <nav
       aria-label={labels.ui.menu}
       className={`flex flex-col gap-6 py-4 ${collapsed ? "px-2" : "px-3"}`}
     >
+      <NavDrawerIsland place={place} collapsed={place === "sidebar" && collapsed} />
       {NAV_GROUPS.map((group) => {
         const items = APP_NAV.filter((item) => item.group === group);
         if (!items.length) return null;
@@ -283,7 +294,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
             collapsed ? "w-16" : "w-56"
           }`}
         >
-          <div className="sticky top-0">{sidebar}</div>
+          <div className="sticky top-0">{sidebar("sidebar")}</div>
         </aside>
 
         {/* Mobile drawer */}
@@ -302,13 +313,19 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
               onClick={() => setDrawerOpen(false)}
             />
             <div className="relative w-64 max-w-[80%] h-full overflow-y-auto pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] bg-white dark:bg-gray-900 border-e border-gray-200 dark:border-gray-800">
-              {sidebar}
+              {sidebar("drawer")}
             </div>
           </div>
         )}
 
-        <main className="lk-nav-pad flex-1 min-w-0">{children}</main>
+        {/* --lk-bottom-reserve: what the bottom island covers at rest (it
+            sets the variable), so the last of the content can scroll clear of it. */}
+        <main className="lk-nav-pad flex-1 min-w-0 pb-[var(--lk-bottom-reserve,0px)]">
+          {children}
+        </main>
       </div>
+
+      <BottomNavIsland signedIn={user !== null} />
 
       {/* Signed-out only: a signed-in visitor answered this by signing in. */}
       {user === null && firstRun && <FirstRunChoice labels={firstRun} />}

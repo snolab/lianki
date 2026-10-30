@@ -357,6 +357,12 @@ try {
   let res = reviewed();
   await page.keyboard.press("1");
   check((await (await res).status()) === 200, "1 saves that one word immediately");
+  // The list's progress (lib/words/progress.ts): a word just studied scores a little.
+  const prog = (await listsNow())?.progress;
+  check(
+    typeof prog === "number" && prog > 0 && prog < 1,
+    `the list's progress counts the studied word, partly (${prog})`,
+  );
   check(
     (await rows.nth(0).locator("[data-stamp-cell] .lk-stamp").count()) === 1,
     "a graded slip gets a small seal at its left end",
@@ -1159,10 +1165,25 @@ try {
         (await blurredM()) === shownBefore,
         `${tag} the double tap leaves the reveal as it was`,
       );
-      // Phones have no example column: the sheet shows the example sentence.
+      // The sheet shows the example in full, and the word's tags (its list,
+      // the list's level), which the row never shows.
       check(
         (await m.locator("[data-slip-sheet] [data-sheet-example]").count()) === 1,
         `${tag} the sheet shows the word's example sentence`,
+      );
+      check(
+        (await m.locator("[data-slip-sheet] [data-sheet-tags] span").count()) > 0,
+        `${tag} the sheet shows the word's tags`,
+      );
+      // One row = the whole card: front, then the back (meaning, then the
+      // example), in the row's fixed height, so the windowing stays exact.
+      const unified = await mrows.nth(0).evaluate((el) => ({
+        example: el.querySelectorAll("[data-row-back] [data-row-example]").length,
+        h: Math.round(el.getBoundingClientRect().height),
+      }));
+      check(
+        unified.example === 1 && unified.h === 44,
+        `${tag} the row shows the example under the meaning, at the fixed height (${JSON.stringify(unified)})`,
       );
       await m.getByRole("button", { name: "Cancel" }).click();
       check((await m.locator("[data-slip-sheet]").count()) === 0, `${tag} Cancel closes the sheet`);
@@ -1475,12 +1496,23 @@ try {
         storageState: await ctx.storageState(),
       });
       await c.addInitScript(silentAudio);
+      // Stubbed as everywhere else (no AI call from QA).
+      await c.route("**/api/words/tts?*", (r) =>
+        r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") }),
+      );
       await c.addInitScript((v) => {
         localStorage.setItem("lk:first-run", "account");
         localStorage.setItem("lk:swipe-ab", v);
       }, variant);
       const w = await c.newPage();
-      w.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
+      // WebKit reports a word-audio prefetch that a reload cuts off as a page
+      // error ("… due to access control checks."). The prefetch is aborted on
+      // purpose; it used to stop early only because a 503 silenced the language.
+      const cutPrefetch = (m) =>
+        m.includes("/api/words/tts?") && m.includes("due to access control checks");
+      w.on("pageerror", (e) => {
+        if (!cutPrefetch(e.message)) errs.push(`PAGEERROR (${tag}) ${e.message}`);
+      });
       const opening = () =>
         w.evaluate(() => {
           const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
@@ -1728,6 +1760,24 @@ try {
 
   // Drag the second list above the first by its handle; the order is saved.
   await toPicker();
+  // Each row ends in its progress ring: a percentage, labelled for screen readers.
+  const ring = page.locator("[data-progress]").first();
+  await ring.waitFor({ timeout: 10000 }).catch(() => {});
+  const ringInfo = (await ring.count())
+    ? await ring.evaluate((el) => ({
+        pct: Number(el.getAttribute("data-progress")),
+        label: el.getAttribute("aria-label") ?? "",
+        text: el.textContent ?? "",
+      }))
+    : null;
+  check(
+    !!ringInfo &&
+      ringInfo.pct >= 0 &&
+      ringInfo.pct <= 100 &&
+      ringInfo.text.includes("%") &&
+      ringInfo.label.includes("words"),
+    `each list shows its progress ring (${JSON.stringify(ringInfo)})`,
+  );
   const handles = page.getByRole("button", { name: "Drag to reorder" });
   const before = (
     await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)

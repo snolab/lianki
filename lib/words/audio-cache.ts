@@ -12,8 +12,12 @@
  *   all there is. Only 200s are stored.
  * - What has no voice is remembered: a text with none (404 `X-Voice: miss`,
  *   or 400 — too long to voice) is never asked for again, and neither is a
- *   language the server cannot speak at all (any other 404, 503). The caller
- *   goes straight to the browser's speech for those.
+ *   language the server cannot speak at all (any other 404). The caller
+ *   goes straight to the browser's speech for those. A 503 (speech
+ *   generation not configured or down) is not a dead language: recordings
+ *   are served without generating, so it fails that one text only. On
+ *   2026-10-31 a 503 for one meaning silenced every recorded Japanese and
+ *   English word for the rest of the session.
  * - Prefetch runs at most `maxConcurrent` fetches at once and `maxSession`
  *   in all; never on Save-Data or a 2G connection; and pauses for a 429's
  *   Retry-After. Only clips that cost something count toward `maxSession`:
@@ -384,7 +388,7 @@ export class AudioCache {
       this.misses.add(key);
       return { kind: "miss" };
     }
-    if (r.status === 404 || r.status === 503) {
+    if (r.status === 404) {
       this.dead.add(req.lang);
       this.queue = this.queue.filter((q) => q.lang !== req.lang);
       this.stockQueue = this.stockQueue.filter((q) => q.lang !== req.lang);

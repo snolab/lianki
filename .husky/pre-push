@@ -40,4 +40,8 @@ MINGW* | MSYS* | CYGWIN*)
   ;;
 esac
 
+# Cheap gates first, so a lint or type error fails in a second, not after the
+# multi-minute build.
+bun run lint
+bun run typecheck
 bun run qa:all

@@ -160,4 +160,37 @@ describe("sequencer", () => {
     expect(r.said).toEqual([]);
     expect(r.cancels()).toBe(1);
   });
+
+  // The owner (2026-10-30): a long-press reading goes on through a swipe.
+  test("finish: a loop plays the pass it is in to its end, then stops", () => {
+    const r = rig();
+    r.seq.play(["w", "m", "e"], { loop: true, tag: "hold" });
+    expect(r.seq.playing()).toBe("hold");
+    r.pending[0](true);
+    r.seq.finish(); // the finger lifts mid-pass: nothing is cut
+    expect(r.cancels()).toBe(1); // only play()'s own stop
+    r.tick();
+    r.pending[1](true);
+    r.tick();
+    expect(r.said).toEqual(["w", "m", "e"]);
+    expect(r.seq.playing()).toBe("hold");
+    r.pending[2](true);
+    expect(r.timers).toHaveLength(0); // no repeat
+    expect(r.seq.playing()).toBeNull();
+  });
+
+  test("playing: the tag while it runs, null once stopped or replaced", () => {
+    const r = rig();
+    expect(r.seq.playing()).toBeNull();
+    r.seq.play(["a"], { tag: "hold" });
+    r.seq.play(["b"]);
+    expect(r.seq.playing()).toBe("");
+    r.pending[0](true); // the old sequence's late done
+    expect(r.seq.playing()).toBe("");
+    r.pending[1](true);
+    expect(r.seq.playing()).toBeNull();
+    r.seq.play(["c"], { tag: "hold" });
+    r.seq.stop();
+    expect(r.seq.playing()).toBeNull();
+  });
 });
