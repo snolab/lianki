@@ -108,6 +108,7 @@ const SwipeFeelIsland = island("words.swipeFeel", SwipeFeelSource);
 const SwipeTunerIsland = island("words.swipeTuner", SwipeTuner);
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
 import { newScan, takeNewIndices, type NewScan } from "@/lib/words/take-new";
+import { countGradedNew, unseenLeft } from "@/lib/words/unseen";
 import { idbAdd, idbAll, idbDelete, idbGet, idbPut, type PendingOp } from "@/lib/words/idb";
 import {
   afterSend,
@@ -2142,6 +2143,17 @@ function Study({
   const base = config.base;
   const listIds = lists.map((l) => l.id).join(",");
   const paramsOf = useMemo(() => new Map(lists.map((l) => [l.id, l.params])), [lists]);
+  /** Each list's size and cards as this session found them, for the toolbar's unseen count. */
+  const scopeAtStart = useMemo(
+    () =>
+      lists.map((l) => ({
+        total: catalog.find((c) => c.id === l.source)?.count ?? 0,
+        cards: l.cards,
+      })),
+    // Snapshot per session: a refetched list already counts this session's cards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [listIds, catalog],
+  );
 
   const catalogs = useRef<Map<string, Entry[]>>(new Map());
   const byTerm = useRef<Map<string, Map<string, Entry>>>(new Map());
@@ -2963,6 +2975,9 @@ function Study({
   const minutes = (Date.now() - started.current) / 60_000;
   const ahead = queue.filter((_, i) => i >= row && !grades.has(i));
   const dueLeft = ahead.filter((it) => it.kind !== "new").length;
+  // Not the new words in the loaded batch (always ~80 at the start): the
+  // words in scope never seen yet (lib/words/unseen.ts).
+  const unseen = unseenLeft(scopeAtStart, countGradedNew(queue, grades.keys()));
 
   const status = (it: Item, i: number) => {
     const g = grades.get(i);
@@ -3058,7 +3073,7 @@ function Study({
               done,
               rate: minutes > 0.2 ? Math.round(done / minutes) : "–",
               due: dueLeft,
-              new: ahead.length - dueLeft,
+              new: unseen,
             })}
             {sync.pending > 0 ? (
               <span

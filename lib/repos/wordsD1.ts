@@ -3,7 +3,6 @@ import type { Card } from "ts-fsrs";
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
 import {
   reviewTime,
-  newRemaining,
   normalizeParams,
   parseCard,
   reviewWord,
@@ -287,31 +286,27 @@ export class WordsD1Repo {
   }
 
   /**
-   * Due words for several lists in one query, most overdue first, and each
-   * list's remaining new-word allowance. `more` is true when the limit was
-   * reached, i.e. more due words are waiting.
+   * Due words for several lists in one query, most overdue first. `more` is
+   * true when the limit was reached, i.e. more due words are waiting. No
+   * new-word allowance: there is no daily cap. `_day` is kept for callers.
    */
   async sessionMany(
     ids: string[],
-    day: string,
+    _day: string,
     now = new Date(),
     limit = 400,
   ): Promise<{
-    lists: Record<string, { due: WordCard[]; newRemaining: number }>;
+    lists: Record<string, { due: WordCard[] }>;
     more: boolean;
   }> {
-    const out: Record<string, { due: WordCard[]; newRemaining: number }> = {};
+    const out: Record<string, { due: WordCard[] }> = {};
     if (!ids.length) return { lists: out, more: false };
     const marks = ids.map(() => "?").join(",");
     const { results: rows } = await this.db
       .prepare(`SELECT * FROM word_lists WHERE email = ? AND id IN (${marks})`)
       .bind(this.email, ...ids)
       .all<ListRow>();
-    for (const r of rows)
-      out[r.id] = {
-        due: [],
-        newRemaining: newRemaining(r, normalizeParams(safeJson(r.params)), day),
-      };
+    for (const r of rows) out[r.id] = { due: [] };
     const { results } = await this.db
       .prepare(
         `SELECT list_id, term, reading, back, card, card_due, reps FROM word_cards
@@ -442,7 +437,7 @@ export class WordsD1Repo {
      * the highest index reviewed would skip the ones left behind.
      */
     nextCursor?: number | null,
-  ): Promise<{ cards: WordCard[]; newRemaining: number } | null> {
+  ): Promise<{ cards: WordCard[] } | null> {
     const list = await this.db
       .prepare("SELECT * FROM word_lists WHERE email = ? AND id = ?")
       .bind(this.email, listId)
@@ -588,8 +583,7 @@ export class WordsD1Repo {
       reps: s.reps,
       card: JSON.stringify(s.card),
     }));
-    const used = (list.new_day === day ? list.new_today : 0) + introduced;
-    return { cards, newRemaining: newRemaining({ new_day: day, new_today: used }, params, day) };
+    return { cards };
   }
 
   /** Store swipe telemetry (db/migrations/0010_swipe_log.sql). At most 200 per call. */
