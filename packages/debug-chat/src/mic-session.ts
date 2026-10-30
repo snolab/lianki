@@ -39,7 +39,7 @@ export type LocalClient = StreamStt & {
 /** globalThis key of the session. */
 export const MIC_SESSION_KEY = "__lkMic";
 /** Bumped when the session's shape changes; an older one is migrated, its stream kept. */
-export const MIC_SESSION_V = 4;
+export const MIC_SESSION_V = 5;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
