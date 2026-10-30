@@ -7,6 +7,8 @@ import {
   decide,
   deviceCookieValue,
   copyableKey,
+  Debouncer,
+  isBridgedPath,
   isHubPath,
   isLabPath,
   isPrivateLanHost,
@@ -234,5 +236,43 @@ describe("whole-page guard: lab previews on the dev origin", () => {
   test("the landing page with re-pointing is valid JavaScript", () => {
     const script = landingHtml(lab, origin).split("<script>")[1].split("</script>")[0];
     expect(() => new Function(script)).not.toThrow();
+  });
+});
+
+describe("whole-page guard: bridged voice routes and publishing", () => {
+  test("read aloud and cloud STT go to lianki.com, owner-checked", () => {
+    expect(isBridgedPath("/api/words/tts")).toBe(true);
+    expect(isBridgedPath("/api/debug/stt")).toBe(true);
+    expect(isBridgedPath("/api/words/lists")).toBe(false);
+    expect(decide("/api/words/tts", true).kind).toBe("owner");
+    expect(decide("/api/words/tts", false).kind).toBe("deny");
+  });
+
+  test("a burst of publish requests runs once, after the quiet window", async () => {
+    let runs = 0;
+    const d = new Debouncer(async () => {
+      runs++;
+    }, 20);
+    d.request();
+    d.request();
+    d.request();
+    await Bun.sleep(60);
+    expect(runs).toBe(1);
+  });
+
+  test("a request during a run schedules exactly one more", async () => {
+    let runs = 0;
+    let d!: Debouncer;
+    d = new Debouncer(async () => {
+      runs++;
+      if (runs === 1) {
+        d.request();
+        d.request();
+      }
+      await Bun.sleep(10);
+    }, 10);
+    d.request();
+    await Bun.sleep(100);
+    expect(runs).toBe(2);
   });
 });

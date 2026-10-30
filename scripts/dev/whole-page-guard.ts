@@ -214,3 +214,54 @@ export function isLabPath(pathname: string): boolean {
 export function toDevOrigin(value: string, lab: string, origin: string): string {
   return value.startsWith(`${lab}${LAB_PREFIX}`) ? origin + value.slice(lab.length) : value;
 }
+
+/**
+ * lianki.com routes the dev server cannot serve itself (no Workers AI
+ * credentials on the Mac): read aloud and cloud STT. The guard sends them to
+ * lianki.com with the dev bridge header, which those two routes accept as the
+ * owner (lib/dev-bridge-user.ts; owner decision 2026-10-31 02:11 JST).
+ */
+export const BRIDGED_PATHS = ["/api/words/tts", "/api/debug/stt"];
+
+export function isBridgedPath(pathname: string): boolean {
+  return BRIDGED_PATHS.includes(pathname);
+}
+
+/** Merges this close together reach the served tree as one update (one reload). */
+export const PUBLISH_QUIET_MS = 3000;
+
+/**
+ * Coalesces publish requests: run() once, PUBLISH_QUIET_MS after the last
+ * request. A request during a run schedules one more run after it.
+ */
+export class Debouncer {
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private running = false;
+  private again = false;
+  constructor(
+    private run: () => Promise<void>,
+    private quietMs = PUBLISH_QUIET_MS,
+  ) {}
+
+  request(): void {
+    if (this.running) {
+      this.again = true;
+      return;
+    }
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => void this.fire(), this.quietMs);
+  }
+
+  private async fire(): Promise<void> {
+    this.running = true;
+    try {
+      await this.run();
+    } finally {
+      this.running = false;
+      if (this.again) {
+        this.again = false;
+        this.request();
+      }
+    }
+  }
+}

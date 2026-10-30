@@ -11,6 +11,10 @@
  *       wrangler.dev-whole-page.jsonc) and the guard proxy on <host>:<port>,
  *       a private-LAN address only. Loopback control port: <port+2>.
  *
+ *   bun scripts/dev/whole-page.ts publish [--port 3100]
+ *       After merging into preview/live (tree/preview): the served worktree
+ *       fast-forwards to it 3 s after the last publish — one update per burst.
+ *
  *   bun scripts/dev/whole-page.ts send-login [--port 3100] [--target Android]
  *       Issues a one-time enter link and navigates the owner's debug-mode
  *       Lianki tab to it through scripts/dev/eval.ts (an existing grant only,
@@ -35,7 +39,9 @@ import {
   EnterTokens,
   GUARD_HEADER,
   HUB_ORIGIN,
+  isBridgedPath,
   isLabPath,
+  Debouncer,
   LANDING_PATH,
   isHubPath,
   landingHtml,
@@ -257,7 +263,7 @@ async function serve() {
         });
         return res.end(landingHtml(lab, origin));
       }
-      const hub = isHubPath(url.pathname);
+      const hub = isHubPath(url.pathname) || isBridgedPath(url.pathname);
       const labPath = Boolean(lab) && isLabPath(url.pathname);
       const remote = hub || labPath;
       const up = (remote ? https : http).request(
@@ -342,9 +348,28 @@ async function serve() {
     console.error(`[whole-page] guard on ${origin} → next dev 127.0.0.1:${inner}`),
   );
 
-  // Loopback only: hands out one-time enter tokens to send-login.
+  // Publishing: next dev serves THIS worktree, which follows the merge branch
+  // (--follow, default preview/live) only when asked, PUBLISH_QUIET_MS after
+  // the last ask — a burst of agents' merges reaches his page as one update,
+  // not one reload per merge (owner, 2026-10-31: the page kept refreshing).
+  const follow = arg("follow", "preview/live");
+  const publisher = new Debouncer(async () => {
+    const p = Bun.spawnSync(["git", "merge", "--ff-only", "--quiet", follow]);
+    const msg = p.success
+      ? "published"
+      : `publish FAILED: ${p.stderr.toString().trim().split("\n")[0]}`;
+    const head = Bun.spawnSync(["git", "log", "--oneline", "-1"]).stdout.toString().trim();
+    console.error(`[whole-page] ${msg} (${follow} → ${head})`);
+  });
+
+  // Loopback only: one-time enter tokens for send-login, and publish requests.
   http
     .createServer((req, res) => {
+      if (req.method === "POST" && req.url === "/publish") {
+        publisher.request();
+        res.writeHead(202);
+        return res.end();
+      }
       if (req.method !== "POST" || req.url !== "/enter-token") {
         res.writeHead(404);
         return res.end();
@@ -371,12 +396,20 @@ async function sendLogin() {
   child.on("exit", (c) => process.exit(c ?? 1));
 }
 
+async function publish() {
+  const port = Number(arg("port", "3100"));
+  const r = await fetch(`http://127.0.0.1:${port + 2}/publish`, { method: "POST" });
+  if (r.status !== 202) throw new Error(`control port answered ${r.status} — is "serve" running?`);
+  console.error("queued: the dev server takes preview/live after 3 s of quiet");
+}
+
 const cmd = process.argv[2];
 if (cmd === "serve") await serve();
 else if (cmd === "send-login") await sendLogin();
+else if (cmd === "publish") await publish();
 else {
   console.error(
-    "usage: bun scripts/dev/whole-page.ts serve|send-login [--host H] [--port P] [--target T]",
+    "usage: bun scripts/dev/whole-page.ts serve|send-login|publish [--host H] [--port P] [--target T] [--follow BRANCH]",
   );
   process.exit(2);
 }

@@ -13,8 +13,32 @@ bun scripts/dev/whole-page.ts serve --host 192.168.31.96 --port 3100 \
 bun scripts/dev/whole-page.ts send-login --target Android        # sign his phone in
 ```
 
-Then his phone is on `https://taku.onca-tint.ts.net:8443/words?list=all`, with
+Run `serve` from tree/preview-serve (see below). Then his phone is on
+`https://taku.onca-tint.ts.net:8443/words?list=all`, with
 Tailscale on. Stop the front with `tailscale serve --https=8443 off`.
+
+## Feature agents: getting a change onto his phone
+
+The server runs from **tree/preview-serve**, and agents merge in **tree/preview**:
+
+```bash
+cd ~/ws/snolab/lianki/tree/preview && git merge <your-branch>   # branch preview/live, local only
+bun scripts/dev/whole-page.ts publish                           # from any worktree
+```
+
+`publish` asks the server to fast-forward its worktree (branch `preview/serve`)
+to `preview/live`, 3 s after the **last** publish (`Debouncer`,
+`PUBLISH_QUIET_MS`). Several agents merging within seconds therefore become
+one update, and one reload at most. On 2026-10-31 next dev served the merge
+worktree directly, and four merges in three minutes, plus the ops lane's
+restarts, kept his page reloading. Merge only when a change is ready (not per
+commit), and never push `preview/live`.
+
+What next dev does with an update: an edit inside a React component file is
+a Fast Refresh, with no reload and state kept. An edit to a module that
+non-components import (`lib/*`, content dictionaries, intlayer rebuilds, route
+handlers, `next.config.mjs`) is a full page reload. A `next.config.mjs` change
+or a guard (`scripts/dev/whole-page*.ts`) change needs a restart.
 
 ## What runs
 
