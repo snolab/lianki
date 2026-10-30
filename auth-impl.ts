@@ -19,6 +19,7 @@ import { db, mongoClient } from "./app/db";
 import { dbBackend, getD1 } from "./lib/d1";
 import { passwordAuthEnabled, runtimeNodeEnv } from "./lib/auth-env";
 import { PASSKEY_RP_NAME, passkeyRelyingParty } from "./lib/passkey";
+import { settleUserSponsorships, type D1WithBatch } from "./lib/payments/sponsors-store";
 
 // The heavy half of auth: better-auth, its plugins, zod, kysely. Only ever
 // reached through the dynamic import in ./auth.ts, so it is one shared async
@@ -114,6 +115,22 @@ function baseOptions() {
     // The Google URL must not ask for previously granted scopes — see
     // lib/google-auth-url.ts.
     hooks: { after: stripGrantedScopesHook },
+
+    // A GitHub account just signed up or was linked: claim any GitHub
+    // Sponsors sponsorship that was waiting for its id (docs/payments.md).
+    // Never fails the sign-in; the next membership status read retries.
+    databaseHooks: {
+      account: {
+        create: {
+          after: async (account: { providerId: string; userId: string }) => {
+            if (account.providerId !== "github" || dbBackend() !== "d1") return;
+            await settleUserSponsorships(getD1() as unknown as D1WithBatch, account.userId).catch(
+              (e) => console.error("[sponsors] claim:", e),
+            );
+          },
+        },
+      },
+    },
 
     plugins: [
       // Gated on configuration, as the SMTP version was: with no provider the

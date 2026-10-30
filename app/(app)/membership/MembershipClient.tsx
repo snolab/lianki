@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useIntlayer } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import { PASSES, type PassId } from "@/lib/payments/passes";
+import { GITHUB_SPONSORS_URL } from "@/lib/payments/sponsors";
 import { InviteCard } from "./InviteCard";
 import { longDate } from "@/lib/dates";
 
@@ -253,6 +254,18 @@ export default function MembershipClient() {
                 </a>
               </div>
             )}
+            <div className="mt-4 text-center">
+              <a
+                href={GITHUB_SPONSORS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 border border-white/70 font-semibold px-6 py-2 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <Icon name="star" />
+                {features.sponsor.link.value}
+              </a>
+              <p className="text-xs mt-2 opacity-90">{features.sponsor.note.value}</p>
+            </div>
           </div>
         </div>
 
