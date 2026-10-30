@@ -202,6 +202,110 @@ Hand-checked:
 //   except yes / no / ok / okay / good / stop / next / thanks
 ```
 
+## Whispering
+
+The owner (03:44 JST): "set up the VAD settings to listen to my whisper",
+for talking to the agent at night. `scripts/local-stt/whisper-eval.py`:
+
+```bash
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/whisper-eval.py \
+  --since 2026-10-30T18:40:00Z --kws <the #350 KWS model dir> [--whisper]
+```
+
+**No real whispers yet.** The 18 clips that came in from 03:45 to 04:01 JST
+(iPhone, all with `aec: true`) are normal speech. Their voicing (the
+pitch autocorrelation peak over Silero's speech frames) is 0.61–0.77, the
+same as his older clips (median 0.70), at −19.6 to −29.8 dBFS. The script
+flags a clip under 0.45 as whispered. Until real ones arrive, the numbers
+below come from **synthetic whispers**: his 20 scored clips whisperized
+(LPC re-synthesis on white noise, so the formants stay and the pitch goes;
+voicing 0.30) and set 20 dB under his voice (−46 dBFS). That is a stand-in.
+Real whispers also change timing and articulation.
+
+### What breaks on a whisper
+
+| | today's settings | whole clip, no VAD |
+| --- | --- | --- |
+| SenseVoice CER on the synthetic whispers | 0.425, 9 of 20 cut in pieces | 0.237 |
+
+Recognition itself drops (0.065 → 0.237), but the **VAD and the endpoint
+lose more than the recognizer does**. Silero gives whispered speech a mean
+probability of 0.46 where it gave his voice 0.9. The 600 ms endpoint, at a
+threshold of at least 0.35, then ends the utterance inside words.
+
+### Measured (synthetic whispers, and the same settings on his normal voice)
+
+| input | VAD positive / min ms | endpoint threshold | endpoint | whisper CER, split | normal voice CER, split |
+| --- | --- | --- | --- | --- | --- |
+| as is (today) | 0.3 / 250 | ≥ 0.35, floor + 0.25 | 600 | 0.425, 9/20 | 0.065, 1/20 |
+| as is | 0.2 / 150 | ≥ 0.15, floor + 0.1 | 800 | 0.304, 5/20 | 0.067, 1/20 |
+| +12 dB, soft limiter | 0.3 / 250 | ≥ 0.35 | 600 | 0.271 | 0.090 (limiter distortion) |
+| AGC-like (slow, to −26 dBFS, ≤ +30 dB, limiter) | 0.3 / 250 | ≥ 0.35 | 600 | 0.276, 5/20 | 0.142, 4/20 |
+| **AGC-like** | **0.2 / 150** | **≥ 0.15, floor + 0.1** | **800** | **0.255, 3/20** | **0.076, 1/20** |
+| AGC-like | 0.2 / 150 | ≥ 0.15, floor + 0.1 | 1000 | 0.273, 2/20 | 0.076, 1/20 |
+
+- **Gain helps Silero most.** Gain before the VAD raises its probability on
+  a whisper from 0.46 to 0.76. Without gain, lowering the thresholds alone
+  gets to 0.304.
+- **Fixed gain hurts his normal voice.** +12 dB took the voiced clips from
+  0.066 to 0.090, and +18 dB to 0.092. On the new real clips, +18 dB turned
+  「你能不能允许我」 into 「能勿能允许话」. So gain belongs in a whisper mode,
+  not always on.
+- **Spectral tilt compensation hurts.** Pre-emphasis 0.97 made the VAD miss
+  20/20 un-gained whispers, and 0.51 CER at +18 dB. A low-shelf boost gave
+  0.43–0.88. Leave the spectrum alone.
+- **Pre-pad:** 800 ms throughout. The onset was clipped on 4–6 of 20 whispers
+  at every setting.
+- **Normalizing only quiet utterances on the Mac** (speech under −36 dBFS
+  brought to −26 before SenseVoice) is free: it changed no normal clip, but
+  it adds little (0.237 → 0.231 whole-clip). The gain has to come before the
+  VAD, on the phone.
+
+**False-trigger cost.** Room noise at night levels (pink at 50 dB under his
+voice, a fan at 35 dB under, mains hum) triggered nothing at any setting,
+even at a positive threshold of 0.15 with +18 dB. Other people's normal
+speech triggered 10 of 10 at every setting, as before. Next to a whisper
+those voices are about 20 dB louder, so with whisper mode on in a shared
+room the agent will hear them. In passive mode the wake word still gates
+them; in active mode nothing does.
+
+**Wake word.** No whispered "Linky" exists yet, so whether #350's KWS
+(`kws-zipformer-zh-en-3M-2025-12-20`, threshold 0.25, score 1.0) fires on
+a whisper is untested. On the 18 new real clips it raised no false wake
+under any gain (0/18 for none, +12, +18 and AGC-like). A KWS trained on
+voiced speech is expected to be weak on whispers, so with whisper mode on
+the mic should stay active, or the tap on the mic should serve as the wake.
+
+### Recommendation: a manual, device-local whisper mode
+
+Every setting that helps the whisper costs something on his normal voice:
+CER 0.065 → 0.076 and 200 ms more per final. So it should be a toggle, not
+automatic. Store it as `lk:voice-whisper`: device-local, like the other
+habit settings, since it depends on the room and the hour.
+
+When `lk:voice-whisper` = "1":
+
+```js
+// before the VAD (Web Audio, on the mic stream): slow AGC to −26 dBFS, at most +30 dB,
+//   gain never above what the loudest speech so far needs (no pumping in pauses), then a
+//   soft limiter (DynamicsCompressor or tanh at 0.9 full scale)
+// MicVAD.new: { positiveSpeechThreshold: 0.2, negativeSpeechThreshold: 0.15, minSpeechMs: 150, preSpeechPadMs: 800, redemptionMs: 1400 }
+// mic.ts: ENDPOINT_MS 800, ENDPOINT_MIN 0.15, ENDPOINT_MARGIN 0.1 (ENDPOINT_MAX 0.8 as is)
+// wake: stay in active mode while whisper mode is on (KWS on whispers unproven)
+// no pre-emphasis, no tilt
+```
+
+When it is off, keep the settings from "VAD sensitivity" above.
+
+An automatic hint is cheap and safe: the server can report the voicing of
+each final (whispered = under 0.45). After two whispered finals in a row
+with whisper mode off, the widget offers a one-tap 「切到耳语模式？」.
+
+The owner still needs to record real whispers. About 10 whispered sentences
+of 2 s or more and 5 whispered "Linky"s, in the quiet bedroom, with the
+clip sink on. Then re-run the script with `--since` set to that session to
+confirm or retune these numbers.
+
 ## Clip replay
 
 `scripts/local-stt/ab-eval.py` replays every saved clip:

@@ -391,6 +391,7 @@ def load_clips(d: str) -> list[dict]:
                 "model": meta.get("model"),
                 "said": meta.get("transcript", ""),
                 "track": meta.get("track"),
+                "aec": meta.get("aec"),
                 "ref": ref,
                 "refBy": by,
                 "ambiguous": amb,
