@@ -189,7 +189,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a tiny static SVG */}
           <img src="/icon.svg" alt="" width={28} height={28} className="rounded-md" />
-          <BrandName appName={appName} />
+          <BrandName appName={appName} locale={locale} />
         </Link>
 
         <div className="ms-auto flex items-center gap-3">

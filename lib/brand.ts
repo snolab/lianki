@@ -1,0 +1,21 @@
+/**
+ * The wordmark beside the seal in the top bar (app/components/BrandName.tsx).
+ *
+ * CJK locales show a CJK name with the address after it: 鏈記 (lianki.com).
+ * One constant per locale, so a locale's own form is a one-line change (the
+ * owner may yet pick simplified 链记 for zh). Every other locale keeps its
+ * appName (landing-page content), "Lianki" + ".com" where it is Latin.
+ */
+export const CJK_WORDMARK: Readonly<Record<string, string>> = {
+  zh: "鏈記",
+  ja: "鏈記",
+  ko: "鏈記",
+};
+
+/** The domain written after a CJK wordmark. */
+export const BRAND_DOMAIN = "lianki.com";
+
+/** The CJK wordmark for `locale`, or null where the localized appName shows. */
+export function cjkWordmark(locale: string | undefined): string | null {
+  return (locale && CJK_WORDMARK[locale]) || null;
+}

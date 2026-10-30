@@ -119,17 +119,25 @@ export function newRemaining(
   return Math.max(0, params.newPerDay - used);
 }
 
-/** Short interval label: 30s, 10m, 5h, 3d, 4mo, 1y. */
-export function formatInterval(ms: number): string {
+/** Interval units, each a template with `{n}`: "{n}s" in English, "{n}秒" in Chinese. */
+export type IntervalUnits = Record<"s" | "m" | "h" | "d" | "mo" | "y", string>;
+
+/**
+ * Short interval label: 30s, 10m, 5h, 3d, 4mo, 1y. `units` localizes the
+ * suffixes (the words page passes its locale's); the number is the same.
+ */
+export function formatInterval(ms: number, units?: IntervalUnits): string {
+  const label = (n: number, u: keyof IntervalUnits) =>
+    units ? units[u].replace("{n}", String(n)) : `${n}${u}`;
   const s = Math.max(0, ms) / 1000;
   // Compare rounded values, so 59.6s reads "1m", not "60s".
-  if (Math.round(s) < 60) return `${Math.round(s)}s`;
-  if (Math.round(s / 60) < 60) return `${Math.round(s / 60)}m`;
-  if (Math.round(s / 3600) < 24) return `${Math.round(s / 3600)}h`;
+  if (Math.round(s) < 60) return label(Math.round(s), "s");
+  if (Math.round(s / 60) < 60) return label(Math.round(s / 60), "m");
+  if (Math.round(s / 3600) < 24) return label(Math.round(s / 3600), "h");
   const d = s / 86400;
-  if (d < 30) return `${Math.round(d)}d`;
-  if (d < 365) return `${Math.round(d / 30)}mo`;
-  return `${Math.round((d / 365) * 10) / 10}y`.replace(".0y", "y");
+  if (d < 30) return label(Math.round(d), "d");
+  if (d < 365) return label(Math.round(d / 30), "mo");
+  return label(Math.round((d / 365) * 10) / 10, "y");
 }
 
 /** When a rating would schedule this card next, as an interval label. */
@@ -138,11 +146,12 @@ export function previewInterval(
   rating: Rating,
   params: WordListParams,
   now = new Date(),
+  units?: IntervalUnits,
 ): string {
   // No fuzz: the preview must not jitter between renders. The real schedule
   // adds a few percent either way.
   const { card } = reviewWord(parseCard(cardJson), rating, now, params, false);
-  return formatInterval(card.due.getTime() - now.getTime());
+  return formatInterval(card.due.getTime() - now.getTime(), units);
 }
 
 /** How far back an offline review may be dated. */

@@ -56,7 +56,7 @@ export function Header({
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a tiny static SVG */}
           <img src="/icon.svg" alt="" width={28} height={28} className="rounded-md" />
-          <BrandName appName={appName} />
+          <BrandName appName={appName} locale={locale} />
         </Link>
 
         {/* Navigation */}

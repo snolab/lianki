@@ -1595,6 +1595,122 @@ try {
     "a changed meaning is updated",
   );
 
+  // /words in Chinese: none of the English once left on the zh page — the
+  // picker, the study toolbar, and the help strip for keys and for touch.
+  {
+    const ENGLISH = [
+      "Word lists",
+      "All word lists",
+      "An endless list",
+      "Download for offline",
+      " due · ",
+      " learning · ",
+      "mastered (≥1y)",
+      " seen",
+      "Study all lists",
+      "Add a list",
+      "New group",
+      "Drag ⠿",
+      " done · ",
+      " new",
+      "/min",
+      "Again",
+      "? all keys",
+      "tap = show",
+      "hold = listen",
+      "swipe ←",
+      "Settings",
+    ];
+    const leftover = (s) => ENGLISH.filter((e) => s.includes(e));
+    await page.goto(`${BASE}/words?lang=zh`, { waitUntil: "networkidle" });
+    await page.getByRole("heading", { name: "单词列表" }).waitFor({ timeout: 15000 });
+    const picker = await page.locator("main").innerText();
+    check(
+      leftover(picker).length === 0 &&
+        picker.includes("下载以离线使用") &&
+        picker.includes("待复习"),
+      `zh: the list picker is Chinese (left: ${leftover(picker).join(" | ") || "none"})`,
+    );
+    await page.goto(`${BASE}/words?list=all`, { waitUntil: "networkidle" });
+    await page.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+    await page.keyboard.press("Shift"); // a keyboard: the key hints
+    await page.locator("[data-words-help]").waitFor({ timeout: 5000 });
+    const bar = await page.locator("[data-words-top]").innerText();
+    const keys = await page.locator("[data-words-help]").innerText();
+    check(
+      leftover(bar + keys).length === 0 &&
+        bar.includes("全部单词列表") &&
+        bar.includes("已完成") &&
+        keys.includes("1 重来") &&
+        keys.includes("? 全部按键"),
+      `zh: the study toolbar and key hints are Chinese ("${bar.replace(/\s+/g, " ")}" / "${keys}")`,
+    );
+    const { devices } = await import("playwright");
+    // iPhone 13: a 390px-wide header.
+    const zhPhone = await browser.newContext({
+      ...devices["iPhone 13"],
+      storageState: await ctx.storageState(),
+    });
+    await zhPhone.addInitScript(silentAudio);
+    await zhPhone.addInitScript(() => localStorage.removeItem("lk:input-modality"));
+    const m = await zhPhone.newPage();
+    m.on("pageerror", (e) => errs.push(`PAGEERROR (zh phone) ${e.message}`));
+    await m.goto(`${BASE}/words?list=all`, { waitUntil: "networkidle" });
+    await m.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+    await m
+      .locator("text=/轻点 = 显示/")
+      .waitFor({ timeout: 5000 })
+      .catch(() => {});
+    const gestures = await m
+      .locator("[data-words-help]")
+      .innerText()
+      .catch(() => "");
+    check(
+      leftover(gestures).length === 0 && gestures.includes("左滑 ← 短为困难，长为重来"),
+      `zh phone: the gesture strip is Chinese ("${gestures}")`,
+    );
+
+    // The wordmark beside the seal: 鏈記 (lianki.com) for zh / ja / ko, the
+    // localized name elsewhere; on a 390px header, whole and overlapping nothing.
+    const brand = () =>
+      m.evaluate(() => {
+        const b = document.querySelector("[data-brand]");
+        if (!b) return null;
+        const r = b.getBoundingClientRect();
+        const d = b.querySelector("[data-brand-domain]");
+        const link = b.closest("a");
+        const right = [...link.parentElement.children]
+          .filter((e) => e !== link)
+          .map((e) => e.getBoundingClientRect())
+          .filter((o) => o.width > 0 && o.left >= r.left);
+        return {
+          text: b.textContent,
+          domain: !!d && d.getBoundingClientRect().width > 0,
+          fits:
+            r.right <= Math.min(innerWidth, ...right.map((o) => o.left)) + 0.5 &&
+            document.documentElement.scrollWidth <= innerWidth,
+        };
+      });
+    for (const [lang, want, domain] of [
+      ["zh", "鏈記(lianki.com)", true],
+      ["ja", "鏈記(lianki.com)", true],
+      ["ko", "鏈記(lianki.com)", true],
+      ["ru", "Лианки", false],
+      ["en", "Lianki", false],
+    ]) {
+      await m.goto(`${BASE}/words?lang=${lang}`, { waitUntil: "networkidle" });
+      const b = await brand();
+      await shot(m, `brand-${lang}-390`);
+      check(
+        !!b && b.text.startsWith(want) && b.domain === domain && b.fits,
+        `${lang}: the 390px header wordmark reads "${want}"${domain ? " with its domain" : ""} and fits (${JSON.stringify(b)})`,
+      );
+    }
+    await zhPhone.close();
+    // Back to English for anything after this.
+    await page.goto(`${BASE}/words?lang=en`, { waitUntil: "networkidle" });
+  }
+
   check(errs.length === 0, `no page errors${errs.length ? ": " + errs.join(" | ") : ""}`);
 } catch (e) {
   check(false, `threw: ${e.message}`);
