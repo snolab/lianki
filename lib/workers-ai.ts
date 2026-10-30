@@ -17,6 +17,7 @@
 
 import { createOpenAI } from "@ai-sdk/openai";
 import OpenAI from "openai";
+import { STT_PROMPT, type SttModel, readStt } from "./stt";
 
 /** Replaces gpt-4o-mini: the everyday model for short, cheap generations. */
 export const textModel = () =>
@@ -167,4 +168,54 @@ export async function workersAiSpeech(opts: {
 
   const audio = Buffer.from(await res.arrayBuffer());
   return { audio, contentType: sniffAudioType(audio) };
+}
+
+/**
+ * Speech to text over the native `/ai/run/<model>` endpoint
+ * (docs/workers-ai.md, "Speech to text"). Each model takes its audio its own
+ * way: Nova-3 and the original Whisper take the raw bytes as the body (Nova-3's
+ * options as query parameters: `language=multi` for code-switching unless a
+ * language is given); whisper-large-v3-turbo takes JSON with the audio in
+ * base64, and STT_PROMPT unless a language is given. All three verified
+ * against the live API (2026-10-29). The answer is read by `readStt`.
+ */
+export async function workersAiTranscribe(opts: {
+  audio: Uint8Array;
+  mime: string;
+  model: SttModel;
+  lang?: string;
+  signal?: AbortSignal;
+}): Promise<{ text: string; language?: string }> {
+  const { apiToken } = requireConfig();
+  const auth = { Authorization: `Bearer ${apiToken}` };
+  let url = `${apiBase()}/run/${opts.model}`;
+  let init: RequestInit;
+  if (opts.model === "@cf/openai/whisper-large-v3-turbo") {
+    init = {
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        audio: Buffer.from(opts.audio).toString("base64"),
+        task: "transcribe",
+        vad_filter: true,
+        ...(opts.lang ? { language: opts.lang.split("-")[0] } : { initial_prompt: STT_PROMPT }),
+      }),
+    };
+  } else {
+    if (opts.model === "@cf/deepgram/nova-3")
+      url += `?${new URLSearchParams({ language: opts.lang ?? "multi", smart_format: "true" })}`;
+    init = {
+      headers: { ...auth, "Content-Type": opts.mime || "application/octet-stream" },
+      body: opts.audio as unknown as BodyInit,
+    };
+  }
+  const res = await fetch(url, { method: "POST", ...init, signal: opts.signal });
+  const body = await res.text();
+  if (!res.ok) throw new Error(`Workers AI STT failed (HTTP ${res.status}) ${body.slice(0, 300)}`);
+  let parsed: { result?: unknown } | null = null;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    throw new Error(`Workers AI STT returned unparseable JSON: ${body.slice(0, 300)}`);
+  }
+  return readStt(opts.model, parsed?.result);
 }

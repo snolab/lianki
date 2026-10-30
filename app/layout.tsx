@@ -5,6 +5,8 @@ import { cookies, headers } from "next/headers";
 import { ServiceWorkerRegistration } from "./components/ServiceWorkerRegistration";
 import { NewVersionNotice } from "./components/NewVersionNotice";
 import { DebugEval } from "./components/DebugEval";
+import { LOCALE_HEADER, resolveLocale } from "@/lib/app-locale";
+import { LANG_TAGS } from "@/lib/constants";
 
 export const metadata: Metadata = {
   title: "Lianki",
@@ -21,18 +23,27 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: "Lianki", statusBarStyle: "default" },
 };
 
-/** Seal red (印泥), the brand colour: browser chrome on phones. */
-// The status bar (and the notch around it) takes the page's paper colour, not
-// the seal red, light and dark alike (--background in globals.css).
+/**
+ * The status bar (and the notch around it) takes the page's paper colour, not
+ * the seal red, light and dark alike (--background in globals.css).
+ * viewportFit "cover" lets the page run under the notch and home indicator and
+ * makes env(safe-area-inset-*) real; fixed bars pad themselves with it.
+ */
 export const viewport: Viewport = {
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "oklch(0.945 0.02 82)" },
     { media: "(prefers-color-scheme: dark)", color: "oklch(0.18 0.01 65)" },
   ],
+  viewportFit: "cover",
 };
 
 async function getRootLocale() {
   const h = await headers();
+  // App routes resolve their locale in middleware (?lang= / cookie /
+  // Accept-Language) and pass it in LOCALE_HEADER; <html lang> must match the
+  // UI they render, not intlayer's prefix locale.
+  const appLang = h.get(LOCALE_HEADER);
+  if (appLang) return resolveLocale(appLang);
   const c = await cookies();
   return h.get("x-intlayer-locale") ?? c.get("INTLAYER_LOCALE")?.value ?? "en";
 }
@@ -44,7 +55,7 @@ export default async function RootLayout({
 }>) {
   const locale = await getRootLocale();
   return (
-    <html lang={locale} suppressHydrationWarning>
+    <html lang={LANG_TAGS[locale] ?? locale} suppressHydrationWarning>
       <head>
         {/* Calligraphy theme fonts (all OFL). Both are sliced by unicode-range, so a
             page fetches only the chunks for the characters it shows — CJK fonts are
@@ -64,6 +75,13 @@ export default async function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `try{var p=localStorage.getItem("lk:paper");if(p)document.documentElement.dataset.paper=p}catch(e){}`,
+          }}
+        />
+        {/* Embed mode: inside an iframe (an overlay preview) or with ?embed=1, the
+            page shows its content only, on a transparent background. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(self!==top||/[?&]embed=1(&|$)/.test(location.search))document.documentElement.dataset.embed=""}catch(e){document.documentElement.dataset.embed=""}`,
           }}
         />
       </head>

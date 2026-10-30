@@ -9,7 +9,7 @@ const nextConfig = {
     NEXT_PUBLIC_BUILD_ID: (process.env.GITHUB_SHA ?? `local-${Date.now()}`).slice(0, 20),
   },
   // Internal workspace package shipping TypeScript source (@lianki/core).
-  transpilePackages: ["@lianki/core"],
+  transpilePackages: ["@lianki/core", "@lianki/debug-chat"],
   async headers() {
     return [
       {

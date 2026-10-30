@@ -25,6 +25,20 @@ Models are env-overridable, so a model change needs no deploy of new code:
 | `WORKERS_AI_MODEL_HQ` | `@cf/openai/gpt-oss-120b` | `gpt-4o` |
 | `WORKERS_AI_TTS_MODEL` | `@cf/myshell-ai/melotts` | `tts-1` |
 
+Speech to text is not env-overridable: its models are a whitelist in
+`lib/stt.ts` (see "Speech to text" below).
+
+| STT model | role | USD / audio minute | neurons / min |
+| --- | --- | --- | --- |
+| `@cf/openai/whisper-large-v3-turbo` | default | 0.000513 | 46.63 |
+| `@cf/openai/whisper` | fallback | 0.000453 | 41.14 |
+| `@cf/deepgram/nova-3` | owner's `?model=` / bench only | 0.0052 (REST); 0.0092 over websocket | 472.73 |
+
+From [the pricing page](https://developers.cloudflare.com/workers-ai/platform/pricing/)
+on 2026-10-29, at $0.011 per 1,000 neurons above the free 10,000 a day. The
+page rounds both Whispers to $0.0005; the figures above are the neurons
+worked out, and match `wrangler ai models --json` for turbo and Nova-3.
+
 ## Why REST and not a binding
 
 Production runs on **Vercel** behind Cloudflare's proxy (`x-vercel-id` is
@@ -82,6 +96,72 @@ drop-in for `tts-1`:
   keep being served as if current — the same text sounding different depending on
   cache age, with nothing in the key to explain why. Existing cached entries are
   simply never hit again; they are not deleted.
+
+## Speech to text
+
+`POST /api/debug/stt` transcribes one utterance for the debug chat's mic
+(`lib/stt-handler.ts`, `lib/stt.ts`, `workersAiTranscribe` in
+`lib/workers-ai.ts`).
+
+```
+POST /api/debug/stt[?model=<id>][&lang=<bcp47>]
+Content-Type: audio/webm | audio/ogg | audio/mp4 | audio/wav | audio/mpeg   (codecs= ignored)
+<raw audio bytes, ≤ 2 MiB>
+
+200 {"text": "…", "model": "@cf/openai/whisper-large-v3-turbo", "ms": 812, "language": "ja"}
+401 guest · 405 not POST · 415 other type · 413 too large · 400 empty
+429 over the limit (Retry-After) · 502 the model(s) failed
+```
+
+- **Who.** Any signed-in user. 120 requests per user per 10 minutes (the
+  owner 600, for the bench). The limiter is `lib/rateLimit.ts`, as for the
+  other AI routes: per isolate, so a spread-out burst can get a little more.
+- **Model.** `?model=` is honoured for the owner only (`isOwner`), and only
+  from `STT_MODELS`; everyone else, and any other value, gets the default.
+  No language hint by default; `?lang=` is optional.
+- **Fallback.** When the default fails, the fallback is tried once. A model
+  the owner named explicitly is not replaced, so the bench sees real errors.
+- **Logs.** `debug.stt` with model, bytes, ms and the transcript's length.
+  Never the audio or the text.
+
+### Which model, and why
+
+Measured on 2026-10-29 against the live API, with the word lists' recorded
+example sentences (VOICEVOX ja, Kokoro zh/en, pulled from R2) and a WAV of
+ja → en → zh back to back:
+
+| clip | whisper-large-v3-turbo | whisper | nova-3 `language=multi` |
+| --- | --- | --- | --- |
+| ja 君を生かすも殺すも僕次第だ。 | exact | 君を**イカス**も殺すも**ぼく**次第だ | exact, but a space between every word |
+| zh 学生去学校，肩上背着书包。 | exact | traditional, 竟然讓…書報 | **""** |
+| en | exact | exact | exact |
+| ja + en | en only; **both with the prompt** | romaji + en | en only |
+| ja + en + zh | all three (zh mostly simplified) | garbled ja, en, zh | en only |
+
+So the default is **whisper-large-v3-turbo**, which is also the cheapest.
+**Nova-3 on Workers AI has no Chinese**: `language=zh` is refused ("No such
+model/language/tier combination"), and `multi` or `detect_language` answers
+an empty transcript. Its multilingual mode covers en/es/fr/de/hi/ru/pt/ja/it/nl.
+It stays on the owner's list for the bench, since it may do better on the
+owner's real ja/en speech; its Japanese spaces are removed (`joinCjk`).
+
+Whisper settles on one language per window, so without a hint it dropped
+the Japanese from a ja + en clip. `STT_PROMPT`, an `initial_prompt` that
+itself mixes 日本語, English and 中文, fixed that, and did not leak into a
+clip of silence. It is sent only when no `?lang=` is given.
+
+Request formats, all verified live: turbo takes JSON with the audio in
+base64; Whisper and Nova-3 take the raw bytes with their Content-Type, Nova-3
+its options as query parameters. MP3, M4A (AAC) and WAV were tested; WebM/Opus
+(what Chrome's MediaRecorder makes) was not, as no encoder was at hand. If
+turbo rejects it, Whisper is tried next.
+
+Production is the Worker now, not Vercel, but it still calls the REST API
+with `CLOUDFLARE_AI_TOKEN` (a Worker secret), like the other AI calls. An
+`env.AI` binding would drop the token, but is not needed for this.
+
+The bench for the owner's own voice is in
+[dev-debug-widget.md](dev-debug-widget.md), "Voice clips and the STT bench".
 
 ## Not migrated
 
@@ -143,3 +223,47 @@ A Cloudflare API rate limit makes the upload ~4 clips/s, so a full upload
 takes about four hours. A Whisper transcription of samples matched the text
 for sentences in all seven languages; isolated single syllables are where
 any voice is ambiguous.
+
+## Prefetch and cost
+
+`/words` fetches the audio of the rows on screen and up to two screens below,
+plus the next five in queue order, before they are tapped
+(`lib/words/audio-cache.ts`, an IntersectionObserver in `WordsClient.tsx`).
+A tap reads three clips back to back, ~150 ms apart: the word, its meaning
+(first sense, `lib/words/say-parts.ts`), and the example sentence. Each is its
+own `/api/words/tts` URL in its own language. Prefetch order is all words
+first, then examples, then meanings.
+
+- **Limits.** 3 fetches at once, 300 clips per tab session, an in-memory LRU
+  of 200 blob URLs (revoked on eviction), and nothing at all on Save-Data or
+  2G. A 429 pauses prefetch for its Retry-After. A tap goes ahead of every
+  prefetch. A text with no voice (404 `X-Voice: miss`, or 400) is remembered
+  and goes straight to the browser's speech, for that part only.
+- **HTTP cache.** Every 200 is `private, max-age=31536000, immutable`, so a
+  device fetches a clip once a year at most. It stays `private`, not
+  `public`, because the route is behind sign-in. No ETag is needed, since an
+  immutable response is never revalidated.
+- **Meaning voice.** `MEANING_VOICE` in `lib/words/say-parts.ts` is `"server"`
+  until the owner decides (`"browser"` is free). Meanings are not
+  pre-recorded, so a meaning's first request runs MeloTTS. After that it is
+  an R2 hit for everyone, since the cache key holds no user. Latin-script
+  meanings are read as English, because the bundled lists' glosses are
+  English.
+
+Cost, at list prices on 2026-10-29: MeloTTS $0.0002 / audio minute (18.63
+neurons), R2 class B $0.36 / M (10 M free a month), class A $4.50 / M,
+Workers $0.30 / M requests (10 M included).
+
+| item | count | cost |
+| --- | --- | --- |
+| Meanings to generate, once ever | 19,440 distinct first senses in `public/words` (42,935 entries, avg 10.6 chars ≈ 1 s audio) | 324 min × $0.0002 = **$0.065** (≈ 6,000 neurons, under one day's free 10,000) |
+| …their R2 writes | 19,440 class A | $0.087 once |
+| …their storage | ~1.7 GB if 44.1 kHz WAV | ~$0.03 / month (10 GB free) |
+| A recorded word or example | 1 Worker request + 1 class B | $0.00000066 |
+| A cached meaning | 1 Worker request + 2 class B (voice miss, cache hit) | $0.00000102 |
+| A session that hits the 300-clip cap | ≤ 300 requests + ≤ 600 class B | **≈ $0.0003** |
+
+So the free tiers cover about 16,000 sessions a month at the cap. Real
+sessions are smaller, and a device's HTTP cache serves repeat visits for
+free. The one-time MeloTTS bill for every bundled meaning is under 7 cents.
+Imported lists add their own meanings at about $0.31 per million characters (≈ 94,000 s of audio).

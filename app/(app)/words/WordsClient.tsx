@@ -1,5 +1,6 @@
 "use client";
 
+import { voiceQuality } from "@lianki/debug-chat/wire";
 import {
   startTransition,
   useCallback,
@@ -10,7 +11,7 @@ import {
   useState,
 } from "react";
 import { Icon, type IconName } from "@/app/components/icons";
-import { useIntlayer } from "next-intlayer";
+import { useIntlayer, useLocale } from "next-intlayer";
 import {
   closestCenter,
   DndContext,
@@ -30,7 +31,12 @@ import { CSS } from "@dnd-kit/utilities";
 import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/words/tree";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
+import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
+import { createSequencer } from "@/lib/words/sequence";
+import { AudioCache } from "@/lib/words/audio-cache";
 import { debugOn, devLog } from "@/lib/debug-client";
+import { useInputModality } from "@/lib/use-input-modality";
+import { EmptyTray } from "./EmptyTray";
 import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
@@ -53,11 +59,13 @@ import {
   snapSwipe,
   springProgress,
   swipeLevel,
+  revealShown,
   SWIPE_COAST_MS,
   SWIPE_HYSTERESIS,
   SWIPE_LEVEL,
   SWIPE_RETURN_S,
   SWIPE_SNAP,
+  SWIPE_SPRING,
   SWIPE_VELOCITY_MS,
 } from "@/lib/words/swipe";
 import { setSwipeVariant, swipeAbTag, swipeVariant, type SwipeVariant } from "@/lib/words/swipe-ab";
@@ -104,7 +112,7 @@ const HOLD_MS = 300;
  * UNDO_AFTER_SWIPE_MS of a swipe's grade). A swipe with rating null slid but
  * graded nothing.
  */
-const SWIPE_PARAMS = `snap=${SWIPE_SNAP};level=${SWIPE_LEVEL};hyst=${SWIPE_HYSTERESIS};coast=${SWIPE_COAST_MS}`;
+const SWIPE_PARAMS = `snap=${SWIPE_SNAP};spring=${SWIPE_SPRING};level=${SWIPE_LEVEL};hyst=${SWIPE_HYSTERESIS};coast=${SWIPE_COAST_MS}`;
 /** A released slip springs home: the critically damped spring, as a CSS easing. */
 const SPRING_EASING = cssLinear(springProgress, 32);
 type SwipeRow = {
@@ -556,6 +564,16 @@ const swipePerf = {
   },
 };
 
+/**
+ * How far past the first or last row the list scrolls, as a fraction of its
+ * height: the first row can be pulled down to 80% of the way down the list,
+ * the last up to 20% from the top.
+ */
+const OVERSCROLL_FRACTION = 0.8;
+
+/** Rows past the last one near the screen whose audio is fetched ahead too. */
+const PREFETCH_NEXT = 5;
+
 /** How long a word clip takes to fade out when the card changes. */
 const FADE_S = 0.15;
 
@@ -599,6 +617,24 @@ function fadeOut(a: Clip | null) {
   );
 }
 
+/**
+ * Word audio for this tab, shared by every mount of the page: each clip is
+ * fetched once per session (lib/words/audio-cache.ts).
+ */
+let sharedAudio: AudioCache | null = null;
+function wordAudio(): AudioCache {
+  sharedAudio ??= new AudioCache({
+    fetch: (url, init) => fetch(url, init),
+    createObjectURL: (b) => URL.createObjectURL(b),
+    revokeObjectURL: (u) => URL.revokeObjectURL(u),
+    connection: () =>
+      (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
+        .connection,
+    log: devLog,
+  });
+  return sharedAudio;
+}
+
 /** `serverVoice`: always use the server's recordings, never the browser's. */
 function useSpeech(serverVoice = false) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -609,21 +645,16 @@ function useSpeech(serverVoice = false) {
       return true;
     }
   });
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /**
-   * Bumped by stop(). cancel() can fire the old utterance's onend, which would
-   * otherwise schedule the old word again beside the new loop, forever.
+   * Bumped by cancel(). cancel() can fire the old utterance's onend, which
+   * would otherwise go on with the old word beside the new one.
    */
   const generation = useRef(0);
 
   const [available, setAvailable] = useState(false);
   /** Languages the browser failed to speak; the server speaks them instead. */
   const browserDead = useRef(new Set<string>());
-  /** Languages the server has no voice for (or speech is off there). */
-  const serverDead = useRef(new Set<string>());
   const audio = useRef<HTMLAudioElement | null>(null);
-  /** Fetched server audio as blob URLs, by lang + text. */
-  const clips = useRef(new Map<string, string>());
   const watchdog = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     setAvailable(true);
@@ -656,20 +687,20 @@ function useSpeech(serverVoice = false) {
       const tag = SPEECH_TAG[lang]?.toLowerCase();
       // The language's own region first (ja-JP, not a ja voice of elsewhere).
       const exact = vs.filter((v) => norm(v) === tag);
-      return (
-        exact.find((v) => v.localService) ??
-        exact[0] ??
-        vs.find((v) => v.localService) ??
-        vs[0] ??
-        null
-      );
+      // Natural voices first: iOS lists robotic Eloquence and novelty voices first.
+      const best = (pool: SpeechSynthesisVoice[]) => {
+        const q = Math.max(-1, ...pool.map(voiceQuality));
+        const top = pool.filter((v) => voiceQuality(v) === q);
+        return top.find((v) => v.localService) ?? top[0];
+      };
+      return best(exact) ?? best(vs) ?? null;
     },
     [voices],
   );
 
-  const stop = useCallback(() => {
+  /** Silence the part playing now; callbacks of what was playing are ignored. */
+  const cancel = useCallback(() => {
     generation.current++;
-    clearTimeout(timer.current);
     clearTimeout(watchdog.current);
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
     // A clip cut mid-word is jarring when the card changes: fade it out.
@@ -677,57 +708,49 @@ function useSpeech(serverVoice = false) {
     audio.current = null;
   }, []);
 
+  type Done = (played: boolean) => void;
+
   /** Play the server's recording of `text`. False when it could not (no voice, limit, offline). */
-  const serverSpeak = useCallback(async (text: string, lang: string, then?: () => void) => {
-    if (serverDead.current.has(lang)) return false;
+  const serverSpeak = useCallback(async (text: string, lang: string, done: Done) => {
     const gen = generation.current;
-    const key = `${lang}:${text}`;
-    let url = clips.current.get(key);
-    if (!url) {
-      const r = await fetch(
-        `/api/words/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}`,
-      ).catch(() => null);
-      devLog({
-        ev: "server",
-        lang,
-        text,
-        status: r?.status ?? "network",
-        voice: r?.headers.get("X-Voice"),
-        type: r?.headers.get("Content-Type"),
-        bytes: r?.headers.get("Content-Length"),
-      });
-      if (!r?.ok) {
-        // X-Voice: miss — only this text has no recording; the language does.
-        if (r && (r.status === 404 || r.status === 503) && r.headers.get("X-Voice") !== "miss")
-          serverDead.current.add(lang);
-        return false;
-      }
-      url = URL.createObjectURL(await r.blob());
-      clips.current.set(key, url);
-      if (clips.current.size > 300) {
-        const [oldKey, oldUrl] = clips.current.entries().next().value!;
-        clips.current.delete(oldKey);
-        URL.revokeObjectURL(oldUrl);
-      }
-    }
+    // Prefetched, most of the time: then it plays at once, still inside the
+    // tap's gesture (no await before play()).
+    const r = wordAudio().peek(lang, text) ?? (await wordAudio().load(lang, text));
+    if (r.kind !== "ok") return false;
     if (gen !== generation.current) return true;
     // A fresh element per clip: the previous one may still be fading out.
-    const a = playable(url);
+    const a = playable(r.url);
     audio.current = a;
-    a.onended = then ?? null;
+    a.onended = () => done(true);
+    a.onerror = () => done(false);
     void a.play().catch(() => {});
     return true;
   }, []);
 
+  /** The browser can say this language itself. */
+  const browserCan = useCallback(
+    (lang: string) =>
+      typeof speechSynthesis !== "undefined" &&
+      !browserDead.current.has(lang) &&
+      voiceFor(lang) !== null,
+    [voiceFor],
+  );
+
+  /** `serverTried`: the server already failed this text — don't ask again. */
   const browserSpeak = useCallback(
-    (text: string, lang: string, then?: () => void) => {
+    (text: string, lang: string, done: Done, serverTried = false) => {
+      const gen = generation.current;
+      const viaServer = () => {
+        if (serverTried) return done(false);
+        void serverSpeak(text, lang, done).then(
+          (ok) => !ok && gen === generation.current && done(false),
+        );
+      };
       // Only a voice of this very language. With none listed (Chrome on
       // Android often lists nothing) the OS picks its default voice — a
       // Japanese voice reading French. The server speaks instead, or nothing.
       const voice = voiceFor(lang);
-      const browser =
-        typeof speechSynthesis !== "undefined" && !browserDead.current.has(lang) && voice !== null;
-      if (!browser) return void serverSpeak(text, lang, then);
+      if (!browserCan(lang) || !voice) return viaServer();
       const u = new SpeechSynthesisUtterance(text);
       u.voice = voice;
       u.lang = voice.lang;
@@ -736,13 +759,12 @@ function useSpeech(serverVoice = false) {
       // Never started (no engine behind the API) or failed outright: the
       // server speaks this language from now on.
       let started = false;
-      const gen = generation.current;
       const fallBack = () => {
         if (started || gen !== generation.current) return;
         clearTimeout(watchdog.current);
         browserDead.current.add(lang);
         speechSynthesis.cancel();
-        void serverSpeak(text, lang, then);
+        viaServer();
       };
       u.onstart = () => {
         started = true;
@@ -752,73 +774,83 @@ function useSpeech(serverVoice = false) {
         if (e.error !== "interrupted" && e.error !== "canceled") fallBack();
       };
       u.onend = () => {
-        if (started) then?.();
+        if (started) done(true);
       };
       clearTimeout(watchdog.current);
       watchdog.current = setTimeout(fallBack, 2000);
       speechSynthesis.speak(u);
     },
-    [voiceFor, serverSpeak],
+    [voiceFor, browserCan, serverSpeak],
   );
 
-  const speak = useCallback(
-    (text: string, lang: string, then?: () => void, force = false) => {
-      if ((!on && !force) || !text) return;
-      devLog({
-        ev: "speak",
-        lang,
-        text,
-        serverVoice,
-        serverDead: [...serverDead.current],
-        browserDead: [...browserDead.current],
-      });
+  /** The server voices this part (rather than the browser). */
+  const viaServer = useCallback(
+    (p: SayPart) =>
+      !wordAudio().isDead(p.lang) &&
+      (p.kind === "meaning" ? MEANING_VOICE === "server" : serverVoice || !browserCan(p.lang)),
+    [serverVoice, browserCan],
+  );
+
+  /** One part; a missing voice falls back to the other engine for this part only. */
+  const say = useCallback(
+    (p: SayPart, done: Done) => {
+      devLog({ ev: "speak", kind: p.kind, lang: p.lang, text: p.text, serverVoice });
       // The server voice by default: browser voices can mislead (Japanese read
       // in a Chinese accent). The browser speaks only where the server can't —
-      // a language it has no voice for, the rate limit, offline.
-      if (serverVoice && !serverDead.current.has(lang)) {
-        const gen = generation.current;
-        void serverSpeak(text, lang, then).then(
-          (ok) => !ok && gen === generation.current && browserSpeak(text, lang, then),
-        );
-        return;
-      }
-      browserSpeak(text, lang, then);
+      // a language or text it has no voice for, the rate limit, offline.
+      if (!viaServer(p)) return browserSpeak(p.text, p.lang, done);
+      const gen = generation.current;
+      void serverSpeak(p.text, p.lang, done).then(
+        (ok) => !ok && gen === generation.current && browserSpeak(p.text, p.lang, done, true),
+      );
     },
-    [on, serverVoice, serverSpeak, browserSpeak],
+    [serverVoice, viaServer, serverSpeak, browserSpeak],
   );
 
-  /** Repeat `text` with a pause until the next call; "" just stops. */
+  const sayRef = useRef(say);
+  sayRef.current = say;
+  const sequencer = useMemo(
+    () =>
+      createSequencer<SayPart>({
+        say: (p, done) => sayRef.current(p, done),
+        cancel,
+        setTimeout: (fn, ms) => setTimeout(fn, ms),
+        clearTimeout: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+      }),
+    [cancel],
+  );
+  const stop = sequencer.stop;
+
   /**
-   * Say `texts` in turn (the word, then its example), pause, repeat — until
-   * the next call; an empty list just stops.
+   * Say `parts` in turn (word, meaning, example), pause, repeat — until the
+   * next call; an empty list just stops.
    */
   const loop = useCallback(
-    (texts: string[], lang: string, force = false) => {
-      stop();
-      const parts = texts.filter(Boolean);
-      if (!parts.length) return;
-      const gen = generation.current;
-      let i = 0;
-      const say = () => gen === generation.current && speak(parts[i], lang, after, force);
-      const after = () => {
-        if (gen !== generation.current) return;
-        i = (i + 1) % parts.length;
-        // A short gap between word and example; a longer one before repeating.
-        timer.current = setTimeout(say, i === 0 ? 1200 : 400);
-      };
+    (parts: SayPart[], force = false) => {
+      if (!on && !force) return stop();
       // A short delay so flicking through rows does not start a word per row.
-      timer.current = setTimeout(say, 250);
+      sequencer.play(
+        parts.filter((p) => p.text),
+        { loop: true, delayMs: 250 },
+      );
       return stop;
     },
-    [speak, stop],
+    [on, sequencer, stop],
   );
 
+  /** Say `parts` once, back to back, now — interrupting whatever was playing. */
   const once = useCallback(
-    (text: string, lang: string, force = false) => {
-      stop();
-      speak(text, lang, undefined, force);
+    (parts: SayPart[], force = false) => {
+      if (!on && !force) return stop();
+      sequencer.play(parts.filter((p) => p.text));
     },
-    [speak, stop],
+    [on, sequencer, stop],
+  );
+
+  /** Fetch the clips of rows about to be tapped (only those the server would voice). */
+  const prefetch = useCallback(
+    (parts: SayPart[]) => wordAudio().prefetch(parts.filter(viaServer)),
+    [viaServer],
   );
 
   const toggle = useCallback(() => {
@@ -832,8 +864,8 @@ function useSpeech(serverVoice = false) {
   }, [stop]);
 
   return useMemo(
-    () => ({ available, on, loop, once, toggle }),
-    [available, on, loop, once, toggle],
+    () => ({ available, on, loop, once, toggle, prefetch }),
+    [available, on, loop, once, toggle, prefetch],
   );
 }
 
@@ -1339,8 +1371,11 @@ function SortableListRow({
   onToggle,
   onOpen,
   onDeleted,
+  keys,
 }: {
   list: WordList;
+  /** A hardware keyboard is in use: show the row's number key. */
+  keys: boolean;
   depth: number;
   index: number;
   totals: Totals;
@@ -1360,6 +1395,7 @@ function SortableListRow({
     transition,
     isDragging,
   } = useSortable({ id: l.id });
+  const text = useIntlayer("words-page");
   return (
     <div
       ref={setNodeRef}
@@ -1394,9 +1430,7 @@ function SortableListRow({
       >
         {collapsed ? "▸" : "▾"}
       </button>
-      {index < 9 && (
-        <kbd className="hidden sm:inline text-xs opacity-40 tabular-nums">{index + 1}</kbd>
-      )}
+      {keys && index < 9 && <kbd className="text-xs opacity-40 tabular-nums">{index + 1}</kbd>}
       <button className="flex-1 text-left min-w-0" onClick={() => onOpen(l.id)}>
         <div className="font-medium truncate">
           {isGroup && <Icon name="folder" className="me-1 opacity-70" />}
@@ -1411,10 +1445,11 @@ function SortableListRow({
         className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
         onClick={() => onOpen(l.id)}
       >
-        Study
+        {text.study}
       </button>
       <button
-        className="text-xs opacity-40 hover:opacity-80"
+        // A 40px hit area (tap-40) around the small label.
+        className="tap-40 text-xs opacity-40 hover:opacity-80"
         onClick={async () => {
           const what = isGroup
             ? `Delete group "${l.name}"? The lists inside it are kept and move up a level.`
@@ -1424,7 +1459,7 @@ function SortableListRow({
           onDeleted();
         }}
       >
-        delete
+        {text.delete}
       </button>
     </div>
   );
@@ -1453,6 +1488,9 @@ function ListPicker({
 }) {
   const groupSource = groupSourceOf(config);
   const isGroup = (l: WordList) => l.source === groupSource;
+  const text = useIntlayer("words-page");
+  // Number keys open lists: show them only with a hardware keyboard.
+  const keys = useInputModality() === "keyboard";
   const flat = useMemo(() => flatten(lists), [lists]);
   const [download, setDownload] = useState<{
     done: number;
@@ -1626,10 +1664,10 @@ function ListPicker({
           onClick={() => onOpen(ALL)}
           className="w-full flex items-center gap-3 rounded-lg bg-emerald-500/20 dark:bg-emerald-700/40 hover:bg-emerald-500/30 dark:hover:bg-emerald-700/60 px-4 py-3 text-left"
         >
-          <kbd className="hidden sm:inline text-xs opacity-50">0</kbd>
+          {keys && <kbd className="text-xs opacity-50">0</kbd>}
           <span className="flex-1">
-            <span className="font-medium">Study all lists together</span>
-            <span className="block text-xs opacity-60">New words come in the order below.</span>
+            <span className="font-medium">{text.studyAll}</span>
+            <span className="block text-xs opacity-60">{text.studyAllHint}</span>
           </span>
           <span className="text-xs opacity-70 tabular-nums">
             {studyable.reduce((n, l) => n + l.due, 0)} due
@@ -1664,6 +1702,7 @@ function ListPicker({
                   onToggle={() => toggle(row.id)}
                   onOpen={onOpen}
                   onDeleted={onDeleted}
+                  keys={keys}
                 />
               ))}
             </SortableContext>
@@ -1801,6 +1840,8 @@ function Study({
   };
   const started = useRef(Date.now());
   const touch = useTouch();
+  /** Hints follow the input used last: keys for a keyboard, gestures for touch. */
+  const modality = useInputModality();
   /**
    * Which touch swipe this device uses (lib/words/swipe-ab.ts): WordRow's JS
    * detents, or — the experimental "New swipe" — NativeSlipRow's native
@@ -1809,6 +1850,12 @@ function Study({
   const [swipeAb, setSwipeAb] = useState<SwipeVariant>("js");
   useEffect(() => setSwipeAb(swipeVariant()), []);
   const native = touch && swipeAb === "native";
+  /**
+   * Experimental: the paper texture scrolls with the list (a layer inside the
+   * scroller, [data-paper-layer]) instead of staying fixed on the body.
+   * Per device; off unless turned on.
+   */
+  const [paperScrolls, setPaperScrolls] = usePref("lk:words-paper-scrolls", false);
   /** Phone full screen. Remembered: once on, the first touch of a later study re-enters it. */
   const fs = useFullscreen();
   const [fsHint, setFsHint] = useState(false);
@@ -1854,6 +1901,12 @@ function Study({
   /** Read with the server's voice instead of the browser's. Remembered. */
   const [serverVoice, setServerVoice] = usePref("lk:words-server-voice", true);
   const speech = useSpeech(serverVoice);
+  const { locale } = useLocale();
+  /** What a tap, a hold or the focus reads: word → meaning → example. */
+  const partsOf = useCallback(
+    (it: Item) => sayParts(it, it.lang, !!config.readingOnBack, String(locale)),
+    [config.readingOnBack, locale],
+  );
   const base = config.base;
   const listIds = lists.map((l) => l.id).join(",");
   const paramsOf = useMemo(() => new Map(lists.map((l) => [l.id, l.params])), [lists]);
@@ -2139,6 +2192,7 @@ function Study({
         });
     })();
   };
+  const text = useIntlayer("words-page");
   const [debug, debugTap] = useDebugToggle(
     useCallback((on: boolean) => setNotice(on ? "Debug log on" : "Debug log off"), []),
   );
@@ -2192,6 +2246,39 @@ function Study({
   // only the rows in view (plus a margin) are rendered.
   const ROW_H = touch ? 44 : 28;
   const listRef = useRef<HTMLDivElement>(null);
+  /** The list element as state, for effects that must start when it mounts. */
+  const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
+  const setListRef = useCallback((el: HTMLDivElement | null) => {
+    listRef.current = el;
+    setListEl(el);
+  }, []);
+  const hintRef = useRef<HTMLDivElement>(null);
+  /** The glass toolbar over the top of the list (header included in `bar.top`). */
+  const topRef = useRef<HTMLDivElement>(null);
+  /**
+   * What the glass overlays cover of the full-window list: `top` = the
+   * toolbar's bottom edge, `bottom` = the help strip's height; `toolbar` = the
+   * toolbar's own height, which the in-flow content (loading, errors) clears.
+   */
+  const [bar, setBar] = useState({ top: 0, bottom: 0, toolbar: 0 });
+  const barRef = useRef(bar);
+  barRef.current = bar;
+  /** Room for the help strip: a tall enough window, the on-screen keyboard closed. */
+  const [room, setRoom] = useState(true);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const check = () => {
+      const keyboard = !!vv && vv.scale <= 1.01 && vv.height < window.innerHeight - 120;
+      setRoom(window.innerHeight >= 560 && !keyboard);
+    };
+    check();
+    window.addEventListener("resize", check);
+    vv?.addEventListener("resize", check);
+    return () => {
+      window.removeEventListener("resize", check);
+      vv?.removeEventListener("resize", check);
+    };
+  }, []);
   /** What a sliding slip uncovers: the grade of each level (SwipeUnderlay). */
   const underlay = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -2202,38 +2289,116 @@ function Study({
   /** viewH holds the real measured height (the opening scroll depends on it). */
   const [measured, setMeasured] = useState(false);
   const listReady = !loading && !loadError && queue.length > 0;
-  // Half a screen of empty space above the first row and below the last, so
-  // any row — the first included — can be scrolled to the middle (or to the
-  // touch focus line). Row positions below are offset by it.
-  const pad = Math.round(viewH / 2);
-  const startedAtTop = useRef(false);
+  // Empty space above the first row and below the last (OVERSCROLL_FRACTION
+  // of the list's height), so any row — the first and last included — can be
+  // scrolled well past the middle (or to the touch focus line). Row positions
+  // and the windowing below are all offset by it.
+  const pad = Math.round(viewH * OVERSCROLL_FRACTION);
+  // Open with the first row just under the glass toolbar, not half a screen
+  // down. Re-applied until the person moves the list themselves: whenever the
+  // list element is (re)mounted (the queue can reload, e.g. from the offline
+  // copy and then the server), the measured heights or the over-scroll
+  // change (fonts, safe areas and the toolbar settle late on iOS), and on
+  // pageshow (a restored page). Events only — nothing polls.
+  const opened = useRef<{ el: HTMLElement | null; moved: boolean }>({ el: null, moved: false });
+  const [shownAt, setShownAt] = useState(0);
+  useEffect(() => {
+    const again = () => setShownAt((n) => n + 1);
+    window.addEventListener("pageshow", again);
+    return () => window.removeEventListener("pageshow", again);
+  }, []);
+  useEffect(() => {
+    if (!listEl) return;
+    const moved = () => {
+      if (opened.current.el === listEl) opened.current.moved = true;
+    };
+    const opts = { passive: true, capture: true } as const;
+    listEl.addEventListener("pointerdown", moved, opts);
+    listEl.addEventListener("touchstart", moved, opts);
+    listEl.addEventListener("wheel", moved, opts);
+    window.addEventListener("keydown", moved, opts);
+    return () => {
+      listEl.removeEventListener("pointerdown", moved, opts);
+      listEl.removeEventListener("touchstart", moved, opts);
+      listEl.removeEventListener("wheel", moved, opts);
+      window.removeEventListener("keydown", moved, opts);
+    };
+  }, [listEl]);
   useLayoutEffect(() => {
-    // Open with the first row at the top, not half a screen down.
-    const el = listRef.current;
-    if (!el || startedAtTop.current || !listReady || !measured) return;
-    startedAtTop.current = true;
-    el.scrollTop = pad;
-  }, [listReady, measured, pad]);
+    if (!listEl || !listReady || !measured) return;
+    if (opened.current.el !== listEl) opened.current = { el: listEl, moved: false };
+    if (opened.current.moved) return;
+    listEl.scrollTop = pad - bar.top;
+  }, [listEl, listReady, measured, pad, bar.top, shownAt]);
+  // The list fills the window (.lk-words-list); the toolbar and the help strip
+  // float over it. Measured whenever any of them changes size (settings open,
+  // hints change, the window turns), never polled.
   useLayoutEffect(() => {
     const fit = () => {
-      const el = listRef.current;
-      if (!el) return;
-      // Fill down to the bottom of the window, leaving room for the key hints.
-      setViewH(Math.max(160, window.innerHeight - el.getBoundingClientRect().top - 40));
-      setMeasured(true);
+      const top = topRef.current;
+      const hint = hintRef.current;
+      const next = {
+        top: Math.round(top?.getBoundingClientRect().bottom ?? 0),
+        toolbar: Math.round(top?.offsetHeight ?? 0),
+        bottom: hint
+          ? Math.max(0, Math.round(window.innerHeight - hint.getBoundingClientRect().top))
+          : 0,
+      };
+      setBar((b) =>
+        b.top === next.top && b.bottom === next.bottom && b.toolbar === next.toolbar ? b : next,
+      );
+      if (listEl) {
+        setViewH(Math.max(160, listEl.clientHeight));
+        setMeasured(true);
+      }
     };
     fit();
-    window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
-  }, [listReady]);
-  // Keep the cursor in view as it moves, a couple of rows from the edges.
+    const ro = new ResizeObserver(fit);
+    for (const el of [topRef.current, hintRef.current, listEl]) if (el) ro.observe(el);
+    return () => ro.disconnect();
+  }, [listEl, room]);
+  // Paper scrolls with the list: the body behind it is plain, so the texture
+  // isn't drawn twice.
+  useEffect(() => {
+    if (!listEl || !paperScrolls) return;
+    const root = document.documentElement;
+    root.classList.add("lk-paper-scrolls");
+    return () => root.classList.remove("lk-paper-scrolls");
+  }, [listEl, paperScrolls]);
+  // Only the list scrolls: the page under it stays put.
+  useEffect(() => {
+    if (!listEl) return;
+    // The page is exactly the window while the list is up (.lk-page-lock):
+    // no overflow, no rubber band, and no taller-than-the-window document
+    // (min-h-screen plus the body's safe-area padding made it 48px taller on
+    // an iPhone, and iOS left it scrolled by that much).
+    const root = document.documentElement;
+    root.classList.add("lk-page-lock");
+    const top = () => {
+      if (window.scrollY || root.scrollTop) window.scrollTo(0, 0);
+    };
+    top();
+    // Again once the lock has laid out, and whenever iOS moves the page anyway
+    // (the keyboard, a restored page): the list is the only scroller.
+    queueMicrotask(top);
+    const raf = requestAnimationFrame(top);
+    window.addEventListener("scroll", top, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      root.classList.remove("lk-page-lock");
+      window.removeEventListener("scroll", top);
+    };
+  }, [listEl]);
+  // Keep the cursor in view as it moves, a couple of rows from the edges of
+  // what the overlays leave uncovered.
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
+    const { top: over, bottom: under } = barRef.current;
     const top = pad + row * ROW_H;
-    if (top < el.scrollTop + ROW_H) el.scrollTop = Math.max(0, top - ROW_H);
-    else if (top + ROW_H > el.scrollTop + el.clientHeight - ROW_H * 2)
-      el.scrollTop = top + ROW_H * 3 - el.clientHeight;
+    if (top < el.scrollTop + over + ROW_H) el.scrollTop = Math.max(0, top - ROW_H - over);
+    else if (top + ROW_H > el.scrollTop + el.clientHeight - under - ROW_H * 2)
+      el.scrollTop = top + ROW_H * 3 - el.clientHeight + under;
   }, [row, ROW_H]);
 
   // Touch has no cursor: the focused row is the one last tapped, and grading
@@ -2255,8 +2420,9 @@ function Study({
       if (!ready.length || !el) return;
       if (touchingList.current || performance.now() - lastScrollAt.current < 400) return;
       later.current = later.current.filter((x) => x.due > now);
-      const half = Math.round(el.clientHeight / 2);
-      const below = Math.floor((el.scrollTop - half + el.clientHeight) / ROW_H) + 1;
+      // The list's top spacer (`pad`), from the live height.
+      const top = Math.round(el.clientHeight * OVERSCROLL_FRACTION);
+      const below = Math.floor((el.scrollTop - top + el.clientHeight) / ROW_H) + 1;
       // Updaters stay pure (Strict Mode runs them twice): the insertion point
       // is fixed here, from the queue length as last rendered.
       const at = Math.max(0, Math.min(queueLen.current, below));
@@ -2282,7 +2448,7 @@ function Study({
   useEffect(() => {
     if (!touch || !active || holding !== null || !focusItem) return;
     if (quietFocus.current === focusLine) return void (quietFocus.current = null);
-    speech.once(focusText, focusItem.lang);
+    speech.once([{ kind: "word", text: focusText, lang: focusItem.lang }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [touch, focusLine, focusText]);
 
@@ -2332,10 +2498,62 @@ function Study({
   // is active; paused in a hidden tab or background window.
   const active = usePageActive();
   const focused = !touch && active ? queue[row] : undefined;
-  const say = focused ? spokenText(focused, focused.lang, !!config.readingOnBack) : "";
-  const sayEx = focused?.ex ?? "";
-  const sayLang = focused?.lang ?? "";
-  useEffect(() => speech.loop([say, sayEx], sayLang), [say, sayEx, sayLang, speech]);
+  // Keyed by content: re-rendering the same row must not restart its loop.
+  const focusParts = JSON.stringify(focused ? partsOf(focused) : []);
+  useEffect(() => speech.loop(JSON.parse(focusParts) as SayPart[]), [focusParts, speech]);
+
+  // Prefetch the audio of the rows on screen and up to two screens below,
+  // plus the next few in queue order, so a tap plays at once. The list is
+  // windowed: rows are observed as they mount and let go as they unmount.
+  const nearRows = useRef(new Set<number>());
+  const prefetchNear = useRef(() => {});
+  prefetchNear.current = () => {
+    // Desktop with sound off says nothing (a click grades); a tap always speaks.
+    if (!touch && !speech.on) return;
+    const near = [...nearRows.current].sort((a, b) => a - b);
+    if (!near.length) return;
+    const last = near[near.length - 1];
+    for (let i = last + 1; i <= last + PREFETCH_NEXT && i < queue.length; i++) near.push(i);
+    speech.prefetch(prefetchOrder(near.flatMap((i) => (queue[i] ? [partsOf(queue[i])] : []))));
+  };
+  useEffect(() => prefetchNear.current(), [queue, speech, partsOf]);
+  useEffect(() => {
+    const root = listEl;
+    if (!root || typeof IntersectionObserver === "undefined") return;
+    const rowIndex = (n: Node) =>
+      n instanceof HTMLElement && n.dataset.i !== undefined ? Number(n.dataset.i) : null;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          const i = rowIndex(e.target);
+          if (i === null) continue;
+          if (e.isIntersecting) nearRows.current.add(i);
+          else nearRows.current.delete(i);
+        }
+        prefetchNear.current();
+      },
+      { root, rootMargin: "0px 0px 200% 0px" },
+    );
+    for (const el of root.children) if (rowIndex(el) !== null) io.observe(el);
+    const mo = new MutationObserver((records) => {
+      for (const r of records) {
+        for (const n of r.addedNodes) if (rowIndex(n) !== null) io.observe(n as Element);
+        for (const n of r.removedNodes) {
+          const i = rowIndex(n);
+          if (i === null) continue;
+          io.unobserve(n as Element);
+          nearRows.current.delete(i);
+        }
+      }
+    });
+    mo.observe(root, { childList: true });
+    const near = nearRows.current;
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+      near.clear();
+    };
+  }, [listEl]);
 
   // Windowed rendering: the list is endless, the DOM is not.
   const OVERSCAN = 20;
@@ -2488,76 +2706,120 @@ function Study({
     return `${formatInterval(Date.now() - dueOf(it.card))} ago`;
   };
 
+  // The help strip's text, by the input used last (keys or gestures).
+  const hintText =
+    exhausted && ahead.length === 0 ? (
+      <>
+        Every word learned. <Icon name="confetti" className="ms-0.5" />
+      </>
+    ) : modality === null ? null : modality === "touch" ? (
+      // The gestures exist only in the touch layout; a touchscreen
+      // laptop's tap is a click (= Again), and has no swipe to explain.
+      touch &&
+      "tap = show + say · hold = listen (loops) · swipe ← a little Hard, far Again · swipe → a little Good, far Easy · ↶ undo"
+    ) : help ? (
+      "↑↓ / W S / I U move (the focused row shows its meaning) · Space pin · E show all · 1 Again · 2 Hard · 3 Good · 4 Easy (right hand mirrored: L Again · K Hard · J Good · H Easy) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
+    ) : (
+      "1 Again · 2 Hard · 3 Good · 4 Easy · Z undo · ? all keys"
+    );
+
   return (
     // Full width: wide screens get room for longer explanations.
-    <div className="w-full px-3 py-4 sm:px-8 sm:py-6">
-      <div className="sticky top-0 z-10 -mx-3 sm:-mx-8 px-3 sm:px-8 py-2 mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm bg-[var(--background)] backdrop-blur">
-        <button className="opacity-60 hover:opacity-100 whitespace-nowrap" onClick={onExit}>
-          ← lists
-        </button>
-        <span className="font-medium">{title}</span>
-        <button
-          // Tapped seven times fast for debug: iOS must not turn that into a
-          // text selection or a double-tap zoom.
-          className={`select-none touch-manipulation [-webkit-touch-callout:none] px-2 py-0.5 rounded text-xs ${
-            settings
-              ? "bg-black/20 dark:bg-white/25"
-              : "bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
-          }`}
-          onClick={() => {
-            setSettings((v) => !v);
-            // Seven quick toggles turn the debug log on or off (the installed
-            // app has no address bar for ?debug).
-            debugTap();
-          }}
-          aria-expanded={settings}
-          aria-label="Settings"
-        >
-          <Icon name="gearSix" className="me-1" />
-          Settings
-        </button>
-        {touch && (
+    // In-flow content (loading, errors) starts below the glass toolbar.
+    <div className="w-full px-3 pb-4 sm:px-8 sm:pb-6" style={{ paddingTop: bar.toolbar + 16 }}>
+      {/* The toolbar: a glass overlay under the header, over the list. */}
+      <div
+        ref={topRef}
+        data-words-top
+        className="lk-words-bar lk-glass border-b border-[var(--glass-line)] py-2 text-sm"
+        style={{ top: "calc(3.5rem + env(safe-area-inset-top))" }}
+      >
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <button
-            className="px-2 py-0.5 rounded text-xs bg-black/10 dark:bg-white/10"
-            onClick={() => undo()}
-            aria-label="Undo"
+            className="tap-40 opacity-60 hover:opacity-100 whitespace-nowrap"
+            onClick={onExit}
           >
-            <Icon name="arrowCounterClockwise" className="me-1" />
-            Undo
+            {text.backToLists}
           </button>
-        )}
-        <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
-          {debug && (
-            <>
-              <span className="mr-1 rounded bg-red-700 px-1 text-white" data-debug-badge>
-                DEBUG
-              </span>
-              {/* Design prototypes, to try on the device itself. */}
-              {["slip", "cords"].map((p) => (
-                <a key={p} href={`/proto/${p}`} data-debug-proto={p} className="mr-1 underline">
-                  proto/{p}
-                </a>
-              ))}
-            </>
-          )}
-          {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
-          {ahead.length - dueLeft} new
-          {sync.pending > 0 ? (
-            <span
-              data-sync="pending"
-              className={sync.online ? "" : "text-amber-700 dark:text-amber-300"}
+          <span className="font-medium">{title}</span>
+          <button
+            // Tapped seven times fast for debug: iOS must not turn that into a
+            // text selection or a double-tap zoom.
+            className={`tap-40 select-none touch-manipulation [-webkit-touch-callout:none] px-2 py-0.5 rounded text-xs ${
+              settings
+                ? "bg-black/20 dark:bg-white/25"
+                : "bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
+            }`}
+            onClick={() => {
+              setSettings((v) => !v);
+              // Seven quick toggles turn the debug log on or off (the installed
+              // app has no address bar for ?debug).
+              debugTap();
+            }}
+            aria-expanded={settings}
+            aria-label={text.settings.value}
+          >
+            <Icon name="gearSix" className="me-1" />
+            {text.settings}
+          </button>
+          {touch && (
+            <button
+              className="tap-40 px-2 py-0.5 rounded text-xs bg-black/10 dark:bg-white/10"
+              onClick={() => undo()}
+              aria-label={text.undo.value}
             >
-              {sync.online ? ` · ${sync.pending} saving…` : ` · offline · ${sync.pending} to sync`}
-            </span>
-          ) : (
-            <span data-sync="synced">
-              {!sync.online || offlineCopy ? " · offline" : ""}
-              {sync.online && grades.size > 0 ? " · synced ✓" : ""}
-            </span>
+              <Icon name="arrowCounterClockwise" className="me-1" />
+              {text.undo}
+            </button>
           )}
-        </span>
-        {settings && (
-          <div className="w-full flex flex-wrap gap-2 pt-1 pb-1" aria-label="Study settings">
+          <span className="w-full sm:w-auto sm:ml-auto tabular-nums opacity-70 text-xs sm:text-sm">
+            {debug && (
+              <>
+                <span className="mr-1 rounded bg-red-700 px-1 text-white" data-debug-badge>
+                  DEBUG
+                </span>
+                {/* Design prototypes, to try on the device itself. */}
+                {["slip", "cords"].map((p) => (
+                  <a key={p} href={`/proto/${p}`} data-debug-proto={p} className="mr-1 underline">
+                    proto/{p}
+                  </a>
+                ))}
+              </>
+            )}
+            {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
+            {ahead.length - dueLeft} new
+            {sync.pending > 0 ? (
+              <span
+                data-sync="pending"
+                className={sync.online ? "" : "text-amber-700 dark:text-amber-300"}
+              >
+                {sync.online
+                  ? ` · ${sync.pending} saving…`
+                  : ` · offline · ${sync.pending} to sync`}
+              </span>
+            ) : (
+              <span data-sync="synced">
+                {!sync.online || offlineCopy ? " · offline" : ""}
+                {sync.online && grades.size > 0 ? " · synced ✓" : ""}
+              </span>
+            )}
+          </span>
+        </div>
+        {syncError && <div className="text-red-500 text-sm mt-1">Not saved: {syncError}</div>}
+        {notice && <div className="text-amber-600 dark:text-amber-300 text-sm mt-1">{notice}</div>}
+      </div>
+
+      {settings && (
+        <div
+          // Its own glass sheet under the toolbar, not part of it: the
+          // toolbar (and the list's scroll-padding under it) stays one
+          // size, and a long sheet scrolls inside itself.
+          data-words-settings
+          className="lk-words-bar lk-words-sheet lk-glass border-b border-[var(--glass-line)] py-2 text-sm"
+          style={{ top: bar.top, maxHeight: `calc(100dvh - ${bar.top + bar.bottom + 16}px)` }}
+          aria-label="Study settings"
+        >
+          <div className="flex flex-wrap gap-2">
             <TogglePill
               on={showAll}
               onChange={setShowAll}
@@ -2607,12 +2869,12 @@ function Study({
                 hint="Hide the address bar while studying"
               />
             )}
-            {touch && (
-              <div className="w-full pt-1" data-experimental>
-                <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
-                  Experimental
-                </div>
-                <div className="flex flex-wrap items-center gap-2 pt-1">
+            <div className="w-full pt-1" data-experimental>
+              <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
+                Experimental
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {touch && (
                   <TogglePill
                     on={swipeAb === "native"}
                     onChange={(on) => {
@@ -2623,21 +2885,25 @@ function Study({
                     label="New swipe"
                     hint="Swipes done by the browser's own scrolling"
                   />
-                  <span className="text-xs opacity-60">
-                    Native scrolling swipe. It may change or go away.
-                  </span>
-                </div>
+                )}
+                <TogglePill
+                  on={paperScrolls}
+                  onChange={setPaperScrolls}
+                  label={text.paperScrolls.value}
+                  hint={text.paperScrollsHint.value}
+                />
+                <span className="text-xs opacity-60">
+                  {touch ? "Native scrolling swipe. " : ""}It may change or go away.
+                </span>
               </div>
-            )}
+            </div>
           </div>
-        )}
-      </div>
-      {syncError && <div className="text-red-500 text-sm mb-2">Not saved: {syncError}</div>}
-      {notice && <div className="text-amber-600 dark:text-amber-300 text-sm mb-2">{notice}</div>}
-      {fsHint && (
-        <div className="text-sm mb-2 opacity-80" onClick={() => setFsHint(false)}>
-          This browser can&apos;t hide its address bar for a page. On iPhone: Share → Add to Home
-          Screen, then open Lianki from the home screen — it runs without the address bar.
+          {fsHint && (
+            <div className="text-sm mt-2 opacity-80" onClick={() => setFsHint(false)}>
+              This browser can&apos;t hide its address bar for a page. On iPhone: Share → Add to
+              Home Screen, then open Lianki from the home screen — it runs without the address bar.
+            </div>
+          )}
         </div>
       )}
 
@@ -2667,14 +2933,18 @@ function Study({
       ) : (
         <>
           <div
-            ref={listRef}
-            // Phones: edge to edge, no box — the whole screen width is the slips'.
-            className={`relative overflow-y-auto overscroll-contain ${
-              touch ? "-mx-3 sm:-mx-8" : "rounded-lg border border-black/10 dark:border-white/10"
-            }`}
+            ref={setListRef}
+            // The whole window, edge to edge, under the glass overlays
+            // (.lk-words-list); scroll-padding keeps resting rows clear of them.
+            className="lk-words-list overflow-y-auto overscroll-contain"
+            data-touch={touch ? "true" : "false"}
             // overflow-anchor: none — the padding and spacers change as rows
             // load; the browser must not "help" by shifting the scroll.
-            style={{ height: viewH, overflowAnchor: "none" }}
+            style={{
+              overflowAnchor: "none",
+              scrollPaddingTop: bar.top,
+              scrollPaddingBottom: bar.bottom,
+            }}
             onScroll={(e) => {
               setScrollTop(e.currentTarget.scrollTop);
               lastScrollAt.current = performance.now();
@@ -2687,8 +2957,23 @@ function Study({
             onPointerUp={touch ? resumeFullscreen : undefined}
             role="list"
           >
+            {paperScrolls && (
+              // The paper, scrolling with the rows: one composited layer the
+              // height of the whole content (both over-scroll pads included),
+              // under everything in the list. `background-attachment: local`
+              // on the list cost ~50 of 90 frames over 20ms on an iPhone;
+              // this layer scrolls as fast as the fixed body texture.
+              <div
+                aria-hidden
+                data-paper-layer
+                className="lk-paper-layer"
+                style={{ height: pad * 2 + queue.length * ROW_H }}
+              />
+            )}
             {touch && !native && <SwipeUnderlay ref={underlay} />}
-            <div style={{ height: pad + from * ROW_H }} />
+            <div className="relative" style={{ height: pad + from * ROW_H }}>
+              {pad - bar.top > 140 && <EmptyTray style={{ top: bar.top, height: pad - bar.top }} />}
+            </div>
             {queue.slice(from, to).map((it, k) => {
               const i = from + k;
               const g = grades.get(i);
@@ -2722,8 +3007,7 @@ function Study({
                     // Re-rendering the list for the new focus must not hold up the tap.
                     quietFocus.current = i;
                     startTransition(() => setFocusLine(i));
-                    if (!second)
-                      speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang, true);
+                    if (!second) speech.once(partsOf(it), true);
                     // The second tap undoes the first one's reveal.
                     setRevealed((s) => {
                       const n = new Set(s);
@@ -2742,19 +3026,21 @@ function Study({
                       startTransition(() => setFocusLine(i));
                     }
                     if (swipeSpeak)
-                      speech.once(spokenText(it, it.lang, !!config.readingOnBack), it.lang);
+                      speech.once([
+                        {
+                          kind: "word",
+                          text: spokenText(it, it.lang, !!config.readingOnBack),
+                          lang: it.lang,
+                        },
+                      ]);
                   }}
                   onHold={() => {
                     setHolding(i);
-                    speech.loop(
-                      [spokenText(it, it.lang, !!config.readingOnBack), it.ex ?? ""],
-                      it.lang,
-                      true,
-                    );
+                    speech.loop(partsOf(it), true);
                   }}
                   onHoldEnd={() => {
                     setHolding(null);
-                    speech.loop([], "");
+                    speech.loop([]);
                   }}
                   onSwipe={(r) => {
                     // The slip glides home meanwhile: the grade's re-render can wait.
@@ -2834,7 +3120,11 @@ function Study({
                 </Row>
               );
             })}
-            <div style={{ height: (queue.length - to) * ROW_H + pad }} />
+            <div className="relative" style={{ height: (queue.length - to) * ROW_H + pad }}>
+              {pad - bar.bottom > 140 && (
+                <EmptyTray style={{ bottom: bar.bottom, height: pad - bar.bottom }} />
+              )}
+            </div>
           </div>
           {sheet !== null && queue[sheet] && (
             <SlipSheet
@@ -2843,11 +3133,7 @@ function Study({
               onClose={() => setSheet(null)}
               onListen={() => {
                 const it = queue[sheet];
-                speech.loop(
-                  [spokenText(it, it.lang, !!config.readingOnBack), it.ex ?? ""],
-                  it.lang,
-                  true,
-                );
+                speech.loop(partsOf(it), true);
               }}
               onCopy={() => {
                 void navigator.clipboard?.writeText(queue[sheet].term).catch(() => {});
@@ -2855,25 +3141,22 @@ function Study({
               }}
             />
           )}
-          <div className="mt-2 text-[11px] opacity-50">
-            {exhausted && ahead.length === 0 ? (
-              <>
-                Every word learned. <Icon name="confetti" className="ms-0.5" />
-              </>
-            ) : touch ? (
-              "tap = show + say · hold = listen (loops) · swipe ← a little Hard, far Again · swipe → a little Good, far Easy · ↶ undo"
-            ) : help ? (
-              "↑↓ / W S / I U move (the focused row shows its meaning) · Space pin · E show all · 1 Again · 2 Hard · 3 Good · 4 Easy (right hand mirrored: L Again · K Hard · J Good · H Easy) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
-            ) : (
-              "1 Again · 2 Hard · 3 Good · 4 Easy · Z undo · ? all keys"
-            )}
-          </div>
+          {/* The help strip: glass over the bottom of the list, shown only
+              when there is room (a tall window, no on-screen keyboard). */}
+          {room && hintText && (
+            <div
+              ref={hintRef}
+              data-words-help
+              className="lk-words-bar lk-glass bottom-0 border-t border-[var(--glass-line)] pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] text-[11px]"
+            >
+              <span className="opacity-75">{hintText}</span>
+            </div>
+          )}
         </>
       )}
     </div>
   );
 }
-
 /**
  * One row. On touch, tap = onTap and a horizontal swipe grades by the level
  * it snaps to (lib/words/swipe.ts snapSwipe); the row follows the finger, tinted the colour of the
@@ -3051,23 +3334,54 @@ function SwipeUnderlay({ ref }: { ref: React.RefObject<HTMLDivElement | null> })
 
 /** The strip's zones, in a row-wide box with --a set: shared by SwipeUnderlay and NativeSlipRow. */
 function GradeZones() {
-  const zone = (r: Rating, side: "left" | "right", from: string, width: string) => (
+  // One slot per side, the width of both detents. Its first detent's grade
+  // shows until the slip reaches the far detent; then the far grade takes
+  // over the same spot (crossfade + a short slide, CSS .lk-reveal), and
+  // gives it back on the way home. The container's data-good / data-hard
+  // (showReveal) pick which.
+  const layer = (r: Rating, side: "left" | "right", far: boolean) => (
     <span
       data-reveal={r}
-      className="absolute inset-y-0 flex items-center justify-center text-[11px] font-medium opacity-90"
-      style={{ [side]: from, width, background: SWIPE_BG[r] }}
+      data-far={far ? "" : undefined}
+      className="lk-reveal absolute inset-0"
+      style={{ background: SWIPE_BG[r] }}
     >
-      {RATING_LABEL[r]}
+      <span
+        className="absolute inset-y-0 flex items-center justify-center text-[11px] font-medium opacity-90"
+        style={{ [side]: 0, width: "var(--a)" }}
+      >
+        {RATING_LABEL[r]}
+      </span>
     </span>
   );
   return (
     <>
-      {zone(3, "left", "0px", "var(--a)")}
-      {zone(4, "left", "var(--a)", "calc(var(--a) * 1.5)")}
-      {zone(2, "right", "0px", "var(--a)")}
-      {zone(1, "right", "var(--a)", "calc(var(--a) * 1.5)")}
+      <span
+        data-reveal-slot="good"
+        className="absolute inset-y-0 left-0 overflow-hidden"
+        style={{ width: "calc(var(--a) * 2.5)" }}
+      >
+        {layer(3, "left", false)}
+        {layer(4, "left", true)}
+      </span>
+      <span
+        data-reveal-slot="hard"
+        className="absolute inset-y-0 right-0 overflow-hidden"
+        style={{ width: "calc(var(--a) * 2.5)" }}
+      >
+        {layer(2, "right", false)}
+        {layer(1, "right", true)}
+      </span>
     </>
   );
+}
+
+/** Point a GradeZones container at level `k`: which grade each side shows. */
+function showReveal(el: HTMLElement | null | undefined, k: number) {
+  if (!el) return;
+  const s = revealShown(k);
+  if (el.dataset.good !== String(s.good)) el.dataset.good = String(s.good);
+  if (el.dataset.hard !== String(s.hard)) el.dataset.hard = String(s.hard);
 }
 
 type RowProps = {
@@ -3267,7 +3581,13 @@ function WordRow({
               const row = e.currentTarget;
               u.style.top = `${row.offsetTop}px`;
               u.style.height = `${row.offsetHeight}px`;
+              // Under the row itself: on a tablet the list is padded by the
+              // glass nav, and the zones must line up with the slip.
+              u.style.left = `${row.offsetLeft}px`;
+              u.style.right = "auto";
+              u.style.width = `${row.offsetWidth}px`;
               u.style.setProperty("--a", `${a}px`);
+              showReveal(u, 0);
               u.style.visibility = "visible";
             }
             setMoving(true);
@@ -3286,6 +3606,7 @@ function WordRow({
             // A light tick at each level, either way (Android; iOS has no API).
             navigator.vibrate?.(Math.abs(k) === 2 ? 12 : 6);
             level.current = k;
+            showReveal(underlay?.current, k);
           }
           dx.current = snapSwipe(x, a);
           frame.current ||= requestAnimationFrame(paint);
@@ -3459,13 +3780,16 @@ function NativeSlipRow({
       el.removeEventListener("touchmove", axis);
       if (g.steep && !g.held) el.style.overflowX = "";
       if (!g.moved) swipePerf.stop(g.panned ? "scroll" : "tap");
-      // No scrollend: lifted while resting on a level, the quiet timer has
-      // already run (and waited for the finger). scrollend comes after the lift.
-      if (!hasScrollEnd)
-        setTimeout(() => {
-          const k = el.scrollLeft / a;
-          if (!g.touching && Math.abs(k - Math.round(k)) < 1 / a) settle();
-        }, 50);
+      // Lifted while resting on a level, nothing more scrolls: no scrollend
+      // follows (WebKit fires it while the finger is still down, and settle
+      // waited for the lift), and without scrollend the quiet timer has
+      // already run. Settle here, or the slip would stay slid off its face,
+      // its grade label showing. A slip still coasting is between levels:
+      // its own scrollend / quiet timer settles it.
+      setTimeout(() => {
+        const k = el.scrollLeft / a;
+        if (!g.touching && !g.returning && Math.abs(k - Math.round(k)) < 1 / a) settle();
+      }, 50);
     };
     const pointerdown = (e: PointerEvent) => {
       g.held = false;
@@ -3504,6 +3828,12 @@ function NativeSlipRow({
       clearTimeout(quiet);
       quiet = setTimeout(settle, 150);
     };
+    // The reveal follows the detent the slip is nearest (the far one's grade
+    // takes over the first one's spot).
+    const strip = el.parentElement?.querySelector<HTMLElement>("[data-swipe-strip]");
+    const reveal = () =>
+      showReveal(strip, Math.max(-2, Math.min(2, Math.round((home - el.scrollLeft) / a))));
+    el.addEventListener("scroll", reveal, { passive: true });
     el.addEventListener("touchstart", touchstart, { passive: true });
     el.addEventListener("touchend", touchend, { passive: true });
     el.addEventListener("touchcancel", touchend, { passive: true });
@@ -3525,6 +3855,7 @@ function NativeSlipRow({
       el.removeEventListener("scrollsnapchanging", snapping);
       el.removeEventListener("scrollend", settle);
       el.removeEventListener("scroll", scrolled);
+      el.removeEventListener("scroll", reveal);
       el.removeEventListener("scroll", slid);
       el.removeEventListener("touchmove", axis);
     };
@@ -3539,11 +3870,14 @@ function NativeSlipRow({
       className={`slip-native ${loose ? "slip-loose" : ""}`}
       style={{ height: style.height, ["--a" as string]: `${a}px` }}
     >
+      {/* Behind the scroller, not inside it: the face (opaque, above) uncovers
+          it only by sliding away. A sticky strip inside the scroller painted
+          over the face on iOS (WebKit composites sticky layers on their own). */}
+      <div aria-hidden className="slip-strip" data-swipe-strip>
+        <GradeZones />
+      </div>
       <div ref={scroller} className="slip-scroller" style={{ WebkitTouchCallout: "none" }}>
         <div className="slip-track">
-          <div aria-hidden className="slip-strip" data-swipe-strip>
-            <GradeZones />
-          </div>
           {[0, 1, 2, 3, 4].map((k) => (
             <i key={k} className="slip-snap" style={{ left: k * a }} />
           ))}

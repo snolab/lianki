@@ -8,6 +8,10 @@
  * Everyone is on A; the Settings switch "New swipe (beta)" turns B on, per
  * device (localStorage). Every swipe telemetry row carries the variant, so
  * /dev/swipe-ab can compare them.
+ *
+ * `?swipe=native` / `?swipe=js` overrides the stored choice for that page load
+ * only (to check a variant on someone's device without touching their
+ * setting — also inside an iframe). It is never written to localStorage.
  */
 export type SwipeVariant = "js" | "native";
 
@@ -25,8 +29,24 @@ function storage(): Store | null {
   }
 }
 
-/** This device's variant: "js" unless B was turned on. */
-export function swipeVariant(store = storage()): SwipeVariant {
+function search(): string {
+  try {
+    return typeof location === "undefined" ? "" : location.search;
+  } catch {
+    return "";
+  }
+}
+
+/** The page-load-only `?swipe=` override, or null. */
+export function swipeOverride(query = search()): SwipeVariant | null {
+  const v = new URLSearchParams(query).get("swipe");
+  return v === "native" || v === "js" ? v : null;
+}
+
+/** This device's variant: a `?swipe=` override, else "js" unless B was turned on. */
+export function swipeVariant(store = storage(), query = search()): SwipeVariant {
+  const forced = swipeOverride(query);
+  if (forced) return forced;
   try {
     return store?.getItem(SWIPE_AB_KEY) === "native" ? "native" : "js";
   } catch {

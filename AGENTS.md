@@ -68,22 +68,36 @@ procedure, and the cutover scripts are in
 [docs/cf-d1-migration.md](docs/cf-d1-migration.md). `dev.lianki.com` is
 unrelated — a Cloudflare tunnel to the local userscript dev server.
 
+## Report progress to the state tree
+
+While working on Lianki, report to the live state tree
+([docs/state-tree.md](docs/state-tree.md), "Live progress") at the start, at
+milestones, when blocked, and when done (with the PR):
+`bun scripts/dev/progress.ts --agent <you> --path /<route>/<task> --task "<what>" --status doing --pct 40`
+(`--done --pr N` at the end; `--status waiting-owner --needs "…"` when the
+owner must act). Use the token you were given (`--token` or
+`LIANKI_PROGRESS_TOKEN`); stay inside its scope.
+
 ## Where to look
 
 Read the relevant file before working in that area — each one carries decisions
 that are expensive to rediscover.
 
-| Working on                                                | Read                                                           |
-| --------------------------------------------------------- | -------------------------------------------------------------- |
-| Running or setting up the app locally, QA suites          | [DEVELOPMENT.md](DEVELOPMENT.md)                               |
-| Landing changes, CI, branch protection, post-deploy QA    | [docs/shipping.md](docs/shipping.md)                           |
-| Finding your way around the code                          | [docs/repo-map.md](docs/repo-map.md)                           |
-| Secrets, auth, OAuth config                               | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)           |
-| Anything calling an LLM or TTS                            | [docs/workers-ai.md](docs/workers-ai.md)                       |
-| The userscript's dev loader (hot reload over a CF tunnel) | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md) |
-| Blog posts                                                | [blog/AGENTS.md](blog/AGENTS.md)                               |
-| The Chrome extension, and publishing it                   | [packages/ext/README.md](packages/ext/README.md)               |
-| Sync/offline architecture                                 | [docs/sync-architecture.md](docs/sync-architecture.md)         |
-| Sync conflicts, deletions, tombstones                     | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)           |
-| Metrics, slowness and error alerts (Slack #lianki)        | [docs/monitoring.md](docs/monitoring.md)                       |
-| Payments, Pro passes, Stripe, invites, gift codes         | [docs/payments.md](docs/payments.md)                           |
+| Working on                                                    | Read                                                                |
+| ------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Running or setting up the app locally, QA suites              | [DEVELOPMENT.md](DEVELOPMENT.md)                                    |
+| What's in flight / waiting on the owner                       | [docs/state-tree.md](docs/state-tree.md)                            |
+| Landing changes, CI, branch protection, post-deploy QA        | [docs/shipping.md](docs/shipping.md)                                |
+| Finding your way around the code                              | [docs/repo-map.md](docs/repo-map.md)                                |
+| Secrets, auth, OAuth config                                   | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                |
+| Anything calling an LLM or TTS                                | [docs/workers-ai.md](docs/workers-ai.md)                            |
+| The userscript's dev loader (hot reload over a CF tunnel)     | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)      |
+| The debug chat widget (packages/debug-chat), hot-loading      | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
+| Screenshots of the owner's phone page (`scripts/dev/shot.ts`) | [docs/dev-debug-widget.md](docs/dev-debug-widget.md), "Screenshots" |
+| Blog posts                                                    | [blog/AGENTS.md](blog/AGENTS.md)                                    |
+| The Chrome extension, and publishing it                       | [packages/ext/README.md](packages/ext/README.md)                    |
+| Sync/offline architecture                                     | [docs/sync-architecture.md](docs/sync-architecture.md)              |
+| Sync conflicts, deletions, tombstones                         | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
+| Metrics, slowness and error alerts (Slack #lianki)            | [docs/monitoring.md](docs/monitoring.md)                            |
+| Payments, Pro passes, Stripe, invites, gift codes             | [docs/payments.md](docs/payments.md)                                |
+| UI layout: content fills the screen, glass overlays           | [docs/design-principles.md](docs/design-principles.md)              |

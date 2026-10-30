@@ -1,25 +1,81 @@
 /**
  * Remote eval for the owner's debug session — the shared, pure pieces: the
  * debug hub (workers/push/src/debug.ts), the page (app/components/DebugEval.tsx)
- * and the sender (scripts/dev/eval.ts). No imports: the push Worker bundles it.
+ * and the sender (scripts/dev/eval.ts). Its only import is the chat widget's
+ * wire types and UI helpers (packages/debug-chat/src/wire.ts, re-exported
+ * here), by a relative path: the push Worker bundles it.
  *
  * Flow and security model: docs/monitoring.md, "Remote eval (owner debug)".
  */
+
+import {
+  MAX_CHAT,
+  ROOT_NODE,
+  agentIdOf,
+  nodePath,
+  type ChatMessage,
+  type PageInfo,
+  type PairInfo,
+  type Scope,
+} from "../packages/debug-chat/src/wire";
+
+export {
+  MAX_AGENT_ID,
+  MAX_CHAT,
+  MAX_NODE_PATH,
+  ROOT_NODE,
+  type NodeGrant,
+  agentIdOf,
+  commonAncestor,
+  isWithin,
+  lineNode,
+  mayAddress,
+  nodePath,
+  parseAddress,
+  pathLabel,
+  routeTo,
+  allowLabel,
+  avatarUrl,
+  hashId,
+  senderOf,
+  type Sender,
+  pageParts,
+  pairSentence,
+  pickLang,
+  pickVoice,
+  type ChatMessage,
+  type PageInfo,
+  type PairInfo,
+  type Scope,
+} from "../packages/debug-chat/src/wire";
 
 /** Largest `code` accepted, in characters. */
 export const MAX_CODE = 16 * 1024;
 /** Largest result summary a page sends back, in characters. */
 export const MAX_RESULT = 4000;
+/**
+ * A streamed result's piece (`$lk.send`, below): at most this many characters
+ * of data per {type:"chunk"} message. A screenshot (scripts/dev/shot.ts) is a
+ * few hundred KB to a few MB of base64, so it travels as several of these,
+ * well under the runtime's WebSocket message limit.
+ */
+export const MAX_CHUNK = 128 * 1024;
+/** Most chunks one streamed piece may be split into (MAX_CHUNK × this ≈ 32 MB). */
+export const MAX_CHUNKS = 256;
 /** Largest page or controller label, in characters. */
 export const MAX_LABEL = 300;
 /** How long the owner has to answer a pairing prompt. */
 export const PENDING_MS = 2 * 60_000;
-/** How long an approved controller may send code. */
+/** How long a friend's approved preview pairing may send code (one socket, no token). */
 export const APPROVAL_MS = 60 * 60_000;
+/**
+ * How long the owner's "Allow" for eval lasts — and its resumable grant token:
+ * the sender reconnects with it (x-debug-token) without a new prompt until
+ * then, or until End revokes it.
+ */
+export const EVAL_GRANT_MS = 8 * 60 * 60_000;
 /** How long "Allow chat" lasts — and its resumable grant token. */
 export const CHAT_MS = 30 * 24 * 60 * 60_000;
-/** Largest chat message (owner's or agent's), in characters. */
-export const MAX_CHAT = 4000;
 /** Chat messages the hub keeps per thread (and sends a page on connect). */
 export const CHAT_HISTORY = 200;
 /** A friend may send at most FRIEND_CHAT_MAX messages per FRIEND_CHAT_WINDOW_MS. */
@@ -27,13 +83,28 @@ export const FRIEND_CHAT_MAX = 30;
 export const FRIEND_CHAT_WINDOW_MS = 10 * 60_000;
 /** The owner's chat thread; every other thread is a friend's user id. */
 export const OWNER_THREAD = "owner";
+/** The "agent is working" spinner stops this long after the last heartbeat. */
+export const BUSY_MS = 12_000;
+/**
+ * A beat the hub stamped within this long after an agent reply in the same
+ * thread is the beat loop's last one, still in flight when the reply landed:
+ * it does not restart the spinner.
+ */
+export const BUSY_GRACE_MS = 1_500;
 
 /**
  * Who a debug page belongs to, as the main Worker's /api/debug/identity says.
  * The owner's pages see the owner thread and owner pairings; anyone else
  * signed in is a "friend": their own thread, and only pairings made for them.
  */
-export type Identity = { userId: string; email: string; owner: boolean };
+export type Identity = {
+  userId: string;
+  email: string;
+  owner: boolean;
+  /** Display name and picture URL (better-auth's user.name / user.image), when known: the chat's avatars. */
+  name?: string;
+  image?: string;
+};
 
 /** A user id usable as a thread and a storage key: no separators, bounded. */
 export const isUserId = (v: unknown): v is string =>
@@ -51,36 +122,58 @@ export type FriendRecord = {
   blockedAt?: number;
 };
 
-/**
- * What an approval lets a controller do: "eval" (Allow for 1 hour) runs code
- * and chats; "chat" (Allow chat for 30 days) only chats — it hears the owner's
- * messages and may `say`, but cannot eval.
- */
-export type Scope = "eval" | "chat";
-/**
- * One line of a chat thread, as the hub stores and sends it. `thread` is
- * "owner" or a friend's user id; `email` is the friend's, on their thread.
- * `label` is the page's path and user agent (or the agent's name).
- */
-export type ChatMessage = {
-  id: string;
-  from: "owner" | "friend" | "agent";
-  label: string;
-  text: string;
-  at: number;
-  thread?: string;
-  email?: string;
-};
-
 /** Messages a controller (the sender CLI) may send to the hub. */
 export type ControllerMessage =
   | { type: "eval"; code: string; target?: string }
-  | { type: "say"; text: string; to?: string };
+  /**
+   * `to`: a friend's thread (user id or email); `node`: a state-tree node to
+   * address instead (a `to` starting with "/"). `taskPath`/`agentId`: the
+   * sender's own node and its assignee (docs/dev-debug-widget.md, "Node paths").
+   */
+  | {
+      type: "say";
+      text: string;
+      to?: string;
+      node?: string;
+      taskPath?: string;
+      agentId?: string;
+    }
+  | { type: "busy"; to?: string; label?: string }
+  /**
+   * Let senders within node `from` address nodes within `to` for `ms` (the
+   * fallback for a scoped grant token): only a listener whose node holds both.
+   */
+  | { type: "grant"; from: string; to: string; ms?: number }
+  | { type: "ungrant"; from: string; to: string };
 /** Messages an owner page may send to the hub. */
 export type PageMessage =
-  | { type: "allow"; pair: string; scope?: "chat" }
+  /**
+   * `pages`: the page ids the grant covers, or "all" (also every page that
+   * connects later). Absent (a page from before) = "all". `scope` is the old
+   * page's choice; the requester's own scope is what counts now.
+   */
+  | { type: "allow"; pair: string; scope?: "chat"; pages?: string[] | "all" }
   | { type: "deny" | "revoke"; pair: string }
-  | { type: "chat"; id: string; text: string }
+  /** `to`: the state-tree node it is addressed to (absent = the main thread). */
+  | { type: "chat"; id: string; text: string; to?: string }
+  /** The page moved (client-side navigation): its new label. Never shown in the chat. */
+  | { type: "page"; label: string }
+  /** Close another (or this) page of the same audience, from the chat's menu. */
+  | { type: "end-page"; id: string }
+  /**
+   * One piece of a streamed result (`$lk.send(data)` in the eval code):
+   * piece `part` of the eval `id`, split into `total` chunks; this is `seq`.
+   * Forwarded to the controller like a result; the sender reassembles it.
+   */
+  | {
+      type: "chunk";
+      id: string;
+      to: string;
+      part: number;
+      seq: number;
+      total: number;
+      data: string;
+    }
   | {
       type: "result";
       id: string;
@@ -92,31 +185,54 @@ export type PageMessage =
       ms?: number;
     };
 
-/** What the hub tells pages: the pairing waiting for an answer, and the approved sessions. */
-export type PairInfo = {
-  pair: string;
-  code: string;
-  label: string;
-  at: number;
-  until?: number;
-  scope?: Scope;
-};
+/** A page id: the tab's own (sessionStorage), so a reload keeps its grants. */
+export const isPageId = (v: unknown): v is string =>
+  typeof v === "string" && /^[A-Za-z0-9_-]{6,40}$/.test(v);
 /**
  * `listeners`: owner-approved controllers in time (the agent hearing the
- * chat). `pending` and `sessions` are only the pairings made for this page's
- * audience — the owner's, or this friend's own.
+ * chat), never heartbeat-only sockets (`busy --every`). `pages`: this
+ * audience's open debug pages; `self`: the receiver's id. `pending` and
+ * `sessions` are only the pairings made for this page's audience — the
+ * owner's, or this friend's own.
  */
 export type HubState = {
   type: "state";
   pending: PairInfo | null;
   sessions: PairInfo[];
   listeners?: number;
+  /** This audience's open debug pages (the owner's, or this friend's own). */
+  pages?: PageInfo[];
+  /** Which of `pages` is the one receiving this state. */
+  self?: string;
+  /** The state-tree nodes listeners are subscribed at (never "/"), for "@/…" completions. */
+  nodes?: string[];
 };
+/** Close code for a page ended from the chat menu; it stays closed until its next visibility or debug event. */
+export const PAGE_ENDED = 4410;
+/**
+ * An eval pairing granted for some pages only lives on while they are away
+ * (a phone drops its socket when the app is in the background) — until they
+ * have been gone this long; then it is closed with PAGES_GONE, to pair again.
+ */
+export const PAGE_GONE_GRACE_MS = 5 * 60_000;
+export const PAGES_GONE = 4409;
+/**
+ * A thread with no open page for this long is "idle": the hub tells the
+ * agent ({type:"pages-idle"}) and closes its heartbeat sockets for it. Long
+ * enough to cover a reload or a navigation.
+ */
+export const PAGES_IDLE_MS = 60_000;
+/** Close code for a heartbeat socket whose thread went idle. */
+export const PAGES_IDLE = 4411;
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
 
-function parse(raw: unknown): Record<string, unknown> | null {
-  if (typeof raw !== "string" || raw.length > MAX_CODE + 2048) return null;
+/** The largest raw message, in characters: a chunk's data may be escaped (\u00xx) in JSON. */
+const MAX_RAW = MAX_CODE + 2048;
+const MAX_CHUNK_RAW = MAX_CHUNK * 6 + 1024;
+
+function parse(raw: unknown, max = MAX_RAW): Record<string, unknown> | null {
+  if (typeof raw !== "string" || raw.length > max) return null;
   try {
     const v = JSON.parse(raw);
     return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
@@ -133,11 +249,53 @@ export function parseControllerMessage(
   if (m?.type === "say") {
     const text = chatText(m.text);
     if (!text) return { ok: false, error: `say needs text of 1–${MAX_CHAT} chars` };
+    let to = str(m.to, 320)?.trim();
+    // A `to` that is a path addresses a state-tree node; anything else is a thread.
+    let node: string | undefined;
+    if (to?.startsWith("/") || typeof m.node === "string") {
+      node = nodePath(typeof m.node === "string" ? m.node : to);
+      if (!node) return { ok: false, error: `not a node path: ${String(m.node ?? to)}` };
+      if (to?.startsWith("/")) to = undefined;
+      if (node === ROOT_NODE) node = undefined;
+    }
+    const taskPath = m.taskPath === undefined ? undefined : nodePath(m.taskPath);
+    if (m.taskPath !== undefined && !taskPath)
+      return { ok: false, error: `not a node path: ${String(m.taskPath)}` };
+    const agentId = agentIdOf(m.agentId);
+    return {
+      ok: true,
+      value: {
+        type: "say",
+        text,
+        ...(to ? { to } : {}),
+        ...(node ? { node } : {}),
+        ...(taskPath && taskPath !== ROOT_NODE ? { taskPath } : {}),
+        ...(agentId ? { agentId } : {}),
+      },
+    };
+  }
+  if (m?.type === "grant" || m?.type === "ungrant") {
+    const from = nodePath(m.from);
+    const to = nodePath(m.to);
+    if (!from || !to) return { ok: false, error: `${m.type} needs node paths "from" and "to"` };
+    if (m.type === "ungrant") return { ok: true, value: { type: "ungrant", from, to } };
+    const ms = typeof m.ms === "number" && m.ms > 0 ? Math.min(m.ms, CHAT_MS) : undefined;
+    return { ok: true, value: { type: "grant", from, to, ...(ms ? { ms } : {}) } };
+  }
+  if (m?.type === "busy") {
     const to = str(m.to, 320)?.trim();
-    return { ok: true, value: to ? { type: "say", text, to } : { type: "say", text } };
+    const label = cleanLabel(str(m.label, 80));
+    return {
+      ok: true,
+      value: { type: "busy", ...(to ? { to } : {}), ...(label ? { label } : {}) },
+    };
   }
   if (!m || m.type !== "eval")
-    return { ok: false, error: 'expected {"type":"eval","code":"…"} or {"type":"say","text":"…"}' };
+    return {
+      ok: false,
+      error:
+        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"} or {"type":"grant","from","to"}',
+    };
   if (typeof m.code !== "string" || !m.code.trim()) return { ok: false, error: "empty code" };
   if (m.code.length > MAX_CODE) return { ok: false, error: `code over ${MAX_CODE} chars` };
   const target = str(m.target, MAX_LABEL);
@@ -149,21 +307,46 @@ export function parseControllerMessage(
 
 /** Validate an owner page's message; anything else is dropped. */
 export function parsePageMessage(raw: unknown): PageMessage | null {
-  const m = parse(raw);
+  const m = parse(raw, MAX_CHUNK_RAW);
   if (!m) return null;
+  if (m.type === "chunk") return parseChunk(m);
+  // Only a chunk may be that large.
+  if ((raw as string).length > MAX_RAW) return null;
   if (m.type === "allow") {
     const pair = str(m.pair, 64);
     if (!pair) return null;
-    return m.scope === "chat" ? { type: "allow", pair, scope: "chat" } : { type: "allow", pair };
+    const pages =
+      m.pages === "all"
+        ? "all"
+        : Array.isArray(m.pages)
+          ? m.pages.filter(isPageId).slice(0, 50)
+          : undefined;
+    return {
+      type: "allow",
+      pair,
+      ...(m.scope === "chat" ? { scope: "chat" as const } : {}),
+      ...(pages ? { pages } : {}),
+    };
   }
   if (m.type === "deny" || m.type === "revoke") {
     const pair = str(m.pair, 64);
     return pair ? { type: m.type, pair } : null;
   }
+  if (m.type === "end-page") {
+    const id = str(m.id, 64);
+    return id ? { type: "end-page", id } : null;
+  }
+  if (m.type === "page") {
+    const label = cleanLabel(str(m.label, MAX_LABEL * 2));
+    return label ? { type: "page", label } : null;
+  }
   if (m.type === "chat") {
     const id = str(m.id, 64);
     const text = chatText(m.text);
-    return id && text ? { type: "chat", id, text } : null;
+    if (!id || !text) return null;
+    // An address that is not a node path is dropped: the line goes to the main thread.
+    const to = nodePath(m.to);
+    return to && to !== ROOT_NODE ? { type: "chat", id, text, to } : { type: "chat", id, text };
   }
   if (m.type === "result") {
     const id = str(m.id, 64);
@@ -183,6 +366,45 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
   return null;
 }
 
+const count = (v: unknown, max: number) =>
+  typeof v === "number" && Number.isInteger(v) && v >= 0 && v < max ? v : undefined;
+
+function parseChunk(m: Record<string, unknown>): PageMessage | null {
+  const id = str(m.id, 64);
+  const to = str(m.to, 64);
+  const part = count(m.part, 1_000_000);
+  const total = count(m.total, MAX_CHUNKS + 1);
+  const seq = count(m.seq, total ?? 0);
+  if (!id || !to || part === undefined || !total || seq === undefined) return null;
+  if (typeof m.data !== "string" || m.data.length > MAX_CHUNK) return null;
+  return { type: "chunk", id, to, part, seq, total, data: m.data };
+}
+
+/**
+ * The {type:"chunk"} messages that carry one streamed piece of eval `id`'s
+ * result back to controller `to`: `data` cut into MAX_CHUNK-character
+ * pieces (an empty string is one empty chunk). The page sends them in order.
+ */
+export function chunkMessages(
+  id: string,
+  to: string,
+  part: number,
+  data: string,
+  size = MAX_CHUNK,
+): Extract<PageMessage, { type: "chunk" }>[] {
+  const total = Math.max(1, Math.ceil(data.length / size));
+  if (total > MAX_CHUNKS) throw new Error(`too large to send: ${data.length} chars`);
+  return Array.from({ length: total }, (_, seq) => ({
+    type: "chunk" as const,
+    id,
+    to,
+    part,
+    seq,
+    total,
+    data: data.slice(seq * size, (seq + 1) * size),
+  }));
+}
+
 /** A chat message's text: trimmed, non-empty, at most MAX_CHAT characters; else undefined. */
 export function chatText(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
@@ -190,35 +412,33 @@ export function chatText(raw: unknown): string | undefined {
   return t && t.length <= MAX_CHAT ? t : undefined;
 }
 
+/**
+ * The page's view of the agent's heartbeat. `beatAt` is the hub's stamp on
+ * the last beat and `agentAt` on the last agent reply (both hub clock, so they
+ * compare); `seenAt` is when this page received the beat (its own clock, so
+ * staleness never depends on clock skew).
+ */
+export type Heartbeat = { beatAt: number; seenAt: number };
+
+/**
+ * How much longer the "agent is working" spinner stays up, in ms; 0 = not
+ * working. Up only while the socket is live, a beat arrived less than
+ * BUSY_MS ago, and no agent reply has landed since that beat.
+ */
+export function busyLeft(
+  live: boolean,
+  beat: Heartbeat | null,
+  agentAt: number,
+  now: number,
+): number {
+  if (!live || !beat) return 0;
+  if (beat.beatAt < agentAt + BUSY_GRACE_MS) return 0;
+  return Math.max(0, BUSY_MS - (now - beat.seenAt));
+}
+
 /** The newest `max` messages, oldest first. */
 export function trimHistory(list: ChatMessage[], max = CHAT_HISTORY): ChatMessage[] {
   return list.length > max ? list.slice(list.length - max) : list;
-}
-
-/**
- * The language to read a reply in, from its script alone: any kana is
- * Japanese, Hangul Korean, other Han Chinese (zh-CN), and everything else
- * English.
- */
-export function pickLang(text: string): "ja-JP" | "ko-KR" | "zh-CN" | "en-US" {
-  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return "ja-JP";
-  if (/\p{Script=Hangul}/u.test(text)) return "ko-KR";
-  if (/\p{Script=Han}/u.test(text)) return "zh-CN";
-  return "en-US";
-}
-
-/** An installed voice for `lang`: the exact locale first, then the same language. */
-export function pickVoice<V extends { lang: string; default?: boolean }>(
-  voices: readonly V[],
-  lang: string,
-): V | undefined {
-  const norm = (l: string) => l.replace(/_/g, "-").toLowerCase();
-  const want = norm(lang);
-  const base = want.split("-")[0];
-  const exact = voices.filter((v) => norm(v.lang) === want);
-  const same = voices.filter((v) => norm(v.lang).split("-")[0] === base);
-  const pool = exact.length ? exact : same;
-  return pool.find((v) => v.default) ?? pool[0];
 }
 
 /** A label shown to the owner: one line, printable, bounded. */
@@ -276,15 +496,24 @@ export function summarize(value: unknown, max = MAX_RESULT): string {
 }
 
 /**
- * Compile `code` as an async function. An expression (`document.title`) is
- * returned as is; anything else is a function body, so `return x` works and
- * `await` is allowed in both.
+ * What eval code sees as `$lk` (DebugEval passes it). `send(data)` streams
+ * one piece back to the sender ahead of the result, in chunks of any size
+ * the result itself could not carry (MAX_RESULT); it returns the piece's
+ * number, 0, 1, 2… in this run.
  */
-export function compile(code: string): () => Promise<unknown> {
+export type EvalContext = { send(data: string): number };
+
+/**
+ * Compile `code` as an async function of `$lk` (an EvalContext). An
+ * expression (`document.title`) is returned as is; anything else is a
+ * function body, so `return x` works and `await` is allowed in both.
+ */
+export function compile(code: string): ($lk?: EvalContext) => Promise<unknown> {
+  type Fn = ($lk?: EvalContext) => Promise<unknown>;
   try {
-    return new Function(`return (async () => (\n${code}\n))();`) as () => Promise<unknown>;
+    return new Function("$lk", `return (async () => (\n${code}\n))();`) as Fn;
   } catch (e) {
     if (!(e instanceof SyntaxError)) throw e;
-    return new Function(`return (async () => {\n${code}\n})();`) as () => Promise<unknown>;
+    return new Function("$lk", `return (async () => {\n${code}\n})();`) as Fn;
   }
 }
