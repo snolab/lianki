@@ -13,8 +13,11 @@ import type { MailLocale } from "@/lib/sign-in-mail";
 import { sha256Hex, type ThrottleDb } from "./throttle";
 
 export const DEVICE_COOKIE = "lk_device";
-/** Two years: the cookie only has to outlive the habit of signing in. */
-export const DEVICE_COOKIE_MAX_AGE_S = 2 * 365 * 24 * 60 * 60;
+/**
+ * 400 days, the most a browser keeps a cookie (RFC 6265bis; better-auth refuses
+ * more). Renewed at every sign-in, so a browser in use stays known.
+ */
+export const DEVICE_COOKIE_MAX_AGE_S = 400 * 24 * 60 * 60;
 /** An account this young is still its own sign-up; no notice. */
 export const SIGN_UP_GRACE_MS = 10 * 60 * 1000;
 

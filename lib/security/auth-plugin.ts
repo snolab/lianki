@@ -120,13 +120,17 @@ export function securityPlugin(env: SecurityPluginEnv): BetterAuthPlugin {
               console.error("[security] device:", e);
               return;
             }
-            ctx.setCookie(DEVICE_COOKIE, rec.deviceId, {
-              httpOnly: true,
-              secure: ctx.context.authCookies.sessionToken.attributes.secure,
-              sameSite: "lax",
-              path: "/",
-              maxAge: DEVICE_COOKIE_MAX_AGE_S,
-            });
+            try {
+              ctx.setCookie(DEVICE_COOKIE, rec.deviceId, {
+                httpOnly: true,
+                secure: ctx.context.authCookies.sessionToken.attributes.secure,
+                sameSite: "lax",
+                path: "/",
+                maxAge: DEVICE_COOKIE_MAX_AGE_S,
+              });
+            } catch (e) {
+              console.error("[security] device cookie:", e);
+            }
             if (!rec.notify || !user.email || !isEmailConfigured()) return;
 
             let cf;

@@ -185,7 +185,7 @@ Checkout requires a signed-in account, so the sign-in limits above apply too.
   used before sends the account an email — time (UTC), approximate location
   (Cloudflare's IP geolocation) and the user agent — with what to do if it was
   not them. A browser is recognised by `lk_device`, a random httpOnly cookie
-  (2 years); only its SHA-256 is stored (`known_device`). The sign-up itself is
+  (400 days, renewed at each sign-in); only its SHA-256 is stored (`known_device`). The sign-up itself is
   not announced. `lib/security/login-notice.ts`; sent through Resend
   (`RESEND_API_KEY`, `EMAIL_FROM`) after the response (`waitUntil`), so it never
   slows or fails a sign-in.
