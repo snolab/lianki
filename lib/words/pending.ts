@@ -11,9 +11,25 @@ export function pendingReviewed(ops: PendingOp[]): Set<string> {
   const s = new Set<string>();
   for (const o of ops) {
     if (o.op === "review") s.add(key(o.listId, o.term));
-    else s.delete(key(o.listId, o.term));
+    else if (o.op === "undo") s.delete(key(o.listId, o.term));
   }
   return s;
+}
+
+/**
+ * Lists as the learner last named them: a rename still waiting in the queue
+ * wins over the (older) name the server or the offline copy holds, so a
+ * refresh before it is sent does not flash the old name back.
+ */
+export function withPendingRenames<T extends { id: string; name: string }>(
+  lists: T[],
+  ops: PendingOp[],
+): T[] {
+  const names = new Map<string, string>();
+  for (const o of sendOrder(ops))
+    if (o.op === "rename" && typeof o.body.name === "string") names.set(o.listId, o.body.name);
+  if (!names.size) return lists;
+  return lists.map((l) => (names.has(l.id) ? { ...l, name: names.get(l.id)! } : l));
 }
 
 export const reviewedKey = key;
@@ -26,7 +42,7 @@ export const reviewedKey = key;
 export function undoTarget(ops: PendingOp[], listId: string, term: string): number | null {
   for (let i = ops.length - 1; i >= 0; i--) {
     const o = ops[i];
-    if (o.listId !== listId || o.term !== term) continue;
+    if (o.op === "rename" || o.listId !== listId || o.term !== term) continue;
     return o.op === "review" && o.id != null ? o.id : null;
   }
   return null;

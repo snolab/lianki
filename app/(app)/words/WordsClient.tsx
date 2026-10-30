@@ -8,6 +8,7 @@ import {
   startTransition,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -31,7 +32,15 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/words/tree";
+import {
+  applyDrop,
+  descendants,
+  flatten,
+  projectDrop,
+  visible,
+  withoutNode,
+} from "@/lib/words/tree";
+import { createDeferredDelete, UNDO_MS, type FlushReason } from "@/lib/words/deferred-delete";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
@@ -115,6 +124,7 @@ import {
   reviewedKey,
   sendOrder,
   undoTarget,
+  withPendingRenames,
 } from "@/lib/words/pending";
 import { playGradeTone, sharedAudioContext, unlockGradeTones, type GradeTone } from "./gradeSound";
 import { formatInterval, parseCard, previewInterval, reviewWord } from "@/lib/words/schedule";
@@ -1334,8 +1344,11 @@ export default function WordsClient({ config: given }: { config?: DrillConfig })
   useOfflineShell();
 
   const refreshLists = useCallback(async () => {
+    // A rename still in the queue wins over the name the server sends back.
+    const queued = () => idbAll<PendingOp>("pending").catch(() => [] as PendingOp[]);
     try {
-      const { lists } = await api<{ lists: WordList[] }>("/api/words/lists");
+      const { lists: fresh } = await api<{ lists: WordList[] }>("/api/words/lists");
+      const lists = withPendingRenames(fresh, await queued());
       setLists(lists);
       setOffline(false);
       idbPut("lists", lists, "all").catch(() => {});
@@ -1345,11 +1358,60 @@ export default function WordsClient({ config: given }: { config?: DrillConfig })
           ? await idbGet<WordList[]>("lists", "all").catch(() => undefined)
           : undefined;
       if (cached) {
-        setLists(cached);
+        setLists(withPendingRenames(cached, await queued()));
         setOffline(true);
       } else setError((e as Error).message);
     }
   }, []);
+
+  /**
+   * Rename: shown at once, kept in the offline copy, and sent through the
+   * same `pending` queue as grades (POST /api/words/lists/:id/rename), so it
+   * also goes out later when made offline.
+   */
+  const renameList = useCallback(async (id: string, name: string) => {
+    const named = (all: WordList[]) => all.map((l) => (l.id === id ? { ...l, name } : l));
+    setLists((all) => all && named(all));
+    idbGet<WordList[]>("lists", "all")
+      .then((cached) => cached && idbPut("lists", named(cached), "all"))
+      .catch(() => {});
+    await enqueue({
+      listId: id,
+      op: "rename",
+      body: { name },
+      term: "",
+      at: new Date().toISOString(),
+    });
+  }, []);
+
+  // Delete with Undo (lib/words/deferred-delete.ts): the row hides at once and
+  // the DELETE goes out when the toast runs out, or when the page goes away.
+  const [doomed, setDoomed] = useState<DoomedList | null>(null);
+  const deleter = useMemo(
+    () =>
+      createDeferredDelete<DoomedList>({
+        onChange: setDoomed,
+        commit: async ({ list }, reason: FlushReason) => {
+          if (reason === "leave") {
+            void fetch(`/api/words/lists/${list.id}`, { method: "DELETE", keepalive: true });
+            return;
+          }
+          // A failure (offline) leaves the list on the server: the refresh
+          // shows it again rather than pretending it is gone.
+          await api(`/api/words/lists/${list.id}`, { method: "DELETE" }).catch(() => {});
+          await refreshLists();
+        },
+      }),
+    [refreshLists],
+  );
+  useEffect(() => {
+    const leave = () => deleter.flush("leave");
+    window.addEventListener("pagehide", leave);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      deleter.flush("leave");
+    };
+  }, [deleter]);
 
   useEffect(() => {
     refreshLists();
@@ -1364,14 +1426,17 @@ export default function WordsClient({ config: given }: { config?: DrillConfig })
     if (!catalog) return null;
     const ids = new Set(catalog.map((c) => c.id));
     const group = groupSourceOf(config);
+    // A list waiting to be deleted is already gone here; a group's lists move
+    // up a level, as the server will do.
+    const shown = allLists && withoutNode(allLists, doomed?.list.id ?? null);
     return (
-      allLists?.filter(
+      shown?.filter(
         (l) =>
           l.source &&
           (ids.has(l.source) || l.source === group || (config.imports && isImported(l))),
       ) ?? null
     );
-  }, [allLists, catalog, config]);
+  }, [allLists, catalog, config, doomed]);
   // The built-in catalogs plus this user's imported decks.
   const fullCatalog = useMemo(
     () => (catalog && lists ? [...catalog, ...importedCatalog(lists)] : null),
@@ -1396,54 +1461,118 @@ export default function WordsClient({ config: given }: { config?: DrillConfig })
       : flat.filter((x) => x.id === listId || descendants(flat, listId ?? "").includes(x.id));
   const studying = scope.filter((l) => l.source !== groupSourceOf(config));
   // "Study all" with only one list is just that list.
+  // The Undo toast stays up when a list is opened meanwhile.
+  const undoToast = doomed && (
+    <UndoDeleteToast
+      key={doomed.list.id}
+      doomed={doomed}
+      onUndo={() => {
+        const back = deleter.undo();
+        // Back to the restored row's ⋯ button, for keyboard users.
+        if (back)
+          requestAnimationFrame(() =>
+            document.querySelector<HTMLElement>(`[data-list-menu="${back.list.id}"]`)?.focus(),
+          );
+      }}
+    />
+  );
   if (studying.length)
     return (
-      <Study
-        key={listId}
-        config={config}
-        lists={studying}
-        catalog={fullCatalog}
-        title={
-          listId === ALL
-            ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
-            : (lists.find((l) => l.id === listId)?.name ?? studying[0].name)
-        }
-        onExit={() => {
-          setListId(null);
-          refreshLists();
-        }}
-      />
+      <>
+        {undoToast}
+        <Study
+          key={listId}
+          config={config}
+          lists={studying}
+          catalog={fullCatalog}
+          title={
+            listId === ALL
+              ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
+              : (lists.find((l) => l.id === listId)?.name ?? studying[0].name)
+          }
+          onExit={() => {
+            setListId(null);
+            refreshLists();
+          }}
+        />
+      </>
     );
 
   return (
-    <ListPicker
-      config={config}
-      lists={lists}
-      catalog={fullCatalog}
-      offline={offline}
-      onOpen={setListId}
-      onCreated={async (id) => {
-        await refreshLists();
-        setListId(id);
-      }}
-      onDeleted={refreshLists}
-      onReorder={async (order) => {
-        // Show the new tree at once; the server confirms with its own.
-        setLists((all) => {
-          if (!all) return all;
-          const pos = new Map(order.map((x, i) => [x.id, i]));
-          const parent = new Map(order.map((x) => [x.id, x.parentId]));
-          return [...all]
-            .map((l) => (parent.has(l.id) ? { ...l, parentId: parent.get(l.id)! } : l))
-            .sort((a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9));
-        });
-        const { lists } = await api<{ lists: WordList[] }>("/api/words/lists", {
-          method: "PATCH",
-          body: JSON.stringify({ order }),
-        });
-        setLists(lists);
-      }}
-    />
+    <>
+      {undoToast}
+      <ListPicker
+        config={config}
+        lists={lists}
+        catalog={fullCatalog}
+        offline={offline}
+        onOpen={setListId}
+        onCreated={async (id) => {
+          await refreshLists();
+          setListId(id);
+        }}
+        onRefresh={refreshLists}
+        onDelete={(list, isGroup) => deleter.remove({ list, isGroup })}
+        onRename={renameList}
+        onReorder={async (order) => {
+          // Show the new tree at once; the server confirms with its own.
+          setLists((all) => {
+            if (!all) return all;
+            const pos = new Map(order.map((x, i) => [x.id, i]));
+            const parent = new Map(order.map((x) => [x.id, x.parentId]));
+            return [...all]
+              .map((l) => (parent.has(l.id) ? { ...l, parentId: parent.get(l.id)! } : l))
+              .sort((a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9));
+          });
+          const { lists } = await api<{ lists: WordList[] }>("/api/words/lists", {
+            method: "PATCH",
+            body: JSON.stringify({ order }),
+          });
+          setLists(lists);
+        }}
+      />
+    </>
+  );
+}
+
+/** A list (or group) hidden from the picker while its delete can be undone. */
+type DoomedList = { list: WordList; isGroup: boolean };
+
+/**
+ * "Deleted “…” · Undo", floating over the bottom of the page as glass. It is a
+ * live region, so a screen reader hears it, and its Undo takes the focus: the
+ * menu item that deleted the row is gone with it.
+ */
+function UndoDeleteToast({ doomed, onUndo }: { doomed: DoomedList; onUndo: () => void }) {
+  const text = useIntlayer("words-page");
+  const undo = useRef<HTMLButtonElement>(null);
+  useEffect(() => undo.current?.focus({ preventScroll: true }), []);
+  const said = fill(doomed.isGroup ? text.deletedGroup.value : text.deletedList.value, {
+    name: doomed.list.name,
+  });
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      data-undo-delete={doomed.list.id}
+      className="lk-glass fixed inset-x-4 z-50 mx-auto flex max-w-md items-center gap-3 rounded-xl border border-[var(--glass-line)] py-1 ps-4 pe-1 shadow-lg"
+      style={{ bottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}
+    >
+      <span className="min-w-0 flex-1 text-sm">{said}</span>
+      <button
+        ref={undo}
+        onClick={onUndo}
+        className="min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.15_250)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.12_250)]"
+      >
+        {text.undoDelete}
+      </button>
+      {/* Runs out with the delete: a visual cue only. */}
+      <span
+        aria-hidden
+        className="lk-undo-timer pointer-events-none absolute inset-x-3 bottom-0 h-0.5 origin-left rounded-full bg-[oklch(0.5_0_0/0.35)] rtl:origin-right"
+        style={{ animationDuration: `${UNDO_MS}ms` }}
+      />
+    </div>
   );
 }
 
@@ -1569,7 +1698,8 @@ function SortableListRow({
   collapsed,
   onToggle,
   onOpen,
-  onDeleted,
+  onDelete,
+  onRename,
   keys,
 }: {
   list: WordList;
@@ -1583,8 +1713,21 @@ function SortableListRow({
   collapsed: boolean;
   onToggle: () => void;
   onOpen: (id: string) => void;
-  onDeleted: () => void;
+  onDelete: () => void;
+  onRename: (name: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  /** Set once an edit is saved or cancelled, so the blur after Enter/Escape is ignored. */
+  const finished = useRef(false);
+  const endEdit = (name: string | null) => {
+    if (finished.current) return;
+    finished.current = true;
+    const next = name?.trim().slice(0, LIST_NAME_MAX);
+    if (next && next !== l.name) onRename(next);
+    setEditing(false);
+    requestAnimationFrame(() => menuButton.current?.focus({ preventScroll: true }));
+  };
   const {
     attributes,
     listeners,
@@ -1630,43 +1773,193 @@ function SortableListRow({
         {collapsed ? "▸" : "▾"}
       </button>
       {keys && index < 9 && <kbd className="text-xs opacity-40 tabular-nums">{index + 1}</kbd>}
-      <button className="flex-1 text-left min-w-0" onClick={() => onOpen(l.id)}>
-        <div className="font-medium truncate">
-          {isGroup && <Icon name="folder" className="me-1 opacity-70" />}
-          {l.name}
-        </div>
-        <div className="text-xs opacity-60 tabular-nums">
-          {fill(text.rowStats.value, {
-            due: totals.due,
-            learning: totals.learning,
-            mastered: totals.mastered,
-            seen: totals.cards,
-            total: totals.total || "?",
-          })}
-        </div>
-      </button>
-      <ProgressRing progress={totals.progress} total={totals.total} />
-      <button
-        className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
-        onClick={() => onOpen(l.id)}
-      >
-        {text.study}
-      </button>
-      <button
-        // A 40px hit area (tap-40) around the small label.
-        className="tap-40 text-xs opacity-40 hover:opacity-80"
-        onClick={async () => {
-          const what = fill(
-            isGroup ? text.confirmDeleteGroup.value : text.confirmDeleteList.value,
-            { name: l.name },
-          );
-          if (!confirm(what)) return;
-          await api(`/api/words/lists/${l.id}`, { method: "DELETE" });
-          onDeleted();
+      {editing ? (
+        <form
+          className="flex-1 min-w-0"
+          onSubmit={(e) => {
+            e.preventDefault();
+            endEdit(new FormData(e.currentTarget).get("name") as string);
+          }}
+        >
+          <input
+            name="name"
+            autoFocus
+            defaultValue={l.name}
+            maxLength={LIST_NAME_MAX}
+            enterKeyHint="done"
+            autoComplete="off"
+            aria-label={fill(text.renameField.value, { name: l.name })}
+            onFocus={(e) => e.currentTarget.select()}
+            onKeyDown={(e) => {
+              if (e.key !== "Escape") return;
+              e.preventDefault();
+              e.stopPropagation();
+              endEdit(null);
+            }}
+            onBlur={(e) => endEdit(e.currentTarget.value)}
+            // 16px text: phones do not zoom into the field.
+            className="w-full min-h-11 rounded-md px-2 text-base font-medium bg-[oklch(1_0_0/0.7)] dark:bg-[oklch(0.2_0_0/0.7)] ring-1 ring-[oklch(0.5_0_0/0.35)] focus:outline-none focus:ring-2 focus:ring-[oklch(0.6_0.15_250)]"
+          />
+        </form>
+      ) : (
+        <button className="flex-1 text-left min-w-0" onClick={() => onOpen(l.id)}>
+          <div className="font-medium truncate">
+            {isGroup && <Icon name="folder" className="me-1 opacity-70" />}
+            {l.name}
+          </div>
+          <div className="text-xs opacity-60 tabular-nums">
+            {fill(text.rowStats.value, {
+              due: totals.due,
+              learning: totals.learning,
+              mastered: totals.mastered,
+              seen: totals.cards,
+              total: totals.total || "?",
+            })}
+          </div>
+        </button>
+      )}
+      {!editing && (
+        <>
+          <ProgressRing progress={totals.progress} total={totals.total} />
+          <button
+            className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
+            onClick={() => onOpen(l.id)}
+          >
+            {text.study}
+          </button>
+        </>
+      )}
+      <ListRowMenu
+        listId={l.id}
+        name={l.name}
+        buttonRef={menuButton}
+        onRename={() => {
+          finished.current = false;
+          setEditing(true);
         }}
+        onDelete={onDelete}
+      />
+    </div>
+  );
+}
+
+/** A list's name, as long as the server takes it (POST /api/words/lists, /rename). */
+const LIST_NAME_MAX = 120;
+
+/**
+ * The "⋯" button at the end of a list row and its menu: Rename, Delete. A
+ * menu button in the ARIA pattern: ↓/Enter/Space open it on the first item,
+ * ↑↓ Home End move, Escape closes back to the button, Tab closes. Every
+ * target is 44px. It sits apart from the ⠿ drag handle, which alone starts a
+ * drag, so a tap here never moves the row.
+ */
+function ListRowMenu({
+  listId,
+  name,
+  buttonRef,
+  onRename,
+  onDelete,
+}: {
+  listId: string;
+  name: string;
+  buttonRef: React.RefObject<HTMLButtonElement | null>;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  const text = useIntlayer("words-page");
+  const [open, setOpen] = useState(false);
+  const menu = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  const items = () => [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+  useEffect(() => {
+    if (!open) return;
+    items()[0]?.focus({ preventScroll: true });
+    // A tap anywhere else closes it (and does what it tapped).
+    const away = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!menu.current?.contains(t) && !buttonRef.current?.contains(t)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away, true);
+    return () => document.removeEventListener("pointerdown", away, true);
+  }, [open, buttonRef]);
+  const close = () => {
+    setOpen(false);
+    buttonRef.current?.focus({ preventScroll: true });
+  };
+  const pick = (act: () => void) => () => {
+    setOpen(false);
+    act();
+  };
+  const label = fill(text.listMenu.value, { name });
+  return (
+    <div className={`relative shrink-0 -my-2 -me-2 ${open ? "z-30" : ""}`}>
+      <button
+        ref={buttonRef}
+        type="button"
+        data-list-menu={listId}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        aria-label={label}
+        title={label}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className="grid h-11 w-11 place-items-center rounded-full text-xl leading-none opacity-60 hover:opacity-100 hover:bg-[oklch(0.5_0_0/0.12)] aria-expanded:opacity-100 aria-expanded:bg-[oklch(0.5_0_0/0.15)]"
       >
-        {text.delete}
+        <span aria-hidden>⋯</span>
       </button>
+      {open && (
+        <div
+          id={menuId}
+          ref={menu}
+          role="menu"
+          aria-label={label}
+          onKeyDown={(e) => {
+            const all = items();
+            const i = all.indexOf(document.activeElement as HTMLElement);
+            const go = (n: number) => {
+              e.preventDefault();
+              all[(n + all.length) % all.length]?.focus();
+            };
+            if (e.key === "ArrowDown") go(i + 1);
+            else if (e.key === "ArrowUp") go(i - 1);
+            else if (e.key === "Home") go(0);
+            else if (e.key === "End") go(all.length - 1);
+            else if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              close();
+            } else if (e.key === "Tab") setOpen(false);
+          }}
+          className="lk-glass absolute end-0 top-full z-30 mt-1 min-w-44 rounded-xl border border-[var(--glass-line)] p-1 shadow-lg"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            onClick={pick(onRename)}
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-start text-sm hover:bg-[oklch(0.5_0_0/0.12)] focus:bg-[oklch(0.5_0_0/0.12)] focus:outline-none"
+          >
+            <Icon name="pencilSimple" className="opacity-70" />
+            {text.renameList}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            onClick={pick(onDelete)}
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-start text-sm text-[oklch(0.52_0.19_25)] dark:text-[oklch(0.75_0.15_25)] hover:bg-[oklch(0.6_0.19_25/0.12)] focus:bg-[oklch(0.6_0.19_25/0.12)] focus:outline-none"
+          >
+            <Icon name="trash" />
+            {text.deleteList}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1678,7 +1971,9 @@ function ListPicker({
   offline,
   onOpen,
   onCreated,
-  onDeleted,
+  onRefresh,
+  onDelete,
+  onRename,
   onReorder,
 }: {
   config: DrillConfig;
@@ -1688,7 +1983,11 @@ function ListPicker({
   offline: boolean;
   onOpen: (id: string) => void;
   onCreated: (id: string) => void;
-  onDeleted: () => void;
+  /** Reload the lists from the server. */
+  onRefresh: () => void;
+  /** Delete a row, with Undo (the toast is the parent's). */
+  onDelete: (list: WordList, isGroup: boolean) => void;
+  onRename: (id: string, name: string) => void;
   /** The whole tree in display order; also the order new words are learned in. */
   onReorder: (order: { id: string; parentId: string | null }[]) => void;
 }) {
@@ -1794,6 +2093,8 @@ function ListPicker({
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+      // Keys inside a row's ⋯ menu or the Undo toast are theirs.
+      if (t.closest?.('[role="menu"], [data-undo-delete]')) return;
       const n = Number(e.key);
       if (e.key === "0" && studyable.length > 1) onOpen(ALL);
       else if (n >= 1 && n <= 9 && items[n - 1]) onOpen(items[n - 1].id);
@@ -1822,7 +2123,7 @@ function ListPicker({
       method: "POST",
       body: JSON.stringify({ name, lang: "mul", source: groupSource }),
     });
-    onDeleted(); // refresh
+    onRefresh();
   };
 
   return (
@@ -1909,7 +2210,8 @@ function ListPicker({
                   collapsed={collapsed.has(row.id)}
                   onToggle={() => toggle(row.id)}
                   onOpen={onOpen}
-                  onDeleted={onDeleted}
+                  onDelete={() => onDelete(row, isGroup(row))}
+                  onRename={(name) => onRename(row.id, name)}
                   keys={keys}
                 />
               ))}
