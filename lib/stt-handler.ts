@@ -13,10 +13,12 @@ import {
   DEFAULT_STT_MODEL,
   FALLBACK_STT_MODEL,
   STT_MAX_BYTES,
+  type SttHint,
   type SttModel,
   isSttMime,
   isSttModel,
   pickSttModel,
+  sttHint,
   sttLang,
 } from "./stt";
 
@@ -37,6 +39,7 @@ export type SttDeps = {
     mime: string;
     model: SttModel;
     lang?: string;
+    hint?: SttHint;
   }) => Promise<{ text: string; language?: string }>;
   /** A fixed-window counter: may `key` make one more request out of `max`? */
   limit: (key: string, max: number) => { allowed: boolean; retryAfterMs: number };
@@ -69,11 +72,12 @@ export async function handleStt(req: Request, d: SttDeps): Promise<Response> {
   const asked = url.searchParams.get("model");
   const model = pickSttModel(asked, d.owner);
   const lang = sttLang(url.searchParams.get("lang"));
+  const hint = sttHint(url.searchParams.get("hint"));
   const t0 = clock();
   let used = model;
   let out: { text: string; language?: string };
   try {
-    out = await d.transcribe({ audio, mime, model, lang });
+    out = await d.transcribe({ audio, mime, model, lang, hint });
   } catch (e) {
     // The default failing falls back once; a model the owner asked for does not.
     if (model !== DEFAULT_STT_MODEL || (d.owner && isSttModel(asked))) {
@@ -82,14 +86,22 @@ export async function handleStt(req: Request, d: SttDeps): Promise<Response> {
     }
     used = FALLBACK_STT_MODEL;
     try {
-      out = await d.transcribe({ audio, mime, model: used, lang });
+      out = await d.transcribe({ audio, mime, model: used, lang, hint });
     } catch (e2) {
       log({ msg: "debug.stt.error", model: used, bytes: audio.byteLength });
       return json({ error: `transcription failed: ${(e2 as Error).message.slice(0, 200)}` }, 502);
     }
   }
   const ms = clock() - t0;
-  log({ msg: "debug.stt", model: used, bytes: audio.byteLength, ms, chars: out.text.length });
+  log({
+    msg: "debug.stt",
+    model: used,
+    bytes: audio.byteLength,
+    ms,
+    chars: out.text.length,
+    ...(hint ? { hint } : {}),
+    ...(out.language ? { language: out.language } : {}),
+  });
   return json({
     text: out.text,
     model: used,

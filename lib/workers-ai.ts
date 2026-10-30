@@ -17,7 +17,7 @@
 
 import { createOpenAI } from "@ai-sdk/openai";
 import OpenAI from "openai";
-import { STT_PROMPT, type SttModel, readStt } from "./stt";
+import { type SttHint, type SttModel, readStt, sttPrompt } from "./stt";
 
 /** Replaces gpt-4o-mini: the everyday model for short, cheap generations. */
 export const textModel = () =>
@@ -189,7 +189,7 @@ export const STT_ANTI_HALLUCINATION = {
  * way: Nova-3 and the original Whisper take the raw bytes as the body (Nova-3's
  * options as query parameters: `language=multi` for code-switching unless a
  * language is given); whisper-large-v3-turbo takes JSON with the audio in
- * base64, and STT_PROMPT unless a language is given. All three verified
+ * base64, and the prompt for `hint` (sttPrompt) unless a language is given. All three verified
  * against the live API (2026-10-29). The answer is read by `readStt`.
  */
 export async function workersAiTranscribe(opts: {
@@ -197,6 +197,7 @@ export async function workersAiTranscribe(opts: {
   mime: string;
   model: SttModel;
   lang?: string;
+  hint?: SttHint;
   signal?: AbortSignal;
 }): Promise<{ text: string; language?: string }> {
   const { apiToken } = requireConfig();
@@ -211,7 +212,9 @@ export async function workersAiTranscribe(opts: {
         task: "transcribe",
         vad_filter: true,
         ...STT_ANTI_HALLUCINATION,
-        ...(opts.lang ? { language: opts.lang.split("-")[0] } : { initial_prompt: STT_PROMPT }),
+        ...(opts.lang
+          ? { language: opts.lang.split("-")[0] }
+          : { initial_prompt: sttPrompt(opts.hint) }),
       }),
     };
   } else {

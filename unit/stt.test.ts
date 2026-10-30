@@ -5,9 +5,12 @@ import {
   STT_MAX_BYTES,
   STT_MODELS,
   STT_PRICE_PER_MIN,
+  STT_PROMPT,
   pickSttModel,
   readStt,
+  sttHint,
   sttLang,
+  sttPrompt,
 } from "@/lib/stt";
 import { STT_MAX, STT_MAX_OWNER, type SttDeps, handleStt } from "@/lib/stt-handler";
 
@@ -57,6 +60,21 @@ describe("STT models", () => {
   });
 });
 
+describe("STT language hint", () => {
+  it("accepts zh, ja and en only", () => {
+    expect(sttHint("zh")).toBe("zh");
+    expect(sttHint("ja")).toBe("ja");
+    expect(sttHint("en")).toBe("en");
+    for (const v of ["zh-CN", "fr", "", null, undefined]) expect(sttHint(v)).toBeUndefined();
+  });
+  it("a Chinese hint leads the prompt with simplified Chinese; others keep the mixed prompt", () => {
+    expect(sttPrompt("zh")).toStartWith("我说中文");
+    expect(sttPrompt("ja")).toBe(STT_PROMPT);
+    expect(sttPrompt("en")).toBe(STT_PROMPT);
+    expect(sttPrompt()).toBe(STT_PROMPT);
+  });
+});
+
 describe("POST /api/debug/stt", () => {
   const audio = new Uint8Array([1, 2, 3, 4]);
   const post = (body: BodyInit | null = audio, q = "", headers: Record<string, string> = {}) =>
@@ -101,12 +119,22 @@ describe("POST /api/debug/stt", () => {
       language: "zh",
     });
     expect(seen).toEqual([
-      { audio: 4, mime: "audio/webm", model: DEFAULT_STT_MODEL, lang: undefined },
+      { audio: 4, mime: "audio/webm", model: DEFAULT_STT_MODEL, lang: undefined, hint: undefined },
     ]);
-    // Sizes and timings only: no text, no audio.
+    // Sizes, timings and languages only: no text, no audio.
     expect(logs).toEqual([
-      { msg: "debug.stt", model: DEFAULT_STT_MODEL, bytes: 4, ms: 250, chars: 8 },
+      { msg: "debug.stt", model: DEFAULT_STT_MODEL, bytes: 4, ms: 250, chars: 8, language: "zh" },
     ]);
+  });
+
+  it("passes a known ?hint= through (and logs it); an unknown one is dropped", async () => {
+    const a = deps();
+    await handleStt(post(audio, "?hint=zh"), a.d);
+    expect(a.seen[0].hint).toBe("zh");
+    expect(a.logs[0].hint).toBe("zh");
+    const b = deps();
+    await handleStt(post(audio, "?hint=fr"), b.d);
+    expect(b.seen[0].hint).toBeUndefined();
   });
 
   it("only audio types: webm, ogg, mp4, wav, mpeg (codecs ignored); others 415", async () => {
