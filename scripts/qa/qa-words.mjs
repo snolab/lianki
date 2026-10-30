@@ -1054,25 +1054,25 @@ try {
         // On a phone the bottom island hides the strip, which lets taps
         // through to the slips (docs/bottom-nav.md): touch the header's empty
         // middle there instead, a touch that changes nothing on the list.
-        // A point on the header that is no control (no link, button or menu).
-        const header = await m.evaluate(() => {
-          const h = document.querySelector("header");
-          if (!h) return null;
-          const b = h.getBoundingClientRect();
-          const y = b.top + b.height / 2;
-          for (let x = b.left + b.width / 2; x < b.right; x += 6) {
-            const el = document.elementFromPoint(x, y);
-            if (el && h.contains(el) && !el.closest("a, button, input, select, [role]"))
-              return { x, y };
-          }
-          return null;
+        // The island's own rim (its padding, no button), or its small
+        // capsule while it is shrunk: a touch that changes nothing on the list.
+        const rim = await m.evaluate(() => {
+          const nav = document.querySelector("[data-nav-island] nav");
+          if (!nav) return null;
+          const b = nav.getBoundingClientRect();
+          const p = { x: b.left + 3, y: b.top + b.height / 2 };
+          const el = document.elementFromPoint(p.x, p.y);
+          if (el && el.closest("[data-nav-island]")) return p;
+          const cap = document.querySelector("[data-nav-island] > button");
+          const c = cap?.getBoundingClientRect();
+          return c ? { x: c.left + c.width / 2, y: c.top + c.height / 2 } : null;
         });
         const hidden = await m
           .locator("[data-words-help]")
           .evaluate((el) => getComputedStyle(el).opacity === "0")
           .catch(() => false);
         const hint = await m.locator("text=? all keys").boundingBox();
-        if (hidden && header) await m.touchscreen.tap(header.x, header.y);
+        if (hidden && rim) await m.touchscreen.tap(rim.x, rim.y);
         else if (hint) await m.touchscreen.tap(hint.x + 5, hint.y + 5);
         await m
           .locator("text=/tap = show/")
