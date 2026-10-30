@@ -64,7 +64,7 @@ zone means UTC, written out, never a guessed zone.
 
 ## 2. Data model (D1)
 
-One migration, `db/migrations/0017_nodes.sql` (or the next free number). The
+One migration, `db/migrations/0018_nodes.sql` (0017 is taken by #317). The
 tables are keyed by `user_id`, like `preferences`, because email-keyed rows
 break when an address changes. Times are stored as UTC ISO 8601 `TEXT`.
 Deletes are soft (`deleted_at`), following
@@ -448,9 +448,11 @@ token's subtree.
   batch with their `changesets` row (summary, ops, inverse, `by`). An op is
   one of `create`, `update` (title, status, tags, fields, time), `move` or
   `delete` (soft). At most 50 ops per changeset.
-- **`changes.undo(id)`:** applies the inverse ops as a new changeset. An op whose
-  node has changed since (its `version` moved on) is skipped and listed, not
-  forced.
+- **`changes.undo(id)`:** applies the inverse ops as a new changeset, all or
+  nothing. If a node it touches has changed since (its `version` moved on), the
+  undo stops with a 409 naming that node instead of overwriting the newer edit.
+  A restore brings back exactly the subtree its delete took (each delete has a
+  unique stamp).
 - **`changes.log(from?, under?)`:** the change log, newest first.
 
 **Plan helpers (on top).** Each helper only composes generic ops into one
@@ -546,11 +548,15 @@ sub-agents (+1), the flag (+0.5), the advanced phase (+3) and this revision
 - **Google, merged dark (P5 + P8):** about 7.5 more. Google's review adds 2–6
   weeks of wall-clock time on top.
 
-**First PR (P1, no UI):** the migration, `lib/tree/` (node repo with path
-resolution, tag field docs and soft validation, ops + inverse), `lib/plan/due-load.ts`
-with unit tests (including a DST zone), `GET /api/tree?node=&depth=` and
-`GET /api/plan/load`, and the `time_zone` preference. It does not touch auth,
-OAuth or the flag.
+**First PR (P1, no UI), as built:** `db/migrations/0018_nodes.sql`;
+`lib/repos/nodesD1.ts` (subtree by depth, paths, timed range, plan root,
+changesets with inverse + undo, node_events with ancestor chains);
+`lib/tree/tags.ts`, `lib/tree/tz.ts` (UTC fallback), `lib/plan/due-load.ts`;
+routes `GET /api/tree`, `POST|GET /api/tree/changes`,
+`POST /api/tree/changes/<id>/undo`, `GET /api/plan/tree`, `GET /api/plan/load`;
+`timeZone` on `/api/preferences`; tests in `unit/tree-*.test.ts` and
+`unit/plan-due-load.test.ts`. It does not touch auth, OAuth or the flag. Not
+yet: agent tokens and rate limits on writes (P2/P3), the hub publish (P2).
 
 ## 9. Decisions (2026-10-31)
 
