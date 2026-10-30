@@ -116,7 +116,7 @@ that are expensive to rediscover.
 | UI strings, translations: every key carries context           | [docs/i18n.md](docs/i18n.md)                                        |
 | Blog posts                                                    | [blog/AGENTS.md](blog/AGENTS.md)                                    |
 | The Chrome extension, and publishing it                       | [packages/ext/README.md](packages/ext/README.md)                    |
-| /words new-word order: stagger, take turns, caps              | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)            |
+| /words new-word order: in order + pass, take turns, simulator | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)            |
 | Sync/offline architecture                                     | [docs/sync-architecture.md](docs/sync-architecture.md)              |
 | Sync conflicts, deletions, tombstones                         | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
 | Metrics, slowness and error alerts (Slack #lianki)            | [docs/monitoring.md](docs/monitoring.md)                            |
