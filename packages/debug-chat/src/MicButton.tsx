@@ -197,7 +197,8 @@ function session(): MicSession {
       const at = Date.now();
       const sink = partial ? undefined : cfg.clipSink;
       try {
-        let out: { text: string; model?: string };
+        // `ms`: the server's own time, the route's or the Mac's decode (sttServerMs in the timing).
+        let out: { text: string; model?: string; ms?: number };
         if (local) {
           // Streamed to the owner's Mac (local-stt.ts); on any failure, the route as before.
           try {
