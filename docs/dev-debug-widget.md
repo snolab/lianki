@@ -77,6 +77,11 @@ bun scripts/dev/debug-widget-server.ts --port 5180 --no-tunnel
 bun scripts/dev/debug-widget-server.ts --port 5180 --tunnel lianki-dev-mac --origin https://dev-mac.lianki.com
 ```
 
+Pages on other origins (e.g. the whole-page dev server, docs/dev-whole-page.md) are
+answered cross-origin only when listed exactly in `LIANKI_DEV_ORIGINS` (comma-separated
+https origins, no wildcards), for both this server and `scripts/dev/islands-server.ts`:
+`LIANKI_DEV_ORIGINS=https://<mac>.<tailnet>.ts.net:8443 bun scripts/dev/debug-widget-server.ts …`.
+
 Then, on the owner's page in debug mode, run this once in the console, or
 with `bun scripts/dev/eval.ts`:
 
