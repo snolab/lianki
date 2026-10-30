@@ -3273,9 +3273,14 @@ function Study({
       dt: number,
     ) => {
       const s = glideStep(shown.current!, velocity.current, goal, dt, reduce);
+      // Every row's grid reads the variable, so each write lays out the whole
+      // list: write only whole device pixels, and only when that changes (the
+      // spring's long sub-pixel tail no longer relays the list every frame).
+      const px = (v: number) => Math.round(v * devicePixelRatio) / devicePixelRatio;
+      const was = px(shown.current!);
       shown.current = s.x;
       velocity.current = s.v;
-      el.style.setProperty(prop, `${s.x}px`);
+      if (px(s.x) !== was || s.settled) el.style.setProperty(prop, `${px(s.x)}px`);
       return s.settled;
     };
     const step = (now: number) => {
@@ -3962,6 +3967,14 @@ function SlipSheet({
  * and dragged along as the slip slides. Loosening and tightening take 200 ms
  * of minimum jerk. Runs frames only while easing or while the slip is off
  * its rest position.
+ *
+ * Every rendered row has one (tied: hidden), and rows mount all the time as
+ * the list scrolls. So a tied cord that stays tied runs no frame at all, and
+ * the row's size is read once per run, in its first frame, not every frame.
+ * Before, each mounted row ran 200 ms of frames that each read
+ * offsetHeight/offsetWidth after the previous row's writes: a forced layout
+ * per row per frame while scrolling. Animations off ran one frame instead,
+ * which is why turning them off felt so much smoother on an iPhone.
  */
 function SlipCords({
   loose,
@@ -3979,26 +3992,35 @@ function SlipCords({
     const el = host.current;
     const row = el?.parentElement;
     if (!el || !row) return;
-    const [left, right] = Array.from(el.querySelectorAll("path"));
     const from = slack.current;
     const to = loose ? 1 : 0;
+    // Tied and staying tied, at rest: nothing to draw (the host starts hidden).
+    if (from === 0 && to === 0 && !moving && !(pos?.current(performance.now()) ?? 0)) return;
+    const [left, right] = Array.from(el.querySelectorAll("path"));
+    let size: { h: number; w: number } | null = null;
     const t0 = performance.now();
     const still = motionOff();
     let raf = 0;
+    let last = "";
     const frame = (now: number) => {
       const c0 = swipePerf.on ? performance.now() : 0;
       const t = still ? 1 : Math.min(1, (now - t0) / 200);
       slack.current = from + (to - from) * minJerk(t);
-      const h = row.offsetHeight;
-      const w = row.offsetWidth;
+      size ??= { h: row.offsetHeight, w: row.offsetWidth };
+      const { h, w } = size;
       const x = pos?.current(now) ?? 0;
       const pull = cordPull(x, slack.current, h);
       const bow = CORD_BOW * h * slack.current;
-      el.style.transform = x ? `translateX(${-x}px)` : "";
-      el.style.visibility = slack.current > 0.001 ? "visible" : "hidden";
-      left.setAttribute("d", cordPath(4.5, h, bow, pull));
-      right.setAttribute("d", cordPath(35.5, h, -bow, pull));
-      right.parentElement!.style.left = `${w - 40}px`;
+      // Write only what changed: an idle loose cord (moving, x 0) costs nothing.
+      const key = `${x}|${slack.current}|${h}|${w}`;
+      if (key !== last) {
+        last = key;
+        el.style.transform = x ? `translateX(${-x}px)` : "";
+        el.style.visibility = slack.current > 0.001 ? "visible" : "hidden";
+        left.setAttribute("d", cordPath(4.5, h, bow, pull));
+        right.setAttribute("d", cordPath(35.5, h, -bow, pull));
+        right.parentElement!.style.left = `${w - 40}px`;
+      }
       if (swipePerf.on) {
         swipePerf.cordFrames++;
         swipePerf.cordMs += performance.now() - c0;

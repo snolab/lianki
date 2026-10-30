@@ -723,6 +723,10 @@ html.lk-paper-scrolls body {
   z-index: 21;
   /* Nearly opaque: the rows under it must not read through its text. */
   background: var(--glass-bg-solid);
+  /* No blur: at 0.9 alpha it barely shows, and this is the largest glass
+   * (a third of a phone screen) — every repaint under it re-blurred it. */
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
