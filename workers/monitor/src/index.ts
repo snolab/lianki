@@ -118,6 +118,19 @@ async function maybeClose(env: Env, b: Burst, now: number, text: string) {
 async function onTail(env: Env, traces: Trace[]) {
   const now = Date.now();
   for (const t of traces) {
+    // lianki-voice (workers/voice), the word clips in front of the main
+    // Worker: timings only, under their own index — a clip it passes on is
+    // counted again, and alerted on, as the main Worker's request.
+    if (t.scriptName === "lianki-voice") {
+      const req = t.event?.request;
+      if (req)
+        env.METRICS.writeDataPoint({
+          indexes: ["voice"],
+          blobs: ["voice", pathGroup(req.url), String(t.event?.response?.status ?? 0), t.outcome],
+          doubles: [t.wallTime ?? 0, t.cpuTime ?? 0],
+        });
+      continue;
+    }
     if (t.scriptName && t.scriptName !== "lianki") continue;
     const req = t.event?.request;
     if (!req) continue;

@@ -731,14 +731,28 @@ function useSpeech(serverVoice = false) {
   /** Play the server's recording of `text`. False when it could not (no voice, limit, offline). */
   const serverSpeak = useCallback(async (text: string, lang: string, done: Done) => {
     const gen = generation.current;
+    const t0 = performance.now();
     // Prefetched, most of the time: then it plays at once, still inside the
     // tap's gesture (no await before play()).
-    const r = wordAudio().peek(lang, text) ?? (await wordAudio().load(lang, text));
+    const ready = wordAudio().peek(lang, text);
+    const r = ready ?? (await wordAudio().load(lang, text));
     if (r.kind !== "ok") return false;
     if (gen !== generation.current) return true;
+    const tFetched = performance.now();
     // A fresh element per clip: the previous one may still be fading out.
     const a = playable(r.url);
     audio.current = a;
+    // Debug mode only: how long from "say it" to sound, and where it went —
+    // waiting for the clip, or the element starting to play.
+    a.onplaying = () =>
+      devLog({
+        ev: "play",
+        lang,
+        text,
+        prefetched: !!ready,
+        fetchMs: Math.round(tFetched - t0),
+        startMs: Math.round(performance.now() - tFetched),
+      });
     a.onended = () => done(true);
     a.onerror = () => done(false);
     void a.play().catch(() => {});
@@ -825,6 +839,16 @@ function useSpeech(serverVoice = false) {
     [serverVoice, viaServer, serverSpeak, browserSpeak],
   );
 
+  /**
+   * A tap reads the word, the meaning and the example back to back: fetch the
+   * ones not prefetched yet all at once, so the meaning and the example arrive
+   * while the word plays instead of each waiting for the one before.
+   */
+  const warm = useCallback(
+    (parts: SayPart[]) => wordAudio().warm(parts.filter(viaServer)),
+    [viaServer],
+  );
+
   const sayRef = useRef(say);
   sayRef.current = say;
   const sequencer = useMemo(
@@ -846,6 +870,9 @@ function useSpeech(serverVoice = false) {
   const loop = useCallback(
     (parts: SayPart[], force = false) => {
       if (!on && !force) return stop();
+      // A tap: everything now. Not when the focus moves (desktop): flicking
+      // through rows would fetch every row's clips, and prefetch has them.
+      if (force) warm(parts);
       // A short delay so flicking through rows does not start a word per row.
       sequencer.play(
         parts.filter((p) => p.text),
@@ -853,16 +880,17 @@ function useSpeech(serverVoice = false) {
       );
       return stop;
     },
-    [on, sequencer, stop],
+    [on, sequencer, stop, warm],
   );
 
   /** Say `parts` once, back to back, now — interrupting whatever was playing. */
   const once = useCallback(
     (parts: SayPart[], force = false) => {
       if (!on && !force) return stop();
+      warm(parts);
       sequencer.play(parts.filter((p) => p.text));
     },
-    [on, sequencer, stop],
+    [on, sequencer, stop, warm],
   );
 
   /** Fetch the clips of rows about to be tapped (only those the server would voice). */
