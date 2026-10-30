@@ -26,6 +26,7 @@ import http from "node:http";
 import https from "node:https";
 import net from "node:net";
 import tls from "node:tls";
+import { DEV_BRIDGE_HEADER } from "../../lib/dev-bridge";
 import { devWholePageOrigin } from "../../lib/dev-whole-page";
 import { ownerEmails } from "../../lib/owner";
 import {
@@ -51,7 +52,13 @@ const STATE_FILE = ".dev-whole-page.json";
 const SESSION_CACHE_MS = 60_000;
 const YEAR_S = 365 * 24 * 60 * 60;
 
-type State = { authSecret: string; deviceSecret: string; guardSecret: string };
+type State = {
+  authSecret: string;
+  deviceSecret: string;
+  guardSecret: string;
+  /** DEV_BRIDGE_SECRET's only other copy (the lianki Worker's): lib/dev-bridge.ts. */
+  bridgeSecret: string;
+};
 
 function arg(name: string, fallback: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -59,11 +66,20 @@ function arg(name: string, fallback: string): string {
 }
 
 function loadState(): State {
-  if (existsSync(STATE_FILE)) return JSON.parse(readFileSync(STATE_FILE, "utf8"));
   const hex = () => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex");
-  const state = { authSecret: hex(), deviceSecret: hex(), guardSecret: hex() };
-  writeFileSync(STATE_FILE, JSON.stringify(state), { mode: 0o600 });
-  chmodSync(STATE_FILE, 0o600);
+  const old: Partial<State> = existsSync(STATE_FILE)
+    ? JSON.parse(readFileSync(STATE_FILE, "utf8"))
+    : {};
+  const state: State = {
+    authSecret: old.authSecret ?? hex(),
+    deviceSecret: old.deviceSecret ?? hex(),
+    guardSecret: old.guardSecret ?? hex(),
+    bridgeSecret: old.bridgeSecret ?? hex(),
+  };
+  if (JSON.stringify(state) !== JSON.stringify(old)) {
+    writeFileSync(STATE_FILE, JSON.stringify(state), { mode: 0o600 });
+    chmodSync(STATE_FILE, 0o600);
+  }
   return state;
 }
 
@@ -158,6 +174,7 @@ async function serve() {
   function forwardHeaders(h: http.IncomingHttpHeaders) {
     const out = { ...h };
     delete out[GUARD_HEADER];
+    delete out[DEV_BRIDGE_HEADER];
     return out;
   }
 
@@ -166,6 +183,10 @@ async function serve() {
     const out = forwardHeaders(h);
     out.host = new URL(HUB_ORIGIN).host;
     out.origin = HUB_ORIGIN;
+    // The dev bridge: lianki.com cannot read this origin's session cookie, so
+    // the owner is proven with DEV_BRIDGE_SECRET instead (lib/dev-bridge.ts).
+    out[DEV_BRIDGE_HEADER] = state.bridgeSecret;
+    delete out.cookie;
     delete out["x-forwarded-host"];
     delete out["x-forwarded-proto"];
     delete out["x-forwarded-for"];

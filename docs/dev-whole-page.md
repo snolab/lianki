@@ -107,6 +107,25 @@ URL: cookies become `Secure` (`__Secure-better-auth.session_token`), and the
 LAN IP stays the guard's only listener. `lib/dev-whole-page.ts` trusts an
 `https://*.ts.net` origin only while the launcher runs.
 
+## The chat widget on the dev origin
+
+Storage is per origin, so the enter link carries his `lk:debug`, `lk:agent`
+and `lk:pref` keys from the lianki.com tab. They travel in the URL fragment,
+which never reaches a server, and `/__dev/landing` writes them before going on
+to `/words?list=all`.
+
+The widget's hub (lianki-push, `/api/version/*`) lives on lianki.com, so the
+guard forwards those paths there. That happens only after the device and owner
+checks, with `Origin: https://lianki.com`.
+
+lianki.com cannot read this origin's session cookie, because it is signed
+with a local secret. So the guard drops the cookie and sends
+`x-lianki-dev-bridge: DEV_BRIDGE_SECRET` instead. The main Worker answers that
+with the owner and nobody else (`lib/dev-bridge.ts`, docs/secrets-and-auth.md,
+"Dev bridge"). The secret's local copy is `bridgeSecret` in
+`.dev-whole-page.json`. Chat history comes from the hub as on lianki.com, and
+eval reaches the page like any other debug page of his.
+
 ## Checked on 2026-10-31
 
 | Probe                                                                         | Result                       |
