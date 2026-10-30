@@ -39,6 +39,7 @@
  */
 import { chromium, webkit, type Browser, type Page } from "playwright";
 import { join } from "node:path";
+import { launchSilent, newSilentContext } from "./silent.mjs";
 
 const ROUNDS = Number(process.env.GC_ROUNDS || 20);
 const CLIPS = Number(process.env.GC_CLIPS || 8);
@@ -83,7 +84,7 @@ async function collect(page: Page, browser: string) {
 }
 
 async function probe(b: Browser, name: string, mode: (typeof MODES)[number]): Promise<Row> {
-  const ctx = await b.newContext();
+  const ctx = await newSilentContext(b);
   const page = await ctx.newPage();
   await page.route(`${ORIGIN}/**`, (r) => r.fulfill({ contentType: "text/html", body: html }));
   await page.goto(`${ORIGIN}/`);
@@ -118,7 +119,8 @@ async function probe(b: Browser, name: string, mode: (typeof MODES)[number]): Pr
 const rows: Row[] = [];
 for (const name of BROWSERS) {
   const type = name === "webkit" ? webkit : chromium;
-  const b = await type.launch(
+  const b = await launchSilent(
+    type,
     name === "chromium"
       ? { args: ["--mute-audio", "--autoplay-policy=no-user-gesture-required"] }
       : {},
