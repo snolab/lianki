@@ -616,6 +616,56 @@ ruby rt {
   }
 }
 
+/* The header's language picker (LanguageSwitcher, portalled to <body>): a glass
+ * sheet that opens just under the header and never leaves the screen. It
+ * clears the notch and the header at the top, the home indicator and the
+ * bottom island (--lk-bottom-reserve, docs/bottom-nav.md) at the bottom, and
+ * its 16 locales scroll inside it. Phones: full width less a gutter; wider
+ * screens: a 28rem sheet at the header's end, under the switcher. */
+.lk-lang-backdrop {
+  background: oklch(0.15 0.01 65 / 0.3);
+}
+.lk-lang-sheet {
+  --lk-lang-top: calc(env(safe-area-inset-top) + 3.5rem + 0.5rem);
+  --lk-lang-bottom: calc(max(env(safe-area-inset-bottom), var(--lk-bottom-reserve, 0px)) + 0.5rem);
+  top: var(--lk-lang-top);
+  inset-inline: calc(0.75rem + env(safe-area-inset-left)) calc(0.75rem + env(safe-area-inset-right));
+  max-height: calc(100vh - var(--lk-lang-top) - var(--lk-lang-bottom));
+  max-height: calc(100dvh - var(--lk-lang-top) - var(--lk-lang-bottom));
+  box-shadow: 0 12px 40px oklch(0 0 0 / 0.22);
+  /* Denser than the toolbars' glass: a page of small text sits on it, and it
+   * must keep 4.5:1 over whatever runs behind (design-principles.md). */
+  background: oklch(from var(--background) l c h / 0.82);
+}
+@media (min-width: 40rem) {
+  .lk-lang-sheet {
+    inset-inline-start: auto;
+    width: 28rem;
+  }
+}
+.lk-lang-option:not(:disabled):hover {
+  background: oklch(from var(--foreground) l c h / 0.06);
+}
+.lk-lang-current,
+.lk-lang-dot-current {
+  border-color: oklch(0.6 0.15 250);
+  background: oklch(0.6 0.15 250 / 0.14);
+}
+.lk-lang-preferred {
+  box-shadow: 0 0 0 2px oklch(0.72 0.17 150 / 0.8);
+}
+.lk-lang-badge-current {
+  background: oklch(0.55 0.17 250);
+  color: oklch(0.99 0 0);
+  text-shadow: none;
+}
+.lk-lang-badge-preferred,
+.lk-lang-dot-preferred {
+  background: oklch(0.55 0.15 150);
+  color: oklch(0.99 0 0);
+  text-shadow: none;
+}
+
 /* /words list picker: the Undo toast's bar runs out with the delete. Motion
  * off (system or the app's switch): no bar, the text says it all. */
 .lk-undo-timer {
