@@ -6,8 +6,13 @@
  * sources. Device preferences (speech rate, voice-out mode, the bar's
  * remembered position) stay in localStorage, where they already live.
  *
- * `createUiStore(name, version, initial, opts)` is shaped like the shared
- * factory planned in docs/ui-state.md, so this store can move onto it:
+ * `createUiStore(name, version, initial, opts)` follows the convention of
+ * the shared factory (`@lianki/ui-state`, PR #333, docs/ui-state.md: zustand
+ * persist, one instance per page on globalThis.__lkUiStores, migrate +
+ * clean on rehydrate). It is not imported from there yet only because #333
+ * is not on main; once it is, `chatUi()` becomes
+ * `createUiStore("chat", 1, CHAT_UI_INITIAL, { storage: "session", migrate, clean })`
+ * (key `lk:ui:chat`). Same zustand version (5.0.15). Like it:
  * one store per name per page, kept on globalThis, so a re-imported widget
  * module (a hot reload, or the fallback to the built-in chat) gets the same
  * store rather than a fresh one.
