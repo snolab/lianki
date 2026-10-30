@@ -20,6 +20,7 @@ export const HOST_MODULES: Record<SharedModule, () => Promise<unknown>> = {
   "@/lib/dates": () => import("@/lib/dates"),
   "@/lib/app-locale": () => import("@/lib/app-locale"),
   "@/lib/islands/Island": () => import("./Island"),
+  "@/lib/words/swipe-core": () => import("@/lib/words/swipe-core"),
 };
 
 /** Every shared module, as { [specifier]: namespace }. */

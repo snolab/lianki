@@ -7,11 +7,21 @@
  * server reads that shape to tell which islands a saved file touches.
  */
 import { BrandName } from "@/app/components/BrandName";
+import { SwipeCard } from "@/lib/words/islands/SwipeCard";
+import { SwipeCue } from "@/lib/words/islands/SwipeCue";
+import { SwipeGrades } from "@/lib/words/islands/SwipeGrades";
+import { SwipeFeelSource } from "@/lib/words/islands/SwipeFeelSource";
+import { SwipeTuner } from "@/lib/words/islands/SwipeTuner";
 import { ISLAND_VERSIONS, type IslandsExport } from "./contract";
 import { ISLANDS_API } from "./rules";
 
 export const islands = {
   "header.brand": BrandName,
+  "words.swipeCard": SwipeCard,
+  "words.swipeCue": SwipeCue,
+  "words.swipeGrades": SwipeGrades,
+  "words.swipeFeel": SwipeFeelSource,
+  "words.swipeTuner": SwipeTuner,
 } satisfies IslandsExport;
 
 export const versions = ISLAND_VERSIONS;

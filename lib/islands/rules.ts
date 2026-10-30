@@ -46,6 +46,8 @@ export const SHARED_MODULES = [
   "@/lib/dates",
   "@/lib/app-locale",
   "@/lib/islands/Island",
+  // The swipe's headless core: its contexts and hooks must be the page's.
+  "@/lib/words/swipe-core",
 ] as const;
 // Not shared on purpose: lib/islands/shared-state.ts and actions.ts. Their
 // state lives in localStorage and window events, so a remote island's own copy

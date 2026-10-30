@@ -239,7 +239,7 @@ describe("<Island>", () => {
   it("renders the built-in component with no override (and with no window: no subscription)", () => {
     expect(
       renderToString(
-        createElement(Island, {
+        createElement(Island<"header.brand">, {
           name: "header.brand",
           component: Builtin,
           props: { appName: "L" },
@@ -255,7 +255,7 @@ describe("<Island>", () => {
     const store = createIslandStore();
     const el = () =>
       renderToString(
-        createElement(HotIsland, {
+        createElement(HotIsland<"header.brand">, {
           name: "header.brand",
           component: Builtin,
           props: { appName: "L" },

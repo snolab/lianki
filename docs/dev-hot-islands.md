@@ -156,6 +156,14 @@ shared-state.ts and actions.ts are deliberately not shared modules. Their
 state is localStorage and window events, so a remote island's own copy works
 with the page's, and validates with its own contract version.
 
+## The islands today
+
+- `header.brand`: the name beside the seal in the top bar.
+- `words.swipeCard`, `words.swipeCue`, `words.swipeGrades`, `words.swipeFeel`
+  and `words.swipeTuner`: the /words swipe's UI over its headless core. They
+  read `@/lib/words/swipe-core`, a shared module, through context. See
+  [swipe-core.md](swipe-core.md).
+
 ## Add an island
 
 1. Make the component self-contained: it fetches what it needs and reads and

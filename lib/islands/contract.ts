@@ -28,12 +28,33 @@ type Static<T extends StaticProps> = T;
 export interface IslandProps {
   /** The name beside the seal in the top bar (app/components/BrandName.tsx). */
   "header.brand": Static<{ appName: string }>;
+  /*
+   * The /words swipe's UI over its headless core (docs/swipe-core.md). None
+   * takes props: each reads the core's contexts (lib/words/swipe-core.tsx,
+   * a shared module) at the interface version it names. Bump these with
+   * SWIPE_CORE_IFACE.
+   */
+  /** The slip the js swipe moves (the core's card slot). */
+  "words.swipeCard": Static<Record<string, never>>;
+  /** The lift under a pressed or dragged slip. */
+  "words.swipeCue": Static<Record<string, never>>;
+  /** What a sliding slip uncovers: the grade zones. */
+  "words.swipeGrades": Static<Record<string, never>>;
+  /** A feel source: token overrides per preset, in force while mounted. */
+  "words.swipeFeel": Static<Record<string, never>>;
+  /** The tuning panel (debug mode, "Tune swipe"). */
+  "words.swipeTuner": Static<Record<string, never>>;
 }
 export type IslandName = keyof IslandProps;
 
 /** Each island's contract version: bump it when its props change shape. */
 export const ISLAND_VERSIONS: { readonly [K in IslandName]: number } = {
   "header.brand": 1,
+  "words.swipeCard": 1,
+  "words.swipeCue": 1,
+  "words.swipeGrades": 1,
+  "words.swipeFeel": 1,
+  "words.swipeTuner": 1,
 };
 
 /** One shared-state key: how its value is checked, its default, its version. */
