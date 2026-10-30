@@ -34,7 +34,8 @@ export const VOICE_TUNE: VoiceTune = {
   minSpeechMs: 250,
   preSpeechPadMs: 800,
   redemptionMs: 1400,
-  joinMs: 2500,
+  // Off by default (owner, 03:28: "send as soon as possible"); 2500 rejoins ~17 of 18 cut lines.
+  joinMs: 0,
 };
 
 /** The defaults with the page's overrides (finite, non-negative numbers only). */

@@ -120,7 +120,7 @@ describe("voiceTune", () => {
   });
   it("the A/B's values, with the page's valid overrides only", () => {
     expect(voiceTune()).toEqual(VOICE_TUNE);
-    expect(VOICE_TUNE).toMatchObject({ minSpeechMs: 250, preSpeechPadMs: 800, joinMs: 2500 });
+    expect(VOICE_TUNE).toMatchObject({ minSpeechMs: 250, preSpeechPadMs: 800, joinMs: 0 });
     (globalThis as { __lkVoiceTune?: unknown }).__lkVoiceTune = {
       joinMs: 1500,
       minSpeechMs: -1,
