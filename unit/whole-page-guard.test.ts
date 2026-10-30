@@ -8,9 +8,11 @@ import {
   deviceCookieValue,
   copyableKey,
   isHubPath,
+  isLabPath,
   isPrivateLanHost,
   landingHtml,
   sendLoginCode,
+  toDevOrigin,
   readCookie,
   sessionIsOwner,
   verifyDevice,
@@ -203,5 +205,34 @@ describe("whole-page guard: hub and carried settings", () => {
     expect(() => new Function(script)).not.toThrow();
     const code = sendLoginCode("https://h.example.ts.net:8443/__dev/enter?t=x");
     expect(() => new Function(code)).not.toThrow();
+  });
+});
+
+describe("whole-page guard: lab previews on the dev origin", () => {
+  const lab = "https://mac.example-tailnet.ts.net";
+  const origin = `${lab}:8443`;
+  test("/lianki-* paths are the lab site's, owner-checked", () => {
+    expect(isLabPath("/lianki-widget-drag/debug-chat.js")).toBe(true);
+    expect(isLabPath("/words")).toBe(false);
+    expect(decide("/lianki-widget/debug-chat.js", true).kind).toBe("owner");
+    expect(decide("/lianki-widget/debug-chat.js", false).kind).toBe("deny");
+  });
+
+  test("carried widget URLs move to the dev origin; others stay", () => {
+    expect(toDevOrigin(`${lab}/lianki-widget-drag/`, lab, origin)).toBe(
+      `${origin}/lianki-widget-drag/`,
+    );
+    expect(toDevOrigin("wss://mac.example-tailnet.ts.net/lianki-stt", lab, origin)).toBe(
+      "wss://mac.example-tailnet.ts.net/lianki-stt",
+    );
+    expect(toDevOrigin("https://elsewhere.example/lianki-x", lab, origin)).toBe(
+      "https://elsewhere.example/lianki-x",
+    );
+    expect(toDevOrigin("off", lab, origin)).toBe("off");
+  });
+
+  test("the landing page with re-pointing is valid JavaScript", () => {
+    const script = landingHtml(lab, origin).split("<script>")[1].split("</script>")[0];
+    expect(() => new Function(script)).not.toThrow();
   });
 });

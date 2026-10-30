@@ -144,6 +144,22 @@ https://taku.onca-tint.ts.net --origin https://taku.onca-tint.ts.net:8443`.
   `oxmgr logs lianki-stt`), and the page falls back to cloud STT, which
   returns 502.
 
+## Preview servers (widget, islands) on the dev origin
+
+The owner's local preview servers sit on the lab site,
+`https://<mac>.ts.net/lianki-*`, and answer CORS for lianki.com only
+(`allowOrigin` in `scripts/dev/debug-widget-build.ts`). A page on `:8443`
+could not read them, and the state tree said "Could not load the tree". The
+guard therefore serves `/lianki-*` on the dev origin, owner-checked, by
+fetching from the lab site server-side. Same origin means no CORS, and no
+preview server needs a restart.
+
+The landing page re-points carried `https://<mac>.ts.net/lianki-…` values,
+such as `lk:debug-widget-src`, to `https://<mac>.ts.net:8443/lianki-…`.
+`--lab` overrides the lab origin; the default is the `--origin` host without
+its port. `lianki-stt` is a websocket and stays direct, because it allows
+`:8443` itself (see above).
+
 ## Checked on 2026-10-31
 
 | Probe                                                                         | Result                       |

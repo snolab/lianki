@@ -169,13 +169,18 @@ export function copyableKey(key: string, value: string): boolean {
 }
 
 /** The landing page: write the carried keys (from the URL fragment), turn debug on, go on. */
-export function landingHtml(): string {
+export function landingHtml(lab = "", origin = ""): string {
   const allow = copyableKey.toString();
+  const repoint = toDevOrigin.toString();
   return `<!doctype html><meta charset="utf-8"><title>Lianki dev</title><script>
 const copyableKey = ${allow};
+const LAB_PREFIX = ${JSON.stringify(LAB_PREFIX)};
+const toDevOrigin = ${repoint};
 try {
   const o = JSON.parse(decodeURIComponent(location.hash.slice(1) || "%7B%7D"));
-  for (const [k, v] of Object.entries(o)) if (typeof v === "string" && copyableKey(k, v)) localStorage.setItem(k, v);
+  for (const [k, v] of Object.entries(o))
+    if (typeof v === "string" && copyableKey(k, v))
+      localStorage.setItem(k, ${JSON.stringify(Boolean(lab))} ? toDevOrigin(v, ${JSON.stringify(lab)}, ${JSON.stringify(origin)}) : v);
 } catch {}
 localStorage.setItem("lk:debug", "1");
 location.replace(${JSON.stringify(LANDING)});
@@ -190,4 +195,22 @@ const o = {};
 for (const k of Object.keys(localStorage)) { const v = localStorage.getItem(k) ?? ""; if (copyableKey(k, v)) o[k] = v; }
 setTimeout(() => location.assign(${JSON.stringify(enterUrl)} + "#" + encodeURIComponent(JSON.stringify(o))), 300);
 "navigating"`;
+}
+
+/**
+ * The owner's local preview servers (widget, islands, …) live on the lab site,
+ * `https://<mac>.ts.net/lianki-*` (tailscale serve). They answer CORS for
+ * lianki.com only, so a dev page could not read them cross-origin ("Could not
+ * load the tree"). The guard serves them on the dev origin instead — same
+ * origin, no CORS — after the owner check.
+ */
+export const LAB_PREFIX = "/lianki-";
+
+export function isLabPath(pathname: string): boolean {
+  return pathname.startsWith(LAB_PREFIX);
+}
+
+/** A carried localStorage value pointing at the lab site, re-pointed at the dev origin. */
+export function toDevOrigin(value: string, lab: string, origin: string): string {
+  return value.startsWith(`${lab}${LAB_PREFIX}`) ? origin + value.slice(lab.length) : value;
 }

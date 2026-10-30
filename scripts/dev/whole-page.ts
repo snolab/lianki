@@ -35,6 +35,7 @@ import {
   EnterTokens,
   GUARD_HEADER,
   HUB_ORIGIN,
+  isLabPath,
   LANDING_PATH,
   isHubPath,
   landingHtml,
@@ -117,6 +118,13 @@ async function serve() {
     );
   }
   const secure = origin.startsWith("https:") ? "; Secure" : "";
+  // The lab site (tailscale serve on :443) whose /lianki-* previews the guard
+  // serves on this origin: the --origin host without its port, when on *.ts.net.
+  const originUrl = new URL(origin);
+  const lab = arg(
+    "lab",
+    originUrl.hostname.endsWith(".ts.net") ? `https://${originUrl.hostname}` : "",
+  );
 
   // A clean env: only what the app needs. No RESEND_*/EMAIL_FROM (no mail),
   // no STRIPE_* (no payments), no MONGODB_URI, no OAuth secrets.
@@ -175,6 +183,16 @@ async function serve() {
     const out = { ...h };
     delete out[GUARD_HEADER];
     delete out[DEV_BRIDGE_HEADER];
+    return out;
+  }
+
+  /** To the lab site: its host, and no cookies or Origin of ours. */
+  function labHeaders(h: http.IncomingHttpHeaders) {
+    const out = forwardHeaders(h);
+    out.host = new URL(lab).host;
+    delete out.cookie;
+    delete out.origin;
+    delete out.referer;
     return out;
   }
 
@@ -237,25 +255,35 @@ async function serve() {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
         });
-        return res.end(landingHtml());
+        return res.end(landingHtml(lab, origin));
       }
       const hub = isHubPath(url.pathname);
-      const up = (hub ? https : http).request(
-        hub
+      const labPath = Boolean(lab) && isLabPath(url.pathname);
+      const remote = hub || labPath;
+      const up = (remote ? https : http).request(
+        labPath
           ? {
-              host: new URL(HUB_ORIGIN).host,
+              host: new URL(lab).host,
               port: 443,
               method: req.method,
               path: req.url,
-              headers: hubHeaders(req.headers),
+              headers: labHeaders(req.headers),
             }
-          : {
-              host: "127.0.0.1",
-              port: inner,
-              method: req.method,
-              path: req.url,
-              headers: forwardHeaders(req.headers),
-            },
+          : hub
+            ? {
+                host: new URL(HUB_ORIGIN).host,
+                port: 443,
+                method: req.method,
+                path: req.url,
+                headers: hubHeaders(req.headers),
+              }
+            : {
+                host: "127.0.0.1",
+                port: inner,
+                method: req.method,
+                path: req.url,
+                headers: forwardHeaders(req.headers),
+              },
         (r) => {
           res.writeHead(r.statusCode ?? 502, r.headers);
           r.pipe(res);
