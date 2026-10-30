@@ -107,6 +107,8 @@ const SwipeGradesIsland = island("words.swipeGrades", SwipeGrades);
 const SwipeFeelIsland = island("words.swipeFeel", SwipeFeelSource);
 const SwipeTunerIsland = island("words.swipeTuner", SwipeTuner);
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
+import { newScan, takeNewIndices, type NewScan } from "@/lib/words/take-new";
+import { countGradedNew, unseenLeft } from "@/lib/words/unseen";
 import { idbAdd, idbAll, idbDelete, idbGet, idbPut, type PendingOp } from "@/lib/words/idb";
 import {
   afterSend,
@@ -2141,6 +2143,17 @@ function Study({
   const base = config.base;
   const listIds = lists.map((l) => l.id).join(",");
   const paramsOf = useMemo(() => new Map(lists.map((l) => [l.id, l.params])), [lists]);
+  /** Each list's size and cards as this session found them, for the toolbar's unseen count. */
+  const scopeAtStart = useMemo(
+    () =>
+      lists.map((l) => ({
+        total: catalog.find((c) => c.id === l.source)?.count ?? 0,
+        cards: l.cards,
+      })),
+    // Snapshot per session: a refetched list already counts this session's cards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [listIds, catalog],
+  );
 
   const catalogs = useRef<Map<string, Entry[]>>(new Map());
   const byTerm = useRef<Map<string, Map<string, Entry>>>(new Map());
@@ -2154,8 +2167,8 @@ function Study({
     const e = m.get(term);
     return e?.ex ? { ex: e.ex, exTr: e.exTr } : {};
   };
-  /** Per list: next catalog index to consider for new words. */
-  const nextNew = useRef<Map<string, number>>(new Map());
+  /** Per list: where the search for new words has got (lib/words/take-new.ts). */
+  const scans = useRef<Map<string, NewScan>>(new Map());
   /** Lists whose due words did not all fit in one session fetch. */
   const moreDue = useRef<Set<string>>(new Set());
   /** Queue indices in the order they were graded (and not undone): Z walks this back. */
@@ -2180,50 +2193,56 @@ function Study({
       let p = catalogLoads.current.get(list.id);
       if (!p) {
         const meta = catalog.find((c) => c.id === list.source);
+        // No catalog for this list is a load failure, never "no new words":
+        // treating it as empty would show "every word learned".
         p = meta
           ? loadCatalog<{ entries: Entry[] }>(catalogPath(base, meta)).then((d) => d.entries)
-          : Promise.resolve([]);
+          : Promise.reject(new Error(`No word catalog for "${list.name}" (${list.source})`));
         p = p.then((entries) => {
           catalogs.current.set(list.id, entries);
           byTerm.current.delete(list.id);
           return entries;
         });
         catalogLoads.current.set(list.id, p);
+        // A failed load is tried again next time, not remembered.
+        p.catch(() => catalogLoads.current.delete(list.id));
       }
       return p;
     },
     [catalog, base],
   );
 
-  /** Pull up to `n` catalog words of one list that have no card yet. */
+  /** Pull up to `n` catalog words of one list that have no card yet (lib/words/take-new.ts). */
   const takeNewFrom = useCallback(
     async (list: WordList, n: number): Promise<Item[]> => {
       const entries = await ensureCatalog(list);
-      const out: Item[] = [];
-      while (out.length < n && (nextNew.current.get(list.id) ?? 0) < entries.length) {
-        const from = nextNew.current.get(list.id) ?? 0;
-        // The /known route takes at most 500 terms.
-        const slice = entries.slice(from, from + Math.min(500, Math.max(n * 2, 40)));
-        let known: string[] = [];
-        try {
-          ({ known } = await api<{ known: string[] }>(`/api/words/lists/${list.id}/known`, {
-            method: "POST",
-            body: JSON.stringify({ terms: slice.map((e) => e.term) }),
-          }));
-        } catch (e) {
-          // Offline: no check; the stored cursor already skips introduced words.
-          if (!(e instanceof OfflineError)) throw e;
-        }
-        // Advance only once the slice is checked, so a failed request leaves no
-        // word behind the cursor.
-        nextNew.current.set(list.id, from + slice.length);
-        const skip = new Set(known);
-        slice.forEach((e, i) => {
-          if (out.length < n && !skip.has(e.term))
-            out.push({ ...e, kind: "new", newIndex: from + i, listId: list.id, lang: list.lang });
-        });
-      }
-      return out;
+      let scan = scans.current.get(list.id);
+      if (!scan) scans.current.set(list.id, (scan = newScan(list.cursor)));
+      const picked = await takeNewIndices(
+        entries.map((e) => e.term),
+        scan,
+        n,
+        async (terms) => {
+          try {
+            const { known } = await api<{ known: string[] }>(`/api/words/lists/${list.id}/known`, {
+              method: "POST",
+              body: JSON.stringify({ terms }),
+            });
+            return new Set(known);
+          } catch (e) {
+            // Offline: no check; the stored cursor already skips introduced words.
+            if (e instanceof OfflineError) return null;
+            throw e;
+          }
+        },
+      );
+      return picked.map((i) => ({
+        ...entries[i],
+        kind: "new",
+        newIndex: i,
+        listId: list.id,
+        lang: list.lang,
+      }));
     },
     [ensureCatalog],
   );
@@ -2257,7 +2276,7 @@ function Study({
   useEffect(() => {
     let alive = true;
     // Start from the stored cursors every run (Strict Mode mounts twice in dev).
-    nextNew.current = new Map(lists.map((l) => [l.id, l.cursor]));
+    scans.current = new Map(lists.map((l) => [l.id, newScan(l.cursor)]));
     (async () => {
       // All lists' due words in one request (one D1 query) — or, with no
       // network, the copy saved on the last visit / "download for offline",
@@ -2310,7 +2329,7 @@ function Study({
   /** Per list, the first catalog word not yet introduced: the lowest ungraded new word in the queue. */
   const cursorOf = (listId: string, except: number) =>
     Math.min(
-      nextNew.current.get(listId) ?? 0,
+      scans.current.get(listId)?.next ?? 0,
       ...queue
         .map((it, i) => ({ it, i }))
         .filter(
@@ -2758,7 +2777,9 @@ function Study({
       if (!fresh.length) setExhausted(true);
       else append(fresh);
     })()
-      .catch((e) => setSyncError((e as Error).message))
+      // With nothing on screen, a failure is the page's error (with Retry),
+      // not a quiet note under an empty list.
+      .catch((e) => (queue.length ? setSyncError : setLoadError)((e as Error).message))
       .finally(() => {
         fetching.current = false;
       });
@@ -2954,6 +2975,9 @@ function Study({
   const minutes = (Date.now() - started.current) / 60_000;
   const ahead = queue.filter((_, i) => i >= row && !grades.has(i));
   const dueLeft = ahead.filter((it) => it.kind !== "new").length;
+  // Not the new words in the loaded batch (always ~80 at the start): the
+  // words in scope never seen yet (lib/words/unseen.ts).
+  const unseen = unseenLeft(scopeAtStart, countGradedNew(queue, grades.keys()));
 
   const status = (it: Item, i: number) => {
     const g = grades.get(i);
@@ -3049,7 +3073,7 @@ function Study({
               done,
               rate: minutes > 0.2 ? Math.round(done / minutes) : "–",
               due: dueLeft,
-              new: ahead.length - dueLeft,
+              new: unseen,
             })}
             {sync.pending > 0 ? (
               <span
