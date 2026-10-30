@@ -1,5 +1,37 @@
 import { describe, expect, it } from "bun:test";
-import { avatarSrcs, avatarView, lineAvatar } from "@lianki/debug-chat/avatar-rules";
+import {
+  RUN_GAP_MS,
+  avatarSrcs,
+  avatarView,
+  lineAvatar,
+  runStarts,
+} from "@lianki/debug-chat/avatar-rules";
+
+describe("runStarts (avatar grouping)", () => {
+  const at = (min: number) => min * 60_000;
+  it("shows the avatar on the first line of each run of one sender", () => {
+    const lines = [
+      { seed: "agent", at: at(0) },
+      { seed: "agent", at: at(1) },
+      { seed: "owner", at: at(2) },
+      { seed: "owner", at: at(2) },
+      { seed: "agent", at: at(3) },
+    ];
+    expect(runStarts(lines)).toEqual([true, false, true, false, true]);
+  });
+
+  it("a new node, or a long pause, starts a new run", () => {
+    expect(
+      runStarts([
+        { seed: "a", node: "/words/x", at: 0 },
+        { seed: "a", node: "/words/y", at: 1 },
+        { seed: "a", node: "/words/y", at: 2 + RUN_GAP_MS },
+        { seed: "a", node: "/words/y", at: 3 + RUN_GAP_MS },
+      ]),
+    ).toEqual([true, true, true, false]);
+    expect(runStarts([])).toEqual([]);
+  });
+});
 import {
   type ChatMessage,
   MAX_AVATAR_URL,

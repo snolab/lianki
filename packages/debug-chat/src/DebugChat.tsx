@@ -28,7 +28,7 @@ import { latencyRows, voiceLatency } from "./latency";
 import { getKey, setKey } from "./storage-keys";
 import { LiagentMark } from "./LiagentMark";
 import { Avatar } from "./Avatar";
-import { type AvatarSource, lineAvatar } from "./avatar-rules";
+import { type AvatarSource, lineAvatar, runStarts } from "./avatar-rules";
 import {
   CLIP_SINK_KEY,
   VOICE_SENT_EVENT,
@@ -73,6 +73,7 @@ import {
 import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
 import { type AnchorSide, placeBox } from "./anchor";
 import { keyboardLift } from "./keyboard-lift";
+import { type EdgeState, createJoystick, edgeSpeed } from "./joystick";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import type { Frontier } from "./frontier-view";
@@ -1003,9 +1004,41 @@ export function DebugChat({
    * draft's own: it scrolls or selects its text). A tap still focuses it.
    */
   const inputAxis = useRef(createAxisLock());
+  /**
+   * Joystick mode (joystick.ts): the finger held in the band at the visible
+   * area's top or bottom edge keeps the full-screen log scrolling that way,
+   * faster the deeper in. One rAF loop, stopped when the finger leaves the
+   * band or lifts, disposed on unmount.
+   */
+  const joystick = useRef<ReturnType<typeof createJoystick> | null>(null);
+  const edge = useRef<EdgeState>({ bottomArmed: false });
+  useEffect(() => {
+    joystick.current = createJoystick((px) => {
+      const el = log.current;
+      if (el) el.scrollTop += px;
+    });
+    return () => {
+      joystick.current?.dispose();
+      joystick.current = null;
+    };
+  }, []);
+  const steer = (y: number) => {
+    const vv = typeof visualViewport === "undefined" ? null : visualViewport;
+    const top = Math.max(notch.current, vv?.offsetTop ?? 0);
+    const bottom = vv ? vv.offsetTop + vv.height : innerHeight;
+    const r = edgeSpeed(y, { top, bottom }, edge.current, { reduced: reducedMotion() });
+    edge.current = r.state;
+    joystick.current?.set(r.speed);
+  };
   const inputDrag = {
     onPointerDown: (e: React.PointerEvent<HTMLTextAreaElement>) => {
-      if (open && !draftRef.current) inputAxis.current.down(e.clientX, e.clientY);
+      edge.current = { bottomArmed: false };
+      if (!open || draftRef.current) return;
+      inputAxis.current.down(e.clientX, e.clientY);
+      // Captured from the press: a quick flick leaves the input before the
+      // axis locks, and its moves must still come here (touch pointers are
+      // captured implicitly; a mouse or pen is not).
+      e.currentTarget.setPointerCapture?.(e.pointerId);
     },
     onPointerMove: (e: React.PointerEvent<HTMLTextAreaElement>) => {
       const was = inputAxis.current.axis();
@@ -1016,11 +1049,14 @@ export function DebugChat({
         logDrag.start("input");
       }
       logDrag.move(m.dy);
+      steer(e.clientY);
     },
     onPointerUp: () => {
+      joystick.current?.set(0);
       if (inputAxis.current.up() === "y") logDrag.end();
     },
     onPointerCancel: () => {
+      joystick.current?.set(0);
       if (inputAxis.current.up() === "y") logDrag.end();
     },
   };
@@ -2099,6 +2135,17 @@ export function DebugChat({
     </div>
   );
 
+  /** Who said each line, and where a run of one sender's lines starts (avatar-rules.ts). */
+  const whos = messages.map((m) =>
+    lineAvatar(m, { friend, viewer, agentAvatar, avatarFor, agentName: t.name, you: t.you }),
+  );
+  const starts = runStarts(
+    messages.map((m, i) => ({
+      seed: `${whos[i]!.seed}|${whos[i]!.mine ? "me" : ""}`,
+      node: lineNode(m)?.node,
+      at: m.at,
+    })),
+  );
   return (
     <section
       ref={root}
@@ -2174,16 +2221,11 @@ export function DebugChat({
         )}
         {/* A game-style log: one line per message, avatar then text, no bubbles. */}
         {messages.map((m, i) => {
-          const who = lineAvatar(m, {
-            friend,
-            viewer,
-            agentAvatar,
-            avatarFor,
-            agentName: t.name,
-            you: t.you,
-          });
+          const who = whos[i]!;
           // The state-tree node a line belongs to: a muted subtitle and a left border by its hue.
           const node = lineNode(m);
+          // The avatar (and the node's subtitle) once per run of lines (avatar-rules.ts runStarts).
+          const first = starts[i];
           return (
             // The time only on hover (long press on a phone); the avatar's own title names who.
             <li
@@ -2191,6 +2233,7 @@ export function DebugChat({
               data-testid="debug-chat-line"
               data-from={m.from}
               data-node={node?.node}
+              data-run-start={first || undefined}
               title={node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)}
               className="flex items-start gap-1.5 leading-snug"
               style={
@@ -2200,16 +2243,21 @@ export function DebugChat({
               }
             >
               {/* Screen readers hear the name once, from the sr-only span. */}
-              <Avatar
-                src={who.src}
-                name={who.name}
-                initialFrom={who.initialFrom}
-                seed={who.seed}
-                size={AVATAR_PX}
-                hidden
-              />
+              {first ? (
+                <Avatar
+                  src={who.src}
+                  name={who.name}
+                  initialFrom={who.initialFrom}
+                  seed={who.seed}
+                  size={AVATAR_PX}
+                  hidden
+                />
+              ) : (
+                // The rest of the run: the avatar's room, so the text lines up.
+                <span aria-hidden className="shrink-0" style={{ width: AVATAR_PX }} />
+              )}
               <span className="min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
-                {node && (
+                {node && first && (
                   <span
                     aria-hidden
                     data-testid="debug-chat-node"

@@ -89,3 +89,24 @@ export function lineAvatar(
     mine,
   };
 }
+
+/** A pause this long between two lines starts a new run, avatar and all. */
+export const RUN_GAP_MS = 5 * 60_000;
+
+/**
+ * Avatar grouping: which lines open a run of consecutive lines from the same
+ * sender (the same avatar seed, the same state-tree node, no long pause) and
+ * so show the avatar. The rest of the run shows none, only its indent. The
+ * first line, not the last: the log reads top down, avatar then text, so
+ * the avatar introduces the speaker (as Slack does); iMessage's last-line
+ * avatar belongs to bubbles anchored at the bottom.
+ */
+export function runStarts(
+  lines: readonly { seed: string; node?: string; at: number }[],
+  gapMs = RUN_GAP_MS,
+): boolean[] {
+  return lines.map((l, i) => {
+    const p = lines[i - 1];
+    return !p || p.seed !== l.seed || p.node !== l.node || Math.abs(l.at - p.at) > gapMs;
+  });
+}
