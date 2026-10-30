@@ -70,6 +70,15 @@ production stays passwordless.
 Prereqs: `bun install`, Playwright chromium (`bunx playwright install chromium`),
 and **Node ≥ 22.12** (older Node mishandles `node:sqlite` null rows).
 
+If `node` on your PATH is really Bun (e.g. a `node → bun` symlink), wrangler
+runs under Bun. Miniflare 5 (wrangler ≥ 4.148) routes its control requests to
+the dev proxy through an undici `dispatcher`, which Bun's `fetch` ignores, so
+`http://dummy/cdn-cgi/ProxyWorker/play` fails with `ENOTFOUND dummy`, the proxy
+stays paused, and every request to `wrangler dev` hangs after "Ready on".
+`patches/miniflare@*.patch` (applied by `bun install`) rewrites the origin up
+front under Bun. When wrangler is bumped, regenerate it with
+`bun patch miniflare@<ver>`, or drop it once upstream handles Bun.
+
 ## Tech Stack
 
 - **Framework**: Next.js 16 with App Router (Turbopack)
