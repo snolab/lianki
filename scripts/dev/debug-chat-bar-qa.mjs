@@ -378,11 +378,12 @@ try {
         halo: bs.textShadow !== "none",
         maxH: getComputedStyle(col).maxHeight,
         vh30: `${(innerHeight * 30) / 100}px`,
+        // Its own layer right above the log, never inside the log's scroller.
         below:
           !log.hidden &&
-          col.contains(tree) &&
+          !col.contains(tree) &&
           col.contains(log) &&
-          tree.getBoundingClientRect().bottom <= log.getBoundingClientRect().top + 0.5,
+          tree.getBoundingClientRect().bottom <= col.getBoundingClientRect().top + 0.5,
       };
     });
     check(
@@ -395,7 +396,7 @@ try {
       Math.abs(parseFloat(look.maxH) - parseFloat(look.vh30)) < 1,
       `input focused: expanded as the log would be (${look.maxH})`,
     );
-    check(look.below, "one column: the tree on top, the messages below it");
+    check(look.below, "the tree is its own layer, right above the log (not in its scroller)");
     check(s.focus && s.value === "keep me", "the input keeps its focus and its draft");
     check(s.body.length > 0, "the tree shows its content");
     // Again: closes.
@@ -471,8 +472,8 @@ try {
       width: document.querySelector("[data-debug-chat]").getBoundingClientRect().width,
     }));
     check(
-      g.chips > 0 && g.open === 0 && g.lines === 0 && g.mode === "column",
-      `${w}px: the tree is a chip row, nothing open, in the one column (${JSON.stringify(g)})`,
+      g.chips > 0 && g.open === 0 && g.lines === 0 && g.mode === "layer",
+      `${w}px: the tree is a chip row, nothing open, in its own layer (${JSON.stringify(g)})`,
     );
     check(g.width <= 320.5, `${w}px: one column, no wider box (${g.width}px)`);
     // Drag 2 cells right on the tree button: the focused chip opens 2 levels (a preview)…
@@ -541,17 +542,20 @@ try {
         `a tapped chip takes the focus; one open at most (${one})`,
       );
     }
-    // One scroller: the wheel over the tree scrolls the column, messages below.
-    const col = '[data-testid="debug-chat-column"]';
-    await page.evaluate((c) => {
-      document.querySelector(c).scrollTop = 0;
-    }, col);
-    const tr = await page.locator('[data-testid="tree-chips"]').boundingBox();
-    await page.mouse.move(tr.x + 20, tr.y + 6);
-    await page.mouse.wheel(0, 120);
-    await page.waitForTimeout(200);
-    const st = await page.evaluate((c) => document.querySelector(c).scrollTop, col);
-    check(st > 0, `the wheel over the tree scrolls the one column (${st})`);
+    // On screen and tall enough wherever the log is scrolled (owner, Android
+    // 02:16: inside the log's scroller it sat 7000px above the viewport).
+    await page.evaluate(() => {
+      const c = document.querySelector('[data-testid="debug-chat-column"]');
+      c.scrollTop = c.scrollHeight;
+    });
+    const tr = await page.evaluate(() => {
+      const r = document.querySelector('[data-testid="debug-chat-tree"]').getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, height: r.height, vh: innerHeight };
+    });
+    check(
+      tr.top >= 0 && tr.bottom <= tr.vh && tr.height > 100,
+      `the tree is inside the viewport and over 100px tall, the log scrolled to its end (${JSON.stringify(tr)})`,
+    );
     // ←/→ on the focused tree button move the focus.
     await page.focus('[data-testid="debug-chat-tree-button"]');
     await page.keyboard.press("ArrowLeft");

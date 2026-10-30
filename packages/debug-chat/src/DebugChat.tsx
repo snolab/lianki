@@ -737,7 +737,7 @@ export function DebugChat({
     if (!tree) setTreeTall(false);
   }, [tree]);
   /** The tree's scroller: the chat's column expanded, its own body minimized. */
-  const treeScroller = () => (open ? log.current : treeBodyEl.current);
+  const treeScroller = () => treeBodyEl.current;
   const navTo = (ev: TreeNavEvent) => {
     const el = treeScroller();
     const tops = new Map<string, number>();
@@ -1906,11 +1906,14 @@ export function DebugChat({
     ));
   /**
    * The state tree, shown as the log is (log-surface.ts): no box, translucent
-   * text with the halo, click-through except for rows that opt in. Expanded,
-   * it heads the chat's one column (the messages below it, one scroller);
-   * minimized, it heads the floating box and scrolls by itself. ✕ (or the tree
-   * button, or Escape) closes it, never taking the input's focus. Fades in
-   * (opacity; at once under reduced motion).
+   * text with the halo, click-through except for rows that opt in. It is its
+   * own layer with its own scroller, never inside the log's: minimized it
+   * heads the floating box; expanded it sits right above the log column (and
+   * above the full-screen log), 40vh tall, so it is on screen however far the
+   * log is scrolled. (Inside the log it once ended up 7000px above the
+   * viewport, at the top of a long scrolled log.) ✕ (or the tree button, or
+   * Escape) closes it, never taking the input's focus. Fades in (opacity; at
+   * once under reduced motion).
    */
   const treePanel = (floating: boolean) => (
     <div
@@ -1918,8 +1921,8 @@ export function DebugChat({
       role="region"
       aria-label={ui.stateTree}
       data-testid="debug-chat-tree"
-      data-mode={floating ? "floating" : "column"}
-      className="pointer-events-none relative flex w-full min-w-0 max-w-full flex-row-reverse items-start transition-opacity duration-[180ms] starting:opacity-0 motion-reduce:transition-none"
+      data-mode={floating ? "floating" : "layer"}
+      className={`pointer-events-none relative flex w-full min-w-0 max-w-full flex-row-reverse items-start transition-opacity duration-[180ms] starting:opacity-0 motion-reduce:transition-none ${floating ? "" : "z-10 shrink-0"}`}
     >
       <button
         type="button"
@@ -1932,26 +1935,21 @@ export function DebugChat({
       >
         ✕
       </button>
-      {floating ? (
-        <div
-          ref={(el) => {
-            if (el && el !== treeBodyEl.current) el.scrollTop = treeScroll.current;
-            treeBodyEl.current = el;
-          }}
-          data-testid="debug-chat-tree-body"
-          onScroll={onTreeScroll}
-          {...withClass(
-            logSurface({ expanded: typing || micActive || treeTall, fade: treeFade }),
-            `min-w-0 flex-1 ${treeTall ? "h-[30vh]" : ""}`,
-          )}
-        >
-          {treeContent}
-        </div>
-      ) : (
-        <div data-testid="debug-chat-tree-body" className="min-w-0 flex-1 pb-1">
-          {treeContent}
-        </div>
-      )}
+      <div
+        ref={(el) => {
+          if (el && el !== treeBodyEl.current) el.scrollTop = treeScroll.current;
+          treeBodyEl.current = el;
+        }}
+        data-testid="debug-chat-tree-body"
+        onScroll={onTreeScroll}
+        {...withClass(
+          logSurface({ expanded: !floating || typing || micActive || treeTall, fade: treeFade }),
+          // Expanded: its own fixed height, whatever the log does.
+          `min-w-0 flex-1 ${!floating ? "h-[40vh] max-h-[40vh]" : treeTall ? "h-[30vh]" : ""}`,
+        )}
+      >
+        {treeContent}
+      </div>
     </div>
   );
   const floatsEl = floats.length > 0 && (
@@ -2287,8 +2285,9 @@ export function DebugChat({
           />,
           document.body,
         )}
-      {/* One column, one scroller: the state tree (when open) on top, the
-      messages below it, the newest at the bottom. Hidden minimized. */}
+      {/* Expanded: the state tree, its own layer right above the log. */}
+      {open && tree && treePanel(false)}
+      {/* The log: the messages, the newest at the bottom. Hidden minimized. */}
       <div
         ref={log}
         data-testid="debug-chat-column"
@@ -2316,7 +2315,6 @@ export function DebugChat({
         data-full={fullLog === "off" ? undefined : fullLog}
         {...fullSurface(logSurface({ expanded: typing || micActive, fade }))}
       >
-      {open && tree && treePanel(false)}
       <ol
         data-testid="debug-chat-log"
         className="m-0 list-none space-y-0.5 p-0"
