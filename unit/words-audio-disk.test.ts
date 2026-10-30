@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { AudioCache, ttsUrl, type ClipDisk } from "@/lib/words/audio-cache";
-import { AudioDisk, pickEvictions, type CacheLike, type DiskIndex } from "@/lib/words/audio-disk";
+import {
+  AUDIO_CACHE_NAME,
+  AudioDisk,
+  pickEvictions,
+  type CacheLike,
+  type DiskIndex,
+} from "@/lib/words/audio-disk";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -51,6 +57,13 @@ describe("pickEvictions", () => {
     expect(pickEvictions(i, 10, 100, new Set(["onScreen"]))).toEqual(["b", "c"]);
     expect(pickEvictions(idx([["onScreen", 500, 1]]), 0, 0, new Set(["onScreen"]))).toEqual([]);
   });
+});
+
+test("the service worker keeps the clip cache when it updates", async () => {
+  // public/sw.js deletes every other cache on activate.
+  const sw = await Bun.file(`${import.meta.dir}/../public/sw.js`).text();
+  const keep = sw.match(/const KEEP_CACHES = \[([^\]]*)\]/)?.[1] ?? "";
+  expect(keep).toContain(JSON.stringify(AUDIO_CACHE_NAME));
 });
 
 describe("AudioDisk", () => {
