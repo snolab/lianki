@@ -229,13 +229,17 @@ export function WalletCard({
         {missing !== null && (
           <div className={`${well} p-3 flex flex-wrap items-center justify-between gap-2`}>
             <span className="text-sm">{s.short.value.replace("{missing}", yen(missing))}</span>
-            <button
-              onClick={() => void topup(missing)}
-              disabled={!canTopup}
-              className={`${accent} rounded-lg px-4 py-2 font-semibold`}
-            >
-              {s.topupDifference.value.replace("{missing}", yen(missing))}
-            </button>
+            {providers.length > 0 ? (
+              <button
+                onClick={() => void topup(missing)}
+                disabled={!canTopup}
+                className={`${accent} rounded-lg px-4 py-2 font-semibold`}
+              >
+                {s.topupDifference.value.replace("{missing}", yen(missing))}
+              </button>
+            ) : (
+              <span className={`text-sm ${muted}`}>{s.noProviders.value}</span>
+            )}
           </div>
         )}
       </div>
