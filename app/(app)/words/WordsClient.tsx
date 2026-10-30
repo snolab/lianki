@@ -41,12 +41,14 @@ import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
   centreWeight,
+  frameDt,
+  glideStep,
   nextGoal,
   splitTarget,
   termTarget,
   weightedQuantile,
 } from "@/lib/words/columns";
-import { MIN_JERK_EASING, cssLinear, minJerk, moveSeconds, springStep } from "@/lib/words/motion";
+import { MIN_JERK_EASING, cssLinear, minJerk, moveSeconds } from "@/lib/words/motion";
 import { CORD_BOW, cordPath, cordPull } from "@/lib/words/cords";
 import {
   type Axis,
@@ -2629,6 +2631,11 @@ function Study({
   const backGoal = useRef<number | null>(null);
   const backShown = useRef<number | null>(null);
   const backVelocity = useRef(0);
+  /** The glide's one rAF loop, kept across renders (see below). */
+  const glideRaf = useRef(0);
+  const glideLast = useRef<number | null>(null);
+  const glideSplit = useRef(false);
+  useEffect(() => () => cancelAnimationFrame(glideRaf.current), []);
   useEffect(() => {
     if (!viewH || to <= from) return;
     const centre = scrollTop + viewH / 2;
@@ -2666,9 +2673,15 @@ function Study({
       return;
     }
     // Glide every row together: one variable, moved by a critically damped
-    // spring that keeps its velocity if the goal moves mid-glide.
-    let raf = 0;
-    let last = performance.now();
+    // spring that keeps its velocity if the goal moves mid-glide. One loop
+    // outlives this effect: a scroll re-runs it every frame, and restarting
+    // the loop each time cancelled the pending step and timed the next from
+    // a fresh performance.now(), so the spring advanced a fraction of each
+    // frame, or not at all — the width stalled while the finger moved, then
+    // caught up in jumps.
+    glideSplit.current = split;
+    if (glideRaf.current) return;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     /** One spring step of a column toward its goal; true once it has settled. */
     const glide = (
       goal: number,
@@ -2677,22 +2690,27 @@ function Study({
       prop: string,
       dt: number,
     ) => {
-      const s = springStep(shown.current!, velocity.current, goal, dt, 14);
-      const settled = Math.abs(s.x - goal) < 0.5 && Math.abs(s.v) < 5;
-      shown.current = settled ? goal : s.x;
-      velocity.current = settled ? 0 : s.v;
-      el.style.setProperty(prop, `${shown.current}px`);
-      return settled;
+      const s = glideStep(shown.current!, velocity.current, goal, dt, reduce);
+      shown.current = s.x;
+      velocity.current = s.v;
+      el.style.setProperty(prop, `${s.x}px`);
+      return s.settled;
     };
     const step = (now: number) => {
-      const dt = (now - last) / 1000;
-      last = now;
+      const dt = frameDt(now, glideLast.current);
+      glideLast.current = now;
       const a = glide(termGoal.current!, termShown, termVelocity, "--term-w", dt);
-      const b = !split || glide(backGoal.current!, backShown, backVelocity, "--back-w", dt);
-      if (!a || !b) raf = requestAnimationFrame(step);
+      const b =
+        !glideSplit.current ||
+        backGoal.current === null ||
+        backShown.current === null ||
+        glide(backGoal.current, backShown, backVelocity, "--back-w", dt);
+      if (a && b) {
+        glideRaf.current = 0;
+        glideLast.current = null;
+      } else glideRaf.current = requestAnimationFrame(step);
     };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    glideRaf.current = requestAnimationFrame(step);
   }, [from, to, scrollTop, viewH, pad, queue, measureTerm, measureCells, hasExamples, rem, touch]);
 
   const done = grades.size;
