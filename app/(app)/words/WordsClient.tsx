@@ -79,6 +79,8 @@ import {
   useSwipeGesture,
 } from "@/lib/words/swipe-core";
 import type { SwipePhase } from "@/lib/words/swipe-machine";
+import { useUi } from "@lianki/ui-state";
+import { anchorTop, setAnchor, topIndex, wordsUiStore } from "./ui-store";
 import { releaseTrajectory } from "@/lib/words/swipe-physics";
 import { island } from "@/lib/islands/Island";
 import { SwipeCard } from "@/lib/words/islands/SwipeCard";
@@ -1178,31 +1180,54 @@ const ALL = "all";
  * The open list lives in the URL (?list=<id>, or ?list=all), so each list and
  * "study all" has its own address: bookmarkable, and a refresh stays put.
  * Other params (the app's ?lang=) are kept.
+ *
+ * The URL is the source of truth. This tab also remembers the list
+ * (ui-store.ts, sessionStorage): opened with no ?list= — the nav menu, the
+ * home screen icon — it reopens the list this tab had open, by replacing the
+ * address (no extra history entry). Going back to the lists clears it.
  */
-function useListParam(): [string | null, (id: string | null) => void] {
+function useListParam(base: string): [string | null, (id: string | null) => void] {
+  const ui = wordsUiStore(base);
   const read = () =>
     typeof location === "undefined" ? null : new URLSearchParams(location.search).get("list");
   const [id, setId] = useState<string | null>(null);
   useEffect(() => {
-    setId(read());
-    const onPop = () => setId(read());
+    let first = read();
+    const kept = ui.getState().listId;
+    if (first === null && kept) {
+      const url = new URL(location.href);
+      url.searchParams.set("list", kept);
+      history.replaceState(history.state, "", url);
+      first = kept;
+    }
+    ui.setState({ listId: first });
+    setId(first);
+    const onPop = () => {
+      const now = read();
+      ui.setState({ listId: now });
+      setId(now);
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, []);
-  const go = useCallback((next: string | null) => {
-    const url = new URL(location.href);
-    if (next) url.searchParams.set("list", next);
-    else url.searchParams.delete("list");
-    history.pushState(null, "", url);
-    setId(next);
-  }, []);
+  }, [ui]);
+  const go = useCallback(
+    (next: string | null) => {
+      const url = new URL(location.href);
+      if (next) url.searchParams.set("list", next);
+      else url.searchParams.delete("list");
+      history.pushState(null, "", url);
+      ui.setState({ listId: next });
+      setId(next);
+    },
+    [ui],
+  );
   return [id, go];
 }
 
 export default function WordsClient({ config = WORDS }: { config?: DrillConfig }) {
   const [allLists, setLists] = useState<WordList[] | null>(null);
   const [catalog, setCatalog] = useState<CatalogMeta[] | null>(null);
-  const [listId, setListId] = useListParam();
+  const [listId, setListId] = useListParam(config.base);
   const [error, setError] = useState<string | null>(null);
   /** The lists shown came from the offline copy. */
   const [offline, setOffline] = useState(false);
@@ -1839,10 +1864,22 @@ function Study({
   const sync = useSyncStatus();
   /** The queue was built from the offline copy. */
   const [offlineCopy, setOfflineCopy] = useState(false);
-  const [help, setHelp] = useState(false);
+  /** This tab's UI state (ui-store.ts): panels open, where the reader was. */
+  const ui = wordsUiStore(config.base);
+  const help = useUi(ui, (s) => s.helpOpen);
+  const setHelp = useCallback(
+    (v: boolean | ((h: boolean) => boolean)) =>
+      ui.setState((s) => ({ helpOpen: typeof v === "function" ? v(s.helpOpen) : v })),
+    [ui],
+  );
   /** Every meaning shown, not just the focused / pinned rows. */
   const [showAll, setShowAll] = usePref("lk:words-show-all", false);
-  const [settings, setSettings] = useState(false);
+  const settings = useUi(ui, (s) => s.settingsOpen);
+  const setSettings = useCallback(
+    (v: boolean | ((o: boolean) => boolean)) =>
+      ui.setState((s) => ({ settingsOpen: typeof v === "function" ? v(s.settingsOpen) : v })),
+    [ui],
+  );
   /** Touch: say the word as a swipe starts. Remembered; on by default. */
   const [swipeSpeak, setSwipeSpeak] = usePref("lk:words-swipe-speak", true);
   /** Touch: the row being held (listen mode) — revealed and looped while held. */
@@ -2347,12 +2384,34 @@ function Study({
       window.removeEventListener("keydown", moved, opts);
     };
   }, [listEl]);
+  // Where the reader was in this tab (ui-store.ts): the same opening, aimed
+  // at that word instead of the first, while it is still in the queue.
+  const studyKey = lists.map((l) => l.id).join(",");
+  const anchor = useUi(ui, (s) => s.anchors[studyKey] ?? null);
+  const anchorAt = useMemo(
+    () => (anchor === null ? -1 : queue.findIndex((it) => keyOf(it) === anchor)),
+    [anchor, queue],
+  );
   useLayoutEffect(() => {
     if (!listEl || !listReady || !measured) return;
     if (opened.current.el !== listEl) opened.current = { el: listEl, moved: false };
     if (opened.current.moved) return;
-    listEl.scrollTop = pad - bar.top;
-  }, [listEl, listReady, measured, pad, bar.top, shownAt]);
+    listEl.scrollTop = anchorTop(anchorAt, { pad, rowH: ROW_H, barTop: bar.top }) ?? pad - bar.top;
+  }, [listEl, listReady, measured, pad, bar.top, shownAt, anchorAt]);
+  /** Remember the word at the top once the reader has moved the list (not the opening's own scroll). */
+  const anchorTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const keepAnchor = useCallback(
+    (top: number) => {
+      if (!opened.current.moved) return;
+      clearTimeout(anchorTimer.current);
+      anchorTimer.current = setTimeout(() => {
+        const it = queue[topIndex(top, { pad, rowH: ROW_H, barTop: barRef.current.top })];
+        setAnchor(ui, studyKey, it ? keyOf(it) : null);
+      }, 200);
+    },
+    [queue, pad, ui, studyKey],
+  );
+  useEffect(() => () => clearTimeout(anchorTimer.current), []);
   // The list fills the window (.lk-words-list); the toolbar and the help strip
   // float over it. Measured whenever any of them changes size (settings open,
   // hints change, the window turns), never polled.
@@ -3009,6 +3068,7 @@ function Study({
             onScroll={(e) => {
               setScrollTop(e.currentTarget.scrollTop);
               lastScrollAt.current = performance.now();
+              keepAnchor(e.currentTarget.scrollTop);
             }}
             onPointerDownCapture={() => (touchingList.current = true)}
             onPointerUpCapture={() => (touchingList.current = false)}

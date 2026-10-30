@@ -74,6 +74,17 @@ await ctx.route("**/api/words/tts?*", (r) =>
   r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") }),
 );
 const page = await ctx.newPage();
+/**
+ * The lists picker. /words with no ?list= reopens the list this tab had open
+ * (docs/ui-state.md); "← lists" goes back to the picker and forgets it.
+ */
+const toPicker = async () => {
+  await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
+  if (!new URL(page.url()).searchParams.has("list")) return;
+  const back = page.getByRole("button", { name: "← lists" });
+  await back.waitFor({ timeout: 15000 });
+  await back.click();
+};
 const errs = [];
 page.on("pageerror", (e) => {
   // Local runs have no Turnstile site key; that warning is not this page's fault.
@@ -409,9 +420,63 @@ try {
   await page.keyboard.press("e"); // back off, for the checks below
   check(await blurred(5), "E turns it off again");
 
+  // The open Settings panel is UI state of this tab (docs/ui-state.md): it
+  // is still open after the refresh.
+  check(
+    await page.getByRole("switch", { name: "Server voice" }).isVisible(),
+    "the Settings panel stays open across a refresh (sessionStorage)",
+  );
+  // Where the reader was is this tab's UI state too: scrolled down, a
+  // refresh reopens at the same word; /words with no ?list= reopens the list.
+  {
+    const topRow = () =>
+      page.evaluate(() => {
+        const bar = document.querySelector("[data-words-top]")?.getBoundingClientRect().bottom ?? 0;
+        let best = "";
+        let d = Infinity;
+        for (const r of document.querySelectorAll('[role="listitem"]')) {
+          const y = Math.abs(r.getBoundingClientRect().top - bar);
+          if (y < d) [d, best] = [y, (r.textContent ?? "").trim().slice(0, 40)];
+        }
+        return best;
+      });
+    const first = await topRow();
+    await page.locator('[role="list"]').hover();
+    await page.mouse.wheel(0, 44 * 8);
+    await page.waitForTimeout(600);
+    const before = await topRow();
+    await page.reload({ waitUntil: "networkidle" });
+    await rows.first().waitFor({ timeout: 15000 });
+    await page.waitForTimeout(300);
+    const after = await topRow();
+    check(
+      before !== first && after === before,
+      `a refresh reopens at the same word (${first} → ${before} → ${after})`,
+    );
+    const listUrl = new URL(page.url());
+    const bare = new URL(page.url());
+    bare.searchParams.delete("list");
+    await page.goto(bare.href, { waitUntil: "networkidle" });
+    await rows.first().waitFor({ timeout: 15000 });
+    check(
+      new URL(page.url()).searchParams.get("list") === listUrl.searchParams.get("list"),
+      `no ?list=: this tab's list reopens (${new URL(page.url()).search})`,
+    );
+    // Back to the opening position for the checks below.
+    await page.evaluate(() => {
+      for (const k of Object.keys(sessionStorage)) {
+        if (!k.startsWith("lk:ui:")) continue;
+        const v = JSON.parse(sessionStorage.getItem(k) ?? "null");
+        if (!v?.state?.anchors) continue;
+        v.state.anchors = {};
+        sessionStorage.setItem(k, JSON.stringify(v));
+      }
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    await rows.first().waitFor({ timeout: 15000 });
+  }
   // The server voice is the default (browser voices can mislead): moving to
   // a word plays the server's recording (stubbed: no AI call, nothing audible).
-  await page.getByRole("button", { name: "Settings" }).click();
   check(
     (await page.getByRole("switch", { name: "Server voice" }).getAttribute("aria-checked")) ===
       "true",
@@ -1553,7 +1618,7 @@ try {
   check(fronts[0] === "あ", `alphabet starts with あ: ${fronts.slice(0, 3)}`);
   // A reverse card is kept well away from its forward card (a right under あ gives it away).
   check(!fronts.slice(0, 20).includes("a"), "あ and its reverse a are kept 20+ rows apart");
-  await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
+  await toPicker();
   check((await page.getByText("Hiragana").count()) === 0, "alphabet lists stay off /words");
 
   // "Download for offline" saves the lists, catalogs and due words on the device.
@@ -1580,7 +1645,7 @@ try {
   check((await sent).status() === 200, "study all: a graded word saves");
 
   // Drag the second list above the first by its handle; the order is saved.
-  await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
+  await toPicker();
   const handles = page.getByRole("button", { name: "Drag to reorder" });
   const before = (
     await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
@@ -1659,7 +1724,7 @@ try {
     fields: ["Front", "Back", "Example"],
     notes: deckNotes,
   });
-  await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
+  await toPicker();
   // By its address: an earlier check visits /learn?lang=fr, and the language sticks.
   await page.locator('a[href*="/words/import"]').click();
   await page.waitForURL(/\/words\/import/);
