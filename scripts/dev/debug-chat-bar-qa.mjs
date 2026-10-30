@@ -378,12 +378,8 @@ try {
         halo: bs.textShadow !== "none",
         maxH: getComputedStyle(col).maxHeight,
         vh30: `${(innerHeight * 30) / 100}px`,
-        // Its own layer right above the log, never inside the log's scroller.
-        below:
-          !log.hidden &&
-          !col.contains(tree) &&
-          col.contains(log) &&
-          tree.getBoundingClientRect().bottom <= col.getBoundingClientRect().top + 0.5,
+        // In the log's place: the log is hidden (not covered), the tree is not inside it.
+        below: col.hidden && !col.contains(tree) && col.contains(log),
       };
     });
     check(
@@ -396,7 +392,7 @@ try {
       Math.abs(parseFloat(look.maxH) - parseFloat(look.vh30)) < 1,
       `input focused: expanded as the log would be (${look.maxH})`,
     );
-    check(look.below, "the tree is its own layer, right above the log (not in its scroller)");
+    check(look.below, "the tree takes the log's place: the log is hidden, not covered");
     check(s.focus && s.value === "keep me", "the input keeps its focus and its draft");
     check(s.body.length > 0, "the tree shows its content");
     // Again: closes.
@@ -472,8 +468,8 @@ try {
       width: document.querySelector("[data-debug-chat]").getBoundingClientRect().width,
     }));
     check(
-      g.chips > 0 && g.open === 0 && g.lines === 0 && g.mode === "layer",
-      `${w}px: the tree is a chip row, nothing open, in its own layer (${JSON.stringify(g)})`,
+      g.chips > 0 && g.open === 0 && g.lines === 0 && g.mode === "log",
+      `${w}px: the tree is a chip row, nothing open, in the log's place (${JSON.stringify(g)})`,
     );
     check(g.width <= 320.5, `${w}px: one column, no wider box (${g.width}px)`);
     // Drag 2 cells right on the tree button: the focused chip opens 2 levels (a preview)…
@@ -807,18 +803,54 @@ try {
           visible: Math.round(vv.height),
         };
       });
+    // The log's box and scroll before the switch.
+    const before = await page.evaluate(() => {
+      const c = document.querySelector('[data-testid="debug-chat-column"]');
+      c.scrollTop = Math.round(c.scrollHeight / 3);
+      c.dispatchEvent(new Event("scroll"));
+      const r = c.getBoundingClientRect();
+      return { left: r.left, width: r.width, bottom: r.bottom, scroll: c.scrollTop };
+    });
     await page.click('[data-testid="debug-chat-tree-button"]');
     await page.waitForTimeout(300);
+    const swap = await page.evaluate(() => {
+      const t = document.querySelector('[data-testid="debug-chat-tree"]').getBoundingClientRect();
+      return {
+        hidden: document.querySelector('[data-testid="debug-chat-column"]').hidden,
+        left: t.left,
+        width: t.width,
+        bottom: t.bottom,
+      };
+    });
+    check(
+      swap.hidden &&
+        Math.abs(swap.left - before.left) < 1 &&
+        Math.abs(swap.width - before.width) < 1 &&
+        Math.abs(swap.bottom - before.bottom) < 2,
+      `the tree takes the log's rect, the log hidden (log ${JSON.stringify(before)}, tree ${JSON.stringify(swap)})`,
+    );
     let r = await inView();
     check(r.ok, `tree on screen, long log (${JSON.stringify(r)})`);
     let h = await hit();
     check(h.inside, `a tap on the tree lands on the tree, not the page under it (${h.at})`);
+    // Back to the log: its scroll as it was.
+    await page.click('[data-testid="debug-chat-tree-button"]');
+    await page.waitForTimeout(300);
+    const back = await page.evaluate(() => {
+      const c = document.querySelector('[data-testid="debug-chat-column"]');
+      return { hidden: c.hidden, scroll: Math.round(c.scrollTop) };
+    });
+    check(
+      !back.hidden && Math.abs(back.scroll - before.scroll) <= 2,
+      `back to the log: its scroll kept (${before.scroll} → ${back.scroll})`,
+    );
+    await page.click('[data-testid="debug-chat-tree-button"]');
+    await page.waitForTimeout(300);
     await page.click('[data-testid="debug-chat-input"]');
     await page.evaluate(() => window.__kb(480));
     await page.waitForTimeout(400);
     r = await inView();
     check(r.ok, `tree on screen with the keyboard up (${JSON.stringify(r)})`);
-    check(r.top >= 56, `keyboard up: the tree starts below the app's header (${r.top} ≥ 56)`);
     h = await hit();
     check(h.inside, `keyboard up: a tap on the tree lands on the tree (${h.at})`);
     await page.evaluate(() => {

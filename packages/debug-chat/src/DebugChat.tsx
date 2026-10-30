@@ -81,8 +81,6 @@ import {
   logSurface,
   pickAnchor,
   sheetScrim,
-  TREE_PANEL_SHARE,
-  fitTreePanel,
 } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
 import { TreeChips } from "./TreeChips";
@@ -338,27 +336,6 @@ function safeSides() {
   };
   probe.remove();
   return v;
-}
-
-/**
- * The bottom of the page's own header bar at the top of the visible area
- * (app/components/AppShell.tsx's <header>, or anything marked
- * [data-app-header]), so the tree is not laid over it; the visible top when
- * there is none. A page may also set --lk-top-reserve (px) on <html>.
- */
-function headerBottom(visibleTop: number): number {
-  if (typeof document === "undefined") return visibleTop;
-  const reserve = Number.parseFloat(
-    getComputedStyle(document.documentElement).getPropertyValue("--lk-top-reserve"),
-  );
-  const bars = [...document.querySelectorAll<HTMLElement>("header, [data-app-header]")]
-    .filter((el) => !el.closest("[data-debug-chat]"))
-    .map((el) => el.getBoundingClientRect())
-    .filter(
-      (r) => r.height > 0 && r.height < 200 && r.top <= visibleTop + 2 && r.bottom > visibleTop,
-    )
-    .map((r) => r.bottom);
-  return Math.max(visibleTop, Number.isFinite(reserve) ? visibleTop + reserve : 0, ...bars);
 }
 
 /** env(safe-area-inset-bottom) in px (the home indicator), measured once per drag. */
@@ -680,15 +657,10 @@ export function DebugChat({
   useEffect(() => {
     notch.current = safeTop();
     /** The tree's fit once more on the next frame, after the lift and the box have settled. */
-    const refitTree = () => {
-      fitTreeRef.current();
-      requestAnimationFrame(() => fitTreeRef.current());
-    };
     const again = () => {
       placeRef.current();
       fitRef.current();
       liftRef.current();
-      refitTree();
     };
     const rotate = () => {
       notch.current = safeTop();
@@ -698,7 +670,6 @@ export function DebugChat({
     // only the lift follows that.
     const lift = () => {
       liftRef.current();
-      refitTree();
     };
     addEventListener("resize", again);
     addEventListener("orientationchange", rotate);
@@ -957,9 +928,12 @@ export function DebugChat({
    * last 3 lines, scrolled to the end.
    */
   const [typing, setTyping] = useState(false);
+  /** The log's last scroll while shown (kept across the tree taking its place). */
+  const lastLogScroll = useRef(0);
   const onLogScroll = () => {
     const el = log.current;
-    if (!el) return;
+    if (!el || el.hidden) return;
+    lastLogScroll.current = el.scrollTop;
     setFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
     const end = el.scrollHeight - el.scrollTop - el.clientHeight < 4;
     atEnd.current = end;
@@ -1035,7 +1009,9 @@ export function DebugChat({
      */
     start: (from: "mic" | "input" = "mic") => {
       const el = log.current;
-      if (!el || !open) return;
+      // The tree in the log's place: the drag scrolls it; no full-screen log.
+      if (tree) fullRef.current.lastDy = 0;
+      if (!el || !open || tree) return;
       const r = el.getBoundingClientRect();
       const sec = root.current?.getBoundingClientRect();
       let box: (typeof fullRef.current)["box"] = null;
@@ -1079,7 +1055,8 @@ export function DebugChat({
     },
     /** Finger travel since the press: the log scrolls by the change (no render). */
     move: (dy: number) => {
-      const el = log.current;
+      // The tree in the log's place: the drag scrolls the tree.
+      const el = tree ? treeBodyEl.current : log.current;
       if (!el) return;
       el.scrollTop -= dy - fullRef.current.lastDy;
       fullRef.current.lastDy = dy;
@@ -1130,10 +1107,13 @@ export function DebugChat({
    * on unmount.
    */
   const joystick = useRef<ReturnType<typeof createJoystick> | null>(null);
+  /** The tree has the log's place (the joystick scrolls it then). */
+  const treeShown = useRef(false);
+  treeShown.current = open && tree;
   const tune = useRef(joystickTune());
   useEffect(() => {
     joystick.current = createJoystick((px) => {
-      const el = log.current;
+      const el = treeShown.current ? treeBodyEl.current : log.current;
       if (el) el.scrollTop += px;
     });
     return () => {
@@ -1959,89 +1939,42 @@ export function DebugChat({
       </p>
     ));
   /**
-   * The expanded tree's place and height (log-surface.ts fitTreePanel): above
-   * the log when there is room, else over it at the visible top, always
-   * inside the visible area (notch, keyboard). Measured after each render and
-   * on every visual-viewport event; one read of three rects, one state write
-   * only when it changes.
+   * Expanded, the tree REPLACES the log: the same slot, the same box, one
+   * or the other (the tree button switches). The log is hidden, not
+   * covered; its scroll is kept here and put back when it shows again.
    */
-  const treeLayer = useRef<HTMLDivElement | null>(null);
-  const [treeFit, setTreeFit] = useState<
-    { mode: "flow"; height: number } | { mode: "overlay"; top: number; height: number }
-  >(() => ({ mode: "flow", height: 300 }));
-  const fitTreeRef = useRef(() => {});
-  fitTreeRef.current = () => {
-    const sec = root.current;
-    if (!open || !tree || !sec) return;
-    const below = fullRef.current.box ? rowBox.current : log.current;
-    if (!below) return;
-    const vv = typeof visualViewport === "undefined" ? null : visualViewport;
-    const vTop = vv?.offsetTop ?? 0;
-    const f = fitTreePanel({
-      flowBottom: below.getBoundingClientRect().top,
-      // Below the app's header or toolbar when one shows at the top.
-      visibleTop: Math.max(notch.current, vTop, headerBottom(vTop)),
-      visibleBottom: vv ? vTop + vv.height : innerHeight,
-      want: innerHeight * TREE_PANEL_SHARE,
-    });
-    // Overlay: its top inside the box, which hangs from the bar (its own top moves).
-    const next =
-      f.mode === "overlay" ? { ...f, top: f.top - sec.getBoundingClientRect().top } : f;
-    setTreeFit((cur) =>
-      cur.mode === next.mode &&
-      cur.height === next.height &&
-      (cur.mode === "flow" || cur.top === (next as { top: number }).top)
-        ? cur
-        : next,
-    );
-  };
-  useLayoutEffect(() => fitTreeRef.current());
-  // The log's height animates (max-height, 150 ms) and the box moves with it,
-  // with no render or viewport event at the end: its size changes refit too.
-  useEffect(() => {
-    if (!open || !tree || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => fitTreeRef.current());
-    if (log.current) ro.observe(log.current);
-    if (root.current) ro.observe(root.current);
-    return () => ro.disconnect();
-  }, [open, tree]);
-  /** The tree body's own height, expanded (fitTreePanel); minimized it is the log's surface. */
-  const fitBody = <T extends { className: string; style?: React.CSSProperties }>(
-    p: T,
-    floating: boolean,
-  ): T =>
-    floating
-      ? p
-      : { ...p, style: { ...p.style, height: treeFit.height, maxHeight: treeFit.height } };
+  const logScrollKept = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const el = log.current;
+    if (open && tree) {
+      logScrollKept.current ??= lastLogScroll.current;
+      return;
+    }
+    if (!el || !open || logScrollKept.current === null) return;
+    el.scrollTop = logScrollKept.current;
+    logScrollKept.current = null;
+    onLogScroll();
+  }, [tree, open]);
   /**
    * The state tree, shown as the log is (log-surface.ts): no box, translucent
-   * text with the halo, click-through except for rows that opt in. It is its
-   * own layer with its own scroller, never inside the log's: minimized it
-   * heads the floating box; expanded it sits right above the log column (and
-   * above the full-screen log), 40vh tall, so it is on screen however far the
-   * log is scrolled. (Inside the log it once ended up 7000px above the
-   * viewport, at the top of a long scrolled log.) ✕ (or the tree button, or
-   * Escape) closes it, never taking the input's focus. Fades in (opacity; at
-   * once under reduced motion).
+   * text with the halo. Minimized it heads the floating box, click-through.
+   * Expanded it takes the log's place: the same slot, width, height and
+   * surface (at its open height), with its own scroller, taking taps and
+   * scrolls, so it is wherever the log would be (no separate layer to place:
+   * that kept ending up off screen, under the page or over the header). ✕
+   * (or the tree button, or Escape) brings the log back, never taking the
+   * input's focus. Fades in (opacity; at once under reduced motion).
    */
   const treePanel = (floating: boolean) => (
     <div
-      ref={floating ? undefined : treeLayer}
       id="debug-chat-tree"
       role="region"
       aria-label={ui.stateTree}
       data-testid="debug-chat-tree"
-      data-mode={floating ? "floating" : "layer"}
-      data-fit={floating ? undefined : treeFit.mode}
-      // Expanded and squeezed out above the log: over it, at the visible top.
-      style={
-        !floating && treeFit.mode === "overlay"
-          ? { position: "absolute", left: 0, right: 0, top: treeFit.top }
-          : undefined
-      }
-      // Expanded it is a panel: it takes the taps and scrolls (never the page
-      // under it). Minimized it stays click-through, as the floating lines.
-      className={`relative flex w-full min-w-0 max-w-full flex-row-reverse items-start transition-opacity duration-[180ms] starting:opacity-0 motion-reduce:transition-none ${floating ? "pointer-events-none" : "pointer-events-auto z-20 shrink-0"}`}
+      data-mode={floating ? "floating" : "log"}
+      // Expanded it takes the taps and scrolls (never the page under it).
+      // Minimized it stays click-through, as the floating lines.
+      className={`relative flex w-full min-w-0 max-w-full flex-row-reverse items-start transition-opacity duration-[180ms] starting:opacity-0 motion-reduce:transition-none ${floating ? "pointer-events-none" : "pointer-events-auto shrink-0"}`}
     >
       <button
         type="button"
@@ -2061,12 +1994,11 @@ export function DebugChat({
         }}
         data-testid="debug-chat-tree-body"
         onScroll={onTreeScroll}
-        {...fitBody(
-          withClass(
-            logSurface({ expanded: !floating || typing || micActive || treeTall, fade: treeFade }),
-            `min-w-0 flex-1 ${floating && treeTall ? "h-[30vh]" : ""}`,
-          ),
-          floating,
+        {...withClass(
+          // Expanded: the log's surface at its open height (the log's box).
+          logSurface({ expanded: !floating || typing || micActive || treeTall, fade: treeFade }),
+          // Expanded: the log's box at its open height (30vh), whatever it holds.
+          `min-w-0 flex-1 ${!floating || treeTall ? "h-[30vh]" : ""}`,
         )}
       >
         {treeContent}
@@ -2460,9 +2392,9 @@ export function DebugChat({
           />,
           document.body,
         )}
-      {/* Expanded: the state tree, its own layer right above the log. */}
+      {/* Expanded, one or the other in the log's slot: the state tree, or the log. */}
       {open && tree && treePanel(false)}
-      {/* The log: the messages, the newest at the bottom. Hidden minimized. */}
+      {/* The log: the messages, the newest at the bottom. Hidden minimized, and while the tree has its place. */}
       <div
         ref={log}
         data-testid="debug-chat-column"
@@ -2475,7 +2407,7 @@ export function DebugChat({
         }}
         data-fade={fade || undefined}
         data-expanded={typing || undefined}
-        hidden={!open}
+        hidden={!open || tree}
         onTransitionEnd={(e) => {
           if (e.target !== e.currentTarget) return;
           // The full-screen log's wipe out ended: back to its resting height.

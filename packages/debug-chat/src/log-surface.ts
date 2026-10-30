@@ -213,36 +213,3 @@ export function anchorScrollTop(d: {
   const want = d.scrollTop + (d.after - target);
   return Math.max(0, Math.min(Math.max(0, d.maxScroll), Math.round(want)));
 }
-
-/** The expanded tree panel's height when there is room: this share of the screen. */
-export const TREE_PANEL_SHARE = 0.4;
-/** Shorter than this, the panel is not squeezed in above the log: it overlays it. */
-export const TREE_PANEL_MIN_PX = 120;
-
-/**
- * Where the expanded tree panel goes, always inside the visible area: in the
- * flow right above the log (its bottom there) at `want` px, shortened to the
- * room up to the visible top (the notch, a keyboard pan); with less than
- * TREE_PANEL_MIN_PX of room (a tall or full-screen log, the keyboard up), an
- * overlay at the visible top instead, as tall as fits.
- */
-export function fitTreePanel(d: {
-  /** Where the panel's bottom sits in the flow (the log's top), viewport px. */
-  flowBottom: number;
-  /** The visible area, less the notch: top and bottom, viewport px. */
-  visibleTop: number;
-  visibleBottom: number;
-  want: number;
-  gap?: number;
-}): { mode: "flow"; height: number } | { mode: "overlay"; top: number; height: number } {
-  const g = d.gap ?? FULL_LOG_GAP_PX;
-  const top = d.visibleTop + g;
-  const room = d.flowBottom - top;
-  if (room >= d.want) return { mode: "flow", height: Math.round(d.want) };
-  if (room >= TREE_PANEL_MIN_PX) return { mode: "flow", height: Math.round(room) };
-  return {
-    mode: "overlay",
-    top: Math.round(top),
-    height: Math.round(Math.max(0, Math.min(d.want, d.visibleBottom - g - top))),
-  };
-}
