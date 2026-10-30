@@ -22,16 +22,27 @@ silently eat uncommitted work.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on PRs and pushes to `main`: two jobs —
-`Typecheck + unit` and `qa:all (D1/Workers)` (`bun run qa:all`). Node 24 (for
-`node:sqlite`); wrangler runs D1 locally, so no Cloudflare secrets are needed.
+`.github/workflows/ci.yml` runs on PRs and pushes to `main`: one job,
+`Typecheck + unit` (oxlint + `oxfmt --check`, typecheck, unit tests with
+coverage, ~20 s). It is the only required check, and the only thing main's
+deploy waits for. When it fails on a push to `main` it posts to Slack #lianki.
 
-The `pre-push` hook runs the same `qa:all` before anything leaves the machine, so
-a `--no-verify` skip only defers the failure. It skips automatically for
+The integration gate, `qa:all (D1/Workers)` (`bun run qa:all` plus the
+extension smoke test, ~4 min), runs **nightly** on main at 03:00 JST in
+`.github/workflows/nightly-qa.yml` (or by hand: `gh workflow run nightly-qa.yml
+-R snolab/lianki`), and posts to #lianki when it fails. It left the per-push CI
+on 2026-10-31 so a deploy no longer waits for it. Node 24 (for `node:sqlite`);
+wrangler runs D1 locally, so no Cloudflare secrets are needed. Both alerts need
+the repo secret `SLACK_WEBHOOK_URL` (`scripts/ci/slack-alert.sh`); without it
+they only leave a workflow warning.
+
+The `pre-push` hook runs `bun run lint`, typecheck and the same `qa:all` on every
+pushed commit, so it is the per-change integration gate and a `--no-verify` skip
+lets a broken commit reach main until the nightly run. It skips automatically for
 deletion-only pushes, and on **native Windows** (Git Bash), where the OpenNext
 Cloudflare packaging cannot produce a working Worker (symlink copy errors with
 bun's isolated linker, `ChunkLoadError` on every route with a hoisted install;
-verified 2026-10-14). There CI is the only gate; `LIANKI_QA_ON_WINDOWS=1` forces
+verified 2026-10-14). There the nightly run is the only integration gate; `LIANKI_QA_ON_WINDOWS=1` forces
 the local run, for example to re-test after an OpenNext upgrade. WSL counts as
 Linux and runs the gate normally.
 
@@ -39,10 +50,17 @@ Linux and runs the gate normally.
 
 Don't confuse them when debugging a rejected push:
 
-- *Classic branch protection* holds the required checks (`Typecheck + unit`,
-  `qa:all (D1/Workers)`), `strict: false`, `enforce_admins: true`, and **no**
+- *Classic branch protection* holds the required check (`Typecheck + unit`
+  only, since qa:all went nightly on 2026-10-31), `strict: true`,
+  `enforce_admins: true`, and **no**
   required PR reviews. Read it with
   `gh api repos/snolab/lianki/branches/main/protection`.
+  `strict: true` ("require branches to be up to date") is there because two
+  PRs, each green against an older main, were squashed together and broke
+  main's typecheck (#342 + #344, fixed in #347): a PR must now re-run the
+  check on top of the current main before it merges. The check is ~20 s, so
+  the cost is small; auto-merge PRs still need `gh pr update-branch <N>` (or a
+  rebase) when main moves under them.
 - *Ruleset `cipass`* (id 13053938) blocks deletion, force-push, and non-linear
   history. Read it with `gh api repos/snolab/lianki/rulesets/13053938`.
 - Emergency override:

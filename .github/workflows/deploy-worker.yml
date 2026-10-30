@@ -7,7 +7,9 @@ name: Deploy Worker
 # which failed the differential gate for reasons that had nothing to do with
 # the Workers runtime. See docs/cf-d1-migration.md.
 #
-# Runs only after CI passes on main — never deploys a red commit.
+# Runs only after CI passes on main — never deploys a red commit. CI is the
+# fast `Typecheck + unit` job only; qa:all runs nightly (nightly-qa.yml) and
+# in the pre-push hook, so the deploy does not wait ~4 min for it.
 on:
   workflow_run:
     workflows: [CI]
