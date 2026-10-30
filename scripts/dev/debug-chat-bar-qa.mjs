@@ -728,6 +728,46 @@ try {
     await ctx.close();
   }
 
+  // Regression (Android, 2026-10-31, animations off): entering and leaving
+  // the full-screen log from the empty input never shows a blank list.
+  {
+    const { ctx, page } = await open("?open&notree");
+    await page.evaluate(() => {
+      document.documentElement.dataset.motion = "off";
+      const s = document.createElement("style");
+      s.textContent =
+        'html[data-motion="off"] * { transition-duration: 0s !important; transition-delay: 0s !important; }';
+      document.head.append(s);
+      for (let i = 0; i < 40; i++) window.__push(`line ${i + 1}`, i % 2 ? "owner" : "agent");
+      window.__frames = [];
+      const tick = () => {
+        const c = document.querySelector('[data-testid="debug-chat-column"]');
+        const v = c.getBoundingClientRect();
+        const shown = [...c.querySelectorAll("[data-testid=debug-chat-line]")].some((r) => {
+          const b = r.getBoundingClientRect();
+          return b.bottom > v.top && b.top < v.bottom;
+        });
+        window.__frames.push(Number(getComputedStyle(c).opacity) >= 0.5 && shown);
+        if (window.__frames.length < 120) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    const b = await page.locator('[data-testid="debug-chat-input"]').boundingBox();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 - 12);
+    await page.waitForTimeout(400);
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+    const frames = await page.evaluate(() => window.__frames);
+    const blank = frames.filter((ok) => !ok).length;
+    check(
+      blank === 0,
+      `animations off: no blank frame in or out of the full-screen log (${blank}/${frames.length})`,
+    );
+    await ctx.close();
+  }
+
   // Regression (iPhone, 1761627): with the history capped (same length every
   // time) and skewed timestamps, every new line while minimized still floats.
   {
