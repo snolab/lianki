@@ -1148,6 +1148,32 @@ try {
           (await mrows.nth(0).locator('[data-cords="loose"]').count()) === 1,
         `${tag} the tapped slip is the one loose slip`,
       );
+      // Visual: the loose cords hang at the slip's two edges, with animations
+      // on and off ("Disable animations" sets html[data-motion=off], which
+      // zeroes every animation-duration: B's scroll-driven .slip-pin then
+      // sat on its last keyframe and hung the cords 2a into the slip).
+      for (const motion of ["on", "off"]) {
+        const cords = await mrows.nth(0).evaluate(async (row, motion) => {
+          if (motion === "off") document.documentElement.dataset.motion = "off";
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          const rb = row.getBoundingClientRect();
+          const paths = [...row.querySelectorAll('[data-cords="loose"] path')].map((p) => {
+            const b = p.getBoundingClientRect();
+            return [Math.round(b.left - rb.left), Math.round(rb.right - b.right)];
+          });
+          return paths;
+        }, motion);
+        await shot(m, `cords-${variant}-motion-${motion}`);
+        check(
+          cords.length === 2 &&
+            cords[0][0] >= 0 &&
+            cords[0][0] <= 12 &&
+            cords[1][1] >= 0 &&
+            cords[1][1] <= 12,
+          `${tag} the loose cords hang at the slip's edges, animations ${motion} (${JSON.stringify(cords)})`,
+        );
+      }
+      await m.evaluate(() => delete document.documentElement.dataset.motion);
       // A double tap opens the slip's other actions in a sheet; it does not
       // change what the slip shows.
       await m.waitForTimeout(400); // not part of the tap above

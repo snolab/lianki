@@ -303,6 +303,14 @@ ruby rt {
     animation: slip-pin linear both;
     animation-timeline: --slip-x;
   }
+  /* Not motion but position: the pin follows the finger's scroll. The app's
+   * "no animations" rule (html[data-motion="off"] *, below) zeroes every
+   * animation-duration, and a 0s scroll-driven animation sits on its last
+   * keyframe — the loose cords hung 2a (88px) into the slip, on a
+   * motion-off phone (the owner, 2026-10-31). */
+  html[data-motion="off"] .slip-pin {
+    animation-duration: auto !important;
+  }
 }
 @keyframes slip-pin {
   from {
