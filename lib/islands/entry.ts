@@ -12,6 +12,8 @@ import { SwipeCue } from "@/lib/words/islands/SwipeCue";
 import { SwipeGrades } from "@/lib/words/islands/SwipeGrades";
 import { SwipeFeelSource } from "@/lib/words/islands/SwipeFeelSource";
 import { SwipeTuner } from "@/lib/words/islands/SwipeTuner";
+import { BottomNav } from "@/app/components/nav/BottomNav";
+import { NavDrawerExtra } from "@/app/components/nav/NavDrawerExtra";
 import { ISLAND_VERSIONS, type IslandsExport } from "./contract";
 import { ISLANDS_API } from "./rules";
 
@@ -22,6 +24,8 @@ export const islands = {
   "words.swipeGrades": SwipeGrades,
   "words.swipeFeel": SwipeFeelSource,
   "words.swipeTuner": SwipeTuner,
+  "nav.bottom": BottomNav,
+  "nav.drawer": NavDrawerExtra,
 } satisfies IslandsExport;
 
 export const versions = ISLAND_VERSIONS;

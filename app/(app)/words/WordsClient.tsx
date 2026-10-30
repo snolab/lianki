@@ -1,5 +1,8 @@
 "use client";
 
+import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
+import { shouldAdvance } from "@/lib/words/advance";
+import { progressPercent } from "@/lib/words/progress";
 import { voiceQuality } from "@lianki/debug-chat/wire";
 import {
   startTransition,
@@ -883,6 +886,25 @@ function useSpeech(serverVoice = false) {
   const stop = sequencer.stop;
 
   /**
+   * A long-press reading: `parts` on a loop while the finger is down. It
+   * outranks what a swipe or a focus change says (`once(…, { yieldToHold })`):
+   * those are skipped while it plays. Only a tap or another long press cuts it.
+   */
+  const hold = useCallback(
+    (parts: SayPart[]) => {
+      warm(parts);
+      sequencer.play(
+        parts.filter((p) => p.text),
+        { loop: true, tag: "hold" },
+      );
+    },
+    [sequencer, warm],
+  );
+
+  /** The finger lifted: the long-press reading plays its current pass to the end, then stops. */
+  const release = sequencer.finish;
+
+  /**
    * Say `parts` in turn (word, meaning, example), pause, repeat — until the
    * next call; an empty list just stops.
    */
@@ -902,9 +924,13 @@ function useSpeech(serverVoice = false) {
     [on, sequencer, stop, warm],
   );
 
-  /** Say `parts` once, back to back, now — interrupting whatever was playing. */
+  /**
+   * Say `parts` once, back to back, now — interrupting whatever was playing,
+   * unless `yieldToHold` and a long-press reading is playing: then nothing.
+   */
   const once = useCallback(
-    (parts: SayPart[], force = false) => {
+    (parts: SayPart[], force = false, opts: { yieldToHold?: boolean } = {}) => {
+      if (opts.yieldToHold && sequencer.playing() === "hold") return;
       if (!on && !force) return stop();
       warm(parts);
       sequencer.play(parts.filter((p) => p.text));
@@ -941,8 +967,8 @@ function useSpeech(serverVoice = false) {
   }, [stop]);
 
   return useMemo(
-    () => ({ available, on, loop, once, toggle, prefetch, stock }),
-    [available, on, loop, once, toggle, prefetch, stock],
+    () => ({ available, on, loop, once, hold, release, toggle, prefetch, stock }),
+    [available, on, loop, once, hold, release, toggle, prefetch, stock],
   );
 }
 
@@ -994,7 +1020,7 @@ function Glance({
   }, [active, children, title]);
   useEffect(() => {
     const i = inner.current;
-    if (!over || !i || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!over || !i || motionOff()) return;
     const move = moveSeconds(over, GLANCE_ACCEL);
     const total = GLANCE_HOLD_START + move + GLANCE_HOLD_END + move;
     const at = (s: number) => s / total;
@@ -1473,7 +1499,64 @@ async function downloadForOffline(
 const INDENT = 24;
 
 /** Sums over a row and everything below it. */
-type Totals = { due: number; learning: number; mastered: number; cards: number; total: number };
+type Totals = {
+  due: number;
+  learning: number;
+  mastered: number;
+  cards: number;
+  total: number;
+  /** Progress scores summed (lib/words/progress.ts). */
+  progress: number;
+};
+
+/**
+ * How far a list (a group: its whole subtree) has come, as a thin ring and a
+ * percentage: the mean of its words' scores, each by how near its stability
+ * is to a year (lib/words/progress.ts). Nothing while the list's size is unknown.
+ */
+function ProgressRing({ progress, total }: { progress: number; total: number }) {
+  const text = useIntlayer("words-page");
+  const { locale } = useLocale();
+  const pct = progressPercent(progress, total);
+  if (pct === null) return null;
+  const label = fill(text.progressTitle.value, { pct, total });
+  const shown = new Intl.NumberFormat(String(locale), { style: "percent" }).format(pct / 100);
+  // r = 8 in a 20×20 box: the circumference, for the dash.
+  const c = 2 * Math.PI * 8;
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums"
+      title={label}
+      aria-label={label}
+      role="img"
+      data-progress={pct}
+    >
+      <svg viewBox="0 0 20 20" className="h-5 w-5 -rotate-90" aria-hidden>
+        <circle
+          cx="10"
+          cy="10"
+          r="8"
+          fill="none"
+          strokeWidth="2.5"
+          className="stroke-[oklch(0.5_0_0/0.18)] dark:stroke-[oklch(0.8_0_0/0.18)]"
+        />
+        {pct > 0 && (
+          <circle
+            cx="10"
+            cy="10"
+            r="8"
+            fill="none"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeDasharray={`${(c * pct) / 100} ${c}`}
+            className="stroke-[oklch(0.58_0.14_155)] dark:stroke-[oklch(0.76_0.14_155)]"
+          />
+        )}
+      </svg>
+      <span className="min-w-[2.6em] text-end opacity-80">{shown}</span>
+    </span>
+  );
+}
 
 /** One row of the picker tree: a list or a group, draggable by its ⠿ handle. */
 function SortableListRow({
@@ -1562,6 +1645,7 @@ function SortableListRow({
           })}
         </div>
       </button>
+      <ProgressRing progress={totals.progress} total={totals.total} />
       <button
         className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
         onClick={() => onOpen(l.id)}
@@ -1675,6 +1759,7 @@ function ListPicker({
       due: l.due,
       learning: l.learning,
       mastered: l.mastered,
+      progress: l.progress ?? 0,
       cards: l.cards,
       total: catalog.find((c) => c.id === l.source)?.count ?? 0,
     });
@@ -1686,6 +1771,7 @@ function ListPicker({
         sum.due += d.due;
         sum.learning += d.learning;
         sum.mastered += d.mastered;
+        sum.progress += d.progress;
         sum.cards += d.cards;
         sum.total += d.total;
       }
@@ -2031,6 +2117,8 @@ function Study({
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
   }, [touch]);
+  /** "Turn off animations": this device's, app-wide; the system's until set (lib/motion-pref.ts). */
+  const animationsOff = useMotionOff();
   /** Read with the server's voice instead of the browser's. Remembered. */
   const [serverVoice, setServerVoice] = usePref("lk:words-server-voice", true);
   const speech = useSpeech(serverVoice);
@@ -2040,6 +2128,12 @@ function Study({
     (it: Item) => sayParts(it, it.lang, !!config.readingOnBack, String(locale)),
     [config.readingOnBack, locale],
   );
+  /** A word's tags, for the double-tap sheet: its list and the list's level (JLPT, CEFR…). */
+  const tagsOf = (it: Item): string[] => {
+    const list = lists.find((l) => l.id === it.listId);
+    const meta = list && catalog.find((c) => c.id === list.source);
+    return [list?.name, meta?.level].filter((t): t is string => !!t);
+  };
   const base = config.base;
   const listIds = lists.map((l) => l.id).join(",");
   const paramsOf = useMemo(() => new Map(lists.map((l) => [l.id, l.params])), [lists]);
@@ -2378,8 +2472,9 @@ function Study({
       else if (e.code === "KeyV") speech.toggle();
       else if (e.code === "KeyE") setShowAll((v) => !v);
       else if (KEY_RATING[e.code] && !e.shiftKey) {
+        const advance = shouldAdvance(grades, row);
         grade(row, KEY_RATING[e.code]);
-        moveRow(row + 1);
+        if (advance) moveRow(row + 1);
       } else return;
       e.preventDefault();
     };
@@ -2615,7 +2710,12 @@ function Study({
   useEffect(() => {
     if (!touch || !active || holding !== null || !focusItem) return;
     if (quietFocus.current === focusLine) return void (quietFocus.current = null);
-    speech.once([{ kind: "word", text: focusText, lang: focusItem.lang }]);
+    // With every meaning shown, the back is read too: word → meaning → example.
+    speech.once(
+      showAll ? partsOf(focusItem) : [{ kind: "word", text: focusText, lang: focusItem.lang }],
+      false,
+      { yieldToHold: true },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [touch, focusLine, focusText]);
 
@@ -2814,7 +2914,7 @@ function Study({
     // caught up in jumps.
     glideSplit.current = split;
     if (glideRaf.current) return;
-    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduce = motionOff();
     /** One spring step of a column toward its goal; true once it has settled. */
     const glide = (
       goal: number,
@@ -3034,6 +3134,12 @@ function Study({
                 hint={text.fullScreenHint.value}
               />
             )}
+            <TogglePill
+              on={animationsOff}
+              onChange={setMotionOff}
+              label={text.animationsOff.value}
+              hint={text.animationsOffHint.value}
+            />
             <div className="w-full pt-1" data-experimental>
               <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
                 {text.experimental}
@@ -3213,31 +3319,48 @@ function Study({
                       quietFocus.current = i;
                       startTransition(() => setFocusLine(i));
                     }
+                    // The word, or with every meaning shown the whole card. Never
+                    // over a long-press reading: that one plays on through the swipe.
                     if (swipeSpeak)
-                      speech.once([
-                        {
-                          kind: "word",
-                          text: spokenText(it, it.lang, !!config.readingOnBack),
-                          lang: it.lang,
-                        },
-                      ]);
+                      speech.once(
+                        showAll
+                          ? partsOf(it)
+                          : [
+                              {
+                                kind: "word",
+                                text: spokenText(it, it.lang, !!config.readingOnBack),
+                                lang: it.lang,
+                              },
+                            ],
+                        false,
+                        { yieldToHold: true },
+                      );
                   }}
                   onHold={() => {
                     setHolding(i);
-                    speech.loop(partsOf(it), true);
+                    speech.hold(partsOf(it));
                   }}
                   onHoldEnd={() => {
                     setHolding(null);
-                    speech.loop([]);
+                    // Not cut on lifting: the pass in progress reads to its end,
+                    // through a swipe that follows.
+                    speech.release();
                   }}
                   onSwipe={(r) => {
+                    // Auto-advance is for a card met for the first time: editing
+                    // a grade already given stays on that card (the owner, 2026-10-30).
+                    const advance = shouldAdvance(grades, i);
                     // The slip glides home meanwhile: the grade's re-render can wait.
                     startTransition(() => {
                       grade(i, r);
-                      if (touch) setFocusLine(Math.min(queue.length - 1, i + 1));
+                      if (touch && advance) setFocusLine(Math.min(queue.length - 1, i + 1));
                     });
                     // The next word slides up under the thumb.
-                    listRef.current?.scrollBy({ top: ROW_H, behavior: "smooth" });
+                    if (advance)
+                      listRef.current?.scrollBy({
+                        top: ROW_H,
+                        behavior: motionOff() ? "auto" : "smooth",
+                      });
                   }}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none ${
                     touch
@@ -3272,18 +3395,48 @@ function Study({
                       <span className="ml-2 text-xs font-normal opacity-60">{it.reading}</span>
                     )}
                   </Glance>
-                  <Glance
-                    active={glancing && show}
-                    title={show ? it.back : undefined}
-                    className={`text-sm opacity-80 transition-[filter] duration-75 ${
-                      show ? "" : "slip-blank"
-                    }`}
-                  >
-                    {config.readingOnBack && it.reading && it.reading !== it.term && (
-                      <span className="mr-2 font-medium">{it.reading}</span>
-                    )}
-                    {it.back}
-                  </Glance>
+                  {(() => {
+                    const meaning = (
+                      <Glance
+                        active={glancing && show}
+                        title={show ? it.back : undefined}
+                        className={`text-sm opacity-80 transition-[filter] duration-75 ${
+                          touch ? "block min-w-0" : ""
+                        } ${show ? "" : "slip-blank"}`}
+                      >
+                        {config.readingOnBack && it.reading && it.reading !== it.term && (
+                          <span className="mr-2 font-medium">{it.reading}</span>
+                        )}
+                        {it.back}
+                      </Glance>
+                    );
+                    if (!touch || !it.ex) return meaning;
+                    // Phones: one row is the whole card — the front, then everything
+                    // on the back (meaning, then example), as "Show all meanings"
+                    // shows and reads it. Two lines in the row's fixed height (one
+                    // line on a wider screen), so the windowing stays exact.
+                    // Tags (level, list) are only in the double-tap sheet.
+                    return (
+                      <span
+                        className="flex min-w-0 flex-col justify-center gap-1 sm:flex-row sm:items-baseline sm:gap-3"
+                        data-row-back
+                      >
+                        {meaning}
+                        <Glance
+                          active={glancing && show}
+                          title={show ? `${it.ex}\n${it.exTr ?? ""}` : undefined}
+                          className={`block min-w-0 text-xs opacity-60 transition-[filter] duration-75 sm:flex-1 ${
+                            show ? "" : "slip-blank"
+                          }`}
+                        >
+                          <span lang={it.lang} data-row-example>
+                            {it.ex}
+                          </span>
+                          {it.exTr && <span className="ml-2 opacity-80">{it.exTr}</span>}
+                        </Glance>
+                      </span>
+                    );
+                  })()}
                   {hasExamples && !touch && (
                     // The example is part of the answer side: hidden with the meaning.
                     <Glance
@@ -3317,6 +3470,7 @@ function Study({
           {sheet !== null && queue[sheet] && (
             <SlipSheet
               item={queue[sheet]}
+              tags={tagsOf(queue[sheet])}
               status={status(queue[sheet], sheet)}
               onClose={() => setSheet(null)}
               onListen={() => {
@@ -3358,12 +3512,15 @@ function Study({
  */
 function SlipSheet({
   item,
+  tags,
   status,
   onClose,
   onListen,
   onCopy,
 }: {
   item: Item;
+  /** The word's tags (its list, the list's level): shown here only, never in the row. */
+  tags: string[];
   status: React.ReactNode;
   onClose: () => void;
   onListen: () => void;
@@ -3398,7 +3555,19 @@ function SlipSheet({
           <span className="truncate opacity-70">{item.back}</span>
           <small className="ml-auto shrink-0 text-xs opacity-60">{status}</small>
         </div>
-        {/* Phones have no example column: the sheet is where the example shows. */}
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-1 pt-2" data-sheet-tags>
+            {tags.map((t) => (
+              <span
+                key={t}
+                className="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5 text-xs opacity-80"
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
+        {/* The row shows the example too; here it is in full. */}
         {item.ex && (
           <div
             className="border-b border-black/10 dark:border-white/10 px-1 py-3"
@@ -3462,7 +3631,7 @@ function SlipCords({
     const from = slack.current;
     const to = loose ? 1 : 0;
     const t0 = performance.now();
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const still = motionOff();
     let raf = 0;
     const frame = (now: number) => {
       const c0 = swipePerf.on ? performance.now() : 0;

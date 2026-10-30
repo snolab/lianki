@@ -87,7 +87,6 @@ renders those children. Islands never import each other.
 | snap (level hold)                | 0.9                | 0.9                      |
 | stretch / rubberBand past 2a     | 0.3 linear / 0     | — / 0.45 (eases to 2.5a) |
 | flingCarry / friction / maxFling | 0 / 0 / 0          | 0.55 / 7 s⁻¹ / 2200 px/s |
-| rotatePerPx                      | 0                  | 0.012 °/px               |
 | lift / liftMs                    | 0 / 0              | 1 / 140 ms               |
 | nativeRelease                    | false              | true                     |
 
@@ -95,7 +94,7 @@ On "light", the swipe is the one that shipped. The release is the critically
 damped spring at ω = 30, the same as the old `SWIPE_SPRING`.
 
 On "heavy", the slip trails the finger a little. Past the last level it
-eases into a rubber band, and it tilts slightly. When you lift your finger,
+eases into a rubber band. It never tilts: the slip only translates. When you lift your finger,
 part of the finger's speed carries the slip on under friction, slowing
 down. Then a heavier spring brings it home, with one faint overshoot under
 1% of the travel.
@@ -104,9 +103,9 @@ For the New swipe (native scrolling), `nativeRelease` stops the browser's
 own coast and snap when the finger lifts. The slip then follows the same
 release path, written to `scrollLeft`. The grade is decided at the lift,
 with `releaseRating`'s tiers. The drag itself stays the browser's, so it
-follows the finger 1:1, with no lag, tilt or rubber band.
+follows the finger 1:1, with no lag or rubber band.
 
-`prefers-reduced-motion`: there is no lag, no tilt and no coast, and the
+`prefers-reduced-motion`: there is no lag and no coast, and the
 lift appears without a transition. The slip goes home at once, and grades
 the same.
 

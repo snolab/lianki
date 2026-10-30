@@ -72,6 +72,15 @@ procedure, and the cutover scripts are in
 [docs/cf-d1-migration.md](docs/cf-d1-migration.md). `dev.lianki.com` is
 unrelated — a Cloudflare tunnel to the local userscript dev server.
 
+## i18n: never translate a string without its context
+
+UI strings are intlayer `*.content.ts` files, 16 locales. Never send a short
+string (a setting name, menu item, button, logo text) to translation on its
+own: each key carries a context line — where it appears, what it is for, how
+it is used — and is translated together with it. New keys get their line in
+the same change; translators read it before every string. How:
+[docs/i18n.md](docs/i18n.md).
+
 ## Report progress to the state tree
 
 While working on Lianki, report to the live state tree
@@ -103,6 +112,7 @@ that are expensive to rediscover.
 | The /words swipe: headless core, UI islands, feel presets     | [docs/swipe-core.md](docs/swipe-core.md)                            |
 | UI state: what is kept where (session, local, URL, server)    | [docs/ui-state.md](docs/ui-state.md)                                |
 | Screenshots of the owner's phone page (`scripts/dev/shot.ts`) | [docs/dev-debug-widget.md](docs/dev-debug-widget.md), "Screenshots" |
+| UI strings, translations: every key carries context           | [docs/i18n.md](docs/i18n.md)                                        |
 | Blog posts                                                    | [blog/AGENTS.md](blog/AGENTS.md)                                    |
 | The Chrome extension, and publishing it                       | [packages/ext/README.md](packages/ext/README.md)                    |
 | Sync/offline architecture                                     | [docs/sync-architecture.md](docs/sync-architecture.md)              |
@@ -111,4 +121,4 @@ that are expensive to rediscover.
 | Payments, Pro passes, Stripe, invites, gift codes             | [docs/payments.md](docs/payments.md)                                |
 | Security measures: admin gate, lockout, scans, card testing   | [docs/security-measures.md](docs/security-measures.md)              |
 | UI layout: content fills the screen, glass overlays           | [docs/design-principles.md](docs/design-principles.md)              |
-| Study plan, built-in calendar, Google Calendar (design)       | [docs/calendar-plan.md](docs/calendar-plan.md)                      |
+| Node tree, study plan, calendar, Google Calendar (design)     | [docs/calendar-plan.md](docs/calendar-plan.md)                      |
