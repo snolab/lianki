@@ -732,6 +732,73 @@ try {
     await ctx.close();
   }
 
+  // Regression (Android, 2026-10-31, 02:16 and after): the expanded tree is
+  // inside the visible area and over 100px tall with a long log, with the
+  // keyboard up (a stubbed visualViewport), and in the full-screen log.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 461, height: 902 } });
+    await ctx.addInitScript((src) => {
+      localStorage.setItem("lk:debug-widget-src", src);
+      const vv = new EventTarget();
+      Object.assign(vv, {
+        offsetTop: 0,
+        offsetLeft: 0,
+        height: innerHeight,
+        width: innerWidth,
+        scale: 1,
+      });
+      Object.defineProperty(window, "visualViewport", { get: () => vv, configurable: true });
+      window.__kb = (height) => {
+        Object.assign(vv, { height });
+        vv.dispatchEvent(new Event("resize"));
+      };
+    }, `${ORIGIN}/debug-chat.js`);
+    const page = await ctx.newPage();
+    await page.goto(`${ORIGIN}/harness?open`);
+    await page.waitForSelector("[data-debug-widget] [data-debug-chat]", { timeout: 30_000 });
+    await page.evaluate(() => {
+      for (let i = 0; i < 120; i++) window.__push(`line ${i + 1}`, i % 2 ? "owner" : "agent");
+    });
+    const inView = () =>
+      page.evaluate(() => {
+        const r = document.querySelector('[data-testid="debug-chat-tree"]').getBoundingClientRect();
+        const vv = window.visualViewport;
+        return {
+          ok:
+            r.top >= vv.offsetTop - 0.5 &&
+            r.bottom <= vv.offsetTop + vv.height + 0.5 &&
+            r.height > 100,
+          top: Math.round(r.top),
+          bottom: Math.round(r.bottom),
+          h: Math.round(r.height),
+          visible: Math.round(vv.height),
+        };
+      });
+    await page.click('[data-testid="debug-chat-tree-button"]');
+    await page.waitForTimeout(300);
+    let r = await inView();
+    check(r.ok, `tree on screen, long log (${JSON.stringify(r)})`);
+    await page.click('[data-testid="debug-chat-input"]');
+    await page.evaluate(() => window.__kb(480));
+    await page.waitForTimeout(400);
+    r = await inView();
+    check(r.ok, `tree on screen with the keyboard up (${JSON.stringify(r)})`);
+    await page.evaluate(() => {
+      window.__kb(902);
+      document.activeElement?.blur();
+    });
+    await page.waitForTimeout(300);
+    const b = await page.locator('[data-testid="debug-chat-input"]').boundingBox();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 - 12);
+    await page.waitForTimeout(400);
+    r = await inView();
+    check(r.ok, `tree on screen in the full-screen log (${JSON.stringify(r)})`);
+    await page.mouse.up();
+    await ctx.close();
+  }
+
   // Regression (Android, 2026-10-31, animations off): entering and leaving
   // the full-screen log from the empty input never shows a blank list.
   {

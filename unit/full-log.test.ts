@@ -10,6 +10,7 @@ import {
   snapAxis,
   anchorScrollTop,
   fullLogPad,
+  fitTreePanel,
   pickAnchor,
 } from "@lianki/debug-chat/log-surface";
 
@@ -147,5 +148,38 @@ describe("keeping the line being read in place (pickAnchor, anchorScrollTop, ful
 
   it("fullLogPad: 0.45 of the height above the first line and below the last", () => {
     expect(fullLogPad(800)).toBe(360);
+  });
+});
+
+describe("fitTreePanel (the expanded tree, always inside the visible area)", () => {
+  it("room above the log: its full height, in the flow", () => {
+    expect(fitTreePanel({ flowBottom: 784, visibleTop: 0, visibleBottom: 902, want: 361 })).toEqual(
+      {
+        mode: "flow",
+        height: 361,
+      },
+    );
+  });
+  it("less room (keyboard up, a tall log): shortened to reach the visible top", () => {
+    expect(fitTreePanel({ flowBottom: 161, visibleTop: 0, visibleBottom: 480, want: 361 })).toEqual(
+      {
+        mode: "flow",
+        height: 153,
+      },
+    );
+    // Below the notch.
+    expect(
+      fitTreePanel({ flowBottom: 400, visibleTop: 47, visibleBottom: 902, want: 361 }),
+    ).toEqual({ mode: "flow", height: 345 });
+  });
+  it("hardly any room: an overlay at the visible top, as tall as fits", () => {
+    expect(fitTreePanel({ flowBottom: 60, visibleTop: 0, visibleBottom: 480, want: 361 })).toEqual({
+      mode: "overlay",
+      top: 8,
+      height: 361,
+    });
+    expect(
+      fitTreePanel({ flowBottom: 60, visibleTop: 100, visibleBottom: 300, want: 361 }),
+    ).toEqual({ mode: "overlay", top: 108, height: 184 });
   });
 });
