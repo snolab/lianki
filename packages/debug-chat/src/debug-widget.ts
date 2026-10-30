@@ -101,6 +101,8 @@ export function hotTreeSource(src: URL, fallback?: string, deps = browserDeps())
   return {
     subscribe(onUpdate, onError) {
       let alive = true;
+      /** The last load failed: the next event (the stream (re)opening) tries again. */
+      let failed = false;
       const get = async (url: string) => {
         const r = await deps.fetch(url, { cache: "no-store", credentials: "same-origin" });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -109,8 +111,10 @@ export function hotTreeSource(src: URL, fallback?: string, deps = browserDeps())
       const load = async () => {
         try {
           const md = await get(treeUrl(src));
+          failed = false;
           if (alive) onUpdate(md, { live: true });
         } catch (e) {
+          failed = true;
           if (!fallback) return alive && onError?.(e);
           try {
             const md = await get(fallback);
@@ -123,6 +127,10 @@ export function hotTreeSource(src: URL, fallback?: string, deps = browserDeps())
       void load();
       const es = new deps.EventSource(eventsUrl(src));
       es.addEventListener("tree", () => void load());
+      // The dev server back (its stream reopened): a failed load is tried again.
+      es.addEventListener("open", () => {
+        if (failed) void load();
+      });
       return () => {
         alive = false;
         es.close();

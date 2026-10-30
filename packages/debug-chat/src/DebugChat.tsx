@@ -1887,11 +1887,13 @@ export function DebugChat({
         byId={navIx.byId}
         onNav={navTo}
         empty={treeStrings(treeText).empty}
+        // A tree already shown stays up through a later failed load: the
+        // error shows only while there is nothing to show.
         status={
-          treeData.error
-            ? `${treeStrings(treeText).failed} (${treeData.error})`
-            : treeData.root
-              ? undefined
+          treeData.root
+            ? undefined
+            : treeData.error
+              ? `${treeStrings(treeText).failed} (${treeData.error})`
               : treeStrings(treeText).loading
         }
       />

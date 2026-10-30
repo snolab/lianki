@@ -193,15 +193,26 @@ export function liveTreeSource(deps: LiveDeps): TreeSource {
         if (stopped || !base) return;
         onUpdate(overlayProgress(base, view.rows, { repo: deps.repo }).children, { live });
       };
-      Promise.resolve()
-        .then(deps.base)
-        .then(
-          (md) => {
-            base = parseTreeDoc(md, { repo: deps.repo });
-            push();
-          },
-          (e) => !stopped && onError?.(e),
-        );
+      /** The outline; a failed load is tried again on the next event (the socket opening, a wake). */
+      let loading = false;
+      const loadBase = () => {
+        if (base || loading || stopped) return;
+        loading = true;
+        Promise.resolve()
+          .then(deps.base)
+          .then(
+            (md) => {
+              loading = false;
+              base = parseTreeDoc(md, { repo: deps.repo });
+              push();
+            },
+            (e) => {
+              loading = false;
+              if (!stopped) onError?.(e);
+            },
+          );
+      };
+      loadBase();
       const connect = () => {
         if (retry !== undefined) cancel(retry);
         retry = undefined;
@@ -210,6 +221,7 @@ export function liveTreeSource(deps: LiveDeps): TreeSource {
         ws = sock;
         sock.onopen = () => {
           failures = 0;
+          loadBase();
         };
         sock.onmessage = (ev) => {
           const msg = parseProgressMessage(ev.data);
@@ -235,6 +247,7 @@ export function liveTreeSource(deps: LiveDeps): TreeSource {
         };
       };
       const off = wake(() => {
+        loadBase();
         if (ws) return;
         failures = 0;
         connect();
