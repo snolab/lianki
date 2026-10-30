@@ -391,6 +391,63 @@ function usePref(key: string, initial: boolean) {
 }
 
 /** A pill-shaped switch for the settings panel. */
+/**
+ * "Whisper mode: Auto / On / Off" for the debug chat's microphone
+ * (packages/debug-chat/src/adaptive.ts): localStorage lk:voice-whisper
+ * ("force" / "off" / unset = auto), on this device only (never synced). The
+ * mic reads it at every frame, so a change applies at once.
+ */
+const WHISPER_CHOICES = [
+  ["auto", "whisperAuto"],
+  ["force", "whisperOn"],
+  ["off", "whisperOff"],
+] as const;
+function WhisperModeSetting({
+  text,
+}: {
+  text: Record<
+    "whisperMode" | "whisperModeHint" | "whisperAuto" | "whisperOn" | "whisperOff",
+    { value: string }
+  >;
+}) {
+  const [mode, setMode] = useState<string>("auto");
+  useEffect(() => {
+    try {
+      setMode(localStorage.getItem("lk:voice-whisper") ?? "auto");
+    } catch {}
+  }, []);
+  const pick = (m: string) => {
+    setMode(m);
+    try {
+      if (m === "auto") localStorage.removeItem("lk:voice-whisper");
+      else localStorage.setItem("lk:voice-whisper", m);
+    } catch {}
+  };
+  return (
+    <div
+      role="radiogroup"
+      aria-label={text.whisperMode.value}
+      title={text.whisperModeHint.value}
+      data-whisper-mode={mode}
+      className="inline-flex items-center gap-1 rounded-full bg-black/5 py-1 pr-1 pl-3 text-xs dark:bg-white/10"
+    >
+      <span className="me-1 opacity-80">{text.whisperMode.value}</span>
+      {WHISPER_CHOICES.map(([m, k]) => (
+        <button
+          key={m}
+          type="button"
+          role="radio"
+          aria-checked={mode === m}
+          onClick={() => pick(m)}
+          className={`rounded-full px-2 py-0.5 ${mode === m ? "bg-emerald-500/20 font-semibold text-emerald-900 dark:text-emerald-100" : "opacity-70"}`}
+        >
+          {text[k].value}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function TogglePill({
   on,
   onChange,
@@ -3109,6 +3166,7 @@ function Study({
                 hint={text.serverVoiceHint.value}
               />
             )}
+            {debug && <WhisperModeSetting text={text} />}
             {speech.on && serverVoice && (
               <span className="w-full text-xs opacity-60" data-voice-credit>
                 {/* Credits: the voice names stay as their makers write them. */}
