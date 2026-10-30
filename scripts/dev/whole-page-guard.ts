@@ -265,3 +265,10 @@ export class Debouncer {
     }
   }
 }
+
+/** A publish that brings any of these needs `intlayer build` (next dev misses them). */
+export function needsIntlayerBuild(changedFiles: string[]): boolean {
+  return changedFiles.some(
+    (f) => /\.content\.(ts|tsx|js|mjs|json)$/.test(f) || f.startsWith("intlayer.config."),
+  );
+}

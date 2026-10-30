@@ -34,6 +34,11 @@ worktree directly, and four merges in three minutes, plus the ops lane's
 restarts, kept his page reloading. Merge only when a change is ready (not per
 commit), and never push `preview/live`.
 
+When a publish brings `*.content.ts` or `intlayer.config.*` changes, the
+server runs `bunx intlayer build` right after the fast-forward
+(`needsIntlayerBuild`). next dev did not rebuild the dictionaries for content
+that arrived by a merge, and the page threw until someone built them by hand.
+
 What next dev does with an update: an edit inside a React component file is
 a Fast Refresh, with no reload and state kept. An edit to a module that
 non-components import (`lib/*`, content dictionaries, intlayer rebuilds, route

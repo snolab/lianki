@@ -9,6 +9,7 @@ import {
   copyableKey,
   Debouncer,
   isBridgedPath,
+  needsIntlayerBuild,
   isHubPath,
   isLabPath,
   isPrivateLanHost,
@@ -274,5 +275,14 @@ describe("whole-page guard: bridged voice routes and publishing", () => {
     d.request();
     await Bun.sleep(100);
     expect(runs).toBe(2);
+  });
+});
+
+describe("whole-page guard: intlayer on publish", () => {
+  test("content files and the intlayer config trigger a dictionary build", () => {
+    expect(needsIntlayerBuild(["app/(app)/words/page.content.ts"])).toBe(true);
+    expect(needsIntlayerBuild(["intlayer.config.ts"])).toBe(true);
+    expect(needsIntlayerBuild(["app/(app)/words/page.tsx", "lib/x.ts", ""])).toBe(false);
+    expect(needsIntlayerBuild([])).toBe(false);
   });
 });

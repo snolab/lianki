@@ -40,6 +40,7 @@ import {
   GUARD_HEADER,
   HUB_ORIGIN,
   isBridgedPath,
+  needsIntlayerBuild,
   isLabPath,
   Debouncer,
   LANDING_PATH,
@@ -354,12 +355,22 @@ async function serve() {
   // not one reload per merge (owner, 2026-10-31: the page kept refreshing).
   const follow = arg("follow", "preview/live");
   const publisher = new Debouncer(async () => {
+    const before = Bun.spawnSync(["git", "rev-parse", "HEAD"]).stdout.toString().trim();
     const p = Bun.spawnSync(["git", "merge", "--ff-only", "--quiet", follow]);
     const msg = p.success
       ? "published"
       : `publish FAILED: ${p.stderr.toString().trim().split("\n")[0]}`;
     const head = Bun.spawnSync(["git", "log", "--oneline", "-1"]).stdout.toString().trim();
     console.error(`[whole-page] ${msg} (${follow} → ${head})`);
+    if (!p.success) return;
+    // next dev does not rebuild intlayer's dictionaries for new or changed
+    // *.content.ts that arrive by a merge, and the page throws until someone
+    // runs `intlayer build` (twice on 2026-10-31). Rebuild them here, at once.
+    const changed = Bun.spawnSync(["git", "diff", "--name-only", before, "HEAD"]).stdout.toString();
+    if (needsIntlayerBuild(changed.split("\n"))) {
+      const b = Bun.spawnSync(["bunx", "intlayer", "build"], { env: { ...process.env, ...env } });
+      console.error(`[whole-page] intlayer build ${b.success ? "done" : "FAILED"}`);
+    }
   });
 
   // Loopback only: one-time enter tokens for send-login, and publish requests.
