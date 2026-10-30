@@ -1,3 +1,4 @@
+import { PROGRESS_SCALE_DAYS, wordScore } from "@/lib/words/progress";
 import type { Card } from "ts-fsrs";
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
 import {
@@ -29,6 +30,12 @@ export type WordList = {
   learning: number;
   /** Next interval of a year or more. */
   mastered: number;
+  /**
+   * The words' progress scores summed (lib/words/progress.ts): each studied
+   * word 0..1 by its stability against a year (or the list's shorter cap).
+   * Divided by the list's word count, it is the picker's percentage.
+   */
+  progress: number;
   /** Words an imported list holds (word_list_entries); 0 for a catalog list. */
   size: number;
   createdAt: string;
@@ -100,6 +107,7 @@ const toList = (r: ListRow): WordList => ({
   due: r.due ?? 0,
   learning: r.learning ?? 0,
   mastered: r.mastered ?? 0,
+  progress: 0,
   size: r.size ?? 0,
   createdAt: r.created_at,
 });
@@ -164,7 +172,28 @@ export class WordsD1Repo {
           : [now.toISOString(), this.email, this.email]),
       )
       .all<ListRow>();
-    return results.map(toList);
+    const lists = results.map(toList);
+    // Progress needs a logarithm per card: summed here, not in SQL (D1 may
+    // lack SQLite's math functions). One narrow row per card.
+    const { results: cards } = await this.db
+      .prepare(
+        `SELECT c.list_id AS list_id,
+           json_extract(c.card, '$.stability') AS s,
+           json_extract(c.card, '$.scheduled_days') AS d,
+           MIN(${PROGRESS_SCALE_DAYS}, COALESCE(json_extract(wl.params, '$.maxIntervalDays'), ${PROGRESS_SCALE_DAYS})) AS cap
+         FROM word_cards c JOIN word_lists wl ON wl.email = c.email AND wl.id = c.list_id
+         WHERE c.email = ?${id ? " AND c.list_id = ?" : ""}`,
+      )
+      .bind(...(id ? [this.email, id] : [this.email]))
+      .all<{ list_id: string; s: number | null; d: number | null; cap: number }>();
+    const sums = new Map<string, number>();
+    for (const c of cards)
+      sums.set(
+        c.list_id,
+        (sums.get(c.list_id) ?? 0) + wordScore({ stability: c.s, interval: c.d }, c.cap),
+      );
+    for (const l of lists) l.progress = sums.get(l.id) ?? 0;
+    return lists;
   }
 
   async lists(now = new Date()): Promise<WordList[]> {
