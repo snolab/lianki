@@ -2068,6 +2068,15 @@ export function DebugChat({
             <FloatLine
               key={m.id}
               m={m}
+              // The same identity as in the log: the avatar, never the name in its place.
+              who={lineAvatar(m, {
+                friend,
+                viewer,
+                agentAvatar,
+                avatarFor,
+                agentName: t.name,
+                you: t.you,
+              })}
               text={p.text}
               mark={p.mark}
               epoch={floatEpoch}
@@ -3019,6 +3028,7 @@ function TreeIcon() {
  */
 function FloatLine({
   m,
+  who,
   text,
   mark,
   epoch,
@@ -3027,6 +3037,8 @@ function FloatLine({
   onGone,
 }: {
   m: ChatMessage;
+  /** Who said it (avatar-rules.ts lineAvatar), drawn as in the log. */
+  who: ReturnType<typeof lineAvatar>;
   /** What the line shows (a polished line's text, or its raw STT text), and its mark. */
   text: ReactNode;
   mark: ReactNode;
@@ -3073,12 +3085,17 @@ function FloatLine({
       // snaps back to full at once. Reduced motion: no fade, it just goes.
       className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto line-clamp-3 max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
     >
-      <span
-        className="me-1 font-medium"
-        style={{ color: m.from !== "agent" ? "oklch(0.55 0.13 250)" : "oklch(0.55 0.14 150)" }}
-      >
-        {m.from !== "agent" ? "you" : m.label || "agent"}:
+      <span className="me-1 inline-block align-[-0.25em]">
+        <Avatar
+          src={who.src}
+          name={who.name}
+          initialFrom={who.initialFrom}
+          seed={who.seed}
+          size={AVATAR_PX}
+          hidden
+        />
       </span>
+      <span className="sr-only">{who.name}: </span>
       {text}
       {mark}
     </li>
