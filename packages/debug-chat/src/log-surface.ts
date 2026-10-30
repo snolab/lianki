@@ -106,3 +106,65 @@ export function fullLogBox(d: {
   const bottom = hideBar ? Math.round(screenBottom) : Math.round(d.log.bottom);
   return { left, width, top: bottom - height, bottom, hideBar };
 }
+
+/**
+ * The full-screen log's glass (docs/design-principles.md, "Glass"): a scrim
+ * in the page's own tone, tuned per scheme, under a strong blur, so the
+ * page still shows through (the floor-to-ceiling window) while the log's
+ * lines stay legible over a busy page. Without backdrop-filter, or with
+ * reduced transparency, the scrim goes near-opaque instead.
+ */
+export const SHEET_SCRIM = {
+  light: { l: 0.98, c: 0.01, h: 90, a: 0.72 },
+  dark: { l: 0.18, c: 0.01, h: 260, a: 0.66 },
+} as const;
+/** The scrim's alpha where nothing blurs behind it. */
+export const SHEET_SOLID_ALPHA = 0.92;
+export const SHEET_FILTER = "blur(20px) saturate(1.6)";
+
+type Oklch = { l: number; c: number; h: number };
+const scrimCss = (k: Oklch, a: number) => `oklch(${k.l * 100}% ${k.c} ${k.h} / ${a})`;
+/** The scrim as CSS, both schemes in one value (light-dark follows the page's color-scheme). */
+export function sheetScrim(solid: boolean): string {
+  const { light, dark } = SHEET_SCRIM;
+  const a = (s: { a: number }) => (solid ? SHEET_SOLID_ALPHA : s.a);
+  return `light-dark(${scrimCss(light, a(light))}, ${scrimCss(dark, a(dark))})`;
+}
+
+/** oklch → gamma-encoded sRGB channels, clamped (how the browser blends). */
+export function oklchToSrgb({ l, c, h }: Oklch): [number, number, number] {
+  const hr = (h * Math.PI) / 180;
+  const A = c * Math.cos(hr);
+  const B = c * Math.sin(hr);
+  const l_ = (l + 0.3963377774 * A + 0.2158037573 * B) ** 3;
+  const m_ = (l - 0.1055613458 * A - 0.0638541728 * B) ** 3;
+  const s_ = (l - 0.0894841775 * A - 1.291485548 * B) ** 3;
+  const lin = [
+    4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_,
+    -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_,
+    -0.0041960863 * l_ - 0.7034186147 * m_ + 1.707614701 * s_,
+  ];
+  const gamma = (v: number) => {
+    const x = Math.min(1, Math.max(0, v));
+    return x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055;
+  };
+  return lin.map(gamma) as [number, number, number];
+}
+
+/** WCAG relative luminance of gamma-encoded sRGB. */
+export function srgbLuminance([r, g, b]: [number, number, number]): number {
+  const lin = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/**
+ * The contrast of `text` on the scrim (alpha `a`) over `behind` (what the
+ * page shows there, after any blur), blended in sRGB as browsers do.
+ */
+export function textOnScrim(text: Oklch, scrim: Oklch, a: number, behind: [number, number, number]) {
+  const s = oklchToSrgb(scrim);
+  const mix = s.map((v, i) => a * v + (1 - a) * behind[i]!) as [number, number, number];
+  const y1 = srgbLuminance(oklchToSrgb(text));
+  const y2 = srgbLuminance(mix);
+  return (Math.max(y1, y2) + 0.05) / (Math.min(y1, y2) + 0.05);
+}

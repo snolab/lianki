@@ -55,7 +55,15 @@ import {
 } from "./float-lines";
 import { Icon, POLISHED_ICON } from "./icons";
 import { PolishedMark } from "./PolishedMark";
-import { LINE_HALO, fullLogBox, fullLogHeight, keepEndGap, logSurface } from "./log-surface";
+import {
+  LINE_HALO,
+  SHEET_FILTER,
+  fullLogBox,
+  fullLogHeight,
+  keepEndGap,
+  logSurface,
+  sheetScrim,
+} from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
 import { TreeChips } from "./TreeChips";
 import { keepTree, navIndexOf, restoreTree } from "./tree-keep";
@@ -264,20 +272,25 @@ function useDrag() {
 const WIPE = "clip-path 200ms ease-out";
 /** The input-started full-screen log fades in and out, as the bar does the other way. */
 const FADE = "opacity 200ms ease-out";
-/** The glass sheet behind the full-screen log (design-principles.md): page colour, blurred. */
-const SHEET_BG = "color-mix(in oklch, var(--background) 60%, transparent)";
-const SHEET_BG_SOLID = "color-mix(in oklch, var(--background) 90%, transparent)";
-const SHEET_FILTER = "blur(12px) saturate(1.4)";
-/** The sheet goes near-opaque where blur is missing or transparency is reduced. */
-const sheetBg = () => {
+/**
+ * The glass sheet behind the full-screen log (log-surface.ts SHEET_SCRIM):
+ * a light or dark scrim under a 20px blur. Near-opaque where nothing blurs
+ * (no backdrop-filter, or reduced transparency), and then the log's lines
+ * get the strong halo too. Where light-dark() is missing (older Safari),
+ * the scrim is the page's own colour at the same alpha.
+ */
+const sheetLook = () => {
+  const has = (prop: string, v: string) => typeof CSS !== "undefined" && CSS.supports(prop, v);
   const blur =
-    typeof CSS !== "undefined" &&
-    (CSS.supports("backdrop-filter", SHEET_FILTER) ||
-      CSS.supports("-webkit-backdrop-filter", SHEET_FILTER));
+    has("backdrop-filter", SHEET_FILTER) || has("-webkit-backdrop-filter", SHEET_FILTER);
   const reduce =
     typeof matchMedia !== "undefined" &&
     matchMedia("(prefers-reduced-transparency: reduce)").matches;
-  return blur && !reduce ? SHEET_BG : SHEET_BG_SOLID;
+  const solid = !blur || reduce;
+  const background = has("color", "light-dark(#000, #fff)")
+    ? sheetScrim(solid)
+    : `color-mix(in oklch, var(--background) ${solid ? 92 : 72}%, transparent)`;
+  return { background, solid };
 };
 
 /** The box's keyboard lift, px (0 when the keyboard covers nothing). */
@@ -985,6 +998,8 @@ export function DebugChat({
         ...p.style,
         // The size switches at once; only the wipe (or the fade) animates.
         transition,
+        // Nothing blurs behind it: the lines carry the strong halo.
+        ...(sheetLook().solid ? { textShadow: LINE_HALO } : {}),
         ...(box
           ? {
               position: "absolute" as const,
@@ -2192,16 +2207,18 @@ export function DebugChat({
         typeof document !== "undefined" &&
         createPortal(
           // The full-screen log's glass sheet: over the page, under the chat.
-          // Out of the box, whose transform would trap a fixed child.
+          // Out of the box, whose transform would trap a fixed child. It
+          // overhangs the viewport by 3rem, so the blur does not thin out
+          // toward the screen edges (it samples past its own box).
           <div
             aria-hidden
             data-testid="debug-chat-log-sheet"
             style={{
-              background: sheetBg(),
+              background: sheetLook().background,
               backdropFilter: SHEET_FILTER,
               WebkitBackdropFilter: SHEET_FILTER,
             }}
-            className={`pointer-events-none fixed inset-0 z-[39] transition-opacity duration-200 ease-out starting:opacity-0 motion-reduce:transition-none ${fullLog === "leaving" ? "opacity-0" : "opacity-100"}`}
+            className={`pointer-events-none fixed -inset-12 z-[39] transition-opacity duration-200 ease-out starting:opacity-0 motion-reduce:transition-none ${fullLog === "leaving" ? "opacity-0" : "opacity-100"}`}
           />,
           document.body,
         )}
@@ -2447,6 +2464,9 @@ export function DebugChat({
             background: INPUT_BG,
             // Aside while the log spans the screen; it keeps the pointer (captured).
             opacity: barAside ? 0 : undefined,
+            // Its own blur off too: invisible, it would only cost a
+            // second backdrop pass over the sheet.
+            ...(barAside ? { backdropFilter: "none", WebkitBackdropFilter: "none" } : {}),
             transition: reducedMotion() ? undefined : FADE,
           }}
           className={`pointer-events-auto relative flex items-end rounded-[1.125rem] border border-current/25 text-gray-600 backdrop-blur-md backdrop-saturate-150 dark:text-gray-300 ${open ? "p-0.5" : "p-px"}`}
