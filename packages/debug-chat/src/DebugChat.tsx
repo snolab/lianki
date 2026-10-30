@@ -58,10 +58,13 @@ import { PolishedMark } from "./PolishedMark";
 import {
   LINE_HALO,
   SHEET_FILTER,
+  anchorScrollTop,
   fullLogBox,
   fullLogHeight,
+  fullLogPad,
   keepEndGap,
   logSurface,
+  pickAnchor,
   sheetScrim,
 } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
@@ -927,7 +930,39 @@ export function DebugChat({
     lastDy: number;
     /** From the empty input: the log's own box (fullLogBox, section-relative px). */
     box: { left: number; width: number; bottom: number; height: number; hideBar: boolean } | null;
-  }>({ maxH: 0, fromH: 0, gap: 0, lastDy: 0, box: null });
+    /** The line the reader is on, kept in place across the height change (pickAnchor). */
+    anchor: { id: string; top: number; height: number } | null;
+  }>({ maxH: 0, fromH: 0, gap: 0, lastDy: 0, box: null, anchor: null });
+  /** The line nearest the log's centre (its focus line), with where it is now. */
+  const anchorNow = () => {
+    const el = log.current;
+    if (!el) return null;
+    const v = el.getBoundingClientRect();
+    const rows = [...el.querySelectorAll<HTMLElement>("[data-testid=debug-chat-line]")].map((r) => {
+      const b = r.getBoundingClientRect();
+      return { id: r.dataset.msg ?? "", top: b.top, bottom: b.bottom };
+    });
+    const a = pickAnchor(rows, (v.top + v.bottom) / 2);
+    return a && a.id ? { id: a.id, top: a.top, height: a.bottom - a.top } : null;
+  };
+  /** After the height changed: the anchored line back where it was, in the same frame. */
+  const holdAnchor = () => {
+    const el = log.current;
+    const a = fullRef.current.anchor;
+    if (!el || !a) return false;
+    const row = el.querySelector<HTMLElement>(`[data-testid=debug-chat-line][data-msg="${a.id}"]`);
+    if (!row) return false;
+    const v = el.getBoundingClientRect();
+    el.scrollTop = anchorScrollTop({
+      before: a.top,
+      after: row.getBoundingClientRect().top,
+      height: a.height,
+      view: { top: v.top, bottom: v.bottom },
+      scrollTop: el.scrollTop,
+      maxScroll: el.scrollHeight - el.clientHeight,
+    });
+    return true;
+  };
   const wasFull = useRef(false);
   const reducedMotion = () =>
     typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -964,6 +999,7 @@ export function DebugChat({
         };
       }
       fullRef.current = {
+        anchor: box ? anchorNow() : null,
         box,
         maxH: fullLogHeight({
           bottom: r.bottom,
@@ -1011,6 +1047,9 @@ export function DebugChat({
               bottom: box.bottom,
               height: box.height,
               maxHeight: box.height,
+              // Overscroll slack: any line can come to the middle.
+              paddingTop: fullLogPad(box.height),
+              paddingBottom: fullLogPad(box.height),
             }
           : { maxHeight: fullRef.current.maxH }),
       },
@@ -1089,12 +1128,14 @@ export function DebugChat({
     wasFull.current = fullLog !== "off";
     if (!el) return;
     if (fullLog === "on") {
-      // Taller now: keep the bottom lines where they were.
-      el.scrollTop = keepEndGap({
-        scrollHeight: el.scrollHeight,
-        clientHeight: el.clientHeight,
-        gap: fullRef.current.gap,
-      });
+      // Taller now: keep the line being read where it was (its own box), or
+      // the bottom lines (growing upward from the mic).
+      if (!(fullRef.current.box && holdAnchor()))
+        el.scrollTop = keepEndGap({
+          scrollHeight: el.scrollHeight,
+          clientHeight: el.clientHeight,
+          gap: fullRef.current.gap,
+        });
       if (reducedMotion()) return;
       if (fullRef.current.box) {
         // Its own box (it may be wider, its lines rewrapped): a fade in.
@@ -1114,6 +1155,8 @@ export function DebugChat({
       el.style.clipPath = "inset(0px 0 0 0)";
     } else if (fullLog === "leaving") {
       fullRef.current.gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+      // The line being read now, to keep in view as the log folds back.
+      if (fullRef.current.box) fullRef.current.anchor = anchorNow();
       const h = revealed();
       if (reducedMotion() || (!h && !fullRef.current.box)) return setFullLog("off");
       if (fullRef.current.box) el.style.opacity = "0";
@@ -1125,19 +1168,25 @@ export function DebugChat({
       // Back to its resting height at once (the wipe already hid the rest):
       // the newest lines when idle, as the compact log always shows; typing,
       // the lines that were at its bottom edge.
-      const faded = !!fullRef.current.box && !reducedMotion();
+      const fromBox = !!fullRef.current.box;
+      const faded = fromBox && !reducedMotion();
       fullRef.current.box = null;
       el.style.transition = "none";
       el.style.clipPath = "";
       el.style.opacity = faded ? "0" : "";
-      el.scrollTop =
-        typing || micActive
-          ? keepEndGap({
-              scrollHeight: el.scrollHeight,
-              clientHeight: el.clientHeight,
-              gap: fullRef.current.gap,
-            })
-          : el.scrollHeight;
+      // From its own box: the line being read stays in view (as near its
+      // place as the compact log allows). Else as before: the newest lines
+      // when idle, the lines at the bottom edge while typing.
+      if (!(fromBox && holdAnchor()))
+        el.scrollTop =
+          typing || micActive
+            ? keepEndGap({
+                scrollHeight: el.scrollHeight,
+                clientHeight: el.clientHeight,
+                gap: fullRef.current.gap,
+              })
+            : el.scrollHeight;
+      fullRef.current.anchor = null;
       void el.offsetHeight;
       if (faded) {
         // Back in its place: the compact log fades in where it rests.
@@ -2296,6 +2345,7 @@ export function DebugChat({
             <li
               key={m.id}
               data-testid="debug-chat-line"
+              data-msg={m.id}
               data-from={m.from}
               data-node={node?.node}
               data-run-start={first || undefined}

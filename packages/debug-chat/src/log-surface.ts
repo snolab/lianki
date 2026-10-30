@@ -164,3 +164,52 @@ export function textOnScrim(text: Oklch, scrim: Oklch, a: number, behind: [numbe
   const y2 = srgbLuminance(mix);
   return (Math.max(y1, y2) + 0.05) / (Math.min(y1, y2) + 0.05);
 }
+
+/**
+ * The full-screen log's overscroll slack: empty travel above the first line
+ * and below the last, this share of its height, so any line can be brought
+ * to the middle (as the /words list's OVERSCROLL_FRACTION does).
+ */
+export const FULL_LOG_OVERSCROLL = 0.45;
+export const fullLogPad = (height: number) => Math.round(height * FULL_LOG_OVERSCROLL);
+
+/** The line the reader is on: the one under the focus line (the view's centre), else the nearest. */
+export function pickAnchor<T extends { top: number; bottom: number }>(
+  rows: readonly T[],
+  focusY: number,
+): T | null {
+  let best: T | null = null;
+  let gap = Number.POSITIVE_INFINITY;
+  for (const r of rows) {
+    const d = focusY < r.top ? r.top - focusY : focusY > r.bottom ? focusY - r.bottom : 0;
+    if (d < gap) {
+      best = r;
+      gap = d;
+    }
+  }
+  return best;
+}
+
+/**
+ * The scrollTop that keeps the anchored line where it was across a height
+ * change (entering or leaving full screen, the keyboard): back at its old
+ * top, or, if the view no longer reaches there, as close as the view allows
+ * (its top edge inside [view.top, view.bottom - height]). Clamped to the
+ * scroll range.
+ */
+export function anchorScrollTop(d: {
+  /** The line's top before the change, and now (viewport px), and its height. */
+  before: number;
+  after: number;
+  height: number;
+  /** The scroller's visible box now. */
+  view: { top: number; bottom: number };
+  scrollTop: number;
+  maxScroll: number;
+}): number {
+  const lo = d.view.top;
+  const hi = Math.max(lo, d.view.bottom - d.height);
+  const target = Math.min(hi, Math.max(lo, d.before));
+  const want = d.scrollTop + (d.after - target);
+  return Math.max(0, Math.min(Math.max(0, d.maxScroll), Math.round(want)));
+}
