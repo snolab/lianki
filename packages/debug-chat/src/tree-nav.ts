@@ -189,9 +189,13 @@ const siblings = (ix: NavIndex, id: string) => {
 export function treeNav(ix: NavIndex, s: TreeNavState, ev: TreeNavEvent): TreeNavState {
   switch (ev.type) {
     case "dragStart":
-      return { ...s, base: s.base ?? { ...s, base: undefined }, detent: 0, atLimit: undefined };
+      // Already dragging: nothing changes (the same object, so no re-render).
+      if (s.base) return s;
+      return { ...s, base: { ...s, base: undefined }, detent: 0, atLimit: undefined };
     case "dragMove": {
       const base = s.base ?? s;
+      // The same cells as now: the same object (a move inside a detent re-renders nothing).
+      if (s.base && ev.cells === s.detent) return s;
       const r = steps(ix, base, ev.cells);
       return settle(s, { ...r.s, base, detent: ev.cells }, r.limit);
     }
@@ -254,8 +258,12 @@ export function treeNav(ix: NavIndex, s: TreeNavState, ev: TreeNavEvent): TreeNa
 export const TREE_DETENT_PX = 40;
 /** How many cells a single drag can reach each way. */
 export const TREE_DRAG_CELLS = 6;
-/** The tree drag's feel: the card swipe's snap and hysteresis (detent.ts). */
-export const TREE_HYSTERESIS = 0.1;
+/**
+ * The tree drag's hysteresis (detent.ts): a level is taken 0.2 cells past the
+ * midpoint and given back 0.2 cells before it, so a thumb resting near a
+ * boundary (an 8 px band on a 40 px cell) never flips the tree back and forth.
+ */
+export const TREE_HYSTERESIS = 0.2;
 export const TREE_SNAP = 0.6;
 export const TREE_STRETCH = 0.3;
 
@@ -288,4 +296,37 @@ export function dragOffset(dx: number, limitCells?: number): number {
   if (Math.sign(past) !== Math.sign(limitCells || dx) || past === 0)
     return snapDetent(dx, feel);
   return snapDetent(edge, feel) + past * TREE_STRETCH;
+}
+
+/**
+ * Keeping a row still while the tree above or below it changes (manual scroll
+ * anchoring: iOS Safari has no `overflow-anchor`). The row was at `before`
+ * (viewport px) and is now at `after`; the scroller is at `scrollTop` of
+ * `maxScroll`. Returns the scrollTop that puts the row back, clamped to the
+ * scroll range (a short list may not be able to).
+ */
+export function pinScroll(d: {
+  before: number;
+  after: number;
+  scrollTop: number;
+  maxScroll: number;
+}): number {
+  const want = d.scrollTop + (d.after - d.before);
+  return Math.max(0, Math.min(Math.max(0, d.maxScroll), Math.round(want)));
+}
+
+/**
+ * Which row a nav step keeps still: the focused one, if it was on screen
+ * before the step (a fold that moves the focus to the parent pins the parent,
+ * which was on screen above it). Null: nothing to pin (the focus was not
+ * shown, e.g. the column was scrolled down to the messages).
+ */
+export function pinRow(
+  prev: Pick<TreeNavState, "focusId">,
+  next: Pick<TreeNavState, "focusId">,
+  shown: ReadonlySet<string>,
+): string | null {
+  if (next.focusId !== null && shown.has(next.focusId)) return next.focusId;
+  if (prev.focusId !== null && shown.has(prev.focusId)) return prev.focusId;
+  return null;
 }

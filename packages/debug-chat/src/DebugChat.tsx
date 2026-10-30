@@ -62,6 +62,8 @@ import {
   dragOffset,
   initialNav,
   maxDetent,
+  pinRow,
+  pinScroll,
   treeNav,
 } from "./tree-nav";
 import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
@@ -582,31 +584,83 @@ export function DebugChat({
       s.focusId !== null && navIx.ix.parent.has(s.focusId) ? s : initialNav(navIx.ix),
     );
   }, [navIx]);
-  /** Rows' tops before a nav step, to keep the focused one in place when it folds. */
-  const navBefore = useRef<{ tops: Map<string, number>; expand: boolean } | null>(null);
+  /**
+   * Rows' tops before a nav step (and which rows were on screen), so the step
+   * can keep a row still: the focused one, or the one it folded into.
+   */
+  const navBefore = useRef<{
+    tops: Map<string, number>;
+    shown: Set<string>;
+    prevFocus: string | null;
+    expand: boolean;
+  } | null>(null);
   /** The user scrolled the column just now: a nav step does not scroll it. */
   const userScrollAt = useRef(0);
   const depthSum = (e: Readonly<Record<string, number>>) =>
     Object.values(e).reduce((a, b) => a + b, 0);
+  /** The minimized tree's own scroller (the floating box's tree body). */
+  const treeBodyEl = useRef<HTMLDivElement | null>(null);
+  /**
+   * Minimized, the tree body takes its full height (30vh) from the first
+   * drag until the tree closes: the floating box hangs from the bar, so a
+   * body that resized with each level would move the whole tree up and down.
+   */
+  const [treeTall, setTreeTall] = useState(false);
+  useEffect(() => {
+    if (!tree) setTreeTall(false);
+  }, [tree]);
+  /** The tree's scroller: the chat's column expanded, its own body minimized. */
+  const treeScroller = () => (open ? log.current : treeBodyEl.current);
   const navTo = (ev: TreeNavEvent) => {
-    const el = log.current;
+    const el = treeScroller();
     const tops = new Map<string, number>();
-    for (const r of el?.querySelectorAll<HTMLElement>("[data-testid=tree-chips] [data-id]") ?? [])
-      tops.set(r.dataset.id!, r.getBoundingClientRect().top);
+    const shown = new Set<string>();
+    const box = el?.getBoundingClientRect();
+    for (const r of el?.querySelectorAll<HTMLElement>("[data-testid=tree-chips] [data-id]") ?? []) {
+      const rr = r.getBoundingClientRect();
+      tops.set(r.dataset.id!, rr.top);
+      if (box && rr.bottom > box.top && rr.top < box.bottom) shown.add(r.dataset.id!);
+    }
     setNav((s) => {
       const next = treeNav(navIx.ix, s, ev);
-      navBefore.current = { tops, expand: depthSum(next.expanded) > depthSum(s.expanded) };
+      // Nothing changed: no render follows, so nothing to anchor.
+      if (next !== s)
+        navBefore.current = {
+          tops,
+          shown,
+          prevFocus: s.focusId,
+          expand: depthSum(next.expanded) > depthSum(s.expanded),
+        };
       return next;
     });
   };
-  // After a step: an expand brings the focused node and its new children into
-  // view (unless the user is scrolling); a fold keeps the focused row in place.
+  // After a step. While dragging (and on any fold) the row the eye is on
+  // stays still — the focused one, else the one it folded into (pinRow) — so
+  // the tree grows and shrinks around it instead of jumping. A tap or key
+  // that expands brings the focused node and its new children into view
+  // instead (unless the user is scrolling), as does a drag whose focus was
+  // off screen when it began.
   useLayoutEffect(() => {
     const b = navBefore.current;
     navBefore.current = null;
-    const el = log.current;
-    if (!b || !el || !open || nav.focusId === null) return;
-    const row = el.querySelector<HTMLElement>(`[data-testid=tree-chips] [data-id="${nav.focusId}"]`);
+    const el = treeScroller();
+    if (!b || !el || nav.focusId === null) return;
+    const rowOf = (id: string) =>
+      el.querySelector<HTMLElement>(`[data-testid=tree-chips] [data-id="${id}"]`);
+    const pin = pinRow({ focusId: b.prevFocus }, nav, b.shown);
+    if (pin !== null && (nav.base !== undefined || !b.expand)) {
+      const pinned = rowOf(pin);
+      const was = b.tops.get(pin);
+      if (pinned && was !== undefined)
+        el.scrollTop = pinScroll({
+          before: was,
+          after: pinned.getBoundingClientRect().top,
+          scrollTop: el.scrollTop,
+          maxScroll: el.scrollHeight - el.clientHeight,
+        });
+      return;
+    }
+    const row = rowOf(nav.focusId);
     if (!row) return;
     if (b.expand) {
       if (Date.now() - userScrollAt.current < 600) return;
@@ -620,16 +674,12 @@ export function DebugChat({
       const box = el.getBoundingClientRect();
       if (bottom > box.bottom) el.scrollTop += Math.min(bottom - box.bottom, top - box.top);
       else if (top < box.top) el.scrollTop -= box.top - top;
-    } else {
-      const was = b.tops.get(nav.focusId);
-      if (was !== undefined) el.scrollTop += row.getBoundingClientRect().top - was;
     }
   }, [nav, open]);
   /** The minimized bar's lines: the host's, else the tree's frontier. */
   const shownFrontier = frontier ?? toFrontierView(treeData.root);
   /** The tree overflows (or is scrolled): its top edge fades, as the log's. */
   const [treeFade, setTreeFade] = useState(false);
-  const treeBodyEl = useRef<HTMLDivElement | null>(null);
   const onTreeScroll = () => {
     const el = treeBodyEl.current;
     if (!el) return;
@@ -1114,16 +1164,22 @@ export function DebugChat({
   const treePress = useRef({ cells: 0, limitAt: null as number | null });
   const navRef = useRef(nav);
   navRef.current = nav;
-  const [treeHint, setTreeHint] = useState<{ text: string; offset: number } | null>(null);
-  const hintFor = (s: TreeNavState, dx: number, limitAt: number | null) => {
+  /** The hint's text; it changes only with a level, so a move re-renders nothing. */
+  const [treeHint, setTreeHint] = useState<string | null>(null);
+  /** The hint follows the finger by a transform set straight on it, never by a render. */
+  const treeHintEl = useRef<HTMLSpanElement | null>(null);
+  const treeHintOffset = useRef(0);
+  const hintText = (s: TreeNavState) => {
     const id = s.focusId;
     const node = id === null ? undefined : navIx.byId.get(id);
     const depth = id === null ? 0 : (s.expanded[id] ?? 0);
     const max = id === null ? 0 : maxDetent(navIx.ix, id);
-    return {
-      text: node ? `${node.title} · ${depth}/${max}` : "—",
-      offset: Math.round(dragOffset(dx, limitAt ?? undefined) * 0.25),
-    };
+    return node ? `${node.title} · ${depth}/${max}` : "—";
+  };
+  const moveHint = (dx: number, limitAt: number | null) => {
+    treeHintOffset.current = Math.round(dragOffset(dx, limitAt ?? undefined) * 0.25);
+    if (treeHintEl.current)
+      treeHintEl.current.style.transform = `translateX(${treeHintOffset.current}px)`;
   };
   const treeGesture = {
     onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -1137,20 +1193,28 @@ export function DebugChat({
       const m = treeAxis.current.move(e.clientX, e.clientY);
       if (!m || m.axis !== "x" || !treeSource || renderTree) return;
       let s = navRef.current;
+      const p = treePress.current;
       if (!was) {
         if (!tree) setPanel("tree");
+        setTreeTall(true);
         s = treeNav(navIx.ix, s, { type: "dragStart" });
+        navRef.current = s;
+        navTo({ type: "dragStart" });
       }
-      const p = treePress.current;
       const cells = dragCells(m.dx, p.cells);
+      // Inside a detent: only the hint moves (no state, no render, no reflow).
+      if (was && cells === p.cells) {
+        moveHint(m.dx, p.limitAt);
+        return;
+      }
       p.cells = cells;
       const next = treeNav(navIx.ix, s, { type: "dragMove", cells });
       // Where the limit was met: past it the hint only rubber-bands.
       p.limitAt = next.atLimit ? (p.limitAt ?? cells - Math.sign(cells)) : null;
       navRef.current = next;
-      navTo({ type: "dragStart" });
       navTo({ type: "dragMove", cells });
-      setTreeHint(hintFor(next, m.dx, p.limitAt));
+      moveHint(m.dx, p.limitAt);
+      setTreeHint(hintText(next));
     },
     onPointerUp: () => {
       const axis = treeAxis.current.up();
@@ -1284,12 +1348,13 @@ export function DebugChat({
         {treeHint && (
           // While dragging: the focused node and the depth it would open to.
           <span
+            ref={treeHintEl}
             role="status"
             data-testid="debug-chat-tree-hint"
             className="pointer-events-none absolute start-0 bottom-full mb-2 whitespace-nowrap text-[10px] lk-halo"
-            style={{ transform: `translateX(${treeHint.offset}px)` }}
+            style={{ transform: `translateX(${treeHintOffset.current}px)` }}
           >
-            {treeHint.text}
+            {treeHint}
           </span>
         )}
         <TreeIcon />
@@ -1399,7 +1464,10 @@ export function DebugChat({
           }}
           data-testid="debug-chat-tree-body"
           onScroll={onTreeScroll}
-          {...withClass(logSurface({ expanded: typing || micActive, fade: treeFade }), "min-w-0 flex-1")}
+          {...withClass(
+            logSurface({ expanded: typing || micActive || treeTall, fade: treeFade }),
+            `min-w-0 flex-1 ${treeTall ? "h-[30vh]" : ""}`,
+          )}
         >
           {treeContent}
         </div>

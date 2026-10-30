@@ -11,6 +11,8 @@ import {
   initialNav,
   isVisible,
   maxDetent,
+  pinRow,
+  pinScroll,
   treeNav,
 } from "@lianki/debug-chat/tree-nav";
 
@@ -177,15 +179,39 @@ describe("tree drag detents", () => {
   it("quantises the drag into cells of TREE_DETENT_PX, with hysteresis both ways", () => {
     expect(TREE_DETENT_PX).toBe(40);
     expect(dragCells(0, 0)).toBe(0);
-    expect(dragCells(23, 0)).toBe(0); // 0.575 cells: not past 0.6
-    expect(dragCells(25, 0)).toBe(1);
+    expect(dragCells(27, 0)).toBe(0); // 0.675 cells: not past 0.7
+    expect(dragCells(29, 0)).toBe(1);
     expect(dragCells(2 * 40, 1)).toBe(2);
-    expect(dragCells(-25, 0)).toBe(-1);
-    // Resting on a boundary never flickers: from 1, back to 0.45 cells stays 1…
-    expect(dragCells(18, 1)).toBe(1);
-    // …only under 0.4 does it drop.
-    expect(dragCells(15, 1)).toBe(0);
+    expect(dragCells(-29, 0)).toBe(-1);
+    // Resting on a boundary never flickers: from 1, back to 0.35 cells stays 1…
+    expect(dragCells(14, 1)).toBe(1);
+    // …only under 0.3 does it drop.
+    expect(dragCells(11, 1)).toBe(0);
     expect(dragCells(10_000, 0)).toBe(TREE_DRAG_CELLS);
+  });
+
+  it("a thumb wobbling ±6 px on a boundary keeps its level (a 16 px dead band)", () => {
+    let cells = 0;
+    const seen = new Set<number>();
+    // Up to the first boundary (20 px) and past it to take level 1…
+    for (const dx of [10, 20, 30]) seen.add((cells = dragCells(dx, cells)));
+    expect(cells).toBe(1);
+    // …then wobble around the 20 px midpoint: it stays on 1.
+    for (const dx of [26, 14, 25, 15, 20, 26, 14]) {
+      cells = dragCells(dx, cells);
+      expect(cells).toBe(1);
+    }
+    expect([...seen]).toEqual([0, 1]);
+  });
+
+  it("dragStart while dragging, and dragMove to the same cells, return the same object", () => {
+    const s = run(at("A"), { type: "dragStart" }, { type: "dragMove", cells: 1 });
+    expect(treeNav(ix, s, { type: "dragStart" })).toBe(s);
+    expect(treeNav(ix, s, { type: "dragMove", cells: 1 })).toBe(s);
+    // A fresh drag still starts from scratch, and a new cell still moves.
+    expect(treeNav(ix, s, { type: "dragMove", cells: 2 }).expanded).toEqual({ A: 2 });
+    const started = treeNav(ix, at("A"), { type: "dragStart" });
+    expect(treeNav(ix, started, { type: "dragMove", cells: 0 })).toBe(started);
   });
 
   it("maps cells to depth through the reducer (2 cells right → depth 2)", () => {
@@ -205,5 +231,50 @@ describe("tree drag detents", () => {
     expect(dragOffset(20, 1)).toBeCloseTo(dragOffset(20), 5);
     // A leaf (limit 0): any expand drag resists at once.
     expect(dragOffset(30, 0)).toBeCloseTo(9, 5);
+  });
+});
+
+describe("keeping a row still across a nav step", () => {
+  it("pinScroll scrolls by how far the row moved, within the scroll range", () => {
+    // Rows above it grew by 120 px: scroll down 120 so it is where it was.
+    expect(pinScroll({ before: 300, after: 420, scrollTop: 50, maxScroll: 1000 })).toBe(170);
+    // Rows above it shrank: scroll up.
+    expect(pinScroll({ before: 300, after: 260, scrollTop: 50, maxScroll: 1000 })).toBe(10);
+    // Clamped at both ends (a short list cannot always keep it still).
+    expect(pinScroll({ before: 300, after: 200, scrollTop: 50, maxScroll: 1000 })).toBe(0);
+    expect(pinScroll({ before: 0, after: 500, scrollTop: 50, maxScroll: 120 })).toBe(120);
+    expect(pinScroll({ before: 0, after: 500, scrollTop: 0, maxScroll: -5 })).toBe(0);
+    // Unmoved: unchanged.
+    expect(pinScroll({ before: 80, after: 80, scrollTop: 33, maxScroll: 100 })).toBe(33);
+  });
+
+  it("pinRow keeps the focused row, or on a fold the row it folded into", () => {
+    const shown = new Set(["A", "A1", "A1a"]);
+    // Expanding A1a: A1a itself stays still.
+    expect(pinRow({ focusId: "A1a" }, { focusId: "A1a" }, shown)).toBe("A1a");
+    // Folding past A1a's level moves the focus to A1, which was on screen above it.
+    const s = run(
+      at("A1a", { A: 1, A1: 1 }),
+      { type: "dragStart" },
+      { type: "dragMove", cells: -1 },
+    );
+    expect(s.focusId).toBe("A1");
+    expect(pinRow({ focusId: "A1a" }, s, shown)).toBe("A1");
+    // The new focus was off screen: the old one, if it was shown.
+    expect(pinRow({ focusId: "A1a" }, { focusId: "B" }, shown)).toBe("A1a");
+    // Neither on screen (scrolled down to the messages): nothing to pin.
+    expect(pinRow({ focusId: "C" }, { focusId: "C" }, shown)).toBeNull();
+    expect(pinRow({ focusId: null }, { focusId: null }, shown)).toBeNull();
+  });
+
+  it("through a whole drag, the focus only changes on a fold past its own level", () => {
+    let s = run(at("A1", { A: 1 }), { type: "dragStart" });
+    const foci: (string | null)[] = [];
+    for (const cells of [0, 1, 2, 3, 2, 1, 0, -1, -2, -1, 0]) {
+      s = treeNav(ix, s, { type: "dragMove", cells });
+      foci.push(s.focusId);
+    }
+    // Right and back: A1 throughout; left past A1's level: A; back right: from the base again.
+    expect(foci).toEqual(["A1", "A1", "A1", "A1", "A1", "A1", "A1", "A", "A", "A", "A1"]);
   });
 });
