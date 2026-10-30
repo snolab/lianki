@@ -11,3 +11,9 @@ paths = [
   '''^\.agent-yes/''',
   '''^bun\.lock$''',
 ]
+# A deliberately fake Stripe-shaped key: unit/security.test.ts checks that the
+# public-dir hygiene scan flags one. Committed in 3346e79, so it must stay
+# allowed for the history scan; the test now builds it at runtime.
+regexes = [
+  '''sk_live_abcdefghijklmnop1234''',
+]

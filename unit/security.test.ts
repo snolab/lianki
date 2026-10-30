@@ -427,7 +427,9 @@ describe("public directory hygiene", () => {
     expect(
       checkFile("_next/static/x.js.map", '{"sources":["../app/api/payments/route.ts"]}'),
     ).not.toHaveLength(0);
-    expect(checkFile("lib.js", "const k = 'sk_live_abcdefghijklmnop1234';")).not.toHaveLength(0);
+    // Built at runtime so secret scanners do not flag the fixture itself.
+    const fakeKey = ["sk", "live", "abcdefghijklmnop1234"].join("_");
+    expect(checkFile("lib.js", `const k = '${fakeKey}';`)).not.toHaveLength(0);
     expect(checkFile("k.txt", "-----BEGIN PRIVATE KEY-----")).not.toHaveLength(0);
   });
 
