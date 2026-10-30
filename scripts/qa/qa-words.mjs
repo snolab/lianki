@@ -1496,9 +1496,7 @@ try {
         storageState: await ctx.storageState(),
       });
       await c.addInitScript(silentAudio);
-      // Stubbed as everywhere else: the local Worker has no Workers AI, so an
-      // unrecorded clip is a 503, and WebKit reports the prefetches a reload
-      // cuts off as page errors ("access control checks").
+      // Stubbed as everywhere else (no AI call from QA).
       await c.route("**/api/words/tts?*", (r) =>
         r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") }),
       );
@@ -1507,7 +1505,14 @@ try {
         localStorage.setItem("lk:swipe-ab", v);
       }, variant);
       const w = await c.newPage();
-      w.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
+      // WebKit reports a word-audio prefetch that a reload cuts off as a page
+      // error ("… due to access control checks."). The prefetch is aborted on
+      // purpose; it used to stop early only because a 503 silenced the language.
+      const cutPrefetch = (m) =>
+        m.includes("/api/words/tts?") && m.includes("due to access control checks");
+      w.on("pageerror", (e) => {
+        if (!cutPrefetch(e.message)) errs.push(`PAGEERROR (${tag}) ${e.message}`);
+      });
       const opening = () =>
         w.evaluate(() => {
           const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
