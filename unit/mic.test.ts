@@ -29,6 +29,12 @@ import {
   scheduleTick,
   TICK_GAIN,
   TICK_MS,
+  HALLUCINATIONS,
+  HALLUCINATION_MAX_MS,
+  HALLUCINATION_MIN_PROB,
+  isHallucination,
+  isHallucinationPhrase,
+  normalizeTranscript,
 } from "@lianki/debug-chat/mic";
 
 const domErr = (name: string) => Object.assign(new Error(name), { name });
@@ -800,5 +806,90 @@ describe("scheduleTick: the voice-send sound", () => {
     ]);
     expect(oscs[0].start).toBe(10);
     expect(oscs[1].start).toBeCloseTo(10.03);
+  });
+});
+
+describe("the Whisper hallucination guard", () => {
+  const PHRASE = "ご視聴ありがとうございました。";
+
+  it("normalizes: NFKC, punctuation, whitespace and case are ignored", () => {
+    expect(normalizeTranscript(" ご視聴、ありがとう ございました。 ")).toBe(
+      "ご視聴ありがとうございました",
+    );
+    expect(isHallucinationPhrase("ご視聴ありがとうございました。")).toBe(true);
+    expect(isHallucinationPhrase("「ご視聴ありがとうございました！」")).toBe(true);
+    // Full-width Latin and punctuation fold under NFKC.
+    expect(isHallucinationPhrase("Ｔｈａｎｋｓ　ｆｏｒ　ｗａｔｃｈｉｎｇ！")).toBe(true);
+    expect(isHallucinationPhrase("thanks for watching...")).toBe(true);
+    expect(isHallucinationPhrase("ご視聴ありがとうございました ご視聴ありがとうございました")).toBe(
+      true,
+    );
+  });
+
+  it("wildcards, and every listed phrase matches itself", () => {
+    expect(isHallucinationPhrase("Subtitles by the Amara.org community")).toBe(true);
+    expect(isHallucinationPhrase("字幕由Amara.org社区提供")).toBe(true);
+    expect(isHallucinationPhrase("请不吝点赞 订阅 转发 打赏支持明镜与点点栏目")).toBe(true);
+    expect(isHallucinationPhrase("Sous-titres réalisés par la communauté d'Amara.org")).toBe(true);
+    expect(isHallucinationPhrase("Ondertiteling door de Amara.org gemeenschap")).toBe(true);
+    for (const h of HALLUCINATIONS)
+      expect(isHallucinationPhrase(h.replaceAll("…", "x"))).toBe(true);
+  });
+
+  it("normal text is not a phrase", () => {
+    expect(isHallucinationPhrase("今日はありがとうございました。")).toBe(false);
+    expect(isHallucinationPhrase("Thanks for watching the kids")).toBe(false);
+    expect(isHallucinationPhrase("おやすみなさい、また明日。")).toBe(false);
+    expect(isHallucinationPhrase("")).toBe(false);
+    expect(isHallucinationPhrase("。")).toBe(false);
+  });
+
+  it("drops the phrase from a short or faint utterance, keeps it from a long clear one", () => {
+    expect(isHallucination(PHRASE, 600, 0.9)).toBe(true);
+    expect(isHallucination(PHRASE, HALLUCINATION_MAX_MS - 1)).toBe(true);
+    expect(isHallucination(PHRASE, 3000, HALLUCINATION_MIN_PROB - 0.1)).toBe(true);
+    expect(isHallucination(PHRASE, 3000, 0.9)).toBe(false);
+    expect(isHallucination(PHRASE, 3000)).toBe(false);
+    expect(isHallucination("こんにちは。", 300, 0.1)).toBe(false);
+  });
+
+  /** One utterance of `sec` seconds of 0.1 s frames at speech probability `prob`, transcribed as `text`. */
+  async function say(text: string, sec: number, prob: number) {
+    const logs: Record<string, unknown>[] = [];
+    const h = harness({ log: (ev) => logs.push(ev) });
+    await h.mic.toggle();
+    h.v.ev().onSpeechStart();
+    for (let i = 0; i < Math.round(sec * 10); i++)
+      h.v.ev().onFrame?.(new Float32Array(RATE / 10), prob);
+    h.v.ev().onSpeechEnd(new Float32Array(Math.round(sec * RATE)));
+    // Partials may have gone out on a long one: the final is the last upload.
+    h.uploads.at(-1)!.resolve(text);
+    await h.tick();
+    return { texts: h.texts, logs };
+  }
+
+  it("createMic: a hallucination in a short segment is dropped and logged", async () => {
+    const r = await say(PHRASE, 0.5, 0.9);
+    expect(r.texts).toEqual([]);
+    expect(r.logs).toEqual([{ ev: "stt-hallucination", text: PHRASE, ms: 500, prob: 0.9 }]);
+  });
+
+  it("createMic: a hallucination in a long but faint segment is dropped", async () => {
+    const r = await say(PHRASE, 3, 0.3);
+    expect(r.texts).toEqual([]);
+    // No frame reached speech: no speech at all.
+    expect(r.logs).toMatchObject([{ ev: "stt-hallucination", ms: 0, prob: 0.3 }]);
+  });
+
+  it("createMic: the same phrase said at length and clearly is kept", async () => {
+    const r = await say(PHRASE, 2, 0.9);
+    expect(r.texts).toEqual([PHRASE]);
+    expect(r.logs).toEqual([]);
+  });
+
+  it("createMic: normal text in a short segment is kept", async () => {
+    const r = await say("はい。", 0.3, 0.9);
+    expect(r.texts).toEqual(["はい。"]);
+    expect(r.logs).toEqual([]);
   });
 });

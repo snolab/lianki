@@ -216,6 +216,69 @@ export function appendDictation(draft: string, text: string): { draft: string; s
   return { draft: next, send: SPOKEN.test(said) && ENDS_SENTENCE.test(next.trim()) };
 }
 
+/**
+ * What Whisper says over silence or noise (its training subtitles' credits).
+ * A final transcript that is one of these (once normalized, possibly
+ * repeated) from a short or faint utterance is dropped (isHallucination).
+ * `…` stands for anything.
+ */
+export const HALLUCINATIONS = [
+  "ご視聴ありがとうございました",
+  "ご清聴ありがとうございました",
+  "チャンネル登録よろしくお願いします",
+  "おやすみなさい",
+  "Thanks for watching",
+  "Thank you for watching",
+  "Please subscribe",
+  "Subtitles by …",
+  "字幕由…提供",
+  "字幕製作…",
+  "请不吝点赞 订阅 转发…",
+  "谢谢观看",
+  "…明镜与点点栏目…",
+  "Ondertiteling …",
+  "Sous-titres réalisés par …",
+] as const;
+/** Under this much speech an utterance is short enough to be one of those. */
+export const HALLUCINATION_MAX_MS = 1_200;
+/** Under this mean speech probability (Silero) an utterance is faint enough. */
+export const HALLUCINATION_MIN_PROB = 0.5;
+/** A frame at or over this probability counts as speech, for the speech length. */
+export const SPEECH_FRAME_PROB = 0.5;
+
+/** For matching: NFKC, lowercased, without punctuation, symbols or whitespace. */
+export function normalizeTranscript(s: string): string {
+  return s.normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}\s]/gu, "");
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const HALLUCINATION_RE = new RegExp(
+  `^(?:${HALLUCINATIONS.map((h) =>
+    h
+      .split("…")
+      .map((part) => escapeRe(normalizeTranscript(part)))
+      .join(".*"),
+  ).join("|")})+$`,
+  "u",
+);
+
+/** The text is a known hallucination phrase (or a run of them), whatever its punctuation. */
+export function isHallucinationPhrase(text: string): boolean {
+  const n = normalizeTranscript(text);
+  return !!n && HALLUCINATION_RE.test(n);
+}
+
+/**
+ * Drop this final transcript: a known hallucination phrase from an utterance
+ * with under HALLUCINATION_MAX_MS of speech, or a mean speech probability
+ * under HALLUCINATION_MIN_PROB. The same words said at length and clearly are
+ * kept: the user may really say them.
+ */
+export function isHallucination(text: string, ms: number, prob?: number): boolean {
+  if (!isHallucinationPhrase(text)) return false;
+  return ms < HALLUCINATION_MAX_MS || (prob !== undefined && prob < HALLUCINATION_MIN_PROB);
+}
+
 /** Words (or, in CJK text, characters), and their keys: lowercased, without punctuation. */
 function tokens(s: string): { raw: string[]; key: string[]; cjk: boolean } {
   const cjk = CJK.test(s);
@@ -373,6 +436,8 @@ export function createMic(d: {
   onError?: (e: unknown) => void;
   /** Each frame's speech probability while capturing (the barge-in judge, voice.ts). */
   onProb?: (prob: number) => void;
+  /** Debug events (a dropped hallucination: `{ev: "stt-hallucination", text, ms, prob}`). */
+  log?: (ev: Record<string, unknown>) => void;
   /** Rolling partial chunks for long utterances (on unless false). */
   partials?: boolean;
   setTimer?: (f: () => void, ms: number) => unknown;
@@ -397,6 +462,14 @@ export function createMic(d: {
   let held = false;
   /** Set by a hold: speech that began before it is dropped, even if it ends after. */
   let tainted = false;
+  /**
+   * The utterance's speech so far, for the hallucination guard: samples in
+   * frames at or over SPEECH_FRAME_PROB, and the probabilities' sum and count.
+   * Reset when speech starts; kept past resetLive, so a flush on "off" has them.
+   */
+  let speechLen = 0;
+  let probSum = 0;
+  let probN = 0;
   /** VAD pause/start calls, in order. */
   let ctl: Promise<unknown> = Promise.resolve();
   const toMs = (n: number) => Math.round((n / RATE) * 1000);
@@ -455,12 +528,18 @@ export function createMic(d: {
       tainted = false;
       set("capturing");
       resetLive();
+      speechLen = probSum = probN = 0;
       clearTimer(cap);
       cap = setTimer(() => void vad?.flush(), MAX_UTTERANCE_MS);
     },
     onFrame(frame, prob) {
       if (g !== gen || state !== "capturing") return;
-      if (prob !== undefined) d.onProb?.(prob);
+      if (prob !== undefined) {
+        d.onProb?.(prob);
+        probSum += prob;
+        probN++;
+        if (prob >= SPEECH_FRAME_PROB) speechLen += frame.length;
+      }
       live.push(frame);
       liveLen += frame.length;
       sincePartial += frame.length;
@@ -490,10 +569,18 @@ export function createMic(d: {
         cur = null;
         resetLive();
       }
+      // Speech length and mean probability (Silero); without them, the clip's length.
+      const ms = toMs(probN ? speechLen : audio.length);
+      const prob = probN ? Math.round((probSum / probN) * 1000) / 1000 : undefined;
+      speechLen = probSum = probN = 0;
       pending();
       d.upload(encodeWav(audio), { seq, durationMs: toMs(audio.length), partial: false })
         .then(
-          (text) => q.resolve(seq, text),
+          (text) => {
+            const drop = isHallucination(text, ms, prob);
+            if (drop) d.log?.({ ev: "stt-hallucination", text: text.slice(0, 80), ms, prob });
+            q.resolve(seq, drop ? null : text);
+          },
           (e) => {
             q.resolve(seq, null);
             fail(e);

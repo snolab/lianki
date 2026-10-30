@@ -285,6 +285,8 @@ describe("workersAiTranscribe", () => {
       audio: "AQID",
       task: "transcribe",
       vad_filter: true,
+      condition_on_previous_text: false,
+      no_speech_threshold: 0.5,
       language: "ja",
     });
     calls.length = 0;
@@ -298,6 +300,8 @@ describe("workersAiTranscribe", () => {
       audio: "AQID",
       task: "transcribe",
       vad_filter: true,
+      condition_on_previous_text: false,
+      no_speech_threshold: 0.5,
       initial_prompt: STT_PROMPT,
     });
     answer(200, JSON.stringify({ result: { text: "hi" } }));

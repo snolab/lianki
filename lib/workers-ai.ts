@@ -171,6 +171,19 @@ export async function workersAiSpeech(opts: {
 }
 
 /**
+ * whisper-large-v3-turbo's guards against its silence hallucinations
+ * (「ご視聴ありがとうございました」, "Thanks for watching"): each utterance is
+ * decoded on its own, never conditioned on its earlier text, and segments
+ * Whisper itself thinks are no speech are skipped a little sooner than its
+ * default 0.6. Both are in the model's input schema (@cloudflare/workers-types).
+ * The client drops what still gets through (isHallucination, debug-chat/mic.ts).
+ */
+export const STT_ANTI_HALLUCINATION = {
+  condition_on_previous_text: false,
+  no_speech_threshold: 0.5,
+} as const;
+
+/**
  * Speech to text over the native `/ai/run/<model>` endpoint
  * (docs/workers-ai.md, "Speech to text"). Each model takes its audio its own
  * way: Nova-3 and the original Whisper take the raw bytes as the body (Nova-3's
@@ -197,6 +210,7 @@ export async function workersAiTranscribe(opts: {
         audio: Buffer.from(opts.audio).toString("base64"),
         task: "transcribe",
         vad_filter: true,
+        ...STT_ANTI_HALLUCINATION,
         ...(opts.lang ? { language: opts.lang.split("-")[0] } : { initial_prompt: STT_PROMPT }),
       }),
     };
