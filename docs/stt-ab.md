@@ -212,7 +212,7 @@ for talking to the agent at night. `scripts/local-stt/whisper-eval.py`:
   --since 2026-10-30T18:40:00Z --kws <the #350 KWS model dir> [--whisper]
 ```
 
-**No real whispers yet.** The 18 clips that came in from 03:45 to 04:01 JST
+**No real whispers yet.** The 18 clips that came in from 03:45 to 04:01 JST (26 by 04:12; see below)
 (iPhone, all with `aec: true`) are normal speech. Their voicing (the
 pitch autocorrelation peak over Silero's speech frames) is 0.61–0.77, the
 same as his older clips (median 0.70), at −19.6 to −29.8 dBFS. The script
@@ -276,35 +276,82 @@ under any gain (0/18 for none, +12, +18 and AGC-like). A KWS trained on
 voiced speech is expected to be weak on whispers, so with whisper mode on
 the mic should stay active, or the tap on the mic should serve as the wake.
 
-### Recommendation: a manual, device-local whisper mode
+### Recommendation: automatic, from the room and his recent level
 
-Every setting that helps the whisper costs something on his normal voice:
-CER 0.065 → 0.076 and 200 ms more per final. So it should be a toggle, not
-automatic. Store it as `lk:voice-whisper`: device-local, like the other
-habit settings, since it depends on the room and the hour.
+The owner (04:11 JST): it must switch by itself with how quiet the room is,
+not by a toggle. `scripts/local-stt/whisper-adaptive.py` validates a policy
+that runs per 32 ms frame on what the page has: the raw frame's RMS and
+Silero's probability on the processed frame.
 
-When `lk:voice-whisper` = "1":
-
-```js
-// before the VAD (Web Audio, on the mic stream): slow AGC to −26 dBFS, at most +30 dB,
-//   gain never above what the loudest speech so far needs (no pumping in pauses), then a
-//   soft limiter (DynamicsCompressor or tanh at 0.9 full scale)
-// MicVAD.new: { positiveSpeechThreshold: 0.2, negativeSpeechThreshold: 0.15, minSpeechMs: 150, preSpeechPadMs: 800, redemptionMs: 1400 }
-// mic.ts: ENDPOINT_MS 800, ENDPOINT_MIN 0.15, ENDPOINT_MARGIN 0.1 (ENDPOINT_MAX 0.8 as is)
-// wake: stay in active mode while whisper mode is on (KWS on whispers unproven)
-// no pre-emphasis, no tilt
+```bash
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/whisper-adaptive.py [--since …] [--json …]
 ```
 
-When it is off, keep the settings from "VAD sensitivity" above.
+**Two measures, updated every frame:**
 
-An automatic hint is cheap and safe: the server can report the voicing of
-each final (whispered = under 0.45). After two whispered finals in a row
-with whisper mode off, the widget offers a one-tap 「切到耳语模式？」.
+| measure | updated on | how |
+| --- | --- | --- |
+| room `floor` | frames with Silero p < 0.1 | EMA of the frame's RMS dB, α 0.02 (~1.6 s) |
+| his `level` | frames with p ≥ 0.5 | a running 90th percentile of the frame's RMS dB: `level += 3 × (0.9 − (rms < level))`; it rises 2.7 dB a frame and falls 0.3, so ~2 s of whispering brings it down and one loud syllable back up |
 
-The owner still needs to record real whispers. About 10 whispered sentences
-of 2 s or more and 5 whispered "Linky"s, in the quiet bedroom, with the
-clip sink on. Then re-run the script with `--since` set to that session to
-confirm or retune these numbers.
+**The curve, with hysteresis:**
+
+| state | enter when | leave when |
+| --- | --- | --- |
+| whisper | `level` < −34 dBFS **and** `floor` < −50 dBFS **and** `level − floor` ≥ 8 dB | `level` > −30 dBFS **or** `floor` > −45 dBFS |
+
+| | normal (the default) | whisper |
+| --- | --- | --- |
+| gain before the VAD | 0 dB | clamp(−20 − `level`, 0, +30) dB: rises at most 0.5 dB a frame, falls up to 6 dB a frame; then a tanh soft limiter at 0.9 full scale |
+| `positiveSpeechThreshold` / `negativeSpeechThreshold` | 0.3 / 0.25 | 0.2 / 0.15 |
+| `minSpeechMs` | 250 | 150 |
+| `ENDPOINT_MS` | 600 | 800 |
+| `ENDPOINT_MIN` / `ENDPOINT_MARGIN` | 0.35 / 0.25 | 0.15 / 0.1 |
+| `preSpeechPadMs` | 800 | 800 |
+
+The start threshold and the minimum speech are taken at the utterance's
+onset; the endpoint follows the current state. His normal speech has a
+90th percentile of −13 to −29 dBFS (20 clips); the whisperized copies sit
+at about −38. So −34 to enter and −30 to leave fall in the gap, with 4 dB
+of hysteresis.
+
+**Measured, each set a session of clips back to back** (the state carries
+over, as it does while the mic is on; between clips, 1.5 s of a quiet room):
+
+| set | today (fixed 0.3 / 250 / 600, no gain) | adaptive |
+| --- | --- | --- |
+| (a) his normal voice, quiet room, 20 clips | CER 0.070, 21 utterances | **0.070**, 21: whisper mode on for under 1% of frames (2 brief entries), no text changed |
+| (b) 2 normal clips, 20 synthetic whispers, 2 normal | 0.509 (whispers 0.604) | **0.228 (whispers 0.270)**, 80% of frames in whisper mode, 2 switches (in and out) |
+| … the normal clips around the whispers | 0.032 | 0.013 (the gain drops at 6 dB a frame as he speaks up) |
+| (c1) his normal voice with pink noise at 10 dB SNR | 0.255, 37 | 0.255, 37: never enters (`floor` > −50) |
+| (c2) false triggers, 28 sets: quiet room, fan, hum, 3 far babbles, 12 echoes of the page's voices at −25 dB, 10 not-for-agent captures | 23 of 28 with text | **23 of 28, the same ones**: no extra; room noise none in either, all the rest are voices |
+
+- **The first whispered words are slower.** The `level` needs about 2 s of
+  whispering to fall under −34, so the first utterance after speaking
+  normally is heard with today's settings. The whisper set's 0.270 includes
+  that (the manual mode's best was 0.255).
+- **A whisper in a loud room stays in normal mode** (`floor` over −50
+  dBFS): gain would only lift the noise. That is today's behaviour.
+- **The level must come from the loud frames.** A plain average of speech
+  frames put his normal voice into whisper mode a quarter of the time,
+  because his soft frames run −30 to −36 dBFS. The 90th percentile and the
+  fast release fixed both that and the normal clips after the whispers.
+
+**Real clips.** 26 have come in since 03:45 JST. None is a whisper: the
+first 25 have voicing 0.61–0.77 at −20 to −30 dBFS. One (04:10 JST) has
+voicing 0.42, but at a normal −25 dBFS, so it is breathy speech. Both
+settings transcribe it the same, and the policy (it goes by level, not by
+voicing) stays normal on it. The owner still needs to record about 10
+whispered sentences of 2 s or more and 5 whispered "Linky"s in the quiet
+bedroom, with the clip sink on. Then run both scripts with `--since` set
+to that session.
+
+For the widget, the whole policy is the two tables above; `POLICY`,
+`NORMAL` and `WHISPER` in `whisper-adaptive.py` hold the same numbers.
+While in whisper mode the mic should stay in active mode (KWS on whispers
+is unproven). It should show the state in the mic's dot or tooltip, so
+the switch is visible. There is no toggle, as the owner asked.
+
 
 ## Clip replay
 
