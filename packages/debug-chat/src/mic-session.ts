@@ -18,6 +18,7 @@
  * Everything that touches the browser is injected (MicDeps), so this is
  * unit-tested with fakes.
  */
+import type { MicAdapt } from "./mic";
 import type { UttMarks } from "./latency";
 import {
   type MicState,
@@ -39,7 +40,7 @@ export type LocalClient = StreamStt & {
 /** globalThis key of the session. */
 export const MIC_SESSION_KEY = "__lkMic";
 /** Bumped when the session's shape changes; an older one is migrated, its stream kept. */
-export const MIC_SESSION_V = 5;
+export const MIC_SESSION_V = 7;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -67,6 +68,8 @@ export type MicConfig = {
   localStt?: string;
 };
 export type MicDeps = {
+  /** The room and voice estimator (adaptive.ts): the endpoint follows it. */
+  adapt?: MicAdapt;
   /** getUserMedia with the session's constraints. */
   getStream: () => Promise<StreamLike>;
   /** The VAD on a stream (Silero), and the fallback (an energy gate). Neither stops the stream. */
@@ -166,6 +169,7 @@ export function createMicSession(
   };
   const mic = createMic({
     stream: localStream,
+    adapt: deps.adapt,
     load: async (ev) => deps.load(ev, await ensureStream()),
     fallback: deps.fallback ? async (ev) => deps.fallback!(ev, await ensureStream()) : undefined,
     upload: (wav, info) => deps.upload(wav, info, cfg),

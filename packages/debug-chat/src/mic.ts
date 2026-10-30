@@ -472,9 +472,24 @@ export const ENDPOINT_MIN = 0.35;
 export const ENDPOINT_MAX = 0.8;
 /** The floor's EMA weight per 32 ms frame (~1 s to settle). */
 export const FLOOR_ALPHA = 0.05;
-export function endpointThreshold(floor: number): number {
-  return Math.min(ENDPOINT_MAX, Math.max(ENDPOINT_MIN, floor + ENDPOINT_MARGIN));
+export function endpointThreshold(
+  floor: number,
+  margin = ENDPOINT_MARGIN,
+  min = ENDPOINT_MIN,
+): number {
+  return Math.min(ENDPOINT_MAX, Math.max(min, floor + margin));
 }
+
+/**
+ * The room and voice estimator (adaptive.ts): it hears every frame and each
+ * utterance's end, and sets the endpoint (a whisper in a quiet room waits
+ * longer, over a lower threshold).
+ */
+export type MicAdapt = {
+  frame(frame: Float32Array, prob: number | undefined, capturing: boolean): void;
+  end(kept: boolean): void;
+  state(): { endpointMs: number; endpointMargin: number; endpointMin: number };
+};
 
 export type UploadInfo = {
   seq: number;
@@ -519,6 +534,8 @@ export function createMic(d: {
    * then `{t_sttDone, dropped}`. Partials are not timed.
    */
   timing?: (seq: number, marks: UttMarks) => void;
+  /** The adaptive estimator (adaptive.ts); without it the endpoint is the fixed one. */
+  adapt?: MicAdapt;
   now?: () => number;
   setTimer?: (f: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
@@ -636,16 +653,18 @@ export function createMic(d: {
     },
     onFrame(frame, prob) {
       if (g !== gen) return;
+      if (!held) d.adapt?.frame(frame, prob, state === "capturing");
       // The noise floor: Silero's probability on what is heard between utterances.
       if (prob !== undefined && state === "listening") ep.floor += (prob - ep.floor) * FLOOR_ALPHA;
       if (state !== "capturing") return;
       if (utt && prob !== undefined && !ep.sent) {
         // Streaming: our own end of speech, ENDPOINT_MS under a threshold over the floor.
-        if (prob >= endpointThreshold(ep.floor)) {
+        const a = d.adapt?.state();
+        if (prob >= endpointThreshold(ep.floor, a?.endpointMargin, a?.endpointMin)) {
           ep.heard = true;
           ep.quiet = 0;
         } else ep.quiet += frame.length;
-        if (ep.heard && ep.quiet >= toSamples(ENDPOINT_MS)) {
+        if (ep.heard && ep.quiet >= toSamples(a?.endpointMs ?? ENDPOINT_MS)) {
           ep.sent = true;
           d.log?.({ ev: "stt-endpoint", floor: Math.round(ep.floor * 100) / 100 });
           void vad?.flush();
@@ -673,6 +692,7 @@ export function createMic(d: {
         sendPartial();
     },
     onMisfire() {
+      d.adapt?.end(false);
       if (g !== gen || held) return;
       clearTimer(cap);
       dropUtt();
@@ -681,6 +701,8 @@ export function createMic(d: {
       if (state === "capturing") set("listening");
     },
     onSpeechEnd(audio) {
+      // Only speech that is kept teaches the speech level (never the agent's echo).
+      d.adapt?.end(g === gen && !held && !tainted);
       const u = utt;
       utt = null;
       // Heard while the agent spoke (or begun before it did): the reply's echo, dropped.

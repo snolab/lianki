@@ -19,6 +19,21 @@ export type UiStrings = {
   /** The menu's Latency row (latency.ts): its title, and before any voice reply. */
   latency: string;
   latencyNone: string;
+  /**
+   * The menu's mic row (adaptive.ts), a debug readout for the owner: the
+   * room's noise floor, his voice level, the input gain the mic adds, and the
+   * speech detector's settings, which adapt to a quiet room and a soft voice.
+   * - micAdapt: the row's title;
+   * - micAdaptFloor / micAdaptVoice / micAdaptGain: short labels before a
+   *   value in dB ("room −58 dB", "voice −44 dB", "gain +12 dB");
+   * - micAdaptWhisper: a short tag shown while it is in its most sensitive
+   *   (whisper) setting, chosen by itself or forced in Settings.
+   */
+  micAdapt: string;
+  micAdaptFloor: string;
+  micAdaptVoice: string;
+  micAdaptGain: string;
+  micAdaptWhisper: string;
   /** Its stages: the VAD's silence wait, STT, the page's own steps, the hub, the agent, the voice. */
   latVad: string;
   latStt: string;
@@ -53,6 +68,11 @@ export const UI_EN: UiStrings = {
   items: "items",
   polished: "Polished",
   latency: "Latency, last voice line",
+  micAdapt: "Mic, adapting",
+  micAdaptFloor: "room",
+  micAdaptVoice: "voice",
+  micAdaptGain: "gain",
+  micAdaptWhisper: "whisper",
   latencyNone: "Latency: no voice reply yet",
   latVad: "silence",
   latStt: "STT",
@@ -76,6 +96,11 @@ export const UI_ZH: UiStrings = {
   items: "项",
   polished: "已润色",
   latency: "延迟（上一句语音）",
+  micAdapt: "麦克风（自适应）",
+  micAdaptFloor: "环境",
+  micAdaptVoice: "语音",
+  micAdaptGain: "增益",
+  micAdaptWhisper: "耳语",
   latencyNone: "延迟：还没有语音回复",
   latVad: "静音等待",
   latStt: "转写",
@@ -99,6 +124,11 @@ export const UI_JA: UiStrings = {
   items: "件",
   polished: "整えました",
   latency: "遅延（直前の音声）",
+  micAdapt: "マイク（自動調整）",
+  micAdaptFloor: "周囲",
+  micAdaptVoice: "声",
+  micAdaptGain: "ゲイン",
+  micAdaptWhisper: "ささやき",
   latencyNone: "遅延：まだ音声の返信がありません",
   latVad: "無音待ち",
   latStt: "文字起こし",

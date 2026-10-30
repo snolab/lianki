@@ -1,5 +1,6 @@
 "use client";
 
+import { type AdaptState, voiceAdapt } from "./adaptive";
 import {
   type ReactNode,
   useEffect,
@@ -719,6 +720,13 @@ export function DebugChat({
     const s = voiceLatency();
     setLastLatency(s.latest());
     return s.subscribe(() => setLastLatency(s.latest()));
+  }, []);
+  /** The mic's adaptive state (adaptive.ts), for the menu's readout. */
+  const [adapt, setAdapt] = useState<AdaptState>(() => voiceAdapt().state());
+  useEffect(() => {
+    const a = voiceAdapt();
+    setAdapt(a.state());
+    return a.subscribe(setAdapt);
   }, []);
   const treeText = { ...treeDefaults(), ...hostTreeText };
   /** The tree as treeNav sees it (index-path ids), and where its focus and depths are. */
@@ -2199,6 +2207,26 @@ export function DebugChat({
           ) : (
             ui.latencyNone
           )}
+        </div>
+      )}
+      {/* The mic's adaptation (adaptive.ts): read-only, no toggle. */}
+      {vs.mic && (
+        <div data-testid="debug-menu-adapt" className="px-3 py-1 text-gray-500">
+          <div>
+            {ui.micAdapt}
+            <span className="ms-1">({adapt.mode})</span>
+            {adapt.whisper && <span className="ms-1 font-semibold">· {ui.micAdaptWhisper}</span>}
+          </div>
+          <div className="tabular-nums">
+            {[
+              `${ui.micAdaptFloor} ${adapt.floorDb} dB`,
+              `${ui.micAdaptVoice} ${adapt.levelDb} dB`,
+              `${ui.micAdaptGain} +${adapt.gainDb} dB`,
+            ].join(" · ")}
+          </div>
+          <div className="tabular-nums">
+            {`VAD ${adapt.positiveSpeechThreshold}/${adapt.negativeSpeechThreshold} · ${adapt.minSpeechMs} ms · end ${adapt.endpointMs} ms`}
+          </div>
         </div>
       )}
       {vs.queued > 0 && (
