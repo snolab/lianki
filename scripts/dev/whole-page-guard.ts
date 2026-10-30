@@ -25,6 +25,9 @@ export const ENTER_TOKEN_TTL_MS = 10 * 60 * 1000;
 /** Where the enter link lands (owner, 2026-10-31: keep /words?list=all). */
 export const LANDING = "/words?list=all";
 
+/** lianki-push's build-announcement socket (app/components/NewVersionNotice.tsx). */
+export const BUILD_ANNOUNCE_PATH = "/api/version/ws";
+
 /** The only auth endpoints the dev origin serves. */
 const AUTH_ALLOWED = new Set(["/api/auth/get-session", "/api/auth/sign-out"]);
 
@@ -50,6 +53,12 @@ export function decide(pathname: string, deviceOk: boolean): Decision {
       : { kind: "deny", status: 403, reason: "sign-in is closed on the dev origin" };
   }
   if (PRE_SESSION_PREFIXES.some((p) => pathname.startsWith(p))) return { kind: "pass" };
+  // lianki.com's build announcements: the dev build's id never matches
+  // production's, so the page would offer "New version · Refresh" forever.
+  // Refused, the page's version check stops (it gives up on a fast failure).
+  if (pathname === BUILD_ANNOUNCE_PATH) {
+    return { kind: "deny", status: 403, reason: "build announcements are off on the dev server" };
+  }
   return { kind: "owner" };
 }
 

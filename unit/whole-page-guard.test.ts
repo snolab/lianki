@@ -184,6 +184,9 @@ describe("whole-page guard: hub and carried settings", () => {
     // the hub goes through the owner check like any app path
     expect(decide("/api/version/debug", true).kind).toBe("owner");
     expect(decide("/api/version/debug", false).kind).toBe("deny");
+    // production's build announcements never reach the dev page
+    expect(decide("/api/version/ws", true).kind).toBe("deny");
+    expect(decide("/api/version/progress", true).kind).toBe("owner");
   });
 
   test("only small lk:debug / lk:agent / lk:pref keys travel", () => {

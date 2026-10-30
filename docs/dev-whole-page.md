@@ -126,6 +126,19 @@ with the owner and nobody else (`lib/dev-bridge.ts`, docs/secrets-and-auth.md,
 `.dev-whole-page.json`. Chat history comes from the hub as on lianki.com, and
 eval reaches the page like any other debug page of his.
 
+## Build announcements and speech-to-text
+
+- **No "New version" banner.** `/api/version/ws` carries lianki.com's build
+  announcements, and the dev build's id never matches them, so the banner
+  came back after every refresh. The guard refuses that socket, and the
+  page's version check gives up after a fast failure.
+- **Speech-to-text uses his local SenseVoice.** The server's clean env has no
+  Workers AI credentials, so cloud STT (`/api/debug/stt`) answers 502 here.
+  The widget streams to his Mac instead (docs/local-stt.md):
+  `localStorage["lk:debug-local-stt"] = "wss://taku.onca-tint.ts.net/lianki-stt"`
+  on the dev origin, set once through eval. The enter link carries the key
+  too when his lianki.com tab has it.
+
 ## Checked on 2026-10-31
 
 | Probe                                                                         | Result                       |
