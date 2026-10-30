@@ -24,6 +24,18 @@ const INK: Record<TreeStatus, string> = {
   done: "oklch(0.62 0.15 150)",
 };
 const ACCENT = "oklch(0.58 0.21 33)";
+/**
+ * The current node (the one on the focus line): a tinted row and an accent
+ * bar at its start edge, in both schemes. Inline: the hot-loaded widget has
+ * only the app's compiled classes.
+ */
+export const FOCUS_ROW = {
+  background: "light-dark(oklch(0.93 0.035 250 / 0.75), oklch(0.32 0.05 250 / 0.7))",
+  boxShadow: "inset 3px 0 0 oklch(0.62 0.16 250)",
+  borderRadius: 4,
+} as const;
+/** Every row snaps its top to the focus line (the scroller's scroll-padding-top). */
+const SNAP = { scrollSnapAlign: "start" } as const;
 
 function Label({ node, hidden }: { node: TreeNode; hidden: boolean }) {
   const open = hidden ? countOpen(node).open : 0;
@@ -57,6 +69,7 @@ export function TreeChips({
   onNav,
   status,
   empty,
+  wasDrag,
 }: {
   root: TreeNode | null;
   nav: TreeNavState;
@@ -67,6 +80,8 @@ export function TreeChips({
   status?: string;
   /** "The tree is empty.", localized by the host. */
   empty?: string;
+  /** A drag on a line just ended: its click is not a tap. */
+  wasDrag?: () => boolean;
 }) {
   /** The open branch's top chip: the one the accordion has open (or the focus's). */
   const openTop = useMemo(() => {
@@ -101,6 +116,7 @@ export function TreeChips({
         aria-label={uiStrings().stateTree}
         data-testid="tree-chip-row"
         className="flex gap-x-3 overflow-x-auto overflow-y-hidden overscroll-x-contain whitespace-nowrap [scrollbar-width:none]"
+        style={SNAP}
       >
         {ix.roots.map((id) => {
           const node = byId.get(id)!;
@@ -117,6 +133,7 @@ export function TreeChips({
               data-open={opened || undefined}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => onNav({ type: "tapChip", id })}
+              style={id === focus ? { ...FOCUS_ROW, paddingInline: 4 } : undefined}
               className={`tap-40 pointer-events-auto shrink-0 border-0 bg-transparent p-0 text-start text-inherit ${opened ? "font-semibold" : ""} ${mark(id)}`}
             >
               <Label node={node} hidden={!opened} />
@@ -137,13 +154,19 @@ export function TreeChips({
                 data-id={id}
                 data-level={level}
                 data-focus={id === focus || undefined}
-                style={{ paddingInlineStart: `${level * 0.75}rem` }}
+                style={{
+                  ...SNAP,
+                  paddingInlineStart: `calc(${level * 0.75}rem + 4px)`,
+                  // Vertical pans scroll natively; a sideways drag opens or folds it.
+                  touchAction: "pan-y",
+                  ...(id === focus ? FOCUS_ROW : {}),
+                }}
               >
                 <button
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => onNav({ type: "tapChip", id })}
-                  className={`pointer-events-auto border-0 bg-transparent p-0 text-start text-inherit ${mark(id)}`}
+                  onClick={() => !wasDrag?.() && onNav({ type: "tapChip", id })}
+                  className={`tap-40 pointer-events-auto border-0 bg-transparent p-0 text-start text-inherit ${mark(id)}`}
                 >
                   {kids.length > 0 && (
                     <span aria-hidden className="me-0.5 opacity-60">

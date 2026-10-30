@@ -81,7 +81,13 @@ export type TreeNavEvent =
   | { type: "dragCancel" }
   | { type: "tapChip"; id: string }
   | { type: "key"; key: string }
-  | { type: "collapseAll" };
+  | { type: "collapseAll" }
+  /** The focus line (or a press) is on this node: it becomes the focus, nothing opens. */
+  | { type: "focus"; id: string }
+  /** Move the focus n nodes along what is shown (↑/↓), top to bottom. */
+  | { type: "step"; n: number }
+  /** Open (n > 0) or fold (n < 0) the focused node n levels (→/←). */
+  | { type: "level"; n: number };
 
 export const initialNav = (ix: NavIndex): TreeNavState => ({
   focusId: ix.roots[0] ?? null,
@@ -180,6 +186,26 @@ const sameDepths = (a: Readonly<Record<string, number>>, b: Readonly<Record<stri
   return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
 };
 
+/**
+ * The nodes as shown, top to bottom: each top-level chip, the open one
+ * followed by its visible descendants (depth first).
+ */
+export function visibleOrder(ix: NavIndex, s: Pick<TreeNavState, "expanded">): string[] {
+  const out: string[] = [];
+  const walk = (id: string) => {
+    for (const c of ix.children.get(id) ?? []) {
+      if (!isVisible(ix, s, c)) continue;
+      out.push(c);
+      walk(c);
+    }
+  };
+  for (const r of ix.roots) {
+    out.push(r);
+    walk(r);
+  }
+  return out;
+}
+
 /** Siblings of a node, in order. */
 const siblings = (ix: NavIndex, id: string) => {
   const p = ix.parent.get(id) ?? null;
@@ -213,6 +239,22 @@ export function treeNav(ix: NavIndex, s: TreeNavState, ev: TreeNavEvent): TreeNa
       const want = d === 0 && maxDetent(ix, ev.id) > 0 ? 1 : d;
       const e = prune(ix, { ...s.expanded, [ev.id]: want }, top);
       return settle(s, { ...s, focusId: ev.id, expanded: e, base: undefined, detent: 0 });
+    }
+    case "focus":
+      if (!ix.parent.has(ev.id) || !isVisible(ix, s, ev.id)) return s;
+      return settle(s, { ...s, focusId: ev.id });
+    case "step": {
+      const order = visibleOrder(ix, s);
+      const i = s.focusId === null ? -1 : order.indexOf(s.focusId);
+      const j = Math.max(0, Math.min(order.length - 1, i + ev.n));
+      const id = order[j];
+      if (id === undefined) return s;
+      const limit = i + ev.n < 0 ? "min" : i + ev.n > order.length - 1 ? "max" : undefined;
+      return settle(s, { ...s, focusId: id }, limit);
+    }
+    case "level": {
+      const r = steps(ix, s, ev.n);
+      return settle(s, r.s, r.limit);
     }
     case "collapseAll": {
       const f = s.focusId === null ? null : topOf(ix, s.focusId);

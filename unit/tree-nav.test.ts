@@ -14,6 +14,7 @@ import {
   pinRow,
   pinScroll,
   treeNav,
+  visibleOrder,
 } from "@lianki/debug-chat/tree-nav";
 
 type T = { id: string; kids?: T[] };
@@ -276,5 +277,24 @@ describe("keeping a row still across a nav step", () => {
     }
     // Right and back: A1 throughout; left past A1's level: A; back right: from the base again.
     expect(foci).toEqual(["A1", "A1", "A1", "A1", "A1", "A1", "A1", "A", "A", "A", "A1"]);
+  });
+});
+
+describe("treeNav: the focus line's events", () => {
+  it("focus, step along what is shown, and level", () => {
+    const open = at("A", { A: 2 });
+    expect(visibleOrder(ix, open)).toEqual(["A", "A1", "A1a", "A2", "B", "C"]);
+    expect(run(open, { type: "focus", id: "A1a" }).focusId).toBe("A1a");
+    // Not shown, or unknown: nothing changes.
+    expect(run(open, { type: "focus", id: "A1a1" })).toBe(open);
+    expect(run(open, { type: "focus", id: "Z" })).toBe(open);
+    expect(run(open, { type: "step", n: 2 }).focusId).toBe("A1a");
+    const top = run(open, { type: "step", n: -1 });
+    expect(top.focusId).toBe("A");
+    expect(top.atLimit).toBe("min");
+    expect(run(at("C"), { type: "step", n: 5 }).atLimit).toBe("max");
+    const deeper = run(at("A1", { A: 1 }), { type: "level", n: 1 });
+    expect(deeper.expanded.A1).toBe(1);
+    expect(run(deeper, { type: "level", n: -1 }).expanded.A1 ?? 0).toBe(0);
   });
 });

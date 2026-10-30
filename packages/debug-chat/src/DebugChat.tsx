@@ -161,6 +161,11 @@ const withClass = <T extends { className: string }>(p: T, cls: string): T => ({
   ...p,
   className: `${p.className} ${cls}`,
 });
+/** Props with more inline style merged into theirs. */
+const addStyle = <T extends { style?: React.CSSProperties }>(st: React.CSSProperties, p: T): T => ({
+  ...p,
+  style: { ...p.style, ...st },
+});
 /** The tree button's gestures, for its title and aria-description. */
 const TREE_HINT =
   "Tap: show or hide the state tree · drag right: open the focused node deeper · drag left: fold it · arrow keys: move";
@@ -534,6 +539,8 @@ const QUIET: VoiceState = {
 
 /** A log line's avatar, square: fixed, so a picture loading late shifts nothing. */
 const AVATAR_PX = 18;
+/** The tree's focus line: this far down its scroller (the /words list's is near a third). */
+const TREE_FOCUS_FRAC = 0.35;
 
 /** The input grows to about five lines, then scrolls inside itself. */
 const INPUT_MAX_PX = 128;
@@ -840,12 +847,149 @@ export function DebugChat({
     const el = treeBodyEl.current;
     if (!el) return;
     treeScroll.current = el.scrollTop;
+    // The focus line: the row under it is the current node (offsets cached
+    // per render, so a scroll reads no layout). Not during a sideways drag.
+    const y = treeFocusY.current;
+    if (y > 0 && !rowPress.current.on && treeRows.current.length) {
+      const row = pickAnchor(treeRows.current, el.scrollTop + y);
+      if (row && row.id !== navRef.current.focusId && !navRef.current.base) {
+        const next = treeNav(navIx.ix, navRef.current, { type: "focus", id: row.id });
+        if (next !== navRef.current) {
+          navRef.current = next;
+          setNav(next);
+        }
+      }
+    }
     setTreeFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
     // Kept with the tree (ui-store.ts) once the restored scroll has landed.
     const kept = uiStore.getState().tree;
     const top = Math.round(el.scrollTop);
     if (kept && treeScrollPending.current === null && kept.scroll !== top)
       uiStore.setState({ tree: { ...kept, scroll: top } });
+  };
+  /**
+   * The tree's focus line: TREE_FOCUS_FRAC down its scroller (px from its
+   * top; 0 = not measured, or a body without a fixed height). The scroller
+   * gets that much slack above its first row and the rest below its last,
+   * so any row, the first and the last too, can sit on the line.
+   */
+  const treeFocusY = useRef(0);
+  const [treeSlack, setTreeSlack] = useState<{ top: number; bottom: number } | null>(null);
+  /** Each row's top and bottom in the scroller's content (px), with its node. */
+  const treeRows = useRef<{ id: string; top: number; bottom: number }[]>([]);
+  /** ↑/↓ moved the focus: the layout effect puts it on the line. */
+  const treeAlign = useRef(false);
+  /** A row press: its sideways drag opens or folds the node (the tree button's detents). */
+  const rowAxis = useRef(createAxisLock());
+  const rowDragged = useRef(createDragFlag());
+  const rowPress = useRef({ cells: 0, on: false });
+  const measureTree = () => {
+    const el = treeBodyEl.current;
+    const sized = !!el && el.dataset.sized === "1";
+    const h = sized ? el.clientHeight : 0;
+    const y = h > 0 ? Math.round(h * TREE_FOCUS_FRAC) : 0;
+    treeFocusY.current = y;
+    setTreeSlack((was) => {
+      const next = y > 0 ? { top: y, bottom: Math.max(0, h - y - 24) } : null;
+      return was?.top === next?.top && was?.bottom === next?.bottom ? was : next;
+    });
+  };
+  useLayoutEffect(() => {
+    measureTree();
+    const on = () => measureTree();
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, [tree, open, treeTall]);
+  // The row cache (one pass per render), and ↑/↓ landing on the line.
+  useLayoutEffect(() => {
+    const el = treeBodyEl.current;
+    if (!el || !tree) {
+      treeRows.current = [];
+      return;
+    }
+    const box = el.getBoundingClientRect();
+    const rows: { id: string; top: number; bottom: number }[] = [];
+    const openChip = el.querySelector<HTMLElement>("[data-testid=tree-chip][data-open]");
+    for (const r of el.querySelectorAll<HTMLElement>(
+      "[data-testid=tree-chip-row], [data-testid=tree-line]",
+    )) {
+      const id =
+        r.dataset.testid === "tree-line"
+          ? r.dataset.id
+          : (openChip?.dataset.id ??
+            r.querySelector<HTMLElement>("[data-focus]")?.dataset.id ??
+            navIx.ix.roots[0]);
+      if (!id) continue;
+      const rr = r.getBoundingClientRect();
+      rows.push({ id, top: rr.top - box.top + el.scrollTop, bottom: rr.bottom - box.top + el.scrollTop });
+    }
+    treeRows.current = rows;
+    if (treeAlign.current && treeFocusY.current > 0 && nav.focusId !== null) {
+      treeAlign.current = false;
+      const row =
+        rows.find((r) => r.id === nav.focusId) ??
+        rows.find((r) => navIx.ix.roots.includes(nav.focusId!) && r === rows[0]);
+      if (row) el.scrollTop = Math.max(0, row.top - treeFocusY.current);
+    }
+  }, [nav, navIx, tree, open, treeSlack]);
+  /** Presses on the tree's lines: focus, then a sideways drag opens (→) or folds (←) it. */
+  const rowGesture = {
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
+      const id = (e.target as HTMLElement).closest<HTMLElement>("[data-testid=tree-line]")?.dataset
+        .id;
+      rowPress.current = { cells: 0, on: !!id };
+      rowDragged.current.down();
+      if (!id) return;
+      rowAxis.current.down(e.clientX, e.clientY);
+      const next = treeNav(navIx.ix, navRef.current, { type: "focus", id });
+      if (next !== navRef.current) {
+        navRef.current = next;
+        setNav(next);
+      }
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
+      const p = rowPress.current;
+      if (!p.on) return;
+      const was = rowAxis.current.axis();
+      const m = rowAxis.current.move(e.clientX, e.clientY);
+      if (!m || m.axis !== "x") return;
+      if (!was) navTo({ type: "dragStart" });
+      const cells = dragCells(m.dx, p.cells);
+      if (was && cells === p.cells) return;
+      p.cells = cells;
+      navTo({ type: "dragMove", cells });
+    },
+    onPointerUp: () => {
+      const p = rowPress.current;
+      if (!p.on) return;
+      p.on = false;
+      const axis = rowAxis.current.up();
+      if (axis) rowDragged.current.dragEnded();
+      if (axis === "x") navTo({ type: "dragEnd" });
+    },
+    onPointerCancel: () => {
+      const p = rowPress.current;
+      if (!p.on) return;
+      p.on = false;
+      if (rowAxis.current.up() === "x") navTo({ type: "dragEnd" });
+    },
+    /** ↑/↓ move along what is shown (onto the line); →/Enter open, ← folds. */
+    onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
+      const k = e.key;
+      if (k === "ArrowUp" || k === "ArrowDown") {
+        e.preventDefault();
+        treeAlign.current = true;
+        const next = treeNav(navIx.ix, navRef.current, { type: "step", n: k === "ArrowUp" ? -1 : 1 });
+        navRef.current = next;
+        setNav(next);
+      } else if (k === "ArrowRight" || k === "Enter") {
+        e.preventDefault();
+        navTo({ type: "level", n: 1 });
+      } else if (k === "ArrowLeft") {
+        e.preventDefault();
+        navTo({ type: "level", n: -1 });
+      }
+    },
   };
   /** A kept tree scroll waiting for the tree's rows to load (then applied once). */
   const treeScrollPending = useRef<number | null>(uiStore.getState().tree?.scroll || null);
@@ -1965,6 +2109,7 @@ export function DebugChat({
         ix={navIx.ix}
         byId={navIx.byId}
         onNav={navTo}
+        wasDrag={() => rowDragged.current.wasDrag()}
         empty={treeStrings(treeText).empty}
         // A tree already shown stays up through a later failed load: the
         // error shows only while there is nothing to show.
@@ -2040,16 +2185,49 @@ export function DebugChat({
           treeBodyEl.current = el;
         }}
         data-testid="debug-chat-tree-body"
+        data-sized={!floating || treeTall ? "1" : undefined}
         onScroll={onTreeScroll}
-        {...withClass(
+        tabIndex={0}
+        onPointerDown={rowGesture.onPointerDown}
+        onPointerMove={rowGesture.onPointerMove}
+        onPointerUp={rowGesture.onPointerUp}
+        onPointerCancel={rowGesture.onPointerCancel}
+        onKeyDown={rowGesture.onKeyDown}
+        {...addStyle(
+          treeSlack && (!floating || treeTall)
+            ? {
+                paddingTop: treeSlack.top,
+                paddingBottom: treeSlack.bottom,
+                scrollPaddingTop: treeSlack.top,
+                scrollSnapType: "y proximity",
+                outline: "none",
+              }
+            : { outline: "none" },
+          withClass(
           // Expanded: the log's surface at its open height (the log's box).
           logSurface({ expanded: !floating || typing || micActive || treeTall, fade: treeFade }),
           // Expanded: the log's box at its open height (30vh), whatever it holds.
           `min-w-0 flex-1 ${!floating || treeTall ? "h-[30vh]" : ""}`,
+          ),
         )}
       >
         {treeContent}
       </div>
+      {/* The focus line: where the current node sits (click-through). */}
+      {treeSlack && (!floating || treeTall) && (
+        <div
+          aria-hidden
+          data-testid="debug-chat-tree-focus-line"
+          className="pointer-events-none absolute start-0"
+          style={{
+            top: treeSlack.top - 2,
+            width: 6,
+            height: 2,
+            borderRadius: 1,
+            background: "oklch(0.62 0.16 250)",
+          }}
+        />
+      )}
     </div>
   );
   const floatsEl = floats.length > 0 && (
