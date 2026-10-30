@@ -2910,6 +2910,22 @@ function Study({
   // scrolled well past the middle (or to the touch focus line). Row positions
   // and the windowing below are all offset by it.
   const pad = Math.round(viewH * OVERSCROLL_FRACTION);
+  // `scrollTop` (state) moves only when the rows in view change: the window,
+  // the audio wish, the reach and the glide's goal are all per row, and a
+  // render of the whole list on every scroll event (60 a second) was the
+  // biggest scroll cost on an iPhone. The key is every row edge they read.
+  const scrollKey = useRef("");
+  const syncScroll = (top: number) => {
+    const key = `${Math.floor((top - pad) / ROW_H)}|${Math.floor((top - pad + viewH) / ROW_H)}|${Math.ceil((top - pad + viewH) / ROW_H)}`;
+    if (key === scrollKey.current) return;
+    scrollKey.current = key;
+    setScrollTop(top);
+  };
+  // The rows' edges move with the height, the over-scroll and the row height.
+  useEffect(() => {
+    if (listEl) syncScroll(listEl.scrollTop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listEl, pad, viewH, ROW_H]);
   // Open with the first row just under the glass toolbar, not half a screen
   // down. Re-applied until the person moves the list themselves: whenever the
   // list element is (re)mounted (the queue can reload, e.g. from the offline
@@ -3285,7 +3301,7 @@ function Study({
     }
     // Glide every row together: one variable, moved by a critically damped
     // spring that keeps its velocity if the goal moves mid-glide. One loop
-    // outlives this effect: a scroll re-runs it every frame, and restarting
+    // outlives this effect: a scroll re-runs it at each row it crosses, and restarting
     // the loop each time cancelled the pending step and timed the next from
     // a fresh performance.now(), so the spring advanced a fraction of each
     // frame, or not at all — the width stalled while the finger moved, then
@@ -3625,7 +3641,7 @@ function Study({
               scrollPaddingBottom: bar.bottom,
             }}
             onScroll={(e) => {
-              setScrollTop(e.currentTarget.scrollTop);
+              syncScroll(e.currentTarget.scrollTop);
               lastScrollAt.current = performance.now();
               keepAnchor(e.currentTarget.scrollTop);
             }}

@@ -123,7 +123,7 @@ describe("checkIslandsModule", () => {
       {
         ISLANDS_API,
         islands: { "header.brand": C, "x.unknown": C },
-        versions: { "header.brand": 1 },
+        versions: { "header.brand": ISLAND_VERSIONS["header.brand"] },
         css: "a{}",
         rev: "r",
       },
@@ -242,13 +242,15 @@ describe("<Island>", () => {
         createElement(Island<"header.brand">, {
           name: "header.brand",
           component: Builtin,
-          props: { appName: "L" },
+          props: { appName: "L", locale: "en" },
         }),
       ),
     ).toBe("<b>built-in L</b>");
     const Named = island("header.brand", Builtin);
     expect(Named.displayName).toBe("Island(header.brand)");
-    expect(renderToString(createElement(Named, { appName: "M" }))).toBe("<b>built-in M</b>");
+    expect(renderToString(createElement(Named, { appName: "M", locale: "en" }))).toBe(
+      "<b>built-in M</b>",
+    );
   });
 
   it("renders the override the store holds for its name", () => {
@@ -258,7 +260,7 @@ describe("<Island>", () => {
         createElement(HotIsland<"header.brand">, {
           name: "header.brand",
           component: Builtin,
-          props: { appName: "L" },
+          props: { appName: "L", locale: "en" },
           store,
         }),
       );
