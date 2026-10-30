@@ -1054,14 +1054,25 @@ try {
         // On a phone the bottom island hides the strip, which lets taps
         // through to the slips (docs/bottom-nav.md): touch the header's empty
         // middle there instead, a touch that changes nothing on the list.
-        const header = await m.locator("header").first().boundingBox();
+        // A point on the header that is no control (no link, button or menu).
+        const header = await m.evaluate(() => {
+          const h = document.querySelector("header");
+          if (!h) return null;
+          const b = h.getBoundingClientRect();
+          const y = b.top + b.height / 2;
+          for (let x = b.left + b.width / 2; x < b.right; x += 6) {
+            const el = document.elementFromPoint(x, y);
+            if (el && h.contains(el) && !el.closest("a, button, input, select, [role]"))
+              return { x, y };
+          }
+          return null;
+        });
         const hidden = await m
           .locator("[data-words-help]")
           .evaluate((el) => getComputedStyle(el).opacity === "0")
           .catch(() => false);
         const hint = await m.locator("text=? all keys").boundingBox();
-        if (hidden && header)
-          await m.touchscreen.tap(header.x + header.width * 0.55, header.y + header.height / 2);
+        if (hidden && header) await m.touchscreen.tap(header.x, header.y);
         else if (hint) await m.touchscreen.tap(hint.x + 5, hint.y + 5);
         await m
           .locator("text=/tap = show/")
