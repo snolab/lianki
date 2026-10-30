@@ -1,124 +1,18 @@
 /**
- * UI state that survives a refresh and a hot swap of the widget: a zustand
- * store with `persist` over sessionStorage. Session-scoped UI state only
- * (what was being typed, which panel was open, where the log was scrolled),
- * never business data: messages, cards, grants and tokens keep their own
- * sources. Device preferences (speech rate, voice-out mode, the bar's
- * remembered position) stay in localStorage, where they already live.
+ * The chat's session UI state, on the shared UI-state factory
+ * (`@lianki/ui-state`, docs/ui-state.md): a zustand store with `persist` over
+ * sessionStorage (key `lk:ui:chat`), one instance per page on globalThis, so
+ * a refresh, a hot swap of the widget, or the built-in chat taking over all
+ * see the same state. Storage never throws (the factory falls back to
+ * memory).
  *
- * `createUiStore(name, version, initial, opts)` follows the convention of
- * the shared factory (`@lianki/ui-state`, PR #333, docs/ui-state.md: zustand
- * persist, one instance per page on globalThis.__lkUiStores, migrate +
- * clean on rehydrate). It is not imported from there yet only because #333
- * is not on main; once it is, `chatUi()` becomes
- * `createUiStore("chat", 1, CHAT_UI_INITIAL, { storage: "session", migrate, clean })`
- * (key `lk:ui:chat`). Same zustand version (5.0.15). Like it:
- * one store per name per page, kept on globalThis, so a re-imported widget
- * module (a hot reload, or the fallback to the built-in chat) gets the same
- * store rather than a fresh one.
- *
- * Only `zustand/vanilla` and `zustand/middleware` are used here (no React);
- * components read the store with `useStore` from "zustand", whose `react`
- * import the widget build maps to the page's React like every other one.
+ * UI state only: what was being typed, whether the tree is open, the tree's
+ * place. Never business data (messages, cards, grants, tokens). Device
+ * preferences (speech rate, voice-out mode, the bar's remembered position)
+ * stay in localStorage, where they already live.
  */
-import { type StateStorage, createJSONStorage, persist } from "zustand/middleware";
-import { type StoreApi, createStore } from "zustand/vanilla";
-import { type KeyStore, getKey, removeKey, setKey } from "./storage-keys";
+import { createUiStore } from "@lianki/ui-state";
 import type { KeptTree } from "./tree-keep";
-
-/** sessionStorage, or null where it is missing or its accessor throws. */
-export const session = (): KeyStore | null => {
-  try {
-    return typeof sessionStorage === "undefined" ? null : sessionStorage;
-  } catch {
-    return null;
-  }
-};
-
-/**
- * A StateStorage over a KeyStore by the storage-keys rules (the `lk:agent-…`
- * name read first, written with its legacy twin), every access in try/catch.
- */
-export function keyStorage(store: () => KeyStore | null = session): StateStorage {
-  return {
-    getItem: (name) => getKey(name, store()),
-    setItem: (name, value) => setKey(name, value, store()),
-    removeItem: (name) => removeKey(name, store()),
-  };
-}
-
-/**
- * Writes coalesced: the latest value per name goes out `ms` after the last
- * change (a keystroke writes nothing by itself), and at once on `flush()`,
- * which the page calls when it is hidden or unloaded. Reads see a pending
- * value, so nothing reads back stale.
- */
-export function debouncedStorage(
-  base: StateStorage,
-  ms: number,
-  // Wrapped: a bare `timers.set(…)` would call the browser's setTimeout with
-  // `this` = timers, which throws "Illegal invocation".
-  timers: { set: typeof setTimeout; clear: typeof clearTimeout } = {
-    set: ((fn: () => void, ms?: number) => setTimeout(fn, ms)) as typeof setTimeout,
-    clear: ((id: ReturnType<typeof setTimeout>) => clearTimeout(id)) as typeof clearTimeout,
-  },
-): StateStorage & { flush(): void } {
-  const pending = new Map<string, string>();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const flush = () => {
-    if (timer !== undefined) timers.clear(timer);
-    timer = undefined;
-    for (const [name, value] of pending) void base.setItem(name, value);
-    pending.clear();
-  };
-  return {
-    getItem: (name) => pending.get(name) ?? base.getItem(name),
-    setItem: (name, value) => {
-      pending.set(name, value);
-      if (timer !== undefined) timers.clear(timer);
-      timer = timers.set(flush, ms);
-    },
-    removeItem: (name) => {
-      pending.delete(name);
-      void base.removeItem(name);
-    },
-    flush,
-  };
-}
-
-type UiStores = Map<string, StoreApi<unknown>>;
-const STORES = "__lkUiStores";
-const registry = (): UiStores => {
-  const g = globalThis as { [STORES]?: UiStores };
-  g[STORES] ??= new Map();
-  return g[STORES];
-};
-
-/**
- * A persisted UI store, one per `name` per page. `migrate` turns whatever an
- * older version (or a damaged entry) left into a valid state; it also runs on
- * every rehydration, so a hand-edited or truncated entry cannot break the UI.
- */
-export function createUiStore<T extends object>(
-  name: string,
-  version: number,
-  initial: T,
-  opts: { storage?: StateStorage; migrate: (persisted: unknown, version: number) => T },
-): StoreApi<T> {
-  const have = registry().get(name);
-  if (have) return have as StoreApi<T>;
-  const store = createStore<T>()(
-    persist(() => initial, {
-      name,
-      version,
-      storage: createJSONStorage(() => opts.storage ?? keyStorage()),
-      migrate: (p, v) => opts.migrate(p, v),
-      merge: (p, current) => ({ ...current, ...opts.migrate(p, version) }),
-    }),
-  );
-  registry().set(name, store as StoreApi<unknown>);
-  return store;
-}
 
 /** The chat's session UI state. */
 export type ChatUi = {
@@ -141,7 +35,7 @@ export type ChatUi = {
   // sessions), the full-screen log (only during a drag) and the mic (it
   // needs the owner's gesture; it never turns itself on after a reload).
 };
-export const CHAT_UI_NAME = "lk:debug-chat-ui";
+export const CHAT_UI_NAME = "chat";
 export const CHAT_UI_VERSION = 1;
 export const CHAT_UI_INITIAL: ChatUi = {
   draft: "",
@@ -196,26 +90,11 @@ function migrateTree(v: unknown): KeptTree | null {
   return { focus: titlePath(t.focus), expanded, scroll };
 }
 
-/** How long typing waits before the draft is written. */
-export const CHAT_UI_WRITE_MS = 300;
-let chatStorage: ReturnType<typeof debouncedStorage> | null = null;
-/** The chat's storage (debounced over sessionStorage), flushed when the page is hidden. */
-export function chatUiStorage() {
-  if (chatStorage) return chatStorage;
-  chatStorage = debouncedStorage(keyStorage(), CHAT_UI_WRITE_MS);
-  if (typeof addEventListener !== "undefined") {
-    const flush = () => chatStorage?.flush();
-    addEventListener("pagehide", flush);
-    addEventListener("visibilitychange", () => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") flush();
-    });
-  }
-  return chatStorage;
-}
-
 /** The chat's UI store (one per page, shared by hot-swapped widget copies). */
 export const chatUi = () =>
   createUiStore<ChatUi>(CHAT_UI_NAME, CHAT_UI_VERSION, CHAT_UI_INITIAL, {
-    storage: chatUiStorage(),
-    migrate: migrateChatUi,
+    storage: "session",
+    // Every stored value goes through the same checks, whatever its version.
+    clean: (v) => migrateChatUi(v, CHAT_UI_VERSION),
+    migrate: (v, from) => migrateChatUi(v, from),
   });

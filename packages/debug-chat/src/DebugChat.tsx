@@ -2,7 +2,7 @@
 
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useStore } from "zustand";
+import { useUi } from "@lianki/ui-state";
 import { chatUi } from "./ui-store";
 import {
   type ChatMessage,
@@ -839,7 +839,7 @@ export function DebugChat({
    * hot swap keeps it, with whether it is still pure dictation (a restored
    * voice line still sends as `stt`). Cleared on send like any other draft.
    */
-  const draft = useStore(uiStore, (s) => s.draft);
+  const draft = useUi(uiStore, (s) => s.draft);
   const setDraft = (v: string) =>
     uiStore.setState({
       draft: v,
@@ -2447,7 +2447,7 @@ export function DebugChat({
                     arm();
                   }}
                   onFocus={() => setTyping(true)}
-                  // The caret is kept with the draft (ui-store.ts), written debounced.
+                  // The caret is kept with the draft (ui-store.ts).
                   onSelect={(e) => {
                     const c = e.currentTarget.selectionEnd;
                     if (uiStore.getState().caret !== c) uiStore.setState({ caret: c });

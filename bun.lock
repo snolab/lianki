@@ -89,7 +89,7 @@
       "name": "@lianki/debug-chat",
       "version": "0.0.0",
       "dependencies": {
-        "zustand": "5.0.15",
+        "@lianki/ui-state": "workspace:*",
       },
       "peerDependencies": {
         "react": "*",

@@ -1,57 +1,72 @@
-import { describe, expect, it } from "bun:test";
-import type { KeyStore } from "@lianki/debug-chat/storage-keys";
-import { indexTree, restoreNav } from "@lianki/debug-chat/tree-nav";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { resetUiStores, uiKey } from "@lianki/ui-state";
 import { keepTree, navIndexOf, restoreTree } from "@lianki/debug-chat/tree-keep";
+import { indexTree, restoreNav } from "@lianki/debug-chat/tree-nav";
 import {
   CHAT_UI_INITIAL,
   CHAT_UI_NAME,
   CHAT_UI_VERSION,
   type ChatUi,
   chatUi,
-  chatUiStorage,
-  createUiStore,
-  debouncedStorage,
-  keyStorage,
   migrateChatUi,
-  session,
 } from "@lianki/debug-chat/ui-store";
 
-/** A Map-backed KeyStore; `broken` makes every access throw (private mode, blocked storage). */
-function fakeStore(broken = false): KeyStore & { data: Map<string, string> } {
+/** A page for the factory: a window with a Map-backed sessionStorage. */
+function fakePage() {
   const data = new Map<string, string>();
-  const guard = () => {
-    if (broken) throw new DOMException("denied", "SecurityError");
+  const sessionStorage = {
+    getItem: (k: string) => data.get(k) ?? null,
+    setItem: (k: string, v: string) => void data.set(k, String(v)),
+    removeItem: (k: string) => void data.delete(k),
   };
-  return {
-    data,
-    getItem: (k) => (guard(), data.get(k) ?? null),
-    setItem: (k, v) => (guard(), void data.set(k, String(v))),
-    removeItem: (k) => (guard(), void data.delete(k)),
-    key: (i) => [...data.keys()][i] ?? null,
-    get length() {
-      return data.size;
-    },
+  (globalThis as { window?: unknown }).window = {
+    sessionStorage,
+    addEventListener() {},
   };
+  return data;
 }
 
-/** Timers driven by hand. */
-function fakeTimers() {
-  let next = 1;
-  const due = new Map<number, () => void>();
-  return {
-    set: ((fn: () => void) => {
-      due.set(next, fn);
-      return next++;
-    }) as unknown as typeof setTimeout,
-    clear: ((id: number) => void due.delete(id)) as unknown as typeof clearTimeout,
-    run: () => {
-      const fns = [...due.values()];
-      due.clear();
-      for (const f of fns) f();
-    },
-    pending: () => due.size,
-  };
-}
+describe("chatUi (on @lianki/ui-state)", () => {
+  let data: Map<string, string>;
+  beforeEach(() => {
+    data = fakePage();
+    resetUiStores();
+  });
+  afterEach(() => {
+    resetUiStores();
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it("is kept under lk:ui:chat in sessionStorage, and comes back", () => {
+    const key = uiKey(CHAT_UI_NAME, "session");
+    expect(key).toBe("lk:ui:chat");
+    chatUi().setState({ draft: "kept line", caret: 4, pureDictation: "kept line", panel: "tree" });
+    expect(JSON.parse(data.get(key)!)).toMatchObject({
+      version: CHAT_UI_VERSION,
+      state: { draft: "kept line", caret: 4, pureDictation: "kept line", panel: "tree" },
+    });
+    // A new page (refresh): a fresh store reads it back.
+    resetUiStores();
+    expect(chatUi().getState()).toMatchObject({ draft: "kept line", caret: 4, panel: "tree" });
+  });
+
+  it("one store per page: a re-imported widget gets the same one", () => {
+    expect(chatUi()).toBe(chatUi());
+  });
+
+  it("a damaged entry is cleaned on the way in", () => {
+    data.set(
+      "lk:ui:chat",
+      JSON.stringify({ state: { draft: 7, caret: 99, panel: "menu" }, version: CHAT_UI_VERSION }),
+    );
+    expect(chatUi().getState()).toMatchObject({ draft: "", caret: 0, panel: "none", tree: null });
+  });
+
+  it("an older version goes through migrate", () => {
+    data.set("lk:ui:chat", JSON.stringify({ state: { draft: "old", caret: 1 }, version: 0 }));
+    expect(chatUi().getState()).toMatchObject({ draft: "old", caret: 1 });
+  });
+});
 
 describe("migrateChatUi", () => {
   it("keeps a valid state as it is", () => {
@@ -101,122 +116,6 @@ describe("migrateChatUi", () => {
     expect(m.tree).toEqual({ focus: null, expanded: [[["Plan"], 3]], scroll: 0 });
     expect(migrateChatUi({ tree: "x" }, 1).tree).toBeNull();
     expect(migrateChatUi({ tree: { focus: [] } }, 1).tree?.focus).toBeNull();
-  });
-});
-
-describe("keyStorage", () => {
-  it("writes under the lk:agent-… name and its legacy twin, reads the new one first", () => {
-    const s = fakeStore();
-    const st = keyStorage(() => s);
-    st.setItem(CHAT_UI_NAME, "v1");
-    expect(s.data.get("lk:agent-chat-ui")).toBe("v1");
-    expect(s.data.get("lk:debug-chat-ui")).toBe("v1");
-    s.data.set("lk:agent-chat-ui", "v2");
-    expect(st.getItem(CHAT_UI_NAME)).toBe("v2");
-    st.removeItem(CHAT_UI_NAME);
-    expect(s.data.size).toBe(0);
-  });
-
-  it("never throws: blocked storage reads as empty, writes are dropped", () => {
-    const st = keyStorage(() => fakeStore(true));
-    expect(st.getItem(CHAT_UI_NAME)).toBeNull();
-    expect(() => st.setItem(CHAT_UI_NAME, "x")).not.toThrow();
-    expect(() => st.removeItem(CHAT_UI_NAME)).not.toThrow();
-    expect(keyStorage(() => null).getItem("k")).toBeNull();
-  });
-
-  it("session() is null where sessionStorage is missing", () => {
-    expect(session()).toBeNull(); // bun has no sessionStorage
-  });
-});
-
-describe("debouncedStorage", () => {
-  it("writes the latest value once, after the quiet time; reads see it at once", () => {
-    const s = fakeStore();
-    const t = fakeTimers();
-    const st = debouncedStorage(
-      keyStorage(() => s),
-      300,
-      t,
-    );
-    st.setItem("lk:debug-chat-ui", "a");
-    st.setItem("lk:debug-chat-ui", "ab");
-    st.setItem("lk:debug-chat-ui", "abc");
-    expect(t.pending()).toBe(1);
-    expect(s.data.size).toBe(0);
-    expect(st.getItem("lk:debug-chat-ui")).toBe("abc");
-    t.run();
-    expect(s.data.get("lk:agent-chat-ui")).toBe("abc");
-  });
-
-  it("flush writes at once (the page hides), remove drops a pending write", () => {
-    const s = fakeStore();
-    const t = fakeTimers();
-    const st = debouncedStorage(
-      keyStorage(() => s),
-      300,
-      t,
-    );
-    st.setItem("k", "1");
-    st.flush();
-    expect(s.data.get("k")).toBe("1");
-    expect(t.pending()).toBe(0);
-    st.setItem("k", "2");
-    st.removeItem("k");
-    t.run();
-    expect(s.data.has("k")).toBe(false);
-  });
-});
-
-describe("chatUiStorage", () => {
-  it("one per module, flushed when the page is hidden or goes away", () => {
-    const st = chatUiStorage();
-    expect(chatUiStorage()).toBe(st);
-    st.setItem("lk:debug-test-pending", "1");
-    expect(st.getItem("lk:debug-test-pending")).toBe("1"); // pending
-    globalThis.dispatchEvent(new Event("pagehide"));
-    // Flushed to sessionStorage, which bun has none of: the write is dropped.
-    expect(st.getItem("lk:debug-test-pending")).toBeNull();
-    st.setItem("lk:debug-test-pending", "2");
-    globalThis.dispatchEvent(new Event("visibilitychange"));
-    expect(st.getItem("lk:debug-test-pending")).toBe("2"); // no document: not "hidden"
-    st.flush();
-  });
-});
-
-describe("createUiStore", () => {
-  it("restores what was kept, migrated, and writes changes back", () => {
-    const s = fakeStore();
-    s.data.set(
-      "lk:agent-test-ui-a",
-      JSON.stringify({ state: { draft: "kept", caret: 2, panel: "tree" }, version: 1 }),
-    );
-    const store = createUiStore<ChatUi>("lk:debug-test-ui-a", 1, CHAT_UI_INITIAL, {
-      storage: keyStorage(() => s),
-      migrate: migrateChatUi,
-    });
-    expect(store.getState()).toMatchObject({ draft: "kept", caret: 2, panel: "tree" });
-    store.setState({ draft: "" });
-    const saved = JSON.parse(s.data.get("lk:agent-test-ui-a")!);
-    expect(saved).toMatchObject({ version: 1, state: { draft: "" } });
-  });
-
-  it("an older version goes through migrate", () => {
-    const s = fakeStore();
-    s.data.set("lk:agent-test-ui-b", JSON.stringify({ state: { draft: 7 }, version: 0 }));
-    const store = createUiStore<ChatUi>("lk:debug-test-ui-b", 1, CHAT_UI_INITIAL, {
-      storage: keyStorage(() => s),
-      migrate: migrateChatUi,
-    });
-    expect(store.getState().draft).toBe("");
-  });
-
-  it("one store per name per page: a re-imported module gets the same one", () => {
-    const opts = { storage: keyStorage(() => fakeStore()), migrate: migrateChatUi };
-    const a = createUiStore("lk:debug-test-ui-c", 1, CHAT_UI_INITIAL, opts);
-    const b = createUiStore("lk:debug-test-ui-c", 1, CHAT_UI_INITIAL, opts);
-    expect(a).toBe(b);
-    expect(chatUi()).toBe(chatUi());
   });
 });
 

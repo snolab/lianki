@@ -1,9 +1,10 @@
 {
   "name": "@lianki/debug-chat",
   "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "description": "The debug chat widget: chat box, pill, menu, pairing modal, mic, hot-load host. No imports from the app; Lianki passes what it needs as props.",
+  "peerDependencies": {
+    "react": "*",
+    "react-dom": "*"
+  },
   "exports": {
     "./Avatar": "./src/Avatar.tsx",
     "./avatar-rules": "./src/avatar-rules.ts",
@@ -40,11 +41,10 @@
     "./tree-keep": "./src/tree-keep.ts",
     "./ui-store": "./src/ui-store.ts"
   },
-  "peerDependencies": {
-    "react": "*",
-    "react-dom": "*"
-  },
+  "description": "The debug chat widget: chat box, pill, menu, pairing modal, mic, hot-load host. No imports from the app; Lianki passes what it needs as props.",
+  "private": true,
+  "type": "module",
   "dependencies": {
-    "zustand": "5.0.15"
+    "@lianki/ui-state": "workspace:*"
   }
 }
