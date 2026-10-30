@@ -44,6 +44,15 @@
  *       once with one busy beat, so the page's spinner shows "heard you"
  *       before the agent's turn (docs/monitoring.md, "Voice latency").
  *
+ *       It also prints {"type":"page-error","kind","message","stack","path",
+ *       "status","label","rev","at"}: the owner's pages' console errors
+ *       (docs/dev-debug-widget.md, "Page errors").
+ *
+ *   bun scripts/dev/eval.ts errors [--no-pair] [--out /tmp/lianki-page-errors.jsonl]
+ *       The same listener (same grant, same reconnects), printing only the
+ *       page-error lines: a dedicated error watcher. --no-pair: with no
+ *       saved chat grant, say so and wait instead of asking the owner.
+ *
  *   bun scripts/dev/eval.ts say [--to <thread|email>] "text"      (or - for stdin)
  *       Reply with the saved grant (the chat grant, else the eval grant:
  *       eval implies chat; never pairs), and exit: to the owner by default, or to
@@ -290,14 +299,17 @@ async function viaSession(code: string): Promise<Msg[] | null> {
  * Listen to the owner's chat: one JSON line per new owner message, on stdout
  * and appended to --out. Resumes with the saved grant; pairs when there is
  * none (or it was refused) — at most once per run (chatStep/chatClose).
- * Reconnects only when the socket closes.
+ * Reconnects only when the socket closes. `errorsOnly` (`eval.ts errors`):
+ * the same socket and grant, but only page-error lines (and pending/error)
+ * are printed.
  */
-function chat(out?: string) {
+function chat(out?: string, errorsOnly = false) {
   const seen = new Set<string>();
   let first = true;
   let backoff = 1_000;
   let asked = false;
   const print = (v: Record<string, unknown>) => {
+    if (errorsOnly && v.type !== "page-error" && v.type !== "error") return;
     const line = JSON.stringify(v);
     console.log(line);
     if (out) appendFileSync(out, `${line}\n`);
@@ -334,7 +346,8 @@ function chat(out?: string) {
   };
   const connect = () => {
     const token = loadToken();
-    const step = chatStep({ token, paired: asked });
+    // --no-pair: never ask the owner; with no grant, give up as if asked once.
+    const step = chatStep({ token, paired: asked || noPair });
     if (step === "give-up") return giveUp();
     if (step === "pair") asked = true;
     const ws = openControl(token, undefined, "chat");
@@ -405,6 +418,19 @@ function chat(out?: string) {
           userId: m.userId,
           email: m.email,
           at: new Date(Number(m.at)).toISOString(),
+        });
+      else if (m.type === "page-error")
+        // An owner page's console error (docs/dev-debug-widget.md, "Page errors").
+        print({
+          type: "page-error",
+          kind: m.kind,
+          message: m.message,
+          ...(m.stack ? { stack: m.stack } : {}),
+          path: m.path,
+          ...(m.status !== undefined ? { status: m.status } : {}),
+          label: m.label,
+          rev: m.rev ?? null,
+          at: new Date(Number(m.at) || Number(m.hubAt)).toISOString(),
         });
       else if (m.type === "error") console.error(`hub: ${m.error}`);
     };
@@ -662,6 +688,7 @@ async function main() {
   }
   if (args[0] === "serve") return serve();
   if (args[0] === "chat") return chat(out);
+  if (args[0] === "errors") return chat(out, true);
   if (args[0] === "edit") {
     const rest = args.slice(1);
     const id = lastFlag ? undefined : rest.length > 1 ? rest[0] : undefined;
@@ -688,7 +715,7 @@ async function main() {
   const code = args[0] === "-" ? await Bun.stdin.text() : args[0];
   if (!code?.trim()) {
     console.error(
-      "usage: bun scripts/dev/eval.ts [--for <email>] [--target <text>] [--no-pair] '<code>' | - | serve [--for <email>] [--no-pair] | chat [--out <file>] [--exit-on-idle] | say [--to <thread|email>] <text>",
+      "usage: bun scripts/dev/eval.ts [--for <email>] [--target <text>] [--no-pair] '<code>' | - | serve [--for <email>] [--no-pair] | chat [--out <file>] [--exit-on-idle] | errors [--no-pair] [--out <file>] | say [--to <thread|email>] <text>",
     );
     process.exit(2);
   }
