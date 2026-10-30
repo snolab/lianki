@@ -1,6 +1,6 @@
 # Preferences that follow the account
 
-Design, not built yet. Owner request (2026-10-31 02:21 JST): habit settings
+Phases 1–3 built (2026-10-31; phase 4, push, is not). Owner request (2026-10-31 02:21 JST): habit settings
 follow the account and sync across devices and origins. Settings that belong
 to one device stay on it. The Experimental settings on /words (New swipe,
 Heavy swipe and its tuning, paper scrolls) are synced too (owner, 02:22 JST).
@@ -58,7 +58,7 @@ The store column gives the account-mode store that will hold the key, as
 | `lk:sidebar`                                     | sidebar collapsed        | device     | —                        | depends on screen width                                                                         |
 | `lk:ui:nav`                                      | drawer, recent pages     | session    | —                        | this tab                                                                                        |
 | `lk:home:lang`                                   | home (sites) language    | **synced** | `home.lang`              | the language you study                                                                          |
-| `lk:home:pins`                                   | pinned sites             | **synced** | `home.pins`              | catalog ids, not URLs                                                                           |
+| `lk:home:pins`                                   | pinned sites             | **synced** | `home.pins`              | the home matrix's public site URLs only (a site of your own cards stays on the device)          |
 | `lk:lab:immersion:langs`                         | lab: language order      | **synced** | `lab.immersionLangs`     | a habit (phase 3, low priority)                                                                 |
 | `lk:lab:immersion:transpose`                     | lab: transposed table    | **synced** | `lab.immersionTranspose` | a habit (phase 3)                                                                               |
 | `lk:input-modality`                              | touch or keyboard last   | device     | —                        | what is in your hands on this device                                                            |
@@ -90,13 +90,13 @@ listed once.
 
 ### Userscript (GM storage, other origins)
 
-| Key                                                                                                                                                                             | Class                                 | Reason                                                                                            |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `lk:preferences`                                                                                                                                                                | already server                        | a cache of `/api/preferences` (review order, watch tracking, mobile filters), already per account |
-| `lk:heatmap`                                                                                                                                                                    | **synced** (phase 3) `script.heatmap` | a habit; the userscript pulls it with the other preferences                                       |
-| `lianki_pos`                                                                                                                                                                    | device                                | the button's position on this screen                                                              |
-| `lk:watch-lang`                                                                                                                                                                 | not a pref                            | per-video language overrides; that is card data                                                   |
-| `lk:deviceId`, `lk:config`, `lk:c:*`, `lk:card-index`, `lk:queue`, `lk:token`, `lk:note:*`, `lk:markers:*`, `lk:watch:*`, `lk:watch-index`, `lk:watch-dirty`, `lk:nav_intended` | not a pref                            | cards, sync state, caches (sync-architecture.md)                                                  |
+| Key                                                                                                                                                                             | Class                              | Reason                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `lk:preferences`                                                                                                                                                                | already server                     | a cache of `/api/preferences` (review order, watch tracking, mobile filters), already per account |
+| `lk:heatmap`                                                                                                                                                                    | **synced, later** `script.heatmap` | a habit. Not in the registry yet: the userscript needs its own token path to /api/prefs           |
+| `lianki_pos`                                                                                                                                                                    | device                             | the button's position on this screen                                                              |
+| `lk:watch-lang`                                                                                                                                                                 | not a pref                         | per-video language overrides; that is card data                                                   |
+| `lk:deviceId`, `lk:config`, `lk:c:*`, `lk:card-index`, `lk:queue`, `lk:token`, `lk:note:*`, `lk:markers:*`, `lk:watch:*`, `lk:watch-index`, `lk:watch-dirty`, `lk:nav_intended` | not a pref                         | cards, sync state, caches (sync-architecture.md)                                                  |
 
 ### Not prefs (left alone)
 
@@ -115,48 +115,32 @@ column per setting (`mobile_exclude_patterns`, `review_order`,
 clock, and every new setting would need a migration. It stays as it is for
 what it holds, and the userscript keeps reading `/api/preferences`.
 
-```sql
--- db/migrations/0017_user_prefs.sql
-CREATE TABLE IF NOT EXISTS user_prefs (
-  user_id     TEXT NOT NULL,
-  key         TEXT NOT NULL,          -- "<store>.<field>", from the registry
-  value       TEXT NOT NULL,          -- JSON, checked against the key's schema
-  hlc_ts      INTEGER NOT NULL,       -- HLC (lib/core): timestamp, counter, device
-  hlc_counter INTEGER NOT NULL,
-  device_id   TEXT NOT NULL,
-  updated_at  TEXT NOT NULL,          -- server time, for support only
-  PRIMARY KEY (user_id, key)
-);
-```
+`db/migrations/0020_user_prefs.sql` (renumbered to the next free number at
+merge time): `user_prefs(user_id → user ON DELETE CASCADE, key, value JSON,
+hlc_ts, hlc_counter, device_id, updated_ms)`, primary key `(user_id, key)`.
+`updated_ms` is the server's clock at the write and the `?since=` cursor;
+client HLCs are not, because a device with a slow clock would hide its rows.
+A read with `since` returns 5 s of overlap, so a write that took its time
+before a read and committed after it is not missed.
 
 D1 only. MongoDB is the frozen rollback copy (AGENTS.md); on the Mongo
 backend the route answers `{}` to reads and 503 to writes, so a rollback
 degrades to device-local preferences rather than failing.
 
-**One registry, zod.** `packages/core/src/prefs.ts` (`@lianki/core/prefs`, no
-app imports, so the Worker, the app and the chat widget share it) maps each
-server key to a schema and a default:
+**One registry, zod.** `lib/prefs/schema.ts` maps each server key to a zod
+schema (`PREF_SCHEMAS`), with `checkPref(key, value)` for the route and the
+client alike. It lives in the app, not `@lianki/core`, because some schemas
+need the app's catalogs (the swipe's `FEEL_RANGES`, the locales, the home
+matrix's sites). The chat widget never needs it: the app's engine syncs the
+chat's keys.
 
-```ts
-export const PREFS = {
-  "words.showAll": z.boolean(),
-  "swipe.variant": z.enum(["js", "native"]),
-  "swipe-feel.preset": z.enum(["light", "heavy"]),
-  "swipe-feel.tweaks": feelTweaksSchema, // known tokens, each in FEEL_RANGES
-  "chat-voice.rate": z.union([z.literal(1), z.literal(1.25), z.literal(1.5), z.literal(2)]),
-  "ui.locale": z.enum(LOCALES),
-  "nav.pins": z.array(appPath).max(20), // "/words", never "https://…"
-  // …
-} as const;
-```
+**The route.** `/api/prefs` (`app/api/prefs/route.ts`):
 
-**The route.** `/api/prefs`:
-
-- `GET` returns `{ prefs: {key: {value, hlc}}, cursor }`. With `?since=<cursor>`
-  it returns only the newer rows. With `If-None-Match` it answers 304 when
-  nothing changed, so a page load costs almost nothing.
-- `PATCH` takes `{ ops: [{key, value, hlc}] }` and returns the winning rows
-  for the keys it was sent, so a client whose write lost adopts the winner.
+- `GET [?since=<cursor>]` returns `{ user, prefs: {key: {value, hlc}}, cursor }`.
+- `PATCH {ops: [{key, value, hlc}]}` returns `{ user, prefs, rejected }`: the
+  winning row of every key sent, so a client whose write lost adopts the
+  winner, and the keys refused. It does not advance the cursor.
+- `user` is the account id, so a device notices an account switch.
 
 **Checks:**
 
@@ -166,7 +150,7 @@ export const PREFS = {
 - Strings are bounded by their schema. Nothing free-form is stored: no URL,
   host, file path or note text (see 5).
 - Caps: 2 KB of JSON per value, 50 ops and 16 KB per request, and 100 rows
-  per user. The registry has about 30 keys today.
+  per user. Over the row cap, a new key is refused. The registry has about 30 keys today.
 - An HLC timestamp more than 60 s ahead of the server's clock is clamped to
   the server's now. That bounds a fast device clock (edge case 8 in
   sync-merge-rules.md).
@@ -185,7 +169,7 @@ All of it is event-driven. Nothing polls (owner rule).
 | When                              | What                                                                                                |
 | --------------------------------- | --------------------------------------------------------------------------------------------------- |
 | first paint                       | the local copy (`lk:pref:<store>`), as today. Works offline; no flash, no wait                      |
-| page load, after hydration        | `GET /api/prefs?since=` (304 when unchanged), merged in                                             |
+| page load, after hydration        | `GET /api/prefs?since=` (an empty answer when nothing changed), merged in                           |
 | sign-in (session appears)         | full `GET`, then the first-sync step (see 6)                                                        |
 | the tab becomes visible, `online` | `GET ?since=`: this is how another device's change arrives in phase 2                               |
 | a change                          | written locally at once, pushed 1 s after the last change (the sliders send one request, not fifty) |
@@ -233,7 +217,7 @@ excluded.hlc_counter, excluded.device_id) > (…)`). Two writes racing on D1
 ## 5. Privacy
 
 - Stored on the server: the registry keys and their values, which are
-  booleans, enums, numbers in range, app paths and catalog ids. Also the HLC
+  booleans, enums, numbers in range, app paths and the home matrix's public site URLs. Also the HLC
   and a random device id (not a hardware id or user agent).
 - Never stored: device URLs or tailnet hostnames (`lk:debug-local-stt`,
   `lk:debug-widget-src`, `lk:slots-src`, `lk:tree-src`, `lk:debug-clip-sink`),
@@ -275,16 +259,18 @@ A change made while signed out gets an HLC like any other. On the next
 sign-in it is pushed and LWW decides. It is a later, deliberate choice, so it
 usually wins.
 
-**UI language.** It is uploaded only when LanguageSwitcher picks one, never
-from `navigator.languages` or `?lang=`. On a pull whose `ui.locale` differs
-from the cookie, the client sets the same three cookies as LanguageSwitcher
-and calls `router.refresh()` once. The server render after that is in the
-account's language. The first paint stays in the cookie's language, which is
-what the server could know.
+**UI language.** It is uploaded only when LanguageSwitcher picks one
+(`lk:ui-locale`), never from `navigator.languages` or `?lang=`. A pulled
+`ui.locale` sets the `lang` and `NEXT_LOCALE` cookies. It takes effect on the
+next page load: nothing reloads under you mid-study.
 
-**The dev origin.** The owner's whole-page dev server signs its own sessions,
-so its `/api/prefs` would be an empty local table. Instead it calls lianki.com's
-`/api/prefs` with `x-lianki-dev-bridge`, and `/api/prefs` joins the bridged
+**Account switch.** Pending changes of the old account are dropped, and the
+new account's values are pulled. The device's values never fill the new
+account's gaps: that is only for the device's first account.
+
+**The dev origin.** The owner's whole-page dev server signs its own sessions.
+Its guard sends `/api/prefs` to lianki.com with `x-lianki-dev-bridge`
+(`BRIDGED_PATHS` in `scripts/dev/whole-page-guard.ts`), and `/api/prefs` joins the bridged
 routes in `lib/dev-bridge-user.ts` (#363: owner only, a wrong secret is
 refused, never a cookie fallback). The dev page then pulls the owner's
 account prefs after the bridge sign-in and pushes changes back. It is the
@@ -292,61 +278,40 @@ same account, so a setting changed on the dev page is changed on the phone
 too. Its device-local keys (the widget source and the local STT URL, which
 are the point of a dev origin) never leave it.
 
-## 7. `@lianki/ui-state`: the "account" mode
+## 7. How it is built
 
-```ts
-export type UiStorage = "session" | "local" | "account";
+**`@lianki/ui-state` gets `storage: "account"`.** It is stored exactly as
+`local` (`lk:pref:<name>`), so turning a local store into an account store
+moves no data and the before-paint script for `lk:pref:motion` keeps
+working. Each write fires `lk:pref-write`. `motion`, `swipe-feel` and
+`nav-pins` are account stores.
 
-const words = createUiStore(
-  "words-prefs",
-  1,
-  {
-    showAll: false,
-    readAloud: true,
-    serverVoice: true,
-    speakOnSwipe: true,
-    gradeTones: true,
-    paperScrolls: false,
-  },
-  { storage: "account" },
-);
+**The engine** is `@lianki/ui-state/account` (`createPrefSync`), app-free and
+tested with fakes against the real repo (`unit/prefs-sync.test.ts`). The app
+gives it **bindings** (`lib/prefs/bindings.ts`), one per server key: how to
+read the local value, write a server value back, and the default. There are
+two kinds:
 
-const chatVoice = createUiStore(
-  "chat-voice",
-  1,
-  { rate: 1.5, out: "speech", speak: false, aec: true },
-  { storage: "account", sync: ["rate", "out", "speak"] }, // aec stays on this device
-);
-```
+- a field of an account store, applied with `setState` when the page has the
+  store, else into its persisted JSON;
+- a plain localStorage key the feature already reads (`lk:words-show-all`,
+  `lk:paper`, `lk:swipe-ab`, the chat's `lk:agent-speech-rate`, `lk:voice-out`
+  and `lk:agent-chat-speak`, …). These keys are kept, so the code that reads
+  them needs no change. That includes the before-paint paper script and the
+  chat widget, which cannot import the app. Writers call `notePrefWrite()`.
+  An applied value fires `lk:pref-applied`, which `usePref`, read aloud, New
+  swipe and the paper picker follow.
 
-- **Persistence is unchanged.** `account` writes `lk:pref:<name>` in
-  localStorage exactly as `local` does. Turning a local store into an account
-  store moves no data, and the before-paint scripts (`lk:pref:motion`,
-  `lk:paper`) keep working.
-- **`sync`** lists the fields that go to the server (default: all persisted
-  `keys`). The server key is `<name>.<field>`. It must be in the
-  `@lianki/core/prefs` registry. The engine checks this when it attaches,
-  and in development it throws for a missing key; in production that field
-  stays device-local.
-- **The package stays app-free.** An account store registers itself on
-  `globalThis.__lkUiStores` as today. The sync engine lives in
-  `@lianki/ui-state/account` and takes `{endpoint, schemas, deviceId}`. When it
-  starts, it attaches to every account store in the registry, and to any
-  created later. The app starts it in its root client layout. The chat widget
-  does not start a second one: it finds the page's engine on `globalThis`,
-  the same way it shares stores. On a page with no engine (signed out, or a
-  sandbox), an account store behaves exactly like a local one.
-- **The engine:**
-  - subscribes to each store and diffs the synced fields;
-  - stamps each changed field with an HLC and puts it in the outbox
-    (`lk:pref-sync`: `{userId, deviceId, migrated, cursor, hlc: {key: HLC},
-outbox: {key: {value, hlc}}}`);
-  - debounces the push;
-  - checks every pulled value with the registry schema before `setState`. A
-    value that fails is dropped and logged, and never applied.
-- `useUi`, SSR and versioning work as before. The server still renders the
-  initial state, and hydration shows the local copy. A pull that lands later
-  is an ordinary `setState`.
+**Change detection is by comparison.** `scan()` compares each binding's value
+with the last one seen, kept in `lk:pref-sync` and shared by the device's
+tabs, and stamps what changed. A writer that forgets `notePrefWrite()` is
+still caught on the next tab hide or page load. The first look at a key on a
+device stamps nothing: the first sync decides about that value.
+
+**`app/components/PrefSync.tsx`** is mounted in the app layout for signed-in
+pages. It loads `lib/prefs/client.ts` lazily, so the schemas stay out of the
+first paint, which uses the local copy anyway. It wires the events from
+section 3.
 
 ## 8. Phases
 
@@ -354,9 +319,9 @@ Estimates in agent hours (agent wall-clock time).
 
 | Phase              | What                                                                                                                                                                                                                                     | Estimate |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| 1. Server          | migration `0017_user_prefs`, D1 repo, `@lianki/core/prefs` registry (zod), `GET`/`PATCH /api/prefs` with the caps, HLC clamp and conditional upsert, export, unit tests                                                                  | 2.5 h    |
+| 1. Server          | migration `user_prefs`, D1 repo, `lib/prefs/schema.ts` registry (zod), `GET`/`PATCH /api/prefs` with the caps, HLC clamp and conditional upsert, export, unit tests                                                                      | 2.5 h    |
 | 2. Client, /words  | `account` mode and the engine in `@lianki/ui-state`; the /words prefs, swipe variant, swipe feel, motion and paper moved onto account stores; legacy key carry-over and fill-the-gaps; fetch on visible and `online`; QA on two browsers | 3.5 h    |
-| 3. The rest        | `chat-voice` store in debug-chat (rate, out, speak; aec local); UI language; nav and home pins; lab; `/api/prefs` on the dev bridge; userscript `script.heatmap` (with a `@version` bump)                                                | 2.5 h    |
+| 3. The rest        | the chat's voice keys (rate, out, speak; aec local); UI language; nav and home pins; lab; `/api/prefs` on the dev bridge. Built 2026-10-31, except the userscript's `script.heatmap`, left for later                                     | 2.5 h    |
 | 4. Push (optional) | per-user channel in lianki-push, `prefs` event after a write, pages refetch on it                                                                                                                                                        | 2 h      |
 
 Phases 1 to 3 take about 8.5 agent hours, or about 10.5 with push. Each phase

@@ -7,6 +7,7 @@ import { serializeNoteForExport, serializeGoalForExport, EXPORT_VERSION } from "
 import { dbBackend, getD1 } from "@/lib/d1";
 import { FsrsNotesD1Repo } from "@/lib/repos/fsrsNotesD1";
 import { RoadmapGoalsD1Repo, PreferencesD1Repo } from "@/lib/repos/d1Repos";
+import { UserPrefsD1Repo } from "@/lib/repos/userPrefsD1";
 
 export async function GET() {
   const user = await authUserOrNull();
@@ -18,14 +19,18 @@ export async function GET() {
   let notes: Record<string, unknown>[];
   let goals: Record<string, unknown>[];
   let mobileExcludePatterns: unknown[];
+  // The settings that follow the account (docs/prefs-sync.md), key → value.
+  let settings: Record<string, unknown> = {};
 
   if (dbBackend() === "d1") {
     const d1 = getD1();
-    const [d1Notes, d1Goals, prefs] = await Promise.all([
+    const [d1Notes, d1Goals, prefs, synced] = await Promise.all([
       new FsrsNotesD1Repo(d1, email).listAll(),
       new RoadmapGoalsD1Repo(d1, email).listAll(),
       new PreferencesD1Repo(d1, userId).get(),
+      new UserPrefsD1Repo(d1, userId).exportValues(),
     ]);
+    settings = synced;
     notes = d1Notes as unknown as Record<string, unknown>[];
     goals = d1Goals as unknown as Record<string, unknown>[];
     mobileExcludePatterns = prefs?.mobileExcludePatterns ?? [];
@@ -47,6 +52,7 @@ export async function GET() {
     fsrsNotes: notes.map((n) => serializeNoteForExport(n)),
     roadmapGoals: goals.map((g) => serializeGoalForExport(g)),
     preferences: { mobileExcludePatterns },
+    settings,
   };
 
   const yaml = stringify(data);

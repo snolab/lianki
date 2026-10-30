@@ -1,6 +1,6 @@
 /**
- * "Turn off animations": one device preference for the whole app
- * (docs/ui-state.md, `lk:pref:motion`). Until it is set, it follows the
+ * "Turn off animations": one preference for the whole app, kept on the
+ * device (`lk:pref:motion`) and synced with the account (docs/prefs-sync.md). Until it is set, it follows the
  * system's `prefers-reduced-motion`.
  *
  * Off means:
@@ -26,7 +26,9 @@ export const motionStore = createUiStore(
   1,
   { animations: "system" as MotionChoice },
   {
-    storage: "local",
+    // Follows the account (docs/prefs-sync.md): set it on one device, and
+    // the others turn animations off too.
+    storage: "account",
     clean: (v) => {
       const a = (v as { animations?: unknown } | null)?.animations;
       return CHOICES.includes(a as MotionChoice) ? { animations: a as MotionChoice } : {};

@@ -15,6 +15,9 @@ covers the app, its hot islands and the chat widget.
 Which preferences follow the account, and how (an "account" store mode:
 the local copy plus server sync), is designed in [prefs-sync.md](prefs-sync.md).
 
+Which preferences follow the account, and how (an "account" store mode:
+the local copy plus server sync), is designed in [prefs-sync.md](prefs-sync.md).
+
 Rules:
 
 - **Business data never goes in sessionStorage.** That means cards, grades,
