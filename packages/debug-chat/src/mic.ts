@@ -8,7 +8,13 @@
  * input, and the usual rules send it. The VAD, the upload and the timers are
  * injected, so all of this is tested with fakes (unit/mic.test.ts); MicButton.tsx
  * is the glue. Nothing here imports from the app.
+ *
+ * With a local streaming STT (local-stt.ts, the owner's Mac) the frames of
+ * each utterance are streamed there as they are heard: its partials replace
+ * the rolling chunks, and its final is handed to `upload` as `info.local`,
+ * which falls back to /api/debug/stt when it fails.
  */
+import type { LocalFinal, LocalUtt } from "./local-stt";
 
 /** Longest utterance: past this it is cut and sent, and listening goes on. */
 export const MAX_UTTERANCE_MS = 30_000;
@@ -416,7 +422,18 @@ export function energyGate(opts: {
   };
 }
 
-export type UploadInfo = { seq: number; durationMs: number; partial: boolean };
+export type UploadInfo = {
+  seq: number;
+  durationMs: number;
+  partial: boolean;
+  /** The local streaming STT's final for this utterance (it may reject: then fall back). */
+  local?: Promise<LocalFinal>;
+};
+/** What createMic needs of a streaming STT (local-stt.ts LocalStt). */
+export type StreamStt = {
+  begin(onPartial: (text: string) => void): LocalUtt | null;
+  warm?(): void;
+};
 
 /**
  * Listening mode. `toggle()` turns it on (loading the VAD, or the fallback if
@@ -440,6 +457,8 @@ export function createMic(d: {
   log?: (ev: Record<string, unknown>) => void;
   /** Rolling partial chunks for long utterances (on unless false). */
   partials?: boolean;
+  /** The local streaming STT, if one is configured now (asked at each utterance). */
+  stream?: () => StreamStt | undefined;
   setTimer?: (f: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
 }) {
@@ -458,6 +477,12 @@ export function createMic(d: {
   let cur: number | null = null;
   let partialBusy = false;
   let partialsOn = d.partials !== false;
+  /** The utterance being streamed to the local STT, if it is. */
+  let utt: LocalUtt | null = null;
+  const dropUtt = () => {
+    utt?.cancel();
+    utt = null;
+  };
   /** The agent is speaking (hold): capture stops, and anything heard is dropped. */
   let held = false;
   /** Set by a hold: speech that began before it is dropped, even if it ends after. */
@@ -531,6 +556,14 @@ export function createMic(d: {
       speechLen = probSum = probN = 0;
       clearTimer(cap);
       cap = setTimer(() => void vad?.flush(), MAX_UTTERANCE_MS);
+      dropUtt();
+      utt =
+        d.stream?.()?.begin((text) => {
+          if (g !== gen || held) return;
+          const seq = cur ?? (cur = q.add());
+          q.partial(seq, text);
+          pending();
+        }) ?? null;
     },
     onFrame(frame, prob) {
       if (g !== gen || state !== "capturing") return;
@@ -543,6 +576,7 @@ export function createMic(d: {
       live.push(frame);
       liveLen += frame.length;
       sincePartial += frame.length;
+      if (utt) return void utt.frame(frame);
       if (
         partialsOn &&
         !partialBusy &&
@@ -554,13 +588,16 @@ export function createMic(d: {
     onMisfire() {
       if (g !== gen || held) return;
       clearTimer(cap);
+      dropUtt();
       resetLive();
       dropCur();
       if (state === "capturing") set("listening");
     },
     onSpeechEnd(audio) {
+      const u = utt;
+      utt = null;
       // Heard while the agent spoke (or begun before it did): the reply's echo, dropped.
-      if (held || tainted) return;
+      if (held || tainted) return void u?.cancel();
       clearTimer(cap);
       const mine = g === gen;
       if (mine && state === "capturing") set("listening");
@@ -574,7 +611,9 @@ export function createMic(d: {
       const prob = probN ? Math.round((probSum / probN) * 1000) / 1000 : undefined;
       speechLen = probSum = probN = 0;
       pending();
-      d.upload(encodeWav(audio), { seq, durationMs: toMs(audio.length), partial: false })
+      const local = u?.end(audio);
+      local?.catch(() => {}); // upload decides; never an unhandled rejection
+      d.upload(encodeWav(audio), { seq, durationMs: toMs(audio.length), partial: false, local })
         .then(
           (text) => {
             const drop = isHallucination(text, ms, prob);
@@ -612,6 +651,7 @@ export function createMic(d: {
     }
     if (g !== gen) return void v.destroy();
     vad = v;
+    d.stream?.()?.warm?.();
     if (!held) await v.start();
     set("listening");
   };
@@ -647,6 +687,7 @@ export function createMic(d: {
     if (on) {
       tainted = true;
       clearTimer(cap);
+      dropUtt();
       resetLive();
       dropCur();
       if (state === "capturing") set("listening");

@@ -18,12 +18,19 @@
  * Everything that touches the browser is injected (MicDeps), so this is
  * unit-tested with fakes.
  */
-import { type MicState, type UploadInfo, type Vad, type VadEvents, createMic } from "./mic";
+import {
+  type MicState,
+  type StreamStt,
+  type UploadInfo,
+  type Vad,
+  type VadEvents,
+  createMic,
+} from "./mic";
 
 /** globalThis key of the session. */
 export const MIC_SESSION_KEY = "__lkMic";
 /** Bumped when the session's shape changes; an older one is migrated, its stream kept. */
-export const MIC_SESSION_V = 1;
+export const MIC_SESSION_V = 2;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -42,7 +49,12 @@ export type MicView = {
   /** Reloaded with the mic on, but it could not resume by itself: one tap does. */
   resume: boolean;
 };
-export type MicConfig = { clipSink?: string; label: string };
+export type MicConfig = {
+  clipSink?: string;
+  label: string;
+  /** The owner's local streaming STT (local-stt.ts), a ws(s) URL. */
+  localStt?: string;
+};
 export type MicDeps = {
   /** getUserMedia with the session's constraints. */
   getStream: () => Promise<StreamLike>;
@@ -62,6 +74,8 @@ export type MicDeps = {
   /** Try to get the AudioContext running without a gesture; false if it stays suspended. */
   resumeAudio?: () => Promise<boolean>;
   log?: (ev: Record<string, unknown>) => void;
+  /** A client for the local streaming STT at this URL (local-stt.ts createLocalStt). */
+  localStt?: (url: string) => StreamStt & { close(): void };
 };
 
 type Listener = (v: MicView) => void;
@@ -119,7 +133,20 @@ export function createMicSession(
     stream = null;
   };
   let prev: MicState = "off";
+  /** The local STT client for cfg.localStt; replaced when the URL changes. */
+  let local: { url: string; c: StreamStt & { close(): void } } | null = null;
+  const localStream = (): StreamStt | undefined => {
+    const url = cfg.localStt;
+    if (local && local.url !== url) {
+      local.c.close();
+      local = null;
+    }
+    if (!url || !deps.localStt) return undefined;
+    local ??= { url, c: deps.localStt(url) };
+    return local.c;
+  };
   const mic = createMic({
+    stream: localStream,
     load: async (ev) => deps.load(ev, await ensureStream()),
     fallback: deps.fallback ? async (ev) => deps.fallback!(ev, await ensureStream()) : undefined,
     upload: (wav, info) => deps.upload(wav, info, cfg),

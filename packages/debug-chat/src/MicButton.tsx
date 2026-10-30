@@ -14,6 +14,7 @@ import {
   resample,
   scheduleTick,
 } from "./mic";
+import { createLocalStt } from "./local-stt";
 import { type MicSession, type MicView, micSession } from "./mic-session";
 import { voice } from "./voice";
 import {
@@ -184,11 +185,30 @@ function session(): MicSession {
       f(v.state().hold);
       return v.subscribe((x) => f(x.hold));
     },
-    upload: async (wav, { durationMs, partial }, cfg) => {
+    localStt: (url) => createLocalStt(url, { log: (ev) => v.log(ev) }),
+    upload: async (wav, { durationMs, partial, local }, cfg) => {
       const at = Date.now();
       const sink = partial ? undefined : cfg.clipSink;
       try {
-        const out = await postStt(wav);
+        let out: { text: string; model?: string };
+        if (local) {
+          // Streamed to the owner's Mac (local-stt.ts); on any failure, the route as before.
+          try {
+            const f = await local;
+            out = f;
+            v.log({
+              ev: "local-stt-final",
+              model: f.model,
+              durationMs,
+              decodeMs: f.ms,
+              endToFinalMs: f.endToFinalMs,
+              firstPartialMs: f.firstPartialMs,
+            });
+          } catch (e) {
+            v.log({ ev: "local-stt-fallback", error: String((e as Error)?.message ?? e) });
+            out = await postStt(wav);
+          }
+        } else out = await postStt(wav);
         // The text guard: the agent's own words that leaked past the AEC are dropped.
         const echo = v.echoCheck(out.text, durationMs);
         if (!partial)
@@ -285,6 +305,7 @@ export function DebugMic({
   onPending,
   onActive,
   clipSink,
+  localStt,
   label,
   gesture,
 }: {
@@ -292,6 +313,8 @@ export function DebugMic({
   onPending: (n: number, interim: string) => void;
   onActive: (on: boolean) => void;
   clipSink?: string;
+  /** The owner's local streaming STT (local-stt.ts): utterances stream there first. */
+  localStt?: string;
   label: string;
   /**
    * The chat bar's own press handling (DebugChat): a vertical drag scrubs the
@@ -319,8 +342,8 @@ export function DebugMic({
   });
   /** The agent's reply is being read (voice session). */
   const [talking, setTalking] = useState(false);
-  const cb = useRef({ onText, onPending, onActive, clipSink, label });
-  cb.current = { onText, onPending, onActive, clipSink, label };
+  const cb = useRef({ onText, onPending, onActive, clipSink, localStt, label });
+  cb.current = { onText, onPending, onActive, clipSink, localStt, label };
   const mic = useRef<MicSession | null>(null);
 
   useEffect(() => {
@@ -329,7 +352,11 @@ export function DebugMic({
     // Attach to the session — the same one across hot swaps and remounts;
     // detaching (unmount) never stops it.
     const m = (mic.current = session());
-    m.configure({ clipSink: cb.current.clipSink, label: cb.current.label });
+    m.configure({
+      clipSink: cb.current.clipSink,
+      localStt: cb.current.localStt,
+      label: cb.current.label,
+    });
     let active = false;
     const unsubView = m.subscribe((x) => {
       setView(x);
@@ -353,8 +380,8 @@ export function DebugMic({
     };
   }, []);
   useEffect(() => {
-    mic.current?.configure({ clipSink, label });
-  }, [clipSink, label]);
+    mic.current?.configure({ clipSink, localStt, label });
+  }, [clipSink, localStt, label]);
   const state = view.state;
   const pending = view.pending;
   const note = view.error ? micErrorNote(view.error) : null;

@@ -893,3 +893,108 @@ describe("the Whisper hallucination guard", () => {
     expect(r.logs).toEqual([]);
   });
 });
+
+/** A local streaming STT driven by the test (local-stt.ts's LocalStt, faked). */
+function fakeStream(connected = true) {
+  const log: string[] = [];
+  let onPartial: ((t: string) => void) | null = null;
+  let frames = 0;
+  let finish: { resolve: (t: string) => void; reject: (e: Error) => void } | null = null;
+  const stt = {
+    warm: () => void log.push("warm"),
+    begin(p: (t: string) => void) {
+      if (!connected) return null;
+      log.push("begin");
+      onPartial = p;
+      frames = 0;
+      return {
+        frame: () => void frames++,
+        end: (audio: Float32Array) => {
+          log.push(`end ${audio.length}`);
+          return new Promise<{
+            text: string;
+            model: string;
+            ms: number;
+            endToFinalMs: number;
+          }>((resolve, reject) => {
+            finish = {
+              resolve: (text) => resolve({ text, model: "local:x", ms: 5, endToFinalMs: 9 }),
+              reject,
+            };
+          });
+        },
+        cancel: () => void log.push("cancel"),
+      };
+    },
+  };
+  return {
+    stt,
+    log,
+    frames: () => frames,
+    partial: (t: string) => onPartial?.(t),
+    finish: () => finish as NonNullable<typeof finish>,
+  };
+}
+
+describe("createMic: streaming to the local STT", () => {
+  it("streams frames instead of chunk partials; its partials show; its final rides on the upload", async () => {
+    const s = fakeStream();
+    const h = harness({ stream: () => s.stt });
+    await h.mic.toggle();
+    expect(s.log).toEqual(["warm"]);
+    h.v.ev().onSpeechStart();
+    h.speak(6);
+    expect(s.frames()).toBe(60);
+    expect(h.uploads).toEqual([]); // no rolling chunk partials
+    s.partial("这个麦克");
+    expect(h.pending.at(-1)).toEqual([1, "这个麦克"]);
+    s.partial("这个麦克风");
+    expect(h.pending.at(-1)).toEqual([1, "这个麦克风"]);
+    h.v.ev().onSpeechEnd(new Float32Array(RATE * 6));
+    expect(s.log.at(-1)).toBe(`end ${RATE * 6}`);
+    expect(h.uploads[0]).toMatchObject({ seq: 0, partial: false, durationMs: 6000 });
+    s.finish().resolve("这个麦克风。");
+    expect(await h.uploads[0].local).toMatchObject({ text: "这个麦克风。", model: "local:x" });
+    h.uploads[0].resolve("这个麦克风。");
+    await h.tick();
+    expect(h.texts).toEqual(["这个麦克风。"]);
+  });
+
+  it("not connected: the old path (chunk partials, no local final)", async () => {
+    const s = fakeStream(false);
+    const h = harness({ stream: () => s.stt });
+    await h.mic.toggle();
+    h.v.ev().onSpeechStart();
+    h.speak(3);
+    expect(h.uploads[0]).toMatchObject({ partial: true });
+    h.v.ev().onSpeechEnd(new Float32Array(RATE * 3));
+    expect(h.uploads[1]).toMatchObject({ partial: false, local: undefined });
+  });
+
+  it("a misfire or a hold cancels the streamed utterance; its late partials are ignored", async () => {
+    const s = fakeStream();
+    const h = harness({ stream: () => s.stt });
+    await h.mic.toggle();
+    h.v.ev().onSpeechStart();
+    h.v.ev().onMisfire();
+    expect(s.log).toEqual(["warm", "begin", "cancel"]);
+    h.v.ev().onSpeechStart();
+    h.speak(1);
+    h.mic.hold(true);
+    expect(s.log.at(-1)).toBe("cancel");
+    s.partial("late");
+    expect(h.pending.some(([, t]) => t.includes("late"))).toBe(false);
+    h.v.ev().onSpeechEnd(new Float32Array(160)); // handed over while held: dropped
+    expect(h.uploads).toEqual([]);
+  });
+
+  it("a rejected local final reaches upload as a rejection, never unhandled", async () => {
+    const s = fakeStream();
+    const h = harness({ stream: () => s.stt });
+    await h.mic.toggle();
+    h.v.ev().onSpeechStart();
+    h.v.ev().onSpeechEnd(new Float32Array(160));
+    s.finish().reject(new Error("local stt closed"));
+    await expect(h.uploads[0].local as Promise<unknown>).rejects.toThrow("closed");
+  });
+});
