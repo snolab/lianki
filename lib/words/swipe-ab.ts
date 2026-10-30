@@ -13,7 +13,7 @@
  * only (to check a variant on someone's device without touching their
  * setting — also inside an iframe). It is never written to localStorage.
  */
-import { notePrefWrite } from "@lianki/ui-state";
+import { notePrefWrite } from "@lianki/ui-state/account";
 
 export type SwipeVariant = "js" | "native";
 
