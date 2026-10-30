@@ -1,9 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import {
+  AXIS_LOCK_PX,
   DOUBLE_TAP_MS,
   DRAG_CLICK_MS,
+  SCRUB_STEP_PX,
+  createAxisLock,
   createDragFlag,
   createTapper,
+  scrubBack,
 } from "@lianki/debug-chat/tap-gesture";
 
 /** Fake timers: `advance(ms)` runs what falls due. */
@@ -156,5 +160,60 @@ describe("createDragFlag: the click after a drag", () => {
     click();
     expect(did).toEqual(["double"]);
     expect(createDragFlag().wasDrag()).toBe(false);
+  });
+});
+
+describe("createAxisLock (a press on the mic)", () => {
+  it("stays a tap under AXIS_LOCK_PX, so the click toggles the mic", () => {
+    const g = createAxisLock();
+    g.down(100, 100);
+    expect(g.move(103, 104)).toBeNull(); // 5 px
+    expect(g.up()).toBeNull();
+  });
+
+  it("locks vertically for a scrub, and keeps that axis for the press", () => {
+    const g = createAxisLock();
+    g.down(0, 0);
+    expect(g.move(2, AXIS_LOCK_PX + 1)?.axis).toBe("y");
+    // Sideways afterwards: still a scrub.
+    expect(g.move(80, 10)).toEqual({ axis: "y", dx: 80, dy: 10 });
+    expect(g.up()).toBe("y");
+  });
+
+  it("locks horizontally to move the bar", () => {
+    const g = createAxisLock();
+    g.down(0, 0);
+    expect(g.move(-9, 3)?.axis).toBe("x");
+    expect(g.move(-40, 60)?.axis).toBe("x");
+    expect(g.up()).toBe("x");
+  });
+
+  it("swallows the click after a scrub, so the mic does not toggle", () => {
+    let t = 0;
+    const g = createAxisLock();
+    const flag = createDragFlag(() => t);
+    // A scrub: the click that ends it is a drag.
+    flag.down();
+    g.down(0, 0);
+    g.move(0, 40);
+    if (g.up()) flag.dragEnded();
+    expect(flag.wasDrag()).toBe(true);
+    // A tap afterwards toggles as usual.
+    t += 1000;
+    flag.down();
+    g.down(0, 0);
+    g.move(1, 1);
+    if (g.up()) flag.dragEnded();
+    expect(flag.wasDrag()).toBe(false);
+  });
+});
+
+describe("scrubBack", () => {
+  it("goes back one line per step as the finger moves down, clamped", () => {
+    expect(scrubBack(0, 0, 10)).toBe(0);
+    expect(scrubBack(0, SCRUB_STEP_PX * 3 + 5, 10)).toBe(3);
+    expect(scrubBack(3, -SCRUB_STEP_PX * 2, 10)).toBe(1);
+    expect(scrubBack(0, -500, 10)).toBe(0);
+    expect(scrubBack(0, 5000, 10)).toBe(10);
   });
 });

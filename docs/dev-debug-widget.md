@@ -14,7 +14,10 @@ re-exports for the hub and the sender.
 | File (`packages/debug-chat/src/` unless a path is given) | Role                                                     |
 | -------------------------------------------------------- | -------------------------------------------------------- |
 | `debug-chat-widget.ts`                                   | the widget entry: `DebugChat` and `WIDGET_API`           |
-| `DebugChat.tsx`                                          | the chat box: log, input, pill, menu                     |
+| `DebugChat.tsx`                                          | the chat box: log, the bar (controls + input), menu      |
+| `float-lines.ts`                                         | minimized: floating lines, their dwell and timers        |
+| `log-surface.ts`                                         | the log's display, shared by the log and the state tree  |
+| `Frontier.tsx`, `frontier-view.ts`                       | minimized: the ✓ ▶ › frontier lines and their rules      |
 | `DebugChatHost.tsx`                                      | the page's loader: import, re-import on reload, fallback |
 | `DebugPairModal.tsx`                                     | the pairing modal                                        |
 | `MicButton.tsx`, `mic.ts`                                | the mic: VAD, STT client, dictation rules                |
@@ -321,7 +324,16 @@ Run it by hand with Playwright: open `http://localhost:5180/harness`
 (`?working=1` shows the spinner) and set the localStorage key to
 `http://localhost:5180/debug-chat.js`. Then check `[data-debug-widget]` (its
 value is the rev) and edit `DebugChat.tsx`: the rev changes and the new UI
-renders.
+renders. `?min` (or `?open`) starts minimized (or expanded), `?notree` and
+`?nofrontier` leave out the static tree and frontier, and
+`globalThis.__push(text)` adds a live message.
+
+`node scripts/dev/debug-chat-bar-qa.mjs [--shots <dir>]` does that on its
+own: it starts the server on a free port, loads the hot widget into
+`/harness`, and checks the chat bar expanded and minimized (one container,
+focus order, 16px input, 40px targets, the inert input, the mic clickable and
+its drag gestures, floating lines). getUserMedia is stubbed, so nothing is
+recorded. `--shots` also saves light/dark × expanded/minimized at 390px.
 
 ## Screenshots
 

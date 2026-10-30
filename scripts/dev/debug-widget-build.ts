@@ -150,3 +150,44 @@ export function allowOrigin(origin: string | null): string {
 
 /** One Server-Sent Event. */
 export const sse = (event: string, data: string) => `event: ${event}\ndata: ${data}\n\n`;
+
+/** Top-level blocks of a stylesheet, as [prelude, whole block] (comments dropped). */
+export function topBlocks(css: string): [string, string][] {
+  const src = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const out: [string, string][] = [];
+  let start = 0;
+  let depth = 0;
+  for (let i = 0; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}" && --depth === 0) {
+      const block = src.slice(start, i + 1).trim();
+      out.push([block.slice(0, block.indexOf("{")).trim(), block]);
+      start = i + 1;
+    } else if (src[i] === ";" && depth === 0) start = i + 1;
+  }
+  return out;
+}
+
+/**
+ * The app's own CSS the widget leans on, for /harness (on lianki.com the page
+ * already has it): the page colours (light and dark), the halo, the 40px tap
+ * area and the send bar. Utilities come with the widget module.
+ */
+export function harnessCss(): string {
+  const globals = readFileSync(resolve(ROOT, "app/globals.css"), "utf8");
+  const want = (prelude: string, block: string) =>
+    /^\.(lk-halo|tap-40|lk-drain)\b/.test(prelude) ||
+    prelude === "@keyframes lk-drain" ||
+    ((prelude === ":root" || prelude.startsWith("@media (prefers-color-scheme")) &&
+      block.includes("--background:") &&
+      !block.includes("--glass"));
+  const kept = topBlocks(globals)
+    .filter(([p, b]) => want(p, b))
+    .map(([, b]) => b);
+  // A slice of Tailwind's preflight, in its layer (below the widget's utilities).
+  const base =
+    "@layer theme, base, components, utilities;\n@layer base{*,::before,::after{box-sizing:border-box;border:0 solid;margin:0;padding:0}" +
+    "button,textarea{font:inherit;color:inherit;background:transparent}ol,ul{list-style:none}[hidden]{display:none!important}" +
+    "body{background:var(--background);color:var(--foreground);font-family:system-ui,sans-serif;line-height:1.5}}";
+  return `${base}\n${kept.join("\n")}`;
+}

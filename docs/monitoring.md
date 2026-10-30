@@ -271,21 +271,81 @@ session listing carry the current path) and sends the listeners
 JSON line. Silent on the page, never stored, never in the chat log. A
 friend's page can only relabel its own socket.
 
-**The pill and its menu.** No title bar: a small pill at the start of the
-input row (`debug-chat-pill`) has two zones, each at least 32px, with a
-divider. The left zone (`debug-chat-pill-min`) holds the liagent mark
+**The chat bar, the state tree and the menu.** No title bar: the controls
+and the input are one rounded glass container (`debug-chat-pill`): the mark,
+the tree button, the input, then the mic at the far right, in that focus
+order, each control a 40px tap target (`tap-40`). The mark
+(`debug-chat-pill-min`, with `aria-expanded`) holds the liagent mark
 (`packages/debug-chat/src/LiagentMark.tsx`) and a dot, green while the socket
 is live: a tap minimizes or restores the box (after 280 ms, so that a double
-tap can cancel it), and a double tap opens the menu (`packages/debug-chat/src/tap-gesture.ts`).
-The right zone (`debug-chat-pill-menu`) shows the eval/preview sessions (a
-play icon and their count, pulsing when code just ran) or ⋯; a tap opens the
-menu at once. A drag anywhere on the pill moves the box, and never counts as
-a tap. Minimized, only the pill stays (`debug-chat-minimized`, at 0.6
-opacity, with an unread badge `debug-chat-pill-unread`), where it sat in the
-box and with the same saved offset, so restoring puts the input row back
-there, clamped on screen. While the pill is held, the input shows "drag:
-move · tap: minimize · double-tap or ⋯: menu", as its placeholder, or over
-the draft (`debug-chat-drag-hint`). The menu lists every open debug page of this chat (the
+tap can cancel it), and a double tap opens the menu — the only way to it
+(`packages/debug-chat/src/tap-gesture.ts`). The tree button
+(`debug-chat-tree-button`, "State tree", with the eval/preview sessions'
+count on it, pulsing when code just ran) toggles the state tree
+(`debug-chat-tree`, content from the `renderTree` prop, else "No tree
+source"). Only one of the menu and the tree is open at a time.
+The tree is shown as the log is, with no box: translucent text with the halo,
+click-through except for the rows (`log-surface.ts`). With a `treeSource` it
+is a row of top-level chips (title, status glyph, 〔open count〕; the row
+scrolls sideways) with one branch open below it as indented lines
+(`TreeChips.tsx`), driven by `treeNav` (`tree-nav.ts`): a focused node, a
+depth per node along the one open branch, end-stops at leaves (and
+min(3, subtree height)) and at the top row. Expanded, the tree heads the
+chat's one column, the messages below it, one scroller (newest at the
+bottom); minimized it heads the floating box. On the tree button a
+horizontal drag (locked after 8 px) moves through 40 px detents — right
+opens the focused node a level per cell, left folds it — previewed live,
+resisting past a limit, committed on release; a tap toggles the tree; ←/→/↑/↓
+on the focused button move the focus. An expand scrolls the new rows into
+view unless the user is scrolling; a fold keeps the focused row in place.
+In-progress items (the ◐ glyph, the ▶ frontier line, a fragment's `.d`)
+blink gently (opacity 1 → 0.35, 1.6 s; none under reduced motion). On a
+`zh` page the widget's and the tree's strings are Chinese
+(`ui-strings.ts`) unless the host passes its own. Without a `treeSource`:
+`renderTree`, else the lk:tree-src fragment. A small ✕
+(`debug-chat-tree-close`), Escape or the tree button close it; taps
+elsewhere are the page's. It never takes the input's focus or its draft, and
+its Escape never stops the mic. A drag on the mark or the bar's edge moves the box,
+and never counts as a tap.
+
+Minimizing animates the bar's width in 180 ms (two grid columns trading
+`1fr` ⇄ `0fr`; at once under reduced motion) down to `[mark | tree | mic]`
+(`debug-chat-minimized`, at 0.6 opacity, with an unread badge
+`debug-chat-pill-unread`): the input's slot closes to 0, so the mic, always
+the same node, slides in beside the tree button. The input is then inert and
+aria-hidden, so it can take neither focus nor taps, and the log is hidden.
+The mic keeps its live state, so hands-free voice goes on while minimized.
+
+Minimized, the host's frontier (`frontier` prop, `packages/debug-chat/src/Frontier.tsx`)
+sits just above the bar as up to three one-line glass lines
+(`debug-chat-frontier-line`, `data-status`): "✓" the last done, "▶" in
+progress, "›" next. A group shows its summary (an idiom such as 多线并进) and
+its count as 〔7〕; groups start collapsed, and a tap lists the items in place
+(title and breadcrumb, scrolling past about six; `debug-chat-frontier-items`),
+another tap or minimizing again closes it. The in-progress line shows who is
+on it as a 16px avatar (the host's `renderAvatar`, else the initial on a
+hashed oklch colour, labelled with the name), and an agent's id at its right
+end: the last 6 characters, monospace, the full id in its title and on a
+long press. Only agents' ids are shown, and only opaque slugs: an id with a
+dot, colon or slash, or over 64 characters, is hidden
+(`packages/debug-chat/src/frontier-view.ts`). Expanded, the lines go: the
+tree has it all.
+
+Minimized, messages float above the frontier instead of the log
+(`debug-chat-float`, `packages/debug-chat/src/float-lines.ts`): the latest
+message at the moment of minimizing (unless over 10 minutes old), and those
+that arrive while minimized, newest at the bottom. Each stays fully visible
+for `max(2.5 s, 2 × its reading time)` from when it floats up, reading CJK at
+6 characters a second and anything else at 15, then fades out over 10 s
+(opacity only; gone at once under reduced motion). Hovering or touching the
+lines holds them: mid-fade they snap back to full, and the fade starts over
+on release. A vertical drag on the mic (locked after 8 px; a horizontal one
+moves the bar, and neither toggles the mic) scrubs back through the history:
+finger down goes back, as the expanded log follows the finger, three lines at
+a time, each dwell starting over on release. ↑/↓ on the focused mic do the
+same. Expanded, a vertical drag on the mic scrolls the log. While a control
+is held, the input shows "drag: move · tap: minimize · double-tap: menu", as
+its placeholder, or over the draft (`debug-chat-drag-hint`). The menu lists every open debug page of this chat (the
 owner's own, or a friend's own: the hub's `state` carries `pages: [{id,
 label, at}]` and `self`, rebroadcast when a page connects, leaves or moves).
 Each row shows the path and a device hint ("pwa · Android", "iPhone"). Tapping
@@ -299,7 +359,7 @@ itself.
 
 **Voice commits.** Every final spoken transcript is punctuated, then committed and sent at once (上屏), with a soft tick: two sine tones (880 Hz, then 1320 Hz 30 ms later) through one gain, 5 ms attack to 0.08 and an exponential decay, 80 ms in all (`scheduleTick` in `mic.ts`, tested with a fake AudioContext), played on the mic's own AudioContext (made on the mic tap, a gesture) and never while the agent speaks. It is Web Audio only, no `<audio>` element, so a muted iPhone stays silent. Typed sends make no sound. Each spoken send also fires `lk:voice-sent` on `window` (`detail.sound`: whether the tick played): if Whisper left no stop, `punctuate()` adds one that fits the text (。/？ for CJK, ./? otherwise, a question by its particle or opening word). A short "好" or "OK" goes out too. Partials never send. Typed text arriving in one burst of 3+ characters that ends a sentence (an outside dictation IME) is also sent at once.
 
-**Mic.** A mic button sits inside the input at its right edge
+**Mic.** A mic button sits at the chat bar's right end
 (`debug-chat-mic`; hidden where the browser lacks getUserMedia or Web Audio).
 One tap turns hands-free listening on; another tap, or Escape, turns it off.
 A voice-activity detector cuts speech into utterances: Silero VAD
@@ -328,6 +388,20 @@ final utterance is also POSTed as multipart (`audio`, and `meta` JSON
 `{at, mime, durationMs, label, transcript, model}`) to `<sink>/clips`,
 silently. The code is in `packages/debug-chat/src/` (`mic.ts`, the logic,
 tested with fakes in `unit/mic.test.ts`; `MicButton.tsx`, the browser glue).
+
+**The mic outlives the widget.** The stream, the VAD and the transcripts on
+their way live in one page-wide session on `globalThis.__lkMic`
+(`packages/debug-chat/src/mic-session.ts`, versioned; an older one is retired
+and its stream reused). A hot swap, a React remount or a client-side route
+change (DebugEval is in the root layout) re-attaches to it: same stream, no
+second getUserMedia, still listening. Only an explicit off (a tap, Escape)
+stops it. On a real reload, sessionStorage `lk:agent:mic` ("1" while this tab
+has the mic on; per tab) makes it try to resume without a gesture: with the
+microphone permission granted, or the query unsupported (iOS), and the
+AudioContext running, it listens again and logs `{ev: "mic-resume", path:
+"auto", ok: true, permission}`; otherwise the button shows a dashed ring,
+"Tap to resume listening", and logs `{ev: "mic-resume", path: "tap", reason}`
+(`permission prompt|denied`, `audio context suspended`, or the error's name).
 
 **Hands-free voice.** Mic on means read-aloud on: while it listens, every
 agent reply is read, whatever the focus rule or the speaker toggle says (the
@@ -459,9 +533,12 @@ End still reaches it.
 tests:
 
 - The chat box: `debug-chat` (root), `debug-chat-minimized` (minimized),
-  `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-pill-menu`,
+  `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-tree-button`,
+  `debug-chat-tree` (with `data-mode`: `inline` or `column`), `debug-chat-tree-body`,
+  `debug-chat-tree-close`, `debug-chat-tree-empty`,
   `debug-chat-pill-unread`, `debug-chat-log`, `debug-chat-line` (with
-  `data-from`), `debug-chat-input`, `debug-chat-drag-hint`,
+  `data-from`), `debug-chat-floats`, `debug-chat-float`, `debug-chat-input-slot`,
+  `debug-chat-input`, `debug-chat-drag-hint`,
   `debug-chat-bottom`, `debug-chat-busy`, `debug-chat-mic` (with
   `data-state` and `data-status`), `debug-chat-mic-rec`,
   `debug-chat-mic-pending`, `debug-chat-mic-note`, `debug-chat-notice` and
