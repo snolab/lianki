@@ -5,20 +5,25 @@ Status: **design only, nothing built**. First version merged in #334
 13:06–13:16: the tree is free-form, everything is a node, types are only tags
 and views, agents subscribe to subtrees by events, the partner's study
 planning is the main line, and Google Calendar ships dark behind a flag.
+The owner's answers of 2026-10-31 are in section 9: the partner applies
+changes directly (with undo, a change log and a notice), and an unknown time
+zone means UTC, written out, never a guessed zone.
 
 > 中文摘要：一切都是树上的节点（计划、待办、笔记、日历块都一样），"类型"只是标签加视图，
 > 不做固定类型，加新用法不用改数据库。普通用户的主线是学习伙伴帮他安排、调整学习计划；
 > 开发任务是"进阶用法"。代理按节点 + 深度订阅子树的变更事件（经 lianki-push 推送，不轮询）。
 > Google 日历可以合进 main，但放在默认关闭的开关 `FEATURE_GOOGLE_CALENDAR` 后面，
 > 审核通过前只有站长能开；内置日历和伙伴规划不依赖它。
+> 2026-10-31 决定：伙伴可直接改（保留撤销、变更记录和通知）；取不到时区时用 ISO 日期并写明 UTC。
 
 ## 1. Goals and non-goals
 
 **Main line, for every user**
 
-- The Learning Partner arranges and adjusts the user's study plan: it proposes
+- The Learning Partner arranges and adjusts the user's study plan: it sets up
   goals, daily habits and study times, and rebalances them when reviews pile
-  up or a session is skipped. The user confirms every change.
+  up or a session is skipped. It applies changes directly; every change is
+  logged, announced in the chat, and can be undone with one tap.
 - A built-in calendar: day and week agenda on the phone (iPhone PWA first),
   with blocks you can create, move and resize, and each day's FSRS review load.
 
@@ -97,16 +102,19 @@ CREATE TABLE node_times (
 );
 CREATE INDEX idx_node_times_range ON node_times(user_id, start_at);
 
--- What the partner proposed, and what the user did with it (also the undo record).
-CREATE TABLE proposals (
+-- One applied group of edits: the change log the user reads, and the undo record.
+-- The partner writes directly (decision 11), so every row starts as applied.
+CREATE TABLE changesets (
   id         TEXT PRIMARY KEY NOT NULL,
   user_id    TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
   summary    TEXT NOT NULL,              -- the one line the user reads
   ops        TEXT NOT NULL,              -- JSON: generic node ops (section 6)
-  inverse    TEXT,                       -- JSON: ops that undo it, written at apply time
-  status     TEXT NOT NULL,              -- pending | applied | rejected | expired | undone
-  created_at TEXT NOT NULL, decided_at TEXT
+  inverse    TEXT NOT NULL,              -- JSON: ops that undo it, computed at apply time
+  by         TEXT NOT NULL,              -- "user" | "agent:<name>" | "google"
+  status     TEXT NOT NULL,              -- applied | undone
+  created_at TEXT NOT NULL, undone_at TEXT
 );
+CREATE INDEX idx_changesets_user ON changesets(user_id, created_at);
 
 -- An append-only change log, per user. It feeds the subscription hub (section 6)
 -- and lets a reconnecting subscriber resume from a sequence number.
@@ -135,8 +143,13 @@ CREATE TABLE calendar_links (
 ```
 
 There is also `preferences.time_zone TEXT` (IANA). It is filled from the
-browser's `Intl…timeZone` on first use, falls back to `Asia/Tokyo`, and can
-be changed on /preferences.
+browser's `Intl.DateTimeFormat().resolvedOptions().timeZone` on first use and
+can be changed on /preferences. **When no zone is known** (NULL, an invalid
+name, a request with no browser such as an agent or the API), Lianki uses
+UTC and says so: times are written as ISO 8601 with an explicit `Z`
+(`2026-10-31T09:00Z`), day buckets are UTC days, and the calendar header reads
+"UTC". It never guesses a zone (no Asia/Tokyo default). `node_times.tz` is
+then `"UTC"`.
 
 **Why a calendar block is a node with a time facet**, rather than a separate
 event that a view links to a node:
@@ -148,7 +161,7 @@ event that a view links to a node:
 2. **One stream.** Creating, moving or deleting a block is a node event, so a
    subscriber on "Japanese N3" hears that a session under it was moved, with no
    second event source to join.
-3. **One op set.** Proposals, undo and permissions work only on nodes.
+3. **One op set.** Changesets, undo and permissions work only on nodes.
 4. **The facet table is just an index.** Range queries ("this week") hit
    `idx_node_times_range` without scanning JSON, and Google IDs live next to
    the times they sync. Nothing else treats a timed node specially.
@@ -158,7 +171,7 @@ moved, cancelled or done instance is a **child node** of the series with
 `original_start`, the same shape as Google's `recurringEventId` +
 `originalStartTime`. Views hide these occurrence children by default.
 Instances are expanded in the app, in `tz`, so a 07:00 session stays at 07:00
-across DST. Asia/Tokyo has no DST, but other zones do.
+across DST.
 
 **Tags and views, not types.** `lib/tree/tags.ts` documents the known keys in
 `fields` for each tag, and validates them softly. It caps sizes and drops wrong
@@ -431,24 +444,25 @@ token's subtree.
   times, timed nodes and quiet hours (23:00–07:00 by default).
 - **`tree.subscribe(node, depth, filters)`:** opens the socket subscription
   above.
-- **`changes.propose(summary, ops[])`:** stores a `proposals` row and **writes
-  nothing else**. An op is one of `create`, `update` (title, status, tags,
-  fields, time), `move` or `delete`.
-- **`changes.apply(id)`:** runs only after the user taps Apply. It writes all
-  the ops in one D1 batch and stores the `inverse` ops.
-- **`changes.undo(id)`:** applies the inverse ops.
+- **`changes.apply(summary, ops[])`:** writes the ops **directly**, in one D1
+  batch with their `changesets` row (summary, ops, inverse, `by`). An op is
+  one of `create`, `update` (title, status, tags, fields, time), `move` or
+  `delete` (soft). At most 50 ops per changeset.
+- **`changes.undo(id)`:** applies the inverse ops as a new changeset. An op whose
+  node has changed since (its `version` moved on) is skipped and listed, not
+  forced.
+- **`changes.log(from?, under?)`:** the change log, newest first.
 
 **Plan helpers (on top).** Each helper only composes generic ops into one
-proposal, so nothing is plan-specific below this layer.
+changeset, so nothing is plan-specific below this layer.
 
 - **`plan.get()`:** the `#plan` subtree plus the next 7 days' load. It creates
-  the plan root if it is missing, which is the only write without a proposal:
-  an empty node.
+  the plan root if it is missing (an empty node).
 - **`plan.addGoal(title, targetDate?)`:** a `goal` node.
 - **`plan.scheduleHabit(node, minutesPerDay, days, window)`:** finds slots,
-  then proposes a `session` series under the habit.
+  then adds a `session` series under the habit.
 - **`plan.rebalance(from, to)`:** reads the due load and the skipped
-  occurrences, then proposes moves, and fewer new cards rather than more
+  occurrences, then moves sessions, and lowers new cards rather than adding
   hours.
 
 **How the partner works**
@@ -458,21 +472,28 @@ proposal, so nothing is plan-specific below this layer.
 - **Sub-agents.** When a goal gets active work, the main partner attaches a
   sub-agent with a token scoped to that goal. The sub-agent wakes on deep
   events under it: two skipped sessions in a row, or a session moved in Google.
-  It then proposes a fix. It may not write outside its node.
+  It then applies a fix. It may not write outside its node.
 
-**Confirmation UX.** A proposal appears in the chat as a card. It shows a
-one-line summary ("Move Tue and Thu reviews to 07:30, add 20 min Sunday"), a
-before/after day strip, and **Apply** and **Not now**. Once applied, it shows
-"Applied · Undo". Nothing is written, and nothing reaches Google, without the
-tap. Proposals expire after 24 hours. A voice "yes" counts only while the card
-is on screen.
+**Direct apply, with undo, log and notice** (decision 11). The partner does not
+ask first. Every changeset:
+
+- **Notice:** appears in the chat as a card with its one-line summary ("Moved
+  Tue and Thu reviews to 07:30, added 20 min Sunday"), a before/after day
+  strip, and **Undo**. When the chat is closed, the minimized bar shows it as a
+  floating line; Web Push carries it later (P7).
+- **Log:** /plan has a "Changes" list (newest first, who did it, Undo per
+  row), filtered to the subtree in view. It is the `changesets` table.
+- **Undo:** one tap, any time; undo is itself a changeset, so it can be undone.
+  Google gets the undo like any other edit.
+- **Guard rails:** at most 50 ops per changeset and 20 changesets an hour per
+  agent; deletes are soft; an agent writes only inside its token's subtree.
 
 ## 7. Privacy and security
 
 These follow the standards declared for PAY.JP in
 [security-measures.md](security-measures.md).
 
-- **Stored:** nodes, time facets, proposals, `node_events`, the link row and
+- **Stored:** nodes, time facets, changesets, `node_events`, the link row and
   encrypted OAuth tokens. `node_events` holds ids and types only, never titles,
   and is trimmed after 30 days.
 - **Not stored:** busy times, other calendars' events, or any Google data
@@ -505,9 +526,9 @@ model underneath it, and Google ships dark.
 | Phase | Scope | Agent hours |
 | --- | --- | --- |
 | P0 | This document (#334 + this revision) | 1 |
-| P1 | Migration (nodes, node_times, proposals, node_events), `lib/tree/` repos + tag conventions, `time_zone`, `due-load.ts`, `GET /api/tree`, `GET /api/plan/load`, tests | 4.5 |
+| P1 | Migration (nodes, node_times, changesets, node_events), `lib/tree/` repos + tag conventions, `time_zone`, `due-load.ts`, `GET /api/tree`, `GET /api/plan/load`, tests | 4.5 |
 | P2 | `TreeHub` subscriptions: publish over `PUSH`, node + depth matching, scoped tokens, resume, tests | 4 |
-| P3 | Partner: generic tools, plan helpers, proposal card, apply/undo, sub-agent attach | 5 |
+| P3 | Partner: generic tools, plan helpers, change notice card, change log, undo, sub-agent attach | 5 |
 | P4 | Built-in calendar + Plan view: day/week, create/move/resize, series and occurrences, load strip, QA (iPhone, light + dark) | 6 |
 | P5 | Google connect behind `FEATURE_GOOGLE_CALENDAR`: genericOAuth, token encryption, the Lianki calendar, free/busy, one-way writer as a subscriber, disconnect, owner toggle | 5.5 |
 | P6 | Two-way sync: webhook, sync tokens, DO channel renewal, conflict rules | 5 |
@@ -531,7 +552,23 @@ with unit tests (including a DST zone), `GET /api/tree?node=&depth=` and
 `GET /api/plan/load`, and the `time_zone` preference. It does not touch auth,
 OAuth or the flag.
 
-## 9. Owner decisions (approve / deny)
+## 9. Decisions (2026-10-31)
+
+The owner answered on Slack, 2026-10-31 00:14 JST: "时区取不到用isodate 写明utc，9允许直接改，
+其它全按推荐". Mapped to the list below, every item is approved as recommended,
+except two:
+
+- **11. Partner writes: apply directly, without an Apply tap.** Undo, a
+  visible change log and a notice of each change stay (section 6). The
+  `proposals` table became `changesets`.
+- **12. Time zone: the browser's; when it cannot be read, ISO dates with UTC
+  written explicitly** (`2026-10-31T09:00Z`), not Asia/Tokyo (section 2).
+
+Items 1–3 follow the owner's own rules of 2026-10-30 and are approved with
+them. Item 10 now reads "writing only inside its subtree" (sub-agents apply
+directly too).
+
+The list as it was asked:
 
 1. Should a calendar block be a node with a time facet (`node_times`), rather
    than a separate event linked to a node?
