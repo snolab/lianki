@@ -2,6 +2,7 @@
 // grade one screen by exception, and check what the server stored.
 import { chromium } from "playwright";
 import { buildApkg } from "./apkg-fixture.mjs";
+import { launchSilent, newSilentContext } from "./silent.mjs";
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 // QA_SHOTS=<dir>: also save screenshots of the list, to look at the layout.
 const shot = (pg, name) =>
@@ -9,8 +10,8 @@ const shot = (pg, name) =>
 const EMAIL = `qa+words${Date.now()}@lianki.test`;
 const PW = "qa-test-pass-1234";
 
-const browser = await chromium.launch();
-const ctx = await browser.newContext();
+const browser = await launchSilent(chromium);
+const ctx = await newSilentContext(browser);
 // A signed-up user has answered the first-run question; skip its modal.
 await ctx.addInitScript(() => localStorage.setItem("lk:first-run", "account"));
 // Grade tones: a silent stand-in for Web Audio that records each note's pitch,
@@ -675,7 +676,7 @@ try {
     const listUrl = page.url().replace(/[?&]lang=[^&]*/, "");
     /** Visible text, aria-labels and titles of the sheet, toolbar controls and help strip. */
     const studyText = async (lang, colorScheme) => {
-      const c = await browser.newContext({
+      const c = await newSilentContext(browser, {
         ...devices["iPhone 13"],
         colorScheme,
         storageState: await ctx.storageState(),
@@ -820,7 +821,7 @@ try {
       !!who.email,
     `the debug identity names a signed-in non-owner as a friend (${identity.status()} ${JSON.stringify({ owner: who.owner, hasId: !!who.userId })})`,
   );
-  const guest = await browser.newContext();
+  const guest = await newSilentContext(browser);
   const guestIdentity = await guest.request.get(`${new URL(page.url()).origin}/api/debug/identity`);
   await guest.close();
   check(
@@ -971,7 +972,7 @@ try {
   // Both must look and behave the same; only the gesture mechanism differs.
   {
     const { devices } = await import("playwright");
-    const phone = await browser.newContext({
+    const phone = await newSilentContext(browser, {
       ...devices["iPhone 13"],
       storageState: await ctx.storageState(),
     });
@@ -1513,11 +1514,11 @@ try {
   // load, on reload, and when the list is shown again (pageshow).
   {
     const { webkit, devices } = await import("playwright");
-    const wk = await webkit.launch();
+    const wk = await launchSilent(webkit);
     const listUrl = page.url();
     for (const variant of ["js", "native"]) {
       const tag = `webkit-iphone/${variant}:`;
-      const c = await wk.newContext({
+      const c = await newSilentContext(wk, {
         ...devices["iPhone 13"],
         storageState: await ctx.storageState(),
       });

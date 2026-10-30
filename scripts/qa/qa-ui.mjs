@@ -1,10 +1,11 @@
 import { chromium } from "playwright";
+import { launchSilent, newSilentContext } from "./silent.mjs";
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 const EMAIL = `qa+ui${Date.now()}@lianki.test`;
 const PW = "qa-test-pass-1234";
 
-const browser = await chromium.launch();
-const ctx = await browser.newContext();
+const browser = await launchSilent(chromium);
+const ctx = await newSilentContext(browser);
 const page = await ctx.newPage();
 const errs = [];
 page.on("console", (m) => m.type() === "error" && errs.push(m.text()));
