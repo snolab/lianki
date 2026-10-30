@@ -1995,7 +1995,9 @@ export function DebugChat({
           ? { position: "absolute", left: 0, right: 0, top: treeFit.top }
           : undefined
       }
-      className={`pointer-events-none relative flex w-full min-w-0 max-w-full flex-row-reverse items-start transition-opacity duration-[180ms] starting:opacity-0 motion-reduce:transition-none ${floating ? "" : "z-20 shrink-0"}`}
+      // Expanded it is a panel: it takes the taps and scrolls (never the page
+      // under it). Minimized it stays click-through, as the floating lines.
+      className={`relative flex w-full min-w-0 max-w-full flex-row-reverse items-start transition-opacity duration-[180ms] starting:opacity-0 motion-reduce:transition-none ${floating ? "pointer-events-none" : "pointer-events-auto z-20 shrink-0"}`}
     >
       <button
         type="button"

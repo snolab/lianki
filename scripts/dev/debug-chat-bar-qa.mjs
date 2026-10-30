@@ -390,7 +390,7 @@ try {
       look.bg === "rgba(0, 0, 0, 0)" && look.bodyBg === "rgba(0, 0, 0, 0)" && look.border === "0px",
       `no box: no background or border (${look.bg}, ${look.border})`,
     );
-    check(look.events === "none,none", `click-through as the log (${look.events})`);
+    check(look.events === "auto,auto", `a panel: it takes the taps and scrolls (${look.events})`);
     check(look.halo, "translucent text with the halo");
     check(
       Math.abs(parseFloat(look.maxH) - parseFloat(look.vh30)) < 1,
@@ -758,7 +758,35 @@ try {
     await page.waitForSelector("[data-debug-widget] [data-debug-chat]", { timeout: 30_000 });
     await page.evaluate(() => {
       for (let i = 0; i < 120; i++) window.__push(`line ${i + 1}`, i % 2 ? "owner" : "agent");
+      // A busy page under it, like /words: rows of buttons and text.
+      const list = document.createElement("div");
+      list.dataset.fixture = "busy";
+      list.style.cssText =
+        "position:fixed;inset:0;overflow:hidden;padding:8px;font:15px/1.6 system-ui";
+      for (let i = 0; i < 50; i++) {
+        const row = document.createElement("div");
+        const b = document.createElement("button");
+        b.className = "px-3 py-1.5 rounded";
+        b.textContent = `row ${i + 1}`;
+        row.append(
+          b,
+          document.createTextNode(` made-up word ${i + 1} · review in ${(i % 9) + 1}d`),
+        );
+        list.append(row);
+      }
+      document.body.prepend(list);
     });
+    /** What a tap at the panel's centre lands on: inside the panel, never the page. */
+    const hit = () =>
+      page.evaluate(() => {
+        const tree = document.querySelector('[data-testid="debug-chat-tree"]');
+        const r = tree.getBoundingClientRect();
+        const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return {
+          inside: !!at && tree.contains(at),
+          at: at?.dataset?.testid || at?.tagName || null,
+        };
+      });
     const inView = () =>
       page.evaluate(() => {
         const r = document.querySelector('[data-testid="debug-chat-tree"]').getBoundingClientRect();
@@ -778,11 +806,15 @@ try {
     await page.waitForTimeout(300);
     let r = await inView();
     check(r.ok, `tree on screen, long log (${JSON.stringify(r)})`);
+    let h = await hit();
+    check(h.inside, `a tap on the tree lands on the tree, not the page under it (${h.at})`);
     await page.click('[data-testid="debug-chat-input"]');
     await page.evaluate(() => window.__kb(480));
     await page.waitForTimeout(400);
     r = await inView();
     check(r.ok, `tree on screen with the keyboard up (${JSON.stringify(r)})`);
+    h = await hit();
+    check(h.inside, `keyboard up: a tap on the tree lands on the tree (${h.at})`);
     await page.evaluate(() => {
       window.__kb(902);
       document.activeElement?.blur();
