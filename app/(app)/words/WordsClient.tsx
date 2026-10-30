@@ -34,6 +34,8 @@ import { spokenText } from "@/lib/words/spoken";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
 import { createSequencer } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
+import { AUDIO_CACHE_NAME, AudioDisk } from "@/lib/words/audio-disk";
+import { rowPriority } from "@/lib/words/audio-priority";
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
@@ -571,7 +573,7 @@ const swipePerf = {
  */
 const OVERSCROLL_FRACTION = 0.8;
 
-/** Rows past the last one near the screen whose audio is fetched ahead too. */
+/** Rows past the rendered window whose audio is fetched ahead too. */
 const PREFETCH_NEXT = 5;
 
 /** How long a word clip takes to fade out when the card changes. */
@@ -623,6 +625,7 @@ function fadeOut(a: Clip | null) {
  */
 let sharedAudio: AudioCache | null = null;
 function wordAudio(): AudioCache {
+  if (!sharedAudio) requestPersistentStorage();
   sharedAudio ??= new AudioCache({
     fetch: (url, init) => fetch(url, init),
     createObjectURL: (b) => URL.createObjectURL(b),
@@ -630,9 +633,31 @@ function wordAudio(): AudioCache {
     connection: () =>
       (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
         .connection,
+    // On the device too (lib/words/audio-disk.ts): next time, and offline,
+    // a clip plays with no network at all.
+    disk:
+      typeof caches === "undefined"
+        ? undefined
+        : new AudioDisk({ open: () => caches.open(AUDIO_CACHE_NAME) }),
     log: devLog,
   });
   return sharedAudio;
+}
+
+/**
+ * Ask once per device that stored clips and words outlive storage pressure
+ * (iOS evicts a home-screen app's storage otherwise). The answer is the
+ * browser's; nothing depends on it.
+ */
+function requestPersistentStorage() {
+  try {
+    if (localStorage.getItem("lk:storage-persist")) return;
+    localStorage.setItem("lk:storage-persist", "asked");
+    void navigator.storage
+      ?.persist?.()
+      .then((granted) => devLog({ ev: "storage-persist", granted }))
+      .catch(() => {});
+  } catch {}
 }
 
 /** `serverVoice`: always use the server's recordings, never the browser's. */
@@ -721,6 +746,7 @@ function useSpeech(serverVoice = false) {
     if (r.kind !== "ok") return false;
     if (gen !== generation.current) return true;
     const tFetched = performance.now();
+    const from = r.from;
     // A fresh element per clip: the previous one may still be fading out.
     const a = playable(r.url);
     audio.current = a;
@@ -732,6 +758,8 @@ function useSpeech(serverVoice = false) {
         lang,
         text,
         prefetched: !!ready,
+        // memory (this session), disk (the device), or network.
+        from,
         fetchMs: Math.round(tFetched - t0),
         startMs: Math.round(performance.now() - tFetched),
       });
@@ -875,9 +903,21 @@ function useSpeech(serverVoice = false) {
     [on, sequencer, stop, warm],
   );
 
-  /** Fetch the clips of rows about to be tapped (only those the server would voice). */
+  /**
+   * Fetch the clips of rows about to be tapped (only those the server would
+   * voice): `visible` first, never evicted, then `rest`.
+   */
   const prefetch = useCallback(
-    (parts: SayPart[]) => wordAudio().prefetch(parts.filter(viaServer)),
+    (visible: SayPart[], rest: SayPart[]) => {
+      const seen = visible.filter(viaServer);
+      wordAudio().prefetch([...seen, ...rest.filter(viaServer)], { pinned: seen.length });
+    },
+    [viaServer],
+  );
+
+  /** Put these on the device, last of all (today's due words, for offline study). */
+  const stock = useCallback(
+    (parts: SayPart[]) => wordAudio().stock(parts.filter(viaServer)),
     [viaServer],
   );
 
@@ -892,8 +932,8 @@ function useSpeech(serverVoice = false) {
   }, [stop]);
 
   return useMemo(
-    () => ({ available, on, loop, once, toggle, prefetch }),
-    [available, on, loop, once, toggle, prefetch],
+    () => ({ available, on, loop, once, toggle, prefetch, stock }),
+    [available, on, loop, once, toggle, prefetch, stock],
   );
 }
 
@@ -2535,63 +2575,36 @@ function Study({
   const focusParts = JSON.stringify(focused ? partsOf(focused) : []);
   useEffect(() => speech.loop(JSON.parse(focusParts) as SayPart[]), [focusParts, speech]);
 
-  // Prefetch the audio of the rows on screen and up to two screens below,
-  // plus the next few in queue order, so a tap plays at once. The list is
-  // windowed: rows are observed as they mount and let go as they unmount.
-  const nearRows = useRef(new Set<number>());
-  const prefetchNear = useRef(() => {});
-  prefetchNear.current = () => {
-    // Desktop with sound off says nothing (a click grades); a tap always speaks.
-    if (!touch && !speech.on) return;
-    const near = [...nearRows.current].sort((a, b) => a - b);
-    if (!near.length) return;
-    const last = near[near.length - 1];
-    for (let i = last + 1; i <= last + PREFETCH_NEXT && i < queue.length; i++) near.push(i);
-    speech.prefetch(prefetchOrder(near.flatMap((i) => (queue[i] ? [partsOf(queue[i])] : []))));
-  };
-  useEffect(() => prefetchNear.current(), [queue, speech, partsOf]);
-  useEffect(() => {
-    const root = listEl;
-    if (!root || typeof IntersectionObserver === "undefined") return;
-    const rowIndex = (n: Node) =>
-      n instanceof HTMLElement && n.dataset.i !== undefined ? Number(n.dataset.i) : null;
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          const i = rowIndex(e.target);
-          if (i === null) continue;
-          if (e.isIntersecting) nearRows.current.add(i);
-          else nearRows.current.delete(i);
-        }
-        prefetchNear.current();
-      },
-      { root, rootMargin: "0px 0px 200% 0px" },
-    );
-    for (const el of root.children) if (rowIndex(el) !== null) io.observe(el);
-    const mo = new MutationObserver((records) => {
-      for (const r of records) {
-        for (const n of r.addedNodes) if (rowIndex(n) !== null) io.observe(n as Element);
-        for (const n of r.removedNodes) {
-          const i = rowIndex(n);
-          if (i === null) continue;
-          io.unobserve(n as Element);
-          nearRows.current.delete(i);
-        }
-      }
-    });
-    mo.observe(root, { childList: true });
-    const near = nearRows.current;
-    return () => {
-      io.disconnect();
-      mo.disconnect();
-      near.clear();
-    };
-  }, [listEl]);
-
   // Windowed rendering: the list is endless, the DOM is not.
   const OVERSCAN = 20;
   const from = Math.max(0, Math.floor((scrollTop - pad) / ROW_H) - OVERSCAN);
   const to = Math.min(queue.length, Math.ceil((scrollTop - pad + viewH) / ROW_H) + OVERSCAN);
+
+  // Audio, in the owner's order: the rows on screen, then their neighbours
+  // outward across the rendered window, then a few past it. Each scroll
+  // re-orders the wish, so what scrolled away is dropped (lib/words/audio-cache.ts).
+  // Today's due words go to the device last, for offline study.
+  const firstSeen = Math.max(0, Math.floor((scrollTop - pad) / ROW_H));
+  const lastSeen = Math.min(queue.length, Math.ceil((scrollTop - pad + viewH) / ROW_H));
+  // Desktop with sound off says nothing (a click grades); a tap always speaks.
+  const audioOn = touch || speech.on;
+  useEffect(() => {
+    if (!audioOn) return;
+    const { visible, rest } = rowPriority(
+      queue.length,
+      firstSeen,
+      lastSeen,
+      from,
+      to,
+      PREFETCH_NEXT,
+    );
+    const parts = (rows: number[]) => prefetchOrder(rows.map((i) => partsOf(queue[i])));
+    speech.prefetch(parts(visible), parts(rest));
+  }, [audioOn, firstSeen, lastSeen, from, to, queue, speech, partsOf]);
+  useEffect(() => {
+    if (!audioOn || loading) return;
+    speech.stock(queue.filter((it) => it.kind === "due").flatMap(partsOf));
+  }, [audioOn, loading, queue, speech, partsOf]);
   // Sticky over the whole loaded queue: a column appearing and disappearing
   // as example-less stretches scroll by would shift every other column.
   const hasExamples = useMemo(() => queue.some((it) => it.ex), [queue]);

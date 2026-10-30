@@ -256,13 +256,28 @@ any voice is ambiguous.
 
 ## Prefetch and cost
 
-`/words` fetches the audio of the rows on screen and up to two screens below,
-plus the next five in queue order, before they are tapped
-(`lib/words/audio-cache.ts`, an IntersectionObserver in `WordsClient.tsx`).
+`/words` fetches audio before it is tapped (`lib/words/audio-cache.ts`), in
+the owner's order (2026-10-30, `lib/words/audio-priority.ts`): the rows on
+screen, then their neighbours outward across the rendered window (one below,
+one above, two below, …), then five past it, and last of all today's due
+words (`stock`, to the device only, for offline study). Every scroll re-orders
+the wish: visible rows jump the queue and take the due-word download's slots,
+and prefetches of rows that scrolled away are aborted. Within each group, all
+words first, then examples, then meanings.
 A tap reads three clips back to back, ~150 ms apart: the word, its meaning
 (first sense, `lib/words/say-parts.ts`), and the example sentence. Each is its
-own `/api/words/tts` URL in its own language. Prefetch order is all words
-first, then examples, then meanings.
+own `/api/words/tts` URL in its own language.
+
+- **On the device.** Read order is memory → disk → network. Every clip
+  fetched (200s only — never a miss or an error) goes into the Cache API
+  (`lianki-audio-v1`, `lib/words/audio-disk.ts`), so it plays next time, and
+  offline, with no network at all. The browser's HTTP cache is not relied on:
+  an iOS home-screen app drops it too often. Least recently used first out
+  past 4000 clips or 120 MB, never a clip of a row on screen; the index (size,
+  last use) is one JSON entry in the same cache. `navigator.storage.persist()`
+  is asked once per device. The service worker (`public/sw.js`) still leaves
+  `/api/` alone: the page is the only writer. Debug mode logs each `play`
+  with `from: memory | disk | network`.
 
 - **Limits.** 6 fetches at once, 300 _generated_ clips per tab session (a
   recording, a MeloTTS clip already in R2, or a prefetch aborted because its
