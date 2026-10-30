@@ -1,6 +1,7 @@
 import { getIntlayer } from "intlayer";
 import Link from "next/link";
 import { Header } from "../components/Header";
+import { LegalFooter } from "../components/LegalFooter";
 import { authUser } from "../signInEmail";
 
 export default async function LandingPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -101,11 +102,7 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
       </main>
 
       {/* Footer */}
-      <footer className="py-4 px-4 sm:px-6 lg:px-8 text-center">
-        <p>
-          © {new Date().getFullYear()} {footer.brand}
-        </p>
-      </footer>
+      <LegalFooter locale={locale} lang brand={footer.brand} />
     </div>
   );
 }

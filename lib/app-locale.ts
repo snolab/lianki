@@ -17,6 +17,7 @@ export const APP_ROUTES = [
   "import",
   "lab",
   "learn",
+  "legal",
   "list",
   "membership",
   "next",

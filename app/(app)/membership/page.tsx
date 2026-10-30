@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import MembershipClient from "./MembershipClient";
 import { appLocale } from "@/lib/app-locale.server";
+import { LegalFooter } from "@/app/components/LegalFooter";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export default async function MembershipPage() {
       <div className="flex-grow">
         <MembershipClient />
       </div>
+      <LegalFooter locale={await appLocale()} />
     </div>
   );
 }
