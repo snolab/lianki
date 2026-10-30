@@ -9,6 +9,7 @@ import {
   planLanguageGroups,
   planUndo,
   seriesOf,
+  seriesStatus,
   shownName,
   type GroupingPlan,
   type GroupingUndo,
@@ -285,5 +286,60 @@ describe("groupByLanguage on D1 (once per account, undoable)", () => {
     expect(languageNames("ja", "fr")).toEqual(["Japonais", "Japanese", "ja"]);
     expect(languageNames("ja")).toEqual(["Japanese", "ja"]);
     expect(languageNames("ja", "not a locale!")[0]).toBe("Japanese");
+  });
+});
+
+describe("adding a whole series from the catalog", () => {
+  const JLPT_IDS = CATALOG.slice(0, 5);
+
+  test("what he lacks, has at the top level, has inside a group", () => {
+    const lists = [
+      group("mine", "Mine"),
+      list("n3", "ja", "ja-jlpt-n3", "mine"),
+      list("n5", "ja", "ja-jlpt-n5"),
+    ];
+    expect(seriesStatus(lists, JLPT_IDS)).toEqual({
+      missing: ["ja-jlpt-n4", "ja-jlpt-n2", "ja-jlpt-n1"],
+      top: ["n5"],
+      nested: ["n3"],
+    });
+  });
+
+  test("only the new lists move; his own top-level lists stay unless he says so", () => {
+    const lists = [
+      list("fr1", "fr", "fr-freq-1"),
+      list("n5", "ja", "ja-jlpt-n5"), // his, top level, he said no
+      list("n4", "ja", "ja-jlpt-n4"), // just added
+      list("n1", "ja", "ja-jlpt-n1"), // just added
+    ];
+    const no = planLanguageGroups(lists, { ...opts, only: new Set(["n4", "n1"]) });
+    expect(tree(no.order)).toEqual([
+      "fr1",
+      "n5",
+      JA,
+      `${JA} > ${JLPT}`,
+      `${JLPT} > n4`,
+      `${JLPT} > n1`,
+    ]);
+    const yes = planLanguageGroups(lists, { ...opts, only: new Set(["n4", "n1", "n5"]) });
+    expect(tree(yes.order)).toEqual([
+      "fr1",
+      JA,
+      `${JA} > ${JLPT}`,
+      `${JLPT} > n5`,
+      `${JLPT} > n4`,
+      `${JLPT} > n1`,
+    ]);
+  });
+
+  test("an existing Japanese group takes the series inside it", () => {
+    const lists = [
+      group("jp", "Japanese", "ja"),
+      list("deck", "ja", "anki:1", "jp"),
+      list("n5", "ja", "ja-jlpt-n5"),
+    ];
+    const plan = planLanguageGroups(lists, { ...opts, only: new Set(["n5"]) });
+    expect(plan.create).toEqual([{ key: JLPT, name: "JLPT", lang: "ja", parentId: "jp" }]);
+    expect(tree(plan.order)).toEqual(["jp", "jp > deck", `jp > ${JLPT}`, `${JLPT} > n5`]);
   });
 });

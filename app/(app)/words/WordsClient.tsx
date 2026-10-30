@@ -40,7 +40,13 @@ import {
   visible,
   withoutNode,
 } from "@/lib/words/tree";
-import { shownName } from "@/lib/words/lang-groups";
+import {
+  languageNames,
+  planLanguageGroups,
+  seriesOf,
+  seriesStatus,
+  shownName,
+} from "@/lib/words/lang-groups";
 import { createDeferredDelete, UNDO_MS, type FlushReason } from "@/lib/words/deferred-delete";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
@@ -2181,6 +2187,93 @@ function ListPicker({
     return () => window.removeEventListener("keydown", onKey);
   }, [items, studyable.length, onOpen]);
 
+  const { locale } = useLocale();
+  /**
+   * "Add all" on a catalog series (JLPT → N5…N1): the lists he lacks are
+   * added, then go in catalog order into the series' group, inside the
+   * language's group: both reused when they exist, made when not
+   * (lib/words/lang-groups.ts). Lists he already has stay where they are,
+   * unless they sit at the top level and he says to put them in too. Only
+   * list rows are made: each list's words still load when it is studied.
+   */
+  const addSeries = async (members: CatalogMeta[]) => {
+    if (!members.length) return;
+    const series = seriesOf(members[0].id) ?? members[0].name;
+    const status = seriesStatus(
+      lists,
+      members.map((c) => c.id),
+    );
+    const names = status.top.map((id) => lists.find((l) => l.id === id)?.name ?? id);
+    const attach =
+      names.length > 0 &&
+      confirm(fill(text.attachExisting.value, { names: names.join(", "), series }));
+    setBusy(true);
+    try {
+      const made: string[] = [];
+      for (const c of members.filter((m) => status.missing.includes(m.id))) {
+        const { list } = await api<{ list: WordList }>("/api/words/lists", {
+          method: "POST",
+          body: JSON.stringify({ name: c.name, lang: c.lang, source: c.id }),
+        });
+        made.push(list.id);
+      }
+      const ids = new Set(catalog.map((c) => c.id));
+      const { lists: fresh } = await api<{ lists: WordList[] }>("/api/words/lists");
+      const page = fresh.filter(
+        (l) => l.source && (ids.has(l.source) || l.source === groupSource || isImported(l)),
+      );
+      const rank = (s: string | null) => {
+        const i = builtIn.findIndex((c) => c.id === s);
+        return i < 0 ? undefined : i;
+      };
+      const plan = planLanguageGroups(page, {
+        groupSource,
+        rank,
+        names: (l) => languageNames(l, String(locale)),
+        only: new Set([...made, ...(attach ? status.top : [])]),
+      });
+      if (plan.moved.length) {
+        const real = new Map<string, string>();
+        for (const g of plan.create) {
+          const { list } = await api<{ list: WordList }>("/api/words/lists", {
+            method: "POST",
+            body: JSON.stringify({ name: g.name, lang: g.lang, source: groupSource }),
+          });
+          real.set(g.key, list.id);
+        }
+        const idOf = (x: string | null) => (x ? (real.get(x) ?? x) : null);
+        await api("/api/words/lists", {
+          method: "PATCH",
+          body: JSON.stringify({
+            order: plan.order.map((x) => ({ id: idOf(x.id), parentId: idOf(x.parentId) })),
+          }),
+        });
+      }
+    } finally {
+      setBusy(false);
+      onRefresh();
+    }
+  };
+
+  const catalogRow = (c: CatalogMeta, inSeries: boolean) => (
+    <div
+      key={c.id}
+      className={`flex min-h-11 items-center gap-3 text-sm ${inSeries ? "ps-6" : ""}`}
+    >
+      <span className="flex-1">
+        {inSeries ? shownName(c, { name: seriesOf(c.id) ?? "", lang: c.lang }) : c.name}
+      </span>
+      <span className="opacity-50 tabular-nums">{c.count}</span>
+      <button
+        disabled={busy || added.has(c.id)}
+        onClick={() => add(c)}
+        className="min-h-11 px-3 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-40"
+      >
+        {added.has(c.id) ? text.added : text.add}
+      </button>
+    </div>
+  );
+
   const add = async (c: CatalogMeta) => {
     setBusy(true);
     try {
@@ -2339,21 +2432,38 @@ function ListPicker({
         </div>
         {lang && (
           <div className="space-y-1">
-            {builtIn
-              .filter((c) => c.lang === lang)
-              .map((c) => (
-                <div key={c.id} className="flex items-center gap-3 text-sm">
-                  <span className="flex-1">{c.name}</span>
-                  <span className="opacity-50 tabular-nums">{c.count}</span>
-                  <button
-                    disabled={busy || added.has(c.id)}
-                    onClick={() => add(c)}
-                    className="px-3 py-1 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-40"
-                  >
-                    {added.has(c.id) ? text.added : text.add}
-                  </button>
+            {catalogTree(builtIn.filter((c) => c.lang === lang)).map((node) =>
+              node.series ? (
+                // A series (JLPT, HSK): its lists below it, and "Add all" in one tap.
+                <div key={node.series} className="space-y-1">
+                  <div className="flex min-h-11 items-center gap-3 text-sm">
+                    <span className="flex-1 font-medium">
+                      <Icon name="folder" className="me-1 opacity-70" />
+                      {node.series}
+                    </span>
+                    <span className="opacity-50 tabular-nums">
+                      {node.lists.reduce((n, c) => n + c.count, 0)}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busy || node.lists.every((c) => added.has(c.id))}
+                      onClick={() => addSeries(node.lists)}
+                      title={fill(text.addSeriesTitle.value, { series: node.series })}
+                      className="min-h-11 px-3 rounded bg-[oklch(0.6_0.12_155/0.2)] hover:bg-[oklch(0.6_0.12_155/0.3)] disabled:opacity-40"
+                    >
+                      {node.lists.every((c) => added.has(c.id))
+                        ? text.added
+                        : fill(text.addSeries.value, {
+                            n: node.lists.filter((c) => !added.has(c.id)).length,
+                          })}
+                    </button>
+                  </div>
+                  {node.lists.map((c) => catalogRow(c, true))}
                 </div>
-              ))}
+              ) : (
+                catalogRow(node.lists[0], false)
+              ),
+            )}
             <p className="text-[11px] opacity-40 pt-2">
               {builtIn.find((c) => c.lang === lang)?.source} —{" "}
               {builtIn.find((c) => c.lang === lang)?.license}
@@ -2363,6 +2473,21 @@ function ListPicker({
       </div>
     </div>
   );
+}
+
+/**
+ * One language's catalog as a tree: a series (JLPT, HSK) holds its lists in
+ * catalog order (N5 → N1); other lists (top 1–500…) stand alone.
+ */
+function catalogTree(lists: CatalogMeta[]): { series?: string; lists: CatalogMeta[] }[] {
+  const out: { series?: string; lists: CatalogMeta[] }[] = [];
+  for (const c of lists) {
+    const s = seriesOf(c.id);
+    const node = s && out.find((n) => n.series === s);
+    if (node) node.lists.push(c);
+    else out.push(s ? { series: s, lists: [c] } : { lists: [c] });
+  }
+  return out;
 }
 
 /** "Import Anki deck (.apkg)" → /words/import. */

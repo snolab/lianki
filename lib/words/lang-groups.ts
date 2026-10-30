@@ -86,6 +86,8 @@ export function planLanguageGroups(
     rank: (source: string | null) => number | undefined;
     names: (lang: string) => string[];
     series?: (source: string | null) => string | undefined;
+    /** Move only these lists (adding a series from the catalog); others stay put. */
+    only?: Set<string>;
   },
 ): GroupingPlan {
   const series = o.series ?? seriesOf;
@@ -99,7 +101,8 @@ export function planLanguageGroups(
     kids.set(parentOf.get(x.id)!, [...(kids.get(parentOf.get(x.id)!) ?? []), x]);
 
   const movingLists = flat.filter(
-    (l) => !isGroup(l) && parentOf.get(l.id) === null && real(l.lang),
+    (l) =>
+      !isGroup(l) && parentOf.get(l.id) === null && real(l.lang) && (!o.only || o.only.has(l.id)),
   );
   if (!movingLists.length) return { create: [], order: flat.map(pick), moved: [] };
 
@@ -295,4 +298,24 @@ export function planUndo(
     .filter((row) => !dropped.has(row.id))
     .map((row) => ({ id: row.id, parentId: back.has(row.id) ? null : (row.parentId ?? null) }));
   return { order, drop };
+}
+
+/**
+ * Adding a whole series from the catalog (JLPT → N5…N1): which of its lists
+ * he lacks (by catalog id), and which he has, at the top level (they may
+ * join the new group if he says so) or already inside a group (left alone).
+ */
+export function seriesStatus(
+  lists: PlanList[],
+  members: string[],
+): { missing: string[]; top: string[]; nested: string[] } {
+  const ids = new Set(lists.map((l) => l.id));
+  const out = { missing: [] as string[], top: [] as string[], nested: [] as string[] };
+  for (const source of members) {
+    const have = lists.filter((l) => l.source === source);
+    if (!have.length) out.missing.push(source);
+    for (const l of have)
+      (l.parentId && ids.has(l.parentId) && l.parentId !== l.id ? out.nested : out.top).push(l.id);
+  }
+  return out;
 }
