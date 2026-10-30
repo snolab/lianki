@@ -608,6 +608,28 @@ ruby rt {
   }
 }
 
+/* /words list picker: the Undo toast's bar runs out with the delete. Motion
+ * off (system or the app's switch): no bar, the text says it all. */
+.lk-undo-timer {
+  animation: lk-undo-timer linear forwards;
+}
+@keyframes lk-undo-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-undo-timer {
+    display: none;
+  }
+}
+html[data-motion="off"] .lk-undo-timer {
+  display: none;
+}
+
 /* /words: the list fills the window edge to edge, under the header, the
  * toolbar, the help strip and (tablet) the nav. Only the list scrolls. */
 .lk-words-list {

@@ -264,6 +264,14 @@ export class WordsD1Repo {
     return p;
   }
 
+  /** Give a list (or group) a new name; the caller trims and bounds it. */
+  async renameList(id: string, name: string): Promise<void> {
+    await this.db
+      .prepare("UPDATE word_lists SET name = ?, updated_at = ? WHERE email = ? AND id = ?")
+      .bind(name, new Date().toISOString(), this.email, id)
+      .run();
+  }
+
   async deleteList(id: string): Promise<void> {
     // A deleted group's children move up to its own parent.
     await this.db
