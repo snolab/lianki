@@ -498,6 +498,66 @@ do); a ↓ button at the right of the row above the input (the row stays
 click-through, only the button takes taps) scrolls to the end, with a dot
 when messages arrived below. The log's top edge fades once it overflows.
 
+#### Voice latency
+
+Each line spoken into the mic gets one timing record, voice → reply
+(`packages/debug-chat/src/latency.ts`, tested in `unit/latency.test.ts`).
+Every stamp is the page's own `Date.now()`, so no stage mixes clocks:
+
+| Stage (ms)     | From → to                                                   | Stamped in                    |
+| -------------- | ----------------------------------------------------------- | ----------------------------- |
+| `vadMs`        | last frame Silero scored ≥ 0.5 → the VAD ends the utterance | `mic.ts` createMic            |
+| `encodeMs`     | VAD end → the WAV upload starts                             | `mic.ts`                      |
+| `sttMs`        | `/api/debug/stt` round trip (`sttServerMs` = its own `ms`)  | `mic.ts`, `MicButton.tsx`     |
+| `waitMs`       | transcript back → in the input (an earlier one still out)   | `DebugChat.tsx` dictated      |
+| `sendMs`       | in the input → sent on the socket                           | `DebugChat.tsx` submit        |
+| `hubMs`        | sent → the hub's copy of the line back on this page         | `DebugEval.tsx`               |
+| `ackMs`        | sent → the first busy beat (a listener's "heard you")       | `DebugEval.tsx`               |
+| `agentMs`      | hub copy back → the agent's reply here                      | `DebugEval.tsx`               |
+| `voiceMs`      | reply here → it starts playing (utterance `start` / `play`) | `voice.ts` onStart            |
+| `totalMs`      | end of speech → the reply audible (unspoken: here)          |                               |
+
+The owner line carries the mic's stamps as an optional `timing` object
+(`VoiceTiming` in `wire.ts`: `t_lastVoice`, `t_speechEnd`, `t_uploadStart`,
+`t_sttDone`, `t_shown`, `t_sent`, `sttServerMs`, `audioMs`), on `source:
+"stt"` lines only. The hub validates it (`cleanTiming`) and keeps it on the
+stored line; an older hub or page ignores it. `eval.ts chat` prints it, plus
+`lagMs` (hub → listener, two clocks) on live lines.
+
+**Where to see it.** The chat's ⋯ menu shows the latest record
+(`debug-menu-latency`, while the mic is on or once there is one): "Latency,
+last voice line 8.7 s", then `silence 1.4 · STT 0.9 · send 0.0 · hub 0.1 ·
+reply 6.0 · voice 0.3` (zh/ja/en in `ui-strings.ts`). Each record is also
+logged once as `{ev: "voice-latency", id, chars, replied, …stages, timing}`
+through devLog (`wrangler tail lianki`).
+
+**Collecting samples** (event-driven: it reads the tail's stream, and exits
+after `--n` records):
+
+```bash
+bunx wrangler tail lianki --format json | bun scripts/dev/voice-latency.ts --n 10
+```
+
+It prints each record as it arrives and then the markdown table (n, median,
+p90, mean per stage). The samples need the owner speaking on their own
+device, with an agent answering; nothing here can make them.
+
+**Fixed waits** (a floor under every reply):
+
+- Silero ends an utterance only after vad-web's default `redemptionMs`,
+  **1400 ms** of silence in 0.0.30 (43 frames × 32 ms); `MicButton.tsx`
+  `silero()` passes no override (the old comment said ~0.8 s). The energy
+  fallback waits 700 ms (`energyGate`'s `hangMs`, `mic.ts`).
+- No send debounce for voice: a spoken final is punctuated and sent at once
+  (`appendDictation` → `submit` in `DebugChat.tsx` `dictated`). The 3 s
+  `DEBOUNCE_MS` is for typing, and is off while the mic is on.
+- Cloud voice (`lk:voice-out = "cloud"`) fetches each sentence's clip before
+  it plays; that shows up in `voiceMs`.
+
+**"Heard you".** `eval.ts chat --ack` answers each new owner or friend line
+with one busy beat at once, so the spinner shows within a hub round trip,
+before the agent's turn starts (`ackMs` measures it).
+
 #### Agent is busy (heartbeat)
 
 While the agent works on a message, a small spinner shows at the right end
@@ -549,6 +609,7 @@ tests:
   `debug-chat-warning`.
 - The pill's menu: `debug-menu`, `debug-menu-status`, `debug-menu-note` (where
   the widget came from, or why it fell back), `debug-menu-speak`,
+  `debug-menu-latency` (the last voice line's breakdown),
   `debug-menu-minimize`, `debug-menu-page` (`data-self` on this one),
   `debug-menu-page-open`, `debug-menu-page-end`, `debug-menu-session`,
   `debug-menu-session-add` and `debug-menu-session-end`.

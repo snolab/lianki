@@ -14,6 +14,7 @@ import {
   resample,
   scheduleTick,
 } from "./mic";
+import { voiceLatency } from "./latency";
 import { type MicSession, type MicView, micSession } from "./mic-session";
 import { voice } from "./voice";
 import {
@@ -88,7 +89,11 @@ const micStream = async () => {
   return s;
 };
 
-/** Silero: ends an utterance after ~0.8 s of silence, on the session's stream. */
+/**
+ * Silero, on the session's stream. It ends an utterance after vad-web's
+ * default `redemptionMs` of silence: 1400 ms in 0.0.30 (43 frames of 32 ms),
+ * the largest fixed wait on the voice → reply path (latency.ts `vadMs`).
+ */
 async function silero(ev: VadEvents, stream: MediaStream): Promise<Vad> {
   await script(`${ORT}ort.wasm.min.js`);
   await script(`${VAD}bundle.min.js`);
@@ -184,7 +189,7 @@ function session(): MicSession {
       f(v.state().hold);
       return v.subscribe((x) => f(x.hold));
     },
-    upload: async (wav, { durationMs, partial }, cfg) => {
+    upload: async (wav, { seq, durationMs, partial }, cfg) => {
       const at = Date.now();
       const sink = partial ? undefined : cfg.clipSink;
       try {
@@ -208,6 +213,8 @@ function session(): MicSession {
           if (!partial) v.echoDropped();
           return "";
         }
+        // The route's own ms, for the latency record (latency.ts).
+        if (!partial && out.ms !== undefined) voiceLatency().mark(seq, { sttServerMs: out.ms });
         if (sink)
           void postClip(sink, wav, {
             at,
@@ -240,6 +247,7 @@ function session(): MicSession {
       return (c.state as string) === "running";
     },
     log: (ev) => v.log(ev),
+    timing: (seq, m) => voiceLatency().mark(seq, m),
   });
 }
 
