@@ -2,6 +2,7 @@
 
 import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
 import { shouldAdvance } from "@/lib/words/advance";
+import { progressPercent } from "@/lib/words/progress";
 import { voiceQuality } from "@lianki/debug-chat/wire";
 import {
   startTransition,
@@ -1498,7 +1499,64 @@ async function downloadForOffline(
 const INDENT = 24;
 
 /** Sums over a row and everything below it. */
-type Totals = { due: number; learning: number; mastered: number; cards: number; total: number };
+type Totals = {
+  due: number;
+  learning: number;
+  mastered: number;
+  cards: number;
+  total: number;
+  /** Progress scores summed (lib/words/progress.ts). */
+  progress: number;
+};
+
+/**
+ * How far a list (a group: its whole subtree) has come, as a thin ring and a
+ * percentage: the mean of its words' scores, each by how near its stability
+ * is to a year (lib/words/progress.ts). Nothing while the list's size is unknown.
+ */
+function ProgressRing({ progress, total }: { progress: number; total: number }) {
+  const text = useIntlayer("words-page");
+  const { locale } = useLocale();
+  const pct = progressPercent(progress, total);
+  if (pct === null) return null;
+  const label = fill(text.progressTitle.value, { pct, total });
+  const shown = new Intl.NumberFormat(String(locale), { style: "percent" }).format(pct / 100);
+  // r = 8 in a 20×20 box: the circumference, for the dash.
+  const c = 2 * Math.PI * 8;
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums"
+      title={label}
+      aria-label={label}
+      role="img"
+      data-progress={pct}
+    >
+      <svg viewBox="0 0 20 20" className="h-5 w-5 -rotate-90" aria-hidden>
+        <circle
+          cx="10"
+          cy="10"
+          r="8"
+          fill="none"
+          strokeWidth="2.5"
+          className="stroke-[oklch(0.5_0_0/0.18)] dark:stroke-[oklch(0.8_0_0/0.18)]"
+        />
+        {pct > 0 && (
+          <circle
+            cx="10"
+            cy="10"
+            r="8"
+            fill="none"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeDasharray={`${(c * pct) / 100} ${c}`}
+            className="stroke-[oklch(0.58_0.14_155)] dark:stroke-[oklch(0.76_0.14_155)]"
+          />
+        )}
+      </svg>
+      <span className="min-w-[2.6em] text-end opacity-80">{shown}</span>
+    </span>
+  );
+}
 
 /** One row of the picker tree: a list or a group, draggable by its ⠿ handle. */
 function SortableListRow({
@@ -1587,6 +1645,7 @@ function SortableListRow({
           })}
         </div>
       </button>
+      <ProgressRing progress={totals.progress} total={totals.total} />
       <button
         className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
         onClick={() => onOpen(l.id)}
@@ -1700,6 +1759,7 @@ function ListPicker({
       due: l.due,
       learning: l.learning,
       mastered: l.mastered,
+      progress: l.progress ?? 0,
       cards: l.cards,
       total: catalog.find((c) => c.id === l.source)?.count ?? 0,
     });
@@ -1711,6 +1771,7 @@ function ListPicker({
         sum.due += d.due;
         sum.learning += d.learning;
         sum.mastered += d.mastered;
+        sum.progress += d.progress;
         sum.cards += d.cards;
         sum.total += d.total;
       }
