@@ -118,11 +118,12 @@ Content-Type: audio/webm | audio/ogg | audio/mp4 | audio/wav | audio/mpeg   (cod
   other AI routes: per isolate, so a spread-out burst can get a little more.
 - **Model.** `?model=` is honoured for the owner only (`isOwner`), and only
   from `STT_MODELS`; everyone else, and any other value, gets the default.
-  No language hint by default; `?lang=` is optional.
+  `?lang=` forces one language (optional). `?hint=zh|ja|en` is softer: it
+  only picks the prompt (below); the mic sends it.
 - **Fallback.** When the default fails, the fallback is tried once. A model
   the owner named explicitly is not replaced, so the bench sees real errors.
-- **Logs.** `debug.stt` with model, bytes, ms and the transcript's length.
-  Never the audio or the text.
+- **Logs.** `debug.stt` with model, bytes, ms, the transcript's length, the
+  hint and the detected language. Never the audio or the text.
 
 ### Which model, and why
 
@@ -149,6 +150,20 @@ Whisper settles on one language per window, so without a hint it dropped
 the Japanese from a ja + en clip. `STT_PROMPT`, an `initial_prompt` that
 itself mixes 日本語, English and 中文, fixed that, and did not leak into a
 clip of silence. It is sent only when no `?lang=` is given.
+
+**The hint (`?hint=`, 2026-10-30).** `STT_PROMPT` leads with Japanese, and
+short Chinese clips from the owner came back as katakana nonsense
+(「シェイカーマイカフォン。」). On his 12 saved clips (`~/lianki-voice-clips`,
+10 zh, 2 en), a simplified-Chinese-led prompt (`sttPrompt("zh")`) beat
+`STT_PROMPT` on every Chinese clip: simplified output instead of
+traditional, 銀外 → 另外, punctuation kept, and no katakana (that clip came
+back as English instead). `language: "zh"` was worse: it dropped all
+punctuation and turned both English clips into Chinese. So the hint only
+swaps the prompt, and Whisper still detects. ja and en keep `STT_PROMPT`.
+The mic's hint (`packages/debug-chat/src/stt-hint.ts`) is the language of the
+owner's last **typed** line (kana → ja, else Han → zh, else Latin → en), else
+the device's language. Dictated lines never teach it, so a misheard line
+can't make the next one worse.
 
 Silence hallucinations (「ご視聴ありがとうございました。」, "Thanks for
 watching" — Whisper's subtitle credits) are handled twice. Turbo is sent

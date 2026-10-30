@@ -18,6 +18,7 @@ import { voiceLatency } from "./latency";
 import { createLocalStt } from "./local-stt";
 import { localSttStrings } from "./ui-strings";
 import { type MicSession, type MicView, micSession } from "./mic-session";
+import { sttHint } from "./stt-hint";
 import { voice } from "./voice";
 import {
   aecOn,
@@ -219,9 +220,9 @@ function session(): MicSession {
             });
           } catch (e) {
             v.log({ ev: "local-stt-fallback", error: String((e as Error)?.message ?? e) });
-            out = await postStt(wav);
+            out = await postStt(wav, fetch, "audio/wav", sttHint());
           }
-        } else out = await postStt(wav);
+        } else out = await postStt(wav, fetch, "audio/wav", sttHint());
         // The text guard: the agent's own words that leaked past the AEC are dropped.
         const echo = v.echoCheck(out.text, durationMs);
         if (!partial)
