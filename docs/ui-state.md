@@ -79,6 +79,9 @@ target that is not built yet.
 | swipe tuner panel open                  | session `lk:ui:swipe-tuner`               | done                                       |
 | slip action sheet open                  | memory (it is modal, closed on refresh)   | intentional                                |
 | sidebar collapsed                       | local `lk:sidebar`                        | → `lk:pref:sidebar`                        |
+| phone drawer open                       | memory, `navUi` (lib/nav/ui-store.ts)     | done: the bottom island opens it too       |
+| recent pages (nav)                      | session `lk:ui:nav`                       | done                                       |
+| pinned pages (nav)                      | local `lk:pref:nav-pins`                  | done                                       |
 | first-run answer                        | local `lk:first-run`                      | a device fact, stays                       |
 
 ### Chat widget (packages/debug-chat, another lane)

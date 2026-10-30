@@ -14,14 +14,14 @@ import { useIntlayer } from "next-intlayer";
 import { useUi } from "@lianki/ui-state";
 import { island } from "@/lib/islands/Island";
 import { navUi, setDrawerOpen } from "@/lib/nav/ui-store";
-import { BottomNav } from "./nav/BottomNav";
-import { NavDrawerExtra } from "./nav/NavDrawerExtra";
+import { BottomIsland } from "@/lib/nav/islands/BottomIsland";
+import { NavRows } from "@/lib/nav/islands/NavRows";
 
 const SIDEBAR_KEY = "lk:sidebar";
 
 /** The bottom island and the nav's extra rows (docs/bottom-nav.md): hot-swappable slots. */
-const BottomNavIsland = island("nav.bottom", BottomNav);
-const NavDrawerIsland = island("nav.drawer", NavDrawerExtra);
+const BottomNavIsland = island("nav.bottom", BottomIsland);
+const NavDrawerIsland = island("nav.drawer", NavRows);
 
 export type ShellUser = {
   name: string;

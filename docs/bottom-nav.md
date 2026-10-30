@@ -16,7 +16,7 @@ permanent left sidebar, and tablets keep the glass sidebar overlay.
 - **Search** is one palette over pages and commands (`APP_NAV`, Create), word
   lists and words (the offline copy in IndexedDB), cards
   (`/api/fsrs/list?q=`) and, for the owner, state-tree nodes. A pasted URL
-  offers "Add {url} as a card" (`/add-note?url=`).
+  offers "Add {url} as a card" (`/add-note#url=`).
 - **Create** offers words from an Anki deck (`/words/import`), a link as a
   card, importing cards and backups (`/import`) and making words with AI
   (`/ai-vocab`).
@@ -48,14 +48,29 @@ clear of the island (docs/design-principles.md, "Reserve, don't push").
 
 ## Code
 
-| File                                  | Role                                                                          |
-| ------------------------------------- | ----------------------------------------------------------------------------- |
-| `lib/nav/ui-store.ts`                 | `navUi` (session: drawer open, recent pages), `navPins` (local: pinned pages) |
-| `app/components/nav/BottomNav.tsx`    | the `nav.bottom` island's built-in version (nothing until approved)           |
-| `app/components/nav/NavDrawerExtra.tsx` | the `nav.drawer` island: pinned, recent and breadcrumbs above the nav list |
-| `app/components/bottom-nav.content.ts` | every string, in all locales                                                 |
-| `unit/bottom-nav.test.ts`             | slots, stores, strings                                                        |
+| File                                   | Role                                                                          |
+| -------------------------------------- | ----------------------------------------------------------------------------- |
+| `lib/nav/ui-store.ts`                  | `navUi` (session: drawer open, recent pages), `navPins` (local: pinned pages) |
+| `lib/nav/nav-core.ts`                  | the pure rules: ranking, URL detection, compact, keyboard, docking, badges    |
+| `lib/nav/islands/BottomIsland.tsx`     | the `nav.bottom` island                                                       |
+| `lib/nav/islands/signals.ts`           | its event-driven hooks: scroll, keyboard, chat dock, due/sync, edge swipe     |
+| `lib/nav/islands/SearchPalette.tsx`    | the command palette                                                           |
+| `lib/nav/islands/CreateSheet.tsx`      | the Create sheet                                                              |
+| `lib/nav/islands/NavRows.tsx`          | the `nav.drawer` island: breadcrumbs, pin, pinned and recent pages            |
+| `lib/nav/islands/text.ts`              | every label, from `bottom-nav`, `app-shell`, `landing-page`, `learning-partner` |
+| `app/components/bottom-nav.content.ts` | the strings, in all locales                                                   |
+| `unit/bottom-nav.test.ts`, `unit/nav-core.test.ts` | islands, stores, strings (no literals, oklch only, no polling), rules |
 
-The island is a hot island (docs/dev-hot-islands.md). It is previewed on the
-owner's phone from an agent's worktree and becomes the built-in once he
-approves it.
+Both are hot islands (docs/dev-hot-islands.md). To preview a change on the
+owner's phone, run an islands server from your worktree on a port and path
+of your own, e.g.
+`bun scripts/dev/islands-server.ts --port 5197 --tailnet /lianki-islands-nav`,
+and point `lk:slots-src` at it.
+
+## Share to Lianki
+
+`public/manifest.json` declares a share target. In the installed app
+(Android), sharing a page to Lianki opens
+`/add-note?url=…&title=…&text=…`. `/add-note` takes the URL from the hash
+first, then from the query, then from the first link in `text`. Share sheets
+often send the link in `text` rather than `url`.

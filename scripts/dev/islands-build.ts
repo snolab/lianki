@@ -48,6 +48,13 @@ export async function exportNames(spec: string): Promise<string[]> {
     return new Bun.Transpiler({ loader: ext === ".tsx" ? "tsx" : "ts" }).scan(
       readFileSync(file, "utf8"),
     ).exports;
+  // An ES module is scanned too: importing one may touch the DOM (next-intlayer
+  // reads `document` when it loads). Only CommonJS (react) or `export *` is imported.
+  if (ext === ".mjs" || ext === ".js") {
+    const src = readFileSync(file, "utf8");
+    const { exports } = new Bun.Transpiler({ loader: "js" }).scan(src);
+    if (exports.length && !/export\s*\*/.test(src)) return exports;
+  }
   const keys = Object.keys((await import(file)) as Record<string, unknown>);
   return target === "react/jsx-runtime" ? [...keys, "jsx", "jsxs", "Fragment"] : keys;
 }
