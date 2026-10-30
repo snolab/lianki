@@ -50,6 +50,7 @@ import {
   sendLoginCode,
   TS_HEADERS,
   TS_LOGIN_HEADER,
+  FRAME_ANCESTORS,
   tailnetIdentity,
   type SessionInfo,
   decide,
@@ -244,6 +245,41 @@ async function serve() {
     return signIn(res, LANDING_PATH, "enter: device paired, owner signed in");
   }
 
+  /** The guard's own owner session, "name=value", minted once and re-minted if it lapses. */
+  let ownerCookie: string | undefined;
+  async function mintOwnerCookie(): Promise<string | undefined> {
+    const login = await fetch(`http://127.0.0.1:${inner}/api/dev-whole-page/login`, {
+      method: "POST",
+      headers: { [GUARD_HEADER]: state.guardSecret, host: new URL(origin).host, origin },
+    });
+    const first = login.ok ? login.headers.getSetCookie()[0] : undefined;
+    return first?.split(";")[0];
+  }
+
+  /** `cookie` with his session in it, unless it already carries a working one. */
+  async function withOwnerSession(cookie: string | undefined): Promise<string> {
+    if (await ownerSession(cookie)) return cookie ?? "";
+    if (!ownerCookie || !(await ownerSession(ownerCookie))) {
+      ownerCookie = await mintOwnerCookie();
+      if (ownerCookie) console.error("[whole-page] tailnet: owner session minted for his devices");
+    }
+    if (!ownerCookie) return cookie ?? "";
+    const name = ownerCookie.split("=")[0];
+    const rest = (cookie ?? "")
+      .split(";")
+      .map((c) => c.trim())
+      .filter((c) => c && !c.startsWith(`${name}=`));
+    return [...rest, ownerCookie].join("; ");
+  }
+
+  /** Framable by lianki.com only (the owner's iframe overlay), never by others. */
+  function framable(h: http.IncomingHttpHeaders): http.OutgoingHttpHeaders {
+    const out: http.OutgoingHttpHeaders = { ...h };
+    delete out["x-frame-options"];
+    out["content-security-policy"] = FRAME_ANCESTORS;
+    return out;
+  }
+
   /** Pin the device, mint the owner's session, and go on to `location`. */
   async function signIn(res: http.ServerResponse, location: string, note: string) {
     const login = await fetch(`http://127.0.0.1:${inner}/api/dev-whole-page/login`, {
@@ -273,20 +309,20 @@ async function serve() {
     (trusted: boolean) => async (req: http.IncomingMessage, res: http.ServerResponse) => {
       try {
         const url = new URL(req.url ?? "/", origin);
-        const deviceOk = await verifyDevice(
+        let deviceOk = await verifyDevice(
           readCookie(req.headers.cookie, DEVICE_COOKIE),
           state.deviceSecret,
         );
         const ts = tailnetIdentity(req.headers[TS_LOGIN_HEADER], trusted, tsLogin);
         if (ts === "forged")
           return deny(res, "a Tailscale identity is only believed via tailscale serve");
-        if (
-          ts === "owner" &&
-          req.method === "GET" &&
-          url.pathname !== ENTER_PATH &&
-          (!deviceOk || !(await ownerSession(req.headers.cookie)))
-        ) {
-          return await signIn(res, url.pathname + url.search, "tailnet: owner's device let in");
+        // His tailnet device: the identity is the device proof, and the guard
+        // supplies his session server-side, so the browser needs no cookie at
+        // all — which is what makes the page work inside a lianki.com iframe,
+        // where iOS Safari blocks third-party cookies.
+        if (ts === "owner") {
+          deviceOk = true;
+          req.headers.cookie = await withOwnerSession(req.headers.cookie);
         }
         const d = decide(url.pathname, deviceOk);
         if (d.kind === "enter") return await enter(url, res);
@@ -329,7 +365,7 @@ async function serve() {
                   headers: forwardHeaders(req.headers),
                 },
           (r) => {
-            res.writeHead(r.statusCode ?? 502, r.headers);
+            res.writeHead(r.statusCode ?? 502, framable(r.headers));
             r.pipe(res);
           },
         );
@@ -350,14 +386,15 @@ async function serve() {
   const upgrade =
     (trusted: boolean) => async (req: http.IncomingMessage, socket: Duplex, head: Buffer) => {
       const url = new URL(req.url ?? "/", origin);
-      if (tailnetIdentity(req.headers[TS_LOGIN_HEADER], trusted, tsLogin) === "forged") {
+      const ts = tailnetIdentity(req.headers[TS_LOGIN_HEADER], trusted, tsLogin);
+      if (ts === "forged") {
         socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
         return;
       }
-      const deviceOk = await verifyDevice(
-        readCookie(req.headers.cookie, DEVICE_COOKIE),
-        state.deviceSecret,
-      );
+      if (ts === "owner") req.headers.cookie = await withOwnerSession(req.headers.cookie);
+      const deviceOk =
+        ts === "owner" ||
+        (await verifyDevice(readCookie(req.headers.cookie, DEVICE_COOKIE), state.deviceSecret));
       const d = decide(url.pathname, deviceOk);
       const ok =
         d.kind === "pass" || (d.kind === "owner" && (await ownerSession(req.headers.cookie)));

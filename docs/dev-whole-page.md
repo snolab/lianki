@@ -74,6 +74,14 @@ one-time link. `tailscale serve --https=8443` targets a **loopback** listener,
   refused as a forgery.
 - The identity headers are stripped before anything is forwarded.
 
+For his tailnet requests the guard needs no browser cookie at all. It keeps
+one owner session of its own, minted once and re-minted if it lapses, and
+adds it to the request on the way upstream. That is what lets the page work
+inside a **lianki.com iframe** (the owner's overlay idea, 2026-10-31), where
+iOS Safari blocks third-party cookies. Every response carries
+`Content-Security-Policy: frame-ancestors 'self' https://lianki.com`, so no
+other site can frame it.
+
 `tailnetIdentity` in `whole-page-guard.ts` holds the rule. `send-login` still
 works for a device that is not on the tailnet.
 

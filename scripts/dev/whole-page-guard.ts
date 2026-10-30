@@ -299,3 +299,9 @@ export function tailnetIdentity(
     ? "owner"
     : "none";
 }
+
+/**
+ * Who may frame the dev page: itself, and lianki.com — the owner's overlay, a
+ * full-screen iframe on his lianki.com tab so its chat and eval stay connected.
+ */
+export const FRAME_ANCESTORS = "frame-ancestors 'self' https://lianki.com";

@@ -8,6 +8,7 @@ import {
   deviceCookieValue,
   copyableKey,
   Debouncer,
+  FRAME_ANCESTORS,
   isBridgedPath,
   needsIntlayerBuild,
   isHubPath,
@@ -304,5 +305,11 @@ describe("whole-page guard: Tailscale identity", () => {
     expect(tailnetIdentity(owner, false, owner)).toBe("forged");
     expect(tailnetIdentity("", false, owner)).toBe("forged");
     expect(tailnetIdentity(undefined, false, owner)).toBe("none");
+  });
+});
+
+describe("whole-page guard: framing", () => {
+  test("only the dev page itself and lianki.com may frame it", () => {
+    expect(FRAME_ANCESTORS).toBe("frame-ancestors 'self' https://lianki.com");
   });
 });
