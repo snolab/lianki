@@ -84,3 +84,22 @@ Keep the same value as `PROGRESS_TOKEN=…` in `.dev.vars` (or export
 `LIANKI_PROGRESS_TOKEN`) where the CLI runs. Unset, every write answers 503 and
 the owner's tree shows the hand-edited outline only. Rotating it invalidates
 every scoped token at once.
+
+## Dev bridge (`DEV_BRIDGE_SECRET`)
+
+A Worker secret on `lianki`, used for one thing only. The owner's whole-page
+dev server (docs/dev-whole-page.md) signs its sessions with a local secret,
+so lianki.com can't read them, and the debug chat hub (lianki-push) refused
+that page. The dev server's guard sends this secret in `x-lianki-dev-bridge`,
+lianki-push passes it on, and `/api/debug/identity` answers with the **owner**
+(the first `OWNER_EMAILS` account), never anyone else, when it matches
+(`lib/dev-bridge.ts`).
+
+- A wrong value gets 401, with no fall back to the cookie.
+- Unset, or shorter than 32 characters, the bridge is shut.
+- `AUTH_SECRET` is never shared. The owner chose this over copying it to the
+  Mac on 2026-10-31.
+
+The only other copy is `.dev-whole-page.json` (gitignored, 0600) in the dev
+server's worktree. To rotate it, generate a new value there and
+`wrangler secret put DEV_BRIDGE_SECRET` from the file, never by echoing it.

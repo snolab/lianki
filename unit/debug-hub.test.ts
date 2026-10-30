@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { DebugHub, type Socket, type Storage, hashToken } from "@/workers/push/src/debug";
 import push, { type Env, VersionHub } from "@/workers/push/src/index";
-import { debugIdentity } from "@/workers/push/src/auth";
+import { DEV_BRIDGE_HEADER, debugIdentity } from "@/workers/push/src/auth";
 import {
   APPROVAL_MS,
   CHAT_HISTORY,
@@ -558,6 +558,64 @@ describe("lianki-push debug routes", () => {
       owner: true,
     });
     expect(calls).toEqual(["https://lianki.com/api/debug/identity s=1"]);
+  });
+
+  it("the dev bridge header goes to the main Worker in place of a cookie", async () => {
+    const seen: Headers[] = [];
+    const main = {
+      fetch: async (_url: string, init?: RequestInit) => {
+        seen.push(new Headers(init?.headers));
+        return Response.json({ userId: "u1", email: "o@x", owner: true });
+      },
+    };
+    const req = upgrade("/api/version/debug", {
+      origin: "https://lianki.com",
+      [DEV_BRIDGE_HEADER]: "b".repeat(64),
+    });
+    expect(await debugIdentity(req, main)).toEqual({ userId: "u1", email: "o@x", owner: true });
+    expect(seen[0].get(DEV_BRIDGE_HEADER)).toBe("b".repeat(64));
+    expect(seen[0].get("cookie")).toBeNull();
+    // still only from lianki.com
+    const evil = upgrade("/api/version/debug", {
+      origin: "https://evil.example",
+      [DEV_BRIDGE_HEADER]: "b".repeat(64),
+    });
+    expect(await debugIdentity(evil, main)).toBeNull();
+  });
+
+  it("a refused bridge is refused, with no owner fallback", async () => {
+    const calls: string[] = [];
+    const req = upgrade("/api/version/debug", {
+      origin: "https://lianki.com",
+      [DEV_BRIDGE_HEADER]: "wrong",
+    });
+    expect(await debugIdentity(req, env(401, calls).MAIN)).toBeNull();
+    expect(await debugIdentity(req, env(404, calls).MAIN)).toBeNull();
+    expect(calls.length).toBe(2); // identity only, never /api/dev/whoami
+  });
+
+  it("the hub never sees the bridge header", async () => {
+    const seen: Headers[] = [];
+    const e: Env = {
+      ...env(200),
+      DEBUG: {
+        idFromName: () => 0,
+        get: () => ({
+          fetch: async (r: Request) => {
+            seen.push(r.headers);
+            return new Response("hub");
+          },
+        }),
+      },
+    };
+    await push.fetch(
+      upgrade("/api/version/debug", {
+        origin: "https://lianki.com",
+        [DEV_BRIDGE_HEADER]: "x".repeat(64),
+      }),
+      e,
+    );
+    expect(seen[0].get(DEV_BRIDGE_HEADER)).toBeNull();
   });
 
   it("the hub is told who the page is, and a page cannot claim it itself", async () => {
