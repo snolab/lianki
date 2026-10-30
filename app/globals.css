@@ -664,6 +664,22 @@ html.lk-page-lock .min-h-screen {
   }
 }
 
+/* Experimental "Paper scrolls with the list" (lk:words-paper-scrolls): the
+ * paper is a layer inside the list scroller, so it moves with the rows; the
+ * body behind it is plain. --paper follows the skin (data-paper) and the
+ * scheme. Its own composited layer: as cheap to scroll as the fixed texture. */
+.lk-paper-layer {
+  position: absolute;
+  top: 0;
+  inset-inline: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--paper), var(--background);
+  will-change: transform;
+}
+html.lk-paper-scrolls body {
+  background: var(--background);
+}
 /* Settings: a glass sheet that drops below the toolbar and scrolls itself. */
 .lk-words-sheet {
   z-index: 21;

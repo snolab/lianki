@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   type ChatMessage,
@@ -15,6 +15,7 @@ import {
   busyLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
+import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
 import { voice } from "@lianki/debug-chat/voice";
@@ -412,6 +413,22 @@ export function DebugEval() {
   const pending = state?.pending ?? null;
   const sessions = state?.sessions ?? [];
   const isFriend = friend !== null;
+  // The owner's tree: the bundled outline, with live progress laid over it.
+  const ownerTree = useMemo(
+    () =>
+      typeof window === "undefined"
+        ? undefined
+        : liveTreeSource({
+            base: async () => {
+              const r = await fetch("/api/dev/state-tree", { cache: "no-store" });
+              if (!r.ok) throw new Error(`HTTP ${r.status}`);
+              return r.text();
+            },
+            url: progressSocketUrl(location),
+            repo: "snolab/lianki",
+          }),
+    [],
+  );
   if (!live && !toast && !chat) return null;
   return (
     <>
@@ -435,7 +452,7 @@ export function DebugEval() {
           onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
           evalRan={!!toast}
           friend={isFriend}
-          treeSource={owner && !isFriend ? "/api/dev/state-tree" : undefined}
+          treeSource={owner && !isFriend ? ownerTree : undefined}
           treeRepo="snolab/lianki"
           agentAvatar={AGENT_AVATAR}
           viewer={viewer}
