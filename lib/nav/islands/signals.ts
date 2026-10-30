@@ -252,16 +252,40 @@ export function useWordsHint(pathname: string): string | null {
 }
 
 /** While mounted on a phone, the /words help strip hides under the island; its text moves to the drawer's "?". */
-export function useHideWordsStrip() {
+export function useHideWordsStrip(island: RefObject<HTMLElement | null>) {
   useEffect(() => {
     const style = document.createElement("style");
     style.dataset.navIsland = "hide-words-help";
-    // visibility, not display: /words measures the strip to pad its list.
+    // Not display:none: /words measures the strip to pad its list, so it
+    // stays in place, invisible (opacity, which keeps it hit-testable: a tap
+    // there never falls through to a slip under it), and at least as tall as
+    // what the island covers, so no row rests under the island.
     style.textContent =
-      "@media (max-width: 47.99rem) { [data-words-help] { visibility: hidden; pointer-events: none; } }";
+      "@media (max-width: 47.99rem) { [data-words-help] { opacity: 0; min-height: var(--lk-island-cover, 0px); } }";
     document.head.append(style);
-    return () => style.remove();
-  }, []);
+    const root = document.documentElement;
+    const cover = () => {
+      const el = island.current;
+      // The island's resting top: its box with any dock or shrink transform taken off.
+      const top = el?.offsetHeight ? el.getBoundingClientRect().top : null;
+      if (top === null) root.style.removeProperty("--lk-island-cover");
+      else
+        root.style.setProperty(
+          "--lk-island-cover",
+          `${Math.max(0, Math.round(window.innerHeight - top + 8))}px`,
+        );
+    };
+    const ro = new ResizeObserver(cover);
+    if (island.current) ro.observe(island.current);
+    window.addEventListener("resize", cover);
+    cover();
+    return () => {
+      style.remove();
+      ro.disconnect();
+      window.removeEventListener("resize", cover);
+      root.style.removeProperty("--lk-island-cover");
+    };
+  }, [island]);
 }
 
 /** A swipe in from the start edge opens the drawer (a phone gesture). */

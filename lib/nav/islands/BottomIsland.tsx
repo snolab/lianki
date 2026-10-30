@@ -54,7 +54,7 @@ export function BottomIsland({ signedIn }: IslandProps["nav.bottom"]) {
   const { due, pending, online, seen } = useNavData(signedIn, pathname);
   // /words: its help strip hides under the island; on a first visit (nothing
   // graded yet) its hint shows once above the island, until dismissed.
-  useHideWordsStrip();
+  useHideWordsStrip(nav);
   const hint = useWordsHint(pathname);
   const tipDismissed = useUi(navTip, (s) => s.dismissed);
   const tip = showFirstTip({ seen, hint, dismissed: tipDismissed });

@@ -81,9 +81,13 @@ the device.
 
 Owner's decision (2026-10-31): the island and the strip never stack.
 
-- On a phone, while the island shows, the strip `[data-words-help]` is hidden.
-  It uses `visibility`, not `display`, because /words still measures it to
-  pad its list.
+- On a phone, while the island shows, the strip `[data-words-help]` is made
+  invisible with `opacity: 0`.
+  - Not `display: none`: /words still measures the strip to pad its list.
+  - Not `visibility: hidden`: a hidden strip lets taps fall through to the
+    slip under it. qa-words caught that, as a stray loose slip.
+  - It is stretched to at least the island's height
+    (`--lk-island-cover`), so no row rests under the island.
 - Its text moves to a "?" in the drawer header ("Gestures & shortcuts"),
   which opens the same text. The island reads it from the strip, so it stays
   localized and matched to touch or keyboard.
