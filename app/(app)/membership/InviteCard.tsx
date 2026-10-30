@@ -5,6 +5,9 @@ import { useIntlayer } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import type { InviteSummary } from "@/lib/referrals/store";
 
+const yen = (n: number) =>
+  new Intl.NumberFormat(undefined, { style: "currency", currency: "JPY" }).format(n);
+
 /** The invite link and its results, plus the gift-code box. Renders nothing off D1. */
 export function InviteCard({ onProChanged }: { onProChanged: () => void }) {
   const s = useIntlayer("invite-card");
@@ -48,9 +51,17 @@ export function InviteCard({ onProChanged }: { onProChanged: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code }),
       });
-      const data = (await res.json()) as { status?: string; days?: number; reason?: string };
+      const data = (await res.json()) as {
+        status?: string;
+        days?: number;
+        credits?: number;
+        reason?: string;
+      };
       if (data.status === "redeemed") {
-        setGiftMsg({ ok: true, text: s.giftOk.value.replace("{days}", String(data.days)) });
+        const parts = [];
+        if (data.days) parts.push(s.giftOk.value.replace("{days}", String(data.days)));
+        if (data.credits) parts.push(s.giftCredits.value.replace("{credits}", yen(data.credits)));
+        setGiftMsg({ ok: true, text: parts.join(" ") });
         setCode("");
         onProChanged();
       } else {

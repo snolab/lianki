@@ -45,7 +45,7 @@ describe("passFor", () => {
 describe("checkout params", () => {
   test("a one-time JPY payment carrying the user and pass", () => {
     const p = checkoutParams({
-      pass: PASSES["pro-12m"],
+      purchase: { kind: "pass", pass: PASSES["pro-12m"] },
       userId: "u1",
       email: "a@b.c",
       successUrl: "https://x/ok",
@@ -181,7 +181,7 @@ describe("stripe switches and the checkout call", () => {
     globalThis.fetch = realFetch;
   });
   const input = {
-    pass: PASSES["pro-1m"],
+    purchase: { kind: "pass" as const, pass: PASSES["pro-1m"] },
     userId: "u1",
     successUrl: "https://x/ok",
     cancelUrl: "https://x/no",
