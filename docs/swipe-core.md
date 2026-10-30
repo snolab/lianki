@@ -38,7 +38,7 @@ useSwipeFeel(1): {
   preset: "light" | "heavy";
   overridden: boolean;      // ?feel= decides this page load
   prefs: { preset; tweaks: Partial<SwipeFeel>; tune: boolean };
-  setPrefs(p): void;        // this device, localStorage lk:swipe-feel
+  setPrefs(p): void;        // preset+tweaks: localStorage lk:pref:swipe-feel; tune: sessionStorage lk:ui:swipe-tuner
   reducedMotion: boolean;
   publish(source, tune | null): void;
 }

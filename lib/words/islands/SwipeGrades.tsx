@@ -7,7 +7,8 @@
  * shows until the slip reaches the far detent; then the far grade takes over
  * the same spot (crossfade + a short slide, CSS .lk-reveal), and gives it
  * back on the way home. The container's data-good / data-hard (showReveal in
- * WordsClient) pick which.
+ * WordsClient) pick which. The grade names come as props, in the app's
+ * language (words-page, read by the host).
  */
 type Rating = 1 | 2 | 3 | 4;
 
@@ -17,9 +18,18 @@ const BG: Record<Rating, string> = {
   3: "var(--slip-good)",
   4: "var(--slip-easy)",
 };
-const LABEL: Record<Rating, string> = { 1: "Again", 2: "Hard", 3: "Good", 4: "Easy" };
-
-export function SwipeGrades() {
+export function SwipeGrades({
+  again,
+  hard,
+  good,
+  easy,
+}: {
+  again: string;
+  hard: string;
+  good: string;
+  easy: string;
+}) {
+  const LABEL: Record<Rating, string> = { 1: again, 2: hard, 3: good, 4: easy };
   const layer = (r: Rating, side: "left" | "right", far: boolean) => (
     <span
       data-reveal={r}

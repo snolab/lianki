@@ -12,7 +12,7 @@
  * Neither changes a threshold or a grade: those stay in lib/words/swipe.ts.
  *
  * Which preset a device uses, and any per-token tweak on top, is a
- * device-local preference (`lk:swipe-feel`), turned on from /words Settings
+ * device-local preference (`lk:pref:swipe-feel`, docs/ui-state.md), turned on from /words Settings
  * in debug mode; `?feel=heavy|light` overrides it for one page load.
  */
 import { SWIPE_SNAP, SWIPE_SPRING, SWIPE_STRETCH } from "./swipe";
@@ -112,6 +112,7 @@ export type FeelTweaks = Partial<SwipeFeel>;
 /** The device preference: which preset, what tweaks on top, the tuner open or not. */
 export type FeelPrefs = { preset: FeelPreset; tweaks: FeelTweaks; tune: boolean };
 
+/** Where #328 kept the preference; read once and removed (swipe-core.tsx). */
 export const FEEL_PREFS_KEY = "lk:swipe-feel";
 export const DEFAULT_PREFS: FeelPrefs = { preset: "light", tweaks: {}, tune: false };
 
@@ -129,6 +130,12 @@ export function cleanTweaks(raw: unknown): FeelTweaks {
     }
   }
   return out;
+}
+
+/** A stored { preset, tweaks }, checked: unknown presets read as light, tweaks cleaned. */
+export function cleanPrefs(raw: unknown): Pick<FeelPrefs, "preset" | "tweaks"> {
+  const v = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return { preset: v.preset === "heavy" ? "heavy" : "light", tweaks: cleanTweaks(v.tweaks) };
 }
 
 /** The stored preference, from its JSON; a bad or missing value reads as the default. */

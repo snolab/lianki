@@ -74,6 +74,17 @@ await ctx.route("**/api/words/tts?*", (r) =>
   r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") }),
 );
 const page = await ctx.newPage();
+/**
+ * The lists picker. /words with no ?list= reopens the list this tab had open
+ * (docs/ui-state.md); "← lists" goes back to the picker and forgets it.
+ */
+const toPicker = async () => {
+  await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
+  if (!new URL(page.url()).searchParams.has("list")) return;
+  const back = page.getByRole("button", { name: "← lists" });
+  await back.waitFor({ timeout: 15000 });
+  await back.click();
+};
 const errs = [];
 page.on("pageerror", (e) => {
   // Local runs have no Turnstile site key; that warning is not this page's fault.
@@ -409,9 +420,63 @@ try {
   await page.keyboard.press("e"); // back off, for the checks below
   check(await blurred(5), "E turns it off again");
 
+  // The open Settings panel is UI state of this tab (docs/ui-state.md): it
+  // is still open after the refresh.
+  check(
+    await page.getByRole("switch", { name: "Server voice" }).isVisible(),
+    "the Settings panel stays open across a refresh (sessionStorage)",
+  );
+  // Where the reader was is this tab's UI state too: scrolled down, a
+  // refresh reopens at the same word; /words with no ?list= reopens the list.
+  {
+    const topRow = () =>
+      page.evaluate(() => {
+        const bar = document.querySelector("[data-words-top]")?.getBoundingClientRect().bottom ?? 0;
+        let best = "";
+        let d = Infinity;
+        for (const r of document.querySelectorAll('[role="listitem"]')) {
+          const y = Math.abs(r.getBoundingClientRect().top - bar);
+          if (y < d) [d, best] = [y, (r.textContent ?? "").trim().slice(0, 40)];
+        }
+        return best;
+      });
+    const first = await topRow();
+    await page.locator('[role="list"]').hover();
+    await page.mouse.wheel(0, 44 * 8);
+    await page.waitForTimeout(600);
+    const before = await topRow();
+    await page.reload({ waitUntil: "networkidle" });
+    await rows.first().waitFor({ timeout: 15000 });
+    await page.waitForTimeout(300);
+    const after = await topRow();
+    check(
+      before !== first && after === before,
+      `a refresh reopens at the same word (${first} → ${before} → ${after})`,
+    );
+    const listUrl = new URL(page.url());
+    const bare = new URL(page.url());
+    bare.searchParams.delete("list");
+    await page.goto(bare.href, { waitUntil: "networkidle" });
+    await rows.first().waitFor({ timeout: 15000 });
+    check(
+      new URL(page.url()).searchParams.get("list") === listUrl.searchParams.get("list"),
+      `no ?list=: this tab's list reopens (${new URL(page.url()).search})`,
+    );
+    // Back to the opening position for the checks below.
+    await page.evaluate(() => {
+      for (const k of Object.keys(sessionStorage)) {
+        if (!k.startsWith("lk:ui:")) continue;
+        const v = JSON.parse(sessionStorage.getItem(k) ?? "null");
+        if (!v?.state?.anchors) continue;
+        v.state.anchors = {};
+        sessionStorage.setItem(k, JSON.stringify(v));
+      }
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    await rows.first().waitFor({ timeout: 15000 });
+  }
   // The server voice is the default (browser voices can mislead): moving to
   // a word plays the server's recording (stubbed: no AI call, nothing audible).
-  await page.getByRole("button", { name: "Settings" }).click();
   check(
     (await page.getByRole("switch", { name: "Server voice" }).getAttribute("aria-checked")) ===
       "true",
@@ -593,6 +658,88 @@ try {
       { timeout: 15000 },
     );
     await tab.close();
+  }
+
+  // The study view speaks the app's language: on a French or Chinese phone
+  // the Settings sheet, the toolbar and the help strip show no English (one
+  // French item among English ones was the owner's report, 2026-10-30). The
+  // English run supplies the phrases to look for; brand and voice names stay.
+  {
+    const { devices } = await import("playwright");
+    const listUrl = page.url().replace(/[?&]lang=[^&]*/, "");
+    /** Visible text, aria-labels and titles of the sheet, toolbar controls and help strip. */
+    const studyText = async (lang, colorScheme) => {
+      const c = await browser.newContext({
+        ...devices["iPhone 13"],
+        colorScheme,
+        storageState: await ctx.storageState(),
+      });
+      await c.addInitScript(silentAudio);
+      await c.addInitScript(() => localStorage.setItem("lk:first-run", "account"));
+      await c.route("**/api/words/tts?*", (r) =>
+        r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") }),
+      );
+      const p = await c.newPage();
+      p.on("pageerror", (e) => errs.push(`PAGEERROR (${lang}) ${e.message}`));
+      await p.goto(`${listUrl}${listUrl.includes("?") ? "&" : "?"}lang=${lang}`, {
+        waitUntil: "networkidle",
+      });
+      await p.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+      await p.locator("[data-words-top] button[aria-expanded]").click();
+      await p.locator("[data-words-settings]").waitFor({ timeout: 5000 });
+      const htmlLang = await p.evaluate(() => document.documentElement.lang);
+      const texts = await p.evaluate(() => {
+        const out = [];
+        const roots = [
+          ...document.querySelectorAll("[data-words-settings], [data-words-help]"),
+          // The toolbar's own words: not the list's name (that is data).
+          ...document.querySelectorAll("[data-words-top] button, [data-words-top] .tabular-nums"),
+        ];
+        for (const root of roots) {
+          out.push(root.innerText);
+          for (const el of [root, ...root.querySelectorAll("[aria-label],[title]")])
+            for (const at of ["aria-label", "title"])
+              if (el.getAttribute(at)) out.push(el.getAttribute(at));
+        }
+        return out.join("\n");
+      });
+      if (process.env.QA_SHOTS && lang !== "en")
+        await p.screenshot({ path: `${process.env.QA_SHOTS}/settings-${lang}-${colorScheme}.png` });
+      await c.close();
+      return { htmlLang, texts };
+    };
+    const en = await studyText("en", "light");
+    // English phrases of three letters or more; names that stay as they are.
+    const KEEP = /^(Lianki|VOICEVOX|No|Kokoro|Piper|Thorsten-Voice|Dmitri|MeloTTS|min)$/;
+    const phrases = [
+      ...new Set(
+        en.texts
+          .split(/[\n·()=:,.;?↶←→↑↓✓…–—\d/+"“”]+/)
+          .flatMap((s) => s.trim().split(/\s+(?=[A-Z])|^\s+|\s+$/))
+          .map((s) => s.trim())
+          .filter((s) => /^[A-Za-z' -]{3,}$/.test(s) && !KEEP.test(s)),
+      ),
+    ];
+    check(
+      phrases.length > 10,
+      `the English study view has phrases to look for (${phrases.length})`,
+    );
+    for (const lang of ["fr", "zh"]) {
+      for (const scheme of ["light", "dark"]) {
+        const got = await studyText(lang, scheme);
+        if (scheme === "dark") continue; // same strings; the dark run is for the screenshots
+        const left = phrases.filter((ph) =>
+          new RegExp(
+            `(^|[^\\p{L}])${ph.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}])`,
+            "u",
+          ).test(got.texts),
+        );
+        check(
+          got.htmlLang.split("-")[0] === lang && left.length === 0,
+          `${lang}: the study Settings, toolbar and help show no English (lang=${got.htmlLang}, ${JSON.stringify(left)})`,
+        );
+      }
+    }
   }
 
   // /learn speaks the page's language (it used to be English-only) and links
@@ -1553,7 +1700,7 @@ try {
   check(fronts[0] === "あ", `alphabet starts with あ: ${fronts.slice(0, 3)}`);
   // A reverse card is kept well away from its forward card (a right under あ gives it away).
   check(!fronts.slice(0, 20).includes("a"), "あ and its reverse a are kept 20+ rows apart");
-  await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
+  await toPicker();
   check((await page.getByText("Hiragana").count()) === 0, "alphabet lists stay off /words");
 
   // "Download for offline" saves the lists, catalogs and due words on the device.
@@ -1580,7 +1727,7 @@ try {
   check((await sent).status() === 200, "study all: a graded word saves");
 
   // Drag the second list above the first by its handle; the order is saved.
-  await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
+  await toPicker();
   const handles = page.getByRole("button", { name: "Drag to reorder" });
   const before = (
     await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)
@@ -1659,7 +1806,7 @@ try {
     fields: ["Front", "Back", "Example"],
     notes: deckNotes,
   });
-  await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
+  await toPicker();
   // By its address: an earlier check visits /learn?lang=fr, and the language sticks.
   await page.locator('a[href*="/words/import"]').click();
   await page.waitForURL(/\/words\/import/);

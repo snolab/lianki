@@ -34,6 +34,8 @@ import { spokenText } from "@/lib/words/spoken";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
 import { createSequencer } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
+import { AUDIO_CACHE_NAME, AudioDisk } from "@/lib/words/audio-disk";
+import { rowPriority } from "@/lib/words/audio-priority";
 import {
   createClipPool,
   type Clip as PoolClip,
@@ -85,6 +87,8 @@ import {
   useSwipeGesture,
 } from "@/lib/words/swipe-core";
 import type { SwipePhase } from "@/lib/words/swipe-machine";
+import { useUi } from "@lianki/ui-state";
+import { anchorTop, setAnchor, topIndex, wordsUiStore } from "./ui-store";
 import { releaseTrajectory } from "@/lib/words/swipe-physics";
 import { island } from "@/lib/islands/Island";
 import { SwipeCard } from "@/lib/words/islands/SwipeCard";
@@ -334,7 +338,15 @@ const RATING_STYLE: Record<Rating, string> = {
   3: "grade-good",
   4: "grade-easy",
 };
-const RATING_LABEL: Record<Rating, string> = { 1: "Again", 2: "Hard", 3: "Good", 4: "Easy" };
+/** The grades' names, in the app's language. */
+function useRatingLabel(): Record<Rating, string> {
+  const text = useIntlayer("words-page");
+  return { 1: text.again.value, 2: text.hard.value, 3: text.good.value, 4: text.easy.value };
+}
+
+/** Fills the `{name}` placeholders of a words-page string. */
+const fill = (s: string, vars: Record<string, string | number>) =>
+  s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 
 /** True on a touch-first device (no hover, coarse pointer). */
 function useTouch() {
@@ -593,7 +605,7 @@ const swipePerf = {
  */
 const OVERSCROLL_FRACTION = 0.8;
 
-/** Rows past the last one near the screen whose audio is fetched ahead too. */
+/** Rows past the rendered window whose audio is fetched ahead too. */
 const PREFETCH_NEXT = 5;
 
 /** How long a word clip takes to fade out when the card changes. */
@@ -622,6 +634,7 @@ function clipPool() {
  */
 let sharedAudio: AudioCache | null = null;
 function wordAudio(): AudioCache {
+  if (!sharedAudio) requestPersistentStorage();
   sharedAudio ??= new AudioCache({
     fetch: (url, init) => fetch(url, init),
     createObjectURL: (b) => URL.createObjectURL(b),
@@ -629,9 +642,31 @@ function wordAudio(): AudioCache {
     connection: () =>
       (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
         .connection,
+    // On the device too (lib/words/audio-disk.ts): next time, and offline,
+    // a clip plays with no network at all.
+    disk:
+      typeof caches === "undefined"
+        ? undefined
+        : new AudioDisk({ open: () => caches.open(AUDIO_CACHE_NAME) }),
     log: devLog,
   });
   return sharedAudio;
+}
+
+/**
+ * Ask once per device that stored clips and words outlive storage pressure
+ * (iOS evicts a home-screen app's storage otherwise). The answer is the
+ * browser's; nothing depends on it.
+ */
+function requestPersistentStorage() {
+  try {
+    if (localStorage.getItem("lk:storage-persist")) return;
+    localStorage.setItem("lk:storage-persist", "asked");
+    void navigator.storage
+      ?.persist?.()
+      .then((granted) => devLog({ ev: "storage-persist", granted }))
+      .catch(() => {});
+  } catch {}
 }
 
 /** `serverVoice`: always use the server's recordings, never the browser's. */
@@ -720,6 +755,7 @@ function useSpeech(serverVoice = false) {
     if (r.kind !== "ok") return false;
     if (gen !== generation.current) return true;
     const tFetched = performance.now();
+    const from = r.from;
     // An idle element from the pool: the previous one may still be fading out.
     const c = clipPool().take(r.url);
     audio.current = c;
@@ -731,6 +767,8 @@ function useSpeech(serverVoice = false) {
         lang,
         text,
         prefetched: !!ready,
+        // memory (this session), disk (the device), or network.
+        from,
         fetchMs: Math.round(tFetched - t0),
         startMs: Math.round(performance.now() - tFetched),
       });
@@ -874,9 +912,21 @@ function useSpeech(serverVoice = false) {
     [on, sequencer, stop, warm],
   );
 
-  /** Fetch the clips of rows about to be tapped (only those the server would voice). */
+  /**
+   * Fetch the clips of rows about to be tapped (only those the server would
+   * voice): `visible` first, never evicted, then `rest`.
+   */
   const prefetch = useCallback(
-    (parts: SayPart[]) => wordAudio().prefetch(parts.filter(viaServer)),
+    (visible: SayPart[], rest: SayPart[]) => {
+      const seen = visible.filter(viaServer);
+      wordAudio().prefetch([...seen, ...rest.filter(viaServer)], { pinned: seen.length });
+    },
+    [viaServer],
+  );
+
+  /** Put these on the device, last of all (today's due words, for offline study). */
+  const stock = useCallback(
+    (parts: SayPart[]) => wordAudio().stock(parts.filter(viaServer)),
     [viaServer],
   );
 
@@ -891,8 +941,8 @@ function useSpeech(serverVoice = false) {
   }, [stop]);
 
   return useMemo(
-    () => ({ available, on, loop, once, toggle, prefetch }),
-    [available, on, loop, once, toggle, prefetch],
+    () => ({ available, on, loop, once, toggle, prefetch, stock }),
+    [available, on, loop, once, toggle, prefetch, stock],
   );
 }
 
@@ -996,9 +1046,10 @@ function Countdown({ due, back }: { due: number; back: boolean }) {
     const t = setTimeout(() => setNow(Date.now()), Math.min(wait + 20, left + 20));
     return () => clearTimeout(t);
   }, [due, now]);
+  const text = useIntlayer("words-page");
   const left = due - now;
   if (left > 0) return <>{formatInterval(left)}</>;
-  return back ? <span className="lk-back">↓ back</span> : <>now</>;
+  return back ? <span className="lk-back">{text.back}</span> : <>{text.now}</>;
 }
 
 /** Due time (ms) of a stored card JSON. */
@@ -1162,6 +1213,8 @@ export type DrillConfig = {
   base: string;
   title: string;
   intro: string;
+  /** The "study all" title; defaults to `All <title>`. */
+  allTitle?: string;
   /**
    * Where `reading` goes. Words put it on the hidden back (kana or pinyin is
    * part of the answer); alphabets keep it on the front as a hint.
@@ -1189,31 +1242,66 @@ const ALL = "all";
  * The open list lives in the URL (?list=<id>, or ?list=all), so each list and
  * "study all" has its own address: bookmarkable, and a refresh stays put.
  * Other params (the app's ?lang=) are kept.
+ *
+ * The URL is the source of truth. This tab also remembers the list
+ * (ui-store.ts, sessionStorage): opened with no ?list= — the nav menu, the
+ * home screen icon — it reopens the list this tab had open, by replacing the
+ * address (no extra history entry). Going back to the lists clears it.
  */
-function useListParam(): [string | null, (id: string | null) => void] {
+function useListParam(base: string): [string | null, (id: string | null) => void] {
+  const ui = wordsUiStore(base);
   const read = () =>
     typeof location === "undefined" ? null : new URLSearchParams(location.search).get("list");
   const [id, setId] = useState<string | null>(null);
   useEffect(() => {
-    setId(read());
-    const onPop = () => setId(read());
+    let first = read();
+    const kept = ui.getState().listId;
+    if (first === null && kept) {
+      const url = new URL(location.href);
+      url.searchParams.set("list", kept);
+      history.replaceState(history.state, "", url);
+      first = kept;
+    }
+    ui.setState({ listId: first });
+    setId(first);
+    const onPop = () => {
+      const now = read();
+      ui.setState({ listId: now });
+      setId(now);
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, []);
-  const go = useCallback((next: string | null) => {
-    const url = new URL(location.href);
-    if (next) url.searchParams.set("list", next);
-    else url.searchParams.delete("list");
-    history.pushState(null, "", url);
-    setId(next);
-  }, []);
+  }, [ui]);
+  const go = useCallback(
+    (next: string | null) => {
+      const url = new URL(location.href);
+      if (next) url.searchParams.set("list", next);
+      else url.searchParams.delete("list");
+      history.pushState(null, "", url);
+      ui.setState({ listId: next });
+      setId(next);
+    },
+    [ui],
+  );
   return [id, go];
 }
 
-export default function WordsClient({ config = WORDS }: { config?: DrillConfig }) {
+export default function WordsClient({ config: given }: { config?: DrillConfig }) {
+  // /words's own title and intro follow the app's language; other drills
+  // (/alphabet) bring theirs.
+  const text = useIntlayer("words-page");
+  const [wordsTitle, wordsIntro, wordsAll] = [
+    text.title.value,
+    text.intro.value,
+    text.allTitle.value,
+  ];
+  const config = useMemo(
+    () => given ?? { ...WORDS, title: wordsTitle, intro: wordsIntro, allTitle: wordsAll },
+    [given, wordsTitle, wordsIntro, wordsAll],
+  );
   const [allLists, setLists] = useState<WordList[] | null>(null);
   const [catalog, setCatalog] = useState<CatalogMeta[] | null>(null);
-  const [listId, setListId] = useListParam();
+  const [listId, setListId] = useListParam(config.base);
   const [error, setError] = useState<string | null>(null);
   /** The lists shown came from the offline copy. */
   const [offline, setOffline] = useState(false);
@@ -1267,10 +1355,11 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
   if (error)
     return (
       <div className="p-8 text-red-400">
-        {error === "Login required" ? "Sign in to use word lists." : error}
+        {error === "Login required" ? text.signInToUse : error}
       </div>
     );
-  if (!lists || !catalog || !fullCatalog) return <div className="p-8 opacity-60">Loading…</div>;
+  if (!lists || !catalog || !fullCatalog)
+    return <div className="p-8 opacity-60">{text.loading}</div>;
 
   // A row studies itself and everything below it, in tree order; groups hold
   // no words of their own.
@@ -1290,7 +1379,7 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
         catalog={fullCatalog}
         title={
           listId === ALL
-            ? `All ${config.title.toLowerCase()}`
+            ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
             : (lists.find((l) => l.id === listId)?.name ?? studying[0].name)
         }
         onExit={() => {
@@ -1444,8 +1533,8 @@ function SortableListRow({
         ref={setActivatorNodeRef}
         {...attributes}
         {...listeners}
-        aria-label="Drag to reorder"
-        title="Drag to reorder · drag right to put it inside the row above, left to take it out"
+        aria-label={text.dragToReorder.value}
+        title={text.dragTitle.value}
         className="cursor-grab active:cursor-grabbing select-none opacity-40 hover:opacity-100 px-1 text-lg leading-none touch-none"
       >
         ⠿
@@ -1453,7 +1542,7 @@ function SortableListRow({
       <button
         className={`w-4 text-xs opacity-60 hover:opacity-100 ${hasChildren ? "" : "invisible"}`}
         onClick={onToggle}
-        aria-label={collapsed ? "Expand" : "Collapse"}
+        aria-label={collapsed ? text.expand.value : text.collapse.value}
       >
         {collapsed ? "▸" : "▾"}
       </button>
@@ -1464,8 +1553,13 @@ function SortableListRow({
           {l.name}
         </div>
         <div className="text-xs opacity-60 tabular-nums">
-          {totals.due} due · {totals.learning} learning · {totals.mastered} mastered (≥1y) ·{" "}
-          {totals.cards}/{totals.total || "?"} seen
+          {fill(text.rowStats.value, {
+            due: totals.due,
+            learning: totals.learning,
+            mastered: totals.mastered,
+            seen: totals.cards,
+            total: totals.total || "?",
+          })}
         </div>
       </button>
       <button
@@ -1478,9 +1572,10 @@ function SortableListRow({
         // A 40px hit area (tap-40) around the small label.
         className="tap-40 text-xs opacity-40 hover:opacity-80"
         onClick={async () => {
-          const what = isGroup
-            ? `Delete group "${l.name}"? The lists inside it are kept and move up a level.`
-            : `Delete "${l.name}" and its progress?`;
+          const what = fill(
+            isGroup ? text.confirmDeleteGroup.value : text.confirmDeleteList.value,
+            { name: l.name },
+          );
           if (!confirm(what)) return;
           await api(`/api/words/lists/${l.id}`, { method: "DELETE" });
           onDeleted();
@@ -1635,7 +1730,7 @@ function ListPicker({
   };
 
   const addGroup = async () => {
-    const name = prompt("Group name")?.trim();
+    const name = prompt(text.groupName.value)?.trim();
     if (!name) return;
     await api("/api/words/lists", {
       method: "POST",
@@ -1652,7 +1747,7 @@ function ListPicker({
         <div className="flex flex-wrap items-center gap-3 mt-3 text-sm">
           {offline ? (
             <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">
-              Offline — showing your downloaded lists. Grades sync when you are back online.
+              {text.offlineBanner}
             </span>
           ) : (
             <button
@@ -1668,19 +1763,19 @@ function ListPicker({
                 }
               }}
               className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-50"
-              title="Save every list and today's due words on this device, to study without a network"
+              title={text.downloadTitle.value}
             >
               <Icon name="downloadSimple" className="me-1" />
-              Download for offline
+              {text.downloadForOffline}
             </button>
           )}
           {download && !offline && (
             <span className="opacity-70 tabular-nums">
               {download.error
-                ? `Download failed: ${download.error}`
+                ? fill(text.downloadFailed.value, { error: download.error })
                 : download.done < download.total
-                  ? `Downloading ${download.done}/${download.total}…`
-                  : "Saved on this device ✓"}
+                  ? fill(text.downloading.value, { done: download.done, total: download.total })
+                  : text.savedOnDevice}
             </span>
           )}
         </div>
@@ -1697,7 +1792,7 @@ function ListPicker({
             <span className="block text-xs opacity-60">{text.studyAllHint}</span>
           </span>
           <span className="text-xs opacity-70 tabular-nums">
-            {studyable.reduce((n, l) => n + l.due, 0)} due
+            {fill(text.dueCount.value, { n: studyable.reduce((n, l) => n + l.due, 0) })}
           </span>
         </button>
       )}
@@ -1734,10 +1829,7 @@ function ListPicker({
               ))}
             </SortableContext>
           </DndContext>
-          <p className="text-[11px] opacity-40">
-            Drag ⠿ up or down to reorder; drag it right to put a list inside the one above (like
-            Anki subdecks), left to take it out. Studying a group studies everything inside.
-          </p>
+          <p className="text-[11px] opacity-40">{text.reorderHelp}</p>
         </div>
       )}
       <div className="flex flex-wrap items-center gap-3">
@@ -1745,13 +1837,13 @@ function ListPicker({
           onClick={addGroup}
           className="text-sm px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
         >
-          + New group
+          {text.newGroup}
         </button>
         {config.imports && <ImportLink />}
       </div>
 
       <div className="space-y-3">
-        <h2 className="text-sm font-medium opacity-80">Add a list</h2>
+        <h2 className="text-sm font-medium opacity-80">{text.addList}</h2>
         <div className="flex flex-wrap gap-2">
           {langs.map((l) => (
             <button
@@ -1776,7 +1868,7 @@ function ListPicker({
                     onClick={() => add(c)}
                     className="px-3 py-1 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-40"
                   >
-                    {added.has(c.id) ? "added" : "add"}
+                    {added.has(c.id) ? text.added : text.add}
                   </button>
                 </div>
               ))}
@@ -1850,10 +1942,22 @@ function Study({
   const sync = useSyncStatus();
   /** The queue was built from the offline copy. */
   const [offlineCopy, setOfflineCopy] = useState(false);
-  const [help, setHelp] = useState(false);
+  /** This tab's UI state (ui-store.ts): panels open, where the reader was. */
+  const ui = wordsUiStore(config.base);
+  const help = useUi(ui, (s) => s.helpOpen);
+  const setHelp = useCallback(
+    (v: boolean | ((h: boolean) => boolean)) =>
+      ui.setState((s) => ({ helpOpen: typeof v === "function" ? v(s.helpOpen) : v })),
+    [ui],
+  );
   /** Every meaning shown, not just the focused / pinned rows. */
   const [showAll, setShowAll] = usePref("lk:words-show-all", false);
-  const [settings, setSettings] = useState(false);
+  const settings = useUi(ui, (s) => s.settingsOpen);
+  const setSettings = useCallback(
+    (v: boolean | ((o: boolean) => boolean)) =>
+      ui.setState((s) => ({ settingsOpen: typeof v === "function" ? v(s.settingsOpen) : v })),
+    [ui],
+  );
   /** Touch: say the word as a swipe starts. Remembered; on by default. */
   const [swipeSpeak, setSwipeSpeak] = usePref("lk:words-swipe-speak", true);
   /** Touch: the row being held (listen mode) — revealed and looped while held. */
@@ -2222,6 +2326,13 @@ function Study({
     })();
   };
   const text = useIntlayer("words-page");
+  const ratingLabel = useRatingLabel();
+  const grades4 = {
+    again: ratingLabel[1],
+    hard: ratingLabel[2],
+    good: ratingLabel[3],
+    easy: ratingLabel[4],
+  };
   // The debug mode's user-facing name: "Learning Partner" (learning-partner.content.ts).
   const partner = useIntlayer("learning-partner");
   const partnerName = partner.name.value;
@@ -2358,12 +2469,34 @@ function Study({
       window.removeEventListener("keydown", moved, opts);
     };
   }, [listEl]);
+  // Where the reader was in this tab (ui-store.ts): the same opening, aimed
+  // at that word instead of the first, while it is still in the queue.
+  const studyKey = lists.map((l) => l.id).join(",");
+  const anchor = useUi(ui, (s) => s.anchors[studyKey] ?? null);
+  const anchorAt = useMemo(
+    () => (anchor === null ? -1 : queue.findIndex((it) => keyOf(it) === anchor)),
+    [anchor, queue],
+  );
   useLayoutEffect(() => {
     if (!listEl || !listReady || !measured) return;
     if (opened.current.el !== listEl) opened.current = { el: listEl, moved: false };
     if (opened.current.moved) return;
-    listEl.scrollTop = pad - bar.top;
-  }, [listEl, listReady, measured, pad, bar.top, shownAt]);
+    listEl.scrollTop = anchorTop(anchorAt, { pad, rowH: ROW_H, barTop: bar.top }) ?? pad - bar.top;
+  }, [listEl, listReady, measured, pad, bar.top, shownAt, anchorAt]);
+  /** Remember the word at the top once the reader has moved the list (not the opening's own scroll). */
+  const anchorTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const keepAnchor = useCallback(
+    (top: number) => {
+      if (!opened.current.moved) return;
+      clearTimeout(anchorTimer.current);
+      anchorTimer.current = setTimeout(() => {
+        const it = queue[topIndex(top, { pad, rowH: ROW_H, barTop: barRef.current.top })];
+        setAnchor(ui, studyKey, it ? keyOf(it) : null);
+      }, 200);
+    },
+    [queue, pad, ui, studyKey],
+  );
+  useEffect(() => () => clearTimeout(anchorTimer.current), []);
   // The list fills the window (.lk-words-list); the toolbar and the help strip
   // float over it. Measured whenever any of them changes size (settings open,
   // hints change, the window turns), never polled.
@@ -2536,63 +2669,36 @@ function Study({
   const focusParts = JSON.stringify(focused ? partsOf(focused) : []);
   useEffect(() => speech.loop(JSON.parse(focusParts) as SayPart[]), [focusParts, speech]);
 
-  // Prefetch the audio of the rows on screen and up to two screens below,
-  // plus the next few in queue order, so a tap plays at once. The list is
-  // windowed: rows are observed as they mount and let go as they unmount.
-  const nearRows = useRef(new Set<number>());
-  const prefetchNear = useRef(() => {});
-  prefetchNear.current = () => {
-    // Desktop with sound off says nothing (a click grades); a tap always speaks.
-    if (!touch && !speech.on) return;
-    const near = [...nearRows.current].sort((a, b) => a - b);
-    if (!near.length) return;
-    const last = near[near.length - 1];
-    for (let i = last + 1; i <= last + PREFETCH_NEXT && i < queue.length; i++) near.push(i);
-    speech.prefetch(prefetchOrder(near.flatMap((i) => (queue[i] ? [partsOf(queue[i])] : []))));
-  };
-  useEffect(() => prefetchNear.current(), [queue, speech, partsOf]);
-  useEffect(() => {
-    const root = listEl;
-    if (!root || typeof IntersectionObserver === "undefined") return;
-    const rowIndex = (n: Node) =>
-      n instanceof HTMLElement && n.dataset.i !== undefined ? Number(n.dataset.i) : null;
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          const i = rowIndex(e.target);
-          if (i === null) continue;
-          if (e.isIntersecting) nearRows.current.add(i);
-          else nearRows.current.delete(i);
-        }
-        prefetchNear.current();
-      },
-      { root, rootMargin: "0px 0px 200% 0px" },
-    );
-    for (const el of root.children) if (rowIndex(el) !== null) io.observe(el);
-    const mo = new MutationObserver((records) => {
-      for (const r of records) {
-        for (const n of r.addedNodes) if (rowIndex(n) !== null) io.observe(n as Element);
-        for (const n of r.removedNodes) {
-          const i = rowIndex(n);
-          if (i === null) continue;
-          io.unobserve(n as Element);
-          nearRows.current.delete(i);
-        }
-      }
-    });
-    mo.observe(root, { childList: true });
-    const near = nearRows.current;
-    return () => {
-      io.disconnect();
-      mo.disconnect();
-      near.clear();
-    };
-  }, [listEl]);
-
   // Windowed rendering: the list is endless, the DOM is not.
   const OVERSCAN = 20;
   const from = Math.max(0, Math.floor((scrollTop - pad) / ROW_H) - OVERSCAN);
   const to = Math.min(queue.length, Math.ceil((scrollTop - pad + viewH) / ROW_H) + OVERSCAN);
+
+  // Audio, in the owner's order: the rows on screen, then their neighbours
+  // outward across the rendered window, then a few past it. Each scroll
+  // re-orders the wish, so what scrolled away is dropped (lib/words/audio-cache.ts).
+  // Today's due words go to the device last, for offline study.
+  const firstSeen = Math.max(0, Math.floor((scrollTop - pad) / ROW_H));
+  const lastSeen = Math.min(queue.length, Math.ceil((scrollTop - pad + viewH) / ROW_H));
+  // Desktop with sound off says nothing (a click grades); a tap always speaks.
+  const audioOn = touch || speech.on;
+  useEffect(() => {
+    if (!audioOn) return;
+    const { visible, rest } = rowPriority(
+      queue.length,
+      firstSeen,
+      lastSeen,
+      from,
+      to,
+      PREFETCH_NEXT,
+    );
+    const parts = (rows: number[]) => prefetchOrder(rows.map((i) => partsOf(queue[i])));
+    speech.prefetch(parts(visible), parts(rest));
+  }, [audioOn, firstSeen, lastSeen, from, to, queue, speech, partsOf]);
+  useEffect(() => {
+    if (!audioOn || loading) return;
+    speech.stock(queue.filter((it) => it.kind === "due").flatMap(partsOf));
+  }, [audioOn, loading, queue, speech, partsOf]);
   // Sticky over the whole loaded queue: a column appearing and disappearing
   // as example-less stretches scroll by would shift every other column.
   const hasExamples = useMemo(() => queue.some((it) => it.ex), [queue]);
@@ -2752,25 +2858,24 @@ function Study({
       if (g.card) return <Countdown due={dueOf(g.card)} back={requeued.current.has(i)} />;
       return previewInterval(it.card, g.rating, paramsOf.get(it.listId)!);
     }
-    if (it.kind === "new" || !it.card) return "new";
-    return `${formatInterval(Date.now() - dueOf(it.card))} ago`;
+    if (it.kind === "new" || !it.card) return text.statusNew.value;
+    return fill(text.ago.value, { t: formatInterval(Date.now() - dueOf(it.card)) });
   };
 
   // The help strip's text, by the input used last (keys or gestures).
   const hintText =
     exhausted && ahead.length === 0 ? (
       <>
-        Every word learned. <Icon name="confetti" className="ms-0.5" />
+        {text.everyWordLearned} <Icon name="confetti" className="ms-0.5" />
       </>
     ) : modality === null ? null : modality === "touch" ? (
       // The gestures exist only in the touch layout; a touchscreen
       // laptop's tap is a click (= Again), and has no swipe to explain.
-      touch &&
-      "tap = show + say · hold = listen (loops) · swipe ← a little Hard, far Again · swipe → a little Good, far Easy · ↶ undo"
+      touch && fill(text.helpTouch.value, grades4)
     ) : help ? (
-      "↑↓ / W S / I U move (the focused row shows its meaning) · Space pin · E show all · 1 Again · 2 Hard · 3 Good · 4 Easy (right hand mirrored: L Again · K Hard · J Good · H Easy) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
+      fill(text.helpKeys.value, grades4)
     ) : (
-      "1 Again · 2 Hard · 3 Good · 4 Easy · Z undo · ? all keys"
+      fill(text.helpKeysShort.value, grades4)
     );
 
   return (
@@ -2836,26 +2941,34 @@ function Study({
                 ))}
               </>
             )}
-            {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
-            {ahead.length - dueLeft} new
+            {fill(text.stats.value, {
+              done,
+              rate: minutes > 0.2 ? Math.round(done / minutes) : "–",
+              due: dueLeft,
+              new: ahead.length - dueLeft,
+            })}
             {sync.pending > 0 ? (
               <span
                 data-sync="pending"
                 className={sync.online ? "" : "text-amber-700 dark:text-amber-300"}
               >
                 {sync.online
-                  ? ` · ${sync.pending} saving…`
-                  : ` · offline · ${sync.pending} to sync`}
+                  ? ` · ${fill(text.saving.value, { n: sync.pending })}`
+                  : ` · ${text.offline.value} · ${fill(text.toSync.value, { n: sync.pending })}`}
               </span>
             ) : (
               <span data-sync="synced">
-                {!sync.online || offlineCopy ? " · offline" : ""}
-                {sync.online && grades.size > 0 ? " · synced ✓" : ""}
+                {!sync.online || offlineCopy ? ` · ${text.offline.value}` : ""}
+                {sync.online && grades.size > 0 ? ` · ${text.synced.value}` : ""}
               </span>
             )}
           </span>
         </div>
-        {syncError && <div className="text-red-500 text-sm mt-1">Not saved: {syncError}</div>}
+        {syncError && (
+          <div className="text-red-500 text-sm mt-1">
+            {fill(text.notSaved.value, { error: syncError })}
+          </div>
+        )}
         {notice && <div className="text-amber-600 dark:text-amber-300 text-sm mt-1">{notice}</div>}
       </div>
 
@@ -2867,61 +2980,63 @@ function Study({
           data-words-settings
           className="lk-words-bar lk-words-sheet lk-glass border-b border-[var(--glass-line)] py-2 text-sm"
           style={{ top: bar.top, maxHeight: `calc(100dvh - ${bar.top + bar.bottom + 16}px)` }}
-          aria-label="Study settings"
+          aria-label={text.studySettings.value}
         >
           <div className="flex flex-wrap gap-2">
             <TogglePill
               on={showAll}
               onChange={setShowAll}
-              label="Show all meanings"
-              hint="Every meaning visible, not only the focused row (E)"
+              label={text.showAll.value}
+              hint={text.showAllHint.value}
             />
             {speech.available && (
               <TogglePill
                 on={speech.on}
                 onChange={() => speech.toggle()}
-                label="Read cards aloud"
-                hint="Speak the word and its example (V)"
+                label={text.readAloud.value}
+                hint={text.readAloudHint.value}
               />
             )}
             {speech.on && (
               <TogglePill
                 on={serverVoice}
                 onChange={setServerVoice}
-                label="Server voice"
-                hint="Use Lianki's voices (en, es, fr, de, it, pt, ru, zh, ja, ko) instead of the browser's"
+                label={text.serverVoice.value}
+                hint={text.serverVoiceHint.value}
               />
             )}
             {speech.on && serverVoice && (
               <span className="w-full text-xs opacity-60" data-voice-credit>
-                Voices: VOICEVOX:No.7 (Japanese) · Kokoro · Piper (Thorsten-Voice, Dmitri) · MeloTTS
+                {/* Credits: the voice names stay as their makers write them. */}
+                {text.voices} VOICEVOX:No.7 ({text.japanese}) · Kokoro · Piper (Thorsten-Voice,
+                Dmitri) · MeloTTS
               </span>
             )}
             <TogglePill
               on={tones}
               onChange={setTones}
-              label="Grade tones"
-              hint="A short tone per grade, for studying without looking"
+              label={text.gradeTones.value}
+              hint={text.gradeTonesHint.value}
             />
             {touch && (
               <TogglePill
                 on={swipeSpeak}
                 onChange={setSwipeSpeak}
-                label="Speak on swipe"
-                hint="Say the word as a swipe starts"
+                label={text.speakOnSwipe.value}
+                hint={text.speakOnSwipeHint.value}
               />
             )}
             {touch && !fs.standalone && (
               <TogglePill
                 on={fs.active}
                 onChange={toggleFullscreen}
-                label="Full screen"
-                hint="Hide the address bar while studying"
+                label={text.fullScreen.value}
+                hint={text.fullScreenHint.value}
               />
             )}
             <div className="w-full pt-1" data-experimental>
               <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
-                Experimental
+                {text.experimental}
               </div>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 {touch && (
@@ -2932,8 +3047,8 @@ function Study({
                       setSwipeVariant(v);
                       setSwipeAb(v);
                     }}
-                    label="New swipe"
-                    hint="Swipes done by the browser's own scrolling"
+                    label={text.newSwipe.value}
+                    hint={text.newSwipeHint.value}
                   />
                 )}
                 {/* The swipe's feel (docs/swipe-core.md): debug mode only, this device only. */}
@@ -2962,15 +3077,15 @@ function Study({
                   hint={text.paperScrollsHint.value}
                 />
                 <span className="text-xs opacity-60">
-                  {touch ? "Native scrolling swipe. " : ""}It may change or go away.
+                  {touch ? `${text.nativeSwipeNote.value} ` : ""}
+                  {text.mayChange}
                 </span>
               </div>
             </div>
           </div>
           {fsHint && (
             <div className="text-sm mt-2 opacity-80" onClick={() => setFsHint(false)}>
-              This browser can&apos;t hide its address bar for a page. On iPhone: Share → Add to
-              Home Screen, then open Lianki from the home screen — it runs without the address bar.
+              {text.fsHint}
             </div>
           )}
         </div>
@@ -2978,25 +3093,25 @@ function Study({
 
       {loadError ? (
         <div className="space-y-3 py-8 text-center">
-          <div className="text-red-500">Couldn't load: {loadError}</div>
+          <div className="text-red-500">{fill(text.couldntLoad.value, { error: loadError })}</div>
           <button
             className="px-4 py-2 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
             onClick={() => location.reload()}
           >
-            Retry
+            {text.retry}
           </button>
         </div>
       ) : loading ? (
-        <div className="opacity-60">Loading…</div>
+        <div className="opacity-60">{text.loading}</div>
       ) : queue.length === 0 ? (
         <div className="py-8 text-center text-lg">
           {exhausted ? (
             <>
-              Every word learned.{" "}
+              {text.everyWordLearned}{" "}
               <Icon name="confetti" className="ms-1 text-blue-600 dark:text-blue-400" />
             </>
           ) : (
-            "Loading more…"
+            text.loadingMore
           )}
         </div>
       ) : (
@@ -3020,6 +3135,7 @@ function Study({
             onScroll={(e) => {
               setScrollTop(e.currentTarget.scrollTop);
               lastScrollAt.current = performance.now();
+              keepAnchor(e.currentTarget.scrollTop);
             }}
             onPointerDownCapture={() => (touchingList.current = true)}
             onPointerUpCapture={() => (touchingList.current = false)}
@@ -3135,7 +3251,7 @@ function Study({
                   {/* The grade, stamped like a small seal (盖章) at the slip's left end. */}
                   <span className="flex justify-center text-[10px]" data-stamp-cell>
                     {rating ? (
-                      <i key={rating} className="lk-stamp" aria-label={RATING_LABEL[rating]} />
+                      <i key={rating} className="lk-stamp" aria-label={ratingLabel[rating]} />
                     ) : !touch && i === row ? (
                       <span className="opacity-40">▸</span>
                     ) : null}
@@ -3185,7 +3301,7 @@ function Study({
                   <span
                     className={`flex items-center justify-end gap-1.5 text-[11px] tabular-nums ${rating ? "font-medium" : "opacity-40"}`}
                     style={rating ? { color: "var(--grade)" } : undefined}
-                    title={rating ? RATING_LABEL[rating] : "due"}
+                    title={rating ? ratingLabel[rating] : text.dueTitle.value}
                   >
                     {status(it, i)}
                   </span>
@@ -3209,7 +3325,7 @@ function Study({
               }}
               onCopy={() => {
                 void navigator.clipboard?.writeText(queue[sheet].term).catch(() => {});
-                setNotice(`Copied “${queue[sheet].term}”`);
+                setNotice(fill(text.copied.value, { term: queue[sheet].term }));
               }}
             />
           )}
@@ -3262,12 +3378,18 @@ function SlipSheet({
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [onClose]);
+  const text = useIntlayer("words-page");
   const actions: [IconName, string, () => void][] = [
-    ["speakerHigh", "Listen again (loops)", onListen],
-    ["copy", "Copy the word", onCopy],
+    ["speakerHigh", text.listenAgain.value, onListen],
+    ["copy", text.copyWord.value, onCopy],
   ];
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-label="Word actions" data-slip-sheet>
+    <div
+      className="fixed inset-0 z-50"
+      role="dialog"
+      aria-label={text.wordActions.value}
+      data-slip-sheet
+    >
       <div className="absolute inset-0 bg-black/30 lk-fade-in" onClick={dismiss} />
       <div className="absolute inset-x-0 bottom-0 mx-auto max-w-lg rounded-t-2xl bg-[var(--background)] px-4 pt-2 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-8px_30px_oklch(0_0_0/0.25)] lk-sheet-in">
         <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-current opacity-20" />
@@ -3306,7 +3428,7 @@ function SlipSheet({
           className="mt-2 w-full rounded-xl bg-black/10 dark:bg-white/10 py-3 font-semibold"
           onClick={onClose}
         >
-          Cancel
+          {text.cancel}
         </button>
       </div>
     </div>
@@ -3383,6 +3505,12 @@ function SlipCords({
   );
 }
 
+/** The grade zones island, labelled with the grades' names in the app's language. */
+function GradeZones() {
+  const l = useRatingLabel();
+  return <SwipeGradesIsland again={l[1]} hard={l[2]} good={l[3]} easy={l[4]} />;
+}
+
 /**
  * What a sliding slip uncovers: one static strip per list, put under the slip
  * as it starts to slide. Slid right, the slip uncovers Good (its first row's
@@ -3399,7 +3527,7 @@ function SwipeUnderlay({ ref }: { ref: React.RefObject<HTMLDivElement | null> })
       className="pointer-events-none absolute inset-x-0 overflow-hidden"
       style={{ visibility: "hidden", background: "var(--slip-seam)" }}
     >
-      <SwipeGradesIsland />
+      <GradeZones />
     </div>
   );
 }
@@ -3898,7 +4026,7 @@ function NativeSlipRow({
           it only by sliding away. A sticky strip inside the scroller painted
           over the face on iOS (WebKit composites sticky layers on their own). */}
         <div aria-hidden className="slip-strip" data-swipe-strip>
-          <SwipeGradesIsland />
+          <GradeZones />
         </div>
         <div ref={scroller} className="slip-scroller" style={{ WebkitTouchCallout: "none" }}>
           <div className="slip-track">

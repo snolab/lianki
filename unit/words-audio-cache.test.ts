@@ -119,7 +119,7 @@ describe("AudioCache prefetch", () => {
     await net.calls[0].answer();
     await net.calls[1].answer();
     // mot0 is played: now the newest, so mot1 goes first.
-    expect(cache.peek("fr", "mot0")).toEqual({ kind: "ok", url: "blob:1" });
+    expect(cache.peek("fr", "mot0")).toEqual({ kind: "ok", url: "blob:1", from: "memory" });
     cache.prefetch([{ lang: "fr", text: "mot2" }]);
     await net.calls[2].answer();
     expect(revoked).toEqual(["blob:2"]);
@@ -201,7 +201,7 @@ describe("AudioCache tap priority", () => {
     expect(net.calls[2].signal.aborted).toBe(true);
     expect(inFlight(net.calls)).toHaveLength(3);
     await net.calls[3].answer();
-    expect(await tap).toEqual({ kind: "ok", url: "blob:1" });
+    expect(await tap).toEqual({ kind: "ok", url: "blob:1", from: "network" });
     expect(net.calls[4].url).toBe(ttsUrl("fr", "mot2"));
   });
 
@@ -214,7 +214,7 @@ describe("AudioCache tap priority", () => {
     expect(net.calls[0].signal.aborted).toBe(true);
     expect(net.calls[1].signal.aborted).toBe(false);
     await net.calls[1].answer();
-    expect(await tap).toEqual({ kind: "ok", url: "blob:1" });
+    expect(await tap).toEqual({ kind: "ok", url: "blob:1", from: "network" });
     expect(net.calls).toHaveLength(2);
   });
 
@@ -252,7 +252,7 @@ describe("AudioCache tap priority", () => {
     const { cache, net } = setup();
     cache.prefetch(reqs(1));
     await net.calls[0].answer();
-    expect(await cache.load("fr", "mot0")).toEqual({ kind: "ok", url: "blob:1" });
+    expect(await cache.load("fr", "mot0")).toEqual({ kind: "ok", url: "blob:1", from: "memory" });
     expect(net.calls).toHaveLength(1);
   });
 });

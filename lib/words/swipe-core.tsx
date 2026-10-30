@@ -28,6 +28,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { createUiStore, useUi } from "@lianki/ui-state";
 import {
   DEFAULT_PREFS,
   FEEL_PREFS_KEY,
@@ -36,6 +37,7 @@ import {
   type FeelTweaks,
   type SwipeFeel,
   feelOverride,
+  cleanPrefs,
   feelTag,
   parsePrefs,
   resolveFeel,
@@ -59,47 +61,50 @@ function checkIface(expects: number) {
     throw new Error(`swipe core interface v${SWIPE_CORE_IFACE}, the island expects v${expects}`);
 }
 
-// ── Preferences: device-local, in localStorage; one store per page ─────────
+// ── Preferences and panel state: UI-state stores (docs/ui-state.md) ───────
 
-type Listener = () => void;
-const listeners = new Set<Listener>();
-let prefsCache: FeelPrefs | null = null;
+/**
+ * The feel preset and token tweaks: a device preference that outlives the
+ * tab (localStorage, `lk:pref:swipe-feel`). One instance per page, so a
+ * hot-swapped island reads and writes the same one.
+ */
+export const feelPrefsStore = createUiStore(
+  "swipe-feel",
+  1,
+  { preset: DEFAULT_PREFS.preset, tweaks: DEFAULT_PREFS.tweaks },
+  { storage: "local", clean: cleanPrefs },
+);
+/** The tuner panel open or not: UI state of this tab (sessionStorage, `lk:ui:swipe-tuner`). */
+export const tunerStore = createUiStore("swipe-tuner", 1, { open: false }, { storage: "session" });
 
-function readPrefs(): FeelPrefs {
-  if (prefsCache) return prefsCache;
-  try {
-    prefsCache = parsePrefs(localStorage.getItem(FEEL_PREFS_KEY));
-  } catch {
-    prefsCache = DEFAULT_PREFS;
+// #328 kept all three in `lk:swipe-feel`: carry the preference over once.
+try {
+  const old = typeof localStorage === "undefined" ? null : localStorage.getItem(FEEL_PREFS_KEY);
+  if (old !== null) {
+    const p = parsePrefs(old);
+    const now = feelPrefsStore.getState();
+    if (now.preset === "light" && !Object.keys(now.tweaks).length)
+      feelPrefsStore.setState({ preset: p.preset, tweaks: p.tweaks });
+    localStorage.removeItem(FEEL_PREFS_KEY);
   }
-  return prefsCache;
-}
+} catch {}
 
 export function setFeelPrefs(next: FeelPrefs) {
-  prefsCache = next;
-  try {
-    localStorage.setItem(FEEL_PREFS_KEY, JSON.stringify(next));
-  } catch {}
-  for (const l of listeners) l();
-}
-
-function subscribePrefs(l: Listener) {
-  listeners.add(l);
-  const storage = (e: StorageEvent) => {
-    if (e.key !== FEEL_PREFS_KEY) return;
-    prefsCache = null;
-    l();
-  };
-  window.addEventListener("storage", storage);
-  return () => {
-    listeners.delete(l);
-    window.removeEventListener("storage", storage);
-  };
+  feelPrefsStore.setState({ preset: next.preset, tweaks: next.tweaks });
+  tunerStore.setState({ open: next.tune });
 }
 
 /** This device's feel preference (the server and first render see the default). */
 export function useFeelPrefs(): FeelPrefs {
-  return useSyncExternalStore(subscribePrefs, readPrefs, () => DEFAULT_PREFS);
+  const preset = useUi(feelPrefsStore, (s) => s.preset);
+  const tweaks = useUi(feelPrefsStore, (s) => s.tweaks);
+  const tune = useUi(tunerStore, (s) => s.open);
+  return useMemo(() => ({ preset, tweaks, tune }), [preset, tweaks, tune]);
+}
+
+function readPrefs(): FeelPrefs {
+  const { preset, tweaks } = feelPrefsStore.getState();
+  return { preset, tweaks, tune: tunerStore.getState().open };
 }
 
 /** `?feel=` for this page load, read once. */
