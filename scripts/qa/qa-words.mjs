@@ -1052,16 +1052,16 @@ try {
           .catch(() => {});
         const typed = [await gestures(), await keys()].join();
         // On a phone the bottom island hides the strip, which lets taps
-        // through to the slips (docs/bottom-nav.md): touch the capsule's rim
-        // there instead, a touch that changes nothing on the list.
-        const capsule = await m.locator("[data-nav-island] nav").boundingBox();
+        // through to the slips (docs/bottom-nav.md): touch the header's empty
+        // middle there instead, a touch that changes nothing on the list.
+        const header = await m.locator("header").first().boundingBox();
         const hidden = await m
           .locator("[data-words-help]")
           .evaluate((el) => getComputedStyle(el).opacity === "0")
           .catch(() => false);
         const hint = await m.locator("text=? all keys").boundingBox();
-        if (hidden && capsule)
-          await m.touchscreen.tap(capsule.x + 3, capsule.y + capsule.height / 2);
+        if (hidden && header)
+          await m.touchscreen.tap(header.x + header.width * 0.55, header.y + header.height / 2);
         else if (hint) await m.touchscreen.tap(hint.x + 5, hint.y + 5);
         await m
           .locator("text=/tap = show/")
