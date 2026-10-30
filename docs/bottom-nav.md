@@ -84,8 +84,11 @@ Owner's decision (2026-10-31): the island and the strip never stack.
 - On a phone, while the island shows, the strip `[data-words-help]` is made
   invisible with `opacity: 0`.
   - Not `display: none`: /words still measures the strip to pad its list.
-  - Not `visibility: hidden`: a hidden strip lets taps fall through to the
-    slip under it. qa-words caught that, as a stray loose slip.
+  - It is click-through (`pointer-events: none`). An overlay must never
+    swallow a tap meant for the page (owner, 2026-10-31); only the capsule
+    itself takes taps. The island's full-width wrapper, the tip's
+    surroundings and the closed drawer, palette and sheet take none either.
+    qa-words touches the capsule's rim where it used to touch the strip.
   - It is stretched to at least the island's height
     (`--lk-island-cover`), so no row rests under the island.
 - Its text moves to a "?" in the drawer header ("Gestures & shortcuts"),

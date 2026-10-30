@@ -1051,8 +1051,18 @@ try {
           .waitFor({ timeout: 3000 })
           .catch(() => {});
         const typed = [await gestures(), await keys()].join();
+        // On a phone the bottom island hides the strip, which lets taps
+        // through to the slips (docs/bottom-nav.md): touch the capsule's rim
+        // there instead, a touch that changes nothing on the list.
+        const capsule = await m.locator("[data-nav-island] nav").boundingBox();
+        const hidden = await m
+          .locator("[data-words-help]")
+          .evaluate((el) => getComputedStyle(el).opacity === "0")
+          .catch(() => false);
         const hint = await m.locator("text=? all keys").boundingBox();
-        if (hint) await m.touchscreen.tap(hint.x + 5, hint.y + 5);
+        if (hidden && capsule)
+          await m.touchscreen.tap(capsule.x + 3, capsule.y + capsule.height / 2);
+        else if (hint) await m.touchscreen.tap(hint.x + 5, hint.y + 5);
         await m
           .locator("text=/tap = show/")
           .waitFor({ timeout: 3000 })

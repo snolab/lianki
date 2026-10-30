@@ -256,12 +256,12 @@ export function useHideWordsStrip(island: RefObject<HTMLElement | null>) {
   useEffect(() => {
     const style = document.createElement("style");
     style.dataset.navIsland = "hide-words-help";
-    // Not display:none: /words measures the strip to pad its list, so it
-    // stays in place, invisible (opacity, which keeps it hit-testable: a tap
-    // there never falls through to a slip under it), and at least as tall as
-    // what the island covers, so no row rests under the island.
+    // Not display:none: /words measures the strip to pad its list, so it stays
+    // in place, invisible, and at least as tall as what the island covers (so
+    // no row rests under the island). Click-through: it must never swallow a
+    // tap meant for the page; only the capsule itself takes taps.
     style.textContent =
-      "@media (max-width: 47.99rem) { [data-words-help] { opacity: 0; min-height: var(--lk-island-cover, 0px); } }";
+      "@media (max-width: 47.99rem) { [data-words-help] { opacity: 0; pointer-events: none; min-height: var(--lk-island-cover, 0px); } }";
     document.head.append(style);
     const root = document.documentElement;
     const cover = () => {
