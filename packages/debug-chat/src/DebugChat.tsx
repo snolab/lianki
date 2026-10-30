@@ -65,6 +65,7 @@ import {
   treeNav,
 } from "./tree-nav";
 import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
+import { notePrefWrite } from "@lianki/ui-state/account";
 import { type AnchorSide, placeBox } from "./anchor";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
@@ -1178,6 +1179,7 @@ export function DebugChat({
     const v = !speak;
     setSpeak(v);
     write(SPEAK_KEY, v ? "1" : "0");
+    notePrefWrite(); // synced with the account by the app (docs/prefs-sync.md)
     if (!v && !voice().state().mic) voice().stop();
   };
 

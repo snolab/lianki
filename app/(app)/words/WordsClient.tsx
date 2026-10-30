@@ -90,7 +90,7 @@ import {
   useSwipeGesture,
 } from "@/lib/words/swipe-core";
 import type { SwipePhase } from "@/lib/words/swipe-machine";
-import { useUi } from "@lianki/ui-state";
+import { notePrefWrite, PREF_APPLIED_EVENT, useUi } from "@lianki/ui-state";
 import { anchorTop, setAnchor, topIndex, wordsUiStore } from "./ui-store";
 import { releaseTrajectory } from "@/lib/words/swipe-physics";
 import { island } from "@/lib/islands/Island";
@@ -367,17 +367,36 @@ function useTouch() {
 }
 
 /**
- * A remembered on/off setting (localStorage), the same across refreshes.
+ * Run `read` after mount, and again whenever a setting may have changed
+ * underneath: a value from the account (docs/prefs-sync.md, `lk:pref-applied`)
+ * or from another tab (`storage`).
+ */
+function usePrefReader(read: () => void) {
+  useEffect(() => {
+    read();
+    window.addEventListener(PREF_APPLIED_EVENT, read);
+    window.addEventListener("storage", read);
+    return () => {
+      window.removeEventListener(PREF_APPLIED_EVENT, read);
+      window.removeEventListener("storage", read);
+    };
+  }, [read]);
+}
+
+/**
+ * A remembered on/off setting (localStorage), the same across refreshes and,
+ * for the keys in lib/prefs/bindings.ts, across the account's devices.
  * Reads after mount, so server and first client render agree.
  */
 function usePref(key: string, initial: boolean) {
   const [on, setOn] = useState(initial);
-  useEffect(() => {
+  const read = useCallback(() => {
     try {
       const v = localStorage.getItem(key);
       if (v === "1" || v === "0") setOn(v === "1");
     } catch {}
   }, [key]);
+  usePrefReader(read);
   const set = useCallback(
     (next: boolean | ((v: boolean) => boolean)) =>
       setOn((v) => {
@@ -385,6 +404,7 @@ function usePref(key: string, initial: boolean) {
         try {
           localStorage.setItem(key, n ? "1" : "0");
         } catch {}
+        notePrefWrite();
         return n;
       }),
     [key],
@@ -684,6 +704,14 @@ function useSpeech(serverVoice = false) {
       return true;
     }
   });
+  // Read aloud follows the account (docs/prefs-sync.md).
+  usePrefReader(
+    useCallback(() => {
+      try {
+        setOn(localStorage.getItem("lk:words-sound") !== "off");
+      } catch {}
+    }, []),
+  );
   /**
    * Bumped by cancel(). cancel() can fire the old utterance's onend, which
    * would otherwise go on with the old word beside the new one.
@@ -967,6 +995,7 @@ function useSpeech(serverVoice = false) {
       try {
         localStorage.setItem("lk:words-sound", v ? "off" : "on");
       } catch {}
+      notePrefWrite();
       if (v) stop();
       return !v;
     });
@@ -2073,7 +2102,7 @@ function Study({
   const [swipeAb, setSwipeAb] = useState<SwipeVariant>("js");
   /** The swipe's feel on this device: light (everyone) or heavy (lib/words/swipe-feel.ts). */
   const feelPrefs = useFeelPrefs();
-  useEffect(() => setSwipeAb(swipeVariant()), []);
+  usePrefReader(useCallback(() => setSwipeAb(swipeVariant()), []));
   const native = touch && swipeAb === "native";
   /**
    * Experimental: the paper texture scrolls with the list (a layer inside the

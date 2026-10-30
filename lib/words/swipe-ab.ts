@@ -5,14 +5,16 @@
  *   "native" (B) — NativeSlipRow: each slip its own horizontal scroller with
  *                  scroll-snap points; the browser does the gesture.
  *
- * Everyone is on A; the Settings switch "New swipe (beta)" turns B on, per
- * device (localStorage). Every swipe telemetry row carries the variant, so
+ * Everyone is on A; the Settings switch "New swipe (beta)" turns B on
+ * (localStorage, synced with the account: docs/prefs-sync.md). Every swipe telemetry row carries the variant, so
  * /dev/swipe-ab can compare them.
  *
  * `?swipe=native` / `?swipe=js` overrides the stored choice for that page load
  * only (to check a variant on someone's device without touching their
  * setting — also inside an iframe). It is never written to localStorage.
  */
+import { notePrefWrite } from "@lianki/ui-state";
+
 export type SwipeVariant = "js" | "native";
 
 export const SWIPE_AB_KEY = "lk:swipe-ab";
@@ -58,6 +60,7 @@ export function setSwipeVariant(v: SwipeVariant, store = storage()) {
   try {
     store?.setItem(SWIPE_AB_KEY, v);
   } catch {}
+  notePrefWrite();
 }
 
 /** The telemetry tag: `ab=<variant>;dev=<id>`. */

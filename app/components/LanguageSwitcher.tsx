@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { usePathname } from "next/navigation";
-import { LOCALE_PARAM, isAppRoute } from "@/lib/app-locale";
+import { notePrefWrite } from "@lianki/ui-state";
+import { LOCALE_PARAM, LOCALE_PICK_KEY, isAppRoute } from "@/lib/app-locale";
 import { LANGUAGES, isSupportedLocale } from "@/lib/constants";
 
 export function LanguageSwitcher() {
@@ -30,6 +31,12 @@ export function LanguageSwitcher() {
     for (const name of ["NEXT_LOCALE", LOCALE_PARAM]) {
       document.cookie = `${name}=${code}; path=/; expires=${expires.toUTCString()}; SameSite=Lax`;
     }
+    // A pick by hand follows the account (docs/prefs-sync.md, `ui.locale`);
+    // a detected language never does.
+    try {
+      localStorage.setItem(LOCALE_PICK_KEY, code);
+    } catch {}
+    notePrefWrite();
 
     // App routes: an explicit switch is the one time `?lang=` goes in the URL.
     if (isAppRoute(pathname)) {
