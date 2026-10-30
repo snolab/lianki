@@ -36,6 +36,12 @@ import { createSequencer } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
 import { AUDIO_CACHE_NAME, AudioDisk } from "@/lib/words/audio-disk";
 import { rowPriority } from "@/lib/words/audio-priority";
+import {
+  createClipPool,
+  type Clip as PoolClip,
+  type ClipPool,
+  type CtxLike as PoolCtx,
+} from "@/lib/words/clip-pool";
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
@@ -606,43 +612,20 @@ const PREFETCH_NEXT = 5;
 const FADE_S = 0.15;
 
 /**
- * An <audio> element for a clip, routed through a gain node so it can fade
- * out — iOS ignores `volume` on media elements. Without Web Audio, a plain
- * element (it then stops at once).
+ * The <audio> elements word clips play in, each routed once through a gain
+ * node so it can fade out (iOS ignores `volume` on media elements), and
+ * reused from clip to clip (lib/words/clip-pool.ts). One element per clip
+ * kept every element and its nodes alive in the AudioContext: the page slowed
+ * down over a long study.
  */
-type Clip = HTMLAudioElement & { gain?: GainNode };
-function playable(url: string): Clip {
-  const a: Clip = new Audio(url);
-  try {
-    const ac = sharedAudioContext();
-    if (ac && "createMediaElementSource" in ac) {
-      const g = ac.createGain();
-      ac.createMediaElementSource(a).connect(g).connect(ac.destination);
-      a.gain = g;
-    }
-  } catch {
-    // Web Audio refused the element: it plays unfaded.
-  }
-  return a;
-}
-
-/** Fade a playing clip out and stop it; no fade in, so the next word starts at once. */
-function fadeOut(a: Clip | null) {
-  if (!a || a.paused) return;
-  a.onended = null;
-  const ac = sharedAudioContext();
-  if (!a.gain || !ac) return void a.pause();
-  const now = ac.currentTime;
-  a.gain.gain.cancelScheduledValues(now);
-  a.gain.gain.setValueAtTime(a.gain.gain.value, now);
-  a.gain.gain.linearRampToValueAtTime(0, now + FADE_S);
-  setTimeout(
-    () => {
-      a.pause();
-      a.gain?.disconnect();
-    },
-    FADE_S * 1000 + 30,
-  );
+type Clip = PoolClip<HTMLAudioElement>;
+let sharedClips: ClipPool<HTMLAudioElement> | null = null;
+function clipPool() {
+  sharedClips ??= createClipPool({
+    element: () => new Audio(),
+    ctx: () => sharedAudioContext() as unknown as PoolCtx | null,
+  });
+  return sharedClips;
 }
 
 /**
@@ -705,7 +688,7 @@ function useSpeech(serverVoice = false) {
   const [available, setAvailable] = useState(false);
   /** Languages the browser failed to speak; the server speaks them instead. */
   const browserDead = useRef(new Set<string>());
-  const audio = useRef<HTMLAudioElement | null>(null);
+  const audio = useRef<Clip | null>(null);
   const watchdog = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     setAvailable(true);
@@ -755,7 +738,7 @@ function useSpeech(serverVoice = false) {
     clearTimeout(watchdog.current);
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
     // A clip cut mid-word is jarring when the card changes: fade it out.
-    fadeOut(audio.current);
+    clipPool().fadeOut(audio.current, FADE_S);
     audio.current = null;
   }, []);
 
@@ -773,12 +756,12 @@ function useSpeech(serverVoice = false) {
     if (gen !== generation.current) return true;
     const tFetched = performance.now();
     const from = r.from;
-    // A fresh element per clip: the previous one may still be fading out.
-    const a = playable(r.url);
-    audio.current = a;
+    // An idle element from the pool: the previous one may still be fading out.
+    const c = clipPool().take(r.url);
+    audio.current = c;
     // Debug mode only: how long from "say it" to sound, and where it went —
     // waiting for the clip, or the element starting to play.
-    a.onplaying = () =>
+    c.el.onplaying = () =>
       devLog({
         ev: "play",
         lang,
@@ -789,9 +772,9 @@ function useSpeech(serverVoice = false) {
         fetchMs: Math.round(tFetched - t0),
         startMs: Math.round(performance.now() - tFetched),
       });
-    a.onended = () => done(true);
-    a.onerror = () => done(false);
-    void a.play().catch(() => {});
+    c.el.onended = () => done(true);
+    c.el.onerror = () => done(false);
+    void c.el.play().catch(() => {});
     return true;
   }, []);
 

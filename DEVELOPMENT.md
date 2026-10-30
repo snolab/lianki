@@ -79,6 +79,24 @@ stays paused, and every request to `wrangler dev` hangs after "Ready on".
 front under Bun. When wrangler is bumped, regenerate it with
 `bun patch miniflare@<ver>`, or drop it once upstream handles Bun.
 
+### Long-session soaks (leaks, slowdowns)
+
+```bash
+QA_BASE=http://localhost:<port> node scripts/qa/words-soak.mjs   # /words, 16 min (SOAK_MIN)
+node scripts/dev/debug-chat-soak.mjs                              # the chat widget on /harness, 10 min
+```
+
+Both run an iPhone-sized, muted Chromium (`--mute-audio`; word clips are a
+stubbed silent WAV, the mic is Chromium's fake device) and print one row a
+minute after a forced GC: JS heap, CDP `Nodes` / `JSEventListeners`, the DOM
+count, live objects by prototype (`HTMLAudioElement`, `GainNode`,
+`AudioContext`, `MediaStream`, sockets, observers), and pending timers and
+frames. A column that climbs every minute is a leak. `words-soak` signs up a
+throwaway `qa+soak…@lianki.test` account, so point it at `wrangler dev` or
+`bun run dev`, never production. `SOAK_CPU=4` throttles the CPU for
+phone-like scroll costs (`scrollScriptMs` = main-thread script per one-row
+scroll step).
+
 ## Tech Stack
 
 - **Framework**: Next.js 16 with App Router (Turbopack)
