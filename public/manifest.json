@@ -4,8 +4,8 @@
   "description": "Spaced repetition learning with the FSRS algorithm",
   "start_url": "/home",
   "display": "standalone",
-  "background_color": "#fbf5e9",
-  "theme_color": "#c8102e",
+  "background_color": "oklch(0.945 0.02 82)",
+  "theme_color": "oklch(0.945 0.02 82)",
   "icons": [
     {
       "src": "/icon.svg?v=3",
