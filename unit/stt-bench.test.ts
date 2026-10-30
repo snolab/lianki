@@ -95,6 +95,20 @@ describe("clip sink", () => {
     );
   });
 
+  it("keeps the mic track's applied settings (AEC on/off), known fields only", async () => {
+    const dir = tmp();
+    const track = { echoCancellation: false, noiseSuppression: true, autoGainControl: false };
+    const res = (await upload(dir, {
+      track: { ...track, sampleRate: 48000, channelCount: "1", deviceId: "secret" },
+    })) as Response;
+    const { name } = await res.json();
+    const side = JSON.parse(readFileSync(join(dir, `${name}.json`), "utf8"));
+    expect(side.track).toEqual({ ...track, sampleRate: 48000 });
+    expect(listClips(dir)[0].track).toEqual({ ...track, sampleRate: 48000 });
+    const none = await (await upload(dir, { track: "on" }))!.json();
+    expect(JSON.parse(readFileSync(join(dir, `${none.name}.json`), "utf8")).track).toBeUndefined();
+  });
+
   it("refuses what it should not keep", async () => {
     const dir = tmp();
     const status = async (r: Promise<Response | null>) => (await r)!.status;
