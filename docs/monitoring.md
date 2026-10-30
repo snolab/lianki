@@ -29,6 +29,11 @@ FROM lianki_metrics WHERE index1 = 'req' AND timestamp > NOW() - INTERVAL '1' DA
 GROUP BY path ORDER BY n DESC
 ```
 
+`lianki-voice` (`workers/voice`, the word clips at the edge) also names the
+monitor as tail consumer: its requests land under `index1 = 'voice'` (same
+blobs and doubles), timings only — a clip it passes on is counted, and
+alerted on, again as the main Worker's request.
+
 ## New-version push (`lianki-push`)
 
 `workers/push`: one Durable Object holds every open page's WebSocket

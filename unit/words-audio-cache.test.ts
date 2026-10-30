@@ -33,6 +33,8 @@ function setup(over: Partial<AudioCacheDeps> = {}) {
     fetch: net.fetch,
     createObjectURL: () => `blob:${++n}`,
     revokeObjectURL: (u) => void revoked.push(u),
+    // Three keeps the queue tests short; the default is checked on its own.
+    maxConcurrent: 3,
     ...over,
   });
   return { cache, net, revoked };
@@ -53,6 +55,17 @@ describe("AudioCache prefetch", () => {
     expect(cache.stats.inFlight).toBe(3);
   });
 
+  test("by default, six at once", () => {
+    const net = fakeNet();
+    const cache = new AudioCache({
+      fetch: net.fetch,
+      createObjectURL: () => "blob:x",
+      revokeObjectURL: () => {},
+    });
+    cache.prefetch(reqs(10));
+    expect(net.calls).toHaveLength(6);
+  });
+
   test("stops at the session cap", async () => {
     const { cache, net } = setup({ maxSession: 4 });
     cache.prefetch(reqs(10));
@@ -61,6 +74,33 @@ describe("AudioCache prefetch", () => {
     cache.prefetch(reqs(10, "es"));
     expect(net.calls).toHaveLength(4);
     expect(cache.stats.started).toBe(4);
+  });
+
+  test("clips that cost nothing (recorded, already in R2) never use up the cap", async () => {
+    const { cache, net } = setup({ maxSession: 2 });
+    cache.prefetch(reqs(5));
+    expect(net.calls).toHaveLength(2);
+    // Given back: the queue goes on.
+    await net.calls[0].answer(200, { "X-Voice": "recorded" });
+    await net.calls[1].answer(200, { "X-Voice": "melotts-cached" });
+    expect(net.calls).toHaveLength(4);
+    await net.calls[2].answer(200, { "X-Voice": "melotts" });
+    await net.calls[3].answer(200, { "X-Voice": "melotts" });
+    // Two generated: the cap is reached, the fifth is never asked for.
+    expect(net.calls).toHaveLength(4);
+    expect(cache.stats.started).toBe(2);
+  });
+
+  test("rows scrolled past are given back to the cap", async () => {
+    const { cache, net } = setup({ maxSession: 3 });
+    cache.prefetch(reqs(3));
+    cache.prefetch(reqs(3, "es"));
+    await flush();
+    expect(net.calls.slice(0, 3).every((c) => c.signal.aborted)).toBe(true);
+    expect(inFlight(net.calls).map((c) => c.url)).toEqual(
+      [0, 1, 2].map((i) => ttsUrl("es", `mot${i}`)),
+    );
+    expect(cache.stats.started).toBe(3);
   });
 
   test("Save-Data and 2G skip prefetching altogether", () => {
@@ -186,6 +226,26 @@ describe("AudioCache tap priority", () => {
     expect(cache.stats.queued).toBe(2);
     // Taps don't count toward the session cap.
     expect(cache.stats.started).toBe(2);
+  });
+
+  test("warm: every part of the row at once, ahead of the prefetch", async () => {
+    const { cache, net } = setup();
+    cache.prefetch(reqs(3));
+    const parts = [
+      { lang: "fr", text: "mot" },
+      { lang: "en", text: "word" },
+      { lang: "fr", text: "" },
+      { lang: "fr", text: "Un mot." },
+    ];
+    cache.warm(parts);
+    const wanted = parts.filter((p) => p.text).map((p) => ttsUrl(p.lang, p.text));
+    expect(inFlight(net.calls).map((c) => c.url)).toEqual(wanted);
+    for (const c of inFlight(net.calls)) await c.answer();
+    expect(cache.peek("en", "word")?.kind).toBe("ok");
+    // The prefetches it pushed aside start again, in their order.
+    expect(net.calls.slice(6).map((c) => c.url)).toEqual(
+      [0, 1, 2].map((i) => ttsUrl("fr", `mot${i}`)),
+    );
   });
 
   test("a prefetched clip plays without a fetch", async () => {
