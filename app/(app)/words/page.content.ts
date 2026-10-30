@@ -1455,6 +1455,42 @@ const dictionary = {
       mr: "{name} मधील याद्या लपवा",
       ko: "{name}의 목록 접기",
     }),
+    groupedNotice: t({
+      en: "Your lists are now grouped by language",
+      zh: "你的列表已按语言分组",
+      hi: "आपकी सूचियाँ अब भाषा के अनुसार समूहित हैं",
+      es: "Tus listas ahora están agrupadas por idioma",
+      fr: "Vos listes sont maintenant regroupées par langue",
+      ar: "قوائمك مجمّعة الآن حسب اللغة",
+      bn: "আপনার তালিকাগুলো এখন ভাষা অনুযায়ী গ্রুপ করা",
+      pt: "Suas listas agora estão agrupadas por idioma",
+      ru: "Ваши списки теперь сгруппированы по языкам",
+      ur: "آپ کی فہرستیں اب زبان کے لحاظ سے گروپ ہیں",
+      id: "Daftar Anda kini dikelompokkan per bahasa",
+      de: "Ihre Listen sind jetzt nach Sprache gruppiert",
+      ja: "リストを言語ごとのグループにまとめました",
+      sw: "Orodha zako sasa zimepangwa kwa lugha",
+      mr: "तुमच्या याद्या आता भाषेनुसार गटबद्ध आहेत",
+      ko: "목록을 언어별 그룹으로 묶었습니다",
+    }),
+    undoGrouping: t({
+      en: "Undo",
+      zh: "撤销",
+      hi: "पूर्ववत करें",
+      es: "Deshacer",
+      fr: "Annuler",
+      ar: "تراجع",
+      bn: "পূর্বাবস্থায় ফেরান",
+      pt: "Desfazer",
+      ru: "Отменить",
+      ur: "واپس کریں",
+      id: "Urungkan",
+      de: "Rückgängig",
+      ja: "元に戻す",
+      sw: "Tendua",
+      mr: "पूर्ववत करा",
+      ko: "실행 취소",
+    }),
     groupName: t({
       en: "Group name",
       zh: "分组名称",
@@ -1754,6 +1790,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "/words list picker: screen-reader label of the small ▸ arrow on a group's row (a folder of word lists, e.g. 'Japanese'); it unfolds the group to show the lists inside. {name} is the group's name. Imperative verb phrase.",
   collapseGroup:
     "/words list picker: screen-reader label of the small ▾ arrow on an open group's row (a folder of word lists, e.g. 'Japanese'); it folds the group shut, hiding the lists inside (they are kept). {name} is the group's name. Imperative verb phrase.",
+  groupedNotice:
+    "/words list picker: one-time notice at the top of the word lists, shown right after the app moved the learner's top-level word lists into one group per language (e.g. Japanese → JLPT → N5…N1, French → top 1–500). A statement in the present, no final period; it sits next to an Undo button.",
+  undoGrouping:
+    "/words list picker: button next to the one-time 'lists are now grouped by language' notice; it puts every list back where it was before the grouping (removes the new language groups). Undo (revert), not Cancel. A short imperative.",
   dragToReorder:
     "Screen-reader label of the ⠿ drag handle at the start of each word-list row; dragging it changes the order of the lists.",
   dragTitle:

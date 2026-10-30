@@ -2,6 +2,13 @@ import { PROGRESS_SCALE_DAYS, wordScore } from "@/lib/words/progress";
 import type { Card } from "ts-fsrs";
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
 import {
+  GROUP_BY_LANGUAGE,
+  planLanguageGroups,
+  planUndo,
+  type GroupingUndo,
+} from "@/lib/words/lang-groups";
+import { flatten } from "@/lib/words/tree";
+import {
   reviewTime,
   newRemaining,
   normalizeParams,
@@ -270,6 +277,90 @@ export class WordsD1Repo {
       .prepare("UPDATE word_lists SET name = ?, updated_at = ? WHERE email = ? AND id = ?")
       .bind(name, new Date().toISOString(), this.email, id)
       .run();
+  }
+
+  /**
+   * Group one page's top-level lists by language (lib/words/lang-groups.ts),
+   * once per account. A record in word_list_migrations is claimed first with
+   * a fresh token: a second call, from another device at the same moment or
+   * any time later, finds it and changes nothing. The record keeps what undo
+   * needs. Returns whether this call did the grouping.
+   */
+  async groupByLanguage(o: {
+    onPage: (l: WordList) => boolean;
+    groupSource: string;
+    rank: (source: string | null) => number | undefined;
+    names: (lang: string) => string[];
+  }): Promise<{ applied: boolean; created: number; moved: number }> {
+    const none = { applied: false, created: 0, moved: 0 };
+    const token = crypto.randomUUID();
+    const at = new Date().toISOString();
+    await this.db
+      .prepare(
+        `INSERT INTO word_list_migrations (email, name, token, applied_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (email, name) DO NOTHING`,
+      )
+      .bind(this.email, GROUP_BY_LANGUAGE, token, at)
+      .run();
+    const mine = await this.db
+      .prepare("SELECT token FROM word_list_migrations WHERE email = ? AND name = ?")
+      .bind(this.email, GROUP_BY_LANGUAGE)
+      .first<{ token: string }>();
+    if (mine?.token !== token) return none;
+
+    const lists = (await this.lists()).filter(o.onPage);
+    const plan = planLanguageGroups(lists, o);
+    const real = new Map<string, string>();
+    for (const c of plan.create) {
+      const id = await this.createList({ name: c.name, lang: c.lang, source: o.groupSource });
+      real.set(c.key, id);
+    }
+    const idOf = (x: string | null) => (x ? (real.get(x) ?? x) : null);
+    const order = plan.order.map((x) => ({ id: idOf(x.id)!, parentId: idOf(x.parentId) }));
+    const undo: GroupingUndo = {
+      before: flatten(lists).map((l) => ({ id: l.id, parentId: l.parentId })),
+      after: order,
+      created: [...real.values()],
+      moved: plan.moved.map((m) => ({ id: m.id, into: idOf(m.into)! })),
+    };
+    // The record first: if the moves below fail half way, undo still knows
+    // every group made and every list meant to move.
+    await this.db
+      .prepare("UPDATE word_list_migrations SET undo = ? WHERE email = ? AND name = ?")
+      .bind(JSON.stringify(undo), this.email, GROUP_BY_LANGUAGE)
+      .run();
+    if (plan.moved.length) await this.reorder(order);
+    return { applied: true, created: real.size, moved: plan.moved.length };
+  }
+
+  /**
+   * Undo the grouping (planUndo): the tree as it was if nothing changed
+   * since, else each moved list still in its group goes back to the top
+   * level; groups it made that are left empty are deleted. The record stays,
+   * marked undone, so the grouping never runs again by itself.
+   */
+  async undoGroupByLanguage(onPage: (l: WordList) => boolean): Promise<boolean> {
+    const rec = await this.db
+      .prepare("SELECT undo, undone_at FROM word_list_migrations WHERE email = ? AND name = ?")
+      .bind(this.email, GROUP_BY_LANGUAGE)
+      .first<{ undo: string; undone_at: string | null }>();
+    if (!rec || rec.undone_at) return false;
+    const undo = safeJson(rec.undo) as Partial<GroupingUndo>;
+    if (!Array.isArray(undo.before) || !Array.isArray(undo.after)) return false;
+    const lists = (await this.lists()).filter(onPage);
+    const { order, drop } = planUndo(lists, {
+      before: undo.before,
+      after: undo.after,
+      created: undo.created ?? [],
+      moved: undo.moved ?? [],
+    });
+    await this.reorder(order);
+    for (const id of drop) await this.deleteList(id);
+    await this.db
+      .prepare("UPDATE word_list_migrations SET undone_at = ? WHERE email = ? AND name = ?")
+      .bind(new Date().toISOString(), this.email, GROUP_BY_LANGUAGE)
+      .run();
+    return true;
   }
 
   async deleteList(id: string): Promise<void> {

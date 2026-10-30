@@ -1283,6 +1283,25 @@ const WORDS: DrillConfig = {
 /** `source` of a group row on this page: "group:words" / "group:alphabets". */
 const groupSourceOf = (config: DrillConfig) => `group:${config.base.replace(/^\//, "")}`;
 
+/**
+ * This device already asked the server to group the lists by language
+ * (lib/words/lang-groups.ts). The server's record is what makes it run once;
+ * this only saves a request per load. A device fact, so a plain local key.
+ */
+const GROUP_ASKED = "lk:words-grouped:v1";
+const groupAsked = () => {
+  try {
+    return localStorage.getItem(GROUP_ASKED) === "1";
+  } catch {
+    return false;
+  }
+};
+const markGroupAsked = () => {
+  try {
+    localStorage.setItem(GROUP_ASKED, "1");
+  } catch {}
+};
+
 /** listId for "study all": every list of this page in one queue. */
 const ALL = "all";
 
@@ -1354,13 +1373,32 @@ export default function WordsClient({ config: given }: { config?: DrillConfig })
   /** The lists shown came from the offline copy. */
   const [offline, setOffline] = useState(false);
   useOfflineShell();
+  // The language grouping just ran on this load: the picker offers Undo.
+  const [groupedNow, setGroupedNow] = useState(false);
+  const { locale } = useLocale();
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
 
   const refreshLists = useCallback(async () => {
     // A rename still in the queue wins over the name the server sends back.
     const queued = () => idbAll<PendingOp>("pending").catch(() => [] as PendingOp[]);
     try {
       const { lists: fresh } = await api<{ lists: WordList[] }>("/api/words/lists");
-      const lists = withPendingRenames(fresh, await queued());
+      let lists = withPendingRenames(fresh, await queued());
+      // Once per account (the server keeps a record; this device remembers
+      // it asked): top-level lists move into a group per language. Only
+      // /words, only online, so it runs on the server's tree, never a stale copy.
+      if (!given && !groupAsked()) {
+        const r = await api<{ applied: boolean; lists?: WordList[] }>(
+          "/api/words/lists/group-by-language",
+          { method: "POST", body: JSON.stringify({ locale: String(localeRef.current) }) },
+        ).catch(() => null);
+        if (r) markGroupAsked();
+        if (r?.applied && r.lists) {
+          lists = withPendingRenames(r.lists, await queued());
+          setGroupedNow(true);
+        }
+      }
       setLists(lists);
       setOffline(false);
       idbPut("lists", lists, "all").catch(() => {});
@@ -1374,7 +1412,7 @@ export default function WordsClient({ config: given }: { config?: DrillConfig })
         setOffline(true);
       } else setError((e as Error).message);
     }
-  }, []);
+  }, [given]);
 
   /**
    * Rename: shown at once, kept in the offline copy, and sent through the
@@ -1524,6 +1562,16 @@ export default function WordsClient({ config: given }: { config?: DrillConfig })
           setListId(id);
         }}
         onRefresh={refreshLists}
+        grouped={groupedNow}
+        onUndoGrouping={async () => {
+          setGroupedNow(false);
+          const r = await api<{ lists: WordList[] }>("/api/words/lists/group-by-language", {
+            method: "POST",
+            body: JSON.stringify({ undo: true }),
+          }).catch(() => null);
+          if (r) setLists(r.lists);
+          else refreshLists();
+        }}
         onDelete={(list, isGroup) => deleter.remove({ list, isGroup })}
         onRename={renameList}
         onReorder={async (order) => {
@@ -2008,6 +2056,8 @@ function ListPicker({
   onOpen,
   onCreated,
   onRefresh,
+  grouped,
+  onUndoGrouping,
   onDelete,
   onRename,
   onReorder,
@@ -2021,6 +2071,9 @@ function ListPicker({
   onCreated: (id: string) => void;
   /** Reload the lists from the server. */
   onRefresh: () => void;
+  /** The lists were just grouped by language on this load: offer Undo. */
+  grouped?: boolean;
+  onUndoGrouping?: () => void;
   /** Delete a row, with Undo (the toast is the parent's). */
   onDelete: (list: WordList, isGroup: boolean) => void;
   onRename: (id: string, name: string) => void;
@@ -2193,6 +2246,21 @@ function ListPicker({
         </div>
       </div>
 
+      {grouped && onUndoGrouping && (
+        <div
+          role="status"
+          className="flex items-center gap-3 rounded-lg bg-[oklch(0.6_0.12_250/0.14)] px-4 py-2 text-sm"
+        >
+          <span className="flex-1">{text.groupedNotice}</span>
+          <button
+            type="button"
+            onClick={onUndoGrouping}
+            className="min-h-11 rounded-md px-3 font-medium hover:bg-[oklch(0.5_0_0/0.12)]"
+          >
+            {text.undoGrouping}
+          </button>
+        </div>
+      )}
       {studyable.length > 1 && (
         <button
           onClick={() => onOpen(ALL)}
