@@ -470,6 +470,26 @@ export const ENDPOINT_MS = 600;
 export const ENDPOINT_MARGIN = 0.25;
 export const ENDPOINT_MIN = 0.35;
 export const ENDPOINT_MAX = 0.8;
+/**
+ * The semantic endpoint (off unless set): when the local STT's latest
+ * partial ends a sentence (。！？.!? — never 、 or a comma) and Silero has
+ * dropped under the threshold, the utterance ends after this much silence
+ * instead of ENDPOINT_MS. 0 = off, until the cut-sentence rate is measured
+ * on the owner's clips (scripts/local-stt/ab-eval.py). Set it on the page:
+ * `globalThis.__lkVoiceTune = { semanticMs: 300 }` (read at each frame).
+ */
+export const SEMANTIC_ENDPOINT_MS = 0;
+export function semanticMs(
+  over: unknown = (globalThis as { __lkVoiceTune?: unknown }).__lkVoiceTune,
+): number {
+  const v = over && typeof over === "object" ? (over as { semanticMs?: unknown }).semanticMs : undefined;
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : SEMANTIC_ENDPOINT_MS;
+}
+/** A partial that ends a sentence: terminal punctuation only. */
+export function endsSentence(partial: string): boolean {
+  return ENDS_SENTENCE.test(partial.trim());
+}
+
 /** The floor's EMA weight per 32 ms frame (~1 s to settle). */
 export const FLOOR_ALPHA = 0.05;
 export function endpointThreshold(
@@ -581,7 +601,7 @@ export function createMic(d: {
   /** The utterance being streamed to the local STT, if it is. */
   let utt: LocalUtt | null = null;
   /** Our own end-of-speech while streaming: noise floor, speech heard, silence since, flushed. */
-  const ep = { floor: 0.1, heard: false, quiet: 0, sent: false };
+  const ep = { floor: 0.1, heard: false, quiet: 0, sent: false, partial: "" };
   const dropUtt = () => {
     utt?.cancel();
     utt = null;
@@ -667,12 +687,14 @@ export function createMic(d: {
       dropUtt();
       ep.heard = ep.sent = false;
       ep.quiet = 0;
+      ep.partial = "";
       gated = d.wake?.passive() ?? false;
       utt = gated
         ? null
         : d.stream?.()?.begin((text) => {
           if (g !== gen || held) return;
           const seq = cur ?? (cur = q.add());
+          ep.partial = text;
           q.partial(seq, text);
           pending();
         }) ?? null;
@@ -690,9 +712,16 @@ export function createMic(d: {
           ep.heard = true;
           ep.quiet = 0;
         } else ep.quiet += frame.length;
-        if (ep.heard && ep.quiet >= toSamples(a?.endpointMs ?? ENDPOINT_MS)) {
+        const sem = semanticMs();
+        const early = sem > 0 && endsSentence(ep.partial);
+        const wait = early ? Math.min(sem, a?.endpointMs ?? ENDPOINT_MS) : (a?.endpointMs ?? ENDPOINT_MS);
+        if (ep.heard && ep.quiet >= toSamples(wait)) {
           ep.sent = true;
-          d.log?.({ ev: "stt-endpoint", floor: Math.round(ep.floor * 100) / 100 });
+          d.log?.({
+            ev: "stt-endpoint",
+            floor: Math.round(ep.floor * 100) / 100,
+            ...(early ? { semantic: true, waitMs: wait } : {}),
+          });
           void vad?.flush();
         }
       }
