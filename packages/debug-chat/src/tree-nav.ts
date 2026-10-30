@@ -330,3 +330,20 @@ export function pinRow(
   if (prev.focusId !== null && shown.has(prev.focusId)) return prev.focusId;
   return null;
 }
+
+/**
+ * A kept focus and depths (ui-store.ts) back on a tree that may have changed
+ * since: ids it no longer has are dropped, depths are capped at each node's
+ * maxDetent, and the accordion is pruned to the focus's branch. Null when the
+ * kept focus is gone (the caller starts from initialNav).
+ */
+export function restoreNav(
+  ix: NavIndex,
+  kept: { focusId: string | null; expanded: Readonly<Record<string, number>> } | null,
+): TreeNavState | null {
+  if (!kept || kept.focusId === null || !ix.parent.has(kept.focusId)) return null;
+  const e: Record<string, number> = {};
+  for (const [id, d] of Object.entries(kept.expanded))
+    if (ix.parent.has(id)) e[id] = Math.min(d, maxDetent(ix, id));
+  return { focusId: kept.focusId, expanded: prune(ix, e, topOf(ix, kept.focusId)), detent: 0 };
+}

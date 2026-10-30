@@ -384,6 +384,49 @@ the bundled copy and the dot is gone.
 `{subscribe(onUpdate) → unsubscribe}`: the WebSocket progress feed
 (`feat/live-roadmap`, parked) will be another such feed.
 
+## UI state across a refresh and a hot swap
+
+The chat's session UI state lives in one zustand store, `chat-ui`
+(`packages/debug-chat/src/ui-store.ts`). It is persisted with zustand's
+`persist` middleware to **sessionStorage**, under `lk:agent-chat-ui` (with
+its `lk:debug-chat-ui` twin, by the storage-keys rules). It holds:
+
+- the draft, its caret, and whether the draft is still pure dictation, so a
+  restored voice line still sends as `source: "stt"`;
+- whether the tree panel is open;
+- the state tree's place: the focused node, the opened nodes and their
+  depths, and the minimized tree's scroll.
+
+The tree's place is kept by **title paths**, not index ids
+(`tree-keep.ts` `keepTree` / `restoreTree`). A node added above it does not
+move the focus, and a node that is gone falls back to its nearest ancestor.
+
+How it is stored and restored:
+
+- Writes are debounced by 300 ms and flushed on `pagehide` and when the page
+  is hidden. Every storage access is in try/catch.
+- `migrate` validates every rehydration, so a damaged entry falls back to
+  the defaults.
+- The store sits on `globalThis.__lkUiStores`, so a re-imported widget (a hot
+  reload, or the built-in chat taking over) uses the same store.
+
+Only UI state goes in it, never business data (messages, grants, tokens).
+Device preferences, including the bar's position, stay in localStorage.
+Not kept, on purpose:
+
+- the log's scroll: the resting compact log always shows the newest lines;
+- the full-screen log: it only lasts as long as a drag;
+- the mic: it never turns itself on after a reload.
+
+`createUiStore(name, version, initial, {storage, migrate})` is shaped like
+the shared factory planned in `docs/ui-state.md`, so the store can move onto
+it.
+
+**zustand and the page's React.** zustand's `import React from "react"`
+made Bun wrap the React shim as CommonJS with its ESM exports empty. So the
+shim (`hostModule` in `scripts/dev/debug-widget-build.ts`) is now CommonJS
+outright: `module.exports = globalThis.__lkReact.React`.
+
 ## Testing
 
 `bun test unit/debug-widget.test.ts` covers the URL rules, the module checks,

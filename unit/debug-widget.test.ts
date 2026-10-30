@@ -77,11 +77,10 @@ describe("loadWidget", () => {
 describe("the widget build", () => {
   it("hostModule reads React from the page", () => {
     const react = hostModule("react", ["default", "useState", "useRef", "not-an-ident"]);
-    expect(react).toContain(`globalThis["${REACT_GLOBAL}"].React`);
-    expect(react).toContain("export const { useState, useRef } = R;");
+    expect(react).toContain(`module.exports = globalThis["${REACT_GLOBAL}"].React;`);
     expect(react).not.toContain("not-an-ident");
     expect(hostModule("react-dom", [])).toContain(".ReactDOM;");
-    expect(hostModule("react-dom", [])).not.toContain("export const {");
+    expect(hostModule("react-dom", [])).not.toContain("export ");
     for (const rt of ["react/jsx-runtime", "react/jsx-dev-runtime"])
       expect(hostModule(rt, [])).toContain("export const jsxDEV");
   });

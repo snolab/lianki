@@ -2,6 +2,8 @@
 
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useStore } from "zustand";
+import { chatUi } from "./ui-store";
 import {
   type ChatMessage,
   MAX_CHAT,
@@ -55,7 +57,8 @@ import { Icon, POLISHED_ICON } from "./icons";
 import { PolishedMark } from "./PolishedMark";
 import { LINE_HALO, fullLogHeight, keepEndGap, logSurface } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
-import { TreeChips, navIndexOf } from "./TreeChips";
+import { TreeChips } from "./TreeChips";
+import { keepTree, navIndexOf, restoreTree } from "./tree-keep";
 import {
   type TreeNavEvent,
   type TreeNavState,
@@ -519,6 +522,8 @@ export function DebugChat({
   /** How fast replies are read (speech-rate.ts; per device, default 1.5×). */
   const [rate, setRate] = useState(speechRate);
   const { offset, handle, begin, wasDrag, holding, fit } = useDrag();
+  /** Session UI state (draft, panel, tree): survives a refresh and a hot swap. */
+  const uiStore = chatUi();
   /** The box: its bar is kept on screen, expanded or minimized. */
   const root = useRef<HTMLElement | null>(null);
   // Only expanding or minimizing refits (fit itself is fresh each render).
@@ -527,7 +532,9 @@ export function DebugChat({
    * sessions; a double tap on the mark) or the state tree (the tree button).
    * Opening one closes the other.
    */
-  const [panel, setPanel] = useState<"none" | "menu" | "tree">("none");
+  const [panel, setPanel] = useState<"none" | "menu" | "tree">(() => uiStore.getState().panel);
+  // Kept for a refresh or a hot swap (ui-store.ts): the tree, never the menu.
+  useEffect(() => uiStore.setState({ panel: panel === "tree" ? "tree" : "none" }), [panel]);
   const menu = panel === "menu";
   const tree = panel === "tree";
   const setMenu = (v: boolean) => setPanel((p) => (v ? "menu" : p === "menu" ? "none" : p));
@@ -633,7 +640,7 @@ export function DebugChat({
   const fitRef = useRef(() => {});
   fitRef.current = () => fit(root.current, open);
   /** The tree's scroll, kept across the sheet ⇄ column switch. */
-  const treeScroll = useRef(0);
+  const treeScroll = useRef(uiStore.getState().tree?.scroll ?? 0);
   /** Bumped each time the tree opens: the source loads again (never polled). */
   const [treeRev, setTreeRev] = useState(0);
   useEffect(() => {
@@ -656,12 +663,22 @@ export function DebugChat({
   /** The tree as treeNav sees it (index-path ids), and where its focus and depths are. */
   const navIx = useMemo(() => navIndexOf(treeData.root), [treeData.root]);
   const [nav, setNav] = useState<TreeNavState>(() => initialNav(navIx.ix));
-  // A reloaded tree keeps the focus if that node is still there.
+  // A reloaded tree keeps the focus if that node is still there; a fresh
+  // page takes the kept one (ui-store.ts) once its nodes have loaded.
+  /** The kept tree place has been applied to a loaded tree (the scroll waits for it). */
+  const navRestored = useRef(false);
   useEffect(() => {
+    if (navIx.ix.roots.length) navRestored.current = true;
+    const kept = restoreTree(navIx.ix, navIx.byId, uiStore.getState().tree);
     setNav((s) =>
-      s.focusId !== null && navIx.ix.parent.has(s.focusId) ? s : initialNav(navIx.ix),
+      s.focusId !== null && navIx.ix.parent.has(s.focusId) ? s : (kept ?? initialNav(navIx.ix)),
     );
   }, [navIx]);
+  // Committed steps only (a drag in progress is a preview), on the loaded tree.
+  useEffect(() => {
+    if (nav.base || nav.focusId === null || !navIx.ix.parent.has(nav.focusId)) return;
+    uiStore.setState({ tree: keepTree(navIx.byId, nav, treeScroll.current) });
+  }, [nav, navIx]);
   /**
    * Rows' tops before a nav step (and which rows were on screen), so the step
    * can keep a row still: the focused one, or the one it folded into.
@@ -763,7 +780,23 @@ export function DebugChat({
     if (!el) return;
     treeScroll.current = el.scrollTop;
     setTreeFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
+    // Kept with the tree (ui-store.ts) once the restored scroll has landed.
+    const kept = uiStore.getState().tree;
+    const top = Math.round(el.scrollTop);
+    if (kept && treeScrollPending.current === null && kept.scroll !== top)
+      uiStore.setState({ tree: { ...kept, scroll: top } });
   };
+  /** A kept tree scroll waiting for the tree's rows to load (then applied once). */
+  const treeScrollPending = useRef<number | null>(uiStore.getState().tree?.scroll || null);
+  useLayoutEffect(() => {
+    const want = treeScrollPending.current;
+    const el = treeBodyEl.current;
+    // After the kept focus and depths are back (navRestored), so the rows are there.
+    if (want === null || !el || !navRestored.current) return;
+    treeScrollPending.current = null;
+    el.scrollTop = want;
+    treeScroll.current = el.scrollTop;
+  }, [nav, navIx, tree, open]);
   // Escape closes the tree. It is caught before the mic's own Escape (which
   // turns it off): closing the tree never does. (The tree is click-through, as
   // the log: taps outside it are the page's, and leave it open.)
@@ -789,7 +822,18 @@ export function DebugChat({
   const [endArmed, setEndArmed] = useState<string | null>(null);
   const endTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(endTimer.current), []);
-  const [draft, setDraft] = useState("");
+  /**
+   * The draft lives in the session UI store (ui-store.ts), so a refresh or a
+   * hot swap keeps it, with whether it is still pure dictation (a restored
+   * voice line still sends as `stt`). Cleared on send like any other draft.
+   */
+  const draft = useStore(uiStore, (s) => s.draft);
+  const setDraft = (v: string) =>
+    uiStore.setState({
+      draft: v,
+      pureDictation: v && pureDictation.current === v ? v : null,
+      ...(v ? {} : { caret: null }),
+    });
   /** The node the next line goes to: the chip in the bar ("/" = the main thread, no chip). */
   const [target, setTargetState] = useState(keptTarget);
   const targetRef = useRef(target);
@@ -809,7 +853,7 @@ export function DebugChat({
   const [offline, setOffline] = useState(false);
   /** Arrival order up to which the agent's lines count as read (see countUnread). */
   const [readSeq, setReadSeq] = useState(0);
-  const draftRef = useRef("");
+  const draftRef = useRef(uiStore.getState().draft);
   const composing = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** The chat's one scroller: the tree (when open) and the log. */
@@ -969,6 +1013,16 @@ export function DebugChat({
     }
   }, [fullLog]);
   const input = useRef<HTMLTextAreaElement | null>(null);
+  // A restored draft gets its caret back (without focus: no keyboard pops up).
+  useLayoutEffect(() => {
+    const el = input.current;
+    const { draft: d, caret } = uiStore.getState();
+    if (!el || !d) return;
+    const at = Math.min(caret ?? d.length, el.value.length);
+    try {
+      el.setSelectionRange(at, at);
+    } catch {}
+  }, []);
   /** Dictated text just landed: put the caret after it and show the end. */
   const caretToEnd = useRef(false);
   /**
@@ -1137,9 +1191,10 @@ export function DebugChat({
    * The draft as dictation left it, while nothing typed is in it (else null):
    * a line sent while the draft still equals it is the mic's, `source: "stt"`.
    */
-  const pureDictation = useRef<string | null>(null);
+  const pureDictation = useRef<string | null>(uiStore.getState().pureDictation);
   /** The draft's length when it last changed outside an IME composition. */
-  const settledLen = useRef(0);
+  // A restored draft is settled text, not a burst.
+  const settledLen = useRef(draftRef.current.length);
   /** The key going down is Shift+Enter: its line break stays a line break. */
   const shiftEnter = useRef(false);
   /** The mic is listening, or has transcripts out: the debounce waits for it. */
@@ -2301,6 +2356,11 @@ export function DebugChat({
                     arm();
                   }}
                   onFocus={() => setTyping(true)}
+                  // The caret is kept with the draft (ui-store.ts), written debounced.
+                  onSelect={(e) => {
+                    const c = e.currentTarget.selectionEnd;
+                    if (uiStore.getState().caret !== c) uiStore.setState({ caret: c });
+                  }}
                   onBlur={() => {
                     setTyping(false);
                     // Mic on: hands-free, the reading goes on. Off: it was only for the input.

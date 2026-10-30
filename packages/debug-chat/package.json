@@ -30,16 +30,21 @@
     "./anchor": "./src/anchor.ts",
     "./detent": "./src/detent.ts",
     "./keyboard-lift": "./src/keyboard-lift.ts",
-    "./float-lines":"./src/float-lines.ts",
+    "./float-lines": "./src/float-lines.ts",
     "./frontier-view": "./src/frontier-view.ts",
     "./log-surface": "./src/log-surface.ts",
     "./mic-session": "./src/mic-session.ts",
     "./speech-rate": "./src/speech-rate.ts",
     "./tree-source": "./src/tree-source.ts",
-    "./tree-nav": "./src/tree-nav.ts"
+    "./tree-nav": "./src/tree-nav.ts",
+    "./tree-keep": "./src/tree-keep.ts",
+    "./ui-store": "./src/ui-store.ts"
   },
   "peerDependencies": {
     "react": "*",
     "react-dom": "*"
+  },
+  "dependencies": {
+    "zustand": "5.0.8"
   }
 }
