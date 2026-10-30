@@ -1496,6 +1496,12 @@ try {
         storageState: await ctx.storageState(),
       });
       await c.addInitScript(silentAudio);
+      // Stubbed as everywhere else: the local Worker has no Workers AI, so an
+      // unrecorded clip is a 503, and WebKit reports the prefetches a reload
+      // cuts off as page errors ("access control checks").
+      await c.route("**/api/words/tts?*", (r) =>
+        r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") }),
+      );
       await c.addInitScript((v) => {
         localStorage.setItem("lk:first-run", "account");
         localStorage.setItem("lk:swipe-ab", v);
