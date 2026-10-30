@@ -4,7 +4,9 @@
  * refresh, against PRODUCTION D1 — for the owner's phone on the home LAN.
  * docs/dev-whole-page.md has the why, the security model and the runbook.
  *
- *   bun scripts/dev/whole-page.ts serve [--host 192.168.31.96] [--port 3100]
+ *   bun scripts/dev/whole-page.ts serve [--host 192.168.31.96] [--port 3100] [--origin https://<mac>.ts.net:8443]
+ *       --origin: the address the phone opens, when it is not http://<host>:<port>
+ *       — the `tailscale serve` HTTPS front (docs/dev-whole-page.md, "HTTPS").
  *       Starts `next dev` on 127.0.0.1:<port+1> (remote D1/R2 via
  *       wrangler.dev-whole-page.jsonc) and the guard proxy on <host>:<port>,
  *       a private-LAN address only. Loopback control port: <port+2>.
@@ -22,6 +24,7 @@ import { spawn } from "node:child_process";
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import net from "node:net";
+import { devWholePageOrigin } from "../../lib/dev-whole-page";
 import { ownerEmails } from "../../lib/owner";
 import {
   DEVICE_COOKIE,
@@ -79,7 +82,19 @@ async function serve() {
   const state = loadState();
   const owners = ownerList();
   if (!ownerEmails(owners).length) throw new Error("OWNER_EMAILS is empty in wrangler.jsonc");
-  const origin = `http://${host}:${port}`;
+  const origin = new URL(arg("origin", `http://${host}:${port}`)).origin;
+  if (
+    !devWholePageOrigin({
+      LIANKI_DEV_WHOLE_PAGE: "1",
+      NODE_ENV: "development",
+      BETTER_AUTH_BASE_URL: origin,
+    }).length
+  ) {
+    throw new Error(
+      `--origin must be http(s) on a private LAN IP or https on *.ts.net, got ${origin}`,
+    );
+  }
+  const secure = origin.startsWith("https:") ? "; Secure" : "";
 
   // A clean env: only what the app needs. No RESEND_*/EMAIL_FROM (no mail),
   // no STRIPE_* (no payments), no MONGODB_URI, no OAuth secrets.
@@ -118,7 +133,7 @@ async function serve() {
     const hit = sessions.get(cookie);
     if (hit && hit.exp > Date.now()) return hit.owner;
     const res = await fetch(`http://127.0.0.1:${inner}/api/auth/get-session`, {
-      headers: { cookie, host: `${host}:${port}` },
+      headers: { cookie, host: new URL(origin).host },
     });
     const info = (res.ok ? await res.json().catch(() => null) : null) as SessionInfo;
     const owner = sessionIsOwner(info, ownerEmails(owners));
@@ -147,7 +162,7 @@ async function serve() {
     }
     const login = await fetch(`http://127.0.0.1:${inner}/api/dev-whole-page/login`, {
       method: "POST",
-      headers: { [GUARD_HEADER]: state.guardSecret, host: `${host}:${port}`, origin },
+      headers: { [GUARD_HEADER]: state.guardSecret, host: new URL(origin).host, origin },
     });
     if (!login.ok) {
       console.error(`[whole-page] enter: login route answered ${login.status}`);
@@ -159,7 +174,7 @@ async function serve() {
       location: LANDING,
       "cache-control": "no-store",
       "set-cookie": [
-        `${DEVICE_COOKIE}=${device}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${YEAR_S}`,
+        `${DEVICE_COOKIE}=${device}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${YEAR_S}${secure}`,
         ...login.headers.getSetCookie(),
       ],
     });

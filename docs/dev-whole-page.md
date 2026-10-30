@@ -7,11 +7,14 @@ drifts. Because it touches production, it is locked down hard. It runs only in
 the ops lane (manual permission mode: the owner approves each command).
 
 ```bash
-bun scripts/dev/whole-page.ts serve --host 192.168.31.96 --port 3100   # keep running
-bun scripts/dev/whole-page.ts send-login --target Android              # sign his phone in
+tailscale serve --bg --https=8443 http://192.168.31.96:3100   # tailnet only, never funnel
+bun scripts/dev/whole-page.ts serve --host 192.168.31.96 --port 3100 \
+  --origin https://taku.onca-tint.ts.net:8443                    # keep running
+bun scripts/dev/whole-page.ts send-login --target Android        # sign his phone in
 ```
 
-Then his phone is on `http://192.168.31.96:3100/words?list=all`.
+Then his phone is on `https://taku.onca-tint.ts.net:8443/words?list=all`, with
+Tailscale on. Stop the front with `tailscale serve --https=8443 off`.
 
 ## What runs
 
@@ -88,23 +91,31 @@ and never pairs; with no grant it fails. The guard logs only
 Sign-out (from the app) ends the session; the next page is 403 until a new
 link.
 
-## Fallback: Tailscale HTTPS
+## HTTPS (required): Tailscale serve
 
-Plain http on the LAN works: better-auth sets non-`Secure` cookies when its
-base URL is http, and verified 2026-10-31, the phone signed in and loaded
-`/words?list=all`. If a browser change ever breaks that, put the guard behind
-`tailscale serve` (tailnet only, never `funnel`) and set
-`BETTER_AUTH_BASE_URL` to the `https://…ts.net` origin. His Android must then
-have Tailscale on.
+Plain `http://192.168.31.96:3100` signs in fine, since better-auth sets
+non-`Secure` cookies for an http base URL. But the app then crashes:
+`http://<LAN IP>` is not a secure context, so the browser has no
+`crypto.randomUUID`, no service worker, no mic and no passkeys. The owner saw
+a Next.js error page there on 2026-10-31, and the log showed
+`[browser] Uncaught TypeError: crypto.randomUUID is not a function`.
+
+So the phone uses `tailscale serve` on its own HTTPS port (`:8443`). The
+lab site keeps `:443` and its path routes, and Next needs the root path. That
+port is reachable on the tailnet only, never through `funnel`. `--origin` makes it the base
+URL: cookies become `Secure` (`__Secure-better-auth.session_token`), and the
+LAN IP stays the guard's only listener. `lib/dev-whole-page.ts` trusts an
+`https://*.ts.net` origin only while the launcher runs.
 
 ## Checked on 2026-10-31
 
-| Probe                                                                   | Result                    |
-| ----------------------------------------------------------------------- | ------------------------- |
-| `/words`, `/_next/static/…`, `/api/auth/get-session` without device     | 403                       |
-| `/__dev/enter?t=bogus`, and a link used twice                           | 403                       |
-| `POST /api/dev-whole-page/login` without the secret                     | 404                       |
-| `POST /api/auth/sign-in/email` with device + owner session              | 403                       |
-| Ports 3101/3102 from the LAN IP                                         | refused                   |
-| Enter link → `/words?list=all`, `get-session` email, `/api/words/lists` | 302 → 200, owner, 9 lists |
-| After sign-out                                                          | 403                       |
+| Probe                                                                         | Result                       |
+| ----------------------------------------------------------------------------- | ---------------------------- |
+| `/words`, `/_next/static/…`, `/api/auth/get-session` without device           | 403                          |
+| `/__dev/enter?t=bogus`, and a link used twice                                 | 403                          |
+| `POST /api/dev-whole-page/login` without the secret                           | 404                          |
+| `POST /api/auth/sign-in/email` with device + owner session                    | 403                          |
+| Ports 3101/3102 from the LAN IP                                               | refused                      |
+| Enter link → `/words?list=all`, `get-session` email, `/api/words/lists`       | 302 → 200, owner, 9 lists    |
+| After sign-out                                                                | 403                          |
+| Same flow via `https://…ts.net:8443`: cookies `Secure`, phone `/words`, clips | 302 → 200, no browser errors |

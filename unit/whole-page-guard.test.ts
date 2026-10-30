@@ -155,6 +155,16 @@ describe("dev-whole-page switches (app side)", () => {
     expect(devWholePageOrigin({ BETTER_AUTH_BASE_URL: base })).toEqual([]);
     expect(devWholePageOrigin({ ...ON, BETTER_AUTH_BASE_URL: "https://evil.example" })).toEqual([]);
     expect(devWholePageOrigin({ ...ON, BETTER_AUTH_BASE_URL: "http://8.8.8.8:3100" })).toEqual([]);
+    // the tailnet HTTPS front: https on *.ts.net only
+    const ts = "https://mac.example-tailnet.ts.net:8443";
+    expect(devWholePageOrigin({ ...ON, BETTER_AUTH_BASE_URL: ts })).toEqual([ts]);
+    expect(
+      devWholePageOrigin({ ...ON, BETTER_AUTH_BASE_URL: "http://mac.example-tailnet.ts.net:8443" }),
+    ).toEqual([]);
+    expect(
+      devWholePageOrigin({ ...ON, BETTER_AUTH_BASE_URL: "https://ts.net.evil.example" }),
+    ).toEqual([]);
+    expect(devWholePageOrigin({ BETTER_AUTH_BASE_URL: ts })).toEqual([]);
   });
 
   test("production's trusted origins are unchanged", () => {

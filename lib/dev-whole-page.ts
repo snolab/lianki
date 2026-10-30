@@ -28,12 +28,17 @@ export function devWholePageLoginAllowed(env: Env, headers: Headers): boolean {
 
 /**
  * The dev server's own origin, for better-auth's trusted origins: only while
- * the launcher runs, and only a private-LAN http(s) origin.
+ * the launcher runs, and only a private-LAN http(s) origin or the owner's
+ * tailnet HTTPS front (`https://<mac>.ts.net:<port>`, via `tailscale serve`,
+ * which is tailnet-only: plain http is not a secure context, so
+ * crypto.randomUUID, service workers and the mic are missing there).
  */
 export function devWholePageOrigin(env: Env = process.env): string[] {
   if (!devWholePage(env)) return [];
   try {
     const u = new URL(env.BETTER_AUTH_BASE_URL ?? "");
+    if (u.protocol === "https:" && /^[a-z0-9-]+\.[a-z0-9-]+\.ts\.net$/.test(u.hostname))
+      return [u.origin];
     const m = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(u.hostname);
     if (!m || !/^https?:$/.test(u.protocol)) return [];
     const [a, b] = [Number(m[1]), Number(m[2])];
