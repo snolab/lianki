@@ -6,28 +6,76 @@ permanent left sidebar, and tablets keep the glass sidebar overlay.
 
 ## What it does
 
-| Button  | Tap                                                  | Long press               |
-| ------- | ---------------------------------------------------- | ------------------------ |
-| Home    | `/home`                                              |                          |
-| Menu    | opens the drawer, which also opens with an edge swipe |                         |
-| Centre  | Learning Partner in debug mode, otherwise Create      | Create (the shortcuts)  |
-| Search  | the command palette                                  |                          |
+Four buttons, in this order: Home, Menu, ＋ Create, Search (owner,
+2026-10-31). ＋ is the largest (60px against 56px) and sits third, just right
+of the capsule's middle. On a 390–430px phone held in the right hand, that is
+the easiest reach for the thumb.
 
-- **Search** is one palette over pages and commands (`APP_NAV`, Create), word
-  lists and words (the offline copy in IndexedDB), cards
-  (`/api/fsrs/list?q=`) and, for the owner, state-tree nodes. A pasted URL
-  offers "Add {url} as a card" (`/add-note#url=`).
-- **Create** offers words from an Anki deck (`/words/import`), a link as a
-  card, importing cards and backups (`/import`) and making words with AI
-  (`/ai-vocab`).
-- **Badges.** Home shows the due-review count, which is the sum of `due`
-  over the cached word lists. A dot shows when the device is offline (grey)
-  or has reviews waiting to sync (amber).
-- **Behaviour.** The island shrinks to a small capsule when you scroll down
-  and comes back when you scroll up or stop scrolling. It hides while the
-  on-screen keyboard is open (`visualViewport`), pads itself by the safe
-  areas, and keeps tap targets at 44px or more inside the thumb zone. Where
-  `navigator.vibrate` exists, a long press gives a short haptic tick.
+| Button   | Tap                                                    |
+| -------- | ------------------------------------------------------ |
+| Home     | `/home`; shows the due-review badge                     |
+| Menu     | opens the drawer (an edge swipe does too); sync dot     |
+| ＋ Create | the Create sheet                                        |
+| Search   | the command palette (Ctrl/⌘ K anywhere)                |
+
+- **Create** offers a link as a card (paste it), words from an Anki deck
+  (`/words/import`, .apkg), importing cards and backups (`/import`) and
+  making words with AI (`/ai-vocab`). Two things are left out because the app
+  has no path for them yet: typing in a single new word, and CSV import. Photo
+  capture is left out for the same reason.
+- **The Learning Partner** is no longer on the island. It is reached through
+  its chat bar, and through a "Learning Partner" row in the drawer (debug
+  mode, where the chat is on).
+- **Badges.** Home shows the due-review count: the sum of `due` over the
+  cached word lists. A dot on Menu shows when the device is offline (grey) or
+  has reviews waiting to sync (amber).
+- **Behaviour.**
+  - The island shrinks to a small capsule when you scroll down. It comes back
+    when you scroll up or stop scrolling.
+  - It hides while the on-screen keyboard is open (`visualViewport`).
+  - It pads itself by the safe areas, and its tap targets are 44px or more.
+  - Where `navigator.vibrate` exists, a tap gives a short haptic tick.
+
+## Search
+
+One palette over the app and the learner's own content. Queries never leave
+the device.
+
+1. **At once, on every keystroke:** the app's own pages and commands
+   (`APP_NAV`, Create). These are static.
+2. **Then, without blocking typing:** his content from an index in IndexedDB
+   (`lianki-search`, `lib/nav/islands/search-idb.ts`):
+   - lists (by name);
+   - words (term, reading, meaning, example);
+   - cards (page cards);
+   - the study plan (roadmap goals);
+   - for the owner, the state tree.
+
+   Each group is scanned in slices that yield to input. It is appended below
+   the groups already shown, which never move. A newer keystroke cancels the
+   round in progress (a generation counter).
+
+- **The index** is built on the device:
+  - Lists and words come from the /words offline copy: the cached lists, and
+    the catalogs (or imported decks) already downloaded.
+  - Cards, the plan and the tree are downloaded whole, never per query, at
+    most every 10 minutes.
+  - Each source has a stamp. A sync, when the palette opens, rebuilds only the
+    sources that changed and drops the ones that are gone.
+  - Words are capped at 3000 per list. When a list is cut, a "Search all
+    words" row lifts the cap.
+- **Opening a result** goes straight there:
+  - a list opens its page;
+  - a word opens its list with that word at the top (the `lk:ui:words`
+    anchor);
+  - a card opens its page in a new tab;
+  - a plan goal opens `/roadmap`;
+  - a tree node opens `/dev/roadmap`.
+- **Pasted links.** A pasted URL offers "Add {url} as a card"
+  (`/add-note#url=`).
+- **AnkiWeb.** The last row is always "Search more on AnkiWeb". It opens
+  AnkiWeb's own search in a new tab (noopener). The query is encoded and
+  never fetched by Lianki.
 
 ## The /words help strip
 

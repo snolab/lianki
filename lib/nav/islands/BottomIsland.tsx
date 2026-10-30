@@ -15,7 +15,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon, type IconName } from "@/app/components/icons";
-import { sendAction } from "@/lib/islands/actions";
 import type { IslandProps } from "@/lib/islands/contract";
 import { useUi } from "@lianki/ui-state";
 import { badge, fill, showFirstTip } from "../nav-core";
@@ -34,24 +33,12 @@ import {
 } from "./signals";
 import { useNavText } from "./text";
 
-const LONG_PRESS_MS = 450;
-
 /** Haptics where the device has them (Android); a no-op elsewhere. */
 const tick = () => {
   try {
     navigator.vibrate?.(12);
   } catch {}
 };
-
-/** Open the partner chat: the action first; if the bar is still minimized, its own mark. */
-function openChat() {
-  sendAction("chat.open", {});
-  setTimeout(() => {
-    const box = document.querySelector("[data-debug-chat]");
-    if (box?.hasAttribute("data-minimized"))
-      box.querySelector<HTMLElement>('[data-testid="debug-chat-pill-min"]')?.click();
-  }, 320);
-}
 
 export function BottomIsland({ signedIn }: IslandProps["nav.bottom"]) {
   const t = useNavText();
@@ -112,56 +99,6 @@ export function BottomIsland({ signedIn }: IslandProps["nav.bottom"]) {
   }, []);
 
   const closeSheet = useCallback(() => setSheet(null), []);
-
-  // The centre button: tap, or hold for Create.
-  const press = useRef<{
-    timer?: ReturnType<typeof setTimeout>;
-    long: boolean;
-    x: number;
-    y: number;
-  } | null>(null);
-  const centreTap = () => (debug ? openChat() : setSheet("create"));
-  const centre = {
-    onPointerDown: (e: React.PointerEvent) => {
-      const p = {
-        long: false,
-        x: e.clientX,
-        y: e.clientY,
-        timer: undefined as ReturnType<typeof setTimeout> | undefined,
-      };
-      p.timer = setTimeout(() => {
-        p.long = true;
-        tick();
-        setSheet("create");
-      }, LONG_PRESS_MS);
-      press.current = p;
-    },
-    onPointerMove: (e: React.PointerEvent) => {
-      const p = press.current;
-      if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 10) {
-        clearTimeout(p.timer);
-        press.current = null;
-      }
-    },
-    onPointerUp: () => {
-      const p = press.current;
-      press.current = null;
-      if (!p) return;
-      clearTimeout(p.timer);
-      if (!p.long) centreTap();
-    },
-    onPointerCancel: () => {
-      clearTimeout(press.current?.timer);
-      press.current = null;
-    },
-    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
-    onKeyDown: (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        centreTap();
-      }
-    },
-  };
 
   const home = pathname === "/home" || pathname.startsWith("/home/");
   const syncDot = !online ? "offline" : pending > 0 ? "pending" : null;
@@ -250,23 +187,19 @@ export function BottomIsland({ signedIn }: IslandProps["nav.bottom"]) {
             dotLabel={syncLabel}
             expanded={drawerOpen}
           />
+          {/* ＋ Create: third of four, the largest, where the thumb rests. */}
           <button
             type="button"
-            aria-label={debug ? `${t.partner}. ${t.holdForCreate}` : t.create}
+            aria-label={t.create}
             aria-haspopup="dialog"
-            title={debug ? t.holdForCreate : undefined}
-            {...centre}
-            className="relative mx-1 flex h-14 w-14 shrink-0 touch-manipulation select-none items-center justify-center rounded-full bg-[oklch(from_var(--brand)_l_c_h/0.88)] text-[1.6rem] text-[oklch(0.985_0.01_82)] shadow-[inset_0_1px_0_oklch(1_0_0/0.45),0_6px_16px_-4px_oklch(from_var(--brand)_l_c_h/0.6)] [text-shadow:none] [-webkit-touch-callout:none] active:scale-95 motion-reduce:active:scale-100"
+            aria-expanded={sheet === "create"}
+            onClick={() => {
+              tick();
+              setSheet((s) => (s === "create" ? null : "create"));
+            }}
+            className="relative mx-1 flex h-[3.75rem] w-[3.75rem] shrink-0 touch-manipulation select-none items-center justify-center rounded-full bg-[oklch(from_var(--brand)_l_c_h/0.88)] text-[1.75rem] text-[oklch(0.985_0.01_82)] shadow-[inset_0_1px_0_oklch(1_0_0/0.45),0_6px_16px_-4px_oklch(from_var(--brand)_l_c_h/0.6)] [text-shadow:none] active:scale-95 motion-reduce:active:scale-100"
           >
-            <Icon name={debug ? "chatCircleDots" : "plus"} />
-            {debug && (
-              <span
-                aria-hidden
-                className="absolute -bottom-0.5 -end-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--background)] text-[0.7rem] text-[var(--brand)] shadow-[0_0_0_1px_var(--glass-line)]"
-              >
-                <Icon name="plus" />
-              </span>
-            )}
+            <Icon name="plus" />
           </button>
           <Tab
             icon="magnifyingGlass"

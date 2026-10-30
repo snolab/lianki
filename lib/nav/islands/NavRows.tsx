@@ -13,8 +13,9 @@ import { Icon } from "@/app/components/icons";
 import { APP_NAV, activeNavKey } from "@/lib/app-nav";
 import type { IslandProps } from "@/lib/islands/contract";
 import { useUi } from "@lianki/ui-state";
-import { navPins, navUi, togglePin } from "../ui-store";
-import { useWordsHint } from "./signals";
+import { navPins, navUi, setDrawerOpen, togglePin } from "../ui-store";
+import { openChat } from "./chat";
+import { useDebugMode, useWordsHint } from "./signals";
 import { useNavText } from "./text";
 
 export function NavRows({ place, collapsed }: IslandProps["nav.drawer"]) {
@@ -24,6 +25,7 @@ export function NavRows({ place, collapsed }: IslandProps["nav.drawer"]) {
   const recent = useUi(navUi, (s) => s.recent);
   const hint = useWordsHint(pathname);
   const [help, setHelp] = useState(false);
+  const debug = useDebugMode();
   if (collapsed) return null;
 
   const key = activeNavKey(pathname);
@@ -120,6 +122,26 @@ export function NavRows({ place, collapsed }: IslandProps["nav.drawer"]) {
           )}
           {hint}
         </div>
+      )}
+      {/* The Learning Partner (debug mode, where the chat is on): it is no longer on the island. */}
+      {debug && (
+        <ul>
+          <li>
+            <button
+              type="button"
+              onClick={() => {
+                setDrawerOpen(false);
+                openChat();
+              }}
+              className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 py-2 text-start text-sm hover:bg-[oklch(from_var(--foreground)_l_c_h/0.06)]"
+            >
+              <span className="flex w-5 shrink-0 justify-center text-lg leading-none text-[var(--brand)]">
+                <Icon name="chatCircleDots" />
+              </span>
+              <span className="min-w-0 truncate">{t.partner}</span>
+            </button>
+          </li>
+        </ul>
       )}
       {pinned.length > 0 && (
         <div>

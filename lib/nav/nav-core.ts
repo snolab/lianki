@@ -21,12 +21,16 @@ export type PaletteItem = {
   keys?: string;
 };
 
-const norm = (s: string) => s.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
+/** Text for matching: accents folded, lower case. */
+export const norm = (s: string) => s.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
 
 /** How well `q` matches `text`: 0 is no match; prefix > word start > substring > subsequence. */
 export function score(text: string, q: string): number {
-  const t = norm(text);
-  const n = norm(q.trim());
+  return scoreNorm(norm(text), norm(q.trim()));
+}
+
+/** `score` on text and query already passed through `norm` (the search index stores it so). */
+export function scoreNorm(t: string, n: string): number {
   if (!n) return 1;
   if (t === n) return 100;
   if (t.startsWith(n)) return 80;
@@ -40,6 +44,22 @@ export function score(text: string, q: string): number {
     at++;
   }
   return 10;
+}
+
+/**
+ * `text` cut into [part, matched] pieces for highlighting `q`: the first
+ * case-insensitive occurrence, else nothing marked (a subsequence or an
+ * accent-folded match is not drawn).
+ */
+export function highlight(text: string, q: string): [string, boolean][] {
+  const n = q.trim().toLowerCase();
+  const i = n ? text.toLowerCase().indexOf(n) : -1;
+  if (i < 0) return [[text, false]];
+  const out: [string, boolean][] = [];
+  if (i > 0) out.push([text.slice(0, i), false]);
+  out.push([text.slice(i, i + n.length), true]);
+  if (i + n.length < text.length) out.push([text.slice(i + n.length), false]);
+  return out;
 }
 
 /** The best `limit` items for `q`, best first; ties keep their order. */
