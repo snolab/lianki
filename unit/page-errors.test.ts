@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  NETWORK_AFTER_HIDE_MS,
   PAGE_ERROR_DEDUPE_MS,
   PAGE_ERROR_MESSAGE_MAX,
   PAGE_ERROR_PER_MINUTE,
@@ -7,6 +8,7 @@ import {
   argText,
   createPageErrorReporter,
   installPageErrorHooks,
+  isReportableNetworkFailure,
   pathOf,
   reportPageError,
   scrub,
@@ -281,5 +283,81 @@ describe("page-errors hooks", () => {
     r.attach((m) => sent.push(m));
     expect(sent).toHaveLength(1);
     expect(pathOf("x?y", "not a base")).toBe("x");
+  });
+});
+
+describe("network failures that are not the network (aborts, the page going away)", () => {
+  it("isReportableNetworkFailure: aborts, a page going away, or just gone, are not reported", () => {
+    const base = {
+      error: new TypeError("Load failed"),
+      signalAborted: false,
+      unloading: false,
+      now: 10_000,
+      hiddenAt: null,
+    };
+    expect(isReportableNetworkFailure(base)).toBe(true);
+    expect(
+      isReportableNetworkFailure({
+        ...base,
+        error: Object.assign(new Error("x"), { name: "AbortError" }),
+      }),
+    ).toBe(false);
+    // WebKit: an aborted fetch is a plain TypeError "Load failed"; the signal tells.
+    expect(isReportableNetworkFailure({ ...base, signalAborted: true })).toBe(false);
+    expect(isReportableNetworkFailure({ ...base, unloading: true })).toBe(false);
+    expect(
+      isReportableNetworkFailure({ ...base, hiddenAt: 10_000 - NETWORK_AFTER_HIDE_MS + 1 }),
+    ).toBe(false);
+    expect(isReportableNetworkFailure({ ...base, hiddenAt: 10_000 - NETWORK_AFTER_HIDE_MS })).toBe(
+      true,
+    );
+  });
+
+  it("the hooks: an aborted TTS prefetch, a reload, a hidden page are quiet; a real failure is reported", async () => {
+    const sent: { kind: string; message: string }[] = [];
+    const r = createPageErrorReporter({ now: () => 1, pagePath: () => "/words" });
+    r.attach((m) => sent.push(m));
+    let t = 100_000;
+    const doc = Object.assign(new EventTarget(), { visibilityState: "visible" });
+    const target = new EventTarget();
+    const win = Object.assign(target, {
+      location: {
+        origin: "https://lianki.com",
+        href: "https://lianki.com/words",
+        pathname: "/words",
+      },
+      console: { error: () => {} },
+      document: doc,
+      fetch: (async () => {
+        throw new TypeError("Load failed");
+      }) as unknown as typeof fetch,
+    }) as unknown as Window & typeof globalThis;
+    const off = installPageErrorHooks(win, r, () => t);
+    // The audio prefetcher cancels: its signal is aborted (WebKit: TypeError, not AbortError).
+    const ctrl = new AbortController();
+    ctrl.abort();
+    await win.fetch("/api/words/tts?text=a", { signal: ctrl.signal }).catch(() => {});
+    // The page going away: pagehide, then a failure.
+    win.dispatchEvent(new Event("pagehide"));
+    await win.fetch("/api/words/tts?text=b").catch(() => {});
+    // Back (bfcache), but within 1 s of the hide: still the page going away.
+    win.dispatchEvent(new Event("pageshow"));
+    t += 500;
+    await win.fetch("/api/words/tts?text=c").catch(() => {});
+    // Hidden by the tab switching away.
+    doc.visibilityState = "hidden";
+    doc.dispatchEvent(new Event("visibilitychange"));
+    t += 5_000;
+    await win.fetch("/api/words/tts?text=d").catch(() => {});
+    expect(sent).toEqual([]);
+    // Visible again, long after: a genuine failure is reported.
+    doc.visibilityState = "visible";
+    doc.dispatchEvent(new Event("visibilitychange"));
+    t += 5_000;
+    await win.fetch("/api/words/tts?text=e").catch(() => {});
+    expect(sent.map((m) => [m.kind, m.message])).toEqual([
+      ["network", "GET /api/words/tts failed: TypeError: Load failed"],
+    ]);
+    off();
   });
 });
