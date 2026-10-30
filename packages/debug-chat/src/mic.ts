@@ -691,13 +691,17 @@ export function createMic(d: {
 /** The STT route's answer (agent C's contract). */
 export type SttResult = { text: string; model?: string; ms?: number; language?: string };
 
-/** POST one recording to /api/debug/stt, the raw audio as the body. Throws SttError on non-2xx. */
+/**
+ * POST one recording to /api/debug/stt, the raw audio as the body, with the
+ * speaker's language as `?hint=` when known. Throws SttError on non-2xx.
+ */
 export async function postStt(
   wav: Uint8Array,
   f: typeof fetch = fetch,
   type = "audio/wav",
+  hint?: string,
 ): Promise<SttResult> {
-  const res = await f("/api/debug/stt", {
+  const res = await f(hint ? `/api/debug/stt?hint=${encodeURIComponent(hint)}` : "/api/debug/stt", {
     method: "POST",
     body: wav as unknown as BodyInit,
     headers: { "content-type": type },

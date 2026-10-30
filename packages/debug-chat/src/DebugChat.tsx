@@ -34,6 +34,7 @@ import {
   clipSinkFrom,
   joinText,
 } from "./mic";
+import { learnSttHint } from "./stt-hint";
 import { DebugMic, canCapture, playSentTick } from "./MicButton";
 import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
 import { cloudOut, outMode } from "./voice-out";
@@ -861,6 +862,8 @@ export function DebugChat({
       return false;
     }
     setOffline(false);
+    // A typed line says which language the owner speaks: the mic's STT hint.
+    if (!source) learnSttHint(text);
     // Sent: an interruption is over, and the queue (still relevant) reads on.
     voice().resume();
     draftRef.current = "";

@@ -16,6 +16,7 @@ import {
 } from "./mic";
 import { voiceLatency } from "./latency";
 import { type MicSession, type MicView, micSession } from "./mic-session";
+import { sttHint } from "./stt-hint";
 import { voice } from "./voice";
 import {
   aecOn,
@@ -193,7 +194,7 @@ function session(): MicSession {
       const at = Date.now();
       const sink = partial ? undefined : cfg.clipSink;
       try {
-        const out = await postStt(wav);
+        const out = await postStt(wav, fetch, "audio/wav", sttHint());
         // The text guard: the agent's own words that leaked past the AEC are dropped.
         const echo = v.echoCheck(out.text, durationMs);
         if (!partial)
