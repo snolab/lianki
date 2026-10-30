@@ -1,0 +1,31 @@
+diff --git a/dist/src/index.js b/dist/src/index.js
+index 204ea83c2fc8e73b73abd255a3fc68a5a08e46a7..85aa9cae2cdb5ebaf30f41a81b4777baad1d0dc4 100644
+--- a/dist/src/index.js
++++ b/dist/src/index.js
+@@ -90267,7 +90267,25 @@ Make sure you're using http(s):// URLs for WebSocket requests via fetch.`
+     });
+     return responsePromise;
+   }
+-  const response = await undici.fetch(request4, {
++  let httpRequest = request4;
++  if (typeof Bun !== "undefined" && requestInit?.dispatcher instanceof DispatchFetchDispatcher) {
++    // lianki patch: Bun's fetch ignores `dispatcher`, so the request would go
++    // to the user-facing origin (e.g. http://dummy) instead of workerd. Do
++    // the dispatcher's origin rewrite + header injection up front.
++    const url51 = new URL(request4.url);
++    requestInit.dispatcher.rewriteOrigin(url51);
++    const headers = new undici.Headers(request4.headers);
++    requestInit.dispatcher.addHeaders(headers, url51.pathname + url51.search);
++    httpRequest = new Request(url51, {
++      method: request4.method,
++      headers,
++      body: request4.body,
++      redirect: request4.redirect,
++      signal: request4.signal,
++      duplex: "half"
++    });
++  }
++  const response = await undici.fetch(httpRequest, {
+     dispatcher: requestInit?.dispatcher
+   });
+   return new Response2(response.body, response);

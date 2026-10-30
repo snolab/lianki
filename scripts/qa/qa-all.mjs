@@ -167,7 +167,13 @@ async function waitReady(timeoutMs = 120_000) {
   while (Date.now() < deadline) {
     if (server.exitCode != null) throw new Error("wrangler dev exited before becoming ready");
     try {
-      const r = await fetch(`${BASE}/`, { redirect: "manual" });
+      // Per-attempt timeout: a server that accepts but never answers (wrangler's
+      // proxy stuck paused — see patches/miniflare@*.patch) must not hang this
+      // loop past its deadline.
+      const r = await fetch(`${BASE}/`, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(10_000),
+      });
       if (r.status > 0) return;
     } catch {}
     await new Promise((res) => setTimeout(res, 1000));

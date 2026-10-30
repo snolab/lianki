@@ -103,6 +103,9 @@
       "name": "@lianki/ext",
     },
   },
+  "patchedDependencies": {
+    "miniflare@5.20261012.0-beta": "patches/miniflare@5.20261012.0-beta.patch",
+  },
   "overrides": {
     "kysely": "0.28.17",
   },
