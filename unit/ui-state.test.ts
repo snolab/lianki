@@ -12,7 +12,9 @@ import {
 import {
   anchorTop,
   cleanWordsUi,
+  migrateCollapsed,
   setAnchor,
+  toggleCollapsed,
   topIndex,
   wordsUiStore,
 } from "@/app/(app)/words/ui-store";
@@ -194,6 +196,7 @@ describe("/words UI store", () => {
       settingsOpen: true,
       helpOpen: false,
       anchors: { L1: "L1\u0000chat" },
+      collapsed: [],
     });
   });
 
@@ -218,6 +221,34 @@ describe("/words UI store", () => {
       cleanWordsUi({ listId: 3, settingsOpen: "y", helpOpen: true, anchors: { a: "k", b: 2 } }),
     ).toEqual({ helpOpen: true, anchors: { a: "k" } });
     expect(cleanWordsUi({ listId: null, anchors: [] })).toEqual({ listId: null });
+  });
+
+  it("folded groups: per tab, toggled, cleaned", () => {
+    browser();
+    const w = wordsUiStore("/words");
+    toggleCollapsed(w, "ja");
+    toggleCollapsed(w, "fr");
+    expect(w.getState().collapsed).toEqual(["ja", "fr"]);
+    toggleCollapsed(w, "ja");
+    expect(w.getState().collapsed).toEqual(["fr"]);
+    expect(cleanWordsUi({ collapsed: ["a", 3, "b"] })).toEqual({ collapsed: ["a", "b"] });
+    expect(cleanWordsUi({ collapsed: "a" })).toEqual({});
+  });
+
+  it("folded groups: the old per-device key is carried over once", () => {
+    browser();
+    const w = wordsUiStore("/words");
+    const local = fakeStorage({ "lk:words-collapsed:/words": '["g1","g2"]' });
+    migrateCollapsed(w, "/words", local as unknown as Storage);
+    expect(w.getState().collapsed).toEqual(["g1", "g2"]);
+    expect(local.m.has("lk:words-collapsed:/words")).toBe(false);
+    // A newer choice in this tab is never overwritten.
+    toggleCollapsed(w, "g1");
+    local.m.set("lk:words-collapsed:/words", '["x"]');
+    migrateCollapsed(w, "/words", local as unknown as Storage);
+    expect(w.getState().collapsed).toEqual(["g2"]);
+    migrateCollapsed(w, "/words", fakeStorage({ "lk:words-collapsed:/words": "{bad" }) as never);
+    expect(w.getState().collapsed).toEqual(["g2"]);
   });
 
   it("anchor ↔ scrollTop: the anchored word lands just under the toolbar", () => {

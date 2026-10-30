@@ -14,8 +14,9 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 - **NEVER `git reset --hard`** to move a branch — it silently destroys
   uncommitted work. Use `git reset --keep`, which aborts instead of overwriting.
 - Always bump `@version` in `lianki.user.js` when changing the userscript.
-- `.env.local` and `.dev.vars` are gitignored and unrecoverable — never delete
-  them.
+- `.env.local` and `.dev.vars` are gitignored and have no other copy — never
+  delete them. An encrypted backup is proposed in
+  [docs/secrets-backup-plan.md](docs/secrets-backup-plan.md) (not done yet).
 - Use owner `snolab` for every `gh` / `gh api` call. A wrong owner returns a
   plan-gated 403 that misleadingly reads as "branch protection is off".
 
@@ -26,7 +27,8 @@ bun run dev            # Next.js :3000   (bun run dev:db first for local Mongo)
 bun run typecheck      # tsgo --noEmit
 bun test               # unit tests
 bun fix                # oxlint --fix + oxfmt
-bun run qa:all         # full integration gate — what CI runs, and pre-push
+bun run lint           # oxlint + oxfmt --check (check-only; hooks and CI run it)
+bun run qa:all         # full integration gate — pre-push, and CI nightly (not per push)
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
 
@@ -115,10 +117,13 @@ that are expensive to rediscover.
 | UI strings, translations: every key carries context           | [docs/i18n.md](docs/i18n.md)                                        |
 | Blog posts                                                    | [blog/AGENTS.md](blog/AGENTS.md)                                    |
 | The Chrome extension, and publishing it                       | [packages/ext/README.md](packages/ext/README.md)                    |
+| /words new-word order: in order + pass, take turns, simulator | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)            |
 | Sync/offline architecture                                     | [docs/sync-architecture.md](docs/sync-architecture.md)              |
 | Sync conflicts, deletions, tombstones                         | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
+| Settings that follow the account (`lk:*` key classes)         | [docs/prefs-sync.md](docs/prefs-sync.md)                            |
 | Metrics, slowness and error alerts (Slack #lianki)            | [docs/monitoring.md](docs/monitoring.md)                            |
 | Payments, Pro passes, Stripe, invites, gift codes             | [docs/payments.md](docs/payments.md)                                |
 | Security measures: admin gate, lockout, scans, card testing   | [docs/security-measures.md](docs/security-measures.md)              |
 | UI layout: content fills the screen, glass overlays           | [docs/design-principles.md](docs/design-principles.md)              |
+| Leaving Next.js: Vite + RR7 + Hono strangler plan             | [docs/framework-migration.md](docs/framework-migration.md)          |
 | Node tree, study plan, calendar, Google Calendar (design)     | [docs/calendar-plan.md](docs/calendar-plan.md)                      |

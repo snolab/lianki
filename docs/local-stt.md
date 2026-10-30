@@ -21,7 +21,7 @@ On the Mac (once):
 
 ```bash
 uv venv -p 3.12 ~/.cache/lianki-stt/venv
-VIRTUAL_ENV=~/.cache/lianki-stt/venv uv pip install sherpa-onnx soundfile numpy opencc-python-reimplemented websockets mlx-whisper
+VIRTUAL_ENV=~/.cache/lianki-stt/venv uv pip install sherpa-onnx soundfile numpy opencc-python-reimplemented websockets mlx-whisper onnxruntime
 mkdir -p ~/.cache/lianki-stt/models && cd ~/.cache/lianki-stt/models
 curl -LO https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2
 tar xjf sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2
@@ -282,7 +282,9 @@ this is owner-only.
 - By hand: `bun scripts/local-stt/stream-clip.ts --url ws://127.0.0.1:5193`
   streams every saved clip at real-time pace and prints partials and timings;
   `python -I scripts/local-stt/bench.py` is the whole-clip A/B above;
-  `noisy.py <dir>` then `bench-noise.py [--atten 10]` the noise table.
+  `noisy.py <dir>` then `bench-noise.py [--atten 10]` the noise table;
+  `ab-eval.py` the streaming / endpoint / AEC A/B and the field metrics
+  ([stt-ab.md](stt-ab.md)).
 - `server.py` logs each connection, each final (length and decode time,
   never the text) and every refused handshake (a wrong Origin) through the
   `websockets` logger.

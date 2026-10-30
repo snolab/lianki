@@ -16,10 +16,11 @@ export const DB_VERSION = 2;
 export type PendingOp = {
   id?: number;
   listId: string;
-  op: "review" | "undo";
-  /** The JSON body for /api/words/lists/:listId/review or /undo. */
+  /** `rename` renames the list itself (body `{name}`, term ""). */
+  op: "review" | "undo" | "rename";
+  /** The JSON body for /api/words/lists/:listId/review, /undo or /rename. */
   body: Record<string, unknown>;
-  /** The word it concerns, for undo and for hiding it from cached sessions. */
+  /** The word it concerns, for undo and for hiding it from cached sessions ("" for a rename). */
   term: string;
   at: string;
 };

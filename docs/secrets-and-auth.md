@@ -4,8 +4,9 @@
 
 - secretlint runs pre-commit; gitleaks scans the **full history** in CI. Run it
   locally with `bun run scan:secrets`; config in `.gitleaks.toml`.
-- `.env.local` and `.dev.vars` are gitignored and unrecoverable — never delete
-  them. `.dev.vars` is auto-created from `.dev.vars.example` on the first
+- `.env.local` and `.dev.vars` are gitignored and have no other copy — never
+  delete them (encrypted backup proposed in
+  [secrets-backup-plan.md](secrets-backup-plan.md), not done yet). `.dev.vars` is auto-created from `.dev.vars.example` on the first
   `qa:all` run.
 
 ## Magic-link email
@@ -84,3 +85,27 @@ Keep the same value as `PROGRESS_TOKEN=…` in `.dev.vars` (or export
 `LIANKI_PROGRESS_TOKEN`) where the CLI runs. Unset, every write answers 503 and
 the owner's tree shows the hand-edited outline only. Rotating it invalidates
 every scoped token at once.
+
+## Dev bridge (`DEV_BRIDGE_SECRET`)
+
+A Worker secret on `lianki`, used for one thing only. The owner's whole-page
+dev server (docs/dev-whole-page.md) signs its sessions with a local secret,
+so lianki.com can't read them, and the debug chat hub (lianki-push) refused
+that page. The dev server's guard sends this secret in `x-lianki-dev-bridge`,
+lianki-push passes it on, and `/api/debug/identity` answers with the **owner**
+(the first `OWNER_EMAILS` account), never anyone else, when it matches
+(`lib/dev-bridge.ts`).
+
+Since 2026-10-31 02:11 JST (the owner typed "1同意"), the same header also
+works on `/api/words/tts` and `/api/debug/stt`, as the owner, so the dev page
+can read words aloud and transcribe without Workers AI credentials on the
+Mac. These are the only routes that accept it (`lib/dev-bridge-user.ts`).
+
+- A wrong value gets 401, with no fall back to the cookie.
+- Unset, or shorter than 32 characters, the bridge is shut.
+- `AUTH_SECRET` is never shared. The owner chose this over copying it to the
+  Mac on 2026-10-31.
+
+The only other copy is `.dev-whole-page.json` (gitignored, 0600) in the dev
+server's worktree. To rotate it, generate a new value there and
+`wrangler secret put DEV_BRIDGE_SECRET` from the file, never by echoing it.
