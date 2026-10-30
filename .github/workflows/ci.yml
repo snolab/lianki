@@ -65,9 +65,10 @@ jobs:
       # main is red after a merge (e.g. two PRs green on their own, broken
       # together): say so in #lianki. Needs SLACK_WEBHOOK_URL (an incoming
       # webhook for #lianki) as a repo secret; without it this only warns.
-      - name: Alert #lianki when main is red
+      - name: "Alert #lianki when main is red"
         if: failure() && github.event_name == 'push'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: bash scripts/ci/slack-alert.sh ":red_circle: main is red at ${GITHUB_SHA::7} — Typecheck + unit failed, so the deploy is held: ${RUN_URL}"
+        run: |
+          bash scripts/ci/slack-alert.sh ":red_circle: main is red at ${GITHUB_SHA::7} — Typecheck + unit failed, so the deploy is held: ${RUN_URL}"

@@ -56,9 +56,10 @@ jobs:
       # Chromium (headed under xvfb) and asserts the content script runs.
       - name: Extension smoke test
         run: bun run test:ext
-      - name: Alert #lianki when nightly QA fails
+      - name: "Alert #lianki when nightly QA fails"
         if: failure()
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: bash scripts/ci/slack-alert.sh ":red_circle: nightly qa:all failed on main at ${GITHUB_SHA::7}: ${RUN_URL}"
+        run: |
+          bash scripts/ci/slack-alert.sh ":red_circle: nightly qa:all failed on main at ${GITHUB_SHA::7}: ${RUN_URL}"
