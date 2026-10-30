@@ -53,6 +53,7 @@ re-exports for the hub and the sender.
 | `DebugChatHost.tsx`                                      | the page's loader: import, re-import on reload, fallback |
 | `DebugPairModal.tsx`                                     | the pairing modal                                        |
 | `MicButton.tsx`, `mic.ts`                                | the mic: VAD, STT client, dictation rules                |
+| `latency.ts`                                             | voice → reply timing per line (monitoring.md)            |
 | `debug-widget.ts`                                        | shared rules: allowed URLs, cache-busting, module checks |
 | `debug-chat-tabs.ts`, `tap-gesture.ts`                   | one voice per device; taps and drags                     |
 | `wire.ts`, `icons.tsx`, `LiagentMark.tsx`                | wire types and helpers; icons; the liagent mark          |

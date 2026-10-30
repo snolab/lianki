@@ -21,7 +21,7 @@
  *
  *   --no-pair  fail instead of asking the owner (for the chat agent).
  *
- *   bun scripts/dev/eval.ts chat [--label "…"] [--out <path>] [--exit-on-idle]
+ *   bun scripts/dev/eval.ts chat [--label "…"] [--out <path>] [--exit-on-idle] [--ack]
  *       Listen to every chat thread: the owner's and each friend's (any
  *       signed-in user on a debug page). Pairs if there is no saved grant —
  *       prints {"type":"pending","code"} to stdout; the owner taps "Allow chat
@@ -38,7 +38,11 @@
  *       --out. Reconnects on close, backing off, by resuming the grant: it
  *       pairs at most once per run. With no grant left after that it prints
  *       {"type":"error"} and waits, without asking again, until restarted or
- *       a grant is saved by another run.
+ *       a grant is saved by another run. A live line also carries "lagMs"
+ *       (hub → this listener; two clocks) and, from the mic, "timing" (the
+ *       page's VoiceTiming). --ack answers each new owner or friend line at
+ *       once with one busy beat, so the page's spinner shows "heard you"
+ *       before the agent's turn (docs/monitoring.md, "Voice latency").
  *
  *   bun scripts/dev/eval.ts say [--to <thread|email>] "text"      (or - for stdin)
  *       Reply with the saved grant (the chat grant, else the eval grant:
@@ -171,6 +175,8 @@ const noPair = boolFlag("--no-pair");
 const lastFlag = boolFlag("--last");
 /** chat: exit on {type:"pages-idle"} instead of staying for pages-back. */
 const exitOnIdle = boolFlag("--exit-on-idle");
+/** chat: answer each live owner/friend line at once with one busy beat ("heard you"). */
+const ackFlag = boolFlag("--ack");
 const labelFlag = flag("--label");
 const label = labelFlag ?? `lianki main lane on ${hostname()}`;
 const target = flag("--target");
@@ -300,12 +306,14 @@ function chat(out?: string) {
   const emit = (
     m: Msg,
     observed = routeTo(where.node, m.to as string | undefined) === "observed",
-  ) => {
-    if (typeof m.id !== "string" || seen.has(m.id)) return;
+    lagMs?: number,
+  ): boolean => {
+    if (typeof m.id !== "string" || seen.has(m.id)) return false;
     const line = chatLine(m, where, observed);
-    if (!line) return;
+    if (!line) return false;
     seen.add(m.id);
-    print(line);
+    print(lagMs === undefined ? line : { ...line, lagMs });
+    return true;
   };
   /**
    * No grant, and the owner was asked once already: say so and wait — not
@@ -349,8 +357,17 @@ function chat(out?: string) {
           if (first && typeof h.id === "string") seen.add(h.id);
           else emit(h);
         first = false;
-      } else if (m.type === "chat" && m.message) emit(m.message as Msg, m.observed === true);
-      else if (m.type === "edited")
+      } else if (m.type === "chat" && m.message) {
+        const msg = m.message as Msg;
+        // Live: how long the hub → this listener leg took (the hub's clock vs this one's).
+        const lagMs = Date.now() - Number(msg.at);
+        const fresh = emit(msg, m.observed === true, Number.isFinite(lagMs) ? lagMs : undefined);
+        // --ack: one beat at once, so the page shows the agent is on it before its turn.
+        if (fresh && ackFlag && msg.from !== "agent" && m.observed !== true) {
+          const thread = String(msg.thread ?? "owner");
+          ws.send(beatMessage(thread === "owner" ? {} : { to: String(msg.email ?? thread) }));
+        }
+      } else if (m.type === "edited")
         print({
           type: "edited",
           id: m.id,

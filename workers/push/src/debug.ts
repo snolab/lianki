@@ -995,6 +995,7 @@ export class DebugHub {
         ...(page.sender ? { sender: page.sender } : {}),
         ...(m.to ? { to: m.to } : {}),
         ...(m.source ? { source: m.source } : {}),
+        ...(m.timing ? { timing: m.timing } : {}),
       });
     }
     // A sleeping eval grant (listed to the owner's pages only): End, or add a page.

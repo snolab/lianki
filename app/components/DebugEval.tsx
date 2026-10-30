@@ -18,7 +18,8 @@ import {
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
 import { isKey } from "@lianki/debug-chat/storage-keys";
-import type { ChatStrings } from "@lianki/debug-chat/wire";
+import { type ChatStrings, type VoiceTiming, cleanTiming } from "@lianki/debug-chat/wire";
+import { voiceLatency } from "@lianki/debug-chat/latency";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
@@ -255,6 +256,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
             seenAt: Date.now(),
             label: typeof m.label === "string" ? m.label : "agent",
           };
+          voiceLatency().ack();
           reBeat();
           return;
         }
@@ -278,8 +280,12 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
             reBeat();
             // Every tab shows it; only one reads it aloud. speakReply queues it
             // (voice.ts): always read while the mic is on, else by the focus rule.
-            if (tabsRef.current?.isSpeaker() ?? true) speakReply(m.text);
-          } else setWarning(null);
+            const spoken = (tabsRef.current?.isSpeaker() ?? true) && speakReply(m.text);
+            voiceLatency().heard(m, spoken === true);
+          } else {
+            setWarning(null);
+            voiceLatency().heard(m);
+          }
           return;
         }
         if (msg.type === "edited") {
@@ -406,19 +412,25 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
     } catch {}
   };
   /** `to`: the state-tree node the line is addressed to (absent = the main thread). */
-  const sendChat = (text: string, to?: string, opts?: { source?: "stt" }) => {
+  const sendChat = (text: string, to?: string, opts?: { source?: "stt"; timing?: VoiceTiming }) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return false;
     try {
+      const id = crypto.randomUUID().slice(0, 12);
+      // A voice line's timestamps ride along (an older hub drops them).
+      const timing = opts?.source === "stt" ? cleanTiming(opts.timing) : undefined;
       sock.send(
         JSON.stringify({
           type: "chat",
-          id: crypto.randomUUID().slice(0, 12),
+          id,
           text,
           ...(to ? { to } : {}),
           ...(opts?.source === "stt" ? { source: "stt" } : {}),
+          ...(timing ? { timing } : {}),
         }),
       );
+      // Its reply is timed against it (latency.ts); main-thread lines only.
+      if (timing && !to) voiceLatency().sent(id, text, timing);
       return true;
     } catch {
       return false;

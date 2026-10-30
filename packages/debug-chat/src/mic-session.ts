@@ -18,6 +18,7 @@
  * Everything that touches the browser is injected (MicDeps), so this is
  * unit-tested with fakes.
  */
+import type { UttMarks } from "./latency";
 import {
   type MicState,
   type StreamStt,
@@ -38,7 +39,7 @@ export type LocalClient = StreamStt & {
 /** globalThis key of the session. */
 export const MIC_SESSION_KEY = "__lkMic";
 /** Bumped when the session's shape changes; an older one is migrated, its stream kept. */
-export const MIC_SESSION_V = 3;
+export const MIC_SESSION_V = 4;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -86,6 +87,8 @@ export type MicDeps = {
   log?: (ev: Record<string, unknown>) => void;
   /** A client for the local streaming STT at this URL (local-stt.ts createLocalStt). */
   localStt?: (url: string) => LocalClient;
+  /** A final utterance's timestamps (createMic's `timing`; latency.ts). */
+  timing?: (seq: number, marks: UttMarks) => void;
 };
 
 type Listener = (v: MicView) => void;
@@ -180,6 +183,7 @@ export function createMicSession(
     onError: (e) => emit({ error: e }),
     onProb: (p) => deps.onProb?.(p),
     log: (ev) => deps.log?.(ev),
+    timing: (seq, m) => deps.timing?.(seq, m),
   });
   const unhold = deps.subscribeHold?.((h) => mic.hold(h));
 

@@ -1,7 +1,7 @@
 /**
- * The widget's own strings in Chinese, picked when the page is in Chinese
- * (`<html lang="zh…">`), until the host passes localized ones. English
- * otherwise. The tree's strings (StateTree.tsx TreeStrings) included.
+ * The widget's own strings in Chinese or Japanese, picked by the page's
+ * language (`<html lang="zh…">`, `"ja"`), until the host passes localized
+ * ones. English otherwise. The tree's strings (StateTree.tsx TreeStrings) included.
  */
 import type { TreeStrings } from "./StateTree";
 
@@ -16,6 +16,16 @@ export type UiStrings = {
   items: string;
   /** The mark on a voice line the agent polished (its tooltip and label). */
   polished: string;
+  /** The menu's Latency row (latency.ts): its title, and before any voice reply. */
+  latency: string;
+  latencyNone: string;
+  /** Its stages: the VAD's silence wait, STT, the page's own steps, the hub, the agent, the voice. */
+  latVad: string;
+  latStt: string;
+  latSend: string;
+  latHub: string;
+  latReply: string;
+  latVoice: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -28,6 +38,14 @@ export const UI_EN: UiStrings = {
   needsYou: "needs you",
   items: "items",
   polished: "Polished",
+  latency: "Latency, last voice line",
+  latencyNone: "Latency: no voice reply yet",
+  latVad: "silence",
+  latStt: "STT",
+  latSend: "send",
+  latHub: "hub",
+  latReply: "reply",
+  latVoice: "voice",
 };
 
 export const UI_ZH: UiStrings = {
@@ -40,6 +58,34 @@ export const UI_ZH: UiStrings = {
   needsYou: "等你处理",
   items: "项",
   polished: "已润色",
+  latency: "延迟（上一句语音）",
+  latencyNone: "延迟：还没有语音回复",
+  latVad: "静音等待",
+  latStt: "转写",
+  latSend: "发送",
+  latHub: "传输",
+  latReply: "回复",
+  latVoice: "朗读",
+};
+
+export const UI_JA: UiStrings = {
+  stateTree: "状態ツリー",
+  closeTree: "状態ツリーを閉じる",
+  noTreeSource: "状態ツリーのソースがありません",
+  lastDone: "最近の完了",
+  nowDoing: "進行中",
+  upNext: "次",
+  needsYou: "あなた待ち",
+  items: "件",
+  polished: "整えました",
+  latency: "遅延（直前の音声）",
+  latencyNone: "遅延：まだ音声の返信がありません",
+  latVad: "無音待ち",
+  latStt: "文字起こし",
+  latSend: "送信",
+  latHub: "転送",
+  latReply: "返信",
+  latVoice: "読み上げ",
 };
 
 /** The tree's strings in Chinese (StateTree.tsx TreeStrings). */
@@ -74,8 +120,14 @@ export function isZh(lang: string | null | undefined = globalThis.document?.docu
   return /^zh\b/i.test(lang ?? "");
 }
 
-/** The widget's strings for the page's language. */
-export const uiStrings = (lang?: string | null): UiStrings => (isZh(lang) ? UI_ZH : UI_EN);
+/** The page's language is Japanese. */
+export function isJa(lang: string | null | undefined = globalThis.document?.documentElement.lang) {
+  return /^ja\b/i.test(lang ?? "");
+}
+
+/** The widget's strings for the page's language (zh, ja, else English). */
+export const uiStrings = (lang?: string | null): UiStrings =>
+  isZh(lang) ? UI_ZH : isJa(lang) ? UI_JA : UI_EN;
 
 /** The tree's defaults for the page's language, under the host's own. */
 export const treeDefaults = (lang?: string | null): Partial<TreeStrings> =>

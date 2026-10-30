@@ -55,6 +55,8 @@ export function chatLine(
     ...(typeof m.agentId === "string" ? { agentId: m.agentId } : {}),
     // "stt": spoken into the widget's mic, so `eval.ts edit` may polish it.
     ...(m.source === "stt" ? { source: "stt" } : {}),
+    // A voice line's timestamps on the page's clock (VoiceTiming; latency.ts).
+    ...(m.timing && typeof m.timing === "object" ? { timing: m.timing } : {}),
     ...(m.edited && typeof m.edited === "object" ? { raw: m.raw, edited: m.edited } : {}),
     ...(observed ? { observed: true } : {}),
   };

@@ -14,6 +14,7 @@
  * the rolling chunks, and its final is handed to `upload` as `info.local`,
  * which falls back to /api/debug/stt when it fails.
  */
+import type { UttMarks } from "./latency";
 import type { LocalFinal, LocalUtt } from "./local-stt";
 
 /** Longest utterance: past this it is cut and sent, and listening goes on. */
@@ -478,9 +479,17 @@ export function createMic(d: {
   partials?: boolean;
   /** The local streaming STT, if one is configured now (asked at each utterance). */
   stream?: () => StreamStt | undefined;
+  /**
+   * A final utterance's timestamps, for the voice latency record (latency.ts):
+   * at its end `{t_lastVoice?, t_speechEnd, audioMs}`, then `{t_uploadStart}`,
+   * then `{t_sttDone, dropped}`. Partials are not timed.
+   */
+  timing?: (seq: number, marks: UttMarks) => void;
+  now?: () => number;
   setTimer?: (f: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
 }) {
+  const now = d.now ?? Date.now;
   const setTimer = d.setTimer ?? ((f, ms) => setTimeout(f, ms));
   const clearTimer = d.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
   const q = new UtteranceQueue();
@@ -516,6 +525,8 @@ export function createMic(d: {
   let speechLen = 0;
   let probSum = 0;
   let probN = 0;
+  /** When the last frame at or over SPEECH_FRAME_PROB was heard (Silero only). */
+  let lastVoice: number | undefined;
   /** VAD pause/start calls, in order. */
   let ctl: Promise<unknown> = Promise.resolve();
   const toMs = (n: number) => Math.round((n / RATE) * 1000);
@@ -575,6 +586,7 @@ export function createMic(d: {
       set("capturing");
       resetLive();
       speechLen = probSum = probN = 0;
+      lastVoice = undefined;
       clearTimer(cap);
       cap = setTimer(() => void vad?.flush(), MAX_UTTERANCE_MS);
       dropUtt();
@@ -609,7 +621,10 @@ export function createMic(d: {
         d.onProb?.(prob);
         probSum += prob;
         probN++;
-        if (prob >= SPEECH_FRAME_PROB) speechLen += frame.length;
+        if (prob >= SPEECH_FRAME_PROB) {
+          speechLen += frame.length;
+          lastVoice = now();
+        }
       }
       live.push(frame);
       liveLen += frame.length;
@@ -648,17 +663,27 @@ export function createMic(d: {
       const ms = toMs(probN ? speechLen : audio.length);
       const prob = probN ? Math.round((probSum / probN) * 1000) / 1000 : undefined;
       speechLen = probSum = probN = 0;
+      d.timing?.(seq, {
+        ...(lastVoice !== undefined ? { t_lastVoice: lastVoice } : {}),
+        t_speechEnd: now(),
+        audioMs: toMs(audio.length),
+      });
+      lastVoice = undefined;
       pending();
+      const wav = encodeWav(audio);
       const local = u?.end(audio);
       local?.catch(() => {}); // upload decides; never an unhandled rejection
-      d.upload(encodeWav(audio), { seq, durationMs: toMs(audio.length), partial: false, local })
+      d.timing?.(seq, { t_uploadStart: now() });
+      d.upload(wav, { seq, durationMs: toMs(audio.length), partial: false, local })
         .then(
           (text) => {
             const drop = isHallucination(text, ms, prob);
             if (drop) d.log?.({ ev: "stt-hallucination", text: text.slice(0, 80), ms, prob });
+            d.timing?.(seq, { t_sttDone: now(), dropped: drop || !text.trim() });
             q.resolve(seq, drop ? null : text);
           },
           (e) => {
+            d.timing?.(seq, { t_sttDone: now(), dropped: true });
             q.resolve(seq, null);
             fail(e);
           },

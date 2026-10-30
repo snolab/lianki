@@ -19,7 +19,9 @@ import {
   pageParts,
   parseAddress,
   pathLabel,
+  type VoiceTiming,
 } from "./wire";
+import { latencyRows, voiceLatency } from "./latency";
 import { getKey, setKey } from "./storage-keys";
 import { LiagentMark } from "./LiagentMark";
 import { Avatar } from "./Avatar";
@@ -305,8 +307,8 @@ if (typeof window !== "undefined")
  * is always read; otherwise only to someone typing here with the speaker on.
  * DebugEval calls this bundled copy; the hot-loaded chat shares the session.
  */
-export function speakReply(text: string) {
-  voice().reply(text);
+export function speakReply(text: string): boolean {
+  return voice().reply(text);
 }
 
 let unlocked = false;
@@ -346,9 +348,14 @@ export type DebugChatProps = {
   messages: ChatMessage[];
   /**
    * Send a line; `to` is the state-tree node it is addressed to (absent = the
-   * main thread). `opts.source` is "stt" when the line is the mic's text, unchanged.
+   * main thread). `opts.source` is "stt" when the line is the mic's text, unchanged;
+   * then `opts.timing` carries its timestamps (latency.ts), when the mic left any.
    */
-  onSend: (text: string, to?: string, opts?: { source?: MessageSource }) => boolean;
+  onSend: (
+    text: string,
+    to?: string,
+    opts?: { source?: MessageSource; timing?: VoiceTiming },
+  ) => boolean;
   /** The nodes listeners are subscribed at: "@/…" completions. */
   nodes?: string[];
   /** Approved senders, listed in the pill's menu with an End button each. */
@@ -557,6 +564,13 @@ export function DebugChat({
   const fetchedTree = useFragmentSource(tree && !renderTree && !treeSource);
   /** The widget's strings for the page's language (ui-strings.ts), under the host's. */
   const ui = uiStrings();
+  /** The latest voice → reply breakdown (latency.ts), for the menu. */
+  const [lastLatency, setLastLatency] = useState(() => voiceLatency().latest());
+  useEffect(() => {
+    const s = voiceLatency();
+    setLastLatency(s.latest());
+    return s.subscribe(() => setLastLatency(s.latest()));
+  }, []);
   const treeText = { ...treeDefaults(), ...hostTreeText };
   /** The tree as treeNav sees it (index-path ids), and where its focus and depths are. */
   const navIx = useMemo(() => navIndexOf(treeData.root), [treeData.root]);
@@ -835,8 +849,14 @@ export function DebugChat({
     }
     if (!text) return false;
     const source = draftSource(draftRef.current, pureDictation.current);
+    // A voice line carries its timestamps (latency.ts): the latest utterance in it.
+    const timing = source ? voiceLatency().take() : undefined;
     if (
-      !sendRef.current(text, to === ROOT_NODE ? undefined : to, source ? { source } : undefined)
+      !sendRef.current(
+        text,
+        to === ROOT_NODE ? undefined : to,
+        source ? { source, ...(timing ? { timing } : {}) } : undefined,
+      )
     ) {
       setOffline(true);
       return false;
@@ -876,6 +896,7 @@ export function DebugChat({
   const mirror = useRef<HTMLDivElement | null>(null);
   /** A transcript lands in the draft, as typed text would, but is never sent by itself. */
   const dictated = (t: string) => {
+    voiceLatency().shown();
     const { draft: next, send } = appendDictation(draftRef.current, t);
     pureDictation.current = dictatedDraft(draftRef.current, pureDictation.current, next);
     caretToEnd.current = true;
@@ -1492,6 +1513,31 @@ export function DebugChat({
           </button>
         ))}
       </div>
+      {/* The last voice line's path to its reply (latency.ts), when there is one or the mic is on. */}
+      {(lastLatency || vs.mic) && (
+        <div data-testid="debug-menu-latency" className="px-3 py-1 text-gray-500">
+          {lastLatency ? (
+            (() => {
+              const rows = latencyRows(lastLatency.breakdown, ui);
+              return (
+                <>
+                  <div>
+                    {ui.latency}
+                    {rows.total && (
+                      <span className="ms-1 font-semibold tabular-nums">{rows.total} s</span>
+                    )}
+                  </div>
+                  <div className="tabular-nums">
+                    {rows.parts.map(([k, v]) => `${k} ${v}`).join(" · ")}
+                  </div>
+                </>
+              );
+            })()
+          ) : (
+            ui.latencyNone
+          )}
+        </div>
+      )}
       {vs.queued > 0 && (
         <button
           type="button"
