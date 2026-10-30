@@ -811,7 +811,8 @@ export function DebugChat({
     const rowOf = (id: string) =>
       el.querySelector<HTMLElement>(`[data-testid=tree-chips] [data-id="${id}"]`);
     const pin = pinRow({ focusId: b.prevFocus }, nav, b.shown);
-    if (pin !== null && (nav.base !== undefined || !b.expand)) {
+    // With the focus line, an expand keeps the row still too (the slack below shows its children).
+    if (pin !== null && (nav.base !== undefined || !b.expand || treeFocusY.current > 0)) {
       const pinned = rowOf(pin);
       const was = b.tops.get(pin);
       if (pinned && was !== undefined)
@@ -851,7 +852,8 @@ export function DebugChat({
     // per render, so a scroll reads no layout). Not during a sideways drag.
     const y = treeFocusY.current;
     if (y > 0 && !rowPress.current.on && treeRows.current.length) {
-      const row = pickAnchor(treeRows.current, el.scrollTop + y);
+      // +1: a row whose top is on the line is under it (not the one ending there).
+      const row = pickAnchor(treeRows.current, el.scrollTop + y + 1);
       if (row && row.id !== navRef.current.focusId && !navRef.current.base) {
         const next = treeNav(navIx.ix, navRef.current, { type: "focus", id: row.id });
         if (next !== navRef.current) {
@@ -953,7 +955,14 @@ export function DebugChat({
       const was = rowAxis.current.axis();
       const m = rowAxis.current.move(e.clientX, e.clientY);
       if (!m || m.axis !== "x") return;
-      if (!was) navTo({ type: "dragStart" });
+      if (!was) {
+        // Locked sideways: the rest of the press is ours, wherever the finger goes
+        // (the rows' gaps are click-through). A tap never captures, so its click stays.
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {}
+        navTo({ type: "dragStart" });
+      }
       const cells = dragCells(m.dx, p.cells);
       if (was && cells === p.cells) return;
       p.cells = cells;
