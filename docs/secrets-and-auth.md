@@ -4,8 +4,9 @@
 
 - secretlint runs pre-commit; gitleaks scans the **full history** in CI. Run it
   locally with `bun run scan:secrets`; config in `.gitleaks.toml`.
-- `.env.local` and `.dev.vars` are gitignored and unrecoverable — never delete
-  them. `.dev.vars` is auto-created from `.dev.vars.example` on the first
+- `.env.local` and `.dev.vars` are gitignored and have no other copy — never
+  delete them (encrypted backup proposed in
+  [secrets-backup-plan.md](secrets-backup-plan.md), not done yet). `.dev.vars` is auto-created from `.dev.vars.example` on the first
   `qa:all` run.
 
 ## Magic-link email

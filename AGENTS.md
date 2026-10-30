@@ -14,8 +14,9 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 - **NEVER `git reset --hard`** to move a branch — it silently destroys
   uncommitted work. Use `git reset --keep`, which aborts instead of overwriting.
 - Always bump `@version` in `lianki.user.js` when changing the userscript.
-- `.env.local` and `.dev.vars` are gitignored and unrecoverable — never delete
-  them.
+- `.env.local` and `.dev.vars` are gitignored and have no other copy — never
+  delete them. An encrypted backup is proposed in
+  [docs/secrets-backup-plan.md](docs/secrets-backup-plan.md) (not done yet).
 - Use owner `snolab` for every `gh` / `gh api` call. A wrong owner returns a
   plan-gated 403 that misleadingly reads as "branch protection is off".
 
