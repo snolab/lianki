@@ -20,6 +20,36 @@ export function logSurface({ expanded, fade }: { expanded: boolean; fade: boolea
   };
 }
 
+/** Above the full-screen log's top: the visible top (notch, keyboard pan) plus this. */
+export const FULL_LOG_GAP_PX = 8;
+
+/**
+ * The full-screen log (while a vertical drag on the bar scrolls it): how tall
+ * it may grow, upward from where its bottom edge already is (just above the
+ * bar, which stays put), to the visible top less the notch. Never shorter
+ * than it is.
+ */
+export function fullLogHeight(d: {
+  /** The log's rect now (layout px). */
+  bottom: number;
+  height: number;
+  /** env(safe-area-inset-top), and visualViewport.offsetTop (a keyboard pan). */
+  safeTop: number;
+  vvTop?: number;
+}): number {
+  const top = Math.max(d.safeTop, d.vvTop ?? 0) + FULL_LOG_GAP_PX;
+  return Math.round(Math.max(d.height, d.bottom - top));
+}
+
+/**
+ * The scrollTop that keeps the same distance from the end (`gap`, px below
+ * the view) after the log's height changed, so the lines at its bottom edge,
+ * which does not move, stay where they were.
+ */
+export function keepEndGap(d: { scrollHeight: number; clientHeight: number; gap: number }): number {
+  return Math.max(0, Math.round(d.scrollHeight - d.clientHeight - Math.max(0, d.gap)));
+}
+
 /**
  * A stronger halo for lines floating straight over the page (the minimized
  * chat's floating and frontier lines): text only, never a fill. Layers of
