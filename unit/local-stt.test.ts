@@ -198,6 +198,37 @@ describe("createLocalStt", () => {
     expect(seen).toEqual(["connecting", "ready", "down", "connecting", "idle"]);
   });
 
+  it("ignores what is not JSON, and a send that throws", async () => {
+    const h = setup();
+    const s = h.connect();
+    s.onmessage?.({ data: "not json" });
+    s.onmessage?.({ data: new Uint8Array(2) });
+    expect(h.stt.connected()).toBe(true);
+    s.send = () => {
+      throw new Error("socket busy");
+    };
+    const u = h.stt.begin(() => {}); // the begin message throws: swallowed
+    expect(u).not.toBeNull();
+  });
+
+  it("ending an utterance whose socket went away rejects at once", async () => {
+    const h = setup();
+    const s = h.connect();
+    const u = h.stt.begin(() => {})!;
+    s.readyState = 3; // closing, before onclose
+    await expect(u.end(new Float32Array(10))).rejects.toThrow("not connected");
+  });
+
+  it("works with the real WebSocket and timers by default", async () => {
+    const stt = createLocalStt("ws://127.0.0.1:9/none");
+    const down = new Promise<void>((res) => stt.subscribe((s) => s === "down" && res()));
+    stt.warm();
+    expect(stt.state()).toBe("connecting");
+    await down;
+    stt.close();
+    expect(stt.state()).toBe("idle");
+  });
+
   it("a socket that cannot even be made is down", () => {
     const stt = createLocalStt("wss://x", {
       open: () => {

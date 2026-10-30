@@ -45,6 +45,27 @@ To keep it running after a session (or after a reboot), from a checkout of
 bun scripts/dev/debug-widget-server.ts --port 5194 --tailnet /lianki-widget-stt
 ```
 
+To keep the STT server up across logouts, crashes and reboots, run it under
+the Mac's process supervisor, oxmgr (not set up yet; the owner decides).
+From the main checkout, so it serves what is on `main`:
+
+```bash
+cd ~/ws/snolab/lianki/tree/main
+oxmgr start --name lianki-stt --restart always \
+  --cwd "$PWD" \
+  --health-cmd "curl -fsS http://127.0.0.1:5193/health" --health-interval 60 \
+  "$HOME/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/server.py --port 5193 --tailnet /lianki-stt --origin https://<mac>.ts.net"
+oxmgr startup --system launchd   # prints the launchd step that starts the oxmgr daemon at login
+oxmgr logs lianki-stt            # connections, finals (length and decode ms, never text), refused handshakes
+oxmgr restart lianki-stt         # after pulling a change to scripts/local-stt
+```
+
+`--tailnet` maps `/lianki-stt` with `tailscale serve --bg` on start. The
+mapping survives a restart, so a crash loop never leaves the page pointing
+nowhere for long; the dot just turns grey and the mic uses the cloud
+meanwhile. To take it down for good: `oxmgr delete lianki-stt` and
+`tailscale serve --set-path /lianki-stt off`.
+
 `--origin` adds the tailnet origin for the widget harness; lianki.com is
 always allowed. Once this is on main, production pages need only the STT
 server and the flag below: the widget code ships with the app. If the server
