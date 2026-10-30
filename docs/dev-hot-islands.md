@@ -158,7 +158,7 @@ with the page's, and validates with its own contract version.
 
 ## The islands today
 
-- `header.brand`: the name beside the seal in the top bar.
+- `header.brand`: the wordmark beside the seal in the top bar (lib/brand.ts): 鏈記 (lianki.com) for zh/ja/ko, Lianki.com elsewhere; props `appName`, `locale` (contract v2).
 - `words.swipeCard`, `words.swipeCue`, `words.swipeGrades`, `words.swipeFeel`
   and `words.swipeTuner`: the /words swipe's UI over its headless core. They
   read `@/lib/words/swipe-core`, a shared module, through context. See
