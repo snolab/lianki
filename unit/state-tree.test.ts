@@ -408,8 +408,8 @@ describe("the plan in docs/state-tree.md", () => {
   });
   it("its frontier: an owner decision now, the swipe check next, summaries in zh and en", () => {
     const zh = frontier(doc, { locale: "zh" });
-    expect(zh.doing?.title).toBe("Confirm deleting public/proto/cords.html");
-    expect(zh.doing?.path).toEqual([plan.title, plan.children[0].title]);
+    expect(zh.doing?.title).toBe("OK the bar preview");
+    expect(zh.doing?.path).toEqual([plan.title, plan.children[1].title]);
     expect(zh.doing?.summary).toBe("多线并进");
     expect(zh.done?.summary).toBe("捷报频传");
     expect(zh.done?.title).toContain("(#299)"); // the latest (done …)
@@ -434,10 +434,8 @@ describe("the plan in docs/state-tree.md", () => {
       });
     walk(doc.children);
     expect(new Set(titles).size).toBe(titles.length);
-    for (const dup of ["#279", "#527", "#300", "#296", "#298", "#299", "#301", "cords.html"])
-      expect(titles.filter((t) => t.includes(dup)).length).toBeLessThanOrEqual(
-        dup === "cords.html" ? 2 : 1,
-      );
+    for (const dup of ["#279", "#527", "#300", "#296", "#298", "#299", "#301"])
+      expect(titles.filter((t) => t.includes(dup)).length).toBeLessThanOrEqual(1);
   });
 });
 

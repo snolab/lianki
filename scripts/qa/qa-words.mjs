@@ -499,8 +499,9 @@ try {
   for (let k = 0; k < 7; k++) await gear.click();
   check((await page.locator("[data-debug-badge]").count()) === 1, "seven taps turn debug on");
   check(
-    (await page.locator('[data-debug-proto="slip"][href="/proto/slip"]').count()) === 1,
-    "debug mode links the design prototypes",
+    (await page.locator('[data-debug-proto="slip"][href="/proto/slip"]').count()) === 1 &&
+      (await page.locator("[data-debug-proto]").count()) === 1,
+    "debug mode links the slip prototype (and nothing else)",
   );
   for (let k = 0; k < 7; k++) await gear.click();
   check((await page.locator("[data-debug-badge]").count()) === 0, "seven more turn it off");
