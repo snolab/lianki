@@ -16,7 +16,9 @@ import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { trustedOrigins } from "@/lib/trusted-origins";
 import { mailLocale, signInMail } from "@/lib/sign-in-mail";
 import { db, mongoClient } from "./app/db";
-import { dbBackend, getD1 } from "./lib/d1";
+import { cfRequestProps, dbBackend, getD1, workerWaitUntil } from "./lib/d1";
+import { securityPlugin } from "./lib/security/auth-plugin";
+import type { ThrottleDb } from "./lib/security/throttle";
 import { passwordAuthEnabled, runtimeNodeEnv } from "./lib/auth-env";
 import { PASSKEY_RP_NAME, passkeyRelyingParty } from "./lib/passkey";
 import { settleUserSponsorships, type D1WithBatch } from "./lib/payments/sponsors-store";
@@ -170,6 +172,15 @@ function baseOptions() {
       // added from the profile page or right after an email sign-in. Always on:
       // unlike mail it needs no provider. Table: db/migrations/0011_passkey.sql.
       passkeyPlugin(),
+      // Sign-in lockout, code-send limits and the new-device login notice
+      // (docs/security-measures.md). D1 only.
+      securityPlugin({
+        getDb: () => (dbBackend() === "d1" ? (getD1() as unknown as ThrottleDb) : null),
+        getCf: cfRequestProps,
+        waitUntil: (p) => {
+          if (!workerWaitUntil(p)) void p;
+        },
+      }),
       nextCookies(), // must be last — handles Set-Cookie in server actions
     ],
   };

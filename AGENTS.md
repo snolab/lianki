@@ -100,4 +100,5 @@ that are expensive to rediscover.
 | Sync conflicts, deletions, tombstones                         | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
 | Metrics, slowness and error alerts (Slack #lianki)            | [docs/monitoring.md](docs/monitoring.md)                            |
 | Payments, Pro passes, Stripe, invites, gift codes             | [docs/payments.md](docs/payments.md)                                |
+| Security measures: admin gate, lockout, scans, card testing   | [docs/security-measures.md](docs/security-measures.md)              |
 | UI layout: content fills the screen, glass overlays           | [docs/design-principles.md](docs/design-principles.md)              |

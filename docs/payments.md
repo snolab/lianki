@@ -11,9 +11,12 @@ account settles in JPY.
 
 1. `/membership` asks `GET /api/payments/checkout` whether passes are on sale
    and, if so, shows buy buttons instead of "Contact us".
-2. `POST /api/payments/checkout {passId}` creates a Checkout Session (card,
-   Alipay, WeChat Pay) carrying `userId` and `passId` in its metadata, and the
-   page redirects to it.
+2. `POST /api/payments/checkout {passId, turnstileToken}` first passes the
+   card-testing guard (5 starts / 10 min per user and IP, Turnstile;
+   `lib/payments/checkout-guard.ts`), then creates a Checkout Session (card,
+   Alipay, WeChat Pay) carrying `userId` and `passId` in its metadata, with
+   3-D Secure requested for cards (`lib/payments/checkout-policy.ts`), and the
+   page redirects to it. See [security-measures.md](security-measures.md).
 3. Stripe pushes `checkout.session.completed` (or
    `checkout.session.async_payment_succeeded`) to
    `POST /api/payments/stripe-webhook`. The signature is checked with Web
@@ -69,7 +72,8 @@ Rules (owner, 2026-10-29) live in `lib/referrals/rules.ts`; the D1 side in
 - **When it is checked**: no timers. Activation is settled when the invitee
   reads `/api/membership/status` or the inviter opens `/membership`
   (`GET /api/invite`); the purchase bonus in the Stripe webhook.
-- **Gift codes**: the owner makes them at `/dev/gift-codes` (N days × M uses,
+- **Gift codes**: the owner makes them at `/dev/gift-codes` (API
+  `/api/dev/gift-codes`; N days × M uses,
   optional expiry); anyone redeems on `/membership`, once per code. Not
   counted against the invite cap.
 

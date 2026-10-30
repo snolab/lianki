@@ -6,8 +6,7 @@ import { getFSRSNotesCollection } from "@/app/getFSRSNotesCollection";
 import { newServerHLC } from "@/app/fsrs-helpers";
 import { parseApkg } from "@/app/lib/apkg-parser";
 import { logSanitizedError } from "@/lib/safeError";
-
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+import { APKG_UPLOAD, checkMagic, checkUpload } from "@/lib/security/upload-policy";
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,19 +19,16 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
 
-    if (!file) {
+    if (!(file instanceof File)) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    if (!file.name.endsWith(".apkg")) {
-      return NextResponse.json({ error: "File must be an .apkg file" }, { status: 400 });
-    }
-
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: "File too large (max 100MB)" }, { status: 400 });
-    }
+    const allowed = checkUpload(file, APKG_UPLOAD);
+    if (!allowed.ok) return NextResponse.json({ error: allowed.error }, { status: 400 });
 
     const buffer = await file.arrayBuffer();
+    const magic = checkMagic(buffer, APKG_UPLOAD);
+    if (!magic.ok) return NextResponse.json({ error: magic.error }, { status: 400 });
     const parsed = await parseApkg(buffer);
 
     const FSRSNotes = getFSRSNotesCollection(email);

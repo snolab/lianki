@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/auth";
-import { dbBackend } from "@/lib/d1";
+import { dbBackend, getD1 } from "@/lib/d1";
+import { runtimeNodeEnv } from "@/lib/auth-env";
+import { guardCheckout } from "@/lib/payments/checkout-guard";
+import { clientIp, type ThrottleDb } from "@/lib/security/throttle";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 import { passFor } from "@/lib/payments/passes";
 import { createCheckoutSession, stripeEnabled } from "@/lib/payments/stripe";
 
@@ -10,7 +14,11 @@ export async function GET() {
   return NextResponse.json({ enabled: stripeEnabled() && dbBackend() === "d1" });
 }
 
-/** Start a Stripe Checkout for a prepaid pass: `{ passId }` → `{ url }` to redirect to. */
+/**
+ * Start a Stripe Checkout for a prepaid pass: `{ passId, turnstileToken }` →
+ * `{ url }` to redirect to. Rate limit + Turnstile first (checkout-guard.ts);
+ * the session itself asks for 3-D Secure (checkout-policy.ts).
+ */
 export async function POST(req: Request) {
   // Fulfilment writes D1 only; the Mongo copy is a frozen rollback.
   if (!stripeEnabled() || dbBackend() !== "d1") {
@@ -19,9 +27,32 @@ export async function POST(req: Request) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = (await req.json().catch(() => null)) as { passId?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as {
+    passId?: unknown;
+    turnstileToken?: unknown;
+  } | null;
   const pass = passFor(body?.passId);
   if (!pass) return NextResponse.json({ error: "Unknown pass" }, { status: 400 });
+
+  const env = runtimeNodeEnv();
+  const guard = await guardCheckout(getD1() as unknown as ThrottleDb, {
+    userId: session.user.id,
+    ip: clientIp(req.headers),
+    turnstileToken: body?.turnstileToken,
+    turnstileConfigured: Boolean(process.env.TURNSTILE_SECRET_KEY?.trim()),
+    production: env !== "development" && env !== "test",
+    verifyTurnstile: verifyTurnstileToken,
+  });
+  if (!guard.ok) {
+    console.log(JSON.stringify({ event: "checkout.refused", status: guard.status }));
+    return NextResponse.json(
+      { error: guard.error },
+      {
+        status: guard.status,
+        headers: guard.retryAfterS ? { "Retry-After": String(guard.retryAfterS) } : undefined,
+      },
+    );
+  }
 
   const origin = new URL(req.url).origin;
   try {

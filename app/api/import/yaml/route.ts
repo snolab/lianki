@@ -1,3 +1,4 @@
+import { YAML_UPLOAD, checkUpload } from "@/lib/security/upload-policy";
 import { NextRequest } from "next/server";
 import { parse } from "yaml";
 import { z } from "zod";
@@ -36,9 +37,14 @@ export async function POST(req: NextRequest) {
     if (!(file instanceof File)) {
       return Response.json({ error: "Missing file field" }, { status: 400 });
     }
+    const allowed = checkUpload(file, YAML_UPLOAD);
+    if (!allowed.ok) return Response.json({ error: allowed.error }, { status: 400 });
     text = await file.text();
   } else {
     text = await req.text();
+    if (text.length > YAML_UPLOAD.maxBytes) {
+      return Response.json({ error: "Body too large (max 10 MB)" }, { status: 413 });
+    }
   }
 
   let parsed: unknown;
