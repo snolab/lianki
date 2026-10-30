@@ -237,6 +237,10 @@ bun scripts/dev/eval.ts chat --label "agent on $(hostname -s)" --out /tmp/lianki
 # Reply (uses the saved grant; exits once the hub has it):
 bun scripts/dev/eval.ts say "On it — fixing the swipe now."
 echo "multi-line reply" | bun scripts/dev/eval.ts say -
+
+# A line with "source":"stt" was spoken: polish its misheard words first
+# (docs/dev-debug-widget.md, "Agent edits of voice messages"):
+bun scripts/dev/eval.ts edit --last --no-pair "Fix the sync button on /words."
 ```
 
 The listener reconnects whenever its socket closes, backing off from 1 s to

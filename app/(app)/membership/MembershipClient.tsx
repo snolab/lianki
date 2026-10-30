@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { useRouter } from "next/navigation";
 import { useIntlayer } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
@@ -37,6 +38,10 @@ export default function MembershipClient() {
   const [passesOnSale, setPassesOnSale] = useState(false);
   const [buying, setBuying] = useState<PassId | null>(null);
   const [justPaid, setJustPaid] = useState(false);
+  // Card-testing protection: checkout needs a Turnstile token (checkout-guard.ts).
+  const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+  const turnstileRef = useRef<TurnstileInstance | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   useEffect(() => {
     fetchMembership();
@@ -53,16 +58,25 @@ export default function MembershipClient() {
       const res = await fetch("/api/payments/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passId }),
+        body: JSON.stringify({ passId, turnstileToken }),
       });
-      const data = (await res.json()) as { url?: string };
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (res.status === 429) return fail(features.buy.tooMany.value);
+      if (res.status === 403 && data.error === "captcha") return fail(features.buy.captcha.value);
       if (!res.ok || !data.url) throw new Error(`checkout ${res.status}`);
       window.location.assign(data.url);
     } catch (e) {
       console.error("Error starting checkout:", e);
-      setError(features.buy.failed.value);
-      setBuying(null);
+      fail(features.buy.failed.value);
     }
+  }
+
+  function fail(message: string) {
+    setError(message);
+    setBuying(null);
+    // A Turnstile token is single-use: get a fresh one for the next try.
+    turnstileRef.current?.reset();
+    setTurnstileToken(null);
   }
 
   async function fetchMembership() {
@@ -233,7 +247,7 @@ export default function MembershipClient() {
                   <button
                     key={id}
                     onClick={() => buy(id)}
-                    disabled={buying !== null}
+                    disabled={buying !== null || (Boolean(siteKey) && !turnstileToken)}
                     className="w-full bg-white text-blue-600 font-semibold px-6 py-2 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-60"
                   >
                     {id === "pro-1m"
@@ -242,6 +256,21 @@ export default function MembershipClient() {
                     · {yen(PASSES[id].amount)}
                   </button>
                 ))}
+                {siteKey && (
+                  <div className="flex justify-center">
+                    <Turnstile
+                      ref={turnstileRef}
+                      siteKey={siteKey}
+                      onSuccess={setTurnstileToken}
+                      onExpire={() => {
+                        turnstileRef.current?.reset();
+                        setTurnstileToken(null);
+                      }}
+                      onError={() => setTurnstileToken(null)}
+                      options={{ theme: "auto", size: "flexible", appearance: "interaction-only" }}
+                    />
+                  </div>
+                )}
                 <p className="text-xs text-center opacity-90">{features.buy.methods.value}</p>
               </div>
             ) : (

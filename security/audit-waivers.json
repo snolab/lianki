@@ -1,0 +1,12 @@
+[
+  {
+    "ghsa": "GHSA-pqg4-j6r4-53mv",
+    "reason": "shell-quote is reached only through dev/build tooling (sflow > npm-run-all; next-intlayer > webpack-dev-server > launch-editor), never by the Worker, and never quotes untrusted input. Drop when those parents update.",
+    "until": "2026-12-31"
+  },
+  {
+    "ghsa": "GHSA-x6jw-m9v5-85vh",
+    "reason": "simple-git is reached only through intlayer's build-time chokidar watcher, which runs git on the repo itself, never on user input, and is not in the Worker bundle. Drop when intlayer moves to simple-git 4.",
+    "until": "2026-12-31"
+  }
+]

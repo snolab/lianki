@@ -18,6 +18,9 @@
  *   - a vertical drag on the mic scrubs the history (floating lines), a
  *     horizontal one moves the bar, and neither toggles the mic
  *   - a message arriving while minimized floats above the bar
+ *   - a voice line the agent polished shows the sparkle mark ("Polished");
+ *     a tap shows the raw STT text and back; minimized, the floating line
+ *     changes in place; a typed send carries no source
  *
  * getUserMedia is stubbed (counted, then refused): nothing is ever recorded.
  *
@@ -1114,6 +1117,56 @@ try {
     check(
       f.some((t) => t.includes("arrived while minimized")),
       "a new message floats above the minimized bar",
+    );
+    await ctx.close();
+  }
+
+  // A voice line the agent polished: the mark, its tooltip, the raw text on a tap.
+  {
+    const { ctx, page } = await open("?open");
+    await page.fill('[data-testid="debug-chat-input"]', "typed line");
+    await page.press('[data-testid="debug-chat-input"]', "Enter");
+    const sent = await page.evaluate(() => window.__sent?.at(-1));
+    check(sent?.source === null, `a typed send has no source (${JSON.stringify(sent)})`);
+    await page.evaluate(() => window.__polish("Typed line, polished."));
+    const mark = page.locator('[data-testid="debug-chat-polished"]').last();
+    await mark.waitFor({ timeout: 3000 });
+    const tip = await mark.evaluate((e) => [
+      e.title,
+      e.getAttribute("aria-label"),
+      !!e.querySelector("svg"),
+    ]);
+    check(
+      tip[0] === "Polished" && tip[1] === "Polished" && tip[2],
+      `the polished mark is an icon titled "Polished" (${tip})`,
+    );
+    const line = page.locator('[data-testid="debug-chat-line"]').last();
+    check(
+      (await line.textContent()).includes("Typed line, polished."),
+      "the polished text is shown",
+    );
+    await mark.click();
+    check(
+      (await line.locator('[data-testid="debug-chat-raw"]').textContent()) === "typed line",
+      "a tap on the mark shows the raw STT text",
+    );
+    await mark.click();
+    check(
+      (await line.locator('[data-testid="debug-chat-raw"]').count()) === 0,
+      "a second tap goes back to the polished text",
+    );
+    // Minimized, a floating line changes in place.
+    await page.click('[data-testid="debug-chat-pill-min"]');
+    await page.waitForSelector('[data-testid="debug-chat-minimized"]');
+    await page.evaluate(() => window.__push("a voice line", "owner"));
+    await page.waitForSelector('[data-testid="debug-chat-float"]');
+    await page.evaluate(() => window.__polish("A voice line."));
+    await page.waitForTimeout(100);
+    const floats = await page.locator('[data-testid="debug-chat-float"]').allTextContents();
+    check(
+      floats.filter((t) => t.includes("A voice line.")).length === 1 &&
+        !floats.some((t) => t.includes("a voice line")),
+      `the floating line is polished in place (${floats})`,
     );
     await ctx.close();
   }

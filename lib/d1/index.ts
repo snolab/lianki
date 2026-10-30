@@ -22,3 +22,24 @@ export function getBlobs(): R2Bucket {
 export function dbBackend(): "mongodb" | "d1" {
   return process.env.DB_BACKEND === "d1" ? "d1" : "mongodb";
 }
+
+/** Cloudflare's `request.cf` (IP geolocation etc.), or undefined outside a Worker request. */
+export function cfRequestProps():
+  | { city?: unknown; region?: unknown; country?: unknown }
+  | undefined {
+  try {
+    return getCloudflareContext().cf as never;
+  } catch {
+    return undefined;
+  }
+}
+
+/** `ctx.waitUntil` of the current Worker request; false when there is none (dev, tests). */
+export function workerWaitUntil(p: Promise<unknown>): boolean {
+  try {
+    getCloudflareContext().ctx.waitUntil(p);
+    return true;
+  } catch {
+    return false;
+  }
+}

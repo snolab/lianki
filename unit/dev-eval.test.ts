@@ -9,6 +9,9 @@ import {
   BUSY_GRACE_MS,
   BUSY_MS,
   type ChatMessage,
+  applyEdit,
+  dictatedDraft,
+  draftSource,
   chatText,
   chunkMessages,
   cleanLabel,
@@ -410,4 +413,64 @@ it("pickVoice skips iOS Eloquence and novelty voices", () => {
   expect(pickVoice(vs, "zh-CN")?.name).toBe("Tingting");
   expect(pickVoice(vs, "en-US")?.name).toBe("Ava");
   expect(pickVoice(vs.slice(0, 1), "zh-CN")?.name).toBe("Eddy");
+});
+
+describe("voice edits on the wire", () => {
+  it("a page's chat keeps source stt and drops any other source", () => {
+    expect(
+      parsePageMessage(JSON.stringify({ type: "chat", id: "a", text: "hi", source: "stt" })),
+    ).toEqual({
+      type: "chat",
+      id: "a",
+      text: "hi",
+      source: "stt",
+    });
+    expect(
+      parsePageMessage(JSON.stringify({ type: "chat", id: "a", text: "hi", source: "x" })),
+    ).toEqual({
+      type: "chat",
+      id: "a",
+      text: "hi",
+    });
+  });
+
+  it("a controller's edit needs an id and text", () => {
+    expect(
+      parseControllerMessage(JSON.stringify({ type: "edit", id: "m1", text: " Hi. " })),
+    ).toEqual({
+      ok: true,
+      value: { type: "edit", id: "m1", text: "Hi." },
+    });
+    expect(parseControllerMessage(JSON.stringify({ type: "edit", text: "Hi." })).ok).toBe(false);
+    expect(parseControllerMessage(JSON.stringify({ type: "edit", id: "m1", text: "" })).ok).toBe(
+      false,
+    );
+  });
+
+  it("a draft is stt only while nothing typed is in it", () => {
+    const a = dictatedDraft("", null, "hello there");
+    expect(draftSource("hello there", a)).toBe("stt");
+    // Edited before sending: typed.
+    expect(draftSource("hello there!", a)).toBeUndefined();
+    // More dictation on pure dictation stays pure; on typed text it is typed.
+    const b = dictatedDraft("hello there", a, "hello there. And more");
+    expect(draftSource("hello there. And more", b)).toBe("stt");
+    expect(dictatedDraft("typed ", null, "typed and spoken")).toBeNull();
+    expect(draftSource("typed and spoken", null)).toBeUndefined();
+    expect(draftSource("", "")).toBeUndefined();
+  });
+
+  it("applyEdit updates only the matching line of the matching thread", () => {
+    const e = {
+      id: "m1",
+      thread: "owner",
+      text: "Hi.",
+      raw: "hi",
+      edited: { at: 1, by: "a", count: 1 },
+    };
+    const m: ChatMessage = { id: "m1", from: "owner", label: "", text: "hi", at: 0, source: "stt" };
+    expect(applyEdit(m, e)).toEqual({ ...m, text: "Hi.", raw: "hi", edited: e.edited });
+    expect(applyEdit({ ...m, id: "m2" }, e)).toEqual({ ...m, id: "m2" });
+    expect(applyEdit({ ...m, thread: "f1" }, e)).toEqual({ ...m, thread: "f1" });
+  });
 });

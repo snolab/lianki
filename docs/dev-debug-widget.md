@@ -286,6 +286,53 @@ to the main thread, as before, but prints agent lines addressed to a node.
   is meant for the state tree: selecting a node will target it. The target
   is kept on `window`, so a hot reload keeps it.
 
+## Agent edits of voice messages
+
+STT gets words wrong, and it has no context on the conversation. The chat
+lane does: it may **polish the owner's latest line** when that line came from
+the widget's own mic, so the log reads what was meant.
+
+**Which lines are voice.** The widget sends a line `source: "stt"` when the
+draft is exactly what the mic left there: an STT final sent on its own, or
+dictation sent unchanged (`dictatedDraft` / `draftSource` in
+`packages/debug-chat/src/wire.ts`). Typed lines, and dictation edited before
+sending, carry no source. `eval.ts chat` prints `"source":"stt"` on such lines
+— that is the cue that an edit is allowed.
+
+**The command** (chat lane; uses the saved grant, never pairs):
+
+```bash
+bun scripts/dev/eval.ts edit --last --no-pair "Fix the sync button on /words."
+bun scripts/dev/eval.ts edit <msgId> --no-pair "Fix the sync button on /words."
+echo "polished text" | bun scripts/dev/eval.ts edit --last --no-pair -
+```
+
+Prints the hub's `{"type":"edited","id","thread","text","raw","edited"}`, or
+fails with the rule it broke. Polish, then reply: correct misheard words,
+names and punctuation only — never change what the owner meant.
+
+**The rules** (`DebugHub.edit` in `workers/push/src/debug.ts`, each one unit-tested
+in `unit/debug-hub.test.ts`). `{type:"edit", id, text}` is accepted only if:
+
+- the sender holds a live owner grant (chat, or eval, which implies chat); a
+  pairing made for a friend never may;
+- the target is the owner's **latest** line in the owner thread (agent replies
+  after it do not count; any earlier line is refused);
+- that line has `source: "stt"`;
+- it was polished fewer than `MAX_EDITS` (3) times, and the text changes.
+
+Friends' threads and lines can never be edited. On success the stored line
+keeps the first STT text as `raw` (only the first), takes the polished
+`text`, and gets `edited: {at, by, count}` (`by` = the agent id, else the
+controller's label). Pages and listeners hear `{type:"edited", …}`.
+
+**On the page.** The line changes in place (a floating line too) and is
+never read aloud again. A small muted sparkle after it marks it polished
+(tooltip "Polished", zh 已润色; long press on touch shows it). A tap shows
+the raw STT text, muted; another tap goes back. The icon is one slot:
+`POLISHED_ICON` in `packages/debug-chat/src/icons.tsx`, or the widget's
+`polishedIcon` prop.
+
 ## The state tree, live
 
 The chat's Tree view (menu → Tree; `docs/state-tree.md`) normally shows the
