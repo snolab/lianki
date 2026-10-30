@@ -109,3 +109,4 @@ that are expensive to rediscover.
 | Payments, Pro passes, Stripe, invites, gift codes             | [docs/payments.md](docs/payments.md)                                |
 | Security measures: admin gate, lockout, scans, card testing   | [docs/security-measures.md](docs/security-measures.md)              |
 | UI layout: content fills the screen, glass overlays           | [docs/design-principles.md](docs/design-principles.md)              |
+| Study plan, built-in calendar, Google Calendar (design)       | [docs/calendar-plan.md](docs/calendar-plan.md)                      |
