@@ -1833,6 +1833,89 @@ try {
   await rows.first().waitFor({ timeout: 15000 });
   check((await rows.count()) > 0, "study all works with groups present");
 
+  // ── A row's ⋯ menu: rename (keyboard only), delete with Undo ──
+  const serverLists = () =>
+    page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists);
+  const waitFor = async (pred) => {
+    let v;
+    for (let i = 0; i < 20 && !pred((v = await serverLists())); i++) await page.waitForTimeout(300);
+    return v;
+  };
+  await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
+  const groupMenu = page.getByRole("button", { name: /More actions for .QA group/ });
+  await groupMenu.waitFor({ timeout: 15000 });
+  const menuBox = await groupMenu.boundingBox();
+  check(
+    menuBox && menuBox.width >= 44 && menuBox.height >= 44,
+    `the ⋯ button is a 44px target (${menuBox?.width}×${menuBox?.height})`,
+  );
+  await groupMenu.focus();
+  await page.keyboard.press("ArrowDown");
+  const renameItem = page.getByRole("menuitem", { name: "Rename" });
+  check(
+    await renameItem.evaluate((el) => el === document.activeElement),
+    "↓ on ⋯ opens the menu on its first item",
+  );
+  await page.keyboard.press("Escape");
+  check(
+    (await page.getByRole("menu").count()) === 0 &&
+      (await groupMenu.evaluate((el) => el === document.activeElement)),
+    "Escape closes the menu back to the ⋯ button",
+  );
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter"); // Rename, the focused first item
+  const field = page.getByRole("textbox", { name: /New name for .QA group/ });
+  await field.waitFor({ timeout: 5000 });
+  await field.fill("QA folder");
+  await page.keyboard.press("Enter");
+  const renamed = await waitFor((ls) => ls.find((l) => l.id === group)?.name === "QA folder");
+  check(
+    renamed.find((l) => l.id === group)?.name === "QA folder",
+    "rename from the ⋯ menu reaches the server (through the pending queue)",
+  );
+  await page.reload({ waitUntil: "networkidle" });
+  const folderMenu = page.getByRole("button", { name: /More actions for .QA folder/ });
+  await folderMenu.waitFor({ timeout: 15000 });
+  check(true, "the new name survives a reload");
+
+  // Delete, then Undo: nothing is deleted.
+  await folderMenu.click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  const toast = page.locator("[data-undo-delete]");
+  await toast.waitFor({ timeout: 5000 });
+  check(
+    (await toast.innerText()).includes("QA folder") && (await folderMenu.count()) === 0,
+    "delete hides the row at once and shows an Undo notice",
+  );
+  const undoButton = toast.getByRole("button", { name: "Undo" });
+  check(
+    await undoButton.evaluate((el) => el === document.activeElement),
+    "the Undo button takes the focus",
+  );
+  await undoButton.click();
+  await folderMenu.waitFor({ timeout: 5000 });
+  await page.waitForTimeout(9000); // past the undo window
+  check(
+    (await serverLists()).some((l) => l.id === group),
+    "Undo keeps the group on the server",
+  );
+
+  // Delete for real: it goes out when the notice runs out; the lists stay.
+  await folderMenu.click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  await toast.waitFor({ timeout: 5000 });
+  check(
+    (await serverLists()).some((l) => l.id === group),
+    "the delete waits for the Undo window",
+  );
+  await page.waitForTimeout(8000); // the Undo window (UNDO_MS)
+  const settled = await waitFor((ls) => !ls.some((l) => l.id === group));
+  check(
+    !settled.some((l) => l.id === group) &&
+      after.every((id) => settled.find((l) => l.id === id)?.parentId === null),
+    "after the Undo window the group is deleted and its lists move up",
+  );
+
   // ── /words/import: an Anki deck dropped in becomes a word list ──
   const deckNotes = [
     { guid: "n-hola", fields: ["<b>hola</b>", "hello", "¡Hola, amigo!"] },
