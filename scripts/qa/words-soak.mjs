@@ -57,6 +57,13 @@ await ctx.addInitScript(() => {
   // Pending timers and frames, and blob URLs, counted live.
   const live = { timeouts: new Set(), intervals: new Set(), rafs: new Set(), blobs: new Set() };
   window.__soak = live;
+  // Clips started: the load the audio path is under.
+  live.plays = 0;
+  const play = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function (...a) {
+    live.plays++;
+    return play.apply(this, a);
+  };
   const st = window.setTimeout.bind(window);
   const ct = window.clearTimeout.bind(window);
   window.setTimeout = (fn, ms, ...a) => {
@@ -290,6 +297,10 @@ async function snapshot(minute) {
       dom: document.getElementsByTagName("*").length,
       rows: document.querySelectorAll('[role="listitem"]').length,
       queue: list ? Math.round((list.scrollHeight - 2 * pad) / 44) : 0,
+      graded: Number(
+        document.querySelector("[data-words-top]")?.textContent.match(/(\d+) done/)?.[1] ?? 0,
+      ),
+      plays: s.plays,
       timeouts: s.timeouts.size,
       intervals: s.intervals.size,
       rafs: s.rafs.size,
@@ -333,7 +344,22 @@ async function snapshot(minute) {
 const rows = [await snapshot(0)];
 console.error(JSON.stringify(rows[0]));
 const t0 = Date.now();
-for (let minute = 1; minute <= MINUTES; minute++) {
+// SOAK_GROW=N: no study; N rounds of flinging to the end of the list (Endless
+// loads more each time), a snapshot after each: the scroll cost against the
+// queue's length.
+for (let round = 1; round <= Number(process.env.SOAK_GROW || 0); round++) {
+  for (let k = 0; k < 8; k++) {
+    await page.evaluate(() => {
+      const el = document.querySelector('[role="list"]');
+      el.scrollTop = el.scrollHeight;
+    });
+    await sleep(700);
+  }
+  const r = await snapshot(round);
+  rows.push(r);
+  console.error(JSON.stringify(r));
+}
+for (let minute = 1; !process.env.SOAK_GROW && minute <= MINUTES; minute++) {
   while (Date.now() - t0 < minute * 60_000) {
     // About one round a 10 s: read two words, grade three, scroll, look at settings.
     await tap(1);
