@@ -42,3 +42,17 @@ describe("eval.ts chat output", () => {
     expect(chatLine(toMe, { node: "/words", agent: "w" }, true)).toBeNull();
   });
 });
+
+describe("eval.ts chat output: voice lines", () => {
+  const base = { id: "1", from: "owner", text: "hi", at: 0, label: "/words" };
+  it("prints source stt, so the chat lane knows an edit is allowed; typed lines have none", () => {
+    expect(chatLine({ ...base, source: "stt" }, {}, false)).toMatchObject({ source: "stt" });
+    expect(chatLine(base, {}, false)).not.toHaveProperty("source");
+  });
+  it("prints raw and edited for a polished line", () => {
+    const edited = { at: 1, by: "lane", count: 1 };
+    expect(
+      chatLine({ ...base, source: "stt", text: "Hi.", raw: "hi", edited }, {}, false),
+    ).toMatchObject({ text: "Hi.", raw: "hi", edited });
+  });
+});

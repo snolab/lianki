@@ -14,6 +14,8 @@ export type UiStrings = {
   upNext: string;
   needsYou: string;
   items: string;
+  /** The mark on a voice line the agent polished (its tooltip and label). */
+  polished: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -25,6 +27,7 @@ export const UI_EN: UiStrings = {
   upNext: "Next",
   needsYou: "needs you",
   items: "items",
+  polished: "Polished",
 };
 
 export const UI_ZH: UiStrings = {
@@ -36,6 +39,7 @@ export const UI_ZH: UiStrings = {
   upNext: "下一步",
   needsYou: "等你处理",
   items: "项",
+  polished: "已润色",
 };
 
 /** The tree's strings in Chinese (StateTree.tsx TreeStrings). */

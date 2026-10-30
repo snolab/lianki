@@ -45,6 +45,18 @@
  *       eval implies chat; never pairs), and exit: to the owner by default, or to
  *       a friend's thread by user id or email.
  *
+ *       A line spoken into the widget's mic carries "source":"stt"; when
+ *       the agent polishes one, {"type":"edited","id","thread","text","raw",
+ *       "edited"} follows.
+ *
+ *   bun scripts/dev/eval.ts edit [<msgId>|--last] [--no-pair] "polished text"   (or - for stdin)
+ *       Polish the owner's latest line when it came from the mic (STT gets
+ *       words wrong, and has no context): the hub keeps the first STT text as
+ *       `raw`, marks the line edited, and updates it in place on every page
+ *       (never read aloud again). Only the owner's LATEST line, only
+ *       "source":"stt", at most 3 times; friends' lines never. --last targets
+ *       the owner's latest line. Uses the saved grant; never pairs.
+ *
  *   bun scripts/dev/eval.ts say --to /words/audio "text"
  *       Address a state-tree node instead of a thread (a `--to` starting
  *       with "/"): its listener gets it, its ancestors observe it. Allowed
@@ -155,6 +167,8 @@ const boolFlag = (name: string) => {
   return true;
 };
 const noPair = boolFlag("--no-pair");
+/** edit: the owner's latest line, instead of an id. */
+const lastFlag = boolFlag("--last");
 /** chat: exit on {type:"pages-idle"} instead of staying for pages-back. */
 const exitOnIdle = boolFlag("--exit-on-idle");
 const labelFlag = flag("--label");
@@ -336,6 +350,16 @@ function chat(out?: string) {
           else emit(h);
         first = false;
       } else if (m.type === "chat" && m.message) emit(m.message as Msg, m.observed === true);
+      else if (m.type === "edited")
+        print({
+          type: "edited",
+          id: m.id,
+          thread: m.thread ?? "owner",
+          text: m.text,
+          raw: m.raw,
+          edited: m.edited,
+          ...(m.observed === true ? { observed: true } : {}),
+        });
       else if (m.type === "pages-idle" || m.type === "pages-back") {
         // Every page of a thread closed for a minute, or the first one back.
         // The listener stays (its socket is hibernated, it costs nothing) so
@@ -428,6 +452,49 @@ function say(text: string, to?: string): Promise<Msg> {
     ws.onclose = (e) => {
       clearTimeout(give);
       // Refused: forget it, and fail. say never pairs.
+      if (e.code === GRANT_INVALID) rmSync(grant.file, { force: true });
+      reject(new Error(`socket closed (${e.code}${e.reason ? ` ${e.reason}` : ""})`));
+    };
+  });
+}
+
+/**
+ * Polish the owner's latest voice line (`id`, or with `last` whatever the
+ * owner said last, from the history the hub sends on resume). Resolves with
+ * the hub's {type:"edited"}; rejects with the rule it broke. Never pairs.
+ */
+function edit(text: string, id: string | undefined, last: boolean): Promise<Msg> {
+  const grant = chatGrant();
+  if (!grant)
+    return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
+  return new Promise((resolve, reject) => {
+    const ws = openControl(grant.token);
+    let target = id;
+    const give = setTimeout(() => {
+      ws.close();
+      reject(new Error("no answer from the hub within 15 s"));
+    }, 15_000);
+    const done = (fn: () => void) => {
+      clearTimeout(give);
+      ws.close();
+      fn();
+    };
+    const go = () => ws.send(JSON.stringify({ type: "edit", id: target, text }));
+    ws.onmessage = (e) => {
+      const m = JSON.parse(String(e.data)) as Msg;
+      // An id: send at once. --last: wait for the history that follows the approval.
+      if (m.type === "approved" && !last) go();
+      else if (m.type === "history" && last && target === undefined) {
+        const list = (Array.isArray(m.messages) ? m.messages : []) as Msg[];
+        const owner = list.filter((x) => x.from === "owner" && (x.thread ?? "owner") === "owner");
+        target = owner.at(-1)?.id as string | undefined;
+        if (!target) return done(() => reject(new Error("the owner has no line to polish")));
+        go();
+      } else if (m.type === "edited" && m.id === target) done(() => resolve(m));
+      else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
+    };
+    ws.onclose = (e) => {
+      clearTimeout(give);
       if (e.code === GRANT_INVALID) rmSync(grant.file, { force: true });
       reject(new Error(`socket closed (${e.code}${e.reason ? ` ${e.reason}` : ""})`));
     };
@@ -578,6 +645,20 @@ async function main() {
   }
   if (args[0] === "serve") return serve();
   if (args[0] === "chat") return chat(out);
+  if (args[0] === "edit") {
+    const rest = args.slice(1);
+    const id = lastFlag ? undefined : rest.length > 1 ? rest[0] : undefined;
+    const raw = rest.at(-1);
+    const text = (raw === "-" ? await Bun.stdin.text() : (raw ?? "")).trim();
+    if (!text || (!lastFlag && !id) || rest.length > (lastFlag ? 1 : 2)) {
+      console.error(
+        'usage: bun scripts/dev/eval.ts edit [<msgId>|--last] [--no-pair] "polished text" | -',
+      );
+      process.exit(2);
+    }
+    console.log(JSON.stringify(await edit(text, id, lastFlag)));
+    return;
+  }
   if (args[0] === "say") {
     const text = (args[1] === "-" ? await Bun.stdin.text() : (args[1] ?? "")).trim();
     if (!text) {

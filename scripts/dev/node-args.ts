@@ -53,6 +53,9 @@ export function chatLine(
     ...(typeof m.to === "string" ? { to: m.to } : {}),
     ...(typeof m.taskPath === "string" ? { taskPath: m.taskPath } : {}),
     ...(typeof m.agentId === "string" ? { agentId: m.agentId } : {}),
+    // "stt": spoken into the widget's mic, so `eval.ts edit` may polish it.
+    ...(m.source === "stt" ? { source: "stt" } : {}),
+    ...(m.edited && typeof m.edited === "object" ? { raw: m.raw, edited: m.edited } : {}),
     ...(observed ? { observed: true } : {}),
   };
 }
