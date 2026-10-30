@@ -595,6 +595,88 @@ try {
     await tab.close();
   }
 
+  // The study view speaks the app's language: on a French or Chinese phone
+  // the Settings sheet, the toolbar and the help strip show no English (one
+  // French item among English ones was the owner's report, 2026-10-30). The
+  // English run supplies the phrases to look for; brand and voice names stay.
+  {
+    const { devices } = await import("playwright");
+    const listUrl = page.url().replace(/[?&]lang=[^&]*/, "");
+    /** Visible text, aria-labels and titles of the sheet, toolbar controls and help strip. */
+    const studyText = async (lang, colorScheme) => {
+      const c = await browser.newContext({
+        ...devices["iPhone 13"],
+        colorScheme,
+        storageState: await ctx.storageState(),
+      });
+      await c.addInitScript(silentAudio);
+      await c.addInitScript(() => localStorage.setItem("lk:first-run", "account"));
+      await c.route("**/api/words/tts?*", (r) =>
+        r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") }),
+      );
+      const p = await c.newPage();
+      p.on("pageerror", (e) => errs.push(`PAGEERROR (${lang}) ${e.message}`));
+      await p.goto(`${listUrl}${listUrl.includes("?") ? "&" : "?"}lang=${lang}`, {
+        waitUntil: "networkidle",
+      });
+      await p.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+      await p.locator("[data-words-top] button[aria-expanded]").click();
+      await p.locator("[data-words-settings]").waitFor({ timeout: 5000 });
+      const htmlLang = await p.evaluate(() => document.documentElement.lang);
+      const texts = await p.evaluate(() => {
+        const out = [];
+        const roots = [
+          ...document.querySelectorAll("[data-words-settings], [data-words-help]"),
+          // The toolbar's own words: not the list's name (that is data).
+          ...document.querySelectorAll("[data-words-top] button, [data-words-top] .tabular-nums"),
+        ];
+        for (const root of roots) {
+          out.push(root.innerText);
+          for (const el of [root, ...root.querySelectorAll("[aria-label],[title]")])
+            for (const at of ["aria-label", "title"])
+              if (el.getAttribute(at)) out.push(el.getAttribute(at));
+        }
+        return out.join("\n");
+      });
+      if (process.env.QA_SHOTS && lang !== "en")
+        await p.screenshot({ path: `${process.env.QA_SHOTS}/settings-${lang}-${colorScheme}.png` });
+      await c.close();
+      return { htmlLang, texts };
+    };
+    const en = await studyText("en", "light");
+    // English phrases of three letters or more; names that stay as they are.
+    const KEEP = /^(Lianki|VOICEVOX|No|Kokoro|Piper|Thorsten-Voice|Dmitri|MeloTTS|min)$/;
+    const phrases = [
+      ...new Set(
+        en.texts
+          .split(/[\n·()=:,.;?↶←→↑↓✓…–—\d/+"“”]+/)
+          .flatMap((s) => s.trim().split(/\s+(?=[A-Z])|^\s+|\s+$/))
+          .map((s) => s.trim())
+          .filter((s) => /^[A-Za-z' -]{3,}$/.test(s) && !KEEP.test(s)),
+      ),
+    ];
+    check(
+      phrases.length > 10,
+      `the English study view has phrases to look for (${phrases.length})`,
+    );
+    for (const lang of ["fr", "zh"]) {
+      for (const scheme of ["light", "dark"]) {
+        const got = await studyText(lang, scheme);
+        if (scheme === "dark") continue; // same strings; the dark run is for the screenshots
+        const left = phrases.filter((ph) =>
+          new RegExp(
+            `(^|[^\\p{L}])${ph.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}])`,
+            "u",
+          ).test(got.texts),
+        );
+        check(
+          got.htmlLang.split("-")[0] === lang && left.length === 0,
+          `${lang}: the study Settings, toolbar and help show no English (lang=${got.htmlLang}, ${JSON.stringify(left)})`,
+        );
+      }
+    }
+  }
+
   // /learn speaks the page's language (it used to be English-only) and links
   // AnkiWeb's shared decks for each language we teach.
   {
