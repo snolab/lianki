@@ -280,6 +280,14 @@ session listing carry the current path) and sends the listeners
 JSON line. Silent on the page, never stored, never in the chat log. A
 friend's page can only relabel its own socket.
 
+**Page errors.** The owner's pages also send `{type:"page-error", kind,
+message, stack?, path, status?, at, rev?}` — uncaught errors, rejections,
+console.error, failed `/api/*` calls, media load errors — scrubbed on the
+page; the hub adds `label` and `hubAt` and forwards them live to the
+approved listeners only, never stored, a friend's dropped. `chat` prints
+them; `eval.ts errors --out <file>` prints only them.
+docs/dev-debug-widget.md, "Page errors".
+
 **The chat bar, the state tree and the menu.** No title bar: the controls
 and the input are one rounded glass container (`debug-chat-pill`): the mark,
 the tree button, the input, then the mic at the far right, in that focus

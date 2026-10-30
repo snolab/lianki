@@ -21,6 +21,7 @@
     "./latency": "./src/latency.ts",
     "./mic": "./src/mic.ts",
     "./node-path": "./src/node-path.ts",
+    "./page-errors": "./src/page-errors.ts",
     "./tap-gesture": "./src/tap-gesture.ts",
     "./wire": "./src/wire.ts",
     "./voice": "./src/voice.ts",
