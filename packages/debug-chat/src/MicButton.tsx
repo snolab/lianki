@@ -1,5 +1,6 @@
 "use client";
 
+import { VOICE_CAPTURE_EVENT, voiceTune } from "./voice-tune";
 import { useEffect, useRef, useState } from "react";
 import {
   type MicState,
@@ -108,7 +109,14 @@ async function silero(ev: VadEvents, stream: MediaStream): Promise<Vad> {
   await script(`${VAD}bundle.min.js`);
   const g = (globalThis as unknown as { vad?: VadGlobal }).vad;
   if (!g) throw new Error("vad-web did not load");
+  const t = voiceTune();
   const v = await g.MicVAD.new({
+    // From the VAD A/B (voice-tune.ts): tunable on the page.
+    positiveSpeechThreshold: t.positiveSpeechThreshold,
+    negativeSpeechThreshold: t.negativeSpeechThreshold,
+    minSpeechMs: t.minSpeechMs,
+    preSpeechPadMs: t.preSpeechPadMs,
+    redemptionMs: t.redemptionMs,
     baseAssetPath: VAD,
     onnxWASMBasePath: ORT,
     model: "v5",
@@ -188,7 +196,11 @@ function session(): MicSession {
       v.setMic(active);
       // The user starts talking: over the agent it ducks (a barge-in if they
       // keep going), else the reading pauses; it reads on once they are done.
-      if (s === "capturing") v.userSpeech();
+      if (s === "capturing") {
+        v.userSpeech();
+        // A line held for joining waits for this speech (voice-tune.ts createJoiner).
+        window.dispatchEvent(new Event(VOICE_CAPTURE_EVENT));
+      }
       else if (last === "capturing") v.userIdle();
       if (!active && !v.state().speaking) void existingCtx()?.suspend().catch(() => {});
     },

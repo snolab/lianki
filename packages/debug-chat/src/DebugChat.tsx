@@ -101,6 +101,7 @@ import { type AnchorSide, placeBox } from "./anchor";
 import { keyboardLift } from "./keyboard-lift";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
+import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tune";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import type { Frontier } from "./frontier-view";
@@ -1358,6 +1359,8 @@ export function DebugChat({
   /** Send the draft; true when it went out. */
   const submit = (): boolean => {
     clearTimeout(timer.current);
+    // Sent another way (Enter, the send button): nothing is held any more.
+    joiner.current?.cancel();
     setArmed(0);
     let text = draftRef.current.trim();
     // A leading "@/words › prefetch " addresses that node, and keeps it as the target.
@@ -1425,7 +1428,44 @@ export function DebugChat({
   const [interim, setInterim] = useState("");
   const mirror = useRef<HTMLDivElement | null>(null);
   /** A transcript lands in the draft, as typed text would, but is never sent by itself. */
+  /**
+   * The join (voice-tune.ts): a spoken line's send is held up to joinMs;
+   * speech starting again cancels it and the next final joins the same line.
+   * Holding beats sending at once and appending later: the agent never sees
+   * (or answers) half a sentence, and the page cannot edit a sent line (the
+   * hub's edit is the agent's). The cost is up to joinMs on a line that is
+   * really done; it is tunable, and 0 sends at once.
+   */
+  const sendVoice = () => {
+    if (submit()) {
+      const sound = playSentTick();
+      window.dispatchEvent(new CustomEvent(VOICE_SENT_EVENT, { detail: { sound } }));
+    }
+  };
+  const joiner = useRef<ReturnType<typeof createJoiner> | null>(null);
+  joiner.current ??= createJoiner({
+    send: () => sendVoiceRef.current(),
+    joinMs: () => voiceTune().joinMs,
+    setTimer: (f, ms) => setTimeout(f, ms),
+    clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+  });
+  const sendVoiceRef = useRef(sendVoice);
+  sendVoiceRef.current = sendVoice;
+  useEffect(() => {
+    const on = () => joiner.current?.speechStart();
+    window.addEventListener(VOICE_CAPTURE_EVENT, on);
+    return () => {
+      window.removeEventListener(VOICE_CAPTURE_EVENT, on);
+      joiner.current?.cancel();
+    };
+  }, []);
   const dictated = (t: string) => {
+    // A blip (one short Latin word, or only 嗯/呃) is not a line; short answers pass.
+    if (isBlip(t)) {
+      voice().log({ ev: "stt-blip", text: t.slice(0, 40) });
+      joiner.current?.idle();
+      return;
+    }
     voiceLatency().shown();
     const { draft: next, send } = appendDictation(draftRef.current, t);
     pureDictation.current = dictatedDraft(draftRef.current, pureDictation.current, next);
@@ -1434,13 +1474,11 @@ export function DebugChat({
     settledLen.current = next.length; // not a typed "burst"
     setDraft(next);
     setOffline(false);
-    // A spoken sentence goes out at once, with a soft tick (typed sends are silent);
-    // anything else waits for the usual rules.
+    // A spoken sentence goes out after the join window (a soft tick; typed
+    // sends are silent), unless more speech joins it; anything else waits
+    // for the usual rules.
     if (send) {
-      if (submit()) {
-        const sound = playSentTick();
-        window.dispatchEvent(new CustomEvent(VOICE_SENT_EVENT, { detail: { sound } }));
-      }
+      joiner.current?.final();
       return;
     }
     arm();
@@ -1895,10 +1933,14 @@ export function DebugChat({
           onPending={(n, text) => {
             micPending.current = n;
             setInterim(text);
+            // The speech after a held line came to nothing: hold it again.
+            if (!n && !text) joiner.current?.idle();
             arm(); // stops a debounce under way, or restarts it once all is in
           }}
           onActive={(on) => {
             micOn.current = on;
+            // The mic off: a held line goes now.
+            if (!on) joiner.current?.flush();
             setMicActive(on);
             arm();
           }}
