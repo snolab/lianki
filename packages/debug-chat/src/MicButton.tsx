@@ -251,10 +251,11 @@ function session(): MicSession {
             label: cfg.label,
             transcript: out.text,
             model: out.model,
+            aec: v.aec(),
           });
         return out.text;
       } catch (e) {
-        if (sink) void postClip(sink, wav, { at, durationMs, label: cfg.label });
+        if (sink) void postClip(sink, wav, { at, durationMs, label: cfg.label, aec: v.aec() });
         throw e;
       }
     },

@@ -812,7 +812,15 @@ export function clipSinkFrom(raw: string | null | undefined): string | undefined
 export function postClip(
   sink: string,
   wav: Uint8Array,
-  meta: { at: number; durationMs: number; label: string; transcript?: string; model?: string },
+  meta: {
+    at: number;
+    durationMs: number;
+    label: string;
+    transcript?: string;
+    model?: string;
+    /** The mic's mode for this utterance (lk:voice-aec), for the A/B. */
+    aec?: boolean;
+  },
   f: typeof fetch = fetch,
 ): Promise<void> {
   const mime = "audio/wav";
@@ -827,6 +835,7 @@ export function postClip(
       label: meta.label,
       transcript: meta.transcript ?? "",
       model: meta.model,
+      aec: meta.aec,
     }),
   );
   return f(`${sink}/clips`, { method: "POST", body: form }).then(

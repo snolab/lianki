@@ -41,7 +41,7 @@ import { LOCAL_STT_KEY, localSttFrom } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
 import { DebugMic, canCapture, playSentTick } from "./MicButton";
 import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
-import { cloudOut, outMode } from "./voice-out";
+import { aecOn, cloudOut, outMode, setAec } from "./voice-out";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
   FADE_MS,
@@ -546,6 +546,8 @@ export function DebugChat({
     return v === null ? !location.pathname.startsWith("/words") : v === "1";
   });
   const [speak, setSpeak] = useState(speechEnabled);
+  /** Echo cancellation on the mic (lk:voice-aec): the menu's A/B switch. */
+  const [aec, setAecState] = useState(aecOn);
   /** How fast replies are read (speech-rate.ts; per device, default 1.5×). */
   const [rate, setRate] = useState(speechRate);
   const { offset, handle, begin, wasDrag, holding, fit } = useDrag();
@@ -1987,6 +1989,24 @@ export function DebugChat({
       >
         <Icon name="speakerHigh" weight={speak || vs.mic ? "fill" : "regular"} />
         {vs.mic ? "Replies read aloud (mic on)" : speak ? "Replies read aloud" : "Replies silent"}
+      </button>
+      {/* Echo cancellation, an A/B (voice-out.ts lk:voice-aec): from the next time the mic opens. */}
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        data-testid="debug-menu-aec"
+        aria-checked={aec}
+        title={ui.aecHint}
+        onClick={() => {
+          setAec(!aec);
+          setAecState(!aec);
+        }}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
+      >
+        <span aria-hidden className="w-[1em] text-center">
+          {aec ? "◉" : "○"}
+        </span>
+        {ui.aec}
       </button>
       {/* Reading speed, per device: from the next sentence on. */}
       <div

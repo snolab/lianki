@@ -26,6 +26,14 @@ export type UiStrings = {
   latHub: string;
   latReply: string;
   latVoice: string;
+  /**
+   * The menu's echo-cancellation switch (an A/B the owner flips): on, the
+   * mic is echo-cancelled and stays open while the agent speaks; off, raw
+   * capture, paused while the agent speaks. "Applies the next time the mic
+   * turns on."
+   */
+  aec: string;
+  aecHint: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -46,6 +54,8 @@ export const UI_EN: UiStrings = {
   latHub: "hub",
   latReply: "reply",
   latVoice: "voice",
+  aec: "Echo cancellation",
+  aecHint: "On: you can talk over replies; on Android the speaker may sound like a call. Off: fuller sound, the mic pauses while replies play. Applies the next time the mic turns on.",
 };
 
 export const UI_ZH: UiStrings = {
@@ -66,6 +76,8 @@ export const UI_ZH: UiStrings = {
   latHub: "传输",
   latReply: "回复",
   latVoice: "朗读",
+  aec: "回声消除",
+  aecHint: "开：回复朗读时也能插话；安卓上扬声器可能变成通话音质。关：音质更好，朗读回复时麦克风暂停。下次打开麦克风时生效。",
 };
 
 export const UI_JA: UiStrings = {
@@ -86,6 +98,8 @@ export const UI_JA: UiStrings = {
   latHub: "転送",
   latReply: "返信",
   latVoice: "読み上げ",
+  aec: "エコーキャンセル",
+  aecHint: "オン：返事の読み上げ中も話しかけられます。Android ではスピーカーが通話の音質になることがあります。オフ：音質が良く、読み上げ中はマイクが一時停止します。次にマイクをオンにしたときから有効。",
 };
 
 /** The tree's strings in Chinese (StateTree.tsx TreeStrings). */

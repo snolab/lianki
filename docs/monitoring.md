@@ -443,9 +443,15 @@ fakes in `unit/voice-session.test.ts`):
   speech probability over that window ≥ 0.7 (`BARGE_IN_PROB`; weaker speech
   stays ducked and is judged again), is it a barge-in: the reading pauses and
   resumes as below. The utterance is transcribed and sent either way.
-  `localStorage["lk:voice-aec"] = "0"` brings back the old way: the mic holds
-  capture while an utterance plays (VAD paused, what it hears dropped) and for
-  400 ms after the last one ends, with the old constraints.
+  `localStorage["lk:voice-aec"] = "0"` (or the ⋯ menu's **Echo
+  cancellation** switch, from the next time the mic opens) is the
+  half-duplex way: the mic holds capture while an utterance plays (VAD
+  paused, what it hears dropped) and for 400 ms after the last one ends,
+  with no processing at all (echoCancellation, noiseSuppression and
+  autoGainControl off), plus the text echo guard. It is the A/B against
+  Chrome for Android, where an echo-cancelled mic moves playback to the
+  call stream (a thinner speaker). Each clip in the clip sink carries
+  `aec: true | false` beside its transcript, to compare recognition by mode.
 - _Output_ (`lk:voice-out`): `"speech"` (default) is the phone's own
   speechSynthesis. Its volume cannot change mid-utterance on iOS, so a duck
   applies from the next sentence; and on iOS it is probably _not_ in the

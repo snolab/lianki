@@ -32,6 +32,8 @@ export type ClipMeta = {
   label: string;
   transcript: string;
   model?: string;
+  /** The mic's mode (lk:voice-aec): echo cancellation on or off, for the A/B. */
+  aec?: boolean;
 };
 export type ClipEntry = ClipMeta & { name: string; file: string; ref?: string };
 
@@ -87,6 +89,7 @@ export function listClips(dir: string): ClipEntry[] {
       label: meta.label ?? "",
       transcript: meta.transcript ?? "",
       ...(meta.model ? { model: meta.model } : {}),
+      ...(typeof meta.aec === "boolean" ? { aec: meta.aec } : {}),
       ...(existsSync(refPath) ? { ref: readFileSync(refPath, "utf8").trim() } : {}),
     });
   }
@@ -143,6 +146,7 @@ export async function handleClips(
       label: String(meta.label ?? "").slice(0, 300),
       transcript: String(meta.transcript ?? "").slice(0, 4000),
       ...(meta.model ? { model: String(meta.model).slice(0, 80) } : {}),
+      ...(typeof meta.aec === "boolean" ? { aec: meta.aec } : {}),
     };
     writeFileSync(join(dir, `${name}.json`), JSON.stringify(side, null, 2));
     return json({ name });
