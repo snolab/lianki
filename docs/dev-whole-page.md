@@ -137,7 +137,12 @@ eval reaches the page like any other debug page of his.
   The widget streams to his Mac instead (docs/local-stt.md):
   `localStorage["lk:debug-local-stt"] = "wss://taku.onca-tint.ts.net/lianki-stt"`
   on the dev origin, set once through eval. The enter link carries the key
-  too when his lianki.com tab has it.
+  too when his lianki.com tab has it. The STT server must allow the dev
+  origin, which has a port: oxmgr's `lianki-stt` runs `server.py … --origin
+https://taku.onca-tint.ts.net --origin https://taku.onca-tint.ts.net:8443`.
+  Without the second `--origin` the handshake is refused (403 in
+  `oxmgr logs lianki-stt`), and the page falls back to cloud STT, which
+  returns 502.
 
 ## Checked on 2026-10-31
 
