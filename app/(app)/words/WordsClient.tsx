@@ -3504,7 +3504,7 @@ function Study({
         </div>
         {syncError && (
           <div className="text-red-500 text-sm mt-1">
-            {fill(text.notSaved.value, { error: syncError })}
+            {fill(text.couldntLoadMore.value, { error: syncError })}
           </div>
         )}
         {notice && <div className="text-amber-600 dark:text-amber-300 text-sm mt-1">{notice}</div>}
