@@ -33,10 +33,28 @@ Run the server (it maps itself into the tailnet and removes the mapping on exit)
 ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/server.py --port 5193 --tailnet /lianki-stt
 ```
 
+To keep it running after a session (or after a reboot), from a checkout of
+`main` (any worktree), in two terminals or as background jobs:
+
+```bash
+# the STT server: tailnet path /lianki-stt (production lianki.com pages use only this)
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/server.py \
+  --port 5193 --tailnet /lianki-stt --origin https://<mac>.ts.net \
+  >> ~/.cache/lianki-stt/logs/server.log 2>&1
+# only to preview widget changes before they ship (docs/dev-debug-widget.md):
+bun scripts/dev/debug-widget-server.ts --port 5194 --tailnet /lianki-widget-stt
+```
+
+`--origin` adds the tailnet origin for the widget harness; lianki.com is
+always allowed. Once this is on main, production pages need only the STT
+server and the flag below: the widget code ships with the app. If the server
+is not running, the dot is grey and the mic uses the cloud as before.
+
 On the owner's page:
 
 ```js
-localStorage.setItem("lk:agent-local-stt", "wss://<mac>.ts.net/lianki-stt"); location.reload()
+localStorage.setItem("lk:agent-local-stt", "wss://<mac>.ts.net/lianki-stt");
+location.reload();
 // off again: localStorage.removeItem("lk:agent-local-stt"); localStorage.removeItem("lk:debug-local-stt")
 ```
 
@@ -64,20 +82,20 @@ AI's column is the transcript it gave at the time (turbo, no `?hint=`).
 Times are whole-clip decode, cold (the first decode after loading) / warm
 (best of 3); RTF = warm decode ÷ audio length.
 
-| clip | s | Workers AI (today) | sensevoice | mlx-whisper |
-| --- | --- | --- | --- | --- |
-| 273Z-0 | 14.0 | 內容有腰丸、麥克風、緊湊消息區、聚焦彩朗讀、代碼都集中到移動目錄。預計半個Agent 小時上線。授權丟失的問題我也在確認是否已包含。 | 内容有药丸麦克风紧凑消息区聚焦才朗读代码都集中到移动目录，预计半个agent小时上线，授权丢失的问题，我也在确认是否已包含。 <br>`zh` 137/122 ms, RTF 0.009 | 内容有腰丸、麦克风、紧凑消息区、聚焦采朗读、代码都集中到移动目录。预计半个Agent小时上线。授权丢失的问题我也在确认是否已包含。 <br>`zh` 1190/320 ms, RTF 0.023 |
-| 646Z-1 | 6.6 | 表天授權已修好,切應用不再重溫,你還看到的體驗。 | 表天授权已修好，且应用不再重问。你还看到的。 <br>`zh` 69/63 ms, RTF 0.010 | 表天授权已修好,切应用不再重温。你还看到的挺。 <br>`zh` 231/229 ms, RTF 0.035 |
-| 945Z-2 | 5.5 | 現在用的原模型是哪個? | 现在用的云模型是哪个？ <br>`zh` 52/51 ms, RTF 0.009 | 现在用的原模型是哪个? <br>`zh` 206/203 ms, RTF 0.037 |
-| 062Z-3 | 13.2 | 現在用的語音識別模型是哪個? | 现在用的语音识别模型是哪个。 <br>`zh` 112/111 ms, RTF 0.008 | 现在用的语音识别模型是哪个? <br>`zh` 215/212 ms, RTF 0.016 |
-| 722Z-4 | 4.9 | 他是內置知識多語言的嗎? | 它是内置支持多语言的吗？ <br>`zh` 52/50 ms, RTF 0.010 | 他是内置知识多语言的吗? <br>`zh` 210/209 ms, RTF 0.043 |
-| 347Z-5 | 21.2 | 語音識別模型是Whisper Large V3 Turbo 跑在Cloud Player上自動識別語言是Whisper本身就是多語言模型支持約100種語言會自動判斷說的是哪種中日音都測過沒問題一句話裡中途壞 | 语音识别模型是whisper largege recent tubo，好在pug flare上自动识别语言是whisper本身就是多语言模型支持约100种语言会自动判断说的是哪种。中日英都测过没问题。一句话里中途会。 <br>`zh` 196/187 ms, RTF 0.009 | 语音识别模型是Whisper Large V3 Turbo, 跑在Cloud Player上,自动识别语言。是,Whisper本身就是多语言模型,支持约100种语言,会自动判断说的是哪种。中日音都测过,没问题。一句话里中途坏。 <br>`zh` 351/332 ms, RTF 0.016 |
-| 446Z-6 | 12.6 | 這個麥克風按鈕應該也要遵循自動加標點並且自動上屏的原則。 | 这个麦克风按钮应该也要遵循自动加标点，并且自动上屏的原则。 <br>`zh` 109/107 ms, RTF 0.009 | 这个麦克风按钮应该也要遵循自动加标点并且自动上屏的原则。 <br>`zh` 246/244 ms, RTF 0.019 |
-| 379Z-7 | 3.5 | シェイカーマイカフォン。 | 切个麦克风。 <br>`zh` 38/36 ms, RTF 0.011 | então割 icon nothing Lightful Watch your coffee con card for game name it's over like aliction we need you La never mind lock on my coffee with each other York City Put it on my coffee with each other Take your microphone. ×20 <br>`is` 2464/2410 ms, RTF 0.691 |
-| 230Z-8 | 9.7 | 銀外、麦克風也要自動加標點,並自動上屏。我保證識別結果一定帶標點,沒帶的話不。 | 赢外麦克风也要自动加标点并自动上屏。我保证识别结果一定带标点，没带的话不。 <br>`zh` 98/92 ms, RTF 0.010 | 银货﹑麦克风也要自动加标点,并自动上屏。我保证识别结果一定带标点,没带的话不。 <br>`zh` 262/258 ms, RTF 0.027 |
-| 649Z-9 | 6.3 | 他現在還在瘋狂的問我要授權。 | 他现在还在疯狂的问我要授权。 <br>`zh` 63/62 ms, RTF 0.010 | 他现在还在疯狂的问我要授权。 <br>`zh` 219/219 ms, RTF 0.035 |
-| 97Z-10 | 9.9 | 这个什么时候呢我先停掉不必要的带马连接别再谈授权需兽权的修复我提到最优秀 | 这个什么时候能修接授权授权的修复我提到最优。 <br>`zh` 93/93 ms, RTF 0.009 | 这个什么时候呢Ｂ。 <br>`zh` 209/212 ms, RTF 0.021 |
-| 43Z-11 | 3.1 | How's the name? | Hose name. <br>`en` 37/35 ms, RTF 0.011 | 竹 Garne <br>`en` 790/795 ms, RTF 0.256 |
+| clip   | s    | Workers AI (today)                                                                                                                                                | sensevoice                                                                                                                                                                                                | mlx-whisper                                                                                                                                                                                                                                                         |
+| ------ | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 273Z-0 | 14.0 | 內容有腰丸、麥克風、緊湊消息區、聚焦彩朗讀、代碼都集中到移動目錄。預計半個Agent 小時上線。授權丟失的問題我也在確認是否已包含。                                    | 内容有药丸麦克风紧凑消息区聚焦才朗读代码都集中到移动目录，预计半个agent小时上线，授权丢失的问题，我也在确认是否已包含。 <br>`zh` 137/122 ms, RTF 0.009                                                    | 内容有腰丸、麦克风、紧凑消息区、聚焦采朗读、代码都集中到移动目录。预计半个Agent小时上线。授权丢失的问题我也在确认是否已包含。 <br>`zh` 1190/320 ms, RTF 0.023                                                                                                       |
+| 646Z-1 | 6.6  | 表天授權已修好,切應用不再重溫,你還看到的體驗。                                                                                                                    | 表天授权已修好，且应用不再重问。你还看到的。 <br>`zh` 69/63 ms, RTF 0.010                                                                                                                                 | 表天授权已修好,切应用不再重温。你还看到的挺。 <br>`zh` 231/229 ms, RTF 0.035                                                                                                                                                                                        |
+| 945Z-2 | 5.5  | 現在用的原模型是哪個?                                                                                                                                             | 现在用的云模型是哪个？ <br>`zh` 52/51 ms, RTF 0.009                                                                                                                                                       | 现在用的原模型是哪个? <br>`zh` 206/203 ms, RTF 0.037                                                                                                                                                                                                                |
+| 062Z-3 | 13.2 | 現在用的語音識別模型是哪個?                                                                                                                                       | 现在用的语音识别模型是哪个。 <br>`zh` 112/111 ms, RTF 0.008                                                                                                                                               | 现在用的语音识别模型是哪个? <br>`zh` 215/212 ms, RTF 0.016                                                                                                                                                                                                          |
+| 722Z-4 | 4.9  | 他是內置知識多語言的嗎?                                                                                                                                           | 它是内置支持多语言的吗？ <br>`zh` 52/50 ms, RTF 0.010                                                                                                                                                     | 他是内置知识多语言的吗? <br>`zh` 210/209 ms, RTF 0.043                                                                                                                                                                                                              |
+| 347Z-5 | 21.2 | 語音識別模型是Whisper Large V3 Turbo 跑在Cloud Player上自動識別語言是Whisper本身就是多語言模型支持約100種語言會自動判斷說的是哪種中日音都測過沒問題一句話裡中途壞 | 语音识别模型是whisper largege recent tubo，好在pug flare上自动识别语言是whisper本身就是多语言模型支持约100种语言会自动判断说的是哪种。中日英都测过没问题。一句话里中途会。 <br>`zh` 196/187 ms, RTF 0.009 | 语音识别模型是Whisper Large V3 Turbo, 跑在Cloud Player上,自动识别语言。是,Whisper本身就是多语言模型,支持约100种语言,会自动判断说的是哪种。中日音都测过,没问题。一句话里中途坏。 <br>`zh` 351/332 ms, RTF 0.016                                                      |
+| 446Z-6 | 12.6 | 這個麥克風按鈕應該也要遵循自動加標點並且自動上屏的原則。                                                                                                          | 这个麦克风按钮应该也要遵循自动加标点，并且自动上屏的原则。 <br>`zh` 109/107 ms, RTF 0.009                                                                                                                 | 这个麦克风按钮应该也要遵循自动加标点并且自动上屏的原则。 <br>`zh` 246/244 ms, RTF 0.019                                                                                                                                                                             |
+| 379Z-7 | 3.5  | シェイカーマイカフォン。                                                                                                                                          | 切个麦克风。 <br>`zh` 38/36 ms, RTF 0.011                                                                                                                                                                 | então割 icon nothing Lightful Watch your coffee con card for game name it's over like aliction we need you La never mind lock on my coffee with each other York City Put it on my coffee with each other Take your microphone. ×20 <br>`is` 2464/2410 ms, RTF 0.691 |
+| 230Z-8 | 9.7  | 銀外、麦克風也要自動加標點,並自動上屏。我保證識別結果一定帶標點,沒帶的話不。                                                                                      | 赢外麦克风也要自动加标点并自动上屏。我保证识别结果一定带标点，没带的话不。 <br>`zh` 98/92 ms, RTF 0.010                                                                                                   | 银货﹑麦克风也要自动加标点,并自动上屏。我保证识别结果一定带标点,没带的话不。 <br>`zh` 262/258 ms, RTF 0.027                                                                                                                                                         |
+| 649Z-9 | 6.3  | 他現在還在瘋狂的問我要授權。                                                                                                                                      | 他现在还在疯狂的问我要授权。 <br>`zh` 63/62 ms, RTF 0.010                                                                                                                                                 | 他现在还在疯狂的问我要授权。 <br>`zh` 219/219 ms, RTF 0.035                                                                                                                                                                                                         |
+| 97Z-10 | 9.9  | 这个什么时候呢我先停掉不必要的带马连接别再谈授权需兽权的修复我提到最优秀                                                                                          | 这个什么时候能修接授权授权的修复我提到最优。 <br>`zh` 93/93 ms, RTF 0.009                                                                                                                                 | 这个什么时候呢Ｂ。 <br>`zh` 209/212 ms, RTF 0.021                                                                                                                                                                                                                   |
+| 43Z-11 | 3.1  | How's the name?                                                                                                                                                   | Hose name. <br>`en` 37/35 ms, RTF 0.011                                                                                                                                                                   | 竹 Garne <br>`en` 790/795 ms, RTF 0.256                                                                                                                                                                                                                             |
 
 - **sensevoice**: load 430 ms; warm mean 84 ms, max 187 ms; mean RTF 0.010
 - **mlx-whisper**: load 793 ms; warm mean 470 ms, max 2410 ms; mean RTF 0.102
@@ -115,20 +133,20 @@ Paraformer (zh/en only — no Japanese).
 Streaming the clips at real-time pace over the tailnet (`stream-clip.ts`;
 Mac to itself through `tailscale serve`, so no radio hop):
 
-| clip | s | partials | first partial | end → final |
-| --- | --- | --- | --- | --- |
-| 273Z-0 | 14.0 | 29 | 438 ms | 127 ms |
-| 646Z-1 | 6.6 | 11 | 413 ms | 68 ms |
-| 945Z-2 | 5.5 | 10 | 422 ms | 59 ms |
-| 062Z-3 | 13.2 | 18 | 439 ms | 116 ms |
-| 722Z-4 | 4.9 | 8 | 421 ms | 51 ms |
-| 347Z-5 | 21.2 | 42 | 429 ms | 187 ms |
-| 446Z-6 | 12.6 | 23 | 423 ms | 112 ms |
-| 379Z-7 | 3.5 | 5 | 441 ms | 44 ms |
-| 230Z-8 | 9.7 | 21 | 432 ms | 120 ms |
-| 649Z-9 | 6.3 | 10 | 420 ms | 67 ms |
-| 97Z-10 | 9.9 | 22 | 438 ms | 95 ms |
-| 43Z-11 | 3.1 | 4 | 429 ms | 45 ms |
+| clip   | s    | partials | first partial | end → final |
+| ------ | ---- | -------- | ------------- | ----------- |
+| 273Z-0 | 14.0 | 29       | 438 ms        | 127 ms      |
+| 646Z-1 | 6.6  | 11       | 413 ms        | 68 ms       |
+| 945Z-2 | 5.5  | 10       | 422 ms        | 59 ms       |
+| 062Z-3 | 13.2 | 18       | 439 ms        | 116 ms      |
+| 722Z-4 | 4.9  | 8        | 421 ms        | 51 ms       |
+| 347Z-5 | 21.2 | 42       | 429 ms        | 187 ms      |
+| 446Z-6 | 12.6 | 23       | 423 ms        | 112 ms      |
+| 379Z-7 | 3.5  | 5        | 441 ms        | 44 ms       |
+| 230Z-8 | 9.7  | 21       | 432 ms        | 120 ms      |
+| 649Z-9 | 6.3  | 10       | 420 ms        | 67 ms       |
+| 97Z-10 | 9.9  | 22       | 438 ms        | 95 ms       |
+| 43Z-11 | 3.1  | 4        | 429 ms        | 45 ms       |
 
 - **First partial ~0.42–0.44 s** after the first frame (0.3 s of audio, then
   the 0.4 s step), whatever the length.
@@ -169,17 +187,17 @@ talking into the phone; they are not measured here.
 
 One socket per page; utterances one after another (`server.py` docstring):
 
-| from | message | meaning |
-| --- | --- | --- |
-| client | `{"t":"begin","id":N}` | a new utterance |
-| client | binary `0x01` + int16le PCM | frames of the current one, as heard |
-| client | binary `0x02` + int16le PCM | the VAD's pre-pad: audio before the first frame |
-| client | `{"t":"end","id":N}` | decode it now |
-| client | `{"t":"cancel","id":N}` | drop it (misfire, the agent speaking) |
-| server | `{"t":"ready","engine","model"}` | on connect |
-| server | `{"t":"partial","id","text","audioMs"}` | every 0.4 s of new audio, when the text changed |
-| server | `{"t":"final","id","text","lang","model","ms","audioMs"}` | the whole utterance decoded |
-| server | `{"t":"error","id","error"}` | then the page falls back |
+| from   | message                                                   | meaning                                         |
+| ------ | --------------------------------------------------------- | ----------------------------------------------- |
+| client | `{"t":"begin","id":N}`                                    | a new utterance                                 |
+| client | binary `0x01` + int16le PCM                               | frames of the current one, as heard             |
+| client | binary `0x02` + int16le PCM                               | the VAD's pre-pad: audio before the first frame |
+| client | `{"t":"end","id":N}`                                      | decode it now                                   |
+| client | `{"t":"cancel","id":N}`                                   | drop it (misfire, the agent speaking)           |
+| server | `{"t":"ready","engine","model"}`                          | on connect                                      |
+| server | `{"t":"partial","id","text","audioMs"}`                   | every 0.4 s of new audio, when the text changed |
+| server | `{"t":"final","id","text","lang","model","ms","audioMs"}` | the whole utterance decoded                     |
+| server | `{"t":"error","id","error"}`                              | then the page falls back                        |
 
 `GET /health` on the same port answers `{ok, engine, model}`.
 
@@ -206,13 +224,13 @@ made by `noisy.py` (files only, never played: babble = three of the owner's
 other clips mixed in, pink noise), scored as CER against SenseVoice on the
 clean clip:
 
-| audio | clips | CER raw | DFN3 | DFN3, 10 dB cap |
-| --- | --- | --- | --- | --- |
-| clean | 13–14 | 0 (the reference) | 0.102 | 0.017 |
-| pink, 5 dB SNR | 12 | 0.196 | 0.254 | 0.507 |
-| pink, 0 dB | 12 | 0.368 | 0.480 | 0.591 |
-| babble, 5 dB | 12 | 0.545 | 0.704 | 0.588 |
-| babble, 0 dB | 12 | 0.871 | 0.840 | 0.864 |
+| audio          | clips | CER raw           | DFN3  | DFN3, 10 dB cap |
+| -------------- | ----- | ----------------- | ----- | --------------- |
+| clean          | 13–14 | 0 (the reference) | 0.102 | 0.017           |
+| pink, 5 dB SNR | 12    | 0.196             | 0.254 | 0.507           |
+| pink, 0 dB     | 12    | 0.368             | 0.480 | 0.591           |
+| babble, 5 dB   | 12    | 0.545             | 0.704 | 0.588           |
+| babble, 0 dB   | 12    | 0.871             | 0.840 | 0.864           |
 
 That matches what is known of enhancement before ASR: the model was trained
 on natural noisy speech, and the enhancer's artifacts hurt it more than the
