@@ -357,6 +357,12 @@ try {
   let res = reviewed();
   await page.keyboard.press("1");
   check((await (await res).status()) === 200, "1 saves that one word immediately");
+  // The list's progress (lib/words/progress.ts): a word just studied scores a little.
+  const prog = (await listsNow())?.progress;
+  check(
+    typeof prog === "number" && prog > 0 && prog < 1,
+    `the list's progress counts the studied word, partly (${prog})`,
+  );
   check(
     (await rows.nth(0).locator("[data-stamp-cell] .lk-stamp").count()) === 1,
     "a graded slip gets a small seal at its left end",
@@ -1743,6 +1749,24 @@ try {
 
   // Drag the second list above the first by its handle; the order is saved.
   await toPicker();
+  // Each row ends in its progress ring: a percentage, labelled for screen readers.
+  const ring = page.locator("[data-progress]").first();
+  await ring.waitFor({ timeout: 10000 }).catch(() => {});
+  const ringInfo = (await ring.count())
+    ? await ring.evaluate((el) => ({
+        pct: Number(el.getAttribute("data-progress")),
+        label: el.getAttribute("aria-label") ?? "",
+        text: el.textContent ?? "",
+      }))
+    : null;
+  check(
+    !!ringInfo &&
+      ringInfo.pct >= 0 &&
+      ringInfo.pct <= 100 &&
+      ringInfo.text.includes("%") &&
+      ringInfo.label.includes("words"),
+    `each list shows its progress ring (${JSON.stringify(ringInfo)})`,
+  );
   const handles = page.getByRole("button", { name: "Drag to reorder" });
   const before = (
     await page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists)

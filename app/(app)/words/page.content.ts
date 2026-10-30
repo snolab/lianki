@@ -1293,6 +1293,24 @@ const dictionary = {
       mr: "संकुचित करा",
       ko: "접기",
     }),
+    progressTitle: t({
+      en: "{pct}% learned across {total} words: each word counts more the closer it is to staying in memory a year",
+      zh: "{total} 个单词整体已学会 {pct}%：每个单词越接近能记住一年，计分越高",
+      hi: "{total} शब्दों में {pct}% सीखा: हर शब्द जितना एक साल तक याद रहने के करीब, उतना ज़्यादा गिना जाता है",
+      es: "{pct} % aprendido en {total} palabras: cada palabra cuenta más cuanto más cerca está de recordarse un año",
+      fr: "{pct} % appris sur {total} mots : chaque mot compte d’autant plus qu’il approche d’un an en mémoire",
+      ar: "تم تعلّم {pct}% عبر {total} كلمة: كل كلمة تُحتسب أكثر كلما اقتربت من البقاء في الذاكرة سنة",
+      bn: "{total}টি শব্দে {pct}% শেখা: প্রতিটি শব্দ এক বছর মনে থাকার যত কাছে, তত বেশি গোনা হয়",
+      pt: "{pct}% aprendido em {total} palavras: cada palavra conta mais quanto mais perto está de ficar um ano na memória",
+      ru: "Изучено {pct}% из {total} слов: слово весит тем больше, чем ближе оно к тому, чтобы помниться год",
+      ur: "{total} الفاظ میں {pct}% سیکھا: ہر لفظ جتنا ایک سال یاد رہنے کے قریب، اتنا زیادہ گنا جاتا ہے",
+      id: "{pct}% dipelajari dari {total} kata: tiap kata makin dihitung makin dekat ia teringat setahun",
+      de: "{pct} % gelernt über {total} Wörter: Jedes Wort zählt mehr, je näher es daran ist, ein Jahr im Gedächtnis zu bleiben",
+      ja: "{total}語で{pct}%習得：1年記憶に残る状態に近い単語ほど大きく数えます",
+      sw: "{pct}% imejifunzwa kati ya maneno {total}: kila neno huhesabiwa zaidi kadiri linavyokaribia kukumbukwa mwaka mmoja",
+      mr: "{total} शब्दांत {pct}% शिकले: प्रत्येक शब्द एक वर्ष लक्षात राहण्याच्या जितका जवळ, तितका जास्त मोजला जातो",
+      ko: "{total}개 단어 중 {pct}% 학습: 1년 동안 기억에 남는 상태에 가까울수록 단어가 더 크게 셉니다",
+    }),
     rowStats: t({
       en: "{due} due · {learning} learning · {mastered} mastered (≥1y) · {seen}/{total} seen",
       zh: "待复习 {due} · 学习中 {learning} · 已掌握 {mastered}（≥1年）· 已见 {seen}/{total}",
@@ -1624,6 +1642,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Small second line under 'Study all lists together': new (never-seen) words are introduced in the order the lists are arranged below it.",
   dueCount:
     "Badge on the 'Study all lists together' button: how many words across all lists are due for review now. {n} is a number.",
+  progressTitle:
+    "/words list picker, each list's row: the tooltip and screen-reader label of the small progress ring and percentage on the right. {pct} is the list's progress (0–100, keep the % sign placement natural for the language); {total} is how many words the list (a group: every list in it) holds. Progress counts every word, unstudied ones as 0, and a word counts more the nearer it is to being remembered for a year. Keep both placeholders. One sentence, no final period.",
   rowStats:
     "Small stats line under a word list's name in the list picker. {due}: words due for review now; {learning}: words being learned; {mastered}: words whose next review is a year or more away (≥1y = at least one year); {seen}/{total}: words seen so far out of the list's size.",
   expand:
