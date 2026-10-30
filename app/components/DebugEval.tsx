@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   type ChatMessage,
   type Heartbeat,
+  type EditedEvent,
   type HubState,
+  applyEdit,
   type PairInfo,
   type Sender,
   chunkMessages,
@@ -17,6 +19,7 @@ import {
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
 import { isKey } from "@lianki/debug-chat/storage-keys";
 import type { ChatStrings } from "@lianki/debug-chat/wire";
+import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
 import { voice } from "@lianki/debug-chat/voice";
@@ -279,6 +282,13 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           } else setWarning(null);
           return;
         }
+        if (msg.type === "edited") {
+          // The agent polished a voice line: it changes in place, and is never read aloud again.
+          const e = msg as unknown as EditedEvent;
+          if (typeof e.id !== "string" || typeof e.text !== "string") return;
+          setMessages((list) => list.map((m) => applyEdit(m, e)));
+          return;
+        }
         if (msg.type !== "eval") return;
         if (typeof msg.id !== "string" || typeof msg.to !== "string") return;
         if (typeof msg.code !== "string" || !debugOn()) return;
@@ -396,7 +406,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
     } catch {}
   };
   /** `to`: the state-tree node the line is addressed to (absent = the main thread). */
-  const sendChat = (text: string, to?: string) => {
+  const sendChat = (text: string, to?: string, opts?: { source?: "stt" }) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return false;
     try {
@@ -406,6 +416,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           id: crypto.randomUUID().slice(0, 12),
           text,
           ...(to ? { to } : {}),
+          ...(opts?.source === "stt" ? { source: "stt" } : {}),
         }),
       );
       return true;
@@ -417,6 +428,22 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
   const pending = state?.pending ?? null;
   const sessions = state?.sessions ?? [];
   const isFriend = friend !== null;
+  // The owner's tree: the bundled outline, with live progress laid over it.
+  const ownerTree = useMemo(
+    () =>
+      typeof window === "undefined"
+        ? undefined
+        : liveTreeSource({
+            base: async () => {
+              const r = await fetch("/api/dev/state-tree", { cache: "no-store" });
+              if (!r.ok) throw new Error(`HTTP ${r.status}`);
+              return r.text();
+            },
+            url: progressSocketUrl(location),
+            repo: "snolab/lianki",
+          }),
+    [],
+  );
   if (!live && !toast && !chat) return null;
   return (
     <>
@@ -445,6 +472,8 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           evalRan={!!toast}
           friend={isFriend}
           strings={strings}
+          treeSource={owner && !isFriend ? ownerTree : undefined}
+          treeRepo="snolab/lianki"
           agentAvatar={AGENT_AVATAR}
           viewer={viewer}
         />

@@ -2,6 +2,7 @@
 import { execSync } from "child_process";
 import { writeFileSync, existsSync } from "fs";
 import { writeCorpus, CORPUS_PATH } from "./gen-blog-corpus";
+import { writeStateTree, STATE_TREE_MODULE } from "./gen-state-tree";
 import { join } from "path";
 
 const run = (cmd: string) => execSync(cmd, { encoding: "utf-8" });
@@ -14,6 +15,12 @@ const die = (msg: string): never => {
 // commit never touched.
 const staged = () => run("git diff --cached --name-only").trim().split("\n").filter(Boolean);
 const isStaged = (path: string) => staged().includes(path);
+
+// docs/state-tree.md is served by GET /api/dev/state-tree from a bundled copy
+// (the Worker has no filesystem): keep it in sync on every commit, before the
+// userscript-only steps below exit early. unit/state-tree.test.ts checks it.
+if (writeStateTree().changed) console.log(`${STATE_TREE_MODULE} regenerated`);
+run(`git add ${STATE_TREE_MODULE}`);
 
 // Build userscript from TS source if staged
 if (isStaged("src/lianki.user.ts")) {

@@ -46,7 +46,10 @@ re-exports for the hub and the sender.
 | File (`packages/debug-chat/src/` unless a path is given) | Role                                                     |
 | -------------------------------------------------------- | -------------------------------------------------------- |
 | `debug-chat-widget.ts`                                   | the widget entry: `DebugChat` and `WIDGET_API`           |
-| `DebugChat.tsx`                                          | the chat box: log, input, pill, menu                     |
+| `DebugChat.tsx`                                          | the chat box: log, the bar (controls + input), menu      |
+| `float-lines.ts`                                         | minimized: floating lines, their dwell and timers        |
+| `log-surface.ts`                                         | the log's display, shared by the log and the state tree  |
+| `Frontier.tsx`, `frontier-view.ts`                       | minimized: the ✓ ▶ › frontier lines and their rules      |
 | `DebugChatHost.tsx`                                      | the page's loader: import, re-import on reload, fallback |
 | `DebugPairModal.tsx`                                     | the pairing modal                                        |
 | `MicButton.tsx`, `mic.ts`                                | the mic: VAD, STT client, dictation rules                |
@@ -315,6 +318,71 @@ to the main thread, as before, but prints agent lines addressed to a node.
   is meant for the state tree: selecting a node will target it. The target
   is kept on `window`, so a hot reload keeps it.
 
+## Agent edits of voice messages
+
+STT gets words wrong, and it has no context on the conversation. The chat
+lane does: it may **polish the owner's latest line** when that line came from
+the widget's own mic, so the log reads what was meant.
+
+**Which lines are voice.** The widget sends a line `source: "stt"` when the
+draft is exactly what the mic left there: an STT final sent on its own, or
+dictation sent unchanged (`dictatedDraft` / `draftSource` in
+`packages/debug-chat/src/wire.ts`). Typed lines, and dictation edited before
+sending, carry no source. `eval.ts chat` prints `"source":"stt"` on such lines
+— that is the cue that an edit is allowed.
+
+**The command** (chat lane; uses the saved grant, never pairs):
+
+```bash
+bun scripts/dev/eval.ts edit --last --no-pair "Fix the sync button on /words."
+bun scripts/dev/eval.ts edit <msgId> --no-pair "Fix the sync button on /words."
+echo "polished text" | bun scripts/dev/eval.ts edit --last --no-pair -
+```
+
+Prints the hub's `{"type":"edited","id","thread","text","raw","edited"}`, or
+fails with the rule it broke. Polish, then reply: correct misheard words,
+names and punctuation only — never change what the owner meant.
+
+**The rules** (`DebugHub.edit` in `workers/push/src/debug.ts`, each one unit-tested
+in `unit/debug-hub.test.ts`). `{type:"edit", id, text}` is accepted only if:
+
+- the sender holds a live owner grant (chat, or eval, which implies chat); a
+  pairing made for a friend never may;
+- the target is the owner's **latest** line in the owner thread (agent replies
+  after it do not count; any earlier line is refused);
+- that line has `source: "stt"`;
+- it was polished fewer than `MAX_EDITS` (3) times, and the text changes.
+
+Friends' threads and lines can never be edited. On success the stored line
+keeps the first STT text as `raw` (only the first), takes the polished
+`text`, and gets `edited: {at, by, count}` (`by` = the agent id, else the
+controller's label). Pages and listeners hear `{type:"edited", …}`.
+
+**On the page.** The line changes in place (a floating line too) and is
+never read aloud again. A small muted sparkle after it marks it polished
+(tooltip "Polished", zh 已润色; long press on touch shows it). A tap shows
+the raw STT text, muted; another tap goes back. The icon is one slot:
+`POLISHED_ICON` in `packages/debug-chat/src/icons.tsx`, or the widget's
+`polishedIcon` prop.
+
+## The state tree, live
+
+The chat's Tree view (menu → Tree; `docs/state-tree.md`) normally shows the
+copy bundled at commit time, from `GET /api/dev/state-tree`. While the widget
+is hot-loaded, the same dev server also serves the working tree's
+`docs/state-tree.md` at `/state-tree.md` (CORS for lianki.com) and sends a
+`tree` event on `/events` whenever it is saved (`fs.watch` on `docs/`, no
+polling). `DebugChatHost` then hands the chat a feed
+(`pickTreeSource` / `hotTreeSource` in `debug-widget.ts`) that fetches it on
+open and on each `tree` event, so an edit reaches the owner's open page in
+about a second, with no commit or deploy. A green dot next to "Tree" means the
+data is live; if the dev server cannot serve the file, the feed falls back to
+the bundled copy and the dot is gone.
+
+`treeSource` accepts a URL, a function returning markdown or nodes, or
+`{subscribe(onUpdate) → unsubscribe}`: the WebSocket progress feed
+(`feat/live-roadmap`, parked) will be another such feed.
+
 ## Testing
 
 `bun test unit/debug-widget.test.ts` covers the URL rules, the module checks,
@@ -335,7 +403,16 @@ Run it by hand with Playwright: open `http://localhost:5180/harness`
 (`?working=1` shows the spinner) and set the localStorage key to
 `http://localhost:5180/debug-chat.js`. Then check `[data-debug-widget]` (its
 value is the rev) and edit `DebugChat.tsx`: the rev changes and the new UI
-renders.
+renders. `?min` (or `?open`) starts minimized (or expanded), `?notree` and
+`?nofrontier` leave out the static tree and frontier, and
+`globalThis.__push(text)` adds a live message.
+
+`node scripts/dev/debug-chat-bar-qa.mjs [--shots <dir>]` does that on its
+own: it starts the server on a free port, loads the hot widget into
+`/harness`, and checks the chat bar expanded and minimized (one container,
+focus order, 16px input, 40px targets, the inert input, the mic clickable and
+its drag gestures, floating lines). getUserMedia is stubbed, so nothing is
+recorded. `--shots` also saves light/dark × expanded/minimized at 390px.
 
 ## Screenshots
 

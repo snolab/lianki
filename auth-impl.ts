@@ -16,9 +16,12 @@ import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { trustedOrigins } from "@/lib/trusted-origins";
 import { mailLocale, signInMail } from "@/lib/sign-in-mail";
 import { db, mongoClient } from "./app/db";
-import { dbBackend, getD1 } from "./lib/d1";
+import { cfRequestProps, dbBackend, getD1, workerWaitUntil } from "./lib/d1";
+import { securityPlugin } from "./lib/security/auth-plugin";
+import type { ThrottleDb } from "./lib/security/throttle";
 import { passwordAuthEnabled, runtimeNodeEnv } from "./lib/auth-env";
 import { PASSKEY_RP_NAME, passkeyRelyingParty } from "./lib/passkey";
+import { settleUserSponsorships, type D1WithBatch } from "./lib/payments/sponsors-store";
 
 // The heavy half of auth: better-auth, its plugins, zod, kysely. Only ever
 // reached through the dynamic import in ./auth.ts, so it is one shared async
@@ -115,6 +118,22 @@ function baseOptions() {
     // lib/google-auth-url.ts.
     hooks: { after: stripGrantedScopesHook },
 
+    // A GitHub account just signed up or was linked: claim any GitHub
+    // Sponsors sponsorship that was waiting for its id (docs/payments.md).
+    // Never fails the sign-in; the next membership status read retries.
+    databaseHooks: {
+      account: {
+        create: {
+          after: async (account: { providerId: string; userId: string }) => {
+            if (account.providerId !== "github" || dbBackend() !== "d1") return;
+            await settleUserSponsorships(getD1() as unknown as D1WithBatch, account.userId).catch(
+              (e) => console.error("[sponsors] claim:", e),
+            );
+          },
+        },
+      },
+    },
+
     plugins: [
       // Gated on configuration, as the SMTP version was: with no provider the
       // plugin is absent and the sign-in form offers only OAuth, rather than
@@ -153,6 +172,15 @@ function baseOptions() {
       // added from the profile page or right after an email sign-in. Always on:
       // unlike mail it needs no provider. Table: db/migrations/0011_passkey.sql.
       passkeyPlugin(),
+      // Sign-in lockout, code-send limits and the new-device login notice
+      // (docs/security-measures.md). D1 only.
+      securityPlugin({
+        getDb: () => (dbBackend() === "d1" ? (getD1() as unknown as ThrottleDb) : null),
+        getCf: cfRequestProps,
+        waitUntil: (p) => {
+          if (!workerWaitUntil(p)) void p;
+        },
+      }),
       nextCookies(), // must be last — handles Set-Cookie in server actions
     ],
   };

@@ -1,6 +1,7 @@
 /**
  * Swipe grading on touch (app/(app)/words/WordsClient.tsx, WordRow).
  */
+import { detentLevel, snapDetent } from "@lianki/debug-chat/detent";
 export type SwipeRating = 1 | 2 | 3 | 4;
 
 /**
@@ -48,23 +49,23 @@ export type SwipeLevel = -2 | -1 | 0 | 1 | 2;
 
 /** The row's position for a finger travel `finger`: the snapping staircase. */
 export function snapSwipe(finger: number, a = SWIPE_ROW_PX) {
-  const L = SWIPE_LEVEL * a;
-  const f = Math.abs(finger);
-  const top = SWIPE_MAX_LEVEL * L;
-  const x =
-    f <= top
-      ? a * (f / L - (SWIPE_SNAP * Math.sin((2 * Math.PI * f) / L)) / (2 * Math.PI))
-      : Math.min(SWIPE_STOP * a, SWIPE_MAX_LEVEL * a + (f - top) * SWIPE_STRETCH);
-  return Math.sign(finger) * x;
+  return snapDetent(finger, {
+    cell: SWIPE_LEVEL * a,
+    unit: a,
+    max: SWIPE_MAX_LEVEL,
+    snap: SWIPE_SNAP,
+    stretch: SWIPE_STRETCH,
+    stop: SWIPE_STOP * a,
+  });
 }
 
 /** The level after finger travel `finger`, from level `from`: hysteresis both ways. */
 export function swipeLevel(finger: number, from: number = 0, a = SWIPE_ROW_PX): SwipeLevel {
-  const t = finger / (SWIPE_LEVEL * a);
-  let k = from;
-  while (k < SWIPE_MAX_LEVEL && t > k + 0.5 + SWIPE_HYSTERESIS) k++;
-  while (k > -SWIPE_MAX_LEVEL && t < k - 0.5 - SWIPE_HYSTERESIS) k--;
-  return k as SwipeLevel;
+  return detentLevel(finger / (SWIPE_LEVEL * a), from, {
+    min: -SWIPE_MAX_LEVEL,
+    max: SWIPE_MAX_LEVEL,
+    hysteresis: SWIPE_HYSTERESIS,
+  }) as SwipeLevel;
 }
 
 /** The grade a level gives: ← Again (−2) / Hard (−1), → Good (1) / Easy (2). */

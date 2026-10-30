@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { getUserMembership } from "@/lib/membership";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { settleAsInvitee, type D1WithBatch } from "@/lib/referrals/store";
+import { settleUserSponsorships } from "@/lib/payments/sponsors-store";
 
 export async function GET() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -15,6 +16,11 @@ export async function GET() {
   if (dbBackend() === "d1") {
     await settleAsInvitee(getD1() as unknown as D1WithBatch, session.user.id).catch((e) =>
       console.error("[referral] settle:", e),
+    );
+    // GitHub sends no renewal event, so a monthly sponsorship's next period is
+    // granted here; this also claims one that waited for this GitHub id.
+    await settleUserSponsorships(getD1() as unknown as D1WithBatch, session.user.id).catch((e) =>
+      console.error("[sponsors] settle:", e),
     );
   }
 

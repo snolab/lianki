@@ -5,6 +5,7 @@
  * Off unless STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are both set: the
  * checkout route answers 503 and the membership page hides the buy buttons.
  */
+import { stripeThreeDSecure } from "./checkout-policy";
 import type { Pass } from "./passes";
 
 const API = "https://api.stripe.com/v1";
@@ -58,10 +59,14 @@ export function checkoutParams({ pass, userId, email, successUrl, cancelUrl }: C
     client_reference_id: userId,
     customer_email: email,
     payment_method_types: methods,
-    // Checkout refuses WeChat Pay without naming the client it runs in.
-    payment_method_options: methods.includes("wechat_pay")
-      ? { wechat_pay: { client: "web" } }
-      : undefined,
+    payment_method_options: {
+      // 3-D Secure on every card payment (lib/payments/checkout-policy.ts).
+      ...(methods.includes("card")
+        ? { card: { request_three_d_secure: stripeThreeDSecure() } }
+        : {}),
+      // Checkout refuses WeChat Pay without naming the client it runs in.
+      ...(methods.includes("wechat_pay") ? { wechat_pay: { client: "web" } } : {}),
+    },
     line_items: [
       {
         quantity: 1,
@@ -103,7 +108,7 @@ function hex(buf: ArrayBuffer): string {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function timingSafeEqual(a: string, b: string): boolean {
+export function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);

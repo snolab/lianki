@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
 import { isOwner } from "@/lib/owner";
+import { StateTreeDoc } from "@/app/components/StateTreeDoc";
 import { ROADMAP, STATUS_LABEL, STATUS_ORDER, type RoadmapStatus } from "./items";
 
 // Owner-only. Anyone else — guests included — gets a plain 404, so the page's
@@ -32,6 +33,8 @@ export default async function DevRoadmapPage() {
           只有你能看到这页。编辑 app/(app)/dev/roadmap/items.ts。
         </p>
       </header>
+
+      <StateTreeDoc />
 
       {STATUS_ORDER.map((status) => {
         const items = ROADMAP[status];

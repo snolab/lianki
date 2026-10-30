@@ -25,11 +25,18 @@ export const metadata: Metadata = {
 };
 
 /**
- * Seal red (印泥), the brand colour: browser chrome on phones.
+ * The status bar (and the notch around it) takes the page's paper colour, not
+ * the seal red, light and dark alike (--background in globals.css).
  * viewportFit "cover" lets the page run under the notch and home indicator and
  * makes env(safe-area-inset-*) real; fixed bars pad themselves with it.
  */
-export const viewport: Viewport = { themeColor: "#c8102e", viewportFit: "cover" };
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "oklch(0.945 0.02 82)" },
+    { media: "(prefers-color-scheme: dark)", color: "oklch(0.18 0.01 65)" },
+  ],
+  viewportFit: "cover",
+};
 
 async function getRootLocale() {
   const h = await headers();

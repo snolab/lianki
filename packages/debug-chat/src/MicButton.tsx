@@ -6,7 +6,6 @@ import {
   type Vad,
   type VadEvents,
   RATE,
-  createMic,
   energyGate,
   micErrorNote,
   micStatus,
@@ -15,6 +14,7 @@ import {
   resample,
   scheduleTick,
 } from "./mic";
+import { type MicSession, type MicView, micSession } from "./mic-session";
 import { voice } from "./voice";
 import {
   aecOn,
@@ -79,65 +79,49 @@ const script = (src: string) =>
  * The mic, with echo cancellation, noise suppression and auto gain on
  * (lk:voice-aec; voice-out.ts). vad-web is handed this stream (getStream),
  * so these are the constraints it runs with. What the browser applied is kept
- * for the per-utterance debug log.
+ * for the per-utterance debug log. The mic session (mic-session.ts) owns it:
+ * the VADs below listen on it and never stop it.
  */
 const micStream = async () => {
   const s = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(aecOn()) });
   noteTrack(s);
   return s;
 };
-const stop = (s: MediaStream) => {
-  for (const t of s.getTracks()) t.stop();
-};
 
-/**
- * Silero: ends an utterance after ~0.8 s of silence. The mic is opened first
- * (so a refusal is told apart from a load failure, and skips the fallback),
- * and kept open across `flush` (= pause, which submits, + start).
- */
-async function silero(ev: VadEvents): Promise<Vad> {
-  const stream = await micStream();
-  try {
-    await script(`${ORT}ort.wasm.min.js`);
-    await script(`${VAD}bundle.min.js`);
-    const g = (globalThis as unknown as { vad?: VadGlobal }).vad;
-    if (!g) throw new Error("vad-web did not load");
-    const v = await g.MicVAD.new({
-      baseAssetPath: VAD,
-      onnxWASMBasePath: ORT,
-      model: "v5",
-      submitUserSpeechOnPause: true,
-      startOnLoad: false,
-      getStream: async () => stream,
-      pauseStream: async () => {},
-      resumeStream: async () => stream,
-      onSpeechStart: ev.onSpeechStart,
-      onSpeechEnd: ev.onSpeechEnd,
-      onVADMisfire: ev.onMisfire,
-      onFrameProcessed: (p: { isSpeech?: number } | undefined, frame: Float32Array) =>
-        ev.onFrame?.(frame, p?.isSpeech),
-    });
-    return {
-      start: () => v.start(),
-      pause: () => v.pause(),
-      flush: async () => {
-        await v.pause();
-        await v.start();
-      },
-      destroy: async () => {
-        await v.destroy();
-        stop(stream);
-      },
-    };
-  } catch (e) {
-    stop(stream);
-    throw e;
-  }
+/** Silero: ends an utterance after ~0.8 s of silence, on the session's stream. */
+async function silero(ev: VadEvents, stream: MediaStream): Promise<Vad> {
+  await script(`${ORT}ort.wasm.min.js`);
+  await script(`${VAD}bundle.min.js`);
+  const g = (globalThis as unknown as { vad?: VadGlobal }).vad;
+  if (!g) throw new Error("vad-web did not load");
+  const v = await g.MicVAD.new({
+    baseAssetPath: VAD,
+    onnxWASMBasePath: ORT,
+    model: "v5",
+    submitUserSpeechOnPause: true,
+    startOnLoad: false,
+    getStream: async () => stream,
+    pauseStream: async () => {},
+    resumeStream: async () => stream,
+    onSpeechStart: ev.onSpeechStart,
+    onSpeechEnd: ev.onSpeechEnd,
+    onVADMisfire: ev.onMisfire,
+    onFrameProcessed: (p: { isSpeech?: number } | undefined, frame: Float32Array) =>
+      ev.onFrame?.(frame, p?.isSpeech),
+  });
+  return {
+    start: () => v.start(),
+    pause: () => v.pause(),
+    flush: async () => {
+      await v.pause();
+      await v.start();
+    },
+    destroy: () => v.destroy(),
+  };
 }
 
-/** The fallback: an energy threshold on the raw microphone signal (lib/mic.ts energyGate). */
-async function energy(ev: VadEvents): Promise<Vad> {
-  const stream = await micStream();
+/** The fallback: an energy threshold on the raw signal (mic.ts energyGate), on the session's stream. */
+async function energy(ev: VadEvents, stream: MediaStream): Promise<Vad> {
   const ctx = audioCtx();
   if (!ctx) throw new Error("no Web Audio");
   const src = ctx.createMediaStreamSource(stream);
@@ -174,9 +158,89 @@ async function energy(ev: VadEvents): Promise<Vad> {
       on = false;
       node.disconnect();
       src.disconnect();
-      stop(stream);
     },
   };
+}
+
+/** The page's mic session, built with this module's browser pieces (mic-session.ts). */
+function session(): MicSession {
+  const v = voice();
+  return micSession({
+    getStream: micStream,
+    load: (ev, s) => silero(ev, s as MediaStream),
+    fallback: (ev, s) => energy(ev, s as MediaStream),
+    onState: (s, last) => {
+      const active = s !== "off";
+      v.setMic(active);
+      // The user starts talking: over the agent it ducks (a barge-in if they
+      // keep going), else the reading pauses; it reads on once they are done.
+      if (s === "capturing") v.userSpeech();
+      else if (last === "capturing") v.userIdle();
+      if (!active && !v.state().speaking) void existingCtx()?.suspend().catch(() => {});
+    },
+    onProb: (p) => v.userFrame(p),
+    // Only with lk:voice-aec off: else the mic stays open and the user can barge in.
+    subscribeHold: (f) => {
+      f(v.state().hold);
+      return v.subscribe((x) => f(x.hold));
+    },
+    upload: async (wav, { durationMs, partial }, cfg) => {
+      const at = Date.now();
+      const sink = partial ? undefined : cfg.clipSink;
+      try {
+        const out = await postStt(wav);
+        // The text guard: the agent's own words that leaked past the AEC are dropped.
+        const echo = v.echoCheck(out.text, durationMs);
+        if (!partial)
+          v.log({
+            ev: "voice-utt",
+            out: v.mode(),
+            aec: v.aec(),
+            settings: appliedSettings(),
+            durationMs,
+            during: echo.during,
+            drop: echo.drop,
+            score: echo.score,
+            text: out.text.slice(0, 80),
+            against: echo.drop ? echo.against?.slice(0, 80) : undefined,
+          });
+        if (echo.drop) {
+          if (!partial) v.echoDropped();
+          return "";
+        }
+        if (sink)
+          void postClip(sink, wav, {
+            at,
+            durationMs,
+            label: cfg.label,
+            transcript: out.text,
+            model: out.model,
+          });
+        return out.text;
+      } catch (e) {
+        if (sink) void postClip(sink, wav, { at, durationMs, label: cfg.label });
+        throw e;
+      }
+    },
+    storage: {
+      get: (k) => sessionStorage.getItem(k),
+      set: (k, x) => sessionStorage.setItem(k, x),
+      remove: (k) => sessionStorage.removeItem(k),
+    },
+    permission: async () => {
+      const p = await navigator.permissions?.query({ name: "microphone" as PermissionName });
+      return (p?.state as "granted" | "denied" | "prompt" | undefined) ?? "unknown";
+    },
+    resumeAudio: async () => {
+      const c = audioCtx();
+      if (!c) return false;
+      if (c.state === "running") return true;
+      // Without a gesture this may never settle: give it a moment.
+      await Promise.race([c.resume().catch(() => {}), new Promise((r) => setTimeout(r, 800))]);
+      return (c.state as string) === "running";
+    },
+    log: (ev) => v.log(ev),
+  });
 }
 
 /** Phosphor "microphone" (MIT, (c) 2023 Phosphor Icons), regular and fill. */
@@ -222,104 +286,82 @@ export function DebugMic({
   onActive,
   clipSink,
   label,
+  gesture,
 }: {
   onText: (text: string) => void;
   onPending: (n: number, interim: string) => void;
   onActive: (on: boolean) => void;
   clipSink?: string;
   label: string;
+  /**
+   * The chat bar's own press handling (DebugChat): a vertical drag scrubs the
+   * history, a horizontal one moves the bar; `wasDrag` swallows the click that
+   * ends either, so a scrub never toggles the mic.
+   */
+  gesture?: {
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => void;
+    onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => void;
+    onPointerUp: (e: React.PointerEvent<HTMLButtonElement>) => void;
+    onPointerCancel: (e: React.PointerEvent<HTMLButtonElement>) => void;
+    onKeyDown?: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
+    wasDrag: () => boolean;
+    description?: string;
+  };
 }) {
   const [can, setCan] = useState(false);
-  const [state, setState] = useState<MicState>("off");
-  const [pending, setPending] = useState(0);
-  const [note, setNote] = useState<string | null>(null);
+  /** The page's mic session (mic-session.ts): it outlives this button. */
+  const [view, setView] = useState<MicView>({
+    state: "off",
+    pending: 0,
+    interim: "",
+    error: null,
+    resume: false,
+  });
   /** The agent's reply is being read (voice session). */
   const [talking, setTalking] = useState(false);
   const cb = useRef({ onText, onPending, onActive, clipSink, label });
   cb.current = { onText, onPending, onActive, clipSink, label };
-  const mic = useRef<ReturnType<typeof createMic> | null>(null);
+  const mic = useRef<MicSession | null>(null);
 
   useEffect(() => {
     setCan(canCapture());
-    const v = voice();
-    let last: MicState = "off";
-    mic.current = createMic({
-      load: silero,
-      fallback: energy,
-      onState: (s) => {
-        setState(s);
-        const active = s !== "off";
-        v.setMic(active);
-        // The user starts talking: over the agent it ducks (a barge-in if they
-        // keep going), else the reading pauses; it reads on once they are done.
-        if (s === "capturing") v.userSpeech();
-        else if (last === "capturing") v.userIdle();
-        last = s;
-        if (!active && !v.state().speaking) void existingCtx()?.suspend().catch(() => {});
-        cb.current.onActive(active);
-      },
-      onText: (t) => cb.current.onText(t),
-      onPending: (n, interim) => {
-        setPending(n);
-        cb.current.onPending(n, interim);
-      },
-      onError: (e) => setNote(micErrorNote(e)),
-      onProb: (p) => v.userFrame(p),
-      upload: async (wav, { durationMs, partial }) => {
-        const at = Date.now();
-        const sink = partial ? undefined : cb.current.clipSink;
-        try {
-          const out = await postStt(wav);
-          // The text guard: the agent's own words that leaked past the AEC are dropped.
-          const echo = v.echoCheck(out.text, durationMs);
-          if (!partial)
-            v.log({
-              ev: "voice-utt",
-              out: v.mode(),
-              aec: v.aec(),
-              settings: appliedSettings(),
-              durationMs,
-              during: echo.during,
-              drop: echo.drop,
-              score: echo.score,
-              text: out.text.slice(0, 80),
-              against: echo.drop ? echo.against?.slice(0, 80) : undefined,
-            });
-          if (echo.drop) {
-            if (!partial) v.echoDropped();
-            return "";
-          }
-          if (sink)
-            void postClip(sink, wav, {
-              at,
-              durationMs,
-              label: cb.current.label,
-              transcript: out.text,
-              model: out.model,
-            });
-          return out.text;
-        } catch (e) {
-          if (sink) void postClip(sink, wav, { at, durationMs, label: cb.current.label });
-          throw e;
-        }
-      },
+    if (!canCapture()) return;
+    // Attach to the session — the same one across hot swaps and remounts;
+    // detaching (unmount) never stops it.
+    const m = (mic.current = session());
+    m.configure({ clipSink: cb.current.clipSink, label: cb.current.label });
+    let active = false;
+    const unsubView = m.subscribe((x) => {
+      setView(x);
+      const on = x.state !== "off";
+      if (on !== active) {
+        active = on;
+        cb.current.onActive(on);
+      }
     });
-    const follow = (x: { speaking: boolean; hold: boolean }) => {
-      setTalking(x.speaking);
-      // Only with lk:voice-aec off: else the mic stays open and the user can barge in.
-      mic.current?.hold(x.hold);
-    };
-    follow(v.state());
-    const unsub = v.subscribe(follow);
+    const detach = m.attach({
+      onText: (t) => cb.current.onText(t),
+      onPending: (n, interim) => cb.current.onPending(n, interim),
+    });
+    const v = voice();
+    setTalking(v.state().speaking);
+    const unsubVoice = v.subscribe((x) => setTalking(x.speaking));
     return () => {
-      unsub();
-      const m = mic.current;
-      if (m && m.state() !== "off") void m.off();
+      unsubView();
+      detach();
+      unsubVoice();
     };
   }, []);
+  useEffect(() => {
+    mic.current?.configure({ clipSink, label });
+  }, [clipSink, label]);
+  const state = view.state;
+  const pending = view.pending;
+  const note = view.error ? micErrorNote(view.error) : null;
 
   useEffect(() => {
     if (state === "off") return;
+    // Escape is an explicit off.
     const esc = (e: KeyboardEvent) => e.key === "Escape" && void mic.current?.off();
     document.addEventListener("keydown", esc);
     return () => document.removeEventListener("keydown", esc);
@@ -331,13 +373,13 @@ export function DebugMic({
   const status = micStatus(state, pending, talking);
   const speaking = status === "speaking";
   return (
-    // Inside the input, at its right edge (the input is padded so text never runs under it).
-    <div className="absolute end-0.5 top-1/2 flex -translate-y-1/2">
+    // The chat bar's last control, right of the input.
+    <div className="relative flex shrink-0">
       {note && (
         <span
           role="alert"
           data-testid="debug-chat-mic-note"
-          className="pointer-events-none absolute end-0 bottom-full mb-1 whitespace-nowrap text-[10px]"
+          className="pointer-events-none absolute end-0 bottom-full mb-2 whitespace-nowrap text-[10px]"
           style={{ color: "oklch(0.6 0.17 45)" }}
         >
           {note}
@@ -347,21 +389,34 @@ export function DebugMic({
         type="button"
         data-testid="debug-chat-mic"
         data-state={state}
+        data-resume={(view.resume && state === "off") || undefined}
         data-status={status}
         aria-pressed={state !== "off"}
         aria-label={
           state === "off"
-            ? "Dictate: listen and type what you say"
+            ? view.resume
+              ? "Tap to resume listening"
+              : "Dictate: listen and type what you say"
             : speaking
               ? "Agent speaking; tap to interrupt and talk"
               : rec
               ? "Recording; tap to stop listening"
               : "Listening; tap to stop"
         }
+        aria-description={gesture?.description}
+        title={gesture?.description}
         // Keeps the input's focus: the log stays open while dictating.
-        onPointerDown={(e) => e.preventDefault()}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          gesture?.onPointerDown(e);
+        }}
+        onPointerMove={gesture?.onPointerMove}
+        onPointerUp={gesture?.onPointerUp}
+        onPointerCancel={gesture?.onPointerCancel}
+        onKeyDown={gesture?.onKeyDown}
         onClick={() => {
-          setNote(null);
+          // The click that ends a scrub or a move is not a tap.
+          if (gesture?.wasDrag()) return;
           // Barge in: the reading stops (it reads on later), and capture resumes at once.
           if (speaking) return voice().interrupt("tap");
           // Made in this gesture, so iOS lets it play the send tick (and cloud replies) later.
@@ -371,7 +426,8 @@ export function DebugMic({
           }
           void mic.current?.toggle();
         }}
-        className={`pointer-events-auto relative flex size-8 flex-col items-center justify-center rounded-full text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
+        // 40px wide, and 40px tall to the touch (tap-40); no scrolling under a drag.
+        className={`tap-40 pointer-events-auto relative flex h-8 w-10 touch-none flex-col items-center justify-center rounded-full text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
         style={{ color: state === "off" ? undefined : speaking ? TALK : REC }}
       >
         {speaking ? (
@@ -379,14 +435,22 @@ export function DebugMic({
           <span
             aria-hidden
             data-testid="debug-chat-mic-speaking"
-            className="pointer-events-none absolute inset-0.5 animate-pulse rounded-full"
+            className="pointer-events-none absolute inset-x-1.5 inset-y-0.5 animate-pulse rounded-full"
             style={{ boxShadow: `0 0 0 2px ${TALK}`, animationDuration: "2.4s" }}
+          />
+        ) : view.resume && state === "off" ? (
+          // Reloaded with the mic on, and it could not resume by itself: one tap does.
+          <span
+            aria-hidden
+            data-testid="debug-chat-mic-resume"
+            className="pointer-events-none absolute inset-x-1.5 inset-y-0.5 rounded-full border-2 border-dashed"
+            style={{ borderColor: REC }}
           />
         ) : listening && (
           // Steady and faint while listening; red and pulsing while audio is captured.
           <span
             aria-hidden
-            className={`pointer-events-none absolute inset-0.5 rounded-full ${rec ? "animate-pulse" : ""}`}
+            className={`pointer-events-none absolute inset-x-1.5 inset-y-0.5 rounded-full ${rec ? "animate-pulse" : ""}`}
             style={{ boxShadow: `0 0 0 2px ${rec ? REC : "oklch(0.6 0.22 25 / 0.35)"}` }}
           />
         )}

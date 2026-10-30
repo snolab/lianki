@@ -62,7 +62,42 @@ export type ChatMessage = {
    * owner's "@/words › prefetch …", or one agent's line to another node.
    */
   to?: string;
+  /**
+   * "stt": the owner's line came from the widget's own mic — an STT final
+   * sent as heard, or sent unchanged. Absent = typed (or dictation edited
+   * before sending). Only such a line may be polished by the agent (`edit`).
+   */
+  source?: MessageSource;
+  /** The STT text as first heard, kept once the agent has polished the line. */
+  raw?: string;
+  /** Set when the agent polished the line: when, by which agent, and how many times. */
+  edited?: EditMark;
 };
+
+/** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */
+export type MessageSource = "stt";
+/** An agent's polish of a voice line (ChatMessage.edited). */
+export type EditMark = { at: number; by: string; count: number };
+/** How many times the agent may polish one voice line. */
+export const MAX_EDITS = 3;
+/**
+ * The hub's broadcast after an agent polished a voice line: the pages and
+ * listeners update that line in place (never read aloud again).
+ */
+export type EditedEvent = {
+  type: "edited";
+  id: string;
+  thread: string;
+  text: string;
+  raw: string;
+  edited: EditMark;
+};
+
+/** A message updated by an EditedEvent; any other message is returned as is. */
+export function applyEdit<M extends ChatMessage>(m: M, e: Omit<EditedEvent, "type">): M {
+  if (m.id !== e.id || (m.thread ?? "owner") !== e.thread) return m;
+  return { ...m, text: e.text, raw: e.raw, edited: e.edited };
+}
 
 /**
  * Longest avatar URL the hub keeps; longer ones are dropped. Google's and
@@ -296,6 +331,12 @@ export type ChatStrings = {
   you: string;
   /** The empty log's hint. */
   hint: string;
+  /** The connection status (pill tooltip, menu) with the agent listening; `{n}` = listeners. */
+  listening: string;
+  /** The status with no agent listening. */
+  statusOffline: string;
+  /** The mark on a voice line the agent polished (tooltip and label). */
+  polished: string;
 };
 
 export const CHAT_STRINGS_EN: ChatStrings = {
@@ -307,6 +348,9 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   waitingTitle: "Your {name} is offline: this is delivered when it is back",
   you: "you",
   hint: "Type here; it is sent 3 s after you stop.",
+  listening: "Your {name} is listening ({n})",
+  statusOffline: "Your {name} is offline · messages wait until it is back",
+  polished: "Polished by your {name}",
 };
 
 /** Defaults filled in and `{name}` substituted. */
@@ -316,4 +360,22 @@ export function chatStrings(s?: Partial<ChatStrings>): ChatStrings {
   const out = { ...all };
   for (const k of Object.keys(out) as (keyof ChatStrings)[]) out[k] = out[k].replaceAll("{name}", name);
   return out;
+}
+
+/**
+ * The draft after a transcript landed in it, if the whole draft is still
+ * dictation (the draft was empty, or is exactly what dictation left there);
+ * null once anything typed is in it.
+ */
+export function dictatedDraft(prev: string, pure: string | null, next: string): string | null {
+  return !prev.trim() || prev === pure ? next : null;
+}
+
+/**
+ * A line's source as it is sent: "stt" when the draft is exactly what the
+ * mic left there (sent as heard, or unchanged); undefined when anything was
+ * typed or edited in it.
+ */
+export function draftSource(draft: string, pure: string | null): MessageSource | undefined {
+  return pure !== null && draft === pure && !!draft.trim() ? "stt" : undefined;
 }

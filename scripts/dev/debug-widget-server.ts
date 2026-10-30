@@ -16,6 +16,9 @@
  *   GET /debug-chat.js   the widget (ESM; React comes from the page), CORS for lianki.com
  *   GET /events          SSE: `hello` with the current rev on connect, `reload` after a
  *                        rebuild that changed it — the page holds one EventSource
+ *   GET /state-tree.md   the working tree's docs/state-tree.md, CORS for lianki.com; on each
+ *                        save /events sends `tree` (fs.watch, no polling) and the
+ *                        chat's Tree view refetches it (docs/state-tree.md)
  *   GET /harness         a local host page for tests (no lianki-push needed)
  *   GET /health          {rev, origin, buildError, clients}
  *   POST /clips, GET /clips/index.json, GET /clips/<file>
@@ -26,9 +29,16 @@
  *   localStorage.setItem("lk:debug-widget-src", "<origin>/debug-chat.js"); location.reload()
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { watch } from "node:fs";
+import { readFileSync, watch } from "node:fs";
 import { resolve } from "node:path";
-import { ROOT, allowOrigin, buildHarness, buildWidget, sse } from "./debug-widget-build";
+import {
+  ROOT,
+  allowOrigin,
+  buildHarness,
+  buildWidget,
+  harnessCss,
+  sse,
+} from "./debug-widget-build";
 import { clipsDir, handleClips } from "./clip-sink";
 
 const argv = Bun.argv.slice(2);
@@ -160,13 +170,31 @@ function startServer() {
         req.signal.addEventListener("abort", () => clients.delete(me));
         return new Response(stream, { headers: { ...h, "content-type": "text/event-stream" } });
       }
+      if (url.pathname === "/state-tree.md") {
+        try {
+          return new Response(readFileSync(TREE_FILE, "utf8"), {
+            headers: { ...h, "content-type": "text/markdown; charset=utf-8" },
+          });
+        } catch (e) {
+          return new Response(`no ${TREE_FILE}: ${(e as Error).message}`, {
+            status: 404,
+            headers: h,
+          });
+        }
+      }
       if (url.pathname === "/harness")
         return new Response(
           `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width">` +
-            `<title>debug widget harness</title><style>:root{--background:oklch(0.98 0.01 85);--foreground:oklch(0.2 0.01 60)}</style>` +
+            `<title>debug widget harness</title><style>${harnessCss()}</style>` +
             `<div id=root></div><script type=module src="harness.js"></script>`,
           { headers: { ...h, "content-type": "text/html; charset=utf-8" } },
         );
+      if (url.pathname === "/tree-frag.html")
+        // A sample state-tree fragment for /harness (lk:tree-src), with a script
+        // and a handler in it that the widget's sanitizer must drop.
+        return new Response(SAMPLE_TREE.replace("{n}", String(++treeFetches)), {
+          headers: { ...h, "content-type": "text/html; charset=utf-8" },
+        });
       if (url.pathname === "/harness.js")
         return new Response(await buildHarness(), {
           headers: { ...h, "content-type": "text/javascript; charset=utf-8" },
@@ -180,6 +208,17 @@ function startServer() {
     },
   });
 }
+
+/** How many times the sample tree was fetched (shown in it, so a refetch is visible). */
+let treeFetches = 0;
+const SAMPLE_TREE = `<div class="f"><span class="n">fetch {n}</span> <b class="w">waiting on you: review the bar</b><br>
+<span class="d">doing: tree source</span></div>
+<details open><summary class="d">lianki</summary><ul>
+<li class="ok">unified chat bar</li>
+<li class="d">interim tree source<script>window.__treeXss = 1</script></li>
+<li class="w" onclick="window.__treeXss = 2">owner review</li>
+<li>next: StateTree<a href="javascript:window.__treeXss=3">link</a></li>
+</ul></details>`;
 
 /** Watch what the widget is built from (the build's own inputs), rebuild, push `reload`. */
 function startWatch() {
@@ -196,6 +235,25 @@ function startWatch() {
         }
       }, 120);
     });
+}
+
+/** The state tree's markdown, served live at /state-tree.md. */
+const TREE_FILE = resolve(ROOT, "docs/state-tree.md");
+
+/**
+ * Push `tree` when docs/state-tree.md is saved. The directory is watched, not
+ * the file: editors save by replacing it, which ends a watch on the file.
+ */
+function startTreeWatch() {
+  let t: ReturnType<typeof setTimeout> | undefined;
+  watch(resolve(ROOT, "docs"), (_e, file) => {
+    if (file !== "state-tree.md") return;
+    clearTimeout(t);
+    t = setTimeout(() => {
+      log(`tree → ${clients.size} page(s)`);
+      push("tree", String(Date.now()));
+    }, 120);
+  });
 }
 
 /** `tailscale serve` (never funnel): this port at <host><path>, tailnet only. */
@@ -249,6 +307,7 @@ if (import.meta.main) {
   await build();
   const server = startServer();
   startWatch();
+  startTreeWatch();
   if (TUNNEL) startTunnel();
   if (TAILNET) startTailnet();
   log(`listening on http://localhost:${PORT} · harness http://localhost:${PORT}/harness`);

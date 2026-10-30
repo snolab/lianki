@@ -49,6 +49,10 @@ jobs:
       # integration job still needs Node, because wrangler requires it.
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
+      # 脆弱性対策 ② (docs/security-measures.md): nothing in public/ may be a
+      # secret, an env file, a key or a server source map.
+      - name: Public directory hygiene
+        run: bun scripts/security/check-public-dir.ts public
       - name: Typecheck
         run: bun run typecheck
       - name: Unit tests + coverage

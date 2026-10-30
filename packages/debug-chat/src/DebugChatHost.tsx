@@ -3,13 +3,21 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import * as JsxRuntime from "react/jsx-runtime";
-import { Component, type ComponentType, type ReactNode, useEffect, useState } from "react";
+import {
+  Component,
+  type ComponentType,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   REACT_GLOBAL,
   WIDGET_SRC_KEY,
   eventsUrl,
   failNote,
   loadWidget,
+  pickTreeSource,
   widgetSrc,
   widgetUrl,
 } from "./debug-widget";
@@ -119,9 +127,23 @@ class Boundary extends Component<{ onError: (e: unknown) => void; children: Reac
  * re-mounted on every rebuild. State lives in props and localStorage, so a
  * re-mount loses nothing.
  */
-export function DebugChatHost({ hot, ...props }: DebugChatProps & { hot: boolean }) {
+export function DebugChatHost({ hot, ...rest }: DebugChatProps & { hot: boolean }) {
   const [w, fail] = useHotWidget(hot);
-  const note = w.note ?? props.note;
+  const note = w.note ?? rest.note;
+  // Hot-loading on: the tree comes live from the same dev server
+  // (/state-tree.md, refetched on its `tree` event), else the host's source.
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (!hot) return setSrc(null);
+    try {
+      setSrc(localStorage.getItem(WIDGET_SRC_KEY));
+    } catch {}
+  }, [hot]);
+  const treeSource = useMemo(
+    () => pickTreeSource(src, rest.treeSource),
+    [src, rest.treeSource],
+  );
+  const props = { ...rest, treeSource };
   if (!w.Chat) return <DebugChat {...props} note={note} />;
   const Remote = w.Chat;
   return (

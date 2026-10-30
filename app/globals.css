@@ -10,6 +10,17 @@
  * seal button and `dark:bg-gray-900` is ink. Same ordinal lightness as stock
  * Tailwind, so existing contrast pairs keep working in both modes. */
 @theme {
+  /* In-progress items blink gently (the debug chat's tree and frontier): opacity only. */
+  --animate-lk-blink: lk-blink 1.6s ease-in-out infinite;
+  @keyframes lk-blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
   --color-gray-50: oklch(0.975 0.012 85);
   --color-gray-100: oklch(0.95 0.018 82);
   --color-gray-200: oklch(0.91 0.022 80);
@@ -221,6 +232,9 @@ ruby rt {
   isolation: isolate;
 }
 .slip-scroller {
+  /* Above the strip behind it; see-through except for the face. */
+  position: relative;
+  z-index: 1;
   height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
@@ -239,12 +253,11 @@ ruby rt {
   height: 100%;
   width: calc(100% + 4 * var(--a));
 }
-/* What the slip uncovers (SwipeUnderlay's zones): held still behind it. */
+/* What the slip uncovers (SwipeUnderlay's zones): a sibling under the
+ * scroller, so it never scrolls and can't paint over the face. */
 .slip-strip {
-  position: sticky;
-  left: 0;
-  width: calc(100% - 4 * var(--a));
-  height: 100%;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   pointer-events: none;
   background: var(--slip-seam);
@@ -615,6 +628,22 @@ ruby rt {
     inset-inline-start: var(--nav-w, 0px);
   }
 }
+/* While the list is up (WordsClient), the page is exactly the window: the
+ * list is the only scroller. min-h-screen (100vh) plus the body's safe-area
+ * padding made the document taller than the window on an iPhone, and iOS
+ * scrolled it by the difference even through overflow: hidden. */
+html.lk-page-lock,
+html.lk-page-lock body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+html.lk-page-lock body {
+  box-sizing: border-box;
+  height: 100dvh;
+}
+html.lk-page-lock .min-h-screen {
+  min-height: 0;
+}
 /* The toolbar and the help strip span the content area: the full width on a
  * phone, beside the nav from the tablet up. */
 .lk-words-bar {
@@ -633,6 +662,35 @@ ruby rt {
   .lk-words-bar {
     inset-inline-start: var(--nav-w, 0px);
   }
+}
+
+/* Experimental "Paper scrolls with the list" (lk:words-paper-scrolls): the
+ * paper is a layer inside the list scroller, so it moves with the rows; the
+ * body behind it is plain. --paper follows the skin (data-paper) and the
+ * scheme. Its own composited layer: as cheap to scroll as the fixed texture. */
+.lk-paper-layer {
+  position: absolute;
+  top: 0;
+  inset-inline: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--paper), var(--background);
+  will-change: transform;
+}
+html.lk-paper-scrolls body {
+  background: var(--background);
+}
+/* Settings: a glass sheet that drops below the toolbar and scrolls itself. */
+.lk-words-sheet {
+  z-index: 21;
+  /* Nearly opaque: the rows under it must not read through its text. */
+  background: var(--glass-bg-solid);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Embed mode hides the header: the toolbar moves up into its place. */
+html[data-embed] [data-words-top] {
+  top: env(safe-area-inset-top) !important;
 }
 
 /* The empty tray in the list's over-scroll: a card asleep. Static unless

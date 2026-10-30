@@ -34,6 +34,7 @@
  * (unit/voice-session.test.ts). Event-driven only: utterance and clip
  * events and one-shot timers, never polling.
  */
+import { speechRate } from "./speech-rate";
 import { ECHO_WINDOW_MS, type EchoScore, echoScore } from "./echo";
 import { aecOn, cloudOut, outMode } from "./voice-out";
 import { pickLang, pickVoice } from "./wire";
@@ -135,6 +136,8 @@ export function isBargeIn(probs: readonly number[], min = BARGE_IN_PROB): boolea
 export type UtterLike = {
   text: string;
   volume?: number;
+  /** The reading speed (speech-rate.ts). */
+  rate?: number;
   onend: ((e?: unknown) => void) | null;
   onerror: ((e?: unknown) => void) | null;
   onboundary: ((e: { charIndex: number; name?: string }) => void) | null;
@@ -158,7 +161,10 @@ export type PlayEvents = {
 /** The cloud output (voice-out.ts createCloudOut). */
 export type CloudOut = {
   prepare?(text: string, lang: string): void;
-  play(s: { text: string; lang: string; at: number; volume: number }, ev: PlayEvents): Playback;
+  play(
+    s: { text: string; lang: string; at: number; volume: number; rate?: number },
+    ev: PlayEvents,
+  ): Playback;
 };
 
 export type VoiceState = {
@@ -202,6 +208,8 @@ export function createVoice(d: {
   mode?: () => OutMode;
   /** Echo-cancelled barge-in (else capture is held while the agent speaks). */
   aec?: () => boolean;
+  /** The reading speed, read for each utterance (speech-rate.ts; 1 if absent). */
+  rate?: () => number;
   now?: () => number;
   log?: (ev: Record<string, unknown>) => void;
   setTimer?: (f: () => void, ms: number) => unknown;
@@ -259,6 +267,8 @@ export function createVoice(d: {
     const u = d.utter(head.text.slice(from), head.lang);
     // iOS cannot change it mid-utterance: a duck applies from the next sentence.
     if (level !== 1) u.volume = level;
+    // The speed, as set now: a change applies from the next utterance.
+    u.rate = d.rate?.() ?? 1;
     u.onboundary = (b) => {
       if (e !== epoch || !current) return;
       if (b.name && b.name !== "word") return;
@@ -317,7 +327,10 @@ export function createVoice(d: {
     const c = mode() === "cloud" ? cloud() : null;
     current = { p: null as unknown as Playback, mark: head.from, said: rec };
     const p = c
-      ? c.play({ text: head.text, lang: head.lang, at: head.at, volume: level }, ev)
+      ? c.play(
+          { text: head.text, lang: head.lang, at: head.at, volume: level, rate: d.rate?.() ?? 1 },
+          ev,
+        )
       : speech(head, ev, e);
     if (!p) {
       current = null;
@@ -565,6 +578,7 @@ export function voice(): Voice {
     cloud: cloudOut,
     mode: outMode,
     aec: aecOn,
+    rate: () => speechRate(),
     utter: (text, lang) => {
       const u = new SpeechSynthesisUtterance(text);
       u.lang = lang;

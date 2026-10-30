@@ -140,11 +140,61 @@ async function revealOrder(pg, variant) {
     });
   } else {
     const cx = b.x + b.width / 2;
+    // A press within 120ms of a list scroll catches a fling (no slide), and
+    // one held 300ms before moving is a hold (no slide): start only once the
+    // list has been still a while, and go past the slop on the first move.
+    await pg.evaluate(
+      () =>
+        new Promise((done) => {
+          const list = document.querySelector('[role="list"]');
+          let t;
+          const quiet = () => {
+            clearTimeout(t);
+            t = setTimeout(() => {
+              list.removeEventListener("scroll", quiet);
+              done();
+            }, 300);
+          };
+          list.addEventListener("scroll", quiet, { passive: true });
+          quiet();
+        }),
+    );
     await pg.mouse.move(cx, y);
     await pg.mouse.down();
-    await pg.mouse.move(cx + 60, y, { steps: 10 });
-    await pg.waitForTimeout(250);
+    await pg.mouse.move(cx + 20, y);
+    await pg.mouse.move(cx + 60, y, { steps: 4 });
+    // Headless WebKit can stall its rendering updates once the slip gets its
+    // own layer (will-change) mid-drag: no requestAnimationFrame runs, the
+    // queued pointermoves are coalesced away, and the slip is never painted
+    // off its spot — the probe then sees the card (CI main runs, and 5 of 5
+    // local runs with extra observers attached). A screenshot forces a
+    // rendering update; the app's own rAF paint then runs as on a device.
+    await pg.screenshot();
+    // The label fades in (150ms); a loaded runner may take longer to paint.
+    await pg
+      .waitForFunction(
+        ([x, y]) =>
+          document
+            .elementsFromPoint(x, y)
+            .some(
+              (e) =>
+                Number(getComputedStyle(e.closest("[data-reveal]") ?? e).opacity) > 0.5 &&
+                e.closest("[data-reveal]"),
+            ),
+        [x, y],
+        { timeout: 2000 },
+      )
+      .catch(() => {});
     mid = await hit();
+    if (mid !== "label:3") {
+      // Why not: the slip's transform and the underlay's state.
+      const why = await pg.evaluate(() => {
+        const u = document.querySelector("[data-swipe-underlay]");
+        const moved = document.querySelector('[role="list"] [style*="translate"]');
+        return `transform=${moved?.style.transform ?? "none"} underlay=${u?.style.visibility}`;
+      });
+      mid += ` (${why})`;
+    }
     await pg.mouse.move(cx, y, { steps: 10 });
     await pg.mouse.up();
   }
@@ -481,8 +531,9 @@ try {
     );
   }
   check(
-    (await page.locator('[data-debug-proto="slip"][href="/proto/slip"]').count()) === 1,
-    "debug mode links the design prototypes",
+    (await page.locator('[data-debug-proto="slip"][href="/proto/slip"]').count()) === 1 &&
+      (await page.locator("[data-debug-proto]").count()) === 1,
+    "debug mode links the slip prototype (and nothing else)",
   );
   for (let k = 0; k < 7; k++) await gear.click();
   check((await page.locator("[data-debug-badge]").count()) === 0, "seven more turn it off");
@@ -1183,11 +1234,188 @@ try {
           `${tag} ${when}: the page doesn't scroll and the first word sits right under the toolbar (${JSON.stringify(o)})`,
         );
       }
+      // Experimental "Paper scrolls with the list" (lk:words-paper-scrolls):
+      // off by default — the texture stays fixed on the body and no layer is
+      // mounted; on — a layer inside the list scrolls with the rows and the
+      // body behind it is plain.
+      const paper = () =>
+        w.evaluate(async () => {
+          const list = document.querySelector('[role="list"]');
+          const layer = list.querySelector("[data-paper-layer]");
+          const body = getComputedStyle(document.body).backgroundImage;
+          if (!layer) return { layer: false, bodyPaper: body.includes("url(") };
+          const at = () => Math.round(layer.getBoundingClientRect().top);
+          const before = at();
+          const top0 = list.scrollTop;
+          list.scrollTop = top0 + 200;
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          const moved = before - at();
+          list.scrollTop = top0;
+          const cs = getComputedStyle(layer);
+          return {
+            layer: layer === list.firstElementChild,
+            bodyPaper: body.includes("url("),
+            pointer: cs.pointerEvents,
+            textured: cs.backgroundImage.includes("url("),
+            covers: Math.abs(layer.offsetHeight - list.scrollHeight) <= 1,
+            moved,
+          };
+        });
+      const off = await paper();
+      check(
+        !off.layer && off.bodyPaper,
+        `${tag} paper scrolls off by default: fixed body texture, no layer (${JSON.stringify(off)})`,
+      );
+      await w.evaluate(() => localStorage.setItem("lk:words-paper-scrolls", "1"));
+      await w.reload({ waitUntil: "networkidle" });
+      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+      await w.waitForTimeout(500);
+      const on = await paper();
+      check(
+        on.layer &&
+          !on.bodyPaper &&
+          on.pointer === "none" &&
+          on.textured &&
+          on.covers &&
+          on.moved === 200,
+        `${tag} paper scrolls on: a layer under the rows scrolls with them, the body is plain (${JSON.stringify(on)})`,
+      );
+      await w.evaluate(() => localStorage.removeItem("lk:words-paper-scrolls"));
+      await w.reload({ waitUntil: "networkidle" });
+      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+      await w.waitForTimeout(800);
       const order = await revealOrder(w, variant);
       check(
         order === "card → label:3",
         `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
       );
+      // The owner's iPhone PWA (414×848, a 48px status bar). env(safe-area-*)
+      // can't be emulated, so the body's safe-area padding and the toolbar's
+      // offset stand in for it — that padding once made the page 48px taller
+      // than the window, and iOS left it scrolled by that much.
+      await w.setViewportSize({ width: 414, height: 848 });
+      await w.addInitScript(() =>
+        document.addEventListener("DOMContentLoaded", () => {
+          const st = document.createElement("style");
+          st.textContent = "body{padding-top:48px!important}[data-words-top]{top:104px!important}";
+          document.head.append(st);
+        }),
+      );
+      await w.reload({ waitUntil: "networkidle" });
+      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+      await w.waitForTimeout(800);
+      const layout = () =>
+        w.evaluate(() => {
+          const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
+          const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
+          return {
+            scrollY: Math.round(scrollY),
+            docH: document.documentElement.scrollHeight,
+            innerH: innerHeight,
+            barH: Math.round(bar.height),
+            gap: Math.round(row.top - bar.bottom),
+            sheet: !!document.querySelector("[data-words-settings]"),
+          };
+        });
+      const pageFits = (o) => o.scrollY === 0 && o.docH <= o.innerH;
+      let o = await layout();
+      check(
+        pageFits(o) && o.gap >= 0 && o.gap < 4,
+        `${tag} 414×848 + safe area: the page is exactly the window, first word under the toolbar (${JSON.stringify(o)})`,
+      );
+      const gear = w.getByRole("button", { name: "Settings" });
+      await gear.click();
+      await w.waitForTimeout(400);
+      o = await layout();
+      check(
+        (await w
+          .locator("[data-experimental]")
+          .getByRole("switch", { name: "Paper scrolls with the list" })
+          .count()) === 1,
+        `${tag} Experimental has the "Paper scrolls with the list" switch`,
+      );
+      check(
+        o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,
+        `${tag} settings open in their own sheet: the toolbar stays ≤72px and the list doesn't move (${JSON.stringify(o)})`,
+      );
+      await gear.click();
+      await w.waitForTimeout(400);
+      o = await layout();
+      check(
+        !o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,
+        `${tag} settings closed: the first word is still right under the toolbar (${JSON.stringify(o)})`,
+      );
+      if (variant === "native") {
+        // At rest the face covers the label strip; a completed swipe (the
+        // touch sequence iOS gives: touchstart, pointercancel as the scroller
+        // takes over, a scroll to the Good level, touchend resting there)
+        // grades and glides back to centre.
+        const s = await w.evaluate(async () => {
+          const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
+          const row = [...document.querySelectorAll(".slip-native")].find(
+            (x) => x.getBoundingClientRect().top > bar + 60,
+          );
+          const b = row.getBoundingClientRect();
+          const y = b.top + b.height / 2;
+          const face = (x) => !!document.elementFromPoint(x, y)?.closest(".slip-face");
+          const sc = row.querySelector(".slip-scroller");
+          const a = parseFloat(getComputedStyle(row).getPropertyValue("--a"));
+          const out = {
+            rest: sc.scrollLeft,
+            a,
+            faceAtRest: face(b.left + 20) && face(b.right - 20),
+          };
+          const fire = (type, x) => {
+            const e = new Event(type, { bubbles: true });
+            const t = [{ clientX: x, clientY: y }];
+            Object.defineProperty(e, "touches", { value: type === "touchend" ? [] : t });
+            Object.defineProperty(e, "changedTouches", { value: t });
+            sc.dispatchEvent(e);
+          };
+          fire("touchstart", 100);
+          sc.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+          sc.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true }));
+          sc.scrollTo({ left: a, behavior: "instant" });
+          await new Promise((r) => setTimeout(r, 50));
+          out.slid = sc.scrollLeft;
+          fire("touchend", 100 + a);
+          await new Promise((r) => setTimeout(r, 1500));
+          out.after = sc.scrollLeft;
+          out.faceAfter = face(b.left + 20);
+          out.graded = !!row.querySelector(".slip-face .lk-stamp");
+          return out;
+        });
+        check(
+          s.faceAtRest && s.rest === 2 * s.a,
+          `${tag} at rest the slip's face covers its label strip (${JSON.stringify(s)})`,
+        );
+        check(
+          s.slid === s.a && s.graded && Math.abs(s.after - s.rest) < 1 && s.faceAfter,
+          `${tag} a completed swipe grades and the slip returns to centre (${JSON.stringify(s)})`,
+        );
+      } else {
+        // ?swipe=native: that page load only, never stored — also in an iframe.
+        const sep = listUrl.includes("?") ? "&" : "?";
+        await w.goto(`${listUrl}${sep}swipe=native`, { waitUntil: "networkidle" });
+        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        const forced = await w.evaluate(() => ({
+          native: document.querySelectorAll(".slip-native").length > 0,
+          stored: localStorage.getItem("lk:swipe-ab"),
+        }));
+        await w.setContent(
+          `<iframe src="${listUrl}${sep}swipe=native&embed=1" style="width:414px;height:700px"></iframe>`,
+        );
+        const fr = w.frameLocator("iframe");
+        await fr.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        const framed = await fr.locator(".slip-native").count();
+        await w.goto(listUrl, { waitUntil: "networkidle" });
+        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        const plain = await w.locator(".slip-native").count();
+        check(
+          forced.native && forced.stored === "js" && framed > 0 && plain === 0,
+          `${tag} ?swipe=native applies to that load only (iframe too) and is never stored (${JSON.stringify({ ...forced, framed, plain })})`,
+        );
+      }
       await w.close();
       await c.close();
     }

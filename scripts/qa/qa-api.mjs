@@ -74,6 +74,39 @@ const U2 = "https://example.com/qa-two";
   );
 }
 
+// ── SECURITY (docs/security-measures.md) ──
+// A brand-new sign-up is remembered as a known device (lk_device), so its
+// own sign-up sends no login notice.
+rec("SEC   sign-up sets the lk_device cookie", cookie.includes("lk_device="), "");
+// Admin surfaces answer 404 to a signed-in user who is not the owner.
+for (const [method, path] of [
+  ["GET", "/api/dev/whoami"],
+  ["GET", "/api/dev/friends"],
+  ["GET", "/api/dev/state-tree"],
+  ["GET", "/api/dev/gift-codes"],
+  ["POST", "/api/dev/gift-codes"],
+  ["POST", "/api/dev/membership"],
+  ["GET", "/dev/users"],
+  ["GET", "/dev/gift-codes"],
+]) {
+  const r = await call(method, path, method === "POST" ? {} : undefined);
+  rec(`SEC   non-owner ${method} ${path} → 404`, r.status === 404, `HTTP ${r.status}`);
+}
+// Uploads: only the one format each import reads.
+for (const [name, bytes, label] of [
+  ["notes.txt", "hello", "a .txt"],
+  ["deck.apkg", "not a zip", "an .apkg that is not a zip"],
+]) {
+  const form = new FormData();
+  form.append("file", new Blob([bytes]), name);
+  const res = await fetch(`${BASE}/api/import/anki`, {
+    method: "POST",
+    headers: { cookie, origin: BASE, connection: "close" },
+    body: form,
+  });
+  rec(`SEC   anki import refuses ${label}`, res.status === 400, `HTTP ${res.status}`);
+}
+
 // ── CREATE ──
 {
   const r = await call("POST", "/api/fsrs/add", { url: U1, title: "QA One" });
