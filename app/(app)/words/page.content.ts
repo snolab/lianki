@@ -1691,7 +1691,11 @@ const context: Record<keyof typeof dictionary.content, string> = {
   showAll:
     "Name of an on/off switch in the study settings: show the meaning (translation) of every word in the list at once, instead of only the word currently focused.",
   showAllHint:
-    "Line under the 'Show all meanings' switch; '(E)' is its keyboard shortcut, kept as is. 'Focused row' = the word currently selected in the list.",
+    '/words study, Settings sheet: the tooltip of the "Show all meanings" switch. On = every row shows its back (meaning and example) and reading aloud reads the back too, not only the word. (E) is the keyboard shortcut; keep it.',
+  animationsOff:
+    '/words study, Settings sheet: the label of an on/off switch (a pill). On = this device shows no animation anywhere in the app: no transitions, fades, slides or spring motion. Short, an imperative or a noun phrase, like the other switch labels ("Speak on swipe", "Full screen").',
+  animationsOffHint:
+    '/words study, Settings sheet: the tooltip (title attribute) of the "Turn off animations" switch. Explains that it covers the whole app, only on this device, and that until the person flips it, it follows the operating system\'s reduce-motion setting. One or two plain sentences, no final period, like the other hints.',
   readAloud:
     "Name of an on/off switch in the study settings: text-to-speech reads each word aloud, with its example sentence, as the learner reaches it.",
   readAloudHint: "Line under the 'Read cards aloud' switch; '(V)' is its keyboard shortcut, kept.",
@@ -1784,18 +1788,3 @@ const wordsPageContent = {
 } satisfies DeclarationContent;
 
 export default wordsPageContent;
-
-/**
- * Context for translators (the owner, 2026-10-30: every string travels with
- * where it appears, what it is for and how it is used). One entry per key,
- * read with the source text whenever the key is translated or reworded.
- * Keys added before the rule are being filled in as they are touched.
- */
-export const wordsPageContext: Partial<Record<keyof typeof wordsPageContent.content, string>> = {
-  animationsOff:
-    '/words study, Settings sheet: the label of an on/off switch (a pill). On = this device shows no animation anywhere in the app: no transitions, fades, slides or spring motion. Short, an imperative or a noun phrase, like the other switch labels ("Speak on swipe", "Full screen").',
-  animationsOffHint:
-    '/words study, Settings sheet: the tooltip (title attribute) of the "Turn off animations" switch. Explains that it covers the whole app, only on this device, and that until the person flips it, it follows the operating system\'s reduce-motion setting. One or two plain sentences, no final period, like the other hints.',
-  showAllHint:
-    '/words study, Settings sheet: the tooltip of the "Show all meanings" switch. On = every row shows its back (meaning and example) and reading aloud reads the back too, not only the word. (E) is the keyboard shortcut; keep it.',
-};
