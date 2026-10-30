@@ -43,6 +43,7 @@
         "ts-fsrs": "^5.2.3",
         "yaml": "^2.9.0",
         "zod": "^4.3.6",
+        "zustand": "5.0.15",
       },
       "devDependencies": {
         "@axe-core/playwright": "^4.11.1",
@@ -104,6 +105,16 @@
     },
     "packages/ext": {
       "name": "@lianki/ext",
+    },
+    "packages/ui-state": {
+      "name": "@lianki/ui-state",
+      "version": "0.0.0",
+      "dependencies": {
+        "zustand": "5.0.15",
+      },
+      "peerDependencies": {
+        "react": "*",
+      },
     },
   },
   "patchedDependencies": {
@@ -550,6 +561,8 @@
     "@lianki/desktop": ["@lianki/desktop@workspace:packages/desktop"],
 
     "@lianki/ext": ["@lianki/ext@workspace:packages/ext"],
+
+    "@lianki/ui-state": ["@lianki/ui-state@workspace:packages/ui-state"],
 
     "@marsidev/react-turnstile": ["@marsidev/react-turnstile@1.4.2", "", { "peerDependencies": { "react": "^17.0.2 || ^18.0.0 || ^19.0", "react-dom": "^17.0.2 || ^18.0.0 || ^19.0" } }, "sha512-xs1qOuyeMOz6t9BXXCXWiukC0/0+48vR08B7uwNdG05wCMnbcNgxiFmdFKDOFbM76qFYFRYlGeRfhfq1U/iZmA=="],
 
