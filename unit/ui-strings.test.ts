@@ -5,9 +5,19 @@ import {
   UI_JA,
   UI_ZH,
   isZh,
+  localSttStrings,
   treeDefaults,
   uiStrings,
 } from "@lianki/debug-chat/ui-strings";
+
+describe("the mic's local-STT dot", () => {
+  it("says where speech goes in zh, ja and en", () => {
+    expect(localSttStrings("zh-CN").ready).toBe("已连接本地语音模型");
+    expect(localSttStrings("ja").down).toContain("クラウド");
+    expect(localSttStrings("en").connecting).toMatch(/Connecting/);
+    expect(localSttStrings(null)).toEqual(localSttStrings("en"));
+  });
+});
 
 describe("ui strings", () => {
   it("picks Chinese for zh pages, English otherwise", () => {

@@ -189,6 +189,10 @@ with `CLOUDFLARE_AI_TOKEN` (a Worker secret), like the other AI calls. An
 The bench for the owner's own voice is in
 [dev-debug-widget.md](dev-debug-widget.md), "Voice clips and the STT bench".
 
+For the owner only, the mic can stream to a local model on his Mac instead
+(SenseVoice over a tailnet WebSocket, partials while he speaks), falling back
+to this route on any failure: [local-stt.md](local-stt.md).
+
 ## Not migrated
 
 `intlayer.config.ts` still declares `provider: "openai"` with `OPENAI_API_KEY`.

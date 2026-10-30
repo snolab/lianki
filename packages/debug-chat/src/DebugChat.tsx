@@ -34,6 +34,7 @@ import {
   clipSinkFrom,
   joinText,
 } from "./mic";
+import { LOCAL_STT_KEY, localSttFrom } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
 import { DebugMic, canCapture, playSentTick } from "./MicButton";
 import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
@@ -1329,6 +1330,7 @@ export function DebugChat({
             arm();
           }}
           clipSink={friend ? undefined : clipSinkFrom(read(CLIP_SINK_KEY))}
+          localStt={friend ? undefined : localSttFrom(read(LOCAL_STT_KEY))}
           label={pages.find((p) => p.id === selfPage)?.label ?? location.pathname}
           gesture={micGesture}
         />

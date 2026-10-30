@@ -15,6 +15,8 @@ import {
   scheduleTick,
 } from "./mic";
 import { voiceLatency } from "./latency";
+import { createLocalStt } from "./local-stt";
+import { localSttStrings } from "./ui-strings";
 import { type MicSession, type MicView, micSession } from "./mic-session";
 import { sttHint } from "./stt-hint";
 import { voice } from "./voice";
@@ -40,6 +42,12 @@ const VAD = "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/";
 const REC = "oklch(0.6 0.22 25)";
 /** The agent speaking (capture held): a calm blue, unlike the red of REC. */
 const TALK = "oklch(0.62 0.14 250)";
+/** The local-STT dot: the Mac's model, connecting, or the cloud fallback. */
+const LOCAL_DOT = {
+  ready: "oklch(0.7 0.16 150)",
+  connecting: "oklch(0.78 0.14 80)",
+  down: "oklch(0.65 0 0)",
+} as const;
 
 /**
  * The soft tick for a spoken sentence sent by itself (scheduleTick), on the
@@ -190,11 +198,31 @@ function session(): MicSession {
       f(v.state().hold);
       return v.subscribe((x) => f(x.hold));
     },
-    upload: async (wav, { seq, durationMs, partial }, cfg) => {
+    localStt: (url) => createLocalStt(url, { log: (ev) => v.log(ev) }),
+    upload: async (wav, { seq, durationMs, partial, local }, cfg) => {
       const at = Date.now();
       const sink = partial ? undefined : cfg.clipSink;
       try {
-        const out = await postStt(wav, fetch, "audio/wav", sttHint());
+        // `ms`: the server's own time, the route's or the Mac's decode (sttServerMs in the timing).
+        let out: { text: string; model?: string; ms?: number };
+        if (local) {
+          // Streamed to the owner's Mac (local-stt.ts); on any failure, the route as before.
+          try {
+            const f = await local;
+            out = f;
+            v.log({
+              ev: "local-stt-final",
+              model: f.model,
+              durationMs,
+              decodeMs: f.ms,
+              endToFinalMs: f.endToFinalMs,
+              firstPartialMs: f.firstPartialMs,
+            });
+          } catch (e) {
+            v.log({ ev: "local-stt-fallback", error: String((e as Error)?.message ?? e) });
+            out = await postStt(wav, fetch, "audio/wav", sttHint());
+          }
+        } else out = await postStt(wav, fetch, "audio/wav", sttHint());
         // The text guard: the agent's own words that leaked past the AEC are dropped.
         const echo = v.echoCheck(out.text, durationMs);
         if (!partial)
@@ -294,6 +322,7 @@ export function DebugMic({
   onPending,
   onActive,
   clipSink,
+  localStt,
   label,
   gesture,
 }: {
@@ -301,6 +330,8 @@ export function DebugMic({
   onPending: (n: number, interim: string) => void;
   onActive: (on: boolean) => void;
   clipSink?: string;
+  /** The owner's local streaming STT (local-stt.ts): utterances stream there first. */
+  localStt?: string;
   label: string;
   /**
    * The chat bar's own press handling (DebugChat): a vertical drag scrubs the
@@ -328,8 +359,8 @@ export function DebugMic({
   });
   /** The agent's reply is being read (voice session). */
   const [talking, setTalking] = useState(false);
-  const cb = useRef({ onText, onPending, onActive, clipSink, label });
-  cb.current = { onText, onPending, onActive, clipSink, label };
+  const cb = useRef({ onText, onPending, onActive, clipSink, localStt, label });
+  cb.current = { onText, onPending, onActive, clipSink, localStt, label };
   const mic = useRef<MicSession | null>(null);
 
   useEffect(() => {
@@ -338,7 +369,11 @@ export function DebugMic({
     // Attach to the session — the same one across hot swaps and remounts;
     // detaching (unmount) never stops it.
     const m = (mic.current = session());
-    m.configure({ clipSink: cb.current.clipSink, label: cb.current.label });
+    m.configure({
+      clipSink: cb.current.clipSink,
+      localStt: cb.current.localStt,
+      label: cb.current.label,
+    });
     let active = false;
     const unsubView = m.subscribe((x) => {
       setView(x);
@@ -362,8 +397,8 @@ export function DebugMic({
     };
   }, []);
   useEffect(() => {
-    mic.current?.configure({ clipSink, label });
-  }, [clipSink, label]);
+    mic.current?.configure({ clipSink, localStt, label });
+  }, [clipSink, localStt, label]);
   const state = view.state;
   const pending = view.pending;
   const note = view.error ? micErrorNote(view.error) : null;
@@ -464,6 +499,18 @@ export function DebugMic({
           />
         )}
         <MicIcon fill={state !== "off"} />
+        {state !== "off" && view.local && view.local !== "idle" && (
+          // Where speech goes (docs/local-stt.md): green = the local model, amber = connecting, grey = the cloud.
+          <span
+            role="status"
+            data-testid="debug-chat-mic-local"
+            data-local={view.local}
+            aria-label={localSttStrings()[view.local]}
+            title={localSttStrings()[view.local]}
+            className={`pointer-events-none absolute end-1 top-0 size-1.5 rounded-full ${view.local === "connecting" ? "animate-pulse motion-reduce:animate-none" : ""}`}
+            style={{ background: LOCAL_DOT[view.local] }}
+          />
+        )}
         {rec && (
           <span
             data-testid="debug-chat-mic-rec"
