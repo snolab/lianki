@@ -73,6 +73,7 @@ import {
 import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
 import { type AnchorSide, placeBox } from "./anchor";
 import { keyboardLift } from "./keyboard-lift";
+import { onChatOpen } from "./island-bus";
 import { type EdgeState, createJoystick, edgeSpeed } from "./joystick";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
@@ -1376,6 +1377,33 @@ export function DebugChat({
     setOpen(v);
     write(OPEN_KEY, v ? "1" : "0");
   };
+  /**
+   * The nav island's partner button (`chat.open`, island-bus.ts): the chat
+   * opens and its input takes the focus; a `node` aims the next line there.
+   */
+  const toggleRef = useRef(toggle);
+  toggleRef.current = toggle;
+  const aimRef = useRef(aim);
+  aimRef.current = aim;
+  useEffect(
+    () =>
+      onChatOpen(({ node }) => {
+        if (node) aimRef.current(node);
+        focusOnOpen.current = true;
+        toggleRef.current(true);
+        if (openRef.current) input.current?.focus();
+      }),
+    [],
+  );
+  /** chat.open asked for the input: focused once the expand has rendered (it is inert minimized). */
+  const focusOnOpen = useRef(false);
+  const openRef = useRef(open);
+  openRef.current = open;
+  useEffect(() => {
+    if (!open || !focusOnOpen.current) return;
+    focusOnOpen.current = false;
+    input.current?.focus();
+  }, [open]);
   gripAct.current = {
     single: () => {
       setPanel("none");
@@ -2158,7 +2186,7 @@ export function DebugChat({
       onKeyDown={unlockSpeech}
       // A live mic counts as focus: the box goes opaque as it does while typing.
       style={offset}
-      className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo text-xs text-gray-800 dark:text-gray-100`}
+      className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-40 flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo text-xs text-gray-800 dark:text-gray-100`}
     >
       {fullLog !== "off" &&
         typeof document !== "undefined" &&
