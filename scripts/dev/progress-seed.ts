@@ -33,12 +33,6 @@ const SEEDS: Seed[] = [
     link: "https://github.com/snomiao/agent-yes/pull/527",
   },
   {
-    id: "/words/proto-cords",
-    kind: "decision",
-    task: "Delete public/proto/cords.html",
-    needs: "confirm deleting public/proto/cords.html (keep slip.html)",
-  },
-  {
     id: "/_infra/status-bar-ab",
     kind: "decision",
     task: "Status-bar colour A/B",

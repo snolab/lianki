@@ -2779,7 +2779,7 @@ function Study({
                   DEBUG
                 </span>
                 {/* Design prototypes, to try on the device itself. */}
-                {["slip", "cords"].map((p) => (
+                {["slip"].map((p) => (
                   <a key={p} href={`/proto/${p}`} data-debug-proto={p} className="mr-1 underline">
                     proto/{p}
                   </a>

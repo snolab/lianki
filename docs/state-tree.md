@@ -98,8 +98,6 @@ Legend: [ ] open · [~] in progress · [!] blocked · [x] done · (!) waits on y
   ≈en doing: First things first · next: Verify, then switch
   - [~] New swipe: the native fix — TOP priority @swipe-agent
   - [ ] Verify the new swipe via ?swipe=native, then switch your flag
-  - [ ] (!) Confirm deleting public/proto/cords.html @owner
-  - [ ] Delete cords.html + its link + QA check (~10 min, after your confirm)
 - Lane A · chat bar (owns DebugChat bar area, MicButton, tap-gesture, float-lines) @bar-agent
   ≈ doing: 多管齐下 · next: 静候佳音
   ≈en doing: Several fixes at once · next: Waiting on your OK
