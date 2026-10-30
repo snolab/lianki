@@ -40,6 +40,7 @@ import {
   visible,
   withoutNode,
 } from "@/lib/words/tree";
+import { shownName } from "@/lib/words/lang-groups";
 import { createDeferredDelete, UNDO_MS, type FlushReason } from "@/lib/words/deferred-delete";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
@@ -100,7 +101,14 @@ import {
 } from "@/lib/words/swipe-core";
 import type { SwipePhase } from "@/lib/words/swipe-machine";
 import { useUi } from "@lianki/ui-state";
-import { anchorTop, setAnchor, topIndex, wordsUiStore } from "./ui-store";
+import {
+  anchorTop,
+  migrateCollapsed,
+  setAnchor,
+  toggleCollapsed,
+  topIndex,
+  wordsUiStore,
+} from "./ui-store";
 import { releaseTrajectory } from "@/lib/words/swipe-physics";
 import { island } from "@/lib/islands/Island";
 import { SwipeCard } from "@/lib/words/islands/SwipeCard";
@@ -1705,8 +1713,11 @@ function SortableListRow({
   onDelete,
   onRename,
   keys,
+  displayName,
 }: {
   list: WordList;
+  /** The name as shown: inside a language group, without the language prefix. */
+  displayName: string;
   /** A hardware keyboard is in use: show the row's number key. */
   keys: boolean;
   depth: number;
@@ -1749,14 +1760,16 @@ function SortableListRow({
       style={{
         transform: CSS.Translate.toString(transform && { ...transform, x: 0 }),
         transition,
-        marginLeft: depth * INDENT,
+        marginInlineStart: depth * INDENT,
       }}
-      className={`relative flex items-center gap-3 rounded-lg px-4 py-3 ${
+      data-list-row={l.id}
+      data-group={isGroup || undefined}
+      className={`relative flex min-h-14 items-center rounded-lg ps-0.5 pe-1 ${
         isDragging
-          ? "z-10 bg-black/10 dark:bg-white/15 ring-1 ring-black/20 dark:ring-white/30 shadow-lg"
+          ? "z-10 bg-[oklch(0.5_0_0/0.14)] ring-1 ring-[oklch(0.5_0_0/0.35)] shadow-lg"
           : isGroup
-            ? "bg-black/[0.07] dark:bg-white/[0.08]"
-            : "bg-black/5 dark:bg-white/5"
+            ? "bg-[oklch(0.5_0_0/0.11)] dark:bg-[oklch(0.8_0_0/0.1)]"
+            : "bg-[oklch(0.5_0_0/0.06)] dark:bg-[oklch(0.8_0_0/0.055)]"
       }`}
     >
       <span
@@ -1765,21 +1778,28 @@ function SortableListRow({
         {...listeners}
         aria-label={text.dragToReorder.value}
         title={text.dragTitle.value}
-        className="cursor-grab active:cursor-grabbing select-none opacity-40 hover:opacity-100 px-1 text-lg leading-none touch-none"
+        className="grid h-11 w-8 shrink-0 cursor-grab place-items-center select-none text-lg leading-none opacity-40 hover:opacity-100 active:cursor-grabbing touch-none"
       >
         ⠿
       </span>
-      <button
-        className={`w-4 text-xs opacity-60 hover:opacity-100 ${hasChildren ? "" : "invisible"}`}
-        onClick={onToggle}
-        aria-label={collapsed ? text.expand.value : text.collapse.value}
-      >
-        {collapsed ? "▸" : "▾"}
-      </button>
-      {keys && index < 9 && <kbd className="text-xs opacity-40 tabular-nums">{index + 1}</kbd>}
+      {hasChildren ? (
+        <button
+          type="button"
+          className="grid h-11 w-9 shrink-0 place-items-center text-sm opacity-60 hover:opacity-100"
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          aria-label={fill(collapsed ? text.expandGroup.value : text.collapseGroup.value, {
+            name: l.name,
+          })}
+        >
+          <span aria-hidden>{collapsed ? "▸" : "▾"}</span>
+        </button>
+      ) : (
+        <span className="w-2 shrink-0" aria-hidden />
+      )}
       {editing ? (
         <form
-          className="flex-1 min-w-0"
+          className="flex-1 min-w-0 py-1.5"
           onSubmit={(e) => {
             e.preventDefault();
             endEdit(new FormData(e.currentTarget).get("name") as string);
@@ -1806,32 +1826,44 @@ function SortableListRow({
           />
         </form>
       ) : (
-        <button className="flex-1 text-left min-w-0" onClick={() => onOpen(l.id)}>
-          <div className="font-medium truncate">
-            {isGroup && <Icon name="folder" className="me-1 opacity-70" />}
-            {l.name}
-          </div>
-          <div className="text-xs opacity-60 tabular-nums">
-            {fill(text.rowStats.value, {
+        // The whole row studies the list (a group: everything in it); only
+        // the ⠿ handle, the fold arrow and the ⋯ menu do something else.
+        <button
+          type="button"
+          data-open-list={l.id}
+          className="flex min-h-14 min-w-0 flex-1 items-center gap-2 self-stretch rounded-md py-2 ps-1 text-start focus-visible:outline-2 focus-visible:outline-[oklch(0.6_0.15_250)]"
+          onClick={() => onOpen(l.id)}
+          title={
+            (isGroup ? `${text.groupRowHint.value}\n` : "") +
+            fill(text.rowStats.value, {
               due: totals.due,
               learning: totals.learning,
               mastered: totals.mastered,
               seen: totals.cards,
               total: totals.total || "?",
-            })}
-          </div>
+            })
+          }
+        >
+          {keys && index < 9 && (
+            <kbd className="shrink-0 text-xs opacity-40 tabular-nums">{index + 1}</kbd>
+          )}
+          <span className="min-w-0 flex-1">
+            {/* The full name, wrapped, never cut: "JLPT N3" and "JLPT N2" must read apart. */}
+            <span
+              className={`block leading-snug [overflow-wrap:anywhere] ${isGroup ? "font-semibold" : "font-medium"}`}
+            >
+              {isGroup && <Icon name="folder" className="me-1 opacity-70" />}
+              {displayName}
+            </span>
+            <span className="mt-0.5 block truncate text-xs opacity-60 tabular-nums">
+              {fill(text.rowStatsShort.value, { due: totals.due, learning: totals.learning })}
+            </span>
+          </span>
+          {/* A fixed column, so the rings line up down the list. */}
+          <span className="flex w-[4.25rem] shrink-0 justify-end">
+            <ProgressRing progress={totals.progress} total={totals.total} />
+          </span>
         </button>
-      )}
-      {!editing && (
-        <>
-          <ProgressRing progress={totals.progress} total={totals.total} />
-          <button
-            className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
-            onClick={() => onOpen(l.id)}
-          >
-            {text.study}
-          </button>
-        </>
       )}
       <ListRowMenu
         listId={l.id}
@@ -1896,7 +1928,7 @@ function ListRowMenu({
   };
   const label = fill(text.listMenu.value, { name });
   return (
-    <div className={`relative shrink-0 -my-2 -me-2 ${open ? "z-30" : ""}`}>
+    <div className={`relative shrink-0 ${open ? "z-30" : ""}`}>
       <button
         ref={buttonRef}
         type="button"
@@ -2001,30 +2033,19 @@ function ListPicker({
   // Number keys open lists: show them only with a hardware keyboard.
   const keys = useInputModality() === "keyboard";
   const flat = useMemo(() => flatten(lists), [lists]);
+  const byId = useMemo(() => new Map(lists.map((l) => [l.id, l])), [lists]);
   const [download, setDownload] = useState<{
     done: number;
     total: number;
     error?: string;
   } | null>(null);
 
-  // Collapsed groups, remembered per page.
-  const collapsedKey = `lk:words-collapsed:${config.base}`;
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    try {
-      setCollapsed(new Set(JSON.parse(localStorage.getItem(collapsedKey) ?? "[]")));
-    } catch {}
-  }, [collapsedKey]);
-  const toggle = (id: string) =>
-    setCollapsed((c) => {
-      const n = new Set(c);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      try {
-        localStorage.setItem(collapsedKey, JSON.stringify([...n]));
-      } catch {}
-      return n;
-    });
+  // Folded groups, per tab (docs/ui-state.md: session `lk:ui:words`).
+  const ui = wordsUiStore(config.base);
+  useEffect(() => migrateCollapsed(ui, config.base), [ui, config.base]);
+  const folded = useUi(ui, (s) => s.collapsed);
+  const collapsed = useMemo(() => new Set(folded), [folded]);
+  const toggle = (id: string) => toggleCollapsed(ui, id);
 
   // Drag: up/down reorders, the sideways offset picks the depth (nest under
   // the row above, or come out a level). The dragged row's subtree moves with
@@ -2217,6 +2238,7 @@ function ListPicker({
                   onDelete={() => onDelete(row, isGroup(row))}
                   onRename={(name) => onRename(row.id, name)}
                   keys={keys}
+                  displayName={shownName(row, row.parentId ? byId.get(row.parentId) : null)}
                 />
               ))}
             </SortableContext>
