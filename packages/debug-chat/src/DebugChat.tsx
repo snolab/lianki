@@ -2017,9 +2017,11 @@ export function DebugChat({
       aria-label={ui.stateTree}
       data-testid="debug-chat-tree"
       data-mode={floating ? "floating" : "log"}
-      // Expanded it takes the taps and scrolls (never the page under it).
-      // Minimized it stays click-through, as the floating lines.
-      className={`relative flex w-full min-w-0 max-w-full flex-row-reverse items-start transition-opacity duration-[180ms] starting:opacity-0 motion-reduce:transition-none ${floating ? "pointer-events-none" : "pointer-events-auto shrink-0"}`}
+      // Click-through, expanded or not (docs/design-principles.md): only its
+      // rows and the ✕ take taps, so a blank strip beside or under the rows
+      // never swallows a tap meant for the page (the log does the same). A
+      // drag on a row still scrolls the tree.
+      className={`pointer-events-none relative flex w-full min-w-0 max-w-full flex-row-reverse items-start transition-opacity duration-[180ms] starting:opacity-0 motion-reduce:transition-none ${floating ? "" : "shrink-0"}`}
     >
       <button
         type="button"
