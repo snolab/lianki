@@ -272,3 +272,30 @@ export function needsIntlayerBuild(changedFiles: string[]): boolean {
     (f) => /\.content\.(ts|tsx|js|mjs|json)$/.test(f) || f.startsWith("intlayer.config."),
   );
 }
+
+/**
+ * Tailscale identity (owner decision, 2026-10-31 02:08 JST, typed "1同意"):
+ * his own devices on the tailnet are let in without a one-time link.
+ *
+ * `tailscale serve` adds Tailscale-User-Login to what it proxies; the guard
+ * believes it only on the loopback listener that tailscale serve targets
+ * (`trusted`). On the LAN listener the header is a forgery and the request is
+ * refused. Only `ownerLogin` (the Mac's own Tailscale user) passes.
+ */
+export const TS_LOGIN_HEADER = "tailscale-user-login";
+export const TS_HEADERS = [TS_LOGIN_HEADER, "tailscale-user-name", "tailscale-user-profile-pic"];
+
+export type TailnetIdentity = "owner" | "forged" | "none";
+
+export function tailnetIdentity(
+  login: string | string[] | undefined,
+  trusted: boolean,
+  ownerLogin: string,
+): TailnetIdentity {
+  const v = Array.isArray(login) ? login.join(",") : login;
+  if (v === undefined) return "none";
+  if (!trusted) return "forged";
+  return ownerLogin !== "" && v.trim().toLowerCase() === ownerLogin.toLowerCase()
+    ? "owner"
+    : "none";
+}

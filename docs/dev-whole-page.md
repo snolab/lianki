@@ -7,7 +7,7 @@ drifts. Because it touches production, it is locked down hard. It runs only in
 the ops lane (manual permission mode: the owner approves each command).
 
 ```bash
-tailscale serve --bg --https=8443 http://192.168.31.96:3100   # tailnet only, never funnel
+tailscale serve --bg --https=8443 http://127.0.0.1:3103        # tailnet only, never funnel
 bun scripts/dev/whole-page.ts serve --host 192.168.31.96 --port 3100 \
   --origin https://taku.onca-tint.ts.net:8443                    # keep running
 bun scripts/dev/whole-page.ts send-login --target Android        # sign his phone in
@@ -58,6 +58,24 @@ or a guard (`scripts/dev/whole-page*.ts`) change needs a restart.
 `remoteBindings: true` when `LIANKI_DEV_WHOLE_PAGE=1`. It also lists the LAN
 host in `allowedDevOrigins`, because otherwise next dev refuses its dev assets
 to that origin.
+
+## His devices on the tailnet: let in by Tailscale identity
+
+Owner decision, 2026-10-31 03:08 JST (typed "1同意"): his own devices need no
+one-time link. `tailscale serve --https=8443` targets a **loopback** listener,
+`127.0.0.1:3103`. That is the only listener where the guard believes the
+`Tailscale-User-Login` header that tailscale serve adds.
+
+- When that login is this Mac's own Tailscale user (`--tailscale-login`,
+  default from `tailscale status`), a GET without a device cookie or session
+  gets both, minted on the spot, and is redirected to the same URL.
+- Any other login on the tailnet gets 403, as before.
+- On the LAN listener (`192.168.31.96:3100`) a request carrying the header is
+  refused as a forgery.
+- The identity headers are stripped before anything is forwarded.
+
+`tailnetIdentity` in `whole-page-guard.ts` holds the rule. `send-login` still
+works for a device that is not on the tailnet.
 
 ## The locks (all of them, in order)
 

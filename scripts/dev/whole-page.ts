@@ -29,6 +29,7 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
+import type { Duplex } from "node:stream";
 import tls from "node:tls";
 import { DEV_BRIDGE_HEADER } from "../../lib/dev-bridge";
 import { devWholePageOrigin } from "../../lib/dev-whole-page";
@@ -47,6 +48,9 @@ import {
   isHubPath,
   landingHtml,
   sendLoginCode,
+  TS_HEADERS,
+  TS_LOGIN_HEADER,
+  tailnetIdentity,
   type SessionInfo,
   decide,
   deviceCookieValue,
@@ -102,6 +106,19 @@ async function serve() {
   const port = Number(arg("port", "3100"));
   const inner = port + 1;
   const control = port + 2;
+  const tsPort = port + 3;
+  // His Tailscale login: the one this Mac is signed in as, unless overridden.
+  const tsLogin = arg(
+    "tailscale-login",
+    (() => {
+      try {
+        const j = JSON.parse(Bun.spawnSync(["tailscale", "status", "--json"]).stdout.toString());
+        return String(j.User?.[String(j.Self?.UserID)]?.LoginName ?? "");
+      } catch {
+        return "";
+      }
+    })(),
+  );
   if (!isPrivateLanHost(host)) throw new Error(`--host must be a private LAN IPv4, got ${host}`);
   for (const f of [".env", ".env.local", ".env.development", ".env.development.local"]) {
     // Next would load it and could switch on Resend, Stripe or MongoDB.
@@ -190,6 +207,7 @@ async function serve() {
     const out = { ...h };
     delete out[GUARD_HEADER];
     delete out[DEV_BRIDGE_HEADER];
+    for (const h of TS_HEADERS) delete out[h];
     return out;
   }
 
@@ -223,6 +241,11 @@ async function serve() {
       console.error("[whole-page] enter: refused (bad, used or expired link)");
       return deny(res, "this link is used or expired");
     }
+    return signIn(res, LANDING_PATH, "enter: device paired, owner signed in");
+  }
+
+  /** Pin the device, mint the owner's session, and go on to `location`. */
+  async function signIn(res: http.ServerResponse, location: string, note: string) {
     const login = await fetch(`http://127.0.0.1:${inner}/api/dev-whole-page/login`, {
       method: "POST",
       headers: { [GUARD_HEADER]: state.guardSecret, host: new URL(origin).host, origin },
@@ -232,9 +255,9 @@ async function serve() {
       return deny(res, `sign-in failed (${login.status})`);
     }
     sessions.clear();
-    console.error("[whole-page] enter: device paired, owner signed in");
+    console.error(`[whole-page] ${note}`);
     res.writeHead(302, {
-      location: LANDING_PATH,
+      location,
       "cache-control": "no-store",
       "set-cookie": [
         `${DEVICE_COOKIE}=${device}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${YEAR_S}${secure}`,
@@ -244,109 +267,139 @@ async function serve() {
     res.end();
   }
 
-  const proxy = http.createServer(async (req, res) => {
-    try {
+  // `trusted`: the loopback listener that tailscale serve targets, the only
+  // place a Tailscale-User-Login header is believed (whole-page-guard.ts).
+  const handle =
+    (trusted: boolean) => async (req: http.IncomingMessage, res: http.ServerResponse) => {
+      try {
+        const url = new URL(req.url ?? "/", origin);
+        const deviceOk = await verifyDevice(
+          readCookie(req.headers.cookie, DEVICE_COOKIE),
+          state.deviceSecret,
+        );
+        const ts = tailnetIdentity(req.headers[TS_LOGIN_HEADER], trusted, tsLogin);
+        if (ts === "forged")
+          return deny(res, "a Tailscale identity is only believed via tailscale serve");
+        if (
+          ts === "owner" &&
+          req.method === "GET" &&
+          url.pathname !== ENTER_PATH &&
+          (!deviceOk || !(await ownerSession(req.headers.cookie)))
+        ) {
+          return await signIn(res, url.pathname + url.search, "tailnet: owner's device let in");
+        }
+        const d = decide(url.pathname, deviceOk);
+        if (d.kind === "enter") return await enter(url, res);
+        if (d.kind === "deny") return deny(res, d.reason);
+        if (d.kind === "owner" && !(await ownerSession(req.headers.cookie))) {
+          return deny(res, "not the owner's session — open a fresh enter link");
+        }
+        if (url.pathname === LANDING_PATH) {
+          res.writeHead(200, {
+            "content-type": "text/html; charset=utf-8",
+            "cache-control": "no-store",
+          });
+          return res.end(landingHtml(lab, origin));
+        }
+        const hub = isHubPath(url.pathname) || isBridgedPath(url.pathname);
+        const labPath = Boolean(lab) && isLabPath(url.pathname);
+        const remote = hub || labPath;
+        const up = (remote ? https : http).request(
+          labPath
+            ? {
+                host: new URL(lab).host,
+                port: 443,
+                method: req.method,
+                path: req.url,
+                headers: labHeaders(req.headers),
+              }
+            : hub
+              ? {
+                  host: new URL(HUB_ORIGIN).host,
+                  port: 443,
+                  method: req.method,
+                  path: req.url,
+                  headers: hubHeaders(req.headers),
+                }
+              : {
+                  host: "127.0.0.1",
+                  port: inner,
+                  method: req.method,
+                  path: req.url,
+                  headers: forwardHeaders(req.headers),
+                },
+          (r) => {
+            res.writeHead(r.statusCode ?? 502, r.headers);
+            r.pipe(res);
+          },
+        );
+        up.on("error", (e) => {
+          if (!res.headersSent) res.writeHead(502);
+          res.end(String(e.message));
+        });
+        req.pipe(up);
+      } catch (e) {
+        console.error("[whole-page] guard error:", (e as Error).message);
+        if (!res.headersSent) res.writeHead(500);
+        res.end();
+      }
+    };
+
+  // Websockets: HMR (device cookie) to next dev; the hub's (device + owner) to
+  // lianki-push on lianki.com.
+  const upgrade =
+    (trusted: boolean) => async (req: http.IncomingMessage, socket: Duplex, head: Buffer) => {
       const url = new URL(req.url ?? "/", origin);
+      if (tailnetIdentity(req.headers[TS_LOGIN_HEADER], trusted, tsLogin) === "forged") {
+        socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
+        return;
+      }
       const deviceOk = await verifyDevice(
         readCookie(req.headers.cookie, DEVICE_COOKIE),
         state.deviceSecret,
       );
       const d = decide(url.pathname, deviceOk);
-      if (d.kind === "enter") return await enter(url, res);
-      if (d.kind === "deny") return deny(res, d.reason);
-      if (d.kind === "owner" && !(await ownerSession(req.headers.cookie))) {
-        return deny(res, "not the owner's session — open a fresh enter link");
+      const ok =
+        d.kind === "pass" || (d.kind === "owner" && (await ownerSession(req.headers.cookie)));
+      if (!ok) {
+        socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
+        return;
       }
-      if (url.pathname === LANDING_PATH) {
-        res.writeHead(200, {
-          "content-type": "text/html; charset=utf-8",
-          "cache-control": "no-store",
-        });
-        return res.end(landingHtml(lab, origin));
-      }
-      const hub = isHubPath(url.pathname) || isBridgedPath(url.pathname);
-      const labPath = Boolean(lab) && isLabPath(url.pathname);
-      const remote = hub || labPath;
-      const up = (remote ? https : http).request(
-        labPath
-          ? {
-              host: new URL(lab).host,
-              port: 443,
-              method: req.method,
-              path: req.url,
-              headers: labHeaders(req.headers),
-            }
-          : hub
-            ? {
-                host: new URL(HUB_ORIGIN).host,
-                port: 443,
-                method: req.method,
-                path: req.url,
-                headers: hubHeaders(req.headers),
-              }
-            : {
-                host: "127.0.0.1",
-                port: inner,
-                method: req.method,
-                path: req.url,
-                headers: forwardHeaders(req.headers),
-              },
-        (r) => {
-          res.writeHead(r.statusCode ?? 502, r.headers);
-          r.pipe(res);
-        },
-      );
-      up.on("error", (e) => {
-        if (!res.headersSent) res.writeHead(502);
-        res.end(String(e.message));
+      const hub = isHubPath(url.pathname);
+      const headers = hub ? hubHeaders(req.headers) : forwardHeaders(req.headers);
+      const hubHost = new URL(HUB_ORIGIN).host;
+      const connectUp = (onReady: () => void) =>
+        hub
+          ? tls.connect(443, hubHost, { servername: hubHost }, onReady)
+          : net.connect(inner, "127.0.0.1", onReady);
+      const up = connectUp(() => {
+        const lines = [`${req.method} ${req.url} HTTP/1.1`];
+        for (const [k, v] of Object.entries(headers)) {
+          for (const val of Array.isArray(v) ? v : [v])
+            if (val !== undefined) lines.push(`${k}: ${val}`);
+        }
+        up.write(`${lines.join("\r\n")}\r\n\r\n`);
+        if (head.length) up.write(head);
+        up.pipe(socket);
+        socket.pipe(up);
       });
-      req.pipe(up);
-    } catch (e) {
-      console.error("[whole-page] guard error:", (e as Error).message);
-      if (!res.headersSent) res.writeHead(500);
-      res.end();
-    }
-  });
+      up.on("error", () => socket.destroy());
+      socket.on("error", () => up.destroy());
+    };
 
-  // Websockets: HMR (device cookie) to next dev; the hub's (device + owner) to
-  // lianki-push on lianki.com.
-  proxy.on("upgrade", async (req, socket, head) => {
-    const url = new URL(req.url ?? "/", origin);
-    const deviceOk = await verifyDevice(
-      readCookie(req.headers.cookie, DEVICE_COOKIE),
-      state.deviceSecret,
-    );
-    const d = decide(url.pathname, deviceOk);
-    const ok =
-      d.kind === "pass" || (d.kind === "owner" && (await ownerSession(req.headers.cookie)));
-    if (!ok) {
-      socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
-      return;
-    }
-    const hub = isHubPath(url.pathname);
-    const headers = hub ? hubHeaders(req.headers) : forwardHeaders(req.headers);
-    const hubHost = new URL(HUB_ORIGIN).host;
-    const connectUp = (onReady: () => void) =>
-      hub
-        ? tls.connect(443, hubHost, { servername: hubHost }, onReady)
-        : net.connect(inner, "127.0.0.1", onReady);
-    const up = connectUp(() => {
-      const lines = [`${req.method} ${req.url} HTTP/1.1`];
-      for (const [k, v] of Object.entries(headers)) {
-        for (const val of Array.isArray(v) ? v : [v])
-          if (val !== undefined) lines.push(`${k}: ${val}`);
-      }
-      up.write(`${lines.join("\r\n")}\r\n\r\n`);
-      if (head.length) up.write(head);
-      up.pipe(socket);
-      socket.pipe(up);
-    });
-    up.on("error", () => socket.destroy());
-    socket.on("error", () => up.destroy());
-  });
-
-  proxy.listen(port, host, () =>
+  // The LAN listener (never believes a Tailscale identity) and the loopback one
+  // that `tailscale serve --https=8443` targets (believes it, for his login only).
+  const lan = http.createServer(handle(false));
+  lan.on("upgrade", upgrade(false));
+  lan.listen(port, host, () =>
     console.error(`[whole-page] guard on ${origin} → next dev 127.0.0.1:${inner}`),
+  );
+  const tailnet = http.createServer(handle(true));
+  tailnet.on("upgrade", upgrade(true));
+  tailnet.listen(tsPort, "127.0.0.1", () =>
+    console.error(
+      `[whole-page] tailnet listener 127.0.0.1:${tsPort} (owner login: ${tsLogin || "none"})`,
+    ),
   );
 
   // Publishing: next dev serves THIS worktree, which follows the merge branch

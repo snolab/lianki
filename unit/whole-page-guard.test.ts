@@ -15,6 +15,7 @@ import {
   isPrivateLanHost,
   landingHtml,
   sendLoginCode,
+  tailnetIdentity,
   toDevOrigin,
   readCookie,
   sessionIsOwner,
@@ -284,5 +285,24 @@ describe("whole-page guard: intlayer on publish", () => {
     expect(needsIntlayerBuild(["intlayer.config.ts"])).toBe(true);
     expect(needsIntlayerBuild(["app/(app)/words/page.tsx", "lib/x.ts", ""])).toBe(false);
     expect(needsIntlayerBuild([])).toBe(false);
+  });
+});
+
+describe("whole-page guard: Tailscale identity", () => {
+  const owner = "owner@github";
+  test("his login on the tailscale-serve listener is the owner", () => {
+    expect(tailnetIdentity(owner, true, owner)).toBe("owner");
+    expect(tailnetIdentity("Owner@GitHub ", true, owner)).toBe("owner");
+  });
+  test("anyone else on the tailnet is nobody special", () => {
+    expect(tailnetIdentity("friend@github", true, owner)).toBe("none");
+    expect(tailnetIdentity(undefined, true, owner)).toBe("none");
+    expect(tailnetIdentity(owner, true, "")).toBe("none");
+    expect(tailnetIdentity([owner, owner], true, owner)).toBe("none");
+  });
+  test("the header on the LAN listener is a forgery", () => {
+    expect(tailnetIdentity(owner, false, owner)).toBe("forged");
+    expect(tailnetIdentity("", false, owner)).toBe("forged");
+    expect(tailnetIdentity(undefined, false, owner)).toBe("none");
   });
 });
