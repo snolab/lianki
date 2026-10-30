@@ -13,7 +13,7 @@
     "dev:db": "node scripts/dev-mongo.mjs",
     "qa:api": "node scripts/qa/qa-api.mjs",
     "qa:ui": "node scripts/qa/qa-ui.mjs",
-    "qa:all": "node scripts/qa/qa-all.mjs",
+    "qa:all": "bash scripts/qa/with-muted-mac.sh node scripts/qa/qa-all.mjs",
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "oxlint --ignore-pattern 'packages/**' && oxfmt --check '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**'",
