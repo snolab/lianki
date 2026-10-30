@@ -5,6 +5,7 @@ import {
   avatarView,
   lineAvatar,
   runStarts,
+  runsOf,
 } from "@lianki/debug-chat/avatar-rules";
 
 describe("runStarts (avatar grouping)", () => {
@@ -30,6 +31,12 @@ describe("runStarts (avatar grouping)", () => {
       ]),
     ).toEqual([true, true, true, false]);
     expect(runStarts([])).toEqual([]);
+  });
+
+  it("runsOf: the runs as index lists, each rendered as one inline paragraph", () => {
+    expect(runsOf([true, false, true, false, false, true])).toEqual([[0, 1], [2, 3, 4], [5]]);
+    expect(runsOf([false, false])).toEqual([[0, 1]]); // a first line always opens a run
+    expect(runsOf([])).toEqual([]);
   });
 });
 import {

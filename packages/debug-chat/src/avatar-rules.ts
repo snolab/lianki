@@ -90,6 +90,16 @@ export function lineAvatar(
   };
 }
 
+/** The runs themselves (from runStarts): each run's message indexes, in order. */
+export function runsOf(starts: readonly boolean[]): number[][] {
+  const out: number[][] = [];
+  starts.forEach((start, i) => {
+    if (start || !out.length) out.push([i]);
+    else out[out.length - 1]!.push(i);
+  });
+  return out;
+}
+
 /** A pause this long between two lines starts a new run, avatar and all. */
 export const RUN_GAP_MS = 5 * 60_000;
 

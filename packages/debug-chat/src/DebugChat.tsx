@@ -28,7 +28,7 @@ import { latencyRows, voiceLatency } from "./latency";
 import { getKey, setKey } from "./storage-keys";
 import { LiagentMark } from "./LiagentMark";
 import { Avatar } from "./Avatar";
-import { type AvatarSource, lineAvatar, runStarts } from "./avatar-rules";
+import { type AvatarSource, lineAvatar, runStarts, runsOf } from "./avatar-rules";
 import {
   CLIP_SINK_KEY,
   VOICE_SENT_EVENT,
@@ -2322,23 +2322,27 @@ export function DebugChat({
         {messages.length === 0 && (
           <li className="text-gray-500">{t.hint}</li>
         )}
-        {/* A game-style log: one line per message, avatar then text, no bubbles. */}
-        {messages.map((m, i) => {
-          const who = whos[i]!;
-          // The state-tree node a line belongs to: a muted subtitle and a left border by its hue.
-          const node = lineNode(m);
-          // The avatar (and the node's subtitle) once per run of lines (avatar-rules.ts runStarts).
-          const first = starts[i];
+        {/*
+          A game-style log, avatar then text, no bubbles. A run of one
+          sender's messages (same sender and node, no long pause: runStarts)
+          is ONE paragraph: the avatar once, the messages flowing inline one
+          after another, a faint dot between them. Merged at render time
+          only: every message stays its own span, with its own id, title
+          (time), polish mark, waiting tag, so the hub's history, the polish
+          edit (one line id), read-aloud and the anchoring are unchanged.
+        */}
+        {runsOf(starts).map((run) => {
+          const i0 = run[0]!;
+          const m0 = messages[i0]!;
+          const who = whos[i0]!;
+          // The state-tree node the run belongs to: a muted subtitle and a left border by its hue.
+          const node = lineNode(m0);
           return (
-            // The time only on hover (long press on a phone); the avatar's own title names who.
             <li
-              key={m.id}
-              data-testid="debug-chat-line"
-              data-msg={m.id}
-              data-from={m.from}
+              key={m0.id}
+              data-testid="debug-chat-run"
+              data-from={m0.from}
               data-node={node?.node}
-              data-run-start={first || undefined}
-              title={node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)}
               className="flex items-start gap-1.5 leading-snug"
               style={
                 node
@@ -2346,22 +2350,16 @@ export function DebugChat({
                   : undefined
               }
             >
-              {/* Screen readers hear the name once, from the sr-only span. */}
-              {first ? (
-                <Avatar
-                  src={who.src}
-                  name={who.name}
-                  initialFrom={who.initialFrom}
-                  seed={who.seed}
-                  size={AVATAR_PX}
-                  hidden
-                />
-              ) : (
-                // The rest of the run: the avatar's room, so the text lines up.
-                <span aria-hidden className="shrink-0" style={{ width: AVATAR_PX }} />
-              )}
-              <span className="min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
-                {node && first && (
+              <Avatar
+                src={who.src}
+                name={who.name}
+                initialFrom={who.initialFrom}
+                seed={who.seed}
+                size={AVATAR_PX}
+                hidden
+              />
+              <p className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
+                {node && (
                   <span
                     aria-hidden
                     data-testid="debug-chat-node"
@@ -2370,22 +2368,47 @@ export function DebugChat({
                     {node.subtitle}
                   </span>
                 )}
+                {/* Screen readers hear the name once per run, from the sr-only span. */}
                 <span className="sr-only">
                   {who.name}
                   {node ? ` (${node.subtitle})` : ""}:{" "}
                 </span>
-                {polish(m).text}
-                {polish(m).mark}
-                {!agentOnline && m.from !== "agent" && i > lastAgent && (
-                  <span
-                    data-testid="debug-chat-queued"
-                    className="ms-1 text-[10px] text-gray-500"
-                    title={t.waitingTitle}
-                  >
-                    {t.waiting}
-                  </span>
-                )}
-              </span>
+                {run.map((i, k) => {
+                  const m = messages[i]!;
+                  return (
+                    <span key={m.id}>
+                      {k > 0 && (
+                        <span aria-hidden className="mx-1 opacity-40">
+                          ·
+                        </span>
+                      )}
+                      {/* The time only on hover (long press on a phone). */}
+                      <span
+                        data-testid="debug-chat-line"
+                        data-msg={m.id}
+                        data-from={m.from}
+                        data-node={node?.node}
+                        data-run-start={k === 0 || undefined}
+                        title={
+                          node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)
+                        }
+                      >
+                        {polish(m).text}
+                        {polish(m).mark}
+                        {!agentOnline && m.from !== "agent" && i > lastAgent && (
+                          <span
+                            data-testid="debug-chat-queued"
+                            className="ms-1 text-[10px] text-gray-500"
+                            title={t.waitingTitle}
+                          >
+                            {t.waiting}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  );
+                })}
+              </p>
             </li>
           );
         })}
