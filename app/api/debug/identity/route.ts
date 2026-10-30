@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
-import { getAuth } from "@/auth";
-import { DEV_BRIDGE_HEADER, devBridgeMatches } from "@/lib/dev-bridge";
-import { isOwner, ownerEmails } from "@/lib/owner";
+import { DEV_BRIDGE_HEADER } from "@/lib/dev-bridge";
+import { devBridgeUser } from "@/lib/dev-bridge-user";
+import { isOwner } from "@/lib/owner";
 
 /**
  * Who is this session, for lianki-push (workers/push) before it accepts a
@@ -20,7 +20,7 @@ import { isOwner, ownerEmails } from "@/lib/owner";
  */
 export const GET = async (req: Request) => {
   const bridge = req.headers.get(DEV_BRIDGE_HEADER);
-  if (bridge !== null) return bridgeIdentity(bridge);
+  if (bridge !== null) return bridgeIdentity(req);
   const user = await authUserOrNull();
   if (!user?.id) return NextResponse.json({ error: "Sign in" }, { status: 401 });
   return NextResponse.json(
@@ -35,15 +35,9 @@ export const GET = async (req: Request) => {
   );
 };
 
-async function bridgeIdentity(sent: string) {
-  if (!devBridgeMatches(sent, process.env.DEV_BRIDGE_SECRET)) {
-    return NextResponse.json({ error: "Bad bridge" }, { status: 401 });
-  }
-  const email = ownerEmails()[0];
-  const ctx = email ? await (await getAuth()).$context : null;
-  const found = ctx && email ? await ctx.internalAdapter.findUserByEmail(email) : null;
-  if (!found?.user) return NextResponse.json({ error: "No owner account" }, { status: 401 });
-  const user = found.user;
+async function bridgeIdentity(req: Request) {
+  const user = await devBridgeUser(req);
+  if (!user) return NextResponse.json({ error: "Bad bridge" }, { status: 401 });
   return NextResponse.json(
     {
       userId: user.id,

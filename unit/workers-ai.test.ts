@@ -9,6 +9,7 @@ import {
   workersAiOpenAI,
   workersAiProvider,
   sniffAudioType,
+  melottsCode,
   workersAiSpeech,
   workersAiTranscribe,
   WORKERS_AI_NOT_CONFIGURED,
@@ -155,10 +156,24 @@ describe("speech", () => {
       "https://api.cloudflare.com/client/v4/accounts/acct123/ai/run/@cf/myshell-ai/melotts",
     );
     expect((seen!.init.headers as Record<string, string>).Authorization).toBe("Bearer tok_abc");
+    // MeloTTS's own code: it rejects ISO "ja" ("Supported: en, es, fr, jp, kr, zh").
     expect(JSON.parse(seen!.init.body as string)).toEqual({
       prompt: "これは日本語です",
-      lang: "ja",
+      lang: "jp",
     });
+  });
+
+  it("sends MeloTTS's codes for Japanese and Korean, ISO for the rest", async () => {
+    configure();
+    const sent: string[] = [];
+    globalThis.fetch = (async (_u: string, init: RequestInit) => {
+      sent.push(JSON.parse(init.body as string).lang);
+      return new Response(mp3, { headers: { "content-type": "audio/mpeg" } });
+    }) as never;
+    for (const lang of ["ja", "ko", "zh", "en", "es", "fr"])
+      await workersAiSpeech({ text: "x", lang });
+    expect(sent).toEqual(["jp", "kr", "zh", "en", "es", "fr"]);
+    expect(melottsCode("ja")).toBe("jp");
   });
 
   it("honours an explicit lang", async () => {

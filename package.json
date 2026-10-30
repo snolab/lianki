@@ -16,6 +16,7 @@
     "qa:all": "node scripts/qa/qa-all.mjs",
     "build": "next build --turbopack",
     "start": "next start",
+    "lint": "oxlint --ignore-pattern 'packages/**' && oxfmt --check '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**'",
     "fix": "oxlint --fix --ignore-pattern 'packages/**' && oxfmt '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**'",
     "typecheck": "tsgo --noEmit",
     "prepare": "husky",

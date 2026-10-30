@@ -1,0 +1,65 @@
+name: Nightly QA
+
+# The full integration gate, `bun run qa:all` (OpenNext build → wrangler dev on
+# local D1 → API + UI + sync + userscript suites), plus the extension smoke
+# test, against main once a night. It used to run on every push and PR, and
+# main's deploy waited ~4 min for it (owner, 2026-10-31: run it nightly). The
+# pre-push hook still runs the same qa:all on every pushed commit, so this
+# catches what slipped past that: a skipped hook, two PRs green apart and red
+# together, or drift in the runner image.
+on:
+  schedule:
+    - cron: "0 18 * * *" # 03:00 JST
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-qa
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  integration:
+    name: qa:all (D1/Workers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Run inside the official Playwright image: chromium (+ all OS deps) is baked
+    # in, so the job never downloads a browser at runtime from cdn.playwright.dev
+    # → Google Cloud Storage — an egress path that has stalled for hours on
+    # Actions runners while being healthy everywhere else. The image also ships
+    # Node 24, satisfying the node:sqlite requirement. Pin the tag to the repo's
+    # Playwright version (package.json @playwright/test) so the preinstalled
+    # browser build matches what the tests expect.
+    container:
+      image: mcr.microsoft.com/playwright:v1.58.2-noble
+    # Cloudflare's "always passes" test sitekey, inlined into the build so the
+    # Turnstile widget renders without a real key (it gates only the magic-link
+    # button; qa:all uses the dev password path). https://developers.cloudflare.com/turnstile/troubleshooting/testing/
+    env:
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: "1x00000000000000000000AA"
+    steps:
+      - uses: actions/checkout@v4
+      # No setup-node: the Playwright image already provides Node 24.
+      # setup-bun extracts its release zip with `unzip`, which the image lacks.
+      - run: apt-get update && apt-get install -y unzip xvfb
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # No "playwright install" — browsers live in the image at
+      # $PLAYWRIGHT_BROWSERS_PATH (/ms-playwright); chromium-1208 matches v1.58.2.
+      # Builds the OpenNext Worker, applies migrations to local (Miniflare) D1,
+      # boots `wrangler dev` and runs all five suites. No Cloudflare account
+      # needed — wrangler runs D1/R2 locally.
+      - name: qa:all
+        run: bun run qa:all
+      # MV3 extension smoke test — loads the built extension into the image's
+      # Chromium (headed under xvfb) and asserts the content script runs.
+      - name: Extension smoke test
+        run: bun run test:ext
+      - name: "Alert #lianki when nightly QA fails"
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          bash scripts/ci/slack-alert.sh ":red_circle: nightly qa:all failed on main at ${GITHUB_SHA::7}: ${RUN_URL}"
