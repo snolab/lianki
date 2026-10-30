@@ -21,9 +21,20 @@ export type WordsUi = {
    * queue loads, if that word is still in it.
    */
   anchors: Record<string, string>;
+  /** List picker: the groups this tab has folded shut (their ids). */
+  collapsed: string[];
 };
 
-const INITIAL: WordsUi = { listId: null, settingsOpen: false, helpOpen: false, anchors: {} };
+const INITIAL: WordsUi = {
+  listId: null,
+  settingsOpen: false,
+  helpOpen: false,
+  anchors: {},
+  collapsed: [],
+};
+
+/** Folded groups remembered per tab; ids beyond this are dropped. */
+const MAX_COLLAPSED = 200;
 
 /** Lists remembered per tab; the oldest anchors go first. */
 const MAX_ANCHORS = 20;
@@ -42,6 +53,10 @@ export function cleanWordsUi(raw: unknown): Partial<WordsUi> {
         .filter((e): e is [string, string] => typeof e[1] === "string")
         .slice(-MAX_ANCHORS),
     );
+  if (Array.isArray(v.collapsed))
+    out.collapsed = v.collapsed
+      .filter((x): x is string => typeof x === "string" && x.length <= 64)
+      .slice(-MAX_COLLAPSED);
   return out;
 }
 
@@ -79,3 +94,34 @@ export function anchorTop(
 /** The index of the row at the top of the screen, for a scrollTop. */
 export const topIndex = (scrollTop: number, o: { pad: number; rowH: number; barTop: number }) =>
   Math.max(0, Math.floor((scrollTop + o.barTop - o.pad) / o.rowH + 0.5));
+
+/** Fold a group shut, or open it again, in this tab. */
+export function toggleCollapsed(store: UiStore<WordsUi>, id: string) {
+  const { collapsed } = store.getState();
+  store.setState({
+    collapsed: collapsed.includes(id)
+      ? collapsed.filter((x) => x !== id)
+      : [...collapsed, id].slice(-MAX_COLLAPSED),
+  });
+}
+
+/**
+ * The folded groups used to be one localStorage key per device
+ * (`lk:words-collapsed:<base>`). Carry it into this tab's store once, while
+ * the store is still at its initial state, and drop the old key.
+ */
+export function migrateCollapsed(store: UiStore<WordsUi>, base: string, storage?: Storage) {
+  const key = `lk:words-collapsed:${base}`;
+  try {
+    const ls = storage ?? globalThis.localStorage;
+    const raw = ls?.getItem(key);
+    if (raw == null) return;
+    ls.removeItem(key);
+    if (store.getState().collapsed.length) return;
+    const ids = JSON.parse(raw);
+    if (Array.isArray(ids)) {
+      const clean = cleanWordsUi({ collapsed: ids }).collapsed;
+      if (clean?.length) store.setState({ collapsed: clean });
+    }
+  } catch {}
+}

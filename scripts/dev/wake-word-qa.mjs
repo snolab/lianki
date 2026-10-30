@@ -19,6 +19,7 @@ import { createServer } from "node:net";
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
+import { launchSilent, newSilentContext } from "../qa/silent.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (k) => {
@@ -66,16 +67,15 @@ const check = (ok, what) => {
 
 /** One browser per clip: Chromium's fake mic plays one file, looping. */
 async function run(clip, expectWake) {
-  const browser = await chromium.launch({
+  const browser = await launchSilent(chromium, {
     args: [
       "--use-fake-ui-for-media-stream",
       "--use-fake-device-for-media-stream",
       `--use-file-for-fake-audio-capture=${resolve(clip)}%noloop`,
       "--autoplay-policy=no-user-gesture-required",
-      "--mute-audio",
     ],
   });
-  const ctx = await browser.newContext();
+  const ctx = await newSilentContext(browser);
   await ctx.grantPermissions(["microphone"], { origin: ORIGIN });
   const page = await ctx.newPage();
   const stt = [];

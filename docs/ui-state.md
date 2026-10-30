@@ -5,12 +5,18 @@ covers the app, its hot islands and the chat widget.
 
 ## The four places
 
-| Place                                    | Lifetime                                                       | Scope                     | For                                                         |
-| ---------------------------------------- | -------------------------------------------------------------- | ------------------------- | ----------------------------------------------------------- |
-| **sessionStorage** `lk:ui:<name>`        | until the tab closes; survives a refresh and a hot island swap | this tab only             | UI state: panels, positions, drafts, the current selection  |
+| Place                                    | Lifetime                                                       | Scope                     | For                                                          |
+| ---------------------------------------- | -------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------ |
+| **sessionStorage** `lk:ui:<name>`        | until the tab closes; survives a refresh and a hot island swap | this tab only             | UI state: panels, positions, drafts, the current selection   |
 | **localStorage** `lk:pref:<name>`        | until cleared                                                  | this device, all its tabs | device preferences: theme, font size, voice rate, swipe feel |
-| **The URL** (`?list=`, filters)          | as long as the link                                            | shareable                 | what someone could bookmark or send                         |
-| **The server** (`/api/preferences` etc.) | always                                                         | the account, all devices  | synced preferences, and all business data                   |
+| **The URL** (`?list=`, filters)          | as long as the link                                            | shareable                 | what someone could bookmark or send                          |
+| **The server** (`/api/preferences` etc.) | always                                                         | the account, all devices  | synced preferences, and all business data                    |
+
+Which preferences follow the account, and how (an "account" store mode:
+the local copy plus server sync), is designed in [prefs-sync.md](prefs-sync.md).
+
+Which preferences follow the account, and how (an "account" store mode:
+the local copy plus server sync), is designed in [prefs-sync.md](prefs-sync.md).
 
 Rules:
 
@@ -71,62 +77,64 @@ target that is not built yet.
 
 ### Routing, panels, modals
 
-| State                                   | Where                                     | Status                                     |
-| --------------------------------------- | ----------------------------------------- | ------------------------------------------ |
-| current word list                       | URL `?list=`, then session `lk:ui:words`  | done (/words, /alphabets)                  |
-| /words Settings panel open              | session `lk:ui:words`                     | done                                       |
-| /words keyboard help strip (`?`)        | session `lk:ui:words`                     | done                                       |
-| swipe tuner panel open                  | session `lk:ui:swipe-tuner`               | done                                       |
-| slip action sheet open                  | memory (it is modal, closed on refresh)   | intentional                                |
-| sidebar collapsed                       | local `lk:sidebar`                        | → `lk:pref:sidebar`                        |
-| first-run answer                        | local `lk:first-run`                      | a device fact, stays                       |
+| State                             | Where                                    | Status                                                          |
+| --------------------------------- | ---------------------------------------- | --------------------------------------------------------------- |
+| current word list                 | URL `?list=`, then session `lk:ui:words` | done (/words, /alphabets)                                       |
+| /words Settings panel open        | session `lk:ui:words`                    | done                                                            |
+| /words list picker: folded groups | session `lk:ui:words` (`collapsed`)      | done (was local `lk:words-collapsed:<base>`, carried over once) |
+| /words keyboard help strip (`?`)  | session `lk:ui:words`                    | done                                                            |
+| swipe tuner panel open            | session `lk:ui:swipe-tuner`              | done                                                            |
+| slip action sheet open            | memory (it is modal, closed on refresh)  | intentional                                                     |
+| sidebar collapsed                 | local `lk:sidebar`                       | → `lk:pref:sidebar`                                             |
+| first-run answer                  | local `lk:first-run`                     | a device fact, stays                                            |
 
 ### Chat widget (packages/debug-chat, another lane)
 
-| State                                     | Where                                                        | Status                                  |
-| ----------------------------------------- | ------------------------------------------------------------ | --------------------------------------- |
-| bar position                              | local `lk:debug-chat-pos`                                    | → session `lk:ui:chat` (per tab)        |
-| chat open, full-screen log                | local `lk:debug-chat-open`                                   | → session `lk:ui:chat`                  |
-| tree level / expanded node                | —                                                            | → session `lk:ui:chat`                  |
-| chat scroll, draft                        | —                                                            | → session `lk:ui:chat` (draft text is UI, not a message) |
-| mic on                                    | local `lk:agent:mic`                                         | → session (a mic should not reopen in a new tab by itself) |
-| speech rate, voice out, echo cancel       | local `lk:agent-speech-rate`, `lk:voice-out`, `lk:voice-aec` | → `lk:pref:chat-voice`                  |
+| State                               | Where                                                        | Status                                                     |
+| ----------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------- |
+| bar position                        | local `lk:debug-chat-pos`                                    | → session `lk:ui:chat` (per tab)                           |
+| chat open, full-screen log          | local `lk:debug-chat-open`                                   | → session `lk:ui:chat`                                     |
+| tree level / expanded node          | —                                                            | → session `lk:ui:chat`                                     |
+| chat scroll, draft                  | —                                                            | → session `lk:ui:chat` (draft text is UI, not a message)   |
+| mic on                              | local `lk:agent:mic`                                         | → session (a mic should not reopen in a new tab by itself) |
+| speech rate, voice out, echo cancel | local `lk:agent-speech-rate`, `lk:voice-out`, `lk:voice-aec` | → `lk:pref:chat-voice`                                     |
 
 ### Cards and the swipe
 
-| State                                       | Where                                         | Status                                         |
-| ------------------------------------------- | --------------------------------------------- | ---------------------------------------------- |
-| swipe feel preset and token tweaks          | local `lk:pref:swipe-feel`                    | done (was `lk:swipe-feel`, carried over once)  |
-| swipe variant (js / native)                 | local `lk:swipe-ab`                           | → `lk:pref:swipe` (keep the A/B tag)           |
-| a card flipped / revealed, pinned rows      | memory                                        | → session, by word key, if wanted              |
-| swipe in progress                           | memory (refs in the core)                     | intentional: a gesture does not survive a refresh |
-| grades, queue, cards                        | server + IndexedDB                            | never in a UI store                            |
+| State                                  | Where                      | Status                                            |
+| -------------------------------------- | -------------------------- | ------------------------------------------------- |
+| swipe feel preset and token tweaks     | local `lk:pref:swipe-feel` | done (was `lk:swipe-feel`, carried over once)     |
+| swipe variant (js / native)            | local `lk:swipe-ab`        | → `lk:pref:swipe` (keep the A/B tag)              |
+| a card flipped / revealed, pinned rows | memory                     | → session, by word key, if wanted                 |
+| swipe in progress                      | memory (refs in the core)  | intentional: a gesture does not survive a refresh |
+| grades, queue, cards                   | server + IndexedDB         | never in a UI store                               |
 
 ### Search, filter, sort, study mode
 
-| State                                           | Where                                   | Status                                  |
-| ----------------------------------------------- | --------------------------------------- | --------------------------------------- |
-| /words scroll position                          | session `lk:ui:words` anchors           | done: the word at the top, per list, restored when the queue loads |
-| show all meanings, speak on swipe, grade tones, server voice, paper scrolls, scroll after swipe | local `lk:words-*` (usePref)            | device prefs → `lk:pref:words` |
-| list picker search / filter / sort              | — (none on /words today)                | → URL when added (shareable)            |
-| study mode (one list, a group, "study all")     | URL `?list=` (`all`, a group id)        | done                                    |
-| home pins, home language                        | local `lk:home:*`                       | device prefs → `lk:pref:home`           |
+| State                                                                                           | Where                            | Status                                                             |
+| ----------------------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------ |
+| /words scroll position                                                                          | session `lk:ui:words` anchors    | done: the word at the top, per list, restored when the queue loads |
+| show all meanings, speak on swipe, grade tones, server voice, paper scrolls, scroll after swipe | local `lk:words-*` (usePref)     | device prefs → `lk:pref:words`                                     |
+| list picker search / filter / sort                                                              | — (none on /words today)         | → URL when added (shareable)                                       |
+| study mode (one list, a group, "study all")                                                     | URL `?list=` (`all`, a group id) | done                                                               |
+| home pins, home language                                                                        | local `lk:home:*`                | device prefs → `lk:pref:home`                                      |
 
 ### Read-aloud
 
-| State                          | Where                         | Status                                 |
-| ------------------------------ | ----------------------------- | -------------------------------------- |
-| read-aloud progress (sentence) | memory                        | → session, per page, if reading resumes |
-| volume, rate, voice            | local (per feature)           | → `lk:pref:voice`, later server-synced |
+| State                          | Where               | Status                                  |
+| ------------------------------ | ------------------- | --------------------------------------- |
+| read-aloud progress (sentence) | memory              | → session, per page, if reading resumes |
+| volume, rate, voice            | local (per feature) | → `lk:pref:voice`, later server-synced  |
 
 ### Appearance and language
 
-| State                | Where                                   | Status                         |
-| -------------------- | --------------------------------------- | ------------------------------ |
-| theme (light / dark) | the system (`prefers-color-scheme`)     | → `lk:pref:theme` if a switch is added |
-| language             | intlayer, as today                      | stays                          |
-| font size            | —                                       | → `lk:pref:appearance`         |
-| paper texture        | local `lk:paper`                        | stays a plain key: app/layout.tsx reads it in an inline script before paint, to avoid a flash |
+| State                | Where                                                              | Status                                                                                        |
+| -------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| theme (light / dark) | the system (`prefers-color-scheme`)                                | → `lk:pref:theme` if a switch is added                                                        |
+| language             | intlayer, as today                                                 | stays                                                                                         |
+| font size            | —                                                                  | → `lk:pref:appearance`                                                                        |
+| animations off       | local `lk:pref:motion` (`system` until chosen; lib/motion-pref.ts) | done: /words Settings → Turn off animations; `<html data-motion="off">` set before paint      |
+| paper texture        | local `lk:paper`                                                   | stays a plain key: app/layout.tsx reads it in an inline script before paint, to avoid a flash |
 
 ### Not UI state (left alone)
 

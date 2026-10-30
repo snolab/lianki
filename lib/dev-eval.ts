@@ -218,7 +218,38 @@ export type PageMessage =
       error?: string;
       stack?: string;
       ms?: number;
-    };
+    }
+  | PageErrorMessage;
+
+/**
+ * Page errors (docs/dev-debug-widget.md, "Page errors"): an owner page's
+ * uncaught error, rejection, console.error, failed /api call, or media load
+ * failure, scrubbed on the page (packages/debug-chat/src/page-errors.ts).
+ * The hub forwards it to the owner-approved listeners only; never stored.
+ */
+export const PAGE_ERROR_KINDS = [
+  "error",
+  "rejection",
+  "console",
+  "fetch",
+  "network",
+  "media",
+  "socket",
+] as const;
+export type PageErrorKind = (typeof PAGE_ERROR_KINDS)[number];
+export const PAGE_ERROR_MAX_MESSAGE = 500;
+export const PAGE_ERROR_MAX_STACK = 1500;
+export type PageErrorMessage = {
+  type: "page-error";
+  kind: PageErrorKind;
+  message: string;
+  stack?: string;
+  /** The page's path (or the failed request's), never a query. */
+  path: string;
+  status?: number;
+  at: number;
+  rev?: string;
+};
 
 /** A page id: the tab's own (sessionStorage), so a reload keeps its grants. */
 export const isPageId = (v: unknown): v is string =>
@@ -406,6 +437,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
     };
   }
+  if (m.type === "page-error") return parsePageError(m);
   if (m.type === "result") {
     const id = str(m.id, 64);
     const to = str(m.to, 64);
@@ -422,6 +454,27 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     };
   }
   return null;
+}
+
+/** A page-error as the hub forwards it: a known kind, bounded strings, a path with no query. */
+function parsePageError(m: Record<string, unknown>): PageErrorMessage | null {
+  const kind = PAGE_ERROR_KINDS.find((k) => k === m.kind);
+  const message = str(m.message, PAGE_ERROR_MAX_MESSAGE)?.trim();
+  if (!kind || !message) return null;
+  const path = (str(m.path, 300) ?? "").split(/[?#]/)[0] || "/";
+  const stack = str(m.stack, PAGE_ERROR_MAX_STACK);
+  const status = count(m.status, 1000);
+  const rev = str(m.rev, 64);
+  return {
+    type: "page-error",
+    kind,
+    message,
+    ...(stack ? { stack } : {}),
+    path,
+    ...(status !== undefined ? { status } : {}),
+    at: typeof m.at === "number" && Number.isFinite(m.at) ? m.at : 0,
+    ...(rev ? { rev } : {}),
+  };
 }
 
 const count = (v: unknown, max: number) =>

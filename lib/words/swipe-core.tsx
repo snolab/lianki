@@ -17,6 +17,7 @@
  * is a shared module (lib/islands/rules.ts), so a hot-loaded island reads the
  * page's own contexts.
  */
+import { useMotionOff } from "@/lib/motion-pref";
 import {
   createContext,
   type ReactNode,
@@ -26,7 +27,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import { createUiStore, useUi } from "@lianki/ui-state";
 import {
@@ -72,7 +72,8 @@ export const feelPrefsStore = createUiStore(
   "swipe-feel",
   1,
   { preset: DEFAULT_PREFS.preset, tweaks: DEFAULT_PREFS.tweaks },
-  { storage: "local", clean: cleanPrefs },
+  // Synced with the account (docs/prefs-sync.md): Heavy swipe and its tuning.
+  { storage: "account", clean: cleanPrefs },
 );
 /** The tuner panel open or not: UI state of this tab (sessionStorage, `lk:ui:swipe-tuner`). */
 export const tunerStore = createUiStore("swipe-tuner", 1, { open: false }, { storage: "session" });
@@ -130,17 +131,8 @@ export function feelTagNow(): string {
   }
 }
 
-function useReducedMotion() {
-  return useSyncExternalStore(
-    (l) => {
-      const m = matchMedia("(prefers-reduced-motion: reduce)");
-      m.addEventListener("change", l);
-      return () => m.removeEventListener("change", l);
-    },
-    () => matchMedia("(prefers-reduced-motion: reduce)").matches,
-    () => false,
-  );
-}
+/** The system's reduced motion, or this device's "Turn off animations" (lib/motion-pref.ts). */
+const useReducedMotion = useMotionOff;
 
 // ── The list's feel ────────────────────────────────────────────────────────
 
@@ -322,9 +314,8 @@ export function useSwipeGesture(opts: GestureOptions) {
   const write = (x: number) => {
     const node = el.current;
     if (!node) return;
-    const { feel, reducedMotion } = o.current;
-    const r = reducedMotion ? 0 : feel.rotatePerPx * x;
-    node.style.transform = x ? `translateX(${x}px)${r ? ` rotate(${r.toFixed(3)}deg)` : ""}` : "";
+    // Translate only, never a tilt (the owner, 2026-10-30).
+    node.style.transform = x ? `translateX(${x}px)` : "";
   };
 
   const paint = (now: number) => {

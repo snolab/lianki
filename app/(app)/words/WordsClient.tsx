@@ -1,10 +1,14 @@
 "use client";
 
+import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
+import { advanceTop, shouldAdvance } from "@/lib/words/advance";
+import { progressPercent } from "@/lib/words/progress";
 import { voiceQuality } from "@lianki/debug-chat/wire";
 import {
   startTransition,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -28,7 +32,16 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/words/tree";
+import {
+  applyDrop,
+  descendants,
+  flatten,
+  projectDrop,
+  visible,
+  withoutNode,
+} from "@/lib/words/tree";
+import { shownName } from "@/lib/words/lang-groups";
+import { createDeferredDelete, UNDO_MS, type FlushReason } from "@/lib/words/deferred-delete";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
@@ -87,8 +100,15 @@ import {
   useSwipeGesture,
 } from "@/lib/words/swipe-core";
 import type { SwipePhase } from "@/lib/words/swipe-machine";
-import { useUi } from "@lianki/ui-state";
-import { anchorTop, setAnchor, topIndex, wordsUiStore } from "./ui-store";
+import { notePrefWrite, PREF_APPLIED_EVENT, useUi } from "@lianki/ui-state";
+import {
+  anchorTop,
+  migrateCollapsed,
+  setAnchor,
+  toggleCollapsed,
+  topIndex,
+  wordsUiStore,
+} from "./ui-store";
 import { releaseTrajectory } from "@/lib/words/swipe-physics";
 import { island } from "@/lib/islands/Island";
 import { SwipeCard } from "@/lib/words/islands/SwipeCard";
@@ -104,6 +124,8 @@ const SwipeGradesIsland = island("words.swipeGrades", SwipeGrades);
 const SwipeFeelIsland = island("words.swipeFeel", SwipeFeelSource);
 const SwipeTunerIsland = island("words.swipeTuner", SwipeTuner);
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
+import { newScan, takeNewIndices, type NewScan } from "@/lib/words/take-new";
+import { countGradedNew, unseenLeft } from "@/lib/words/unseen";
 import { idbAdd, idbAll, idbDelete, idbGet, idbPut, type PendingOp } from "@/lib/words/idb";
 import {
   afterSend,
@@ -112,6 +134,7 @@ import {
   reviewedKey,
   sendOrder,
   undoTarget,
+  withPendingRenames,
 } from "@/lib/words/pending";
 import { playGradeTone, sharedAudioContext, unlockGradeTones, type GradeTone } from "./gradeSound";
 import { formatInterval, parseCard, previewInterval, reviewWord } from "@/lib/words/schedule";
@@ -362,17 +385,36 @@ function useTouch() {
 }
 
 /**
- * A remembered on/off setting (localStorage), the same across refreshes.
+ * Run `read` after mount, and again whenever a setting may have changed
+ * underneath: a value from the account (docs/prefs-sync.md, `lk:pref-applied`)
+ * or from another tab (`storage`).
+ */
+function usePrefReader(read: () => void) {
+  useEffect(() => {
+    read();
+    window.addEventListener(PREF_APPLIED_EVENT, read);
+    window.addEventListener("storage", read);
+    return () => {
+      window.removeEventListener(PREF_APPLIED_EVENT, read);
+      window.removeEventListener("storage", read);
+    };
+  }, [read]);
+}
+
+/**
+ * A remembered on/off setting (localStorage), the same across refreshes and,
+ * for the keys in lib/prefs/bindings.ts, across the account's devices.
  * Reads after mount, so server and first client render agree.
  */
 function usePref(key: string, initial: boolean) {
   const [on, setOn] = useState(initial);
-  useEffect(() => {
+  const read = useCallback(() => {
     try {
       const v = localStorage.getItem(key);
       if (v === "1" || v === "0") setOn(v === "1");
     } catch {}
   }, [key]);
+  usePrefReader(read);
   const set = useCallback(
     (next: boolean | ((v: boolean) => boolean)) =>
       setOn((v) => {
@@ -380,6 +422,7 @@ function usePref(key: string, initial: boolean) {
         try {
           localStorage.setItem(key, n ? "1" : "0");
         } catch {}
+        notePrefWrite();
         return n;
       }),
     [key],
@@ -679,6 +722,14 @@ function useSpeech(serverVoice = false) {
       return true;
     }
   });
+  // Read aloud follows the account (docs/prefs-sync.md).
+  usePrefReader(
+    useCallback(() => {
+      try {
+        setOn(localStorage.getItem("lk:words-sound") !== "off");
+      } catch {}
+    }, []),
+  );
   /**
    * Bumped by cancel(). cancel() can fire the old utterance's onend, which
    * would otherwise go on with the old word beside the new one.
@@ -792,7 +843,11 @@ function useSpeech(serverVoice = false) {
     (text: string, lang: string, done: Done, serverTried = false) => {
       const gen = generation.current;
       const viaServer = () => {
-        if (serverTried) return done(false);
+        if (serverTried) {
+          // Neither engine can say it: log that, rather than going on in silence.
+          devLog({ ev: "silent", lang, text, reason: "no server clip, no browser voice" });
+          return done(false);
+        }
         void serverSpeak(text, lang, done).then(
           (ok) => !ok && gen === generation.current && done(false),
         );
@@ -883,6 +938,25 @@ function useSpeech(serverVoice = false) {
   const stop = sequencer.stop;
 
   /**
+   * A long-press reading: `parts` on a loop while the finger is down. It
+   * outranks what a swipe or a focus change says (`once(…, { yieldToHold })`):
+   * those are skipped while it plays. Only a tap or another long press cuts it.
+   */
+  const hold = useCallback(
+    (parts: SayPart[]) => {
+      warm(parts);
+      sequencer.play(
+        parts.filter((p) => p.text),
+        { loop: true, tag: "hold" },
+      );
+    },
+    [sequencer, warm],
+  );
+
+  /** The finger lifted: the long-press reading plays its current pass to the end, then stops. */
+  const release = sequencer.finish;
+
+  /**
    * Say `parts` in turn (word, meaning, example), pause, repeat — until the
    * next call; an empty list just stops.
    */
@@ -902,9 +976,13 @@ function useSpeech(serverVoice = false) {
     [on, sequencer, stop, warm],
   );
 
-  /** Say `parts` once, back to back, now — interrupting whatever was playing. */
+  /**
+   * Say `parts` once, back to back, now — interrupting whatever was playing,
+   * unless `yieldToHold` and a long-press reading is playing: then nothing.
+   */
   const once = useCallback(
-    (parts: SayPart[], force = false) => {
+    (parts: SayPart[], force = false, opts: { yieldToHold?: boolean } = {}) => {
+      if (opts.yieldToHold && sequencer.playing() === "hold") return;
       if (!on && !force) return stop();
       warm(parts);
       sequencer.play(parts.filter((p) => p.text));
@@ -935,14 +1013,15 @@ function useSpeech(serverVoice = false) {
       try {
         localStorage.setItem("lk:words-sound", v ? "off" : "on");
       } catch {}
+      notePrefWrite();
       if (v) stop();
       return !v;
     });
   }, [stop]);
 
   return useMemo(
-    () => ({ available, on, loop, once, toggle, prefetch, stock }),
-    [available, on, loop, once, toggle, prefetch, stock],
+    () => ({ available, on, loop, once, hold, release, toggle, prefetch, stock }),
+    [available, on, loop, once, hold, release, toggle, prefetch, stock],
   );
 }
 
@@ -994,7 +1073,7 @@ function Glance({
   }, [active, children, title]);
   useEffect(() => {
     const i = inner.current;
-    if (!over || !i || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!over || !i || motionOff()) return;
     const move = moveSeconds(over, GLANCE_ACCEL);
     const total = GLANCE_HOLD_START + move + GLANCE_HOLD_END + move;
     const at = (s: number) => s / total;
@@ -1308,8 +1387,11 @@ export default function WordsClient({ config: given }: { config?: DrillConfig })
   useOfflineShell();
 
   const refreshLists = useCallback(async () => {
+    // A rename still in the queue wins over the name the server sends back.
+    const queued = () => idbAll<PendingOp>("pending").catch(() => [] as PendingOp[]);
     try {
-      const { lists } = await api<{ lists: WordList[] }>("/api/words/lists");
+      const { lists: fresh } = await api<{ lists: WordList[] }>("/api/words/lists");
+      const lists = withPendingRenames(fresh, await queued());
       setLists(lists);
       setOffline(false);
       idbPut("lists", lists, "all").catch(() => {});
@@ -1319,11 +1401,60 @@ export default function WordsClient({ config: given }: { config?: DrillConfig })
           ? await idbGet<WordList[]>("lists", "all").catch(() => undefined)
           : undefined;
       if (cached) {
-        setLists(cached);
+        setLists(withPendingRenames(cached, await queued()));
         setOffline(true);
       } else setError((e as Error).message);
     }
   }, []);
+
+  /**
+   * Rename: shown at once, kept in the offline copy, and sent through the
+   * same `pending` queue as grades (POST /api/words/lists/:id/rename), so it
+   * also goes out later when made offline.
+   */
+  const renameList = useCallback(async (id: string, name: string) => {
+    const named = (all: WordList[]) => all.map((l) => (l.id === id ? { ...l, name } : l));
+    setLists((all) => all && named(all));
+    idbGet<WordList[]>("lists", "all")
+      .then((cached) => cached && idbPut("lists", named(cached), "all"))
+      .catch(() => {});
+    await enqueue({
+      listId: id,
+      op: "rename",
+      body: { name },
+      term: "",
+      at: new Date().toISOString(),
+    });
+  }, []);
+
+  // Delete with Undo (lib/words/deferred-delete.ts): the row hides at once and
+  // the DELETE goes out when the toast runs out, or when the page goes away.
+  const [doomed, setDoomed] = useState<DoomedList | null>(null);
+  const deleter = useMemo(
+    () =>
+      createDeferredDelete<DoomedList>({
+        onChange: setDoomed,
+        commit: async ({ list }, reason: FlushReason) => {
+          if (reason === "leave") {
+            void fetch(`/api/words/lists/${list.id}`, { method: "DELETE", keepalive: true });
+            return;
+          }
+          // A failure (offline) leaves the list on the server: the refresh
+          // shows it again rather than pretending it is gone.
+          await api(`/api/words/lists/${list.id}`, { method: "DELETE" }).catch(() => {});
+          await refreshLists();
+        },
+      }),
+    [refreshLists],
+  );
+  useEffect(() => {
+    const leave = () => deleter.flush("leave");
+    window.addEventListener("pagehide", leave);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      deleter.flush("leave");
+    };
+  }, [deleter]);
 
   useEffect(() => {
     refreshLists();
@@ -1338,14 +1469,17 @@ export default function WordsClient({ config: given }: { config?: DrillConfig })
     if (!catalog) return null;
     const ids = new Set(catalog.map((c) => c.id));
     const group = groupSourceOf(config);
+    // A list waiting to be deleted is already gone here; a group's lists move
+    // up a level, as the server will do.
+    const shown = allLists && withoutNode(allLists, doomed?.list.id ?? null);
     return (
-      allLists?.filter(
+      shown?.filter(
         (l) =>
           l.source &&
           (ids.has(l.source) || l.source === group || (config.imports && isImported(l))),
       ) ?? null
     );
-  }, [allLists, catalog, config]);
+  }, [allLists, catalog, config, doomed]);
   // The built-in catalogs plus this user's imported decks.
   const fullCatalog = useMemo(
     () => (catalog && lists ? [...catalog, ...importedCatalog(lists)] : null),
@@ -1370,54 +1504,118 @@ export default function WordsClient({ config: given }: { config?: DrillConfig })
       : flat.filter((x) => x.id === listId || descendants(flat, listId ?? "").includes(x.id));
   const studying = scope.filter((l) => l.source !== groupSourceOf(config));
   // "Study all" with only one list is just that list.
+  // The Undo toast stays up when a list is opened meanwhile.
+  const undoToast = doomed && (
+    <UndoDeleteToast
+      key={doomed.list.id}
+      doomed={doomed}
+      onUndo={() => {
+        const back = deleter.undo();
+        // Back to the restored row's ⋯ button, for keyboard users.
+        if (back)
+          requestAnimationFrame(() =>
+            document.querySelector<HTMLElement>(`[data-list-menu="${back.list.id}"]`)?.focus(),
+          );
+      }}
+    />
+  );
   if (studying.length)
     return (
-      <Study
-        key={listId}
-        config={config}
-        lists={studying}
-        catalog={fullCatalog}
-        title={
-          listId === ALL
-            ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
-            : (lists.find((l) => l.id === listId)?.name ?? studying[0].name)
-        }
-        onExit={() => {
-          setListId(null);
-          refreshLists();
-        }}
-      />
+      <>
+        {undoToast}
+        <Study
+          key={listId}
+          config={config}
+          lists={studying}
+          catalog={fullCatalog}
+          title={
+            listId === ALL
+              ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
+              : (lists.find((l) => l.id === listId)?.name ?? studying[0].name)
+          }
+          onExit={() => {
+            setListId(null);
+            refreshLists();
+          }}
+        />
+      </>
     );
 
   return (
-    <ListPicker
-      config={config}
-      lists={lists}
-      catalog={fullCatalog}
-      offline={offline}
-      onOpen={setListId}
-      onCreated={async (id) => {
-        await refreshLists();
-        setListId(id);
-      }}
-      onDeleted={refreshLists}
-      onReorder={async (order) => {
-        // Show the new tree at once; the server confirms with its own.
-        setLists((all) => {
-          if (!all) return all;
-          const pos = new Map(order.map((x, i) => [x.id, i]));
-          const parent = new Map(order.map((x) => [x.id, x.parentId]));
-          return [...all]
-            .map((l) => (parent.has(l.id) ? { ...l, parentId: parent.get(l.id)! } : l))
-            .sort((a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9));
-        });
-        const { lists } = await api<{ lists: WordList[] }>("/api/words/lists", {
-          method: "PATCH",
-          body: JSON.stringify({ order }),
-        });
-        setLists(lists);
-      }}
-    />
+    <>
+      {undoToast}
+      <ListPicker
+        config={config}
+        lists={lists}
+        catalog={fullCatalog}
+        offline={offline}
+        onOpen={setListId}
+        onCreated={async (id) => {
+          await refreshLists();
+          setListId(id);
+        }}
+        onRefresh={refreshLists}
+        onDelete={(list, isGroup) => deleter.remove({ list, isGroup })}
+        onRename={renameList}
+        onReorder={async (order) => {
+          // Show the new tree at once; the server confirms with its own.
+          setLists((all) => {
+            if (!all) return all;
+            const pos = new Map(order.map((x, i) => [x.id, i]));
+            const parent = new Map(order.map((x) => [x.id, x.parentId]));
+            return [...all]
+              .map((l) => (parent.has(l.id) ? { ...l, parentId: parent.get(l.id)! } : l))
+              .sort((a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9));
+          });
+          const { lists } = await api<{ lists: WordList[] }>("/api/words/lists", {
+            method: "PATCH",
+            body: JSON.stringify({ order }),
+          });
+          setLists(lists);
+        }}
+      />
+    </>
+  );
+}
+
+/** A list (or group) hidden from the picker while its delete can be undone. */
+type DoomedList = { list: WordList; isGroup: boolean };
+
+/**
+ * "Deleted “…” · Undo", floating over the bottom of the page as glass. It is a
+ * live region, so a screen reader hears it, and its Undo takes the focus: the
+ * menu item that deleted the row is gone with it.
+ */
+function UndoDeleteToast({ doomed, onUndo }: { doomed: DoomedList; onUndo: () => void }) {
+  const text = useIntlayer("words-page");
+  const undo = useRef<HTMLButtonElement>(null);
+  useEffect(() => undo.current?.focus({ preventScroll: true }), []);
+  const said = fill(doomed.isGroup ? text.deletedGroup.value : text.deletedList.value, {
+    name: doomed.list.name,
+  });
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      data-undo-delete={doomed.list.id}
+      className="lk-glass fixed inset-x-4 z-50 mx-auto flex max-w-md items-center gap-3 rounded-xl border border-[var(--glass-line)] py-1 ps-4 pe-1 shadow-lg"
+      style={{ bottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}
+    >
+      <span className="min-w-0 flex-1 text-sm">{said}</span>
+      <button
+        ref={undo}
+        onClick={onUndo}
+        className="min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.15_250)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.12_250)]"
+      >
+        {text.undoDelete}
+      </button>
+      {/* Runs out with the delete: a visual cue only. */}
+      <span
+        aria-hidden
+        className="lk-undo-timer pointer-events-none absolute inset-x-3 bottom-0 h-0.5 origin-left rounded-full bg-[oklch(0.5_0_0/0.35)] rtl:origin-right"
+        style={{ animationDuration: `${UNDO_MS}ms` }}
+      />
+    </div>
   );
 }
 
@@ -1473,7 +1671,64 @@ async function downloadForOffline(
 const INDENT = 24;
 
 /** Sums over a row and everything below it. */
-type Totals = { due: number; learning: number; mastered: number; cards: number; total: number };
+type Totals = {
+  due: number;
+  learning: number;
+  mastered: number;
+  cards: number;
+  total: number;
+  /** Progress scores summed (lib/words/progress.ts). */
+  progress: number;
+};
+
+/**
+ * How far a list (a group: its whole subtree) has come, as a thin ring and a
+ * percentage: the mean of its words' scores, each by how near its stability
+ * is to a year (lib/words/progress.ts). Nothing while the list's size is unknown.
+ */
+function ProgressRing({ progress, total }: { progress: number; total: number }) {
+  const text = useIntlayer("words-page");
+  const { locale } = useLocale();
+  const pct = progressPercent(progress, total);
+  if (pct === null) return null;
+  const label = fill(text.progressTitle.value, { pct, total });
+  const shown = new Intl.NumberFormat(String(locale), { style: "percent" }).format(pct / 100);
+  // r = 8 in a 20×20 box: the circumference, for the dash.
+  const c = 2 * Math.PI * 8;
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums"
+      title={label}
+      aria-label={label}
+      role="img"
+      data-progress={pct}
+    >
+      <svg viewBox="0 0 20 20" className="h-5 w-5 -rotate-90" aria-hidden>
+        <circle
+          cx="10"
+          cy="10"
+          r="8"
+          fill="none"
+          strokeWidth="2.5"
+          className="stroke-[oklch(0.5_0_0/0.18)] dark:stroke-[oklch(0.8_0_0/0.18)]"
+        />
+        {pct > 0 && (
+          <circle
+            cx="10"
+            cy="10"
+            r="8"
+            fill="none"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeDasharray={`${(c * pct) / 100} ${c}`}
+            className="stroke-[oklch(0.58_0.14_155)] dark:stroke-[oklch(0.76_0.14_155)]"
+          />
+        )}
+      </svg>
+      <span className="min-w-[2.6em] text-end opacity-80">{shown}</span>
+    </span>
+  );
+}
 
 /** One row of the picker tree: a list or a group, draggable by its ⠿ handle. */
 function SortableListRow({
@@ -1486,10 +1741,14 @@ function SortableListRow({
   collapsed,
   onToggle,
   onOpen,
-  onDeleted,
+  onDelete,
+  onRename,
   keys,
+  displayName,
 }: {
   list: WordList;
+  /** The name as shown: inside a language group, without the language prefix. */
+  displayName: string;
   /** A hardware keyboard is in use: show the row's number key. */
   keys: boolean;
   depth: number;
@@ -1500,8 +1759,21 @@ function SortableListRow({
   collapsed: boolean;
   onToggle: () => void;
   onOpen: (id: string) => void;
-  onDeleted: () => void;
+  onDelete: () => void;
+  onRename: (name: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  /** Set once an edit is saved or cancelled, so the blur after Enter/Escape is ignored. */
+  const finished = useRef(false);
+  const endEdit = (name: string | null) => {
+    if (finished.current) return;
+    finished.current = true;
+    const next = name?.trim().slice(0, LIST_NAME_MAX);
+    if (next && next !== l.name) onRename(next);
+    setEditing(false);
+    requestAnimationFrame(() => menuButton.current?.focus({ preventScroll: true }));
+  };
   const {
     attributes,
     listeners,
@@ -1519,14 +1791,16 @@ function SortableListRow({
       style={{
         transform: CSS.Translate.toString(transform && { ...transform, x: 0 }),
         transition,
-        marginLeft: depth * INDENT,
+        marginInlineStart: depth * INDENT,
       }}
-      className={`relative flex items-center gap-3 rounded-lg px-4 py-3 ${
+      data-list-row={l.id}
+      data-group={isGroup || undefined}
+      className={`relative flex min-h-14 items-center rounded-lg ps-0.5 pe-1 ${
         isDragging
-          ? "z-10 bg-black/10 dark:bg-white/15 ring-1 ring-black/20 dark:ring-white/30 shadow-lg"
+          ? "z-10 bg-[oklch(0.5_0_0/0.14)] ring-1 ring-[oklch(0.5_0_0/0.35)] shadow-lg"
           : isGroup
-            ? "bg-black/[0.07] dark:bg-white/[0.08]"
-            : "bg-black/5 dark:bg-white/5"
+            ? "bg-[oklch(0.5_0_0/0.11)] dark:bg-[oklch(0.8_0_0/0.1)]"
+            : "bg-[oklch(0.5_0_0/0.06)] dark:bg-[oklch(0.8_0_0/0.055)]"
       }`}
     >
       <span
@@ -1535,54 +1809,224 @@ function SortableListRow({
         {...listeners}
         aria-label={text.dragToReorder.value}
         title={text.dragTitle.value}
-        className="cursor-grab active:cursor-grabbing select-none opacity-40 hover:opacity-100 px-1 text-lg leading-none touch-none"
+        className="grid h-11 w-8 shrink-0 cursor-grab place-items-center select-none text-lg leading-none opacity-40 hover:opacity-100 active:cursor-grabbing touch-none"
       >
         ⠿
       </span>
-      <button
-        className={`w-4 text-xs opacity-60 hover:opacity-100 ${hasChildren ? "" : "invisible"}`}
-        onClick={onToggle}
-        aria-label={collapsed ? text.expand.value : text.collapse.value}
-      >
-        {collapsed ? "▸" : "▾"}
-      </button>
-      {keys && index < 9 && <kbd className="text-xs opacity-40 tabular-nums">{index + 1}</kbd>}
-      <button className="flex-1 text-left min-w-0" onClick={() => onOpen(l.id)}>
-        <div className="font-medium truncate">
-          {isGroup && <Icon name="folder" className="me-1 opacity-70" />}
-          {l.name}
-        </div>
-        <div className="text-xs opacity-60 tabular-nums">
-          {fill(text.rowStats.value, {
-            due: totals.due,
-            learning: totals.learning,
-            mastered: totals.mastered,
-            seen: totals.cards,
-            total: totals.total || "?",
+      {hasChildren ? (
+        <button
+          type="button"
+          className="grid h-11 w-9 shrink-0 place-items-center text-sm opacity-60 hover:opacity-100"
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          aria-label={fill(collapsed ? text.expandGroup.value : text.collapseGroup.value, {
+            name: l.name,
           })}
-        </div>
-      </button>
-      <button
-        className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
-        onClick={() => onOpen(l.id)}
-      >
-        {text.study}
-      </button>
-      <button
-        // A 40px hit area (tap-40) around the small label.
-        className="tap-40 text-xs opacity-40 hover:opacity-80"
-        onClick={async () => {
-          const what = fill(
-            isGroup ? text.confirmDeleteGroup.value : text.confirmDeleteList.value,
-            { name: l.name },
-          );
-          if (!confirm(what)) return;
-          await api(`/api/words/lists/${l.id}`, { method: "DELETE" });
-          onDeleted();
+        >
+          <span aria-hidden>{collapsed ? "▸" : "▾"}</span>
+        </button>
+      ) : (
+        <span className="w-2 shrink-0" aria-hidden />
+      )}
+      {editing ? (
+        <form
+          className="flex-1 min-w-0 py-1.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            endEdit(new FormData(e.currentTarget).get("name") as string);
+          }}
+        >
+          <input
+            name="name"
+            autoFocus
+            defaultValue={l.name}
+            maxLength={LIST_NAME_MAX}
+            enterKeyHint="done"
+            autoComplete="off"
+            aria-label={fill(text.renameField.value, { name: l.name })}
+            onFocus={(e) => e.currentTarget.select()}
+            onKeyDown={(e) => {
+              if (e.key !== "Escape") return;
+              e.preventDefault();
+              e.stopPropagation();
+              endEdit(null);
+            }}
+            onBlur={(e) => endEdit(e.currentTarget.value)}
+            // 16px text: phones do not zoom into the field.
+            className="w-full min-h-11 rounded-md px-2 text-base font-medium bg-[oklch(1_0_0/0.7)] dark:bg-[oklch(0.2_0_0/0.7)] ring-1 ring-[oklch(0.5_0_0/0.35)] focus:outline-none focus:ring-2 focus:ring-[oklch(0.6_0.15_250)]"
+          />
+        </form>
+      ) : (
+        // The whole row studies the list (a group: everything in it); only
+        // the ⠿ handle, the fold arrow and the ⋯ menu do something else.
+        <button
+          type="button"
+          data-open-list={l.id}
+          className="flex min-h-14 min-w-0 flex-1 items-center gap-2 self-stretch rounded-md py-2 ps-1 text-start focus-visible:outline-2 focus-visible:outline-[oklch(0.6_0.15_250)]"
+          onClick={() => onOpen(l.id)}
+          title={
+            (isGroup ? `${text.groupRowHint.value}\n` : "") +
+            fill(text.rowStats.value, {
+              due: totals.due,
+              learning: totals.learning,
+              mastered: totals.mastered,
+              seen: totals.cards,
+              total: totals.total || "?",
+            })
+          }
+        >
+          {keys && index < 9 && (
+            <kbd className="shrink-0 text-xs opacity-40 tabular-nums">{index + 1}</kbd>
+          )}
+          <span className="min-w-0 flex-1">
+            {/* The full name, wrapped, never cut: "JLPT N3" and "JLPT N2" must read apart. */}
+            <span
+              className={`block leading-snug [overflow-wrap:anywhere] ${isGroup ? "font-semibold" : "font-medium"}`}
+            >
+              {isGroup && <Icon name="folder" className="me-1 opacity-70" />}
+              {displayName}
+            </span>
+            <span className="mt-0.5 block truncate text-xs opacity-60 tabular-nums">
+              {fill(text.rowStatsShort.value, { due: totals.due, learning: totals.learning })}
+            </span>
+          </span>
+          {/* A fixed column, so the rings line up down the list. */}
+          <span className="flex w-[4.25rem] shrink-0 justify-end">
+            <ProgressRing progress={totals.progress} total={totals.total} />
+          </span>
+        </button>
+      )}
+      <ListRowMenu
+        listId={l.id}
+        name={l.name}
+        buttonRef={menuButton}
+        onRename={() => {
+          finished.current = false;
+          setEditing(true);
         }}
+        onDelete={onDelete}
+      />
+    </div>
+  );
+}
+
+/** A list's name, as long as the server takes it (POST /api/words/lists, /rename). */
+const LIST_NAME_MAX = 120;
+
+/**
+ * The "⋯" button at the end of a list row and its menu: Rename, Delete. A
+ * menu button in the ARIA pattern: ↓/Enter/Space open it on the first item,
+ * ↑↓ Home End move, Escape closes back to the button, Tab closes. Every
+ * target is 44px. It sits apart from the ⠿ drag handle, which alone starts a
+ * drag, so a tap here never moves the row.
+ */
+function ListRowMenu({
+  listId,
+  name,
+  buttonRef,
+  onRename,
+  onDelete,
+}: {
+  listId: string;
+  name: string;
+  buttonRef: React.RefObject<HTMLButtonElement | null>;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  const text = useIntlayer("words-page");
+  const [open, setOpen] = useState(false);
+  const menu = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  const items = () => [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+  useEffect(() => {
+    if (!open) return;
+    items()[0]?.focus({ preventScroll: true });
+    // A tap anywhere else closes it (and does what it tapped).
+    const away = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!menu.current?.contains(t) && !buttonRef.current?.contains(t)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away, true);
+    return () => document.removeEventListener("pointerdown", away, true);
+  }, [open, buttonRef]);
+  const close = () => {
+    setOpen(false);
+    buttonRef.current?.focus({ preventScroll: true });
+  };
+  const pick = (act: () => void) => () => {
+    setOpen(false);
+    act();
+  };
+  const label = fill(text.listMenu.value, { name });
+  return (
+    <div className={`relative shrink-0 ${open ? "z-30" : ""}`}>
+      <button
+        ref={buttonRef}
+        type="button"
+        data-list-menu={listId}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        aria-label={label}
+        title={label}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className="grid h-11 w-11 place-items-center rounded-full text-xl leading-none opacity-60 hover:opacity-100 hover:bg-[oklch(0.5_0_0/0.12)] aria-expanded:opacity-100 aria-expanded:bg-[oklch(0.5_0_0/0.15)]"
       >
-        {text.delete}
+        <span aria-hidden>⋯</span>
       </button>
+      {open && (
+        <div
+          id={menuId}
+          ref={menu}
+          role="menu"
+          aria-label={label}
+          onKeyDown={(e) => {
+            const all = items();
+            const i = all.indexOf(document.activeElement as HTMLElement);
+            const go = (n: number) => {
+              e.preventDefault();
+              all[(n + all.length) % all.length]?.focus();
+            };
+            if (e.key === "ArrowDown") go(i + 1);
+            else if (e.key === "ArrowUp") go(i - 1);
+            else if (e.key === "Home") go(0);
+            else if (e.key === "End") go(all.length - 1);
+            else if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              close();
+            } else if (e.key === "Tab") setOpen(false);
+          }}
+          className="lk-glass absolute end-0 top-full z-30 mt-1 min-w-44 rounded-xl border border-[var(--glass-line)] p-1 shadow-lg"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            onClick={pick(onRename)}
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-start text-sm hover:bg-[oklch(0.5_0_0/0.12)] focus:bg-[oklch(0.5_0_0/0.12)] focus:outline-none"
+          >
+            <Icon name="pencilSimple" className="opacity-70" />
+            {text.renameList}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            onClick={pick(onDelete)}
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-start text-sm text-[oklch(0.52_0.19_25)] dark:text-[oklch(0.75_0.15_25)] hover:bg-[oklch(0.6_0.19_25/0.12)] focus:bg-[oklch(0.6_0.19_25/0.12)] focus:outline-none"
+          >
+            <Icon name="trash" />
+            {text.deleteList}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1594,7 +2038,9 @@ function ListPicker({
   offline,
   onOpen,
   onCreated,
-  onDeleted,
+  onRefresh,
+  onDelete,
+  onRename,
   onReorder,
 }: {
   config: DrillConfig;
@@ -1604,7 +2050,11 @@ function ListPicker({
   offline: boolean;
   onOpen: (id: string) => void;
   onCreated: (id: string) => void;
-  onDeleted: () => void;
+  /** Reload the lists from the server. */
+  onRefresh: () => void;
+  /** Delete a row, with Undo (the toast is the parent's). */
+  onDelete: (list: WordList, isGroup: boolean) => void;
+  onRename: (id: string, name: string) => void;
   /** The whole tree in display order; also the order new words are learned in. */
   onReorder: (order: { id: string; parentId: string | null }[]) => void;
 }) {
@@ -1614,30 +2064,19 @@ function ListPicker({
   // Number keys open lists: show them only with a hardware keyboard.
   const keys = useInputModality() === "keyboard";
   const flat = useMemo(() => flatten(lists), [lists]);
+  const byId = useMemo(() => new Map(lists.map((l) => [l.id, l])), [lists]);
   const [download, setDownload] = useState<{
     done: number;
     total: number;
     error?: string;
   } | null>(null);
 
-  // Collapsed groups, remembered per page.
-  const collapsedKey = `lk:words-collapsed:${config.base}`;
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    try {
-      setCollapsed(new Set(JSON.parse(localStorage.getItem(collapsedKey) ?? "[]")));
-    } catch {}
-  }, [collapsedKey]);
-  const toggle = (id: string) =>
-    setCollapsed((c) => {
-      const n = new Set(c);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      try {
-        localStorage.setItem(collapsedKey, JSON.stringify([...n]));
-      } catch {}
-      return n;
-    });
+  // Folded groups, per tab (docs/ui-state.md: session `lk:ui:words`).
+  const ui = wordsUiStore(config.base);
+  useEffect(() => migrateCollapsed(ui, config.base), [ui, config.base]);
+  const folded = useUi(ui, (s) => s.collapsed);
+  const collapsed = useMemo(() => new Set(folded), [folded]);
+  const toggle = (id: string) => toggleCollapsed(ui, id);
 
   // Drag: up/down reorders, the sideways offset picks the depth (nest under
   // the row above, or come out a level). The dragged row's subtree moves with
@@ -1675,6 +2114,7 @@ function ListPicker({
       due: l.due,
       learning: l.learning,
       mastered: l.mastered,
+      progress: l.progress ?? 0,
       cards: l.cards,
       total: catalog.find((c) => c.id === l.source)?.count ?? 0,
     });
@@ -1686,6 +2126,7 @@ function ListPicker({
         sum.due += d.due;
         sum.learning += d.learning;
         sum.mastered += d.mastered;
+        sum.progress += d.progress;
         sum.cards += d.cards;
         sum.total += d.total;
       }
@@ -1708,6 +2149,8 @@ function ListPicker({
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+      // Keys inside a row's ⋯ menu or the Undo toast are theirs.
+      if (t.closest?.('[role="menu"], [data-undo-delete]')) return;
       const n = Number(e.key);
       if (e.key === "0" && studyable.length > 1) onOpen(ALL);
       else if (n >= 1 && n <= 9 && items[n - 1]) onOpen(items[n - 1].id);
@@ -1736,7 +2179,7 @@ function ListPicker({
       method: "POST",
       body: JSON.stringify({ name, lang: "mul", source: groupSource }),
     });
-    onDeleted(); // refresh
+    onRefresh();
   };
 
   return (
@@ -1823,8 +2266,10 @@ function ListPicker({
                   collapsed={collapsed.has(row.id)}
                   onToggle={() => toggle(row.id)}
                   onOpen={onOpen}
-                  onDeleted={onDeleted}
+                  onDelete={() => onDelete(row, isGroup(row))}
+                  onRename={(name) => onRename(row.id, name)}
                   keys={keys}
+                  displayName={shownName(row, row.parentId ? byId.get(row.parentId) : null)}
                 />
               ))}
             </SortableContext>
@@ -1928,6 +2373,14 @@ function Study({
   const [queue, setQueue] = useState<Item[]>([]);
   /** Grade per queue index; `card` is the server's card once saved. */
   const [grades, setGrades] = useState<Map<number, { rating: Rating; card?: string }>>(new Map());
+  /**
+   * The grades as of now, not as of the last render: a grade runs in a
+   * transition, so until that render commits the `grades` a swipe handler
+   * closed over still lacks it. The auto-advance check (shouldAdvance) reads
+   * this, so a second grade of the same row in that gap is a re-grade.
+   */
+  const gradesNow = useRef(grades);
+  gradesNow.current = grades;
   const [row, setRow] = useState(0);
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -1981,7 +2434,7 @@ function Study({
   const [swipeAb, setSwipeAb] = useState<SwipeVariant>("js");
   /** The swipe's feel on this device: light (everyone) or heavy (lib/words/swipe-feel.ts). */
   const feelPrefs = useFeelPrefs();
-  useEffect(() => setSwipeAb(swipeVariant()), []);
+  usePrefReader(useCallback(() => setSwipeAb(swipeVariant()), []));
   const native = touch && swipeAb === "native";
   /**
    * Experimental: the paper texture scrolls with the list (a layer inside the
@@ -2031,6 +2484,8 @@ function Study({
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
   }, [touch]);
+  /** "Turn off animations": this device's, app-wide; the system's until set (lib/motion-pref.ts). */
+  const animationsOff = useMotionOff();
   /** Read with the server's voice instead of the browser's. Remembered. */
   const [serverVoice, setServerVoice] = usePref("lk:words-server-voice", true);
   const speech = useSpeech(serverVoice);
@@ -2040,9 +2495,26 @@ function Study({
     (it: Item) => sayParts(it, it.lang, !!config.readingOnBack, String(locale)),
     [config.readingOnBack, locale],
   );
+  /** A word's tags, for the double-tap sheet: its list and the list's level (JLPT, CEFR…). */
+  const tagsOf = (it: Item): string[] => {
+    const list = lists.find((l) => l.id === it.listId);
+    const meta = list && catalog.find((c) => c.id === list.source);
+    return [list?.name, meta?.level].filter((t): t is string => !!t);
+  };
   const base = config.base;
   const listIds = lists.map((l) => l.id).join(",");
   const paramsOf = useMemo(() => new Map(lists.map((l) => [l.id, l.params])), [lists]);
+  /** Each list's size and cards as this session found them, for the toolbar's unseen count. */
+  const scopeAtStart = useMemo(
+    () =>
+      lists.map((l) => ({
+        total: catalog.find((c) => c.id === l.source)?.count ?? 0,
+        cards: l.cards,
+      })),
+    // Snapshot per session: a refetched list already counts this session's cards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [listIds, catalog],
+  );
 
   const catalogs = useRef<Map<string, Entry[]>>(new Map());
   const byTerm = useRef<Map<string, Map<string, Entry>>>(new Map());
@@ -2056,8 +2528,8 @@ function Study({
     const e = m.get(term);
     return e?.ex ? { ex: e.ex, exTr: e.exTr } : {};
   };
-  /** Per list: next catalog index to consider for new words. */
-  const nextNew = useRef<Map<string, number>>(new Map());
+  /** Per list: where the search for new words has got (lib/words/take-new.ts). */
+  const scans = useRef<Map<string, NewScan>>(new Map());
   /** Lists whose due words did not all fit in one session fetch. */
   const moreDue = useRef<Set<string>>(new Set());
   /** Queue indices in the order they were graded (and not undone): Z walks this back. */
@@ -2082,50 +2554,56 @@ function Study({
       let p = catalogLoads.current.get(list.id);
       if (!p) {
         const meta = catalog.find((c) => c.id === list.source);
+        // No catalog for this list is a load failure, never "no new words":
+        // treating it as empty would show "every word learned".
         p = meta
           ? loadCatalog<{ entries: Entry[] }>(catalogPath(base, meta)).then((d) => d.entries)
-          : Promise.resolve([]);
+          : Promise.reject(new Error(`No word catalog for "${list.name}" (${list.source})`));
         p = p.then((entries) => {
           catalogs.current.set(list.id, entries);
           byTerm.current.delete(list.id);
           return entries;
         });
         catalogLoads.current.set(list.id, p);
+        // A failed load is tried again next time, not remembered.
+        p.catch(() => catalogLoads.current.delete(list.id));
       }
       return p;
     },
     [catalog, base],
   );
 
-  /** Pull up to `n` catalog words of one list that have no card yet. */
+  /** Pull up to `n` catalog words of one list that have no card yet (lib/words/take-new.ts). */
   const takeNewFrom = useCallback(
     async (list: WordList, n: number): Promise<Item[]> => {
       const entries = await ensureCatalog(list);
-      const out: Item[] = [];
-      while (out.length < n && (nextNew.current.get(list.id) ?? 0) < entries.length) {
-        const from = nextNew.current.get(list.id) ?? 0;
-        // The /known route takes at most 500 terms.
-        const slice = entries.slice(from, from + Math.min(500, Math.max(n * 2, 40)));
-        let known: string[] = [];
-        try {
-          ({ known } = await api<{ known: string[] }>(`/api/words/lists/${list.id}/known`, {
-            method: "POST",
-            body: JSON.stringify({ terms: slice.map((e) => e.term) }),
-          }));
-        } catch (e) {
-          // Offline: no check; the stored cursor already skips introduced words.
-          if (!(e instanceof OfflineError)) throw e;
-        }
-        // Advance only once the slice is checked, so a failed request leaves no
-        // word behind the cursor.
-        nextNew.current.set(list.id, from + slice.length);
-        const skip = new Set(known);
-        slice.forEach((e, i) => {
-          if (out.length < n && !skip.has(e.term))
-            out.push({ ...e, kind: "new", newIndex: from + i, listId: list.id, lang: list.lang });
-        });
-      }
-      return out;
+      let scan = scans.current.get(list.id);
+      if (!scan) scans.current.set(list.id, (scan = newScan(list.cursor)));
+      const picked = await takeNewIndices(
+        entries.map((e) => e.term),
+        scan,
+        n,
+        async (terms) => {
+          try {
+            const { known } = await api<{ known: string[] }>(`/api/words/lists/${list.id}/known`, {
+              method: "POST",
+              body: JSON.stringify({ terms }),
+            });
+            return new Set(known);
+          } catch (e) {
+            // Offline: no check; the stored cursor already skips introduced words.
+            if (e instanceof OfflineError) return null;
+            throw e;
+          }
+        },
+      );
+      return picked.map((i) => ({
+        ...entries[i],
+        kind: "new",
+        newIndex: i,
+        listId: list.id,
+        lang: list.lang,
+      }));
     },
     [ensureCatalog],
   );
@@ -2159,7 +2637,7 @@ function Study({
   useEffect(() => {
     let alive = true;
     // Start from the stored cursors every run (Strict Mode mounts twice in dev).
-    nextNew.current = new Map(lists.map((l) => [l.id, l.cursor]));
+    scans.current = new Map(lists.map((l) => [l.id, newScan(l.cursor)]));
     (async () => {
       // All lists' due words in one request (one D1 query) — or, with no
       // network, the copy saved on the last visit / "download for offline",
@@ -2212,7 +2690,7 @@ function Study({
   /** Per list, the first catalog word not yet introduced: the lowest ungraded new word in the queue. */
   const cursorOf = (listId: string, except: number) =>
     Math.min(
-      nextNew.current.get(listId) ?? 0,
+      scans.current.get(listId)?.next ?? 0,
       ...queue
         .map((it, i) => ({ it, i }))
         .filter(
@@ -2247,6 +2725,7 @@ function Study({
     // From the card as it was before this row's grade, so a re-grade replaces.
     const { card } = reviewWord(parseCard(it.card), rating, now, paramsOf.get(it.listId)!);
     const cardJson = JSON.stringify(card);
+    gradesNow.current = new Map(gradesNow.current).set(i, { rating, card: cardJson });
     setGrades((g) => new Map(g).set(i, { rating, card: cardJson }));
     gradeLog.current = [...gradeLog.current.filter((x) => x !== i), i];
     navigator.vibrate?.(10);
@@ -2378,8 +2857,9 @@ function Study({
       else if (e.code === "KeyV") speech.toggle();
       else if (e.code === "KeyE") setShowAll((v) => !v);
       else if (KEY_RATING[e.code] && !e.shiftKey) {
+        const advance = shouldAdvance(grades, row);
         grade(row, KEY_RATING[e.code]);
-        moveRow(row + 1);
+        if (advance) moveRow(row + 1);
       } else return;
       e.preventDefault();
     };
@@ -2430,6 +2910,33 @@ function Study({
   /** When the list last scrolled: a touch within 120 ms of it catches a fling. */
   const lastScrollAt = useRef(0);
   const scrollingNow = useCallback(() => performance.now() - lastScrollAt.current < 120, []);
+  /**
+   * Where the last auto-advance is taking the list, while it is on its way
+   * (lib/words/advance.ts, `advanceTop`). Cleared when the list gets there or
+   * the finger takes the list.
+   */
+  const advancing = useRef<{ row: number; top: number } | null>(null);
+  /**
+   * After grading row `i` for the first time: scroll the list by exactly one
+   * row, so the next word slides up under the thumb. An absolute target, not
+   * scrollBy: a relative step lands one row past wherever the list is at
+   * that instant, so a step taken while the list still moves (the last
+   * advance's smooth scroll, a coast) adds to it. One advance per row.
+   */
+  const advanceList = (i: number) => {
+    const el = listRef.current;
+    if (!el) return;
+    const top = advanceTop({
+      row: i,
+      scrollTop: el.scrollTop,
+      rowH: ROW_H,
+      max: el.scrollHeight - el.clientHeight,
+      pending: advancing.current,
+    });
+    if (top === null) return;
+    advancing.current = { row: i, top };
+    el.scrollTo({ top, behavior: motionOff() ? "auto" : "smooth" });
+  };
   const [viewH, setViewH] = useState(600);
   /** viewH holds the real measured height (the opening scroll depends on it). */
   const [measured, setMeasured] = useState(false);
@@ -2439,6 +2946,22 @@ function Study({
   // scrolled well past the middle (or to the touch focus line). Row positions
   // and the windowing below are all offset by it.
   const pad = Math.round(viewH * OVERSCROLL_FRACTION);
+  // `scrollTop` (state) moves only when the rows in view change: the window,
+  // the audio wish, the reach and the glide's goal are all per row, and a
+  // render of the whole list on every scroll event (60 a second) was the
+  // biggest scroll cost on an iPhone. The key is every row edge they read.
+  const scrollKey = useRef("");
+  const syncScroll = (top: number) => {
+    const key = `${Math.floor((top - pad) / ROW_H)}|${Math.floor((top - pad + viewH) / ROW_H)}|${Math.ceil((top - pad + viewH) / ROW_H)}`;
+    if (key === scrollKey.current) return;
+    scrollKey.current = key;
+    setScrollTop(top);
+  };
+  // The rows' edges move with the height, the over-scroll and the row height.
+  useEffect(() => {
+    if (listEl) syncScroll(listEl.scrollTop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listEl, pad, viewH, ROW_H]);
   // Open with the first row just under the glass toolbar, not half a screen
   // down. Re-applied until the person moves the list themselves: whenever the
   // list element is (re)mounted (the queue can reload, e.g. from the offline
@@ -2615,7 +3138,12 @@ function Study({
   useEffect(() => {
     if (!touch || !active || holding !== null || !focusItem) return;
     if (quietFocus.current === focusLine) return void (quietFocus.current = null);
-    speech.once([{ kind: "word", text: focusText, lang: focusItem.lang }]);
+    // With every meaning shown, the back is read too: word → meaning → example.
+    speech.once(
+      showAll ? partsOf(focusItem) : [{ kind: "word", text: focusText, lang: focusItem.lang }],
+      false,
+      { yieldToHold: true },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [touch, focusLine, focusText]);
 
@@ -2654,7 +3182,9 @@ function Study({
       if (!fresh.length) setExhausted(true);
       else append(fresh);
     })()
-      .catch((e) => setSyncError((e as Error).message))
+      // With nothing on screen, a failure is the page's error (with Retry),
+      // not a quiet note under an empty list.
+      .catch((e) => (queue.length ? setSyncError : setLoadError)((e as Error).message))
       .finally(() => {
         fetching.current = false;
       });
@@ -2807,14 +3337,14 @@ function Study({
     }
     // Glide every row together: one variable, moved by a critically damped
     // spring that keeps its velocity if the goal moves mid-glide. One loop
-    // outlives this effect: a scroll re-runs it every frame, and restarting
+    // outlives this effect: a scroll re-runs it at each row it crosses, and restarting
     // the loop each time cancelled the pending step and timed the next from
     // a fresh performance.now(), so the spring advanced a fraction of each
     // frame, or not at all — the width stalled while the finger moved, then
     // caught up in jumps.
     glideSplit.current = split;
     if (glideRaf.current) return;
-    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduce = motionOff();
     /** One spring step of a column toward its goal; true once it has settled. */
     const glide = (
       goal: number,
@@ -2824,9 +3354,14 @@ function Study({
       dt: number,
     ) => {
       const s = glideStep(shown.current!, velocity.current, goal, dt, reduce);
+      // Every row's grid reads the variable, so each write lays out the whole
+      // list: write only whole device pixels, and only when that changes (the
+      // spring's long sub-pixel tail no longer relays the list every frame).
+      const px = (v: number) => Math.round(v * devicePixelRatio) / devicePixelRatio;
+      const was = px(shown.current!);
       shown.current = s.x;
       velocity.current = s.v;
-      el.style.setProperty(prop, `${s.x}px`);
+      if (px(s.x) !== was || s.settled) el.style.setProperty(prop, `${px(s.x)}px`);
       return s.settled;
     };
     const step = (now: number) => {
@@ -2850,6 +3385,9 @@ function Study({
   const minutes = (Date.now() - started.current) / 60_000;
   const ahead = queue.filter((_, i) => i >= row && !grades.has(i));
   const dueLeft = ahead.filter((it) => it.kind !== "new").length;
+  // Not the new words in the loaded batch (always ~80 at the start): the
+  // words in scope never seen yet (lib/words/unseen.ts).
+  const unseen = unseenLeft(scopeAtStart, countGradedNew(queue, grades.keys()));
 
   const status = (it: Item, i: number) => {
     const g = grades.get(i);
@@ -2945,7 +3483,7 @@ function Study({
               done,
               rate: minutes > 0.2 ? Math.round(done / minutes) : "–",
               due: dueLeft,
-              new: ahead.length - dueLeft,
+              new: unseen,
             })}
             {sync.pending > 0 ? (
               <span
@@ -3034,6 +3572,12 @@ function Study({
                 hint={text.fullScreenHint.value}
               />
             )}
+            <TogglePill
+              on={animationsOff}
+              onChange={setMotionOff}
+              label={text.animationsOff.value}
+              hint={text.animationsOffHint.value}
+            />
             <div className="w-full pt-1" data-experimental>
               <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
                 {text.experimental}
@@ -3133,11 +3677,18 @@ function Study({
               scrollPaddingBottom: bar.bottom,
             }}
             onScroll={(e) => {
-              setScrollTop(e.currentTarget.scrollTop);
+              syncScroll(e.currentTarget.scrollTop);
               lastScrollAt.current = performance.now();
+              const to = advancing.current;
+              if (to && Math.abs(e.currentTarget.scrollTop - to.top) < 1) advancing.current = null;
               keepAnchor(e.currentTarget.scrollTop);
             }}
-            onPointerDownCapture={() => (touchingList.current = true)}
+            onPointerDownCapture={() => {
+              touchingList.current = true;
+              // A list at rest is the finger's now: the next advance starts from
+              // where it is. One still on its way keeps its target.
+              if (!scrollingNow()) advancing.current = null;
+            }}
             onPointerUpCapture={() => (touchingList.current = false)}
             onPointerCancelCapture={() => (touchingList.current = false)}
             // pointerup, not pointerdown: for touch it is the event that grants
@@ -3213,31 +3764,45 @@ function Study({
                       quietFocus.current = i;
                       startTransition(() => setFocusLine(i));
                     }
+                    // The word, or with every meaning shown the whole card. Never
+                    // over a long-press reading: that one plays on through the swipe.
                     if (swipeSpeak)
-                      speech.once([
-                        {
-                          kind: "word",
-                          text: spokenText(it, it.lang, !!config.readingOnBack),
-                          lang: it.lang,
-                        },
-                      ]);
+                      speech.once(
+                        showAll
+                          ? partsOf(it)
+                          : [
+                              {
+                                kind: "word",
+                                text: spokenText(it, it.lang, !!config.readingOnBack),
+                                lang: it.lang,
+                              },
+                            ],
+                        false,
+                        { yieldToHold: true },
+                      );
                   }}
                   onHold={() => {
                     setHolding(i);
-                    speech.loop(partsOf(it), true);
+                    speech.hold(partsOf(it));
                   }}
                   onHoldEnd={() => {
                     setHolding(null);
-                    speech.loop([]);
+                    // Not cut on lifting: the pass in progress reads to its end,
+                    // through a swipe that follows.
+                    speech.release();
                   }}
                   onSwipe={(r) => {
+                    // Auto-advance is for a card met for the first time: editing
+                    // a grade already given stays on that card (the owner, 2026-10-30).
+                    // Read now, not from this render: see gradesNow.
+                    const advance = shouldAdvance(gradesNow.current, i);
                     // The slip glides home meanwhile: the grade's re-render can wait.
                     startTransition(() => {
                       grade(i, r);
-                      if (touch) setFocusLine(Math.min(queue.length - 1, i + 1));
+                      if (touch && advance) setFocusLine(Math.min(queue.length - 1, i + 1));
                     });
                     // The next word slides up under the thumb.
-                    listRef.current?.scrollBy({ top: ROW_H, behavior: "smooth" });
+                    if (advance) advanceList(i);
                   }}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none ${
                     touch
@@ -3272,18 +3837,48 @@ function Study({
                       <span className="ml-2 text-xs font-normal opacity-60">{it.reading}</span>
                     )}
                   </Glance>
-                  <Glance
-                    active={glancing && show}
-                    title={show ? it.back : undefined}
-                    className={`text-sm opacity-80 transition-[filter] duration-75 ${
-                      show ? "" : "slip-blank"
-                    }`}
-                  >
-                    {config.readingOnBack && it.reading && it.reading !== it.term && (
-                      <span className="mr-2 font-medium">{it.reading}</span>
-                    )}
-                    {it.back}
-                  </Glance>
+                  {(() => {
+                    const meaning = (
+                      <Glance
+                        active={glancing && show}
+                        title={show ? it.back : undefined}
+                        className={`text-sm opacity-80 transition-[filter] duration-75 ${
+                          touch ? "block min-w-0" : ""
+                        } ${show ? "" : "slip-blank"}`}
+                      >
+                        {config.readingOnBack && it.reading && it.reading !== it.term && (
+                          <span className="mr-2 font-medium">{it.reading}</span>
+                        )}
+                        {it.back}
+                      </Glance>
+                    );
+                    if (!touch || !it.ex) return meaning;
+                    // Phones: one row is the whole card — the front, then everything
+                    // on the back (meaning, then example), as "Show all meanings"
+                    // shows and reads it. Two lines in the row's fixed height (one
+                    // line on a wider screen), so the windowing stays exact.
+                    // Tags (level, list) are only in the double-tap sheet.
+                    return (
+                      <span
+                        className="flex min-w-0 flex-col justify-center gap-1 sm:flex-row sm:items-baseline sm:gap-3"
+                        data-row-back
+                      >
+                        {meaning}
+                        <Glance
+                          active={glancing && show}
+                          title={show ? `${it.ex}\n${it.exTr ?? ""}` : undefined}
+                          className={`block min-w-0 text-xs opacity-60 transition-[filter] duration-75 sm:flex-1 ${
+                            show ? "" : "slip-blank"
+                          }`}
+                        >
+                          <span lang={it.lang} data-row-example>
+                            {it.ex}
+                          </span>
+                          {it.exTr && <span className="ml-2 opacity-80">{it.exTr}</span>}
+                        </Glance>
+                      </span>
+                    );
+                  })()}
                   {hasExamples && !touch && (
                     // The example is part of the answer side: hidden with the meaning.
                     <Glance
@@ -3317,6 +3912,7 @@ function Study({
           {sheet !== null && queue[sheet] && (
             <SlipSheet
               item={queue[sheet]}
+              tags={tagsOf(queue[sheet])}
               status={status(queue[sheet], sheet)}
               onClose={() => setSheet(null)}
               onListen={() => {
@@ -3358,12 +3954,15 @@ function Study({
  */
 function SlipSheet({
   item,
+  tags,
   status,
   onClose,
   onListen,
   onCopy,
 }: {
   item: Item;
+  /** The word's tags (its list, the list's level): shown here only, never in the row. */
+  tags: string[];
   status: React.ReactNode;
   onClose: () => void;
   onListen: () => void;
@@ -3398,7 +3997,19 @@ function SlipSheet({
           <span className="truncate opacity-70">{item.back}</span>
           <small className="ml-auto shrink-0 text-xs opacity-60">{status}</small>
         </div>
-        {/* Phones have no example column: the sheet is where the example shows. */}
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-1 pt-2" data-sheet-tags>
+            {tags.map((t) => (
+              <span
+                key={t}
+                className="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5 text-xs opacity-80"
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
+        {/* The row shows the example too; here it is in full. */}
         {item.ex && (
           <div
             className="border-b border-black/10 dark:border-white/10 px-1 py-3"
@@ -3441,6 +4052,14 @@ function SlipSheet({
  * and dragged along as the slip slides. Loosening and tightening take 200 ms
  * of minimum jerk. Runs frames only while easing or while the slip is off
  * its rest position.
+ *
+ * Every rendered row has one (tied: hidden), and rows mount all the time as
+ * the list scrolls. So a tied cord that stays tied runs no frame at all, and
+ * the row's size is read once per run, in its first frame, not every frame.
+ * Before, each mounted row ran 200 ms of frames that each read
+ * offsetHeight/offsetWidth after the previous row's writes: a forced layout
+ * per row per frame while scrolling. Animations off ran one frame instead,
+ * which is why turning them off felt so much smoother on an iPhone.
  */
 function SlipCords({
   loose,
@@ -3458,26 +4077,35 @@ function SlipCords({
     const el = host.current;
     const row = el?.parentElement;
     if (!el || !row) return;
-    const [left, right] = Array.from(el.querySelectorAll("path"));
     const from = slack.current;
     const to = loose ? 1 : 0;
+    // Tied and staying tied, at rest: nothing to draw (the host starts hidden).
+    if (from === 0 && to === 0 && !moving && !(pos?.current(performance.now()) ?? 0)) return;
+    const [left, right] = Array.from(el.querySelectorAll("path"));
+    let size: { h: number; w: number } | null = null;
     const t0 = performance.now();
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const still = motionOff();
     let raf = 0;
+    let last = "";
     const frame = (now: number) => {
       const c0 = swipePerf.on ? performance.now() : 0;
       const t = still ? 1 : Math.min(1, (now - t0) / 200);
       slack.current = from + (to - from) * minJerk(t);
-      const h = row.offsetHeight;
-      const w = row.offsetWidth;
+      size ??= { h: row.offsetHeight, w: row.offsetWidth };
+      const { h, w } = size;
       const x = pos?.current(now) ?? 0;
       const pull = cordPull(x, slack.current, h);
       const bow = CORD_BOW * h * slack.current;
-      el.style.transform = x ? `translateX(${-x}px)` : "";
-      el.style.visibility = slack.current > 0.001 ? "visible" : "hidden";
-      left.setAttribute("d", cordPath(4.5, h, bow, pull));
-      right.setAttribute("d", cordPath(35.5, h, -bow, pull));
-      right.parentElement!.style.left = `${w - 40}px`;
+      // Write only what changed: an idle loose cord (moving, x 0) costs nothing.
+      const key = `${x}|${slack.current}|${h}|${w}`;
+      if (key !== last) {
+        last = key;
+        el.style.transform = x ? `translateX(${-x}px)` : "";
+        el.style.visibility = slack.current > 0.001 ? "visible" : "hidden";
+        left.setAttribute("d", cordPath(4.5, h, bow, pull));
+        right.setAttribute("d", cordPath(35.5, h, -bow, pull));
+        right.parentElement!.style.left = `${w - 40}px`;
+      }
       if (swipePerf.on) {
         swipePerf.cordFrames++;
         swipePerf.cordMs += performance.now() - c0;
