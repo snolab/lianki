@@ -33,6 +33,7 @@
     "./keyboard-lift": "./src/keyboard-lift.ts",
     "./joystick": "./src/joystick.ts",
     "./island-bus": "./src/island-bus.ts",
+    "./read-progress": "./src/read-progress.ts",
     "./float-lines": "./src/float-lines.ts",
     "./frontier-view": "./src/frontier-view.ts",
     "./log-surface": "./src/log-surface.ts",

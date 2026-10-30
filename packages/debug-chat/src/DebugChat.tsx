@@ -1,6 +1,14 @@
 "use client";
 
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { useUi } from "@lianki/ui-state";
 import { chatUi } from "./ui-store";
@@ -41,6 +49,13 @@ import { LOCAL_STT_KEY, localSttFrom } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
 import { DebugMic, canCapture, playSentTick } from "./MicButton";
 import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
+import {
+  initialRead,
+  readStep,
+  sentenceCount,
+  sentenceRanges,
+  sentenceState,
+} from "./read-progress";
 import { aecOn, cloudOut, outMode, setAec } from "./voice-out";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
@@ -273,6 +288,13 @@ function useDrag() {
   };
 }
 
+/** A sentence read aloud: a quieter grey, still legible (light and dark). */
+const SPOKEN_STYLE = { color: "light-dark(oklch(0.5 0.01 260), oklch(0.72 0.01 260))" };
+/** The sentence being read: a soft highlight behind it. */
+const SPEAKING_STYLE = {
+  background: "light-dark(oklch(0.92 0.06 90 / 0.7), oklch(0.36 0.05 250 / 0.7))",
+  borderRadius: 3,
+};
 /** The full-screen log's wipe in and out (and its sheet's fade). */
 const WIPE = "clip-path 200ms ease-out";
 /** The input-started full-screen log fades in and out, as the bar does the other way. */
@@ -2318,6 +2340,60 @@ export function DebugChat({
     </div>
   );
 
+  /**
+   * Read-aloud progress (read-progress.ts): each agent sentence spoken
+   * (grey), speaking (highlighted) or not yet (normal). Followed through the
+   * shared voice session's queue count and sentence starts, matched to the
+   * live agent lines, kept in the session store across a refresh. Lines from
+   * history that were never read live stay normal.
+   */
+  const [readP, readDispatch] = useReducer(readStep, undefined, () =>
+    initialRead(uiStore.getState().spoken),
+  );
+  useEffect(() => {
+    const v = voice() as ReturnType<typeof voice> & { onStart?: (f: () => void) => () => void };
+    readDispatch({ type: "queued", n: v.state().queued });
+    const off1 = v.subscribe((s) => readDispatch({ type: "queued", n: s.queued }));
+    const off2 = v.onStart?.(() => readDispatch({ type: "start" }));
+    return () => {
+      off1();
+      off2?.();
+    };
+  }, []);
+  /** Agent lines there before this widget came up: history, never claimed. */
+  const historyIds = useRef<Set<string> | null>(null);
+  historyIds.current ??= new Set(messages.map((m) => m.id));
+  const claimed = useRef(new Set<string>());
+  useEffect(() => {
+    let left = readP.unmatched;
+    if (!left) return;
+    for (const m of messages) {
+      if (m.from !== "agent" || historyIds.current!.has(m.id) || claimed.current.has(m.id)) continue;
+      const n = sentenceCount(m.text);
+      if (!n || n > left) continue;
+      claimed.current.add(m.id);
+      readDispatch({ type: "enqueue", id: m.id, n });
+      left -= n;
+      if (!left) break;
+    }
+  }, [messages, readP.unmatched]);
+  useEffect(() => uiStore.setState({ spoken: { ...readP.done } }), [readP.done]);
+  /** An agent line in its sentences, each coloured by how far the reading got. */
+  const readText = (m: ChatMessage, text: ReactNode) => {
+    if (m.from !== "agent" || typeof text !== "string") return text;
+    return sentenceRanges(text).map((r, idx) => {
+      const st = sentenceState(readP, m.id, idx);
+      return (
+        <span
+          key={r.start}
+          data-read={st}
+          style={st === "spoken" ? SPOKEN_STYLE : st === "speaking" ? SPEAKING_STYLE : undefined}
+        >
+          {text.slice(r.start, r.end)}
+        </span>
+      );
+    });
+  };
   /** Who said each line, and where a run of one sender's lines starts (avatar-rules.ts). */
   const whos = messages.map((m) =>
     lineAvatar(m, { friend, viewer, agentAvatar, avatarFor, agentName: t.name, you: t.you }),
@@ -2470,7 +2546,7 @@ export function DebugChat({
                           node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)
                         }
                       >
-                        {polish(m).text}
+                        {readText(m, polish(m).text)}
                         {polish(m).mark}
                         {!agentOnline && m.from !== "agent" && i > lastAgent && (
                           <span

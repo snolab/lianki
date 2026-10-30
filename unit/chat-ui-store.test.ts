@@ -83,8 +83,19 @@ describe("migrateChatUi", () => {
         ],
         scroll: 120,
       },
+      spoken: { m1: 2, m2: 1 },
     };
     expect(migrateChatUi(s, CHAT_UI_VERSION)).toEqual(s);
+  });
+
+  it("keeps only well-formed spoken counts", () => {
+    expect(
+      migrateChatUi(
+        { spoken: { ok: 3, zero: 0, half: 1.5, word: "x", [`${"x".repeat(101)}`]: 1 } },
+        1,
+      ).spoken,
+    ).toEqual({ ok: 3 });
+    expect(migrateChatUi({ spoken: [1, 2] }, 1).spoken).toEqual({});
   });
 
   it("anything damaged or foreign falls back to the default", () => {

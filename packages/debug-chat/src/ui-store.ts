@@ -30,6 +30,8 @@ export type ChatUi = {
    * its nearest ancestor.
    */
   tree: KeptTree | null;
+  /** Per agent message id: how many of its sentences were read aloud (read-progress.ts). */
+  spoken: Record<string, number>;
   // Not kept: the log's scroll (at rest the compact log always shows the
   // newest lines), the bar's position (localStorage, remembered across
   // sessions), the full-screen log (only during a drag) and the mic (it
@@ -43,6 +45,7 @@ export const CHAT_UI_INITIAL: ChatUi = {
   pureDictation: null,
   panel: "none",
   tree: null,
+  spoken: {},
 };
 /** A draft longer than this is not restored (the input's own cap is lower). */
 const MAX_DRAFT = 20_000;
@@ -59,7 +62,12 @@ export function migrateChatUi(persisted: unknown, _version: number): ChatUi {
   const pureDictation =
     typeof p.pureDictation === "string" && p.pureDictation === draft && draft ? draft : null;
   const panel = p.panel === "tree" ? "tree" : "none";
-  return { draft, caret, pureDictation, panel, tree: migrateTree(p.tree) };
+  const spoken: Record<string, number> = {};
+  if (p.spoken && typeof p.spoken === "object" && !Array.isArray(p.spoken))
+    for (const [id, n] of Object.entries(p.spoken as Record<string, unknown>).slice(-200))
+      if (id.length <= 100 && typeof n === "number" && Number.isInteger(n) && n > 0)
+        spoken[id] = Math.min(n, 1000);
+  return { draft, caret, pureDictation, panel, tree: migrateTree(p.tree), spoken };
 }
 
 /** A title path: a short list of short strings. */
