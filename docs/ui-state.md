@@ -12,6 +12,9 @@ covers the app, its hot islands and the chat widget.
 | **The URL** (`?list=`, filters)          | as long as the link                                            | shareable                 | what someone could bookmark or send                         |
 | **The server** (`/api/preferences` etc.) | always                                                         | the account, all devices  | synced preferences, and all business data                   |
 
+Which preferences follow the account, and how (an "account" store mode:
+the local copy plus server sync), is designed in [prefs-sync.md](prefs-sync.md).
+
 Rules:
 
 - **Business data never goes in sessionStorage.** That means cards, grades,
