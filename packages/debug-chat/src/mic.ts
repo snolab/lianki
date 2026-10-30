@@ -242,6 +242,16 @@ export const HALLUCINATIONS = [
   "字幕製作…",
   "请不吝点赞 订阅 转发…",
   "谢谢观看",
+  "謝謝觀看",
+  "感谢观看",
+  "感謝觀看",
+  "感谢收看",
+  "感謝收看",
+  // "字幕志愿者 李宗盛" and the like: a subtitle credit (never 李宗盛 alone, a real name).
+  "字幕志愿者…",
+  "字幕志願者…",
+  // Our own route's STT hint prompt, which cloud Whisper reads back as speech.
+  "我说中文，有时夹杂日本語和English。",
   "…明镜与点点栏目…",
   "Ondertiteling …",
   "Sous-titres réalisés par …",
@@ -268,6 +278,30 @@ const HALLUCINATION_RE = new RegExp(
   ).join("|")})+$`,
   "u",
 );
+
+/** A known phrase (or a run of them) at the very end of a transcript, whatever its punctuation. */
+/** Punctuation, symbols or spaces, anywhere between a phrase's characters. */
+const GAP = "[\\p{P}\\p{S}\\s]*";
+/** The phrases on raw text: each character in turn, any punctuation or spacing between. */
+const PHRASE_ALT = HALLUCINATIONS.map((h) =>
+  h
+    .split("…")
+    .map((part) => [...normalizeTranscript(part)].map(escapeRe).join(GAP))
+    .join(".*?"),
+).join("|");
+const HALLUCINATION_TAIL_RE = new RegExp(`(?:${PHRASE_ALT})(?:${GAP}(?:${PHRASE_ALT}))*${GAP}$`, "iu");
+
+/**
+ * Real speech with a known phrase stuck on its end ("…明天见。谢谢观看"):
+ * the speech without it. Text that is all phrase is left as it is (that is
+ * isHallucination's to judge), and so is text without one.
+ */
+export function stripHallucinationTail(text: string): string {
+  const m = HALLUCINATION_TAIL_RE.exec(text);
+  if (!m || m.index === 0) return text;
+  const kept = text.slice(0, m.index).trimEnd();
+  return normalizeTranscript(kept) ? kept : text;
+}
 
 /** The text is a known hallucination phrase (or a run of them), whatever its punctuation. */
 export function isHallucinationPhrase(text: string): boolean {
@@ -676,7 +710,11 @@ export function createMic(d: {
       d.timing?.(seq, { t_uploadStart: now() });
       d.upload(wav, { seq, durationMs: toMs(audio.length), partial: false, local })
         .then(
-          (text) => {
+          (heard) => {
+            // A phrase tacked onto the end of real speech goes; the speech stays.
+            const text = stripHallucinationTail(heard);
+            if (text !== heard)
+              d.log?.({ ev: "stt-hallucination-tail", text: heard.slice(text.length).slice(0, 80) });
             const drop = isHallucination(text, ms, prob);
             if (drop) d.log?.({ ev: "stt-hallucination", text: text.slice(0, 80), ms, prob });
             d.timing?.(seq, { t_sttDone: now(), dropped: drop || !text.trim() });
@@ -820,6 +858,8 @@ export function postClip(
     model?: string;
     /** The mic's mode for this utterance (lk:voice-aec), for the A/B. */
     aec?: boolean;
+    /** How the browser opened the mic (track.getSettings()), for the A/B. */
+    track?: Record<string, unknown> | null;
   },
   f: typeof fetch = fetch,
 ): Promise<void> {
@@ -836,6 +876,7 @@ export function postClip(
       transcript: meta.transcript ?? "",
       model: meta.model,
       aec: meta.aec,
+      track: meta.track ?? undefined,
     }),
   );
   return f(`${sink}/clips`, { method: "POST", body: form }).then(

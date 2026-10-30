@@ -252,10 +252,18 @@ function session(): MicSession {
             transcript: out.text,
             model: out.model,
             aec: v.aec(),
+            track: appliedSettings(),
           });
         return out.text;
       } catch (e) {
-        if (sink) void postClip(sink, wav, { at, durationMs, label: cfg.label, aec: v.aec() });
+        if (sink)
+          void postClip(sink, wav, {
+            at,
+            durationMs,
+            label: cfg.label,
+            aec: v.aec(),
+            track: appliedSettings(),
+          });
         throw e;
       }
     },
