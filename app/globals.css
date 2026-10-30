@@ -770,3 +770,17 @@ html[data-embed],
 html[data-embed] body {
   background: transparent !important;
 }
+
+/* "Turn off animations" (/words Settings; lib/motion-pref.ts): this device
+ * asked for none. Every transition and animation ends at once, in its final
+ * state; smooth scrolls jump. JS frames read motionOff() the same way. */
+html[data-motion="off"] *,
+html[data-motion="off"] *::before,
+html[data-motion="off"] *::after {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
+}

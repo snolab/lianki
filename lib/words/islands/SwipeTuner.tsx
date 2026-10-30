@@ -26,7 +26,6 @@ const LABELS: { [K in keyof SwipeFeel]: string } = {
   flingCarry: "fling carry",
   friction: "fling friction /s",
   maxFling: "max fling px/s",
-  rotatePerPx: "tilt °/px",
   lift: "lift shadow",
   liftMs: "lift ms",
   nativeRelease: "New swipe: spring release",

@@ -129,6 +129,7 @@ target that is not built yet.
 | theme (light / dark) | the system (`prefers-color-scheme`)     | → `lk:pref:theme` if a switch is added |
 | language             | intlayer, as today                      | stays                          |
 | font size            | —                                       | → `lk:pref:appearance`         |
+| animations off       | local `lk:pref:motion` (`system` until chosen; lib/motion-pref.ts) | done: /words Settings → Turn off animations; `<html data-motion="off">` set before paint |
 | paper texture        | local `lk:paper`                        | stays a plain key: app/layout.tsx reads it in an inline script before paint, to avoid a flash |
 
 ### Not UI state (left alone)
