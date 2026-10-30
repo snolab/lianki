@@ -5,7 +5,11 @@ import { dbBackend, getD1 } from "@/lib/d1";
 import { isOwner } from "@/lib/owner";
 import { createGiftCode, listGiftCodes } from "@/lib/referrals/store";
 
-/** Owner-only: anyone else gets a 404, so the endpoint's existence is not revealed. */
+/**
+ * Owner-only: anyone else gets a 404, so the endpoint's existence is not revealed.
+ * Under /api/dev/ so the Cloudflare Access application on /api/dev/* covers it
+ * too (docs/security-measures.md); redeeming stays public at /api/gift-codes/redeem.
+ */
 async function owner() {
   const session = await auth.api.getSession({ headers: await headers() });
   return isOwner(session?.user?.email) ? session!.user : null;

@@ -40,6 +40,25 @@ export const FALLBACK_STT_MODEL: SttModel = "@cf/openai/whisper";
  */
 export const STT_PROMPT = "日本語、English、中文が混ざります。";
 
+/** The languages a mic may hint (`?hint=`): the one the speaker mostly uses. */
+export const STT_HINTS = ["zh", "ja", "en"] as const;
+export type SttHint = (typeof STT_HINTS)[number];
+export const sttHint = (raw: string | null | undefined): SttHint | undefined =>
+  (STT_HINTS as readonly string[]).includes(raw ?? "") ? (raw as SttHint) : undefined;
+
+/**
+ * The prompt for a hinted language. A hint is softer than `?lang=`: Whisper
+ * still detects per window, and the prompt only says which language leads.
+ * On the owner's 12 saved clips (2026-10-30), a Chinese-led prompt in
+ * simplified characters beat STT_PROMPT on every Chinese clip (simplified
+ * output, 銀外 → 另外, and no katakana for a short clip that came back as
+ * シェイカーマイカフォン), while `language: "zh"` dropped all punctuation and
+ * turned the English clips into Chinese. ja and en keep STT_PROMPT.
+ */
+export function sttPrompt(hint?: SttHint): string {
+  return hint === "zh" ? "我说中文，有时夹杂日本語和English。" : STT_PROMPT;
+}
+
 /**
  * USD per audio minute over REST: Cloudflare's pricing page
  * (developers.cloudflare.com/workers-ai/platform/pricing, 2026-10-29) gives

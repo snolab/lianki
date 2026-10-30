@@ -29,6 +29,12 @@
  *                              x-debug-token header (or x-liagent-token, its
  *                              alias; both must match). The same sockets carry
  *                              the agent's side of the chat.
+ *   GET  /api/version/progress WebSocket for the owner's /dev/roadmap: live
+ *                              agent progress (progress.ts). The owner only,
+ *                              checked as for the debug pages; 403 otherwise.
+ *   POST /api/version/progress An agent's report (scripts/dev/progress.ts),
+ *                              with Authorization: Bearer <PROGRESS_TOKEN>.
+ *                              503 while that secret is unset.
  *   GET/POST /internal/friends The main Worker's owner-only /api/dev/friends,
  *                              over its PUSH binding: list chat users, read
  *                              one's thread, Block or unblock (debug.ts).
@@ -45,8 +51,10 @@
  */
 import { debugIdentity } from "./auth";
 import { IDENTITY_HEADERS } from "./debug";
+import { PROGRESS_OWNER_HEADER, progressGate } from "./progress";
 
 export { DebugHub } from "./debug";
+export { ProgressHub } from "./progress";
 
 type Socket = WebSocket & { accept?: () => void };
 type State = {
@@ -57,7 +65,15 @@ type State = {
 type Stub = { fetch(req: Request): Promise<Response> };
 type Namespace = { idFromName(name: string): unknown; get(id: unknown): Stub };
 type Fetcher = { fetch(url: string, init?: RequestInit): Promise<Response> };
-export type Env = { HUB: Namespace; DEBUG: Namespace; MAIN?: Fetcher };
+export type Env = {
+  HUB: Namespace;
+  DEBUG: Namespace;
+  /** Optional only so older test envs type-check; deployed, it is always bound. */
+  PROGRESS?: Namespace;
+  MAIN?: Fetcher;
+  /** Agents' bearer token for POST /api/version/progress (a Worker secret). */
+  PROGRESS_TOKEN?: string;
+};
 declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
 
 const message = (build: string) => JSON.stringify({ build });
@@ -115,10 +131,34 @@ export default {
       const who = await debugIdentity(req, env.MAIN);
       if (!who) return new Response("forbidden", { status: 403 });
       const headers = new Headers(req.headers);
+      // Only what the main Worker said: a page cannot claim any of these itself.
+      for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
       headers.set(IDENTITY_HEADERS.user, who.userId);
       headers.set(IDENTITY_HEADERS.email, who.email);
       headers.set(IDENTITY_HEADERS.owner, who.owner ? "1" : "0");
+      // A header holds bytes, not any name: percent-encoded.
+      if (who.name) headers.set(IDENTITY_HEADERS.name, encodeURIComponent(who.name));
+      if (who.image) headers.set(IDENTITY_HEADERS.image, who.image);
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
+    }
+    if (
+      url.pathname === "/api/version/progress" ||
+      url.pathname.startsWith("/api/version/progress/")
+    ) {
+      if (!env.PROGRESS) return new Response("live progress is not deployed", { status: 503 });
+      const hub = env.PROGRESS.get(env.PROGRESS.idFromName("progress"));
+      if (!wantsSocket) {
+        const refused = progressGate(req, env.PROGRESS_TOKEN);
+        if (refused) return refused;
+        const headers = new Headers(req.headers);
+        headers.delete(PROGRESS_OWNER_HEADER);
+        return hub.fetch(new Request(req, { headers }));
+      }
+      const who = await debugIdentity(req, env.MAIN);
+      if (!who?.owner) return new Response("forbidden", { status: 403 });
+      const headers = new Headers(req.headers);
+      headers.set(PROGRESS_OWNER_HEADER, "1");
+      return hub.fetch(new Request(req, { headers }));
     }
     // The sender. Anyone may knock; it can do nothing until the owner allows
     // it on a page (debug.ts). A browser always sends Origin on a WebSocket,

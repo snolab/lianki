@@ -55,7 +55,10 @@ describe("checkout params", () => {
     expect(p.metadata).toEqual({ userId: "u1", passId: "pro-12m" });
     expect(p.line_items[0].price_data).toMatchObject({ currency: "jpy", unit_amount: 5000 });
     expect(p.payment_method_types).toEqual(["card", "alipay", "wechat_pay"]);
-    expect(p.payment_method_options).toEqual({ wechat_pay: { client: "web" } });
+    expect(p.payment_method_options).toEqual({
+      card: { request_three_d_secure: "any" },
+      wechat_pay: { client: "web" },
+    });
   });
   test("form-encodes nested objects and arrays the way Stripe reads them", () => {
     const body = formEncode({ a: { b: ["x", "y"] }, c: "d e", skip: undefined }).join("&");
@@ -196,7 +199,7 @@ describe("stripe switches and the checkout call", () => {
     process.env.STRIPE_PAYMENT_METHODS = "card, alipay";
     const p = checkoutParams(input);
     expect(p.payment_method_types).toEqual(["card", "alipay"]);
-    expect(p.payment_method_options).toBeUndefined();
+    expect(p.payment_method_options).toEqual({ card: { request_three_d_secure: "any" } });
   });
 
   test("returns the hosted URL Stripe answers with", async () => {
@@ -209,6 +212,10 @@ describe("stripe switches and the checkout call", () => {
     expect(await createCheckoutSession(input)).toBe("https://checkout.stripe.com/c/pay/cs_1");
     expect((sent?.headers as Record<string, string>).Authorization).toBe("Bearer sk_test");
     expect(String(sent?.body)).toContain("metadata%5BpassId%5D=pro-1m");
+    // 3-D Secure is asked for on the wire, not just in the params object.
+    expect(String(sent?.body)).toContain(
+      "payment_method_options%5Bcard%5D%5Brequest_three_d_secure%5D=any",
+    );
   });
 
   test("throws with Stripe's message on an error", async () => {

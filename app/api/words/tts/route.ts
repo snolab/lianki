@@ -14,9 +14,9 @@ import { getCachedTTS, getVoiceClip, putCachedTTS } from "@/lib/ttsCache";
 import { VOICE_CREDITS, voiceKey } from "@/lib/voice";
 
 /**
- * Word audio for browsers that cannot speak (Firefox on Android has no usable
- * speech voices). The client asks only when its own speech fails, so most
- * study never reaches here.
+ * Word audio for /words: the word, its meaning and its example, each a clip.
+ * The client prefetches the clips of the rows near the screen
+ * (lib/words/audio-cache.ts), so a tap plays at once.
  *
  * Word-list clips come pre-rendered with open voices (lib/voice.ts,
  * scripts/voice) — better than MeloTTS, and free to serve. Anything else is

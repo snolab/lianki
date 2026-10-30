@@ -51,6 +51,10 @@ jobs:
           CF_BUILD: "1"
           DB_BACKEND: d1
           NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+      # The exact files the Worker will serve as static assets: no secrets, env
+      # files, keys or server source maps (docs/security-measures.md).
+      - name: Static asset hygiene
+        run: bun scripts/security/check-public-dir.ts .open-next/assets
       # By directory, never one file: tracked in d1_migrations, so idempotent and
       # never leaves the schema a migration behind the code.
       - name: D1 migrations

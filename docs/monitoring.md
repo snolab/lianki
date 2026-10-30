@@ -67,10 +67,11 @@ mode (`?debug=1` on any page, or seven quick taps on /words' Settings button or 
 in localStorage) and the page is visible. lianki-push accepts the socket only
 if its Origin is `https://lianki.com` and the main Worker, asked over the
 `MAIN` service binding with the page's Cookie header, answers
-`/api/debug/identity` with `{userId, email, owner}` (`owner` is `isOwner()`
-on the session). A guest gets 401 there and 403 on the socket. lianki-push
-passes who it is to the hub in `x-debug-*` headers it sets itself (a page's
-own are overwritten, a sender's dropped). Signed-in non-owners are
+`/api/debug/identity` with `{userId, email, owner, name, image}` (`owner` is
+`isOwner()` on the session; `name` and `image` only draw the chat's avatars,
+docs/dev-debug-widget.md). A guest gets 401 there and 403 on the socket.
+lianki-push passes who it is to the hub in `x-debug-*` headers it sets itself
+(a page's own are removed first, a sender's dropped). Signed-in non-owners are
 **friends** (below): their own chat thread, nothing of the owner's.
 `/api/dev/whoami` stays the owner-only check (a 404 for anyone else). A page
 not in debug mode never connects; a refused one, or one the hub closed on
@@ -130,7 +131,13 @@ eval ran · id", runs it as `new Function` in an async wrapper (an expression
 is returned; a body may `return`; `await` works), and sends the result — a
 JSON summary of at most 4 KB, or the error and stack — back over the socket
 to the sender and to `/api/dev/log`. The app sets no Content-Security-Policy,
-so nothing blocks `new Function`.
+so nothing blocks `new Function`. Anything larger is streamed ahead of the
+result: the code calls `$lk.send(data)`, and the page sends it as
+`{type:"chunk", id, to, part, seq, total, data}` messages of at most 128 K
+characters each, which the hub forwards like a result (to an approved sender
+still in time, with the page's label) and the sender joins back together.
+`scripts/dev/shot.ts` uses this for screenshots
+([dev-debug-widget.md](dev-debug-widget.md), "Screenshots").
 
 **Logs.** Every pairing, answer and command (id, length, first 200 chars) is
 logged by lianki-push (`wrangler tail lianki-push`, `debug.*`); results land
@@ -230,6 +237,10 @@ bun scripts/dev/eval.ts chat --label "agent on $(hostname -s)" --out /tmp/lianki
 # Reply (uses the saved grant; exits once the hub has it):
 bun scripts/dev/eval.ts say "On it — fixing the swipe now."
 echo "multi-line reply" | bun scripts/dev/eval.ts say -
+
+# A line with "source":"stt" was spoken: polish its misheard words first
+# (docs/dev-debug-widget.md, "Agent edits of voice messages"):
+bun scripts/dev/eval.ts edit --last --no-pair "Fix the sync button on /words."
 ```
 
 The listener reconnects whenever its socket closes, backing off from 1 s to
@@ -264,21 +275,81 @@ session listing carry the current path) and sends the listeners
 JSON line. Silent on the page, never stored, never in the chat log. A
 friend's page can only relabel its own socket.
 
-**The pill and its menu.** No title bar: a small pill at the start of the
-input row (`debug-chat-pill`) has two zones, each at least 32px, with a
-divider. The left zone (`debug-chat-pill-min`) holds the liagent mark
+**The chat bar, the state tree and the menu.** No title bar: the controls
+and the input are one rounded glass container (`debug-chat-pill`): the mark,
+the tree button, the input, then the mic at the far right, in that focus
+order, each control a 40px tap target (`tap-40`). The mark
+(`debug-chat-pill-min`, with `aria-expanded`) holds the liagent mark
 (`packages/debug-chat/src/LiagentMark.tsx`) and a dot, green while the socket
 is live: a tap minimizes or restores the box (after 280 ms, so that a double
-tap can cancel it), and a double tap opens the menu (`packages/debug-chat/src/tap-gesture.ts`).
-The right zone (`debug-chat-pill-menu`) shows the eval/preview sessions (a
-play icon and their count, pulsing when code just ran) or ⋯; a tap opens the
-menu at once. A drag anywhere on the pill moves the box, and never counts as
-a tap. Minimized, only the pill stays (`debug-chat-minimized`, at 0.6
-opacity, with an unread badge `debug-chat-pill-unread`), where it sat in the
-box and with the same saved offset, so restoring puts the input row back
-there, clamped on screen. While the pill is held, the input shows "drag:
-move · tap: minimize · double-tap or ⋯: menu", as its placeholder, or over
-the draft (`debug-chat-drag-hint`). The menu lists every open debug page of this chat (the
+tap can cancel it), and a double tap opens the menu — the only way to it
+(`packages/debug-chat/src/tap-gesture.ts`). The tree button
+(`debug-chat-tree-button`, "State tree", with the eval/preview sessions'
+count on it, pulsing when code just ran) toggles the state tree
+(`debug-chat-tree`, content from the `renderTree` prop, else "No tree
+source"). Only one of the menu and the tree is open at a time.
+The tree is shown as the log is, with no box: translucent text with the halo,
+click-through except for the rows (`log-surface.ts`). With a `treeSource` it
+is a row of top-level chips (title, status glyph, 〔open count〕; the row
+scrolls sideways) with one branch open below it as indented lines
+(`TreeChips.tsx`), driven by `treeNav` (`tree-nav.ts`): a focused node, a
+depth per node along the one open branch, end-stops at leaves (and
+min(3, subtree height)) and at the top row. Expanded, the tree heads the
+chat's one column, the messages below it, one scroller (newest at the
+bottom); minimized it heads the floating box. On the tree button a
+horizontal drag (locked after 8 px) moves through 40 px detents — right
+opens the focused node a level per cell, left folds it — previewed live,
+resisting past a limit, committed on release; a tap toggles the tree; ←/→/↑/↓
+on the focused button move the focus. An expand scrolls the new rows into
+view unless the user is scrolling; a fold keeps the focused row in place.
+In-progress items (the ◐ glyph, the ▶ frontier line, a fragment's `.d`)
+blink gently (opacity 1 → 0.35, 1.6 s; none under reduced motion). On a
+`zh` page the widget's and the tree's strings are Chinese
+(`ui-strings.ts`) unless the host passes its own. Without a `treeSource`:
+`renderTree`, else the lk:tree-src fragment. A small ✕
+(`debug-chat-tree-close`), Escape or the tree button close it; taps
+elsewhere are the page's. It never takes the input's focus or its draft, and
+its Escape never stops the mic. A drag on the mark or the bar's edge moves the box,
+and never counts as a tap.
+
+Minimizing animates the bar's width in 180 ms (two grid columns trading
+`1fr` ⇄ `0fr`; at once under reduced motion) down to `[mark | tree | mic]`
+(`debug-chat-minimized`, at 0.6 opacity, with an unread badge
+`debug-chat-pill-unread`): the input's slot closes to 0, so the mic, always
+the same node, slides in beside the tree button. The input is then inert and
+aria-hidden, so it can take neither focus nor taps, and the log is hidden.
+The mic keeps its live state, so hands-free voice goes on while minimized.
+
+Minimized, the host's frontier (`frontier` prop, `packages/debug-chat/src/Frontier.tsx`)
+sits just above the bar as up to three one-line glass lines
+(`debug-chat-frontier-line`, `data-status`): "✓" the last done, "▶" in
+progress, "›" next. A group shows its summary (an idiom such as 多线并进) and
+its count as 〔7〕; groups start collapsed, and a tap lists the items in place
+(title and breadcrumb, scrolling past about six; `debug-chat-frontier-items`),
+another tap or minimizing again closes it. The in-progress line shows who is
+on it as a 16px avatar (the host's `renderAvatar`, else the initial on a
+hashed oklch colour, labelled with the name), and an agent's id at its right
+end: the last 6 characters, monospace, the full id in its title and on a
+long press. Only agents' ids are shown, and only opaque slugs: an id with a
+dot, colon or slash, or over 64 characters, is hidden
+(`packages/debug-chat/src/frontier-view.ts`). Expanded, the lines go: the
+tree has it all.
+
+Minimized, messages float above the frontier instead of the log
+(`debug-chat-float`, `packages/debug-chat/src/float-lines.ts`): the latest
+message at the moment of minimizing (unless over 10 minutes old), and those
+that arrive while minimized, newest at the bottom. Each stays fully visible
+for `max(2.5 s, 2 × its reading time)` from when it floats up, reading CJK at
+6 characters a second and anything else at 15, then fades out over 10 s
+(opacity only; gone at once under reduced motion). Hovering or touching the
+lines holds them: mid-fade they snap back to full, and the fade starts over
+on release. A vertical drag on the mic (locked after 8 px; a horizontal one
+moves the bar, and neither toggles the mic) scrubs back through the history:
+finger down goes back, as the expanded log follows the finger, three lines at
+a time, each dwell starting over on release. ↑/↓ on the focused mic do the
+same. Expanded, a vertical drag on the mic scrolls the log. While a control
+is held, the input shows "drag: move · tap: minimize · double-tap: menu", as
+its placeholder, or over the draft (`debug-chat-drag-hint`). The menu lists every open debug page of this chat (the
 owner's own, or a friend's own: the hub's `state` carries `pages: [{id,
 label, at}]` and `self`, rebroadcast when a page connects, leaves or moves).
 Each row shows the path and a device hint ("pwa · Android", "iPhone"). Tapping
@@ -292,7 +363,7 @@ itself.
 
 **Voice commits.** Every final spoken transcript is punctuated, then committed and sent at once (上屏), with a soft tick: two sine tones (880 Hz, then 1320 Hz 30 ms later) through one gain, 5 ms attack to 0.08 and an exponential decay, 80 ms in all (`scheduleTick` in `mic.ts`, tested with a fake AudioContext), played on the mic's own AudioContext (made on the mic tap, a gesture) and never while the agent speaks. It is Web Audio only, no `<audio>` element, so a muted iPhone stays silent. Typed sends make no sound. Each spoken send also fires `lk:voice-sent` on `window` (`detail.sound`: whether the tick played): if Whisper left no stop, `punctuate()` adds one that fits the text (。/？ for CJK, ./? otherwise, a question by its particle or opening word). A short "好" or "OK" goes out too. Partials never send. Typed text arriving in one burst of 3+ characters that ends a sentence (an outside dictation IME) is also sent at once.
 
-**Mic.** A mic button sits inside the input at its right edge
+**Mic.** A mic button sits at the chat bar's right end
 (`debug-chat-mic`; hidden where the browser lacks getUserMedia or Web Audio).
 One tap turns hands-free listening on; another tap, or Escape, turns it off.
 A voice-activity detector cuts speech into utterances: Silero VAD
@@ -322,6 +393,20 @@ final utterance is also POSTed as multipart (`audio`, and `meta` JSON
 silently. The code is in `packages/debug-chat/src/` (`mic.ts`, the logic,
 tested with fakes in `unit/mic.test.ts`; `MicButton.tsx`, the browser glue).
 
+**The mic outlives the widget.** The stream, the VAD and the transcripts on
+their way live in one page-wide session on `globalThis.__lkMic`
+(`packages/debug-chat/src/mic-session.ts`, versioned; an older one is retired
+and its stream reused). A hot swap, a React remount or a client-side route
+change (DebugEval is in the root layout) re-attaches to it: same stream, no
+second getUserMedia, still listening. Only an explicit off (a tap, Escape)
+stops it. On a real reload, sessionStorage `lk:agent:mic` ("1" while this tab
+has the mic on; per tab) makes it try to resume without a gesture: with the
+microphone permission granted, or the query unsupported (iOS), and the
+AudioContext running, it listens again and logs `{ev: "mic-resume", path:
+"auto", ok: true, permission}`; otherwise the button shows a dashed ring,
+"Tap to resume listening", and logs `{ev: "mic-resume", path: "tap", reason}`
+(`permission prompt|denied`, `audio context suspended`, or the error's name).
+
 **Hands-free voice.** Mic on means read-aloud on: while it listens, every
 agent reply is read, whatever the focus rule or the speaker toggle says (the
 toggle shows "Replies read aloud (mic on)" and is locked; the stored setting
@@ -331,24 +416,76 @@ voice session (`packages/debug-chat/src/voice.ts`, kept on `globalThis` so the
 bundled `speakReply` in DebugEval and a hot-loaded chat share it; tested with
 fakes in `unit/voice-session.test.ts`):
 
-- *Queue.* Replies are split into sentences (after 。．！？ and closing
+- _Queue._ Replies are split into sentences (after 。．！？ and closing
   brackets; after . ! ? before a space or the end, so 3.14 stays whole; at
   every newline) and spoken one utterance per sentence, first in first out.
   A new reply waits behind the one being read; it never cuts it off.
-- *No echo loop.* While an utterance plays, the mic holds capture: the VAD is
-  paused, speech under way and anything handed over meanwhile is dropped, and
-  partials stop (`hold` in `mic.ts`). Capture resumes 400 ms after the last
-  queued utterance ends — on its `end`/`error` events and a one-shot timer,
-  never polling.
-- *Interruptions* stop the utterance and keep the place: the last word
+- _Echo, not a held mic_ (`lk:voice-aec`, default on): the mic stays open
+  while the agent speaks, and the echo is removed in layers, each tunable by
+  a named constant: (1) the mic is opened with `echoCancellation`,
+  `noiseSuppression` and `autoGainControl` (`AEC_CONSTRAINTS` in
+  `voice-out.ts`; vad-web is handed that stream); (2) in cloud mode the reply
+  is page audio, so the canceller has a reference (below); (3) a text guard
+  (`echo.ts`) drops a transcript whose similarity to a sentence the agent
+  spoke in the last 10 s (`ECHO_WINDOW_MS`) is ≥ 0.6 (`ECHO_SIMILARITY`;
+  Dice over character trigrams, bigrams for CJK, after stripping case,
+  punctuation and spaces), or that is a substring of one (transcripts under
+  4 characters only on an exact match, so a user's "OK" survives);
+  (4) ducking and barge-in: the VAD hearing the user over the agent ramps the
+  agent down to 25 % (`DUCK_LEVEL`) over 80 ms (`DUCK_ATTACK_MS`) and keeps
+  reading; when the user stops it comes back over 200 ms (`DUCK_RELEASE_MS`).
+  Only if they keep talking for 1.5 s (`BARGE_IN_MS`), with Silero's mean
+  speech probability over that window ≥ 0.7 (`BARGE_IN_PROB`; weaker speech
+  stays ducked and is judged again), is it a barge-in: the reading pauses and
+  resumes as below. The utterance is transcribed and sent either way.
+  `localStorage["lk:voice-aec"] = "0"` brings back the old way: the mic holds
+  capture while an utterance plays (VAD paused, what it hears dropped) and for
+  400 ms after the last one ends, with the old constraints.
+- _Output_ (`lk:voice-out`): `"speech"` (default) is the phone's own
+  speechSynthesis. Its volume cannot change mid-utterance on iOS, so a duck
+  applies from the next sentence; and on iOS it is probably _not_ in the
+  canceller's reference, so how much leaks through is exactly what the guard
+  log measures. `"cloud"` fetches each sentence from `/api/words/tts`
+  (MeloTTS, cached in R2 after the first time; `en es fr zh ja ko`; ≤ 200
+  characters, so longer sentences are cut at a clause or space —
+  `CHUNK_MAX`) and plays it through one `<audio>` element routed through the
+  mic's AudioContext and a GainNode (iOS ignores `element.volume`). The next
+  sentence is fetched while one plays. A sentence the cloud cannot voice (an
+  HTTP error, `X-Voice: miss`, offline, or `play()` refused) is read by
+  speechSynthesis instead, that sentence only. Cost: $0.0002 per audio
+  minute (18.63 neurons), cache misses only — about 530 minutes of new
+  replies a day fit in the free 10,000 neurons.
+- _iOS, honestly:_ WebKit's echo canceller is expected to subtract media
+  element / Web Audio output played by the same page while the mic is open,
+  but neither mode has been verified on an iPhone yet. Measure before
+  trusting it (below).
+- _Interruptions_ stop the utterance and keep the place: the last word
   boundary the browser reported (`boundary` events), else the start of that
-  utterance. A tap on the mic while the agent speaks (barge-in) releases
-  capture at once and reads on after 1.5 s of quiet; the user starting to
-  speak (only possible while capture is live, i.e. not mid-utterance) pauses
-  it until their line is sent, or 1.5 s after it ends; typing pauses it until
+  utterance; a cloud clip resumes at its `currentTime`, 0.3 s early
+  (`RESUME_REWIND_S`). A tap on the mic while the agent speaks releases
+  capture at once and reads on after 1.5 s of quiet; a barge-in (above; or,
+  with `lk:voice-aec` off, the user starting to speak between utterances)
+  pauses it until their line is sent, or 1.5 s after it ends — at once if the
+  guard drops the transcript as echo; typing pauses it until
   a send or, mic on, a blur. Sending keeps the queue — the replies are still
   relevant. "Stop reading" in the pill's menu (`debug-menu-stop-reading`,
   shown while anything is queued) clears it.
+
+**Measuring the echo (owner, iPhone).** Turn debug mode on, then in the
+console or via remote eval set the mode and reload:
+`localStorage.setItem("lk:voice-out", "speech" | "cloud")`,
+`localStorage.setItem("lk:voice-aec", "1" | "0")`. Each final utterance logs
+one `voice-utt` event to `/api/dev/log` (`wrangler tail lianki`):
+`{out, aec, settings, durationMs, during, drop, score, text, against}` —
+`settings` is `track.getSettings()` (did the browser actually apply
+echoCancellation?), `during` whether the agent was audible during the
+utterance, `drop`/`score` the guard's verdict. Each sentence read logs
+`voice-out` `{out, route, fallback?}` (route `audio` or `speech`, and why a
+cloud sentence fell back); ducking logs `voice-duck`, `voice-duck-hold`
+(weak speech, kept ducked) and `voice-barge-in` (with the mean `prob`).
+Echo rate per mode = `voice-utt` with `during && drop` ÷ `voice-utt` with
+`during`, read over a few replies talked over and a few left alone; a
+`voice-barge-in` followed by a dropped transcript is echo pausing the reading.
 
 **One voice per device.** Every tab of a thread shows every message, but
 only one reads a reply aloud: a tab with the mic on (the latest to turn it
@@ -360,6 +497,66 @@ tabs (that would fight IME composition).
 do); a ↓ button at the right of the row above the input (the row stays
 click-through, only the button takes taps) scrolls to the end, with a dot
 when messages arrived below. The log's top edge fades once it overflows.
+
+#### Voice latency
+
+Each line spoken into the mic gets one timing record, voice → reply
+(`packages/debug-chat/src/latency.ts`, tested in `unit/latency.test.ts`).
+Every stamp is the page's own `Date.now()`, so no stage mixes clocks:
+
+| Stage (ms)     | From → to                                                   | Stamped in                    |
+| -------------- | ----------------------------------------------------------- | ----------------------------- |
+| `vadMs`        | last frame Silero scored ≥ 0.5 → the VAD ends the utterance | `mic.ts` createMic            |
+| `encodeMs`     | VAD end → the WAV upload starts                             | `mic.ts`                      |
+| `sttMs`        | `/api/debug/stt` round trip (`sttServerMs` = its own `ms`)  | `mic.ts`, `MicButton.tsx`     |
+| `waitMs`       | transcript back → in the input (an earlier one still out)   | `DebugChat.tsx` dictated      |
+| `sendMs`       | in the input → sent on the socket                           | `DebugChat.tsx` submit        |
+| `hubMs`        | sent → the hub's copy of the line back on this page         | `DebugEval.tsx`               |
+| `ackMs`        | sent → the first busy beat (a listener's "heard you")       | `DebugEval.tsx`               |
+| `agentMs`      | hub copy back → the agent's reply here                      | `DebugEval.tsx`               |
+| `voiceMs`      | reply here → it starts playing (utterance `start` / `play`) | `voice.ts` onStart            |
+| `totalMs`      | end of speech → the reply audible (unspoken: here)          |                               |
+
+The owner line carries the mic's stamps as an optional `timing` object
+(`VoiceTiming` in `wire.ts`: `t_lastVoice`, `t_speechEnd`, `t_uploadStart`,
+`t_sttDone`, `t_shown`, `t_sent`, `sttServerMs`, `audioMs`), on `source:
+"stt"` lines only. The hub validates it (`cleanTiming`) and keeps it on the
+stored line; an older hub or page ignores it. `eval.ts chat` prints it, plus
+`lagMs` (hub → listener, two clocks) on live lines.
+
+**Where to see it.** The chat's ⋯ menu shows the latest record
+(`debug-menu-latency`, while the mic is on or once there is one): "Latency,
+last voice line 8.7 s", then `silence 1.4 · STT 0.9 · send 0.0 · hub 0.1 ·
+reply 6.0 · voice 0.3` (zh/ja/en in `ui-strings.ts`). Each record is also
+logged once as `{ev: "voice-latency", id, chars, replied, …stages, timing}`
+through devLog (`wrangler tail lianki`).
+
+**Collecting samples** (event-driven: it reads the tail's stream, and exits
+after `--n` records):
+
+```bash
+bunx wrangler tail lianki --format json | bun scripts/dev/voice-latency.ts --n 10
+```
+
+It prints each record as it arrives and then the markdown table (n, median,
+p90, mean per stage). The samples need the owner speaking on their own
+device, with an agent answering; nothing here can make them.
+
+**Fixed waits** (a floor under every reply):
+
+- Silero ends an utterance only after vad-web's default `redemptionMs`,
+  **1400 ms** of silence in 0.0.30 (43 frames × 32 ms); `MicButton.tsx`
+  `silero()` passes no override (the old comment said ~0.8 s). The energy
+  fallback waits 700 ms (`energyGate`'s `hangMs`, `mic.ts`).
+- No send debounce for voice: a spoken final is punctuated and sent at once
+  (`appendDictation` → `submit` in `DebugChat.tsx` `dictated`). The 3 s
+  `DEBOUNCE_MS` is for typing, and is off while the mic is on.
+- Cloud voice (`lk:voice-out = "cloud"`) fetches each sentence's clip before
+  it plays; that shows up in `voiceMs`.
+
+**"Heard you".** `eval.ts chat --ack` answers each new owner or friend line
+with one busy beat at once, so the spinner shows within a hub round trip,
+before the agent's turn starts (`ackMs` measures it).
 
 #### Agent is busy (heartbeat)
 
@@ -400,15 +597,19 @@ End still reaches it.
 tests:
 
 - The chat box: `debug-chat` (root), `debug-chat-minimized` (minimized),
-  `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-pill-menu`,
+  `debug-chat-pill`, `debug-chat-pill-min`, `debug-chat-tree-button`,
+  `debug-chat-tree` (with `data-mode`: `inline` or `column`), `debug-chat-tree-body`,
+  `debug-chat-tree-close`, `debug-chat-tree-empty`,
   `debug-chat-pill-unread`, `debug-chat-log`, `debug-chat-line` (with
-  `data-from`), `debug-chat-input`, `debug-chat-drag-hint`,
+  `data-from`), `debug-chat-floats`, `debug-chat-float`, `debug-chat-input-slot`,
+  `debug-chat-input`, `debug-chat-drag-hint`,
   `debug-chat-bottom`, `debug-chat-busy`, `debug-chat-mic` (with
   `data-state` and `data-status`), `debug-chat-mic-rec`,
   `debug-chat-mic-pending`, `debug-chat-mic-note`, `debug-chat-notice` and
   `debug-chat-warning`.
 - The pill's menu: `debug-menu`, `debug-menu-status`, `debug-menu-note` (where
   the widget came from, or why it fell back), `debug-menu-speak`,
+  `debug-menu-latency` (the last voice line's breakdown),
   `debug-menu-minimize`, `debug-menu-page` (`data-self` on this one),
   `debug-menu-page-open`, `debug-menu-page-end`, `debug-menu-session`,
   `debug-menu-session-add` and `debug-menu-session-end`.
@@ -437,7 +638,9 @@ the old `msg:<seq>` keys, so nothing was lost), the user id for each friend
 (`t:<userId>:msg:<seq>`). Each keeps the last 200. A friend's page gets only
 its own thread — history on connect and new messages — never the owner's
 or another friend's; the owner's pages get only the owner thread. The
-agent's listener (an owner-approved chat grant) hears every thread: each
+agent's listener (an owner-approved chat grant; the main one, at node "/",
+when sub-agents listen at state-tree nodes — [dev-debug-widget.md](dev-debug-widget.md),
+"Node paths") hears every thread: each
 line carries `thread`, `email` and `label` — the page's path plus user
 agent, so the agent knows which page a friend means. A friend's first
 message ever also sends the listener `{type:"friend-new", userId, email}`;

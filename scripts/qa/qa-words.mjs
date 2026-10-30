@@ -80,6 +80,127 @@ page.on("pageerror", (e) => {
   if (!e.message.includes("Turnstile")) errs.push("PAGEERROR " + e.message);
 });
 let ok = true;
+
+/**
+ * The grade reveal paints behind its slip: at rest the point over a label's
+ * spot hits the card; slid away (Good uncovered), it hits the label. The
+ * reveal ignores pointers, so they are let through for the probe only (the
+ * page is closed right after).
+ */
+async function revealOrder(pg, variant) {
+  await pg.addStyleTag({
+    content:
+      "[data-swipe-underlay],[data-swipe-strip],[data-reveal-slot],[data-reveal],[data-reveal] *{pointer-events:auto!important}",
+  });
+  const barB = await pg
+    .locator("[data-words-top]")
+    .evaluate((el) => el.getBoundingClientRect().bottom);
+  const rows = pg.locator('[role="listitem"]');
+  let i = 0;
+  let b = null;
+  for (; !b; i++) {
+    const bi = await rows.nth(i).boundingBox();
+    if (bi && bi.y > barB + 100) b = bi;
+  }
+  const row = rows.nth(i - 1);
+  const [x, y] = [b.x + 20, b.y + b.height / 2];
+  const hit = () =>
+    pg.evaluate(
+      ([x, y]) => {
+        // The topmost thing that shows: a faded-out reveal layer doesn't count.
+        for (const e of document.elementsFromPoint(x, y)) {
+          const r = e.closest("[data-reveal]");
+          if (r && Number(getComputedStyle(r).opacity) > 0.5) return `label:${r.dataset.reveal}`;
+          if (!r && e.closest(".slip")) return "card";
+        }
+        return "none";
+      },
+      [x, y],
+    );
+  const rest = await hit();
+  let mid;
+  if (variant === "native") {
+    // Slid right by a, probed in the same task (before the slip glides home).
+    mid = await row.evaluate(
+      (r, [x, y]) => {
+        const a = parseFloat(getComputedStyle(r).getPropertyValue("--a"));
+        r.querySelector(".slip-scroller").scrollTo({ left: a, behavior: "instant" });
+        for (const e of document.elementsFromPoint(x, y)) {
+          const z = e.closest("[data-reveal]");
+          if (z && Number(getComputedStyle(z).opacity) > 0.5) return `label:${z.dataset.reveal}`;
+          if (!z && e.closest(".slip")) return "card";
+        }
+        return "none";
+      },
+      [x, y],
+    );
+    await row.evaluate((r) => {
+      const a = parseFloat(getComputedStyle(r).getPropertyValue("--a"));
+      r.querySelector(".slip-scroller").scrollTo({ left: 2 * a, behavior: "instant" });
+    });
+  } else {
+    const cx = b.x + b.width / 2;
+    // A press within 120ms of a list scroll catches a fling (no slide), and
+    // one held 300ms before moving is a hold (no slide): start only once the
+    // list has been still a while, and go past the slop on the first move.
+    await pg.evaluate(
+      () =>
+        new Promise((done) => {
+          const list = document.querySelector('[role="list"]');
+          let t;
+          const quiet = () => {
+            clearTimeout(t);
+            t = setTimeout(() => {
+              list.removeEventListener("scroll", quiet);
+              done();
+            }, 300);
+          };
+          list.addEventListener("scroll", quiet, { passive: true });
+          quiet();
+        }),
+    );
+    await pg.mouse.move(cx, y);
+    await pg.mouse.down();
+    await pg.mouse.move(cx + 20, y);
+    await pg.mouse.move(cx + 60, y, { steps: 4 });
+    // Headless WebKit can stall its rendering updates once the slip gets its
+    // own layer (will-change) mid-drag: no requestAnimationFrame runs, the
+    // queued pointermoves are coalesced away, and the slip is never painted
+    // off its spot — the probe then sees the card (CI main runs, and 5 of 5
+    // local runs with extra observers attached). A screenshot forces a
+    // rendering update; the app's own rAF paint then runs as on a device.
+    await pg.screenshot();
+    // The label fades in (150ms); a loaded runner may take longer to paint.
+    await pg
+      .waitForFunction(
+        ([x, y]) =>
+          document
+            .elementsFromPoint(x, y)
+            .some(
+              (e) =>
+                Number(getComputedStyle(e.closest("[data-reveal]") ?? e).opacity) > 0.5 &&
+                e.closest("[data-reveal]"),
+            ),
+        [x, y],
+        { timeout: 2000 },
+      )
+      .catch(() => {});
+    mid = await hit();
+    if (mid !== "label:3") {
+      // Why not: the slip's transform and the underlay's state.
+      const why = await pg.evaluate(() => {
+        const u = document.querySelector("[data-swipe-underlay]");
+        const moved = document.querySelector('[role="list"] [style*="translate"]');
+        return `transform=${moved?.style.transform ?? "none"} underlay=${u?.style.visibility}`;
+      });
+      mid += ` (${why})`;
+    }
+    await pg.mouse.move(cx, y, { steps: 10 });
+    await pg.mouse.up();
+  }
+  await pg.waitForTimeout(500);
+  return `${rest} → ${mid}`;
+}
 const check = (cond, msg) => {
   console.log(`${cond ? "✓" : "✗"} ${msg}`);
   if (!cond) ok = false;
@@ -119,6 +240,60 @@ try {
   check((await page.locator("span.text-emerald-600").count()) > 0, "new words are shown in green");
   const statusOf = async (i) => (await rows.nth(i).locator("span.tabular-nums").innerText()).trim();
   check((await statusOf(0)) === "new", `an ungraded new word says "new": ${await statusOf(0)}`);
+
+  // Glass: the list fills the window and scrolls under the toolbar and the
+  // help strip, which float over it fixed, translucent and blurred.
+  const glass = await page.evaluate(() => {
+    const list = document.querySelector('[role="list"]');
+    const bars = ["[data-words-top]", "[data-words-help]"].map((q) => {
+      const el = document.querySelector(q);
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      return {
+        fixed: cs.position === "fixed",
+        blur: /blur\(12px\)/.test(cs.backdropFilter || cs.webkitBackdropFilter || ""),
+        alpha: Number(/\/\s*([\d.]+)\s*\)$/.exec(cs.backgroundColor)?.[1] ?? 1),
+      };
+    });
+    const r = list.getBoundingClientRect();
+    return {
+      bars,
+      listFixed: getComputedStyle(list).position === "fixed",
+      full: Math.round(r.top) === 0 && Math.round(r.bottom) === innerHeight,
+      scrollPad: parseFloat(getComputedStyle(list).scrollPaddingTop),
+      tray: document.querySelectorAll('[role="list"] [data-empty-tray][aria-hidden="true"] svg')
+        .length,
+    };
+  });
+  check(
+    glass.bars.every((b) => b && b.fixed && b.blur && b.alpha < 0.7),
+    `the toolbar and the help strip are fixed glass overlays (${JSON.stringify(glass.bars)})`,
+  );
+  check(
+    glass.listFixed && glass.full && glass.scrollPad > 0,
+    `the list fills the window under the overlays, scroll-padded by them (${glass.scrollPad}px)`,
+  );
+  check(glass.tray === 2, `an empty tray fills the over-scroll at both ends (${glass.tray})`);
+  {
+    // Scrolled, a row passes under the toolbar: the bar covers the list.
+    const under = await page.evaluate(async () => {
+      const list = document.querySelector('[role="list"]');
+      const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
+      const before = list.scrollTop;
+      list.scrollTop = before + 120;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const covered = [...list.querySelectorAll('[role="listitem"]')].some((row) => {
+        const b = row.getBoundingClientRect();
+        return b.top < bar.bottom && b.bottom > bar.top;
+      });
+      list.scrollTop = before;
+      return { covered, doc: document.scrollingElement.scrollTop };
+    });
+    check(
+      under.covered && under.doc === 0,
+      `the list scrolls under the glass toolbar; the page itself never scrolls (${JSON.stringify(under)})`,
+    );
+  }
 
   // The term column is fitted to the terms on screen (6–20rem), one width for all rows.
   const termW = await page
@@ -270,6 +445,13 @@ try {
   await page.getByRole("switch", { name: "Server voice" }).click();
   await page.getByRole("button", { name: "Settings" }).click();
 
+  // Hints follow the input: a keyboard was used, so key hints, no gestures.
+  const deskHint = await page.locator("text=? all keys").count();
+  check(
+    deskHint === 1 && (await page.locator("text=/tap = show/").count()) === 0,
+    "with a keyboard the hints are keys, not gestures",
+  );
+
   // The installed app's scope is the whole site: /words opened from the home
   // screen must not fall outside it (iOS then shows the address bar).
   const manifest = await page.evaluate(async () => (await fetch("/manifest.json")).json());
@@ -311,14 +493,47 @@ try {
     ttsStatus.join() === "404,400,400",
     `word audio: no voice → 404, bad text → 400 (${ttsStatus.join()})`,
   );
+  /** Visible text, aria-labels, titles and placeholders that say "debug". */
+  const debugText = (p) =>
+    p.evaluate(() => {
+      const hits = [];
+      const shown = (el) => {
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && cs.visibility !== "hidden";
+      };
+      const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        const el = n.parentElement;
+        if (!el || el.closest("script,style,noscript")) continue;
+        if (/debug/i.test(n.textContent ?? "") && shown(el)) hits.push(n.textContent.trim());
+      }
+      for (const el of document.querySelectorAll("[aria-label],[title],[placeholder]")) {
+        for (const at of ["aria-label", "title", "placeholder"]) {
+          const v = el.getAttribute(at);
+          if (v && /debug/i.test(v)) hits.push(`${at}=${v}`);
+        }
+      }
+      return hits;
+    });
   // The installed app has no address bar: seven quick taps on the Settings
   // button toggle the debug log instead (the stats line stays selectable text).
   const gear = page.getByRole("button", { name: "Settings" });
   for (let k = 0; k < 7; k++) await gear.click();
   check((await page.locator("[data-debug-badge]").count()) === 1, "seven taps turn debug on");
+  {
+    // Users know debug mode as their "Learning Partner" (docs/dev-debug-widget.md).
+    const badge = (await page.locator("[data-debug-badge]").innerText()).trim();
+    const hits = await debugText(page);
+    check(
+      badge === "Learning Partner" && hits.length === 0,
+      `debug on, /words names the Learning Partner and shows no "debug" (badge "${badge}", ${JSON.stringify(hits)})`,
+    );
+  }
   check(
-    (await page.locator('[data-debug-proto="slip"][href="/proto/slip"]').count()) === 1,
-    "debug mode links the design prototypes",
+    (await page.locator('[data-debug-proto="slip"][href="/proto/slip"]').count()) === 1 &&
+      (await page.locator("[data-debug-proto]").count()) === 1,
+    "debug mode links the slip prototype (and nothing else)",
   );
   for (let k = 0; k < 7; k++) await gear.click();
   check((await page.locator("[data-debug-badge]").count()) === 0, "seven more turn it off");
@@ -337,6 +552,47 @@ try {
       `ten taps on your name in the profile menu toggle debug (${on})`,
     );
     await page.keyboard.press("Escape");
+  }
+
+  // With the Learning Partner on (via the ?agent=1 alias), no visible text on
+  // /profile, /preferences or the profile menu says "debug" (/words is checked
+  // above). Owner-only dev pages are exempt.
+  {
+    const origin = new URL(page.url()).origin;
+    const tab = await ctx.newPage();
+    const seen = {};
+    for (const path of ["/profile?agent=1", "/preferences"]) {
+      await tab.goto(`${origin}${path}`, { waitUntil: "networkidle" });
+      seen[path] = await debugText(tab);
+    }
+    // The profile menu marks the mode by name: "you@… · Learning Partner".
+    await tab.locator("[data-profile-menu]").click();
+    const name = tab.locator("[data-debug-name]");
+    await name.waitFor({ timeout: 5000 });
+    const marker = (await name.innerText()).trim();
+    seen.menu = await debugText(tab);
+    const flag = await tab.evaluate(() => [
+      localStorage.getItem("lk:agent"),
+      localStorage.getItem("lk:debug"),
+    ]);
+    check(
+      flag.join() === "1,1" && marker.endsWith("· Learning Partner"),
+      `?agent=1 turns the Learning Partner on under both keys (${flag.join()}, menu "${marker}")`,
+    );
+    check(
+      Object.values(seen).every((h) => h.length === 0),
+      `no visible "debug" on /profile, /preferences or the menu with it on (${JSON.stringify(seen)})`,
+    );
+    // ?agent=0 is applied after hydration, which can come after "load": wait
+    // for the flag itself, or closing the tab can leave the Learning Partner
+    // on for every later check (the version notice then auto-reloads).
+    await tab.goto(`${origin}/profile?agent=0`, { waitUntil: "load" });
+    await tab.waitForFunction(
+      () => localStorage.getItem("lk:agent") === "0" && localStorage.getItem("lk:debug") === "0",
+      null,
+      { timeout: 15000 },
+    );
+    await tab.close();
   }
 
   // /learn speaks the page's language (it used to be English-only) and links
@@ -447,15 +703,48 @@ try {
   await page.routeWebSocket("**/api/version/ws", (ws) =>
     ws.send(JSON.stringify({ build: "some-newer-build" })),
   );
+  // A Learning Partner device reloads by itself instead of showing the
+  // button: this check is about a user's device, so the flag must be off.
+  const partnerFlags = () =>
+    page.evaluate(() => [localStorage.getItem("lk:agent"), localStorage.getItem("lk:debug")]);
+  const partnerBefore = await partnerFlags();
+  check(
+    !partnerBefore.includes("1"),
+    `the Learning Partner is off before the version notice check (${partnerBefore.join()})`,
+  );
   await page.evaluate(() => localStorage.setItem("lk:version-notice", "1"));
   await page.reload({ waitUntil: "load" });
   await page.bringToFront();
   const notice = page.getByRole("button", { name: "New version · Refresh" });
-  await notice.waitFor({ timeout: 10000 }).catch(() => {});
+  await notice.waitFor({ timeout: 15000 }).catch(() => {});
   check(await notice.isVisible(), "a newer build pushed over the socket shows a Refresh button");
-  await page.evaluate(() => localStorage.removeItem("lk:version-notice"));
+  // With the Learning Partner on, the page reloads itself once for that
+  // build; when the reload still hears the old build is stale, it shows the
+  // button rather than reloading again and again.
+  {
+    await page.evaluate(() => {
+      for (const k of ["lk:agent", "lk:debug"]) localStorage.setItem(k, "1");
+      sessionStorage.removeItem("lk:reloaded-for");
+    });
+    let loads = 0;
+    const onLoad = () => loads++;
+    page.on("load", onLoad);
+    await page.reload({ waitUntil: "load" });
+    await notice.waitFor({ timeout: 20000 }).catch(() => {});
+    const shown = await notice.isVisible().catch(() => false);
+    await page.waitForTimeout(3000); // a second auto-reload would land in here
+    page.off("load", onLoad);
+    check(
+      shown && loads === 2,
+      `a Learning Partner device reloads once for a new build, then shows Refresh (loads ${loads}, shown ${shown})`,
+    );
+  }
+  await page.evaluate(() => {
+    localStorage.removeItem("lk:version-notice");
+    for (const k of ["lk:agent", "lk:debug"]) localStorage.setItem(k, "0");
+  });
   await page.unrouteAll({ behavior: "ignoreErrors" }).catch(() => {});
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "load" });
   await rows.first().waitFor({ timeout: 15000 });
 
   // Endless: grade 60 words in a row; more keep coming and all are saved.
@@ -537,9 +826,14 @@ try {
     // This phone's speech API never speaks, like Firefox on Android: words
     // must come from the server instead (stubbed here — no AI call in QA).
     await phone.addInitScript(() => (window.__speechDead = true));
+    // A phone of its own: not the desktop's remembered keyboard.
+    await phone.addInitScript(() => localStorage.removeItem("lk:input-modality"));
     const ttsAsked = [];
+    const ttsTexts = [];
     await phone.route("**/api/words/tts?*", (r) => {
-      ttsAsked.push(new URL(r.request().url()).searchParams.get("lang"));
+      const q = new URL(r.request().url()).searchParams;
+      ttsAsked.push(q.get("lang"));
+      ttsTexts.push(q.get("text"));
       return r.fulfill({ contentType: "audio/wav", body: Buffer.from("RIFF0000WAVE") });
     });
     /** Variant A's slip look, to hold variant B's against. */
@@ -585,13 +879,45 @@ try {
         );
       }
       await m.waitForTimeout(500); // let the opening scroll settle
-      const listTop = await m
-        .locator('[role="list"]')
-        .evaluate((el) => el.getBoundingClientRect().top);
+      if (variant === "js") {
+        // Prefetch: the visible rows' audio is fetched before any tap.
+        const firstRow = await mrows.nth(0).innerText();
+        check(
+          ttsTexts.length > 1 && ttsTexts.some((t) => t && firstRow.includes(t)),
+          `${tag} the visible rows' audio is fetched before the first tap (${ttsTexts.length} clips)`,
+        );
+        // Hints follow the input used last: gestures on a phone, keys once a
+        // hardware keyboard is used, gestures again after a touch.
+        const gestures = () => m.locator("text=/tap = show/").count();
+        const keys = () => m.locator("text=? all keys").count();
+        const seeded = [await gestures(), await keys()].join();
+        await m.keyboard.press("Shift");
+        await m
+          .locator("text=? all keys")
+          .waitFor({ timeout: 3000 })
+          .catch(() => {});
+        const typed = [await gestures(), await keys()].join();
+        const hint = await m.locator("text=? all keys").boundingBox();
+        if (hint) await m.touchscreen.tap(hint.x + 5, hint.y + 5);
+        await m
+          .locator("text=/tap = show/")
+          .waitFor({ timeout: 3000 })
+          .catch(() => {});
+        const touched = [await gestures(), await keys()].join();
+        check(
+          seeded === "1,0" && typed === "0,1" && touched === "1,0",
+          `${tag} hints follow the last input: touch, keyboard, touch (${seeded} → ${typed} → ${touched})`,
+        );
+      }
+      // The list runs under the glass toolbar; it opens with the first word
+      // just below it, not behind it.
+      const barBottom = await m
+        .locator("[data-words-top]")
+        .evaluate((el) => el.getBoundingClientRect().bottom);
       const firstTop = (await mrows.nth(0).boundingBox()).y;
       check(
-        Math.abs(firstTop - listTop) < 50,
-        `${tag} the list opens with the first word at the top (${Math.round(firstTop - listTop)}px)`,
+        firstTop >= barBottom - 2 && firstTop - barBottom < 50,
+        `${tag} the list opens with the first word just under the toolbar (${Math.round(firstTop - barBottom)}px)`,
       );
       // Parity: the face of a slip — the row itself (A) or the scroller's
       // face (B) — carries the same paper, node line, seam and cords.
@@ -660,7 +986,7 @@ try {
         .catch(() => {});
       check(
         ttsAsked.length > 0 && (await m.evaluate(() => window.__played.length)) > playedBefore,
-        `${tag} speech that never starts falls back to server audio (${ttsAsked.join(",")})`,
+        `${tag} speech that never starts falls back to server audio (${ttsAsked.length} clips asked)`,
       );
       // Focus = that slip's cords come loose (no more green bar).
       check(
@@ -787,10 +1113,49 @@ try {
         `${tag} the grade strip sits under the slid row (${under})`,
       );
       await m.waitForTimeout(400);
+      if (variant === "js") {
+        // The reveal: the far detent's grade replaces the first one's in the
+        // same spot (Good → Easy, Hard → Again), and going back restores it.
+        const listTop = (await m.locator('[role="list"]').boundingBox()).y;
+        let b = null;
+        for (let i = 0; !b; i++) {
+          const bi = await mrows.nth(i).boundingBox();
+          if (bi && bi.y > listTop + 200) b = bi;
+        }
+        const [x, y] = [b.x + b.width / 2, b.y + b.height / 2];
+        const shown = () =>
+          m.evaluate(() => {
+            const u = document.querySelector("[data-swipe-underlay]");
+            const side = (slot) =>
+              [...u.querySelectorAll(`[data-reveal-slot="${slot}"] > [data-reveal]`)]
+                .filter((el) => Number(getComputedStyle(el).opacity) > 0.5)
+                .map((el) => el.textContent)
+                .join("+");
+            return `${side("hard")}|${side("good")}`;
+          });
+        await m.mouse.move(x, y);
+        await m.mouse.down();
+        const seen = [];
+        for (const dx of [48, 96, 48, -48, -96, -48]) {
+          await m.mouse.move(x + dx, y, { steps: 10 });
+          await m.waitForTimeout(250);
+          seen.push(await shown());
+        }
+        await m.mouse.move(x, y, { steps: 10 });
+        await m.mouse.up();
+        await m.waitForTimeout(600);
+        check(
+          seen.join(" ") === "Hard|Good Hard|Easy Hard|Good Hard|Good Again|Good Hard|Good",
+          `${tag} a far detent's grade replaces the first one's in place, and back (${seen.join(" ")})`,
+        );
+      }
       if (process.env.QA_SHOTS) {
         // Mid-swipe, held on each level, then back to rest (no grade): a
         // finger held down — a pointer for A, a real touch for B.
-        const listTop = (await m.locator('[role="list"]').boundingBox()).y;
+        // Below the glass toolbar, where the list's own top is now the window's.
+        const listTop = await m
+          .locator("[data-words-top]")
+          .evaluate((el) => el.getBoundingClientRect().bottom);
         let b = null;
         for (let i = 0; !b; i++) {
           const bi = await mrows.nth(i).boundingBox();
@@ -859,9 +1224,243 @@ try {
           `phone: the full screen button works (${fsOn ? "fullscreen" : "hint"})`,
         );
       }
+      const order = await revealOrder(m, variant);
+      check(
+        order === "card → label:3",
+        `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
+      );
       await m.close();
     }
     await phone.close();
+  }
+
+  // iPhone on WebKit, both swipe variants: the page itself never scrolls, and
+  // the list opens with its first word right under the glass toolbar — on
+  // load, on reload, and when the list is shown again (pageshow).
+  {
+    const { webkit, devices } = await import("playwright");
+    const wk = await webkit.launch();
+    const listUrl = page.url();
+    for (const variant of ["js", "native"]) {
+      const tag = `webkit-iphone/${variant}:`;
+      const c = await wk.newContext({
+        ...devices["iPhone 13"],
+        storageState: await ctx.storageState(),
+      });
+      await c.addInitScript(silentAudio);
+      await c.addInitScript((v) => {
+        localStorage.setItem("lk:first-run", "account");
+        localStorage.setItem("lk:swipe-ab", v);
+      }, variant);
+      const w = await c.newPage();
+      w.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
+      const opening = () =>
+        w.evaluate(() => {
+          const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
+          const row = document.querySelector('[role="listitem"]').getBoundingClientRect().top;
+          return {
+            scrollY: Math.round(scrollY),
+            gap: Math.round(row - bar),
+            native: document.querySelectorAll(".slip-native").length > 0,
+          };
+        });
+      for (const when of ["load", "reload"]) {
+        if (when === "load") await w.goto(listUrl, { waitUntil: "networkidle" });
+        else await w.reload({ waitUntil: "networkidle" });
+        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        await w.waitForTimeout(800);
+        const o = await opening();
+        check(
+          o.scrollY === 0 && o.gap >= 0 && o.gap < 4 && o.native === (variant === "native"),
+          `${tag} ${when}: the page doesn't scroll and the first word sits right under the toolbar (${JSON.stringify(o)})`,
+        );
+      }
+      // Experimental "Paper scrolls with the list" (lk:words-paper-scrolls):
+      // off by default — the texture stays fixed on the body and no layer is
+      // mounted; on — a layer inside the list scrolls with the rows and the
+      // body behind it is plain.
+      const paper = () =>
+        w.evaluate(async () => {
+          const list = document.querySelector('[role="list"]');
+          const layer = list.querySelector("[data-paper-layer]");
+          const body = getComputedStyle(document.body).backgroundImage;
+          if (!layer) return { layer: false, bodyPaper: body.includes("url(") };
+          const at = () => Math.round(layer.getBoundingClientRect().top);
+          const before = at();
+          const top0 = list.scrollTop;
+          list.scrollTop = top0 + 200;
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          const moved = before - at();
+          list.scrollTop = top0;
+          const cs = getComputedStyle(layer);
+          return {
+            layer: layer === list.firstElementChild,
+            bodyPaper: body.includes("url("),
+            pointer: cs.pointerEvents,
+            textured: cs.backgroundImage.includes("url("),
+            covers: Math.abs(layer.offsetHeight - list.scrollHeight) <= 1,
+            moved,
+          };
+        });
+      const off = await paper();
+      check(
+        !off.layer && off.bodyPaper,
+        `${tag} paper scrolls off by default: fixed body texture, no layer (${JSON.stringify(off)})`,
+      );
+      await w.evaluate(() => localStorage.setItem("lk:words-paper-scrolls", "1"));
+      await w.reload({ waitUntil: "networkidle" });
+      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+      await w.waitForTimeout(500);
+      const on = await paper();
+      check(
+        on.layer &&
+          !on.bodyPaper &&
+          on.pointer === "none" &&
+          on.textured &&
+          on.covers &&
+          on.moved === 200,
+        `${tag} paper scrolls on: a layer under the rows scrolls with them, the body is plain (${JSON.stringify(on)})`,
+      );
+      await w.evaluate(() => localStorage.removeItem("lk:words-paper-scrolls"));
+      await w.reload({ waitUntil: "networkidle" });
+      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+      await w.waitForTimeout(800);
+      const order = await revealOrder(w, variant);
+      check(
+        order === "card → label:3",
+        `${tag} the grade reveal is behind the slip: card at rest, label slid away (${order})`,
+      );
+      // The owner's iPhone PWA (414×848, a 48px status bar). env(safe-area-*)
+      // can't be emulated, so the body's safe-area padding and the toolbar's
+      // offset stand in for it — that padding once made the page 48px taller
+      // than the window, and iOS left it scrolled by that much.
+      await w.setViewportSize({ width: 414, height: 848 });
+      await w.addInitScript(() =>
+        document.addEventListener("DOMContentLoaded", () => {
+          const st = document.createElement("style");
+          st.textContent = "body{padding-top:48px!important}[data-words-top]{top:104px!important}";
+          document.head.append(st);
+        }),
+      );
+      await w.reload({ waitUntil: "networkidle" });
+      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+      await w.waitForTimeout(800);
+      const layout = () =>
+        w.evaluate(() => {
+          const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
+          const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
+          return {
+            scrollY: Math.round(scrollY),
+            docH: document.documentElement.scrollHeight,
+            innerH: innerHeight,
+            barH: Math.round(bar.height),
+            gap: Math.round(row.top - bar.bottom),
+            sheet: !!document.querySelector("[data-words-settings]"),
+          };
+        });
+      const pageFits = (o) => o.scrollY === 0 && o.docH <= o.innerH;
+      let o = await layout();
+      check(
+        pageFits(o) && o.gap >= 0 && o.gap < 4,
+        `${tag} 414×848 + safe area: the page is exactly the window, first word under the toolbar (${JSON.stringify(o)})`,
+      );
+      const gear = w.getByRole("button", { name: "Settings" });
+      await gear.click();
+      await w.waitForTimeout(400);
+      o = await layout();
+      check(
+        (await w
+          .locator("[data-experimental]")
+          .getByRole("switch", { name: "Paper scrolls with the list" })
+          .count()) === 1,
+        `${tag} Experimental has the "Paper scrolls with the list" switch`,
+      );
+      check(
+        o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,
+        `${tag} settings open in their own sheet: the toolbar stays ≤72px and the list doesn't move (${JSON.stringify(o)})`,
+      );
+      await gear.click();
+      await w.waitForTimeout(400);
+      o = await layout();
+      check(
+        !o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,
+        `${tag} settings closed: the first word is still right under the toolbar (${JSON.stringify(o)})`,
+      );
+      if (variant === "native") {
+        // At rest the face covers the label strip; a completed swipe (the
+        // touch sequence iOS gives: touchstart, pointercancel as the scroller
+        // takes over, a scroll to the Good level, touchend resting there)
+        // grades and glides back to centre.
+        const s = await w.evaluate(async () => {
+          const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
+          const row = [...document.querySelectorAll(".slip-native")].find(
+            (x) => x.getBoundingClientRect().top > bar + 60,
+          );
+          const b = row.getBoundingClientRect();
+          const y = b.top + b.height / 2;
+          const face = (x) => !!document.elementFromPoint(x, y)?.closest(".slip-face");
+          const sc = row.querySelector(".slip-scroller");
+          const a = parseFloat(getComputedStyle(row).getPropertyValue("--a"));
+          const out = {
+            rest: sc.scrollLeft,
+            a,
+            faceAtRest: face(b.left + 20) && face(b.right - 20),
+          };
+          const fire = (type, x) => {
+            const e = new Event(type, { bubbles: true });
+            const t = [{ clientX: x, clientY: y }];
+            Object.defineProperty(e, "touches", { value: type === "touchend" ? [] : t });
+            Object.defineProperty(e, "changedTouches", { value: t });
+            sc.dispatchEvent(e);
+          };
+          fire("touchstart", 100);
+          sc.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+          sc.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true }));
+          sc.scrollTo({ left: a, behavior: "instant" });
+          await new Promise((r) => setTimeout(r, 50));
+          out.slid = sc.scrollLeft;
+          fire("touchend", 100 + a);
+          await new Promise((r) => setTimeout(r, 1500));
+          out.after = sc.scrollLeft;
+          out.faceAfter = face(b.left + 20);
+          out.graded = !!row.querySelector(".slip-face .lk-stamp");
+          return out;
+        });
+        check(
+          s.faceAtRest && s.rest === 2 * s.a,
+          `${tag} at rest the slip's face covers its label strip (${JSON.stringify(s)})`,
+        );
+        check(
+          s.slid === s.a && s.graded && Math.abs(s.after - s.rest) < 1 && s.faceAfter,
+          `${tag} a completed swipe grades and the slip returns to centre (${JSON.stringify(s)})`,
+        );
+      } else {
+        // ?swipe=native: that page load only, never stored — also in an iframe.
+        const sep = listUrl.includes("?") ? "&" : "?";
+        await w.goto(`${listUrl}${sep}swipe=native`, { waitUntil: "networkidle" });
+        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        const forced = await w.evaluate(() => ({
+          native: document.querySelectorAll(".slip-native").length > 0,
+          stored: localStorage.getItem("lk:swipe-ab"),
+        }));
+        await w.setContent(
+          `<iframe src="${listUrl}${sep}swipe=native&embed=1" style="width:414px;height:700px"></iframe>`,
+        );
+        const fr = w.frameLocator("iframe");
+        await fr.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        const framed = await fr.locator(".slip-native").count();
+        await w.goto(listUrl, { waitUntil: "networkidle" });
+        await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
+        const plain = await w.locator(".slip-native").count();
+        check(
+          forced.native && forced.stored === "js" && framed > 0 && plain === 0,
+          `${tag} ?swipe=native applies to that load only (iframe too) and is never stored (${JSON.stringify({ ...forced, framed, plain })})`,
+        );
+      }
+      await w.close();
+      await c.close();
+    }
+    await wk.close();
   }
 
   // /alphabet: same drill over its own catalog; its lists stay off /words.

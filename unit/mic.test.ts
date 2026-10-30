@@ -29,6 +29,16 @@ import {
   scheduleTick,
   TICK_GAIN,
   TICK_MS,
+  HALLUCINATIONS,
+  HALLUCINATION_MAX_MS,
+  HALLUCINATION_MIN_PROB,
+  isHallucination,
+  isHallucinationPhrase,
+  normalizeTranscript,
+  ENDPOINT_MAX,
+  ENDPOINT_MIN,
+  ENDPOINT_MS,
+  endpointThreshold,
 } from "@lianki/debug-chat/mic";
 
 const domErr = (name: string) => Object.assign(new Error(name), { name });
@@ -742,9 +752,9 @@ describe("createMic: hold while the agent speaks", () => {
     expect(h.v.did).toEqual(["start"]);
   });
 
-  it("micStatus shows the agent speaking only while listening", () => {
+  it("micStatus shows the agent speaking only while listening; the user talking over it wins", () => {
     expect(micStatus("listening", 0, true)).toBe("speaking");
-    expect(micStatus("capturing", 0, true)).toBe("speaking");
+    expect(micStatus("capturing", 0, true)).toBe("capturing");
     expect(micStatus("off", 0, true)).toBe("idle");
     expect(micStatus("loading", 0, true)).toBe("loading");
     expect(micStatus("listening", 0, false)).toBe("listening");
@@ -800,5 +810,246 @@ describe("scheduleTick: the voice-send sound", () => {
     ]);
     expect(oscs[0].start).toBe(10);
     expect(oscs[1].start).toBeCloseTo(10.03);
+  });
+});
+
+describe("the Whisper hallucination guard", () => {
+  const PHRASE = "ご視聴ありがとうございました。";
+
+  it("normalizes: NFKC, punctuation, whitespace and case are ignored", () => {
+    expect(normalizeTranscript(" ご視聴、ありがとう ございました。 ")).toBe(
+      "ご視聴ありがとうございました",
+    );
+    expect(isHallucinationPhrase("ご視聴ありがとうございました。")).toBe(true);
+    expect(isHallucinationPhrase("「ご視聴ありがとうございました！」")).toBe(true);
+    // Full-width Latin and punctuation fold under NFKC.
+    expect(isHallucinationPhrase("Ｔｈａｎｋｓ　ｆｏｒ　ｗａｔｃｈｉｎｇ！")).toBe(true);
+    expect(isHallucinationPhrase("thanks for watching...")).toBe(true);
+    expect(isHallucinationPhrase("ご視聴ありがとうございました ご視聴ありがとうございました")).toBe(
+      true,
+    );
+  });
+
+  it("wildcards, and every listed phrase matches itself", () => {
+    expect(isHallucinationPhrase("Subtitles by the Amara.org community")).toBe(true);
+    expect(isHallucinationPhrase("字幕由Amara.org社区提供")).toBe(true);
+    expect(isHallucinationPhrase("请不吝点赞 订阅 转发 打赏支持明镜与点点栏目")).toBe(true);
+    expect(isHallucinationPhrase("Sous-titres réalisés par la communauté d'Amara.org")).toBe(true);
+    expect(isHallucinationPhrase("Ondertiteling door de Amara.org gemeenschap")).toBe(true);
+    for (const h of HALLUCINATIONS)
+      expect(isHallucinationPhrase(h.replaceAll("…", "x"))).toBe(true);
+  });
+
+  it("normal text is not a phrase", () => {
+    expect(isHallucinationPhrase("今日はありがとうございました。")).toBe(false);
+    expect(isHallucinationPhrase("Thanks for watching the kids")).toBe(false);
+    expect(isHallucinationPhrase("おやすみなさい、また明日。")).toBe(false);
+    expect(isHallucinationPhrase("")).toBe(false);
+    expect(isHallucinationPhrase("。")).toBe(false);
+  });
+
+  it("drops the phrase from a short or faint utterance, keeps it from a long clear one", () => {
+    expect(isHallucination(PHRASE, 600, 0.9)).toBe(true);
+    expect(isHallucination(PHRASE, HALLUCINATION_MAX_MS - 1)).toBe(true);
+    expect(isHallucination(PHRASE, 3000, HALLUCINATION_MIN_PROB - 0.1)).toBe(true);
+    expect(isHallucination(PHRASE, 3000, 0.9)).toBe(false);
+    expect(isHallucination(PHRASE, 3000)).toBe(false);
+    expect(isHallucination("こんにちは。", 300, 0.1)).toBe(false);
+  });
+
+  /** One utterance of `sec` seconds of 0.1 s frames at speech probability `prob`, transcribed as `text`. */
+  async function say(text: string, sec: number, prob: number) {
+    const logs: Record<string, unknown>[] = [];
+    const h = harness({ log: (ev) => logs.push(ev) });
+    await h.mic.toggle();
+    h.v.ev().onSpeechStart();
+    for (let i = 0; i < Math.round(sec * 10); i++)
+      h.v.ev().onFrame?.(new Float32Array(RATE / 10), prob);
+    h.v.ev().onSpeechEnd(new Float32Array(Math.round(sec * RATE)));
+    // Partials may have gone out on a long one: the final is the last upload.
+    h.uploads.at(-1)!.resolve(text);
+    await h.tick();
+    return { texts: h.texts, logs };
+  }
+
+  it("createMic: a hallucination in a short segment is dropped and logged", async () => {
+    const r = await say(PHRASE, 0.5, 0.9);
+    expect(r.texts).toEqual([]);
+    expect(r.logs).toEqual([{ ev: "stt-hallucination", text: PHRASE, ms: 500, prob: 0.9 }]);
+  });
+
+  it("createMic: a hallucination in a long but faint segment is dropped", async () => {
+    const r = await say(PHRASE, 3, 0.3);
+    expect(r.texts).toEqual([]);
+    // No frame reached speech: no speech at all.
+    expect(r.logs).toMatchObject([{ ev: "stt-hallucination", ms: 0, prob: 0.3 }]);
+  });
+
+  it("createMic: the same phrase said at length and clearly is kept", async () => {
+    const r = await say(PHRASE, 2, 0.9);
+    expect(r.texts).toEqual([PHRASE]);
+    expect(r.logs).toEqual([]);
+  });
+
+  it("createMic: normal text in a short segment is kept", async () => {
+    const r = await say("はい。", 0.3, 0.9);
+    expect(r.texts).toEqual(["はい。"]);
+    expect(r.logs).toEqual([]);
+  });
+});
+
+/** A local streaming STT driven by the test (local-stt.ts's LocalStt, faked). */
+function fakeStream(connected = true) {
+  const log: string[] = [];
+  let onPartial: ((t: string) => void) | null = null;
+  let frames = 0;
+  let finish: { resolve: (t: string) => void; reject: (e: Error) => void } | null = null;
+  const stt = {
+    warm: () => void log.push("warm"),
+    begin(p: (t: string) => void) {
+      if (!connected) return null;
+      log.push("begin");
+      onPartial = p;
+      frames = 0;
+      return {
+        frame: () => void frames++,
+        end: (audio: Float32Array) => {
+          log.push(`end ${audio.length}`);
+          return new Promise<{
+            text: string;
+            model: string;
+            ms: number;
+            endToFinalMs: number;
+          }>((resolve, reject) => {
+            finish = {
+              resolve: (text) => resolve({ text, model: "local:x", ms: 5, endToFinalMs: 9 }),
+              reject,
+            };
+          });
+        },
+        cancel: () => void log.push("cancel"),
+      };
+    },
+  };
+  return {
+    stt,
+    log,
+    frames: () => frames,
+    partial: (t: string) => onPartial?.(t),
+    finish: () => finish as NonNullable<typeof finish>,
+  };
+}
+
+describe("createMic: streaming to the local STT", () => {
+  it("streams frames instead of chunk partials; its partials show; its final rides on the upload", async () => {
+    const s = fakeStream();
+    const h = harness({ stream: () => s.stt });
+    await h.mic.toggle();
+    expect(s.log).toEqual(["warm"]);
+    h.v.ev().onSpeechStart();
+    h.speak(6);
+    expect(s.frames()).toBe(60);
+    expect(h.uploads).toEqual([]); // no rolling chunk partials
+    s.partial("这个麦克");
+    expect(h.pending.at(-1)).toEqual([1, "这个麦克"]);
+    s.partial("这个麦克风");
+    expect(h.pending.at(-1)).toEqual([1, "这个麦克风"]);
+    h.v.ev().onSpeechEnd(new Float32Array(RATE * 6));
+    expect(s.log.at(-1)).toBe(`end ${RATE * 6}`);
+    expect(h.uploads[0]).toMatchObject({ seq: 0, partial: false, durationMs: 6000 });
+    s.finish().resolve("这个麦克风。");
+    expect(await h.uploads[0].local).toMatchObject({ text: "这个麦克风。", model: "local:x" });
+    h.uploads[0].resolve("这个麦克风。");
+    await h.tick();
+    expect(h.texts).toEqual(["这个麦克风。"]);
+  });
+
+  it("not connected: the old path (chunk partials, no local final)", async () => {
+    const s = fakeStream(false);
+    const h = harness({ stream: () => s.stt });
+    await h.mic.toggle();
+    h.v.ev().onSpeechStart();
+    h.speak(3);
+    expect(h.uploads[0]).toMatchObject({ partial: true });
+    h.v.ev().onSpeechEnd(new Float32Array(RATE * 3));
+    expect(h.uploads[1]).toMatchObject({ partial: false, local: undefined });
+  });
+
+  it("a misfire or a hold cancels the streamed utterance; its late partials are ignored", async () => {
+    const s = fakeStream();
+    const h = harness({ stream: () => s.stt });
+    await h.mic.toggle();
+    h.v.ev().onSpeechStart();
+    h.v.ev().onMisfire();
+    expect(s.log).toEqual(["warm", "begin", "cancel"]);
+    h.v.ev().onSpeechStart();
+    h.speak(1);
+    h.mic.hold(true);
+    expect(s.log.at(-1)).toBe("cancel");
+    s.partial("late");
+    expect(h.pending.some(([, t]) => t.includes("late"))).toBe(false);
+    h.v.ev().onSpeechEnd(new Float32Array(160)); // handed over while held: dropped
+    expect(h.uploads).toEqual([]);
+  });
+
+  it("a rejected local final reaches upload as a rejection, never unhandled", async () => {
+    const s = fakeStream();
+    const h = harness({ stream: () => s.stt });
+    await h.mic.toggle();
+    h.v.ev().onSpeechStart();
+    h.v.ev().onSpeechEnd(new Float32Array(160));
+    s.finish().reject(new Error("local stt closed"));
+    await expect(h.uploads[0].local as Promise<unknown>).rejects.toThrow("closed");
+  });
+});
+
+describe("createMic: our own end of speech while streaming", () => {
+  const frames = (h: ReturnType<typeof harness>, sec: number, prob: number) => {
+    for (let i = 0; i < Math.round(sec * 10); i++)
+      h.v.ev().onFrame?.(new Float32Array(RATE / 10), prob);
+  };
+
+  it("the threshold follows the noise floor, within its bounds", () => {
+    expect(endpointThreshold(0)).toBe(ENDPOINT_MIN);
+    expect(endpointThreshold(0.3)).toBeCloseTo(0.55);
+    expect(endpointThreshold(0.9)).toBe(ENDPOINT_MAX);
+  });
+
+  it("flushes after ENDPOINT_MS under the threshold, once speech was heard", async () => {
+    const s = fakeStream();
+    const logs: Record<string, unknown>[] = [];
+    const h = harness({ stream: () => s.stt, log: (e) => logs.push(e) });
+    await h.mic.toggle();
+    h.v.ev().onSpeechStart();
+    frames(h, 0.5, 0.2); // under the threshold, but nothing said yet
+    expect(h.v.did).not.toContain("flush");
+    frames(h, 1, 0.9);
+    frames(h, ENDPOINT_MS / 1000 - 0.1, 0.1);
+    expect(h.v.did).not.toContain("flush");
+    frames(h, 0.1, 0.1);
+    expect(h.v.did.filter((x) => x === "flush")).toHaveLength(1);
+    expect(logs.at(-1)).toMatchObject({ ev: "stt-endpoint" });
+    frames(h, 1, 0.1); // once per utterance
+    expect(h.v.did.filter((x) => x === "flush")).toHaveLength(1);
+  });
+
+  it("a noisy floor raises the bar: steady noise does not hold speech open", async () => {
+    const s = fakeStream();
+    const h = harness({ stream: () => s.stt });
+    await h.mic.toggle();
+    frames(h, 5, 0.45); // listening: the floor settles near 0.45
+    h.v.ev().onSpeechStart();
+    frames(h, 1, 0.95);
+    frames(h, ENDPOINT_MS / 1000, 0.5); // over 0.35, but under floor + margin
+    expect(h.v.did).toContain("flush");
+  });
+
+  it("not streaming: vad-web decides, as before", async () => {
+    const h = harness();
+    await h.mic.toggle();
+    h.v.ev().onSpeechStart();
+    frames(h, 1, 0.9);
+    frames(h, 2, 0.05);
+    expect(h.v.did).not.toContain("flush");
   });
 });

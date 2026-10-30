@@ -1,0 +1,288 @@
+# Local streaming speech-to-text
+
+The owner's mic can transcribe on his own Mac instead of Workers AI: while he
+speaks, the frames stream there and partial text comes back as he talks; the
+final text lands the moment the VAD ends the utterance. It is owner-only,
+behind a localStorage flag, and any failure falls back to `/api/debug/stt`
+(docs/workers-ai.md, "Speech to text") exactly as before.
+
+```
+phone (lianki.com, debug chat mic)
+  Silero VAD ─ frames (16 kHz int16, 32 ms) ─▶ wss://<mac>.ts.net/lianki-stt  (tailscale serve, tailnet only)
+            ◀─ {partial} every 0.4 s of audio ─  scripts/local-stt/server.py
+            ─ pre-pad + {end} ─▶                   SenseVoice-Small (sherpa-onnx, CPU)
+            ◀─ {final} ~50–190 ms later ─
+  on any failure: POST /api/debug/stt (unchanged)
+```
+
+## Turn it on
+
+On the Mac (once):
+
+```bash
+uv venv -p 3.12 ~/.cache/lianki-stt/venv
+VIRTUAL_ENV=~/.cache/lianki-stt/venv uv pip install sherpa-onnx soundfile numpy opencc-python-reimplemented websockets mlx-whisper
+mkdir -p ~/.cache/lianki-stt/models && cd ~/.cache/lianki-stt/models
+curl -LO https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2
+tar xjf sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2
+```
+
+Run the server (it maps itself into the tailnet and removes the mapping on exit):
+
+```bash
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/server.py --port 5193 --tailnet /lianki-stt
+```
+
+To keep it running after a session (or after a reboot), from a checkout of
+`main` (any worktree), in two terminals or as background jobs:
+
+```bash
+# the STT server: tailnet path /lianki-stt (production lianki.com pages use only this)
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/server.py \
+  --port 5193 --tailnet /lianki-stt --origin https://<mac>.ts.net \
+  >> ~/.cache/lianki-stt/logs/server.log 2>&1
+# only to preview widget changes before they ship (docs/dev-debug-widget.md):
+bun scripts/dev/debug-widget-server.ts --port 5194 --tailnet /lianki-widget-stt
+```
+
+To keep the STT server up across logouts, crashes and reboots, run it under
+the Mac's process supervisor, oxmgr (not set up yet; the owner decides).
+From the main checkout, so it serves what is on `main`:
+
+```bash
+cd ~/ws/snolab/lianki/tree/main
+oxmgr start --name lianki-stt --restart always \
+  --cwd "$PWD" \
+  --health-cmd "curl -fsS http://127.0.0.1:5193/health" --health-interval 60 \
+  "$HOME/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/server.py --port 5193 --tailnet /lianki-stt --origin https://<mac>.ts.net"
+oxmgr startup --system launchd   # prints the launchd step that starts the oxmgr daemon at login
+oxmgr logs lianki-stt            # connections, finals (length and decode ms, never text), refused handshakes
+oxmgr restart lianki-stt         # after pulling a change to scripts/local-stt
+```
+
+`--tailnet` maps `/lianki-stt` with `tailscale serve --bg` on start. The
+mapping survives a restart, so a crash loop never leaves the page pointing
+nowhere for long; the dot just turns grey and the mic uses the cloud
+meanwhile. To take it down for good: `oxmgr delete lianki-stt` and
+`tailscale serve --set-path /lianki-stt off`.
+
+`--origin` adds the tailnet origin for the widget harness; lianki.com is
+always allowed. Once this is on main, production pages need only the STT
+server and the flag below: the widget code ships with the app. If the server
+is not running, the dot is grey and the mic uses the cloud as before.
+
+On the owner's page:
+
+```js
+localStorage.setItem("lk:agent-local-stt", "wss://<mac>.ts.net/lianki-stt");
+location.reload();
+// off again: localStorage.removeItem("lk:agent-local-stt"); localStorage.removeItem("lk:debug-local-stt")
+```
+
+It is read with `getKey` (storage-keys.ts): `lk:agent-local-stt` first, then
+the legacy `lk:debug-local-stt`. A stale value under the new name wins over a
+fresh one under the old, which is how the first preview loaded the wrong
+widget (`lk:agent-widget-src` held the old URL); set the `lk:agent-*` name.
+
+While the mic is on, a dot at the button's top corner says where speech goes:
+green, the local model (`ready`); amber and pulsing, connecting; grey, not
+reachable, so the cloud route (strings in zh/ja/en, `localSttStrings` in
+`ui-strings.ts`). It is the socket's state (`LocalStt.state()`, via the mic
+session's `view.local`).
+
+The flag is read only on owner pages (`friend ? undefined : …` in
+`DebugChat.tsx`, as for the clip sink), and only a `wss:` URL, or `ws:` on
+localhost, is taken (`localSttFrom`). The server accepts only lianki.com (and
+localhost) origins, and is reachable only from the tailnet.
+
+## Which engine, and why
+
+Measured on 2026-10-30 on the M5 Max, with the owner's 12 saved clips
+(`~/lianki-voice-clips`, 16 kHz WAV from the iPhone; 10 zh, 2 en). Workers
+AI's column is the transcript it gave at the time (turbo, no `?hint=`).
+Times are whole-clip decode, cold (the first decode after loading) / warm
+(best of 3); RTF = warm decode ÷ audio length.
+
+| clip   | s    | Workers AI (today)                                                                                                                                                | sensevoice                                                                                                                                                                                                | mlx-whisper                                                                                                                                                                                                                                                         |
+| ------ | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 273Z-0 | 14.0 | 內容有腰丸、麥克風、緊湊消息區、聚焦彩朗讀、代碼都集中到移動目錄。預計半個Agent 小時上線。授權丟失的問題我也在確認是否已包含。                                    | 内容有药丸麦克风紧凑消息区聚焦才朗读代码都集中到移动目录，预计半个agent小时上线，授权丢失的问题，我也在确认是否已包含。 <br>`zh` 137/122 ms, RTF 0.009                                                    | 内容有腰丸、麦克风、紧凑消息区、聚焦采朗读、代码都集中到移动目录。预计半个Agent小时上线。授权丢失的问题我也在确认是否已包含。 <br>`zh` 1190/320 ms, RTF 0.023                                                                                                       |
+| 646Z-1 | 6.6  | 表天授權已修好,切應用不再重溫,你還看到的體驗。                                                                                                                    | 表天授权已修好，且应用不再重问。你还看到的。 <br>`zh` 69/63 ms, RTF 0.010                                                                                                                                 | 表天授权已修好,切应用不再重温。你还看到的挺。 <br>`zh` 231/229 ms, RTF 0.035                                                                                                                                                                                        |
+| 945Z-2 | 5.5  | 現在用的原模型是哪個?                                                                                                                                             | 现在用的云模型是哪个？ <br>`zh` 52/51 ms, RTF 0.009                                                                                                                                                       | 现在用的原模型是哪个? <br>`zh` 206/203 ms, RTF 0.037                                                                                                                                                                                                                |
+| 062Z-3 | 13.2 | 現在用的語音識別模型是哪個?                                                                                                                                       | 现在用的语音识别模型是哪个。 <br>`zh` 112/111 ms, RTF 0.008                                                                                                                                               | 现在用的语音识别模型是哪个? <br>`zh` 215/212 ms, RTF 0.016                                                                                                                                                                                                          |
+| 722Z-4 | 4.9  | 他是內置知識多語言的嗎?                                                                                                                                           | 它是内置支持多语言的吗？ <br>`zh` 52/50 ms, RTF 0.010                                                                                                                                                     | 他是内置知识多语言的吗? <br>`zh` 210/209 ms, RTF 0.043                                                                                                                                                                                                              |
+| 347Z-5 | 21.2 | 語音識別模型是Whisper Large V3 Turbo 跑在Cloud Player上自動識別語言是Whisper本身就是多語言模型支持約100種語言會自動判斷說的是哪種中日音都測過沒問題一句話裡中途壞 | 语音识别模型是whisper largege recent tubo，好在pug flare上自动识别语言是whisper本身就是多语言模型支持约100种语言会自动判断说的是哪种。中日英都测过没问题。一句话里中途会。 <br>`zh` 196/187 ms, RTF 0.009 | 语音识别模型是Whisper Large V3 Turbo, 跑在Cloud Player上,自动识别语言。是,Whisper本身就是多语言模型,支持约100种语言,会自动判断说的是哪种。中日音都测过,没问题。一句话里中途坏。 <br>`zh` 351/332 ms, RTF 0.016                                                      |
+| 446Z-6 | 12.6 | 這個麥克風按鈕應該也要遵循自動加標點並且自動上屏的原則。                                                                                                          | 这个麦克风按钮应该也要遵循自动加标点，并且自动上屏的原则。 <br>`zh` 109/107 ms, RTF 0.009                                                                                                                 | 这个麦克风按钮应该也要遵循自动加标点并且自动上屏的原则。 <br>`zh` 246/244 ms, RTF 0.019                                                                                                                                                                             |
+| 379Z-7 | 3.5  | シェイカーマイカフォン。                                                                                                                                          | 切个麦克风。 <br>`zh` 38/36 ms, RTF 0.011                                                                                                                                                                 | então割 icon nothing Lightful Watch your coffee con card for game name it's over like aliction we need you La never mind lock on my coffee with each other York City Put it on my coffee with each other Take your microphone. ×20 <br>`is` 2464/2410 ms, RTF 0.691 |
+| 230Z-8 | 9.7  | 銀外、麦克風也要自動加標點,並自動上屏。我保證識別結果一定帶標點,沒帶的話不。                                                                                      | 赢外麦克风也要自动加标点并自动上屏。我保证识别结果一定带标点，没带的话不。 <br>`zh` 98/92 ms, RTF 0.010                                                                                                   | 银货﹑麦克风也要自动加标点,并自动上屏。我保证识别结果一定带标点,没带的话不。 <br>`zh` 262/258 ms, RTF 0.027                                                                                                                                                         |
+| 649Z-9 | 6.3  | 他現在還在瘋狂的問我要授權。                                                                                                                                      | 他现在还在疯狂的问我要授权。 <br>`zh` 63/62 ms, RTF 0.010                                                                                                                                                 | 他现在还在疯狂的问我要授权。 <br>`zh` 219/219 ms, RTF 0.035                                                                                                                                                                                                         |
+| 97Z-10 | 9.9  | 这个什么时候呢我先停掉不必要的带马连接别再谈授权需兽权的修复我提到最优秀                                                                                          | 这个什么时候能修接授权授权的修复我提到最优。 <br>`zh` 93/93 ms, RTF 0.009                                                                                                                                 | 这个什么时候呢Ｂ。 <br>`zh` 209/212 ms, RTF 0.021                                                                                                                                                                                                                   |
+| 43Z-11 | 3.1  | How's the name?                                                                                                                                                   | Hose name. <br>`en` 37/35 ms, RTF 0.011                                                                                                                                                                   | 竹 Garne <br>`en` 790/795 ms, RTF 0.256                                                                                                                                                                                                                             |
+
+- **sensevoice**: load 430 ms; warm mean 84 ms, max 187 ms; mean RTF 0.010
+- **mlx-whisper**: load 793 ms; warm mean 470 ms, max 2410 ms; mean RTF 0.102
+
+**SenseVoice-Small** is the engine:
+
+- **Streaming.** It is non-autoregressive: a decode costs ~9 ms per second of
+  audio on the CPU (RTF ≈ 0.009), so re-decoding the whole utterance every
+  0.4 s is cheap even at 30 s. That gives true growing partials with no
+  chunk seams: the final is the same decode over the whole utterance, so
+  streaming costs no accuracy. Whisper is autoregressive (~200–330 ms per
+  decode on MLX, whatever the length, and seconds when it hallucinates), so it
+  would need 2–3 s windows and the overlap merge the route path uses.
+- **Simplified Chinese with punctuation**, always (`use_itn`; OpenCC t2s for
+  zh/yue). Workers AI turbo gave traditional on 9 of 10 zh clips.
+- **No hallucinations on short clips.** On the 3.5 s clip Workers AI heard
+  「シェイカーマイカフォン。」 and mlx-whisper a paragraph of mixed-language
+  nonsense; SenseVoice heard 「切个麦克风。」 (said: 这个麦克风). On the 3 s English clip
+  mlx-whisper also invented a sentence.
+- **Where Whisper is better**: English terms inside Chinese (「Whisper Large V3
+  Turbo」 vs SenseVoice's 「whisper largege recent tubo」), and the long
+  clip's sentence punctuation; and on clip 10, a mumbled one, SenseVoice
+  dropped a phrase (「我先停掉不必要的…连接别再谈」) that Workers AI's fallback
+  Whisper kept. English: the 3 s clip is only right on Workers AI ("How's
+  the name?" vs "Hose name."). The A/B is on 12 clips; more of the owner's
+  clips (the sink keeps collecting) will tell whether these matter. Engines
+  are swappable (`--engine mlx-whisper`), and the protocol does not change.
+
+Other candidates not taken: the 2025-09-09 SenseVoice int8 export (no
+punctuation, detected every clip as Cantonese); sherpa-onnx's streaming
+Paraformer (zh/en only — no Japanese).
+
+## Latency
+
+Streaming the clips at real-time pace over the tailnet (`stream-clip.ts`;
+Mac to itself through `tailscale serve`, so no radio hop):
+
+| clip   | s    | partials | first partial | end → final |
+| ------ | ---- | -------- | ------------- | ----------- |
+| 273Z-0 | 14.0 | 29       | 438 ms        | 127 ms      |
+| 646Z-1 | 6.6  | 11       | 413 ms        | 68 ms       |
+| 945Z-2 | 5.5  | 10       | 422 ms        | 59 ms       |
+| 062Z-3 | 13.2 | 18       | 439 ms        | 116 ms      |
+| 722Z-4 | 4.9  | 8        | 421 ms        | 51 ms       |
+| 347Z-5 | 21.2 | 42       | 429 ms        | 187 ms      |
+| 446Z-6 | 12.6 | 23       | 423 ms        | 112 ms      |
+| 379Z-7 | 3.5  | 5        | 441 ms        | 44 ms       |
+| 230Z-8 | 9.7  | 21       | 432 ms        | 120 ms      |
+| 649Z-9 | 6.3  | 10       | 420 ms        | 67 ms       |
+| 97Z-10 | 9.9  | 22       | 438 ms        | 95 ms       |
+| 43Z-11 | 3.1  | 4        | 429 ms        | 45 ms       |
+
+- **First partial ~0.42–0.44 s** after the first frame (0.3 s of audio, then
+  the 0.4 s step), whatever the length.
+- **End → final 44–187 ms**, growing ~9 ms per second of speech. The route
+  path today is an upload of the whole WAV plus Workers AI turbo, the
+  documented example being 812 ms, before any network from the phone.
+- Not counted in either: the VAD's own hangover. vad-web 0.0.30 ends an
+  utterance after `redemptionMs` 1400 ms of silence (not overridden in
+  `MicButton.tsx`), the energy fallback after 700 ms. On the route path that
+  stays. **While streaming, the mic ends the utterance itself**: after
+  `ENDPOINT_MS` (600 ms) of Silero probability under a threshold, it calls
+  the VAD's `flush()`, which hands over the audio at once (`mic.ts`,
+  `endpointThreshold`; devLog `stt-endpoint {floor}`). That is ~0.8 s off
+  every utterance, the largest single cut. Partials are already on screen, so
+  a slightly early end costs little; speech that resumes starts a new
+  utterance, joined in order.
+- The threshold adapts to noise: the floor is an EMA (`FLOOR_ALPHA` 0.05 per
+  32 ms frame, ~1 s) of Silero's probability between utterances, and the
+  threshold is floor + 0.25, kept within 0.35–0.8. In a quiet room it is
+  0.35; with steady noise holding the probability around 0.45, it rises to
+  0.7, so the noise does not hold an utterance open. Speech start is still
+  vad-web's own (0.5); noise that starts an utterance gives a short or empty
+  final, which the hallucination guard and the empty-text rule drop.
+
+First real use on the owner's iPhone (2026-10-30, tailnet over his network):
+three finals local, decode 35–109 ms on the Mac, no fallback.
+「我们现在用的是流失传输吗？」 (流式 → 流失, a homophone) is left to the
+polish-edit (#313), which sees local finals exactly like route ones: they
+come through the same `upload()` → `onText` path. On his two clips from that
+morning SenseVoice heard 「开思考模式」 where Workers AI wrote 「開十四巢模式」.
+
+The phone's own numbers (radio, tailnet relay) come from the devLog:
+`local-stt-final {decodeMs, endToFinalMs, firstPartialMs, durationMs}` per
+utterance, `local-stt-fallback {error}` when it fell back. They need the owner
+talking into the phone; they are not measured here.
+
+## Protocol
+
+One socket per page; utterances one after another (`server.py` docstring):
+
+| from   | message                                                   | meaning                                         |
+| ------ | --------------------------------------------------------- | ----------------------------------------------- |
+| client | `{"t":"begin","id":N}`                                    | a new utterance                                 |
+| client | binary `0x01` + int16le PCM                               | frames of the current one, as heard             |
+| client | binary `0x02` + int16le PCM                               | the VAD's pre-pad: audio before the first frame |
+| client | `{"t":"end","id":N}`                                      | decode it now                                   |
+| client | `{"t":"cancel","id":N}`                                   | drop it (misfire, the agent speaking)           |
+| server | `{"t":"ready","engine","model"}`                          | on connect                                      |
+| server | `{"t":"partial","id","text","audioMs"}`                   | every 0.4 s of new audio, when the text changed |
+| server | `{"t":"final","id","text","lang","model","ms","audioMs"}` | the whole utterance decoded                     |
+| server | `{"t":"error","id","error"}`                              | then the page falls back                        |
+
+`GET /health` on the same port answers `{ok, engine, model}`.
+
+## Fallback
+
+`createLocalStt` (`packages/debug-chat/src/local-stt.ts`) opens the socket
+when the mic turns on, and again on the next utterance after it drops; there
+is no polling. An utterance streams only when the socket is open and the
+server said `ready`; otherwise it takes the old path whole (chunk partials,
+upload). The final is handed to the upload as `info.local`
+(`packages/debug-chat/src/mic.ts`); the upload in `MicButton.tsx` awaits it
+and, on any rejection (socket closed, `error`, no final within 4 s), posts the
+WAV to `/api/debug/stt` instead. The echo guard, the hallucination guard and
+the clip sink see the text exactly as they do a route transcript.
+
+## Noise
+
+The browser's own noise suppression, echo cancellation and auto gain are on
+(`voice-out.ts`). A speech enhancer on the Mac before SenseVoice was tried
+and **is not used**: DeepFilterNet3 (`--enhance dfn3` in `engines.py`,
+~22 ms per audio second with the 16→48→16 kHz resampling) made SenseVoice
+worse in every condition. `bench-noise.py`, on the clips and noisy copies
+made by `noisy.py` (files only, never played: babble = three of the owner's
+other clips mixed in, pink noise), scored as CER against SenseVoice on the
+clean clip:
+
+| audio          | clips | CER raw           | DFN3  | DFN3, 10 dB cap |
+| -------------- | ----- | ----------------- | ----- | --------------- |
+| clean          | 13–14 | 0 (the reference) | 0.102 | 0.017           |
+| pink, 5 dB SNR | 12    | 0.196             | 0.254 | 0.507           |
+| pink, 0 dB     | 12    | 0.368             | 0.480 | 0.591           |
+| babble, 5 dB   | 12    | 0.545             | 0.704 | 0.588           |
+| babble, 0 dB   | 12    | 0.871             | 0.840 | 0.864           |
+
+That matches what is known of enhancement before ASR: the model was trained
+on natural noisy speech, and the enhancer's artifacts hurt it more than the
+noise does. Babble of the owner's own voice is the hardest case there is
+(and not realistic); in a real café the gain from close talking (the phone
+near the mouth) and the noise-adaptive endpoint are the levers. Hold-to-talk
+remains the option if those are not enough.
+
+## WebRTC
+
+Not needed for this. The phone already reaches the Mac over the tailnet, and a
+WebSocket of 16 kHz int16 is 32 KB/s, small next to any uplink. WebRTC would
+add Opus compression (less uplink on a weak radio) and a jitter buffer, at
+the cost of signalling through the push hub, ICE, and a Python peer
+(aiortc). It would help only on a poor connection, where the fallback already
+covers the failure case. Off the tailnet (a friend's device) neither applies:
+this is owner-only.
+
+## Testing
+
+- `unit/local-stt.test.ts`: the client against a fake WebSocket (frames,
+  partials, pre-pad, final timings, drop, timeout, error, cancel).
+- `unit/mic.test.ts`, "streaming to the local STT": the mic streams instead of
+  chunking, shows the partials, hands the final over, cancels on misfire and
+  hold.
+- `unit/local-stt-server.test.ts`: the real server with a saved clip; runs
+  only where the venv, the model and the clips are (skipped in CI).
+- By hand: `bun scripts/local-stt/stream-clip.ts --url ws://127.0.0.1:5193`
+  streams every saved clip at real-time pace and prints partials and timings;
+  `python -I scripts/local-stt/bench.py` is the whole-clip A/B above;
+  `noisy.py <dir>` then `bench-noise.py [--atten 10]` the noise table.
+- `server.py` logs each connection, each final (length and decode time,
+  never the text) and every refused handshake (a wrong Origin) through the
+  `websockets` logger.

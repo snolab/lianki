@@ -1,8 +1,11 @@
 /**
  * The debug chat's wire types and the pure helpers its UI uses. The hub and
- * the sender use them too, through lib/dev-eval.ts (which re-exports them):
- * no imports, so the push Worker can bundle this file.
+ * the sender use them too, through lib/dev-eval.ts (which re-exports them).
+ * Its only import is ./node-path (no imports either), so the push Worker can
+ * bundle this file.
  */
+
+export * from "./node-path";
 
 /** Largest chat message (owner's or agent's), in characters. */
 export const MAX_CHAT = 4000;
@@ -15,9 +18,28 @@ export const MAX_CHAT = 4000;
 export type Scope = "eval" | "chat";
 
 /**
+ * Who wrote a line, as far as the hub knows, for the chat's avatars. Never
+ * the email: `id` is a short hash of the user id (or of the email when there
+ * is no id), so the fallback avatar keeps one colour without exposing it.
+ */
+export type Sender = {
+  /** hashId(user id), the fallback avatar's colour seed. */
+  id?: string;
+  /** Display name, for the avatar's alt text and initial. */
+  name?: string;
+  /**
+   * Picture URLs in fallback order: the app's own avatar, then the sign-in
+   * provider's image. Each that fails to load falls through to the next, and
+   * after the last to the initial in a coloured circle.
+   */
+  avatars?: string[];
+};
+
+/**
  * One line of a chat thread, as the hub stores and sends it. `thread` is
  * "owner" or a friend's user id; `email` is the friend's, on their thread.
- * `label` is the page's path and user agent (or the agent's name).
+ * `label` is the page's path and user agent (or the agent's name). `sender`
+ * (optional; absent on older lines and on the agent's) draws the avatar.
  */
 export type ChatMessage = {
   id: string;
@@ -27,7 +49,169 @@ export type ChatMessage = {
   at: number;
   thread?: string;
   email?: string;
+  sender?: Sender;
+  /**
+   * The state-tree node an agent line comes from ("/words/prefetch"; absent =
+   * the main thread). Shown as a muted subtitle under the agent's avatar.
+   */
+  taskPath?: string;
+  /** The node's assignee that wrote an agent line (≤ MAX_AGENT_ID). */
+  agentId?: string;
+  /**
+   * The node the line is addressed to (absent or "/" = the main thread): the
+   * owner's "@/words › prefetch …", or one agent's line to another node.
+   */
+  to?: string;
+  /**
+   * "stt": the owner's line came from the widget's own mic — an STT final
+   * sent as heard, or sent unchanged. Absent = typed (or dictation edited
+   * before sending). Only such a line may be polished by the agent (`edit`).
+   */
+  source?: MessageSource;
+  /** The STT text as first heard, kept once the agent has polished the line. */
+  raw?: string;
+  /** Set when the agent polished the line: when, by which agent, and how many times. */
+  edited?: EditMark;
+  /**
+   * A voice line's timestamps on the sender's clock (VoiceTiming; the page's
+   * latency record, packages/debug-chat/src/latency.ts). Optional: older pages
+   * send none, and an older hub drops it.
+   */
+  timing?: VoiceTiming;
 };
+
+/** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */
+export type MessageSource = "stt";
+/** An agent's polish of a voice line (ChatMessage.edited). */
+export type EditMark = { at: number; by: string; count: number };
+/** How many times the agent may polish one voice line. */
+export const MAX_EDITS = 3;
+/**
+ * The hub's broadcast after an agent polished a voice line: the pages and
+ * listeners update that line in place (never read aloud again).
+ */
+export type EditedEvent = {
+  type: "edited";
+  id: string;
+  thread: string;
+  text: string;
+  raw: string;
+  edited: EditMark;
+};
+
+/** A message updated by an EditedEvent; any other message is returned as is. */
+export function applyEdit<M extends ChatMessage>(m: M, e: Omit<EditedEvent, "type">): M {
+  if (m.id !== e.id || (m.thread ?? "owner") !== e.thread) return m;
+  return { ...m, text: e.text, raw: e.raw, edited: e.edited };
+}
+
+/**
+ * Longest avatar URL the hub keeps; longer ones are dropped. Google's and
+ * GitHub's are about 100. Bounded because a page's socket attachment (which
+ * holds its Sender) must stay under 2 KB.
+ */
+export const MAX_AVATAR_URL = 300;
+/** Longest display name the hub keeps. */
+export const MAX_SENDER_NAME = 80;
+
+/** A short, stable, non-reversible-enough hash (FNV-1a, 32 bits, base 36). */
+export function hashId(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+/** An avatar URL worth keeping: https only, bounded. */
+export function avatarUrl(raw: unknown): string | undefined {
+  if (typeof raw !== "string" || !raw || raw.length > MAX_AVATAR_URL) return undefined;
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" ? u.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The Sender for a signed-in user: the id seed hashed from the user id (or
+ * the email, lower-cased, when there is no id), never the raw email; the
+ * name cleaned; the pictures that are https URLs, in the order given.
+ */
+export function senderOf(who: {
+  userId?: string;
+  email?: string;
+  name?: string | null;
+  avatars?: readonly (string | null | undefined)[];
+}): Sender {
+  const key = who.userId || who.email?.trim().toLowerCase() || "";
+  const name = (who.name ?? "")
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .trim()
+    .slice(0, MAX_SENDER_NAME);
+  const avatars = (who.avatars ?? []).map(avatarUrl).filter((u): u is string => !!u);
+  return {
+    ...(key ? { id: hashId(key) } : {}),
+    ...(name ? { name } : {}),
+    ...(avatars.length ? { avatars: [...new Set(avatars)].slice(0, 2) } : {}),
+  };
+}
+
+/** The fallback avatar's letter: the name's first character (a whole grapheme), upper-cased. */
+export function initialOf(name: string | undefined): string {
+  const s = (name ?? "").trim();
+  if (!s) return "?";
+  const Seg = (Intl as { Segmenter?: typeof Intl.Segmenter }).Segmenter;
+  const first = Seg
+    ? (new Seg(undefined, { granularity: "grapheme" }).segment(s)[Symbol.iterator]().next().value
+        ?.segment ?? s[0])
+    : Array.from(s)[0];
+  return first.toLocaleUpperCase();
+}
+
+/** Relative luminance (WCAG) of an oklch colour, clamped into sRGB. */
+export function oklchLuminance(l: number, c: number, hDeg: number): number {
+  const h = (hDeg * Math.PI) / 180;
+  const a = c * Math.cos(h);
+  const b = c * Math.sin(h);
+  const l_ = (l + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m_ = (l - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s_ = (l - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  const clamp = (v: number) => Math.min(1, Math.max(0, v));
+  const r = clamp(4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_);
+  const g = clamp(-1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_);
+  const bl = clamp(-0.0041960863 * l_ - 0.7034186147 * m_ + 1.707614701 * s_);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+}
+
+/** WCAG contrast ratio of two relative luminances. */
+export const contrastRatio = (y1: number, y2: number) =>
+  (Math.max(y1, y2) + 0.05) / (Math.min(y1, y2) + 0.05);
+
+/** The fallback avatar's lightness and chroma: oklch(0.7 0.12 <hue>). */
+const AVATAR_L = 0.7;
+const AVATAR_C = 0.12;
+/** The two letter colours tried on it: near-black and white. */
+const INK = [
+  { css: "oklch(0.2 0 0)", y: oklchLuminance(0.2, 0, 0) },
+  { css: "oklch(1 0 0)", y: 1 },
+];
+
+/**
+ * The fallback avatar's colours for a seed (a Sender id, or any stable
+ * string): the hue from a hash, so a person keeps one colour; the letter in
+ * whichever ink contrasts more (at least 4.5:1 for every hue).
+ */
+export function avatarColors(seed: string): { bg: string; fg: string; hue: number } {
+  const hue = parseInt(hashId(`avatar:${seed}`), 36) % 360;
+  const y = oklchLuminance(AVATAR_L, AVATAR_C, hue);
+  const ink = INK.reduce((best, i) =>
+    contrastRatio(i.y, y) > contrastRatio(best.y, y) ? i : best,
+  );
+  return { bg: `oklch(${AVATAR_L} ${AVATAR_C} ${hue})`, fg: ink.css, hue };
+}
 
 /** What the hub tells pages: the pairing waiting for an answer, and the approved sessions. */
 export type PairInfo = {
@@ -57,17 +241,34 @@ export function pickLang(text: string): "ja-JP" | "ko-KR" | "zh-CN" | "en-US" {
 }
 
 /** An installed voice for `lang`: the exact locale first, then the same language. */
-export function pickVoice<V extends { lang: string; default?: boolean }>(
-  voices: readonly V[],
-  lang: string,
-): V | undefined {
+/**
+ * How natural a voice sounds, higher is better. iOS lists its Eloquence
+ * voices (Eddy, Flo, Grandma, …) and the novelty ones (Bahh, Bubbles,
+ * Zarvox, …) first for most languages, and marks every voice `default`, so
+ * "the first voice of the language" sounds robotic or silly there. Prefer
+ * Premium/Enhanced, then the regular named voice (Samantha, Tingting, Kyoko).
+ */
+export function voiceQuality(v: { voiceURI?: string; name?: string; localService?: boolean }): number {
+  const uri = (v.voiceURI ?? "").toLowerCase();
+  if (uri.includes("eloquence") || uri.includes("speech.synthesis.voice.")) return 0;
+  if (uri.includes("premium")) return 4;
+  if (uri.includes("enhanced")) return 3;
+  if (uri.includes("siri")) return 3;
+  return 2;
+}
+
+export function pickVoice<
+  V extends { lang: string; default?: boolean; voiceURI?: string; name?: string },
+>(voices: readonly V[], lang: string): V | undefined {
   const norm = (l: string) => l.replace(/_/g, "-").toLowerCase();
   const want = norm(lang);
   const base = want.split("-")[0];
   const exact = voices.filter((v) => norm(v.lang) === want);
   const same = voices.filter((v) => norm(v.lang).split("-")[0] === base);
   const pool = exact.length ? exact : same;
-  return pool.find((v) => v.default) ?? pool[0];
+  const best = Math.max(-1, ...pool.map(voiceQuality));
+  const top = pool.filter((v) => voiceQuality(v) === best);
+  return top.find((v) => v.default) ?? top[0];
 }
 
 /**
@@ -98,7 +299,7 @@ export function pairSentence(p: Pick<PairInfo, "label" | "scope">, friend: boole
   if (friend) return `${p.label} wants to preview a change on this page for 1 hour.`;
   return p.scope === "chat"
     ? `${p.label} wants to chat with you for 30 days.`
-    : `${p.label} wants to run code on your debug pages for 8 hours.`;
+    : `${p.label} wants to run code on your pages for 8 hours.`;
 }
 
 /** The pairing modal's Allow button, for the pages ticked. */
@@ -106,4 +307,134 @@ export function allowLabel(ticked: number, total: number, selfTicked: boolean): 
   if (total > 1 && ticked === total) return "Authorize all pages";
   if (ticked === 1 && selfTicked) return "Authorize this page";
   return ticked === 1 ? "Authorize 1 page" : `Authorize ${ticked} pages`;
+}
+
+/**
+ * The feature's user-facing name in English. Every English string that names
+ * it reads this one constant (the app's i18n file imports it too). Internally
+ * the feature is still "debug" (docs/dev-debug-widget.md, "Naming").
+ */
+export const AGENT_NAME_EN = "Learning Partner";
+
+/**
+ * The chat's user-facing strings that name the feature. The host passes them
+ * localized (app/components/learning-partner.content.ts); `{name}` is
+ * replaced with `name`. English defaults here, so the widget works alone.
+ */
+export type ChatStrings = {
+  name: string;
+  /** The chat box's aria-label. */
+  chatWith: string;
+  /** Input placeholder and aria-label while the agent is online. */
+  message: string;
+  /** Input placeholder while it is offline. */
+  offline: string;
+  /** After a message sent while offline. */
+  waiting: string;
+  /** Tooltip on `waiting`. */
+  waitingTitle: string;
+  /** The speaker shown before your own lines. */
+  you: string;
+  /** The empty log's hint. */
+  hint: string;
+  /** The connection status (pill tooltip, menu) with the agent listening; `{n}` = listeners. */
+  listening: string;
+  /** The status with no agent listening. */
+  statusOffline: string;
+  /** The mark on a voice line the agent polished (tooltip and label). */
+  polished: string;
+};
+
+export const CHAT_STRINGS_EN: ChatStrings = {
+  name: AGENT_NAME_EN,
+  chatWith: "Chat with your {name}",
+  message: "Message your {name}…",
+  offline: "Your {name} is offline — your message waits for it…",
+  waiting: "· waiting for your {name}",
+  waitingTitle: "Your {name} is offline: this is delivered when it is back",
+  you: "you",
+  hint: "Type here; it is sent 3 s after you stop.",
+  listening: "Your {name} is listening ({n})",
+  statusOffline: "Your {name} is offline · messages wait until it is back",
+  polished: "Polished by your {name}",
+};
+
+/** Defaults filled in and `{name}` substituted. */
+export function chatStrings(s?: Partial<ChatStrings>): ChatStrings {
+  const all = { ...CHAT_STRINGS_EN, ...s };
+  const name = all.name || AGENT_NAME_EN;
+  const out = { ...all };
+  for (const k of Object.keys(out) as (keyof ChatStrings)[]) out[k] = out[k].replaceAll("{name}", name);
+  return out;
+}
+
+/**
+ * The draft after a transcript landed in it, if the whole draft is still
+ * dictation (the draft was empty, or is exactly what dictation left there);
+ * null once anything typed is in it.
+ */
+export function dictatedDraft(prev: string, pure: string | null, next: string): string | null {
+  return !prev.trim() || prev === pure ? next : null;
+}
+
+/**
+ * A line's source as it is sent: "stt" when the draft is exactly what the
+ * mic left there (sent as heard, or unchanged); undefined when anything was
+ * typed or edited in it.
+ */
+export function draftSource(draft: string, pure: string | null): MessageSource | undefined {
+  return pure !== null && draft === pure && !!draft.trim() ? "stt" : undefined;
+}
+
+/**
+ * A voice line's timestamps (Date.now() on the sending page) and the STT
+ * server's own ms, carried on the owner line's envelope so the hub and the
+ * listener can see where an utterance spent its time. Every field is
+ * optional; `t_sent` is always there on a page that sends one.
+ *
+ * t_lastVoice   the last frame the VAD scored as speech (Silero only)
+ * t_speechEnd   the VAD ended the utterance (after its silence timeout)
+ * t_uploadStart the WAV POST to /api/debug/stt began
+ * t_sttDone     its transcript came back
+ * t_shown       the transcript landed in the input (上屏)
+ * t_sent        the line went out on the socket
+ * sttServerMs   the route's own transcription time (SttResult.ms)
+ * audioMs       the utterance's length
+ */
+export type VoiceTiming = {
+  t_lastVoice?: number;
+  t_speechEnd?: number;
+  t_uploadStart?: number;
+  t_sttDone?: number;
+  t_shown?: number;
+  t_sent?: number;
+  sttServerMs?: number;
+  audioMs?: number;
+};
+export const VOICE_TIMING_KEYS = [
+  "t_lastVoice",
+  "t_speechEnd",
+  "t_uploadStart",
+  "t_sttDone",
+  "t_shown",
+  "t_sent",
+  "sttServerMs",
+  "audioMs",
+] as const satisfies readonly (keyof VoiceTiming)[];
+
+/**
+ * A VoiceTiming from the wire, or undefined: only the known keys, each a
+ * finite non-negative number (rounded to whole ms); anything else is dropped.
+ */
+export function cleanTiming(raw: unknown): VoiceTiming | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: VoiceTiming = {};
+  let any = false;
+  for (const k of VOICE_TIMING_KEYS) {
+    const v = (raw as Record<string, unknown>)[k];
+    if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1e14) continue;
+    out[k] = Math.round(v);
+    any = true;
+  }
+  return any ? out : undefined;
 }

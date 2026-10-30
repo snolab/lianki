@@ -68,3 +68,19 @@ The apex is canonical: `middleware.ts` 308s `www` → apex, and session cookies
 bind to the exact hostname the user signed in on. The userscript rewrites an old
 `www` `@downloadURL` to the apex so pre-2.23.18 installs keep working without a
 reinstall.
+
+## Live progress token (`PROGRESS_TOKEN`)
+
+A secret on the **lianki-push** Worker (not the main one): the root token for
+the live state tree ([state-tree.md](state-tree.md), "Live progress"). Agents
+write with it or with a scoped token minted from it
+(`bun scripts/dev/progress.ts grant …`). Set it once:
+
+```bash
+openssl rand -base64 32 | tr -d '\n' | bunx wrangler secret put PROGRESS_TOKEN -c workers/push/wrangler.jsonc
+```
+
+Keep the same value as `PROGRESS_TOKEN=…` in `.dev.vars` (or export
+`LIANKI_PROGRESS_TOKEN`) where the CLI runs. Unset, every write answers 503 and
+the owner's tree shows the hand-edited outline only. Rotating it invalidates
+every scoped token at once.

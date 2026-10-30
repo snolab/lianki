@@ -13,7 +13,7 @@ export function GiftCodesClient() {
   const [error, setError] = useState("");
 
   async function load() {
-    const res = await fetch("/api/gift-codes");
+    const res = await fetch("/api/dev/gift-codes");
     if (res.ok) setCodes(((await res.json()) as { codes: GiftCodeRow[] }).codes);
   }
   useEffect(() => {
@@ -23,7 +23,7 @@ export function GiftCodesClient() {
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    const res = await fetch("/api/gift-codes", {
+    const res = await fetch("/api/dev/gift-codes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

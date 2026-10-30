@@ -13,9 +13,11 @@ import {
   buildHarness,
   buildWidget,
   candidates,
+  harnessCss,
   hostModule,
   sse,
   themeBlock,
+  topBlocks,
 } from "@/scripts/dev/debug-widget-build";
 
 describe("widgetSrc: which URLs the owner's page will import", () => {
@@ -115,6 +117,24 @@ describe("the widget build", () => {
     expect(b.inputs.some((p) => p.endsWith("packages/debug-chat/src/DebugChat.tsx"))).toBe(true);
     expect((await buildWidget()).rev).toBe(b.rev);
   }, 30_000);
+
+  it("splits a stylesheet into its top-level blocks", () => {
+    const css = "@import 'x';\n/* note */ .a { b: c }\n@media (x) { .d { e: f } }";
+    expect(topBlocks(css)).toEqual([
+      [".a", ".a { b: c }"],
+      ["@media (x)", "@media (x) { .d { e: f } }"],
+    ]);
+  });
+
+  it("gives /harness the app's colours, halo, tap area and send bar", () => {
+    const css = harnessCss();
+    expect(css).toContain("@layer base");
+    expect(css).toContain("--background:");
+    expect(css).toContain("prefers-color-scheme: dark");
+    for (const sel of [".lk-halo", ".tap-40::before", ".lk-drain", "@keyframes lk-drain"])
+      expect(css).toContain(sel);
+    expect(css).not.toContain("--glass");
+  });
 
   it("bundles the local harness page", async () => {
     expect(await buildHarness()).toContain("createRoot");

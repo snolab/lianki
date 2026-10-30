@@ -1,13 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getKey } from "@lianki/debug-chat/storage-keys";
 
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev";
 
-/** Debug turned on for this device (seven taps on /words' stats line, or ?debug=1). */
+/** Debug turned on for this device (seven taps on /words' stats line, or ?debug=1 / ?agent=1). */
 function debugDevice(): boolean {
+  return getKey("lk:debug") === "1";
+}
+/** True the first time this tab is told about `build`; later calls say false. */
+function reloadOnceFor(build: string): boolean {
   try {
-    return localStorage.getItem("lk:debug") === "1";
+    if (sessionStorage.getItem("lk:reloaded-for") === build) return false;
+    sessionStorage.setItem("lk:reloaded-for", build);
+    return true;
   } catch {
     return false;
   }
@@ -60,8 +67,11 @@ export function NewVersionNotice() {
         done = true;
         disconnect();
         // The owner's debug devices pick up a deploy by themselves — so a fix can
-        // be tried on the phone without anyone tapping Refresh.
-        if (debugDevice()) return void setTimeout(() => location.reload(), 1500);
+        // be tried on the phone without anyone tapping Refresh. Once per build:
+        // if the reload still serves the old one (the push beat the rollout),
+        // fall back to the button instead of reloading every 1.5 s forever.
+        if (debugDevice() && reloadOnceFor(build))
+          return void setTimeout(() => location.reload(), 1500);
         setStale(true);
       };
       // Dropped by the network (or never opened): reopen on that event if

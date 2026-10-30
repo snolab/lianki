@@ -13,7 +13,7 @@ import {
   workersAiTranscribe,
   WORKERS_AI_NOT_CONFIGURED,
 } from "../lib/workers-ai";
-import { STT_PROMPT } from "../lib/stt";
+import { STT_PROMPT, sttPrompt } from "../lib/stt";
 
 const ENV_KEYS = [
   "CLOUDFLARE_ACCOUNT_ID",
@@ -285,6 +285,8 @@ describe("workersAiTranscribe", () => {
       audio: "AQID",
       task: "transcribe",
       vad_filter: true,
+      condition_on_previous_text: false,
+      no_speech_threshold: 0.5,
       language: "ja",
     });
     calls.length = 0;
@@ -298,8 +300,21 @@ describe("workersAiTranscribe", () => {
       audio: "AQID",
       task: "transcribe",
       vad_filter: true,
+      condition_on_previous_text: false,
+      no_speech_threshold: 0.5,
       initial_prompt: STT_PROMPT,
     });
+    // A hint (no language) only picks the prompt: Whisper still detects.
+    calls.length = 0;
+    await workersAiTranscribe({
+      audio,
+      mime: "audio/webm",
+      model: "@cf/openai/whisper-large-v3-turbo",
+      hint: "zh",
+    });
+    const hinted = JSON.parse(String(calls[0].init.body));
+    expect(hinted.initial_prompt).toBe(sttPrompt("zh"));
+    expect(hinted.language).toBeUndefined();
     answer(200, JSON.stringify({ result: { text: "hi" } }));
     expect(
       await workersAiTranscribe({ audio, mime: "audio/webm", model: "@cf/openai/whisper" }),

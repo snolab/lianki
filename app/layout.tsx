@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { IntlayerServerProvider } from "next-intlayer/server";
+import { getIntlayer } from "intlayer";
 import { cookies, headers } from "next/headers";
 import { ServiceWorkerRegistration } from "./components/ServiceWorkerRegistration";
 import { NewVersionNotice } from "./components/NewVersionNotice";
-import { DebugEval } from "./components/DebugEval";
+import { DebugEval, type PartnerStrings } from "./components/DebugEval";
 import { LOCALE_HEADER, resolveLocale } from "@/lib/app-locale";
 import { LANG_TAGS } from "@/lib/constants";
 
@@ -24,11 +25,18 @@ export const metadata: Metadata = {
 };
 
 /**
- * Seal red (印泥), the brand colour: browser chrome on phones.
+ * The status bar (and the notch around it) takes the page's paper colour, not
+ * the seal red, light and dark alike (--background in globals.css).
  * viewportFit "cover" lets the page run under the notch and home indicator and
  * makes env(safe-area-inset-*) real; fixed bars pad themselves with it.
  */
-export const viewport: Viewport = { themeColor: "#c8102e", viewportFit: "cover" };
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "oklch(0.945 0.02 82)" },
+    { media: "(prefers-color-scheme: dark)", color: "oklch(0.18 0.01 65)" },
+  ],
+  viewportFit: "cover",
+};
 
 async function getRootLocale() {
   const h = await headers();
@@ -47,6 +55,13 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await getRootLocale();
+  // The chat's user-facing name and strings ("Learning Partner"; code: debug).
+  const partner = Object.fromEntries(
+    Object.entries(getIntlayer("learning-partner", locale as never)).map(([k, v]) => [
+      k,
+      String(v),
+    ]),
+  ) as unknown as PartnerStrings;
   return (
     <html lang={LANG_TAGS[locale] ?? locale} suppressHydrationWarning>
       <head>
@@ -70,12 +85,19 @@ export default async function RootLayout({
             __html: `try{var p=localStorage.getItem("lk:paper");if(p)document.documentElement.dataset.paper=p}catch(e){}`,
           }}
         />
+        {/* Embed mode: inside an iframe (an overlay preview) or with ?embed=1, the
+            page shows its content only, on a transparent background. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(self!==top||/[?&]embed=1(&|$)/.test(location.search))document.documentElement.dataset.embed=""}catch(e){document.documentElement.dataset.embed=""}`,
+          }}
+        />
       </head>
       <body>
         <IntlayerServerProvider locale={locale}>
           <ServiceWorkerRegistration />
           <NewVersionNotice />
-          <DebugEval />
+          <DebugEval strings={partner} />
           {children}
         </IntlayerServerProvider>
       </body>

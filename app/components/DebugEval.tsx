@@ -1,18 +1,26 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   type ChatMessage,
   type Heartbeat,
+  type EditedEvent,
   type HubState,
+  applyEdit,
   type PairInfo,
+  type Sender,
+  chunkMessages,
   compile,
   summarize,
   trimHistory,
   busyLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
+import { isKey } from "@lianki/debug-chat/storage-keys";
+import { type ChatStrings, type VoiceTiming, cleanTiming } from "@lianki/debug-chat/wire";
+import { voiceLatency } from "@lianki/debug-chat/latency";
+import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
 import { voice } from "@lianki/debug-chat/voice";
@@ -27,6 +35,8 @@ const IDLE_MS = 30_000;
 const TOAST_MS = 4_000;
 /** Route changes settle this long before the socket's label is updated. */
 const RELABEL_MS = 300;
+/** The agent's avatar in the chat log: Lianki's own logo (public/icon-192.png). */
+const AGENT_AVATAR = "/icon-192.png";
 /** sessionStorage: this tab's page id (docs/monitoring.md, "Remote eval"). */
 const TAB_KEY = "lk:debug-tab";
 
@@ -61,7 +71,10 @@ const pageLabel = () => {
  * Reconnects only on events (the socket closing while still visible, coming
  * back to the page, debug turned on) — no timers that touch the network.
  */
-export function DebugEval() {
+/** The chat's user-facing strings, localized by the root layout (learning-partner.content.ts). */
+export type PartnerStrings = ChatStrings & { unavailable: string };
+
+export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {}) {
   const [live, setLive] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [state, setState] = useState<HubState | null>(null);
@@ -71,6 +84,8 @@ export function DebugEval() {
   /** null on the owner's pages; a friend's chat status otherwise. */
   const [friend, setFriend] = useState<"open" | "blocked" | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  /** Who this page's user is, from the hub on connect: their own lines' avatar. */
+  const [viewer, setViewer] = useState<Sender | undefined>(undefined);
   const sockRef = useRef<WebSocket | null>(null);
   const friendRef = useRef(false);
   /** The owner's page (a state arrived with no friend-status first): may hot-load the widget. */
@@ -117,6 +132,8 @@ export function DebugEval() {
     };
     const show = (e: PageTransitionEvent) => e.persisted && !tabsRef.current && join();
     join();
+    // Voice diagnostics (output route, echo-guard drops, AEC settings) go to /api/dev/log.
+    voice().setLog((ev) => devLog(ev));
     // A tab with the mic on reads replies aloud (hands-free), whichever is focused.
     const unsub = voice().subscribe((s) => tabsRef.current?.mic(s.mic));
     window.addEventListener("focus", focus);
@@ -142,12 +159,21 @@ export function DebugEval() {
 
     const run = async (sock: WebSocket, id: string, to: string, code: string) => {
       clearTimeout(hideToast);
-      setToast(`debug eval ran · ${id}`);
+      setToast(`eval ran · ${id}`);
       hideToast = setTimeout(() => setToast(null), TOAST_MS);
       const t0 = performance.now();
       let result: Record<string, unknown>;
       try {
-        const value = await compile(code)();
+        // `$lk.send(data)` streams a piece too big for the result (a screenshot)
+        // back ahead of it, in chunks (scripts/dev/shot.ts).
+        let part = 0;
+        const value = await compile(code)({
+          send(data) {
+            const n = part++;
+            for (const m of chunkMessages(id, to, n, String(data))) sock.send(JSON.stringify(m));
+            return n;
+          },
+        });
         result = { ok: true, ms: Math.round(performance.now() - t0), value: summarize(value) };
       } catch (e) {
         const err = e instanceof Error ? e : new Error(String(e));
@@ -195,6 +221,7 @@ export function DebugEval() {
           message?: unknown;
           status?: unknown;
           retryIn?: unknown;
+          sender?: unknown;
         };
         try {
           msg = JSON.parse(String(e.data));
@@ -205,6 +232,10 @@ export function DebugEval() {
           friendRef.current = true;
           setFriend(msg.status === "blocked" ? "blocked" : "open");
           if (msg.status === "blocked") setChat(true);
+          return;
+        }
+        if (msg.type === "me") {
+          if (msg.sender && typeof msg.sender === "object") setViewer(msg.sender as Sender);
           return;
         }
         if (msg.type === "page-ended") {
@@ -234,6 +265,7 @@ export function DebugEval() {
             seenAt: Date.now(),
             label: typeof m.label === "string" ? m.label : "agent",
           };
+          voiceLatency().ack();
           reBeat();
           return;
         }
@@ -257,8 +289,19 @@ export function DebugEval() {
             reBeat();
             // Every tab shows it; only one reads it aloud. speakReply queues it
             // (voice.ts): always read while the mic is on, else by the focus rule.
-            if (tabsRef.current?.isSpeaker() ?? true) speakReply(m.text);
-          } else setWarning(null);
+            const spoken = (tabsRef.current?.isSpeaker() ?? true) && speakReply(m.text);
+            voiceLatency().heard(m, spoken === true);
+          } else {
+            setWarning(null);
+            voiceLatency().heard(m);
+          }
+          return;
+        }
+        if (msg.type === "edited") {
+          // The agent polished a voice line: it changes in place, and is never read aloud again.
+          const e = msg as unknown as EditedEvent;
+          if (typeof e.id !== "string" || typeof e.text !== "string") return;
+          setMessages((list) => list.map((m) => applyEdit(m, e)));
           return;
         }
         if (msg.type !== "eval") return;
@@ -309,7 +352,7 @@ export function DebugEval() {
       else if (ws) idle = setTimeout(disconnect, IDLE_MS);
     };
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "lk:debug") update();
+      if (isKey(e.key, "lk:debug")) update();
     };
 
     update();
@@ -378,11 +421,26 @@ export function DebugEval() {
       sockRef.current?.send(JSON.stringify({ type: "end-page", id }));
     } catch {}
   };
-  const sendChat = (text: string) => {
+  /** `to`: the state-tree node the line is addressed to (absent = the main thread). */
+  const sendChat = (text: string, to?: string, opts?: { source?: "stt"; timing?: VoiceTiming }) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return false;
     try {
-      sock.send(JSON.stringify({ type: "chat", id: crypto.randomUUID().slice(0, 12), text }));
+      const id = crypto.randomUUID().slice(0, 12);
+      // A voice line's timestamps ride along (an older hub drops them).
+      const timing = opts?.source === "stt" ? cleanTiming(opts.timing) : undefined;
+      sock.send(
+        JSON.stringify({
+          type: "chat",
+          id,
+          text,
+          ...(to ? { to } : {}),
+          ...(opts?.source === "stt" ? { source: "stt" } : {}),
+          ...(timing ? { timing } : {}),
+        }),
+      );
+      // Its reply is timed against it (latency.ts); main-thread lines only.
+      if (timing && !to) voiceLatency().sent(id, text, timing);
       return true;
     } catch {
       return false;
@@ -392,6 +450,22 @@ export function DebugEval() {
   const pending = state?.pending ?? null;
   const sessions = state?.sessions ?? [];
   const isFriend = friend !== null;
+  // The owner's tree: the bundled outline, with live progress laid over it.
+  const ownerTree = useMemo(
+    () =>
+      typeof window === "undefined"
+        ? undefined
+        : liveTreeSource({
+            base: async () => {
+              const r = await fetch("/api/dev/state-tree", { cache: "no-store" });
+              if (!r.ok) throw new Error(`HTTP ${r.status}`);
+              return r.text();
+            },
+            url: progressSocketUrl(location),
+            repo: "snolab/lianki",
+          }),
+    [],
+  );
   if (!live && !toast && !chat) return null;
   return (
     <>
@@ -407,13 +481,23 @@ export function DebugEval() {
           listeners={state?.listeners ?? sessions.length}
           messages={messages}
           onSend={sendChat}
-          notice={friend === "blocked" ? "Chat is not available for this account." : undefined}
+          nodes={state?.nodes}
+          notice={
+            friend === "blocked"
+              ? (strings?.unavailable ?? "Chat is not available for this account.")
+              : undefined
+          }
           warning={warning ?? undefined}
           sessions={sessions}
           onEnd={(x) => answer("revoke", x)}
           onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
           evalRan={!!toast}
           friend={isFriend}
+          strings={strings}
+          treeSource={owner && !isFriend ? ownerTree : undefined}
+          treeRepo="snolab/lianki"
+          agentAvatar={AGENT_AVATAR}
+          viewer={viewer}
         />
       )}
       {/* A pairing request: a big modal on every open page of its audience. */}

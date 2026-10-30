@@ -72,3 +72,7 @@ test-results/
 .wt-*/
 # rech/Playwright browser snapshots (may contain sensitive page content)
 .playwright-cli-multi-tab/
+.shots/
+
+# Python bytecode (scripts/local-stt, scripts/voice)
+__pycache__/

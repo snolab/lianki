@@ -10,6 +10,7 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import { FirstRunChoice, type FirstRunLabels } from "./FirstRunChoice";
 import { Icon, SealIcon } from "./icons";
 import { useDebugToggle } from "./useDebugToggle";
+import { useIntlayer } from "next-intlayer";
 
 const SIDEBAR_KEY = "lk:sidebar";
 
@@ -40,6 +41,8 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [debug, debugTap] = useDebugToggle(undefined, 10);
+  /** The debug chat's user-facing name ("Learning Partner"), shown while it is on. */
+  const partner = useIntlayer("learning-partner");
 
   // Read the persisted collapse state after mount — reading localStorage during
   // render would desync SSR and hydration.
@@ -155,9 +158,16 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
   );
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Slim topbar */}
-      <header className="flex items-center gap-3 px-4 h-14 border-b border-gray-200 dark:border-gray-800 shrink-0">
+    // --nav-w: the nav's width from the tablet up (0 on a phone, where it is a
+    // drawer). Overlays and content that run under the tablet's glass nav pad
+    // or offset themselves by it.
+    <div
+      className={`min-h-screen flex flex-col [--nav-w:0px] ${
+        collapsed ? "md:[--nav-w:4rem]" : "md:[--nav-w:14rem]"
+      }`}
+    >
+      {/* Slim topbar: glass, above full-screen content such as the /words list. */}
+      <header className="lk-glass lk-glass-bleed-top relative z-30 flex items-center gap-3 px-4 h-14 border-b border-[var(--glass-line)] shrink-0">
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
@@ -234,7 +244,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
                     className="select-none touch-manipulation px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 truncate"
                   >
                     {user.email}
-                    {debug && " · debug"}
+                    {debug && ` · ${partner.name.value}`}
                   </div>
                   <MenuLink href="/list">{labels.dashboard}</MenuLink>
                   <MenuLink href="/profile">{labels.profile}</MenuLink>
@@ -265,9 +275,11 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
       </header>
 
       <div className="flex flex-1 min-h-0">
-        {/* Desktop sidebar */}
+        {/* Sidebar: in flow on a desktop; on a tablet a glass overlay (.lk-nav-overlay)
+            that takes no width — <main> is padded by --nav-w instead. */}
         <aside
-          className={`hidden md:block shrink-0 border-e border-gray-200 dark:border-gray-800 ${
+          data-app-nav
+          className={`lk-nav-overlay hidden md:block shrink-0 border-e border-gray-200 dark:border-gray-800 ${
             collapsed ? "w-16" : "w-56"
           }`}
         >
@@ -295,7 +307,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
           </div>
         )}
 
-        <main className="flex-1 min-w-0">{children}</main>
+        <main className="lk-nav-pad flex-1 min-w-0">{children}</main>
       </div>
 
       {/* Signed-out only: a signed-in visitor answered this by signing in. */}

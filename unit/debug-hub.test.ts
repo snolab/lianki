@@ -15,6 +15,9 @@ import {
   PAGES_IDLE,
   PAGES_IDLE_MS,
   PENDING_MS,
+  type Identity,
+  hashId,
+  MAX_EDITS,
 } from "@/lib/dev-eval";
 
 /** A socket as the hibernation API hands it to the hub, recording what it was sent. */
@@ -145,6 +148,7 @@ function setup() {
     (p.last("state") as { pending: { pair: string } | null }).pending?.pair ?? "";
   return {
     hub,
+    sockets,
     page,
     controller,
     resume,
@@ -195,6 +199,56 @@ describe("DebugHub pairing", () => {
       value: "2",
       page: "/words pwa iPhone",
     });
+  });
+
+  it("a streamed result's chunks reach the controller, ahead of the result", async () => {
+    const { page, controller, msg, pairOf } = setup();
+    const p = page();
+    const c = controller();
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    msg(c, { type: "eval", code: "$lk.send(png)" });
+    const ev = p.last("eval") as { id: string; to: string };
+    const big = "A".repeat(100_000);
+    for (const seq of [0, 1])
+      msg(p, { type: "chunk", id: ev.id, to: ev.to, part: 0, seq, total: 2, data: big });
+    msg(p, { type: "result", id: ev.id, to: ev.to, ok: true, value: "{}" });
+    const got = c.sent.filter((m) => m.type === "chunk" || m.type === "result");
+    expect(got.map((m) => [m.type, m.seq])).toEqual([
+      ["chunk", 0],
+      ["chunk", 1],
+      ["result", undefined],
+    ]);
+    expect(got[0]).toEqual({
+      type: "chunk",
+      id: ev.id,
+      part: 0,
+      seq: 0,
+      total: 2,
+      data: big,
+      page: "/words pwa iPhone",
+    });
+  });
+
+  it("chunks go nowhere for a pairing not yet allowed, or one that lapsed", async () => {
+    const { page, controller, msg, pairOf, tick } = setup();
+    const p = page();
+    const c = controller();
+    const chunk = (to: string) => ({
+      type: "chunk",
+      id: "x",
+      to,
+      part: 0,
+      seq: 0,
+      total: 1,
+      data: "d",
+    });
+    msg(p, chunk(pairOf(p)));
+    expect(c.last("chunk")).toBeUndefined();
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    const ev = (msg(c, { type: "eval", code: "1" }), p.last("eval") as { to: string });
+    tick(EVAL_GRANT_MS + 1);
+    msg(p, chunk(ev.to));
+    expect(c.last("chunk")).toBeUndefined();
   });
 
   it("only pages whose label contains the target get the code", async () => {
@@ -282,7 +336,18 @@ describe("DebugHub pairing", () => {
 });
 
 type Chat = {
-  message: { id: string; from: string; label: string; text: string; at: number; thread?: string };
+  message: {
+    id: string;
+    from: string;
+    label: string;
+    text: string;
+    at: number;
+    thread?: string;
+    sender?: unknown;
+    taskPath?: string;
+    agentId?: string;
+    to?: string;
+  };
 };
 const chats = (ws: FakeSocket) =>
   ws.sent.filter((m) => m.type === "chat").map((m) => (m as unknown as Chat).message);
@@ -1853,5 +1918,526 @@ describe("DebugHub presence: pages-idle and pages-back", () => {
     s.tick(PAGE_GONE_GRACE_MS);
     await s.hub.alarm();
     expect(c.closed).toBe(PAGES_GONE);
+  });
+});
+
+describe("DebugHub avatars (sender on chat lines)", () => {
+  const PIC = "https://example.com/avatar.png";
+  /** A page with a full identity, as index.ts hands it over. */
+  const pageAs = async (s: ReturnType<typeof setup>, who: Identity, label = "/words iPhone") => {
+    const ws = new FakeSocket();
+    s.sockets.push(ws);
+    await s.hub.connectPage(
+      ws,
+      new URL(`https://lianki.com/api/version/debug?label=${encodeURIComponent(label)}`),
+      who,
+    );
+    return ws;
+  };
+
+  it("a friend's page hears who it is, and their lines carry it: hashed id, never the email", async () => {
+    const s = setup();
+    const f = await pageAs(s, {
+      userId: "f1",
+      email: "ada@example.com",
+      owner: false,
+      name: "Ada",
+      image: PIC,
+    });
+    const sender = { id: hashId("f1"), name: "Ada", avatars: [PIC] };
+    expect(f.last("me")).toEqual({ type: "me", sender });
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    expect(chats(f).at(-1)?.sender).toEqual(sender);
+    expect(JSON.stringify(f.last("me"))).not.toContain("ada@example.com");
+  });
+
+  it("the owner's lines carry the owner's sender too", async () => {
+    const s = setup();
+    const o = await pageAs(s, { userId: "o1", email: "o@example.com", owner: true, name: "Owner" });
+    expect(o.last("me")).toEqual({ type: "me", sender: { id: hashId("o1"), name: "Owner" } });
+    await s.msg(o, { type: "chat", id: "a", text: "hi" });
+    expect(chats(o).at(-1)?.sender).toEqual({ id: hashId("o1"), name: "Owner" });
+  });
+
+  it("a picture that is not https is dropped; no identity means no sender (as before)", async () => {
+    const s = setup();
+    const f = await pageAs(s, {
+      userId: "f2",
+      email: "",
+      owner: false,
+      image: "http://example.com/a.png",
+    });
+    expect(f.last("me")).toEqual({ type: "me", sender: { id: hashId("f2") } });
+    const p = s.page();
+    await s.msg(p, { type: "chat", id: "b", text: "hi" });
+    expect(p.last("me")).toBeUndefined();
+    expect(chats(p).at(-1)?.sender).toBeUndefined();
+  });
+
+  it("the page's attachment stays under the 2 KB limit at the bounds", async () => {
+    const s = setup();
+    const f = await pageAs(
+      s,
+      {
+        userId: "f3",
+        email: `${"e".repeat(300)}@example.com`,
+        owner: false,
+        name: "名".repeat(200),
+        image: `https://example.com/${"x".repeat(270)}`,
+      },
+      `/${"p".repeat(400)}`,
+    );
+    const bytes = new TextEncoder().encode(JSON.stringify(f.deserializeAttachment())).length;
+    expect(bytes).toBeLessThan(2048);
+  });
+
+  it("index.ts forwards the name (percent-encoded) and picture, and strips a page's own", async () => {
+    const seen: Headers[] = [];
+    const e: Env = {
+      HUB: { idFromName: () => 0, get: () => ({ fetch: async () => new Response("hub") }) },
+      DEBUG: {
+        idFromName: () => 0,
+        get: () => ({
+          fetch: async (r: Request) => {
+            seen.push(r.headers);
+            return new Response("hub");
+          },
+        }),
+      },
+      MAIN: {
+        fetch: async () =>
+          Response.json({
+            userId: "f1",
+            email: "f@example.com",
+            owner: false,
+            name: "山田 Ada",
+            image: PIC,
+          }),
+      },
+    };
+    const req = (h: Record<string, string>) =>
+      new Request("https://lianki.com/api/version/debug", {
+        headers: { upgrade: "websocket", origin: "https://lianki.com", cookie: "s=1", ...h },
+      });
+    await push.fetch(req({ "x-debug-image": "https://example.com/spoof.png" }), e);
+    expect(decodeURIComponent(seen[0].get("x-debug-name") ?? "")).toBe("山田 Ada");
+    expect(seen[0].get("x-debug-image")).toBe(PIC);
+    // An older main Worker says neither: a page's own headers do not get through.
+    e.MAIN = { fetch: async () => Response.json({ userId: "f1", email: "f@x", owner: false }) };
+    await push.fetch(
+      req({ "x-debug-image": "https://example.com/spoof.png", "x-debug-name": "Spoof" }),
+      e,
+    );
+    expect(seen[1].get("x-debug-image")).toBeNull();
+    expect(seen[1].get("x-debug-name")).toBeNull();
+  });
+
+  it("debugIdentity keeps a name and an https picture, and drops anything else", async () => {
+    const req = new Request("https://lianki.com/api/version/debug", {
+      headers: { origin: "https://lianki.com", cookie: "s=1" },
+    });
+    const main = (body: unknown) => ({ fetch: async () => Response.json(body) });
+    expect(
+      await debugIdentity(
+        req,
+        main({ userId: "u", email: "", owner: false, name: "Ada", image: PIC }),
+      ),
+    ).toEqual({ userId: "u", email: "", owner: false, name: "Ada", image: PIC });
+    expect(
+      await debugIdentity(
+        req,
+        main({ userId: "u", email: "", owner: false, name: 3, image: "javascript:x" }),
+      ),
+    ).toEqual({ userId: "u", email: "", owner: false });
+  });
+
+  it("the hub reads the identity headers (a bad name encoding is ignored)", async () => {
+    const s = setup();
+    const r = (name: string) =>
+      new Request("https://lianki.com/api/version/debug?label=/x", {
+        headers: {
+          "x-debug-user": "f9",
+          "x-debug-email": "",
+          "x-debug-owner": "0",
+          "x-debug-name": name,
+          "x-debug-image": PIC,
+        },
+      });
+    // fetch() makes a WebSocketPair, which only the Workers runtime has: stub one.
+    const g = globalThis as { WebSocketPair?: unknown };
+    const had = g.WebSocketPair;
+    const made: FakeSocket[] = [];
+    g.WebSocketPair = class {
+      0 = new FakeSocket();
+      1 = (() => {
+        const ws = new FakeSocket();
+        made.push(ws);
+        return ws;
+      })();
+    };
+    // A 101 Response is refused outside the Workers runtime; the socket is set up by then.
+    const call = (req: Request) => s.hub.fetch(req).catch(() => null);
+    try {
+      await call(r(encodeURIComponent("Ada")));
+      await call(r("%E0%A4%A"));
+    } finally {
+      g.WebSocketPair = had;
+    }
+    expect(made[0]?.last("me")).toEqual({
+      type: "me",
+      sender: { id: hashId("f9"), name: "Ada", avatars: [PIC] },
+    });
+    expect(made[1]?.last("me")).toEqual({
+      type: "me",
+      sender: { id: hashId("f9"), avatars: [PIC] },
+    });
+  });
+});
+
+describe("DebugHub node paths (messages addressed to state-tree nodes)", () => {
+  /**
+   * The owner's page, the main (root) listener, and listeners at the given
+   * nodes, each resumed with the root's chat grant (`?node=&agent=`).
+   */
+  async function tree(...nodes: string[]) {
+    const s = setup();
+    const p = s.page();
+    const root = s.controller("main lane");
+    await s.msg(p, { type: "allow", pair: s.pairOf(p), scope: "chat" });
+    const token = root.last("approved")?.token as string;
+    const at: Record<string, FakeSocket> = {};
+    for (const n of nodes) {
+      const ws = new FakeSocket();
+      s.sockets.push(ws);
+      await s.hub.connectController(
+        ws,
+        new URL(
+          `https://lianki.com/api/version/debug/control?label=sub&node=${encodeURIComponent(n)}&agent=${encodeURIComponent(`agent ${n.split("/").pop()}`)}`,
+        ),
+        token,
+      );
+      at[n] = ws;
+    }
+    return { ...s, p, root, at, token };
+  }
+  const observed = (ws: FakeSocket) =>
+    ws.sent.filter((m) => m.type === "chat").map((m) => m.observed === true);
+
+  it("an owner line to a node reaches that node, its ancestors as observers, and no sibling", async () => {
+    const { p, root, at, msg } = await tree("/words", "/words/prefetch", "/words/audio", "/home");
+    await msg(p, { type: "chat", id: "m1", text: "prefetch more", to: "/words › prefetch" });
+    expect(chats(at["/words/prefetch"])).toMatchObject([{ id: "m1", to: "/words/prefetch" }]);
+    expect(observed(at["/words/prefetch"])).toEqual([false]);
+    expect(chats(at["/words"]).map((m) => m.id)).toEqual(["m1"]);
+    expect(observed(at["/words"])).toEqual([true]);
+    expect(chats(root).map((m) => m.id)).toEqual(["m1"]);
+    expect(observed(root)).toEqual([true]);
+    expect(chats(at["/words/audio"])).toEqual([]);
+    expect(chats(at["/home"])).toEqual([]);
+    // The owner's page shows it, with its target.
+    expect(chats(p).at(-1)).toMatchObject({ id: "m1", to: "/words/prefetch" });
+  });
+
+  it("a main-thread line (no `to`, or '/') reaches the root listener only, as before", async () => {
+    const { p, root, at, msg } = await tree("/words");
+    await msg(p, { type: "chat", id: "m1", text: "hi" });
+    await msg(p, { type: "chat", id: "m2", text: "hi", to: "/" });
+    await msg(p, { type: "chat", id: "m3", text: "bad", to: "/../x" });
+    expect(chats(root).map((m) => [m.id, m.to])).toEqual([
+      ["m1", undefined],
+      ["m2", undefined],
+      ["m3", undefined],
+    ]);
+    expect(observed(root)).toEqual([false, false, false]);
+    expect(chats(at["/words"])).toEqual([]);
+  });
+
+  it("a legacy listener (no ?node) counts as the root and observes every node", async () => {
+    const { p, root, msg } = await tree();
+    await msg(p, { type: "chat", id: "m1", text: "x", to: "/a/b" });
+    expect(chats(root)).toMatchObject([{ id: "m1", to: "/a/b" }]);
+  });
+
+  it("the state lists the listeners' nodes for completions", async () => {
+    const { p } = await tree("/words/prefetch", "/home");
+    expect(p.last("state")?.nodes).toEqual(["/home", "/words/prefetch"]);
+  });
+
+  it("an agent line carries its taskPath and agentId; the socket's node is the default", async () => {
+    const { p, at, msg } = await tree("/words/prefetch");
+    const c = at["/words/prefetch"];
+    await msg(c, { type: "say", text: "warming the cache" });
+    expect(chats(p).at(-1)).toMatchObject({
+      from: "agent",
+      text: "warming the cache",
+      taskPath: "/words/prefetch",
+      agentId: "agent prefetch",
+    });
+    await msg(c, { type: "say", text: "deeper", taskPath: "/words/prefetch/img", agentId: "x9" });
+    expect(chats(p).at(-1)).toMatchObject({ taskPath: "/words/prefetch/img", agentId: "x9" });
+    // Outside its own node: refused.
+    await msg(c, { type: "say", text: "escape", taskPath: "/home" });
+    expect(c.last("error")?.reason).toBe(
+      "taskPath /home is outside this listener's node /words/prefetch",
+    );
+  });
+
+  it("a root agent's line without taskPath is unchanged", async () => {
+    const { p, root, msg } = await tree();
+    await msg(root, { type: "say", text: "plain" });
+    const line = chats(p).at(-1);
+    expect(line?.text).toBe("plain");
+    expect(line?.taskPath).toBeUndefined();
+    expect(line?.agentId).toBeUndefined();
+    expect(line?.to).toBeUndefined();
+  });
+
+  it("agent → agent: into its own subtree, and upward, are allowed", async () => {
+    const { p, root, at, msg } = await tree("/words", "/words/prefetch");
+    await msg(at["/words"], { type: "say", text: "do X", to: "/words/prefetch" });
+    expect(chats(at["/words/prefetch"]).at(-1)).toMatchObject({
+      text: "do X",
+      taskPath: "/words",
+      to: "/words/prefetch",
+    });
+    await msg(at["/words/prefetch"], { type: "say", text: "done", to: "/words" });
+    expect(chats(at["/words"]).at(-1)).toMatchObject({ text: "done", taskPath: "/words/prefetch" });
+    await msg(at["/words/prefetch"], { type: "say", text: "to main", to: "/" });
+    expect(chats(root).at(-1)).toMatchObject({ text: "to main", taskPath: "/words/prefetch" });
+    // The owner's page and the root see all of it.
+    expect(chats(p).map((m) => m.text)).toEqual(["do X", "done", "to main"]);
+    expect(chats(root).map((m) => m.text)).toEqual(["do X", "done", "to main"]);
+  });
+
+  it("agent → a sibling is refused without a grant, naming the common ancestor", async () => {
+    const { p, at, msg } = await tree("/words/prefetch", "/words/audio");
+    await msg(at["/words/prefetch"], { type: "say", text: "hey", to: "/words/audio" });
+    expect(at["/words/prefetch"].last("error")).toMatchObject({
+      type: "error",
+      reason: "out of scope: needs a grant from /words",
+    });
+    expect(chats(at["/words/audio"])).toEqual([]);
+    expect(chats(p)).toEqual([]);
+  });
+
+  it("a grant from the root (or the common ancestor) lets a sibling through until it lapses", async () => {
+    const { root, at, msg, tick } = await tree("/words/prefetch", "/words/audio", "/home");
+    // A listener that does not hold both nodes cannot grant.
+    await msg(at["/home"], { type: "grant", from: "/words/prefetch", to: "/words/audio" });
+    expect(at["/home"].last("error")?.reason).toMatch(/^out of scope/);
+    await msg(root, { type: "grant", from: "/words/prefetch", to: "/words/audio", ms: 60_000 });
+    expect(root.last("granted")).toMatchObject({ from: "/words/prefetch", to: "/words/audio" });
+    await msg(at["/words/prefetch"], { type: "say", text: "hey", to: "/words/audio" });
+    expect(chats(at["/words/audio"]).at(-1)).toMatchObject({
+      text: "hey",
+      taskPath: "/words/prefetch",
+    });
+    // Not the other way round.
+    await msg(at["/words/audio"], { type: "say", text: "back", to: "/words/prefetch" });
+    expect(at["/words/audio"].last("error")?.reason).toMatch(/^out of scope/);
+    tick(60_001);
+    await msg(at["/words/prefetch"], { type: "say", text: "late", to: "/words/audio" });
+    expect(chats(at["/words/audio"]).map((m) => m.text)).toEqual(["hey"]);
+  });
+
+  it("ungrant takes a node grant back", async () => {
+    const { root, at, msg } = await tree("/a", "/b");
+    await msg(root, { type: "grant", from: "/a", to: "/b" });
+    await msg(root, { type: "ungrant", from: "/a", to: "/b" });
+    await msg(at["/a"], { type: "say", text: "x", to: "/b" });
+    expect(at["/a"].last("error")?.reason).toBe("out of scope: needs a grant from /");
+  });
+
+  it("a node listener's history holds only the lines routed to it", async () => {
+    const { hub, p, sockets, msg, token } = await tree();
+    await msg(p, { type: "chat", id: "m1", text: "main" });
+    await msg(p, { type: "chat", id: "m2", text: "for words", to: "/words" });
+    await msg(p, { type: "chat", id: "m3", text: "for home", to: "/home" });
+    const ws = new FakeSocket();
+    sockets.push(ws);
+    await hub.connectController(
+      ws,
+      new URL("https://lianki.com/api/version/debug/control?node=/words"),
+      token,
+    );
+    const h = ws.last("history") as { messages: { id: string }[] };
+    expect(h.messages.map((m) => m.id)).toEqual(["m2"]);
+  });
+});
+
+describe("DebugHub agent edits of voice messages", () => {
+  const agent = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+    const c = s.controller("main lane");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    return { c, token: c.last("approved")?.token as string };
+  };
+  const voice = (id: string, text: string) => ({ type: "chat", id, text, source: "stt" });
+  const stored = (s: ReturnType<typeof setup>) =>
+    [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as Record<string, unknown>);
+
+  it("a page's voice line carries source stt; a typed one none", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    await s.msg(owner, voice("v1", "hello world"));
+    await s.msg(owner, { type: "chat", id: "t1", text: "typed", source: "keyboard" });
+    expect(chats(c).map((m) => (m as { source?: string }).source)).toEqual(["stt", undefined]);
+  });
+
+  it("polishes the owner's latest stt line: raw kept, edited marked, stored, broadcast", async () => {
+    const s = setup();
+    const owner = s.page();
+    const mac = s.page("/list Macintosh");
+    const { c } = await agent(s, owner);
+    await s.msg(owner, voice("v1", "fix the sink button"));
+    s.tick(5);
+    await s.msg(c, { type: "edit", id: "v1", text: "Fix the sync button." });
+    const ev = {
+      type: "edited",
+      id: "v1",
+      thread: "owner",
+      text: "Fix the sync button.",
+      raw: "fix the sink button",
+      edited: { at: 1_000_005, by: "main lane", count: 1 },
+    };
+    expect(owner.last("edited")).toEqual(ev);
+    expect(mac.last("edited")).toEqual(ev);
+    expect(c.last("edited")).toEqual(ev);
+    expect(stored(s)[0]).toMatchObject({
+      id: "v1",
+      text: "Fix the sync button.",
+      raw: "fix the sink button",
+      source: "stt",
+      edited: { by: "main lane", count: 1 },
+    });
+    // A page connecting later gets the polished line in its history.
+    const hist0 = await s.hub.history();
+    expect(hist0[0]).toMatchObject({ text: "Fix the sync button.", raw: "fix the sink button" });
+    const late = s.page();
+    await new Promise((r) => setTimeout(r, 0));
+    const hist = (late.last("history") as { messages: Record<string, unknown>[] }).messages;
+    expect(hist[0]).toMatchObject({ text: "Fix the sync button.", raw: "fix the sink button" });
+    // Nothing new was posted as a chat line.
+    expect(chats(owner)).toHaveLength(1);
+  });
+
+  it("keeps the first raw across edits, and stops after MAX_EDITS", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    await s.msg(owner, voice("v1", "raw one"));
+    for (const t of ["two", "three", "four"]) await s.msg(c, { type: "edit", id: "v1", text: t });
+    expect(owner.last("edited")).toMatchObject({ text: "four", raw: "raw one" });
+    expect((owner.last("edited") as { edited: { count: number } }).edited.count).toBe(MAX_EDITS);
+    await s.msg(c, { type: "edit", id: "v1", text: "five" });
+    expect(c.last("error")?.error).toContain(`already polished ${MAX_EDITS} times`);
+    expect(stored(s)[0]).toMatchObject({ text: "four", raw: "raw one" });
+  });
+
+  it("refuses a typed line", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    await s.msg(owner, { type: "chat", id: "t1", text: "typed" });
+    await s.msg(c, { type: "edit", id: "t1", text: "Typed." });
+    expect(c.last("error")?.error).toContain("typed, not spoken");
+    expect(owner.last("edited")).toBeUndefined();
+  });
+
+  it("refuses any but the owner's latest line; agent replies after it do not count", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    await s.msg(owner, voice("v1", "first"));
+    await s.msg(owner, voice("v2", "second"));
+    await s.msg(c, { type: "say", text: "on it" });
+    await s.msg(c, { type: "edit", id: "v1", text: "First." });
+    expect(c.last("error")?.error).toContain("not the owner's latest");
+    await s.msg(c, { type: "edit", id: "v2", text: "Second." });
+    expect(owner.last("edited")).toMatchObject({ id: "v2", text: "Second." });
+    // The agent's own line is never the target.
+    const said = c.last("said")?.id as string;
+    await s.msg(c, { type: "edit", id: said, text: "x" });
+    expect(c.last("error")?.error).toContain("not the owner's latest");
+  });
+
+  it("refuses an unknown id, an unchanged text, and empty or missing fields", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    await s.msg(owner, voice("v1", "same"));
+    await s.msg(c, { type: "edit", id: "nope", text: "x" });
+    expect(c.last("error")?.error).toContain("no message nope");
+    await s.msg(c, { type: "edit", id: "v1", text: "same" });
+    expect(c.last("error")?.error).toContain("already reads that way");
+    await s.msg(c, { type: "edit", id: "v1", text: "  " });
+    expect(c.last("error")?.error).toContain("edit needs text");
+    await s.msg(c, { type: "edit", text: "x" });
+    expect(c.last("error")?.error).toContain("edit needs the id");
+    expect(owner.last("edited")).toBeUndefined();
+  });
+
+  it("a friend's lines and thread can never be edited, voice or not", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c, token } = await agent(s, owner);
+    const f = await s.friend("f1", "f1@x.com");
+    await s.msg(f, voice("fv", "friend voice"));
+    expect((chats(c).at(-1) as { source?: string }).source).toBeUndefined();
+    await s.msg(c, { type: "edit", id: "fv", text: "Friend voice." });
+    expect(c.last("error")?.error).toContain("friends' lines can never be edited");
+    // A preview pairing made for the friend cannot edit either.
+    const preview = await s.forFriend(token, "f1@x.com");
+    await s.msg(f, { type: "allow", pair: s.pairOf(f) });
+    await s.msg(preview, { type: "edit", id: "fv", text: "x" });
+    expect(preview.last("error")?.error).toBe("a pairing for a friend cannot edit");
+    expect(f.last("edited")).toBeUndefined();
+  });
+
+  it("needs an approved controller holding a live owner grant", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c, token } = await agent(s, owner);
+    await s.msg(owner, voice("v1", "hello"));
+    const stranger = s.controller("stranger");
+    await s.msg(stranger, { type: "edit", id: "v1", text: "Hello." });
+    expect(stranger.last("error")?.error).toBe("not approved yet");
+    // The grant gone from storage (ended elsewhere): this socket may not edit.
+    s.storage.store.delete(`grant:${await hashToken(token)}`);
+    await s.msg(c, { type: "edit", id: "v1", text: "Hello." });
+    expect(c.last("error")?.error).toBe("edit needs a live chat grant from the owner");
+    expect(owner.last("edited")).toBeUndefined();
+  });
+
+  it("an eval grant may edit too (eval implies chat); an expired one may not", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = s.controller("eval lane");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner) });
+    await s.msg(owner, voice("v1", "hello"));
+    await s.msg(c, { type: "edit", id: "v1", text: "Hello." });
+    expect(owner.last("edited")).toMatchObject({ text: "Hello." });
+    s.tick(EVAL_GRANT_MS + 1);
+    await s.msg(owner, voice("v2", "later"));
+    await s.msg(c, { type: "edit", id: "v2", text: "Later." });
+    expect(c.last("expired")).toBeTruthy();
+    expect(owner.last("edited")).toMatchObject({ id: "v1" });
+  });
+
+  it("names the agent by its assignee when it has one", async () => {
+    const s = setup();
+    const owner = s.page();
+    const ws = new FakeSocket();
+    s.sockets.push(ws);
+    void s.hub.connectController(
+      ws,
+      new URL("https://lianki.com/api/version/debug/control?label=lane&scope=chat&agent=chat-lane"),
+    );
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    await s.msg(owner, voice("v1", "hi"));
+    await s.msg(ws, { type: "edit", id: "v1", text: "Hi." });
+    expect((owner.last("edited") as { edited: { by: string } }).edited.by).toBe("chat-lane");
   });
 });

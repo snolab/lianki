@@ -8,7 +8,14 @@
  * input, and the usual rules send it. The VAD, the upload and the timers are
  * injected, so all of this is tested with fakes (unit/mic.test.ts); MicButton.tsx
  * is the glue. Nothing here imports from the app.
+ *
+ * With a local streaming STT (local-stt.ts, the owner's Mac) the frames of
+ * each utterance are streamed there as they are heard: its partials replace
+ * the rolling chunks, and its final is handed to `upload` as `info.local`,
+ * which falls back to /api/debug/stt when it fails.
  */
+import type { UttMarks } from "./latency";
+import type { LocalFinal, LocalUtt } from "./local-stt";
 
 /** Longest utterance: past this it is cut and sent, and listening goes on. */
 export const MAX_UTTERANCE_MS = 30_000;
@@ -34,10 +41,13 @@ export type MicStatus =
   | "transcribing"
   | "speaking";
 
-/** `speaking`: the agent's reply is being read while the mic is on (capture is held). */
+/**
+ * `speaking`: the agent's reply is being read while the mic is on. Capturing
+ * wins: with echo cancellation the user can talk over the agent.
+ */
 export function micStatus(state: MicState, pending: number, speaking = false): MicStatus {
-  if (speaking && (state === "listening" || state === "capturing")) return "speaking";
   if (state === "capturing") return "capturing";
+  if (speaking && state === "listening") return "speaking";
   if (pending > 0) return "transcribing";
   if (state === "off") return "idle";
   return state;
@@ -56,8 +66,11 @@ export type VadEvents = {
   onSpeechEnd(samples: Float32Array): void;
   /** Speech seemed to start but was too short to keep. */
   onMisfire(): void;
-  /** Every frame heard (16 kHz), for the partials; only those while capturing are kept. */
-  onFrame?(frame: Float32Array): void;
+  /**
+   * Every frame heard (16 kHz), for the partials; only those while capturing
+   * are kept. `prob`: the VAD's speech probability for it (Silero only).
+   */
+  onFrame?(frame: Float32Array, prob?: number): void;
 };
 export type VadFactory = (ev: VadEvents) => Promise<Vad>;
 
@@ -210,6 +223,69 @@ export function appendDictation(draft: string, text: string): { draft: string; s
   return { draft: next, send: SPOKEN.test(said) && ENDS_SENTENCE.test(next.trim()) };
 }
 
+/**
+ * What Whisper says over silence or noise (its training subtitles' credits).
+ * A final transcript that is one of these (once normalized, possibly
+ * repeated) from a short or faint utterance is dropped (isHallucination).
+ * `…` stands for anything.
+ */
+export const HALLUCINATIONS = [
+  "ご視聴ありがとうございました",
+  "ご清聴ありがとうございました",
+  "チャンネル登録よろしくお願いします",
+  "おやすみなさい",
+  "Thanks for watching",
+  "Thank you for watching",
+  "Please subscribe",
+  "Subtitles by …",
+  "字幕由…提供",
+  "字幕製作…",
+  "请不吝点赞 订阅 转发…",
+  "谢谢观看",
+  "…明镜与点点栏目…",
+  "Ondertiteling …",
+  "Sous-titres réalisés par …",
+] as const;
+/** Under this much speech an utterance is short enough to be one of those. */
+export const HALLUCINATION_MAX_MS = 1_200;
+/** Under this mean speech probability (Silero) an utterance is faint enough. */
+export const HALLUCINATION_MIN_PROB = 0.5;
+/** A frame at or over this probability counts as speech, for the speech length. */
+export const SPEECH_FRAME_PROB = 0.5;
+
+/** For matching: NFKC, lowercased, without punctuation, symbols or whitespace. */
+export function normalizeTranscript(s: string): string {
+  return s.normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}\s]/gu, "");
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const HALLUCINATION_RE = new RegExp(
+  `^(?:${HALLUCINATIONS.map((h) =>
+    h
+      .split("…")
+      .map((part) => escapeRe(normalizeTranscript(part)))
+      .join(".*"),
+  ).join("|")})+$`,
+  "u",
+);
+
+/** The text is a known hallucination phrase (or a run of them), whatever its punctuation. */
+export function isHallucinationPhrase(text: string): boolean {
+  const n = normalizeTranscript(text);
+  return !!n && HALLUCINATION_RE.test(n);
+}
+
+/**
+ * Drop this final transcript: a known hallucination phrase from an utterance
+ * with under HALLUCINATION_MAX_MS of speech, or a mean speech probability
+ * under HALLUCINATION_MIN_PROB. The same words said at length and clearly are
+ * kept: the user may really say them.
+ */
+export function isHallucination(text: string, ms: number, prob?: number): boolean {
+  if (!isHallucinationPhrase(text)) return false;
+  return ms < HALLUCINATION_MAX_MS || (prob !== undefined && prob < HALLUCINATION_MIN_PROB);
+}
+
 /** Words (or, in CJK text, characters), and their keys: lowercased, without punctuation. */
 function tokens(s: string): { raw: string[]; key: string[]; cjk: boolean } {
   const cjk = CJK.test(s);
@@ -347,7 +423,37 @@ export function energyGate(opts: {
   };
 }
 
-export type UploadInfo = { seq: number; durationMs: number; partial: boolean };
+/**
+ * While streaming to the local STT the mic ends an utterance itself, after
+ * ENDPOINT_MS under the threshold, instead of waiting out vad-web's own
+ * silence (redemptionMs, 1400 ms by default): partials already show, so the
+ * final may come sooner. The threshold sits ENDPOINT_MARGIN over the noise
+ * floor (the mean Silero probability between utterances, an EMA), within
+ * [ENDPOINT_MIN, ENDPOINT_MAX], so steady noise neither holds speech open nor
+ * cuts it short.
+ */
+export const ENDPOINT_MS = 600;
+export const ENDPOINT_MARGIN = 0.25;
+export const ENDPOINT_MIN = 0.35;
+export const ENDPOINT_MAX = 0.8;
+/** The floor's EMA weight per 32 ms frame (~1 s to settle). */
+export const FLOOR_ALPHA = 0.05;
+export function endpointThreshold(floor: number): number {
+  return Math.min(ENDPOINT_MAX, Math.max(ENDPOINT_MIN, floor + ENDPOINT_MARGIN));
+}
+
+export type UploadInfo = {
+  seq: number;
+  durationMs: number;
+  partial: boolean;
+  /** The local streaming STT's final for this utterance (it may reject: then fall back). */
+  local?: Promise<LocalFinal>;
+};
+/** What createMic needs of a streaming STT (local-stt.ts LocalStt). */
+export type StreamStt = {
+  begin(onPartial: (text: string) => void): LocalUtt | null;
+  warm?(): void;
+};
 
 /**
  * Listening mode. `toggle()` turns it on (loading the VAD, or the fallback if
@@ -365,11 +471,25 @@ export function createMic(d: {
   onText: (text: string) => void;
   onPending: (n: number, interim: string) => void;
   onError?: (e: unknown) => void;
+  /** Each frame's speech probability while capturing (the barge-in judge, voice.ts). */
+  onProb?: (prob: number) => void;
+  /** Debug events (a dropped hallucination: `{ev: "stt-hallucination", text, ms, prob}`). */
+  log?: (ev: Record<string, unknown>) => void;
   /** Rolling partial chunks for long utterances (on unless false). */
   partials?: boolean;
+  /** The local streaming STT, if one is configured now (asked at each utterance). */
+  stream?: () => StreamStt | undefined;
+  /**
+   * A final utterance's timestamps, for the voice latency record (latency.ts):
+   * at its end `{t_lastVoice?, t_speechEnd, audioMs}`, then `{t_uploadStart}`,
+   * then `{t_sttDone, dropped}`. Partials are not timed.
+   */
+  timing?: (seq: number, marks: UttMarks) => void;
+  now?: () => number;
   setTimer?: (f: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
 }) {
+  const now = d.now ?? Date.now;
   const setTimer = d.setTimer ?? ((f, ms) => setTimeout(f, ms));
   const clearTimer = d.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
   const q = new UtteranceQueue();
@@ -385,10 +505,28 @@ export function createMic(d: {
   let cur: number | null = null;
   let partialBusy = false;
   let partialsOn = d.partials !== false;
+  /** The utterance being streamed to the local STT, if it is. */
+  let utt: LocalUtt | null = null;
+  /** Our own end-of-speech while streaming: noise floor, speech heard, silence since, flushed. */
+  const ep = { floor: 0.1, heard: false, quiet: 0, sent: false };
+  const dropUtt = () => {
+    utt?.cancel();
+    utt = null;
+  };
   /** The agent is speaking (hold): capture stops, and anything heard is dropped. */
   let held = false;
   /** Set by a hold: speech that began before it is dropped, even if it ends after. */
   let tainted = false;
+  /**
+   * The utterance's speech so far, for the hallucination guard: samples in
+   * frames at or over SPEECH_FRAME_PROB, and the probabilities' sum and count.
+   * Reset when speech starts; kept past resetLive, so a flush on "off" has them.
+   */
+  let speechLen = 0;
+  let probSum = 0;
+  let probN = 0;
+  /** When the last frame at or over SPEECH_FRAME_PROB was heard (Silero only). */
+  let lastVoice: number | undefined;
   /** VAD pause/start calls, in order. */
   let ctl: Promise<unknown> = Promise.resolve();
   const toMs = (n: number) => Math.round((n / RATE) * 1000);
@@ -447,14 +585,51 @@ export function createMic(d: {
       tainted = false;
       set("capturing");
       resetLive();
+      speechLen = probSum = probN = 0;
+      lastVoice = undefined;
       clearTimer(cap);
       cap = setTimer(() => void vad?.flush(), MAX_UTTERANCE_MS);
+      dropUtt();
+      ep.heard = ep.sent = false;
+      ep.quiet = 0;
+      utt =
+        d.stream?.()?.begin((text) => {
+          if (g !== gen || held) return;
+          const seq = cur ?? (cur = q.add());
+          q.partial(seq, text);
+          pending();
+        }) ?? null;
     },
-    onFrame(frame) {
-      if (g !== gen || state !== "capturing") return;
+    onFrame(frame, prob) {
+      if (g !== gen) return;
+      // The noise floor: Silero's probability on what is heard between utterances.
+      if (prob !== undefined && state === "listening") ep.floor += (prob - ep.floor) * FLOOR_ALPHA;
+      if (state !== "capturing") return;
+      if (utt && prob !== undefined && !ep.sent) {
+        // Streaming: our own end of speech, ENDPOINT_MS under a threshold over the floor.
+        if (prob >= endpointThreshold(ep.floor)) {
+          ep.heard = true;
+          ep.quiet = 0;
+        } else ep.quiet += frame.length;
+        if (ep.heard && ep.quiet >= toSamples(ENDPOINT_MS)) {
+          ep.sent = true;
+          d.log?.({ ev: "stt-endpoint", floor: Math.round(ep.floor * 100) / 100 });
+          void vad?.flush();
+        }
+      }
+      if (prob !== undefined) {
+        d.onProb?.(prob);
+        probSum += prob;
+        probN++;
+        if (prob >= SPEECH_FRAME_PROB) {
+          speechLen += frame.length;
+          lastVoice = now();
+        }
+      }
       live.push(frame);
       liveLen += frame.length;
       sincePartial += frame.length;
+      if (utt) return void utt.frame(frame);
       if (
         partialsOn &&
         !partialBusy &&
@@ -466,13 +641,16 @@ export function createMic(d: {
     onMisfire() {
       if (g !== gen || held) return;
       clearTimer(cap);
+      dropUtt();
       resetLive();
       dropCur();
       if (state === "capturing") set("listening");
     },
     onSpeechEnd(audio) {
+      const u = utt;
+      utt = null;
       // Heard while the agent spoke (or begun before it did): the reply's echo, dropped.
-      if (held || tainted) return;
+      if (held || tainted) return void u?.cancel();
       clearTimer(cap);
       const mine = g === gen;
       if (mine && state === "capturing") set("listening");
@@ -481,11 +659,31 @@ export function createMic(d: {
         cur = null;
         resetLive();
       }
+      // Speech length and mean probability (Silero); without them, the clip's length.
+      const ms = toMs(probN ? speechLen : audio.length);
+      const prob = probN ? Math.round((probSum / probN) * 1000) / 1000 : undefined;
+      speechLen = probSum = probN = 0;
+      d.timing?.(seq, {
+        ...(lastVoice !== undefined ? { t_lastVoice: lastVoice } : {}),
+        t_speechEnd: now(),
+        audioMs: toMs(audio.length),
+      });
+      lastVoice = undefined;
       pending();
-      d.upload(encodeWav(audio), { seq, durationMs: toMs(audio.length), partial: false })
+      const wav = encodeWav(audio);
+      const local = u?.end(audio);
+      local?.catch(() => {}); // upload decides; never an unhandled rejection
+      d.timing?.(seq, { t_uploadStart: now() });
+      d.upload(wav, { seq, durationMs: toMs(audio.length), partial: false, local })
         .then(
-          (text) => q.resolve(seq, text),
+          (text) => {
+            const drop = isHallucination(text, ms, prob);
+            if (drop) d.log?.({ ev: "stt-hallucination", text: text.slice(0, 80), ms, prob });
+            d.timing?.(seq, { t_sttDone: now(), dropped: drop || !text.trim() });
+            q.resolve(seq, drop ? null : text);
+          },
           (e) => {
+            d.timing?.(seq, { t_sttDone: now(), dropped: true });
             q.resolve(seq, null);
             fail(e);
           },
@@ -516,6 +714,7 @@ export function createMic(d: {
     }
     if (g !== gen) return void v.destroy();
     vad = v;
+    d.stream?.()?.warm?.();
     if (!held) await v.start();
     set("listening");
   };
@@ -551,6 +750,7 @@ export function createMic(d: {
     if (on) {
       tainted = true;
       clearTimer(cap);
+      dropUtt();
       resetLive();
       dropCur();
       if (state === "capturing") set("listening");
@@ -570,13 +770,17 @@ export function createMic(d: {
 /** The STT route's answer (agent C's contract). */
 export type SttResult = { text: string; model?: string; ms?: number; language?: string };
 
-/** POST one recording to /api/debug/stt, the raw audio as the body. Throws SttError on non-2xx. */
+/**
+ * POST one recording to /api/debug/stt, the raw audio as the body, with the
+ * speaker's language as `?hint=` when known. Throws SttError on non-2xx.
+ */
 export async function postStt(
   wav: Uint8Array,
   f: typeof fetch = fetch,
   type = "audio/wav",
+  hint?: string,
 ): Promise<SttResult> {
-  const res = await f("/api/debug/stt", {
+  const res = await f(hint ? `/api/debug/stt?hint=${encodeURIComponent(hint)}` : "/api/debug/stt", {
     method: "POST",
     body: wav as unknown as BodyInit,
     headers: { "content-type": type },

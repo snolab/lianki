@@ -1,0 +1,73 @@
+name: Security scans
+
+# 脆弱性対策 ③ (docs/security-measures.md): a dependency audit on every PR and
+# push to main, and a weekly OWASP ZAP baseline scan of https://lianki.com.
+# Both upload their reports as workflow artifacts (90 days).
+#
+# The weekly run is a GitHub Actions schedule, not polling inside the app: it
+# is the "regular vulnerability check" the PAY.JP declaration asks for.
+#
+# Not a required check: a new advisory published upstream must not block an
+# unrelated deploy. A red run here is a task — see docs/security-measures.md,
+# "Reading the reports".
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1" # Mondays 03:17 UTC (12:17 JST)
+  workflow_dispatch:
+    inputs:
+      zap:
+        description: "Also run the ZAP baseline scan against lianki.com"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # Fails on an unwaived CRITICAL advisory in a production dependency;
+      # everything else is in the report.
+      - name: bun audit
+        run: bun scripts/security/audit-report.ts --out reports/security --fail-on critical
+      - name: Upload the audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit
+          path: reports/security/
+          retention-days: 90
+
+  zap:
+    name: OWASP ZAP baseline (lianki.com)
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.zap)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # Baseline = spider + passive scan only: it reads pages and checks the
+      # responses (headers, cookies, leaks); it sends no attack payloads, so it
+      # is safe against production. Rules tuned in .zap/rules.tsv.
+      - name: ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          target: "https://lianki.com/en"
+          rules_file_name: ".zap/rules.tsv"
+          cmd_options: "-a -j -m 3"
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap-baseline-report
