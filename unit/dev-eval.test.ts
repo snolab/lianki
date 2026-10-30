@@ -371,7 +371,7 @@ describe("pairing: requested scope, pages, wording", () => {
       "agent wants to chat with you for 30 days.",
     );
     expect(pairSentence({ label: "lane", scope: "eval" }, false)).toBe(
-      "lane wants to run code on your debug pages for 8 hours.",
+      "lane wants to run code on your pages for 8 hours.",
     );
     expect(pairSentence({ label: "agent", scope: "eval" }, true)).toBe(
       "agent wants to preview a change on this page for 1 hour.",

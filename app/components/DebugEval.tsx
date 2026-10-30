@@ -17,6 +17,8 @@ import {
   busyLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
+import { isKey } from "@lianki/debug-chat/storage-keys";
+import type { ChatStrings } from "@lianki/debug-chat/wire";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
@@ -65,7 +67,10 @@ const pageLabel = () => {
  * Reconnects only on events (the socket closing while still visible, coming
  * back to the page, debug turned on) — no timers that touch the network.
  */
-export function DebugEval() {
+/** The chat's user-facing strings, localized by the root layout (learning-partner.content.ts). */
+export type PartnerStrings = ChatStrings & { unavailable: string };
+
+export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {}) {
   const [live, setLive] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [state, setState] = useState<HubState | null>(null);
@@ -148,7 +153,7 @@ export function DebugEval() {
 
     const run = async (sock: WebSocket, id: string, to: string, code: string) => {
       clearTimeout(hideToast);
-      setToast(`debug eval ran · ${id}`);
+      setToast(`eval ran · ${id}`);
       hideToast = setTimeout(() => setToast(null), TOAST_MS);
       const t0 = performance.now();
       let result: Record<string, unknown>;
@@ -331,7 +336,7 @@ export function DebugEval() {
       else if (ws) idle = setTimeout(disconnect, IDLE_MS);
     };
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "lk:debug") update();
+      if (isKey(e.key, "lk:debug")) update();
     };
 
     update();
@@ -455,13 +460,18 @@ export function DebugEval() {
           messages={messages}
           onSend={sendChat}
           nodes={state?.nodes}
-          notice={friend === "blocked" ? "Chat is not available for this account." : undefined}
+          notice={
+            friend === "blocked"
+              ? (strings?.unavailable ?? "Chat is not available for this account.")
+              : undefined
+          }
           warning={warning ?? undefined}
           sessions={sessions}
           onEnd={(x) => answer("revoke", x)}
           onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
           evalRan={!!toast}
           friend={isFriend}
+          strings={strings}
           treeSource={owner && !isFriend ? ownerTree : undefined}
           treeRepo="snolab/lianki"
           agentAvatar={AGENT_AVATAR}

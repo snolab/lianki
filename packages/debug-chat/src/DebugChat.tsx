@@ -5,7 +5,9 @@ import {
   type ChatMessage,
   MAX_CHAT,
   type PageInfo,
+  type ChatStrings,
   type PairInfo,
+  chatStrings,
   ROOT_NODE,
   type Sender,
   completeNode,
@@ -18,6 +20,7 @@ import {
   parseAddress,
   pathLabel,
 } from "./wire";
+import { getKey, setKey } from "./storage-keys";
 import { LiagentMark } from "./LiagentMark";
 import { Avatar } from "./Avatar";
 import { type AvatarSource, lineAvatar } from "./avatar-rules";
@@ -259,18 +262,9 @@ function safeTop() {
   return v;
 }
 
-const read = (key: string) => {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-};
-const write = (key: string, v: string) => {
-  try {
-    localStorage.setItem(key, v);
-  } catch {}
-};
+/** Legacy `lk:debug*` names; storage-keys reads `lk:agent*` first and writes both. */
+const read = (key: string) => getKey(key);
+const write = (key: string, v: string) => setKey(key, v);
 const synth = () => (typeof speechSynthesis === "undefined" ? null : speechSynthesis);
 
 /** The window event that sets the chat's target node (`detail`: a node path; "/" = main thread). */
@@ -384,6 +378,8 @@ export type DebugChatProps = {
   onOpenPage?: (path: string) => void;
   /** Add this page to a pairing that was authorized for other pages only. */
   onAddPage?: (s: PairInfo) => void;
+  /** User-facing strings, localized by the host (English defaults in wire.ts). */
+  strings?: Partial<ChatStrings>;
   /**
    * The tree panel's content, overriding `treeSource` (a host's own view).
    * Without either: the dev fragment at lk:tree-src, else "No tree source".
@@ -455,6 +451,7 @@ export function DebugChat({
   onEndPage,
   onOpenPage,
   onAddPage,
+  strings,
   renderTree,
   frontier,
   renderAvatar,
@@ -467,6 +464,7 @@ export function DebugChat({
   nodes = [],
   polishedIcon = POLISHED_ICON,
 }: DebugChatProps) {
+  const t = chatStrings(strings);
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
     return v === null ? !location.pathname.startsWith("/words") : v === "1";
@@ -957,7 +955,7 @@ export function DebugChat({
       mark: (
         <PolishedMark
           icon={polishedIcon}
-          label={ui.polished}
+          label={strings?.polished ? t.polished : ui.polished}
           showRaw={raw}
           onToggle={() => toggleRaw(m.id)}
         />
@@ -1207,8 +1205,8 @@ export function DebugChat({
       : !live
         ? "reconnecting…"
         : listeners
-          ? `agent listening (${listeners})`
-          : "agent offline · messages wait until it is back";
+          ? t.listening.replace("{n}", String(listeners))
+          : t.statusOffline;
 
   /**
    * The bar's controls, left of the input: drag any of them (or the bar's
@@ -1639,7 +1637,7 @@ export function DebugChat({
       // Minimized keeps its old test id: the bar alone, plus floating lines.
       data-testid={open ? "debug-chat" : "debug-chat-minimized"}
       data-minimized={!open || undefined}
-      aria-label="Chat with the agent"
+      aria-label={t.chatWith}
       onPointerDown={unlockSpeech}
       onKeyDown={unlockSpeech}
       // A live mic counts as focus: the box goes opaque as it does while typing.
@@ -1675,11 +1673,18 @@ export function DebugChat({
         className="m-0 list-none space-y-0.5 p-0"
       >
         {messages.length === 0 && (
-          <li className="text-gray-500">Type here; it is sent 3 s after you stop.</li>
+          <li className="text-gray-500">{t.hint}</li>
         )}
         {/* A game-style log: one line per message, avatar then text, no bubbles. */}
         {messages.map((m, i) => {
-          const who = lineAvatar(m, { friend, viewer, agentAvatar, avatarFor });
+          const who = lineAvatar(m, {
+            friend,
+            viewer,
+            agentAvatar,
+            avatarFor,
+            agentName: t.name,
+            you: t.you,
+          });
           // The state-tree node a line belongs to: a muted subtitle and a left border by its hue.
           const node = lineNode(m);
           return (
@@ -1726,9 +1731,9 @@ export function DebugChat({
                   <span
                     data-testid="debug-chat-queued"
                     className="ms-1 text-[10px] text-gray-500"
-                    title="The agent is offline: this is delivered when it is back"
+                    title={t.waitingTitle}
                   >
-                    · waiting for the agent
+                    {t.waiting}
                   </span>
                 )}
               </span>
@@ -1924,13 +1929,13 @@ export function DebugChat({
                         : target !== ROOT_NODE
                           ? `Message ${pathLabel(target)}…`
                           : agentOnline
-                            ? "Message the agent…"
-                            : "Agent offline — your message waits for it…"
+                            ? t.message
+                            : t.offline
                   }
                   onScroll={(e) => {
                     if (mirror.current) mirror.current.scrollTop = e.currentTarget.scrollTop;
                   }}
-                  aria-label="Message the agent"
+                  aria-label={t.message.replace(/…$/, "")}
                   onChange={(e) => {
                     draftRef.current = e.target.value;
                     setDraft(e.target.value);
@@ -2001,8 +2006,8 @@ export function DebugChat({
                   <span
                     role="status"
                     data-testid="debug-chat-busy"
-                    aria-label={`${busy.label || "agent"} is working`}
-                    title={`${busy.label || "agent"} is working`}
+                    aria-label={`${busy.label || t.name} is working`}
+                    title={`${busy.label || t.name} is working`}
                     className="pointer-events-none absolute end-1.5 top-1/2 -translate-y-1/2"
                   >
                     <svg viewBox="0 0 16 16" className="size-3.5 animate-spin" aria-hidden>

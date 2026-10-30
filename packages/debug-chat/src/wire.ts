@@ -293,7 +293,7 @@ export function pairSentence(p: Pick<PairInfo, "label" | "scope">, friend: boole
   if (friend) return `${p.label} wants to preview a change on this page for 1 hour.`;
   return p.scope === "chat"
     ? `${p.label} wants to chat with you for 30 days.`
-    : `${p.label} wants to run code on your debug pages for 8 hours.`;
+    : `${p.label} wants to run code on your pages for 8 hours.`;
 }
 
 /** The pairing modal's Allow button, for the pages ticked. */
@@ -301,6 +301,65 @@ export function allowLabel(ticked: number, total: number, selfTicked: boolean): 
   if (total > 1 && ticked === total) return "Authorize all pages";
   if (ticked === 1 && selfTicked) return "Authorize this page";
   return ticked === 1 ? "Authorize 1 page" : `Authorize ${ticked} pages`;
+}
+
+/**
+ * The feature's user-facing name in English. Every English string that names
+ * it reads this one constant (the app's i18n file imports it too). Internally
+ * the feature is still "debug" (docs/dev-debug-widget.md, "Naming").
+ */
+export const AGENT_NAME_EN = "Learning Partner";
+
+/**
+ * The chat's user-facing strings that name the feature. The host passes them
+ * localized (app/components/learning-partner.content.ts); `{name}` is
+ * replaced with `name`. English defaults here, so the widget works alone.
+ */
+export type ChatStrings = {
+  name: string;
+  /** The chat box's aria-label. */
+  chatWith: string;
+  /** Input placeholder and aria-label while the agent is online. */
+  message: string;
+  /** Input placeholder while it is offline. */
+  offline: string;
+  /** After a message sent while offline. */
+  waiting: string;
+  /** Tooltip on `waiting`. */
+  waitingTitle: string;
+  /** The speaker shown before your own lines. */
+  you: string;
+  /** The empty log's hint. */
+  hint: string;
+  /** The connection status (pill tooltip, menu) with the agent listening; `{n}` = listeners. */
+  listening: string;
+  /** The status with no agent listening. */
+  statusOffline: string;
+  /** The mark on a voice line the agent polished (tooltip and label). */
+  polished: string;
+};
+
+export const CHAT_STRINGS_EN: ChatStrings = {
+  name: AGENT_NAME_EN,
+  chatWith: "Chat with your {name}",
+  message: "Message your {name}…",
+  offline: "Your {name} is offline — your message waits for it…",
+  waiting: "· waiting for your {name}",
+  waitingTitle: "Your {name} is offline: this is delivered when it is back",
+  you: "you",
+  hint: "Type here; it is sent 3 s after you stop.",
+  listening: "Your {name} is listening ({n})",
+  statusOffline: "Your {name} is offline · messages wait until it is back",
+  polished: "Polished by your {name}",
+};
+
+/** Defaults filled in and `{name}` substituted. */
+export function chatStrings(s?: Partial<ChatStrings>): ChatStrings {
+  const all = { ...CHAT_STRINGS_EN, ...s };
+  const name = all.name || AGENT_NAME_EN;
+  const out = { ...all };
+  for (const k of Object.keys(out) as (keyof ChatStrings)[]) out[k] = out[k].replaceAll("{name}", name);
+  return out;
 }
 
 /**

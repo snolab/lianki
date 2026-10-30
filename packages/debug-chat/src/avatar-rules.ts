@@ -59,11 +59,15 @@ export function lineAvatar(
     viewer?: Sender;
     agentAvatar?: AvatarSource;
     avatarFor?: (m: ChatMessage) => Sender | undefined;
+    /** The agent's fallback name (the host's localized feature name). */
+    agentName?: string;
+    /** The viewer's own name on their lines, localized. */
+    you?: string;
   },
 ): LineAvatar {
   if (m.from === "agent") {
     // The node's assignee, when the line names one; else the controller's label.
-    const name = m.agentId || m.label || "agent";
+    const name = m.agentId || m.label || opts.agentName || "agent";
     return { src: opts.agentAvatar, name, initialFrom: name, seed: `agent:${name}`, mine: false };
   }
   const mine = m.from === (opts.friend ? "friend" : "owner");
@@ -79,7 +83,7 @@ export function lineAvatar(
   const name = s.name || (m.from === "friend" ? "friend" : "owner");
   return {
     src: [...new Set(avatars)],
-    name: mine ? "you" : name,
+    name: mine ? opts.you || "you" : name,
     initialFrom: name,
     seed: s.id || m.thread || m.from,
     mine,

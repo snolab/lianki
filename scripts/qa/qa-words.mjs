@@ -493,11 +493,43 @@ try {
     ttsStatus.join() === "404,400,400",
     `word audio: no voice → 404, bad text → 400 (${ttsStatus.join()})`,
   );
+  /** Visible text, aria-labels, titles and placeholders that say "debug". */
+  const debugText = (p) =>
+    p.evaluate(() => {
+      const hits = [];
+      const shown = (el) => {
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && cs.visibility !== "hidden";
+      };
+      const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        const el = n.parentElement;
+        if (!el || el.closest("script,style,noscript")) continue;
+        if (/debug/i.test(n.textContent ?? "") && shown(el)) hits.push(n.textContent.trim());
+      }
+      for (const el of document.querySelectorAll("[aria-label],[title],[placeholder]")) {
+        for (const at of ["aria-label", "title", "placeholder"]) {
+          const v = el.getAttribute(at);
+          if (v && /debug/i.test(v)) hits.push(`${at}=${v}`);
+        }
+      }
+      return hits;
+    });
   // The installed app has no address bar: seven quick taps on the Settings
   // button toggle the debug log instead (the stats line stays selectable text).
   const gear = page.getByRole("button", { name: "Settings" });
   for (let k = 0; k < 7; k++) await gear.click();
   check((await page.locator("[data-debug-badge]").count()) === 1, "seven taps turn debug on");
+  {
+    // Users know debug mode as their "Learning Partner" (docs/dev-debug-widget.md).
+    const badge = (await page.locator("[data-debug-badge]").innerText()).trim();
+    const hits = await debugText(page);
+    check(
+      badge === "Learning Partner" && hits.length === 0,
+      `debug on, /words names the Learning Partner and shows no "debug" (badge "${badge}", ${JSON.stringify(hits)})`,
+    );
+  }
   check(
     (await page.locator('[data-debug-proto="slip"][href="/proto/slip"]').count()) === 1 &&
       (await page.locator("[data-debug-proto]").count()) === 1,
@@ -520,6 +552,39 @@ try {
       `ten taps on your name in the profile menu toggle debug (${on})`,
     );
     await page.keyboard.press("Escape");
+  }
+
+  // With the Learning Partner on (via the ?agent=1 alias), no visible text on
+  // /profile, /preferences or the profile menu says "debug" (/words is checked
+  // above). Owner-only dev pages are exempt.
+  {
+    const origin = new URL(page.url()).origin;
+    const tab = await ctx.newPage();
+    const seen = {};
+    for (const path of ["/profile?agent=1", "/preferences"]) {
+      await tab.goto(`${origin}${path}`, { waitUntil: "networkidle" });
+      seen[path] = await debugText(tab);
+    }
+    // The profile menu marks the mode by name: "you@… · Learning Partner".
+    await tab.locator("[data-profile-menu]").click();
+    const name = tab.locator("[data-debug-name]");
+    await name.waitFor({ timeout: 5000 });
+    const marker = (await name.innerText()).trim();
+    seen.menu = await debugText(tab);
+    const flag = await tab.evaluate(() => [
+      localStorage.getItem("lk:agent"),
+      localStorage.getItem("lk:debug"),
+    ]);
+    check(
+      flag.join() === "1,1" && marker.endsWith("· Learning Partner"),
+      `?agent=1 turns the Learning Partner on under both keys (${flag.join()}, menu "${marker}")`,
+    );
+    check(
+      Object.values(seen).every((h) => h.length === 0),
+      `no visible "debug" on /profile, /preferences or the menu with it on (${JSON.stringify(seen)})`,
+    );
+    await tab.goto(`${origin}/profile?agent=0`, { waitUntil: "load" });
+    await tab.close();
   }
 
   // /learn speaks the page's language (it used to be English-only) and links

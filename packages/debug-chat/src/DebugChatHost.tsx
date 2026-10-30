@@ -21,6 +21,7 @@ import {
   widgetSrc,
   widgetUrl,
 } from "./debug-widget";
+import { getKey } from "./storage-keys";
 import { DebugChat, type DebugChatProps } from "./DebugChat";
 
 type Chat = ComponentType<DebugChatProps>;
@@ -57,9 +58,7 @@ function useHotWidget(enabled: boolean): [Hot, (e: unknown) => void] {
   useEffect(() => {
     if (!enabled) return;
     let raw: string | null = null;
-    try {
-      raw = localStorage.getItem(WIDGET_SRC_KEY);
-    } catch {}
+    raw = getKey(WIDGET_SRC_KEY);
     if (!raw) return;
     const src = widgetSrc(raw);
     if (!src) {

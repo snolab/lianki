@@ -5,6 +5,38 @@ the owner's phone, seconds after saving and without merge or deploy. The page
 stays on lianki.com, so the debug socket, the chat history and the owner's
 data all keep working. Only the widget module comes from your machine.
 
+## Naming
+
+**User-facing name: Learning Partner / 学习伙伴; internal: debug.** Users never
+see the word "debug": the menu badge, the /words badge, toasts, the chat's
+aria-labels and placeholders all say the localized name, from
+`app/components/learning-partner.content.ts` (key `learning-partner`). English
+reads one constant, `AGENT_NAME_EN` in `packages/debug-chat/src/wire.ts`; the
+widget takes its strings as the `strings` prop (`ChatStrings`, English
+defaults in `wire.ts`), so the package still imports nothing from the app.
+
+| Locale | Name                       | Locale | Name                |
+| ------ | -------------------------- | ------ | ------------------- |
+| en     | Learning Partner           | ru     | Напарник по учёбе   |
+| zh     | 学习伙伴 (zh-TW 學習夥伴)  | ar     | رفيق الدراسة        |
+| ja     | 学習パートナー             | hi     | पढ़ाई का साथी       |
+| ko     | 학습 파트너                | bn     | পড়াশোনার সাথী      |
+| fr     | Partenaire d'apprentissage | ur     | پڑھائی کا ساتھی     |
+| de     | Lernpartner                | id     | Teman Belajar       |
+| es     | Compañero de aprendizaje   | sw     | Mwenzi wa Kujifunza |
+| pt     | Parceiro de aprendizagem   | mr     | अभ्यास सोबती        |
+
+The app ships one Chinese locale (`zh`, Simplified); 學習夥伴 is the agreed
+name for when zh-TW is added.
+
+Everything internal keeps "debug": the package, files, APIs, `/api/debug/*`,
+`data-debug-*` / `data-testid="debug-*"` hooks, and the owner-only dev pages.
+Storage moves to `lk:agent*` gradually (`packages/debug-chat/src/storage-keys.ts`):
+reads try `lk:agent*` then `lk:debug*`, writes go to both, and a one-time
+migration (marker `lk:agent-migrated`) copies `lk:debug*` to `lk:agent*`. Drop
+the `lk:debug*` writes one release later. `?agent=1` / `?agent=0` work as
+aliases of `?debug=1` / `?debug=0` (`?agent=` wins when both are given).
+
 The widget lives in its own workspace package, `packages/debug-chat`
 (`@lianki/debug-chat`), which imports nothing from the app, so it can move to
 its own repo as is. Lianki passes what it needs as `DebugChatProps`; the wire
