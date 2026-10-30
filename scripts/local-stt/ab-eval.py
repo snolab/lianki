@@ -262,12 +262,19 @@ HALLU = re.compile(
 #: session history (docs/stt-ab.md, "Field metrics"). Add a row when a setting
 #: changes; the first match wins.
 WINDOWS = [
-    # Android: lk:agent-local-stt never set there, so the route: Whisper turbo +
+    # Android until 01:41 JST: no lk:agent-local-stt, so the route: Whisper turbo +
     # ?hint= (#321), vad-web's own end (1400 ms), lk:voice-aec on (the default).
-    ("android", "2026-10-30T00:00:00Z", "2026-11-01T00:00:00Z", "cloud whisper+hint, vad 1400, aec on"),
+    ("android", "2026-10-30T00:00:00Z", "2026-10-30T16:41:00Z", "cloud whisper+hint, vad 1400, aec on"),
+    # from 01:41 JST on its dev page: the local SenseVoice (full-width punctuation,
+    # the dev bridge), endpoint 600; the sink posted no clips, so AEC is the default.
+    ("android", "2026-10-30T16:41:00Z", "2026-11-01T00:00:00Z", "local sensevoice, endpoint 600, aec on"),
     ("iphone", "2026-10-30T11:28:00Z", "2026-10-30T13:00:00Z", "local sensevoice, endpoint 600, aec on"),
 ]
 
+
+#: A message that is one short Latin word (「Yeah.」「The.」「Don.」) or 嗯/呃 alone: what
+#: SenseVoice makes of a cough, a click or a far voice. 好/对/是/行 alone are real replies.
+BLIP = re.compile(r"^(?:[a-z]{1,8}|[嗯呃啊哦额]+)$")
 
 #: Two spoken messages this close (send to send) are one sentence the endpoint cut.
 SPLIT_S = 8
@@ -292,6 +299,10 @@ def path_of(msg: dict, clips: list[dict]) -> str:
             return f"{base}, aec on"  # lk:voice-aec defaults on; no sidecar has said otherwise yet
     for d, t0, t1, path in WINDOWS:
         if d == dev and utc(t0) <= at < utc(t1):
+            # SenseVoice writes the full-width ，; Whisper an ASCII comma between Han characters:
+            # a local window's message in Whisper's style came through the cloud fallback
+            if path.startswith("local") and re.search(r"[一-鿿][,?]", msg["text"]):
+                return "cloud whisper+hint (fallback), vad 1400, aec on"
             return path
     return f"{dev}, unknown"
 
@@ -324,6 +335,9 @@ def field(chat_path: str, clips: list[dict], window_s: int = 90, sim: float = 0.
         if HALLU.search(norm(m["text"])):
             s["hallucination"] += 1
             samples.append(("hallucination", path, m["text"], ""))
+        if BLIP.match(norm(m["text"])):
+            s["blip"] = s.get("blip", 0) + 1
+            samples.append(("blip", path, m["text"], ""))
         nxt = [r for r in rows[k + 1 : k + 3] if t(r) - t(m) <= timedelta(seconds=window_s)]
         # one sentence cut in two: the next spoken message lands within SPLIT_S
         if nxt and nxt[0].get("source") == "stt" and t(nxt[0]) - t(m) <= timedelta(seconds=SPLIT_S):
@@ -555,13 +569,14 @@ def report(res: list[dict], a) -> None:
 def print_field(f: dict) -> None:
     print(f"\nfield metrics (owner chat; next ≤3 messages within {f['window_s']} s; restatement = "
           f"bigram overlap ≥ {f['sim']}):")
-    print("| STT path | spoken messages | restated | corrected | hallucinated | split (next spoken ≤ 8 s) |")
-    print("| --- | --- | --- | --- | --- | --- |")
+    print("| STT path | spoken messages | restated | corrected | hallucinated | one-word blips | "
+          "split (next spoken ≤ 8 s) |")
+    print("| --- | --- | --- | --- | --- | --- | --- |")
     for k, s in sorted(f["paths"].items()):
         n = s["spoken"]
         pc = lambda x: f"{x} ({x / n:.0%})"  # noqa: E731
         print(f"| {k} | {n} | {pc(s['repeat'])} | {pc(s['correction'])} | {pc(s['hallucination'])} | "
-              f"{pc(s.get('split', 0))} |")
+              f"{pc(s.get('blip', 0))} | {pc(s.get('split', 0))} |")
     print("\nflagged pairs (hand-check):")
     for kind, path, a, b in f["samples"]:
         print(f"  [{kind}] {path}: {a[:50]!r} → {b[:50]!r}")

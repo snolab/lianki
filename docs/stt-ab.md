@@ -55,6 +55,153 @@ Why:
 So the widget can default to: `lk:agent-local-stt` set (streaming), endpoint
 600, `lk:voice-aec` as it is until the A/B below.
 
+**Since then (2026-10-31 01:41 JST on)** the Android streams to the local
+SenseVoice too, and its field data changes one point: on his dictation, the
+600 ms endpoint cut **18 of 93 messages** in the middle of a sentence. No
+endpoint length fixes that cheaply, so the fix is to join the pieces
+(see "VAD sensitivity").
+
+## VAD sensitivity
+
+The owner (about 03:00 JST): "is there a way to make the VAD more
+sensitive?". `scripts/local-stt/vad-sweep.py` replays the clips and
+synthetic mixes through the same Silero v5 and vad-web's start/end logic,
+over a grid of settings:
+
+```bash
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/vad-sweep.py --json /tmp/sweep.json
+```
+
+**The start threshold is already 0.3, not 0.5.** `MicButton.tsx` leaves
+vad-web 0.0.30's defaults alone: `positiveSpeechThreshold` 0.3,
+`negativeSpeechThreshold` 0.25, `minSpeechMs` 400, `preSpeechPadMs` 800,
+`redemptionMs` 1400. The 0.5 in `mic.ts` (`SPEECH_FRAME_PROB`) only counts
+speech for the hallucination guard.
+
+### Recommendation
+
+| parameter | today | recommended | why |
+| --- | --- | --- | --- |
+| `positiveSpeechThreshold` | 0.3 | **0.3** | 0.2–0.5 give the same text on all 20 clips; 0.5 holds back only 3 of 10 not-for-agent captures and 0–4 of 24 echoes, and hears fewer single words |
+| `negativeSpeechThreshold` | 0.25 | **0.25** | – |
+| noise-adaptive start (floor EMA + δ) | – | **no** | identical to the fixed 0.3 on every set, for δ 0.15/0.2/0.25 |
+| `minSpeechMs` | 400 | **250** | single words heard 9/15 → **14/15**; no noise mix triggers more |
+| `preSpeechPadMs` | 800 | **800** | the pad already covers the onset; shorter pads clip it (below) |
+| `ENDPOINT_MS` | 600 | **600**, plus joining | longer endpoints rejoin only some of the field's cut sentences, at the cost of a slower final every time (below) |
+| new: join window | – | **2.5 s** | when the next utterance starts within 2.5 s of the previous final, its text is appended to the same message (the owner asked for this, 02:04 JST: consecutive messages appended to the previous one) |
+| new: blip guard | – | drop a lone short Latin word or 嗯/呃 | 26 of 183 local messages were 「Yeah.」「The.」「Don.」; a VAD setting cannot tell them from real words (below) |
+
+Latency: none of this slows the final. vad-web fires `onSpeechStart`, where
+streaming begins, on the first frame over the threshold; `minSpeechMs` only
+decides at the end whether the utterance was a misfire, and the pad is
+unchanged. The join window holds only the send to the agent; the text is on
+screen as soon as each final arrives, 0.67 s after he stops.
+
+### Clips and mixes (2026-10-31, 30 clips, all iPhone)
+
+The owner's speech level is −26 dBFS (median over the speech frames of his
+clips). The sets:
+
+- **speech**: the 20 scored clips;
+- **short**: 15 single words (好 对 是 不 行 没有 谢谢 はい いいえ どうぞ
+  yes no good stop next), the word lists' own recordings at his level with
+  faint room noise around them, a stand-in for one-word replies;
+- **not-for-agent**: the 10 clips without a reference;
+- **echo**: 24 of the word lists' example sentences (the voices the page plays)
+  at −6 dB (no AEC) and −25 dB (an echo canceller's residue);
+- **noise**: pink (2 levels), brown, mains hum, clicks, the send tick, and 3
+  far babbles of the example sentences at −15 dB.
+
+Rows at the recommended start threshold (0.3); the full grid is in the
+script's output:
+
+| min ms | pad ms | speech CER | onset clipped | short words heard · transcribed right | not-for-agent triggered | echo −6 · −25 dB | noise triggered |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 400 (today) | 800 (today) | 0.065 | 2/20 | 9/15 · 6 | 10/10 | 24/24 · 21/24 | 3/9 (the 3 babbles) |
+| **250** | **800** | **0.065** | **2/20** | **14/15 · 8** | **10/10** | **24/24 · 22/24** | **3/9** |
+| 150 | 800 | 0.065 | 2/20 | 15/15 · 9 | 10/10 | 24/24 · 22/24 | 3/9 |
+| 250 | 400 | 0.076 | 2/20 | 14/15 · 10 | 10/10 | 24/24 · 22/24 | 3/9 |
+| 250 | 200 | 0.077 | 3/20 | 14/15 · 9 | 10/10 | 24/24 · 22/24 | 3/9 |
+| 250 | 0 | 0.111 | 8/20 | 14/15 · 6 | 10/10 | 24/24 · 22/24 | 3/9 |
+
+And the threshold at min 400 / pad 800: 0.5 and 0.45 hear 8/15 single words
+and trigger on 7/10 not-for-agent clips and 20–21/24 quiet echoes; 0.2 hears
+12/15 and triggers on everything 0.3 does.
+
+What this says:
+
+- **Missed speech is not the threshold.** No setting missed any of the 20
+  real clips, and 0.2 is no better than 0.3 on them. What fails is
+  **`minSpeechMs` 400 against one-word replies**: はい has 128 ms of Silero
+  speech, 不 224, 是 256, 行 and どうぞ 320, so vad-web calls them misfires
+  and nothing is sent. 250 lets all but はい through; 150 lets はい through
+  too, but leaves no margin above a cough.
+- **The pre-pad matters, and 800 is right.** With the audio from the first
+  frame over the threshold only, 8 of 20 clips lose their first characters
+  (CER 0.111). 200 ms before onset brings that to 3 (0.077), 400 to 2 (0.076),
+  800 to 2 (0.065). Longer than 800 cannot be tested: the saved clips start
+  800 ms before the phone's trigger. On single words 400 transcribes one or
+  two better than 800 (the room noise in front confuses SenseVoice), but the
+  sentences decide.
+- **False triggers are speech, and no VAD setting stops them.** Pure noise
+  (pink, brown, hum, clicks, the send tick) triggered nothing at any
+  setting. Everything that did trigger was a voice: others in the room, far
+  babble, the agent's own voice even at −25 dB. Silero is level-blind by
+  design. Even 0.5 lets 7 of 10 not-for-agent captures and 20 of 24 quiet
+  echoes through. Those are for the echo canceller and capture hold, the
+  text echo guard, and in passive mode the wake word (#350). In active mode
+  they will reach the agent whatever the VAD does.
+- **The blips are not separable by the VAD either.** On the not-for-agent
+  clips that came out as 「Yeah.」「So.」, Silero saw 320–800 ms of speech at
+  a mean probability of 0.27–0.47, the same as the real single words
+  (128–640 ms, 0.14–0.48). The guard has to be on the text: SenseVoice's
+  lone 「Yeah.」「The.」 in a Chinese conversation.
+
+### Field: cut sentences and blips (Android, local, 01:41–03:08 JST)
+
+From the chat log, using the same field metrics as below:
+
+| STT path | spoken | restated | corrected | one-word blips | next spoken ≤ 8 s |
+| --- | --- | --- | --- | --- | --- |
+| local SenseVoice, endpoint 600 (Android + iPhone) | 183 | 15 (8%) | 3 (2%) | **26 (14%)** | 88 (48%) |
+| cloud fallback during that time (Whisper style) | 17 | 0 | 2 | 0 | 2 |
+| cloud Whisper, vad 1400 (Android before 01:41 JST) | 107 | 2 (2%) | 3 (3%) | 1 (1%) | 14 (13%) |
+
+Hand-checked:
+
+- From 01:41 to 02:05 JST and again around 02:32 JST, most of the "spoken"
+  messages are conversation in the room, not to the agent. Active mode took
+  it all down: the false-trigger case the wake word is for.
+- In his dictation to the agent after 02:03 JST (93 messages), **18 are the
+  second half of a sentence the 600 ms endpoint cut**: a noun phrase split
+  from its noun, one sentence in four pieces, and his question about the VAD
+  itself, cut in two. Whisper at 1400 ms cut 4 of 107.
+- The pauses at those cuts, estimated from the send times (gap minus the
+  second piece's length at ~4.5 characters a second, minus the 600 ms), run
+  from about 0.2 to 3.8 s. An endpoint of 1000 ms would have rejoined about
+  8 of the 18, 1400 ms about 12, and either adds 0.4–0.8 s to every
+  utterance. **Joining** instead, when the next utterance starts within
+  2.5 s of the previous final (a pause of up to ~3.2 s), would have rejoined
+  17 of the 18 without making any final slower. These pause figures are
+  rough (no Android clip was saved to measure them), so take 2.5 s as the
+  starting value and tune it on the devLog.
+- Real recognition repeats on local: three runs (a model name, 不介意 heard
+  as 不建议, 切到 heard as 签到), about 3% of his dictation. On the cloud
+  before it: one (DOT heard as BOT). The rest of the 15 "restated" are
+  blips and fragments.
+
+**For the widget (hot-loadable):**
+
+```js
+// MicVAD.new options (MicButton.tsx silero)
+{ positiveSpeechThreshold: 0.3, negativeSpeechThreshold: 0.25, minSpeechMs: 250, preSpeechPadMs: 800, redemptionMs: 1400 }
+// mic.ts: ENDPOINT_MS 600 (unchanged)
+// new: JOIN_MS 2500: when onSpeechStart comes within 2.5 s of the previous final (and the
+//   agent's reply has not started), the new final is appended to that message, not sent anew
+// new: blip guard: drop a final that is one Latin word of ≤ 8 letters or only 嗯/呃,
+//   except yes / no / ok / okay / good / stop / next / thanks
+```
+
 ## Clip replay
 
 `scripts/local-stt/ab-eval.py` replays every saved clip:
