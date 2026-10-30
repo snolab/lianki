@@ -82,7 +82,7 @@ import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
 import { type AnchorSide, placeBox } from "./anchor";
 import { keyboardLift } from "./keyboard-lift";
 import { onChatOpen } from "./island-bus";
-import { type EdgeState, createJoystick, edgeSpeed } from "./joystick";
+import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import type { Frontier } from "./frontier-view";
@@ -931,11 +931,10 @@ export function DebugChat({
     typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   const logDrag = {
     /**
-     * `from: "input"` (the empty input): the log takes its size-snapped box
-     * (log-surface.ts fullLogBox): on a narrow screen it spans the whole
-     * screen and the bar steps aside; on a wide one it keeps its width and
-     * only grows to the full height. From the mic, the bar stays (the finger
-     * is on it) and the log only grows upward, as before.
+     * `from: "input"` (the empty input): the log keeps its width and only
+     * its height snaps, to the visible area top to bottom (log-surface.ts
+     * fullLogBox), while the bar steps aside. From the mic, the bar stays
+     * (the finger is on it) and the log only grows upward, as before.
      */
     start: (from: "mic" | "input" = "mic") => {
       const el = log.current;
@@ -945,13 +944,11 @@ export function DebugChat({
       let box: (typeof fullRef.current)["box"] = null;
       if (from === "input" && sec) {
         const vv = typeof visualViewport === "undefined" ? null : visualViewport;
-        const sides = safeSides();
         const b = fullLogBox({
-          vw: document.documentElement.clientWidth || innerWidth,
           vh: innerHeight,
           visibleTop: vv?.offsetTop ?? 0,
           visibleBottom: vv ? vv.offsetTop + vv.height : innerHeight,
-          safe: { top: notch.current, bottom: safeBottom(), left: sides.left, right: sides.right },
+          safe: { top: notch.current, bottom: safeBottom() },
           log: { left: r.left, width: r.width, bottom: r.bottom, height: r.height },
         });
         // Section-relative: the box's bottom and left edges do not move when
@@ -977,6 +974,10 @@ export function DebugChat({
         lastDy: 0,
       };
       setFullLog("on");
+    },
+    /** The joystick drives it: the finger's travel is taken without scrolling, so coming back inside does not jump. */
+    hold: (dy: number) => {
+      fullRef.current.lastDy = dy;
     },
     /** Finger travel since the press: the log scrolls by the change (no render). */
     move: (dy: number) => {
@@ -1021,13 +1022,14 @@ export function DebugChat({
    */
   const inputAxis = useRef(createAxisLock());
   /**
-   * Joystick mode (joystick.ts): the finger held in the band at the visible
-   * area's top or bottom edge keeps the full-screen log scrolling that way,
-   * faster the deeper in. One rAF loop, stopped when the finger leaves the
-   * band or lifts, disposed on unmount.
+   * Joystick mode (joystick.ts): a dead zone, a circle of `radius` (Tune),
+   * centred on the press. Inside it the drag scrolls the full-screen log as
+   * usual; outside it the log keeps scrolling that way, faster the further
+   * out, and stops back inside. One rAF loop, stopped on release, disposed
+   * on unmount.
    */
   const joystick = useRef<ReturnType<typeof createJoystick> | null>(null);
-  const edge = useRef<EdgeState>({ bottomArmed: false });
+  const tune = useRef(joystickTune());
   useEffect(() => {
     joystick.current = createJoystick((px) => {
       const el = log.current;
@@ -1038,17 +1040,16 @@ export function DebugChat({
       joystick.current = null;
     };
   }, []);
-  const steer = (y: number) => {
-    const vv = typeof visualViewport === "undefined" ? null : visualViewport;
-    const top = Math.max(notch.current, vv?.offsetTop ?? 0);
-    const bottom = vv ? vv.offsetTop + vv.height : innerHeight;
-    const r = edgeSpeed(y, { top, bottom }, edge.current, { reduced: reducedMotion() });
-    edge.current = r.state;
+  /** The finger at (dx, dy) from the press: a plain drag inside the zone, the joystick outside. */
+  const steer = (dx: number, dy: number) => {
+    const r = deadZoneSpeed(dx, dy, tune.current, reducedMotion());
+    if (r.inside) logDrag.move(dy);
+    else logDrag.hold(dy);
     joystick.current?.set(r.speed);
   };
   const inputDrag = {
     onPointerDown: (e: React.PointerEvent<HTMLTextAreaElement>) => {
-      edge.current = { bottomArmed: false };
+      tune.current = joystickTune();
       if (!open || draftRef.current) return;
       inputAxis.current.down(e.clientX, e.clientY);
       // Captured from the press: a quick flick leaves the input before the
@@ -1064,8 +1065,7 @@ export function DebugChat({
         e.currentTarget.setPointerCapture?.(e.pointerId);
         logDrag.start("input");
       }
-      logDrag.move(m.dy);
-      steer(e.clientY);
+      steer(m.dx, m.dy);
     },
     onPointerUp: () => {
       joystick.current?.set(0);

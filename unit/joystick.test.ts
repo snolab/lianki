@@ -1,45 +1,57 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import {
-  EDGE_MAX_SPEED,
-  EDGE_MAX_SPEED_REDUCED,
-  EDGE_ZONE_PX,
+  JOYSTICK_TUNE,
   createJoystick,
-  edgeSpeed,
+  deadZoneSpeed,
+  joystickTune,
 } from "@lianki/debug-chat/joystick";
 
-const area = { top: 50, bottom: 800 };
-const armed = { bottomArmed: true };
+const T = JOYSTICK_TUNE;
 
-describe("edgeSpeed", () => {
-  it("still in the middle; forward at the top edge, back at the bottom", () => {
-    expect(edgeSpeed(400, area, armed).speed).toBe(0);
-    expect(edgeSpeed(area.top, area, armed).speed).toBe(EDGE_MAX_SPEED);
-    expect(edgeSpeed(area.bottom, area, armed).speed).toBe(-EDGE_MAX_SPEED);
+describe("deadZoneSpeed (a dead zone around the press, like a touchpad)", () => {
+  it("inside the circle: a plain drag, no joystick", () => {
+    expect(deadZoneSpeed(0, 0)).toEqual({ inside: true, speed: 0 });
+    expect(deadZoneSpeed(0, T.radius)).toEqual({ inside: true, speed: 0 });
+    expect(deadZoneSpeed(T.radius * 0.7, -T.radius * 0.7)).toEqual({ inside: true, speed: 0 });
   });
 
-  it("faster the deeper into the band (eased), linear and slower under reduced motion", () => {
-    const half = area.top + EDGE_ZONE_PX / 2;
-    expect(edgeSpeed(half, area, armed).speed).toBeCloseTo(EDGE_MAX_SPEED / 4, 5);
-    expect(edgeSpeed(half, area, armed, { reduced: true }).speed).toBeCloseTo(
-      EDGE_MAX_SPEED_REDUCED / 2,
+  it("outside: below the press scrolls back, above it forward, faster further out", () => {
+    const near = deadZoneSpeed(0, T.radius + T.ramp / 2);
+    const far = deadZoneSpeed(0, T.radius + T.ramp);
+    expect(near.inside).toBe(false);
+    expect(near.speed).toBeCloseTo(-T.max / 4, 5); // eased: half the ramp, a quarter of the speed
+    expect(far.speed).toBeCloseTo(-T.max, 5);
+    expect(deadZoneSpeed(0, -(T.radius + T.ramp * 3)).speed).toBeCloseTo(T.max, 5); // capped
+  });
+
+  it("only the vertical part of the push counts; sideways is nothing", () => {
+    const d = T.radius + T.ramp;
+    expect(deadZoneSpeed(d, 0).speed).toBeCloseTo(0, 5);
+    expect(deadZoneSpeed(d / Math.SQRT2, d / Math.SQRT2).speed).toBeCloseTo(-T.max / Math.SQRT2, 5);
+  });
+
+  it("reduced motion: linear and slower", () => {
+    expect(deadZoneSpeed(0, T.radius + T.ramp / 2, T, true).speed).toBeCloseTo(
+      -T.maxReduced / 2,
       5,
     );
-    // Past the edge (the finger off the visible area): capped.
-    expect(edgeSpeed(area.top - 40, area, armed).speed).toBe(EDGE_MAX_SPEED);
   });
+});
 
-  it("the bottom band arms only once the finger has been above it", () => {
-    let s = { bottomArmed: false };
-    // The drag starts on the bar, inside the bottom band: nothing yet.
-    let r = edgeSpeed(780, area, s);
-    expect(r.speed).toBe(0);
-    s = r.state;
-    // Up out of it…
-    r = edgeSpeed(600, area, s);
-    s = r.state;
-    expect(s.bottomArmed).toBe(true);
-    // …and back down: now it scrolls back.
-    expect(edgeSpeed(790, area, s).speed).toBeLessThan(0);
+describe("joystickTune (the radius and speeds, tunable from the page)", () => {
+  afterEach(() => {
+    delete (globalThis as { __lkJoystickTune?: unknown }).__lkJoystickTune;
+  });
+  it("the defaults, with the page's valid overrides only", () => {
+    expect(joystickTune()).toEqual(JOYSTICK_TUNE);
+    (globalThis as { __lkJoystickTune?: unknown }).__lkJoystickTune = {
+      radius: 56,
+      ramp: -1,
+      max: "fast",
+    };
+    expect(joystickTune()).toEqual({ ...JOYSTICK_TUNE, radius: 56 });
+    expect(joystickTune(null)).toEqual(JOYSTICK_TUNE);
+    expect(deadZoneSpeed(0, 50, joystickTune({ radius: 56 })).inside).toBe(true);
   });
 });
 

@@ -59,37 +59,32 @@ describe("size-snapping (snapAxis, fullLogBox)", () => {
     expect(snapAxis(624, 320, 624)).toBe(320); // at the threshold: kept
   });
 
-  const safe = { top: 47, right: 0, bottom: 34, left: 0 };
+  const safe = { top: 47, bottom: 34 };
   const log = { left: 62, width: 320, bottom: 790, height: 70 };
 
-  it("a phone held upright: edge to edge, full height, the bar aside", () => {
-    const b = fullLogBox({ vw: 390, vh: 844, visibleTop: 0, visibleBottom: 844, safe, log });
-    expect(b).toEqual({ left: 8, width: 374, top: 55, bottom: 802, hideBar: true });
-  });
-
-  it("wider (a phone on its side, a tablet): its own width, full height above the bar", () => {
+  it("never changes the width: only the height, top to bottom of the visible area", () => {
+    const phone = fullLogBox({ vh: 844, visibleTop: 0, visibleBottom: 844, safe, log });
+    expect(phone).toEqual({ left: 62, width: 320, top: 55, bottom: 802, hideBar: true });
     const side = fullLogBox({
-      vw: 844,
       vh: 390,
       visibleTop: 0,
       visibleBottom: 390,
-      safe: { top: 0, right: 47, bottom: 21, left: 47 },
+      safe: { top: 0, bottom: 21 },
       log: { left: 470, width: 320, bottom: 330, height: 70 },
     });
-    expect(side).toEqual({ left: 470, width: 320, top: 8, bottom: 330, hideBar: false });
+    expect(side).toEqual({ left: 470, width: 320, top: 8, bottom: 361, hideBar: true });
     const tablet = fullLogBox({
-      vw: 1024,
       vh: 1366,
       visibleTop: 0,
       visibleBottom: 1366,
-      safe: { top: 24, right: 0, bottom: 20, left: 0 },
+      safe: { top: 24, bottom: 20 },
       log: { left: 690, width: 320, bottom: 1300, height: 70 },
     });
-    expect(tablet).toMatchObject({ width: 320, top: 32, bottom: 1300, hideBar: false });
+    expect(tablet).toEqual({ left: 690, width: 320, top: 32, bottom: 1338, hideBar: true });
   });
 
   it("with the keyboard up, it stops at the visible area", () => {
-    const b = fullLogBox({ vw: 390, vh: 844, visibleTop: 0, visibleBottom: 508, safe, log });
-    expect(b).toMatchObject({ top: 55, bottom: 500, hideBar: true });
+    const b = fullLogBox({ vh: 844, visibleTop: 0, visibleBottom: 508, safe, log });
+    expect(b).toMatchObject({ width: 320, top: 55, bottom: 500 });
   });
 });

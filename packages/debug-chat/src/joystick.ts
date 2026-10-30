@@ -1,46 +1,61 @@
 /**
  * "Joystick mode" for the full-screen log (a drag that began on the empty
- * input): held in a band at the top or bottom edge of the visible area, the
- * finger keeps the log scrolling that way, faster the deeper into the band.
- * Leaving the band, or lifting, stops it.
+ * input), like a touchpad's: a dead zone, a circle, is centred where the
+ * finger pressed. Inside it the drag scrolls the log as usual. Outside it
+ * the log keeps scrolling that way on its own, faster the further out the
+ * finger is, and stops when the finger comes back inside (or lifts). The
+ * screen's edges play no part.
  *
- * Direction follows the drag: the finger going down scrolls back (older
- * lines), so the bottom edge keeps scrolling back and the top edge forward.
- *
- * A drag starts on the bar, inside the bottom band already: that band arms
- * only once the finger has been above it, so the log does not run off the
- * moment the drag begins.
+ * Direction follows the drag: the finger below the press point scrolls back
+ * (older lines), above it forward. Only the vertical part counts.
  */
-export const EDGE_ZONE_PX = 72;
-/** At the very edge: px per second. */
-export const EDGE_MAX_SPEED = 1800;
-/** Under reduced motion: slower, and linear in depth. */
-export const EDGE_MAX_SPEED_REDUCED = 600;
+export type JoystickTune = {
+  /** The dead zone's radius, px. */
+  radius: number;
+  /** Past the zone, the distance over which the speed ramps up to its max, px. */
+  ramp: number;
+  /** The top speed, px per second (and under reduced motion, linear). */
+  max: number;
+  maxReduced: number;
+};
+/**
+ * The defaults, tunable: edit them here with the widget hot-loaded, or set
+ * `globalThis.__lkJoystickTune = { radius: 48 }` on the page (read at each
+ * press) to try a value without a rebuild.
+ */
+export const JOYSTICK_TUNE: JoystickTune = { radius: 40, ramp: 140, max: 1800, maxReduced: 600 };
 
-export type EdgeState = { bottomArmed: boolean };
+/** The defaults with the page's overrides (only finite, positive numbers count). */
+export function joystickTune(
+  over: unknown = (globalThis as { __lkJoystickTune?: unknown }).__lkJoystickTune,
+): JoystickTune {
+  const t = { ...JOYSTICK_TUNE };
+  if (over && typeof over === "object")
+    for (const k of Object.keys(t) as (keyof JoystickTune)[]) {
+      const v = (over as Record<string, unknown>)[k];
+      if (typeof v === "number" && Number.isFinite(v) && v > 0) t[k] = v;
+    }
+  return t;
+}
 
 /**
- * The scroll speed (px/s, signed as scrollTop changes: negative = back) for
- * a finger at `y` in a visible area [top, bottom], and the next state.
+ * Where the finger is against the dead zone around the press point:
+ * `inside`, or the scroll speed (px/s, signed as scrollTop changes:
+ * negative = back) outside it.
  */
-export function edgeSpeed(
-  y: number,
-  area: { top: number; bottom: number },
-  state: EdgeState,
-  opts: { zone?: number; reduced?: boolean } = {},
-): { speed: number; state: EdgeState } {
-  const zone = opts.zone ?? EDGE_ZONE_PX;
-  const max = opts.reduced ? EDGE_MAX_SPEED_REDUCED : EDGE_MAX_SPEED;
-  const ease = (depth: number) => {
-    const t = Math.min(1, Math.max(0, depth / zone));
-    return opts.reduced ? t : t * t;
-  };
-  const bottomArmed = state.bottomArmed || y < area.bottom - zone;
-  const next = { bottomArmed };
-  if (y < area.top + zone) return { speed: max * ease(area.top + zone - y), state: next };
-  if (bottomArmed && y > area.bottom - zone)
-    return { speed: -max * ease(y - (area.bottom - zone)), state: next };
-  return { speed: 0, state: next };
+export function deadZoneSpeed(
+  dx: number,
+  dy: number,
+  tune: JoystickTune = JOYSTICK_TUNE,
+  reduced = false,
+): { inside: boolean; speed: number } {
+  const dist = Math.hypot(dx, dy);
+  if (dist <= tune.radius) return { inside: true, speed: 0 };
+  const t = Math.min(1, (dist - tune.radius) / tune.ramp);
+  const ease = reduced ? t : t * t;
+  const max = reduced ? tune.maxReduced : tune.max;
+  // The vertical share of the push; the finger going down scrolls back.
+  return { inside: false, speed: -max * ease * (dy / dist) };
 }
 
 type Frames = {
