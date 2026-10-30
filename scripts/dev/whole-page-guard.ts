@@ -133,3 +133,52 @@ export function isPrivateLanHost(host: string): boolean {
   const [a, b] = [Number(m[1]), Number(m[2])];
   return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
 }
+
+/**
+ * lianki-push's paths (the debug chat hub, build announcements, the state
+ * tree). They live on lianki.com, not in `next dev`, so the guard forwards
+ * them there — owner session checked first — with lianki.com as the Origin
+ * the hub insists on.
+ */
+export const HUB_PREFIX = "/api/version/";
+export const HUB_ORIGIN = "https://lianki.com";
+
+export function isHubPath(pathname: string): boolean {
+  return pathname.startsWith(HUB_PREFIX);
+}
+
+/** Where the enter link lands first: copies the carried settings, then LANDING. */
+export const LANDING_PATH = "/__dev/landing";
+
+/**
+ * localStorage keys carried from his lianki.com tab to the dev origin (storage
+ * is per origin): the debug/agent widget switches and his preferences. Small
+ * values only; caches (lk:c:*) and anything else stay behind.
+ */
+export function copyableKey(key: string, value: string): boolean {
+  return /^lk:(debug|agent|pref)/.test(key) && value.length <= 4096;
+}
+
+/** The landing page: write the carried keys (from the URL fragment), turn debug on, go on. */
+export function landingHtml(): string {
+  const allow = copyableKey.toString();
+  return `<!doctype html><meta charset="utf-8"><title>Lianki dev</title><script>
+const copyableKey = ${allow};
+try {
+  const o = JSON.parse(decodeURIComponent(location.hash.slice(1) || "%7B%7D"));
+  for (const [k, v] of Object.entries(o)) if (typeof v === "string" && copyableKey(k, v)) localStorage.setItem(k, v);
+} catch {}
+localStorage.setItem("lk:debug", "1");
+location.replace(${JSON.stringify(LANDING)});
+</script>`;
+}
+
+/** The eval snippet send-login runs on his lianki.com tab: collect the keys, navigate. */
+export function sendLoginCode(enterUrl: string): string {
+  const allow = copyableKey.toString();
+  return `const copyableKey = ${allow};
+const o = {};
+for (const k of Object.keys(localStorage)) { const v = localStorage.getItem(k) ?? ""; if (copyableKey(k, v)) o[k] = v; }
+setTimeout(() => location.assign(${JSON.stringify(enterUrl)} + "#" + encodeURIComponent(JSON.stringify(o))), 300);
+"navigating"`;
+}

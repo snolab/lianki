@@ -6,7 +6,11 @@ import {
   EnterTokens,
   decide,
   deviceCookieValue,
+  copyableKey,
+  isHubPath,
   isPrivateLanHost,
+  landingHtml,
+  sendLoginCode,
   readCookie,
   sessionIsOwner,
   verifyDevice,
@@ -169,5 +173,32 @@ describe("dev-whole-page switches (app side)", () => {
 
   test("production's trusted origins are unchanged", () => {
     expect(trustedOrigins("https://lianki.com")).not.toContain("http://192.168.31.96:3100");
+  });
+});
+
+describe("whole-page guard: hub and carried settings", () => {
+  test("lianki-push paths are the hub's", () => {
+    expect(isHubPath("/api/version/debug")).toBe(true);
+    expect(isHubPath("/api/version/ws")).toBe(true);
+    expect(isHubPath("/api/words/lists")).toBe(false);
+    // the hub goes through the owner check like any app path
+    expect(decide("/api/version/debug", true).kind).toBe("owner");
+    expect(decide("/api/version/debug", false).kind).toBe("deny");
+  });
+
+  test("only small lk:debug / lk:agent / lk:pref keys travel", () => {
+    expect(copyableKey("lk:debug", "1")).toBe(true);
+    expect(copyableKey("lk:agent-widget-src", "https://x")).toBe(true);
+    expect(copyableKey("lk:pref:motion", "off")).toBe(true);
+    expect(copyableKey("lk:c:words", "x")).toBe(false);
+    expect(copyableKey("other", "x")).toBe(false);
+    expect(copyableKey("lk:debug-big", "x".repeat(5000))).toBe(false);
+  });
+
+  test("the landing page and the eval snippet are valid JavaScript", () => {
+    const script = landingHtml().split("<script>")[1].split("</script>")[0];
+    expect(() => new Function(script)).not.toThrow();
+    const code = sendLoginCode("https://h.example.ts.net:8443/__dev/enter?t=x");
+    expect(() => new Function(code)).not.toThrow();
   });
 });

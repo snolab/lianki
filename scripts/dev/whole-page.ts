@@ -23,7 +23,9 @@
 import { spawn } from "node:child_process";
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
+import https from "node:https";
 import net from "node:net";
+import tls from "node:tls";
 import { devWholePageOrigin } from "../../lib/dev-whole-page";
 import { ownerEmails } from "../../lib/owner";
 import {
@@ -31,7 +33,11 @@ import {
   ENTER_PATH,
   EnterTokens,
   GUARD_HEADER,
-  LANDING,
+  HUB_ORIGIN,
+  LANDING_PATH,
+  isHubPath,
+  landingHtml,
+  sendLoginCode,
   type SessionInfo,
   decide,
   deviceCookieValue,
@@ -155,6 +161,17 @@ async function serve() {
     return out;
   }
 
+  /** To lianki-push: its host and the Origin it insists on; the owner was already checked. */
+  function hubHeaders(h: http.IncomingHttpHeaders) {
+    const out = forwardHeaders(h);
+    out.host = new URL(HUB_ORIGIN).host;
+    out.origin = HUB_ORIGIN;
+    delete out["x-forwarded-host"];
+    delete out["x-forwarded-proto"];
+    delete out["x-forwarded-for"];
+    return out;
+  }
+
   async function enter(url: URL, res: http.ServerResponse) {
     if (!tokens.consume(url.searchParams.get("t"))) {
       console.error("[whole-page] enter: refused (bad, used or expired link)");
@@ -171,7 +188,7 @@ async function serve() {
     sessions.clear();
     console.error("[whole-page] enter: device paired, owner signed in");
     res.writeHead(302, {
-      location: LANDING,
+      location: LANDING_PATH,
       "cache-control": "no-store",
       "set-cookie": [
         `${DEVICE_COOKIE}=${device}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${YEAR_S}${secure}`,
@@ -194,14 +211,30 @@ async function serve() {
       if (d.kind === "owner" && !(await ownerSession(req.headers.cookie))) {
         return deny(res, "not the owner's session — open a fresh enter link");
       }
-      const up = http.request(
-        {
-          host: "127.0.0.1",
-          port: inner,
-          method: req.method,
-          path: req.url,
-          headers: forwardHeaders(req.headers),
-        },
+      if (url.pathname === LANDING_PATH) {
+        res.writeHead(200, {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        return res.end(landingHtml());
+      }
+      const hub = isHubPath(url.pathname);
+      const up = (hub ? https : http).request(
+        hub
+          ? {
+              host: new URL(HUB_ORIGIN).host,
+              port: 443,
+              method: req.method,
+              path: req.url,
+              headers: hubHeaders(req.headers),
+            }
+          : {
+              host: "127.0.0.1",
+              port: inner,
+              method: req.method,
+              path: req.url,
+              headers: forwardHeaders(req.headers),
+            },
         (r) => {
           res.writeHead(r.statusCode ?? 502, r.headers);
           r.pipe(res);
@@ -219,20 +252,31 @@ async function serve() {
     }
   });
 
-  // HMR's websocket: device cookie required, then piped through.
+  // Websockets: HMR (device cookie) to next dev; the hub's (device + owner) to
+  // lianki-push on lianki.com.
   proxy.on("upgrade", async (req, socket, head) => {
     const url = new URL(req.url ?? "/", origin);
     const deviceOk = await verifyDevice(
       readCookie(req.headers.cookie, DEVICE_COOKIE),
       state.deviceSecret,
     );
-    if (decide(url.pathname, deviceOk).kind !== "pass") {
+    const d = decide(url.pathname, deviceOk);
+    const ok =
+      d.kind === "pass" || (d.kind === "owner" && (await ownerSession(req.headers.cookie)));
+    if (!ok) {
       socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
       return;
     }
-    const up = net.connect(inner, "127.0.0.1", () => {
+    const hub = isHubPath(url.pathname);
+    const headers = hub ? hubHeaders(req.headers) : forwardHeaders(req.headers);
+    const hubHost = new URL(HUB_ORIGIN).host;
+    const connectUp = (onReady: () => void) =>
+      hub
+        ? tls.connect(443, hubHost, { servername: hubHost }, onReady)
+        : net.connect(inner, "127.0.0.1", onReady);
+    const up = connectUp(() => {
       const lines = [`${req.method} ${req.url} HTTP/1.1`];
-      for (const [k, v] of Object.entries(forwardHeaders(req.headers))) {
+      for (const [k, v] of Object.entries(headers)) {
         for (const val of Array.isArray(v) ? v : [v])
           if (val !== undefined) lines.push(`${k}: ${val}`);
       }
@@ -270,7 +314,7 @@ async function sendLogin() {
   const { url } = (await r.json()) as { url: string };
   // Navigate a moment after returning, so eval's result is a plain string and
   // the link never comes back in its output.
-  const code = `setTimeout(() => location.assign(${JSON.stringify(url)}), 300); "navigating"`;
+  const code = sendLoginCode(url);
   const child = spawn("bun", ["scripts/dev/eval.ts", "--no-pair", "--target", target, "-"], {
     stdio: ["pipe", "inherit", "inherit"],
   });
