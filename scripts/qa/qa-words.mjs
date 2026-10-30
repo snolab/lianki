@@ -1841,6 +1841,11 @@ try {
     for (let i = 0; i < 20 && !pred((v = await serverLists())); i++) await page.waitForTimeout(300);
     return v;
   };
+  // The picker: forget this tab's open list, or /words reopens it.
+  await page.evaluate(() => {
+    for (const k of Object.keys(sessionStorage))
+      if (k.startsWith("lk:ui:")) sessionStorage.removeItem(k);
+  });
   await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
   const groupMenu = page.getByRole("button", { name: /More actions for .QA group/ });
   await groupMenu.waitFor({ timeout: 15000 });
