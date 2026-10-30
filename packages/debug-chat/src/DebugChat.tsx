@@ -2386,11 +2386,17 @@ export function DebugChat({
    * (autoplay): then a chip, "Tap to continue reading", does it.
    */
   const queuedAt = useRef(new Map<string, number>());
+  /** The mirror queue has had something on this page (from then on, its state is what is kept). */
+  const queueSeen = useRef(false);
   useEffect(() => {
     for (const e of readP.queue) if (!queuedAt.current.has(e.id)) queuedAt.current.set(e.id, Date.now());
     // The page going away stops the voice (the queue empties): keep what was
     // left from before, so the next page can read on.
     if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    // Nothing read on this page yet: what an earlier page kept stays (for the
+    // chip, or for a copy of this widget mounted next, e.g. after a hot swap).
+    if (!readP.queue.length && !queueSeen.current) return;
+    queueSeen.current = true;
     uiStore.setState({ reading: readingLeft(readP, queuedAt.current) });
   }, [readP.queue]);
   const [resumeLeft, setResumeLeft] = useState<ReadingLeft[]>(() =>
