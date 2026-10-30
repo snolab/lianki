@@ -340,6 +340,27 @@ function safeSides() {
   return v;
 }
 
+/**
+ * The bottom of the page's own header bar at the top of the visible area
+ * (app/components/AppShell.tsx's <header>, or anything marked
+ * [data-app-header]), so the tree is not laid over it; the visible top when
+ * there is none. A page may also set --lk-top-reserve (px) on <html>.
+ */
+function headerBottom(visibleTop: number): number {
+  if (typeof document === "undefined") return visibleTop;
+  const reserve = Number.parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue("--lk-top-reserve"),
+  );
+  const bars = [...document.querySelectorAll<HTMLElement>("header, [data-app-header]")]
+    .filter((el) => !el.closest("[data-debug-chat]"))
+    .map((el) => el.getBoundingClientRect())
+    .filter(
+      (r) => r.height > 0 && r.height < 200 && r.top <= visibleTop + 2 && r.bottom > visibleTop,
+    )
+    .map((r) => r.bottom);
+  return Math.max(visibleTop, Number.isFinite(reserve) ? visibleTop + reserve : 0, ...bars);
+}
+
 /** env(safe-area-inset-bottom) in px (the home indicator), measured once per drag. */
 function safeBottom() {
   const probe = document.createElement("div");
@@ -1958,7 +1979,8 @@ export function DebugChat({
     const vTop = vv?.offsetTop ?? 0;
     const f = fitTreePanel({
       flowBottom: below.getBoundingClientRect().top,
-      visibleTop: Math.max(notch.current, vTop),
+      // Below the app's header or toolbar when one shows at the top.
+      visibleTop: Math.max(notch.current, vTop, headerBottom(vTop)),
       visibleBottom: vv ? vTop + vv.height : innerHeight,
       want: innerHeight * TREE_PANEL_SHARE,
     });

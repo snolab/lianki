@@ -775,6 +775,11 @@ try {
         list.append(row);
       }
       document.body.prepend(list);
+      // The app's header bar at the top, as on /words (AppShell's <header>).
+      const header = document.createElement("header");
+      header.style.cssText = "position:fixed;top:0;left:0;right:0;height:56px;z-index:30";
+      header.textContent = "Lianki";
+      document.body.prepend(header);
     });
     /** What a tap at the panel's centre lands on: inside the panel, never the page. */
     const hit = () =>
@@ -813,6 +818,7 @@ try {
     await page.waitForTimeout(400);
     r = await inView();
     check(r.ok, `tree on screen with the keyboard up (${JSON.stringify(r)})`);
+    check(r.top >= 56, `keyboard up: the tree starts below the app's header (${r.top} ≥ 56)`);
     h = await hit();
     check(h.inside, `keyboard up: a tap on the tree lands on the tree (${h.at})`);
     await page.evaluate(() => {
