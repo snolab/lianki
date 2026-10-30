@@ -75,6 +75,15 @@
  * Node grants are stored as `ngrant:<from>><to>`. The owner's pages see
  * every line, whatever its node.
  *
+ * Voice edits. A page marks an owner line sent from the widget's mic,
+ * unchanged, `source: "stt"`. The agent may polish it ({type:"edit", id,
+ * text}) — STT gets words wrong and has no context — only if all hold: the
+ * sender holds a live owner grant (chat or eval; never a friend's pairing),
+ * the line is the owner's latest in the owner thread, it is `stt`, and it
+ * was polished fewer than MAX_EDITS times. The first STT text stays as
+ * `raw`; `edited: {at, by, count}` marks it. Pages and listeners hear
+ * {type:"edited", id, thread, text, raw, edited}. Friends' lines never.
+ *
  * Resumable grants. The owner's Allow hands the controller a random grant
  * token; only its SHA-256 is stored (`grant:<hash>`), and reconnecting with
  * it (header x-debug-token, or x-liagent-token via index.ts) restores what
@@ -96,7 +105,9 @@ import {
   EVAL_GRANT_MS,
   FRIEND_CHAT_MAX,
   FRIEND_CHAT_WINDOW_MS,
+  type EditedEvent,
   type FriendRecord,
+  MAX_EDITS,
   type HubState,
   type Identity,
   MAX_LABEL,
@@ -432,6 +443,75 @@ export class DebugHub {
       const route = routeTo(a.node, m.to);
       if (route) send(ws, route === "observed" ? { ...out, observed: true } : out);
     }
+  }
+
+  /**
+   * The agent polishes the owner's latest voice line (see "Voice edits"
+   * above). Every refusal is an {type:"error"} naming the rule it broke.
+   */
+  private async edit(ws: Socket, c: ControllerAtt, m: { id: string; text: string }) {
+    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
+    if (c.forUser) return fail("a pairing for a friend cannot edit");
+    const g = c.grant ? await this.ctx.storage.get<Grant>(`grant:${c.grant}`) : undefined;
+    if (!g || g.until <= this.now()) return fail("edit needs a live chat grant from the owner");
+    // The owner's latest line in the owner thread, and its storage key.
+    const kept = await this.ctx.storage.list<ChatMessage>({
+      prefix: threadKeys(OWNER_THREAD).prefix,
+      reverse: true,
+      limit: CHAT_HISTORY,
+    });
+    const latest = [...kept].find(([, x]) => x.from === "owner");
+    if (!latest || latest[1].id !== m.id) {
+      const known = [...kept].some(([, x]) => x.id === m.id);
+      return fail(
+        known
+          ? `message ${m.id} is not the owner's latest: only the latest may be polished`
+          : `no message ${m.id} in the owner's thread (friends' lines can never be edited)`,
+      );
+    }
+    const [key, line] = latest;
+    if (line.source !== "stt")
+      return fail(`message ${m.id} was typed, not spoken: only voice (stt) lines may be polished`);
+    const count = line.edited?.count ?? 0;
+    if (count >= MAX_EDITS) return fail(`message ${m.id} was already polished ${MAX_EDITS} times`);
+    if (m.text === line.text) return fail(`message ${m.id} already reads that way`);
+    const t = this.now();
+    const by = cleanLabel(c.assignee ?? c.label, 80) || "agent";
+    const next: ChatMessage = {
+      ...line,
+      text: m.text,
+      raw: line.raw ?? line.text,
+      edited: { at: t, by, count: count + 1 },
+    };
+    await this.ctx.storage.put(key, next);
+    const out: EditedEvent = {
+      type: "edited",
+      id: line.id,
+      thread: OWNER_THREAD,
+      text: next.text,
+      raw: next.raw as string,
+      edited: next.edited as EditedEvent["edited"],
+    };
+    console.log(
+      JSON.stringify({
+        msg: "debug.edit",
+        pair: c.pair,
+        id: line.id,
+        by,
+        count: count + 1,
+        len: m.text.length,
+        head: head(m.text),
+      }),
+    );
+    for (const { ws: p } of this.pages(OWNER_THREAD)) send(p, out);
+    let told = false;
+    for (const { ws: l, a } of this.listeners()) {
+      const route = routeTo(a.node, line.to);
+      if (!route) continue;
+      if (l === ws) told = true;
+      send(l, route === "observed" ? { ...out, observed: true } : out);
+    }
+    if (!told) send(ws, out);
   }
 
   /** The live node grants (`ngrant:`), lapsed ones dropped as they are met. */
@@ -914,6 +994,7 @@ export class DebugHub {
         thread: OWNER_THREAD,
         ...(page.sender ? { sender: page.sender } : {}),
         ...(m.to ? { to: m.to } : {}),
+        ...(m.source ? { source: m.source } : {}),
       });
     }
     // A sleeping eval grant (listed to the owner's pages only): End, or add a page.
@@ -1199,6 +1280,7 @@ export class DebugHub {
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
       return this.nodeGrant(ws, c, m.value);
     }
+    if (m.value.type === "edit") return this.edit(ws, c, m.value);
     if (m.value.type === "say") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });

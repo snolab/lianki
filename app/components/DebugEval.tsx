@@ -5,7 +5,9 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   type ChatMessage,
   type Heartbeat,
+  type EditedEvent,
   type HubState,
+  applyEdit,
   type PairInfo,
   type Sender,
   chunkMessages,
@@ -275,6 +277,13 @@ export function DebugEval() {
           } else setWarning(null);
           return;
         }
+        if (msg.type === "edited") {
+          // The agent polished a voice line: it changes in place, and is never read aloud again.
+          const e = msg as unknown as EditedEvent;
+          if (typeof e.id !== "string" || typeof e.text !== "string") return;
+          setMessages((list) => list.map((m) => applyEdit(m, e)));
+          return;
+        }
         if (msg.type !== "eval") return;
         if (typeof msg.id !== "string" || typeof msg.to !== "string") return;
         if (typeof msg.code !== "string" || !debugOn()) return;
@@ -392,7 +401,7 @@ export function DebugEval() {
     } catch {}
   };
   /** `to`: the state-tree node the line is addressed to (absent = the main thread). */
-  const sendChat = (text: string, to?: string) => {
+  const sendChat = (text: string, to?: string, opts?: { source?: "stt" }) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return false;
     try {
@@ -402,6 +411,7 @@ export function DebugEval() {
           id: crypto.randomUUID().slice(0, 12),
           text,
           ...(to ? { to } : {}),
+          ...(opts?.source === "stt" ? { source: "stt" } : {}),
         }),
       );
       return true;

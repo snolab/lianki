@@ -17,6 +17,7 @@ import {
   type PageInfo,
   type PairInfo,
   type Scope,
+  type MessageSource,
 } from "../packages/debug-chat/src/wire";
 
 export {
@@ -47,6 +48,13 @@ export {
   type PageInfo,
   type PairInfo,
   type Scope,
+  type MessageSource,
+  type EditMark,
+  type EditedEvent,
+  MAX_EDITS,
+  applyEdit,
+  dictatedDraft,
+  draftSource,
 } from "../packages/debug-chat/src/wire";
 
 /** Largest `code` accepted, in characters. */
@@ -140,6 +148,11 @@ export type ControllerMessage =
     }
   | { type: "busy"; to?: string; label?: string }
   /**
+   * Polish the owner's latest line, when it came from the widget's mic
+   * (`source: "stt"`): docs/dev-debug-widget.md, "Agent edits of voice messages".
+   */
+  | { type: "edit"; id: string; text: string }
+  /**
    * Let senders within node `from` address nodes within `to` for `ms` (the
    * fallback for a scoped grant token): only a listener whose node holds both.
    */
@@ -155,7 +168,8 @@ export type PageMessage =
   | { type: "allow"; pair: string; scope?: "chat"; pages?: string[] | "all" }
   | { type: "deny" | "revoke"; pair: string }
   /** `to`: the state-tree node it is addressed to (absent = the main thread). */
-  | { type: "chat"; id: string; text: string; to?: string }
+  /** `source: "stt"`: sent from the widget's mic, unchanged (absent = typed). */
+  | { type: "chat"; id: string; text: string; to?: string; source?: MessageSource }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
   /** Close another (or this) page of the same audience, from the chat's menu. */
@@ -274,6 +288,13 @@ export function parseControllerMessage(
       },
     };
   }
+  if (m?.type === "edit") {
+    const id = str(m.id, 64)?.trim();
+    if (!id) return { ok: false, error: "edit needs the id of the message to polish" };
+    const text = chatText(m.text);
+    if (!text) return { ok: false, error: `edit needs text of 1–${MAX_CHAT} chars` };
+    return { ok: true, value: { type: "edit", id, text } };
+  }
   if (m?.type === "grant" || m?.type === "ungrant") {
     const from = nodePath(m.from);
     const to = nodePath(m.to);
@@ -294,7 +315,7 @@ export function parseControllerMessage(
     return {
       ok: false,
       error:
-        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"} or {"type":"grant","from","to"}',
+        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"edit","id","text"} or {"type":"grant","from","to"}',
     };
   if (typeof m.code !== "string" || !m.code.trim()) return { ok: false, error: "empty code" };
   if (m.code.length > MAX_CODE) return { ok: false, error: `code over ${MAX_CODE} chars` };
@@ -346,7 +367,13 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     if (!id || !text) return null;
     // An address that is not a node path is dropped: the line goes to the main thread.
     const to = nodePath(m.to);
-    return to && to !== ROOT_NODE ? { type: "chat", id, text, to } : { type: "chat", id, text };
+    return {
+      type: "chat",
+      id,
+      text,
+      ...(to && to !== ROOT_NODE ? { to } : {}),
+      ...(m.source === "stt" ? { source: "stt" as const } : {}),
+    };
   }
   if (m.type === "result") {
     const id = str(m.id, 64);

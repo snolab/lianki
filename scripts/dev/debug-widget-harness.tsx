@@ -6,6 +6,8 @@
  * `?busy=1` shows the heartbeat spinner; `?pending=chat|eval|friend` the pairing modal;
  * `__remount()` remounts the chat (a hot swap); `__devLog` collects the voice
  * session's debug events. `?notree` passes no state tree content, `?nofrontier` no frontier lines; `?min` starts minimized (`?open` expanded; neither keeps what was last chosen).
+ * `__polish(text)` polishes the owner's latest line as the agent's `edit`
+ * does (raw kept, an "edited" mark); `__sent` records each send's `source`.
  * `globalThis.__push(text, from?, at?)` adds a live message (`at` may be skewed), e.g. to float one up
  * over the minimized bar; `?cap=N` caps the list at N, as the app does.
  * `?busy=1` shows the heartbeat spinner; `?pending=chat|eval|friend` the pairing modal.
@@ -156,6 +158,21 @@ function Harness() {
         at,
       }),
     );
+  (globalThis as { __polish?: (text: string) => void }).__polish = (text) =>
+    setMessages((l) => {
+      const i = l.findLastIndex((m) => m.from === "owner" && !m.thread);
+      if (i < 0) return l;
+      const m = l[i];
+      const count = (m.edited?.count ?? 0) + 1;
+      const next = {
+        ...m,
+        source: "stt" as const,
+        text,
+        raw: m.raw ?? m.text,
+        edited: { at: Date.now(), by: "agent", count },
+      };
+      return [...l.slice(0, i), next, ...l.slice(i + 1)];
+    });
   const pages = [
     { id: "p1", label: "/harness Chrome", at: 0 },
     { id: "p2", label: "/words pwa Mozilla/5.0 (iPhone)", at: 0 },
@@ -216,7 +233,8 @@ function Harness() {
           (w.__ended ??= []).push(x.pair);
         }}
         nodes={HARNESS_NODES}
-        onSend={(text, to) => {
+        onSend={(text, to, opts) => {
+          record("__sent", { text, source: opts?.source ?? null });
           setMessages((l) =>
             add(l, {
               id: crypto.randomUUID(),
@@ -225,6 +243,7 @@ function Harness() {
               text,
               at: Date.now(),
               ...(to ? { to } : {}),
+              ...(opts?.source ? { source: opts.source } : {}),
             }),
           );
           return true;

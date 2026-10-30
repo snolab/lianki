@@ -9,7 +9,10 @@ import {
   ROOT_NODE,
   type Sender,
   completeNode,
+  dictatedDraft,
+  draftSource,
   lineNode,
+  type MessageSource,
   nodePath,
   pageParts,
   parseAddress,
@@ -40,7 +43,8 @@ import {
   dwellMs,
   minimizeFloat,
 } from "./float-lines";
-import { Icon } from "./icons";
+import { Icon, POLISHED_ICON } from "./icons";
+import { PolishedMark } from "./PolishedMark";
 import { LINE_HALO, logSurface } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
 import { TreeChips, navIndexOf } from "./TreeChips";
@@ -345,8 +349,11 @@ export type DebugChatProps = {
   live: boolean;
   listeners: number;
   messages: ChatMessage[];
-  /** Send a line; `to` is the state-tree node it is addressed to (absent = the main thread). */
-  onSend: (text: string, to?: string) => boolean;
+  /**
+   * Send a line; `to` is the state-tree node it is addressed to (absent = the
+   * main thread). `opts.source` is "stt" when the line is the mic's text, unchanged.
+   */
+  onSend: (text: string, to?: string, opts?: { source?: MessageSource }) => boolean;
   /** The nodes listeners are subscribed at: "@/…" completions. */
   nodes?: string[];
   /** Approved senders, listed in the pill's menu with an End button each. */
@@ -410,6 +417,8 @@ export type DebugChatProps = {
   viewer?: Sender;
   /** The host's own avatar for a line (its pictures are tried first). */
   avatarFor?: (m: ChatMessage) => Sender | undefined;
+  /** The mark on a voice line the agent polished (default POLISHED_ICON, a sparkle). */
+  polishedIcon?: ReactNode;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -456,6 +465,7 @@ export function DebugChat({
   viewer,
   avatarFor,
   nodes = [],
+  polishedIcon = POLISHED_ICON,
 }: DebugChatProps) {
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
@@ -825,7 +835,10 @@ export function DebugChat({
       }
     }
     if (!text) return false;
-    if (!sendRef.current(text, to === ROOT_NODE ? undefined : to)) {
+    const source = draftSource(draftRef.current, pureDictation.current);
+    if (
+      !sendRef.current(text, to === ROOT_NODE ? undefined : to, source ? { source } : undefined)
+    ) {
       setOffline(true);
       return false;
     }
@@ -833,10 +846,16 @@ export function DebugChat({
     // Sent: an interruption is over, and the queue (still relevant) reads on.
     voice().resume();
     draftRef.current = "";
+    pureDictation.current = null;
     settledLen.current = 0;
     setDraft("");
     return true;
   };
+  /**
+   * The draft as dictation left it, while nothing typed is in it (else null):
+   * a line sent while the draft still equals it is the mic's, `source: "stt"`.
+   */
+  const pureDictation = useRef<string | null>(null);
   /** The draft's length when it last changed outside an IME composition. */
   const settledLen = useRef(0);
   /** The key going down is Shift+Enter: its line break stays a line break. */
@@ -859,6 +878,7 @@ export function DebugChat({
   /** A transcript lands in the draft, as typed text would, but is never sent by itself. */
   const dictated = (t: string) => {
     const { draft: next, send } = appendDictation(draftRef.current, t);
+    pureDictation.current = dictatedDraft(draftRef.current, pureDictation.current, next);
     caretToEnd.current = true;
     draftRef.current = next;
     settledLen.current = next.length; // not a typed "burst"
@@ -914,6 +934,36 @@ export function DebugChat({
    * on the mic brings back. Each fades on its own after its dwell.
    */
   const [floats, setFloats] = useState<ChatMessage[]>([]);
+  /** Polished voice lines shown as first heard (their mark tapped). */
+  const [rawIds, setRawIds] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleRaw = (id: string) =>
+    setRawIds((s) => {
+      const next = new Set(s);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  /** A polished line's text as shown, and its mark (nothing for any other line). */
+  const polish = (m: ChatMessage) => {
+    if (!m.edited || m.raw === undefined) return { text: m.text, mark: null };
+    const raw = rawIds.has(m.id);
+    return {
+      text: raw ? (
+        <span data-testid="debug-chat-raw" className="text-gray-500">
+          {m.raw}
+        </span>
+      ) : (
+        m.text
+      ),
+      mark: (
+        <PolishedMark
+          icon={polishedIcon}
+          label={ui.polished}
+          showRaw={raw}
+          onToggle={() => toggleRaw(m.id)}
+        />
+      ),
+    };
+  };
   /** Bumped on each scrub step and release: every floating line's dwell starts over. */
   const [floatEpoch, setFloatEpoch] = useState(0);
   /** Hovered or touched, or a scrub under way: the dwell timers wait. */
@@ -1344,16 +1394,23 @@ export function DebugChat({
           aria-live="polite"
           className={`flex flex-col gap-0.5 ${ALIGN_ITEMS[place.side]}`}
         >
-          {floats.map((m) => (
+          {floats.map((f) => {
+            // The latest copy of the line: an edit changes it in place.
+            const m = messages.find((x) => x.id === f.id) ?? f;
+            const p = polish(m);
+            return (
             <FloatLine
               key={m.id}
               m={m}
+              text={p.text}
+              mark={p.mark}
               epoch={floatEpoch}
               paused={floatHover || scrubbing}
               onHover={setFloatHover}
               onGone={() => dropFloat(m.id)}
             />
-          ))}
+            );
+          })}
         </ol>
   );
   /**
@@ -1663,7 +1720,8 @@ export function DebugChat({
                   {who.name}
                   {node ? ` (${node.subtitle})` : ""}:{" "}
                 </span>
-                {m.text}
+                {polish(m).text}
+                {polish(m).mark}
                 {!agentOnline && m.from !== "agent" && i > lastAgent && (
                   <span
                     data-testid="debug-chat-queued"
@@ -2017,12 +2075,17 @@ function TreeIcon() {
  */
 function FloatLine({
   m,
+  text,
+  mark,
   epoch,
   paused,
   onHover,
   onGone,
 }: {
   m: ChatMessage;
+  /** What the line shows (a polished line's text, or its raw STT text), and its mark. */
+  text: ReactNode;
+  mark: ReactNode;
   epoch: number;
   paused: boolean;
   onHover: (on: boolean) => void;
@@ -2069,7 +2132,8 @@ function FloatLine({
       >
         {m.from !== "agent" ? "you" : m.label || "agent"}:
       </span>
-      {m.text}
+      {text}
+      {mark}
     </li>
   );
 }
