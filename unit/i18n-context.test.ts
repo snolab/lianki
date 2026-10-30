@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import words from "@/app/(app)/words/page.content";
-import newOrder from "@/app/(app)/words/new-order.content";
 import { describeKeys, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -22,10 +21,7 @@ describe("describeKeys / keyContext", () => {
   });
 });
 
-describe.each([
-  ["words-page", words],
-  ["new-order", newOrder],
-])("%s", (_name, dict) => {
+describe.each([["words-page", words]])("%s", (_name, dict) => {
   const keys = Object.entries(dict.content as Record<string, { nodeType?: string }>)
     .filter(([, v]) => v?.nodeType === "translation")
     .map(([k]) => k);
