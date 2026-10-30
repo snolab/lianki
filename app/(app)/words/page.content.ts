@@ -519,6 +519,42 @@ const dictionary = {
       mr: "बंद",
       ko: "끄기",
     }),
+    showMicLevel: t({
+      en: "Show mic level",
+      zh: "显示麦克风音量",
+      hi: "माइक का स्तर दिखाएँ",
+      es: "Mostrar nivel del micrófono",
+      fr: "Afficher le niveau du micro",
+      ar: "إظهار مستوى الميكروفون",
+      bn: "মাইকের মাত্রা দেখান",
+      pt: "Mostrar nível do microfone",
+      ru: "Показывать уровень микрофона",
+      ur: "مائیک کی سطح دکھائیں",
+      id: "Tampilkan level mikrofon",
+      de: "Mikrofonpegel anzeigen",
+      ja: "マイクの音量を表示",
+      sw: "Onyesha kiwango cha maikrofoni",
+      mr: "माइकची पातळी दाखवा",
+      ko: "마이크 음량 표시",
+    }),
+    showMicLevelHint: t({
+      en: "A thin bar under the chat's microphone: how loud you sound, and the line speech must clear",
+      zh: "聊天麦克风下方的细条：你的音量，以及语音需要超过的那条线",
+      hi: "चैट के माइक्रोफ़ोन के नीचे एक पतली पट्टी: आपकी आवाज़ कितनी तेज़ है, और वह रेखा जिसे बोली को पार करना है",
+      es: "Una barra fina bajo el micrófono del chat: cuánto se te oye y la línea que debe superar la voz",
+      fr: "Une fine barre sous le micro du chat : votre niveau, et la ligne que la voix doit dépasser",
+      ar: "شريط رفيع تحت ميكروفون الدردشة: مدى ارتفاع صوتك، والخط الذي يجب أن يتجاوزه الكلام",
+      bn: "চ্যাটের মাইক্রোফোনের নিচে একটি সরু দাগ: আপনার গলা কতটা জোরে, আর যে রেখা কথাকে পেরোতে হবে",
+      pt: "Uma barra fina sob o microfone do chat: o volume da sua voz e a linha que a fala precisa ultrapassar",
+      ru: "Тонкая полоска под микрофоном чата: насколько громко вас слышно и порог, который должна пройти речь",
+      ur: "چیٹ کے مائیکروفون کے نیچے ایک باریک پٹی: آپ کی آواز کتنی بلند ہے، اور وہ لکیر جو بولی کو پار کرنی ہے",
+      id: "Bilah tipis di bawah mikrofon obrolan: seberapa keras suara Anda, dan garis yang harus dilewati ucapan",
+      de: "Ein dünner Balken unter dem Chat-Mikrofon: wie laut Sie klingen und die Linie, die Sprache überschreiten muss",
+      ja: "チャットのマイクの下の細いバー：声の大きさと、話し声が超えるべき線",
+      sw: "Mstari mwembamba chini ya maikrofoni ya gumzo: sauti yako iko juu kiasi gani, na mstari ambao usemi lazima uvuke",
+      mr: "चॅटच्या मायक्रोफोनखाली एक बारीक पट्टी: तुमचा आवाज किती मोठा आहे, आणि बोलण्याने ओलांडायची रेषा",
+      ko: "채팅 마이크 아래의 얇은 막대: 목소리 크기와 말소리가 넘어야 하는 선",
+    }),
     voices: t({
       en: "Voices:",
       zh: "语音：",
@@ -1823,6 +1859,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Choice of the 'Whisper mode' setting: always use the whisper pickup. Short, a button label.",
   whisperOff:
     "Choice of the 'Whisper mode' setting: never use the whisper pickup (normal microphone). Short, a button label.",
+  showMicLevel:
+    "Name of an on/off switch in the study settings sheet, in its voice/microphone part (debug mode): show a small live meter of the user's microphone loudness under the chat's microphone button. Shown only on this device.",
+  showMicLevelHint:
+    "Tooltip of the 'Show mic level' switch: what the meter shows (how loud the user's voice is, and the threshold line speech has to pass to be detected).",
   voices:
     "Label before the credit line naming the speech engines used (VOICEVOX, Kokoro, Piper…), in the settings sheet. Followed by the names, which are not translated.",
   japanese:

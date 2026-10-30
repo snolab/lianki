@@ -1,5 +1,6 @@
 "use client";
 
+import { MicLevel } from "./MicLevel";
 import { type Adaptive, LIMIT, voiceAdapt } from "./adaptive";
 import { VOICE_CAPTURE_EVENT, voiceTune } from "./voice-tune";
 import { useEffect, useRef, useState } from "react";
@@ -678,6 +679,8 @@ export function DebugMic({
             REC
           </span>
         )}
+        {/* His live level and the VAD's line (MicLevel.tsx): on this device only. */}
+        <MicLevel active={state !== "off"} />
       </button>
     </div>
   );

@@ -448,6 +448,39 @@ function WhisperModeSetting({
   );
 }
 
+/**
+ * "Show mic level": the debug chat's live mic meter (packages/debug-chat
+ * MicLevel.tsx), on by default; localStorage lk:voice-meter = "0" hides it,
+ * on this device only. The widget hears the change by the lk:voice-meter
+ * event.
+ */
+function MicLevelSetting({
+  text,
+}: {
+  text: Record<"showMicLevel" | "showMicLevelHint", { value: string }>;
+}) {
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    try {
+      setOn(localStorage.getItem("lk:voice-meter") !== "0");
+    } catch {}
+  }, []);
+  return (
+    <TogglePill
+      on={on}
+      onChange={(v) => {
+        setOn(v);
+        try {
+          localStorage.setItem("lk:voice-meter", v ? "1" : "0");
+        } catch {}
+        window.dispatchEvent(new Event("lk:voice-meter"));
+      }}
+      label={text.showMicLevel.value}
+      hint={text.showMicLevelHint.value}
+    />
+  );
+}
+
 function TogglePill({
   on,
   onChange,
@@ -3167,6 +3200,7 @@ function Study({
               />
             )}
             {debug && <WhisperModeSetting text={text} />}
+            {debug && <MicLevelSetting text={text} />}
             {speech.on && serverVoice && (
               <span className="w-full text-xs opacity-60" data-voice-credit>
                 {/* Credits: the voice names stay as their makers write them. */}

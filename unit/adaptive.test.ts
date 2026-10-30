@@ -108,6 +108,9 @@ describe("adaptive whisper mode", () => {
     m = "off";
     a.frame(at(-20), 0, false);
     expect(a.state()).toMatchObject({ mode: "off", whisper: false, endpointMargin: 0.25 });
+    // The meter reads the latest frame as the VAD heard it.
+    expect(a.live()).toMatchObject({ prob: 0 });
+    expect(a.live().db).toBeCloseTo(-20, 0);
   });
 
   afterEach(() => {

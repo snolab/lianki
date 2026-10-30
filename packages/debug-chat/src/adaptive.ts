@@ -152,6 +152,8 @@ export function createAdaptive(
   /** The mode the VAD's start settings follow (latched between utterances). */
   let vadWhisper = false;
   let shownGain = 0;
+  /** The latest frame, for the mic meter (read by its rAF; never emitted). */
+  const live = { db: -120, prob: 0, at: 0 };
   const params = (w: boolean) => (w ? WHISPER : NORMAL);
   const state = (): AdaptState => ({
     ...params(whisper),
@@ -170,6 +172,8 @@ export function createAdaptive(
   };
   return {
     state,
+    /** The latest frame as the VAD heard it (dBFS after the gain, p, when): the meter's source. */
+    live: () => live,
     /** Silero's start settings (applied with setOptions between utterances). */
     vad: () => {
       const p = params(vadWhisper);
@@ -197,6 +201,10 @@ export function createAdaptive(
       whisper = m === "force" ? true : m === "off" ? false : auto;
       changed = was.whisper !== whisper || was.mode !== mode;
       lastP = prob ?? 0;
+      // The meter's reading (MicLevel.tsx): what the VAD heard, this frame.
+      live.db = r + gain;
+      live.prob = prob ?? 0;
+      live.at = Date.now();
       const want = whisper ? Math.min(P.MAX_GAIN, Math.max(0, P.TARGET - level)) : 0;
       // Rise slowly, fall fast; never rise while the agent speaks.
       const step = Math.max(-P.RELEASE_DB, Math.min(speaking ? 0 : P.SLEW_DB, want - gain));
