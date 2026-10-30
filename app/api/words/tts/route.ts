@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { authUserOrNull } from "@/app/signInEmail";
+import { devBridgeUser } from "@/lib/dev-bridge-user";
 import {
   isWorkersAiConfigured,
   MELOTTS_LANGS,
@@ -40,7 +41,10 @@ const CACHE_HEADERS = { "Cache-Control": "private, max-age=31536000, immutable" 
 const PUBLIC_CACHE_HEADERS = { "Cache-Control": "public, max-age=31536000, immutable" };
 
 export const GET = async (req: NextRequest) => {
-  const user = await authUserOrNull();
+  // The owner's dev server (lib/dev-bridge-user.ts) may ask as the owner; a
+  // wrong bridge header is refused, never answered from the cookie.
+  const bridged = await devBridgeUser(req);
+  const user = bridged === undefined ? await authUserOrNull() : bridged;
   if (!user?.email) return NextResponse.json({ error: "Login required" }, { status: 401 });
 
   const { lang, text } = ttsParams(req.nextUrl.searchParams);
