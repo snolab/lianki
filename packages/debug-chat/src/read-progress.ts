@@ -33,7 +33,7 @@ export type ReadProgress = {
 export type ReadEvent =
   | { type: "queued"; n: number }
   | { type: "start" }
-  | { type: "enqueue"; id: string; n: number };
+  | { type: "enqueue"; id: string; n: number; from?: number };
 
 export const initialRead = (done: Record<string, number> = {}): ReadProgress => ({
   queue: [],
@@ -82,7 +82,8 @@ export function readStep(p: ReadProgress, ev: ReadEvent): ReadProgress {
       return p.queue[0] ? { ...p, speaking: p.queue[0] } : p;
     case "enqueue": {
       if (ev.n <= 0) return p;
-      const add = Array.from({ length: ev.n }, (_, idx) => ({ id: ev.id, idx }));
+      // `from`: a reply resumed mid-way (after a reload) starts at that sentence.
+      const add = Array.from({ length: ev.n }, (_, i) => ({ id: ev.id, idx: (ev.from ?? 0) + i }));
       return {
         ...p,
         queue: [...p.queue, ...add],
@@ -115,6 +116,28 @@ export function sentenceRanges(text: string): { start: number; end: number }[] {
   if (!out.length) return text ? [{ start: 0, end: text.length }] : [];
   out[out.length - 1]!.end = text.length;
   return out;
+}
+
+/** A reply cut off by a reload is picked up again only this fresh. */
+export const RESUME_MAX_AGE_MS = 10 * 60_000;
+
+/** What is still to read, per message: its first unread sentence (the current one restarts). */
+export type ReadingLeft = { id: string; from: number; at: number };
+
+/** The unread part of the mirror queue, per message, in order, with when each was queued. */
+export function readingLeft(
+  p: Pick<ReadProgress, "queue">,
+  queuedAt: ReadonlyMap<string, number>,
+): ReadingLeft[] {
+  const out: ReadingLeft[] = [];
+  for (const e of p.queue)
+    if (!out.some((r) => r.id === e.id)) out.push({ id: e.id, from: e.idx, at: queuedAt.get(e.id) ?? 0 });
+  return out;
+}
+
+/** The kept replies still worth resuming after a reload: fresh ones only, oldest first. */
+export function toResume(kept: readonly ReadingLeft[], now: number): ReadingLeft[] {
+  return kept.filter((r) => r.at > 0 && now - r.at < RESUME_MAX_AGE_MS);
 }
 
 /** One sentence's look: spoken, speaking, or not yet read. */

@@ -84,6 +84,7 @@ describe("migrateChatUi", () => {
         scroll: 120,
       },
       spoken: { m1: 2, m2: 1 },
+      reading: [{ id: "m3", from: 1, at: 1_000 }],
     };
     expect(migrateChatUi(s, CHAT_UI_VERSION)).toEqual(s);
   });

@@ -32,6 +32,8 @@ export type ChatUi = {
   tree: KeptTree | null;
   /** Per agent message id: how many of its sentences were read aloud (read-progress.ts). */
   spoken: Record<string, number>;
+  /** Replies still being read when the page went away: resumed after a reload (read-progress.ts). */
+  reading: { id: string; from: number; at: number }[];
   // Not kept: the log's scroll (at rest the compact log always shows the
   // newest lines), the bar's position (localStorage, remembered across
   // sessions), the full-screen log (only during a drag) and the mic (it
@@ -46,6 +48,7 @@ export const CHAT_UI_INITIAL: ChatUi = {
   panel: "none",
   tree: null,
   spoken: {},
+  reading: [],
 };
 /** A draft longer than this is not restored (the input's own cap is lower). */
 const MAX_DRAFT = 20_000;
@@ -67,7 +70,22 @@ export function migrateChatUi(persisted: unknown, _version: number): ChatUi {
     for (const [id, n] of Object.entries(p.spoken as Record<string, unknown>).slice(-200))
       if (id.length <= 100 && typeof n === "number" && Number.isInteger(n) && n > 0)
         spoken[id] = Math.min(n, 1000);
-  return { draft, caret, pureDictation, panel, tree: migrateTree(p.tree), spoken };
+  const reading: ChatUi["reading"] = [];
+  if (Array.isArray(p.reading))
+    for (const r of p.reading.slice(0, 20)) {
+      const x = r as Record<string, unknown>;
+      if (
+        x &&
+        typeof x.id === "string" &&
+        x.id.length <= 100 &&
+        Number.isInteger(x.from) &&
+        (x.from as number) >= 0 &&
+        typeof x.at === "number" &&
+        Number.isFinite(x.at)
+      )
+        reading.push({ id: x.id, from: x.from as number, at: x.at });
+    }
+  return { draft, caret, pureDictation, panel, tree: migrateTree(p.tree), spoken, reading };
 }
 
 /** A title path: a short list of short strings. */

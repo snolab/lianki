@@ -50,8 +50,11 @@ import { learnSttHint } from "./stt-hint";
 import { DebugMic, canCapture, playSentTick } from "./MicButton";
 import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
 import {
+  type ReadingLeft,
   initialRead,
   readStep,
+  readingLeft,
+  toResume,
   sentenceCount,
   sentenceRanges,
   sentenceState,
@@ -2374,6 +2377,68 @@ export function DebugChat({
     }
   }, [messages, readP.unmatched]);
   useEffect(() => uiStore.setState({ spoken: { ...readP.done } }), [readP.done]);
+  /**
+   * Resuming after a reload or a page switch (read-progress.ts): what was
+   * left to read is kept per message (its first unread sentence, the one
+   * cut off restarting); on the next page, once those lines are in the
+   * history again, the reading goes on from there. Only replies queued in
+   * the last 10 minutes. The browser may need a tap before it speaks
+   * (autoplay): then a chip, "Tap to continue reading", does it.
+   */
+  const queuedAt = useRef(new Map<string, number>());
+  useEffect(() => {
+    for (const e of readP.queue) if (!queuedAt.current.has(e.id)) queuedAt.current.set(e.id, Date.now());
+    // The page going away stops the voice (the queue empties): keep what was
+    // left from before, so the next page can read on.
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    uiStore.setState({ reading: readingLeft(readP, queuedAt.current) });
+  }, [readP.queue]);
+  const [resumeLeft, setResumeLeft] = useState<ReadingLeft[]>(() =>
+    toResume(uiStore.getState().reading, Date.now()),
+  );
+  const resumeItems = resumeLeft
+    .map((r) => ({ r, m: messages.find((x) => x.id === r.id && x.from === "agent") }))
+    .filter((x): x is { r: ReadingLeft; m: ChatMessage } => !!x.m);
+  /** Hand the unread rest of those replies back to the voice, as one queued reply each. */
+  const resumeNow = () => {
+    const v = voice();
+    const el = input.current;
+    // The page's own voice session reads a reply only with the mic on or the
+    // input focused (its focus rule): focus it for that one call, read-only
+    // so no keyboard opens, and without its blur stopping the reading.
+    const focusHack = !v.state().mic && !!el;
+    if (focusHack && el) {
+      keepReading.current = true;
+      el.readOnly = true;
+      el.focus({ preventScroll: true });
+    }
+    for (const { r, m } of resumeItems) {
+      const ranges = sentenceRanges(m.text);
+      const start = ranges[r.from]?.start;
+      if (start === undefined) continue;
+      claimed.current.add(m.id);
+      if (v.reply(m.text.slice(start)))
+        readDispatch({ type: "enqueue", id: m.id, n: ranges.length - r.from, from: r.from });
+    }
+    if (focusHack && el) {
+      el.blur();
+      el.readOnly = false;
+      keepReading.current = false;
+    }
+    setResumeLeft([]);
+  };
+  /** The input's blur would stop the reading (mic off): not for resumeNow's own focus. */
+  const keepReading = useRef(false);
+  // Once the lines are back: on at once if the page may already speak, else the chip.
+  const resumeTried = useRef(false);
+  useEffect(() => {
+    if (resumeTried.current || !resumeItems.length) return;
+    resumeTried.current = true;
+    const activated =
+      (navigator as Navigator & { userActivation?: { hasBeenActive?: boolean } }).userActivation
+        ?.hasBeenActive === true;
+    if (voice().state().mic || activated) resumeNow();
+  }, [resumeItems.length]);
   /** An agent line in its sentences, each coloured by how far the reading got. */
   const readText = (m: ChatMessage, text: ReactNode) => {
     if (m.from !== "agent" || typeof text !== "string") return text;
@@ -2571,6 +2636,34 @@ export function DebugChat({
           style={{ color: "oklch(0.6 0.17 45)" }}
         >
           {warning}
+        </div>
+      )}
+      {resumeLeft.length > 0 && resumeItems.length > 0 && (
+        // After a reload cut a reply off and the browser wants a tap before it speaks.
+        <div className="pointer-events-auto flex items-center gap-1 self-start pb-1">
+          <button
+            type="button"
+            data-testid="debug-chat-resume-read"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={resumeNow}
+            style={{ background: INPUT_BG }}
+            className="rounded-full border border-current/25 px-2.5 py-1 text-[11px] backdrop-blur"
+          >
+            ▶ {ui.resumeRead}
+          </button>
+          <button
+            type="button"
+            aria-label="✕"
+            data-testid="debug-chat-resume-read-dismiss"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setResumeLeft([]);
+              uiStore.setState({ reading: [] });
+            }}
+            className="tap-40 px-1 text-[10px] text-gray-500"
+          >
+            ✕
+          </button>
         </div>
       )}
       {/* The log above is click-through: taps reach the page under it. Only the
@@ -2781,6 +2874,8 @@ export function DebugChat({
                   }}
                   onBlur={() => {
                     setTyping(false);
+                    // resumeNow's own focus and blur: the reading it queued goes on.
+                    if (keepReading.current) return;
                     // Mic on: hands-free, the reading goes on. Off: it was only for the input.
                     if (voice().state().mic) voice().resume();
                     else voice().stop();

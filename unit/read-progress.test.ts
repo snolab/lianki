@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import {
   READ_KEEP,
+  RESUME_MAX_AGE_MS,
+  readingLeft,
+  toResume,
   initialRead,
   readStep,
   sentenceCount,
@@ -99,5 +102,41 @@ describe("sentences as the voice cuts them", () => {
     expect(r.map((x) => t.slice(x.start, x.end)).join("")).toBe(t);
     expect(sentenceRanges("")).toEqual([]);
     expect(sentenceRanges("   ")).toEqual([{ start: 0, end: 3 }]);
+  });
+});
+
+describe("resuming after a reload", () => {
+  it("readingLeft: per message, its first unread sentence (the current one restarts)", () => {
+    let p = run(initialRead(), { type: "queued", n: 3 }, { type: "enqueue", id: "a", n: 3 });
+    p = run(p, { type: "start" }, { type: "queued", n: 2 }, { type: "start" }); // on a's second
+    p = run(p, { type: "queued", n: 4 }, { type: "enqueue", id: "b", n: 2 });
+    expect(readingLeft(p, new Map([["a", 1_000]]))).toEqual([
+      { id: "a", from: 1, at: 1_000 },
+      { id: "b", from: 0, at: 0 },
+    ]);
+  });
+
+  it("a resumed reply's sentences count from where it stopped", () => {
+    let p = run(initialRead({ a: 1 }), { type: "queued", n: 2 });
+    p = readStep(p, { type: "enqueue", id: "a", n: 2, from: 1 });
+    p = run(p, { type: "start" });
+    expect(sentenceState(p, "a", 0)).toBe("spoken");
+    expect(sentenceState(p, "a", 1)).toBe("speaking");
+    p = run(p, { type: "queued", n: 1 }, { type: "start" }, { type: "queued", n: 0 });
+    expect(p.done).toEqual({ a: 3 });
+  });
+
+  it("toResume: only replies queued in the last 10 minutes", () => {
+    const now = 1_000_000;
+    expect(
+      toResume(
+        [
+          { id: "fresh", from: 1, at: now - 60_000 },
+          { id: "old", from: 0, at: now - RESUME_MAX_AGE_MS },
+          { id: "unknown", from: 0, at: 0 },
+        ],
+        now,
+      ).map((r) => r.id),
+    ).toEqual(["fresh"]);
   });
 });
