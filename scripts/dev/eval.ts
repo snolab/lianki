@@ -44,6 +44,11 @@
  *       once with one busy beat, so the page's spinner shows "heard you"
  *       before the agent's turn (docs/monitoring.md, "Voice latency").
  *
+ *   bun scripts/dev/eval.ts wake active|passive|ignored [--to <thread|email>]
+ *       The mic's wake-word mode on those pages (docs/wake-word.md): passive
+ *       waits for "Linky"; ignored = the last line was not for the agent.
+ *       Each owner line carries "wake" (the mode it was sent in) while the mic is on.
+ *
  *   bun scripts/dev/eval.ts say [--to <thread|email>] "text"      (or - for stdin)
  *       Reply with the saved grant (the chat grant, else the eval grant:
  *       eval implies chat; never pairs), and exit: to the owner by default, or to
@@ -435,6 +440,29 @@ function chat(out?: string) {
 
 /** Reply with the saved grant (to the owner, or `to` a friend); resolves once the hub has it. */
 function say(text: string, to?: string): Promise<Msg> {
+  return sendOnce(
+    {
+      type: "say",
+      text,
+      ...(to ? { to } : {}),
+      ...(where.node ? { taskPath: where.node } : {}),
+      ...(where.agent ? { agentId: where.agent } : {}),
+    },
+    "said",
+  );
+}
+
+/**
+ * Set the mic's wake-word mode on the owner's (or `to` a friend's) pages
+ * (docs/wake-word.md): "passive" waits for "Linky", "active" hears
+ * everything, "ignored" counts the last line as not for the agent.
+ */
+function wake(mode: string, to?: string): Promise<Msg> {
+  return sendOnce({ type: "wake", mode, ...(to ? { to } : {}) }, "woke");
+}
+
+/** One controller message with the saved grant; resolves on the hub's `done` answer. */
+function sendOnce(msg: Record<string, unknown>, done: string): Promise<Msg> {
   const grant = chatGrant();
   if (!grant)
     return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
@@ -446,17 +474,8 @@ function say(text: string, to?: string): Promise<Msg> {
     }, 15_000);
     ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data)) as Msg;
-      if (m.type === "approved")
-        ws.send(
-          JSON.stringify({
-            type: "say",
-            text,
-            ...(to ? { to } : {}),
-            ...(where.node ? { taskPath: where.node } : {}),
-            ...(where.agent ? { agentId: where.agent } : {}),
-          }),
-        );
-      else if (m.type === "said") {
+      if (m.type === "approved") ws.send(JSON.stringify(msg));
+      else if (m.type === done) {
         clearTimeout(give);
         ws.close();
         resolve(m);
@@ -674,6 +693,17 @@ async function main() {
       process.exit(2);
     }
     console.log(JSON.stringify(await edit(text, id, lastFlag)));
+    return;
+  }
+  if (args[0] === "wake") {
+    const mode = args[1];
+    if (mode !== "active" && mode !== "passive" && mode !== "ignored") {
+      console.error(
+        "usage: bun scripts/dev/eval.ts wake active|passive|ignored [--to <thread|email>]",
+      );
+      process.exit(2);
+    }
+    console.log(JSON.stringify(await wake(mode, to)));
     return;
   }
   if (args[0] === "say") {

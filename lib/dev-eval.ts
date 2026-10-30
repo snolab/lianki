@@ -152,6 +152,13 @@ export type ControllerMessage =
     }
   | { type: "busy"; to?: string; label?: string }
   /**
+   * The mic's wake-word mode on that thread's pages (docs/wake-word.md):
+   * "passive" waits for "Linky", "active" hears everything, "ignored" says
+   * the last line was not for the agent (one rejection towards passive).
+   * Relayed like a heartbeat: not stored, not shown.
+   */
+  | { type: "wake"; mode: "active" | "passive" | "ignored"; to?: string }
+  /**
    * Polish the owner's latest line, when it came from the widget's mic
    * (`source: "stt"`): docs/dev-debug-widget.md, "Agent edits of voice messages".
    */
@@ -181,6 +188,8 @@ export type PageMessage =
       to?: string;
       source?: MessageSource;
       timing?: VoiceTiming;
+      /** The mic's wake-word mode when the line was sent (docs/wake-word.md); absent = mic off. */
+      wake?: "active" | "passive";
     }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
@@ -315,6 +324,13 @@ export function parseControllerMessage(
     const ms = typeof m.ms === "number" && m.ms > 0 ? Math.min(m.ms, CHAT_MS) : undefined;
     return { ok: true, value: { type: "grant", from, to, ...(ms ? { ms } : {}) } };
   }
+  if (m?.type === "wake") {
+    const mode = m.mode;
+    if (mode !== "active" && mode !== "passive" && mode !== "ignored")
+      return { ok: false, error: 'wake needs mode "active", "passive" or "ignored"' };
+    const to = str(m.to, 320)?.trim();
+    return { ok: true, value: { type: "wake", mode, ...(to ? { to } : {}) } };
+  }
   if (m?.type === "busy") {
     const to = str(m.to, 320)?.trim();
     const label = cleanLabel(str(m.label, 80));
@@ -327,7 +343,7 @@ export function parseControllerMessage(
     return {
       ok: false,
       error:
-        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"edit","id","text"} or {"type":"grant","from","to"}',
+        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"wake","mode"}, {"type":"edit","id","text"} or {"type":"grant","from","to"}',
     };
   if (typeof m.code !== "string" || !m.code.trim()) return { ok: false, error: "empty code" };
   if (m.code.length > MAX_CODE) return { ok: false, error: `code over ${MAX_CODE} chars` };
@@ -387,6 +403,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(to && to !== ROOT_NODE ? { to } : {}),
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
       ...(timing ? { timing } : {}),
+      ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
     };
   }
   if (m.type === "result") {

@@ -34,6 +34,7 @@ import {
   HALLUCINATION_MIN_PROB,
   isHallucination,
   isHallucinationPhrase,
+  stripHallucinationTail,
   normalizeTranscript,
   ENDPOINT_MAX,
   ENDPOINT_MIN,
@@ -838,6 +839,38 @@ describe("the Whisper hallucination guard", () => {
     expect(isHallucinationPhrase("Ondertiteling door de Amara.org gemeenschap")).toBe(true);
     for (const h of HALLUCINATIONS)
       expect(isHallucinationPhrase(h.replaceAll("…", "x"))).toBe(true);
+  });
+
+  it("knows the Chinese credits, simplified and traditional", () => {
+    for (const t of [
+      "感谢观看",
+      "感謝觀看。",
+      "谢谢观看！",
+      "謝謝觀看",
+      "感谢收看",
+      "感謝收看",
+      "谢谢您的观看。",
+      "請不吝點贊 訂閱 轉發 打賞支持明鏡與點點欄目",
+      "请不吝点赞订阅转发打赏支持明镜与点点栏目",
+      "字幕由Amara.org社區提供",
+      "字幕志愿者 李宗盛",
+    ])
+      expect(isHallucinationPhrase(t)).toBe(true);
+    expect(isHallucinationPhrase("感谢你的帮助")).toBe(false);
+  });
+
+  it("cuts a credit tacked onto a real sentence, and only that", () => {
+    expect(stripHallucinationTail("这个按钮应该自动上屏。感谢观看。")).toBe(
+      "这个按钮应该自动上屏。",
+    );
+    expect(stripHallucinationTail("下一个词，谢谢观看")).toBe("下一个词，");
+    expect(stripHallucinationTail("次の単語。ご視聴ありがとうございました。")).toBe("次の単語。");
+    expect(stripHallucinationTail("Next word. Thanks for watching!")).toBe("Next word.");
+    // Nothing but a credit: left for isHallucination (length and loudness) to judge.
+    expect(stripHallucinationTail("感谢观看。")).toBe("感谢观看。");
+    // A credit-like phrase inside the sentence stays.
+    expect(stripHallucinationTail("他说感谢观看这个视频的人")).toBe("他说感谢观看这个视频的人");
+    expect(stripHallucinationTail("你好")).toBe("你好");
   });
 
   it("normal text is not a phrase", () => {
