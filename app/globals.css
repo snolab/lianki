@@ -303,6 +303,14 @@ ruby rt {
     animation: slip-pin linear both;
     animation-timeline: --slip-x;
   }
+  /* Not motion but position: the pin follows the finger's scroll. The app's
+   * "no animations" rule (html[data-motion="off"] *, below) zeroes every
+   * animation-duration, and a 0s scroll-driven animation sits on its last
+   * keyframe — the loose cords hung 2a (88px) into the slip, on a
+   * motion-off phone (the owner, 2026-10-31). */
+  html[data-motion="off"] .slip-pin {
+    animation-duration: auto !important;
+  }
 }
 @keyframes slip-pin {
   from {
@@ -608,6 +616,28 @@ ruby rt {
   }
 }
 
+/* /words list picker: the Undo toast's bar runs out with the delete. Motion
+ * off (system or the app's switch): no bar, the text says it all. */
+.lk-undo-timer {
+  animation: lk-undo-timer linear forwards;
+}
+@keyframes lk-undo-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-undo-timer {
+    display: none;
+  }
+}
+html[data-motion="off"] .lk-undo-timer {
+  display: none;
+}
+
 /* /words: the list fills the window edge to edge, under the header, the
  * toolbar, the help strip and (tablet) the nav. Only the list scrolls. */
 .lk-words-list {
@@ -693,6 +723,10 @@ html.lk-paper-scrolls body {
   z-index: 21;
   /* Nearly opaque: the rows under it must not read through its text. */
   background: var(--glass-bg-solid);
+  /* No blur: at 0.9 alpha it barely shows, and this is the largest glass
+   * (a third of a phone screen) — every repaint under it re-blurred it. */
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   overflow-y: auto;
   overscroll-behavior: contain;
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { WordEntriesD1Repo } from "@/lib/repos/wordEntriesD1";
 import { MAX_ENTRIES, MAX_LEN } from "@/lib/words/anki";
+import { ANKIWEB_INFO_RE, ANKIWEB_LICENCE } from "@/lib/words/ankiweb";
 import { wordsRepo } from "../repo";
 
 const text = (max: number) => z.string().max(max);
@@ -12,6 +13,9 @@ const Body = z.object({
   deckId: z.string().regex(/^[0-9a-z-]{1,40}$/),
   name: z.string().trim().min(1).max(120),
   lang: z.string().trim().min(2).max(16),
+  /** The deck's AnkiWeb page, when known: recorded on the list and each word. */
+  src: z.string().regex(ANKIWEB_INFO_RE).optional(),
+  srcTitle: z.string().trim().max(200).optional(),
   entries: z
     .array(
       z.object({
@@ -42,13 +46,18 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  const { listId, deckId, name, lang, entries } = parsed.data;
+  const { listId, deckId, name, lang, src, srcTitle, entries } = parsed.data;
   let id = listId;
   if (id) {
     const list = await repo.getList(id);
     if (!list?.source?.startsWith("anki:"))
       return NextResponse.json({ error: "Not an imported list" }, { status: 404 });
   } else id = await repo.createList({ name, lang, source: `anki:${deckId}` });
-  const result = await new WordEntriesD1Repo(repo.db, repo.email).sync(id, entries);
-  return NextResponse.json({ listId: id, ...result });
+  const entriesRepo = new WordEntriesD1Repo(repo.db, repo.email);
+  const result = await entriesRepo.sync(id, entries);
+  // A personal-use licence: the list stays private (docs/wordlists-pipeline.md §1a).
+  const attributed = src
+    ? await entriesRepo.attribute(id, { url: src, title: srcTitle, licence: ANKIWEB_LICENCE })
+    : false;
+  return NextResponse.json({ listId: id, ...result, attributed });
 }

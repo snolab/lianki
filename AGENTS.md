@@ -14,8 +14,9 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 - **NEVER `git reset --hard`** to move a branch — it silently destroys
   uncommitted work. Use `git reset --keep`, which aborts instead of overwriting.
 - Always bump `@version` in `lianki.user.js` when changing the userscript.
-- `.env.local` and `.dev.vars` are gitignored and unrecoverable — never delete
-  them.
+- `.env.local` and `.dev.vars` are gitignored and have no other copy — never
+  delete them. An encrypted backup is proposed in
+  [docs/secrets-backup-plan.md](docs/secrets-backup-plan.md) (not done yet).
 - Use owner `snolab` for every `gh` / `gh api` call. A wrong owner returns a
   plan-gated 403 that misleadingly reads as "branch protection is off".
 
@@ -116,7 +117,7 @@ that are expensive to rediscover.
 | UI strings, translations: every key carries context           | [docs/i18n.md](docs/i18n.md)                                        |
 | Blog posts                                                    | [blog/AGENTS.md](blog/AGENTS.md)                                    |
 | The Chrome extension, and publishing it                       | [packages/ext/README.md](packages/ext/README.md)                    |
-| /words new-word order: stagger, take turns, caps              | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)            |
+| /words new-word order: in order + pass, take turns, simulator | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)            |
 | Sync/offline architecture                                     | [docs/sync-architecture.md](docs/sync-architecture.md)              |
 | Sync conflicts, deletions, tombstones                         | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
 | Settings that follow the account (`lk:*` key classes)         | [docs/prefs-sync.md](docs/prefs-sync.md)                            |
