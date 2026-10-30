@@ -436,11 +436,22 @@ What changes:
    `el.load()` so the element frees its media. After disposal, `take`
    returns a silent dummy clip and `fadeOut` is a no-op. Add unit tests for
    both, and a soak check that elements and nodes are collected after a
-   dispose. Whether Chromium and WebKit collect an element that was once
-   given to `createMediaElementSource` is the open question this step
-   answers. If they do not, the module keeps its elements on the kernel's
-   root across swaps, as a pool that outlives the module, and only the
-   policy is swapped.
+   dispose. **Done in #352, and the answer is no.**
+   `scripts/qa/clip-pool-gc.ts` measured it on 2026-10-31 (20 pools, forced
+   GC). In Chromium, a running AudioContext keeps every element that was
+   ever given to `createMediaElementSource`, plus its source node:
+   - 40 of 40 elements stayed alive after disposal, and only the gains were
+     freed (40 of 80 nodes);
+   - 0 of 40 stayed alive once the context was closed;
+   - the page never closes its one context.
+
+   So a disposed pool leaves its wired elements, with their source nodes, as
+   spares on the AudioContext, and the next pool adopts them. 20 disposed
+   pools now make 2 elements in all. This is the "pool that outlives the
+   module": the elements belong to the context, and only the policy is
+   swapped. Headless WebKit renders no media through an AudioContext, so iOS
+   still needs a check on a device.
+
 2. **Make it a module.** Add `lib/core/modules/clip-pool.ts`:
    ```ts
    export const clipPoolModule: CoreModule = {
