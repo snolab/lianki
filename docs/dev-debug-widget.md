@@ -366,6 +366,45 @@ the raw STT text, muted; another tap goes back. The icon is one slot:
 `POLISHED_ICON` in `packages/debug-chat/src/icons.tsx`, or the widget's
 `polishedIcon` prop.
 
+## Ask cards: approvals by a tap
+
+The agent can ask with options instead of open text; the page shows them as
+pills the owner taps (`packages/debug-chat/src/ask.ts`, `AskCard.tsx`).
+
+```bash
+bun scripts/dev/eval.ts ask --q "Deploy lianki-push now?" --opt "Deploy" --opt "Wait"
+bun scripts/dev/eval.ts ask --to owner --q "Days?" --opt Mon --opt Tue --multi \
+  --q "Time zone?" --opt UTC --opt Local --wait --timeout 900
+```
+
+- Wire: the controller sends `{type:"ask", questions:[{id?, question,
+  options:[{id?, label, recommended?}], multi?}], expiresAt?, to?}` (or one
+  `question` + `options`); the hub answers `{type:"asked", id, askId,
+  thread}`. In `eval.ts` the first `--opt` of each `--q` is the recommended
+  one; `--wait` waits for the tap (event-driven, no polling). Limits: 20
+  questions, 8 options, a 7-day expiry at most.
+- The page sends only `{type:"answer", askId, choices}`. The **hub** checks
+  the ask is in that page's own thread, still open (one-shot, not expired)
+  and that the choices fit it, then stamps `{choices, source:"tap", thread,
+  label, at}` on the line and sends `{type:"answered", id, askId, answer,
+  labels}` to the thread's pages and to the approved listeners; `eval.ts
+  chat` prints it as an `answered` line.
+- A controller can never answer: `parseControllerMessage` refuses
+  `type:"answer"`, so `source:"tap"` only ever comes from a page socket.
+- Friends: `--to <email>` asks a friend in their own thread (they must have
+  chatted once). They never see the owner's asks and cannot answer them; their
+  answers reach listeners tagged with their `thread`.
+- The card greys out after the tap, shows the choice, says "Expired" past the
+  deadline, and stays in the history. A page from before this change (no
+  `onAnswer`) falls back to sending the choice as a typed line — that is
+  **not** a tap-grade answer.
+
+**Security:** a hub-stamped `source:"tap"` answer from the owner's thread is
+a high-confidence approval — a deliberate touch on the owner's signed-in
+page. A voice line (stt) is **never** enough to approve anything sensitive:
+it can be misheard, overheard or played from a speaker. A typed line is no
+approval either. Ask with a card and act on the `answered` event.
+
 ## The state tree, live
 
 The chat's Tree view (menu → Tree; `docs/state-tree.md`) normally shows the

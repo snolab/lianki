@@ -224,6 +224,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           status?: unknown;
           retryIn?: unknown;
           sender?: unknown;
+          answer?: unknown;
         };
         try {
           msg = JSON.parse(String(e.data));
@@ -277,6 +278,12 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
             if (m.from === "agent") agentAtRef.current = Math.max(agentAtRef.current, m.at);
           setMessages(list);
           reBeat();
+          return;
+        }
+        // An ask answered by a tap (on this page or another): the card shows it.
+        if (msg.type === "answered" && typeof msg.id === "string" && msg.answer) {
+          const answer = msg.answer as ChatMessage["answer"];
+          setMessages((list) => list.map((x) => (x.id === msg.id ? { ...x, answer } : x)));
           return;
         }
         if (msg.type === "chat" && msg.message && typeof msg.message === "object") {
@@ -451,6 +458,18 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
     }
   };
 
+  /** A tap on an ask card: only which options; the hub stamps who, where, when and source "tap". */
+  const sendAnswer = (askId: string, choices: Record<string, string[]>) => {
+    const sock = sockRef.current;
+    if (!sock || sock.readyState !== WebSocket.OPEN) return false;
+    try {
+      sock.send(JSON.stringify({ type: "answer", askId, choices }));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const pending = state?.pending ?? null;
   const sessions = state?.sessions ?? [];
   const isFriend = friend !== null;
@@ -485,6 +504,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           listeners={state?.listeners ?? sessions.length}
           messages={messages}
           onSend={sendChat}
+          onAnswer={sendAnswer}
           nodes={state?.nodes}
           notice={
             friend === "blocked"

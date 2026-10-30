@@ -5,6 +5,8 @@
  * bundle this file.
  */
 
+import type { Ask, AskAnswer } from "./ask";
+
 export * from "./node-path";
 
 /** Largest chat message (owner's or agent's), in characters. */
@@ -78,6 +80,21 @@ export type ChatMessage = {
    * send none, and an older hub drops it.
    */
   timing?: VoiceTiming;
+  /** An agent line that asks: the question(s) and their options (ask.ts). */
+  ask?: Ask;
+  /** Its answer, stamped by the hub from a tap on a page (ask.ts). */
+  answer?: AskAnswer;
+};
+
+/** The hub telling pages and listeners that an ask was answered by a tap. */
+export type AnsweredEvent = {
+  type: "answered";
+  /** The ask's message id, and the ask's own id. */
+  id: string;
+  askId: string;
+  answer: AskAnswer;
+  /** Option labels per question, for a listener that prints it. */
+  labels: Record<string, string[]>;
 };
 
 /** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */

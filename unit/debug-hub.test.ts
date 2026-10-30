@@ -2499,3 +2499,144 @@ describe("DebugHub agent edits of voice messages", () => {
     expect((owner.last("edited") as { edited: { by: string } }).edited.by).toBe("chat-lane");
   });
 });
+
+describe("DebugHub ask cards (the agent asks, a person taps)", () => {
+  const agent = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+    const c = s.controller("main lane");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    return c;
+  };
+  const askOne = {
+    type: "ask",
+    askId: "cal1",
+    question: "Apply calendar changes directly?",
+    options: [{ label: "Apply, with undo", recommended: true }, "Ask each time"],
+  };
+
+  it("an ask reaches the owner's pages as an agent line carrying it", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    await s.msg(c, askOne);
+    const line = chats(owner).at(-1) as Record<string, unknown>;
+    expect(line).toMatchObject({
+      from: "agent",
+      thread: "owner",
+      text: "Apply calendar changes directly? — Apply, with undo / Ask each time",
+      ask: {
+        askId: "cal1",
+        questions: [
+          {
+            id: "q1",
+            options: [
+              { id: "o1", label: "Apply, with undo", recommended: true },
+              { id: "o2", label: "Ask each time" },
+            ],
+          },
+        ],
+      },
+    });
+    expect(c.last("asked")).toMatchObject({ askId: "cal1", thread: "owner" });
+  });
+
+  it("a tap is stamped by the hub (source tap, page, time) and reaches pages and listeners; one-shot", async () => {
+    const s = setup();
+    const owner = s.page("/words pwa iPhone");
+    const mac = s.page("/list Macintosh");
+    const c = await agent(s, owner);
+    await s.msg(c, askOne);
+    s.tick(7);
+    // The page claims a source and a time: ignored, the hub stamps its own.
+    await s.msg(owner, {
+      type: "answer",
+      askId: "cal1",
+      choices: { q1: "o1" },
+      source: "x",
+      at: 1,
+    });
+    const ev = {
+      type: "answered",
+      askId: "cal1",
+      answer: {
+        choices: { q1: ["o1"] },
+        source: "tap",
+        thread: "owner",
+        label: "/words pwa iPhone",
+        at: 1_000_007,
+      },
+      labels: { q1: ["Apply, with undo"] },
+    };
+    expect(owner.last("answered")).toMatchObject(ev);
+    expect(mac.last("answered")).toMatchObject(ev);
+    expect(c.last("answered")).toMatchObject(ev);
+    // Kept on the line: a page connecting later sees it answered.
+    const hist = await s.hub.history();
+    expect(hist.at(-1)?.answer).toMatchObject({ source: "tap", choices: { q1: ["o1"] } });
+    // A second tap is refused.
+    await s.msg(mac, { type: "answer", askId: "cal1", choices: { q1: "o2" } });
+    expect(mac.last("error")?.error).toContain("is answered");
+    expect((await s.hub.history()).at(-1)?.answer?.choices).toEqual({ q1: ["o1"] });
+  });
+
+  it("a controller can never answer (forgery guard)", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    await s.msg(c, askOne);
+    await s.msg(c, { type: "answer", askId: "cal1", choices: { q1: "o1" } });
+    expect(c.last("error")?.error).toContain("a controller cannot answer");
+    expect(owner.last("answered")).toBeUndefined();
+    expect((await s.hub.history()).at(-1)?.answer).toBeUndefined();
+  });
+
+  it("answers must fit the ask; an expired ask cannot be answered", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    await s.msg(c, {
+      type: "ask",
+      askId: "b1",
+      questions: [
+        { id: "a", question: "Which days?", options: ["Mon", "Tue", "Wed"], multi: true },
+        { id: "b", question: "Remind me?", options: ["Yes", "No"] },
+      ],
+    });
+    await s.msg(owner, { type: "answer", askId: "b1", choices: { a: ["o1"] } }); // b missing
+    expect(owner.last("error")?.error).toContain("does not fit");
+    await s.msg(owner, { type: "answer", askId: "b1", choices: { a: ["o1"], b: ["o1", "o2"] } });
+    expect(owner.last("error")?.error).toContain("does not fit");
+    await s.msg(owner, { type: "answer", askId: "b1", choices: { a: ["o1", "o3"], b: "o2" } });
+    expect(owner.last("answered")).toMatchObject({ labels: { a: ["Mon", "Wed"], b: ["No"] } });
+    // Expired (the hub's clock past expiresAt): refused.
+    await s.msg(c, { ...askOne, askId: "soon", expiresAt: Date.now() + 60_000 });
+    s.tick(Date.now() + 120_000);
+    await s.msg(owner, { type: "answer", askId: "soon", choices: { q1: "o1" } });
+    expect(owner.last("error")?.error).toContain("is expired");
+  });
+
+  it("a friend's page never sees the owner's asks and cannot answer them", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const f = await s.friend("f1", "f1@x.com");
+    await s.msg(c, askOne);
+    expect(chats(f)).toEqual([]);
+    await s.msg(f, { type: "answer", askId: "cal1", choices: { q1: "o1" } });
+    expect(f.last("error")?.error).toContain("no ask cal1 in this thread");
+    expect((await s.hub.history()).at(-1)?.answer).toBeUndefined();
+  });
+
+  it("an ask to a friend is answered in their thread, tagged with it", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const f = await s.friend("f1", "f1@x.com", "/words Android");
+    await s.msg(f, { type: "chat", id: "hi", text: "hello" }); // the thread exists once they chat
+    await s.msg(c, { ...askOne, askId: "fa", to: "f1@x.com" });
+    expect(chats(f).at(-1)).toMatchObject({ thread: "f1", ask: { askId: "fa" } });
+    expect(chats(owner)).toEqual([]);
+    await s.msg(f, { type: "answer", askId: "fa", choices: { q1: "o2" } });
+    expect(f.last("answered")).toMatchObject({ answer: { thread: "f1", source: "tap" } });
+    expect(c.last("answered")).toMatchObject({ thread: "f1", answer: { thread: "f1" } });
+  });
+});

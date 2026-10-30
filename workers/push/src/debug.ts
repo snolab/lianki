@@ -137,6 +137,14 @@ import {
   senderOf,
   shortCode,
 } from "../../../lib/dev-eval";
+import {
+  type Ask,
+  type AskAnswer,
+  askState,
+  askText,
+  checkChoices,
+} from "../../../packages/debug-chat/src/ask";
+import type { AnsweredEvent } from "../../../packages/debug-chat/src/wire";
 
 export type Socket = {
   send(data: string): void;
@@ -512,6 +520,87 @@ export class DebugHub {
       send(l, route === "observed" ? { ...out, observed: true } : out);
     }
     if (!told) send(ws, out);
+  }
+
+  /**
+   * The agent asks (ask.ts): kept and sent like a say, to the owner's
+   * thread or a friend's (`to`), as an agent line carrying the ask; its text
+   * is the question, for pages without cards. A pairing for a friend cannot
+   * ask (it cannot chat either).
+   */
+  private async ask(ws: Socket, c: ControllerAtt, ask: Ask, to?: string) {
+    if (c.forUser) return send(ws, { type: "error", error: "a pairing for a friend cannot ask" });
+    const dest = await this.sayTarget(to);
+    if ("error" in dest) return send(ws, { type: "error", error: dest.error });
+    const t = this.now();
+    const who = c.assignee;
+    const said: ChatMessage & { thread: string } = {
+      id: crypto.randomUUID().slice(0, 8),
+      from: "agent",
+      label: c.label,
+      text: askText(ask),
+      at: t,
+      ask,
+      ...dest,
+      ...(who ? { agentId: who } : {}),
+    };
+    console.log(
+      JSON.stringify({
+        msg: "debug.ask",
+        pair: c.pair,
+        thread: said.thread,
+        askId: ask.askId,
+        questions: ask.questions.length,
+      }),
+    );
+    await this.post(said);
+    send(ws, { type: "asked", id: said.id, askId: ask.askId, thread: said.thread });
+  }
+
+  /**
+   * A tap on an ask card, from a page: the ask must be in that page's own
+   * thread (a friend can never answer the owner's), still open (one answer
+   * only, not expired), and the choices must fit it. The hub stamps it:
+   * source "tap", the thread, the page's label, the time. Kept on the ask's
+   * line (a reload shows it answered) and sent to the thread's pages and the
+   * owner-approved listeners.
+   */
+  private async answer(ws: Socket, page: PageAtt, askId: string, raw: unknown) {
+    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
+    const kept = await this.ctx.storage.list<ChatMessage>({
+      prefix: threadKeys(page.thread).prefix,
+      reverse: true,
+      limit: CHAT_HISTORY,
+    });
+    const hit = [...kept].find(([, x]) => x.ask?.askId === askId);
+    if (!hit) return fail(`no ask ${askId} in this thread`);
+    const [key, line] = hit;
+    const t = this.now();
+    const state = askState(line, t);
+    if (state !== "open") return fail(`ask ${askId} is ${state}`);
+    const choices = checkChoices(line.ask as Ask, raw);
+    if (!choices) return fail(`that answer does not fit ask ${askId}`);
+    const answer: AskAnswer = {
+      choices,
+      source: "tap",
+      thread: page.thread,
+      label: page.label,
+      at: t,
+    };
+    await this.ctx.storage.put(key, { ...line, answer } satisfies ChatMessage);
+    const labels: Record<string, string[]> = {};
+    for (const q of (line.ask as Ask).questions)
+      labels[q.id] = (choices[q.id] ?? []).map(
+        (id) => q.options.find((o) => o.id === id)?.label ?? id,
+      );
+    const out: AnsweredEvent = { type: "answered", id: line.id, askId, answer, labels };
+    console.log(
+      JSON.stringify({ msg: "debug.answer", thread: page.thread, page: page.label, askId }),
+    );
+    for (const { ws: p } of this.pages(page.thread)) send(p, out);
+    for (const { ws: l, a } of this.listeners())
+      if (audience(a) === page.thread || page.thread === OWNER_THREAD || !a.forUser)
+        send(l, page.thread === OWNER_THREAD ? out : { ...out, thread: page.thread });
   }
 
   /** The live node grants (`ngrant:`), lapsed ones dropped as they are met. */
@@ -998,6 +1087,8 @@ export class DebugHub {
         ...(m.timing ? { timing: m.timing } : {}),
       });
     }
+    // A tap on an ask card: stamped here, never by the page or an agent.
+    if (m.type === "answer") return this.answer(ws, page, m.askId, m.choices);
     // A sleeping eval grant (listed to the owner's pages only): End, or add a page.
     if ((m.type === "revoke" || m.type === "allow") && m.pair.startsWith(DORMANT))
       return page.thread === OWNER_THREAD
@@ -1282,6 +1373,7 @@ export class DebugHub {
       return this.nodeGrant(ws, c, m.value);
     }
     if (m.value.type === "edit") return this.edit(ws, c, m.value);
+    if (m.value.type === "ask") return this.ask(ws, c, m.value.ask, m.value.to);
     if (m.value.type === "say") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });

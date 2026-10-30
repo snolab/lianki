@@ -40,6 +40,21 @@ export type UiStrings = {
    * it reads on from the sentence it stopped at.
    */
   resumeRead: string;
+  /**
+   * Ask cards (AskCard.tsx): the agent asks a question with options shown
+   * as tappable pills; the owner taps one. The question and option texts
+   * come from the agent. These are the card's own words:
+   * - askRecommended: a short tag after the option the agent recommends;
+   * - askSend: the button that sends the choices of a multi-question card;
+   * - askExpired: under a card past its deadline (it can no longer be answered);
+   * - askAnswered: under a card that has its answer (it is one-shot);
+   * - askSent: under a card just tapped here, until the answer is confirmed.
+   */
+  askRecommended: string;
+  askSend: string;
+  askExpired: string;
+  askAnswered: string;
+  askSent: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -62,6 +77,11 @@ export const UI_EN: UiStrings = {
   latVoice: "voice",
   aec: "Echo cancellation",
   resumeRead: "Tap to continue reading",
+  askRecommended: "recommended",
+  askSend: "Send",
+  askExpired: "Expired",
+  askAnswered: "Answered",
+  askSent: "Sent",
   aecHint: "On: you can talk over replies; on Android the speaker may sound like a call. Off: fuller sound, the mic pauses while replies play. Applies the next time the mic turns on.",
 };
 
@@ -85,6 +105,11 @@ export const UI_ZH: UiStrings = {
   latVoice: "朗读",
   aec: "回声消除",
   resumeRead: "点按继续朗读",
+  askRecommended: "推荐",
+  askSend: "发送",
+  askExpired: "已过期",
+  askAnswered: "已回答",
+  askSent: "已发送",
   aecHint: "开：回复朗读时也能插话；安卓上扬声器可能变成通话音质。关：音质更好，朗读回复时麦克风暂停。下次打开麦克风时生效。",
 };
 
@@ -108,6 +133,11 @@ export const UI_JA: UiStrings = {
   latVoice: "読み上げ",
   aec: "エコーキャンセル",
   resumeRead: "タップして読み上げを続ける",
+  askRecommended: "おすすめ",
+  askSend: "送信",
+  askExpired: "期限切れ",
+  askAnswered: "回答済み",
+  askSent: "送信しました",
   aecHint: "オン：返事の読み上げ中も話しかけられます。Android ではスピーカーが通話の音質になることがあります。オフ：音質が良く、読み上げ中はマイクが一時停止します。次にマイクをオンにしたときから有効。",
 };
 

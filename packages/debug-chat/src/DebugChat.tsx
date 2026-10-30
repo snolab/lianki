@@ -104,6 +104,8 @@ import { type AnchorSide, placeBox } from "./anchor";
 import { keyboardLift } from "./keyboard-lift";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
+import { AskCard } from "./AskCard";
+import type { AskChoices } from "./ask";
 import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tune";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
@@ -453,6 +455,12 @@ export type DebugChatProps = {
     to?: string,
     opts?: { source?: MessageSource; timing?: VoiceTiming },
   ) => boolean;
+  /**
+   * A tap on an ask card (AskCard.tsx): the page sends {type:"answer",
+   * askId, choices}; the hub stamps it. Absent (an older page): the choice
+   * goes as a typed line instead.
+   */
+  onAnswer?: (askId: string, choices: AskChoices) => boolean;
   /** The nodes listeners are subscribed at: "@/…" completions. */
   nodes?: string[];
   /** Approved senders, listed in the pill's menu with an End button each. */
@@ -543,6 +551,7 @@ export function DebugChat({
   listeners,
   messages,
   onSend,
+  onAnswer,
   sessions = [],
   onEnd,
   evalRan = false,
@@ -2613,7 +2622,19 @@ export function DebugChat({
                           node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)
                         }
                       >
-                        {readText(m, polish(m).text)}
+                        {m.ask
+                          ? m.ask.questions.length === 1
+                            ? m.ask.questions[0]!.question
+                            : ""
+                          : readText(m, polish(m).text)}
+                        {m.ask && (
+                          <AskCard
+                            ask={m.ask}
+                            answer={m.answer}
+                            onAnswer={onAnswer}
+                            sendText={(text) => sendRef.current(text)}
+                          />
+                        )}
                         {polish(m).mark}
                         {!agentOnline && m.from !== "agent" && i > lastAgent && (
                           <span
