@@ -61,3 +61,12 @@ export function chatLine(
     ...(observed ? { observed: true } : {}),
   };
 }
+
+/** How loud a `say` is: `--quiet` (shown, never read aloud) or `--loud` (read even in quiet hours). */
+export type SayVolume = { quiet?: true; loud?: true };
+
+/** The say's volume flags; both at once is an error. */
+export function sayVolume(f: { quiet: boolean; loud: boolean }): SayVolume | { error: string } {
+  if (f.quiet && f.loud) return { error: "say takes --quiet or --loud, not both" };
+  return f.quiet ? { quiet: true } : f.loud ? { loud: true } : {};
+}

@@ -347,6 +347,8 @@ type Chat = {
     taskPath?: string;
     agentId?: string;
     to?: string;
+    quiet?: true;
+    loud?: true;
   };
 };
 const chats = (ws: FakeSocket) =>
@@ -383,6 +385,33 @@ describe("DebugHub chat", () => {
     await msg(c, { type: "say", text: "on it" });
     expect(chats(p).at(-1)).toMatchObject({ from: "agent", label: "main lane", text: "on it" });
     expect(c.last("said")?.id).toBe(chats(p).at(-1)?.id as string);
+  });
+
+  it("say --quiet / --loud: the hub keeps the flag (true only) and forwards it, live and in history", async () => {
+    const { hub, page, controller, msg, pairOf } = setup();
+    const p = page();
+    const c = controller("main lane");
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    await msg(c, { type: "say", text: "deployed", quiet: true });
+    await msg(c, { type: "say", text: "approve?", loud: true });
+    await msg(c, { type: "say", text: "plain" });
+    // Not booleans: dropped. Both: loud wins (it may need his answer).
+    await msg(c, { type: "say", text: "junk", quiet: "yes", loud: 1 });
+    await msg(c, { type: "say", text: "both", quiet: true, loud: true });
+    const lines = chats(p).slice(-5);
+    expect(lines.map((m) => [m.text, m.quiet, m.loud])).toEqual([
+      ["deployed", true, undefined],
+      ["approve?", undefined, true],
+      ["plain", undefined, undefined],
+      ["junk", undefined, undefined],
+      ["both", undefined, true],
+    ]);
+    for (const m of lines.slice(2)) expect(m).not.toHaveProperty("quiet");
+    const again = page();
+    await hub.history();
+    const h = again.last("history") as { messages: Record<string, unknown>[] };
+    expect(h.messages.find((m) => m.text === "deployed")).toMatchObject({ quiet: true });
+    expect(h.messages.find((m) => m.text === "approve?")).toMatchObject({ loud: true });
   });
 
   it("an unapproved controller cannot say", async () => {

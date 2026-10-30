@@ -53,10 +53,18 @@
  *       page-error lines: a dedicated error watcher. --no-pair: with no
  *       saved chat grant, say so and wait instead of asking the owner.
  *
- *   bun scripts/dev/eval.ts say [--to <thread|email>] "text"      (or - for stdin)
+ *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet | --loud] "text"   (or - for stdin)
  *       Reply with the saved grant (the chat grant, else the eval grant:
  *       eval implies chat; never pairs), and exit: to the owner by default, or to
  *       a friend's thread by user id or email.
+ *
+ *       Agent lines must not wake the owner (docs/dev-debug-widget.md,
+ *       "Quiet lines and quiet hours"): --quiet for FYI, progress and deploy
+ *       notices (shown, never read aloud); plain say for an answer to what
+ *       he just said (read aloud, but not in his quiet hours, default
+ *       23:00–08:00 on his device); --loud only when urgent or it needs his
+ *       confirmation (read even in quiet hours, unless he muted the page).
+ *       A hidden page or a locked screen never speaks.
  *
  *       A line spoken into the widget's mic carries "source":"stt"; when
  *       the agent polishes one, {"type":"edited","id","thread","text","raw",
@@ -133,7 +141,7 @@ import {
 import { homedir, hostname } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { type NodeOpts, chatLine, nodeOpts } from "./node-args";
+import { type NodeOpts, type SayVolume, chatLine, nodeOpts, sayVolume } from "./node-args";
 import { routeTo } from "@/lib/dev-eval";
 import { type BusyArgs, beatMessage, endsBeat, idleFor, parseBusyArgs } from "./busy";
 import { ENDED, GRANT_INVALID, chatClose, chatStep, serveClose } from "./eval-grant";
@@ -186,6 +194,10 @@ const lastFlag = boolFlag("--last");
 const exitOnIdle = boolFlag("--exit-on-idle");
 /** chat: answer each live owner/friend line at once with one busy beat ("heard you"). */
 const ackFlag = boolFlag("--ack");
+/** say: shown on his page, never read aloud (FYI, progress, deploy notices). */
+const quietFlag = boolFlag("--quiet");
+/** say: read aloud even in his quiet hours (urgent, or it needs his answer). */
+const loudFlag = boolFlag("--loud");
 const labelFlag = flag("--label");
 const label = labelFlag ?? `lianki main lane on ${hostname()}`;
 const target = flag("--target");
@@ -460,7 +472,7 @@ function chat(out?: string, errorsOnly = false) {
 }
 
 /** Reply with the saved grant (to the owner, or `to` a friend); resolves once the hub has it. */
-function say(text: string, to?: string): Promise<Msg> {
+function say(text: string, to?: string, volume: SayVolume = {}): Promise<Msg> {
   const grant = chatGrant();
   if (!grant)
     return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
@@ -480,6 +492,7 @@ function say(text: string, to?: string): Promise<Msg> {
             ...(to ? { to } : {}),
             ...(where.node ? { taskPath: where.node } : {}),
             ...(where.agent ? { agentId: where.agent } : {}),
+            ...volume,
           }),
         );
       else if (m.type === "said") {
@@ -705,17 +718,21 @@ async function main() {
   }
   if (args[0] === "say") {
     const text = (args[1] === "-" ? await Bun.stdin.text() : (args[1] ?? "")).trim();
-    if (!text) {
-      console.error('usage: bun scripts/dev/eval.ts say [--to <thread|email>] "text" | -');
+    const volume = sayVolume({ quiet: quietFlag, loud: loudFlag });
+    if (!text || "error" in volume) {
+      if ("error" in volume) console.error(volume.error);
+      console.error(
+        'usage: bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet | --loud] "text" | -',
+      );
       process.exit(2);
     }
-    console.log(JSON.stringify(await say(text, to)));
+    console.log(JSON.stringify(await say(text, to, volume)));
     return;
   }
   const code = args[0] === "-" ? await Bun.stdin.text() : args[0];
   if (!code?.trim()) {
     console.error(
-      "usage: bun scripts/dev/eval.ts [--for <email>] [--target <text>] [--no-pair] '<code>' | - | serve [--for <email>] [--no-pair] | chat [--out <file>] [--exit-on-idle] | errors [--no-pair] [--out <file>] | say [--to <thread|email>] <text>",
+      "usage: bun scripts/dev/eval.ts [--for <email>] [--target <text>] [--no-pair] '<code>' | - | serve [--for <email>] [--no-pair] | chat [--out <file>] [--exit-on-idle] | errors [--no-pair] [--out <file>] | say [--to <thread|email>] [--quiet | --loud] <text>",
     );
     process.exit(2);
   }
