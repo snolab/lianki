@@ -8,7 +8,15 @@
 import { type RefObject, useEffect, useState } from "react";
 import { debugOn, DEBUG_EVENT } from "@/lib/debug-client";
 import { idbAll, idbGet } from "@/lib/words/idb";
-import { type Box, dockAbove, dueTotal, edgeSwipe, keyboardUp, nextCompact } from "../nav-core";
+import {
+  type Box,
+  dockAbove,
+  dueTotal,
+  edgeSwipe,
+  keyboardUp,
+  nextCompact,
+  seenTotal,
+} from "../nav-core";
 import { setDrawerOpen } from "../ui-store";
 
 /** Debug mode, which is when the Learning Partner chat is on. */
@@ -153,11 +161,13 @@ export function useChatDock(island: RefObject<HTMLElement | null>, enabled: bool
   return dock;
 }
 
-type CachedList = { due?: number; source?: string | null };
+type CachedList = { due?: number; source?: string | null; cards?: number };
 
 /** Due reviews (cached word lists, then the server once per visit), pending reviews, online. */
 export function useNavData(signedIn: boolean, pathname: string) {
   const [due, setDue] = useState(0);
+  /** Words seen over the lists; null until a list is known. */
+  const [seen, setSeen] = useState<number | null>(null);
   const [pending, setPending] = useState(0);
   const [online, setOnline] = useState(true);
   useEffect(() => {
@@ -168,7 +178,10 @@ export function useNavData(signedIn: boolean, pathname: string) {
         idbAll<unknown>("pending").catch(() => [] as unknown[]),
       ]);
       if (!alive) return;
-      if (lists) setDue(dueTotal(lists));
+      if (lists) {
+        setDue(dueTotal(lists));
+        setSeen(seenTotal(lists));
+      }
       setPending(ops.length);
     };
     const remote = async () => {
@@ -177,7 +190,10 @@ export function useNavData(signedIn: boolean, pathname: string) {
         const r = await fetch("/api/words/lists", { cache: "no-store" });
         if (!r.ok) return;
         const { lists } = (await r.json()) as { lists?: CachedList[] };
-        if (alive && lists) setDue(dueTotal(lists));
+        if (alive && lists) {
+          setDue(dueTotal(lists));
+          setSeen(seenTotal(lists));
+        }
       } catch {}
     };
     const net = () => {
@@ -201,7 +217,51 @@ export function useNavData(signedIn: boolean, pathname: string) {
     };
     // A route change re-reads the offline copy (a study session updates it).
   }, [signedIn, pathname]);
-  return { due, pending, online };
+  return { due, pending, online, seen };
+}
+
+/**
+ * The /words help strip's text ([data-words-help], app/(app)/words), or null
+ * where there is none. The strip stays rendered (hidden under the island on a
+ * phone), so its text, already localized and for this input, is read from it.
+ */
+export function useWordsHint(pathname: string): string | null {
+  const [hint, setHint] = useState<string | null>(null);
+  useEffect(() => {
+    let strip: Element | null = null;
+    const read = () => setHint(strip?.textContent?.trim() || null);
+    const own = new MutationObserver(read);
+    const attach = () => {
+      const now = document.querySelector("[data-words-help]");
+      if (now === strip) return;
+      own.disconnect();
+      strip = now;
+      if (strip) own.observe(strip, { childList: true, subtree: true, characterData: true });
+      read();
+    };
+    // The strip coming and going (the list loads, a short window hides it).
+    const mo = new MutationObserver(attach);
+    mo.observe(document.body, { childList: true, subtree: true });
+    attach();
+    return () => {
+      mo.disconnect();
+      own.disconnect();
+    };
+  }, [pathname]);
+  return hint;
+}
+
+/** While mounted on a phone, the /words help strip hides under the island; its text moves to the drawer's "?". */
+export function useHideWordsStrip() {
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.dataset.navIsland = "hide-words-help";
+    // visibility, not display: /words measures the strip to pad its list.
+    style.textContent =
+      "@media (max-width: 47.99rem) { [data-words-help] { visibility: hidden; pointer-events: none; } }";
+    document.head.append(style);
+    return () => style.remove();
+  }, []);
 }
 
 /** A swipe in from the start edge opens the drawer (a phone gesture). */

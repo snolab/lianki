@@ -18,8 +18,8 @@ import { Icon, type IconName } from "@/app/components/icons";
 import { sendAction } from "@/lib/islands/actions";
 import type { IslandProps } from "@/lib/islands/contract";
 import { useUi } from "@lianki/ui-state";
-import { badge, fill } from "../nav-core";
-import { navUi, noteVisit, setDrawerOpen } from "../ui-store";
+import { badge, fill, showFirstTip } from "../nav-core";
+import { navTip, navUi, noteVisit, setDrawerOpen } from "../ui-store";
 import { CreateSheet } from "./CreateSheet";
 import { SearchPalette } from "./SearchPalette";
 import {
@@ -28,7 +28,9 @@ import {
   useDebugMode,
   useEdgeSwipe,
   useKeyboardUp,
+  useHideWordsStrip,
   useNavData,
+  useWordsHint,
 } from "./signals";
 import { useNavText } from "./text";
 
@@ -62,7 +64,13 @@ export function BottomIsland({ signedIn }: IslandProps["nav.bottom"]) {
   const keyboard = useKeyboardUp();
   const nav = useRef<HTMLElement>(null);
   const dock = useChatDock(nav, debug);
-  const { due, pending, online } = useNavData(signedIn, pathname);
+  const { due, pending, online, seen } = useNavData(signedIn, pathname);
+  // /words: its help strip hides under the island; on a first visit (nothing
+  // graded yet) its hint shows once above the island, until dismissed.
+  useHideWordsStrip();
+  const hint = useWordsHint(pathname);
+  const tipDismissed = useUi(navTip, (s) => s.dismissed);
+  const tip = showFirstTip({ seen, hint, dismissed: tipDismissed });
   useEdgeSwipe(!drawerOpen && !sheet);
 
   useEffect(() => noteVisit(pathname), [pathname]);
@@ -174,6 +182,25 @@ export function BottomIsland({ signedIn }: IslandProps["nav.bottom"]) {
         aria-hidden={hidden || undefined}
         inert={hidden || undefined}
       >
+        {/* First visit to /words: its gestures, once, until dismissed. Later
+            they are in the drawer's "?". */}
+        {tip && !compact && (
+          <div
+            role="note"
+            data-nav-tip
+            className="lk-glass pointer-events-auto absolute bottom-full mb-2 flex w-[min(24rem,calc(100vw-2rem))] items-start gap-2 rounded-2xl border border-[var(--glass-line)] py-2 ps-3 pe-1 text-[13px] leading-snug shadow-[inset_0_1px_0_oklch(1_0_0/0.5),0_10px_28px_-10px_oklch(0.22_0.015_65/0.4)] dark:shadow-[inset_0_1px_0_oklch(1_0_0/0.1),0_10px_28px_-10px_oklch(0_0_0/0.7)]"
+          >
+            <span className="min-w-0 flex-1 py-1">{hint}</span>
+            <button
+              type="button"
+              onClick={() => navTip.setState({ dismissed: true })}
+              aria-label={t.close}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base opacity-70 hover:opacity-100"
+            >
+              <Icon name="x" />
+            </button>
+          </div>
+        )}
         {/* The capsule while scrolled down: one tap brings the island back. */}
         <button
           type="button"

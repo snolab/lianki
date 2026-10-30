@@ -29,6 +29,21 @@ permanent left sidebar, and tablets keep the glass sidebar overlay.
   areas, and keeps tap targets at 44px or more inside the thumb zone. Where
   `navigator.vibrate` exists, a long press gives a short haptic tick.
 
+## The /words help strip
+
+Owner's decision (2026-10-31): the island and the strip never stack.
+
+- On a phone, while the island shows, the strip `[data-words-help]` is hidden.
+  It uses `visibility`, not `display`, because /words still measures it to
+  pad its list.
+- Its text moves to a "?" in the drawer header ("Gestures & shortcuts"),
+  which opens the same text. The island reads it from the strip, so it stays
+  localized and matched to touch or keyboard.
+- **First visit:** until the learner has graded anything (no cards over the
+  cached lists), the same hint shows once as a dismissible tip above the
+  island. It is dismissed into `lk:pref:nav-tip`.
+- Tablets and desktops have no island, and the strip stays as it is.
+
 ## Sharing the bottom edge with the chat bar
 
 The Learning Partner bar (packages/debug-chat) floats at the bottom right in

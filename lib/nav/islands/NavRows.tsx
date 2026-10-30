@@ -8,11 +8,13 @@
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { Icon } from "@/app/components/icons";
 import { APP_NAV, activeNavKey } from "@/lib/app-nav";
 import type { IslandProps } from "@/lib/islands/contract";
 import { useUi } from "@lianki/ui-state";
 import { navPins, navUi, togglePin } from "../ui-store";
+import { useWordsHint } from "./signals";
 import { useNavText } from "./text";
 
 export function NavRows({ place, collapsed }: IslandProps["nav.drawer"]) {
@@ -20,6 +22,8 @@ export function NavRows({ place, collapsed }: IslandProps["nav.drawer"]) {
   const pathname = usePathname() ?? "/";
   const pinned = useUi(navPins, (s) => s.pinned);
   const recent = useUi(navUi, (s) => s.recent);
+  const hint = useWordsHint(pathname);
+  const [help, setHelp] = useState(false);
   if (collapsed) return null;
 
   const key = activeNavKey(pathname);
@@ -87,6 +91,34 @@ export function NavRows({ place, collapsed }: IslandProps["nav.drawer"]) {
           >
             <Icon name="pushPin" weight={isPinned ? "fill" : "regular"} />
           </button>
+          {/* /words: its gestures and shortcuts, hidden under the island on a phone. */}
+          {hint && (
+            <button
+              type="button"
+              onClick={() => setHelp((v) => !v)}
+              aria-expanded={help}
+              aria-controls="lk-nav-help"
+              aria-label={t.gestures}
+              title={t.gestures}
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base font-semibold ${help ? "text-[var(--brand)]" : "opacity-60 hover:opacity-100"}`}
+            >
+              ?
+            </button>
+          )}
+        </div>
+      )}
+      {place === "drawer" && hint && help && (
+        <div
+          id="lk-nav-help"
+          role="note"
+          className="mx-3 rounded-xl border border-[var(--glass-line)] px-3 py-2 text-[13px] leading-snug"
+        >
+          {t.gestures && (
+            <div className="mb-1 text-xs font-semibold uppercase tracking-wide opacity-60">
+              {t.gestures}
+            </div>
+          )}
+          {hint}
         </div>
       )}
       {pinned.length > 0 && (

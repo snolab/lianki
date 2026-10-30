@@ -36,6 +36,7 @@ export function useNavText() {
     | "searchPlaceholder"
     | "closeSearch"
     | "close"
+    | "gestures"
     | "noResults"
     | "loading"
     | "create"

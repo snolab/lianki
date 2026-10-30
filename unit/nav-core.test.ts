@@ -12,6 +12,8 @@ import {
   nextCompact,
   rank,
   score,
+  seenTotal,
+  showFirstTip,
   treeItems,
 } from "@/lib/nav/nav-core";
 
@@ -118,6 +120,16 @@ describe("the island's behaviour", () => {
     expect(badge(0)).toBe("");
     expect(badge(7)).toBe("7");
     expect(badge(140)).toBe("99+");
+  });
+
+  it("shows the /words tip once, only before anything is graded", () => {
+    expect(seenTotal([{ cards: 2 }, { cards: -1 }, {}])).toBe(2);
+    expect(showFirstTip({ seen: 0, hint: "tap = show", dismissed: false })).toBe(true);
+    expect(showFirstTip({ seen: 0, hint: "tap = show", dismissed: true })).toBe(false);
+    expect(showFirstTip({ seen: 3, hint: "tap = show", dismissed: false })).toBe(false);
+    expect(showFirstTip({ seen: null, hint: "tap = show", dismissed: false })).toBe(false);
+    expect(showFirstTip({ seen: 0, hint: " ", dismissed: false })).toBe(false);
+    expect(showFirstTip({ seen: 0, hint: null, dismissed: false })).toBe(false);
   });
 
   it("opens the drawer on a swipe in from the start edge", () => {

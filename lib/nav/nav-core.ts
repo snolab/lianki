@@ -133,6 +133,18 @@ export function dueTotal(
   );
 }
 
+/** Words seen at least once over the cached lists (0: nothing graded yet). */
+export function seenTotal(lists: readonly { cards?: number }[]): number {
+  return lists.reduce((n, l) => n + Math.max(0, Number(l.cards) || 0), 0);
+}
+
+/**
+ * The first-visit tip (the /words hint, above the island): only while the
+ * learner has graded nothing, there is a hint to show, and it was not dismissed.
+ */
+export const showFirstTip = (o: { seen: number | null; hint: string | null; dismissed: boolean }) =>
+  !o.dismissed && o.seen === 0 && !!o.hint?.trim();
+
 /** A due count for a badge: "99+" past 99, nothing at 0. */
 export const badge = (n: number) => (n <= 0 ? "" : n > 99 ? "99+" : String(n));
 
