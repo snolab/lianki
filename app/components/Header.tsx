@@ -6,6 +6,10 @@ import Link from "next/link";
 import { Icon } from "./icons";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useState } from "react";
+import { island } from "@/lib/islands/Island";
+
+/** The brand, hot-swappable in dev (docs/dev-hot-islands.md). */
+const BrandIsland = island("header.brand", BrandName);
 
 interface HeaderProps {
   locale: string;
@@ -56,7 +60,7 @@ export function Header({
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a tiny static SVG */}
           <img src="/icon.svg" alt="" width={28} height={28} className="rounded-md" />
-          <BrandName appName={appName} />
+          <BrandIsland appName={appName} />
         </Link>
 
         {/* Navigation */}

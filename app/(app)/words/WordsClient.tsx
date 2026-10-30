@@ -43,34 +43,58 @@ import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
   centreWeight,
+  frameDt,
+  glideStep,
   nextGoal,
   splitTarget,
   termTarget,
   weightedQuantile,
 } from "@/lib/words/columns";
-import { MIN_JERK_EASING, cssLinear, minJerk, moveSeconds, springStep } from "@/lib/words/motion";
+import { MIN_JERK_EASING, minJerk, moveSeconds } from "@/lib/words/motion";
 import { CORD_BOW, cordPath, cordPull } from "@/lib/words/cords";
 import {
-  type Axis,
   type SwipeLevel,
   lockAxis,
   releaseLevel,
   releaseRating,
   releaseVelocity,
   restRating,
-  snapSwipe,
-  springProgress,
   swipeLevel,
   revealShown,
   SWIPE_COAST_MS,
   SWIPE_HYSTERESIS,
   SWIPE_LEVEL,
-  SWIPE_RETURN_S,
   SWIPE_SNAP,
   SWIPE_SPRING,
   SWIPE_VELOCITY_MS,
 } from "@/lib/words/swipe";
 import { setSwipeVariant, swipeAbTag, swipeVariant, type SwipeVariant } from "@/lib/words/swipe-ab";
+import {
+  SWIPE_CORE_IFACE,
+  SwipeFeelProvider,
+  type SwipeRowValue,
+  SwipeRowProvider,
+  feelTagNow,
+  setFeelPrefs,
+  useFeelPrefs,
+  useSwipeFeel,
+  useSwipeGesture,
+} from "@/lib/words/swipe-core";
+import type { SwipePhase } from "@/lib/words/swipe-machine";
+import { releaseTrajectory } from "@/lib/words/swipe-physics";
+import { island } from "@/lib/islands/Island";
+import { SwipeCard } from "@/lib/words/islands/SwipeCard";
+import { SwipeCue } from "@/lib/words/islands/SwipeCue";
+import { SwipeGrades } from "@/lib/words/islands/SwipeGrades";
+import { SwipeFeelSource } from "@/lib/words/islands/SwipeFeelSource";
+import { SwipeTuner } from "@/lib/words/islands/SwipeTuner";
+
+// The swipe's UI, as hot-swappable islands over the headless core (docs/swipe-core.md).
+const SwipeCardIsland = island("words.swipeCard", SwipeCard);
+const SwipeCueIsland = island("words.swipeCue", SwipeCue);
+const SwipeGradesIsland = island("words.swipeGrades", SwipeGrades);
+const SwipeFeelIsland = island("words.swipeFeel", SwipeFeelSource);
+const SwipeTunerIsland = island("words.swipeTuner", SwipeTuner);
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
 import { idbAdd, idbAll, idbDelete, idbGet, idbPut, type PendingOp } from "@/lib/words/idb";
 import {
@@ -115,8 +139,6 @@ const HOLD_MS = 300;
  * graded nothing.
  */
 const SWIPE_PARAMS = `snap=${SWIPE_SNAP};spring=${SWIPE_SPRING};level=${SWIPE_LEVEL};hyst=${SWIPE_HYSTERESIS};coast=${SWIPE_COAST_MS}`;
-/** A released slip springs home: the critically damped spring, as a CSS easing. */
-const SPRING_EASING = cssLinear(springProgress, 32);
 type SwipeRow = {
   at: string;
   finger: number;
@@ -159,7 +181,8 @@ function logSwipe(e: {
     projected: Math.round(e.projected * 10) / 10,
     rating: e.rating,
     a: e.a,
-    params: `${e.params ?? SWIPE_PARAMS};${swipeAbTag()}${e.ev ? `;ev=${e.ev}` : ""}`,
+    // The feel tag (lib/words/swipe-feel.ts) only off the plain light feel, so old rows compare.
+    params: `${e.params ?? SWIPE_PARAMS};${swipeAbTag()}${feelTagNow() ? `;${feelTagNow()}` : ""}${e.ev ? `;ev=${e.ev}` : ""}`,
   });
   try {
     localStorage.setItem(UNSENT, JSON.stringify(unsent.slice(-400)));
@@ -226,13 +249,6 @@ function flushSwipes(beacon = false) {
     .then((r) => r.ok && done())
     .catch(() => {});
 }
-/** The slip colour a swipe would grade to, shown while the finger is down. */
-const SWIPE_BG: Record<Rating, string> = {
-  1: "var(--slip-again)",
-  2: "var(--slip-hard)",
-  3: "var(--slip-good)",
-  4: "var(--slip-easy)",
-};
 /** A word whose next due falls inside this window comes back in this session. */
 const SESSION_WINDOW_MS = 20 * 60_000;
 
@@ -1916,6 +1932,8 @@ function Study({
    * scroll snapping. Read after mount.
    */
   const [swipeAb, setSwipeAb] = useState<SwipeVariant>("js");
+  /** The swipe's feel on this device: light (everyone) or heavy (lib/words/swipe-feel.ts). */
+  const feelPrefs = useFeelPrefs();
   useEffect(() => setSwipeAb(swipeVariant()), []);
   const native = touch && swipeAb === "native";
   /**
@@ -2670,6 +2688,11 @@ function Study({
   const backGoal = useRef<number | null>(null);
   const backShown = useRef<number | null>(null);
   const backVelocity = useRef(0);
+  /** The glide's one rAF loop, kept across renders (see below). */
+  const glideRaf = useRef(0);
+  const glideLast = useRef<number | null>(null);
+  const glideSplit = useRef(false);
+  useEffect(() => () => cancelAnimationFrame(glideRaf.current), []);
   useEffect(() => {
     if (!viewH || to <= from) return;
     const centre = scrollTop + viewH / 2;
@@ -2707,9 +2730,15 @@ function Study({
       return;
     }
     // Glide every row together: one variable, moved by a critically damped
-    // spring that keeps its velocity if the goal moves mid-glide.
-    let raf = 0;
-    let last = performance.now();
+    // spring that keeps its velocity if the goal moves mid-glide. One loop
+    // outlives this effect: a scroll re-runs it every frame, and restarting
+    // the loop each time cancelled the pending step and timed the next from
+    // a fresh performance.now(), so the spring advanced a fraction of each
+    // frame, or not at all — the width stalled while the finger moved, then
+    // caught up in jumps.
+    glideSplit.current = split;
+    if (glideRaf.current) return;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     /** One spring step of a column toward its goal; true once it has settled. */
     const glide = (
       goal: number,
@@ -2718,22 +2747,27 @@ function Study({
       prop: string,
       dt: number,
     ) => {
-      const s = springStep(shown.current!, velocity.current, goal, dt, 14);
-      const settled = Math.abs(s.x - goal) < 0.5 && Math.abs(s.v) < 5;
-      shown.current = settled ? goal : s.x;
-      velocity.current = settled ? 0 : s.v;
-      el.style.setProperty(prop, `${shown.current}px`);
-      return settled;
+      const s = glideStep(shown.current!, velocity.current, goal, dt, reduce);
+      shown.current = s.x;
+      velocity.current = s.v;
+      el.style.setProperty(prop, `${s.x}px`);
+      return s.settled;
     };
     const step = (now: number) => {
-      const dt = (now - last) / 1000;
-      last = now;
+      const dt = frameDt(now, glideLast.current);
+      glideLast.current = now;
       const a = glide(termGoal.current!, termShown, termVelocity, "--term-w", dt);
-      const b = !split || glide(backGoal.current!, backShown, backVelocity, "--back-w", dt);
-      if (!a || !b) raf = requestAnimationFrame(step);
+      const b =
+        !glideSplit.current ||
+        backGoal.current === null ||
+        backShown.current === null ||
+        glide(backGoal.current, backShown, backVelocity, "--back-w", dt);
+      if (a && b) {
+        glideRaf.current = 0;
+        glideLast.current = null;
+      } else glideRaf.current = requestAnimationFrame(step);
     };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    glideRaf.current = requestAnimationFrame(step);
   }, [from, to, scrollTop, viewH, pad, queue, measureTerm, measureCells, hasExamples, rem, touch]);
 
   const done = grades.size;
@@ -2932,6 +2966,25 @@ function Study({
                     hint="Swipes done by the browser's own scrolling"
                   />
                 )}
+                {/* The swipe's feel (docs/swipe-core.md): debug mode only, this device only. */}
+                {touch && debug && (
+                  <>
+                    <TogglePill
+                      on={feelPrefs.preset === "heavy"}
+                      onChange={(on) =>
+                        setFeelPrefs({ ...feelPrefs, preset: on ? "heavy" : "light", tweaks: {} })
+                      }
+                      label={text.heavySwipe.value}
+                      hint={text.heavySwipeHint.value}
+                    />
+                    <TogglePill
+                      on={feelPrefs.tune}
+                      onChange={(on) => setFeelPrefs({ ...feelPrefs, tune: on })}
+                      label={text.tuneSwipe.value}
+                      hint={text.tuneSwipeHint.value}
+                    />
+                  </>
+                )}
                 <TogglePill
                   on={paperScrolls}
                   onChange={setPaperScrolls}
@@ -2977,7 +3030,10 @@ function Study({
           )}
         </div>
       ) : (
-        <>
+        <SwipeFeelProvider>
+          {/* The feel's sources and its tuner: islands (docs/swipe-core.md). */}
+          {touch && <SwipeFeelIsland />}
+          {touch && <SwipeTunerIsland />}
           <div
             ref={setListRef}
             // The whole window, edge to edge, under the glass overlays
@@ -3198,7 +3254,7 @@ function Study({
               <span className="opacity-75">{hintText}</span>
             </div>
           )}
-        </>
+        </SwipeFeelProvider>
       )}
     </div>
   );
@@ -3373,56 +3429,12 @@ function SwipeUnderlay({ ref }: { ref: React.RefObject<HTMLDivElement | null> })
       className="pointer-events-none absolute inset-x-0 overflow-hidden"
       style={{ visibility: "hidden", background: "var(--slip-seam)" }}
     >
-      <GradeZones />
+      <SwipeGradesIsland />
     </div>
   );
 }
 
-/** The strip's zones, in a row-wide box with --a set: shared by SwipeUnderlay and NativeSlipRow. */
-function GradeZones() {
-  // One slot per side, the width of both detents. Its first detent's grade
-  // shows until the slip reaches the far detent; then the far grade takes
-  // over the same spot (crossfade + a short slide, CSS .lk-reveal), and
-  // gives it back on the way home. The container's data-good / data-hard
-  // (showReveal) pick which.
-  const layer = (r: Rating, side: "left" | "right", far: boolean) => (
-    <span
-      data-reveal={r}
-      data-far={far ? "" : undefined}
-      className="lk-reveal absolute inset-0"
-      style={{ background: SWIPE_BG[r] }}
-    >
-      <span
-        className="absolute inset-y-0 flex items-center justify-center text-[11px] font-medium opacity-90"
-        style={{ [side]: 0, width: "var(--a)" }}
-      >
-        {RATING_LABEL[r]}
-      </span>
-    </span>
-  );
-  return (
-    <>
-      <span
-        data-reveal-slot="good"
-        className="absolute inset-y-0 left-0 overflow-hidden"
-        style={{ width: "calc(var(--a) * 2.5)" }}
-      >
-        {layer(3, "left", false)}
-        {layer(4, "left", true)}
-      </span>
-      <span
-        data-reveal-slot="hard"
-        className="absolute inset-y-0 right-0 overflow-hidden"
-        style={{ width: "calc(var(--a) * 2.5)" }}
-      >
-        {layer(2, "right", false)}
-        {layer(1, "right", true)}
-      </span>
-    </>
-  );
-}
-
-/** Point a GradeZones container at level `k`: which grade each side shows. */
+/** Point a grade-zones container (SwipeGrades) at level `k`: which grade each side shows. */
 function showReveal(el: HTMLElement | null | undefined, k: number) {
   if (!el) return;
   const s = revealShown(k);
@@ -3455,13 +3467,53 @@ type RowProps = {
   children: React.ReactNode;
 };
 
-function WordRow({
+function WordRow(props: RowProps) {
+  // Desktop rows never slide: no gesture core, no islands.
+  return props.touch ? <TouchWordRow {...props} /> : <DeskWordRow {...props} />;
+}
+
+function DeskWordRow({
   index,
-  touch,
   loose = false,
   onHover,
   onTap,
   onMore,
+  className,
+  style,
+  children,
+}: RowProps) {
+  return (
+    <div
+      role="listitem"
+      data-i={index}
+      // Only a real mouse move takes the cursor: Chrome replays mouse events
+      // at a resting pointer when rows re-render, which would otherwise yank
+      // the cursor back under the mouse after every key press.
+      onMouseMove={(e) => (e.movementX || e.movementY) && onHover()}
+      onClick={(e) => onTap(e.timeStamp)}
+      onContextMenu={(e) => {
+        if (!onMore) return;
+        e.preventDefault();
+        onMore();
+      }}
+      className={`relative ${className} ${loose ? "slip-loose" : ""}`}
+      style={style}
+    >
+      {children}
+      <SlipCords loose={loose} moving={false} />
+    </div>
+  );
+}
+
+/**
+ * The js swipe (variant A): the headless core (lib/words/swipe-core.tsx)
+ * runs the gesture and moves the card; the card and its lift are islands
+ * that read the core's context (docs/swipe-core.md).
+ */
+function TouchWordRow({
+  index,
+  loose = false,
+  onTap,
   onSwipe,
   onSwipeStart,
   onHold,
@@ -3472,231 +3524,78 @@ function WordRow({
   style,
   children,
 }: RowProps) {
-  const start = useRef<{ x: number; y: number } | null>(null);
-  /** Sliding sideways: re-renders only as a drag starts and ends. */
-  const [moving, setMoving] = useState(false);
-  /** Where the slip is held now. The drag writes it straight to the row's
-   * style once a frame — a React render per pointermove dropped frames on Android. */
-  const dx = useRef(0);
-  const frame = useRef(0);
-  /** Where the slip is at a given moment, for its cords: the finger while
-   * dragging, then the return spring — no reading the transform back. */
-  const pos = useRef<(now: number) => number>(() => 0);
-  const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const held = useRef(false);
-  /** The axis this gesture committed to (lib/words/swipe.ts lockAxis). */
-  const axis = useRef<Axis | null>(null);
-  const rowEl = useRef<HTMLDivElement>(null);
-  // touch-action: pan-y alone does not hold: iOS Safari still takes over a
-  // sideways drag that wanders vertically, scrolling and cancelling the
-  // swipe. A non-passive touchmove keeps the page from scrolling once the
-  // gesture is sideways — and while it is undecided but leaning sideways,
-  // since a scroll that has started can no longer be stopped.
-  useEffect(() => {
-    const el = rowEl.current;
-    if (!el || !touch) return;
-    let x0 = 0;
-    let y0 = 0;
-    const down = (e: TouchEvent) => {
-      x0 = e.touches[0].clientX;
-      y0 = e.touches[0].clientY;
-    };
-    const move = (e: TouchEvent) => {
-      if (axis.current === "v" || !e.cancelable) return;
-      const dx = Math.abs(e.touches[0].clientX - x0);
-      const dy = Math.abs(e.touches[0].clientY - y0);
-      if (axis.current === "h" || dx > dy) e.preventDefault();
-    };
-    el.addEventListener("touchstart", down, { passive: true });
-    el.addEventListener("touchmove", move, { passive: false });
-    return () => {
-      el.removeEventListener("touchstart", down);
-      el.removeEventListener("touchmove", move);
-    };
-  }, [touch]);
-  /** The touch landed on a moving list: it stops the fling, nothing more. */
-  const catching = useRef(false);
-  /** Recent finger positions, for the release velocity. */
-  const samples = useRef<{ t: number; x: number }[]>([]);
-  /** The finger's own travel (the row resists beyond a, so they differ). */
-  const finger = useRef(0);
-  /** The level the slip has snapped to: crossing into another gives a light buzz. */
-  const level = useRef<SwipeLevel>(0);
   /** Travel unit: the row's own height. */
   const a = typeof style.height === "number" ? style.height : 44;
-  if (swipePerf.on && touch) swipePerf.renders++;
-
-  if (!touch)
-    return (
-      <div
-        role="listitem"
-        data-i={index}
-        // Only a real mouse move takes the cursor: Chrome replays mouse events
-        // at a resting pointer when rows re-render, which would otherwise yank
-        // the cursor back under the mouse after every key press.
-        onMouseMove={(e) => (e.movementX || e.movementY) && onHover()}
-        onClick={(e) => onTap(e.timeStamp)}
-        onContextMenu={(e) => {
-          if (!onMore) return;
-          e.preventDefault();
-          onMore();
-        }}
-        className={`relative ${className} ${loose ? "slip-loose" : ""}`}
-        style={style}
-      >
-        {children}
-        <SlipCords loose={loose} moving={false} />
-      </div>
-    );
-
-  /** Moves the slip to dx, tinted by what it would grade if released now. */
-  const paint = () => {
-    frame.current = 0;
-    const el = rowEl.current;
-    if (!el) return;
-    const x = dx.current;
-    el.style.transform = x ? `translateX(${x}px)` : "";
-  };
-  /** Back to rest: spring home from where it was let go, on the compositor. */
-  const release = () => {
-    const el = rowEl.current;
-    cancelAnimationFrame(frame.current);
-    const x0 = dx.current;
-    if (el && x0) {
-      el.style.transition = `transform ${SWIPE_RETURN_S}s ${SPRING_EASING}`;
-      const t0 = performance.now();
-      pos.current = (now) => x0 * (1 - springProgress((now - t0) / 1000 / SWIPE_RETURN_S));
-    }
-    dx.current = 0;
-    paint();
-    if (el) el.style.willChange = "";
-    setMoving(false);
-  };
-  return (
-    <div
-      ref={rowEl}
-      role="listitem"
-      data-i={index}
-      className={`relative ${className} ${loose ? "slip-loose" : ""}`}
-      style={{
+  const { feel, reducedMotion } = useSwipeFeel(SWIPE_CORE_IFACE);
+  if (swipePerf.on) swipePerf.renders++;
+  const core = useSwipeGesture({
+    a,
+    feel,
+    reducedMotion,
+    holdMs: HOLD_MS,
+    scrolling,
+    onTap,
+    onSwipe,
+    onSwipeStart,
+    onHold,
+    onHoldEnd,
+    perf: swipePerf,
+    onSlide: (row) => {
+      // Only one slip slides at a time: the list's underlay goes under it,
+      // once — what the slip uncovers then shows the grade, with no repaint
+      // as the level changes.
+      const u = underlay?.current;
+      if (!u) return;
+      u.style.top = `${row.offsetTop}px`;
+      u.style.height = `${row.offsetHeight}px`;
+      // Under the row itself: on a tablet the list is padded by the glass
+      // nav, and the zones must line up with the slip.
+      u.style.left = `${row.offsetLeft}px`;
+      u.style.right = "auto";
+      u.style.width = `${row.offsetWidth}px`;
+      u.style.setProperty("--a", `${a}px`);
+      showReveal(u, 0);
+      u.style.visibility = "visible";
+    },
+    onLevel: (k) => {
+      // A light tick at each level, either way (Android; iOS has no API).
+      navigator.vibrate?.(Math.abs(k) === 2 ? 12 : 6);
+      showReveal(underlay?.current, k);
+    },
+    onRelease: (r) =>
+      logSwipe({ finger: r.finger, v: r.v, projected: r.projected, rating: r.rating, a }),
+  });
+  const moving = core.phase === "dragging" || core.phase === "settling";
+  const value: SwipeRowValue = {
+    iface: 1,
+    variant: "js",
+    phase: core.phase,
+    feel,
+    reducedMotion,
+    card: {
+      bind: core.bind,
+      index,
+      className: `relative ${className} ${loose ? "slip-loose" : ""}`,
+      style: {
         ...style,
         touchAction: "pan-y",
         // A hold is listen mode, not iOS's callout / text-selection menu.
         WebkitTouchCallout: "none",
-        // transform and transition are the drag's: paint() writes them.
-      }}
-      onPointerDown={(e) => {
-        start.current = { x: e.clientX, y: e.clientY };
-        samples.current = [{ t: performance.now(), x: 0 }];
-        held.current = false;
-        axis.current = null;
-        level.current = 0;
-        finger.current = 0;
-        catching.current = scrolling?.() ?? false;
-        swipePerf.start();
-        // Keep receiving the gesture even if the finger leaves this row.
-        e.currentTarget.setPointerCapture(e.pointerId);
-        clearTimeout(holdTimer.current);
-        if (catching.current) return;
-        holdTimer.current = setTimeout(() => {
-          held.current = true;
-          onHold?.();
-        }, HOLD_MS);
-      }}
-      onPointerMove={(e) => {
-        if (!start.current) return;
-        const x = e.clientX - start.current.x;
-        const y = e.clientY - start.current.y;
-        // Commit to one axis once past the slop; until then nothing moves,
-        // so the start of a scroll never jiggles the row.
-        if (!axis.current) {
-          axis.current = lockAxis(x, y);
-          if (!axis.current) return;
-          // Any real movement is a swipe or a scroll, not a hold.
-          if (!held.current) clearTimeout(holdTimer.current);
-          if (axis.current === "h" && !held.current) {
-            // Following the finger: no easing, on its own layer.
-            e.currentTarget.style.transition = "none";
-            e.currentTarget.style.willChange = "transform";
-            pos.current = () => dx.current;
-            // Only one slip slides at a time: the list's underlay goes under
-            // it, once — what the slip uncovers then shows the grade, with no
-            // repaint as the level changes.
-            const u = underlay?.current;
-            if (u) {
-              const row = e.currentTarget;
-              u.style.top = `${row.offsetTop}px`;
-              u.style.height = `${row.offsetHeight}px`;
-              // Under the row itself: on a tablet the list is padded by the
-              // glass nav, and the zones must line up with the slip.
-              u.style.left = `${row.offsetLeft}px`;
-              u.style.right = "auto";
-              u.style.width = `${row.offsetWidth}px`;
-              u.style.setProperty("--a", `${a}px`);
-              showReveal(u, 0);
-              u.style.visibility = "visible";
-            }
-            setMoving(true);
-            onSwipeStart?.();
-          }
-        }
-        // A scroll stays a scroll however it drifts; a hold stays a hold.
-        if (axis.current === "h" && !held.current) {
-          const t = performance.now();
-          const kept = samples.current.filter((s) => t - s.t <= SWIPE_VELOCITY_MS * 2);
-          kept.push({ t, x });
-          samples.current = kept;
-          finger.current = x;
-          const k = swipeLevel(x, level.current, a);
-          if (k !== level.current) {
-            // A light tick at each level, either way (Android; iOS has no API).
-            navigator.vibrate?.(Math.abs(k) === 2 ? 12 : 6);
-            level.current = k;
-            showReveal(underlay?.current, k);
-          }
-          dx.current = snapSwipe(x, a);
-          frame.current ||= requestAnimationFrame(paint);
-        }
-      }}
-      onPointerUp={(e) => {
-        clearTimeout(holdTimer.current);
-        swipePerf.stop(axis.current === "h" ? "swipe" : axis.current === "v" ? "scroll" : "tap");
-        release();
-        if (!start.current) return;
-        start.current = null;
-        if (held.current) {
-          // Listening, not grading: the hold ends, nothing else happens.
-          held.current = false;
-          onHoldEnd?.();
-          return;
-        }
-        if (axis.current === "h") {
-          const v = releaseVelocity(samples.current, performance.now());
-          const r = releaseRating(finger.current, v, level.current, a);
-          logSwipe({
-            finger: finger.current,
-            v,
-            projected: releaseLevel(finger.current, v, level.current, a) * a,
-            rating: r,
-            a,
-          });
-          if (r) onSwipe(r);
-        }
-        // Never moved past the slop: a tap — unless it was catching a fling.
-        else if (axis.current === null && !catching.current) onTap(e.timeStamp);
-      }}
-      onPointerCancel={() => {
-        clearTimeout(holdTimer.current);
-        swipePerf.stop(axis.current === "h" ? "swipe-cancel" : "scroll");
-        if (held.current) onHoldEnd?.();
-        held.current = false;
-        start.current = null;
-        release();
-      }}
-    >
-      {children}
-      <SlipCords loose={loose} moving={moving} pos={pos} />
-    </div>
+        // transform and transition are the core's: it writes them.
+      },
+      children: (
+        <>
+          {children}
+          <SwipeCueIsland />
+          <SlipCords loose={loose} moving={moving} pos={core.pos} />
+        </>
+      ),
+    },
+  };
+  return (
+    <SwipeRowProvider value={value}>
+      <SwipeCardIsland />
+    </SwipeRowProvider>
   );
 }
 
@@ -3729,9 +3628,30 @@ function NativeSlipRow({
   useLayoutEffect(() => {
     if (scroller.current) scroller.current.scrollLeft = 2 * a;
   }, [a]);
+  const { feel, reducedMotion } = useSwipeFeel(SWIPE_CORE_IFACE);
+  /** The gesture's phase, for the lift cue: changes only as a gesture starts and ends. */
+  const [phase, setPhase] = useState<SwipePhase>("idle");
   // The listeners below are attached once; they call the latest props.
-  const props = useRef({ onTap, onSwipe, onSwipeStart, onHold, onHoldEnd, scrolling });
-  props.current = { onTap, onSwipe, onSwipeStart, onHold, onHoldEnd, scrolling };
+  const props = useRef({
+    onTap,
+    onSwipe,
+    onSwipeStart,
+    onHold,
+    onHoldEnd,
+    scrolling,
+    feel,
+    reducedMotion,
+  });
+  props.current = {
+    onTap,
+    onSwipe,
+    onSwipeStart,
+    onHold,
+    onHoldEnd,
+    scrolling,
+    feel,
+    reducedMotion,
+  };
   if (swipePerf.on) swipePerf.renders++;
   useEffect(() => {
     const el = scroller.current;
@@ -3757,8 +3677,64 @@ function NativeSlipRow({
       y0: 0,
       finger: 0,
       hold: undefined as ReturnType<typeof setTimeout> | undefined,
+      /** The level the slide is on (hysteresis, as WordRow), for the spring release. */
+      level: 0 as SwipeLevel,
+      /** Recent offsets while the finger is down, for the release velocity. */
+      samples: [] as { t: number; x: number }[],
+      /** The spring release's frame while it runs (feel.nativeRelease). */
+      springing: 0,
     };
     const hasScrollEnd = "onscrollend" in window;
+    /**
+     * The heavy feel's release (feel.nativeRelease): the browser's coast and
+     * snap are stopped at the lift, and the slip follows the core's release
+     * path instead (coast under friction, then the spring home), written to
+     * scrollLeft once a frame. The grade is decided at the lift, by the same
+     * tiers as WordRow's (releaseRating). Returns false when it doesn't apply.
+     */
+    const springRelease = () => {
+      const { feel: f, reducedMotion: still } = props.current;
+      if (!f.nativeRelease || !g.moved || g.steep || g.held) return false;
+      const offset = home - el.scrollLeft; // + = slid right
+      const v = releaseVelocity(g.samples, performance.now());
+      const r = releaseRating(offset, v, g.level, a);
+      g.panned = g.moved = false;
+      swipePerf.stop(r ? "swipe" : "swipe-cancel");
+      logSwipe({
+        finger: g.finger,
+        v,
+        projected: releaseLevel(offset, v, g.level, a) * a,
+        rating: r,
+        a,
+        params: `${NATIVE_PARAMS}+spring`,
+      });
+      // overflow hidden stops WebKit's momentum; no snap, or each write would re-snap.
+      el.style.overflowX = "hidden";
+      el.style.scrollSnapType = "none";
+      const done = () => {
+        g.springing = 0;
+        el.scrollLeft = home;
+        el.style.overflowX = "";
+        el.style.scrollSnapType = "";
+        setPhase("idle");
+      };
+      const tr = releaseTrajectory(offset, v * 1000, f, 2 * a);
+      if (still || tr.seconds <= 0) done();
+      else {
+        setPhase("settling");
+        const t0 = performance.now();
+        const frame = (now: number) => {
+          const t = (now - t0) / 1000;
+          if (t >= tr.seconds) return done();
+          // The track ends at ±2a: the slip meets it as a wall.
+          el.scrollLeft = home - Math.max(-2 * a, Math.min(2 * a, tr.at(t)));
+          g.springing = requestAnimationFrame(frame);
+        };
+        g.springing = requestAnimationFrame(frame);
+      }
+      if (r) props.current.onSwipe(r);
+      return true;
+    };
     const glideHome = () => {
       g.returning = true;
       el.scrollTo({ left: home, behavior: "smooth" });
@@ -3766,6 +3742,7 @@ function NativeSlipRow({
     /** The scroller came to rest: grade where it landed, then glide home. */
     const settle = () => {
       if (g.touching) return; // still under the finger: the gesture isn't over
+      if (g.springing) return; // the spring release has it
       const offset = home - el.scrollLeft; // + = slid right
       if (g.returning) {
         if (Math.abs(offset) < 1) g.returning = false;
@@ -3786,17 +3763,23 @@ function NativeSlipRow({
     /** The first scroll under the finger: a slide (a vertical drag never scrolls this). */
     const slid = () => {
       g.moved = true;
-      if (!g.caught && !g.steep) props.current.onSwipeStart?.();
+      if (g.caught || g.steep) return;
+      setPhase("dragging");
+      props.current.onSwipeStart?.();
     };
     const touchstart = (e: TouchEvent) => {
       g.touching = true;
-      g.caught = g.returning;
+      // A slip still springing home finishes its path: this touch only catches it.
+      g.caught = g.returning || !!g.springing;
       g.returning = false;
       g.panned = g.moved = false;
       g.x0 = e.touches[0].clientX;
       g.y0 = e.touches[0].clientY;
       g.finger = 0;
       g.steep = false;
+      g.level = 0;
+      g.samples = [{ t: performance.now(), x: home - el.scrollLeft }];
+      if (!g.caught) setPhase("pressed");
       swipePerf.start();
       el.addEventListener("scroll", slid, { once: true, passive: true });
       el.addEventListener("touchmove", axis, { passive: false });
@@ -3816,6 +3799,7 @@ function NativeSlipRow({
       if (locked === "v") {
         g.steep = true;
         el.style.overflowX = "hidden";
+        setPhase("scrolling");
       }
     };
     const touchend = (e: TouchEvent) => {
@@ -3825,6 +3809,8 @@ function NativeSlipRow({
       el.removeEventListener("scroll", slid);
       el.removeEventListener("touchmove", axis);
       if (g.steep && !g.held) el.style.overflowX = "";
+      if (!g.caught && springRelease()) return;
+      if (!g.springing) setPhase("idle");
       if (!g.moved) swipePerf.stop(g.panned ? "scroll" : "tap");
       // Lifted while resting on a level, nothing more scrolls: no scrollend
       // follows (WebKit fires it while the finger is still down, and settle
@@ -3865,6 +3851,7 @@ function NativeSlipRow({
     const pointercancel = () => {
       // Scrolling began (this slip or the list): not a tap, not a hold.
       g.panned = true;
+      if (!g.moved && !g.springing) setPhase("scrolling");
       endHold();
     };
     const snapping = () => g.touching && navigator.vibrate?.(6);
@@ -3877,8 +3864,16 @@ function NativeSlipRow({
     // The reveal follows the detent the slip is nearest (the far one's grade
     // takes over the first one's spot).
     const strip = el.parentElement?.querySelector<HTMLElement>("[data-swipe-strip]");
-    const reveal = () =>
-      showReveal(strip, Math.max(-2, Math.min(2, Math.round((home - el.scrollLeft) / a))));
+    const reveal = () => {
+      const offset = home - el.scrollLeft;
+      showReveal(strip, Math.max(-2, Math.min(2, Math.round(offset / a))));
+      if (!g.touching) return;
+      // For the spring release: the level (with hysteresis) and the recent offsets.
+      g.level = swipeLevel(offset, g.level, a);
+      const t = performance.now();
+      g.samples = g.samples.filter((s) => t - s.t <= SWIPE_VELOCITY_MS * 2);
+      g.samples.push({ t, x: offset });
+    };
     el.addEventListener("scroll", reveal, { passive: true });
     el.addEventListener("touchstart", touchstart, { passive: true });
     el.addEventListener("touchend", touchend, { passive: true });
@@ -3892,6 +3887,7 @@ function NativeSlipRow({
     return () => {
       clearTimeout(g.hold);
       clearTimeout(quiet);
+      cancelAnimationFrame(g.springing);
       el.removeEventListener("touchstart", touchstart);
       el.removeEventListener("touchend", touchend);
       el.removeEventListener("touchcancel", touchend);
@@ -3906,36 +3902,49 @@ function NativeSlipRow({
       el.removeEventListener("touchmove", axis);
     };
   }, [a]);
+  const value: SwipeRowValue = {
+    iface: 1,
+    variant: "native",
+    phase,
+    feel,
+    reducedMotion,
+    card: null,
+  };
   return (
-    <div
-      role="listitem"
-      data-i={index}
-      data-swipe="native"
-      // The wrapper lifts the focused slip (z-index, shadow): the scroller
-      // would clip a shadow drawn by the face.
-      className={`slip-native ${loose ? "slip-loose" : ""}`}
-      style={{ height: style.height, ["--a" as string]: `${a}px` }}
-    >
-      {/* Behind the scroller, not inside it: the face (opaque, above) uncovers
+    <SwipeRowProvider value={value}>
+      <div
+        role="listitem"
+        data-i={index}
+        data-swipe="native"
+        // Raised over its neighbours while lifted, so the lift's shadow shows (globals.css).
+        data-swipe-phase={feel.lift > 0 ? phase : undefined}
+        // The wrapper lifts the focused slip (z-index, shadow): the scroller
+        // would clip a shadow drawn by the face.
+        className={`slip-native ${loose ? "slip-loose" : ""}`}
+        style={{ height: style.height, ["--a" as string]: `${a}px` }}
+      >
+        <SwipeCueIsland />
+        {/* Behind the scroller, not inside it: the face (opaque, above) uncovers
           it only by sliding away. A sticky strip inside the scroller painted
           over the face on iOS (WebKit composites sticky layers on their own). */}
-      <div aria-hidden className="slip-strip" data-swipe-strip>
-        <GradeZones />
-      </div>
-      <div ref={scroller} className="slip-scroller" style={{ WebkitTouchCallout: "none" }}>
-        <div className="slip-track">
-          {[0, 1, 2, 3, 4].map((k) => (
-            <i key={k} className="slip-snap" style={{ left: k * a }} />
-          ))}
-          <div className={`slip-face ${className} ${loose ? "slip-loose" : ""}`}>
-            {children}
-            {/* Counter-moved by the scroll position (CSS): the cords stay pinned. */}
-            <span className="slip-pin pointer-events-none absolute inset-0">
-              <SlipCords loose={loose} moving={false} />
-            </span>
+        <div aria-hidden className="slip-strip" data-swipe-strip>
+          <SwipeGradesIsland />
+        </div>
+        <div ref={scroller} className="slip-scroller" style={{ WebkitTouchCallout: "none" }}>
+          <div className="slip-track">
+            {[0, 1, 2, 3, 4].map((k) => (
+              <i key={k} className="slip-snap" style={{ left: k * a }} />
+            ))}
+            <div className={`slip-face ${className} ${loose ? "slip-loose" : ""}`}>
+              {children}
+              {/* Counter-moved by the scroll position (CSS): the cords stay pinned. */}
+              <span className="slip-pin pointer-events-none absolute inset-0">
+                <SlipCords loose={loose} moving={false} />
+              </span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </SwipeRowProvider>
   );
 }
