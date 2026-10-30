@@ -41,6 +41,7 @@ from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 
 import numpy as np
+from websockets.exceptions import ConnectionClosed
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -188,6 +189,8 @@ class Server:
                     cur = None
                 elif t == "ping":
                     await send({"t": "pong"})
+        except ConnectionClosed:
+            pass  # the page went away (reload, backgrounded): no close frame from iOS
         finally:
             log(f"page detached ({peer})")
 
@@ -213,6 +216,12 @@ async def main() -> None:
     from websockets.asyncio.server import serve
     from websockets.http11 import Response
     from websockets.datastructures import Headers
+
+    import logging
+
+    # Refused handshakes (a wrong Origin, a bad upgrade) are logged here, not in handler().
+    logging.basicConfig(format="[%(asctime)s] ws %(message)s", datefmt="%H:%M:%S", level=logging.WARNING)
+    logging.getLogger("websockets.server").setLevel(logging.INFO)
 
     t0 = time.perf_counter()
     engine = load_engine(a.engine)

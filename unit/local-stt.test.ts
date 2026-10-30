@@ -184,6 +184,30 @@ describe("createLocalStt", () => {
     expect(h.stt.connected()).toBe(false);
   });
 
+  it("reports its state for the mic's dot: connecting, ready, down, idle", () => {
+    const h = setup();
+    const seen: string[] = [];
+    const off = h.stt.subscribe((s) => seen.push(s));
+    expect(h.stt.state()).toBe("idle");
+    const s = h.connect();
+    s.drop();
+    h.stt.warm();
+    h.stt.close();
+    off();
+    h.stt.warm();
+    expect(seen).toEqual(["connecting", "ready", "down", "connecting", "idle"]);
+  });
+
+  it("a socket that cannot even be made is down", () => {
+    const stt = createLocalStt("wss://x", {
+      open: () => {
+        throw new Error("blocked");
+      },
+    });
+    stt.warm();
+    expect(stt.state()).toBe("down");
+  });
+
   it("cancel tells the server and drops the utterance", () => {
     const h = setup();
     const s = h.connect();

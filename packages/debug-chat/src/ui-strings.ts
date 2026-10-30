@@ -83,3 +83,30 @@ export const treeDefaults = (lang?: string | null): Partial<TreeStrings> =>
 
 /** Opacity blink for in-progress items (globals.css lk-blink: 1 → 0.35 → 1, 1.6 s). */
 export const BLINK = "animate-lk-blink motion-reduce:animate-none";
+
+/** The mic's local-STT dot (MicButton.tsx, docs/local-stt.md): what each state says. */
+export type LocalSttStrings = { ready: string; connecting: string; down: string };
+const LOCAL_STT: Record<"en" | "zh" | "ja", LocalSttStrings> = {
+  en: {
+    ready: "Local speech model connected",
+    connecting: "Connecting to the local speech model…",
+    down: "Local speech model unreachable: using the cloud",
+  },
+  zh: {
+    ready: "已连接本地语音模型",
+    connecting: "正在连接本地语音模型…",
+    down: "本地语音模型连不上，改用云端识别",
+  },
+  ja: {
+    ready: "ローカル音声モデルに接続済み",
+    connecting: "ローカル音声モデルに接続中…",
+    down: "ローカル音声モデルに接続できません。クラウドで認識します",
+  },
+};
+export function localSttStrings(
+  lang: string | null | undefined = globalThis.document?.documentElement.lang,
+): LocalSttStrings {
+  if (isZh(lang)) return LOCAL_STT.zh;
+  if (/^ja\b/i.test(lang ?? "")) return LOCAL_STT.ja;
+  return LOCAL_STT.en;
+}

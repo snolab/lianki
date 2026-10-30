@@ -135,9 +135,8 @@ export function DebugChatHost({ hot, ...rest }: DebugChatProps & { hot: boolean 
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     if (!hot) return setSrc(null);
-    try {
-      setSrc(localStorage.getItem(WIDGET_SRC_KEY));
-    } catch {}
+    // getKey, like useHotWidget: the lk:agent-* name first, then the legacy one.
+    setSrc(getKey(WIDGET_SRC_KEY));
   }, [hot]);
   const treeSource = useMemo(
     () => pickTreeSource(src, rest.treeSource),

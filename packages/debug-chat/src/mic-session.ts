@@ -26,11 +26,19 @@ import {
   type VadEvents,
   createMic,
 } from "./mic";
+import type { LocalState } from "./local-stt";
+
+/** What the session needs of a local STT client (local-stt.ts LocalStt). */
+export type LocalClient = StreamStt & {
+  close(): void;
+  state(): LocalState;
+  subscribe(f: (s: LocalState) => void): () => void;
+};
 
 /** globalThis key of the session. */
 export const MIC_SESSION_KEY = "__lkMic";
 /** Bumped when the session's shape changes; an older one is migrated, its stream kept. */
-export const MIC_SESSION_V = 2;
+export const MIC_SESSION_V = 3;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -48,6 +56,8 @@ export type MicView = {
   error: unknown;
   /** Reloaded with the mic on, but it could not resume by itself: one tap does. */
   resume: boolean;
+  /** The local streaming STT's socket, when one is configured (the button's dot). */
+  local?: LocalState;
 };
 export type MicConfig = {
   clipSink?: string;
@@ -75,7 +85,7 @@ export type MicDeps = {
   resumeAudio?: () => Promise<boolean>;
   log?: (ev: Record<string, unknown>) => void;
   /** A client for the local streaming STT at this URL (local-stt.ts createLocalStt). */
-  localStt?: (url: string) => StreamStt & { close(): void };
+  localStt?: (url: string) => LocalClient;
 };
 
 type Listener = (v: MicView) => void;
@@ -134,15 +144,21 @@ export function createMicSession(
   };
   let prev: MicState = "off";
   /** The local STT client for cfg.localStt; replaced when the URL changes. */
-  let local: { url: string; c: StreamStt & { close(): void } } | null = null;
+  let local: { url: string; c: LocalClient; off: () => void } | null = null;
   const localStream = (): StreamStt | undefined => {
     const url = cfg.localStt;
     if (local && local.url !== url) {
+      local.off();
       local.c.close();
       local = null;
+      emit({ local: undefined });
     }
     if (!url || !deps.localStt) return undefined;
-    local ??= { url, c: deps.localStt(url) };
+    if (!local) {
+      const c = deps.localStt(url);
+      local = { url, c, off: c.subscribe((s) => emit({ local: s })) };
+      emit({ local: c.state() });
+    }
     return local.c;
   };
   const mic = createMic({
@@ -191,6 +207,8 @@ export function createMicSession(
     },
     configure(c: MicConfig) {
       cfg = c;
+      localStream(); // a changed or removed URL takes effect (and shows) at once
+      if (mic.state() !== "off") local?.c.warm?.();
     },
     /** A tap: on (remembered for a reload), or an explicit off. */
     async toggle() {
@@ -219,6 +237,10 @@ export function createMicSession(
       const s = stream;
       stream = null; // so the off below can't stop it
       await mic.off();
+      // The new session opens its own socket to the local STT.
+      local?.off();
+      local?.c.close();
+      local = null;
       return s;
     },
     /** After a reload with the mic on: resume without a gesture if we may, else wait for a tap. */

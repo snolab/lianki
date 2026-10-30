@@ -15,6 +15,7 @@ import {
   scheduleTick,
 } from "./mic";
 import { createLocalStt } from "./local-stt";
+import { localSttStrings } from "./ui-strings";
 import { type MicSession, type MicView, micSession } from "./mic-session";
 import { voice } from "./voice";
 import {
@@ -39,6 +40,12 @@ const VAD = "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/";
 const REC = "oklch(0.6 0.22 25)";
 /** The agent speaking (capture held): a calm blue, unlike the red of REC. */
 const TALK = "oklch(0.62 0.14 250)";
+/** The local-STT dot: the Mac's model, connecting, or the cloud fallback. */
+const LOCAL_DOT = {
+  ready: "oklch(0.7 0.16 150)",
+  connecting: "oklch(0.78 0.14 80)",
+  down: "oklch(0.65 0 0)",
+} as const;
 
 /**
  * The soft tick for a spoken sentence sent by itself (scheduleTick), on the
@@ -482,6 +489,18 @@ export function DebugMic({
           />
         )}
         <MicIcon fill={state !== "off"} />
+        {state !== "off" && view.local && view.local !== "idle" && (
+          // Where speech goes (docs/local-stt.md): green = the local model, amber = connecting, grey = the cloud.
+          <span
+            role="status"
+            data-testid="debug-chat-mic-local"
+            data-local={view.local}
+            aria-label={localSttStrings()[view.local]}
+            title={localSttStrings()[view.local]}
+            className={`pointer-events-none absolute end-1 top-0 size-1.5 rounded-full ${view.local === "connecting" ? "animate-pulse motion-reduce:animate-none" : ""}`}
+            style={{ background: LOCAL_DOT[view.local] }}
+          />
+        )}
         {rec && (
           <span
             data-testid="debug-chat-mic-rec"

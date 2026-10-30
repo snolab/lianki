@@ -35,6 +35,10 @@ import {
   isHallucination,
   isHallucinationPhrase,
   normalizeTranscript,
+  ENDPOINT_MAX,
+  ENDPOINT_MIN,
+  ENDPOINT_MS,
+  endpointThreshold,
 } from "@lianki/debug-chat/mic";
 
 const domErr = (name: string) => Object.assign(new Error(name), { name });
@@ -996,5 +1000,56 @@ describe("createMic: streaming to the local STT", () => {
     h.v.ev().onSpeechEnd(new Float32Array(160));
     s.finish().reject(new Error("local stt closed"));
     await expect(h.uploads[0].local as Promise<unknown>).rejects.toThrow("closed");
+  });
+});
+
+describe("createMic: our own end of speech while streaming", () => {
+  const frames = (h: ReturnType<typeof harness>, sec: number, prob: number) => {
+    for (let i = 0; i < Math.round(sec * 10); i++)
+      h.v.ev().onFrame?.(new Float32Array(RATE / 10), prob);
+  };
+
+  it("the threshold follows the noise floor, within its bounds", () => {
+    expect(endpointThreshold(0)).toBe(ENDPOINT_MIN);
+    expect(endpointThreshold(0.3)).toBeCloseTo(0.55);
+    expect(endpointThreshold(0.9)).toBe(ENDPOINT_MAX);
+  });
+
+  it("flushes after ENDPOINT_MS under the threshold, once speech was heard", async () => {
+    const s = fakeStream();
+    const logs: Record<string, unknown>[] = [];
+    const h = harness({ stream: () => s.stt, log: (e) => logs.push(e) });
+    await h.mic.toggle();
+    h.v.ev().onSpeechStart();
+    frames(h, 0.5, 0.2); // under the threshold, but nothing said yet
+    expect(h.v.did).not.toContain("flush");
+    frames(h, 1, 0.9);
+    frames(h, ENDPOINT_MS / 1000 - 0.1, 0.1);
+    expect(h.v.did).not.toContain("flush");
+    frames(h, 0.1, 0.1);
+    expect(h.v.did.filter((x) => x === "flush")).toHaveLength(1);
+    expect(logs.at(-1)).toMatchObject({ ev: "stt-endpoint" });
+    frames(h, 1, 0.1); // once per utterance
+    expect(h.v.did.filter((x) => x === "flush")).toHaveLength(1);
+  });
+
+  it("a noisy floor raises the bar: steady noise does not hold speech open", async () => {
+    const s = fakeStream();
+    const h = harness({ stream: () => s.stt });
+    await h.mic.toggle();
+    frames(h, 5, 0.45); // listening: the floor settles near 0.45
+    h.v.ev().onSpeechStart();
+    frames(h, 1, 0.95);
+    frames(h, ENDPOINT_MS / 1000, 0.5); // over 0.35, but under floor + margin
+    expect(h.v.did).toContain("flush");
+  });
+
+  it("not streaming: vad-web decides, as before", async () => {
+    const h = harness();
+    await h.mic.toggle();
+    h.v.ev().onSpeechStart();
+    frames(h, 1, 0.9);
+    frames(h, 2, 0.05);
+    expect(h.v.did).not.toContain("flush");
   });
 });

@@ -422,6 +422,25 @@ export function energyGate(opts: {
   };
 }
 
+/**
+ * While streaming to the local STT the mic ends an utterance itself, after
+ * ENDPOINT_MS under the threshold, instead of waiting out vad-web's own
+ * silence (redemptionMs, 1400 ms by default): partials already show, so the
+ * final may come sooner. The threshold sits ENDPOINT_MARGIN over the noise
+ * floor (the mean Silero probability between utterances, an EMA), within
+ * [ENDPOINT_MIN, ENDPOINT_MAX], so steady noise neither holds speech open nor
+ * cuts it short.
+ */
+export const ENDPOINT_MS = 600;
+export const ENDPOINT_MARGIN = 0.25;
+export const ENDPOINT_MIN = 0.35;
+export const ENDPOINT_MAX = 0.8;
+/** The floor's EMA weight per 32 ms frame (~1 s to settle). */
+export const FLOOR_ALPHA = 0.05;
+export function endpointThreshold(floor: number): number {
+  return Math.min(ENDPOINT_MAX, Math.max(ENDPOINT_MIN, floor + ENDPOINT_MARGIN));
+}
+
 export type UploadInfo = {
   seq: number;
   durationMs: number;
@@ -479,6 +498,8 @@ export function createMic(d: {
   let partialsOn = d.partials !== false;
   /** The utterance being streamed to the local STT, if it is. */
   let utt: LocalUtt | null = null;
+  /** Our own end-of-speech while streaming: noise floor, speech heard, silence since, flushed. */
+  const ep = { floor: 0.1, heard: false, quiet: 0, sent: false };
   const dropUtt = () => {
     utt?.cancel();
     utt = null;
@@ -557,6 +578,8 @@ export function createMic(d: {
       clearTimer(cap);
       cap = setTimer(() => void vad?.flush(), MAX_UTTERANCE_MS);
       dropUtt();
+      ep.heard = ep.sent = false;
+      ep.quiet = 0;
       utt =
         d.stream?.()?.begin((text) => {
           if (g !== gen || held) return;
@@ -566,7 +589,22 @@ export function createMic(d: {
         }) ?? null;
     },
     onFrame(frame, prob) {
-      if (g !== gen || state !== "capturing") return;
+      if (g !== gen) return;
+      // The noise floor: Silero's probability on what is heard between utterances.
+      if (prob !== undefined && state === "listening") ep.floor += (prob - ep.floor) * FLOOR_ALPHA;
+      if (state !== "capturing") return;
+      if (utt && prob !== undefined && !ep.sent) {
+        // Streaming: our own end of speech, ENDPOINT_MS under a threshold over the floor.
+        if (prob >= endpointThreshold(ep.floor)) {
+          ep.heard = true;
+          ep.quiet = 0;
+        } else ep.quiet += frame.length;
+        if (ep.heard && ep.quiet >= toSamples(ENDPOINT_MS)) {
+          ep.sent = true;
+          d.log?.({ ev: "stt-endpoint", floor: Math.round(ep.floor * 100) / 100 });
+          void vad?.flush();
+        }
+      }
       if (prob !== undefined) {
         d.onProb?.(prob);
         probSum += prob;

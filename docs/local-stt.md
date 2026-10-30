@@ -36,9 +36,20 @@ Run the server (it maps itself into the tailnet and removes the mapping on exit)
 On the owner's page:
 
 ```js
-localStorage.setItem("lk:debug-local-stt", "wss://<mac>.ts.net/lianki-stt"); location.reload()
-// off again: localStorage.removeItem("lk:debug-local-stt")
+localStorage.setItem("lk:agent-local-stt", "wss://<mac>.ts.net/lianki-stt"); location.reload()
+// off again: localStorage.removeItem("lk:agent-local-stt"); localStorage.removeItem("lk:debug-local-stt")
 ```
+
+It is read with `getKey` (storage-keys.ts): `lk:agent-local-stt` first, then
+the legacy `lk:debug-local-stt`. A stale value under the new name wins over a
+fresh one under the old, which is how the first preview loaded the wrong
+widget (`lk:agent-widget-src` held the old URL); set the `lk:agent-*` name.
+
+While the mic is on, a dot at the button's top corner says where speech goes:
+green, the local model (`ready`); amber and pulsing, connecting; grey, not
+reachable, so the cloud route (strings in zh/ja/en, `localSttStrings` in
+`ui-strings.ts`). It is the socket's state (`LocalStt.state()`, via the mic
+session's `view.local`).
 
 The flag is read only on owner pages (`friend ? undefined : …` in
 `DebugChat.tsx`, as for the clip sink), and only a `wss:` URL, or `ws:` on
@@ -124,9 +135,30 @@ Mac to itself through `tailscale serve`, so no radio hop):
 - **End → final 44–187 ms**, growing ~9 ms per second of speech. The route
   path today is an upload of the whole WAV plus Workers AI turbo, the
   documented example being 812 ms, before any network from the phone.
-- Not counted in either: the VAD's own hangover (Silero ends an utterance
-  after ~0.8 s of silence). It is the same for both paths and is now the
-  largest part of "I stopped → text appears"; shortening it is the next lever.
+- Not counted in either: the VAD's own hangover. vad-web 0.0.30 ends an
+  utterance after `redemptionMs` 1400 ms of silence (not overridden in
+  `MicButton.tsx`), the energy fallback after 700 ms. On the route path that
+  stays. **While streaming, the mic ends the utterance itself**: after
+  `ENDPOINT_MS` (600 ms) of Silero probability under a threshold, it calls
+  the VAD's `flush()`, which hands over the audio at once (`mic.ts`,
+  `endpointThreshold`; devLog `stt-endpoint {floor}`). That is ~0.8 s off
+  every utterance, the largest single cut. Partials are already on screen, so
+  a slightly early end costs little; speech that resumes starts a new
+  utterance, joined in order.
+- The threshold adapts to noise: the floor is an EMA (`FLOOR_ALPHA` 0.05 per
+  32 ms frame, ~1 s) of Silero's probability between utterances, and the
+  threshold is floor + 0.25, kept within 0.35–0.8. In a quiet room it is
+  0.35; with steady noise holding the probability around 0.45, it rises to
+  0.7, so the noise does not hold an utterance open. Speech start is still
+  vad-web's own (0.5); noise that starts an utterance gives a short or empty
+  final, which the hallucination guard and the empty-text rule drop.
+
+First real use on the owner's iPhone (2026-10-30, tailnet over his network):
+three finals local, decode 35–109 ms on the Mac, no fallback.
+「我们现在用的是流失传输吗？」 (流式 → 流失, a homophone) is left to the
+polish-edit (#313), which sees local finals exactly like route ones: they
+come through the same `upload()` → `onText` path. On his two clips from that
+morning SenseVoice heard 「开思考模式」 where Workers AI wrote 「開十四巢模式」.
 
 The phone's own numbers (radio, tailnet relay) come from the devLog:
 `local-stt-final {decodeMs, endToFinalMs, firstPartialMs, durationMs}` per
@@ -163,6 +195,32 @@ and, on any rejection (socket closed, `error`, no final within 4 s), posts the
 WAV to `/api/debug/stt` instead. The echo guard, the hallucination guard and
 the clip sink see the text exactly as they do a route transcript.
 
+## Noise
+
+The browser's own noise suppression, echo cancellation and auto gain are on
+(`voice-out.ts`). A speech enhancer on the Mac before SenseVoice was tried
+and **is not used**: DeepFilterNet3 (`--enhance dfn3` in `engines.py`,
+~22 ms per audio second with the 16→48→16 kHz resampling) made SenseVoice
+worse in every condition. `bench-noise.py`, on the clips and noisy copies
+made by `noisy.py` (files only, never played: babble = three of the owner's
+other clips mixed in, pink noise), scored as CER against SenseVoice on the
+clean clip:
+
+| audio | clips | CER raw | DFN3 | DFN3, 10 dB cap |
+| --- | --- | --- | --- | --- |
+| clean | 13–14 | 0 (the reference) | 0.102 | 0.017 |
+| pink, 5 dB SNR | 12 | 0.196 | 0.254 | 0.507 |
+| pink, 0 dB | 12 | 0.368 | 0.480 | 0.591 |
+| babble, 5 dB | 12 | 0.545 | 0.704 | 0.588 |
+| babble, 0 dB | 12 | 0.871 | 0.840 | 0.864 |
+
+That matches what is known of enhancement before ASR: the model was trained
+on natural noisy speech, and the enhancer's artifacts hurt it more than the
+noise does. Babble of the owner's own voice is the hardest case there is
+(and not realistic); in a real café the gain from close talking (the phone
+near the mouth) and the noise-adaptive endpoint are the levers. Hold-to-talk
+remains the option if those are not enough.
+
 ## WebRTC
 
 Not needed for this. The phone already reaches the Mac over the tailnet, and a
@@ -184,4 +242,8 @@ this is owner-only.
   only where the venv, the model and the clips are (skipped in CI).
 - By hand: `bun scripts/local-stt/stream-clip.ts --url ws://127.0.0.1:5193`
   streams every saved clip at real-time pace and prints partials and timings;
-  `python -I scripts/local-stt/bench.py` is the whole-clip A/B above.
+  `python -I scripts/local-stt/bench.py` is the whole-clip A/B above;
+  `noisy.py <dir>` then `bench-noise.py [--atten 10]` the noise table.
+- `server.py` logs each connection, each final (length and decode time,
+  never the text) and every refused handshake (a wrong Origin) through the
+  `websockets` logger.

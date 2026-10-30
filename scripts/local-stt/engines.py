@@ -86,7 +86,76 @@ class MlxWhisper:
         return tidy(r.get("text", ""), lang), lang
 
 
-def load_engine(name: str):
+class DeepFilter:
+    """
+    DeepFilterNet3 speech enhancement (48 kHz, CPU, ~18 ms per audio second):
+    noise out before the recognizer. 16 kHz in and out; resampled around it.
+    """
+
+    name = "dfn3"
+
+    def __init__(self, atten_lim_db: float | None = None):
+        import sys
+        import types
+
+        #: Cap on how much noise is taken out (dB); None = all of it. A cap leaves
+        #: fewer artifacts for the recognizer.
+        self.atten = atten_lim_db
+
+        import torch
+        import torchaudio.functional as AF
+
+        # df 0.5.6 imports torchaudio.backend.common, gone from torchaudio 2.x;
+        # it only uses the name for a type hint.
+        if "torchaudio.backend.common" not in sys.modules:
+            common = types.ModuleType("torchaudio.backend.common")
+            common.AudioMetaData = object
+            sys.modules["torchaudio.backend"] = types.ModuleType("torchaudio.backend")
+            sys.modules["torchaudio.backend.common"] = common
+        from df.enhance import enhance, init_df
+
+        self.torch, self.AF, self.enhance = torch, AF, enhance
+        self.model, self.state, _ = init_df(log_level="ERROR")
+        self.sr = self.state.sr()
+        import threading
+
+        self.lock = threading.Lock()  # the model keeps state per call
+
+    def __call__(self, audio: np.ndarray) -> np.ndarray:
+        if len(audio) < RATE // 10:
+            return audio
+        t = self.torch.from_numpy(np.ascontiguousarray(audio, dtype=np.float32))[None]
+        up = self.AF.resample(t, RATE, self.sr)
+        with self.lock:
+            y = self.enhance(self.model, self.state, up, atten_lim_db=self.atten)
+        return self.AF.resample(y, self.sr, RATE)[0].numpy().astype(np.float32)
+
+
+class Enhanced:
+    """An engine behind a speech enhancer: same interface, `model` says both."""
+
+    def __init__(self, engine, enhancer):
+        self.engine, self.enhancer = engine, enhancer
+        self.name = engine.name
+        self.model = f"{engine.model}+{enhancer.name}"
+
+    def transcribe(self, audio: np.ndarray) -> tuple[str, str]:
+        return self.engine.transcribe(self.enhancer(audio))
+
+    def raw(self, audio: np.ndarray) -> tuple[str, str]:
+        return self.engine.transcribe(audio)
+
+
+def load_engine(name: str, enhance: str = ""):
+    e = _load(name)
+    if enhance == "dfn3":
+        return Enhanced(e, DeepFilter())
+    if enhance:
+        raise SystemExit(f"unknown enhancer {enhance} (dfn3)")
+    return e
+
+
+def _load(name: str):
     if name == "sensevoice":
         return SenseVoice()
     if name == "mlx-whisper":

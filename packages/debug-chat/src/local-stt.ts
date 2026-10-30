@@ -65,6 +65,9 @@ export type LocalUtt = {
   cancel(): void;
 };
 
+/** The socket, for the mic's indicator: connecting, connected (ready), or not reachable. */
+export type LocalState = "idle" | "connecting" | "ready" | "down";
+
 export type LocalStt = {
   /** Start an utterance; null when the socket isn't open (it is opened for next time). */
   begin(onPartial: (text: string) => void): LocalUtt | null;
@@ -72,6 +75,9 @@ export type LocalStt = {
   warm(): void;
   close(): void;
   connected(): boolean;
+  state(): LocalState;
+  /** Called on every state change; returns an unsubscribe. */
+  subscribe(f: (s: LocalState) => void): () => void;
 };
 
 /** The slice of WebSocket used (a fake in the tests). */
@@ -115,6 +121,13 @@ export function createLocalStt(
   let nextId = 1;
   let connectTimer: unknown;
   const utts = new Map<number, Pending>();
+  let st: LocalState = "idle";
+  const subs = new Set<(s: LocalState) => void>();
+  const setSt = (s: LocalState) => {
+    if (s === st) return;
+    st = s;
+    for (const f of subs) f(s);
+  };
 
   const failAll = (why: string) => {
     for (const [id, p] of utts) {
@@ -130,9 +143,11 @@ export function createLocalStt(
       s = open(url);
     } catch (e) {
       d.log?.({ ev: "local-stt", state: "error", error: String(e).slice(0, 100) });
+      setSt("down");
       return;
     }
     ws = s;
+    setSt("connecting");
     s.binaryType = "arraybuffer";
     connectTimer = setTimer(() => {
       if (ws === s && !ready) s.close();
@@ -157,6 +172,7 @@ export function createLocalStt(
       if (m.t === "ready") {
         ready = true;
         clearTimer(connectTimer);
+        setSt("ready");
         d.log?.({ ev: "local-stt", state: "ready", model: m.model });
         return;
       }
@@ -189,8 +205,9 @@ export function createLocalStt(
       clearTimer(connectTimer);
       if (ws === s) {
         ws = null;
-        if (ready) d.log?.({ ev: "local-stt", state: "closed" });
+        d.log?.({ ev: "local-stt", state: ready ? "closed" : "unreachable", url });
         ready = false;
+        setSt("down");
       }
       failAll("local stt closed");
     };
@@ -207,11 +224,17 @@ export function createLocalStt(
 
   return {
     connected: live,
+    state: () => st,
+    subscribe(f) {
+      subs.add(f);
+      return () => void subs.delete(f);
+    },
     warm: connect,
     close() {
       const s = ws;
       ws = null;
       ready = false;
+      setSt("idle");
       s?.close();
       failAll("local stt closed");
     },
