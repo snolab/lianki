@@ -1,4 +1,5 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys } from "../../../lib/i18n-context";
 
 /**
  * /words (and the drills that reuse WordsClient): the list picker, the study
@@ -6,8 +7,11 @@ import { t, type DeclarationContent } from "intlayer";
  * user-visible string there comes from here, in every locale — a missing
  * one shows up as the lone English item in a translated sheet.
  * `{name}` placeholders are filled by `fill()` in WordsClient.
+ *
+ * Every key also has a line in `context` below (docs/i18n.md): translate a
+ * string together with it, never on its own.
  */
-const wordsPageContent = {
+const dictionary = {
   key: "words-page",
   content: {
     study: t({
@@ -123,7 +127,7 @@ const wordsPageContent = {
       zh: "纸纹随列表滚动",
       hi: "कागज़ सूची के साथ स्क्रॉल हो",
       es: "El papel se desplaza con la lista",
-      fr: "Le papier défile avec la liste",
+      fr: "Le fond papier défile avec la liste",
       ar: "الورق يتمرّر مع القائمة",
       bn: "কাগজ তালিকার সাথে স্ক্রল করে",
       pt: "O papel rola com a lista",
@@ -157,7 +161,7 @@ const wordsPageContent = {
     // The swipe's feel (docs/swipe-core.md): debug mode only, this device only.
     heavySwipe: t({
       en: "Heavy swipe",
-      zh: "厚重滑动",
+      zh: "重手感滑动",
       hi: "भारी स्वाइप",
       es: "Deslizar con peso",
       fr: "Glissement lourd",
@@ -607,10 +611,10 @@ const wordsPageContent = {
     }),
     experimental: t({
       en: "Experimental",
-      zh: "实验性",
+      zh: "实验性功能",
       hi: "प्रायोगिक",
       es: "Experimental",
-      fr: "Expérimental",
+      fr: "Fonctions expérimentales",
       ar: "تجريبي",
       bn: "পরীক্ষামূলক",
       pt: "Experimental",
@@ -618,17 +622,17 @@ const wordsPageContent = {
       ur: "تجرباتی",
       id: "Eksperimental",
       de: "Experimentell",
-      ja: "試験的",
+      ja: "試験的な機能",
       sw: "Majaribio",
       mr: "प्रायोगिक",
       ko: "실험적 기능",
     }),
     newSwipe: t({
       en: "New swipe",
-      zh: "新滑动",
+      zh: "新版滑动",
       hi: "नया स्वाइप",
       es: "Nuevo deslizamiento",
-      fr: "Nouveau glissement",
+      fr: "Nouvelle version du glissement",
       ar: "سحب جديد",
       bn: "নতুন সোয়াইপ",
       pt: "Novo deslize",
@@ -636,7 +640,7 @@ const wordsPageContent = {
       ur: "نیا سوائپ",
       id: "Geser baru",
       de: "Neues Wischen",
-      ja: "新しいスワイプ",
+      ja: "新しいスワイプ方式",
       sw: "Kutelezesha kupya",
       mr: "नवीन स्वाइप",
       ko: "새 스와이프",
@@ -931,7 +935,7 @@ const wordsPageContent = {
     }),
     statusNew: t({
       en: "new",
-      zh: "新",
+      zh: "新词",
       hi: "नया",
       es: "nueva",
       fr: "nouveau",
@@ -978,7 +982,7 @@ const wordsPageContent = {
       ur: "باقی",
       id: "jatuh tempo",
       de: "fällig",
-      ja: "復習",
+      ja: "復習待ち",
       sw: "inadaiwa",
       mr: "बाकी",
       ko: "복습 예정",
@@ -1014,7 +1018,7 @@ const wordsPageContent = {
       ur: "↓ واپس",
       id: "↓ kembali",
       de: "↓ zurück",
-      ja: "↓ 戻り",
+      ja: "↓ 再出題",
       sw: "↓ imerudi",
       mr: "↓ परत",
       ko: "↓ 다시",
@@ -1402,7 +1406,7 @@ const wordsPageContent = {
       zh: "下载以离线使用",
       hi: "ऑफ़लाइन के लिए डाउनलोड करें",
       es: "Descargar para usar sin conexión",
-      fr: "Télécharger pour le hors-ligne",
+      fr: "Télécharger pour le mode hors ligne",
       ar: "نزّل للاستخدام دون اتصال",
       bn: "অফলাইনের জন্য ডাউনলোড করুন",
       pt: "Baixar para usar offline",
@@ -1596,6 +1600,187 @@ const wordsPageContent = {
       ko: "단어 목록을 사용하려면 로그인하세요.",
     }),
   },
+};
+
+/**
+ * Where each string appears, what it is for, and how it is used. A key
+ * missing here is a type error, and unit/i18n-context.test.ts fails.
+ */
+const context: Record<keyof typeof dictionary.content, string> = {
+  // The list picker (/words with no list open).
+  title:
+    "Page heading (h1) of /words, the page listing the learner's vocabulary word lists. A noun phrase, not an action.",
+  intro:
+    "Paragraph under the /words heading explaining the study view: an endless scrolling list of words, each graded with the keys 1/2/3/4 (Again/Hard/Good/Easy), saved immediately; the Z key undoes the last grade. Keep the digits and the letter Z.",
+  allTitle:
+    "Title shown in the study view's toolbar when the learner studies all their word lists at once. A noun phrase naming what is being studied.",
+  study:
+    "Button on each word-list row in the list picker; opens that list in the study view to review its words. A short imperative verb (start studying), not the noun 'study'.",
+  delete:
+    "Small low-emphasis button at the end of each word-list row in the list picker; deletes that list (or group) after a confirm dialog. Imperative verb, lowercase in English.",
+  studyAll:
+    "Main line of the large button at the top of the list picker that opens one study session over every word list together. Imperative.",
+  studyAllHint:
+    "Small second line under 'Study all lists together': new (never-seen) words are introduced in the order the lists are arranged below it.",
+  dueCount:
+    "Badge on the 'Study all lists together' button: how many words across all lists are due for review now. {n} is a number.",
+  rowStats:
+    "Small stats line under a word list's name in the list picker. {due}: words due for review now; {learning}: words being learned; {mastered}: words whose next review is a year or more away (≥1y = at least one year); {seen}/{total}: words seen so far out of the list's size.",
+  expand:
+    "Screen-reader label (aria-label) of the arrow button that opens a group of word lists to show the lists inside it. Imperative verb.",
+  collapse:
+    "Screen-reader label (aria-label) of the arrow button that closes an open group of word lists, hiding the lists inside it. Imperative verb.",
+  dragToReorder:
+    "Screen-reader label of the ⠿ drag handle at the start of each word-list row; dragging it changes the order of the lists.",
+  dragTitle:
+    "Mouse-hover tooltip on the ⠿ drag handle of a word-list row: drag up/down to reorder; drag right to nest the list inside the row above it (making a group), drag left to take it back out.",
+  reorderHelp:
+    "Help paragraph under the word lists explaining the ⠿ drag handle: up/down reorders, right nests a list inside the one above (like Anki's subdecks, keep the name Anki), left un-nests; studying a group studies every list inside it.",
+  newGroup:
+    "Button under the word lists that creates a new, empty group (a folder that word lists can be dragged into). '+' prefix kept.",
+  groupName:
+    "Prompt text of the browser dialog that asks for the name of the new group being created. A label for a text field, not a question.",
+  confirmDeleteGroup:
+    "Browser confirm dialog shown before deleting a group of word lists; {name} is the group's name. The lists inside are not deleted, they move up one level.",
+  confirmDeleteList:
+    "Browser confirm dialog shown before deleting one word list; {name} is the list's name. The learner's review progress for it is deleted too.",
+  addList:
+    "Section heading in the list picker above the catalogue of built-in word lists the learner can add to their own lists.",
+  add: "Button next to a built-in word list in the 'Add a list' catalogue; adds that list to the learner's lists. Imperative verb, lowercase in English.",
+  added:
+    "Disabled state of the same button once that built-in word list has been added: a past participle agreeing with 'list' (feminine in French).",
+  downloadForOffline:
+    "Button in the list picker that saves every word list and today's due words on this device so the learner can study without a network connection.",
+  downloadTitle:
+    "Mouse-hover tooltip on the 'Download for offline' button, describing what it saves on this device and why.",
+  downloading:
+    "Progress text on the 'Download for offline' button while it runs; {done} of {total} lists saved so far.",
+  savedOnDevice:
+    "Text on the 'Download for offline' button once everything is saved on this device. Past tense, with the ✓ kept.",
+  downloadFailed:
+    "Error text after the offline download failed; {error} is the technical error message, kept as is.",
+  offlineBanner:
+    "Banner at the top of the list picker when the device has no network: it shows the lists saved earlier, and grades made now are sent to the server once back online.",
+  signInToUse:
+    "Message shown instead of the word lists to a visitor who is not signed in. Asks them to sign in.",
+  loading:
+    "Placeholder shown while the word lists or a list's words are being fetched. Ellipsis kept.",
+
+  // The study view: toolbar.
+  backToLists:
+    "Toolbar link at the top-left of the study view that leaves it and returns to the list picker. Keep the ← arrow pointing toward the start of the line (→ in right-to-left languages). 'lists' = word lists.",
+  settings:
+    "Toolbar button (with a gear icon) that opens and closes the study view's settings sheet. One word, as on a gear button.",
+  undo: "Toolbar button (touch screens only, with a ↶ icon) that undoes the last grade given to a word, putting that word back as ungraded. Undo, not Cancel.",
+  stats:
+    "Live counter in the study toolbar. {done}: words graded in this session; {rate}/min: grades per minute; {due}: words due for review still ahead; {new}: never-seen words still ahead. Keep the · separators.",
+  saving:
+    "Appended to the toolbar counter: {n} grades are being sent to the server right now. Ellipsis kept.",
+  offline:
+    "Appended to the toolbar counter when the device has no network (grades are kept on the device). A status adjective, lowercase.",
+  toSync:
+    "Appended to the toolbar counter while offline: {n} grades are waiting to be sent to the server when the network returns.",
+  synced:
+    "Appended to the toolbar counter once every grade of this session has reached the server. Status, with ✓ kept.",
+  notSaved:
+    "Error line under the toolbar when grades could not be sent to the server; {error} is the technical error message, kept as is.",
+
+  // The study view: settings sheet. Labels are short toggle names; hints are the line under them.
+  studySettings:
+    "Screen-reader label (aria-label) of the settings sheet that the toolbar's Settings button opens; the sheet holds the switches for the study view.",
+  showAll:
+    "Name of an on/off switch in the study settings: show the meaning (translation) of every word in the list at once, instead of only the word currently focused.",
+  showAllHint:
+    "Line under the 'Show all meanings' switch; '(E)' is its keyboard shortcut, kept as is. 'Focused row' = the word currently selected in the list.",
+  readAloud:
+    "Name of an on/off switch in the study settings: text-to-speech reads each word aloud, with its example sentence, as the learner reaches it.",
+  readAloudHint: "Line under the 'Read cards aloud' switch; '(V)' is its keyboard shortcut, kept.",
+  serverVoice:
+    "Name of an on/off switch in the study settings: speech comes from Lianki's own server-side text-to-speech voices instead of the browser's built-in voices.",
+  serverVoiceHint:
+    "Line under the 'Server voice' switch. The language codes in parentheses are kept exactly as written.",
+  voices:
+    "Label before the credit line naming the speech engines used (VOICEVOX, Kokoro, Piper…), in the settings sheet. Followed by the names, which are not translated.",
+  japanese:
+    "Language name in the voice credit line, in parentheses after the Japanese engine 'VOICEVOX:No.7'. The language, not the nationality; lowercase where the language writes language names so.",
+  gradeTones:
+    "Name of an on/off switch in the study settings: play a short sound for each grade (Again/Hard/Good/Easy) so the learner can study without looking at the screen.",
+  gradeTonesHint: "Line under the 'Grade tones' switch, explaining why the sounds help.",
+  speakOnSwipe:
+    "Name of an on/off switch in the study settings (touch screens): speak the word aloud as soon as the learner starts swiping its row.",
+  speakOnSwipeHint: "Line under the 'Speak on swipe' switch.",
+  fullScreen:
+    "Name of an on/off switch in the study settings: put the page in full-screen mode (hides the browser's address bar).",
+  fullScreenHint: "Line under the 'Full screen' switch.",
+  fsHint:
+    "Shown when the 'Full screen' switch cannot work in this browser (iPhone Safari): how to add Lianki to the home screen instead. 'Share' and 'Add to Home Screen' are iOS's own menu names — use the names iOS shows in that language.",
+  experimental:
+    "Small uppercase heading of the last section of the study settings, grouping switches for features still being tried out. A heading for a group of features, not an adjective about one item.",
+  newSwipe:
+    "Name of an on/off switch in the Experimental section: use the new implementation of the swipe gesture (built on the browser's native scrolling) instead of the current one. 'New' qualifies the implementation, not a single swipe.",
+  newSwipeHint: "Line under the 'New swipe' switch, saying how the new swipe works.",
+  heavySwipe:
+    "Name of an on/off switch in the Experimental section (debug mode only): a swipe feel preset where the word's row (the 'slip', a paper strip) feels heavy. Describes the feel of the gesture.",
+  heavySwipeHint:
+    "Line under the 'Heavy swipe' switch: the slip (the word's row, drawn as a paper strip) feels weighty — it trails the finger, keeps moving after release and springs back slowly.",
+  tuneSwipe:
+    "Name of an on/off switch in the Experimental section (debug mode only): shows a panel of sliders to adjust how the swipe feels.",
+  tuneSwipeHint: "Line under the 'Tune swipe' switch.",
+  paperScrolls:
+    "Name of an on/off switch in the Experimental section: the background paper texture of the study list scrolls along with the list instead of staying fixed. 'Paper' = the page's paper-texture background.",
+  paperScrollsHint: "Line under the 'Paper scrolls with the list' switch.",
+  nativeSwipeNote:
+    "Note at the end of the Experimental section on touch screens, before 'It may change or go away.': says the swipe uses native scrolling.",
+  mayChange:
+    "Note at the end of the Experimental section: these experimental features may change or be removed.",
+
+  // The study view: the word list and its status column.
+  statusNew:
+    "Status column of a word row: this word has never been studied (a new word). One short word, lowercase; it labels a word.",
+  ago: "Status column of a word row: how long ago this word became due for review. {t} is a short duration like '3d' or '5h'.",
+  dueTitle:
+    "Mouse-hover tooltip on the status column of an ungraded word row; explains that the time shown is how long the word has been due (waiting) for review.",
+  now: "Status column of a graded word row whose countdown has reached zero: the word is due again now. One short word.",
+  back: "Status column of a graded word row whose countdown reached zero and which has been put back further down the list to be shown again in this session. Keep the ↓ arrow.",
+  again:
+    "Name of the lowest of the four review grades (spaced repetition, as in Anki's Again/Hard/Good/Easy): the learner forgot the word and it will be shown again soon. Used on swipe labels, help text and tooltips.",
+  hard: "Name of the second review grade (Again/Hard/Good/Easy): remembered, but with difficulty.",
+  good: "Name of the third review grade (Again/Hard/Good/Easy): remembered correctly, the normal answer.",
+  easy: "Name of the highest review grade (Again/Hard/Good/Easy): remembered effortlessly, so the next review is far away.",
+  everyWordLearned:
+    "Shown in the help strip at the bottom of the study view when no words are left to study in this session (followed by a confetti icon).",
+  loadingMore:
+    "Shown at the bottom of the endless word list while the next words are being fetched. Ellipsis kept.",
+  couldntLoad:
+    "Error in the study view when the words could not be fetched; {error} is the technical error message, kept as is.",
+  retry: "Button under that error that tries fetching the words again. Imperative verb.",
+
+  // The help strip.
+  helpTouch:
+    "Help strip at the bottom of the study view on touch screens: tap a word to show its meaning and hear it; hold to listen in a loop; swipe left a little/far or right a little/far to grade. {again}/{hard}/{good}/{easy} are the grade names inserted from their own keys. Keep the ← → ↶ symbols and the · separators.",
+  helpKeys:
+    "Full keyboard help strip at the bottom of the study view: the keys (↑↓, W S, I U, Space, E, 1-4, L K J H, Z, M, Esc, Enter, V, ?) are kept as is; only the explanation is translated. {again}/{hard}/{good}/{easy} are the grade names inserted from their own keys.",
+  helpKeysShort:
+    "Short keyboard help strip at the bottom of the study view (the full one is toggled with ?): keys kept as is, {again}/{hard}/{good}/{easy} are the grade names; '? all keys' means press ? to see every key.",
+
+  // The slip sheet (the action sheet opened by double-tapping a word).
+  wordActions:
+    "Screen-reader label of the action sheet that slides up from the bottom when the learner double-taps a word's row (touch screens): it holds the other actions for that word.",
+  listenAgain:
+    "Button in the word's action sheet: play the word's audio again, repeating in a loop.",
+  copyWord: "Button in the word's action sheet: copy the word to the clipboard.",
+  copied:
+    "Short notice after the word was copied to the clipboard; {term} is the word itself. Past tense.",
+  cancel: "Button at the bottom of the word's action sheet that closes it without doing anything.",
+};
+
+const wordsPageContent = {
+  ...dictionary,
+  title: "/words — word lists and the study view",
+  description: describeKeys(
+    "Strings of /words in Lianki, a spaced-repetition app for learning languages: the list picker (the learner's vocabulary word lists), and the study view, where words are graded Again/Hard/Good/Easy by keys or by swiping each word's row (the 'slip'). Keep {placeholders}, keyboard keys and arrows exactly as written. Short labels go on buttons, switches and toolbars of a phone screen: keep them about as short as the English.",
+    context,
+  ),
 } satisfies DeclarationContent;
 
 export default wordsPageContent;
