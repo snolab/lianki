@@ -150,6 +150,17 @@ the Japanese from a ja + en clip. `STT_PROMPT`, an `initial_prompt` that
 itself mixes 日本語, English and 中文, fixed that, and did not leak into a
 clip of silence. It is sent only when no `?lang=` is given.
 
+Silence hallucinations (「ご視聴ありがとうございました。」, "Thanks for
+watching" — Whisper's subtitle credits) are handled twice. Turbo is sent
+`STT_ANTI_HALLUCINATION` (`condition_on_previous_text: false`,
+`no_speech_threshold: 0.5`; both in its input schema, not yet verified live).
+The mic then drops a final transcript that is one of `HALLUCINATIONS`
+(normalized: NFKC, no punctuation or spaces) when the utterance had under
+`HALLUCINATION_MAX_MS` of speech or a mean Silero probability under
+`HALLUCINATION_MIN_PROB` (`isHallucination`, `packages/debug-chat/src/mic.ts`).
+Each drop is a `stt-hallucination` devLog event with `{text, ms, prob}`, to
+tune those two.
+
 Request formats, all verified live: turbo takes JSON with the audio in
 base64; Whisper and Nova-3 take the raw bytes with their Content-Type, Nova-3
 its options as query parameters. MP3, M4A (AAC) and WAV were tested; WebM/Opus

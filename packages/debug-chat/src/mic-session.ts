@@ -136,6 +136,7 @@ export function createMicSession(
     },
     onError: (e) => emit({ error: e }),
     onProb: (p) => deps.onProb?.(p),
+    log: (ev) => deps.log?.(ev),
   });
   const unhold = deps.subscribeHold?.((h) => mic.hold(h));
 
