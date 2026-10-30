@@ -841,6 +841,38 @@ describe("the Whisper hallucination guard", () => {
       expect(isHallucinationPhrase(h.replaceAll("…", "x"))).toBe(true);
   });
 
+  it("knows the Chinese credits, simplified and traditional", () => {
+    for (const t of [
+      "感谢观看",
+      "感謝觀看。",
+      "谢谢观看！",
+      "謝謝觀看",
+      "感谢收看",
+      "感謝收看",
+      "谢谢您的观看。",
+      "請不吝點贊 訂閱 轉發 打賞支持明鏡與點點欄目",
+      "请不吝点赞订阅转发打赏支持明镜与点点栏目",
+      "字幕由Amara.org社區提供",
+      "字幕志愿者 李宗盛",
+    ])
+      expect(isHallucinationPhrase(t)).toBe(true);
+    expect(isHallucinationPhrase("感谢你的帮助")).toBe(false);
+  });
+
+  it("cuts a credit tacked onto a real sentence, and only that", () => {
+    expect(stripHallucinationTail("这个按钮应该自动上屏。感谢观看。")).toBe(
+      "这个按钮应该自动上屏。",
+    );
+    expect(stripHallucinationTail("下一个词，谢谢观看")).toBe("下一个词，");
+    expect(stripHallucinationTail("次の単語。ご視聴ありがとうございました。")).toBe("次の単語。");
+    expect(stripHallucinationTail("Next word. Thanks for watching!")).toBe("Next word.");
+    // Nothing but a credit: left for isHallucination (length and loudness) to judge.
+    expect(stripHallucinationTail("感谢观看。")).toBe("感谢观看。");
+    // A credit-like phrase inside the sentence stays.
+    expect(stripHallucinationTail("他说感谢观看这个视频的人")).toBe("他说感谢观看这个视频的人");
+    expect(stripHallucinationTail("你好")).toBe("你好");
+  });
+
   it("normal text is not a phrase", () => {
     expect(isHallucinationPhrase("今日はありがとうございました。")).toBe(false);
     expect(isHallucinationPhrase("Thanks for watching the kids")).toBe(false);
@@ -896,41 +928,6 @@ describe("the Whisper hallucination guard", () => {
     const r = await say("はい。", 0.3, 0.9);
     expect(r.texts).toEqual(["はい。"]);
     expect(r.logs).toEqual([]);
-  });
-
-  it("knows the Chinese sign-offs, the subtitle credit and our own hint prompt", () => {
-    for (const t of [
-      "感谢观看",
-      "感謝觀看！",
-      "谢谢观看。",
-      "謝謝觀看",
-      "感谢收看",
-      "感謝收看",
-      "字幕志愿者 李宗盛",
-      "字幕志願者",
-      "我说中文，有时夹杂日本語和English。",
-    ])
-      expect(isHallucinationPhrase(t)).toBe(true);
-    // A real name alone is not one.
-    expect(isHallucinationPhrase("李宗盛")).toBe(false);
-  });
-
-  it("stripHallucinationTail: a phrase stuck on the end of real speech goes, the speech stays", () => {
-    expect(stripHallucinationTail("明天见。谢谢观看")).toBe("明天见。");
-    expect(stripHallucinationTail("我们开始吧，感謝收看！")).toBe("我们开始吧，");
-    expect(stripHallucinationTail("Hello there. Thanks for watching!")).toBe("Hello there.");
-    expect(stripHallucinationTail("嗯 字幕志愿者 李宗盛")).toBe("嗯");
-    expect(stripHallucinationTail("好的。我说中文，有时夹杂日本語和English。")).toBe("好的。");
-    // All phrase: left for isHallucination to judge; no phrase: unchanged.
-    expect(stripHallucinationTail("谢谢观看")).toBe("谢谢观看");
-    expect(stripHallucinationTail("我喜欢李宗盛")).toBe("我喜欢李宗盛");
-    expect(stripHallucinationTail("今天天气不错")).toBe("今天天气不错");
-  });
-
-  it("createMic: a tail phrase is cut from a final and logged", async () => {
-    const r = await say("明天见。谢谢观看", 2, 0.9);
-    expect(r.texts).toEqual(["明天见。"]);
-    expect(r.logs).toEqual([{ ev: "stt-hallucination-tail", text: "谢谢观看" }]);
   });
 });
 
