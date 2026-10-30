@@ -15,7 +15,7 @@ import {
   resample,
   scheduleTick,
 } from "./mic";
-import { voiceLatency } from "./latency";
+import { voiceLatency, noteSttVia } from "./latency";
 import { createLocalStt } from "./local-stt";
 import { localSttStrings } from "./ui-strings";
 import { type MicSession, type MicView, micSession } from "./mic-session";
@@ -217,11 +217,13 @@ function session(): MicSession {
       try {
         // `ms`: the server's own time, the route's or the Mac's decode (sttServerMs in the timing).
         let out: { text: string; model?: string; ms?: number };
+        let via: "local" | "cloud" = "cloud";
         if (local) {
           // Streamed to the owner's Mac (local-stt.ts); on any failure, the route as before.
           try {
             const f = await local;
             out = f;
+            via = "local";
             v.log({
               ev: "local-stt-final",
               model: f.model,
@@ -256,6 +258,8 @@ function session(): MicSession {
         }
         // The route's own ms, for the latency record (latency.ts).
         if (!partial && out.ms !== undefined) voiceLatency().mark(seq, { sttServerMs: out.ms });
+        // Which recognizer it was, for the menu's latency (latency.ts viaAt).
+        if (!partial) noteSttVia(via);
         if (sink)
           void postClip(sink, wav, {
             at,

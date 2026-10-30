@@ -3,8 +3,11 @@ import {
   type UttMarks,
   breakdown,
   createLatency,
+  latencyLines,
   latencyRows,
+  noteSttVia,
   pickTiming,
+  viaAt,
   secs,
   voiceLatency,
 } from "@lianki/debug-chat/latency";
@@ -263,5 +266,64 @@ describe("voiceLatency(): the page's store, shared on globalThis", () => {
     s.heard({ id: "r", from: "agent", at: 2 });
     expect(logs.at(-1)).toMatchObject({ ev: "voice-latency", id: "v1", replied: true });
     delete g.__lkLatency;
+  });
+});
+
+describe("latencyLines: two lines whose parts add up", () => {
+  const timing = {
+    t_lastVoice: 1000,
+    t_speechEnd: 1600,
+    t_uploadStart: 1600,
+    t_sttDone: 1700,
+    t_shown: 1700,
+    t_sent: 1700,
+  };
+  it("speech → text and the reply, with the recognizer and the total", () => {
+    const r = latencyLines(
+      { timing, t_echo: 1710, t_reply: 2400, t_audible: 2800 },
+      UI_EN,
+      "local",
+    );
+    expect(r).toEqual({
+      total: "1.8",
+      speech: {
+        total: "0.7",
+        parts: [
+          ["pause detection", "0.6"],
+          ["recognition (local)", "0.1"],
+          ["send", "0.0"],
+        ],
+      },
+      reply: {
+        total: "1.1",
+        parts: [
+          ["hub", "0.0"],
+          ["agent", "0.7"],
+          ["voice start", "0.4"],
+        ],
+      },
+    });
+  });
+  it("the listener's beat, an 'other' remainder, cloud, and nothing yet", () => {
+    const r = latencyLines(
+      { timing: { t_speechEnd: 1600, t_sent: 2000 }, t_ack: 2100, t_reply: 2500 },
+      UI_EN,
+      "cloud",
+    );
+    expect(r.speech).toEqual({ total: "0.4", parts: [["other", "0.4"]] });
+    expect(r.reply?.parts).toEqual([
+      ["to agent", "0.1"],
+      ["agent", "0.4"],
+    ]);
+    expect(latencyLines({ timing: {} }, UI_EN)).toEqual({});
+  });
+  it("viaAt: the recognizer that finished nearest the text", () => {
+    noteSttVia("cloud", 10_000);
+    noteSttVia("local", 20_000);
+    for (let i = 0; i < 20; i++) noteSttVia("cloud", 1);
+    noteSttVia("local", 30_000);
+    expect(viaAt(30_500)).toBe("local");
+    expect(viaAt(50_000)).toBeUndefined();
+    expect(viaAt(undefined)).toBeUndefined();
   });
 });
