@@ -1,11 +1,10 @@
 import { BRAND_DOMAIN, cjkWordmark } from "@/lib/brand";
 
 /**
- * The name beside the seal in the top bar: "Lianki.com" where there is room,
- * so the address is the brand. CJK locales show 鏈記 (lianki.com) — the
- * domain in small type, on every width (lib/brand.ts). Another localized name
- * (लियांकी, Лианки…) stays, with the domain after it where there is room; on
- * a narrow screen, only the name.
+ * The name beside the seal in the top bar, on every width (lib/brand.ts):
+ * 鏈記 (lianki.com) in CJK locales, the domain in small type; Lianki.com
+ * everywhere else — the address is the brand. A localized `appName`
+ * (Лианки, लियांकी…) shows as its tooltip.
  */
 export function BrandName({ appName, locale }: { appName: string; locale?: string }) {
   const cjk = cjkWordmark(locale);
@@ -18,19 +17,13 @@ export function BrandName({ appName, locale }: { appName: string; locale?: strin
         </span>
       </span>
     );
-  const latin = appName === "Lianki";
   return (
-    <span className="font-brush font-normal tracking-wider whitespace-nowrap" data-brand={appName}>
-      {appName}
-      {latin ? (
-        <span className="hidden sm:inline" data-brand-domain>
-          .com
-        </span>
-      ) : (
-        <span className="hidden sm:inline ms-2 text-sm opacity-60" data-brand-domain>
-          Lianki.com
-        </span>
-      )}
+    <span
+      className="font-brush font-normal tracking-wider whitespace-nowrap"
+      data-brand="Lianki"
+      title={appName === "Lianki" ? undefined : appName}
+    >
+      Lianki<span data-brand-domain>.com</span>
     </span>
   );
 }

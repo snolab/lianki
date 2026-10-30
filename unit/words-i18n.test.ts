@@ -7,7 +7,7 @@
 import { expect, test } from "bun:test";
 import wordsPage from "@/app/(app)/words/page.content";
 import config from "@/intlayer.config";
-import { BRAND_DOMAIN, cjkWordmark } from "@/lib/brand";
+import { BRAND_DOMAIN, cjkWordmark, wordmarkText } from "@/lib/brand";
 
 const LOCALES = config.internationalization!.locales! as string[];
 type Entry = { translation: Record<string, string> };
@@ -66,9 +66,14 @@ test("zh wording: 单词列表 / 全部单词列表", () => {
   expect(zh.wordsAll).toBe("全部单词列表");
 });
 
-test("the wordmark: 鏈記 (lianki.com) in CJK locales, the localized name elsewhere", () => {
-  for (const l of ["zh", "ja", "ko"]) expect(cjkWordmark(l)).toBe("鏈記");
-  for (const l of LOCALES.filter((x) => !["zh", "ja", "ko"].includes(x)))
+test("the wordmark: 鏈記 (lianki.com) in CJK locales, Lianki.com elsewhere", () => {
+  for (const l of ["zh", "ja", "ko"]) {
+    expect(cjkWordmark(l)).toBe("鏈記");
+    expect(wordmarkText(l)).toBe("鏈記 (lianki.com)");
+  }
+  for (const l of LOCALES.filter((x) => !["zh", "ja", "ko"].includes(x))) {
     expect(cjkWordmark(l)).toBe(null);
+    expect(wordmarkText(l)).toBe("Lianki.com");
+  }
   expect(BRAND_DOMAIN).toBe("lianki.com");
 });

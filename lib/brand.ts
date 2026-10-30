@@ -3,8 +3,8 @@
  *
  * CJK locales show a CJK name with the address after it: 鏈記 (lianki.com).
  * One constant per locale, so a locale's own form is a one-line change (the
- * owner may yet pick simplified 链记 for zh). Every other locale keeps its
- * appName (landing-page content), "Lianki" + ".com" where it is Latin.
+ * owner may yet pick simplified 链记 for zh). Every other locale reads
+ * Lianki.com — the address is the brand.
  */
 export const CJK_WORDMARK: Readonly<Record<string, string>> = {
   zh: "鏈記",
@@ -15,7 +15,13 @@ export const CJK_WORDMARK: Readonly<Record<string, string>> = {
 /** The domain written after a CJK wordmark. */
 export const BRAND_DOMAIN = "lianki.com";
 
-/** The CJK wordmark for `locale`, or null where the localized appName shows. */
+/** The CJK wordmark for `locale`, or null where the wordmark is Lianki.com. */
 export function cjkWordmark(locale: string | undefined): string | null {
   return (locale && CJK_WORDMARK[locale]) || null;
+}
+
+/** The whole wordmark as read: "鏈記 (lianki.com)" or "Lianki.com". */
+export function wordmarkText(locale: string | undefined): string {
+  const cjk = cjkWordmark(locale);
+  return cjk ? `${cjk} (${BRAND_DOMAIN})` : "Lianki.com";
 }

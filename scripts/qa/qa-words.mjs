@@ -1670,8 +1670,8 @@ try {
       `zh phone: the gesture strip is Chinese ("${gestures}")`,
     );
 
-    // The wordmark beside the seal: 鏈記 (lianki.com) for zh / ja / ko, the
-    // localized name elsewhere; on a 390px header, whole and overlapping nothing.
+    // The wordmark beside the seal: 鏈記 (lianki.com) for zh / ja / ko,
+    // Lianki.com elsewhere; on a 390px header, whole and overlapping nothing.
     const brand = () =>
       m.evaluate(() => {
         const b = document.querySelector("[data-brand]");
@@ -1695,14 +1695,14 @@ try {
       ["zh", "鏈記(lianki.com)", true],
       ["ja", "鏈記(lianki.com)", true],
       ["ko", "鏈記(lianki.com)", true],
-      ["ru", "Лианки", false],
-      ["en", "Lianki", false],
+      ["ru", "Lianki.com", true],
+      ["en", "Lianki.com", true],
     ]) {
       await m.goto(`${BASE}/words?lang=${lang}`, { waitUntil: "networkidle" });
       const b = await brand();
       await shot(m, `brand-${lang}-390`);
       check(
-        !!b && b.text.startsWith(want) && b.domain === domain && b.fits,
+        !!b && b.text === want && b.domain === domain && b.fits,
         `${lang}: the 390px header wordmark reads "${want}"${domain ? " with its domain" : ""} and fits (${JSON.stringify(b)})`,
       );
     }
