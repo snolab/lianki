@@ -1,7 +1,7 @@
 "use client";
 
 import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
-import { shouldAdvance } from "@/lib/words/advance";
+import { advanceTop, shouldAdvance } from "@/lib/words/advance";
 import { progressPercent } from "@/lib/words/progress";
 import { voiceQuality } from "@lianki/debug-chat/wire";
 import {
@@ -2020,6 +2020,14 @@ function Study({
   const [queue, setQueue] = useState<Item[]>([]);
   /** Grade per queue index; `card` is the server's card once saved. */
   const [grades, setGrades] = useState<Map<number, { rating: Rating; card?: string }>>(new Map());
+  /**
+   * The grades as of now, not as of the last render: a grade runs in a
+   * transition, so until that render commits the `grades` a swipe handler
+   * closed over still lacks it. The auto-advance check (shouldAdvance) reads
+   * this, so a second grade of the same row in that gap is a re-grade.
+   */
+  const gradesNow = useRef(grades);
+  gradesNow.current = grades;
   const [row, setRow] = useState(0);
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -2364,6 +2372,7 @@ function Study({
     // From the card as it was before this row's grade, so a re-grade replaces.
     const { card } = reviewWord(parseCard(it.card), rating, now, paramsOf.get(it.listId)!);
     const cardJson = JSON.stringify(card);
+    gradesNow.current = new Map(gradesNow.current).set(i, { rating, card: cardJson });
     setGrades((g) => new Map(g).set(i, { rating, card: cardJson }));
     gradeLog.current = [...gradeLog.current.filter((x) => x !== i), i];
     navigator.vibrate?.(10);
@@ -2548,6 +2557,33 @@ function Study({
   /** When the list last scrolled: a touch within 120 ms of it catches a fling. */
   const lastScrollAt = useRef(0);
   const scrollingNow = useCallback(() => performance.now() - lastScrollAt.current < 120, []);
+  /**
+   * Where the last auto-advance is taking the list, while it is on its way
+   * (lib/words/advance.ts, `advanceTop`). Cleared when the list gets there or
+   * the finger takes the list.
+   */
+  const advancing = useRef<{ row: number; top: number } | null>(null);
+  /**
+   * After grading row `i` for the first time: scroll the list by exactly one
+   * row, so the next word slides up under the thumb. An absolute target, not
+   * scrollBy: a relative step lands one row past wherever the list is at
+   * that instant, so a step taken while the list still moves (the last
+   * advance's smooth scroll, a coast) adds to it. One advance per row.
+   */
+  const advanceList = (i: number) => {
+    const el = listRef.current;
+    if (!el) return;
+    const top = advanceTop({
+      row: i,
+      scrollTop: el.scrollTop,
+      rowH: ROW_H,
+      max: el.scrollHeight - el.clientHeight,
+      pending: advancing.current,
+    });
+    if (top === null) return;
+    advancing.current = { row: i, top };
+    el.scrollTo({ top, behavior: motionOff() ? "auto" : "smooth" });
+  };
   const [viewH, setViewH] = useState(600);
   /** viewH holds the real measured height (the opening scroll depends on it). */
   const [measured, setMeasured] = useState(false);
@@ -3269,9 +3305,16 @@ function Study({
             onScroll={(e) => {
               setScrollTop(e.currentTarget.scrollTop);
               lastScrollAt.current = performance.now();
+              const to = advancing.current;
+              if (to && Math.abs(e.currentTarget.scrollTop - to.top) < 1) advancing.current = null;
               keepAnchor(e.currentTarget.scrollTop);
             }}
-            onPointerDownCapture={() => (touchingList.current = true)}
+            onPointerDownCapture={() => {
+              touchingList.current = true;
+              // A list at rest is the finger's now: the next advance starts from
+              // where it is. One still on its way keeps its target.
+              if (!scrollingNow()) advancing.current = null;
+            }}
             onPointerUpCapture={() => (touchingList.current = false)}
             onPointerCancelCapture={() => (touchingList.current = false)}
             // pointerup, not pointerdown: for touch it is the event that grants
@@ -3377,18 +3420,15 @@ function Study({
                   onSwipe={(r) => {
                     // Auto-advance is for a card met for the first time: editing
                     // a grade already given stays on that card (the owner, 2026-10-30).
-                    const advance = shouldAdvance(grades, i);
+                    // Read now, not from this render: see gradesNow.
+                    const advance = shouldAdvance(gradesNow.current, i);
                     // The slip glides home meanwhile: the grade's re-render can wait.
                     startTransition(() => {
                       grade(i, r);
                       if (touch && advance) setFocusLine(Math.min(queue.length - 1, i + 1));
                     });
                     // The next word slides up under the thumb.
-                    if (advance)
-                      listRef.current?.scrollBy({
-                        top: ROW_H,
-                        behavior: motionOff() ? "auto" : "smooth",
-                      });
+                    if (advance) advanceList(i);
                   }}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none ${
                     touch

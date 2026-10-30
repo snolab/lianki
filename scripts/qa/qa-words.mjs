@@ -1479,6 +1479,108 @@ try {
       );
       await m.close();
     }
+    // One grade = one row (the owner, 2026-10-31: "it scrolls two rows"). In
+    // every mode — both swipes, both feels, animations on and off — grading
+    // the focused word moves the focus to the next row and scrolls the list
+    // by exactly one row; re-grading a word already graded moves neither
+    // (lib/words/advance.ts).
+    for (const variant of ["js", "native"])
+      for (const feel of ["light", "heavy"])
+        for (const motion of ["on", "off"]) {
+          const tag = `phone/${variant}+${feel}+motion-${motion}:`;
+          const m = await phone.newPage();
+          m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
+          // Off as the owner has it: Settings → Turn off animations
+          // (lk:pref:motion, <html data-motion="off">), not the system setting.
+          await m.addInitScript((off) => {
+            const v = { state: { animations: off ? "off" : "on" }, version: 1 };
+            localStorage.setItem("lk:pref:motion", JSON.stringify(v));
+          }, motion === "off");
+          const u = new URL(page.url());
+          u.searchParams.set("swipe", variant);
+          u.searchParams.set("feel", feel);
+          await m.goto(u.href, { waitUntil: "networkidle" });
+          await m.locator('[role="listitem"]').nth(8).waitFor({ timeout: 15000 });
+          const cdp = variant === "native" ? await phone.newCDPSession(m) : null;
+          const at = () =>
+            m.evaluate(() => {
+              const list = document.querySelector('[role="list"]');
+              const f = document.querySelector('[role="listitem"].slip-loose');
+              return { top: Math.round(list.scrollTop), focus: f ? Number(f.dataset.i) : -1 };
+            });
+          // The first ungraded row fully below the toolbar, or the focused one.
+          const target = (focused) =>
+            m.evaluate((focused) => {
+              const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
+              const rows = [...document.querySelectorAll('[role="listitem"]')];
+              const r = focused
+                ? document.querySelector('[role="listitem"].slip-loose')
+                : rows.find(
+                    (x) =>
+                      x.getBoundingClientRect().top > bar.bottom + 4 &&
+                      !x.querySelector(".lk-stamp"),
+                  );
+              const b = r.getBoundingClientRect();
+              return { i: Number(r.dataset.i), x: b.left + b.width / 2, y: b.top + b.height / 2 };
+            }, focused);
+          const swipe = async ({ x, y }) => {
+            const dx = 70;
+            if (cdp) {
+              const t = (type, x, y) =>
+                cdp.send("Input.dispatchTouchEvent", {
+                  type,
+                  touchPoints: type === "touchEnd" ? [] : [{ x, y }],
+                });
+              await t("touchStart", x, y);
+              for (let k = 1; k <= 8; k++) {
+                await t("touchMove", x + (dx * k) / 8, y);
+                await m.waitForTimeout(16);
+              }
+              await m.waitForTimeout(80);
+              await t("touchEnd");
+            } else {
+              await m.mouse.move(x, y);
+              await m.mouse.down();
+              for (let k = 1; k <= 8; k++) await m.mouse.move(x + (dx * k) / 8, y);
+              await m.waitForTimeout(80);
+              await m.mouse.up();
+            }
+            await m.waitForTimeout(1500); // the slip home, the list's scroll done
+          };
+          // Headless Chromium can drop a page's very first smooth scroll (no
+          // scroll event at all, on the account's fuller lists): one grade
+          // first, unmeasured, so the checks below see the steady state.
+          await swipe(await target(false));
+          const dm = await m.evaluate(() => document.documentElement.dataset.motion ?? "on");
+          check(dm === motion, `${tag} animations are ${motion} on the page (data-motion ${dm})`);
+          const steps = [];
+          for (let n = 0; n < 3; n++) {
+            const t = await target(true);
+            const a = await at();
+            await swipe(t);
+            const b = await at();
+            steps.push({ i: t.i, focus: b.focus - t.i, top: b.top - a.top });
+          }
+          check(
+            steps.every((s) => s.focus === 1 && s.top === 44),
+            `${tag} each grade moves the focus and the list by exactly one row (${JSON.stringify(steps)})`,
+          );
+          // Re-grade the row just graded (now one row above the focus): nothing moves.
+          const back = await m.evaluate(() => {
+            const f = document.querySelector('[role="listitem"].slip-loose');
+            const r = f.previousElementSibling;
+            const b = r.getBoundingClientRect();
+            return { i: Number(r.dataset.i), x: b.left + b.width / 2, y: b.top + b.height / 2 };
+          });
+          const a = await at();
+          await swipe(back);
+          const b = await at();
+          check(
+            b.top === a.top && b.focus === back.i,
+            `${tag} re-grading a graded word moves nothing (top ${a.top} → ${b.top}, focus ${a.focus} → ${b.focus}, row ${back.i})`,
+          );
+          await m.close();
+        }
     await phone.close();
   }
 
