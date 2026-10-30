@@ -964,8 +964,14 @@ export function DebugChat({
     return true;
   };
   const wasFull = useRef(false);
+  /**
+   * No motion: the system's reduced motion, or the page's own "Turn off
+   * animations" (lib/motion-pref.ts, `<html data-motion="off">`, whose CSS
+   * zeroes every transition, so no transitionend ever comes).
+   */
   const reducedMotion = () =>
-    typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    (typeof document !== "undefined" && document.documentElement.dataset.motion === "off") ||
+    (typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches);
   const logDrag = {
     /**
      * `from: "input"` (the empty input): the log keeps its width and only
@@ -1030,7 +1036,7 @@ export function DebugChat({
   const fullSurface = (p: ReturnType<typeof logSurface>) => {
     if (fullLog === "off") return p;
     const box = fullRef.current.box;
-    const transition = reducedMotion() ? "none" : box ? FADE : WIPE;
+    const transition = reducedMotion() || box ? "none" : WIPE;
     return {
       ...p,
       style: {
@@ -1136,16 +1142,10 @@ export function DebugChat({
           clientHeight: el.clientHeight,
           gap: fullRef.current.gap,
         });
-      if (reducedMotion()) return;
-      if (fullRef.current.box) {
-        // Its own box (it may be wider, its lines rewrapped): a fade in.
-        el.style.transition = "none";
-        el.style.opacity = "0";
-        void el.offsetHeight;
-        el.style.transition = FADE;
-        el.style.opacity = "1";
-        return;
-      }
+      // Its own box: the same node, the same width, only taller, the line
+      // being read held in place: nothing to animate (the sheet fades), and
+      // never an opacity-0 start, which left the list blank.
+      if (reducedMotion() || fullRef.current.box) return;
       const h = revealed();
       if (!h) return;
       el.style.transition = "none";
@@ -1158,9 +1158,9 @@ export function DebugChat({
       // The line being read now, to keep in view as the log folds back.
       if (fullRef.current.box) fullRef.current.anchor = anchorNow();
       const h = revealed();
-      if (reducedMotion() || (!h && !fullRef.current.box)) return setFullLog("off");
-      if (fullRef.current.box) el.style.opacity = "0";
-      else el.style.clipPath = `inset(${h}px 0 0 0)`;
+      // Its own box folds back at once (no fade out, nothing to wait for).
+      if (reducedMotion() || !h || fullRef.current.box) return setFullLog("off");
+      el.style.clipPath = `inset(${h}px 0 0 0)`;
       // transitionend ends it (below); a one-shot fallback if it never fires.
       const t = setTimeout(() => setFullLog((s) => (s === "leaving" ? "off" : s)), 320);
       return () => clearTimeout(t);
@@ -1169,11 +1169,9 @@ export function DebugChat({
       // the newest lines when idle, as the compact log always shows; typing,
       // the lines that were at its bottom edge.
       const fromBox = !!fullRef.current.box;
-      const faded = fromBox && !reducedMotion();
       fullRef.current.box = null;
       el.style.transition = "none";
       el.style.clipPath = "";
-      el.style.opacity = faded ? "0" : "";
       // From its own box: the line being read stays in view (as near its
       // place as the compact log allows). Else as before: the newest lines
       // when idle, the lines at the bottom edge while typing.
@@ -1188,11 +1186,7 @@ export function DebugChat({
             : el.scrollHeight;
       fullRef.current.anchor = null;
       void el.offsetHeight;
-      if (faded) {
-        // Back in its place: the compact log fades in where it rests.
-        el.style.transition = FADE;
-        el.style.opacity = "1";
-      } else el.style.transition = "";
+      el.style.transition = "";
       onLogScroll();
     }
   }, [fullLog]);
@@ -2309,13 +2303,8 @@ export function DebugChat({
         onTransitionEnd={(e) => {
           if (e.target !== e.currentTarget) return;
           // The full-screen log's wipe out ended: back to its resting height.
-          if (e.propertyName === "clip-path" || e.propertyName === "opacity") {
+          if (e.propertyName === "clip-path") {
             if (fullLog === "leaving") setFullLog("off");
-            // The fade back in ended: the inline styles go.
-            else if (fullLog === "off" && e.propertyName === "opacity") {
-              e.currentTarget.style.transition = "";
-              e.currentTarget.style.opacity = "";
-            }
             return;
           }
           // Shrunk: land on the newest lines again, now that the height settled.
