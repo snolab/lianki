@@ -1,3 +1,4 @@
+import type { Ambient } from "./ambient";
 /**
  * The debug chat's wire types and the pure helpers its UI uses. The hub and
  * the sender use them too, through lib/dev-eval.ts (which re-exports them).
@@ -78,6 +79,11 @@ export type ChatMessage = {
    * send none, and an older hub drops it.
    */
   timing?: VoiceTiming;
+  /**
+   * Where the line was sent from, and the tree node he had in focus (soft
+   * context, never routing): ambient.ts. Optional: older pages send none.
+   */
+  ambient?: Ambient;
 };
 
 /** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */

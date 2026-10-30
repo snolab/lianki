@@ -410,6 +410,24 @@ describe("DebugHub chat", () => {
     );
   });
 
+  it("a line's ambient context (page, soft focus) is kept and forwarded, never routing", async () => {
+    const { page, controller, msg, pairOf } = setup();
+    const p = page();
+    const c = controller("agent");
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    const ambient = {
+      page: { path: "/words", query: "deck=ja&token=zz" },
+      focus: { nodePath: "Plan › Mic", title: "Mic", status: "doing" },
+    };
+    await msg(p, { type: "chat", id: "a1", text: "this one", ambient });
+    const got = chats(c).at(-1) as Record<string, unknown>;
+    expect(got.ambient).toEqual({
+      page: { path: "/words", query: "deck=ja" },
+      focus: { nodePath: "Plan › Mic", title: "Mic", status: "doing" },
+    });
+    expect(got).not.toHaveProperty("to");
+  });
+
   it("malformed or oversized chat is dropped", async () => {
     const { page, msg } = setup();
     const p = page();

@@ -426,7 +426,11 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
     } catch {}
   };
   /** `to`: the state-tree node the line is addressed to (absent = the main thread). */
-  const sendChat = (text: string, to?: string, opts?: { source?: "stt"; timing?: VoiceTiming }) => {
+  const sendChat = (
+    text: string,
+    to?: string,
+    opts?: { source?: "stt"; timing?: VoiceTiming; ambient?: unknown },
+  ) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return false;
     try {
@@ -441,6 +445,8 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           ...(to ? { to } : {}),
           ...(opts?.source === "stt" ? { source: "stt" } : {}),
           ...(timing ? { timing } : {}),
+          // The page and the soft tree focus (ambient.ts; the hub cleans it).
+          ...(opts?.ambient ? { ambient: opts.ambient } : {}),
         }),
       );
       // Its reply is timed against it (latency.ts); main-thread lines only.

@@ -57,6 +57,8 @@ export function chatLine(
     ...(m.source === "stt" ? { source: "stt" } : {}),
     // A voice line's timestamps on the page's clock (VoiceTiming; latency.ts).
     ...(m.timing && typeof m.timing === "object" ? { timing: m.timing } : {}),
+    // Where he was and the tree node in focus (soft context: judge relevance).
+    ...(m.ambient && typeof m.ambient === "object" ? { ambient: m.ambient } : {}),
     ...(m.edited && typeof m.edited === "object" ? { raw: m.raw, edited: m.edited } : {}),
     ...(observed ? { observed: true } : {}),
   };

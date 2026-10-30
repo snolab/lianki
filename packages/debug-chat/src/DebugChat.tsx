@@ -1,5 +1,6 @@
 "use client";
 
+import { type Ambient, MAX_FOCUS_PATH, MAX_FOCUS_TITLE, cleanQuery, subtreeSummary } from "./ambient";
 import {
   type ReactNode,
   useEffect,
@@ -456,7 +457,7 @@ export type DebugChatProps = {
   onSend: (
     text: string,
     to?: string,
-    opts?: { source?: MessageSource; timing?: VoiceTiming },
+    opts?: { source?: MessageSource; timing?: VoiceTiming; ambient?: Ambient },
   ) => boolean;
   /** The nodes listeners are subscribed at: "@/…" completions. */
   nodes?: string[];
@@ -731,6 +732,12 @@ export function DebugChat({
   /** The tree as treeNav sees it (index-path ids), and where its focus and depths are. */
   const navIx = useMemo(() => navIndexOf(treeData.root), [treeData.root]);
   const [nav, setNav] = useState<TreeNavState>(() => initialNav(navIx.ix));
+  /**
+   * The soft focus (ambient.ts): the tree node he moved the focus to while
+   * the tree was shown — a hint for the agent, never a route. Cleared by the
+   * hint chip's ×. Opening the tree alone does not set it.
+   */
+  const [softFocus, setSoftFocus] = useState<string | null>(null);
   // A reloaded tree keeps the focus if that node is still there; a fresh
   // page takes the kept one (ui-store.ts) once its nodes have loaded.
   /** The kept tree place has been applied to a loaded tree (the scroll waits for it). */
@@ -1466,6 +1473,32 @@ export function DebugChat({
   }, [open]);
   const sendRef = useRef(onSend);
   sendRef.current = onSend;
+  // The focus moving while the tree is shown is his: it becomes the soft focus.
+  const focusSeen = useRef<{ tree: boolean; id: string | null }>({ tree: false, id: null });
+  useEffect(() => {
+    const was = focusSeen.current;
+    focusSeen.current = { tree, id: nav.focusId };
+    if (tree && was.tree && nav.focusId !== null && nav.focusId !== was.id) setSoftFocus(nav.focusId);
+  }, [tree, nav.focusId]);
+  /** The line's ambient context: this page, and the soft focus's titles and statuses. */
+  const ambientNow = (): Ambient => {
+    const page = { path: location.pathname, ...(cleanQuery(location.search) ? { query: cleanQuery(location.search) } : {}) };
+    const node = softFocus === null ? undefined : navIx.byId.get(softFocus);
+    if (!node || softFocus === null) return { page };
+    const trail: string[] = [];
+    for (let id: string | null = softFocus; id !== null; id = navIx.ix.parent.get(id) ?? null)
+      trail.unshift(navIx.byId.get(id)?.title ?? "");
+    const summary = subtreeSummary(node);
+    return {
+      page,
+      focus: {
+        nodePath: trail.join(" › ").slice(0, MAX_FOCUS_PATH),
+        title: node.title.slice(0, MAX_FOCUS_TITLE),
+        ...(node.status ? { status: node.status } : {}),
+        ...(summary ? { summary } : {}),
+      },
+    };
+  };
 
   useEffect(() => {
     synth()?.getVoices(); // starts loading them, so the first reply finds one
@@ -1541,7 +1574,7 @@ export function DebugChat({
       !sendRef.current(
         text,
         to === ROOT_NODE ? undefined : to,
-        source ? { source, ...(timing ? { timing } : {}) } : undefined,
+        { ...(source ? { source, ...(timing ? { timing } : {}) } : {}), ambient: ambientNow() },
       )
     ) {
       setOffline(true);
@@ -1954,6 +1987,8 @@ export function DebugChat({
   const typed = parseAddress(draft);
   const preview = typed?.complete === true;
   const shownTarget = preview && typed ? typed.to : target;
+  /** The soft focus's title for its hint chip (none: no chip). */
+  const softFocusTitle = softFocus === null ? "" : (navIx.byId.get(softFocus)?.title ?? "");
   const pick = (n: string) => {
     aim(n);
     draftRef.current = "";
@@ -2878,7 +2913,7 @@ export function DebugChat({
         }}
         style={{ gridTemplateColumns: open ? "1fr 0fr" : "0fr 1fr" }}
       >
-        {open && (shownTarget !== ROOT_NODE || completions.length > 0) && (
+        {open && (shownTarget !== ROOT_NODE || completions.length > 0 || softFocusTitle) && (
           // The target node (a chip: × back to the main thread) and "@/…" completions.
           <div className="pointer-events-none absolute start-20 bottom-full mb-1 flex max-w-[calc(100%-6rem)] flex-col items-start gap-1">
             {completions.length > 0 && (
@@ -2904,6 +2939,29 @@ export function DebugChat({
                   </li>
                 ))}
               </ul>
+            )}
+            {softFocusTitle && (
+              // Soft: what he seems to be looking at (sent as context, never a route). Dimmer than the target.
+              <span
+                data-testid="debug-chat-focus-hint"
+                title={ui.focusHintTitle}
+                style={{ background: INPUT_BG }}
+                className="pointer-events-auto inline-flex max-w-full items-center gap-1 rounded-full border border-dashed border-current/25 px-1.5 text-[10px] leading-4 text-gray-500 opacity-70"
+              >
+                <span className="truncate">
+                  {ui.focusHint} {softFocusTitle}
+                </span>
+                <button
+                  type="button"
+                  data-testid="debug-chat-focus-hint-clear"
+                  aria-label={ui.focusHintClear}
+                  onPointerDown={(e) => e.preventDefault()}
+                  onClick={() => setSoftFocus(null)}
+                  className="leading-none"
+                >
+                  ×
+                </button>
+              </span>
             )}
             {shownTarget !== ROOT_NODE && (
               <span

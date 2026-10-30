@@ -984,7 +984,7 @@ export class DebugHub {
         }),
       );
       // A friend's line is always their own thread's: no node addressing there.
-      if (page.thread !== OWNER_THREAD) return this.friendChat(ws, page, m.id, m.text);
+      if (page.thread !== OWNER_THREAD) return this.friendChat(ws, page, m.id, m.text, m.ambient);
       return this.post({
         id: m.id,
         from: "owner",
@@ -996,6 +996,8 @@ export class DebugHub {
         ...(m.to ? { to: m.to } : {}),
         ...(m.source ? { source: m.source } : {}),
         ...(m.timing ? { timing: m.timing } : {}),
+        // Context for the agent only: routing stays with `to`.
+        ...(m.ambient ? { ambient: m.ambient } : {}),
       });
     }
     // A sleeping eval grant (listed to the owner's pages only): End, or add a page.
@@ -1031,7 +1033,13 @@ export class DebugHub {
    * and more than FRIEND_CHAT_MAX in a window is dropped (and the page told).
    * Their first ever message tells the agent ({type:"friend-new"}).
    */
-  private async friendChat(ws: Socket, page: PageAtt, id: string, text: string) {
+  private async friendChat(
+    ws: Socket,
+    page: PageAtt,
+    id: string,
+    text: string,
+    ambient?: ChatMessage["ambient"],
+  ) {
     const t = this.now();
     const userId = page.thread;
     const rec = await this.ctx.storage.get<FriendRecord>(friendKey(userId));
@@ -1072,6 +1080,7 @@ export class DebugHub {
       thread: userId,
       email,
       ...(page.sender ? { sender: page.sender } : {}),
+      ...(ambient ? { ambient } : {}),
     });
   }
 

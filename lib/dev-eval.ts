@@ -8,6 +8,7 @@
  * Flow and security model: docs/monitoring.md, "Remote eval (owner debug)".
  */
 
+import { type Ambient, cleanAmbient } from "@lianki/debug-chat/ambient";
 import {
   MAX_CHAT,
   ROOT_NODE,
@@ -181,6 +182,8 @@ export type PageMessage =
       to?: string;
       source?: MessageSource;
       timing?: VoiceTiming;
+      /** The page and the soft tree focus (ambient.ts): context only, never routing. */
+      ambient?: Ambient;
     }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
@@ -380,6 +383,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     // An address that is not a node path is dropped: the line goes to the main thread.
     const to = nodePath(m.to);
     const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
+    const ambient = cleanAmbient(m.ambient);
     return {
       type: "chat",
       id,
@@ -387,6 +391,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(to && to !== ROOT_NODE ? { to } : {}),
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
       ...(timing ? { timing } : {}),
+      ...(ambient ? { ambient } : {}),
     };
   }
   if (m.type === "result") {

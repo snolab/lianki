@@ -19,6 +19,16 @@ export type UiStrings = {
   /** The menu's Latency row (latency.ts): its title, and before any voice reply. */
   latency: string;
   latencyNone: string;
+  /**
+   * The soft focus hint above the input: the state-tree node he moved the
+   * tree's focus to, sent with his lines as context the agent may use (it
+   * does not address the line to that node). focusHint is a short lead-in
+   * before the node's title ("About: Mic level"); focusHintTitle its
+   * tooltip; focusHintClear the × that forgets it.
+   */
+  focusHint: string;
+  focusHintTitle: string;
+  focusHintClear: string;
   /** Its stages: the VAD's silence wait, STT, the page's own steps, the hub, the agent, the voice. */
   latVad: string;
   latStt: string;
@@ -53,6 +63,9 @@ export const UI_EN: UiStrings = {
   items: "items",
   polished: "Polished",
   latency: "Latency, last voice line",
+  focusHint: "About:",
+  focusHintTitle: "Sent with your lines as context; it does not address them",
+  focusHintClear: "Forget this context",
   latencyNone: "Latency: no voice reply yet",
   latVad: "silence",
   latStt: "STT",
@@ -76,6 +89,9 @@ export const UI_ZH: UiStrings = {
   items: "项",
   polished: "已润色",
   latency: "延迟（上一句语音）",
+  focusHint: "关于：",
+  focusHintTitle: "作为上下文随你的消息发送，不会改变收件对象",
+  focusHintClear: "忘掉这个上下文",
   latencyNone: "延迟：还没有语音回复",
   latVad: "静音等待",
   latStt: "转写",
@@ -99,6 +115,9 @@ export const UI_JA: UiStrings = {
   items: "件",
   polished: "整えました",
   latency: "遅延（直前の音声）",
+  focusHint: "話題：",
+  focusHintTitle: "メッセージに文脈として添えます。宛先は変わりません",
+  focusHintClear: "この文脈を外す",
   latencyNone: "遅延：まだ音声の返信がありません",
   latVad: "無音待ち",
   latStt: "文字起こし",
