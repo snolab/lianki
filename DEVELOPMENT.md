@@ -198,16 +198,19 @@ The project uses Husky, split by speed:
 
 **`pre-commit`** (fast, every commit):
 
-- `oxlint --fix` + `oxfmt` (via lint-staged) and secretlint
+- secretlint on staged files (lint-staged)
+- `bun run lint`: oxlint + `oxfmt --check` over the whole repo, check-only
+  (~0.1 s; fails the commit instead of rewriting it — `bun fix` repairs)
 - TypeScript type checking
 - Unit tests with coverage (`bun run test:unit -- --coverage`)
 - Auto-syncs `lianki.meta.js` + validates the userscript `@version` bump
 
 **`pre-push`** (full integration, before sharing):
 
-- `bun run qa:all` — builds the OpenNext Worker and runs the API/UI/sync/
-  userscript suites against `wrangler dev` on local D1 (see the qa:all section
-  above). CI runs the same command, so a `--no-verify` skip only defers failure.
+- `bun run lint` and typecheck first (seconds), then `bun run qa:all` — builds
+  the OpenNext Worker and runs the API/UI/sync/userscript suites against
+  `wrangler dev` on local D1 (see the qa:all section above). CI runs qa:all only
+  nightly, so this hook is the per-change gate.
 
 Never use `--no-verify` (AGENTS.md hard rule) — it skips the userscript meta
 sync and secret scan.

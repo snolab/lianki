@@ -49,7 +49,7 @@
  * Types are declared here rather than taken from @cloudflare/workers-types:
  * the repo's root tsconfig type-checks this folder with the DOM lib.
  */
-import { debugIdentity } from "./auth";
+import { DEV_BRIDGE_HEADER, debugIdentity } from "./auth";
 import { IDENTITY_HEADERS } from "./debug";
 import { PROGRESS_OWNER_HEADER, progressGate } from "./progress";
 
@@ -133,6 +133,7 @@ export default {
       const headers = new Headers(req.headers);
       // Only what the main Worker said: a page cannot claim any of these itself.
       for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
+      headers.delete(DEV_BRIDGE_HEADER);
       headers.set(IDENTITY_HEADERS.user, who.userId);
       headers.set(IDENTITY_HEADERS.email, who.email);
       headers.set(IDENTITY_HEADERS.owner, who.owner ? "1" : "0");
@@ -157,6 +158,7 @@ export default {
       const who = await debugIdentity(req, env.MAIN);
       if (!who?.owner) return new Response("forbidden", { status: 403 });
       const headers = new Headers(req.headers);
+      headers.delete(DEV_BRIDGE_HEADER);
       headers.set(PROGRESS_OWNER_HEADER, "1");
       return hub.fetch(new Request(req, { headers }));
     }

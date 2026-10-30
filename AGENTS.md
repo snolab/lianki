@@ -26,7 +26,8 @@ bun run dev            # Next.js :3000   (bun run dev:db first for local Mongo)
 bun run typecheck      # tsgo --noEmit
 bun test               # unit tests
 bun fix                # oxlint --fix + oxfmt
-bun run qa:all         # full integration gate — what CI runs, and pre-push
+bun run lint           # oxlint + oxfmt --check (check-only; hooks and CI run it)
+bun run qa:all         # full integration gate — pre-push, and CI nightly (not per push)
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
 
@@ -121,4 +122,5 @@ that are expensive to rediscover.
 | Payments, Pro passes, Stripe, invites, gift codes             | [docs/payments.md](docs/payments.md)                                |
 | Security measures: admin gate, lockout, scans, card testing   | [docs/security-measures.md](docs/security-measures.md)              |
 | UI layout: content fills the screen, glass overlays           | [docs/design-principles.md](docs/design-principles.md)              |
+| Leaving Next.js: Vite + RR7 + Hono strangler plan             | [docs/framework-migration.md](docs/framework-migration.md)          |
 | Node tree, study plan, calendar, Google Calendar (design)     | [docs/calendar-plan.md](docs/calendar-plan.md)                      |

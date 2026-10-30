@@ -149,6 +149,20 @@ describe("AudioCache prefetch", () => {
     expect(await cache.load("xx", "other")).toEqual({ kind: "dead" });
   });
 
+  test("a 503 (generation down) fails that text only: the language's recordings still play", async () => {
+    const { cache, net } = setup();
+    cache.prefetch([{ lang: "ja", text: "humble form" }, ...reqs(1, "ja")]);
+    await net.calls[0].answer(503);
+    expect(cache.isDead("ja")).toBe(false);
+    expect(net.calls.map((c) => c.url)).toContain(ttsUrl("ja", "mot0"));
+    // Not retried by prefetch; a tap still tries.
+    cache.prefetch([{ lang: "ja", text: "humble form" }]);
+    expect(net.calls.filter((c) => c.url.includes("humble"))).toHaveLength(1);
+    const p = cache.load("ja", "humble form");
+    await net.calls.at(-1)!.answer(503);
+    expect(await p).toEqual({ kind: "fail", status: 503 });
+  });
+
   test("400 (too long to voice) is a miss too", async () => {
     const { cache, net } = setup();
     const p = cache.load("fr", "long");

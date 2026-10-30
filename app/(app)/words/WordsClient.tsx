@@ -805,7 +805,11 @@ function useSpeech(serverVoice = false) {
     (text: string, lang: string, done: Done, serverTried = false) => {
       const gen = generation.current;
       const viaServer = () => {
-        if (serverTried) return done(false);
+        if (serverTried) {
+          // Neither engine can say it: log that, rather than going on in silence.
+          devLog({ ev: "silent", lang, text, reason: "no server clip, no browser voice" });
+          return done(false);
+        }
         void serverSpeak(text, lang, done).then(
           (ok) => !ok && gen === generation.current && done(false),
         );
