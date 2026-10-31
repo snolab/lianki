@@ -18,6 +18,7 @@
 | `app/page.tsx` | Landing page |
 | `app/(app)/list/page.tsx` | Note listing (main app) |
 | `lib/app-locale.ts` | `?lang=` locale helpers + APP_ROUTES |
+| `app/(app)/legal/` | Terms, privacy, refund, 特定商取引法 pages (en + ja text in `content.ts`); shared facts and placeholders in `lib/legal.ts`; footer `app/components/LegalFooter.tsx` |
 | `app/fsrs.ts` | Core FSRS handler logic |
 | `app/db.ts` | MongoDB client |
 | `auth.ts` / `auth-impl.ts` | better-auth: `auth.ts` is the light facade every route imports; the instance lives in `auth-impl.ts`, loaded by dynamic `import()` so it is one shared chunk, not a copy per route (Worker cold start) |

@@ -45,8 +45,10 @@ In the Stripe Dashboard:
   `https://lianki.com/api/payments/stripe-webhook`, events
   `checkout.session.completed` and `checkout.session.async_payment_succeeded`.
 
-Before live keys: a 特定商取引法 page, terms and privacy policy (Stripe Japan's
-review asks for them), and the owner's 資格外活動許可.
+Before live keys: the legal pages (`/legal/terms`, `/legal/privacy`,
+`/legal/refund`, `/legal/tokushoho`; Stripe Japan's review asks for them, with
+`{{SUPPORT_EMAIL}}` / `{{OWNER_LEGAL_NAME}}` in `lib/legal.ts` filled in), and
+the owner's 資格外活動許可.
 
 ## Known gaps
 
