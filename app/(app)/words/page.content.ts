@@ -1,4 +1,5 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys } from "../../../lib/i18n-context";
 
 /**
  * /words (and the drills that reuse WordsClient): the list picker, the study
@@ -6,45 +7,138 @@ import { t, type DeclarationContent } from "intlayer";
  * user-visible string there comes from here, in every locale — a missing
  * one shows up as the lone English item in a translated sheet.
  * `{name}` placeholders are filled by `fill()` in WordsClient.
+ *
+ * Every key also has a line in `context` below (docs/i18n.md): translate a
+ * string together with it, never on its own.
  */
-const wordsPageContent = {
+const dictionary = {
   key: "words-page",
   content: {
-    study: t({
-      en: "Study",
-      zh: "学习",
-      hi: "पढ़ें",
-      es: "Estudiar",
-      fr: "Étudier",
-      ar: "ادرس",
-      bn: "পড়ুন",
-      pt: "Estudar",
-      ru: "Учить",
-      ur: "پڑھیں",
-      id: "Belajar",
-      de: "Lernen",
-      ja: "学習",
-      sw: "Soma",
-      mr: "अभ्यास",
-      ko: "학습",
+    listMenu: t({
+      en: "More actions for “{name}”",
+      zh: "“{name}”的更多操作",
+      hi: "“{name}” के लिए और विकल्प",
+      es: "Más acciones para «{name}»",
+      fr: "Plus d'actions pour « {name} »",
+      ar: "مزيد من الإجراءات لـ “{name}”",
+      bn: "“{name}”-এর জন্য আরও বিকল্প",
+      pt: "Mais ações para “{name}”",
+      ru: "Другие действия для «{name}»",
+      ur: "“{name}” کے لیے مزید اختیارات",
+      id: "Tindakan lain untuk “{name}”",
+      de: "Weitere Aktionen für „{name}“",
+      ja: "「{name}」のその他の操作",
+      sw: "Vitendo zaidi vya “{name}”",
+      mr: "“{name}” साठी आणखी पर्याय",
+      ko: "“{name}” 추가 작업",
     }),
-    delete: t({
-      en: "delete",
+    renameList: t({
+      en: "Rename",
+      zh: "重命名",
+      hi: "नाम बदलें",
+      es: "Cambiar nombre",
+      fr: "Renommer",
+      ar: "إعادة التسمية",
+      bn: "নাম বদলান",
+      pt: "Renomear",
+      ru: "Переименовать",
+      ur: "نام بدلیں",
+      id: "Ganti nama",
+      de: "Umbenennen",
+      ja: "名前を変更",
+      sw: "Badilisha jina",
+      mr: "नाव बदला",
+      ko: "이름 바꾸기",
+    }),
+    deleteList: t({
+      en: "Delete",
       zh: "删除",
       hi: "हटाएँ",
-      es: "eliminar",
-      fr: "supprimer",
+      es: "Eliminar",
+      fr: "Supprimer",
       ar: "حذف",
       bn: "মুছুন",
-      pt: "excluir",
-      ru: "удалить",
+      pt: "Excluir",
+      ru: "Удалить",
       ur: "حذف کریں",
-      id: "hapus",
-      de: "löschen",
+      id: "Hapus",
+      de: "Löschen",
       ja: "削除",
-      sw: "futa",
+      sw: "Futa",
       mr: "हटवा",
       ko: "삭제",
+    }),
+    renameField: t({
+      en: "New name for “{name}”",
+      zh: "“{name}”的新名称",
+      hi: "“{name}” का नया नाम",
+      es: "Nuevo nombre de «{name}»",
+      fr: "Nouveau nom de « {name} »",
+      ar: "الاسم الجديد لـ “{name}”",
+      bn: "“{name}”-এর নতুন নাম",
+      pt: "Novo nome de “{name}”",
+      ru: "Новое название для «{name}»",
+      ur: "“{name}” کا نیا نام",
+      id: "Nama baru untuk “{name}”",
+      de: "Neuer Name für „{name}“",
+      ja: "「{name}」の新しい名前",
+      sw: "Jina jipya la “{name}”",
+      mr: "“{name}” चे नवीन नाव",
+      ko: "“{name}”의 새 이름",
+    }),
+    deletedList: t({
+      en: "Deleted “{name}” and its progress",
+      zh: "已删除“{name}”及其学习进度",
+      hi: "“{name}” और उसकी प्रगति हटा दी गई",
+      es: "Se eliminó «{name}» y su progreso",
+      fr: "« {name} » et sa progression ont été supprimés",
+      ar: "حُذفت “{name}” وتقدّمها",
+      bn: "“{name}” এবং এর অগ্রগতি মুছে ফেলা হয়েছে",
+      pt: "“{name}” e o progresso foram excluídos",
+      ru: "«{name}» удалён вместе с прогрессом",
+      ur: "“{name}” اور اس کی پیش رفت حذف ہو گئی",
+      id: "“{name}” beserta kemajuannya dihapus",
+      de: "„{name}“ samt Fortschritt gelöscht",
+      ja: "「{name}」と学習の進み具合を削除しました",
+      sw: "“{name}” na maendeleo yake vimefutwa",
+      mr: "“{name}” आणि त्याची प्रगती हटवली",
+      ko: "“{name}”와(과) 진행 상황을 삭제했습니다",
+    }),
+    deletedGroup: t({
+      en: "Deleted group “{name}”; its lists moved up a level",
+      zh: "已删除分组“{name}”，其中的列表已上移一级",
+      hi: "समूह “{name}” हटा दिया गया; इसकी सूचियाँ एक स्तर ऊपर चली गईं",
+      es: "Se eliminó el grupo «{name}»; sus listas subieron un nivel",
+      fr: "Groupe « {name} » supprimé ; ses listes remontent d'un niveau",
+      ar: "حُذفت المجموعة “{name}”؛ وانتقلت قوائمها مستوى للأعلى",
+      bn: "গ্রুপ “{name}” মুছে ফেলা হয়েছে; এর তালিকাগুলো এক স্তর উপরে গেছে",
+      pt: "Grupo “{name}” excluído; as listas dele subiram um nível",
+      ru: "Группа «{name}» удалена; её списки поднялись на уровень выше",
+      ur: "گروپ “{name}” حذف ہو گیا؛ اس کی فہرستیں ایک درجہ اوپر چلی گئیں",
+      id: "Grup “{name}” dihapus; daftarnya naik satu tingkat",
+      de: "Gruppe „{name}“ gelöscht; ihre Listen rücken eine Ebene nach oben",
+      ja: "グループ「{name}」を削除しました。中のリストは 1 階層上に移りました",
+      sw: "Kikundi “{name}” kimefutwa; orodha zake zimepanda ngazi moja",
+      mr: "गट “{name}” हटवला; त्यातील याद्या एक पातळी वर गेल्या",
+      ko: "그룹 “{name}”을(를) 삭제했습니다. 안의 목록은 한 단계 위로 올라갔습니다",
+    }),
+    undoDelete: t({
+      en: "Undo",
+      zh: "撤销",
+      hi: "पूर्ववत करें",
+      es: "Deshacer",
+      fr: "Annuler",
+      ar: "تراجع",
+      bn: "পূর্বাবস্থায় ফেরান",
+      pt: "Desfazer",
+      ru: "Отменить",
+      ur: "واپس کریں",
+      id: "Urungkan",
+      de: "Rückgängig",
+      ja: "元に戻す",
+      sw: "Tendua",
+      mr: "पूर्ववत करा",
+      ko: "실행 취소",
     }),
     studyAll: t({
       en: "Study all lists together",
@@ -123,7 +217,7 @@ const wordsPageContent = {
       zh: "纸纹随列表滚动",
       hi: "कागज़ सूची के साथ स्क्रॉल हो",
       es: "El papel se desplaza con la lista",
-      fr: "Le papier défile avec la liste",
+      fr: "Le fond papier défile avec la liste",
       ar: "الورق يتمرّر مع القائمة",
       bn: "কাগজ তালিকার সাথে স্ক্রল করে",
       pt: "O papel rola com a lista",
@@ -157,7 +251,7 @@ const wordsPageContent = {
     // The swipe's feel (docs/swipe-core.md): debug mode only, this device only.
     heavySwipe: t({
       en: "Heavy swipe",
-      zh: "厚重滑动",
+      zh: "重手感滑动",
       hi: "भारी स्वाइप",
       es: "Deslizar con peso",
       fr: "Glissement lourd",
@@ -226,6 +320,79 @@ const wordsPageContent = {
       sw: "Paneli ya kurekebisha hisia ya kutelezesha",
       mr: "स्वाइपची जाणीव ट्यून करण्यासाठी पॅनेल",
       ko: "스와이프 느낌을 조정하는 패널",
+    }),
+    // The learning partner's quiet hours (packages/debug-chat/src/quiet-hours.ts): debug mode only, this device only.
+    quietHours: t({
+      en: "Quiet hours",
+      zh: "免打扰时段",
+      hi: "शांत घंटे",
+      es: "Horas de silencio",
+      fr: "Heures de silence",
+      ar: "ساعات الهدوء",
+      bn: "নীরব সময়",
+      pt: "Horário de silêncio",
+      ru: "Тихие часы",
+      ur: "خاموش اوقات",
+      id: "Jam tenang",
+      de: "Ruhezeiten",
+      ja: "おやすみ時間帯",
+      sw: "Saa za utulivu",
+      mr: "शांत वेळ",
+      ko: "방해 금지 시간",
+    }),
+    quietHoursHint: t({
+      en: "Between these times on this device, messages from your learning partner are shown but not read aloud, except urgent ones and questions for you",
+      zh: "在此设备上的这段时间内，学习伙伴的消息只显示、不朗读；紧急消息和需要你回答的问题除外",
+      hi: "इस डिवाइस पर इन समयों के बीच पढ़ाई के साथी के संदेश दिखते हैं पर पढ़कर नहीं सुनाए जाते, ज़रूरी संदेश और आपसे पूछे गए सवाल छोड़कर",
+      es: "Entre estas horas, en este dispositivo, los mensajes de tu compañero de aprendizaje se muestran sin leerse en voz alta, salvo los urgentes y las preguntas para ti",
+      fr: "Entre ces heures, sur cet appareil, les messages de votre partenaire d'apprentissage s'affichent sans être lus à voix haute, sauf les urgents et les questions qui vous sont posées",
+      ar: "بين هذين الوقتين على هذا الجهاز تظهر رسائل رفيق الدراسة دون قراءتها بصوت عالٍ، إلا الرسائل العاجلة والأسئلة الموجهة إليك",
+      bn: "এই ডিভাইসে এই সময়ের মধ্যে পড়াশোনার সাথীর বার্তা দেখানো হয়, জোরে পড়া হয় না; জরুরি বার্তা আর আপনার জন্য প্রশ্ন বাদে",
+      pt: "Entre estes horários, neste dispositivo, as mensagens do seu parceiro de aprendizagem aparecem sem serem lidas em voz alta, exceto as urgentes e as perguntas para você",
+      ru: "В эти часы на этом устройстве сообщения напарника по учёбе показываются, но не зачитываются вслух — кроме срочных и вопросов к вам",
+      ur: "اس ڈیوائس پر ان اوقات میں پڑھائی کے ساتھی کے پیغامات دکھائے جاتے ہیں مگر پڑھ کر نہیں سنائے جاتے، سوائے فوری پیغامات اور آپ سے پوچھے گئے سوالوں کے",
+      id: "Di antara jam ini, di perangkat ini, pesan dari teman belajar Anda ditampilkan tanpa dibacakan, kecuali yang mendesak dan pertanyaan untuk Anda",
+      de: "Zwischen diesen Uhrzeiten zeigt dieses Gerät die Nachrichten deines Lernpartners an, liest sie aber nicht vor – außer dringenden und Fragen an dich",
+      ja: "この端末では、この時間帯の学習パートナーのメッセージを表示だけして読み上げません。急ぎのものとあなたへの質問は読み上げます",
+      sw: "Katika saa hizi kwenye kifaa hiki, ujumbe wa mwenzi wako wa kujifunza huonyeshwa bila kusomwa kwa sauti, isipokuwa wa dharura na maswali kwako",
+      mr: "या डिव्हाइसवर या वेळेत अभ्यास सोबतीचे संदेश दिसतात पण मोठ्याने वाचले जात नाहीत; तातडीचे संदेश आणि तुम्हाला विचारलेले प्रश्न सोडून",
+      ko: "이 기기에서 이 시간에는 학습 파트너의 메시지를 표시만 하고 읽어 주지 않아요. 급한 메시지와 당신에게 묻는 질문은 읽어요",
+    }),
+    quietFrom: t({
+      en: "From",
+      zh: "开始",
+      hi: "शुरू",
+      es: "Desde",
+      fr: "De",
+      ar: "من",
+      bn: "শুরু",
+      pt: "De",
+      ru: "С",
+      ur: "شروع",
+      id: "Dari",
+      de: "Von",
+      ja: "開始",
+      sw: "Kuanzia",
+      mr: "सुरुवात",
+      ko: "시작",
+    }),
+    quietTo: t({
+      en: "To",
+      zh: "结束",
+      hi: "समाप्त",
+      es: "Hasta",
+      fr: "À",
+      ar: "إلى",
+      bn: "শেষ",
+      pt: "Até",
+      ru: "До",
+      ur: "ختم",
+      id: "Sampai",
+      de: "Bis",
+      ja: "終了",
+      sw: "Hadi",
+      mr: "शेवट",
+      ko: "종료",
     }),
     undo: t({
       en: "Undo",
@@ -454,7 +621,7 @@ const wordsPageContent = {
       pt: "japonês",
       ru: "японский",
       ur: "جاپانی",
-      id: "Jepang",
+      id: "bahasa Jepang",
       de: "Japanisch",
       ja: "日本語",
       sw: "Kijapani",
@@ -496,6 +663,42 @@ const wordsPageContent = {
       sw: "Mlio mfupi kwa kila alama, kusoma bila kutazama",
       mr: "प्रत्येक श्रेणीसाठी छोटा ध्वनी, न पाहता अभ्यासासाठी",
       ko: "평가마다 짧은 소리가 나서 화면을 보지 않고 학습할 수 있습니다",
+    }),
+    animationsOff: t({
+      en: "Turn off animations",
+      zh: "关闭动画",
+      hi: "एनिमेशन बंद करें",
+      es: "Desactivar animaciones",
+      fr: "Désactiver les animations",
+      ar: "إيقاف الحركات",
+      bn: "অ্যানিমেশন বন্ধ করুন",
+      pt: "Desativar animações",
+      ru: "Отключить анимацию",
+      ur: "اینیمیشن بند کریں",
+      id: "Matikan animasi",
+      de: "Animationen ausschalten",
+      ja: "アニメーションをオフ",
+      sw: "Zima michoro hai",
+      mr: "ॲनिमेशन बंद करा",
+      ko: "애니메이션 끄기",
+    }),
+    animationsOffHint: t({
+      en: "No sliding, fading or springing anywhere in the app, on this device. Follows your system setting until you change it",
+      zh: "在此设备上，整个应用不再有滑动、淡入淡出或弹动效果。在你更改之前，跟随系统设置",
+      hi: "इस डिवाइस पर पूरे ऐप में कोई खिसकना, धुंधला होना या उछलना नहीं। जब तक आप न बदलें, सिस्टम सेटिंग के अनुसार",
+      es: "Nada se desliza, se desvanece ni rebota en la app, en este dispositivo. Sigue el ajuste del sistema hasta que lo cambies",
+      fr: "Plus de glissements, de fondus ni de rebonds dans l’app, sur cet appareil. Suit le réglage du système tant que vous ne le changez pas",
+      ar: "لا انزلاق ولا تلاشي ولا ارتداد في أي مكان من التطبيق على هذا الجهاز. يتبع إعداد النظام حتى تغيّره",
+      bn: "এই ডিভাইসে অ্যাপের কোথাও সরে যাওয়া, মিলিয়ে যাওয়া বা লাফানো নেই। আপনি না বদলানো পর্যন্ত সিস্টেমের সেটিং মেনে চলে",
+      pt: "Nada desliza, esmaece ou quica no app, neste dispositivo. Segue o ajuste do sistema até você mudar",
+      ru: "Никаких сдвигов, затуханий и пружин во всём приложении на этом устройстве. Пока вы не измените, следует настройке системы",
+      ur: "اس آلے پر پوری ایپ میں کوئی سرکنا، مدھم ہونا یا اچھلنا نہیں۔ جب تک آپ نہ بدلیں، سسٹم کی ترتیب کے مطابق",
+      id: "Tanpa geser, pudar, atau pantulan di seluruh aplikasi, di perangkat ini. Mengikuti setelan sistem sampai Anda mengubahnya",
+      de: "Kein Gleiten, Ausblenden oder Federn in der ganzen App, auf diesem Gerät. Folgt der Systemeinstellung, bis du sie änderst",
+      ja: "この端末では、アプリ全体でスライド・フェード・弾む動きをなくします。変更するまではシステムの設定に従います",
+      sw: "Hakuna kuteleza, kufifia wala kudunda popote kwenye programu, kwenye kifaa hiki. Hufuata mpangilio wa mfumo hadi uubadilishe",
+      mr: "या उपकरणावर संपूर्ण ॲपमध्ये सरकणे, फिके होणे किंवा उसळणे नाही. तुम्ही बदलेपर्यंत सिस्टमच्या सेटिंगनुसार",
+      ko: "이 기기에서 앱 전체의 미끄러짐, 페이드, 튕김 효과를 없앱니다. 바꾸기 전까지는 시스템 설정을 따릅니다",
     }),
     speakOnSwipe: t({
       en: "Speak on swipe",
@@ -571,28 +774,28 @@ const wordsPageContent = {
     }),
     experimental: t({
       en: "Experimental",
-      zh: "实验性",
-      hi: "प्रायोगिक",
-      es: "Experimental",
-      fr: "Expérimental",
-      ar: "تجريبي",
-      bn: "পরীক্ষামূলক",
-      pt: "Experimental",
-      ru: "Экспериментальное",
-      ur: "تجرباتی",
-      id: "Eksperimental",
-      de: "Experimentell",
-      ja: "試験的",
+      zh: "实验性功能",
+      hi: "प्रायोगिक सुविधाएँ",
+      es: "Funciones experimentales",
+      fr: "Fonctions expérimentales",
+      ar: "ميزات تجريبية",
+      bn: "পরীক্ষামূলক ফিচার",
+      pt: "Recursos experimentais",
+      ru: "Экспериментальные функции",
+      ur: "تجرباتی فیچرز",
+      id: "Fitur eksperimental",
+      de: "Experimentelle Funktionen",
+      ja: "試験的な機能",
       sw: "Majaribio",
-      mr: "प्रायोगिक",
+      mr: "प्रायोगिक वैशिष्ट्ये",
       ko: "실험적 기능",
     }),
     newSwipe: t({
       en: "New swipe",
-      zh: "新滑动",
+      zh: "新版滑动",
       hi: "नया स्वाइप",
       es: "Nuevo deslizamiento",
-      fr: "Nouveau glissement",
+      fr: "Nouvelle version du glissement",
       ar: "سحب جديد",
       bn: "নতুন সোয়াইপ",
       pt: "Novo deslize",
@@ -600,7 +803,7 @@ const wordsPageContent = {
       ur: "نیا سوائپ",
       id: "Geser baru",
       de: "Neues Wischen",
-      ja: "新しいスワイプ",
+      ja: "新しいスワイプ方式",
       sw: "Kutelezesha kupya",
       mr: "नवीन स्वाइप",
       ko: "새 스와이프",
@@ -678,22 +881,22 @@ const wordsPageContent = {
       ko: "이 브라우저는 페이지의 주소 표시줄을 숨길 수 없습니다. iPhone에서: 공유 → 홈 화면에 추가 후 홈 화면에서 Lianki를 여세요 — 주소 표시줄 없이 실행됩니다.",
     }),
     stats: t({
-      en: "{done} done · {rate}/min · {due} due · {new} new",
-      zh: "已完成 {done} · {rate}/分钟 · 待复习 {due} · 新词 {new}",
-      hi: "{done} पूरे · {rate}/मिनट · {due} बाकी · {new} नए",
-      es: "{done} hechas · {rate}/min · {due} pendientes · {new} nuevas",
-      fr: "{done} faits · {rate}/min · {due} à revoir · {new} nouveaux",
-      ar: "{done} منجزة · {rate}/دقيقة · {due} مستحقة · {new} جديدة",
-      bn: "{done} সম্পন্ন · {rate}/মিনিট · {due} বাকি · {new} নতুন",
-      pt: "{done} feitas · {rate}/min · {due} pendentes · {new} novas",
-      ru: "{done} готово · {rate}/мин · {due} к повтору · {new} новых",
-      ur: "{done} مکمل · {rate}/منٹ · {due} باقی · {new} نئے",
-      id: "{done} selesai · {rate}/mnt · {due} jatuh tempo · {new} baru",
-      de: "{done} erledigt · {rate}/min · {due} fällig · {new} neu",
-      ja: "完了 {done} · {rate}/分 · 復習 {due} · 新規 {new}",
-      sw: "{done} zimekamilika · {rate}/dak · {due} zinadaiwa · {new} mpya",
-      mr: "{done} पूर्ण · {rate}/मिनिट · {due} बाकी · {new} नवीन",
-      ko: "{done}개 완료 · {rate}/분 · 복습 {due} · 새 단어 {new}",
+      en: "{done} done · {rate}/min · {due} due · {new} unseen",
+      zh: "已完成 {done} · {rate}/分钟 · 待复习 {due} · 未学 {new}",
+      hi: "{done} पूरे · {rate}/मिनट · {due} बाकी · {new} अनदेखे",
+      es: "{done} hechas · {rate}/min · {due} pendientes · {new} sin ver",
+      fr: "{done} faits · {rate}/min · {due} à revoir · {new} jamais vus",
+      ar: "{done} منجزة · {rate}/دقيقة · {due} مستحقة · {new} لم تُعرض بعد",
+      bn: "{done} সম্পন্ন · {rate}/মিনিট · {due} বাকি · {new} অদেখা",
+      pt: "{done} feitas · {rate}/min · {due} pendentes · {new} não vistas",
+      ru: "{done} готово · {rate}/мин · {due} к повтору · {new} ещё не показаны",
+      ur: "{done} مکمل · {rate}/منٹ · {due} باقی · {new} ان دیکھے",
+      id: "{done} selesai · {rate}/mnt · {due} jatuh tempo · {new} belum dilihat",
+      de: "{done} erledigt · {rate}/min · {due} fällig · {new} ungesehen",
+      ja: "完了 {done} · {rate}/分 · 復習 {due} · 未学習 {new}",
+      sw: "{done} zimekamilika · {rate}/dak · {due} zinadaiwa · {new} hazijaonekana",
+      mr: "{done} पूर्ण · {rate}/मिनिट · {due} बाकी · {new} न पाहिलेले",
+      ko: "{done}개 완료 · {rate}/분 · 복습 {due} · 미학습 {new}",
     }),
     saving: t({
       en: "{n} saving…",
@@ -767,23 +970,23 @@ const wordsPageContent = {
       mr: "सिंक झाले ✓",
       ko: "동기화됨 ✓",
     }),
-    notSaved: t({
-      en: "Not saved: {error}",
-      zh: "未保存：{error}",
-      hi: "सहेजा नहीं गया: {error}",
-      es: "No guardado: {error}",
-      fr: "Non enregistré : {error}",
-      ar: "لم يُحفظ: {error}",
-      bn: "সংরক্ষিত হয়নি: {error}",
-      pt: "Não salvo: {error}",
-      ru: "Не сохранено: {error}",
-      ur: "محفوظ نہیں ہوا: {error}",
-      id: "Tidak tersimpan: {error}",
-      de: "Nicht gespeichert: {error}",
-      ja: "保存できませんでした：{error}",
-      sw: "Haijahifadhiwa: {error}",
-      mr: "जतन झाले नाही: {error}",
-      ko: "저장 안 됨: {error}",
+    couldntLoadMore: t({
+      en: "Couldn't load more words: {error}",
+      zh: "无法加载更多单词：{error}",
+      hi: "और शब्द लोड नहीं हो सके: {error}",
+      es: "No se pudieron cargar más palabras: {error}",
+      fr: "Impossible de charger d'autres mots : {error}",
+      ar: "تعذّر تحميل مزيد من الكلمات: {error}",
+      bn: "আরও শব্দ লোড করা যায়নি: {error}",
+      pt: "Não foi possível carregar mais palavras: {error}",
+      ru: "Не удалось загрузить ещё слова: {error}",
+      ur: "مزید الفاظ لوڈ نہیں ہو سکے: {error}",
+      id: "Tidak bisa memuat kata lagi: {error}",
+      de: "Weitere Wörter konnten nicht geladen werden: {error}",
+      ja: "続きの単語を読み込めませんでした：{error}",
+      sw: "Imeshindwa kupakia maneno zaidi: {error}",
+      mr: "आणखी शब्द लोड करता आले नाहीत: {error}",
+      ko: "단어를 더 불러오지 못했습니다: {error}",
     }),
     copied: t({
       en: "Copied “{term}”",
@@ -895,7 +1098,7 @@ const wordsPageContent = {
     }),
     statusNew: t({
       en: "new",
-      zh: "新",
+      zh: "新词",
       hi: "नया",
       es: "nueva",
       fr: "nouveau",
@@ -942,7 +1145,7 @@ const wordsPageContent = {
       ur: "باقی",
       id: "jatuh tempo",
       de: "fällig",
-      ja: "復習",
+      ja: "復習待ち",
       sw: "inadaiwa",
       mr: "बाकी",
       ko: "복습 예정",
@@ -974,14 +1177,14 @@ const wordsPageContent = {
       ar: "↓ عادت",
       bn: "↓ ফিরেছে",
       pt: "↓ de volta",
-      ru: "↓ снова",
+      ru: "↓ ниже",
       ur: "↓ واپس",
       id: "↓ kembali",
       de: "↓ zurück",
-      ja: "↓ 戻り",
+      ja: "↓ 再出題",
       sw: "↓ imerudi",
       mr: "↓ परत",
-      ko: "↓ 다시",
+      ko: "↓ 아래로",
     }),
     again: t({
       en: "Again",
@@ -1217,41 +1420,23 @@ const wordsPageContent = {
       mr: "क्रम बदलण्यासाठी ओढा · वरच्या ओळीत ठेवण्यासाठी उजवीकडे, बाहेर काढण्यासाठी डावीकडे ओढा",
       ko: "끌어서 순서 변경 · 오른쪽으로 끌면 위 줄 안에 넣고, 왼쪽으로 끌면 꺼냅니다",
     }),
-    expand: t({
-      en: "Expand",
-      zh: "展开",
-      hi: "फैलाएँ",
-      es: "Expandir",
-      fr: "Déplier",
-      ar: "توسيع",
-      bn: "প্রসারিত করুন",
-      pt: "Expandir",
-      ru: "Развернуть",
-      ur: "پھیلائیں",
-      id: "Bentangkan",
-      de: "Aufklappen",
-      ja: "展開",
-      sw: "Panua",
-      mr: "विस्तारा",
-      ko: "펼치기",
-    }),
-    collapse: t({
-      en: "Collapse",
-      zh: "收起",
-      hi: "समेटें",
-      es: "Contraer",
-      fr: "Replier",
-      ar: "طيّ",
-      bn: "সংকুচিত করুন",
-      pt: "Recolher",
-      ru: "Свернуть",
-      ur: "سمیٹیں",
-      id: "Ciutkan",
-      de: "Zuklappen",
-      ja: "折りたたむ",
-      sw: "Kunja",
-      mr: "संकुचित करा",
-      ko: "접기",
+    progressTitle: t({
+      en: "{pct}% learned across {total} words: each word counts more the closer it is to staying in memory a year",
+      zh: "{total} 个单词整体已学会 {pct}%：每个单词越接近能记住一年，计分越高",
+      hi: "{total} शब्दों में {pct}% सीखा: हर शब्द जितना एक साल तक याद रहने के करीब, उतना ज़्यादा गिना जाता है",
+      es: "{pct} % aprendido en {total} palabras: cada palabra cuenta más cuanto más cerca está de recordarse un año",
+      fr: "{pct} % appris sur {total} mots : chaque mot compte d’autant plus qu’il approche d’un an en mémoire",
+      ar: "تم تعلّم {pct}% عبر {total} كلمة: كل كلمة تُحتسب أكثر كلما اقتربت من البقاء في الذاكرة سنة",
+      bn: "{total}টি শব্দে {pct}% শেখা: প্রতিটি শব্দ এক বছর মনে থাকার যত কাছে, তত বেশি গোনা হয়",
+      pt: "{pct}% aprendido em {total} palavras: cada palavra conta mais quanto mais perto está de ficar um ano na memória",
+      ru: "Изучено {pct}% из {total} слов: слово весит тем больше, чем ближе оно к тому, чтобы помниться год",
+      ur: "{total} الفاظ میں {pct}% سیکھا: ہر لفظ جتنا ایک سال یاد رہنے کے قریب، اتنا زیادہ گنا جاتا ہے",
+      id: "{pct}% dipelajari dari {total} kata: tiap kata makin dihitung makin dekat ia teringat setahun",
+      de: "{pct} % gelernt über {total} Wörter: Jedes Wort zählt mehr, je näher es daran ist, ein Jahr im Gedächtnis zu bleiben",
+      ja: "{total}語で{pct}%習得：1年記憶に残る状態に近い単語ほど大きく数えます",
+      sw: "{pct}% imejifunzwa kati ya maneno {total}: kila neno huhesabiwa zaidi kadiri linavyokaribia kukumbukwa mwaka mmoja",
+      mr: "{total} शब्दांत {pct}% शिकले: प्रत्येक शब्द एक वर्ष लक्षात राहण्याच्या जितका जवळ, तितका जास्त मोजला जातो",
+      ko: "{total}개 단어 중 {pct}% 학습: 1년 동안 기억에 남는 상태에 가까울수록 단어가 더 크게 셉니다",
     }),
     rowStats: t({
       en: "{due} due · {learning} learning · {mastered} mastered (≥1y) · {seen}/{total} seen",
@@ -1271,41 +1456,77 @@ const wordsPageContent = {
       mr: "{due} बाकी · {learning} शिकत आहे · {mastered} पक्के (≥1 वर्ष) · {seen}/{total} पाहिले",
       ko: "복습 {due} · 학습 중 {learning} · 숙달 {mastered} (1년 이상) · 본 단어 {seen}/{total}",
     }),
-    confirmDeleteGroup: t({
-      en: "Delete group “{name}”? The lists inside it are kept and move up a level.",
-      zh: "删除分组“{name}”？其中的列表会保留并上移一级。",
-      hi: "समूह “{name}” हटाएँ? इसके अंदर की सूचियाँ बनी रहेंगी और एक स्तर ऊपर चली जाएँगी।",
-      es: "¿Eliminar el grupo «{name}»? Las listas que contiene se conservan y suben un nivel.",
-      fr: "Supprimer le groupe « {name} » ? Les listes qu'il contient sont conservées et remontent d'un niveau.",
-      ar: "حذف المجموعة “{name}”؟ تبقى القوائم بداخلها وتنتقل مستوى للأعلى.",
-      bn: "গ্রুপ “{name}” মুছবেন? এর ভিতরের তালিকাগুলো থাকবে এবং এক স্তর উপরে যাবে।",
-      pt: "Excluir o grupo “{name}”? As listas dentro dele ficam e sobem um nível.",
-      ru: "Удалить группу «{name}»? Списки внутри сохранятся и поднимутся на уровень выше.",
-      ur: "گروپ “{name}” حذف کریں؟ اس کے اندر کی فہرستیں رہیں گی اور ایک درجہ اوپر چلی جائیں گی۔",
-      id: "Hapus grup “{name}”? Daftar di dalamnya tetap ada dan naik satu tingkat.",
-      de: "Gruppe „{name}“ löschen? Die Listen darin bleiben erhalten und rücken eine Ebene nach oben.",
-      ja: "グループ「{name}」を削除しますか？中のリストは残り、1 階層上に移ります。",
-      sw: "Futa kikundi “{name}”? Orodha zilizo ndani zinabaki na kupanda ngazi moja.",
-      mr: "गट “{name}” हटवायचा? त्यातील याद्या राहतील आणि एक पातळी वर जातील.",
-      ko: "그룹 “{name}”을(를) 삭제할까요? 안의 목록은 유지되고 한 단계 위로 올라갑니다.",
+    rowStatsShort: t({
+      en: "{due} due · {learning} learning",
+      zh: "待复习 {due} · 学习中 {learning}",
+      hi: "{due} बाकी · {learning} सीख रहे",
+      es: "{due} pendientes · {learning} aprendiendo",
+      fr: "{due} à revoir · {learning} en cours",
+      ar: "{due} مستحقة · {learning} قيد التعلّم",
+      bn: "{due} বাকি · {learning} শিখছেন",
+      pt: "{due} pendentes · {learning} aprendendo",
+      ru: "{due} к повтору · {learning} изучается",
+      ur: "{due} باقی · {learning} سیکھ رہے",
+      id: "{due} jatuh tempo · {learning} dipelajari",
+      de: "{due} fällig · {learning} im Lernen",
+      ja: "復習 {due} · 学習中 {learning}",
+      sw: "{due} zinadaiwa · {learning} zinajifunzwa",
+      mr: "{due} बाकी · {learning} शिकत आहे",
+      ko: "복습 {due} · 학습 중 {learning}",
     }),
-    confirmDeleteList: t({
-      en: "Delete “{name}” and its progress?",
-      zh: "删除“{name}”及其学习进度？",
-      hi: "“{name}” और उसकी प्रगति हटाएँ?",
-      es: "¿Eliminar «{name}» y su progreso?",
-      fr: "Supprimer « {name} » et sa progression ?",
-      ar: "حذف “{name}” وتقدّمها؟",
-      bn: "“{name}” এবং এর অগ্রগতি মুছবেন?",
-      pt: "Excluir “{name}” e o progresso?",
-      ru: "Удалить «{name}» вместе с прогрессом?",
-      ur: "“{name}” اور اس کی پیش رفت حذف کریں؟",
-      id: "Hapus “{name}” beserta kemajuannya?",
-      de: "„{name}“ samt Fortschritt löschen?",
-      ja: "「{name}」と学習の進み具合を削除しますか？",
-      sw: "Futa “{name}” na maendeleo yake?",
-      mr: "“{name}” आणि त्याची प्रगती हटवायची?",
-      ko: "“{name}”와(과) 진행 상황을 삭제할까요?",
+    groupRowHint: t({
+      en: "Tap to study every list in this group",
+      zh: "点按即可学习此分组中的所有列表",
+      hi: "इस समूह की सभी सूचियाँ पढ़ने के लिए टैप करें",
+      es: "Toca para estudiar todas las listas de este grupo",
+      fr: "Touchez pour étudier toutes les listes de ce groupe",
+      ar: "انقر لدراسة كل القوائم في هذه المجموعة",
+      bn: "এই গ্রুপের সব তালিকা পড়তে ট্যাপ করুন",
+      pt: "Toque para estudar todas as listas deste grupo",
+      ru: "Нажмите, чтобы учить все списки этой группы",
+      ur: "اس گروپ کی تمام فہرستیں پڑھنے کے لیے ٹیپ کریں",
+      id: "Ketuk untuk mempelajari semua daftar di grup ini",
+      de: "Tippen, um alle Listen dieser Gruppe zu lernen",
+      ja: "タップでこのグループのすべてのリストを学習",
+      sw: "Gusa ili kujifunza orodha zote za kikundi hiki",
+      mr: "या गटातील सर्व याद्या शिकण्यासाठी टॅप करा",
+      ko: "탭하면 이 그룹의 모든 목록을 학습합니다",
+    }),
+    expandGroup: t({
+      en: "Show the lists in {name}",
+      zh: "显示“{name}”中的列表",
+      hi: "{name} की सूचियाँ दिखाएँ",
+      es: "Mostrar las listas de {name}",
+      fr: "Afficher les listes de {name}",
+      ar: "إظهار قوائم {name}",
+      bn: "{name}-এর তালিকাগুলো দেখান",
+      pt: "Mostrar as listas de {name}",
+      ru: "Показать списки в «{name}»",
+      ur: "{name} کی فہرستیں دکھائیں",
+      id: "Tampilkan daftar di {name}",
+      de: "Listen in {name} anzeigen",
+      ja: "「{name}」のリストを表示",
+      sw: "Onyesha orodha za {name}",
+      mr: "{name} मधील याद्या दाखवा",
+      ko: "{name}의 목록 펼치기",
+    }),
+    collapseGroup: t({
+      en: "Hide the lists in {name}",
+      zh: "隐藏“{name}”中的列表",
+      hi: "{name} की सूचियाँ छिपाएँ",
+      es: "Ocultar las listas de {name}",
+      fr: "Masquer les listes de {name}",
+      ar: "إخفاء قوائم {name}",
+      bn: "{name}-এর তালিকাগুলো লুকান",
+      pt: "Ocultar as listas de {name}",
+      ru: "Скрыть списки в «{name}»",
+      ur: "{name} کی فہرستیں چھپائیں",
+      id: "Sembunyikan daftar di {name}",
+      de: "Listen in {name} ausblenden",
+      ja: "「{name}」のリストを隠す",
+      sw: "Ficha orodha za {name}",
+      mr: "{name} मधील याद्या लपवा",
+      ko: "{name}의 목록 접기",
     }),
     groupName: t({
       en: "Group name",
@@ -1366,7 +1587,7 @@ const wordsPageContent = {
       zh: "下载以离线使用",
       hi: "ऑफ़लाइन के लिए डाउनलोड करें",
       es: "Descargar para usar sin conexión",
-      fr: "Télécharger pour le hors-ligne",
+      fr: "Télécharger pour le mode hors ligne",
       ar: "نزّل للاستخدام دون اتصال",
       bn: "অফলাইনের জন্য ডাউনলোড করুন",
       pt: "Baixar para usar offline",
@@ -1560,6 +1781,222 @@ const wordsPageContent = {
       ko: "단어 목록을 사용하려면 로그인하세요.",
     }),
   },
+};
+
+/**
+ * Where each string appears, what it is for, and how it is used. A key
+ * missing here is a type error, and unit/i18n-context.test.ts fails.
+ */
+const context: Record<keyof typeof dictionary.content, string> = {
+  // The list picker (/words with no list open): header, Study all, the list rows.
+  title:
+    "/words list picker, the page heading (h1) at the top: names the page, which lists the learner's own vocabulary word lists. A short plural noun phrase, not an action.",
+  intro:
+    "/words list picker, the one-paragraph intro right under the page heading: explains the study view behind each list, an endless scrolling list of words graded with the keys 1/2/3/4 (Again/Hard/Good/Easy), each grade saved immediately, and the Z key undoing the last grade. Keep the digits, the slashes and the letter Z as written; plain sentences.",
+  allTitle:
+    "/words study view, the title next to '← lists' in the top toolbar when the learner opened 'Study all lists together': names what is being studied (every word list at once). A short noun phrase, like a list's name.",
+  offlineBanner:
+    "/words list picker, small amber notice in the header row (where the 'Download for offline' button usually is) when the device has no network: the lists shown are the copies saved on this device, and grades given now are sent to the server once back online. Two short sentences.",
+  downloadForOffline:
+    "/words list picker, button (with a download icon) in the header row: saves every word list and today's due words on this device so the learner can study without a network connection. A short imperative verb phrase on a button.",
+  downloadTitle:
+    "/words list picker, the mouse-hover tooltip of the 'Download for offline' button: says what it saves (every list and today's due words) on this device, and why (studying without a network). One sentence, no final period.",
+  downloading:
+    "/words list picker, progress text shown next to the 'Download for offline' button while it runs: {done} of {total} lists saved so far. Keep both placeholders and the slash; ellipsis kept.",
+  savedOnDevice:
+    "/words list picker, text shown next to the 'Download for offline' button once the download finished: every list is now saved on this device. A past-tense status, with the ✓ kept at the end.",
+  downloadFailed:
+    "/words list picker, error text shown next to the 'Download for offline' button when the download failed; {error} is the technical error message, inserted as is. A short statement then the colon and the placeholder.",
+  studyAll:
+    "/words list picker, main (bold) line of the large green button above the word lists (shown when there are two or more lists): opens one study session over every word list together. An imperative verb phrase on a button.",
+  studyAllHint:
+    "/words list picker, small second line under 'Study all lists together' on the same button: new (never-seen) words are introduced in the order the lists are arranged below the button. One short sentence.",
+  dueCount:
+    "/words list picker, the small count at the right end of the 'Study all lists together' button: how many words across all lists are due for review now. {n} is a number. Short, like a badge: number plus 'due'.",
+  dragToReorder:
+    "/words list picker, screen-reader label of the ⠿ drag handle at the start of each word-list row: dragging the handle changes the order of the lists. An instruction phrase, no final period.",
+  dragTitle:
+    "/words list picker, mouse-hover tooltip on the ⠿ drag handle of a word-list row: drag up/down to reorder; drag right to nest the list inside the row above it (making a group), drag left to take it back out. Instructions separated by ·, kept.",
+  expandGroup:
+    "/words list picker, screen-reader label of the small ▸ arrow on a group's row (a folder of word lists, e.g. 'Japanese'); it unfolds the group to show the lists inside. {name} is the group's name. Imperative verb phrase.",
+  collapseGroup:
+    "/words list picker, screen-reader label of the small ▾ arrow on an open group's row (a folder of word lists, e.g. 'Japanese'); it folds the group shut, hiding the lists inside (they are kept). {name} is the group's name. Imperative verb phrase.",
+  renameField:
+    "/words list picker, screen-reader label of the text field that replaces a list's name while it is being renamed (Enter saves, Escape cancels). {name} is the current name. A label naming the field, not a question.",
+  groupRowHint:
+    "/words list picker, first line of the hover tooltip on a group's row (a folder of word lists, e.g. one language), above the row's stats. Tapping anywhere on the row opens one study session over every list inside the group, like an Anki parent deck. An instruction, no final period.",
+  rowStats:
+    "/words list picker, the full stats in the hover tooltip of each word list's (or group's) row. {due}: words due for review now; {learning}: words still being learned; {mastered}: words whose next review is a year or more away (≥1y = at least one year); {seen}/{total}: words seen so far out of the list's size. Keep every placeholder and the · separators; short labels after each number.",
+  rowStatsShort:
+    "/words list picker, the one compact stats line under each word list's (or group's) name, on a narrow phone row: {due} is how many words are due for review now, {learning} how many are still in learning steps (a group: summed over every list in it). Keep it as short as the English; keep both placeholders and the middle dot.",
+  progressTitle:
+    "/words list picker, each list's row: the tooltip and screen-reader label of the small progress ring and percentage on the right. {pct} is the list's progress (0–100, keep the % sign placement natural for the language); {total} is how many words the list (a group: every list in it) holds. Progress counts every word, unstudied ones as 0, and a word counts more the nearer it is to being remembered for a year. Keep both placeholders. One sentence, no final period.",
+  listMenu:
+    "/words list picker, the round ⋯ (three dots) button at the end of each word-list row: its screen-reader label and hover tooltip, and the label of the small menu it opens (Rename, Delete). {name} is that list's or group's name. A noun phrase, no final period.",
+  renameList:
+    "/words list picker, item in a list row's ⋯ menu (pencil icon): turns the list's (or group's) name into a text field so the learner can type a new name for it. Imperative verb, title case in English like an app menu item.",
+  deleteList:
+    "/words list picker, item in a list row's ⋯ menu (shown in red, trash icon): deletes that word list with its review progress, or a group (its lists stay and move up a level). There is no confirm dialog: an Undo toast follows. Imperative verb, title case in English like an app menu item.",
+  deletedList:
+    "/words list picker, short notice in a toast at the bottom of the screen right after a word list was deleted from its ⋯ menu, next to an Undo button that brings it back for a few seconds. {name} is the list's name; its review progress goes with it. Past tense statement, no final period.",
+  deletedGroup:
+    "/words list picker, short notice in a toast at the bottom of the screen right after a group of word lists was deleted from its ⋯ menu, next to an Undo button. {name} is the group's name; the lists inside it are kept and moved up one level. Past tense statement, no final period.",
+  undoDelete:
+    "/words list picker, the button in the toast shown right after a list or group was deleted; brings the deleted list back (reverses the delete) while the toast is up. Undo, not Cancel. A short imperative.",
+  reorderHelp:
+    "/words list picker, small faint help paragraph under the word lists explaining the ⠿ drag handle: up/down reorders, right nests a list inside the one above (like Anki's subdecks, keep the name Anki), left un-nests; studying a group studies every list inside it. Keep the ⠿ symbol; two plain sentences.",
+  newGroup:
+    "/words list picker, button under the word lists that creates a new, empty group (a folder that word lists can be dragged into); it asks for the name in a browser prompt. Keep the '+' prefix; an imperative-like noun phrase on a button.",
+  groupName:
+    "/words list picker, the text of the browser prompt dialog that the '+ New group' button opens, above the field where the learner types the new group's name. A label for a text field, not a question.",
+  addList:
+    "/words list picker, small section heading above the catalogue of built-in word lists (filtered by language buttons) that the learner can add to their own lists. A heading naming the section, phrased as an action.",
+  add: "/words list picker, the small button next to each built-in word list in the 'Add a list' catalogue; adds that list to the learner's lists. Imperative verb, lowercase in English.",
+  added:
+    "/words list picker, the same small button once that built-in word list has been added (now disabled): a past participle agreeing with 'list' (feminine in French). Lowercase in English, one word if possible.",
+  signInToUse:
+    "/words page, message shown in place of the word lists (in red) to a visitor who is not signed in. Asks them to sign in to use word lists. One polite sentence.",
+  loading:
+    "/words page, faint placeholder shown while the word lists (list picker) or a list's words (study view) are being fetched. A progressive status, ellipsis kept.",
+
+  // The study view: toolbar.
+  backToLists:
+    "/words study view, the first link at the top-left of the toolbar: leaves the study view and returns to the list picker. Keep the ← arrow pointing toward the start of the line (→ in right-to-left languages). 'lists' = word lists; lowercase, as short as the English.",
+  settings:
+    "/words study view, toolbar button (with a gear icon) that opens and closes the study view's settings sheet; also its screen-reader label. One word, as on a gear button: a noun, not a verb.",
+  undo: "/words study view, toolbar button (touch screens only, with a ↶ icon) that undoes the last grade given to a word, putting that word back as ungraded. Undo, not Cancel. A short imperative verb.",
+  stats:
+    "/words study view, live counter at the right of the toolbar. {done}: words graded in this session; {rate}/min: grades per minute; {due}: words due for review still ahead; {new}: words in the lists being studied that have never been shown yet, all of them (there is no daily new-word limit, and it is not the batch loaded on screen); it only falls as new words are graded. Say 'not yet seen' or 'never shown', not just 'new'. Keep the · separators.",
+  saving:
+    "/words study view, appended to the toolbar counter after ' · ': {n} grades are being sent to the server right now. Lowercase fragment, ellipsis kept.",
+  offline:
+    "/words study view, appended to the toolbar counter after ' · ' when the device has no network or the words came from the offline copy (grades are kept on the device). A status adjective, lowercase.",
+  toSync:
+    "/words study view, appended to the toolbar counter after ' · offline · ': {n} grades are waiting on this device to be sent to the server when the network returns. Lowercase fragment.",
+  synced:
+    "/words study view, appended to the toolbar counter after ' · ' once every grade of this session has reached the server. Lowercase status (past participle), with the ✓ kept.",
+  couldntLoadMore:
+    "/words study view, red error line under the toolbar when fetching the next words of the endless list failed while words are already on screen (studying them goes on). {error} is the technical error message, inserted as is. A short statement then the colon and the placeholder.",
+  copied:
+    "/words study view, short notice under the toolbar after 'Copy the word' in the word's action sheet copied it to the clipboard; {term} is the word itself. Past tense, no final period.",
+
+  // The study view: settings sheet. Each switch is a pill; its hint is the
+  // pill's mouse-hover tooltip (title attribute), not a visible line.
+  studySettings:
+    "/words study view, screen-reader label (aria-label) of the settings sheet that the toolbar's Settings button opens under the toolbar; the sheet holds the switches for the study view. A noun phrase.",
+  showAll:
+    "/words study view, Settings sheet: the label of an on/off switch (a pill): show the meaning (translation) of every word in the list at once, instead of only the word currently focused. A short noun or imperative phrase.",
+  showAllHint:
+    '/words study view, Settings sheet: the tooltip of the "Show all meanings" switch. On = every row shows its back (meaning and example) and reading aloud reads the back too, not only the word. (E) is the keyboard shortcut; keep it.',
+  readAloud:
+    "/words study view, Settings sheet (only where the browser can speak): the label of an on/off switch (a pill): text-to-speech reads each word aloud, with its example sentence, as the learner reaches it. A short imperative or noun phrase.",
+  readAloudHint:
+    "/words study view, Settings sheet: the tooltip of the 'Read cards aloud' switch, saying what is spoken (the word and its example sentence). '(V)' is its keyboard shortcut, kept. No final period.",
+  serverVoice:
+    "/words study view, Settings sheet (shown once 'Read cards aloud' is on): the label of an on/off switch (a pill): speech comes from Lianki's own server-side text-to-speech voices instead of the browser's built-in voices. A short noun phrase.",
+  serverVoiceHint:
+    "/words study view, Settings sheet: the tooltip of the 'Server voice' switch: use Lianki's voices instead of the browser's. The language codes in parentheses are kept exactly as written. No final period.",
+  voices:
+    "/words study view, Settings sheet (when 'Server voice' is on): the label that starts the small credit line naming the speech engines used (VOICEVOX, Kokoro, Piper…). Followed by the names, which are not translated. Keep the colon.",
+  japanese:
+    "/words study view, Settings sheet: a language name in the voice credit line, in parentheses after the Japanese engine 'VOICEVOX:No.7'. The language, not the nationality or the country; lowercase where the language writes language names so.",
+  gradeTones:
+    "/words study view, Settings sheet: the label of an on/off switch (a pill): play a short sound for each grade (Again/Hard/Good/Easy) so the learner can study without looking at the screen. A short noun phrase.",
+  gradeTonesHint:
+    "/words study view, Settings sheet: the tooltip of the 'Grade tones' switch, explaining why the sounds help (one short tone per grade, to study without looking). No final period.",
+  speakOnSwipe:
+    "/words study view, Settings sheet (touch screens only): the label of an on/off switch (a pill): speak the word aloud as soon as the learner starts swiping its row. A short imperative or noun phrase.",
+  speakOnSwipeHint:
+    "/words study view, Settings sheet: the tooltip of the 'Speak on swipe' switch: the word is said the moment a swipe on its row begins. An imperative phrase, no final period.",
+  fullScreen:
+    "/words study view, Settings sheet (touch screens, not when installed to the home screen): the label of an on/off switch (a pill): put the page in full-screen mode, hiding the browser's address bar. A short noun phrase, as in a video player.",
+  fullScreenHint:
+    "/words study view, Settings sheet: the tooltip of the 'Full screen' switch: hide the browser's address bar while studying. An imperative phrase, no final period.",
+  fsHint:
+    "/words study view, Settings sheet: a paragraph shown under the switches when the 'Full screen' switch cannot work in this browser (iPhone Safari); a tap dismisses it. Says how to add Lianki to the home screen instead. 'Share' and 'Add to Home Screen' are iOS's own menu names — use the names iOS shows in that language. Keep the →.",
+  animationsOff:
+    '/words study view, Settings sheet: the label of an on/off switch (a pill). On = this device shows no animation anywhere in the app: no transitions, fades, slides or spring motion. Short, an imperative or a noun phrase, like the other switch labels ("Speak on swipe", "Full screen").',
+  animationsOffHint:
+    '/words study view, Settings sheet: the tooltip (title attribute) of the "Turn off animations" switch. Explains that it covers the whole app, only on this device, and that until the person flips it, it follows the operating system\'s reduce-motion setting. One or two plain sentences, no final period, like the other hints.',
+  experimental:
+    "/words study view, Settings sheet: the small uppercase heading of its last section, grouping switches for features still being tried out. A heading for a group of features (e.g. 'Experimental features'), not an adjective about one item.",
+  newSwipe:
+    "/words study view, Settings sheet, Experimental section (touch screens only): the label of an on/off switch (a pill): use the new implementation of the swipe gesture (built on the browser's native scrolling) instead of the current one. 'New' qualifies the implementation, not a single swipe.",
+  newSwipeHint:
+    "/words study view, Settings sheet: the tooltip of the 'New swipe' switch, saying how the new swipe works (the browser's own scrolling moves the row). A noun phrase, no final period.",
+  heavySwipe:
+    "/words study view, Settings sheet, Experimental section (touch screens, debug mode only): the label of an on/off switch (a pill): a swipe feel preset where the word's row (the 'slip', a paper strip) feels heavy. Describes the feel of the gesture, a short noun phrase.",
+  heavySwipeHint:
+    "/words study view, Settings sheet: the tooltip of the 'Heavy swipe' switch: the slip (the word's row, drawn as a paper strip) feels weighty — it trails the finger, keeps moving after release and springs back slowly. No final period.",
+  tuneSwipe:
+    "/words study view, Settings sheet, Experimental section (touch screens, debug mode only): the label of an on/off switch (a pill) that shows a panel of sliders to adjust how the swipe feels. A short imperative.",
+  tuneSwipeHint:
+    "/words study view, Settings sheet: the tooltip of the 'Tune swipe' switch: turning it on shows a panel for adjusting the swipe's feel. A noun phrase, no final period.",
+  quietHours:
+    "/words study view, Settings sheet (debug mode only, i.e. while the learning partner chat is on): the label of an on/off switch (a pill). On = during a nightly time window on this device, the learning partner (the in-app assistant chat) shows its messages without reading them aloud, so it never wakes the learner. A noun phrase naming the feature, like a phone's own quiet-hours or Do Not Disturb schedule; not an imperative.",
+  quietHoursHint:
+    "/words study view, Settings sheet: the tooltip (title attribute) of the 'Quiet hours' switch. Between the From and To times, on this device only, the learning partner's messages appear in the chat but are not spoken aloud, except urgent ones and questions it asks the learner. 'Learning partner' = the in-app assistant, lowercase here. One sentence, no final period, like the other hints.",
+  quietFrom:
+    "/words study view, Settings sheet, beside the 'Quiet hours' switch: the short label right before a time picker (HH:MM) that sets when the quiet hours start each night. Means 'start time'; one short word, a label, not a preposition waiting for a noun.",
+  quietTo:
+    "/words study view, Settings sheet, beside the 'Quiet hours' switch: the short label right before a second time picker (HH:MM) that sets when the quiet hours end the next morning. Means 'end time'; one short word, a label, paired with 'From'.",
+  paperScrolls:
+    "/words study view, Settings sheet, Experimental section: the label of an on/off switch (a pill): the background paper texture of the study list scrolls along with the list instead of staying fixed. 'Paper' = the page's paper-texture background. A short statement.",
+  paperScrollsHint:
+    "/words study view, Settings sheet: the tooltip of the 'Paper scrolls with the list' switch: the paper texture moves with the word rows (cards) instead of staying still. No final period.",
+  nativeSwipeNote:
+    "/words study view, Settings sheet: the small note at the end of the Experimental section on touch screens, right before 'It may change or go away.': says the experimental swipe works by native scrolling. A short fragment ending with a period.",
+  mayChange:
+    "/words study view, Settings sheet: the small note at the end of the Experimental section: these experimental features may change or be removed. 'It' = the experimental feature(s). One short sentence.",
+
+  // The study view: the word list, its status column and its states.
+  statusNew:
+    "/words study view, status column at the right end of an ungraded word row: this word has never been studied (a new word). One short word, lowercase; it labels a word (agree with 'word' where the language needs it).",
+  ago: "/words study view, status column at the right end of an ungraded word row: how long ago this word became due for review. {t} is a short duration like '3d' or '5h'. Keep the placeholder; as short as the English.",
+  dueTitle:
+    "/words study view, mouse-hover tooltip on the status column of an ungraded word row (the time shown there is how long the word has been due, waiting for review). One short word or phrase meaning 'due for review'.",
+  now: "/words study view, status column of a graded word row whose countdown to its next review has reached zero: the word is due again now. One short word, lowercase.",
+  back: "/words study view, status column of a graded word row whose countdown reached zero and which was put back further down the list (↓) to be answered again in this session; this row fades, the copy below is the one to answer. Keep the ↓ arrow; one short word, and do not reuse the word chosen for the grade 'Again'.",
+  again:
+    "/words study view: name of the lowest of the four review grades (spaced repetition, as in Anki's Again/Hard/Good/Easy): the learner forgot the word and it will be shown again soon. Used in the help strip, on the grade stamp's screen-reader label and on tooltips. Use Anki's name for this grade in the language.",
+  hard: "/words study view: name of the second review grade (Again/Hard/Good/Easy): remembered, but with difficulty. Used in the help strip and tooltips. Use Anki's name for this grade in the language.",
+  good: "/words study view: name of the third review grade (Again/Hard/Good/Easy): remembered correctly, the normal answer. Used in the help strip and tooltips. Use Anki's name for this grade in the language.",
+  easy: "/words study view: name of the highest review grade (Again/Hard/Good/Easy): remembered effortlessly, so the next review is far away. Used in the help strip and tooltips. Use Anki's name for this grade in the language.",
+  everyWordLearned:
+    "/words study view, shown in the help strip at the bottom (or in the middle of an empty list) when no words are left to study in the lists being studied; followed by a confetti icon. One short celebratory sentence.",
+  loadingMore:
+    "/words study view, shown in the middle of the screen while the list of words is empty and the next words are still being fetched. A progressive status, ellipsis kept.",
+  couldntLoad:
+    "/words study view, red error shown in place of the word list when the words could not be fetched at all; {error} is the technical error message, inserted as is. Followed by a Retry button.",
+  retry:
+    "/words study view, button under the 'Couldn't load' error that reloads the page to fetch the words again. Imperative verb.",
+
+  // The help strip (glass strip at the bottom of the study view).
+  helpTouch:
+    "/words study view, help strip at the bottom on touch screens: tap a word to show its meaning and hear it; hold to listen in a loop; swipe left a little/far or right a little/far to grade. {again}/{hard}/{good}/{easy} are the grade names inserted from their own keys. Keep the ← → ↶ symbols, the = signs and the · separators; lowercase fragments.",
+  helpKeys:
+    "/words study view, full keyboard help strip at the bottom (toggled with ?): the keys (↑↓, W S, I U, Space, E, 1-4, L K J H, Z, M, Esc, Enter, V, ?) are kept as is; only the explanation is translated. {again}/{hard}/{good}/{easy} are the grade names inserted from their own keys. Lowercase fragments, · separators kept.",
+  helpKeysShort:
+    "/words study view, short keyboard help strip at the bottom (the full one is toggled with ?): keys kept as is, {again}/{hard}/{good}/{easy} are the grade names; '? all keys' means press ? to see every key. Lowercase fragments, · separators kept.",
+
+  // The slip sheet (the action sheet opened by double-tapping a word, or right-clicking it).
+  wordActions:
+    "/words study view, screen-reader label of the action sheet that slides up from the bottom when the learner double-taps a word's row (or right-clicks it): it holds the other actions for that word. A noun phrase.",
+  listenAgain:
+    "/words study view, word's action sheet: a button (speaker icon) that plays the word's audio again, repeating in a loop until stopped. Imperative verb phrase; keep '(loops)' as a short note.",
+  copyWord:
+    "/words study view, word's action sheet: a button (copy icon) that copies the word itself to the clipboard. Imperative verb phrase.",
+  cancel:
+    "/words study view, word's action sheet: the wide button at the bottom that closes the sheet without doing anything. Cancel (dismiss), as on an iOS action sheet; one word.",
+};
+
+const wordsPageContent = {
+  ...dictionary,
+  title: "/words — word lists and the study view",
+  description: describeKeys(
+    "Strings of /words in Lianki, a spaced-repetition app for learning languages: the list picker (the learner's vocabulary word lists), and the study view, where words are graded Again/Hard/Good/Easy by keys or by swiping each word's row (the 'slip'). Keep {placeholders}, keyboard keys and arrows exactly as written. Short labels go on buttons, switches and toolbars of a phone screen: keep them about as short as the English.",
+    context,
+  ),
 } satisfies DeclarationContent;
 
 export default wordsPageContent;

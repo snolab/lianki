@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Icon } from "@/app/components/icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useIntlayer } from "next-intlayer";
+import { notePrefWrite } from "@lianki/ui-state";
 import { rankSites, siteStats, type SiteStat } from "@/lib/home-sites";
 import {
   IMMERSION_DOMAINS,
@@ -165,6 +166,7 @@ export default function SitesClient({
     try {
       localStorage.setItem(LANG_KEY, code);
     } catch {}
+    notePrefWrite(); // home.lang follows the account (docs/prefs-sync.md)
   }
 
   function togglePin(url: string) {
@@ -173,6 +175,7 @@ export default function SitesClient({
       try {
         localStorage.setItem(PINS_KEY, JSON.stringify(next));
       } catch {}
+      notePrefWrite(); // home.pins: the matrix's sites follow the account
       return next;
     });
   }

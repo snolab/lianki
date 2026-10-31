@@ -10,6 +10,7 @@
  *   and slows, then comes home on a heavier spring with a trace of bounce.
  *
  * Neither changes a threshold or a grade: those stay in lib/words/swipe.ts.
+ * Neither tilts the slip: it only translates (the owner, 2026-10-30).
  *
  * Which preset a device uses, and any per-token tweak on top, is a
  * device-local preference (`lk:pref:swipe-feel`, docs/ui-state.md), turned on from /words Settings
@@ -36,8 +37,6 @@ export type SwipeFeel = {
   friction: number;
   /** The fastest coast, px/s. */
   maxFling: number;
-  /** Tilt while sliding, degrees per px of travel. */
-  rotatePerPx: number;
   /** Lift on press: the shadow's strength, 0 (none) … 1. */
   lift: number;
   /** How long the lift takes to rise and fall, ms. */
@@ -60,7 +59,6 @@ export const FEEL_PRESETS: Record<FeelPreset, SwipeFeel> = {
     flingCarry: 0,
     friction: 0,
     maxFling: 0,
-    rotatePerPx: 0,
     lift: 0,
     liftMs: 0,
     nativeRelease: false,
@@ -78,7 +76,6 @@ export const FEEL_PRESETS: Record<FeelPreset, SwipeFeel> = {
     flingCarry: 0.55,
     friction: 7,
     maxFling: 2200,
-    rotatePerPx: 0.012,
     lift: 1,
     liftMs: 140,
     nativeRelease: true,
@@ -99,7 +96,6 @@ export const FEEL_RANGES: {
   flingCarry: [0, 1, 0.01],
   friction: [0, 30, 0.5],
   maxFling: [0, 6000, 50],
-  rotatePerPx: [0, 0.08, 0.001],
   lift: [0, 1, 0.05],
   liftMs: [0, 400, 10],
   nativeRelease: null,

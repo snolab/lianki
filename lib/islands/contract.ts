@@ -26,8 +26,12 @@ type Static<T extends StaticProps> = T;
 
 /** Each island's static props (`Record<string, never>` for none). */
 export interface IslandProps {
-  /** The name beside the seal in the top bar (app/components/BrandName.tsx). */
-  "header.brand": Static<{ appName: string }>;
+  /**
+   * The wordmark beside the seal in the top bar (app/components/BrandName.tsx,
+   * lib/brand.ts): 鏈記 (lianki.com) for zh/ja/ko, Lianki.com elsewhere.
+   * `locale` picks the form; `appName`, the localized name, is its tooltip.
+   */
+  "header.brand": Static<{ appName: string; locale: string }>;
   /*
    * The /words swipe's UI over its headless core (docs/swipe-core.md). Each
    * reads the core's contexts (lib/words/swipe-core.tsx, a shared module) at
@@ -45,17 +49,28 @@ export interface IslandProps {
   "words.swipeFeel": Static<Record<string, never>>;
   /** The tuning panel (debug mode, "Tune swipe"). */
   "words.swipeTuner": Static<Record<string, never>>;
+  /*
+   * The app navigation (docs/bottom-nav.md). Both read and write the nav
+   * stores (lib/nav/ui-store.ts: drawer open, recent, pinned) and take their
+   * labels from the bottom-nav dictionary.
+   */
+  /** The floating island at the bottom of a phone screen: home, menu, search, create. */
+  "nav.bottom": Static<{ signedIn: boolean }>;
+  /** Extra rows at the top of the nav (pinned, recent, breadcrumbs); `place` is "drawer" or "sidebar". */
+  "nav.drawer": Static<{ place: string; collapsed: boolean }>;
 }
 export type IslandName = keyof IslandProps;
 
 /** Each island's contract version: bump it when its props change shape. */
 export const ISLAND_VERSIONS: { readonly [K in IslandName]: number } = {
-  "header.brand": 1,
+  "header.brand": 2,
   "words.swipeCard": 1,
   "words.swipeCue": 1,
   "words.swipeGrades": 2,
   "words.swipeFeel": 1,
   "words.swipeTuner": 1,
+  "nav.bottom": 1,
+  "nav.drawer": 1,
 };
 
 /** One shared-state key: how its value is checked, its default, its version. */
@@ -96,6 +111,12 @@ export type SharedValue<K extends SharedKey> = (typeof SHARED)[K]["default"];
 export const ACTIONS = {
   /** Ask the hot-island loader to re-import every island now. */
   "islands.reload": z.object({}),
+  /**
+   * Open the Learning Partner chat: the nav island's partner button sends it
+   * and packages/debug-chat may listen. `node` aims the next line at a
+   * state-tree node, as CHAT_TARGET_EVENT does.
+   */
+  "chat.open": z.object({ node: z.string().max(200).optional() }),
 };
 export type ActionName = keyof typeof ACTIONS;
 export type ActionPayload<A extends ActionName> = z.infer<(typeof ACTIONS)[A]>;

@@ -149,8 +149,18 @@ export type ControllerMessage =
       node?: string;
       taskPath?: string;
       agentId?: string;
+      /** `say --quiet`: shown, never read aloud. `say --loud`: read even in quiet hours. */
+      quiet?: true;
+      loud?: true;
     }
   | { type: "busy"; to?: string; label?: string }
+  /**
+   * The mic's wake-word mode on that thread's pages (docs/wake-word.md):
+   * "passive" waits for "Linky", "active" hears everything, "ignored" says
+   * the last line was not for the agent (one rejection towards passive).
+   * Relayed like a heartbeat: not stored, not shown.
+   */
+  | { type: "wake"; mode: "active" | "passive" | "ignored"; to?: string }
   /**
    * Polish the owner's latest line, when it came from the widget's mic
    * (`source: "stt"`): docs/dev-debug-widget.md, "Agent edits of voice messages".
@@ -181,6 +191,8 @@ export type PageMessage =
       to?: string;
       source?: MessageSource;
       timing?: VoiceTiming;
+      /** The mic's wake-word mode when the line was sent (docs/wake-word.md); absent = mic off. */
+      wake?: "active" | "passive";
     }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
@@ -209,7 +221,38 @@ export type PageMessage =
       error?: string;
       stack?: string;
       ms?: number;
-    };
+    }
+  | PageErrorMessage;
+
+/**
+ * Page errors (docs/dev-debug-widget.md, "Page errors"): an owner page's
+ * uncaught error, rejection, console.error, failed /api call, or media load
+ * failure, scrubbed on the page (packages/debug-chat/src/page-errors.ts).
+ * The hub forwards it to the owner-approved listeners only; never stored.
+ */
+export const PAGE_ERROR_KINDS = [
+  "error",
+  "rejection",
+  "console",
+  "fetch",
+  "network",
+  "media",
+  "socket",
+] as const;
+export type PageErrorKind = (typeof PAGE_ERROR_KINDS)[number];
+export const PAGE_ERROR_MAX_MESSAGE = 500;
+export const PAGE_ERROR_MAX_STACK = 1500;
+export type PageErrorMessage = {
+  type: "page-error";
+  kind: PageErrorKind;
+  message: string;
+  stack?: string;
+  /** The page's path (or the failed request's), never a query. */
+  path: string;
+  status?: number;
+  at: number;
+  rev?: string;
+};
 
 /** A page id: the tab's own (sessionStorage), so a reload keeps its grants. */
 export const isPageId = (v: unknown): v is string =>
@@ -288,6 +331,9 @@ export function parseControllerMessage(
     if (m.taskPath !== undefined && !taskPath)
       return { ok: false, error: `not a node path: ${String(m.taskPath)}` };
     const agentId = agentIdOf(m.agentId);
+    // Booleans only, and only `true` is kept; loud wins over quiet (it may need his answer).
+    const loud = m.loud === true;
+    const quiet = m.quiet === true && !loud;
     return {
       ok: true,
       value: {
@@ -297,6 +343,8 @@ export function parseControllerMessage(
         ...(node ? { node } : {}),
         ...(taskPath && taskPath !== ROOT_NODE ? { taskPath } : {}),
         ...(agentId ? { agentId } : {}),
+        ...(quiet ? { quiet: true as const } : {}),
+        ...(loud ? { loud: true as const } : {}),
       },
     };
   }
@@ -315,6 +363,13 @@ export function parseControllerMessage(
     const ms = typeof m.ms === "number" && m.ms > 0 ? Math.min(m.ms, CHAT_MS) : undefined;
     return { ok: true, value: { type: "grant", from, to, ...(ms ? { ms } : {}) } };
   }
+  if (m?.type === "wake") {
+    const mode = m.mode;
+    if (mode !== "active" && mode !== "passive" && mode !== "ignored")
+      return { ok: false, error: 'wake needs mode "active", "passive" or "ignored"' };
+    const to = str(m.to, 320)?.trim();
+    return { ok: true, value: { type: "wake", mode, ...(to ? { to } : {}) } };
+  }
   if (m?.type === "busy") {
     const to = str(m.to, 320)?.trim();
     const label = cleanLabel(str(m.label, 80));
@@ -327,7 +382,7 @@ export function parseControllerMessage(
     return {
       ok: false,
       error:
-        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"edit","id","text"} or {"type":"grant","from","to"}',
+        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"wake","mode"}, {"type":"edit","id","text"} or {"type":"grant","from","to"}',
     };
   if (typeof m.code !== "string" || !m.code.trim()) return { ok: false, error: "empty code" };
   if (m.code.length > MAX_CODE) return { ok: false, error: `code over ${MAX_CODE} chars` };
@@ -387,8 +442,10 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(to && to !== ROOT_NODE ? { to } : {}),
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
       ...(timing ? { timing } : {}),
+      ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
     };
   }
+  if (m.type === "page-error") return parsePageError(m);
   if (m.type === "result") {
     const id = str(m.id, 64);
     const to = str(m.to, 64);
@@ -405,6 +462,27 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     };
   }
   return null;
+}
+
+/** A page-error as the hub forwards it: a known kind, bounded strings, a path with no query. */
+function parsePageError(m: Record<string, unknown>): PageErrorMessage | null {
+  const kind = PAGE_ERROR_KINDS.find((k) => k === m.kind);
+  const message = str(m.message, PAGE_ERROR_MAX_MESSAGE)?.trim();
+  if (!kind || !message) return null;
+  const path = (str(m.path, 300) ?? "").split(/[?#]/)[0] || "/";
+  const stack = str(m.stack, PAGE_ERROR_MAX_STACK);
+  const status = count(m.status, 1000);
+  const rev = str(m.rev, 64);
+  return {
+    type: "page-error",
+    kind,
+    message,
+    ...(stack ? { stack } : {}),
+    path,
+    ...(status !== undefined ? { status } : {}),
+    at: typeof m.at === "number" && Number.isFinite(m.at) ? m.at : 0,
+    ...(rev ? { rev } : {}),
+  };
 }
 
 const count = (v: unknown, max: number) =>

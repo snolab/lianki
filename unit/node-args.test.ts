@@ -1,5 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { chatLine, nodeOpts } from "@/scripts/dev/node-args";
+import { chatLine, nodeOpts, sayVolume } from "@/scripts/dev/node-args";
+
+describe("eval.ts say --quiet / --loud", () => {
+  it("one or neither; both is an error", () => {
+    expect(sayVolume({ quiet: true, loud: false })).toEqual({ quiet: true });
+    expect(sayVolume({ quiet: false, loud: true })).toEqual({ loud: true });
+    expect(sayVolume({ quiet: false, loud: false })).toEqual({});
+    expect(sayVolume({ quiet: true, loud: true })).toHaveProperty("error");
+  });
+});
 
 describe("eval.ts --task-path / --agent", () => {
   it("reads the flags, else LIANKI_TASK_PATH / LIANKI_AGENT", () => {

@@ -10,6 +10,7 @@ import {
 } from "@lianki/debug-chat/debug-widget";
 import {
   allowOrigin,
+  devOrigins,
   buildHarness,
   buildWidget,
   candidates,
@@ -102,6 +103,17 @@ describe("the widget build", () => {
     expect(allowOrigin("https://evil.example")).toBe("https://lianki.com");
     expect(allowOrigin("garbage")).toBe("https://lianki.com");
     expect(allowOrigin(null)).toBe("https://lianki.com");
+    // LIANKI_DEV_ORIGINS: exact https origins only.
+    const dev = devOrigins(
+      " https://dev.example.ts.net:8443 , http://plain.example, junk,https://b.example/x",
+    );
+    expect(dev).toEqual(["https://dev.example.ts.net:8443", "https://b.example"]);
+    expect(allowOrigin("https://dev.example.ts.net:8443", dev)).toBe(
+      "https://dev.example.ts.net:8443",
+    );
+    expect(allowOrigin("https://dev.example.ts.net:9443", dev)).toBe("https://lianki.com");
+    expect(allowOrigin("https://evil.example", dev)).toBe("https://lianki.com");
+    expect(devOrigins(undefined)).toEqual([]);
     expect(sse("reload", "r1")).toBe("event: reload\ndata: r1\n\n");
   });
 

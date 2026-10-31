@@ -38,6 +38,7 @@ import { speechRate } from "./speech-rate";
 import { ECHO_WINDOW_MS, type EchoScore, echoScore } from "./echo";
 import { aecOn, cloudOut, outMode } from "./voice-out";
 import { pickLang, pickVoice } from "./wire";
+import { type Silence, type SpeakMeta, silenceHere } from "./quiet-hours";
 import { getKey } from "./storage-keys";
 
 /** Capture resumes this long after the last utterance ends (the room's echo; hold mode). */
@@ -453,8 +454,11 @@ export function createVoice(d: {
       if (!on && !focusRule()) return api.stop();
       emit();
     },
-    /** A reply arrived live: queue its sentences (if it should be read). */
-    reply(text: string): boolean {
+    /**
+     * A reply arrived live: queue its sentences (if it should be read). `meta`
+     * is the line's quiet/loud/ask; voice() gates on it (gateVoice) first.
+     */
+    reply(text: string, _meta?: SpeakMeta): boolean {
       if (!canSpeak() || !api.shouldSpeak()) return false;
       const lang = pickLang(text);
       const add = sentences(text)
@@ -582,11 +586,51 @@ export function speakHere() {
  */
 const alive = new Set<unknown>();
 
+/** The gate's version: a session gated by an older copy is gated again by this one. */
+const GATE_V = 1;
+type Gated = Voice & { __gate?: number; __rawReply?: Voice["reply"] };
+
+/**
+ * Agent lines must not wake the owner (quiet-hours.ts): wrap the session's
+ * `reply` so a hidden page, a quiet line or quiet hours keep it silent. It
+ * wraps the shared session object itself, so a deployed copy of this module
+ * calling `voice().reply(text)` (no meta) gets quiet hours and the hidden
+ * rule from a hot-loaded widget too. It also stops the reading the moment
+ * the page is hidden (one listener per page).
+ */
+export function gateVoice(v: Voice, why: (m: SpeakMeta) => Silence | null = silenceHere): Voice {
+  const s = v as Gated;
+  if (s.__gate === GATE_V) return v;
+  const raw = s.__rawReply ?? v.reply;
+  s.__rawReply = raw;
+  s.reply = (text: string, meta?: SpeakMeta) => {
+    const silence = why(meta ?? {});
+    if (silence) {
+      v.log({ ev: "voice-silent", why: silence });
+      return false;
+    }
+    return raw(text, meta);
+  };
+  s.__gate = GATE_V;
+  const g = globalThis as unknown as Record<string, unknown>;
+  if (
+    !g.__lkVoiceHide &&
+    typeof document !== "undefined" &&
+    typeof document.addEventListener === "function"
+  ) {
+    g.__lkVoiceHide = true;
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") (g[KEY] as Voice | undefined)?.stop();
+    });
+  }
+  return v;
+}
+
 /** The session, shared by every copy of this module on the page. */
 export function voice(): Voice {
   const g = globalThis as unknown as Record<string, Voice | undefined>;
   const have = g[KEY];
-  if (have && have.v === V) return have;
+  if (have && have.v === V) return gateVoice(have);
   const v = createVoice({
     synth,
     enabled: speechEnabled,
@@ -607,5 +651,5 @@ export function voice(): Voice {
     },
   });
   g[KEY] = v;
-  return v;
+  return gateVoice(v);
 }

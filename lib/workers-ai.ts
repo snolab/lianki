@@ -83,6 +83,16 @@ export function resolveTtsLang(text: string, locale?: string): string {
   return guessTtsLang(text);
 }
 
+/**
+ * The app speaks ISO 639-1 (`ja`, `ko`), but MeloTTS on Workers AI wants its
+ * own codes and rejects the ISO ones: "Unsupported language 'ja'. Supported:
+ * ['en', 'es', 'fr', 'jp', 'kr', 'zh']" (HTTP 400, seen 2026-10-31 — every
+ * generated Japanese and Korean clip failed with "Failed to generate speech").
+ * Mapped only at the request; keys, routes and MELOTTS_LANGS stay ISO.
+ */
+const MELOTTS_CODE: Record<string, string> = { ja: "jp", ko: "kr" };
+export const melottsCode = (lang: string) => MELOTTS_CODE[lang] ?? lang;
+
 export function guessTtsLang(text: string): string {
   if (/[぀-ゟ゠-ヿ]/.test(text)) return "ja"; // hiragana / katakana
   if (/[가-힯ᄀ-ᇿ]/.test(text)) return "ko"; // hangul
@@ -135,7 +145,7 @@ export async function workersAiSpeech(opts: {
       Authorization: `Bearer ${apiToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ prompt: opts.text, lang }),
+    body: JSON.stringify({ prompt: opts.text, lang: melottsCode(lang) }),
     signal: opts.signal,
   });
 

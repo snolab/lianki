@@ -132,3 +132,35 @@ describe("WordEntriesD1Repo", () => {
     expect(entries[1233].term).toBe("w1233!");
   });
 });
+
+describe("WordEntriesD1Repo.attribute", () => {
+  const SRC = "https://ankiweb.net/shared/info/135014526";
+
+  test("records the deck page and licence on the list and every entry", async () => {
+    await repo.sync(LIST, [
+      { key: "a", term: "hola", back: "hello" },
+      { key: "b", term: "gato", back: "cat" },
+    ]);
+    const a = { url: SRC, title: "Open Anki JLPT N5 Vocab", licence: "AnkiWeb (personal use)" };
+    expect(await repo.attribute(LIST, a)).toBe(true);
+    const list = await d1
+      .prepare("SELECT src, license FROM word_lists WHERE email = ? AND id = ?")
+      .bind(EMAIL, LIST)
+      .first<{ src: string; license: string }>();
+    expect(list).toEqual({ src: SRC, license: "AnkiWeb (personal use)" });
+    const { results } = await d1
+      .prepare("SELECT src FROM word_list_entries WHERE email = ? AND list_id = ?")
+      .bind(EMAIL, LIST)
+      .all<{ src: string }>();
+    expect(results).toHaveLength(2);
+    for (const r of results) expect(JSON.parse(r.src)).toEqual({ source: "ankiweb", ...a });
+  });
+
+  test("before migration 0017: reports false instead of failing the import", async () => {
+    const old = createTestD1(
+      SCHEMA.replace(/ALTER TABLE word_list(s|_entries) ADD COLUMN (src|license) TEXT;/g, ""),
+    );
+    const r = new WordEntriesD1Repo(old, EMAIL);
+    expect(await r.attribute(LIST, { url: SRC, licence: "AnkiWeb (personal use)" })).toBe(false);
+  });
+});

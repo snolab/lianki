@@ -1,14 +1,20 @@
 name: CI
 
-# Mirrors the local git hooks (see DEVELOPMENT.md):
-#   - `unit`        ≈ pre-commit fast checks (typecheck + unit + coverage)
-#   - `integration` ≈ pre-push `bun run qa:all` (OpenNext build → wrangler dev on
-#                      local D1 → API + UI + sync + userscript suites)
+# Mirrors the pre-commit hook: OXC lint + format check, typecheck, unit +
+# coverage. ~20 s, and it is the only check main's deploy waits for
+# (deploy-worker.yml runs on this workflow's success).
+#
+# The integration gate (`bun run qa:all`, ~4 min) is not here: it runs in the
+# pre-push hook on every pushed commit, and nightly on main in nightly-qa.yml
+# (owner, 2026-10-31: the deploy should not wait for it).
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  # The merge queue (docs/shipping.md): each queued PR is tested on top of
+  # main plus the PRs ahead of it, so two green PRs cannot merge red together.
+  merge_group:
   workflow_dispatch:
 
 # Cancel superseded runs on the same ref.
@@ -53,44 +59,19 @@ jobs:
       # secret, an env file, a key or a server source map.
       - name: Public directory hygiene
         run: bun scripts/security/check-public-dir.ts public
+      - name: Lint + format (oxlint, oxfmt --check)
+        run: bun run lint
       - name: Typecheck
         run: bun run typecheck
       - name: Unit tests + coverage
         run: bun run test:unit -- --coverage
-
-  integration:
-    name: qa:all (D1/Workers)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # Run inside the official Playwright image: chromium (+ all OS deps) is baked
-    # in, so the job never downloads a browser at runtime from cdn.playwright.dev
-    # → Google Cloud Storage — an egress path that has stalled for hours on
-    # Actions runners while being healthy everywhere else. The image also ships
-    # Node 24, satisfying the node:sqlite requirement. Pin the tag to the repo's
-    # Playwright version (package.json @playwright/test) so the preinstalled
-    # browser build matches what the tests expect.
-    container:
-      image: mcr.microsoft.com/playwright:v1.58.2-noble
-    # Cloudflare's "always passes" test sitekey, inlined into the build so the
-    # Turnstile widget renders without a real key (it gates only the magic-link
-    # button; qa:all uses the dev password path). https://developers.cloudflare.com/turnstile/troubleshooting/testing/
-    env:
-      NEXT_PUBLIC_TURNSTILE_SITE_KEY: "1x00000000000000000000AA"
-    steps:
-      - uses: actions/checkout@v4
-      # No setup-node: the Playwright image already provides Node 24.
-      # setup-bun extracts its release zip with `unzip`, which the image lacks.
-      - run: apt-get update && apt-get install -y unzip xvfb
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      # No "playwright install" — browsers live in the image at
-      # $PLAYWRIGHT_BROWSERS_PATH (/ms-playwright); chromium-1208 matches v1.58.2.
-      # Builds the OpenNext Worker, applies migrations to local (Miniflare) D1,
-      # boots `wrangler dev` and runs all five suites. No Cloudflare account
-      # needed — wrangler runs D1/R2 locally.
-      - name: qa:all
-        run: bun run qa:all
-      # MV3 extension smoke test — loads the built extension into the image's
-      # Chromium (headed under xvfb) and asserts the content script runs.
-      - name: Extension smoke test
-        run: bun run test:ext
+      # main is red after a merge (e.g. two PRs green on their own, broken
+      # together): say so in #lianki. Needs SLACK_WEBHOOK_URL (an incoming
+      # webhook for #lianki) as a repo secret; without it this only warns.
+      - name: "Alert #lianki when main is red"
+        if: failure() && github.event_name == 'push'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          bash scripts/ci/slack-alert.sh ":red_circle: main is red at ${GITHUB_SHA::7} — Typecheck + unit failed, so the deploy is held: ${RUN_URL}"
