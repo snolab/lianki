@@ -108,7 +108,7 @@ little faster) and the cloud (`/api/debug/stt`) the last.
 page ─ POST /api/dev/stt-ticket (owner session) ─▶ lianki.com Worker: signs with STT_TICKET_KEY (Ed25519 private)
 page ─ wss://stt.lianki.com, Sec-WebSocket-Protocol: lianki-stt, <ticket> ─▶ Cloudflare edge (rate limit)
      ─▶ named tunnel "lianki-stt" (cloudflared on the Mac, oxmgr lianki-stt-tunnel)
-     ─▶ 127.0.0.1:5188  server.py --public-port: Origin, ≤ 2 sockets, ticket — else 403/503/401, no upgrade
+     ─▶ 127.0.0.1:5188  server.py tunnel listener: Origin, ≤ 2 sockets, ticket — else 403/503/401, no upgrade
 ```
 
 **The ticket** (`lib/stt-ticket.ts`, verified by `scripts/local-stt/ticket.py`):
@@ -129,7 +129,18 @@ Origin is lianki.com (403), fewer than 2 sockets open (503), a ticket offered
 lifetime, replayed). It has no `/health`. The per-utterance limit (`MAX_S`)
 and the 4 MB frame limit apply as on the main port. Refusals are logged with
 the reason, never the ticket. Without the public key file the listener does
-not start at all (fail closed); the tailnet port is unaffected.
+not start at all (fail closed). If it cannot start (the port taken, say), the
+server logs `public listener off: cannot listen …` and carries on: the
+tunnel listener is optional and never takes the tailnet one down. Once its
+ticket store holds `MAX_SEEN` (1000) live jtis it answers 503, and expired
+jtis are pruned before that check, so a burst clears itself within a minute.
+
+It is switched on by `--public-port`/`--ticket-pubkey`, or by
+`~/.config/lianki-stt/public.json` (`{"port": 5188, "pubkey": "<path>"}`),
+which is what `tunnel.sh` writes. The oxmgr entry of `lianki-stt` therefore
+never changes: its command, health check and other flags stay as they are,
+and turning the tunnel on or off is that file plus `oxmgr restart`.
+`--public-config ""` ignores the file (the tests use it).
 
 **No Cloudflare Access** in front: tickets only, as the evaluation
 recommended. Access service tokens need request headers a browser WebSocket
@@ -167,8 +178,13 @@ the same as Tailscale's DERP relay (+10–30 ms RTT, estimated).
 3. From the main checkout, after this is on `main`: `scripts/local-stt/tunnel.sh up`.
    It creates the named tunnel `lianki-stt` (separate from
    `lianki-userscript-dev` / dev.lianki.com), writes `~/.cloudflared/lianki-stt.yml`,
-   routes `stt.lianki.com` to it, restarts oxmgr `lianki-stt` with
-   `--public-port 5188`, and runs cloudflared as oxmgr `lianki-stt-tunnel`.
+   routes `stt.lianki.com` to it, writes `public.json` (port 5188, the key
+   at `STT_TICKET_PUB`, default `~/.config/lianki-stt/ticket.pub`), restarts
+   oxmgr `lianki-stt` and checks it: its "listening" line in its own log
+   within 90 s, "public listener on" among the lines before it, and
+   `/health` on the tailnet port. If any check fails it puts `public.json`
+   back as it was, restarts again, and stops before starting the connector.
+   Only then does it run cloudflared as oxmgr `lianki-stt-tunnel`.
    The credentials file `~/.cloudflared/<uuid>.json`, the config and the
    cert are mode 0600 and live only on the Mac (never in the repo).
 4. The rate-limit rule (Free plan's one: 10 handshakes per 10 s per IP, then
@@ -185,8 +201,9 @@ the same as Tailscale's DERP relay (+10–30 ms RTT, estimated).
 CLOUDFLARE_API_TOKEN=… scripts/local-stt/tunnel.sh down
 ```
 
-Stops and deletes oxmgr `lianki-stt-tunnel`, restarts `lianki-stt` without
-`--public-port` (the tailnet route keeps working), deletes the tunnel and its
+Stops and deletes oxmgr `lianki-stt-tunnel`, removes `public.json` and
+restarts `lianki-stt` (its oxmgr entry untouched; the tailnet route keeps
+working, and is checked the same way), deletes the tunnel and its
 credentials file and config, and with the token deletes the `stt.lianki.com`
 record (only if it points at a tunnel) and the rate-limit rule. Without the
 token it does everything else, says the record is left, and exits 1; with the
@@ -388,10 +405,14 @@ this is owner-only.
 - `unit/local-stt-gate.test.ts`: the tunnel listener of the real server
   (`--engine fake`, no model) refusing before the upgrade — no ticket, a wrong
   Origin, another key, expired, wrong aud, a replay, a third socket, no
-  `/health` — and admitting a good ticket; it runs `scripts/local-stt/test_ticket.py`
-  too. Skipped where the venv (with `cryptography`) is missing.
+  `/health` — and admitting a good ticket; a taken tunnel port leaving the
+  tailnet listener up; `public.json` turning it on with the key it names, and
+  a missing key keeping it off. It runs `scripts/local-stt/test_ticket.py`
+  too (including the full ticket store recovering once its jtis expire). Skipped where the venv (with `cryptography`) is missing.
 - `unit/stt-tunnel.test.ts`: `tunnel.sh up` and `down` against stand-ins for
-  oxmgr and cloudflared.
+  oxmgr, cloudflared and curl: the oxmgr entry left exactly as it was, the
+  custom key path reaching the server, and the restore when the listener
+  fails to start, `/health` fails, or the server never says "listening".
 - By hand: `bun scripts/local-stt/stream-clip.ts --url ws://127.0.0.1:5193`
   streams every saved clip at real-time pace and prints partials and timings;
   `python -I scripts/local-stt/bench.py` is the whole-clip A/B above;

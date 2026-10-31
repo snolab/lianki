@@ -25,6 +25,8 @@ SUBPROTOCOL = "lianki-stt"
 TTL_S = 60
 SKEW_S = 5
 MAX_LEN = 512
+#: Live jtis remembered at most (each for 60 s; owner-only, so never near in use).
+MAX_SEEN = 1000
 _B64URL = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -48,18 +50,30 @@ def load_public_key(path: str):
 class Tickets:
     """Verifies tickets against one public key and remembers each jti until it expires."""
 
-    def __init__(self, public_key, clock=time.time):
+    def __init__(self, public_key, clock=time.time, max_seen: int = MAX_SEEN):
         self.key = public_key
         self.clock = clock
+        self.max_seen = max_seen
         self.seen: dict[str, int] = {}
+
+    def prune(self) -> None:
+        """Forget the jtis of tickets that have expired (they can no longer verify anyway)."""
+        now = int(self.clock())
+        for j in [j for j, e in self.seen.items() if e + SKEW_S < now]:
+            del self.seen[j]
+
+    def full(self) -> bool:
+        """Too many live jtis to remember another: refuse rather than forget one early."""
+        self.prune()
+        return len(self.seen) >= self.max_seen
 
     def check(self, ticket: str) -> str | None:
         """None when the ticket is good (and now spent); else why not. Never logs the ticket."""
         from cryptography.exceptions import InvalidSignature
 
         now = int(self.clock())
-        for j in [j for j, e in self.seen.items() if e + SKEW_S < now]:
-            del self.seen[j]
+        if self.full():
+            return "store full"
         if not ticket or len(ticket) > MAX_LEN:
             return "malformed"
         parts = ticket.split(".")

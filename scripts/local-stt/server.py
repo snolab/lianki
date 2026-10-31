@@ -9,7 +9,8 @@ the moment the VAD ends the utterance. It is reached over the tailnet
 `localStorage["lk:agent-local-stt"]`; anything else falls back to
 /api/debug/stt.
 
-With --public-port it also listens for the cloudflared tunnel (wss://stt.lianki.com,
+With --public-port (or ~/.config/lianki-stt/public.json, which tunnel.sh
+writes so the oxmgr entry never changes) it also listens for the cloudflared tunnel (wss://stt.lianki.com,
 scripts/local-stt/tunnel.sh). That listener admits only a lianki.com Origin
 with a valid ticket (ticket.py: Ed25519, 60 s, single use) offered in
 Sec-WebSocket-Protocol beside "lianki-stt", at most MAX_PUBLIC sockets at a
@@ -73,8 +74,9 @@ ORIGINS = [
 PUBLIC_ORIGINS = ["https://lianki.com", "https://www.lianki.com"]
 #: Sockets open at once on the tunnel listener (the page's race opens one; a second page, one more).
 MAX_PUBLIC = 2
-#: Unspent tickets remembered at most (each lives 60 s; owner-only, so this is never near).
-MAX_SEEN = 1000
+#: Where tunnel.sh turns the tunnel listener on and off, so the oxmgr entry never changes.
+PUBLIC_CONFIG = os.path.expanduser("~/.config/lianki-stt/public.json")
+DEFAULT_PUBKEY = os.path.expanduser("~/.config/lianki-stt/ticket.pub")
 
 
 def log(msg: str) -> None:
@@ -229,7 +231,7 @@ class PublicGate:
         if not has or not ticket:
             log("public: refused, no ticket")
             return conn.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
-        if len(self.tickets.seen) >= MAX_SEEN:
+        if self.tickets.full():  # prunes expired jtis first, so a burst never wedges it
             log("public: refused, ticket store full")
             return conn.respond(HTTPStatus.SERVICE_UNAVAILABLE, "Busy\n")
         why = self.tickets.check(ticket)
@@ -252,6 +254,40 @@ class PublicGate:
         return run
 
 
+def public_settings(port: int, pubkey: str | None, config: str) -> tuple[int, str]:
+    """The tunnel listener's port (0 = off) and key file: the flags, else tunnel.sh's config file."""
+    conf: dict = {}
+    if config and os.path.exists(config):
+        try:
+            with open(config, encoding="utf-8") as f:
+                conf = json.load(f)
+            if not isinstance(conf, dict):
+                raise ValueError("not an object")
+        except (OSError, ValueError) as e:
+            log(f"public listener off: unreadable {config} ({type(e).__name__})")
+            return 0, ""
+    p = port or conf.get("port") or 0
+    k = pubkey or conf.get("pubkey") or DEFAULT_PUBKEY
+    if not isinstance(p, int) or not isinstance(k, str):
+        log(f"public listener off: bad settings in {config}")
+        return 0, ""
+    return p, os.path.expanduser(k)
+
+
+async def start_public(serve, gate, srv, port: int):
+    """The tunnel listener, or None: it failing to start never takes the tailnet listener down."""
+    try:
+        # 127.0.0.1 only: cloudflared on this Mac is the one way in.
+        public = await serve(gate.wrap(srv.handler), "127.0.0.1", port,
+                             origins=PUBLIC_ORIGINS, subprotocols=[SUBPROTOCOL],
+                             process_request=gate.check, max_size=4 * 1024 * 1024)
+    except Exception as e:  # port taken, permissions…: log it and keep serving the tailnet
+        log(f"public listener off: cannot listen on 127.0.0.1:{port} ({type(e).__name__}: {e})")
+        return None
+    log(f"public listener on ws://127.0.0.1:{port} (tickets required)")
+    return public
+
+
 def tailnet(path: str, port: int, on: bool) -> None:
     args = ["tailscale", "serve", "--bg", "--set-path", path, f"http://127.0.0.1:{port}"] if on else [
         "tailscale", "serve", "--set-path", path, "off"]
@@ -270,17 +306,20 @@ async def main() -> None:
     ap.add_argument("--origin", action="append", default=[], help="another allowed page origin")
     ap.add_argument("--public-port", type=int, default=0,
                     help="also listen here for the cloudflared tunnel (tickets required)")
-    ap.add_argument("--ticket-pubkey", default=os.path.expanduser("~/.config/lianki-stt/ticket.pub"),
-                    help="the Ed25519 public key for tickets (scripts/local-stt/ticket-key.ts)")
+    ap.add_argument("--ticket-pubkey", default=None,
+                    help=f"the Ed25519 public key for tickets (default {DEFAULT_PUBKEY})")
+    ap.add_argument("--public-config", default=PUBLIC_CONFIG,
+                    help='{"port":…,"pubkey":…} written by tunnel.sh; "" for none')
     a = ap.parse_args()
 
+    port, pubkey = public_settings(a.public_port, a.ticket_pubkey, a.public_config)
     gate = None
-    if a.public_port:
+    if port:
         try:
-            gate = PublicGate(Tickets(load_public_key(a.ticket_pubkey)))
+            gate = PublicGate(Tickets(load_public_key(pubkey)))
         except (OSError, ValueError) as e:
             # Fail closed: no key, no public listener (the tailnet one still runs).
-            log(f"public listener off: no ticket key at {a.ticket_pubkey} ({type(e).__name__})")
+            log(f"public listener off: no ticket key at {pubkey} ({type(e).__name__})")
 
     from websockets.asyncio.server import serve
     from websockets.http11 import Response
@@ -307,13 +346,7 @@ async def main() -> None:
 
     async with serve(srv.handler, a.host, a.port, origins=ORIGINS + a.origin,
                      process_request=health, max_size=4 * 1024 * 1024):
-        public = None
-        if gate:
-            # 127.0.0.1 only: cloudflared on this Mac is the one way in.
-            public = await serve(gate.wrap(srv.handler), "127.0.0.1", a.public_port,
-                                 origins=PUBLIC_ORIGINS, subprotocols=[SUBPROTOCOL],
-                                 process_request=gate.check, max_size=4 * 1024 * 1024)
-            log(f"public listener on ws://127.0.0.1:{a.public_port} (tickets required)")
+        public = await start_public(serve, gate, srv, port) if gate else None
         log(f"listening on ws://{a.host}:{a.port}")
         if a.tailnet:
             tailnet(a.tailnet, a.port, True)

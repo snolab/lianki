@@ -81,6 +81,18 @@ class TicketTest(unittest.TestCase):
         self.tickets.check("x")  # prunes
         self.assertNotIn("a", self.tickets.seen)
 
+    def test_full_store_recovers_once_the_burst_expires(self):
+        small = Tickets(self.key.public_key(), clock=lambda: self.t, max_seen=3)
+        for j in "abc":
+            self.assertIsNone(small.check(make(self.key, jti=j)))
+        # Full of live jtis: refuse rather than forget one early (that would allow a replay).
+        self.assertTrue(small.full())
+        self.assertEqual(small.check(make(self.key, jti="d")), "store full")
+        # Once they expire, full() prunes them itself: no restart needed.
+        self.t = NOW + 70
+        self.assertFalse(small.full())
+        self.assertIsNone(small.check(make(self.key, jti="e", iat=NOW + 70, exp=NOW + 130)))
+
     def test_offered(self):
         self.assertEqual(offered("lianki-stt, abc.def"), (True, "abc.def"))
         self.assertEqual(offered("abc.def"), (False, "abc.def"))
