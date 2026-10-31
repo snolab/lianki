@@ -110,6 +110,8 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
   const beatRef = useRef<(Heartbeat & { label: string }) | null>(null);
   /** Hub time of the newest agent reply: a beat older than it is stale. */
   const agentAtRef = useRef(0);
+  /** Agent lines already handed to the voice: one delivered again (a reconnect) is not read again. */
+  const spokenIds = useRef(new Set<string>());
   const liveRef = useRef(false);
   const beatTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** One local timeout re-checks the spinner when it would lapse; no network. */
@@ -338,9 +340,11 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
             reBeat();
             // Every tab shows it; only one reads it aloud. speakReply queues it
             // (voice.ts): always read while the mic is on, else by the focus rule.
+            const fresh = !spokenIds.current.has(m.id);
+            spokenIds.current.add(m.id);
             // Never on a hidden page, never a quiet line, and not in quiet hours
             // unless it is loud (quiet-hours.ts): the line itself is the meta.
-            const spoken = (tabsRef.current?.isSpeaker() ?? true) && speakReply(m.text, m);
+            const spoken = fresh && (tabsRef.current?.isSpeaker() ?? true) && speakReply(m.text, m);
             voiceLatency().heard(m, spoken === true);
           } else {
             setWarning(null);

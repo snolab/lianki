@@ -32,6 +32,8 @@ export type ClipMeta = {
   label: string;
   transcript: string;
   model?: string;
+  /** The mic's mode (lk:voice-aec): echo cancellation on or off, for the A/B. */
+  aec?: boolean;
   /**
    * What the browser applied to the mic track (voice-out.ts noteTrack /
    * appliedSettings), so AEC on and off can be told apart offline
@@ -111,6 +113,7 @@ export function listClips(dir: string): ClipEntry[] {
       label: meta.label ?? "",
       transcript: meta.transcript ?? "",
       ...(meta.model ? { model: meta.model } : {}),
+      ...(typeof meta.aec === "boolean" ? { aec: meta.aec } : {}),
       ...(meta.track ? { track: meta.track } : {}),
       ...(existsSync(refPath) ? { ref: readFileSync(refPath, "utf8").trim() } : {}),
     });
@@ -168,6 +171,7 @@ export async function handleClips(
       label: String(meta.label ?? "").slice(0, 300),
       transcript: String(meta.transcript ?? "").slice(0, 4000),
       ...(meta.model ? { model: String(meta.model).slice(0, 80) } : {}),
+      ...(typeof meta.aec === "boolean" ? { aec: meta.aec } : {}),
     };
     const track = clipTrack(meta.track);
     if (track) side.track = track;

@@ -100,7 +100,7 @@ export function TreeChips({
         role="tablist"
         aria-label={uiStrings().stateTree}
         data-testid="tree-chip-row"
-        className="pointer-events-auto flex gap-x-3 overflow-x-auto overflow-y-hidden overscroll-x-contain whitespace-nowrap [scrollbar-width:none]"
+        className="flex gap-x-3 overflow-x-auto overflow-y-hidden overscroll-x-contain whitespace-nowrap [scrollbar-width:none]"
       >
         {ix.roots.map((id) => {
           const node = byId.get(id)!;
@@ -117,7 +117,7 @@ export function TreeChips({
               data-open={opened || undefined}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => onNav({ type: "tapChip", id })}
-              className={`tap-40 shrink-0 border-0 bg-transparent p-0 text-start text-inherit ${opened ? "font-semibold" : ""} ${mark(id)}`}
+              className={`tap-40 pointer-events-auto shrink-0 border-0 bg-transparent p-0 text-start text-inherit ${opened ? "font-semibold" : ""} ${mark(id)}`}
             >
               <Label node={node} hidden={!opened} />
             </button>

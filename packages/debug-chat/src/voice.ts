@@ -64,6 +64,8 @@ export const BARGE_IN_PROB = 0.7;
 export const CHUNK_MAX = 200;
 /** localStorage: the speaker toggle ("0" = replies silent). */
 export const SPEAK_KEY = "lk:debug-chat-speak";
+/** A reply with the same text within this long is a re-delivery, not a new one. */
+export const REPLY_DEDUPE_MS = 10 * 60_000;
 /** globalThis key of the shared session. */
 const KEY = "__lkVoice";
 /** The session's version: a copy on the page with another one is replaced. */
@@ -104,6 +106,38 @@ export function sentences(text: string): string[] {
 }
 
 const CLAUSE = /[、，,;；:：]/;
+
+/** Where a resumed utterance may start: just after one of these (and any spaces after it). */
+const RESUME_MARK = /[。．！？，、.!?,;；\n\r]/;
+
+/**
+ * The place to resume an utterance from when the exact one is unknown: the
+ * share `fraction` (0..1) of it already heard, as a character offset rounded
+ * DOWN to the start of a sentence or clause (after 。．！？，、 . ! ? , ; or a
+ * newline), so nothing unheard is skipped. 0 when no such start was passed.
+ */
+export function resumeOffset(text: string, fraction: number): number {
+  const target = Math.floor(Math.min(1, Math.max(0, fraction)) * text.length);
+  let best = 0;
+  for (let i = 0; i < target; i++) {
+    if (!RESUME_MARK.test(text[i]!)) continue;
+    let j = i + 1;
+    while (j < text.length && /\s/.test(text[j]!)) j++;
+    if (j <= target) best = j;
+  }
+  return best;
+}
+
+/** Han, kana, hangul: read a character at a time. */
+const CJK_TEXT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+/** Characters per second speechSynthesis reads at rate 1: CJK, and other scripts. */
+export const SPEECH_CPS = { cjk: 5, other: 14 } as const;
+/** The share of `text` heard after `ms` at `rate`, by the reading speed (no boundary events). */
+export function heardFraction(text: string, ms: number, rate = 1): number {
+  if (!text.length || ms <= 0) return 0;
+  const cps = CJK_TEXT.test(text) ? SPEECH_CPS.cjk : SPEECH_CPS.other;
+  return Math.min(1, (ms / 1000) * cps * Math.max(0.1, rate) / text.length);
+}
 
 /** A sentence in pieces of at most `max` chars: after the last clause mark, else a space, else hard. */
 export function chunk(s: string, max = CHUNK_MAX): string[] {
@@ -230,6 +264,8 @@ export function createVoice(d: {
   let mic = false;
   let speaking = false;
   const queue: Sentence[] = [];
+  /** Replies queued lately, so a re-delivered one is not read twice. */
+  const recent: { text: string; at: number }[] = [];
   /** Interruptions under way; the reading waits while any is. */
   const pauses = new Set<Why>();
   /** The sentence playing: how, (speech) the char of the last word boundary heard, and its record. */
@@ -375,9 +411,18 @@ export function createVoice(d: {
       const place = current.p.stop();
       const head = queue[0];
       if (keepPlace && head) {
+        // The exact place when there is one: the clip's time (audio), or the
+        // last word boundary the browser reported (speech). Without either
+        // (Android's voices often send no boundaries), an estimate from the
+        // time it has been speaking, rounded down to a sentence's start.
         if (current.p.route === "audio") head.at = place.at ?? head.at;
         else {
-          head.from = current.mark;
+          const rest = head.text.slice(head.from);
+          head.from =
+            current.mark > head.from
+              ? current.mark
+              : head.from +
+                resumeOffset(rest, heardFraction(rest, now() - current.said.start, d.rate?.() ?? 1));
           head.at = 0;
         }
       }
@@ -455,11 +500,21 @@ export function createVoice(d: {
       emit();
     },
     /**
-     * A reply arrived live: queue its sentences (if it should be read). `meta`
-     * is the line's quiet/loud/ask; voice() gates on it (gateVoice) first.
+     * A reply arrived live: queue its sentences (if it should be read),
+     * behind what is still being read (a reply arriving while the reading is
+     * paused waits for it). The same reply delivered again (a reconnect
+     * re-sending it) is not read again from its start. `meta` is the line's
+     * quiet/loud/ask; voice() gates on it (gateVoice) first.
      */
     reply(text: string, _meta?: SpeakMeta): boolean {
       if (!canSpeak() || !api.shouldSpeak()) return false;
+      const t = now();
+      if (recent.some((r) => r.text === text && t - r.at < REPLY_DEDUPE_MS)) {
+        log({ ev: "voice-reply-dup", chars: text.length });
+        return false;
+      }
+      recent.push({ text, at: t });
+      while (recent.length > 20) recent.shift();
       const lang = pickLang(text);
       const add = sentences(text)
         .flatMap((s) => chunk(s))

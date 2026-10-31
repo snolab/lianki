@@ -30,10 +30,17 @@ export const AEC_CONSTRAINTS = {
   autoGainControl: true,
   channelCount: 1,
 } as const;
-/** lk:voice-aec = "0": the constraints from before, used with capture held while the agent speaks. */
+/**
+ * lk:voice-aec = "0": no processing at all (echo cancellation, noise
+ * suppression and auto gain all off), with capture held while the agent
+ * speaks (half-duplex) and the text echo guard. On Chrome for Android an
+ * echo-cancelled mic moves playback onto the call stream ("call mode", a
+ * thinner speaker); this is the A/B against it.
+ */
 export const LEGACY_CONSTRAINTS = {
-  echoCancellation: true,
-  noiseSuppression: true,
+  echoCancellation: false,
+  noiseSuppression: false,
+  autoGainControl: false,
   channelCount: 1,
 } as const;
 
@@ -58,6 +65,13 @@ const read = (k: string): string | null => {
 export const outMode = (): OutMode => (read(VOICE_OUT_KEY) === "cloud" ? "cloud" : "speech");
 /** Echo-cancelled barge-in (default on; "0" = the old hold behaviour). */
 export const aecOn = (): boolean => read(VOICE_AEC_KEY) !== "0";
+/** The menu's A/B switch: takes effect the next time the mic opens. */
+export function setAec(on: boolean) {
+  try {
+    if (on) localStorage.removeItem(VOICE_AEC_KEY);
+    else localStorage.setItem(VOICE_AEC_KEY, "0");
+  } catch {}
+}
 export const micConstraints = (aec = aecOn()): MediaTrackConstraints =>
   aec ? { ...AEC_CONSTRAINTS } : { ...LEGACY_CONSTRAINTS };
 

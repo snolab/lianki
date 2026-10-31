@@ -8,6 +8,9 @@ import {
   fullLogBox,
   logSurface,
   snapAxis,
+  anchorScrollTop,
+  fullLogPad,
+  pickAnchor,
 } from "@lianki/debug-chat/log-surface";
 
 describe("fullLogHeight", () => {
@@ -59,37 +62,90 @@ describe("size-snapping (snapAxis, fullLogBox)", () => {
     expect(snapAxis(624, 320, 624)).toBe(320); // at the threshold: kept
   });
 
-  const safe = { top: 47, right: 0, bottom: 34, left: 0 };
+  const safe = { top: 47, bottom: 34 };
   const log = { left: 62, width: 320, bottom: 790, height: 70 };
 
-  it("a phone held upright: edge to edge, full height, the bar aside", () => {
-    const b = fullLogBox({ vw: 390, vh: 844, visibleTop: 0, visibleBottom: 844, safe, log });
-    expect(b).toEqual({ left: 8, width: 374, top: 55, bottom: 802, hideBar: true });
-  });
-
-  it("wider (a phone on its side, a tablet): its own width, full height above the bar", () => {
+  it("never changes the width: only the height, top to bottom of the visible area", () => {
+    const phone = fullLogBox({ vh: 844, visibleTop: 0, visibleBottom: 844, safe, log });
+    expect(phone).toEqual({ left: 62, width: 320, top: 55, bottom: 802, hideBar: true });
     const side = fullLogBox({
-      vw: 844,
       vh: 390,
       visibleTop: 0,
       visibleBottom: 390,
-      safe: { top: 0, right: 47, bottom: 21, left: 47 },
+      safe: { top: 0, bottom: 21 },
       log: { left: 470, width: 320, bottom: 330, height: 70 },
     });
-    expect(side).toEqual({ left: 470, width: 320, top: 8, bottom: 330, hideBar: false });
+    expect(side).toEqual({ left: 470, width: 320, top: 8, bottom: 361, hideBar: true });
     const tablet = fullLogBox({
-      vw: 1024,
       vh: 1366,
       visibleTop: 0,
       visibleBottom: 1366,
-      safe: { top: 24, right: 0, bottom: 20, left: 0 },
+      safe: { top: 24, bottom: 20 },
       log: { left: 690, width: 320, bottom: 1300, height: 70 },
     });
-    expect(tablet).toMatchObject({ width: 320, top: 32, bottom: 1300, hideBar: false });
+    expect(tablet).toEqual({ left: 690, width: 320, top: 32, bottom: 1338, hideBar: true });
   });
 
   it("with the keyboard up, it stops at the visible area", () => {
-    const b = fullLogBox({ vw: 390, vh: 844, visibleTop: 0, visibleBottom: 508, safe, log });
-    expect(b).toMatchObject({ top: 55, bottom: 500, hideBar: true });
+    const b = fullLogBox({ vh: 844, visibleTop: 0, visibleBottom: 508, safe, log });
+    expect(b).toMatchObject({ width: 320, top: 55, bottom: 500 });
+  });
+});
+
+describe("keeping the line being read in place (pickAnchor, anchorScrollTop, fullLogPad)", () => {
+  const rows = [
+    { id: "a", top: 100, bottom: 120 },
+    { id: "b", top: 122, bottom: 142 },
+    { id: "c", top: 144, bottom: 164 },
+  ];
+  it("pickAnchor: the line under the focus line, else the nearest", () => {
+    expect(pickAnchor(rows, 130)?.id).toBe("b");
+    expect(pickAnchor(rows, 143)?.id).toBe("b"); // in the gap: the nearer edge
+    expect(pickAnchor(rows, 10)?.id).toBe("a");
+    expect(pickAnchor(rows, 900)?.id).toBe("c");
+    expect(pickAnchor([], 100)).toBeNull();
+  });
+
+  it("anchorScrollTop: back to its old top when the view reaches it", () => {
+    // Entering full screen: the line moved down 300 px; scroll it back up there.
+    expect(
+      anchorScrollTop({
+        before: 780,
+        after: 1080,
+        height: 20,
+        view: { top: 8, bottom: 900 },
+        scrollTop: 500,
+        maxScroll: 5000,
+      }),
+    ).toBe(800);
+  });
+
+  it("anchorScrollTop: into the view's nearest edge when it no longer reaches there", () => {
+    // Leaving: the compact log is 790..860; a line read at 300 lands at its top.
+    expect(
+      anchorScrollTop({
+        before: 300,
+        after: 1200,
+        height: 20,
+        view: { top: 790, bottom: 860 },
+        scrollTop: 100,
+        maxScroll: 5000,
+      }),
+    ).toBe(510);
+    // Clamped to the scroll range.
+    expect(
+      anchorScrollTop({
+        before: 300,
+        after: 0,
+        height: 20,
+        view: { top: 790, bottom: 860 },
+        scrollTop: 100,
+        maxScroll: 5000,
+      }),
+    ).toBe(0);
+  });
+
+  it("fullLogPad: 0.45 of the height above the first line and below the last", () => {
+    expect(fullLogPad(800)).toBe(360);
   });
 });

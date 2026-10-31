@@ -127,6 +127,9 @@ describe("the widget build", () => {
     expect(b.css).toContain(".animate-spin");
     expect(b.inputs.some((p) => p.endsWith("packages/debug-chat/src/DebugChat.tsx"))).toBe(true);
     expect((await buildWidget()).rev).toBe(b.rev);
+    // The bundle parses: two modules' top-level names once collided in it
+    // ("css" declared twice), and the hot widget silently fell back.
+    expect(() => new Bun.Transpiler({ loader: "js" }).scan(b.code)).not.toThrow();
   }, 30_000);
 
   it("splits a stylesheet into its top-level blocks", () => {
