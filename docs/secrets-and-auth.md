@@ -112,3 +112,29 @@ his settings. These are the only routes that accept it
 The only other copy is `.dev-whole-page.json` (gitignored, 0600) in the dev
 server's worktree. To rotate it, generate a new value there and
 `wrangler secret put DEV_BRIDGE_SECRET` from the file, never by echoing it.
+
+## STT tickets (`STT_TICKET_KEY`)
+
+A Worker secret on `lianki`: an Ed25519 **private** key (a JWK) that signs
+the tickets for the owner's local STT server over the public tunnel
+(`wss://stt.lianki.com`; [local-stt.md](local-stt.md), "Off the tailnet").
+`POST /api/dev/stt-ticket` answers the owner's session only (`isOwner`, 404
+for anyone else; 503 while the secret is unset) with a ticket good for 60 s
+and one connection (`aud` `lianki-stt`, a random `jti`). The Mac holds only
+the **public** key (`~/.config/lianki-stt/ticket.pub`), so nothing on the Mac
+can mint a ticket, and no secret is shared: `AUTH_SECRET` and
+`DEV_BRIDGE_SECRET` are not involved.
+
+Set or rotate it (a production secret: the owner's OK first). The script
+writes the public key file and hands the private key only to the pipe; it
+refuses to print it to a terminal, and no other copy is kept:
+
+```bash
+bun scripts/local-stt/ticket-key.ts | bunx wrangler secret put STT_TICKET_KEY
+oxmgr restart lianki-stt   # the server reads the new public key
+```
+
+Rotating kills every outstanding ticket at once (they live 60 s anyway).
+The cloudflared tunnel's own credentials (`~/.cloudflared/<uuid>.json`,
+`cert.pem`) are separate: mode 0600, on the Mac only, never committed;
+whoever holds the credentials file can run a connector for the tunnel.

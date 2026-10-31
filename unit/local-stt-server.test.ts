@@ -28,6 +28,9 @@ describe.skipIf(!ready)("local STT server (SenseVoice)", () => {
         resolve(import.meta.dir, "../scripts/local-stt/server.py"),
         "--port",
         String(PORT),
+        // Never the Mac's own tunnel config (tunnel.sh): no second listener here.
+        "--public-config",
+        "",
       ],
       {
         stdout: "pipe",

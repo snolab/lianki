@@ -345,7 +345,19 @@ def load_engine(name: str, enhance: str = ""):
     return e
 
 
+class Fake:
+    """For tests (unit/local-stt-gate.test.ts): no model, answers the audio length."""
+
+    name = "fake"
+    model = "fake"
+
+    def transcribe(self, audio):
+        return f"{len(audio) / RATE:.2f}s", "en"
+
+
 def _load(name: str):
+    if name == "fake":
+        return Fake()
     if name == "sensevoice":
         return SenseVoice()
     if name == "mlx-whisper":
