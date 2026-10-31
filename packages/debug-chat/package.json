@@ -26,6 +26,8 @@
     "./wire": "./src/wire.ts",
     "./voice": "./src/voice.ts",
     "./quiet-hours": "./src/quiet-hours.ts",
+    "./wake": "./src/wake.ts",
+    "./wake-kws": "./src/wake-kws.ts",
     "./voice-out": "./src/voice-out.ts",
     "./echo": "./src/echo.ts",
     "./storage-keys": "./src/storage-keys.ts",

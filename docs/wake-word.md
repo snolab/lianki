@@ -167,13 +167,47 @@ Everything works on files. Nothing is played on the Mac.
 5. **Device cost:** load the WASM KWS on his iPhone and log ms per segment
    and the model load time with the existing latency record. Compare a
    30-minute passive session against VAD alone with the battery panel.
-6. **Shipping gate:** owner-only behind a localStorage flag (like
-   `lk:agent-local-stt`) until his real-recording FR is < 10 % in a café and
-   FA < 0.5/h.
+6. **Tuning gate:** the mic only goes passive after 3 rejections or when
+   the agent says so, and `lk:agent-wake` = `"0"` turns it off. Before
+   relying on it in a café, his real-recording FR should be < 10 % and FA
+   < 0.5/h.
 
-The offline scripts used for the first measurement (sherpa-onnx KWS over
-WAV/MP3, the babble mix, CAM++ scoring) go into `scripts/local-stt/` with
-the implementation PR.
+The offline scripts: `scripts/local-stt/wake-gen.py` (the synthetic set,
+Kokoro) and `scripts/local-stt/wake-eval.py` (sherpa-onnx KWS over it, his
+clips, the noisy copies and the agent's TTS). The CAM++ speaker check
+comes in a later PR.
+
+## Implementation (2026-10-31)
+
+| Piece | Where |
+| --- | --- |
+| State machine, the `LINKY` keyword (5 pronunciations), the cut after it | `packages/debug-chat/src/wake.ts` |
+| The spotter: a Blob Worker running `@sherpaw/kws@0.3.0` (sherpa-onnx WASM, Apache-2.0) with the zh-en 3M model (fp32, 13 MB, pinned Hugging Face commit) | `packages/debug-chat/src/wake-kws.ts` |
+| The gate on each VAD segment, before upload, only in passive mode | `createMic` `wake` (`mic.ts`) |
+| Mode, rejections, lazy load, never-deaf fallback, `__lkMic.wake(mode)` | `mic-session.ts` |
+| The button: dashed violet ring + "Linky?", zh/ja/en strings with translator context | `MicButton.tsx`, `ui-strings.ts` (`wakeStrings`) |
+| The chat lane: `{type: "wake", mode: "active" \| "passive" \| "ignored"}`, relayed to the thread's pages, not stored; each owner line carries `wake` (its mode) | `lib/dev-eval.ts`, `workers/push/src/debug.ts`, `app/components/DebugEval.tsx`, `bun scripts/dev/eval.ts wake <mode>` |
+| Browser end to end (fake mic from WAV files, nothing played) | `node scripts/dev/wake-word-qa.mjs --clip <wav> [--negative <wav>] [--save sent.wav]` |
+
+- **Loading:** nothing loads until the mic first goes passive. Then about
+  12 MB of runtime (jsDelivr) and 13 MB of model (Hugging Face) are
+  fetched. Each file is checked against its SHA-256, including the glue JS,
+  which is imported from a Blob after the check, and kept in the Cache API
+  (`lk-wake-v1`). In Chromium the first load took 2.7–3.2 s on a fast line;
+  after a reload, 0.4 s from the cache.
+- **Cellular:** with nothing cached and `navigator.connection` saying
+  cellular or Save-Data, the download waits. The mic stays active and the
+  button notes "downloads on Wi-Fi". Safari has no `navigator.connection`,
+  so there it downloads.
+- **Cost:** 100–140 ms of Worker time per 3–5 s segment in headless
+  Chromium (RTF ≈ 0.03), only while someone talks in passive mode.
+- **The cut:** the words after "Linky" start at the last token's timestamp
+  (`KEYWORD_TAIL_S = 0`). +0.25 s lost "what's" of "Linky, what's next?"; 0
+  sent exactly "What's next?".
+- **Rejections** are empty and hallucinated finals, and the agent's
+  `ignored`. Echo drops (the agent's own voice) do not count.
+- **Off switch:** localStorage `lk:agent-wake` = `"0"` means the mic is
+  never passive.
 
 ## Sources
 

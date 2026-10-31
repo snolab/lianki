@@ -61,6 +61,14 @@ export const navPins: UiStore<NavPins> = createUiStore(
   { storage: "account", clean: cleanNavPins }, // docs/prefs-sync.md
 );
 
+/** The first-visit /words tip above the island (local `lk:pref:nav-tip`): shown once, until dismissed. */
+export const navTip: UiStore<{ dismissed: boolean }> = createUiStore(
+  "nav-tip",
+  1,
+  { dismissed: false },
+  { storage: "local" },
+);
+
 export const setDrawerOpen = (open: boolean) => {
   if (navUi.getState().drawerOpen !== open) navUi.setState({ drawerOpen: open });
 };

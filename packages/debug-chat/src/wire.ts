@@ -89,6 +89,12 @@ export type ChatMessage = {
    * counts as loud too (quiet-hours.ts). Only ever `true`.
    */
   loud?: true;
+  /**
+   * The mic's wake-word mode when the owner sent the line (docs/wake-word.md):
+   * "active", or "passive" (it came through "Linky"). Absent = the mic was
+   * off. The chat lane sets it with {type: "wake", mode}.
+   */
+  wake?: "active" | "passive";
 };
 
 /** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */
