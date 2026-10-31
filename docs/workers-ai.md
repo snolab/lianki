@@ -176,6 +176,38 @@ The mic then drops a final transcript that is one of `HALLUCINATIONS`
 Each drop is a `stt-hallucination` devLog event with `{text, ms, prob}`, to
 tune those two.
 
+**Whisper's additions inside real speech (2026-10-31).** In the field the
+cloud route also mixed its own text into what the owner said, e.g.
+「我说中文，中文字幕提供。…ert ert ert ert ert. 中文。有时夹杂日本語和English。」:
+the prompt read back in pieces, a subtitle credit, and a decoding loop. Every
+final transcript, cloud or local (the same `send` in `createMic`), first goes
+through `cleanTranscript` (`mic.ts`), which takes out:
+
+1. **An echo of the prompt.** The prompts live in
+   `packages/debug-chat/src/stt-hint.ts` (`STT_PROMPTS`; `lib/stt.ts`
+   `sttPrompt` sends them), so the mic strips exactly what the route can
+   send. The whole prompt, or one of its clauses (split on 。，,.!?) of 4 or
+   more normalized characters, is cut when it is a clause of the transcript;
+   the whole prompt and clauses of 8 or more are cut inside a clause too. A
+   short word that is merely in the prompt (a lone 中文) stays, unless all
+   that is left after an echo is such scraps.
+2. **Stock subtitle and outro phrases** (`HALLUCINATIONS`, now with
+   中文字幕提供, 请订阅 and the prompts) when they are a clause, or a run of
+   clauses, of their own anywhere in the message, or stuck on its end. Inside
+   a sentence (「他说感谢观看这个视频的人」) they stay, and おやすみなさい is
+   only ever dropped as a whole message. A message that is nothing but stock
+   phrases is left to `isHallucination` as before.
+3. **Decoding loops** (`collapseRepeats`): a token or n-gram (n ≤ 4)
+   repeated 4 or more times in a row goes to one copy ("the the the the" →
+   "the"), or to nothing when it is a Latin fragment that is no word ("ert").
+   Three in a row ("no no no") stays, and one CJK character needs 6
+   (哈哈哈哈 is laughter).
+
+If nothing meaningful is left, the message is dropped. Each cleaning is a
+`stt-cleaned` devLog event with the counts `{prompt, phrase, repeat,
+dropped}` and the removed text (Whisper's, not the user's), up to 80
+characters.
+
 Request formats, all verified live: turbo takes JSON with the audio in
 base64; Whisper and Nova-3 take the raw bytes with their Content-Type, Nova-3
 its options as query parameters. MP3, M4A (AAC) and WAV were tested; WebM/Opus

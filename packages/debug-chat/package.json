@@ -32,6 +32,7 @@
     "./voice-out": "./src/voice-out.ts",
     "./echo": "./src/echo.ts",
     "./storage-keys": "./src/storage-keys.ts",
+    "./stt-hint": "./src/stt-hint.ts",
     "./anchor": "./src/anchor.ts",
     "./detent": "./src/detent.ts",
     "./keyboard-lift": "./src/keyboard-lift.ts",

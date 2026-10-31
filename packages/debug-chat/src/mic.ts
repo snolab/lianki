@@ -16,6 +16,7 @@
  */
 import type { UttMarks } from "./latency";
 import type { LocalFinal, LocalUtt } from "./local-stt";
+import { STT_PROMPTS } from "./stt-hint";
 import type { WakeSpot } from "./wake";
 
 /** Longest utterance: past this it is cut and sent, and listening goes on. */
@@ -230,7 +231,7 @@ export function appendDictation(draft: string, text: string): { draft: string; s
  * repeated) from a short or faint utterance is dropped (isHallucination).
  * `…` stands for anything.
  */
-export const HALLUCINATIONS = [
+export const HALLUCINATIONS: readonly string[] = [
   "ご視聴ありがとうございました",
   "ご清聴ありがとうございました",
   "チャンネル登録よろしくお願いします",
@@ -259,13 +260,19 @@ export const HALLUCINATIONS = [
   // "字幕志愿者 李宗盛" and the like: a subtitle credit (never 李宗盛 alone, a real name).
   "字幕志愿者…",
   "字幕志願者…",
-  // Our own route's STT hint prompt, which cloud Whisper reads back as speech.
-  "我说中文，有时夹杂日本語和English。",
+  // "中文字幕提供", "字幕提供": a credit line on its own clause.
+  "…字幕提供",
+  "请订阅",
+  "請訂閱",
+  "订阅我的频道…",
+  "訂閱我的頻道…",
+  // Our own route's STT prompts, which cloud Whisper reads back as speech.
+  ...STT_PROMPTS,
   "…明镜与点点栏目…",
   "…明鏡與點點欄目…",
   "Ondertiteling …",
   "Sous-titres réalisés par …",
-] as const;
+];
 /** Under this much speech an utterance is short enough to be one of those. */
 export const HALLUCINATION_MAX_MS = 1_200;
 /** Under this mean speech probability (Silero) an utterance is faint enough. */
@@ -278,22 +285,36 @@ export function normalizeTranscript(s: string): string {
   return s.normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}\s]/gu, "");
 }
 
+/**
+ * Phrases dropped only as a whole message (by isHallucination), never cut out
+ * of one: real speech says them mid-sentence (「おやすみなさい、また明日。」).
+ */
+const WHOLE_ONLY: ReadonlySet<string> = new Set(["おやすみなさい"]);
+/** The phrases cut out of a longer message too (cleanTranscript, stripHallucinationTail). */
+const IN_TEXT = HALLUCINATIONS.filter((h) => !WHOLE_ONLY.has(h));
+
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const HALLUCINATION_RE = new RegExp(
-  `^(?:${HALLUCINATIONS.map((h) =>
-    h
-      .split("…")
-      .map((part) => escapeRe(normalizeTranscript(part)))
-      .join(".*"),
-  ).join("|")})+$`,
-  "u",
-);
+/** Normalized text that is one of `list` (or a run of them). */
+const wholeRe = (list: readonly string[]) =>
+  new RegExp(
+    `^(?:${list
+      .map((h) =>
+        h
+          .split("…")
+          .map((part) => escapeRe(normalizeTranscript(part)))
+          .join(".*"),
+      )
+      .join("|")})+$`,
+    "u",
+  );
+const HALLUCINATION_RE = wholeRe(HALLUCINATIONS);
+const IN_TEXT_RE = wholeRe(IN_TEXT);
 
 /** A known phrase (or a run of them) at the very end of a transcript, whatever its punctuation. */
 /** Punctuation, symbols or spaces, anywhere between a phrase's characters. */
 const GAP = "[\\p{P}\\p{S}\\s]*";
 /** The phrases on raw text: each character in turn, any punctuation or spacing between. */
-const PHRASE_ALT = HALLUCINATIONS.map((h) =>
+const PHRASE_ALT = IN_TEXT.map((h) =>
   h
     .split("…")
     .map((part) => [...normalizeTranscript(part)].map(escapeRe).join(GAP))
@@ -328,6 +349,234 @@ export function isHallucinationPhrase(text: string): boolean {
 export function isHallucination(text: string, ms: number, prob?: number): boolean {
   if (!isHallucinationPhrase(text)) return false;
   return ms < HALLUCINATION_MAX_MS || (prob !== undefined && prob < HALLUCINATION_MIN_PROB);
+}
+
+/**
+ * Where a transcript breaks into clauses: CJK and Latin sentence and clause
+ * marks, but a "." or "," only before a space, another mark or the end, so
+ * "Amara.org" and "3.5" stay whole.
+ */
+const CLAUSE_BREAK = /(?:[。，、！？；：…!?;:\n]|[.,](?=[\s.,。，、！？…!?]|$))+\s*/gu;
+
+type Clause = { body: string; end: string };
+
+/** The text in clauses, each with the marks (and spaces) that end it. */
+function clauses(text: string): Clause[] {
+  const out: Clause[] = [];
+  let at = 0;
+  for (const m of text.matchAll(CLAUSE_BREAK)) {
+    out.push({ body: text.slice(at, m.index), end: m[0] });
+    at = m.index + m[0].length;
+  }
+  if (at < text.length) out.push({ body: text.slice(at), end: "" });
+  return out;
+}
+
+/** A prompt clause shorter than this (normalized) is never stripped: a lone 中文 is speech. */
+export const PROMPT_CLAUSE_MIN = 4;
+/** A prompt clause this long (normalized) is stripped inside a clause too, not only as one. */
+export const PROMPT_INLINE_MIN = 8;
+
+/** One prompt, ready for matching: the whole of it, and its clauses (split on 。，,.!?). */
+function promptParts(prompt: string) {
+  const whole = normalizeTranscript(prompt);
+  const parts = prompt
+    .split(/[。，,.!?！？]/u)
+    .map(normalizeTranscript)
+    .filter((c) => c.length >= PROMPT_CLAUSE_MIN);
+  return {
+    whole,
+    clauses: new Set([whole, ...parts]),
+    inline: [whole, ...parts.filter((c) => c.length >= PROMPT_INLINE_MIN)],
+  };
+}
+
+/** A normalized string on raw text: its characters in turn, any punctuation or spacing between. */
+const looseRe = (n: string) => new RegExp([...n].map(escapeRe).join(GAP) + GAP, "giu");
+
+/** Real short English words (and sounds): a run of these is speech, kept once, not a fragment. */
+const SHORT_WORDS = new Set(
+  (
+    "a i o an am as at be by do go he hi if in is it me my no of oh ok on or so to up us we ya ye yo " +
+    "ah aw eh ha hm uh um " +
+    "all and any are ask bad big boy but bye can cat day did dog eat far few for fun get god " +
+    "got had has her hey him his how its let lot man may new nor not now off old one our out " +
+    "own put ran red run sad saw say see she sir sit six ten the too top try two use was way " +
+    "who why win yes yet you wow huh hmm yay lol omg"
+  ).split(" "),
+);
+
+const CJK_CHAR = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]$/u;
+
+/** A Latin token that is no word: no vowel, or three letters or fewer and not a real short word. */
+function isFragment(tok: string): boolean {
+  if (!/^[\p{Script=Latin}']+$/u.test(tok)) return false;
+  if (!/[aeiouy]/i.test(tok)) return true;
+  return tok.length <= 3 && !SHORT_WORDS.has(tok.toLowerCase());
+}
+
+/** Repeated this many times in a row, a token or n-gram is a decoding loop. */
+export const REPEAT_MIN = 4;
+/** A single CJK character needs this many ("哈哈哈哈" is laughter, not a loop). */
+export const REPEAT_MIN_CJK_CHAR = 6;
+const REPEAT_MAX_N = 4;
+const TOKEN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]|[\p{L}\p{N}']+/gu;
+
+/**
+ * Whisper's decoding loops ("ert ert ert ert ert", "好的好的好的好的"): a run
+ * of the same token or n-gram (n ≤ 4) REPEAT_MIN times or more in a row goes
+ * to one copy, or to nothing when it is a Latin fragment that is no word.
+ * Three in a row ("no no no") is speech and stays. Returns the text and the
+ * repeated units.
+ */
+export function collapseRepeats(text: string): { text: string; runs: string[] } {
+  const toks = [...text.matchAll(TOKEN)].map((m) => ({
+    start: m.index,
+    end: m.index + m[0].length,
+    raw: m[0],
+    key: m[0].normalize("NFKC").toLowerCase(),
+  }));
+  const runs: string[] = [];
+  let out = "";
+  let at = 0;
+  for (let i = 0; i < toks.length; ) {
+    let best: { n: number; k: number } | undefined;
+    for (let n = 1; n <= REPEAT_MAX_N && i + 2 * n <= toks.length; n++) {
+      let k = 1;
+      while (
+        i + (k + 1) * n <= toks.length &&
+        toks.slice(i + k * n, i + (k + 1) * n).every((t, j) => t.key === toks[i + j].key)
+      )
+        k++;
+      const min = n === 1 && CJK_CHAR.test(toks[i].raw) ? REPEAT_MIN_CJK_CHAR : REPEAT_MIN;
+      if (k >= min && (!best || n * k > best.n * best.k)) best = { n, k };
+    }
+    if (!best) {
+      i++;
+      continue;
+    }
+    const unit = toks.slice(i, i + best.n);
+    const fragment = unit.every((t) => isFragment(t.raw));
+    out += fragment
+      ? text.slice(at, toks[i].start).trimEnd()
+      : text.slice(at, toks[i].start) + text.slice(toks[i].start, unit.at(-1)!.end);
+    at = toks[i + best.n * best.k - 1].end;
+    runs.push(unit.map((t) => t.raw).join(" "));
+    i += best.n * best.k;
+  }
+  return runs.length ? { text: out + text.slice(at), runs } : { text, runs };
+}
+
+/** What cleanTranscript took out of a transcript, by kind. */
+export type TranscriptCleaning = {
+  /** The cleaned text: the input itself when nothing was taken out. */
+  text: string;
+  /** Nothing meaningful was left: drop the message as a hallucination. */
+  drop: boolean;
+  /** Echoes of the STT prompt taken out. */
+  prompt: number;
+  /** Stock subtitle and outro phrases taken out. */
+  phrase: number;
+  /** Repeated runs collapsed. */
+  repeat: number;
+  /** What was taken out (Whisper's text, not the user's), for the devLog. */
+  removed: string[];
+};
+
+const joinClauses = (cs: Clause[]) => cs.map((c) => c.body + c.end).join("");
+
+/**
+ * Every final transcript, cloud or local, before it is used: Whisper's own
+ * additions taken out of real speech (docs/workers-ai.md, "Speech to text").
+ *
+ * 1. An echo of the STT prompt (`prompts`, by default every prompt the route
+ *    may send): the whole prompt, or one of its clauses of PROMPT_CLAUSE_MIN
+ *    characters or more, as a clause of the text once normalized; the whole
+ *    prompt, and a clause of PROMPT_INLINE_MIN or more, inside a clause too.
+ *    A short word that is merely in the prompt (a lone 中文) stays.
+ * 2. A stock subtitle or outro phrase (HALLUCINATIONS) that is a clause, or a
+ *    run of clauses, of its own anywhere in the text, or is stuck on its end
+ *    (stripHallucinationTail). One inside a sentence ("他说感谢观看这个视频的人")
+ *    stays.
+ * 3. Decoding loops (collapseRepeats).
+ *
+ * A text of nothing but stock phrases is left as it is when nothing else was
+ * found: isHallucination judges that by length and loudness, since the user
+ * may say them. Otherwise, when nothing is left but punctuation, or only
+ * scraps of a prompt whose echo was found ("中文。"), `drop` is set.
+ */
+export function cleanTranscript(text: string, prompts: readonly string[] = STT_PROMPTS): TranscriptCleaning {
+  const res: TranscriptCleaning = { text, drop: false, prompt: 0, phrase: 0, repeat: 0, removed: [] };
+  if (!normalizeTranscript(text)) return res;
+  const ps = prompts.filter((p) => normalizeTranscript(p)).map(promptParts);
+
+  // 3 first: a loop can sit between two parts of a prompt echo.
+  const rep = collapseRepeats(text);
+  let t = rep.text;
+  res.repeat = rep.runs.length;
+  res.removed.push(...rep.runs);
+
+  // 1 inside clauses: the whole prompt and its long clauses, wherever they are.
+  for (const p of ps)
+    for (const c of p.inline) {
+      const re = looseRe(c);
+      const probe = new RegExp(re.source, "iu");
+      // Full-width echoes ("ｅｎｇｌｉｓｈ") match once the text is NFKC too.
+      if (!probe.test(t) && probe.test(t.normalize("NFKC"))) t = t.normalize("NFKC");
+      t = t.replace(re, (m) => {
+        res.prompt++;
+        res.removed.push(m);
+        return "";
+      });
+    }
+
+  // 1 and 2 by clause: a prompt clause, or a run of clauses that is stock phrases.
+  const cs = clauses(t);
+  const keep: Clause[] = [];
+  let phraseOnly = true;
+  for (let i = 0; i < cs.length; ) {
+    const n = normalizeTranscript(cs[i].body);
+    if (!n) {
+      i++;
+      continue;
+    }
+    if (ps.some((p) => p.clauses.has(n))) {
+      res.prompt++;
+      res.removed.push(cs[i++].body.trim());
+      continue;
+    }
+    let j = -1; // the longest run of clauses from i that is one or more stock phrases
+    for (let e = cs.length; e > i && j < 0; e--) {
+      const run = normalizeTranscript(joinClauses(cs.slice(i, e)));
+      if (run && IN_TEXT_RE.test(run)) j = e;
+    }
+    if (j > 0) {
+      res.phrase++;
+      res.removed.push(joinClauses(cs.slice(i, j)).trim());
+      i = j;
+      continue;
+    }
+    phraseOnly = false;
+    keep.push(cs[i++]);
+  }
+  // Stock phrases alone, and nothing else found: isHallucination's call.
+  if (phraseOnly && !res.prompt && !res.repeat) return { ...res, phrase: 0, removed: [] };
+
+  let out = joinClauses(keep).trim();
+  // 2 at the end: a phrase stuck onto the last clause ("嗯 字幕志愿者 李宗盛").
+  const tail = stripHallucinationTail(out);
+  if (tail !== out) {
+    res.phrase++;
+    res.removed.push(out.slice(tail.length).trim());
+    out = tail;
+  }
+  if (!res.prompt && !res.phrase && !res.repeat) return res;
+
+  const left = clauses(out)
+    .map((c) => normalizeTranscript(c.body))
+    .filter(Boolean);
+  const scraps = res.prompt > 0 && left.every((c) => ps.some((p) => p.whole.includes(c)));
+  return { ...res, text: out, drop: !left.length || scraps };
 }
 
 /** Words (or, in CJK text, characters), and their keys: lowercased, without punctuation. */
@@ -851,10 +1100,20 @@ export function createMic(d: {
     })
       .then(
         (heard) => {
-          const text = stripHallucinationTail(heard);
-          if (text !== heard) d.log?.({ ev: "stt-hallucination-tail", text: heard.slice(text.length).slice(0, 80) });
-          const drop = isHallucination(text, ms, prob);
-          if (drop) d.log?.({ ev: "stt-hallucination", text: text.slice(0, 80), ms, prob });
+          // Whisper's additions out of real speech: prompt echo, stock phrases, loops.
+          const c = cleanTranscript(heard);
+          const text = c.drop ? "" : c.text;
+          if (c.prompt || c.phrase || c.repeat)
+            d.log?.({
+              ev: "stt-cleaned",
+              prompt: c.prompt,
+              phrase: c.phrase,
+              repeat: c.repeat,
+              dropped: c.drop,
+              text: c.removed.join(" | ").slice(0, 80),
+            });
+          const drop = c.drop || isHallucination(text, ms, prob);
+          if (drop && !c.drop) d.log?.({ ev: "stt-hallucination", text: text.slice(0, 80), ms, prob });
           d.timing?.(seq, { t_sttDone: now(), dropped: drop || !text.trim() });
           if (!echo) d.wake?.verdict(!drop && !!text.trim(), drop ? "hallucination" : text.trim() ? "ok" : "empty");
           q.resolve(seq, drop ? null : text);
