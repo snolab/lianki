@@ -28,11 +28,9 @@ export const CLIPS_PAUSE_NOTE_MS = 60_000;
 /** The URL parameter that carries the handoff token to another origin. */
 export const HANDOFF_PARAM = "lkws";
 /**
- * localStorage on lianki.com and every dev origin: the sink URL a tap offers
- * when it turns recording on (never the switch). Read under this one name
- * only, never through the lk:agent-* alias: a stale alias once won and every
- * clip went to a dead host. Once on, the session's sink (the hub's) is the
- * only one used, on every origin.
+ * The old localStorage key for the sink URL. No longer read: the sink (and
+ * its write key) is the hub's alone, so no origin's key, and no stale
+ * lk:agent-* alias, can point the clips elsewhere. Kept for the name only.
  */
 export const CLIP_SINK_KEY = "lk:debug-clip-sink";
 
@@ -64,26 +62,45 @@ export function clipSinkFrom(raw: string | null | undefined): string | undefined
   return u.href.replace(/\/+$/, "");
 }
 
+/** lianki.com: always one of the owner's origins. */
+export const LIANKI_ORIGIN = "https://lianki.com";
+/** Most owner origins a session carries. */
+export const MAX_ORIGINS = 12;
+
 /**
- * One of the owner's origins, which a recording session may move between:
- * lianki.com, any https tailnet host (the whole-page dev server on :8443, the
- * widget previews), and localhost.
+ * The owner's origins, exactly as configured: each must be an origin and
+ * nothing more (https, or http on localhost; no path, no wildcard). Always
+ * with lianki.com. The agent passes the same list the clip sink allows
+ * (LIANKI_DEV_ORIGINS, LIANKI_CLIPS_ORIGINS), so the two never disagree.
  */
-export function isOwnerOrigin(u: URL): boolean {
-  if (u.protocol === "https:" && (u.hostname === "lianki.com" || u.hostname.endsWith(".ts.net")))
-    return true;
-  return (
-    (u.protocol === "https:" || u.protocol === "http:") &&
-    ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)
-  );
+export function ownerOrigins(list: unknown): string[] {
+  const out = new Set([LIANKI_ORIGIN]);
+  for (const raw of Array.isArray(list) ? list : []) {
+    if (typeof raw !== "string") continue;
+    try {
+      const u = new URL(raw.trim());
+      const local = ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
+      if (u.protocol !== "https:" && !(u.protocol === "http:" && local)) continue;
+      if (raw.trim().replace(/\/$/, "") !== u.origin) continue;
+      out.add(u.origin);
+    } catch {}
+    if (out.size >= MAX_ORIGINS) break;
+  }
+  return [...out];
 }
 
 /**
  * The link to follow with the session along: `href` with `?lkws=<token>`,
- * when it goes to another of the owner's origins. Same origin (sessionStorage
- * carries the session there), another site, or no token: null.
+ * when it goes to another of the session's configured origins (`origins`,
+ * exact). Same origin (sessionStorage carries the session there), any other
+ * host (another person's tailnet host too), or no token: null.
  */
-export function handoffHref(href: string, here: string, token: string | undefined): string | null {
+export function handoffHref(
+  href: string,
+  here: string,
+  token: string | undefined,
+  origins: readonly string[] = [LIANKI_ORIGIN],
+): string | null {
   if (!token) return null;
   let to: URL;
   let from: URL;
@@ -93,7 +110,7 @@ export function handoffHref(href: string, here: string, token: string | undefine
   } catch {
     return null;
   }
-  if (to.origin === from.origin || !isOwnerOrigin(to)) return null;
+  if (to.origin === from.origin || !origins.includes(to.origin)) return null;
   to.searchParams.set(HANDOFF_PARAM, token);
   return to.href;
 }
@@ -126,8 +143,13 @@ export type ClipsState = {
   until?: number;
   /** Ms left until `until`, at the hub's now (so the page's clock does not matter). */
   left?: number;
-  /** Where the clips go; absent = the page's own CLIP_SINK_KEY. */
+  /** Where the clips go, and the sink's write key (clip-sink.ts): the session's only. */
   sink?: string;
+  sinkKey?: string;
+  /** The owner's origins the session may be handed to (exact). */
+  origins?: string[];
+  /** The hub knows a sink, so a tap can turn recording on. */
+  canStart?: boolean;
   /** One-time token for the next cross-origin navigation of this window. */
   handoff?: string;
   /** No page of this session was connected for this long before this one came. */
@@ -138,7 +160,7 @@ export type ClipsState = {
 
 /** What a page sends about recording. */
 export type ClipsPageMessage =
-  | { type: "clips-on"; minutes?: number; sink?: string }
+  | { type: "clips-on"; minutes?: number }
   | { type: "clips-off" }
   | { type: "clips-adopt"; sid: string }
   | { type: "clips-vis"; state: "hidden" | "visible" | "leaving" };
@@ -151,8 +173,7 @@ const minutesOf = (v: unknown): number | undefined =>
 export function parseClipsPageMessage(m: Record<string, unknown>): ClipsPageMessage | null {
   if (m.type === "clips-on") {
     const minutes = minutesOf(m.minutes);
-    const sink = typeof m.sink === "string" ? clipSinkFrom(m.sink) : undefined;
-    return { type: "clips-on", ...(minutes ? { minutes } : {}), ...(sink ? { sink } : {}) };
+    return { type: "clips-on", ...(minutes ? { minutes } : {}) };
   }
   if (m.type === "clips-off") return { type: "clips-off" };
   if (m.type === "clips-adopt") return isClipsId(m.sid) ? { type: "clips-adopt", sid: m.sid } : null;
@@ -171,7 +192,12 @@ export type ClipsControl = {
   match?: string;
   minutes?: number;
   sink?: string;
+  /** The sink's write key, handed to the session's pages only. */
+  sinkKey?: string;
+  /** The owner's origins (exact); lianki.com is always one. */
+  origins?: string[];
 };
+const SINK_KEY = /^[A-Za-z0-9_-]{32,128}$/;
 
 export function parseClipsControl(
   m: Record<string, unknown>,
@@ -188,6 +214,11 @@ export function parseClipsControl(
   const sink = m.sink === undefined ? undefined : clipSinkFrom(String(m.sink));
   if (m.sink !== undefined && !sink)
     return { ok: false, error: "--sink must be an https URL (or http on localhost)" };
+  if (m.sinkKey !== undefined && !(typeof m.sinkKey === "string" && SINK_KEY.test(m.sinkKey)))
+    return { ok: false, error: "the sink key is not one (clip-sink.ts sinkKeys)" };
+  if (op === "on" && sink && !m.sinkKey)
+    return { ok: false, error: "clips on with a sink needs its write key (eval.ts passes it)" };
+  const origins = m.origins === undefined ? undefined : ownerOrigins(m.origins);
   return {
     ok: true,
     value: {
@@ -195,7 +226,8 @@ export function parseClipsControl(
       op,
       ...(match ? { match } : {}),
       ...(minutes ? { minutes } : {}),
-      ...(sink ? { sink } : {}),
+      ...(sink ? { sink, sinkKey: m.sinkKey as string } : {}),
+      ...(origins ? { origins } : {}),
     },
   };
 }

@@ -71,7 +71,11 @@
  *       it follows that window across URLs and origins, with a 录音中 badge and
  *       a Stop on the page. No auto-stop unless --minutes (1–1440). The sink
  *       defaults to this Mac's https://<tailnet>/lianki-widget, and is checked
- *       before turning on. `off` stops the matching ones (all without --device).
+ *       (with its read key) before turning on; its write key goes to the hub,
+ *       which hands it only to that session's pages (clip-sink.ts sinkKeys).
+ *       The session moves only between the owner's exact origins: lianki.com,
+ *       LIANKI_DEV_ORIGINS and LIANKI_CLIPS_ORIGINS (the sink's own allowlist),
+ *       or --origins a,b. `off` stops the matching ones (all without --device).
  *       Never deletes a clip.
  *
  *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet | --loud] "text"   (or - for stdin)
@@ -168,6 +172,7 @@ import { type BusyArgs, beatMessage, endsBeat, idleFor, parseBusyArgs } from "./
 import { ENDED, GRANT_INVALID, chatClose, chatStep, serveClose } from "./eval-grant";
 import { DEAD, PONG, keepalive } from "./keepalive";
 import { tailnetHost } from "./tailnet";
+import { clipsOrigins, sinkKeys } from "./clip-sink";
 import {
   EVAL_TOKEN_FILE,
   type Msg,
@@ -263,6 +268,7 @@ const timeoutFlag = flag("--timeout");
 const deviceFlag = flag("--device");
 const minutesFlag = flag("--minutes");
 const sinkFlag = flag("--sink");
+const originsFlag = flag("--origins");
 const placed = nodeOpts({ taskPath: flag("--task-path"), agent: flag("--agent") });
 if ("error" in placed) {
   console.error(placed.error);
@@ -912,6 +918,7 @@ async function main() {
       sink ??= `https://${tailnetHost()}/lianki-widget`;
       // A sink that does not answer would only look like recording: check it first.
       const ok = await fetch(`${sink.replace(/\/+$/, "")}/clips/index.json`, {
+        headers: { authorization: `Bearer ${sinkKeys().read}` },
         signal: AbortSignal.timeout(5_000),
       }).then(
         (r) => r.ok,
@@ -929,7 +936,13 @@ async function main() {
       op,
       ...(deviceFlag ? { match: deviceFlag } : {}),
       ...(minutes !== undefined ? { minutes } : {}),
-      ...(op === "on" && sink ? { sink } : {}),
+      ...(op === "on" && sink
+        ? {
+            sink,
+            sinkKey: sinkKeys().write,
+            origins: originsFlag ? originsFlag.split(",").map((o) => o.trim()) : clipsOrigins(),
+          }
+        : {}),
     };
     console.log(JSON.stringify(await sendOnce(msg, op === "list" ? "clips-list" : "clips-done")));
     return;

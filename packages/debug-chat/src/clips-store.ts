@@ -19,8 +19,6 @@
  */
 import { createUiStore, type UiStore } from "@lianki/ui-state";
 import {
-  CLIP_SINK_KEY,
-  clipSinkFrom,
   type ClipsPageMessage,
   type ClipsState,
   isClipsId,
@@ -46,6 +44,14 @@ export type ClipsLive = {
   /** Clips the sink did not keep, and whether the latest post failed (the badge turns to "Saving failed"). */
   failed: number;
   failing: boolean;
+  /**
+   * Stop was tapped and the hub has not confirmed it yet (its socket may be
+   * down). Recording is off here at once; "clips-off" is sent again on every
+   * reconnect; the hub's word that this same recording (`stoppedSince`) is
+   * still on never turns it back on. Kept in sessionStorage, so a reload too.
+   */
+  stopPending: boolean;
+  stoppedSince: number;
 };
 export type ClipsDevice = { device: string; autoStop: boolean };
 
@@ -58,6 +64,8 @@ const LIVE_INITIAL: ClipsLive = {
   saved: 0,
   failed: 0,
   failing: false,
+  stopPending: false,
+  stoppedSince: 0,
 };
 
 let live: UiStore<ClipsLive> | undefined;
@@ -65,10 +73,14 @@ let device: UiStore<ClipsDevice> | undefined;
 export const clipsLive = () =>
   (live ??= createUiStore("clips", 1, LIVE_INITIAL, {
     storage: "session",
-    keys: ["sid"],
+    keys: ["sid", "stopPending", "stoppedSince"],
     clean: (s) => {
-      const sid = (s as { sid?: unknown } | null)?.sid;
-      return isClipsId(sid) ? { sid } : {};
+      const v = (s ?? {}) as { sid?: unknown; stopPending?: unknown; stoppedSince?: unknown };
+      return {
+        ...(isClipsId(v.sid) ? { sid: v.sid } : {}),
+        ...(v.stopPending === true ? { stopPending: true } : {}),
+        ...(typeof v.stoppedSince === "number" ? { stoppedSince: v.stoppedSince } : {}),
+      };
     },
   }));
 export const clipsDevice = () =>
@@ -84,6 +96,23 @@ const ignore = () => {};
 
 /** A handoff token taken from this page's URL, until the hub has answered once. */
 let pendingHandoff: string | null = null;
+/**
+ * This document went through pagehide (closed, navigated, or into the
+ * bfcache). Once it has, it never claims to be "the same page coming back"
+ * (`cont=1`): restored from the bfcache it is offered the session, by a tap.
+ */
+let departed = false;
+
+/** pagehide (DebugEval): this document no longer resumes recording by itself. */
+export function clipsDeparted() {
+  departed = true;
+}
+
+/** pageshow from the bfcache (DebugEval): nothing is posted until the hub has said again. */
+export function clipsRestored() {
+  const s = clipsLive().getState();
+  if (s.hub?.on) clipsLive().setState({ hub: { ...s.hub, on: false }, deadline: null });
+}
 
 /**
  * The query the page adds to its hub socket URL: `&ws=<sid>&dev=<device>`,
@@ -107,6 +136,9 @@ export function clipsConnectQuery(
   }
   const q = new URLSearchParams({ ws: s.getState().sid, dev: d.getState().device });
   if (pendingHandoff) q.set("hand", pendingHandoff);
+  // The same document that was recording when its socket dropped (the screen went off).
+  const st = s.getState();
+  if (st.hub?.on && !departed && !st.stopPending) q.set("cont", "1");
   return `&${q}`;
 }
 
@@ -115,7 +147,18 @@ export function onClipsState(msg: unknown, now = Date.now()): boolean {
   const m = msg as ClipsState;
   if (!m || m.type !== "clips" || !isClipsId(m.sid) || !isClipsId(m.device)) return false;
   pendingHandoff = null;
-  const was = clipsLive().getState().hub;
+  const st = clipsLive().getState();
+  if (st.stopPending) {
+    if (m.on && (m.since === st.stoppedSince || m.since === undefined)) {
+      // The hub has not heard the Stop yet: still off here, and asked again.
+      st.send?.({ type: "clips-off" });
+      clipsLive().setState({ sid: m.sid, hub: { ...m, on: false, handoff: undefined }, deadline: null });
+      return true;
+    }
+    // Off at the hub (the Stop arrived), or a new recording the agent started since.
+    clipsLive().setState({ stopPending: false, stoppedSince: 0 });
+  }
+  const was = st.hub;
   // A new recording (or another session): its counts start again.
   const fresh = m.on && (!was?.on || was.sid !== m.sid || was.since !== m.since);
   clipsLive().setState({
@@ -148,23 +191,45 @@ export function clipPosted(
   log?.({ ev: "clip-post-failed", host, ...(r.status ? { status: r.status } : {}), error: r.error });
 }
 
-/** The sink URL this origin offers when a tap turns recording on (lk:debug-clip-sink, read as is). */
-export function localClipSink(): string | undefined {
-  try {
-    return clipSinkFrom(localStorage.getItem(CLIP_SINK_KEY));
-  } catch {
-    return undefined;
-  }
+/**
+ * Post one clip, if this page still records into `sink` when the post is
+ * due (Stop may have come in between): with the session's write key. The
+ * result is counted (clipPosted). Nothing is sent once recording is off.
+ */
+export function postSessionClip(
+  sink: string,
+  post: (key: string | undefined) => Promise<{ ok: true } | { ok: false; status?: number; error: string }>,
+  log?: (ev: Record<string, unknown>) => void,
+): Promise<void> {
+  const hub = clipsLive().getState().hub;
+  if (!hub?.on || hub.sink !== sink) return Promise.resolve();
+  return post(hub.sinkKey).then((r) => clipPosted(r, sink, log));
 }
 
-/** DebugEval's socket opened (a sender) or closed (null; the hub's state is kept for the badge). */
+/** DebugEval's socket opened (a sender) or closed (null; the hub's state is kept for the badge). A Stop still owed is sent at once. */
 export function setClipsSender(send: ClipsLive["send"]) {
   clipsLive().setState({ send });
+  if (send && clipsLive().getState().stopPending) send({ type: "clips-off" });
 }
 
-/** A tap: on, off, continue another window's session. False when the socket is not open. */
+/**
+ * A tap: on, off, continue a session. Stop takes effect here at once,
+ * whether or not the hub can be told now (it is told on reconnect). False
+ * when the socket is not open.
+ */
 export function clipsAction(m: ClipsPageMessage): boolean {
-  return clipsLive().getState().send?.(m) ?? false;
+  const s = clipsLive();
+  const st = s.getState();
+  if (m.type === "clips-off")
+    s.setState({
+      stopPending: true,
+      stoppedSince: st.hub?.since ?? 0,
+      ...(st.hub ? { hub: { ...st.hub, on: false, handoff: undefined } } : {}),
+      deadline: null,
+    });
+  else if (m.type === "clips-on" || m.type === "clips-adopt")
+    s.setState({ stopPending: false, stoppedSince: 0 });
+  return s.getState().send?.(m) ?? false;
 }
 
 /** The deadline passed on this page: stop here at once (the hub stops it too). */

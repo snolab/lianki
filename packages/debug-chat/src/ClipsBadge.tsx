@@ -41,14 +41,17 @@ type Strings = Pick<
   | "clipsSaveFailed"
 >;
 
-/** Add the handoff token to a same-window link to another owner origin, at the moment it is followed. */
+/** The session as the hub last said it. */
+const sessionNow = () => clipsLive().getState().hub;
+
+/** Add the handoff token to a same-window link to another of the session's origins, at the moment it is followed. */
 export function installHandoffLinks(doc: Document = document): () => void {
   const onClick = (e: MouseEvent) => {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
       return;
     const a = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
     if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download")) return;
-    const to = handoffHref(a.href, location.href, clipsLive().getState().hub?.handoff);
+    const to = handoffHref(a.href, location.href, sessionNow()?.handoff, sessionNow()?.origins);
     if (to) a.href = to;
   };
   doc.addEventListener("click", onClick, true);
@@ -56,7 +59,7 @@ export function installHandoffLinks(doc: Document = document): () => void {
   g.__lkClips = {
     go: (url: string) =>
       location.assign(
-        handoffHref(url, location.href, clipsLive().getState().hub?.handoff) ?? url,
+        handoffHref(url, location.href, sessionNow()?.handoff, sessionNow()?.origins) ?? url,
       ),
   };
   return () => {

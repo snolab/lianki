@@ -1250,6 +1250,8 @@ export function postClip(
     track?: Record<string, unknown> | null;
   },
   f: typeof fetch = fetch,
+  /** The sink's write key (the session's, from the hub): `authorization: Bearer`. */
+  key?: string,
 ): Promise<ClipResult> {
   const mime = "audio/wav";
   const form = new FormData();
@@ -1267,7 +1269,11 @@ export function postClip(
       track: meta.track ?? undefined,
     }),
   );
-  return f(`${sink}/clips`, { method: "POST", body: form }).then(
+  return f(`${sink}/clips`, {
+    method: "POST",
+    body: form,
+    ...(key ? { headers: { authorization: `Bearer ${key}` } } : {}),
+  }).then(
     async (r): Promise<ClipResult> => {
       if (!r.ok) return { ok: false, status: r.status, error: `sink ${r.status}` };
       const j = (await r.json().catch(() => ({}))) as { name?: unknown };

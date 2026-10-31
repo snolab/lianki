@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DebugHub, type Socket, type Storage } from "@/workers/push/src/debug";
@@ -10,8 +10,8 @@ import {
   type ClipsState,
   activeSink,
   handoffHref,
-  isOwnerOrigin,
   matchesSession,
+  ownerOrigins,
   parseClipsControl,
   parseClipsPageMessage,
   takeHandoff,
@@ -20,16 +20,24 @@ import {
   clipPosted,
   clipsAction,
   clipsConnectQuery,
+  clipsDeparted,
   clipsDevice,
   clipsExpired,
   clipsLive,
+  clipsRestored,
   holdWakeLock,
-  localClipSink,
   onClipsState,
+  postSessionClip,
   setClipsSender,
 } from "@/packages/debug-chat/src/clips-store";
 import { postClip, sideClip } from "@/packages/debug-chat/src/mic";
-import { CLIPS_ORIGIN, clipsOrigins, handleClips } from "@/scripts/dev/clip-sink";
+import {
+  CLIPS_ORIGIN,
+  type SinkKeys,
+  clipsOrigins,
+  handleClips,
+  sinkKeys,
+} from "@/scripts/dev/clip-sink";
 
 // Voice-clip recording as a window session held by the hub
 // (packages/debug-chat/src/clips.ts; owner, 2026-10-31): never in an
@@ -83,6 +91,8 @@ const SID_B = "sessionBBBBBBBBBBBBB";
 const DEV_PHONE = "devicePHONEPHONEPHONE";
 const DEV_MAC = "deviceMACMACMACMACMAC";
 const SINK = "https://mac.example.ts.net/lianki-widget";
+const KEYS: SinkKeys = { read: "r".repeat(43), write: "w".repeat(43) };
+const DEV_ORIGIN = "https://mac.example.ts.net:8443";
 
 function setup() {
   const sockets: FakeSocket[] = [];
@@ -94,7 +104,7 @@ function setup() {
     () => t,
   );
   const page = async (
-    q: { ws?: string; dev?: string; hand?: string } = {},
+    q: { ws?: string; dev?: string; hand?: string; cont?: string } = {},
     label = "/words pwa Android",
     origin = "https://lianki.com",
   ) => {
@@ -124,6 +134,13 @@ function setup() {
     return c;
   };
   const last = (ws: FakeSocket, type: string) => ws.sent.filter((m) => m.type === type).at(-1);
+  /** The sink the agent set up earlier (`clips on --sink`), which a tap reuses. */
+  storage.store.set("clipsink", {
+    url: SINK,
+    key: KEYS.write,
+    origins: [CLIPS_ORIGIN, DEV_ORIGIN],
+    at: 0,
+  });
   return {
     hub,
     storage,
@@ -138,19 +155,25 @@ function setup() {
 }
 
 describe("clips rules (clips.ts)", () => {
-  it("hands off only to another of the owner's origins, in the query", () => {
+  it("hands off only to the session's exact owner origins, in the query", () => {
     const tok = "t".repeat(32);
     const here = "https://lianki.com/words";
-    expect(handoffHref("https://taku.onca-tint.ts.net:8443/words?x=1", here, tok)).toBe(
-      `https://taku.onca-tint.ts.net:8443/words?x=1&${HANDOFF_PARAM}=${tok}`,
+    const origins = [CLIPS_ORIGIN, DEV_ORIGIN];
+    expect(handoffHref(`${DEV_ORIGIN}/words?x=1`, here, tok, origins)).toBe(
+      `${DEV_ORIGIN}/words?x=1&${HANDOFF_PARAM}=${tok}`,
     );
-    expect(handoffHref("/en/words", here, tok)).toBeNull(); // same origin: sessionStorage carries it
-    expect(handoffHref("https://example.com/", here, tok)).toBeNull(); // never to another site
+    expect(handoffHref("/en/words", here, tok, origins)).toBeNull(); // same origin: sessionStorage carries it
+    expect(handoffHref("https://example.com/", here, tok, origins)).toBeNull();
+    // Another person's tailnet host, another port of the owner's, localhost: never the token.
+    expect(handoffHref("https://someone.other.ts.net/", here, tok, origins)).toBeNull();
+    expect(handoffHref("https://mac.example.ts.net/", here, tok, origins)).toBeNull();
+    expect(handoffHref("http://localhost:3000/", here, tok, origins)).toBeNull();
+    expect(handoffHref("https://lianki.com/", `${DEV_ORIGIN}/`, undefined, origins)).toBeNull();
+    // Without a list: lianki.com only.
+    expect(handoffHref(`${DEV_ORIGIN}/`, here, tok)).toBeNull();
     expect(
-      handoffHref("https://lianki.com/", "https://taku.onca-tint.ts.net:8443/", undefined),
-    ).toBeNull();
-    expect(isOwnerOrigin(new URL("http://localhost:3000"))).toBe(true);
-    expect(isOwnerOrigin(new URL("http://lianki.com"))).toBe(false);
+      ownerOrigins([DEV_ORIGIN, "https://x.ts.net/path", "*.ts.net", "http://plain.example", 7]),
+    ).toEqual([CLIPS_ORIGIN, DEV_ORIGIN]);
   });
 
   it("takes the token out of the address", () => {
@@ -164,13 +187,34 @@ describe("clips rules (clips.ts)", () => {
   });
 
   it("parses page and agent messages, and refuses what is not one", () => {
+    // A page never names the sink: only the agent's setup does.
     expect(parseClipsPageMessage({ type: "clips-on", minutes: 30.4, sink: SINK })).toEqual({
       type: "clips-on",
       minutes: 30,
-      sink: SINK,
     });
-    expect(parseClipsPageMessage({ type: "clips-on", sink: "http://evil.example" })).toEqual({
-      type: "clips-on",
+    expect(parseClipsControl({ type: "clips", op: "on", match: "x", sink: SINK }).ok).toBe(false);
+    expect(
+      parseClipsControl({ type: "clips", op: "on", match: "x", sink: SINK, sinkKey: "short" }).ok,
+    ).toBe(false);
+    expect(
+      parseClipsControl({
+        type: "clips",
+        op: "on",
+        match: "x",
+        sink: SINK,
+        sinkKey: KEYS.write,
+        origins: [DEV_ORIGIN, "https://evil.ts.net/x"],
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        type: "clips",
+        op: "on",
+        match: "x",
+        sink: SINK,
+        sinkKey: KEYS.write,
+        origins: [CLIPS_ORIGIN, DEV_ORIGIN],
+      },
     });
     expect(parseClipsPageMessage({ type: "clips-vis", state: "asleep" })).toBeNull();
     expect(parseClipsControl({ type: "clips", op: "on" }).ok).toBe(false);
@@ -203,8 +247,24 @@ describe("the hub holds the window session (debug.ts)", () => {
     expect(p.clips()).toMatchObject({ type: "clips", sid: SID_A, device: DEV_PHONE, on: false });
     expect([...s.storage.store.keys()].some((k) => k.startsWith("clips:"))).toBe(false);
     const c = await s.agent(p);
-    await s.msg(c, { type: "clips", op: "on", match: "android", sink: SINK });
-    expect(p.clips()).toMatchObject({ on: true, sid: SID_A, sink: SINK });
+    const other = "https://other.example.ts.net/w";
+    await s.msg(c, {
+      type: "clips",
+      op: "on",
+      match: "android",
+      sink: other,
+      sinkKey: KEYS.write,
+      origins: [DEV_ORIGIN],
+    });
+    expect(p.clips()).toMatchObject({
+      on: true,
+      sid: SID_A,
+      sink: other,
+      sinkKey: KEYS.write,
+      origins: [CLIPS_ORIGIN, DEV_ORIGIN],
+    });
+    // The setup is kept for a later tap.
+    expect(s.storage.store.get("clipsink")).toMatchObject({ url: other, key: KEYS.write });
     expect(p.clips()?.handoff).toMatch(/^[A-Za-z0-9_-]{20,64}$/);
     expect(p.clips()?.until).toBeUndefined(); // no auto-stop unless asked
     expect(s.last(c, "clips-done")).toMatchObject({ op: "on", sessions: [SID_A] });
@@ -216,19 +276,24 @@ describe("the hub holds the window session (debug.ts)", () => {
 
   it("refuses an agent on with no open page matching, or with nowhere to keep clips", async () => {
     const s = setup();
+    s.storage.store.delete("clipsink");
     const p = await s.page({ ws: SID_A, dev: DEV_PHONE });
+    expect(p.clips()?.canStart).toBe(false);
     const c = await s.agent(p);
-    await s.msg(c, { type: "clips", op: "on", match: "iphone", sink: SINK });
+    await s.msg(c, { type: "clips", op: "on", match: "iphone", sink: SINK, sinkKey: KEYS.write });
     expect(String(s.last(c, "error")?.error)).toContain("no open owner page");
     await s.msg(c, { type: "clips", op: "on", match: "android" });
     expect(String(s.last(c, "error")?.error)).toContain("--sink");
+    expect(p.clips()?.on).toBe(false);
+    // Nor can a tap, with no sink set up.
+    await s.msg(p, { type: "clips-on" });
     expect(p.clips()?.on).toBe(false);
   });
 
   it("follows the window to another origin with the one-time token, which then lapses", async () => {
     const s = setup();
     const p = await s.page({ ws: SID_A, dev: DEV_PHONE });
-    await s.msg(p, { type: "clips-on", sink: SINK });
+    await s.msg(p, { type: "clips-on" });
     const token = p.clips()?.handoff as string;
     // The page navigates to the dev origin: it closes, the new one arrives with the token.
     await s.msg(p, { type: "clips-vis", state: "leaving" });
@@ -238,7 +303,13 @@ describe("the hub holds the window session (debug.ts)", () => {
       "/words Android",
       "https://taku.onca-tint.ts.net:8443",
     );
-    expect(dev.clips()).toMatchObject({ on: true, sid: SID_A, device: DEV_PHONE, sink: SINK });
+    expect(dev.clips()).toMatchObject({
+      on: true,
+      sid: SID_A,
+      device: DEV_PHONE,
+      sink: SINK,
+      sinkKey: KEYS.write,
+    });
     expect(dev.clips()?.handoff).not.toBe(token); // rotated
     // The old token is spent: another window with it starts its own, unrecorded session.
     const other = await s.page({ ws: "sessionCCCCCCCCCCCCC", dev: DEV_MAC, hand: token });
@@ -248,7 +319,7 @@ describe("the hub holds the window session (debug.ts)", () => {
   it("a closed window ends after CLIPS_GONE_MS; a sleeping screen keeps it for hours and resumes", async () => {
     const s = setup();
     const p = await s.page({ ws: SID_A, dev: DEV_PHONE });
-    await s.msg(p, { type: "clips-on", sink: SINK });
+    await s.msg(p, { type: "clips-on" });
     await s.msg(p, { type: "clips-vis", state: "leaving" });
     await s.leave(p);
     s.tick(CLIPS_GONE_MS + 1);
@@ -256,14 +327,14 @@ describe("the hub holds the window session (debug.ts)", () => {
     expect(s.storage.store.has(`clips:${SID_A}`)).toBe(false);
 
     const q = await s.page({ ws: SID_B, dev: DEV_PHONE });
-    await s.msg(q, { type: "clips-on", sink: SINK });
+    await s.msg(q, { type: "clips-on" });
     await s.msg(q, { type: "clips-vis", state: "hidden" }); // screen off: the socket drops later
     await s.leave(q);
     s.tick(CLIPS_GONE_MS * 10);
     await s.hub.clipsSweep();
     expect(s.storage.store.has(`clips:${SID_B}`)).toBe(true);
-    // The screen is back on: the same window reconnects and records again, with no tap.
-    const back = await s.page({ ws: SID_B, dev: DEV_PHONE });
+    // The screen is back on: the same document reconnects and records again, with no tap.
+    const back = await s.page({ ws: SID_B, dev: DEV_PHONE, cont: "1" });
     expect(back.clips()).toMatchObject({ on: true, sid: SID_B, paused: CLIPS_GONE_MS * 10 });
     await s.msg(back, { type: "clips-vis", state: "hidden" });
     await s.leave(back);
@@ -272,10 +343,36 @@ describe("the hub holds the window session (debug.ts)", () => {
     expect(s.storage.store.has(`clips:${SID_B}`)).toBe(false);
   });
 
+  it("a tab closed while hidden, restored later, asks for a tap instead of resuming", async () => {
+    const s = setup();
+    const p = await s.page({ ws: SID_A, dev: DEV_PHONE });
+    await s.msg(p, { type: "clips-on" });
+    await s.msg(p, { type: "clips-vis", state: "hidden" });
+    await s.leave(p); // closed while hidden: no "leaving" could be sent
+    s.tick(CLIPS_GONE_MS * 30);
+    // A new document with the same window id (tab restore), or one back from the bfcache: no cont.
+    const restored = await s.page({ ws: SID_A, dev: DEV_PHONE });
+    expect(restored.clips()).toMatchObject({ on: false, resumable: [{ sid: SID_A }] });
+    expect(restored.clips()?.sinkKey).toBeUndefined();
+    await s.msg(restored, { type: "clips-adopt", sid: SID_A });
+    expect(restored.clips()).toMatchObject({ on: true, sid: SID_A });
+  });
+
+  it("a quick reload or navigation (not hidden) rejoins by itself", async () => {
+    const s = setup();
+    const p = await s.page({ ws: SID_A, dev: DEV_PHONE });
+    await s.msg(p, { type: "clips-on" });
+    await s.msg(p, { type: "clips-vis", state: "leaving" });
+    await s.leave(p);
+    s.tick(5_000);
+    const again = await s.page({ ws: SID_A, dev: DEV_PHONE });
+    expect(again.clips()).toMatchObject({ on: true, sid: SID_A });
+  });
+
   it("an address typed by hand: this device continues; another device is only offered it", async () => {
     const s = setup();
     const p = await s.page({ ws: SID_A, dev: DEV_PHONE });
-    await s.msg(p, { type: "clips-on", sink: SINK });
+    await s.msg(p, { type: "clips-on" });
     await s.msg(p, { type: "clips-vis", state: "leaving" });
     const mac = await s.page({ ws: "sessionMMMMMMMMMMMMM", dev: DEV_MAC }, "/ Macintosh");
     expect(mac.clips()).toMatchObject({ on: false, resumable: [{ sid: SID_A }] });
@@ -289,7 +386,7 @@ describe("the hub holds the window session (debug.ts)", () => {
   it("Continue: a tap takes over a session that lost its page", async () => {
     const s = setup();
     const p = await s.page({ ws: SID_A, dev: DEV_PHONE });
-    await s.msg(p, { type: "clips-on", sink: SINK });
+    await s.msg(p, { type: "clips-on" });
     await s.msg(p, { type: "clips-vis", state: "leaving" });
     await s.leave(p);
     const mac = await s.page({ ws: "sessionMMMMMMMMMMMMM", dev: DEV_MAC });
@@ -300,19 +397,20 @@ describe("the hub holds the window session (debug.ts)", () => {
   it("auto-stop only when asked: the hub stops it at the time, and Stop is one tap", async () => {
     const s = setup();
     const p = await s.page({ ws: SID_A, dev: DEV_PHONE });
-    await s.msg(p, { type: "clips-on", sink: SINK, minutes: 60 });
+    await s.msg(p, { type: "clips-on", minutes: 60 });
     expect(p.clips()).toMatchObject({ on: true, left: 60 * 60_000 });
     s.tick(60 * 60_000);
     await s.hub.alarm();
     expect(p.clips()?.on).toBe(false);
     expect(s.storage.store.has(`clips:${SID_A}`)).toBe(false);
-    await s.msg(p, { type: "clips-on", sink: SINK });
+    await s.msg(p, { type: "clips-on" });
     await s.msg(p, { type: "clips-off" });
     expect(p.clips()?.on).toBe(false);
   });
 
   it("a tap with nowhere to keep clips does not turn it on", async () => {
     const s = setup();
+    s.storage.store.delete("clipsink");
     const p = await s.page({ ws: SID_A, dev: DEV_PHONE });
     await s.msg(p, { type: "clips-on" });
     expect(p.clips()?.on).toBe(false);
@@ -429,27 +527,76 @@ describe("the page's taps and the sink a tap offers", () => {
     expect(sent).toEqual([{ type: "clips-off" }]);
   });
 
-  it("reads lk:debug-clip-sink under that one name, never the lk:agent-* alias", () => {
-    const g = globalThis as { localStorage?: unknown };
-    const had = g.localStorage;
-    const store = new Map([
-      ["lk:agent-clip-sink", "https://tak-1.old.ts.net/lianki-widget"],
-      ["lk:debug-clip-sink", `${SINK}/`],
-    ]);
-    g.localStorage = { getItem: (k: string) => store.get(k) ?? null };
-    try {
-      expect(localClipSink()).toBe(SINK);
-      store.delete("lk:debug-clip-sink");
-      expect(localClipSink()).toBeUndefined();
-      g.localStorage = {
-        getItem: () => {
-          throw new Error("blocked");
-        },
-      };
-      expect(localClipSink()).toBeUndefined();
-    } finally {
-      g.localStorage = had;
-    }
+  it("Stop stops here at once, with the hub unreachable, and stays stopped", async () => {
+    onClipsState({
+      type: "clips",
+      sid: SID_A,
+      device: DEV_PHONE,
+      on: true,
+      since: 100,
+      sink: SINK,
+      sinkKey: KEYS.write,
+    });
+    let posts = 0;
+    const post = async (key: string | undefined) => {
+      posts++;
+      expect(key).toBe(KEYS.write);
+      return { ok: true as const };
+    };
+    await postSessionClip(SINK, post);
+    expect(posts).toBe(1);
+    // The socket is down: the tap cannot reach the hub, but recording is off here now.
+    setClipsSender(null);
+    expect(clipsAction({ type: "clips-off" })).toBe(false);
+    expect(clipsLive().getState()).toMatchObject({ stopPending: true, stoppedSince: 100 });
+    expect(clipsLive().getState().hub?.on).toBe(false);
+    await postSessionClip(SINK, post); // an utterance after Stop: not posted
+    expect(posts).toBe(1);
+    // Reconnect: the Stop is sent again at once.
+    const sent: unknown[] = [];
+    setClipsSender((m) => {
+      sent.push(m);
+      return true;
+    });
+    expect(sent).toEqual([{ type: "clips-off" }]);
+    // The hub, not yet told, still says this recording is on: it stays off and is told again.
+    onClipsState({
+      type: "clips",
+      sid: SID_A,
+      device: DEV_PHONE,
+      on: true,
+      since: 100,
+      sink: SINK,
+    });
+    expect(clipsLive().getState().hub?.on).toBe(false);
+    expect(sent).toEqual([{ type: "clips-off" }, { type: "clips-off" }]);
+    await postSessionClip(SINK, post);
+    expect(posts).toBe(1);
+    // The hub confirms: done. A new recording (a new tap, or the agent) is on again.
+    onClipsState({ type: "clips", sid: SID_A, device: DEV_PHONE, on: false });
+    expect(clipsLive().getState().stopPending).toBe(false);
+    onClipsState({
+      type: "clips",
+      sid: SID_A,
+      device: DEV_PHONE,
+      on: true,
+      since: 200,
+      sink: SINK,
+    });
+    expect(clipsLive().getState().hub?.on).toBe(true);
+    setClipsSender(null);
+  });
+
+  it("the same document coming back says so (cont=1); one that went through pagehide does not", () => {
+    onClipsState({ type: "clips", sid: SID_A, device: DEV_PHONE, on: true, since: 300 });
+    const q1 = new URLSearchParams(clipsConnectQuery({ href: "https://lianki.com/" }, () => {}));
+    expect(q1.get("cont")).toBe("1");
+    clipsDeparted();
+    clipsRestored(); // back from the bfcache: nothing is posted until the hub says again
+    expect(clipsLive().getState().hub?.on).toBe(false);
+    onClipsState({ type: "clips", sid: SID_A, device: DEV_PHONE, on: true, since: 300 });
+    const q2 = new URLSearchParams(clipsConnectQuery({ href: "https://lianki.com/" }, () => {}));
+    expect(q2.get("cont")).toBeNull();
   });
 
   it("a wake lock that is refused says so; one granted after Stop is let go", async () => {
@@ -555,7 +702,7 @@ describe("the sink takes the owner's origins (clip-sink.ts)", () => {
   afterEach(() => {
     for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
   });
-  const post = (dir: string, origin: string, allowed: string[]) => {
+  const post = (dir: string, origin: string, allowed: string[], key = KEYS.write) => {
     const form = new FormData();
     form.append("audio", new Blob([new Uint8Array([1, 2])], { type: "audio/wav" }), "a.wav");
     form.append(
@@ -563,12 +710,56 @@ describe("the sink takes the owner's origins (clip-sink.ts)", () => {
       JSON.stringify({ mime: "audio/wav", durationMs: 1, label: "", transcript: "" }),
     );
     return handleClips(
-      new Request("http://localhost/clips", { method: "POST", body: form, headers: { origin } }),
+      new Request("http://localhost/clips", {
+        method: "POST",
+        body: form,
+        headers: { origin, authorization: `Bearer ${key}` },
+      }),
       dir,
       () => new Date("2026-10-31T09:00:00Z"),
       allowed,
+      KEYS,
     );
   };
+  const get = (dir: string, path: string, headers: Record<string, string> = {}) =>
+    handleClips(
+      new Request(`http://localhost${path}`, { headers }),
+      dir,
+      undefined,
+      [CLIPS_ORIGIN],
+      KEYS,
+    );
+
+  it("reading needs the read key, writing the write key: an allowed origin alone is not enough", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "clips-"));
+    dirs.push(dir);
+    // Another account's page on lianki.com, or a client with no Origin, has no key.
+    expect((await post(dir, CLIPS_ORIGIN, [CLIPS_ORIGIN], ""))!.status).toBe(401);
+    expect((await post(dir, CLIPS_ORIGIN, [CLIPS_ORIGIN], KEYS.read))!.status).toBe(401);
+    expect((await post(dir, CLIPS_ORIGIN, [CLIPS_ORIGIN]))!.status).toBe(200);
+    expect((await get(dir, "/clips/index.json"))!.status).toBe(401);
+    expect((await get(dir, "/clips/index.json", { origin: CLIPS_ORIGIN }))!.status).toBe(401);
+    expect(
+      (await get(dir, "/clips/index.json", { authorization: `Bearer ${KEYS.write}` }))!.status,
+    ).toBe(401);
+    const ok = (await get(dir, "/clips/index.json", { authorization: `Bearer ${KEYS.read}` }))!;
+    expect(ok.status).toBe(200);
+    const { clips } = (await ok.json()) as { clips: { file: string }[] };
+    expect((await get(dir, `/clips/${clips[0].file}`))!.status).toBe(401);
+    expect(
+      (await get(dir, `/clips/${clips[0].file}`, { authorization: `Bearer ${KEYS.read}` }))!.status,
+    ).toBe(200);
+  });
+
+  it("makes its keys once, 0600, and reads them back", () => {
+    const dir = mkdtempSync(join(tmpdir(), "keys-"));
+    dirs.push(dir);
+    const file = join(dir, "k.json");
+    const a = sinkKeys(file);
+    expect(a.read).not.toBe(a.write);
+    expect(sinkKeys(file)).toEqual(a);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+  });
 
   it("lianki.com by default; listed exact https origins too; nothing else", async () => {
     expect(clipsOrigins({})).toEqual([CLIPS_ORIGIN]);
@@ -597,8 +788,14 @@ describe("the sink takes the owner's origins (clip-sink.ts)", () => {
     const before = readdirSync(dir).sort();
     const name = before.find((f) => f.endsWith(".wav"))!;
     const del = await handleClips(
-      new Request(`http://localhost/clips/${name}`, { method: "DELETE" }),
+      new Request(`http://localhost/clips/${name}`, {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${KEYS.read}` },
+      }),
       dir,
+      undefined,
+      [CLIPS_ORIGIN],
+      KEYS,
     );
     expect(del!.status).toBe(405);
     expect(readdirSync(dir).sort()).toEqual(before);

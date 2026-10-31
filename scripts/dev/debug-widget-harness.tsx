@@ -360,7 +360,7 @@ function HarnessTree() {
  * `?clips=on|failing|remind|continue`: the recording badge with a made-up
  * hub (clips-store.ts): on with 3 clips saved; a failed save; 4 min left of
  * an auto-stop; another window's session offered. Stop and Continue answer
- * as the hub would. `&sink=<url>` also offers the menu's "Record voice clips".
+ * as the hub would (with a sink set up, so the menu offers "Record voice clips").
  */
 {
   const q = new URLSearchParams(location.search);
@@ -369,11 +369,11 @@ function HarnessTree() {
     const sid = "harnessSESSIONsid0001";
     const device = "harnessDEVICEid000001";
     const sink = "https://example.ts.net/lianki-widget";
-    if (q.get("sink")) localStorage.setItem("lk:debug-clip-sink", q.get("sink") as string);
     const on = (extra: Record<string, unknown> = {}) =>
       onClipsState({ type: "clips", sid, device, on: true, since: Date.now(), sink, ...extra });
     setClipsSender((m) => {
-      if (m.type === "clips-off") onClipsState({ type: "clips", sid, device, on: false });
+      if (m.type === "clips-off")
+        onClipsState({ type: "clips", sid, device, on: false, canStart: true });
       else if (m.type === "clips-on" || m.type === "clips-adopt")
         on(m.type === "clips-on" && m.minutes ? { left: m.minutes * 60_000 } : {});
       return true;
@@ -384,6 +384,7 @@ function HarnessTree() {
         sid,
         device,
         on: false,
+        canStart: true,
         resumable: [
           { sid: "otherWINDOWsession01", label: "/words pwa Android", since: Date.now() },
         ],

@@ -19,7 +19,7 @@ import {
   scheduleTick,
 } from "./mic";
 import { voiceLatency, noteSttVia } from "./latency";
-import { clipPosted } from "./clips-store";
+import { postSessionClip } from "./clips-store";
 import { createLocalStt } from "./local-stt";
 import { localSttStrings, wakeStrings } from "./ui-strings";
 import { createKws } from "./wake-kws";
@@ -369,13 +369,13 @@ function session(): MicSession {
             aec: v.aec(),
             track: appliedSettings(),
           };
-          sideClip(() => postClip(sink, wav, meta).then((r) => clipPosted(r, sink, v.log)));
+          sideClip(() => postSessionClip(sink, (key) => postClip(sink, wav, meta, fetch, key), v.log));
         }
         return out.text;
       } catch (e) {
         if (sink) {
           const meta = { at, durationMs, label: cfg.label, aec: v.aec(), track: appliedSettings() };
-          sideClip(() => postClip(sink, wav, meta).then((r) => clipPosted(r, sink, v.log)));
+          sideClip(() => postSessionClip(sink, (key) => postClip(sink, wav, meta, fetch, key), v.log));
         }
         throw e;
       }

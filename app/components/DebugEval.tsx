@@ -26,7 +26,13 @@ import { speakReply } from "@lianki/debug-chat/DebugChat";
 import { voice } from "@lianki/debug-chat/voice";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
-import { clipsConnectQuery, onClipsState, setClipsSender } from "@lianki/debug-chat/clips-store";
+import {
+  clipsConnectQuery,
+  clipsDeparted,
+  clipsRestored,
+  onClipsState,
+  setClipsSender,
+} from "@lianki/debug-chat/clips-store";
 import {
   type PageErrorReporter,
   createPageErrorReporter,
@@ -441,7 +447,12 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           ws.send(JSON.stringify({ type: "clips-vis", state }));
       } catch {}
     };
-    const leaving = () => vis("leaving");
+    // This document no longer resumes recording by itself (a bfcache return asks for a tap).
+    const leaving = () => {
+      vis("leaving");
+      clipsDeparted();
+    };
+    const restored = (e: PageTransitionEvent) => e.persisted && clipsRestored();
     const update = () => {
       vis(document.visibilityState === "visible" ? "visible" : "hidden");
       clearTimeout(idle);
@@ -455,11 +466,13 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
 
     update();
     window.addEventListener("pagehide", leaving);
+    window.addEventListener("pageshow", restored);
     document.addEventListener("visibilitychange", update);
     window.addEventListener(DEBUG_EVENT, update);
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener("pagehide", leaving);
+      window.removeEventListener("pageshow", restored);
       document.removeEventListener("visibilitychange", update);
       window.removeEventListener(DEBUG_EVENT, update);
       window.removeEventListener("storage", onStorage);

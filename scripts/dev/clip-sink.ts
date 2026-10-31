@@ -12,13 +12,32 @@
  * Cross-origin access is for https://lianki.com, plus the exact https origins
  * in LIANKI_DEV_ORIGINS and LIANKI_CLIPS_ORIGINS (comma-separated: the
  * whole-page dev server on :8443, the widget previews). Nothing else, no
- * wildcards. Nothing here ever deletes a clip. The folder is
+ * wildcards. Nothing here ever deletes a clip.
+ *
+ * Every request also proves it is the owner's, with `authorization: Bearer
+ * <key>` (sinkKeys(): two random keys in a 0600 file on this machine):
+ *   write  POST /clips: handed by the agent (`eval.ts clips on`) to the hub,
+ *          which gives it only to the owner's pages of a recording session;
+ *   read   GET /clips/*, and POST /clips/bench: the agent and the bench only.
+ * Without the right key: 401. So a page on an allowed origin that is not the
+ * owner's recording session (another account on lianki.com), or a client
+ * with no Origin at all, can neither read the clips nor add to them.
+ *
+ * The folder is
  * LIANKI_CLIPS_DIR, else `lianki-voice-clips` in the home directory,
  * worked out at runtime.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { timingSafeEqual } from "node:crypto";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export const CLIPS_ORIGIN = "https://lianki.com";
 
@@ -40,6 +59,37 @@ export function clipsOrigins(env: Record<string, string | undefined> = process.e
     }
   return [...out];
 }
+/** The sink's two keys (see the header). */
+export type SinkKeys = { read: string; write: string };
+
+/** Where the keys live: LIANKI_CLIP_SINK_KEYS, else ~/.config/lianki/clip-sink-keys.json. */
+export const sinkKeysFile = (env: Record<string, string | undefined> = process.env) =>
+  env.LIANKI_CLIP_SINK_KEYS || join(homedir(), ".config", "lianki", "clip-sink-keys.json");
+
+const KEY = /^[A-Za-z0-9_-]{32,128}$/;
+const newKey = () => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
+
+/** The sink's keys, made (0600) the first time. The server, eval.ts and the bench share them. */
+export function sinkKeys(file = sinkKeysFile()): SinkKeys {
+  try {
+    const k = JSON.parse(readFileSync(file, "utf8")) as Partial<SinkKeys>;
+    if (KEY.test(k.read ?? "") && KEY.test(k.write ?? "")) return k as SinkKeys;
+  } catch {}
+  const keys = { read: newKey(), write: newKey() };
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(keys), { mode: 0o600 });
+  chmodSync(file, 0o600);
+  return keys;
+}
+
+/** Does the request carry this key (`authorization: Bearer <key>`)? Constant time. */
+export function hasKey(req: Request, key: string): boolean {
+  const got = /^Bearer (\S+)$/.exec(req.headers.get("authorization") ?? "")?.[1] ?? "";
+  const a = Buffer.from(got);
+  const b = Buffer.from(key);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 /** Largest clip accepted, in bytes. */
 export const MAX_CLIP_BYTES = 5 * 1024 * 1024;
 
@@ -145,6 +195,7 @@ export async function handleClips(
   dir: string,
   now: () => Date = () => new Date(),
   allowed: string[] = clipsOrigins(),
+  keys: SinkKeys = sinkKeys(),
 ): Promise<Response | null> {
   const url = new URL(req.url);
   const path = url.pathname.replace(/^.*?\/clips/, "/clips");
@@ -162,11 +213,14 @@ export async function handleClips(
       headers: {
         ...cors,
         "access-control-allow-methods": "GET, POST",
-        "access-control-allow-headers": "content-type",
+        "access-control-allow-headers": "content-type, authorization",
         "access-control-allow-private-network": "true",
       },
     });
   if (origin && !allowed.includes(origin)) return json({ error: "origin not allowed" }, 403);
+  // Clips are written with the session's key; everything else needs the agent's.
+  const need = req.method === "POST" && path === "/clips" ? keys.write : keys.read;
+  if (!hasKey(req, need)) return json({ error: "not the owner's key" }, 401);
 
   if (req.method === "POST" && path === "/clips") {
     let form: FormData;

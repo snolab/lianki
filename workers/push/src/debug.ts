@@ -116,6 +116,12 @@
  * (`hand=`) joins the session and takes its device id. A page with no token
  * whose device had a session lose its page moments ago (an address typed by
  * hand) continues it; another device's is only offered (`resumable`, a tap).
+ * A page silently rejoins its own session after a long gap only when it is
+ * the same document coming back (`cont=1`: the screen was off); a tab closed
+ * while hidden and restored, or one back from the bfcache, is offered it.
+ * The sink the agent set up (`clipsink`: URL, write key, the owner's exact
+ * origins) is what a tap reuses; pages get the key and the origins only
+ * while their session records.
  * Pages turn it on (a tap) and off; the agent too ({type:"clips", op}). Never
  * a friend's. Clips themselves never pass through here.
  */
@@ -172,6 +178,7 @@ import {
   CLIPS_HIDDEN_MS,
   type ClipsControl,
   type ClipsState,
+  LIANKI_ORIGIN,
   isClipsId,
   isHandoffToken,
   matchesSession,
@@ -244,8 +251,19 @@ type ClipsRec = {
   hidden?: boolean;
   /** The last page's label, for the agent's list and a "Continue" offer. */
   label?: string;
+  /** The sink's write key (clip-sink.ts), for this session's pages only. */
+  sinkKey?: string;
+  /** The owner's origins the session may be handed to, exactly. */
+  origins?: string[];
 };
 const clipsKey = (sid: string) => `clips:${sid}`;
+/**
+ * The sink the agent set up (`clips on --sink`, with its write key and the
+ * owner's origins), kept so a tap on a page can turn recording on later.
+ * Configuration, not a session: replaced by the next `clips on --sink`.
+ */
+type SinkConfig = { url: string; key: string; origins: string[]; at: number };
+const SINK_CONFIG = "clipsink";
 /**
  * `grant` is the hash of the resumable chat token this socket holds, if any.
  * `forUser`/`forEmail`: the friend this pairing is for; absent = the owner.
@@ -1621,6 +1639,11 @@ export class DebugHub {
     return [...(await this.ctx.storage.list<ClipsRec>({ prefix: "clips:" })).values()];
   }
 
+  /** The sink the agent last set up (`clips on --sink`), which a tap on a page reuses. */
+  private sinkConfig() {
+    return this.ctx.storage.get<SinkConfig>(SINK_CONFIG);
+  }
+
   /** What one page of a session is told; `token` is the session's fresh handoff token. */
   private clipsMsg(
     sid: string,
@@ -1640,6 +1663,8 @@ export class DebugHub {
             since: rec.at,
             ...(rec.until ? { until: rec.until, left: Math.max(0, rec.until - t) } : {}),
             ...(rec.sink ? { sink: rec.sink } : {}),
+            ...(rec.sinkKey ? { sinkKey: rec.sinkKey } : {}),
+            origins: rec.origins ?? [LIANKI_ORIGIN],
             ...(token ? { handoff: token } : {}),
           }
         : {}),
@@ -1670,12 +1695,25 @@ export class DebugHub {
   /** Recording stops (a tap, the agent, the auto-stop): the record goes, its pages hear "off". */
   private async clipsStop(rec: ClipsRec, why: string) {
     await this.ctx.storage.delete(clipsKey(rec.sid));
+    const canStart = !!(await this.sinkConfig());
     for (const p of this.pages(OWNER_THREAD))
-      if (p.a.sid === rec.sid) send(p.ws, this.clipsMsg(rec.sid, p.a.device ?? rec.device));
+      if (p.a.sid === rec.sid)
+        send(
+          p.ws,
+          this.clipsMsg(rec.sid, p.a.device ?? rec.device, undefined, undefined, { canStart }),
+        );
     console.log(JSON.stringify({ msg: "debug.clips-off", sid: rec.sid.slice(0, 6), why }));
   }
 
-  /** An owner page connected: put it in its window's session (see the header). */
+  /**
+   * An owner page connected: put it in its window's session (see the header).
+   * It joins a recording session silently only when nothing suggests a
+   * window was closed in between: a handoff token, the same document coming
+   * back (`cont=1`: it was recording when its socket dropped, e.g. the screen
+   * went off), or a quick reload or navigation (not hidden, within
+   * CLIPS_GONE_MS). A tab closed while hidden and restored later, or a page
+   * back from the bfcache, is offered "Continue recording" instead: a tap.
+   */
   private async clipsJoin(ws: Socket, url: URL) {
     const page = att(ws) as PageAtt;
     const t = this.now();
@@ -1684,38 +1722,46 @@ export class DebugHub {
     if (!isClipsId(sid)) sid = randomId();
     if (!isClipsId(device)) device = randomId();
     const hand = url.searchParams.get("hand");
+    const cont = url.searchParams.get("cont") === "1";
     const all = await this.clipRecords();
+    const canStart = !!(await this.sinkConfig());
     let rec: ClipsRec | undefined;
     if (isHandoffToken(hand)) {
       const h = await hashToken(hand);
       rec = all.find((r) => r.handoff === h);
     }
-    rec ??= all.find((r) => r.sid === sid);
-    // No token (an address typed by hand): this device's session that just lost its page.
-    // A page that said it is leaving counts as gone already (its close may come after this knock).
-    const orphan = (r: ClipsRec) =>
-      !r.hidden &&
-      (r.goneAt === undefined || t - r.goneAt < CLIPS_GONE_MS) &&
-      this.clipPages(r.sid, ws).length === 0;
+    const quick = (r: ClipsRec) =>
+      !r.hidden && (r.goneAt === undefined || t - r.goneAt < CLIPS_GONE_MS);
     if (!rec) {
-      const mine = all.filter((r) => r.device === device && orphan(r));
+      const own = all.find((r) => r.sid === sid);
+      if (own && (cont || quick(own))) rec = own;
+    }
+    // A page that said it is leaving counts as gone already (its close may come after this knock).
+    const orphan = (r: ClipsRec) => this.clipPages(r.sid, ws).length === 0;
+    // No token (an address typed by hand): this device's session that just lost its page.
+    if (!rec) {
+      const mine = all.filter((r) => r.device === device && r.sid !== sid && quick(r) && orphan(r));
       if (mine.length === 1) rec = mine[0];
     }
     if (!rec) {
       ws.serializeAttachment({ ...page, sid, device } satisfies PageAtt);
+      // Offered, never taken: this window's own session after a gap, or another that just lost its page.
       const resumable = all
-        .filter((r) => orphan(r))
+        .filter((r) => orphan(r) && (r.sid === sid || quick(r)))
         .map((r) => ({ sid: r.sid, label: r.label ?? "", since: r.at }));
       return send(
         ws,
-        this.clipsMsg(sid, device, undefined, undefined, resumable.length ? { resumable } : {}),
+        this.clipsMsg(sid, device, undefined, undefined, {
+          canStart,
+          ...(resumable.length ? { resumable } : {}),
+        }),
       );
     }
     const paused = rec.goneAt !== undefined ? t - rec.goneAt : undefined;
     ws.serializeAttachment({ ...page, sid: rec.sid, device: rec.device } satisfies PageAtt);
     const { goneAt: _g, hidden: _h, ...live } = rec;
     console.log(
-      JSON.stringify({ msg: "debug.clips-join", sid: rec.sid.slice(0, 6), handoff: !!hand }),
+      JSON.stringify({ msg: "debug.clips-join", sid: rec.sid.slice(0, 6), handoff: !!hand, cont }),
     );
     await this.clipsPublish(
       { ...live, label: page.label },
@@ -1781,11 +1827,15 @@ export class DebugHub {
         } satisfies ClipsRec);
       return;
     }
+    const cfg = await this.sinkConfig();
     if (m.type === "clips-off")
-      return rec ? this.clipsStop(rec, "page") : send(ws, this.clipsMsg(sid, page.device));
+      return rec
+        ? this.clipsStop(rec, "page")
+        : send(ws, this.clipsMsg(sid, page.device, undefined, undefined, { canStart: !!cfg }));
     if (m.type === "clips-on") {
       // Recording with nowhere to keep the clips would only look like recording.
-      if (!m.sink && !rec?.sink) return send(ws, this.clipsMsg(sid, page.device, rec));
+      const sink = rec?.sink ? rec : cfg ? { sink: cfg.url, sinkKey: cfg.key } : null;
+      if (!sink) return send(ws, this.clipsMsg(sid, page.device, rec));
       console.log(
         JSON.stringify({
           msg: "debug.clips-on",
@@ -1798,12 +1848,15 @@ export class DebugHub {
         sid,
         device: page.device,
         at: rec?.at ?? t,
-        ...((m.sink ?? rec?.sink) ? { sink: m.sink ?? rec?.sink } : {}),
+        sink: sink.sink,
+        ...(sink.sinkKey ? { sinkKey: sink.sinkKey } : {}),
+        origins: rec?.origins ?? cfg?.origins ?? [LIANKI_ORIGIN],
         ...(m.minutes ? { until: t + m.minutes * 60_000 } : {}),
         label: page.label,
       });
     }
-    // clips-adopt: another window's session that has no page now, continued here by a tap.
+    // clips-adopt: a session that has no page now (another window's, or this
+    // window's own after a gap), continued here by a tap.
     const other = await this.ctx.storage.get<ClipsRec>(clipsKey(m.sid));
     if (!other || this.clipPages(m.sid, ws).length > 0)
       return send(ws, this.clipsMsg(sid, page.device, rec));
@@ -1858,8 +1911,18 @@ export class DebugHub {
         type: "error",
         error: `no open owner page matches "${m.match}" (eval.ts clips lists them)`,
       });
-    const nowhere = live.filter((s) => !m.sink && !s.rec?.sink);
-    if (nowhere.length)
+    // The sink set here is the one a tap on a page reuses later (with its write key and origins).
+    let cfg = await this.sinkConfig();
+    if (m.sink && m.sinkKey) {
+      cfg = {
+        url: m.sink,
+        key: m.sinkKey,
+        origins: m.origins ?? cfg?.origins ?? [LIANKI_ORIGIN],
+        at: t,
+      };
+      await this.ctx.storage.put(SINK_CONFIG, cfg);
+    }
+    if (!cfg)
       return send(ws, {
         type: "error",
         error: "clips on needs --sink <url>: where the clips are kept",
@@ -1869,7 +1932,9 @@ export class DebugHub {
         sid: s.sid,
         device: s.device,
         at: s.rec?.at ?? t,
-        ...((m.sink ?? s.rec?.sink) ? { sink: m.sink ?? s.rec?.sink } : {}),
+        sink: cfg.url,
+        sinkKey: cfg.key,
+        origins: m.origins ?? cfg.origins,
         ...(m.minutes ? { until: t + m.minutes * 60_000 } : {}),
         label: s.labels[0] ?? s.rec?.label ?? "",
       });

@@ -45,7 +45,7 @@ import {
   joinText,
 } from "./mic";
 import { CLIPS_AUTOSTOP_MIN, activeSink } from "./clips";
-import { clipsAction, clipsDevice, clipsLive, localClipSink } from "./clips-store";
+import { clipsAction, clipsDevice, clipsLive } from "./clips-store";
 import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttFrom } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
@@ -590,7 +590,7 @@ export function DebugChat({
   const clipsHub = useUi(clipsLive(), (s) => s.hub);
   const clipsAuto = useUi(clipsDevice(), (s) => s.autoStop);
   /** Turning it on needs somewhere to keep the clips: the hub's sink or this origin's key. */
-  const clipsCanStart = !!clipsHub && !!localClipSink();
+  const clipsCanStart = !!clipsHub?.canStart;
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
     return v === null ? !location.pathname.startsWith("/words") : v === "1";
@@ -2305,10 +2305,8 @@ export function DebugChat({
             role="menuitem"
             data-testid="debug-menu-clips"
             onClick={() => {
-              const sink = localClipSink();
               clipsAction({
                 type: "clips-on",
-                ...(sink ? { sink } : {}),
                 ...(clipsAuto ? { minutes: CLIPS_AUTOSTOP_MIN } : {}),
               });
               setMenu(false);
