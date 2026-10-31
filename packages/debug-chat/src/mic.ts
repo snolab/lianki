@@ -289,25 +289,34 @@ const HALLUCINATION_RE = new RegExp(
   "u",
 );
 
+/** A known phrase (or a run of them) at the very end of a transcript, whatever its punctuation. */
+/** Punctuation, symbols or spaces, anywhere between a phrase's characters. */
+const GAP = "[\\p{P}\\p{S}\\s]*";
+/** The phrases on raw text: each character in turn, any punctuation or spacing between. */
+const PHRASE_ALT = HALLUCINATIONS.map((h) =>
+  h
+    .split("…")
+    .map((part) => [...normalizeTranscript(part)].map(escapeRe).join(GAP))
+    .join(".*?"),
+).join("|");
+const HALLUCINATION_TAIL_RE = new RegExp(`(?:${PHRASE_ALT})(?:${GAP}(?:${PHRASE_ALT}))*${GAP}$`, "iu");
+
+/**
+ * Real speech with a known phrase stuck on its end ("…明天见。谢谢观看"):
+ * the speech without it. Text that is all phrase is left as it is (that is
+ * isHallucination's to judge), and so is text without one.
+ */
+export function stripHallucinationTail(text: string): string {
+  const m = HALLUCINATION_TAIL_RE.exec(text);
+  if (!m || m.index === 0) return text;
+  const kept = text.slice(0, m.index).trimEnd();
+  return normalizeTranscript(kept) ? kept : text;
+}
+
 /** The text is a known hallucination phrase (or a run of them), whatever its punctuation. */
 export function isHallucinationPhrase(text: string): boolean {
   const n = normalizeTranscript(text);
   return !!n && HALLUCINATION_RE.test(n);
-}
-
-/**
- * A real sentence with a credit tacked on ("…，感谢观看。"): STT adds one over
- * the silence after the speech. Trailing clauses (split at sentence and
- * clause punctuation) that are hallucination phrases are cut off; a text
- * that is nothing but phrases is returned as is, for isHallucination to judge.
- */
-export function stripHallucinationTail(text: string): string {
-  const parts = text.split(/(?<=[。！？!?．.，,、；;\n])/u);
-  let end = parts.length;
-  while (end > 0 && (isHallucinationPhrase(parts[end - 1]) || !normalizeTranscript(parts[end - 1])))
-    end--;
-  if (end === parts.length || !parts.slice(0, end).some((p) => normalizeTranscript(p))) return text;
-  return parts.slice(0, end).join("").trimEnd();
 }
 
 /**

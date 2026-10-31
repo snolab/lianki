@@ -931,6 +931,41 @@ describe("the Whisper hallucination guard", () => {
     expect(r.texts).toEqual(["はい。"]);
     expect(r.logs).toEqual([]);
   });
+
+  it("knows the Chinese sign-offs, the subtitle credit and our own hint prompt", () => {
+    for (const t of [
+      "感谢观看",
+      "感謝觀看！",
+      "谢谢观看。",
+      "謝謝觀看",
+      "感谢收看",
+      "感謝收看",
+      "字幕志愿者 李宗盛",
+      "字幕志願者",
+      "我说中文，有时夹杂日本語和English。",
+    ])
+      expect(isHallucinationPhrase(t)).toBe(true);
+    // A real name alone is not one.
+    expect(isHallucinationPhrase("李宗盛")).toBe(false);
+  });
+
+  it("stripHallucinationTail: a phrase stuck on the end of real speech goes, the speech stays", () => {
+    expect(stripHallucinationTail("明天见。谢谢观看")).toBe("明天见。");
+    expect(stripHallucinationTail("我们开始吧，感謝收看！")).toBe("我们开始吧，");
+    expect(stripHallucinationTail("Hello there. Thanks for watching!")).toBe("Hello there.");
+    expect(stripHallucinationTail("嗯 字幕志愿者 李宗盛")).toBe("嗯");
+    expect(stripHallucinationTail("好的。我说中文，有时夹杂日本語和English。")).toBe("好的。");
+    // All phrase: left for isHallucination to judge; no phrase: unchanged.
+    expect(stripHallucinationTail("谢谢观看")).toBe("谢谢观看");
+    expect(stripHallucinationTail("我喜欢李宗盛")).toBe("我喜欢李宗盛");
+    expect(stripHallucinationTail("今天天气不错")).toBe("今天天气不错");
+  });
+
+  it("createMic: a tail phrase is cut from a final and logged", async () => {
+    const r = await say("明天见。谢谢观看", 2, 0.9);
+    expect(r.texts).toEqual(["明天见。"]);
+    expect(r.logs).toEqual([{ ev: "stt-hallucination-tail", text: "谢谢观看" }]);
+  });
 });
 
 /** A local streaming STT driven by the test (local-stt.ts's LocalStt, faked). */
