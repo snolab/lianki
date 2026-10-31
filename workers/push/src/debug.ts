@@ -171,8 +171,16 @@ export type Storage = {
 export type DebugState = {
   acceptWebSocket(ws: Socket): void;
   getWebSockets(): Socket[];
+  /**
+   * Answer a fixed message without waking the hub (the runtime's
+   * WebSocketRequestResponsePair): the listeners' keepalive ping.
+   */
+  setWebSocketAutoResponse?(pair?: unknown): void;
   storage: Storage;
 };
+/** A controller's keepalive (scripts/dev/keepalive.ts): "ping" is answered "pong". */
+export const KEEPALIVE = { ping: "ping", pong: "pong" } as const;
+type PairCtor = new (request: string, response: string) => unknown;
 /**
  * `thread` is "owner" or the friend's user id; `email` is the friend's. `id`
  * names the socket in the chat menu's page list; `at` is when it connected.
@@ -308,7 +316,14 @@ export class DebugHub {
     private ctx: DebugState,
     _env?: unknown,
     private now: () => number = Date.now,
-  ) {}
+  ) {
+    // The listener pings to find a socket that died without a close (a
+    // redeploy, a dropped connection); the runtime answers it while the hub
+    // hibernates, so it costs no wake-up.
+    const Pair = (globalThis as { WebSocketRequestResponsePair?: PairCtor })
+      .WebSocketRequestResponsePair;
+    if (Pair) ctx.setWebSocketAutoResponse?.(new Pair(KEEPALIVE.ping, KEEPALIVE.pong));
+  }
 
   /** Open sockets of one role, optionally leaving one out (the one closing). */
   private sockets<R extends Att["role"]>(role: R, except?: Socket) {
@@ -1033,6 +1048,8 @@ export class DebugHub {
     this.checkIdle().catch(() => {});
     this.sweep();
     if (ws.readyState !== undefined && ws.readyState > 1) return;
+    // The auto-response normally answers it before the hub sees it.
+    if (raw === KEEPALIVE.ping) return ws.send(KEEPALIVE.pong);
     const a = att(ws);
     if (a?.role === "page") return this.fromPage(ws, a, raw);
     if (a?.role === "controller") return this.fromController(ws, a, raw);
