@@ -13,11 +13,13 @@ import {
   micErrorNote,
   micStatus,
   postClip,
+  sideClip,
   postStt,
   resample,
   scheduleTick,
 } from "./mic";
 import { voiceLatency, noteSttVia } from "./latency";
+import { clipPosted } from "./clips-store";
 import { createLocalStt } from "./local-stt";
 import { localSttStrings, wakeStrings } from "./ui-strings";
 import { createKws } from "./wake-kws";
@@ -356,8 +358,9 @@ function session(): MicSession {
         if (!partial && out.ms !== undefined) voiceLatency().mark(seq, { sttServerMs: out.ms });
         // Which recognizer it was, for the menu's latency (latency.ts viaAt).
         if (!partial) noteSttVia(via);
-        if (sink)
-          void postClip(sink, wav, {
+        // Off the critical path: the clip goes after the transcript is returned (sideClip).
+        if (sink) {
+          const meta = {
             at,
             durationMs,
             label: cfg.label,
@@ -365,17 +368,15 @@ function session(): MicSession {
             model: out.model,
             aec: v.aec(),
             track: appliedSettings(),
-          });
+          };
+          sideClip(() => postClip(sink, wav, meta).then((r) => clipPosted(r, sink, v.log)));
+        }
         return out.text;
       } catch (e) {
-        if (sink)
-          void postClip(sink, wav, {
-            at,
-            durationMs,
-            label: cfg.label,
-            aec: v.aec(),
-            track: appliedSettings(),
-          });
+        if (sink) {
+          const meta = { at, durationMs, label: cfg.label, aec: v.aec(), track: appliedSettings() };
+          sideClip(() => postClip(sink, wav, meta).then((r) => clipPosted(r, sink, v.log)));
+        }
         throw e;
       }
     },

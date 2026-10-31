@@ -9,7 +9,10 @@
  *   GET  /clips/<name>.<ext>    one clip's audio
  *   POST /clips/bench?run=<id>  the bench's raw results, from the page (once per run)
  *
- * Cross-origin access is for https://lianki.com only. The folder is
+ * Cross-origin access is for https://lianki.com, plus the exact https origins
+ * in LIANKI_DEV_ORIGINS and LIANKI_CLIPS_ORIGINS (comma-separated: the
+ * whole-page dev server on :8443, the widget previews). Nothing else, no
+ * wildcards. Nothing here ever deletes a clip. The folder is
  * LIANKI_CLIPS_DIR, else `lianki-voice-clips` in the home directory,
  * worked out at runtime.
  */
@@ -18,6 +21,25 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const CLIPS_ORIGIN = "https://lianki.com";
+
+/**
+ * The page origins that may post clips: lianki.com, and each exact https
+ * origin in LIANKI_DEV_ORIGINS and LIANKI_CLIPS_ORIGINS (comma-separated).
+ * Anything that is not an https origin is ignored, so the default stays
+ * lianki.com alone.
+ */
+export function clipsOrigins(env: Record<string, string | undefined> = process.env): string[] {
+  const out = new Set([CLIPS_ORIGIN]);
+  for (const raw of [env.LIANKI_DEV_ORIGINS, env.LIANKI_CLIPS_ORIGINS])
+    for (const part of (raw ?? "").split(",")) {
+      try {
+        const u = new URL(part.trim());
+        if (u.protocol === "https:" && part.trim().replace(/\/$/, "") === u.origin)
+          out.add(u.origin);
+      } catch {}
+    }
+  return [...out];
+}
 /** Largest clip accepted, in bytes. */
 export const MAX_CLIP_BYTES = 5 * 1024 * 1024;
 
@@ -75,16 +97,12 @@ const NAME = /^[0-9TZ-]+-\d+$/;
 const FILE = /^([0-9TZ-]+-\d+)\.(wav|webm|m4a|ogg|mp3)$/;
 const RUN = /^[A-Za-z0-9-]{4,40}$/;
 
-const cors = {
-  "access-control-allow-origin": CLIPS_ORIGIN,
+/** CORS for one request: its own origin echoed when allowed, else lianki.com. */
+const corsFor = (origin: string | null, allowed: string[]) => ({
+  "access-control-allow-origin": origin && allowed.includes(origin) ? origin : CLIPS_ORIGIN,
   vary: "Origin",
   "cache-control": "no-store",
-};
-const json = (body: unknown, status = 200) =>
-  Response.json(body, {
-    status,
-    headers: { ...cors, "access-control-allow-private-network": "true" },
-  });
+});
 
 let seq = 0;
 
@@ -126,10 +144,18 @@ export async function handleClips(
   req: Request,
   dir: string,
   now: () => Date = () => new Date(),
+  allowed: string[] = clipsOrigins(),
 ): Promise<Response | null> {
   const url = new URL(req.url);
   const path = url.pathname.replace(/^.*?\/clips/, "/clips");
   if (!path.startsWith("/clips")) return null;
+  const origin = req.headers.get("origin");
+  const cors = corsFor(origin, allowed);
+  const json = (body: unknown, status = 200) =>
+    Response.json(body, {
+      status,
+      headers: { ...cors, "access-control-allow-private-network": "true" },
+    });
   if (req.method === "OPTIONS")
     return new Response(null, {
       status: 204,
@@ -140,8 +166,7 @@ export async function handleClips(
         "access-control-allow-private-network": "true",
       },
     });
-  const origin = req.headers.get("origin");
-  if (origin && origin !== CLIPS_ORIGIN) return json({ error: "origin not allowed" }, 403);
+  if (origin && !allowed.includes(origin)) return json({ error: "origin not allowed" }, 403);
 
   if (req.method === "POST" && path === "/clips") {
     let form: FormData;

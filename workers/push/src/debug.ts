@@ -102,6 +102,22 @@
  * A stored eval grant with no socket holding it is still listed in the owner
  * pages' sessions (code "idle"), so End reaches it while it sleeps. A
  * friend's preview pairing is never stored: one socket, APPROVAL_MS.
+ *
+ * Voice-clip recording (packages/debug-chat/src/clips.ts). The switch is a
+ * window session's, held here, never in an origin's storage. An owner page
+ * knocks with `?ws=<its window's session id>&dev=<device id>` (and
+ * `&hand=<token>` when it came from another origin). Only a recording session
+ * is stored, as `clips:<sid>` {device, at, until?, sink?, handoff (a token's
+ * SHA-256), goneAt?, hidden?}; it is deleted when recording stops, at its
+ * auto-stop, or once no page of it has been connected for CLIPS_GONE_MS
+ * (CLIPS_HIDDEN_MS when its last page said it was hidden: a phone's screen
+ * off). Every page of the session hears {type:"clips", …} on connect and on
+ * each change, with a fresh one-time handoff token: a page that redeems it
+ * (`hand=`) joins the session and takes its device id. A page with no token
+ * whose device had a session lose its page moments ago (an address typed by
+ * hand) continues it; another device's is only offered (`resumable`, a tap).
+ * Pages turn it on (a tap) and off; the agent too ({type:"clips", op}). Never
+ * a friend's. Clips themselves never pass through here.
  */
 import {
   APPROVAL_MS,
@@ -151,6 +167,18 @@ import {
   checkChoices,
 } from "../../../packages/debug-chat/src/ask";
 import type { AnsweredEvent } from "../../../packages/debug-chat/src/wire";
+import {
+  CLIPS_GONE_MS,
+  CLIPS_HIDDEN_MS,
+  type ClipsControl,
+  type ClipsState,
+  isClipsId,
+  isHandoffToken,
+  matchesSession,
+  parseClipsControl,
+  parseClipsPageMessage,
+  randomId,
+} from "../../../packages/debug-chat/src/clips";
 
 export type Socket = {
   send(data: string): void;
@@ -195,7 +223,29 @@ type PageAtt = {
   sender?: Sender;
   id?: string;
   at?: number;
+  /** The owner's window session (clips.ts) and device; never on a friend's page. */
+  sid?: string;
+  device?: string;
+  /** The page said it is going (pagehide): it no longer holds its session open. */
+  leaving?: boolean;
 };
+/** A recording window session (`clips:<sid>`), see "Voice-clip recording" above. */
+type ClipsRec = {
+  sid: string;
+  device: string;
+  at: number;
+  until?: number;
+  sink?: string;
+  /** SHA-256 of the current handoff token. */
+  handoff?: string;
+  /** When its last page left; absent while one is connected. */
+  goneAt?: number;
+  /** Its last page said it was hidden (a longer grace). */
+  hidden?: boolean;
+  /** The last page's label, for the agent's list and a "Continue" offer. */
+  label?: string;
+};
+const clipsKey = (sid: string) => `clips:${sid}`;
 /**
  * `grant` is the hash of the resumable chat token this socket holds, if any.
  * `forUser`/`forEmail`: the friend this pairing is for; absent = the owner.
@@ -274,6 +324,16 @@ const hex = (b: ArrayBuffer | Uint8Array) =>
 export const hashToken = async (token: string) =>
   hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token)));
 const head = (text: string) => text.slice(0, 80);
+/** A clips message (small, JSON, of a known type), parsed; null when it is something else. */
+function clipsParse<R>(raw: unknown, f: (m: Record<string, unknown>) => R | null): R | null {
+  if (typeof raw !== "string" || raw.length > 2000 || !raw.includes('"clips')) return null;
+  try {
+    const m = JSON.parse(raw) as unknown;
+    return m && typeof m === "object" && !Array.isArray(m) ? f(m as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
 /** Whose a socket is: a page's thread, or the audience a controller was paired for. */
 const audience = (a: Att) => (a.role === "page" ? a.thread : (a.forUser ?? OWNER_THREAD));
 
@@ -796,6 +856,8 @@ export class DebugHub {
       this.broadcast();
     }
     await this.pageBack(thread, label);
+    // The owner's window session: recording follows it across URLs and origins.
+    if (thread === OWNER_THREAD) await this.clipsJoin(ws, url);
   }
 
   /**
@@ -1041,6 +1103,7 @@ export class DebugHub {
   async alarm() {
     this.sweep();
     await this.checkIdle();
+    await this.clipsSweep();
   }
 
   webSocketMessage(ws: Socket, raw: string | ArrayBuffer): void | Promise<void> {
@@ -1056,6 +1119,8 @@ export class DebugHub {
   }
 
   private fromPage(ws: Socket, page: PageAtt, raw: unknown): void | Promise<void> {
+    const cm = clipsParse(raw, parseClipsPageMessage);
+    if (cm) return page.thread === OWNER_THREAD ? this.clipsFromPage(ws, page, cm) : undefined;
     const m = parsePageMessage(raw);
     if (!m) return;
     const t = this.now();
@@ -1392,6 +1457,13 @@ export class DebugHub {
       close(ws, 4408, "approval expired");
       return this.broadcast(ws);
     }
+    const clip = clipsParse(raw, (j) => (j.type === "clips" ? parseClipsControl(j) : null));
+    if (clip) {
+      if (c.forUser)
+        return send(ws, { type: "error", error: "a pairing for a friend cannot record" });
+      if (!clip.ok) return send(ws, { type: "error", error: clip.error });
+      return this.clipsControl(ws, c, clip.value);
+    }
     const m = parseControllerMessage(raw);
     if (!m.ok) return send(ws, { type: "error", error: m.error });
     if (m.value.type === "busy") {
@@ -1532,8 +1604,285 @@ export class DebugHub {
     close(ws, code === 1005 ? 1000 : code, "");
     this.sweep(ws);
     this.broadcast(ws);
+    const gone = a?.role === "page" && a.sid ? this.clipsLeft(a.sid, ws) : undefined;
     if (a?.role === "page" && this.pages(a.thread, ws).length === 0)
-      return this.markEmpty(a.thread);
+      return Promise.all([gone, this.markEmpty(a.thread)]).then(() => {});
+    return gone;
+  }
+
+  // --- Voice-clip recording: one window session at a time (see the header) ---
+
+  /** The owner pages of one window session that hold it open (not ones that said they are going). */
+  private clipPages(sid: string, except?: Socket) {
+    return this.pages(OWNER_THREAD, except).filter((p) => p.a.sid === sid && !p.a.leaving);
+  }
+
+  private async clipRecords(): Promise<ClipsRec[]> {
+    return [...(await this.ctx.storage.list<ClipsRec>({ prefix: "clips:" })).values()];
+  }
+
+  /** What one page of a session is told; `token` is the session's fresh handoff token. */
+  private clipsMsg(
+    sid: string,
+    device: string,
+    rec?: ClipsRec,
+    token?: string,
+    extra: Partial<ClipsState> = {},
+  ): ClipsState {
+    const t = this.now();
+    return {
+      type: "clips",
+      sid,
+      device,
+      on: !!rec,
+      ...(rec
+        ? {
+            since: rec.at,
+            ...(rec.until ? { until: rec.until, left: Math.max(0, rec.until - t) } : {}),
+            ...(rec.sink ? { sink: rec.sink } : {}),
+            ...(token ? { handoff: token } : {}),
+          }
+        : {}),
+      ...extra,
+    };
+  }
+
+  /** Store a recording session with a new handoff token, and tell each of its pages. */
+  private async clipsPublish(rec: ClipsRec, extraFor?: { ws: Socket; extra: Partial<ClipsState> }) {
+    const token = randomId(24);
+    const next: ClipsRec = { ...rec, handoff: await hashToken(token) };
+    await this.ctx.storage.put(clipsKey(rec.sid), next);
+    for (const p of this.pages(OWNER_THREAD))
+      if (p.a.sid === rec.sid)
+        send(
+          p.ws,
+          this.clipsMsg(
+            rec.sid,
+            rec.device,
+            next,
+            token,
+            p.ws === extraFor?.ws ? extraFor.extra : {},
+          ),
+        );
+    if (next.until) await this.schedule(next.until);
+  }
+
+  /** Recording stops (a tap, the agent, the auto-stop): the record goes, its pages hear "off". */
+  private async clipsStop(rec: ClipsRec, why: string) {
+    await this.ctx.storage.delete(clipsKey(rec.sid));
+    for (const p of this.pages(OWNER_THREAD))
+      if (p.a.sid === rec.sid) send(p.ws, this.clipsMsg(rec.sid, p.a.device ?? rec.device));
+    console.log(JSON.stringify({ msg: "debug.clips-off", sid: rec.sid.slice(0, 6), why }));
+  }
+
+  /** An owner page connected: put it in its window's session (see the header). */
+  private async clipsJoin(ws: Socket, url: URL) {
+    const page = att(ws) as PageAtt;
+    const t = this.now();
+    let sid = url.searchParams.get("ws") ?? "";
+    let device = url.searchParams.get("dev") ?? "";
+    if (!isClipsId(sid)) sid = randomId();
+    if (!isClipsId(device)) device = randomId();
+    const hand = url.searchParams.get("hand");
+    const all = await this.clipRecords();
+    let rec: ClipsRec | undefined;
+    if (isHandoffToken(hand)) {
+      const h = await hashToken(hand);
+      rec = all.find((r) => r.handoff === h);
+    }
+    rec ??= all.find((r) => r.sid === sid);
+    // No token (an address typed by hand): this device's session that just lost its page.
+    // A page that said it is leaving counts as gone already (its close may come after this knock).
+    const orphan = (r: ClipsRec) =>
+      !r.hidden &&
+      (r.goneAt === undefined || t - r.goneAt < CLIPS_GONE_MS) &&
+      this.clipPages(r.sid, ws).length === 0;
+    if (!rec) {
+      const mine = all.filter((r) => r.device === device && orphan(r));
+      if (mine.length === 1) rec = mine[0];
+    }
+    if (!rec) {
+      ws.serializeAttachment({ ...page, sid, device } satisfies PageAtt);
+      const resumable = all
+        .filter((r) => orphan(r))
+        .map((r) => ({ sid: r.sid, label: r.label ?? "", since: r.at }));
+      return send(
+        ws,
+        this.clipsMsg(sid, device, undefined, undefined, resumable.length ? { resumable } : {}),
+      );
+    }
+    const paused = rec.goneAt !== undefined ? t - rec.goneAt : undefined;
+    ws.serializeAttachment({ ...page, sid: rec.sid, device: rec.device } satisfies PageAtt);
+    const { goneAt: _g, hidden: _h, ...live } = rec;
+    console.log(
+      JSON.stringify({ msg: "debug.clips-join", sid: rec.sid.slice(0, 6), handoff: !!hand }),
+    );
+    await this.clipsPublish(
+      { ...live, label: page.label },
+      paused ? { ws, extra: { paused } } : undefined,
+    );
+  }
+
+  /** A page of a session closed: with none left, the session's grace clock starts. */
+  private async clipsLeft(sid: string, ws: Socket) {
+    if (this.clipPages(sid, ws).length > 0) return;
+    const rec = await this.ctx.storage.get<ClipsRec>(clipsKey(sid));
+    if (!rec || rec.goneAt !== undefined) return;
+    const t = this.now();
+    await this.ctx.storage.put(clipsKey(sid), { ...rec, goneAt: t } satisfies ClipsRec);
+    await this.schedule(t + (rec.hidden ? CLIPS_HIDDEN_MS : CLIPS_GONE_MS));
+  }
+
+  /** Auto-stops due, and sessions whose pages stayed away past their grace: gone. Never a clip. */
+  async clipsSweep() {
+    const t = this.now();
+    let next: number | null = null;
+    const at = (x: number) => (next = Math.min(next ?? Infinity, x));
+    for (const rec of await this.clipRecords()) {
+      if (rec.until && rec.until <= t) {
+        await this.clipsStop(rec, "auto-stop");
+        continue;
+      }
+      if (rec.until) at(rec.until);
+      if (this.clipPages(rec.sid).length > 0) continue;
+      if (rec.goneAt === undefined) {
+        // Woken after an eviction with no page: its clock starts now.
+        await this.ctx.storage.put(clipsKey(rec.sid), { ...rec, goneAt: t } satisfies ClipsRec);
+        at(t + (rec.hidden ? CLIPS_HIDDEN_MS : CLIPS_GONE_MS));
+        continue;
+      }
+      const end = rec.goneAt + (rec.hidden ? CLIPS_HIDDEN_MS : CLIPS_GONE_MS);
+      if (end <= t) {
+        await this.ctx.storage.delete(clipsKey(rec.sid));
+        console.log(JSON.stringify({ msg: "debug.clips-ended", sid: rec.sid.slice(0, 6) }));
+      } else at(end);
+    }
+    if (next !== null) await this.schedule(next);
+  }
+
+  private async clipsFromPage(
+    ws: Socket,
+    page: PageAtt,
+    m: NonNullable<ReturnType<typeof parseClipsPageMessage>>,
+  ) {
+    const sid = page.sid;
+    if (!sid || !page.device) return;
+    const t = this.now();
+    const rec = await this.ctx.storage.get<ClipsRec>(clipsKey(sid));
+    if (m.type === "clips-vis") {
+      const leaving = m.state === "leaving";
+      if (!!page.leaving !== leaving)
+        ws.serializeAttachment({ ...page, leaving: leaving || undefined } satisfies PageAtt);
+      const hidden = m.state === "hidden";
+      if (rec && !!rec.hidden !== hidden)
+        await this.ctx.storage.put(clipsKey(sid), {
+          ...rec,
+          hidden: hidden || undefined,
+        } satisfies ClipsRec);
+      return;
+    }
+    if (m.type === "clips-off")
+      return rec ? this.clipsStop(rec, "page") : send(ws, this.clipsMsg(sid, page.device));
+    if (m.type === "clips-on") {
+      // Recording with nowhere to keep the clips would only look like recording.
+      if (!m.sink && !rec?.sink) return send(ws, this.clipsMsg(sid, page.device, rec));
+      console.log(
+        JSON.stringify({
+          msg: "debug.clips-on",
+          sid: sid.slice(0, 6),
+          by: "page",
+          minutes: m.minutes,
+        }),
+      );
+      return this.clipsPublish({
+        sid,
+        device: page.device,
+        at: rec?.at ?? t,
+        ...((m.sink ?? rec?.sink) ? { sink: m.sink ?? rec?.sink } : {}),
+        ...(m.minutes ? { until: t + m.minutes * 60_000 } : {}),
+        label: page.label,
+      });
+    }
+    // clips-adopt: another window's session that has no page now, continued here by a tap.
+    const other = await this.ctx.storage.get<ClipsRec>(clipsKey(m.sid));
+    if (!other || this.clipPages(m.sid, ws).length > 0)
+      return send(ws, this.clipsMsg(sid, page.device, rec));
+    ws.serializeAttachment({ ...page, sid: other.sid, device: other.device } satisfies PageAtt);
+    const { goneAt: _g, hidden: _h, ...live } = other;
+    console.log(JSON.stringify({ msg: "debug.clips-adopt", sid: other.sid.slice(0, 6) }));
+    return this.clipsPublish({ ...live, label: page.label });
+  }
+
+  /** The agent's `eval.ts clips`: list the owner's window sessions, or turn recording on or off. */
+  private async clipsControl(ws: Socket, c: ControllerAtt, m: ClipsControl) {
+    const t = this.now();
+    const recs = await this.clipRecords();
+    // Every session: the live ones (from the pages) and the recording ones (stored).
+    const by = new Map<string, { sid: string; device: string; labels: string[]; rec?: ClipsRec }>();
+    for (const p of this.pages(OWNER_THREAD)) {
+      if (!p.a.sid || !p.a.device) continue;
+      const s = by.get(p.a.sid) ?? { sid: p.a.sid, device: p.a.device, labels: [] };
+      s.labels.push(p.a.label);
+      by.set(p.a.sid, s);
+    }
+    for (const r of recs) {
+      const s = by.get(r.sid) ?? { sid: r.sid, device: r.device, labels: r.label ? [r.label] : [] };
+      s.rec = r;
+      by.set(r.sid, s);
+    }
+    const view = (s: { sid: string; device: string; labels: string[]; rec?: ClipsRec }) => ({
+      sid: s.sid,
+      device: s.device,
+      on: !!s.rec,
+      pages: s.labels,
+      ...(s.rec?.until ? { until: s.rec.until } : {}),
+      ...(s.rec?.sink ? { sink: s.rec.sink } : {}),
+      ...(s.rec?.goneAt !== undefined ? { goneAt: s.rec.goneAt, hidden: !!s.rec.hidden } : {}),
+    });
+    const hits = [...by.values()].filter((s) => matchesSession(m.match, s));
+    if (m.op === "list")
+      return send(ws, { type: "clips-list", sessions: [...by.values()].map(view), at: t });
+    if (m.op === "off") {
+      for (const s of hits) if (s.rec) await this.clipsStop(s.rec, "agent");
+      return send(ws, {
+        type: "clips-done",
+        op: "off",
+        sessions: hits.filter((s) => s.rec).map((s) => s.sid),
+        at: t,
+      });
+    }
+    // On: the live sessions it matches (a window with a page open now).
+    const live = hits.filter((s) => this.clipPages(s.sid).length > 0);
+    if (!live.length)
+      return send(ws, {
+        type: "error",
+        error: `no open owner page matches "${m.match}" (eval.ts clips lists them)`,
+      });
+    const nowhere = live.filter((s) => !m.sink && !s.rec?.sink);
+    if (nowhere.length)
+      return send(ws, {
+        type: "error",
+        error: "clips on needs --sink <url>: where the clips are kept",
+      });
+    for (const s of live) {
+      await this.clipsPublish({
+        sid: s.sid,
+        device: s.device,
+        at: s.rec?.at ?? t,
+        ...((m.sink ?? s.rec?.sink) ? { sink: m.sink ?? s.rec?.sink } : {}),
+        ...(m.minutes ? { until: t + m.minutes * 60_000 } : {}),
+        label: s.labels[0] ?? s.rec?.label ?? "",
+      });
+      console.log(
+        JSON.stringify({
+          msg: "debug.clips-on",
+          sid: s.sid.slice(0, 6),
+          by: c.label,
+          minutes: m.minutes,
+        }),
+      );
+    }
+    send(ws, { type: "clips-done", op: "on", sessions: live.map((s) => s.sid), at: t });
   }
 
   /** A socket that errored is gone too (the runtime may not also report a close). */

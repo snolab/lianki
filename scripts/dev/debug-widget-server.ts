@@ -125,7 +125,7 @@ function startServer() {
     idleTimeout: 0,
     async fetch(req) {
       const url = new URL(req.url);
-      // The mic's voice clips (scripts/dev/clip-sink.ts): lianki.com only, kept on this machine.
+      // The mic's voice clips (scripts/dev/clip-sink.ts): lianki.com and LIANKI_DEV_ORIGINS / LIANKI_CLIPS_ORIGINS, kept on this machine.
       const clip = await handleClips(req, CLIPS);
       if (clip) return clip;
       const h = cors(req);

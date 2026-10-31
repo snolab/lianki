@@ -39,13 +39,14 @@ import { LiagentMark } from "./LiagentMark";
 import { Avatar } from "./Avatar";
 import { type AvatarSource, lineAvatar, runStarts, runsOf } from "./avatar-rules";
 import {
-  CLIP_SINK_KEY,
   VOICE_SENT_EVENT,
   appendDictation,
   isDictationBurst,
-  clipSinkFrom,
   joinText,
 } from "./mic";
+import { CLIPS_AUTOSTOP_MIN, activeSink } from "./clips";
+import { clipsAction, clipsDevice, clipsLive, localClipSink } from "./clips-store";
+import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttFrom } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
 import { DebugMic, canCapture, playSentTick } from "./MicButton";
@@ -585,6 +586,11 @@ export function DebugChat({
   polishedIcon = POLISHED_ICON,
 }: DebugChatProps) {
   const t = chatStrings(strings);
+  /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
+  const clipsHub = useUi(clipsLive(), (s) => s.hub);
+  const clipsAuto = useUi(clipsDevice(), (s) => s.autoStop);
+  /** Turning it on needs somewhere to keep the clips: the hub's sink or this origin's key. */
+  const clipsCanStart = !!clipsHub && !!localClipSink();
   const [open, setOpen] = useState(() => {
     const v = read(OPEN_KEY);
     return v === null ? !location.pathname.startsWith("/words") : v === "1";
@@ -1970,7 +1976,8 @@ export function DebugChat({
             setMicActive(on);
             arm();
           }}
-          clipSink={friend ? undefined : clipSinkFrom(read(CLIP_SINK_KEY))}
+          // Only while the hub says this window records (clips.ts); the key is the sink URL only.
+          clipSink={friend ? undefined : activeSink(clipsHub)}
           localStt={friend ? undefined : localSttFrom(read(LOCAL_STT_KEY))}
           label={pages.find((p) => p.id === selfPage)?.label ?? location.pathname}
           gesture={micGesture}
@@ -2290,6 +2297,46 @@ export function DebugChat({
           {treeStrings(treeText).tree}
         </button>
       )}
+      {/* Voice clips (clips.ts): a tap turns this window's recording on; the badge stops it. */}
+      {!friend && !clipsHub?.on && clipsCanStart && (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            data-testid="debug-menu-clips"
+            onClick={() => {
+              const sink = localClipSink();
+              clipsAction({
+                type: "clips-on",
+                ...(sink ? { sink } : {}),
+                ...(clipsAuto ? { minutes: CLIPS_AUTOSTOP_MIN } : {}),
+              });
+              setMenu(false);
+            }}
+            className="flex items-center gap-2 px-3 py-1.5 text-start"
+          >
+            <span
+              aria-hidden
+              className="inline-block size-2.5 rounded-full"
+              style={{ background: "oklch(0.62 0.22 27)" }}
+            />
+            {t.clipsStart}
+          </button>
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={clipsAuto}
+            data-testid="debug-menu-clips-autostop"
+            onClick={() => clipsDevice().setState({ autoStop: !clipsAuto })}
+            className="flex items-center gap-2 px-3 py-1.5 text-start"
+          >
+            <span aria-hidden className="w-[1em] text-center">
+              {clipsAuto ? "◉" : "○"}
+            </span>
+            {t.clipsAutoStop.replaceAll("{n}", String(CLIPS_AUTOSTOP_MIN))}
+          </button>
+        </>
+      )}
       <button
         type="button"
         role="menuitem"
@@ -2546,6 +2593,10 @@ export function DebugChat({
       style={offset}
       className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-40 flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo text-xs text-gray-800 dark:text-gray-100`}
     >
+      {/* The recording badge, top of the screen, out of the box's transform. */}
+      {!friend &&
+        typeof document !== "undefined" &&
+        createPortal(<ClipsBadge strings={t} />, document.body)}
       {fullLog !== "off" &&
         typeof document !== "undefined" &&
         createPortal(

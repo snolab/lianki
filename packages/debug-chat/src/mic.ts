@@ -30,8 +30,8 @@ export const PARTIAL_MIN_MS = 3_000;
 export const PARTIAL_OVERLAP_MS = 1_500;
 /** Shown in the input for an utterance still being transcribed. */
 export const PENDING_MARK = "…";
-/** localStorage: the owner's dev server that keeps utterances (owner pages only). */
-export const CLIP_SINK_KEY = "lk:debug-clip-sink";
+/** localStorage: the owner's dev server that keeps utterances (the sink URL only; the switch is the hub's, clips.ts). */
+export { CLIP_SINK_KEY, clipSinkFrom } from "./clips";
 
 export type MicState = "off" | "loading" | "listening" | "capturing";
 /** What the button shows, from the state and the transcripts still out. */
@@ -1225,24 +1225,15 @@ export async function postStt(
   return { ...out, text: out.text ?? "" };
 }
 
-/** The clip sink from localStorage, if it is one the owner's page may post to (https or localhost). */
-export function clipSinkFrom(raw: string | null | undefined): string | undefined {
-  let u: URL;
-  try {
-    u = new URL((raw ?? "").trim());
-  } catch {
-    return undefined;
-  }
-  const local = ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
-  if (u.protocol !== "https:" && !(u.protocol === "http:" && local)) return undefined;
-  return u.href.replace(/\/+$/, "");
-}
+/** What the sink said about one clip: its name, or why it was not kept. */
+export type ClipResult = { ok: true; name?: string } | { ok: false; status?: number; error: string };
 
 /**
  * Keep one utterance on the owner's dev server (scripts/dev/clip-sink): a
  * multipart POST to `<sink>/clips` with the audio and a JSON `meta` (when,
- * type, how long, from which page, and what was heard, once known). Fire and
- * forget: a failure is silent.
+ * type, how long, from which page, and what was heard, once known). Never
+ * rejects: it resolves to the sink's answer, so a failure can be shown (the
+ * recording badge) instead of lost.
  */
 export function postClip(
   sink: string,
@@ -1259,7 +1250,7 @@ export function postClip(
     track?: Record<string, unknown> | null;
   },
   f: typeof fetch = fetch,
-): Promise<void> {
+): Promise<ClipResult> {
   const mime = "audio/wav";
   const form = new FormData();
   form.append("audio", new Blob([wav as unknown as BlobPart], { type: mime }), "clip.wav");
@@ -1277,9 +1268,29 @@ export function postClip(
     }),
   );
   return f(`${sink}/clips`, { method: "POST", body: form }).then(
-    () => {},
-    () => {},
+    async (r): Promise<ClipResult> => {
+      if (!r.ok) return { ok: false, status: r.status, error: `sink ${r.status}` };
+      const j = (await r.json().catch(() => ({}))) as { name?: unknown };
+      return typeof j.name === "string" ? { ok: true, name: j.name } : { ok: true };
+    },
+    (e): ClipResult => ({ ok: false, error: String((e as Error)?.message ?? e).slice(0, 120) }),
   );
+}
+
+/**
+ * The clip sink is a side path: the upload (and the FormData it builds) runs
+ * in a later task, after the caller already has its transcript. It never
+ * delays recognition, and the VAD never waits on it. A failure is silent.
+ */
+export function sideClip(
+  post: () => Promise<unknown>,
+  defer: (run: () => void) => void = (run) => void setTimeout(run, 0),
+): void {
+  defer(() => {
+    try {
+      void post().catch(() => {});
+    } catch {}
+  });
 }
 
 /** The custom DOM event fired on window when a spoken sentence is sent by itself. */
