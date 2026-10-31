@@ -35,7 +35,9 @@
  *       thread has been closed for a minute and {"type":"pages-back",
  *       "thread","label","at"} when one opens again. It stays connected
  *       through idle (--exit-on-idle exits instead). Also appended to
- *       --out. Reconnects on close, backing off, by resuming the grant: it
+ *       --out. Reconnects on close, backing off, by resuming the grant —
+ *       also when a ping every 20 s goes unanswered (a socket that died
+ *       with no close event, e.g. on a push Worker redeploy; ./keepalive.ts): it
  *       pairs at most once per run. With no grant left after that it prints
  *       {"type":"error"} and waits, without asking again, until restarted or
  *       a grant is saved by another run. A live line also carries "lagMs"
@@ -150,6 +152,7 @@ import { type NodeOpts, type SayVolume, chatLine, nodeOpts, sayVolume } from "./
 import { routeTo } from "@/lib/dev-eval";
 import { type BusyArgs, beatMessage, endsBeat, idleFor, parseBusyArgs } from "./busy";
 import { ENDED, GRANT_INVALID, chatClose, chatStep, serveClose } from "./eval-grant";
+import { DEAD, PONG, keepalive } from "./keepalive";
 import {
   EVAL_TOKEN_FILE,
   type Msg,
@@ -347,7 +350,8 @@ async function viaSession(code: string): Promise<Msg[] | null> {
  * Listen to the owner's chat: one JSON line per new owner message, on stdout
  * and appended to --out. Resumes with the saved grant; pairs when there is
  * none (or it was refused) — at most once per run (chatStep/chatClose).
- * Reconnects only when the socket closes. `errorsOnly` (`eval.ts errors`):
+ * Reconnects (with backoff) when the socket closes, or when its keepalive
+ * finds it dead without a close (./keepalive.ts). `errorsOnly` (`eval.ts errors`):
  * the same socket and grant, but only page-error lines (and pending/error)
  * are printed.
  */
@@ -399,8 +403,31 @@ function chat(out?: string, errorsOnly = false) {
     if (step === "give-up") return giveUp();
     if (step === "pair") asked = true;
     const ws = openControl(token, undefined, "chat");
+    /** This socket is done with (closed, or found dead): handled once. */
+    let gone = false;
+    // A socket can die with no close event (a redeploy of the push Worker,
+    // the edge dropping the connection): a ping it cannot answer, or one that
+    // never opens, counts as closed — dropped here and reconnected.
+    const alive = keepalive(ws, (why) => {
+      console.error(`socket dead (${why}); dropping it.`);
+      try {
+        ws.close(DEAD, why.slice(0, 100));
+      } catch {}
+      closed(DEAD);
+    });
+    ws.onerror = () => {
+      // Bun follows an error with a close; if it does not, the keepalive does.
+      console.error("socket error");
+    };
     ws.onmessage = (e) => {
-      const m = JSON.parse(String(e.data)) as Msg;
+      alive.heard();
+      if (e.data === PONG) return;
+      let m: Msg;
+      try {
+        m = JSON.parse(String(e.data)) as Msg;
+      } catch {
+        return;
+      }
       if (m.type === "pending") {
         console.log(JSON.stringify({ type: "pending", code: m.code, label }));
         console.error(
@@ -492,8 +519,13 @@ function chat(out?: string, errorsOnly = false) {
         });
       else if (m.type === "error") console.error(`hub: ${m.error}`);
     };
-    ws.onclose = (e) => {
-      const what = chatClose(e.code);
+    ws.onclose = (e) => closed(e.code);
+    const closed = (code: number) => {
+      if (gone) return;
+      gone = true;
+      alive.stop();
+      ws.onmessage = ws.onclose = ws.onerror = null;
+      const what = chatClose(code);
       if (what === "refused") {
         // The grant is gone (ended, or expired): forget it. connect() pairs
         // only if this run has not asked the owner yet.
@@ -509,7 +541,7 @@ function chat(out?: string, errorsOnly = false) {
       // No grant to resume with (a pairing that was never answered, or
       // failed): connect() gives up rather than asking again.
       if (!loadToken()) return connect();
-      console.error(`socket closed (${e.code}); resuming in ${backoff / 1000}s`);
+      console.error(`socket closed (${code}); resuming in ${backoff / 1000}s`);
       setTimeout(connect, backoff);
       backoff = Math.min(backoff * 2, 60_000);
     };
