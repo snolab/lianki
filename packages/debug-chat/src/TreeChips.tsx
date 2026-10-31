@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { type TreeNode, type TreeStatus, countOpen } from "./state-tree";
 import { BLINK, uiStrings } from "./ui-strings";
-import { type NavIndex, type TreeNavEvent, type TreeNavState, indexTree, isVisible } from "./tree-nav";
+import { type NavIndex, type TreeNavEvent, type TreeNavState, isVisible } from "./tree-nav";
 
 /**
  * The state tree as the chat shows it, driven by treeNav (tree-nav.ts): the
@@ -14,23 +14,7 @@ import { type NavIndex, type TreeNavEvent, type TreeNavState, indexTree, isVisib
  * line focuses it and opens it a level.
  */
 
-/** Ids are index paths ("0", "0.2", "0.2.1"), so a reload keeps the focus. */
-export function navIndexOf(root: TreeNode | null): {
-  ix: NavIndex;
-  byId: Map<string, TreeNode>;
-} {
-  const byId = new Map<string, TreeNode>();
-  const ix = indexTree(
-    root?.children ?? [],
-    (n) => n.children,
-    (n, parent, i) => {
-      const id = parent === null ? String(i) : `${parent}.${i}`;
-      byId.set(id, n);
-      return id;
-    },
-  );
-  return { ix, byId };
-}
+export { navIndexOf } from "./tree-keep";
 
 const GLYPH: Record<TreeStatus, string> = { open: "○", doing: "◐", blocked: "!", done: "✓" };
 const INK: Record<TreeStatus, string> = {

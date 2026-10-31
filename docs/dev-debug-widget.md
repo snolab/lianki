@@ -446,6 +446,46 @@ the bundled copy and the dot is gone.
 `{subscribe(onUpdate) → unsubscribe}`: the WebSocket progress feed
 (`feat/live-roadmap`, parked) will be another such feed.
 
+## UI state across a refresh and a hot swap
+
+The chat's session UI state is one store, `chat`, made with the shared
+UI-state factory (`@lianki/ui-state`, `docs/ui-state.md`;
+`packages/debug-chat/src/ui-store.ts`). It is zustand `persist` over
+**sessionStorage**, under `lk:ui:chat`. It holds:
+
+- the draft, its caret, and whether the draft is still pure dictation, so a
+  restored voice line still sends as `source: "stt"`;
+- whether the tree panel is open;
+- the state tree's place: the focused node, the opened nodes and their
+  depths, and the minimized tree's scroll.
+
+The tree's place is kept by **title paths**, not index ids
+(`tree-keep.ts` `keepTree` / `restoreTree`). A node added above it does not
+move the focus, and a node that is gone falls back to its nearest ancestor.
+
+How it is stored and restored:
+
+- The factory's storage never throws (it falls back to memory).
+- `migrateChatUi` checks every stored value (as the factory's `clean`, and
+  as `migrate` for an older version), so a damaged entry falls back to the
+  defaults.
+- The factory keeps one store per page on `globalThis.__lkUiStores`, so a
+  re-imported widget (a hot reload, or the built-in chat taking over) uses
+  the same store.
+
+Only UI state goes in it, never business data (messages, grants, tokens).
+Device preferences, including the bar's position, stay in localStorage.
+Not kept, on purpose:
+
+- the log's scroll: the resting compact log always shows the newest lines;
+- the full-screen log: it only lasts as long as a drag;
+- the mic: it never turns itself on after a reload.
+
+**zustand and the page's React.** zustand's `import React from "react"`
+made Bun wrap the React shim as CommonJS with its ESM exports empty. So the
+shim (`hostModule` in `scripts/dev/debug-widget-build.ts`) is now CommonJS
+outright: `module.exports = globalThis.__lkReact.React`.
+
 ## Page errors
 
 The owner's pages report their own errors to the agent, so it can watch them
