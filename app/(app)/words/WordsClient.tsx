@@ -58,6 +58,7 @@ import {
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
+import { QuietHoursSetting } from "./QuietHoursSetting";
 import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
@@ -3504,7 +3505,7 @@ function Study({
         </div>
         {syncError && (
           <div className="text-red-500 text-sm mt-1">
-            {fill(text.notSaved.value, { error: syncError })}
+            {fill(text.couldntLoadMore.value, { error: syncError })}
           </div>
         )}
         {notice && <div className="text-amber-600 dark:text-amber-300 text-sm mt-1">{notice}</div>}
@@ -3578,6 +3579,18 @@ function Study({
               label={text.animationsOff.value}
               hint={text.animationsOffHint.value}
             />
+            {/* The learning partner's quiet hours: debug mode only, this device only. */}
+            {debug && (
+              <QuietHoursSetting
+                Toggle={TogglePill}
+                text={{
+                  label: text.quietHours.value,
+                  hint: text.quietHoursHint.value,
+                  from: text.quietFrom.value,
+                  to: text.quietTo.value,
+                }}
+              />
+            )}
             <div className="w-full pt-1" data-experimental>
               <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
                 {text.experimental}

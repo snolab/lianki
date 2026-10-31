@@ -242,6 +242,9 @@ bun scripts/dev/eval.ts chat --label "agent on $(hostname -s)" --out /tmp/lianki
 # Reply (uses the saved grant; exits once the hub has it):
 bun scripts/dev/eval.ts say "On it — fixing the swipe now."
 echo "multi-line reply" | bun scripts/dev/eval.ts say -
+# FYI / progress / deploy notices: shown, never read aloud. --loud only when
+# urgent or it needs his confirmation (docs/dev-debug-widget.md, "Quiet lines and quiet hours"):
+bun scripts/dev/eval.ts say --quiet "PR #390 opened, CI running."
 
 # A line with "source":"stt" was spoken: polish its misheard words first
 # (docs/dev-debug-widget.md, "Agent edits of voice messages"):
@@ -523,18 +526,18 @@ Each line spoken into the mic gets one timing record, voice → reply
 (`packages/debug-chat/src/latency.ts`, tested in `unit/latency.test.ts`).
 Every stamp is the page's own `Date.now()`, so no stage mixes clocks:
 
-| Stage (ms)     | From → to                                                   | Stamped in                    |
-| -------------- | ----------------------------------------------------------- | ----------------------------- |
-| `vadMs`        | last frame Silero scored ≥ 0.5 → the VAD ends the utterance | `mic.ts` createMic            |
-| `encodeMs`     | VAD end → the WAV upload starts                             | `mic.ts`                      |
-| `sttMs`        | `/api/debug/stt` round trip (`sttServerMs` = its own `ms`)  | `mic.ts`, `MicButton.tsx`     |
-| `waitMs`       | transcript back → in the input (an earlier one still out)   | `DebugChat.tsx` dictated      |
-| `sendMs`       | in the input → sent on the socket                           | `DebugChat.tsx` submit        |
-| `hubMs`        | sent → the hub's copy of the line back on this page         | `DebugEval.tsx`               |
-| `ackMs`        | sent → the first busy beat (a listener's "heard you")       | `DebugEval.tsx`               |
-| `agentMs`      | hub copy back → the agent's reply here                      | `DebugEval.tsx`               |
-| `voiceMs`      | reply here → it starts playing (utterance `start` / `play`) | `voice.ts` onStart            |
-| `totalMs`      | end of speech → the reply audible (unspoken: here)          |                               |
+| Stage (ms) | From → to                                                   | Stamped in                |
+| ---------- | ----------------------------------------------------------- | ------------------------- |
+| `vadMs`    | last frame Silero scored ≥ 0.5 → the VAD ends the utterance | `mic.ts` createMic        |
+| `encodeMs` | VAD end → the WAV upload starts                             | `mic.ts`                  |
+| `sttMs`    | `/api/debug/stt` round trip (`sttServerMs` = its own `ms`)  | `mic.ts`, `MicButton.tsx` |
+| `waitMs`   | transcript back → in the input (an earlier one still out)   | `DebugChat.tsx` dictated  |
+| `sendMs`   | in the input → sent on the socket                           | `DebugChat.tsx` submit    |
+| `hubMs`    | sent → the hub's copy of the line back on this page         | `DebugEval.tsx`           |
+| `ackMs`    | sent → the first busy beat (a listener's "heard you")       | `DebugEval.tsx`           |
+| `agentMs`  | hub copy back → the agent's reply here                      | `DebugEval.tsx`           |
+| `voiceMs`  | reply here → it starts playing (utterance `start` / `play`) | `voice.ts` onStart        |
+| `totalMs`  | end of speech → the reply audible (unspoken: here)          |                           |
 
 The owner line carries the mic's stamps as an optional `timing` object
 (`VoiceTiming` in `wire.ts`: `t_lastVoice`, `t_speechEnd`, `t_uploadStart`,

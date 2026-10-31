@@ -42,6 +42,18 @@ describe("parseControllerMessage", () => {
     expect(r.ok && r.value.type === "eval" && r.value.target).toBe("iPhone");
   });
 
+  it("say keeps quiet / loud only as true; loud wins over quiet", () => {
+    const say = (extra: object) => {
+      const r = parseControllerMessage(JSON.stringify({ type: "say", text: "hi", ...extra }));
+      return r.ok ? r.value : null;
+    };
+    expect(say({ quiet: true })).toEqual({ type: "say", text: "hi", quiet: true });
+    expect(say({ loud: true })).toEqual({ type: "say", text: "hi", loud: true });
+    expect(say({ quiet: true, loud: true })).toEqual({ type: "say", text: "hi", loud: true });
+    expect(say({ quiet: "true", loud: 1 })).toEqual({ type: "say", text: "hi" });
+    expect(say({ quiet: false })).toEqual({ type: "say", text: "hi" });
+  });
+
   it("refuses anything else", () => {
     expect(parseControllerMessage("nope").ok).toBe(false);
     expect(parseControllerMessage('{"type":"allow","pair":"x"}').ok).toBe(false);

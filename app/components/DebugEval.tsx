@@ -312,6 +312,14 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           reBeat();
           return;
         }
+        if (msg.type === "wake") {
+          // The agent sets the mic's wake-word mode (docs/wake-word.md); the
+          // page-wide mic session (packages/debug-chat mic-session.ts) applies it.
+          const mode = (msg as { mode?: unknown }).mode;
+          const mic = (globalThis as { __lkMic?: { wake?: (m: string) => void } }).__lkMic;
+          if (mode === "active" || mode === "passive" || mode === "ignored") mic?.wake?.(mode);
+          return;
+        }
         if (msg.type === "history" && Array.isArray(msg.messages)) {
           const list = trimHistory(msg.messages as ChatMessage[]);
           for (const m of list)
@@ -334,7 +342,9 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
             // (voice.ts): always read while the mic is on, else by the focus rule.
             const fresh = !spokenIds.current.has(m.id);
             spokenIds.current.add(m.id);
-            const spoken = fresh && (tabsRef.current?.isSpeaker() ?? true) && speakReply(m.text);
+            // Never on a hidden page, never a quiet line, and not in quiet hours
+            // unless it is loud (quiet-hours.ts): the line itself is the meta.
+            const spoken = fresh && (tabsRef.current?.isSpeaker() ?? true) && speakReply(m.text, m);
             voiceLatency().heard(m, spoken === true);
           } else {
             setWarning(null);
@@ -481,6 +491,11 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
       const id = crypto.randomUUID().slice(0, 12);
       // A voice line's timestamps ride along (an older hub drops them).
       const timing = opts?.source === "stt" ? cleanTiming(opts.timing) : undefined;
+      // The mic's wake-word mode rides along, so the agent sees it (docs/wake-word.md).
+      const mic = (
+        globalThis as { __lkMic?: { view?: () => { state: string; wake?: string } } }
+      ).__lkMic?.view?.();
+      const wake = mic && mic.state !== "off" ? mic.wake : undefined;
       sock.send(
         JSON.stringify({
           type: "chat",
@@ -489,6 +504,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           ...(to ? { to } : {}),
           ...(opts?.source === "stt" ? { source: "stt" } : {}),
           ...(timing ? { timing } : {}),
+          ...(wake === "active" || wake === "passive" ? { wake } : {}),
         }),
       );
       // Its reply is timed against it (latency.ts); main-thread lines only.

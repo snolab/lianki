@@ -321,6 +321,79 @@ const dictionary = {
       mr: "स्वाइपची जाणीव ट्यून करण्यासाठी पॅनेल",
       ko: "스와이프 느낌을 조정하는 패널",
     }),
+    // The learning partner's quiet hours (packages/debug-chat/src/quiet-hours.ts): debug mode only, this device only.
+    quietHours: t({
+      en: "Quiet hours",
+      zh: "免打扰时段",
+      hi: "शांत घंटे",
+      es: "Horas de silencio",
+      fr: "Heures de silence",
+      ar: "ساعات الهدوء",
+      bn: "নীরব সময়",
+      pt: "Horário de silêncio",
+      ru: "Тихие часы",
+      ur: "خاموش اوقات",
+      id: "Jam tenang",
+      de: "Ruhezeiten",
+      ja: "おやすみ時間帯",
+      sw: "Saa za utulivu",
+      mr: "शांत वेळ",
+      ko: "방해 금지 시간",
+    }),
+    quietHoursHint: t({
+      en: "Between these times on this device, messages from your learning partner are shown but not read aloud, except urgent ones and questions for you",
+      zh: "在此设备上的这段时间内，学习伙伴的消息只显示、不朗读；紧急消息和需要你回答的问题除外",
+      hi: "इस डिवाइस पर इन समयों के बीच पढ़ाई के साथी के संदेश दिखते हैं पर पढ़कर नहीं सुनाए जाते, ज़रूरी संदेश और आपसे पूछे गए सवाल छोड़कर",
+      es: "Entre estas horas, en este dispositivo, los mensajes de tu compañero de aprendizaje se muestran sin leerse en voz alta, salvo los urgentes y las preguntas para ti",
+      fr: "Entre ces heures, sur cet appareil, les messages de votre partenaire d'apprentissage s'affichent sans être lus à voix haute, sauf les urgents et les questions qui vous sont posées",
+      ar: "بين هذين الوقتين على هذا الجهاز تظهر رسائل رفيق الدراسة دون قراءتها بصوت عالٍ، إلا الرسائل العاجلة والأسئلة الموجهة إليك",
+      bn: "এই ডিভাইসে এই সময়ের মধ্যে পড়াশোনার সাথীর বার্তা দেখানো হয়, জোরে পড়া হয় না; জরুরি বার্তা আর আপনার জন্য প্রশ্ন বাদে",
+      pt: "Entre estes horários, neste dispositivo, as mensagens do seu parceiro de aprendizagem aparecem sem serem lidas em voz alta, exceto as urgentes e as perguntas para você",
+      ru: "В эти часы на этом устройстве сообщения напарника по учёбе показываются, но не зачитываются вслух — кроме срочных и вопросов к вам",
+      ur: "اس ڈیوائس پر ان اوقات میں پڑھائی کے ساتھی کے پیغامات دکھائے جاتے ہیں مگر پڑھ کر نہیں سنائے جاتے، سوائے فوری پیغامات اور آپ سے پوچھے گئے سوالوں کے",
+      id: "Di antara jam ini, di perangkat ini, pesan dari teman belajar Anda ditampilkan tanpa dibacakan, kecuali yang mendesak dan pertanyaan untuk Anda",
+      de: "Zwischen diesen Uhrzeiten zeigt dieses Gerät die Nachrichten deines Lernpartners an, liest sie aber nicht vor – außer dringenden und Fragen an dich",
+      ja: "この端末では、この時間帯の学習パートナーのメッセージを表示だけして読み上げません。急ぎのものとあなたへの質問は読み上げます",
+      sw: "Katika saa hizi kwenye kifaa hiki, ujumbe wa mwenzi wako wa kujifunza huonyeshwa bila kusomwa kwa sauti, isipokuwa wa dharura na maswali kwako",
+      mr: "या डिव्हाइसवर या वेळेत अभ्यास सोबतीचे संदेश दिसतात पण मोठ्याने वाचले जात नाहीत; तातडीचे संदेश आणि तुम्हाला विचारलेले प्रश्न सोडून",
+      ko: "이 기기에서 이 시간에는 학습 파트너의 메시지를 표시만 하고 읽어 주지 않아요. 급한 메시지와 당신에게 묻는 질문은 읽어요",
+    }),
+    quietFrom: t({
+      en: "From",
+      zh: "开始",
+      hi: "शुरू",
+      es: "Desde",
+      fr: "De",
+      ar: "من",
+      bn: "শুরু",
+      pt: "De",
+      ru: "С",
+      ur: "شروع",
+      id: "Dari",
+      de: "Von",
+      ja: "開始",
+      sw: "Kuanzia",
+      mr: "सुरुवात",
+      ko: "시작",
+    }),
+    quietTo: t({
+      en: "To",
+      zh: "结束",
+      hi: "समाप्त",
+      es: "Hasta",
+      fr: "À",
+      ar: "إلى",
+      bn: "শেষ",
+      pt: "Até",
+      ru: "До",
+      ur: "ختم",
+      id: "Sampai",
+      de: "Bis",
+      ja: "終了",
+      sw: "Hadi",
+      mr: "शेवट",
+      ko: "종료",
+    }),
     undo: t({
       en: "Undo",
       zh: "撤销",
@@ -548,7 +621,7 @@ const dictionary = {
       pt: "japonês",
       ru: "японский",
       ur: "جاپانی",
-      id: "Jepang",
+      id: "bahasa Jepang",
       de: "Japanisch",
       ja: "日本語",
       sw: "Kijapani",
@@ -702,19 +775,19 @@ const dictionary = {
     experimental: t({
       en: "Experimental",
       zh: "实验性功能",
-      hi: "प्रायोगिक",
-      es: "Experimental",
+      hi: "प्रायोगिक सुविधाएँ",
+      es: "Funciones experimentales",
       fr: "Fonctions expérimentales",
-      ar: "تجريبي",
-      bn: "পরীক্ষামূলক",
-      pt: "Experimental",
-      ru: "Экспериментальное",
-      ur: "تجرباتی",
-      id: "Eksperimental",
-      de: "Experimentell",
+      ar: "ميزات تجريبية",
+      bn: "পরীক্ষামূলক ফিচার",
+      pt: "Recursos experimentais",
+      ru: "Экспериментальные функции",
+      ur: "تجرباتی فیچرز",
+      id: "Fitur eksperimental",
+      de: "Experimentelle Funktionen",
       ja: "試験的な機能",
       sw: "Majaribio",
-      mr: "प्रायोगिक",
+      mr: "प्रायोगिक वैशिष्ट्ये",
       ko: "실험적 기능",
     }),
     newSwipe: t({
@@ -897,23 +970,23 @@ const dictionary = {
       mr: "सिंक झाले ✓",
       ko: "동기화됨 ✓",
     }),
-    notSaved: t({
-      en: "Not saved: {error}",
-      zh: "未保存：{error}",
-      hi: "सहेजा नहीं गया: {error}",
-      es: "No guardado: {error}",
-      fr: "Non enregistré : {error}",
-      ar: "لم يُحفظ: {error}",
-      bn: "সংরক্ষিত হয়নি: {error}",
-      pt: "Não salvo: {error}",
-      ru: "Не сохранено: {error}",
-      ur: "محفوظ نہیں ہوا: {error}",
-      id: "Tidak tersimpan: {error}",
-      de: "Nicht gespeichert: {error}",
-      ja: "保存できませんでした：{error}",
-      sw: "Haijahifadhiwa: {error}",
-      mr: "जतन झाले नाही: {error}",
-      ko: "저장 안 됨: {error}",
+    couldntLoadMore: t({
+      en: "Couldn't load more words: {error}",
+      zh: "无法加载更多单词：{error}",
+      hi: "और शब्द लोड नहीं हो सके: {error}",
+      es: "No se pudieron cargar más palabras: {error}",
+      fr: "Impossible de charger d'autres mots : {error}",
+      ar: "تعذّر تحميل مزيد من الكلمات: {error}",
+      bn: "আরও শব্দ লোড করা যায়নি: {error}",
+      pt: "Não foi possível carregar mais palavras: {error}",
+      ru: "Не удалось загрузить ещё слова: {error}",
+      ur: "مزید الفاظ لوڈ نہیں ہو سکے: {error}",
+      id: "Tidak bisa memuat kata lagi: {error}",
+      de: "Weitere Wörter konnten nicht geladen werden: {error}",
+      ja: "続きの単語を読み込めませんでした：{error}",
+      sw: "Imeshindwa kupakia maneno zaidi: {error}",
+      mr: "आणखी शब्द लोड करता आले नाहीत: {error}",
+      ko: "단어를 더 불러오지 못했습니다: {error}",
     }),
     copied: t({
       en: "Copied “{term}”",
@@ -1104,14 +1177,14 @@ const dictionary = {
       ar: "↓ عادت",
       bn: "↓ ফিরেছে",
       pt: "↓ de volta",
-      ru: "↓ снова",
+      ru: "↓ ниже",
       ur: "↓ واپس",
       id: "↓ kembali",
       de: "↓ zurück",
       ja: "↓ 再出題",
       sw: "↓ imerudi",
       mr: "↓ परत",
-      ko: "↓ 다시",
+      ko: "↓ 아래로",
     }),
     again: t({
       en: "Again",
@@ -1715,187 +1788,206 @@ const dictionary = {
  * missing here is a type error, and unit/i18n-context.test.ts fails.
  */
 const context: Record<keyof typeof dictionary.content, string> = {
-  // The list picker (/words with no list open).
+  // The list picker (/words with no list open): header, Study all, the list rows.
   title:
-    "Page heading (h1) of /words, the page listing the learner's vocabulary word lists. A noun phrase, not an action.",
+    "/words list picker, the page heading (h1) at the top: names the page, which lists the learner's own vocabulary word lists. A short plural noun phrase, not an action.",
   intro:
-    "Paragraph under the /words heading explaining the study view: an endless scrolling list of words, each graded with the keys 1/2/3/4 (Again/Hard/Good/Easy), saved immediately; the Z key undoes the last grade. Keep the digits and the letter Z.",
+    "/words list picker, the one-paragraph intro right under the page heading: explains the study view behind each list, an endless scrolling list of words graded with the keys 1/2/3/4 (Again/Hard/Good/Easy), each grade saved immediately, and the Z key undoing the last grade. Keep the digits, the slashes and the letter Z as written; plain sentences.",
   allTitle:
-    "Title shown in the study view's toolbar when the learner studies all their word lists at once. A noun phrase naming what is being studied.",
+    "/words study view, the title next to '← lists' in the top toolbar when the learner opened 'Study all lists together': names what is being studied (every word list at once). A short noun phrase, like a list's name.",
+  offlineBanner:
+    "/words list picker, small amber notice in the header row (where the 'Download for offline' button usually is) when the device has no network: the lists shown are the copies saved on this device, and grades given now are sent to the server once back online. Two short sentences.",
+  downloadForOffline:
+    "/words list picker, button (with a download icon) in the header row: saves every word list and today's due words on this device so the learner can study without a network connection. A short imperative verb phrase on a button.",
+  downloadTitle:
+    "/words list picker, the mouse-hover tooltip of the 'Download for offline' button: says what it saves (every list and today's due words) on this device, and why (studying without a network). One sentence, no final period.",
+  downloading:
+    "/words list picker, progress text shown next to the 'Download for offline' button while it runs: {done} of {total} lists saved so far. Keep both placeholders and the slash; ellipsis kept.",
+  savedOnDevice:
+    "/words list picker, text shown next to the 'Download for offline' button once the download finished: every list is now saved on this device. A past-tense status, with the ✓ kept at the end.",
+  downloadFailed:
+    "/words list picker, error text shown next to the 'Download for offline' button when the download failed; {error} is the technical error message, inserted as is. A short statement then the colon and the placeholder.",
+  studyAll:
+    "/words list picker, main (bold) line of the large green button above the word lists (shown when there are two or more lists): opens one study session over every word list together. An imperative verb phrase on a button.",
+  studyAllHint:
+    "/words list picker, small second line under 'Study all lists together' on the same button: new (never-seen) words are introduced in the order the lists are arranged below the button. One short sentence.",
+  dueCount:
+    "/words list picker, the small count at the right end of the 'Study all lists together' button: how many words across all lists are due for review now. {n} is a number. Short, like a badge: number plus 'due'.",
+  dragToReorder:
+    "/words list picker, screen-reader label of the ⠿ drag handle at the start of each word-list row: dragging the handle changes the order of the lists. An instruction phrase, no final period.",
+  dragTitle:
+    "/words list picker, mouse-hover tooltip on the ⠿ drag handle of a word-list row: drag up/down to reorder; drag right to nest the list inside the row above it (making a group), drag left to take it back out. Instructions separated by ·, kept.",
+  expandGroup:
+    "/words list picker, screen-reader label of the small ▸ arrow on a group's row (a folder of word lists, e.g. 'Japanese'); it unfolds the group to show the lists inside. {name} is the group's name. Imperative verb phrase.",
+  collapseGroup:
+    "/words list picker, screen-reader label of the small ▾ arrow on an open group's row (a folder of word lists, e.g. 'Japanese'); it folds the group shut, hiding the lists inside (they are kept). {name} is the group's name. Imperative verb phrase.",
+  renameField:
+    "/words list picker, screen-reader label of the text field that replaces a list's name while it is being renamed (Enter saves, Escape cancels). {name} is the current name. A label naming the field, not a question.",
+  groupRowHint:
+    "/words list picker, first line of the hover tooltip on a group's row (a folder of word lists, e.g. one language), above the row's stats. Tapping anywhere on the row opens one study session over every list inside the group, like an Anki parent deck. An instruction, no final period.",
+  rowStats:
+    "/words list picker, the full stats in the hover tooltip of each word list's (or group's) row. {due}: words due for review now; {learning}: words still being learned; {mastered}: words whose next review is a year or more away (≥1y = at least one year); {seen}/{total}: words seen so far out of the list's size. Keep every placeholder and the · separators; short labels after each number.",
+  rowStatsShort:
+    "/words list picker, the one compact stats line under each word list's (or group's) name, on a narrow phone row: {due} is how many words are due for review now, {learning} how many are still in learning steps (a group: summed over every list in it). Keep it as short as the English; keep both placeholders and the middle dot.",
+  progressTitle:
+    "/words list picker, each list's row: the tooltip and screen-reader label of the small progress ring and percentage on the right. {pct} is the list's progress (0–100, keep the % sign placement natural for the language); {total} is how many words the list (a group: every list in it) holds. Progress counts every word, unstudied ones as 0, and a word counts more the nearer it is to being remembered for a year. Keep both placeholders. One sentence, no final period.",
   listMenu:
     "/words list picker, the round ⋯ (three dots) button at the end of each word-list row: its screen-reader label and hover tooltip, and the label of the small menu it opens (Rename, Delete). {name} is that list's or group's name. A noun phrase, no final period.",
   renameList:
-    "/words list picker, item in a list row's ⋯ menu: turns the list's (or group's) name into a text field so the learner can type a new name for it. Imperative verb, title case in English like an app menu item.",
+    "/words list picker, item in a list row's ⋯ menu (pencil icon): turns the list's (or group's) name into a text field so the learner can type a new name for it. Imperative verb, title case in English like an app menu item.",
   deleteList:
-    "/words list picker, item in a list row's ⋯ menu (shown in red): deletes that word list with its review progress, or a group (its lists stay and move up a level). There is no confirm dialog: an Undo toast follows. Imperative verb, title case in English like an app menu item.",
-  renameField:
-    "/words list picker: screen-reader label of the text field that replaces a list's name while it is being renamed (Enter saves, Escape cancels). {name} is the current name. A label naming the field, not a question.",
+    "/words list picker, item in a list row's ⋯ menu (shown in red, trash icon): deletes that word list with its review progress, or a group (its lists stay and move up a level). There is no confirm dialog: an Undo toast follows. Imperative verb, title case in English like an app menu item.",
   deletedList:
-    "/words list picker: short notice at the bottom of the screen right after a word list was deleted from its ⋯ menu, next to an Undo button that brings it back for a few seconds. {name} is the list's name; its review progress goes with it. Past tense statement, no final period.",
+    "/words list picker, short notice in a toast at the bottom of the screen right after a word list was deleted from its ⋯ menu, next to an Undo button that brings it back for a few seconds. {name} is the list's name; its review progress goes with it. Past tense statement, no final period.",
   deletedGroup:
-    "/words list picker: short notice at the bottom of the screen right after a group of word lists was deleted from its ⋯ menu, next to an Undo button. {name} is the group's name; the lists inside it are kept and moved up one level. Past tense statement, no final period.",
+    "/words list picker, short notice in a toast at the bottom of the screen right after a group of word lists was deleted from its ⋯ menu, next to an Undo button. {name} is the group's name; the lists inside it are kept and moved up one level. Past tense statement, no final period.",
   undoDelete:
-    "/words list picker: button in the notice shown right after a list or group was deleted; brings the deleted list back (cancels the delete) while the notice is up. Undo, not Cancel. A short imperative.",
-  studyAll:
-    "Main line of the large button at the top of the list picker that opens one study session over every word list together. Imperative.",
-  studyAllHint:
-    "Small second line under 'Study all lists together': new (never-seen) words are introduced in the order the lists are arranged below it.",
-  dueCount:
-    "Badge on the 'Study all lists together' button: how many words across all lists are due for review now. {n} is a number.",
-  progressTitle:
-    "/words list picker, each list's row: the tooltip and screen-reader label of the small progress ring and percentage on the right. {pct} is the list's progress (0–100, keep the % sign placement natural for the language); {total} is how many words the list (a group: every list in it) holds. Progress counts every word, unstudied ones as 0, and a word counts more the nearer it is to being remembered for a year. Keep both placeholders. One sentence, no final period.",
-  rowStats:
-    "Small stats line under a word list's name in the list picker. {due}: words due for review now; {learning}: words being learned; {mastered}: words whose next review is a year or more away (≥1y = at least one year); {seen}/{total}: words seen so far out of the list's size.",
-  rowStatsShort:
-    "/words list picker, the one compact stats line under each word list's (or group's) name, on a narrow phone row: {due} is how many words are due for review now, {learning} how many are still in learning steps (a group: summed over every list in it). Keep it as short as the English; keep both placeholders and the middle dot.",
-  groupRowHint:
-    "/words list picker: first line of the hover tooltip on a group's row (a folder of word lists, e.g. one language). Tapping anywhere on the row opens one study session over every list inside the group, like an Anki parent deck. An instruction, no final period.",
-  expandGroup:
-    "/words list picker: screen-reader label of the small ▸ arrow on a group's row (a folder of word lists, e.g. 'Japanese'); it unfolds the group to show the lists inside. {name} is the group's name. Imperative verb phrase.",
-  collapseGroup:
-    "/words list picker: screen-reader label of the small ▾ arrow on an open group's row (a folder of word lists, e.g. 'Japanese'); it folds the group shut, hiding the lists inside (they are kept). {name} is the group's name. Imperative verb phrase.",
-  dragToReorder:
-    "Screen-reader label of the ⠿ drag handle at the start of each word-list row; dragging it changes the order of the lists.",
-  dragTitle:
-    "Mouse-hover tooltip on the ⠿ drag handle of a word-list row: drag up/down to reorder; drag right to nest the list inside the row above it (making a group), drag left to take it back out.",
+    "/words list picker, the button in the toast shown right after a list or group was deleted; brings the deleted list back (reverses the delete) while the toast is up. Undo, not Cancel. A short imperative.",
   reorderHelp:
-    "Help paragraph under the word lists explaining the ⠿ drag handle: up/down reorders, right nests a list inside the one above (like Anki's subdecks, keep the name Anki), left un-nests; studying a group studies every list inside it.",
+    "/words list picker, small faint help paragraph under the word lists explaining the ⠿ drag handle: up/down reorders, right nests a list inside the one above (like Anki's subdecks, keep the name Anki), left un-nests; studying a group studies every list inside it. Keep the ⠿ symbol; two plain sentences.",
   newGroup:
-    "Button under the word lists that creates a new, empty group (a folder that word lists can be dragged into). '+' prefix kept.",
+    "/words list picker, button under the word lists that creates a new, empty group (a folder that word lists can be dragged into); it asks for the name in a browser prompt. Keep the '+' prefix; an imperative-like noun phrase on a button.",
   groupName:
-    "Prompt text of the browser dialog that asks for the name of the new group being created. A label for a text field, not a question.",
+    "/words list picker, the text of the browser prompt dialog that the '+ New group' button opens, above the field where the learner types the new group's name. A label for a text field, not a question.",
   addList:
-    "Section heading in the list picker above the catalogue of built-in word lists the learner can add to their own lists.",
-  add: "Button next to a built-in word list in the 'Add a list' catalogue; adds that list to the learner's lists. Imperative verb, lowercase in English.",
+    "/words list picker, small section heading above the catalogue of built-in word lists (filtered by language buttons) that the learner can add to their own lists. A heading naming the section, phrased as an action.",
+  add: "/words list picker, the small button next to each built-in word list in the 'Add a list' catalogue; adds that list to the learner's lists. Imperative verb, lowercase in English.",
   added:
-    "Disabled state of the same button once that built-in word list has been added: a past participle agreeing with 'list' (feminine in French).",
-  downloadForOffline:
-    "Button in the list picker that saves every word list and today's due words on this device so the learner can study without a network connection.",
-  downloadTitle:
-    "Mouse-hover tooltip on the 'Download for offline' button, describing what it saves on this device and why.",
-  downloading:
-    "Progress text on the 'Download for offline' button while it runs; {done} of {total} lists saved so far.",
-  savedOnDevice:
-    "Text on the 'Download for offline' button once everything is saved on this device. Past tense, with the ✓ kept.",
-  downloadFailed:
-    "Error text after the offline download failed; {error} is the technical error message, kept as is.",
-  offlineBanner:
-    "Banner at the top of the list picker when the device has no network: it shows the lists saved earlier, and grades made now are sent to the server once back online.",
+    "/words list picker, the same small button once that built-in word list has been added (now disabled): a past participle agreeing with 'list' (feminine in French). Lowercase in English, one word if possible.",
   signInToUse:
-    "Message shown instead of the word lists to a visitor who is not signed in. Asks them to sign in.",
+    "/words page, message shown in place of the word lists (in red) to a visitor who is not signed in. Asks them to sign in to use word lists. One polite sentence.",
   loading:
-    "Placeholder shown while the word lists or a list's words are being fetched. Ellipsis kept.",
+    "/words page, faint placeholder shown while the word lists (list picker) or a list's words (study view) are being fetched. A progressive status, ellipsis kept.",
 
   // The study view: toolbar.
   backToLists:
-    "Toolbar link at the top-left of the study view that leaves it and returns to the list picker. Keep the ← arrow pointing toward the start of the line (→ in right-to-left languages). 'lists' = word lists.",
+    "/words study view, the first link at the top-left of the toolbar: leaves the study view and returns to the list picker. Keep the ← arrow pointing toward the start of the line (→ in right-to-left languages). 'lists' = word lists; lowercase, as short as the English.",
   settings:
-    "Toolbar button (with a gear icon) that opens and closes the study view's settings sheet. One word, as on a gear button.",
-  undo: "Toolbar button (touch screens only, with a ↶ icon) that undoes the last grade given to a word, putting that word back as ungraded. Undo, not Cancel.",
+    "/words study view, toolbar button (with a gear icon) that opens and closes the study view's settings sheet; also its screen-reader label. One word, as on a gear button: a noun, not a verb.",
+  undo: "/words study view, toolbar button (touch screens only, with a ↶ icon) that undoes the last grade given to a word, putting that word back as ungraded. Undo, not Cancel. A short imperative verb.",
   stats:
-    "Live counter in the study toolbar. {done}: words graded in this session; {rate}/min: grades per minute; {due}: words due for review still ahead; {new}: words in the lists being studied that have never been shown yet, all of them (there is no daily new-word limit, and it is not the batch loaded on screen); it only falls as new words are graded. Say 'not yet seen' or 'never shown', not just 'new'. Keep the · separators.",
+    "/words study view, live counter at the right of the toolbar. {done}: words graded in this session; {rate}/min: grades per minute; {due}: words due for review still ahead; {new}: words in the lists being studied that have never been shown yet, all of them (there is no daily new-word limit, and it is not the batch loaded on screen); it only falls as new words are graded. Say 'not yet seen' or 'never shown', not just 'new'. Keep the · separators.",
   saving:
-    "Appended to the toolbar counter: {n} grades are being sent to the server right now. Ellipsis kept.",
+    "/words study view, appended to the toolbar counter after ' · ': {n} grades are being sent to the server right now. Lowercase fragment, ellipsis kept.",
   offline:
-    "Appended to the toolbar counter when the device has no network (grades are kept on the device). A status adjective, lowercase.",
+    "/words study view, appended to the toolbar counter after ' · ' when the device has no network or the words came from the offline copy (grades are kept on the device). A status adjective, lowercase.",
   toSync:
-    "Appended to the toolbar counter while offline: {n} grades are waiting to be sent to the server when the network returns.",
+    "/words study view, appended to the toolbar counter after ' · offline · ': {n} grades are waiting on this device to be sent to the server when the network returns. Lowercase fragment.",
   synced:
-    "Appended to the toolbar counter once every grade of this session has reached the server. Status, with ✓ kept.",
-  notSaved:
-    "Error line under the toolbar when grades could not be sent to the server; {error} is the technical error message, kept as is.",
-
-  // The study view: settings sheet. Labels are short toggle names; hints are the line under them.
-  studySettings:
-    "Screen-reader label (aria-label) of the settings sheet that the toolbar's Settings button opens; the sheet holds the switches for the study view.",
-  showAll:
-    "Name of an on/off switch in the study settings: show the meaning (translation) of every word in the list at once, instead of only the word currently focused.",
-  showAllHint:
-    '/words study, Settings sheet: the tooltip of the "Show all meanings" switch. On = every row shows its back (meaning and example) and reading aloud reads the back too, not only the word. (E) is the keyboard shortcut; keep it.',
-  animationsOff:
-    '/words study, Settings sheet: the label of an on/off switch (a pill). On = this device shows no animation anywhere in the app: no transitions, fades, slides or spring motion. Short, an imperative or a noun phrase, like the other switch labels ("Speak on swipe", "Full screen").',
-  animationsOffHint:
-    '/words study, Settings sheet: the tooltip (title attribute) of the "Turn off animations" switch. Explains that it covers the whole app, only on this device, and that until the person flips it, it follows the operating system\'s reduce-motion setting. One or two plain sentences, no final period, like the other hints.',
-  readAloud:
-    "Name of an on/off switch in the study settings: text-to-speech reads each word aloud, with its example sentence, as the learner reaches it.",
-  readAloudHint: "Line under the 'Read cards aloud' switch; '(V)' is its keyboard shortcut, kept.",
-  serverVoice:
-    "Name of an on/off switch in the study settings: speech comes from Lianki's own server-side text-to-speech voices instead of the browser's built-in voices.",
-  serverVoiceHint:
-    "Line under the 'Server voice' switch. The language codes in parentheses are kept exactly as written.",
-  voices:
-    "Label before the credit line naming the speech engines used (VOICEVOX, Kokoro, Piper…), in the settings sheet. Followed by the names, which are not translated.",
-  japanese:
-    "Language name in the voice credit line, in parentheses after the Japanese engine 'VOICEVOX:No.7'. The language, not the nationality; lowercase where the language writes language names so.",
-  gradeTones:
-    "Name of an on/off switch in the study settings: play a short sound for each grade (Again/Hard/Good/Easy) so the learner can study without looking at the screen.",
-  gradeTonesHint: "Line under the 'Grade tones' switch, explaining why the sounds help.",
-  speakOnSwipe:
-    "Name of an on/off switch in the study settings (touch screens): speak the word aloud as soon as the learner starts swiping its row.",
-  speakOnSwipeHint: "Line under the 'Speak on swipe' switch.",
-  fullScreen:
-    "Name of an on/off switch in the study settings: put the page in full-screen mode (hides the browser's address bar).",
-  fullScreenHint: "Line under the 'Full screen' switch.",
-  fsHint:
-    "Shown when the 'Full screen' switch cannot work in this browser (iPhone Safari): how to add Lianki to the home screen instead. 'Share' and 'Add to Home Screen' are iOS's own menu names — use the names iOS shows in that language.",
-  experimental:
-    "Small uppercase heading of the last section of the study settings, grouping switches for features still being tried out. A heading for a group of features, not an adjective about one item.",
-  newSwipe:
-    "Name of an on/off switch in the Experimental section: use the new implementation of the swipe gesture (built on the browser's native scrolling) instead of the current one. 'New' qualifies the implementation, not a single swipe.",
-  newSwipeHint: "Line under the 'New swipe' switch, saying how the new swipe works.",
-  heavySwipe:
-    "Name of an on/off switch in the Experimental section (debug mode only): a swipe feel preset where the word's row (the 'slip', a paper strip) feels heavy. Describes the feel of the gesture.",
-  heavySwipeHint:
-    "Line under the 'Heavy swipe' switch: the slip (the word's row, drawn as a paper strip) feels weighty — it trails the finger, keeps moving after release and springs back slowly.",
-  tuneSwipe:
-    "Name of an on/off switch in the Experimental section (debug mode only): shows a panel of sliders to adjust how the swipe feels.",
-  tuneSwipeHint: "Line under the 'Tune swipe' switch.",
-  paperScrolls:
-    "Name of an on/off switch in the Experimental section: the background paper texture of the study list scrolls along with the list instead of staying fixed. 'Paper' = the page's paper-texture background.",
-  paperScrollsHint: "Line under the 'Paper scrolls with the list' switch.",
-  nativeSwipeNote:
-    "Note at the end of the Experimental section on touch screens, before 'It may change or go away.': says the swipe uses native scrolling.",
-  mayChange:
-    "Note at the end of the Experimental section: these experimental features may change or be removed.",
-
-  // The study view: the word list and its status column.
-  statusNew:
-    "Status column of a word row: this word has never been studied (a new word). One short word, lowercase; it labels a word.",
-  ago: "Status column of a word row: how long ago this word became due for review. {t} is a short duration like '3d' or '5h'.",
-  dueTitle:
-    "Mouse-hover tooltip on the status column of an ungraded word row; explains that the time shown is how long the word has been due (waiting) for review.",
-  now: "Status column of a graded word row whose countdown has reached zero: the word is due again now. One short word.",
-  back: "Status column of a graded word row whose countdown reached zero and which has been put back further down the list to be shown again in this session. Keep the ↓ arrow.",
-  again:
-    "Name of the lowest of the four review grades (spaced repetition, as in Anki's Again/Hard/Good/Easy): the learner forgot the word and it will be shown again soon. Used on swipe labels, help text and tooltips.",
-  hard: "Name of the second review grade (Again/Hard/Good/Easy): remembered, but with difficulty.",
-  good: "Name of the third review grade (Again/Hard/Good/Easy): remembered correctly, the normal answer.",
-  easy: "Name of the highest review grade (Again/Hard/Good/Easy): remembered effortlessly, so the next review is far away.",
-  everyWordLearned:
-    "Shown in the help strip at the bottom of the study view when no words are left to study in this session (followed by a confetti icon).",
-  loadingMore:
-    "Shown at the bottom of the endless word list while the next words are being fetched. Ellipsis kept.",
-  couldntLoad:
-    "Error in the study view when the words could not be fetched; {error} is the technical error message, kept as is.",
-  retry: "Button under that error that tries fetching the words again. Imperative verb.",
-
-  // The help strip.
-  helpTouch:
-    "Help strip at the bottom of the study view on touch screens: tap a word to show its meaning and hear it; hold to listen in a loop; swipe left a little/far or right a little/far to grade. {again}/{hard}/{good}/{easy} are the grade names inserted from their own keys. Keep the ← → ↶ symbols and the · separators.",
-  helpKeys:
-    "Full keyboard help strip at the bottom of the study view: the keys (↑↓, W S, I U, Space, E, 1-4, L K J H, Z, M, Esc, Enter, V, ?) are kept as is; only the explanation is translated. {again}/{hard}/{good}/{easy} are the grade names inserted from their own keys.",
-  helpKeysShort:
-    "Short keyboard help strip at the bottom of the study view (the full one is toggled with ?): keys kept as is, {again}/{hard}/{good}/{easy} are the grade names; '? all keys' means press ? to see every key.",
-
-  // The slip sheet (the action sheet opened by double-tapping a word).
-  wordActions:
-    "Screen-reader label of the action sheet that slides up from the bottom when the learner double-taps a word's row (touch screens): it holds the other actions for that word.",
-  listenAgain:
-    "Button in the word's action sheet: play the word's audio again, repeating in a loop.",
-  copyWord: "Button in the word's action sheet: copy the word to the clipboard.",
+    "/words study view, appended to the toolbar counter after ' · ' once every grade of this session has reached the server. Lowercase status (past participle), with the ✓ kept.",
+  couldntLoadMore:
+    "/words study view, red error line under the toolbar when fetching the next words of the endless list failed while words are already on screen (studying them goes on). {error} is the technical error message, inserted as is. A short statement then the colon and the placeholder.",
   copied:
-    "Short notice after the word was copied to the clipboard; {term} is the word itself. Past tense.",
-  cancel: "Button at the bottom of the word's action sheet that closes it without doing anything.",
+    "/words study view, short notice under the toolbar after 'Copy the word' in the word's action sheet copied it to the clipboard; {term} is the word itself. Past tense, no final period.",
+
+  // The study view: settings sheet. Each switch is a pill; its hint is the
+  // pill's mouse-hover tooltip (title attribute), not a visible line.
+  studySettings:
+    "/words study view, screen-reader label (aria-label) of the settings sheet that the toolbar's Settings button opens under the toolbar; the sheet holds the switches for the study view. A noun phrase.",
+  showAll:
+    "/words study view, Settings sheet: the label of an on/off switch (a pill): show the meaning (translation) of every word in the list at once, instead of only the word currently focused. A short noun or imperative phrase.",
+  showAllHint:
+    '/words study view, Settings sheet: the tooltip of the "Show all meanings" switch. On = every row shows its back (meaning and example) and reading aloud reads the back too, not only the word. (E) is the keyboard shortcut; keep it.',
+  readAloud:
+    "/words study view, Settings sheet (only where the browser can speak): the label of an on/off switch (a pill): text-to-speech reads each word aloud, with its example sentence, as the learner reaches it. A short imperative or noun phrase.",
+  readAloudHint:
+    "/words study view, Settings sheet: the tooltip of the 'Read cards aloud' switch, saying what is spoken (the word and its example sentence). '(V)' is its keyboard shortcut, kept. No final period.",
+  serverVoice:
+    "/words study view, Settings sheet (shown once 'Read cards aloud' is on): the label of an on/off switch (a pill): speech comes from Lianki's own server-side text-to-speech voices instead of the browser's built-in voices. A short noun phrase.",
+  serverVoiceHint:
+    "/words study view, Settings sheet: the tooltip of the 'Server voice' switch: use Lianki's voices instead of the browser's. The language codes in parentheses are kept exactly as written. No final period.",
+  voices:
+    "/words study view, Settings sheet (when 'Server voice' is on): the label that starts the small credit line naming the speech engines used (VOICEVOX, Kokoro, Piper…). Followed by the names, which are not translated. Keep the colon.",
+  japanese:
+    "/words study view, Settings sheet: a language name in the voice credit line, in parentheses after the Japanese engine 'VOICEVOX:No.7'. The language, not the nationality or the country; lowercase where the language writes language names so.",
+  gradeTones:
+    "/words study view, Settings sheet: the label of an on/off switch (a pill): play a short sound for each grade (Again/Hard/Good/Easy) so the learner can study without looking at the screen. A short noun phrase.",
+  gradeTonesHint:
+    "/words study view, Settings sheet: the tooltip of the 'Grade tones' switch, explaining why the sounds help (one short tone per grade, to study without looking). No final period.",
+  speakOnSwipe:
+    "/words study view, Settings sheet (touch screens only): the label of an on/off switch (a pill): speak the word aloud as soon as the learner starts swiping its row. A short imperative or noun phrase.",
+  speakOnSwipeHint:
+    "/words study view, Settings sheet: the tooltip of the 'Speak on swipe' switch: the word is said the moment a swipe on its row begins. An imperative phrase, no final period.",
+  fullScreen:
+    "/words study view, Settings sheet (touch screens, not when installed to the home screen): the label of an on/off switch (a pill): put the page in full-screen mode, hiding the browser's address bar. A short noun phrase, as in a video player.",
+  fullScreenHint:
+    "/words study view, Settings sheet: the tooltip of the 'Full screen' switch: hide the browser's address bar while studying. An imperative phrase, no final period.",
+  fsHint:
+    "/words study view, Settings sheet: a paragraph shown under the switches when the 'Full screen' switch cannot work in this browser (iPhone Safari); a tap dismisses it. Says how to add Lianki to the home screen instead. 'Share' and 'Add to Home Screen' are iOS's own menu names — use the names iOS shows in that language. Keep the →.",
+  animationsOff:
+    '/words study view, Settings sheet: the label of an on/off switch (a pill). On = this device shows no animation anywhere in the app: no transitions, fades, slides or spring motion. Short, an imperative or a noun phrase, like the other switch labels ("Speak on swipe", "Full screen").',
+  animationsOffHint:
+    '/words study view, Settings sheet: the tooltip (title attribute) of the "Turn off animations" switch. Explains that it covers the whole app, only on this device, and that until the person flips it, it follows the operating system\'s reduce-motion setting. One or two plain sentences, no final period, like the other hints.',
+  experimental:
+    "/words study view, Settings sheet: the small uppercase heading of its last section, grouping switches for features still being tried out. A heading for a group of features (e.g. 'Experimental features'), not an adjective about one item.",
+  newSwipe:
+    "/words study view, Settings sheet, Experimental section (touch screens only): the label of an on/off switch (a pill): use the new implementation of the swipe gesture (built on the browser's native scrolling) instead of the current one. 'New' qualifies the implementation, not a single swipe.",
+  newSwipeHint:
+    "/words study view, Settings sheet: the tooltip of the 'New swipe' switch, saying how the new swipe works (the browser's own scrolling moves the row). A noun phrase, no final period.",
+  heavySwipe:
+    "/words study view, Settings sheet, Experimental section (touch screens, debug mode only): the label of an on/off switch (a pill): a swipe feel preset where the word's row (the 'slip', a paper strip) feels heavy. Describes the feel of the gesture, a short noun phrase.",
+  heavySwipeHint:
+    "/words study view, Settings sheet: the tooltip of the 'Heavy swipe' switch: the slip (the word's row, drawn as a paper strip) feels weighty — it trails the finger, keeps moving after release and springs back slowly. No final period.",
+  tuneSwipe:
+    "/words study view, Settings sheet, Experimental section (touch screens, debug mode only): the label of an on/off switch (a pill) that shows a panel of sliders to adjust how the swipe feels. A short imperative.",
+  tuneSwipeHint:
+    "/words study view, Settings sheet: the tooltip of the 'Tune swipe' switch: turning it on shows a panel for adjusting the swipe's feel. A noun phrase, no final period.",
+  quietHours:
+    "/words study view, Settings sheet (debug mode only, i.e. while the learning partner chat is on): the label of an on/off switch (a pill). On = during a nightly time window on this device, the learning partner (the in-app assistant chat) shows its messages without reading them aloud, so it never wakes the learner. A noun phrase naming the feature, like a phone's own quiet-hours or Do Not Disturb schedule; not an imperative.",
+  quietHoursHint:
+    "/words study view, Settings sheet: the tooltip (title attribute) of the 'Quiet hours' switch. Between the From and To times, on this device only, the learning partner's messages appear in the chat but are not spoken aloud, except urgent ones and questions it asks the learner. 'Learning partner' = the in-app assistant, lowercase here. One sentence, no final period, like the other hints.",
+  quietFrom:
+    "/words study view, Settings sheet, beside the 'Quiet hours' switch: the short label right before a time picker (HH:MM) that sets when the quiet hours start each night. Means 'start time'; one short word, a label, not a preposition waiting for a noun.",
+  quietTo:
+    "/words study view, Settings sheet, beside the 'Quiet hours' switch: the short label right before a second time picker (HH:MM) that sets when the quiet hours end the next morning. Means 'end time'; one short word, a label, paired with 'From'.",
+  paperScrolls:
+    "/words study view, Settings sheet, Experimental section: the label of an on/off switch (a pill): the background paper texture of the study list scrolls along with the list instead of staying fixed. 'Paper' = the page's paper-texture background. A short statement.",
+  paperScrollsHint:
+    "/words study view, Settings sheet: the tooltip of the 'Paper scrolls with the list' switch: the paper texture moves with the word rows (cards) instead of staying still. No final period.",
+  nativeSwipeNote:
+    "/words study view, Settings sheet: the small note at the end of the Experimental section on touch screens, right before 'It may change or go away.': says the experimental swipe works by native scrolling. A short fragment ending with a period.",
+  mayChange:
+    "/words study view, Settings sheet: the small note at the end of the Experimental section: these experimental features may change or be removed. 'It' = the experimental feature(s). One short sentence.",
+
+  // The study view: the word list, its status column and its states.
+  statusNew:
+    "/words study view, status column at the right end of an ungraded word row: this word has never been studied (a new word). One short word, lowercase; it labels a word (agree with 'word' where the language needs it).",
+  ago: "/words study view, status column at the right end of an ungraded word row: how long ago this word became due for review. {t} is a short duration like '3d' or '5h'. Keep the placeholder; as short as the English.",
+  dueTitle:
+    "/words study view, mouse-hover tooltip on the status column of an ungraded word row (the time shown there is how long the word has been due, waiting for review). One short word or phrase meaning 'due for review'.",
+  now: "/words study view, status column of a graded word row whose countdown to its next review has reached zero: the word is due again now. One short word, lowercase.",
+  back: "/words study view, status column of a graded word row whose countdown reached zero and which was put back further down the list (↓) to be answered again in this session; this row fades, the copy below is the one to answer. Keep the ↓ arrow; one short word, and do not reuse the word chosen for the grade 'Again'.",
+  again:
+    "/words study view: name of the lowest of the four review grades (spaced repetition, as in Anki's Again/Hard/Good/Easy): the learner forgot the word and it will be shown again soon. Used in the help strip, on the grade stamp's screen-reader label and on tooltips. Use Anki's name for this grade in the language.",
+  hard: "/words study view: name of the second review grade (Again/Hard/Good/Easy): remembered, but with difficulty. Used in the help strip and tooltips. Use Anki's name for this grade in the language.",
+  good: "/words study view: name of the third review grade (Again/Hard/Good/Easy): remembered correctly, the normal answer. Used in the help strip and tooltips. Use Anki's name for this grade in the language.",
+  easy: "/words study view: name of the highest review grade (Again/Hard/Good/Easy): remembered effortlessly, so the next review is far away. Used in the help strip and tooltips. Use Anki's name for this grade in the language.",
+  everyWordLearned:
+    "/words study view, shown in the help strip at the bottom (or in the middle of an empty list) when no words are left to study in the lists being studied; followed by a confetti icon. One short celebratory sentence.",
+  loadingMore:
+    "/words study view, shown in the middle of the screen while the list of words is empty and the next words are still being fetched. A progressive status, ellipsis kept.",
+  couldntLoad:
+    "/words study view, red error shown in place of the word list when the words could not be fetched at all; {error} is the technical error message, inserted as is. Followed by a Retry button.",
+  retry:
+    "/words study view, button under the 'Couldn't load' error that reloads the page to fetch the words again. Imperative verb.",
+
+  // The help strip (glass strip at the bottom of the study view).
+  helpTouch:
+    "/words study view, help strip at the bottom on touch screens: tap a word to show its meaning and hear it; hold to listen in a loop; swipe left a little/far or right a little/far to grade. {again}/{hard}/{good}/{easy} are the grade names inserted from their own keys. Keep the ← → ↶ symbols, the = signs and the · separators; lowercase fragments.",
+  helpKeys:
+    "/words study view, full keyboard help strip at the bottom (toggled with ?): the keys (↑↓, W S, I U, Space, E, 1-4, L K J H, Z, M, Esc, Enter, V, ?) are kept as is; only the explanation is translated. {again}/{hard}/{good}/{easy} are the grade names inserted from their own keys. Lowercase fragments, · separators kept.",
+  helpKeysShort:
+    "/words study view, short keyboard help strip at the bottom (the full one is toggled with ?): keys kept as is, {again}/{hard}/{good}/{easy} are the grade names; '? all keys' means press ? to see every key. Lowercase fragments, · separators kept.",
+
+  // The slip sheet (the action sheet opened by double-tapping a word, or right-clicking it).
+  wordActions:
+    "/words study view, screen-reader label of the action sheet that slides up from the bottom when the learner double-taps a word's row (or right-clicks it): it holds the other actions for that word. A noun phrase.",
+  listenAgain:
+    "/words study view, word's action sheet: a button (speaker icon) that plays the word's audio again, repeating in a loop until stopped. Imperative verb phrase; keep '(loops)' as a short note.",
+  copyWord:
+    "/words study view, word's action sheet: a button (copy icon) that copies the word itself to the clipboard. Imperative verb phrase.",
+  cancel:
+    "/words study view, word's action sheet: the wide button at the bottom that closes the sheet without doing anything. Cancel (dismiss), as on an iOS action sheet; one word.",
 };
 
 const wordsPageContent = {

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { FSRSNote } from "@/app/fsrs";
+import { firstUrl } from "@/lib/nav/nav-core";
 
 /**
  *
@@ -9,10 +10,13 @@ import { FSRSNote } from "@/app/fsrs";
  */
 export default function AddNoteClient() {
   const { adding } = useIntlayer("add-note-page");
-  // read url from url's hash, once
+  // The url from the hash (the userscript, the nav's search), once; else from
+  // the query, where the PWA share target puts it (public/manifest.json). A
+  // share sheet often sends the link inside `text` rather than `url`.
   const sp = new URLSearchParams(globalThis.location?.hash?.slice(1) ?? "");
-  const url = sp.get("url");
-  const title = sp.get("title");
+  const q = new URLSearchParams(globalThis.location?.search ?? "");
+  const url = sp.get("url") || q.get("url") || firstUrl(q.get("text"));
+  const title = sp.get("title") || q.get("title");
   const [resp, setResp] = useState<FSRSNote & { _id: string }>();
   useEffect(() => {
     if (!url) return;

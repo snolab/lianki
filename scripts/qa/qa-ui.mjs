@@ -160,7 +160,8 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   const phone = await ctx.newPage();
   await phone.setViewportSize({ width: 414, height: 848 });
   await phone.goto(`${BASE}/home`, { waitUntil: "networkidle" });
-  await phone.getByRole("button", { name: "Menu", exact: true }).click();
+  // The header's Menu; the bottom island has one too (checked below).
+  await phone.locator("header").getByRole("button", { name: "Menu", exact: true }).click();
   const drawer = phone.locator('[data-drawer][role="dialog"][aria-modal="true"]');
   const opened = await drawer
     .waitFor({ timeout: 5000 })
@@ -175,6 +176,32 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   check(
     opened && backdrop === 1 && closed,
     `drawer: a modal dialog, backdrop "Close menu", Escape closes it (${opened}/${backdrop}/${closed})`,
+  );
+
+  // The bottom island (docs/bottom-nav.md): its Menu opens the same drawer,
+  // and its Search opens the palette, which Escape closes.
+  const island = phone.locator("[data-nav-island]");
+  await island.getByRole("button", { name: /^Menu/ }).click();
+  const viaIsland = await drawer
+    .waitFor({ timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
+  await phone.keyboard.press("Escape");
+  await drawer.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  await island.getByRole("button", { name: /^Search/ }).click();
+  const palette = phone.getByRole("dialog", { name: "Search" });
+  const searchOpen = await palette
+    .waitFor({ timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
+  await phone.keyboard.press("Escape");
+  const searchClosed = await palette
+    .waitFor({ state: "detached", timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
+  check(
+    viaIsland && searchOpen && searchClosed,
+    `bottom island: Menu opens the drawer, Search the palette, Escape closes it (${viaIsland}/${searchOpen}/${searchClosed})`,
   );
 
   await phone.locator("[data-profile-menu]").click();

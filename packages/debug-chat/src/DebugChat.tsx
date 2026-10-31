@@ -60,6 +60,7 @@ import {
   sentenceState,
 } from "./read-progress";
 import { aecOn, cloudOut, outMode, setAec } from "./voice-out";
+import type { SpeakMeta } from "./quiet-hours";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
   FADE_MS,
@@ -404,9 +405,12 @@ if (typeof window !== "undefined")
  * called for a reply that arrived live, never for history. With the mic on it
  * is always read; otherwise only to someone typing here with the speaker on.
  * DebugEval calls this bundled copy; the hot-loaded chat shares the session.
+ * `meta` is the line itself (its quiet, loud and ask): a hidden page, a quiet
+ * line and quiet hours keep it silent (quiet-hours.ts), a loud one is exempt
+ * from quiet hours.
  */
-export function speakReply(text: string): boolean {
-  return voice().reply(text);
+export function speakReply(text: string, meta?: SpeakMeta): boolean {
+  return voice().reply(text, meta);
 }
 
 let unlocked = false;
@@ -2622,6 +2626,8 @@ export function DebugChat({
                         data-from={m.from}
                         data-node={node?.node}
                         data-run-start={k === 0 || undefined}
+                        // say --quiet / --loud: shown alike; only reading it aloud differs (quiet-hours.ts).
+                        data-volume={m.loud ? "loud" : m.quiet ? "quiet" : undefined}
                         title={
                           node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)
                         }

@@ -347,6 +347,8 @@ type Chat = {
     taskPath?: string;
     agentId?: string;
     to?: string;
+    quiet?: true;
+    loud?: true;
   };
 };
 const chats = (ws: FakeSocket) =>
@@ -383,6 +385,33 @@ describe("DebugHub chat", () => {
     await msg(c, { type: "say", text: "on it" });
     expect(chats(p).at(-1)).toMatchObject({ from: "agent", label: "main lane", text: "on it" });
     expect(c.last("said")?.id).toBe(chats(p).at(-1)?.id as string);
+  });
+
+  it("say --quiet / --loud: the hub keeps the flag (true only) and forwards it, live and in history", async () => {
+    const { hub, page, controller, msg, pairOf } = setup();
+    const p = page();
+    const c = controller("main lane");
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    await msg(c, { type: "say", text: "deployed", quiet: true });
+    await msg(c, { type: "say", text: "approve?", loud: true });
+    await msg(c, { type: "say", text: "plain" });
+    // Not booleans: dropped. Both: loud wins (it may need his answer).
+    await msg(c, { type: "say", text: "junk", quiet: "yes", loud: 1 });
+    await msg(c, { type: "say", text: "both", quiet: true, loud: true });
+    const lines = chats(p).slice(-5);
+    expect(lines.map((m) => [m.text, m.quiet, m.loud])).toEqual([
+      ["deployed", true, undefined],
+      ["approve?", undefined, true],
+      ["plain", undefined, undefined],
+      ["junk", undefined, undefined],
+      ["both", undefined, true],
+    ]);
+    for (const m of lines.slice(2)) expect(m).not.toHaveProperty("quiet");
+    const again = page();
+    await hub.history();
+    const h = again.last("history") as { messages: Record<string, unknown>[] };
+    expect(h.messages.find((m) => m.text === "deployed")).toMatchObject({ quiet: true });
+    expect(h.messages.find((m) => m.text === "approve?")).toMatchObject({ loud: true });
   });
 
   it("an unapproved controller cannot say", async () => {
@@ -1202,6 +1231,61 @@ describe("DebugHub heartbeat (agent is working)", () => {
     expect(c.last("error")?.error).toBe("no chat thread for nobody@x.com");
     expect(beats(owner)).toEqual([]);
     expect(beats(f)).toEqual([]);
+  });
+});
+
+describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
+  const agent = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    return c;
+  };
+  const wakes = (ws: FakeSocket) => ws.sent.filter((m) => m.type === "wake");
+
+  it("goes to the owner's pages, unstored, and is acknowledged", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const f = await s.friend("f1", "f1@x.com");
+    const keys = s.storage.store.size;
+    await s.msg(c, { type: "wake", mode: "passive" });
+    expect(wakes(owner)).toEqual([{ type: "wake", mode: "passive", at: 1_000_000 }]);
+    expect(wakes(f)).toEqual([]);
+    expect(c.last("woke")).toEqual({
+      type: "woke",
+      thread: "owner",
+      mode: "passive",
+      delivered: 1,
+      at: 1_000_000,
+    });
+    expect(s.storage.store.size).toBe(keys);
+  });
+
+  it("refuses an unknown mode and a friend's pairing", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    await s.msg(c, { type: "wake", mode: "asleep" });
+    expect(c.last("error")?.error).toBe('wake needs mode "active", "passive" or "ignored"');
+    expect(wakes(owner)).toEqual([]);
+  });
+
+  it("an owner line keeps the mode it was sent in; anything else is dropped", async () => {
+    const s = setup();
+    const owner = s.page();
+    await agent(s, owner);
+    await s.msg(owner, {
+      type: "chat",
+      id: "w1",
+      text: "next word",
+      source: "stt",
+      wake: "passive",
+    });
+    await s.msg(owner, { type: "chat", id: "w2", text: "typed", wake: "sleepy" });
+    const stored = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as Record<string, unknown>);
+    expect(stored.map((m) => m.wake)).toEqual(["passive", undefined]);
   });
 });
 

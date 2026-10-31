@@ -1020,6 +1020,7 @@ export class DebugHub {
         ...(m.to ? { to: m.to } : {}),
         ...(m.source ? { source: m.source } : {}),
         ...(m.timing ? { timing: m.timing } : {}),
+        ...(m.wake ? { wake: m.wake } : {}),
       });
     }
     // A sleeping eval grant (listed to the owner's pages only): End, or add a page.
@@ -1300,6 +1301,21 @@ export class DebugHub {
         send(ws, { type: "beat", thread: dest.thread, delivered: pages.length, at: t });
       });
     }
+    if (m.value.type === "wake") {
+      if (c.forUser)
+        return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
+      const { to, mode } = m.value;
+      return this.sayTarget(to).then((dest) => {
+        if ("error" in dest) return send(ws, { type: "error", error: dest.error });
+        // That thread's pages set their mic's mode (docs/wake-word.md); not stored.
+        const pages = this.reach(c, dest.thread);
+        for (const { ws: p } of pages) send(p, { type: "wake", mode, at: t });
+        console.log(
+          JSON.stringify({ msg: "debug.wake", thread: dest.thread, mode, delivered: pages.length }),
+        );
+        send(ws, { type: "woke", thread: dest.thread, mode, delivered: pages.length, at: t });
+      });
+    }
     if (m.value.type === "grant" || m.value.type === "ungrant") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
@@ -1309,7 +1325,7 @@ export class DebugHub {
     if (m.value.type === "say") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
-      const { text, to, node, agentId } = m.value;
+      const { text, to, node, agentId, quiet, loud } = m.value;
       // The sender's node: what the line says, within the node its socket listens at.
       const home = c.node ?? ROOT_NODE;
       const from = m.value.taskPath ?? home;
@@ -1338,6 +1354,9 @@ export class DebugHub {
           ...(from !== ROOT_NODE ? { taskPath: from } : {}),
           ...(who ? { agentId: who } : {}),
           ...(node ? { to: node } : {}),
+          // say --quiet / --loud (already booleans): the page reads it aloud or not.
+          ...(quiet ? { quiet } : {}),
+          ...(loud ? { loud } : {}),
         };
         console.log(
           JSON.stringify({
@@ -1347,6 +1366,8 @@ export class DebugHub {
             thread: said.thread,
             ...(said.taskPath ? { taskPath: said.taskPath } : {}),
             ...(said.to ? { to: said.to } : {}),
+            ...(quiet ? { quiet } : {}),
+            ...(loud ? { loud } : {}),
             len: text.length,
             head: head(text),
           }),

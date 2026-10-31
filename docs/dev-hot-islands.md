@@ -164,8 +164,7 @@ with the page's, and validates with its own contract version.
   read `@/lib/words/swipe-core`, a shared module, through context. See
   [swipe-core.md](swipe-core.md).
 - `nav.bottom` and `nav.drawer`: the floating bottom island navigation and
-  the rows above the nav list (pinned, recent, breadcrumbs). Both render
-  nothing built in until the owner approves them. See
+  the rows above the nav list (pinned, recent, breadcrumbs). See
   [bottom-nav.md](bottom-nav.md).
 
 ## Add an island
