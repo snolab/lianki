@@ -338,7 +338,9 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
             reBeat();
             // Every tab shows it; only one reads it aloud. speakReply queues it
             // (voice.ts): always read while the mic is on, else by the focus rule.
-            const spoken = (tabsRef.current?.isSpeaker() ?? true) && speakReply(m.text);
+            // Never on a hidden page, never a quiet line, and not in quiet hours
+            // unless it is loud (quiet-hours.ts): the line itself is the meta.
+            const spoken = (tabsRef.current?.isSpeaker() ?? true) && speakReply(m.text, m);
             voiceLatency().heard(m, spoken === true);
           } else {
             setWarning(null);
