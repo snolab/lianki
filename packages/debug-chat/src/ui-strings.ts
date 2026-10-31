@@ -27,6 +27,31 @@ export type UiStrings = {
   latReply: string;
   latVoice: string;
   /**
+   * The menu's latency readout as two lines, each with its parts adding up
+   * to its total (seconds follow each label):
+   * - latSpeechLine: line 1, from the end of his speech to his text being sent;
+   * - latReplyLine: line 2, from his text sent to the reply starting to play;
+   * - latTotal: the overall time, end of speech to the reply's first sound;
+   * - latPause: waiting for silence to know he stopped speaking;
+   * - latRecog: speech recognition; latLocal / latCloud say where it ran
+   *   (on his own computer, or on the server), in parentheses after it;
+   * - latToAgent: the text reaching the agent (its "heard you" signal);
+   * - latAgent: the agent thinking and writing its reply;
+   * - latVoiceStart: from the reply arriving to its voice starting;
+   * - latOther: the remainder not measured separately.
+   */
+  latSpeechLine: string;
+  latReplyLine: string;
+  latTotal: string;
+  latPause: string;
+  latRecog: string;
+  latLocal: string;
+  latCloud: string;
+  latToAgent: string;
+  latAgent: string;
+  latVoiceStart: string;
+  latOther: string;
+  /**
    * The menu's echo-cancellation switch (an A/B the owner flips): on, the
    * mic is echo-cancelled and stays open while the agent speaks; off, raw
    * capture, paused while the agent speaks. "Applies the next time the mic
@@ -75,6 +100,17 @@ export const UI_EN: UiStrings = {
   latHub: "hub",
   latReply: "reply",
   latVoice: "voice",
+  latSpeechLine: "Speech → text",
+  latReplyLine: "Reply",
+  latTotal: "Total",
+  latPause: "pause detection",
+  latRecog: "recognition",
+  latLocal: "local",
+  latCloud: "cloud",
+  latToAgent: "to agent",
+  latAgent: "agent",
+  latVoiceStart: "voice start",
+  latOther: "other",
   aec: "Echo cancellation",
   resumeRead: "Tap to continue reading",
   askRecommended: "recommended",
@@ -103,6 +139,17 @@ export const UI_ZH: UiStrings = {
   latHub: "传输",
   latReply: "回复",
   latVoice: "朗读",
+  latSpeechLine: "语音 → 文字",
+  latReplyLine: "回复",
+  latTotal: "总计",
+  latPause: "停顿检测",
+  latRecog: "识别",
+  latLocal: "本地",
+  latCloud: "云端",
+  latToAgent: "送达助手",
+  latAgent: "助手",
+  latVoiceStart: "开始朗读",
+  latOther: "其他",
   aec: "回声消除",
   resumeRead: "点按继续朗读",
   askRecommended: "推荐",
@@ -131,6 +178,17 @@ export const UI_JA: UiStrings = {
   latHub: "転送",
   latReply: "返信",
   latVoice: "読み上げ",
+  latSpeechLine: "音声 → 文字",
+  latReplyLine: "返信",
+  latTotal: "合計",
+  latPause: "無音検出",
+  latRecog: "認識",
+  latLocal: "ローカル",
+  latCloud: "クラウド",
+  latToAgent: "エージェントへ",
+  latAgent: "エージェント",
+  latVoiceStart: "読み上げ開始",
+  latOther: "その他",
   aec: "エコーキャンセル",
   resumeRead: "タップして読み上げを続ける",
   askRecommended: "おすすめ",
