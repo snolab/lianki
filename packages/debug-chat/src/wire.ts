@@ -377,6 +377,28 @@ export type ChatStrings = {
   statusOffline: string;
   /** The mark on a voice line the agent polished (tooltip and label). */
   polished: string;
+  /** Voice-clip recording (ClipsBadge.tsx): the badge's title while it records. */
+  clipsRecording: string;
+  /** The badge's button that stops recording. */
+  clipsStop: string;
+  /** Badge note: the screen wake lock is held while recording. */
+  clipsScreenOn: string;
+  /** Badge note: no wake lock; recording pauses while the screen is off. */
+  clipsScreenMaySleep: string;
+  /** Badge note after a gap; `{n}` = minutes. */
+  clipsPaused: string;
+  /** Badge reminder before an auto-stop; `{n}` = minutes. */
+  clipsStopsIn: string;
+  /** Button: continue another window's recording session on this page. */
+  clipsContinue: string;
+  /** Badge note: clips the sink acknowledged; `{n}` = the count. */
+  clipsSaved: string;
+  /** Badge state while the latest clip did not reach the sink. */
+  clipsSaveFailed: string;
+  /** Menu item that starts recording voice clips in this window. */
+  clipsStart: string;
+  /** Menu switch: a tap on clipsStart also sets an auto-stop; `{n}` = minutes. */
+  clipsAutoStop: string;
 };
 
 export const CHAT_STRINGS_EN: ChatStrings = {
@@ -391,6 +413,17 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   listening: "Your {name} is listening ({n})",
   statusOffline: "Your {name} is offline · messages wait until it is back",
   polished: "Polished by your {name}",
+  clipsRecording: "Recording",
+  clipsStop: "Stop",
+  clipsScreenOn: "Screen kept on",
+  clipsScreenMaySleep: "Pauses when the screen sleeps",
+  clipsPaused: "Paused {n} min",
+  clipsStopsIn: "Stops in {n} min",
+  clipsContinue: "Continue recording",
+  clipsSaved: "{n} saved",
+  clipsSaveFailed: "Saving failed",
+  clipsStart: "Record voice clips",
+  clipsAutoStop: "Auto-stop after {n} min",
 };
 
 /** Defaults filled in and `{name}` substituted. */
