@@ -32,7 +32,31 @@ export type ClipMeta = {
   label: string;
   transcript: string;
   model?: string;
+  /**
+   * What the browser applied to the mic track (voice-out.ts noteTrack /
+   * appliedSettings), so AEC on and off can be told apart offline
+   * (scripts/local-stt/ab-eval.py, docs/stt-ab.md).
+   */
+  track?: ClipTrack;
 };
+export type ClipTrack = {
+  echoCancellation?: boolean;
+  noiseSuppression?: boolean;
+  autoGainControl?: boolean;
+  sampleRate?: number;
+  channelCount?: number;
+};
+/** Only the known track fields, each of its own type; undefined when none is there. */
+export function clipTrack(raw: unknown): ClipTrack | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const out: Record<string, boolean | number> = {};
+  for (const k of ["echoCancellation", "noiseSuppression", "autoGainControl"] as const)
+    if (typeof r[k] === "boolean") out[k] = r[k];
+  for (const k of ["sampleRate", "channelCount"] as const)
+    if (typeof r[k] === "number" && Number.isFinite(r[k])) out[k] = r[k];
+  return Object.keys(out).length ? (out as ClipTrack) : undefined;
+}
 export type ClipEntry = ClipMeta & { name: string; file: string; ref?: string };
 
 const EXT: Record<string, string> = {
@@ -87,6 +111,7 @@ export function listClips(dir: string): ClipEntry[] {
       label: meta.label ?? "",
       transcript: meta.transcript ?? "",
       ...(meta.model ? { model: meta.model } : {}),
+      ...(meta.track ? { track: meta.track } : {}),
       ...(existsSync(refPath) ? { ref: readFileSync(refPath, "utf8").trim() } : {}),
     });
   }
@@ -144,6 +169,8 @@ export async function handleClips(
       transcript: String(meta.transcript ?? "").slice(0, 4000),
       ...(meta.model ? { model: String(meta.model).slice(0, 80) } : {}),
     };
+    const track = clipTrack(meta.track);
+    if (track) side.track = track;
     writeFileSync(join(dir, `${name}.json`), JSON.stringify(side, null, 2));
     return json({ name });
   }

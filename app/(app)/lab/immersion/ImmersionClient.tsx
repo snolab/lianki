@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/app/components/icons";
 import { useIntlayer } from "next-intlayer";
+import { notePrefWrite } from "@lianki/ui-state";
 import {
   IMMERSION_DOMAINS,
   IMMERSION_LANGUAGES,
@@ -158,6 +159,7 @@ export default function ImmersionClient({ preferred }: { preferred: ImmersionLan
       try {
         localStorage.setItem(TRANSPOSE_KEY, next ? "1" : "0");
       } catch {}
+      notePrefWrite(); // docs/prefs-sync.md
       return next;
     });
   }
@@ -171,6 +173,7 @@ export default function ImmersionClient({ preferred }: { preferred: ImmersionLan
       try {
         localStorage.setItem(LANGS_KEY, JSON.stringify(next));
       } catch {}
+      notePrefWrite();
       return next;
     });
   }

@@ -67,6 +67,7 @@ import {
   treeNav,
 } from "./tree-nav";
 import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
+import { notePrefWrite } from "@lianki/ui-state/account";
 import { type AnchorSide, placeBox } from "./anchor";
 import { keyboardLift } from "./keyboard-lift";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
@@ -1301,6 +1302,7 @@ export function DebugChat({
     const v = !speak;
     setSpeak(v);
     write(SPEAK_KEY, v ? "1" : "0");
+    notePrefWrite(); // synced with the account by the app (docs/prefs-sync.md)
     if (!v && !voice().state().mic) voice().stop();
   };
 
@@ -2283,7 +2285,10 @@ function FloatLine({
     setPhase("dwell");
     const l = createFloatLife({
       ms: dwellMs(m.text),
-      reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+      // The app's "Turn off animations" (lib/motion-pref.ts) sets data-motion="off".
+      reducedMotion:
+        document.documentElement.dataset.motion === "off" ||
+        matchMedia("(prefers-reduced-motion: reduce)").matches,
       paused: live.current.paused,
       onPhase: (p) => (p === "gone" ? live.current.onGone() : setPhase(p)),
     });

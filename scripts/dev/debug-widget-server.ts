@@ -28,7 +28,7 @@
  * Then, on the owner's page (debug mode):
  *   localStorage.setItem("lk:debug-widget-src", "<origin>/debug-chat.js"); location.reload()
  */
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync, watch } from "node:fs";
 import { resolve } from "node:path";
 import {
@@ -40,6 +40,7 @@ import {
   sse,
 } from "./debug-widget-build";
 import { clipsDir, handleClips } from "./clip-sink";
+import { serveOnTailnet, tailnetHost, unserveOnTailnet, validTailnetPath } from "./tailnet";
 
 const argv = Bun.argv.slice(2);
 const flag = (name: string, fallback = "") => {
@@ -51,18 +52,9 @@ const PORT = Number(flag("port", "5180"));
 const TUNNEL = flag("tunnel");
 /** `--tailnet /path`: mount this server there with `tailscale serve`. */
 const TAILNET = flag("tailnet").replace(/\/+$/, "");
-if (TAILNET && !/^\/[\w.-]+(\/[\w.-]+)*$/.test(TAILNET)) {
+if (TAILNET && !validTailnetPath(TAILNET)) {
   console.error(`--tailnet wants a path like /lianki-widget, not ${TAILNET}`);
   process.exit(1);
-}
-/** This machine's tailnet name, e.g. my-mac.example-tailnet.ts.net. */
-function tailnetHost(): string {
-  const r = spawnSync("tailscale", ["status", "--json"], { encoding: "utf8" });
-  if (r.status !== 0) throw new Error(`tailscale status failed: ${r.stderr || r.error}`);
-  return String((JSON.parse(r.stdout) as { Self: { DNSName: string } }).Self.DNSName).replace(
-    /\.$/,
-    "",
-  );
 }
 let ORIGIN = flag("origin").replace(/\/+$/, "") || `http://localhost:${PORT}`;
 if (TAILNET) ORIGIN = `https://${tailnetHost()}${TAILNET}`;
@@ -258,19 +250,15 @@ function startTreeWatch() {
 
 /** `tailscale serve` (never funnel): this port at <host><path>, tailnet only. */
 function startTailnet() {
-  const r = spawnSync(
-    "tailscale",
-    ["serve", "--bg", "--set-path", TAILNET, `http://127.0.0.1:${PORT}`],
-    { encoding: "utf8" },
-  );
-  if (r.status !== 0) {
-    log(`tailscale serve failed: ${r.stderr || r.error}`);
+  const err = serveOnTailnet(TAILNET, PORT);
+  if (err) {
+    log(`tailscale serve failed: ${err}`);
     process.exit(1);
   }
   log(`tailnet: ${ORIGIN}/debug-chat.js (tailscale serve, tailnet only)`);
 }
 function stopTailnet() {
-  spawnSync("tailscale", ["serve", "--set-path", TAILNET, "off"], { encoding: "utf8" });
+  unserveOnTailnet(TAILNET);
   log(`tailnet mapping ${TAILNET} removed`);
 }
 

@@ -1,10 +1,14 @@
 "use client";
 
+import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
+import { advanceTop, shouldAdvance } from "@/lib/words/advance";
+import { progressPercent } from "@/lib/words/progress";
 import { voiceQuality } from "@lianki/debug-chat/wire";
 import {
   startTransition,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -28,12 +32,29 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { applyDrop, descendants, flatten, projectDrop, visible } from "@/lib/words/tree";
+import {
+  applyDrop,
+  descendants,
+  flatten,
+  projectDrop,
+  visible,
+  withoutNode,
+} from "@/lib/words/tree";
+import { shownName } from "@/lib/words/lang-groups";
+import { createDeferredDelete, UNDO_MS, type FlushReason } from "@/lib/words/deferred-delete";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
 import { createSequencer } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
+import { AUDIO_CACHE_NAME, AudioDisk } from "@/lib/words/audio-disk";
+import { rowPriority } from "@/lib/words/audio-priority";
+import {
+  createClipPool,
+  type Clip as PoolClip,
+  type ClipPool,
+  type CtxLike as PoolCtx,
+} from "@/lib/words/clip-pool";
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
@@ -41,35 +62,70 @@ import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
   centreWeight,
+  frameDt,
+  glideStep,
   nextGoal,
   splitTarget,
   termTarget,
   weightedQuantile,
 } from "@/lib/words/columns";
-import { MIN_JERK_EASING, cssLinear, minJerk, moveSeconds, springStep } from "@/lib/words/motion";
+import { MIN_JERK_EASING, minJerk, moveSeconds } from "@/lib/words/motion";
 import { CORD_BOW, cordPath, cordPull } from "@/lib/words/cords";
 import {
-  type Axis,
   type SwipeLevel,
   lockAxis,
   releaseLevel,
   releaseRating,
   releaseVelocity,
   restRating,
-  snapSwipe,
-  springProgress,
   swipeLevel,
   revealShown,
   SWIPE_COAST_MS,
   SWIPE_HYSTERESIS,
   SWIPE_LEVEL,
-  SWIPE_RETURN_S,
   SWIPE_SNAP,
   SWIPE_SPRING,
   SWIPE_VELOCITY_MS,
 } from "@/lib/words/swipe";
 import { setSwipeVariant, swipeAbTag, swipeVariant, type SwipeVariant } from "@/lib/words/swipe-ab";
+import {
+  SWIPE_CORE_IFACE,
+  SwipeFeelProvider,
+  type SwipeRowValue,
+  SwipeRowProvider,
+  feelTagNow,
+  setFeelPrefs,
+  useFeelPrefs,
+  useSwipeFeel,
+  useSwipeGesture,
+} from "@/lib/words/swipe-core";
+import type { SwipePhase } from "@/lib/words/swipe-machine";
+import { notePrefWrite, PREF_APPLIED_EVENT, useUi } from "@lianki/ui-state";
+import {
+  anchorTop,
+  migrateCollapsed,
+  setAnchor,
+  toggleCollapsed,
+  topIndex,
+  wordsUiStore,
+} from "./ui-store";
+import { releaseTrajectory } from "@/lib/words/swipe-physics";
+import { island } from "@/lib/islands/Island";
+import { SwipeCard } from "@/lib/words/islands/SwipeCard";
+import { SwipeCue } from "@/lib/words/islands/SwipeCue";
+import { SwipeGrades } from "@/lib/words/islands/SwipeGrades";
+import { SwipeFeelSource } from "@/lib/words/islands/SwipeFeelSource";
+import { SwipeTuner } from "@/lib/words/islands/SwipeTuner";
+
+// The swipe's UI, as hot-swappable islands over the headless core (docs/swipe-core.md).
+const SwipeCardIsland = island("words.swipeCard", SwipeCard);
+const SwipeCueIsland = island("words.swipeCue", SwipeCue);
+const SwipeGradesIsland = island("words.swipeGrades", SwipeGrades);
+const SwipeFeelIsland = island("words.swipeFeel", SwipeFeelSource);
+const SwipeTunerIsland = island("words.swipeTuner", SwipeTuner);
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
+import { newScan, takeNewIndices, type NewScan } from "@/lib/words/take-new";
+import { countGradedNew, unseenLeft } from "@/lib/words/unseen";
 import { idbAdd, idbAll, idbDelete, idbGet, idbPut, type PendingOp } from "@/lib/words/idb";
 import {
   afterSend,
@@ -78,6 +134,7 @@ import {
   reviewedKey,
   sendOrder,
   undoTarget,
+  withPendingRenames,
 } from "@/lib/words/pending";
 import { playGradeTone, sharedAudioContext, unlockGradeTones, type GradeTone } from "./gradeSound";
 import { formatInterval, parseCard, previewInterval, reviewWord } from "@/lib/words/schedule";
@@ -113,8 +170,6 @@ const HOLD_MS = 300;
  * graded nothing.
  */
 const SWIPE_PARAMS = `snap=${SWIPE_SNAP};spring=${SWIPE_SPRING};level=${SWIPE_LEVEL};hyst=${SWIPE_HYSTERESIS};coast=${SWIPE_COAST_MS}`;
-/** A released slip springs home: the critically damped spring, as a CSS easing. */
-const SPRING_EASING = cssLinear(springProgress, 32);
 type SwipeRow = {
   at: string;
   finger: number;
@@ -157,7 +212,8 @@ function logSwipe(e: {
     projected: Math.round(e.projected * 10) / 10,
     rating: e.rating,
     a: e.a,
-    params: `${e.params ?? SWIPE_PARAMS};${swipeAbTag()}${e.ev ? `;ev=${e.ev}` : ""}`,
+    // The feel tag (lib/words/swipe-feel.ts) only off the plain light feel, so old rows compare.
+    params: `${e.params ?? SWIPE_PARAMS};${swipeAbTag()}${feelTagNow() ? `;${feelTagNow()}` : ""}${e.ev ? `;ev=${e.ev}` : ""}`,
   });
   try {
     localStorage.setItem(UNSENT, JSON.stringify(unsent.slice(-400)));
@@ -224,13 +280,6 @@ function flushSwipes(beacon = false) {
     .then((r) => r.ok && done())
     .catch(() => {});
 }
-/** The slip colour a swipe would grade to, shown while the finger is down. */
-const SWIPE_BG: Record<Rating, string> = {
-  1: "var(--slip-again)",
-  2: "var(--slip-hard)",
-  3: "var(--slip-good)",
-  4: "var(--slip-easy)",
-};
 /** A word whose next due falls inside this window comes back in this session. */
 const SESSION_WINDOW_MS = 20 * 60_000;
 
@@ -312,7 +361,15 @@ const RATING_STYLE: Record<Rating, string> = {
   3: "grade-good",
   4: "grade-easy",
 };
-const RATING_LABEL: Record<Rating, string> = { 1: "Again", 2: "Hard", 3: "Good", 4: "Easy" };
+/** The grades' names, in the app's language. */
+function useRatingLabel(): Record<Rating, string> {
+  const text = useIntlayer("words-page");
+  return { 1: text.again.value, 2: text.hard.value, 3: text.good.value, 4: text.easy.value };
+}
+
+/** Fills the `{name}` placeholders of a words-page string. */
+const fill = (s: string, vars: Record<string, string | number>) =>
+  s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 
 /** True on a touch-first device (no hover, coarse pointer). */
 function useTouch() {
@@ -328,17 +385,36 @@ function useTouch() {
 }
 
 /**
- * A remembered on/off setting (localStorage), the same across refreshes.
+ * Run `read` after mount, and again whenever a setting may have changed
+ * underneath: a value from the account (docs/prefs-sync.md, `lk:pref-applied`)
+ * or from another tab (`storage`).
+ */
+function usePrefReader(read: () => void) {
+  useEffect(() => {
+    read();
+    window.addEventListener(PREF_APPLIED_EVENT, read);
+    window.addEventListener("storage", read);
+    return () => {
+      window.removeEventListener(PREF_APPLIED_EVENT, read);
+      window.removeEventListener("storage", read);
+    };
+  }, [read]);
+}
+
+/**
+ * A remembered on/off setting (localStorage), the same across refreshes and,
+ * for the keys in lib/prefs/bindings.ts, across the account's devices.
  * Reads after mount, so server and first client render agree.
  */
 function usePref(key: string, initial: boolean) {
   const [on, setOn] = useState(initial);
-  useEffect(() => {
+  const read = useCallback(() => {
     try {
       const v = localStorage.getItem(key);
       if (v === "1" || v === "0") setOn(v === "1");
     } catch {}
   }, [key]);
+  usePrefReader(read);
   const set = useCallback(
     (next: boolean | ((v: boolean) => boolean)) =>
       setOn((v) => {
@@ -346,6 +422,7 @@ function usePref(key: string, initial: boolean) {
         try {
           localStorage.setItem(key, n ? "1" : "0");
         } catch {}
+        notePrefWrite();
         return n;
       }),
     [key],
@@ -571,50 +648,27 @@ const swipePerf = {
  */
 const OVERSCROLL_FRACTION = 0.8;
 
-/** Rows past the last one near the screen whose audio is fetched ahead too. */
+/** Rows past the rendered window whose audio is fetched ahead too. */
 const PREFETCH_NEXT = 5;
 
 /** How long a word clip takes to fade out when the card changes. */
 const FADE_S = 0.15;
 
 /**
- * An <audio> element for a clip, routed through a gain node so it can fade
- * out — iOS ignores `volume` on media elements. Without Web Audio, a plain
- * element (it then stops at once).
+ * The <audio> elements word clips play in, each routed once through a gain
+ * node so it can fade out (iOS ignores `volume` on media elements), and
+ * reused from clip to clip (lib/words/clip-pool.ts). One element per clip
+ * kept every element and its nodes alive in the AudioContext: the page slowed
+ * down over a long study.
  */
-type Clip = HTMLAudioElement & { gain?: GainNode };
-function playable(url: string): Clip {
-  const a: Clip = new Audio(url);
-  try {
-    const ac = sharedAudioContext();
-    if (ac && "createMediaElementSource" in ac) {
-      const g = ac.createGain();
-      ac.createMediaElementSource(a).connect(g).connect(ac.destination);
-      a.gain = g;
-    }
-  } catch {
-    // Web Audio refused the element: it plays unfaded.
-  }
-  return a;
-}
-
-/** Fade a playing clip out and stop it; no fade in, so the next word starts at once. */
-function fadeOut(a: Clip | null) {
-  if (!a || a.paused) return;
-  a.onended = null;
-  const ac = sharedAudioContext();
-  if (!a.gain || !ac) return void a.pause();
-  const now = ac.currentTime;
-  a.gain.gain.cancelScheduledValues(now);
-  a.gain.gain.setValueAtTime(a.gain.gain.value, now);
-  a.gain.gain.linearRampToValueAtTime(0, now + FADE_S);
-  setTimeout(
-    () => {
-      a.pause();
-      a.gain?.disconnect();
-    },
-    FADE_S * 1000 + 30,
-  );
+type Clip = PoolClip<HTMLAudioElement>;
+let sharedClips: ClipPool<HTMLAudioElement> | null = null;
+function clipPool() {
+  sharedClips ??= createClipPool({
+    element: () => new Audio(),
+    ctx: () => sharedAudioContext() as unknown as PoolCtx | null,
+  });
+  return sharedClips;
 }
 
 /**
@@ -623,6 +677,7 @@ function fadeOut(a: Clip | null) {
  */
 let sharedAudio: AudioCache | null = null;
 function wordAudio(): AudioCache {
+  if (!sharedAudio) requestPersistentStorage();
   sharedAudio ??= new AudioCache({
     fetch: (url, init) => fetch(url, init),
     createObjectURL: (b) => URL.createObjectURL(b),
@@ -630,9 +685,31 @@ function wordAudio(): AudioCache {
     connection: () =>
       (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
         .connection,
+    // On the device too (lib/words/audio-disk.ts): next time, and offline,
+    // a clip plays with no network at all.
+    disk:
+      typeof caches === "undefined"
+        ? undefined
+        : new AudioDisk({ open: () => caches.open(AUDIO_CACHE_NAME) }),
     log: devLog,
   });
   return sharedAudio;
+}
+
+/**
+ * Ask once per device that stored clips and words outlive storage pressure
+ * (iOS evicts a home-screen app's storage otherwise). The answer is the
+ * browser's; nothing depends on it.
+ */
+function requestPersistentStorage() {
+  try {
+    if (localStorage.getItem("lk:storage-persist")) return;
+    localStorage.setItem("lk:storage-persist", "asked");
+    void navigator.storage
+      ?.persist?.()
+      .then((granted) => devLog({ ev: "storage-persist", granted }))
+      .catch(() => {});
+  } catch {}
 }
 
 /** `serverVoice`: always use the server's recordings, never the browser's. */
@@ -645,6 +722,14 @@ function useSpeech(serverVoice = false) {
       return true;
     }
   });
+  // Read aloud follows the account (docs/prefs-sync.md).
+  usePrefReader(
+    useCallback(() => {
+      try {
+        setOn(localStorage.getItem("lk:words-sound") !== "off");
+      } catch {}
+    }, []),
+  );
   /**
    * Bumped by cancel(). cancel() can fire the old utterance's onend, which
    * would otherwise go on with the old word beside the new one.
@@ -654,7 +739,7 @@ function useSpeech(serverVoice = false) {
   const [available, setAvailable] = useState(false);
   /** Languages the browser failed to speak; the server speaks them instead. */
   const browserDead = useRef(new Set<string>());
-  const audio = useRef<HTMLAudioElement | null>(null);
+  const audio = useRef<Clip | null>(null);
   const watchdog = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     setAvailable(true);
@@ -704,7 +789,7 @@ function useSpeech(serverVoice = false) {
     clearTimeout(watchdog.current);
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
     // A clip cut mid-word is jarring when the card changes: fade it out.
-    fadeOut(audio.current);
+    clipPool().fadeOut(audio.current, FADE_S);
     audio.current = null;
   }, []);
 
@@ -713,17 +798,34 @@ function useSpeech(serverVoice = false) {
   /** Play the server's recording of `text`. False when it could not (no voice, limit, offline). */
   const serverSpeak = useCallback(async (text: string, lang: string, done: Done) => {
     const gen = generation.current;
+    const t0 = performance.now();
     // Prefetched, most of the time: then it plays at once, still inside the
     // tap's gesture (no await before play()).
-    const r = wordAudio().peek(lang, text) ?? (await wordAudio().load(lang, text));
+    const ready = wordAudio().peek(lang, text);
+    const r = ready ?? (await wordAudio().load(lang, text));
     if (r.kind !== "ok") return false;
     if (gen !== generation.current) return true;
-    // A fresh element per clip: the previous one may still be fading out.
-    const a = playable(r.url);
-    audio.current = a;
-    a.onended = () => done(true);
-    a.onerror = () => done(false);
-    void a.play().catch(() => {});
+    const tFetched = performance.now();
+    const from = r.from;
+    // An idle element from the pool: the previous one may still be fading out.
+    const c = clipPool().take(r.url);
+    audio.current = c;
+    // Debug mode only: how long from "say it" to sound, and where it went —
+    // waiting for the clip, or the element starting to play.
+    c.el.onplaying = () =>
+      devLog({
+        ev: "play",
+        lang,
+        text,
+        prefetched: !!ready,
+        // memory (this session), disk (the device), or network.
+        from,
+        fetchMs: Math.round(tFetched - t0),
+        startMs: Math.round(performance.now() - tFetched),
+      });
+    c.el.onended = () => done(true);
+    c.el.onerror = () => done(false);
+    void c.el.play().catch(() => {});
     return true;
   }, []);
 
@@ -741,7 +843,11 @@ function useSpeech(serverVoice = false) {
     (text: string, lang: string, done: Done, serverTried = false) => {
       const gen = generation.current;
       const viaServer = () => {
-        if (serverTried) return done(false);
+        if (serverTried) {
+          // Neither engine can say it: log that, rather than going on in silence.
+          devLog({ ev: "silent", lang, text, reason: "no server clip, no browser voice" });
+          return done(false);
+        }
         void serverSpeak(text, lang, done).then(
           (ok) => !ok && gen === generation.current && done(false),
         );
@@ -807,6 +913,16 @@ function useSpeech(serverVoice = false) {
     [serverVoice, viaServer, serverSpeak, browserSpeak],
   );
 
+  /**
+   * A tap reads the word, the meaning and the example back to back: fetch the
+   * ones not prefetched yet all at once, so the meaning and the example arrive
+   * while the word plays instead of each waiting for the one before.
+   */
+  const warm = useCallback(
+    (parts: SayPart[]) => wordAudio().warm(parts.filter(viaServer)),
+    [viaServer],
+  );
+
   const sayRef = useRef(say);
   sayRef.current = say;
   const sequencer = useMemo(
@@ -822,12 +938,34 @@ function useSpeech(serverVoice = false) {
   const stop = sequencer.stop;
 
   /**
+   * A long-press reading: `parts` on a loop while the finger is down. It
+   * outranks what a swipe or a focus change says (`once(…, { yieldToHold })`):
+   * those are skipped while it plays. Only a tap or another long press cuts it.
+   */
+  const hold = useCallback(
+    (parts: SayPart[]) => {
+      warm(parts);
+      sequencer.play(
+        parts.filter((p) => p.text),
+        { loop: true, tag: "hold" },
+      );
+    },
+    [sequencer, warm],
+  );
+
+  /** The finger lifted: the long-press reading plays its current pass to the end, then stops. */
+  const release = sequencer.finish;
+
+  /**
    * Say `parts` in turn (word, meaning, example), pause, repeat — until the
    * next call; an empty list just stops.
    */
   const loop = useCallback(
     (parts: SayPart[], force = false) => {
       if (!on && !force) return stop();
+      // A tap: everything now. Not when the focus moves (desktop): flicking
+      // through rows would fetch every row's clips, and prefetch has them.
+      if (force) warm(parts);
       // A short delay so flicking through rows does not start a word per row.
       sequencer.play(
         parts.filter((p) => p.text),
@@ -835,21 +973,38 @@ function useSpeech(serverVoice = false) {
       );
       return stop;
     },
-    [on, sequencer, stop],
+    [on, sequencer, stop, warm],
   );
 
-  /** Say `parts` once, back to back, now — interrupting whatever was playing. */
+  /**
+   * Say `parts` once, back to back, now — interrupting whatever was playing,
+   * unless `yieldToHold` and a long-press reading is playing: then nothing.
+   */
   const once = useCallback(
-    (parts: SayPart[], force = false) => {
+    (parts: SayPart[], force = false, opts: { yieldToHold?: boolean } = {}) => {
+      if (opts.yieldToHold && sequencer.playing() === "hold") return;
       if (!on && !force) return stop();
+      warm(parts);
       sequencer.play(parts.filter((p) => p.text));
     },
-    [on, sequencer, stop],
+    [on, sequencer, stop, warm],
   );
 
-  /** Fetch the clips of rows about to be tapped (only those the server would voice). */
+  /**
+   * Fetch the clips of rows about to be tapped (only those the server would
+   * voice): `visible` first, never evicted, then `rest`.
+   */
   const prefetch = useCallback(
-    (parts: SayPart[]) => wordAudio().prefetch(parts.filter(viaServer)),
+    (visible: SayPart[], rest: SayPart[]) => {
+      const seen = visible.filter(viaServer);
+      wordAudio().prefetch([...seen, ...rest.filter(viaServer)], { pinned: seen.length });
+    },
+    [viaServer],
+  );
+
+  /** Put these on the device, last of all (today's due words, for offline study). */
+  const stock = useCallback(
+    (parts: SayPart[]) => wordAudio().stock(parts.filter(viaServer)),
     [viaServer],
   );
 
@@ -858,14 +1013,15 @@ function useSpeech(serverVoice = false) {
       try {
         localStorage.setItem("lk:words-sound", v ? "off" : "on");
       } catch {}
+      notePrefWrite();
       if (v) stop();
       return !v;
     });
   }, [stop]);
 
   return useMemo(
-    () => ({ available, on, loop, once, toggle, prefetch }),
-    [available, on, loop, once, toggle, prefetch],
+    () => ({ available, on, loop, once, hold, release, toggle, prefetch, stock }),
+    [available, on, loop, once, hold, release, toggle, prefetch, stock],
   );
 }
 
@@ -917,7 +1073,7 @@ function Glance({
   }, [active, children, title]);
   useEffect(() => {
     const i = inner.current;
-    if (!over || !i || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!over || !i || motionOff()) return;
     const move = moveSeconds(over, GLANCE_ACCEL);
     const total = GLANCE_HOLD_START + move + GLANCE_HOLD_END + move;
     const at = (s: number) => s / total;
@@ -969,9 +1125,10 @@ function Countdown({ due, back }: { due: number; back: boolean }) {
     const t = setTimeout(() => setNow(Date.now()), Math.min(wait + 20, left + 20));
     return () => clearTimeout(t);
   }, [due, now]);
+  const text = useIntlayer("words-page");
   const left = due - now;
   if (left > 0) return <>{formatInterval(left)}</>;
-  return back ? <span className="lk-back">↓ back</span> : <>now</>;
+  return back ? <span className="lk-back">{text.back}</span> : <>{text.now}</>;
 }
 
 /** Due time (ms) of a stored card JSON. */
@@ -1135,6 +1292,8 @@ export type DrillConfig = {
   base: string;
   title: string;
   intro: string;
+  /** The "study all" title; defaults to `All <title>`. */
+  allTitle?: string;
   /**
    * Where `reading` goes. Words put it on the hidden back (kana or pinyin is
    * part of the answer); alphabets keep it on the front as a hint.
@@ -1162,39 +1321,77 @@ const ALL = "all";
  * The open list lives in the URL (?list=<id>, or ?list=all), so each list and
  * "study all" has its own address: bookmarkable, and a refresh stays put.
  * Other params (the app's ?lang=) are kept.
+ *
+ * The URL is the source of truth. This tab also remembers the list
+ * (ui-store.ts, sessionStorage): opened with no ?list= — the nav menu, the
+ * home screen icon — it reopens the list this tab had open, by replacing the
+ * address (no extra history entry). Going back to the lists clears it.
  */
-function useListParam(): [string | null, (id: string | null) => void] {
+function useListParam(base: string): [string | null, (id: string | null) => void] {
+  const ui = wordsUiStore(base);
   const read = () =>
     typeof location === "undefined" ? null : new URLSearchParams(location.search).get("list");
   const [id, setId] = useState<string | null>(null);
   useEffect(() => {
-    setId(read());
-    const onPop = () => setId(read());
+    let first = read();
+    const kept = ui.getState().listId;
+    if (first === null && kept) {
+      const url = new URL(location.href);
+      url.searchParams.set("list", kept);
+      history.replaceState(history.state, "", url);
+      first = kept;
+    }
+    ui.setState({ listId: first });
+    setId(first);
+    const onPop = () => {
+      const now = read();
+      ui.setState({ listId: now });
+      setId(now);
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, []);
-  const go = useCallback((next: string | null) => {
-    const url = new URL(location.href);
-    if (next) url.searchParams.set("list", next);
-    else url.searchParams.delete("list");
-    history.pushState(null, "", url);
-    setId(next);
-  }, []);
+  }, [ui]);
+  const go = useCallback(
+    (next: string | null) => {
+      const url = new URL(location.href);
+      if (next) url.searchParams.set("list", next);
+      else url.searchParams.delete("list");
+      history.pushState(null, "", url);
+      ui.setState({ listId: next });
+      setId(next);
+    },
+    [ui],
+  );
   return [id, go];
 }
 
-export default function WordsClient({ config = WORDS }: { config?: DrillConfig }) {
+export default function WordsClient({ config: given }: { config?: DrillConfig }) {
+  // /words's own title and intro follow the app's language; other drills
+  // (/alphabet) bring theirs.
+  const text = useIntlayer("words-page");
+  const [wordsTitle, wordsIntro, wordsAll] = [
+    text.title.value,
+    text.intro.value,
+    text.allTitle.value,
+  ];
+  const config = useMemo(
+    () => given ?? { ...WORDS, title: wordsTitle, intro: wordsIntro, allTitle: wordsAll },
+    [given, wordsTitle, wordsIntro, wordsAll],
+  );
   const [allLists, setLists] = useState<WordList[] | null>(null);
   const [catalog, setCatalog] = useState<CatalogMeta[] | null>(null);
-  const [listId, setListId] = useListParam();
+  const [listId, setListId] = useListParam(config.base);
   const [error, setError] = useState<string | null>(null);
   /** The lists shown came from the offline copy. */
   const [offline, setOffline] = useState(false);
   useOfflineShell();
 
   const refreshLists = useCallback(async () => {
+    // A rename still in the queue wins over the name the server sends back.
+    const queued = () => idbAll<PendingOp>("pending").catch(() => [] as PendingOp[]);
     try {
-      const { lists } = await api<{ lists: WordList[] }>("/api/words/lists");
+      const { lists: fresh } = await api<{ lists: WordList[] }>("/api/words/lists");
+      const lists = withPendingRenames(fresh, await queued());
       setLists(lists);
       setOffline(false);
       idbPut("lists", lists, "all").catch(() => {});
@@ -1204,11 +1401,60 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
           ? await idbGet<WordList[]>("lists", "all").catch(() => undefined)
           : undefined;
       if (cached) {
-        setLists(cached);
+        setLists(withPendingRenames(cached, await queued()));
         setOffline(true);
       } else setError((e as Error).message);
     }
   }, []);
+
+  /**
+   * Rename: shown at once, kept in the offline copy, and sent through the
+   * same `pending` queue as grades (POST /api/words/lists/:id/rename), so it
+   * also goes out later when made offline.
+   */
+  const renameList = useCallback(async (id: string, name: string) => {
+    const named = (all: WordList[]) => all.map((l) => (l.id === id ? { ...l, name } : l));
+    setLists((all) => all && named(all));
+    idbGet<WordList[]>("lists", "all")
+      .then((cached) => cached && idbPut("lists", named(cached), "all"))
+      .catch(() => {});
+    await enqueue({
+      listId: id,
+      op: "rename",
+      body: { name },
+      term: "",
+      at: new Date().toISOString(),
+    });
+  }, []);
+
+  // Delete with Undo (lib/words/deferred-delete.ts): the row hides at once and
+  // the DELETE goes out when the toast runs out, or when the page goes away.
+  const [doomed, setDoomed] = useState<DoomedList | null>(null);
+  const deleter = useMemo(
+    () =>
+      createDeferredDelete<DoomedList>({
+        onChange: setDoomed,
+        commit: async ({ list }, reason: FlushReason) => {
+          if (reason === "leave") {
+            void fetch(`/api/words/lists/${list.id}`, { method: "DELETE", keepalive: true });
+            return;
+          }
+          // A failure (offline) leaves the list on the server: the refresh
+          // shows it again rather than pretending it is gone.
+          await api(`/api/words/lists/${list.id}`, { method: "DELETE" }).catch(() => {});
+          await refreshLists();
+        },
+      }),
+    [refreshLists],
+  );
+  useEffect(() => {
+    const leave = () => deleter.flush("leave");
+    window.addEventListener("pagehide", leave);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      deleter.flush("leave");
+    };
+  }, [deleter]);
 
   useEffect(() => {
     refreshLists();
@@ -1223,14 +1469,17 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
     if (!catalog) return null;
     const ids = new Set(catalog.map((c) => c.id));
     const group = groupSourceOf(config);
+    // A list waiting to be deleted is already gone here; a group's lists move
+    // up a level, as the server will do.
+    const shown = allLists && withoutNode(allLists, doomed?.list.id ?? null);
     return (
-      allLists?.filter(
+      shown?.filter(
         (l) =>
           l.source &&
           (ids.has(l.source) || l.source === group || (config.imports && isImported(l))),
       ) ?? null
     );
-  }, [allLists, catalog, config]);
+  }, [allLists, catalog, config, doomed]);
   // The built-in catalogs plus this user's imported decks.
   const fullCatalog = useMemo(
     () => (catalog && lists ? [...catalog, ...importedCatalog(lists)] : null),
@@ -1240,10 +1489,11 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
   if (error)
     return (
       <div className="p-8 text-red-400">
-        {error === "Login required" ? "Sign in to use word lists." : error}
+        {error === "Login required" ? text.signInToUse : error}
       </div>
     );
-  if (!lists || !catalog || !fullCatalog) return <div className="p-8 opacity-60">Loading…</div>;
+  if (!lists || !catalog || !fullCatalog)
+    return <div className="p-8 opacity-60">{text.loading}</div>;
 
   // A row studies itself and everything below it, in tree order; groups hold
   // no words of their own.
@@ -1254,54 +1504,118 @@ export default function WordsClient({ config = WORDS }: { config?: DrillConfig }
       : flat.filter((x) => x.id === listId || descendants(flat, listId ?? "").includes(x.id));
   const studying = scope.filter((l) => l.source !== groupSourceOf(config));
   // "Study all" with only one list is just that list.
+  // The Undo toast stays up when a list is opened meanwhile.
+  const undoToast = doomed && (
+    <UndoDeleteToast
+      key={doomed.list.id}
+      doomed={doomed}
+      onUndo={() => {
+        const back = deleter.undo();
+        // Back to the restored row's ⋯ button, for keyboard users.
+        if (back)
+          requestAnimationFrame(() =>
+            document.querySelector<HTMLElement>(`[data-list-menu="${back.list.id}"]`)?.focus(),
+          );
+      }}
+    />
+  );
   if (studying.length)
     return (
-      <Study
-        key={listId}
-        config={config}
-        lists={studying}
-        catalog={fullCatalog}
-        title={
-          listId === ALL
-            ? `All ${config.title.toLowerCase()}`
-            : (lists.find((l) => l.id === listId)?.name ?? studying[0].name)
-        }
-        onExit={() => {
-          setListId(null);
-          refreshLists();
-        }}
-      />
+      <>
+        {undoToast}
+        <Study
+          key={listId}
+          config={config}
+          lists={studying}
+          catalog={fullCatalog}
+          title={
+            listId === ALL
+              ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
+              : (lists.find((l) => l.id === listId)?.name ?? studying[0].name)
+          }
+          onExit={() => {
+            setListId(null);
+            refreshLists();
+          }}
+        />
+      </>
     );
 
   return (
-    <ListPicker
-      config={config}
-      lists={lists}
-      catalog={fullCatalog}
-      offline={offline}
-      onOpen={setListId}
-      onCreated={async (id) => {
-        await refreshLists();
-        setListId(id);
-      }}
-      onDeleted={refreshLists}
-      onReorder={async (order) => {
-        // Show the new tree at once; the server confirms with its own.
-        setLists((all) => {
-          if (!all) return all;
-          const pos = new Map(order.map((x, i) => [x.id, i]));
-          const parent = new Map(order.map((x) => [x.id, x.parentId]));
-          return [...all]
-            .map((l) => (parent.has(l.id) ? { ...l, parentId: parent.get(l.id)! } : l))
-            .sort((a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9));
-        });
-        const { lists } = await api<{ lists: WordList[] }>("/api/words/lists", {
-          method: "PATCH",
-          body: JSON.stringify({ order }),
-        });
-        setLists(lists);
-      }}
-    />
+    <>
+      {undoToast}
+      <ListPicker
+        config={config}
+        lists={lists}
+        catalog={fullCatalog}
+        offline={offline}
+        onOpen={setListId}
+        onCreated={async (id) => {
+          await refreshLists();
+          setListId(id);
+        }}
+        onRefresh={refreshLists}
+        onDelete={(list, isGroup) => deleter.remove({ list, isGroup })}
+        onRename={renameList}
+        onReorder={async (order) => {
+          // Show the new tree at once; the server confirms with its own.
+          setLists((all) => {
+            if (!all) return all;
+            const pos = new Map(order.map((x, i) => [x.id, i]));
+            const parent = new Map(order.map((x) => [x.id, x.parentId]));
+            return [...all]
+              .map((l) => (parent.has(l.id) ? { ...l, parentId: parent.get(l.id)! } : l))
+              .sort((a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9));
+          });
+          const { lists } = await api<{ lists: WordList[] }>("/api/words/lists", {
+            method: "PATCH",
+            body: JSON.stringify({ order }),
+          });
+          setLists(lists);
+        }}
+      />
+    </>
+  );
+}
+
+/** A list (or group) hidden from the picker while its delete can be undone. */
+type DoomedList = { list: WordList; isGroup: boolean };
+
+/**
+ * "Deleted “…” · Undo", floating over the bottom of the page as glass. It is a
+ * live region, so a screen reader hears it, and its Undo takes the focus: the
+ * menu item that deleted the row is gone with it.
+ */
+function UndoDeleteToast({ doomed, onUndo }: { doomed: DoomedList; onUndo: () => void }) {
+  const text = useIntlayer("words-page");
+  const undo = useRef<HTMLButtonElement>(null);
+  useEffect(() => undo.current?.focus({ preventScroll: true }), []);
+  const said = fill(doomed.isGroup ? text.deletedGroup.value : text.deletedList.value, {
+    name: doomed.list.name,
+  });
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      data-undo-delete={doomed.list.id}
+      className="lk-glass fixed inset-x-4 z-50 mx-auto flex max-w-md items-center gap-3 rounded-xl border border-[var(--glass-line)] py-1 ps-4 pe-1 shadow-lg"
+      style={{ bottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}
+    >
+      <span className="min-w-0 flex-1 text-sm">{said}</span>
+      <button
+        ref={undo}
+        onClick={onUndo}
+        className="min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.15_250)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.12_250)]"
+      >
+        {text.undoDelete}
+      </button>
+      {/* Runs out with the delete: a visual cue only. */}
+      <span
+        aria-hidden
+        className="lk-undo-timer pointer-events-none absolute inset-x-3 bottom-0 h-0.5 origin-left rounded-full bg-[oklch(0.5_0_0/0.35)] rtl:origin-right"
+        style={{ animationDuration: `${UNDO_MS}ms` }}
+      />
+    </div>
   );
 }
 
@@ -1357,7 +1671,64 @@ async function downloadForOffline(
 const INDENT = 24;
 
 /** Sums over a row and everything below it. */
-type Totals = { due: number; learning: number; mastered: number; cards: number; total: number };
+type Totals = {
+  due: number;
+  learning: number;
+  mastered: number;
+  cards: number;
+  total: number;
+  /** Progress scores summed (lib/words/progress.ts). */
+  progress: number;
+};
+
+/**
+ * How far a list (a group: its whole subtree) has come, as a thin ring and a
+ * percentage: the mean of its words' scores, each by how near its stability
+ * is to a year (lib/words/progress.ts). Nothing while the list's size is unknown.
+ */
+function ProgressRing({ progress, total }: { progress: number; total: number }) {
+  const text = useIntlayer("words-page");
+  const { locale } = useLocale();
+  const pct = progressPercent(progress, total);
+  if (pct === null) return null;
+  const label = fill(text.progressTitle.value, { pct, total });
+  const shown = new Intl.NumberFormat(String(locale), { style: "percent" }).format(pct / 100);
+  // r = 8 in a 20×20 box: the circumference, for the dash.
+  const c = 2 * Math.PI * 8;
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums"
+      title={label}
+      aria-label={label}
+      role="img"
+      data-progress={pct}
+    >
+      <svg viewBox="0 0 20 20" className="h-5 w-5 -rotate-90" aria-hidden>
+        <circle
+          cx="10"
+          cy="10"
+          r="8"
+          fill="none"
+          strokeWidth="2.5"
+          className="stroke-[oklch(0.5_0_0/0.18)] dark:stroke-[oklch(0.8_0_0/0.18)]"
+        />
+        {pct > 0 && (
+          <circle
+            cx="10"
+            cy="10"
+            r="8"
+            fill="none"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeDasharray={`${(c * pct) / 100} ${c}`}
+            className="stroke-[oklch(0.58_0.14_155)] dark:stroke-[oklch(0.76_0.14_155)]"
+          />
+        )}
+      </svg>
+      <span className="min-w-[2.6em] text-end opacity-80">{shown}</span>
+    </span>
+  );
+}
 
 /** One row of the picker tree: a list or a group, draggable by its ⠿ handle. */
 function SortableListRow({
@@ -1370,10 +1741,14 @@ function SortableListRow({
   collapsed,
   onToggle,
   onOpen,
-  onDeleted,
+  onDelete,
+  onRename,
   keys,
+  displayName,
 }: {
   list: WordList;
+  /** The name as shown: inside a language group, without the language prefix. */
+  displayName: string;
   /** A hardware keyboard is in use: show the row's number key. */
   keys: boolean;
   depth: number;
@@ -1384,8 +1759,21 @@ function SortableListRow({
   collapsed: boolean;
   onToggle: () => void;
   onOpen: (id: string) => void;
-  onDeleted: () => void;
+  onDelete: () => void;
+  onRename: (name: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  /** Set once an edit is saved or cancelled, so the blur after Enter/Escape is ignored. */
+  const finished = useRef(false);
+  const endEdit = (name: string | null) => {
+    if (finished.current) return;
+    finished.current = true;
+    const next = name?.trim().slice(0, LIST_NAME_MAX);
+    if (next && next !== l.name) onRename(next);
+    setEditing(false);
+    requestAnimationFrame(() => menuButton.current?.focus({ preventScroll: true }));
+  };
   const {
     attributes,
     listeners,
@@ -1403,64 +1791,242 @@ function SortableListRow({
       style={{
         transform: CSS.Translate.toString(transform && { ...transform, x: 0 }),
         transition,
-        marginLeft: depth * INDENT,
+        marginInlineStart: depth * INDENT,
       }}
-      className={`relative flex items-center gap-3 rounded-lg px-4 py-3 ${
+      data-list-row={l.id}
+      data-group={isGroup || undefined}
+      className={`relative flex min-h-14 items-center rounded-lg ps-0.5 pe-1 ${
         isDragging
-          ? "z-10 bg-black/10 dark:bg-white/15 ring-1 ring-black/20 dark:ring-white/30 shadow-lg"
+          ? "z-10 bg-[oklch(0.5_0_0/0.14)] ring-1 ring-[oklch(0.5_0_0/0.35)] shadow-lg"
           : isGroup
-            ? "bg-black/[0.07] dark:bg-white/[0.08]"
-            : "bg-black/5 dark:bg-white/5"
+            ? "bg-[oklch(0.5_0_0/0.11)] dark:bg-[oklch(0.8_0_0/0.1)]"
+            : "bg-[oklch(0.5_0_0/0.06)] dark:bg-[oklch(0.8_0_0/0.055)]"
       }`}
     >
       <span
         ref={setActivatorNodeRef}
         {...attributes}
         {...listeners}
-        aria-label="Drag to reorder"
-        title="Drag to reorder · drag right to put it inside the row above, left to take it out"
-        className="cursor-grab active:cursor-grabbing select-none opacity-40 hover:opacity-100 px-1 text-lg leading-none touch-none"
+        aria-label={text.dragToReorder.value}
+        title={text.dragTitle.value}
+        className="grid h-11 w-8 shrink-0 cursor-grab place-items-center select-none text-lg leading-none opacity-40 hover:opacity-100 active:cursor-grabbing touch-none"
       >
         ⠿
       </span>
-      <button
-        className={`w-4 text-xs opacity-60 hover:opacity-100 ${hasChildren ? "" : "invisible"}`}
-        onClick={onToggle}
-        aria-label={collapsed ? "Expand" : "Collapse"}
-      >
-        {collapsed ? "▸" : "▾"}
-      </button>
-      {keys && index < 9 && <kbd className="text-xs opacity-40 tabular-nums">{index + 1}</kbd>}
-      <button className="flex-1 text-left min-w-0" onClick={() => onOpen(l.id)}>
-        <div className="font-medium truncate">
-          {isGroup && <Icon name="folder" className="me-1 opacity-70" />}
-          {l.name}
-        </div>
-        <div className="text-xs opacity-60 tabular-nums">
-          {totals.due} due · {totals.learning} learning · {totals.mastered} mastered (≥1y) ·{" "}
-          {totals.cards}/{totals.total || "?"} seen
-        </div>
-      </button>
-      <button
-        className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
-        onClick={() => onOpen(l.id)}
-      >
-        {text.study}
-      </button>
-      <button
-        // A 40px hit area (tap-40) around the small label.
-        className="tap-40 text-xs opacity-40 hover:opacity-80"
-        onClick={async () => {
-          const what = isGroup
-            ? `Delete group "${l.name}"? The lists inside it are kept and move up a level.`
-            : `Delete "${l.name}" and its progress?`;
-          if (!confirm(what)) return;
-          await api(`/api/words/lists/${l.id}`, { method: "DELETE" });
-          onDeleted();
+      {hasChildren ? (
+        <button
+          type="button"
+          className="grid h-11 w-9 shrink-0 place-items-center text-sm opacity-60 hover:opacity-100"
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          aria-label={fill(collapsed ? text.expandGroup.value : text.collapseGroup.value, {
+            name: l.name,
+          })}
+        >
+          <span aria-hidden>{collapsed ? "▸" : "▾"}</span>
+        </button>
+      ) : (
+        <span className="w-2 shrink-0" aria-hidden />
+      )}
+      {editing ? (
+        <form
+          className="flex-1 min-w-0 py-1.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            endEdit(new FormData(e.currentTarget).get("name") as string);
+          }}
+        >
+          <input
+            name="name"
+            autoFocus
+            defaultValue={l.name}
+            maxLength={LIST_NAME_MAX}
+            enterKeyHint="done"
+            autoComplete="off"
+            aria-label={fill(text.renameField.value, { name: l.name })}
+            onFocus={(e) => e.currentTarget.select()}
+            onKeyDown={(e) => {
+              if (e.key !== "Escape") return;
+              e.preventDefault();
+              e.stopPropagation();
+              endEdit(null);
+            }}
+            onBlur={(e) => endEdit(e.currentTarget.value)}
+            // 16px text: phones do not zoom into the field.
+            className="w-full min-h-11 rounded-md px-2 text-base font-medium bg-[oklch(1_0_0/0.7)] dark:bg-[oklch(0.2_0_0/0.7)] ring-1 ring-[oklch(0.5_0_0/0.35)] focus:outline-none focus:ring-2 focus:ring-[oklch(0.6_0.15_250)]"
+          />
+        </form>
+      ) : (
+        // The whole row studies the list (a group: everything in it); only
+        // the ⠿ handle, the fold arrow and the ⋯ menu do something else.
+        <button
+          type="button"
+          data-open-list={l.id}
+          className="flex min-h-14 min-w-0 flex-1 items-center gap-2 self-stretch rounded-md py-2 ps-1 text-start focus-visible:outline-2 focus-visible:outline-[oklch(0.6_0.15_250)]"
+          onClick={() => onOpen(l.id)}
+          title={
+            (isGroup ? `${text.groupRowHint.value}\n` : "") +
+            fill(text.rowStats.value, {
+              due: totals.due,
+              learning: totals.learning,
+              mastered: totals.mastered,
+              seen: totals.cards,
+              total: totals.total || "?",
+            })
+          }
+        >
+          {keys && index < 9 && (
+            <kbd className="shrink-0 text-xs opacity-40 tabular-nums">{index + 1}</kbd>
+          )}
+          <span className="min-w-0 flex-1">
+            {/* The full name, wrapped, never cut: "JLPT N3" and "JLPT N2" must read apart. */}
+            <span
+              className={`block leading-snug [overflow-wrap:anywhere] ${isGroup ? "font-semibold" : "font-medium"}`}
+            >
+              {isGroup && <Icon name="folder" className="me-1 opacity-70" />}
+              {displayName}
+            </span>
+            <span className="mt-0.5 block truncate text-xs opacity-60 tabular-nums">
+              {fill(text.rowStatsShort.value, { due: totals.due, learning: totals.learning })}
+            </span>
+          </span>
+          {/* A fixed column, so the rings line up down the list. */}
+          <span className="flex w-[4.25rem] shrink-0 justify-end">
+            <ProgressRing progress={totals.progress} total={totals.total} />
+          </span>
+        </button>
+      )}
+      <ListRowMenu
+        listId={l.id}
+        name={l.name}
+        buttonRef={menuButton}
+        onRename={() => {
+          finished.current = false;
+          setEditing(true);
         }}
+        onDelete={onDelete}
+      />
+    </div>
+  );
+}
+
+/** A list's name, as long as the server takes it (POST /api/words/lists, /rename). */
+const LIST_NAME_MAX = 120;
+
+/**
+ * The "⋯" button at the end of a list row and its menu: Rename, Delete. A
+ * menu button in the ARIA pattern: ↓/Enter/Space open it on the first item,
+ * ↑↓ Home End move, Escape closes back to the button, Tab closes. Every
+ * target is 44px. It sits apart from the ⠿ drag handle, which alone starts a
+ * drag, so a tap here never moves the row.
+ */
+function ListRowMenu({
+  listId,
+  name,
+  buttonRef,
+  onRename,
+  onDelete,
+}: {
+  listId: string;
+  name: string;
+  buttonRef: React.RefObject<HTMLButtonElement | null>;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  const text = useIntlayer("words-page");
+  const [open, setOpen] = useState(false);
+  const menu = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  const items = () => [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+  useEffect(() => {
+    if (!open) return;
+    items()[0]?.focus({ preventScroll: true });
+    // A tap anywhere else closes it (and does what it tapped).
+    const away = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!menu.current?.contains(t) && !buttonRef.current?.contains(t)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away, true);
+    return () => document.removeEventListener("pointerdown", away, true);
+  }, [open, buttonRef]);
+  const close = () => {
+    setOpen(false);
+    buttonRef.current?.focus({ preventScroll: true });
+  };
+  const pick = (act: () => void) => () => {
+    setOpen(false);
+    act();
+  };
+  const label = fill(text.listMenu.value, { name });
+  return (
+    <div className={`relative shrink-0 ${open ? "z-30" : ""}`}>
+      <button
+        ref={buttonRef}
+        type="button"
+        data-list-menu={listId}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        aria-label={label}
+        title={label}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className="grid h-11 w-11 place-items-center rounded-full text-xl leading-none opacity-60 hover:opacity-100 hover:bg-[oklch(0.5_0_0/0.12)] aria-expanded:opacity-100 aria-expanded:bg-[oklch(0.5_0_0/0.15)]"
       >
-        {text.delete}
+        <span aria-hidden>⋯</span>
       </button>
+      {open && (
+        <div
+          id={menuId}
+          ref={menu}
+          role="menu"
+          aria-label={label}
+          onKeyDown={(e) => {
+            const all = items();
+            const i = all.indexOf(document.activeElement as HTMLElement);
+            const go = (n: number) => {
+              e.preventDefault();
+              all[(n + all.length) % all.length]?.focus();
+            };
+            if (e.key === "ArrowDown") go(i + 1);
+            else if (e.key === "ArrowUp") go(i - 1);
+            else if (e.key === "Home") go(0);
+            else if (e.key === "End") go(all.length - 1);
+            else if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              close();
+            } else if (e.key === "Tab") setOpen(false);
+          }}
+          className="lk-glass absolute end-0 top-full z-30 mt-1 min-w-44 rounded-xl border border-[var(--glass-line)] p-1 shadow-lg"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            onClick={pick(onRename)}
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-start text-sm hover:bg-[oklch(0.5_0_0/0.12)] focus:bg-[oklch(0.5_0_0/0.12)] focus:outline-none"
+          >
+            <Icon name="pencilSimple" className="opacity-70" />
+            {text.renameList}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            onClick={pick(onDelete)}
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-start text-sm text-[oklch(0.52_0.19_25)] dark:text-[oklch(0.75_0.15_25)] hover:bg-[oklch(0.6_0.19_25/0.12)] focus:bg-[oklch(0.6_0.19_25/0.12)] focus:outline-none"
+          >
+            <Icon name="trash" />
+            {text.deleteList}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1472,7 +2038,9 @@ function ListPicker({
   offline,
   onOpen,
   onCreated,
-  onDeleted,
+  onRefresh,
+  onDelete,
+  onRename,
   onReorder,
 }: {
   config: DrillConfig;
@@ -1482,7 +2050,11 @@ function ListPicker({
   offline: boolean;
   onOpen: (id: string) => void;
   onCreated: (id: string) => void;
-  onDeleted: () => void;
+  /** Reload the lists from the server. */
+  onRefresh: () => void;
+  /** Delete a row, with Undo (the toast is the parent's). */
+  onDelete: (list: WordList, isGroup: boolean) => void;
+  onRename: (id: string, name: string) => void;
   /** The whole tree in display order; also the order new words are learned in. */
   onReorder: (order: { id: string; parentId: string | null }[]) => void;
 }) {
@@ -1492,30 +2064,19 @@ function ListPicker({
   // Number keys open lists: show them only with a hardware keyboard.
   const keys = useInputModality() === "keyboard";
   const flat = useMemo(() => flatten(lists), [lists]);
+  const byId = useMemo(() => new Map(lists.map((l) => [l.id, l])), [lists]);
   const [download, setDownload] = useState<{
     done: number;
     total: number;
     error?: string;
   } | null>(null);
 
-  // Collapsed groups, remembered per page.
-  const collapsedKey = `lk:words-collapsed:${config.base}`;
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    try {
-      setCollapsed(new Set(JSON.parse(localStorage.getItem(collapsedKey) ?? "[]")));
-    } catch {}
-  }, [collapsedKey]);
-  const toggle = (id: string) =>
-    setCollapsed((c) => {
-      const n = new Set(c);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      try {
-        localStorage.setItem(collapsedKey, JSON.stringify([...n]));
-      } catch {}
-      return n;
-    });
+  // Folded groups, per tab (docs/ui-state.md: session `lk:ui:words`).
+  const ui = wordsUiStore(config.base);
+  useEffect(() => migrateCollapsed(ui, config.base), [ui, config.base]);
+  const folded = useUi(ui, (s) => s.collapsed);
+  const collapsed = useMemo(() => new Set(folded), [folded]);
+  const toggle = (id: string) => toggleCollapsed(ui, id);
 
   // Drag: up/down reorders, the sideways offset picks the depth (nest under
   // the row above, or come out a level). The dragged row's subtree moves with
@@ -1553,6 +2114,7 @@ function ListPicker({
       due: l.due,
       learning: l.learning,
       mastered: l.mastered,
+      progress: l.progress ?? 0,
       cards: l.cards,
       total: catalog.find((c) => c.id === l.source)?.count ?? 0,
     });
@@ -1564,6 +2126,7 @@ function ListPicker({
         sum.due += d.due;
         sum.learning += d.learning;
         sum.mastered += d.mastered;
+        sum.progress += d.progress;
         sum.cards += d.cards;
         sum.total += d.total;
       }
@@ -1586,6 +2149,8 @@ function ListPicker({
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+      // Keys inside a row's ⋯ menu or the Undo toast are theirs.
+      if (t.closest?.('[role="menu"], [data-undo-delete]')) return;
       const n = Number(e.key);
       if (e.key === "0" && studyable.length > 1) onOpen(ALL);
       else if (n >= 1 && n <= 9 && items[n - 1]) onOpen(items[n - 1].id);
@@ -1608,13 +2173,13 @@ function ListPicker({
   };
 
   const addGroup = async () => {
-    const name = prompt("Group name")?.trim();
+    const name = prompt(text.groupName.value)?.trim();
     if (!name) return;
     await api("/api/words/lists", {
       method: "POST",
       body: JSON.stringify({ name, lang: "mul", source: groupSource }),
     });
-    onDeleted(); // refresh
+    onRefresh();
   };
 
   return (
@@ -1625,7 +2190,7 @@ function ListPicker({
         <div className="flex flex-wrap items-center gap-3 mt-3 text-sm">
           {offline ? (
             <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">
-              Offline — showing your downloaded lists. Grades sync when you are back online.
+              {text.offlineBanner}
             </span>
           ) : (
             <button
@@ -1641,19 +2206,19 @@ function ListPicker({
                 }
               }}
               className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-50"
-              title="Save every list and today's due words on this device, to study without a network"
+              title={text.downloadTitle.value}
             >
               <Icon name="downloadSimple" className="me-1" />
-              Download for offline
+              {text.downloadForOffline}
             </button>
           )}
           {download && !offline && (
             <span className="opacity-70 tabular-nums">
               {download.error
-                ? `Download failed: ${download.error}`
+                ? fill(text.downloadFailed.value, { error: download.error })
                 : download.done < download.total
-                  ? `Downloading ${download.done}/${download.total}…`
-                  : "Saved on this device ✓"}
+                  ? fill(text.downloading.value, { done: download.done, total: download.total })
+                  : text.savedOnDevice}
             </span>
           )}
         </div>
@@ -1670,7 +2235,7 @@ function ListPicker({
             <span className="block text-xs opacity-60">{text.studyAllHint}</span>
           </span>
           <span className="text-xs opacity-70 tabular-nums">
-            {studyable.reduce((n, l) => n + l.due, 0)} due
+            {fill(text.dueCount.value, { n: studyable.reduce((n, l) => n + l.due, 0) })}
           </span>
         </button>
       )}
@@ -1701,16 +2266,15 @@ function ListPicker({
                   collapsed={collapsed.has(row.id)}
                   onToggle={() => toggle(row.id)}
                   onOpen={onOpen}
-                  onDeleted={onDeleted}
+                  onDelete={() => onDelete(row, isGroup(row))}
+                  onRename={(name) => onRename(row.id, name)}
                   keys={keys}
+                  displayName={shownName(row, row.parentId ? byId.get(row.parentId) : null)}
                 />
               ))}
             </SortableContext>
           </DndContext>
-          <p className="text-[11px] opacity-40">
-            Drag ⠿ up or down to reorder; drag it right to put a list inside the one above (like
-            Anki subdecks), left to take it out. Studying a group studies everything inside.
-          </p>
+          <p className="text-[11px] opacity-40">{text.reorderHelp}</p>
         </div>
       )}
       <div className="flex flex-wrap items-center gap-3">
@@ -1718,13 +2282,13 @@ function ListPicker({
           onClick={addGroup}
           className="text-sm px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
         >
-          + New group
+          {text.newGroup}
         </button>
         {config.imports && <ImportLink />}
       </div>
 
       <div className="space-y-3">
-        <h2 className="text-sm font-medium opacity-80">Add a list</h2>
+        <h2 className="text-sm font-medium opacity-80">{text.addList}</h2>
         <div className="flex flex-wrap gap-2">
           {langs.map((l) => (
             <button
@@ -1749,7 +2313,7 @@ function ListPicker({
                     onClick={() => add(c)}
                     className="px-3 py-1 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-40"
                   >
-                    {added.has(c.id) ? "added" : "add"}
+                    {added.has(c.id) ? text.added : text.add}
                   </button>
                 </div>
               ))}
@@ -1809,6 +2373,14 @@ function Study({
   const [queue, setQueue] = useState<Item[]>([]);
   /** Grade per queue index; `card` is the server's card once saved. */
   const [grades, setGrades] = useState<Map<number, { rating: Rating; card?: string }>>(new Map());
+  /**
+   * The grades as of now, not as of the last render: a grade runs in a
+   * transition, so until that render commits the `grades` a swipe handler
+   * closed over still lacks it. The auto-advance check (shouldAdvance) reads
+   * this, so a second grade of the same row in that gap is a re-grade.
+   */
+  const gradesNow = useRef(grades);
+  gradesNow.current = grades;
   const [row, setRow] = useState(0);
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -1823,10 +2395,22 @@ function Study({
   const sync = useSyncStatus();
   /** The queue was built from the offline copy. */
   const [offlineCopy, setOfflineCopy] = useState(false);
-  const [help, setHelp] = useState(false);
+  /** This tab's UI state (ui-store.ts): panels open, where the reader was. */
+  const ui = wordsUiStore(config.base);
+  const help = useUi(ui, (s) => s.helpOpen);
+  const setHelp = useCallback(
+    (v: boolean | ((h: boolean) => boolean)) =>
+      ui.setState((s) => ({ helpOpen: typeof v === "function" ? v(s.helpOpen) : v })),
+    [ui],
+  );
   /** Every meaning shown, not just the focused / pinned rows. */
   const [showAll, setShowAll] = usePref("lk:words-show-all", false);
-  const [settings, setSettings] = useState(false);
+  const settings = useUi(ui, (s) => s.settingsOpen);
+  const setSettings = useCallback(
+    (v: boolean | ((o: boolean) => boolean)) =>
+      ui.setState((s) => ({ settingsOpen: typeof v === "function" ? v(s.settingsOpen) : v })),
+    [ui],
+  );
   /** Touch: say the word as a swipe starts. Remembered; on by default. */
   const [swipeSpeak, setSwipeSpeak] = usePref("lk:words-swipe-speak", true);
   /** Touch: the row being held (listen mode) — revealed and looped while held. */
@@ -1848,7 +2432,9 @@ function Study({
    * scroll snapping. Read after mount.
    */
   const [swipeAb, setSwipeAb] = useState<SwipeVariant>("js");
-  useEffect(() => setSwipeAb(swipeVariant()), []);
+  /** The swipe's feel on this device: light (everyone) or heavy (lib/words/swipe-feel.ts). */
+  const feelPrefs = useFeelPrefs();
+  usePrefReader(useCallback(() => setSwipeAb(swipeVariant()), []));
   const native = touch && swipeAb === "native";
   /**
    * Experimental: the paper texture scrolls with the list (a layer inside the
@@ -1898,6 +2484,8 @@ function Study({
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
   }, [touch]);
+  /** "Turn off animations": this device's, app-wide; the system's until set (lib/motion-pref.ts). */
+  const animationsOff = useMotionOff();
   /** Read with the server's voice instead of the browser's. Remembered. */
   const [serverVoice, setServerVoice] = usePref("lk:words-server-voice", true);
   const speech = useSpeech(serverVoice);
@@ -1907,9 +2495,26 @@ function Study({
     (it: Item) => sayParts(it, it.lang, !!config.readingOnBack, String(locale)),
     [config.readingOnBack, locale],
   );
+  /** A word's tags, for the double-tap sheet: its list and the list's level (JLPT, CEFR…). */
+  const tagsOf = (it: Item): string[] => {
+    const list = lists.find((l) => l.id === it.listId);
+    const meta = list && catalog.find((c) => c.id === list.source);
+    return [list?.name, meta?.level].filter((t): t is string => !!t);
+  };
   const base = config.base;
   const listIds = lists.map((l) => l.id).join(",");
   const paramsOf = useMemo(() => new Map(lists.map((l) => [l.id, l.params])), [lists]);
+  /** Each list's size and cards as this session found them, for the toolbar's unseen count. */
+  const scopeAtStart = useMemo(
+    () =>
+      lists.map((l) => ({
+        total: catalog.find((c) => c.id === l.source)?.count ?? 0,
+        cards: l.cards,
+      })),
+    // Snapshot per session: a refetched list already counts this session's cards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [listIds, catalog],
+  );
 
   const catalogs = useRef<Map<string, Entry[]>>(new Map());
   const byTerm = useRef<Map<string, Map<string, Entry>>>(new Map());
@@ -1923,8 +2528,8 @@ function Study({
     const e = m.get(term);
     return e?.ex ? { ex: e.ex, exTr: e.exTr } : {};
   };
-  /** Per list: next catalog index to consider for new words. */
-  const nextNew = useRef<Map<string, number>>(new Map());
+  /** Per list: where the search for new words has got (lib/words/take-new.ts). */
+  const scans = useRef<Map<string, NewScan>>(new Map());
   /** Lists whose due words did not all fit in one session fetch. */
   const moreDue = useRef<Set<string>>(new Set());
   /** Queue indices in the order they were graded (and not undone): Z walks this back. */
@@ -1949,50 +2554,56 @@ function Study({
       let p = catalogLoads.current.get(list.id);
       if (!p) {
         const meta = catalog.find((c) => c.id === list.source);
+        // No catalog for this list is a load failure, never "no new words":
+        // treating it as empty would show "every word learned".
         p = meta
           ? loadCatalog<{ entries: Entry[] }>(catalogPath(base, meta)).then((d) => d.entries)
-          : Promise.resolve([]);
+          : Promise.reject(new Error(`No word catalog for "${list.name}" (${list.source})`));
         p = p.then((entries) => {
           catalogs.current.set(list.id, entries);
           byTerm.current.delete(list.id);
           return entries;
         });
         catalogLoads.current.set(list.id, p);
+        // A failed load is tried again next time, not remembered.
+        p.catch(() => catalogLoads.current.delete(list.id));
       }
       return p;
     },
     [catalog, base],
   );
 
-  /** Pull up to `n` catalog words of one list that have no card yet. */
+  /** Pull up to `n` catalog words of one list that have no card yet (lib/words/take-new.ts). */
   const takeNewFrom = useCallback(
     async (list: WordList, n: number): Promise<Item[]> => {
       const entries = await ensureCatalog(list);
-      const out: Item[] = [];
-      while (out.length < n && (nextNew.current.get(list.id) ?? 0) < entries.length) {
-        const from = nextNew.current.get(list.id) ?? 0;
-        // The /known route takes at most 500 terms.
-        const slice = entries.slice(from, from + Math.min(500, Math.max(n * 2, 40)));
-        let known: string[] = [];
-        try {
-          ({ known } = await api<{ known: string[] }>(`/api/words/lists/${list.id}/known`, {
-            method: "POST",
-            body: JSON.stringify({ terms: slice.map((e) => e.term) }),
-          }));
-        } catch (e) {
-          // Offline: no check; the stored cursor already skips introduced words.
-          if (!(e instanceof OfflineError)) throw e;
-        }
-        // Advance only once the slice is checked, so a failed request leaves no
-        // word behind the cursor.
-        nextNew.current.set(list.id, from + slice.length);
-        const skip = new Set(known);
-        slice.forEach((e, i) => {
-          if (out.length < n && !skip.has(e.term))
-            out.push({ ...e, kind: "new", newIndex: from + i, listId: list.id, lang: list.lang });
-        });
-      }
-      return out;
+      let scan = scans.current.get(list.id);
+      if (!scan) scans.current.set(list.id, (scan = newScan(list.cursor)));
+      const picked = await takeNewIndices(
+        entries.map((e) => e.term),
+        scan,
+        n,
+        async (terms) => {
+          try {
+            const { known } = await api<{ known: string[] }>(`/api/words/lists/${list.id}/known`, {
+              method: "POST",
+              body: JSON.stringify({ terms }),
+            });
+            return new Set(known);
+          } catch (e) {
+            // Offline: no check; the stored cursor already skips introduced words.
+            if (e instanceof OfflineError) return null;
+            throw e;
+          }
+        },
+      );
+      return picked.map((i) => ({
+        ...entries[i],
+        kind: "new",
+        newIndex: i,
+        listId: list.id,
+        lang: list.lang,
+      }));
     },
     [ensureCatalog],
   );
@@ -2026,7 +2637,7 @@ function Study({
   useEffect(() => {
     let alive = true;
     // Start from the stored cursors every run (Strict Mode mounts twice in dev).
-    nextNew.current = new Map(lists.map((l) => [l.id, l.cursor]));
+    scans.current = new Map(lists.map((l) => [l.id, newScan(l.cursor)]));
     (async () => {
       // All lists' due words in one request (one D1 query) — or, with no
       // network, the copy saved on the last visit / "download for offline",
@@ -2079,7 +2690,7 @@ function Study({
   /** Per list, the first catalog word not yet introduced: the lowest ungraded new word in the queue. */
   const cursorOf = (listId: string, except: number) =>
     Math.min(
-      nextNew.current.get(listId) ?? 0,
+      scans.current.get(listId)?.next ?? 0,
       ...queue
         .map((it, i) => ({ it, i }))
         .filter(
@@ -2114,6 +2725,7 @@ function Study({
     // From the card as it was before this row's grade, so a re-grade replaces.
     const { card } = reviewWord(parseCard(it.card), rating, now, paramsOf.get(it.listId)!);
     const cardJson = JSON.stringify(card);
+    gradesNow.current = new Map(gradesNow.current).set(i, { rating, card: cardJson });
     setGrades((g) => new Map(g).set(i, { rating, card: cardJson }));
     gradeLog.current = [...gradeLog.current.filter((x) => x !== i), i];
     navigator.vibrate?.(10);
@@ -2193,6 +2805,13 @@ function Study({
     })();
   };
   const text = useIntlayer("words-page");
+  const ratingLabel = useRatingLabel();
+  const grades4 = {
+    again: ratingLabel[1],
+    hard: ratingLabel[2],
+    good: ratingLabel[3],
+    easy: ratingLabel[4],
+  };
   // The debug mode's user-facing name: "Learning Partner" (learning-partner.content.ts).
   const partner = useIntlayer("learning-partner");
   const partnerName = partner.name.value;
@@ -2238,8 +2857,9 @@ function Study({
       else if (e.code === "KeyV") speech.toggle();
       else if (e.code === "KeyE") setShowAll((v) => !v);
       else if (KEY_RATING[e.code] && !e.shiftKey) {
+        const advance = shouldAdvance(grades, row);
         grade(row, KEY_RATING[e.code]);
-        moveRow(row + 1);
+        if (advance) moveRow(row + 1);
       } else return;
       e.preventDefault();
     };
@@ -2290,6 +2910,33 @@ function Study({
   /** When the list last scrolled: a touch within 120 ms of it catches a fling. */
   const lastScrollAt = useRef(0);
   const scrollingNow = useCallback(() => performance.now() - lastScrollAt.current < 120, []);
+  /**
+   * Where the last auto-advance is taking the list, while it is on its way
+   * (lib/words/advance.ts, `advanceTop`). Cleared when the list gets there or
+   * the finger takes the list.
+   */
+  const advancing = useRef<{ row: number; top: number } | null>(null);
+  /**
+   * After grading row `i` for the first time: scroll the list by exactly one
+   * row, so the next word slides up under the thumb. An absolute target, not
+   * scrollBy: a relative step lands one row past wherever the list is at
+   * that instant, so a step taken while the list still moves (the last
+   * advance's smooth scroll, a coast) adds to it. One advance per row.
+   */
+  const advanceList = (i: number) => {
+    const el = listRef.current;
+    if (!el) return;
+    const top = advanceTop({
+      row: i,
+      scrollTop: el.scrollTop,
+      rowH: ROW_H,
+      max: el.scrollHeight - el.clientHeight,
+      pending: advancing.current,
+    });
+    if (top === null) return;
+    advancing.current = { row: i, top };
+    el.scrollTo({ top, behavior: motionOff() ? "auto" : "smooth" });
+  };
   const [viewH, setViewH] = useState(600);
   /** viewH holds the real measured height (the opening scroll depends on it). */
   const [measured, setMeasured] = useState(false);
@@ -2299,6 +2946,22 @@ function Study({
   // scrolled well past the middle (or to the touch focus line). Row positions
   // and the windowing below are all offset by it.
   const pad = Math.round(viewH * OVERSCROLL_FRACTION);
+  // `scrollTop` (state) moves only when the rows in view change: the window,
+  // the audio wish, the reach and the glide's goal are all per row, and a
+  // render of the whole list on every scroll event (60 a second) was the
+  // biggest scroll cost on an iPhone. The key is every row edge they read.
+  const scrollKey = useRef("");
+  const syncScroll = (top: number) => {
+    const key = `${Math.floor((top - pad) / ROW_H)}|${Math.floor((top - pad + viewH) / ROW_H)}|${Math.ceil((top - pad + viewH) / ROW_H)}`;
+    if (key === scrollKey.current) return;
+    scrollKey.current = key;
+    setScrollTop(top);
+  };
+  // The rows' edges move with the height, the over-scroll and the row height.
+  useEffect(() => {
+    if (listEl) syncScroll(listEl.scrollTop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listEl, pad, viewH, ROW_H]);
   // Open with the first row just under the glass toolbar, not half a screen
   // down. Re-applied until the person moves the list themselves: whenever the
   // list element is (re)mounted (the queue can reload, e.g. from the offline
@@ -2329,12 +2992,34 @@ function Study({
       window.removeEventListener("keydown", moved, opts);
     };
   }, [listEl]);
+  // Where the reader was in this tab (ui-store.ts): the same opening, aimed
+  // at that word instead of the first, while it is still in the queue.
+  const studyKey = lists.map((l) => l.id).join(",");
+  const anchor = useUi(ui, (s) => s.anchors[studyKey] ?? null);
+  const anchorAt = useMemo(
+    () => (anchor === null ? -1 : queue.findIndex((it) => keyOf(it) === anchor)),
+    [anchor, queue],
+  );
   useLayoutEffect(() => {
     if (!listEl || !listReady || !measured) return;
     if (opened.current.el !== listEl) opened.current = { el: listEl, moved: false };
     if (opened.current.moved) return;
-    listEl.scrollTop = pad - bar.top;
-  }, [listEl, listReady, measured, pad, bar.top, shownAt]);
+    listEl.scrollTop = anchorTop(anchorAt, { pad, rowH: ROW_H, barTop: bar.top }) ?? pad - bar.top;
+  }, [listEl, listReady, measured, pad, bar.top, shownAt, anchorAt]);
+  /** Remember the word at the top once the reader has moved the list (not the opening's own scroll). */
+  const anchorTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const keepAnchor = useCallback(
+    (top: number) => {
+      if (!opened.current.moved) return;
+      clearTimeout(anchorTimer.current);
+      anchorTimer.current = setTimeout(() => {
+        const it = queue[topIndex(top, { pad, rowH: ROW_H, barTop: barRef.current.top })];
+        setAnchor(ui, studyKey, it ? keyOf(it) : null);
+      }, 200);
+    },
+    [queue, pad, ui, studyKey],
+  );
+  useEffect(() => () => clearTimeout(anchorTimer.current), []);
   // The list fills the window (.lk-words-list); the toolbar and the help strip
   // float over it. Measured whenever any of them changes size (settings open,
   // hints change, the window turns), never polled.
@@ -2453,7 +3138,12 @@ function Study({
   useEffect(() => {
     if (!touch || !active || holding !== null || !focusItem) return;
     if (quietFocus.current === focusLine) return void (quietFocus.current = null);
-    speech.once([{ kind: "word", text: focusText, lang: focusItem.lang }]);
+    // With every meaning shown, the back is read too: word → meaning → example.
+    speech.once(
+      showAll ? partsOf(focusItem) : [{ kind: "word", text: focusText, lang: focusItem.lang }],
+      false,
+      { yieldToHold: true },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [touch, focusLine, focusText]);
 
@@ -2492,7 +3182,9 @@ function Study({
       if (!fresh.length) setExhausted(true);
       else append(fresh);
     })()
-      .catch((e) => setSyncError((e as Error).message))
+      // With nothing on screen, a failure is the page's error (with Retry),
+      // not a quiet note under an empty list.
+      .catch((e) => (queue.length ? setSyncError : setLoadError)((e as Error).message))
       .finally(() => {
         fetching.current = false;
       });
@@ -2507,63 +3199,36 @@ function Study({
   const focusParts = JSON.stringify(focused ? partsOf(focused) : []);
   useEffect(() => speech.loop(JSON.parse(focusParts) as SayPart[]), [focusParts, speech]);
 
-  // Prefetch the audio of the rows on screen and up to two screens below,
-  // plus the next few in queue order, so a tap plays at once. The list is
-  // windowed: rows are observed as they mount and let go as they unmount.
-  const nearRows = useRef(new Set<number>());
-  const prefetchNear = useRef(() => {});
-  prefetchNear.current = () => {
-    // Desktop with sound off says nothing (a click grades); a tap always speaks.
-    if (!touch && !speech.on) return;
-    const near = [...nearRows.current].sort((a, b) => a - b);
-    if (!near.length) return;
-    const last = near[near.length - 1];
-    for (let i = last + 1; i <= last + PREFETCH_NEXT && i < queue.length; i++) near.push(i);
-    speech.prefetch(prefetchOrder(near.flatMap((i) => (queue[i] ? [partsOf(queue[i])] : []))));
-  };
-  useEffect(() => prefetchNear.current(), [queue, speech, partsOf]);
-  useEffect(() => {
-    const root = listEl;
-    if (!root || typeof IntersectionObserver === "undefined") return;
-    const rowIndex = (n: Node) =>
-      n instanceof HTMLElement && n.dataset.i !== undefined ? Number(n.dataset.i) : null;
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          const i = rowIndex(e.target);
-          if (i === null) continue;
-          if (e.isIntersecting) nearRows.current.add(i);
-          else nearRows.current.delete(i);
-        }
-        prefetchNear.current();
-      },
-      { root, rootMargin: "0px 0px 200% 0px" },
-    );
-    for (const el of root.children) if (rowIndex(el) !== null) io.observe(el);
-    const mo = new MutationObserver((records) => {
-      for (const r of records) {
-        for (const n of r.addedNodes) if (rowIndex(n) !== null) io.observe(n as Element);
-        for (const n of r.removedNodes) {
-          const i = rowIndex(n);
-          if (i === null) continue;
-          io.unobserve(n as Element);
-          nearRows.current.delete(i);
-        }
-      }
-    });
-    mo.observe(root, { childList: true });
-    const near = nearRows.current;
-    return () => {
-      io.disconnect();
-      mo.disconnect();
-      near.clear();
-    };
-  }, [listEl]);
-
   // Windowed rendering: the list is endless, the DOM is not.
   const OVERSCAN = 20;
   const from = Math.max(0, Math.floor((scrollTop - pad) / ROW_H) - OVERSCAN);
   const to = Math.min(queue.length, Math.ceil((scrollTop - pad + viewH) / ROW_H) + OVERSCAN);
+
+  // Audio, in the owner's order: the rows on screen, then their neighbours
+  // outward across the rendered window, then a few past it. Each scroll
+  // re-orders the wish, so what scrolled away is dropped (lib/words/audio-cache.ts).
+  // Today's due words go to the device last, for offline study.
+  const firstSeen = Math.max(0, Math.floor((scrollTop - pad) / ROW_H));
+  const lastSeen = Math.min(queue.length, Math.ceil((scrollTop - pad + viewH) / ROW_H));
+  // Desktop with sound off says nothing (a click grades); a tap always speaks.
+  const audioOn = touch || speech.on;
+  useEffect(() => {
+    if (!audioOn) return;
+    const { visible, rest } = rowPriority(
+      queue.length,
+      firstSeen,
+      lastSeen,
+      from,
+      to,
+      PREFETCH_NEXT,
+    );
+    const parts = (rows: number[]) => prefetchOrder(rows.map((i) => partsOf(queue[i])));
+    speech.prefetch(parts(visible), parts(rest));
+  }, [audioOn, firstSeen, lastSeen, from, to, queue, speech, partsOf]);
+  useEffect(() => {
+    if (!audioOn || loading) return;
+    speech.stock(queue.filter((it) => it.kind === "due").flatMap(partsOf));
+  }, [audioOn, loading, queue, speech, partsOf]);
   // Sticky over the whole loaded queue: a column appearing and disappearing
   // as example-less stretches scroll by would shift every other column.
   const hasExamples = useMemo(() => queue.some((it) => it.ex), [queue]);
@@ -2629,6 +3294,11 @@ function Study({
   const backGoal = useRef<number | null>(null);
   const backShown = useRef<number | null>(null);
   const backVelocity = useRef(0);
+  /** The glide's one rAF loop, kept across renders (see below). */
+  const glideRaf = useRef(0);
+  const glideLast = useRef<number | null>(null);
+  const glideSplit = useRef(false);
+  useEffect(() => () => cancelAnimationFrame(glideRaf.current), []);
   useEffect(() => {
     if (!viewH || to <= from) return;
     const centre = scrollTop + viewH / 2;
@@ -2666,9 +3336,15 @@ function Study({
       return;
     }
     // Glide every row together: one variable, moved by a critically damped
-    // spring that keeps its velocity if the goal moves mid-glide.
-    let raf = 0;
-    let last = performance.now();
+    // spring that keeps its velocity if the goal moves mid-glide. One loop
+    // outlives this effect: a scroll re-runs it at each row it crosses, and restarting
+    // the loop each time cancelled the pending step and timed the next from
+    // a fresh performance.now(), so the spring advanced a fraction of each
+    // frame, or not at all — the width stalled while the finger moved, then
+    // caught up in jumps.
+    glideSplit.current = split;
+    if (glideRaf.current) return;
+    const reduce = motionOff();
     /** One spring step of a column toward its goal; true once it has settled. */
     const glide = (
       goal: number,
@@ -2677,28 +3353,41 @@ function Study({
       prop: string,
       dt: number,
     ) => {
-      const s = springStep(shown.current!, velocity.current, goal, dt, 14);
-      const settled = Math.abs(s.x - goal) < 0.5 && Math.abs(s.v) < 5;
-      shown.current = settled ? goal : s.x;
-      velocity.current = settled ? 0 : s.v;
-      el.style.setProperty(prop, `${shown.current}px`);
-      return settled;
+      const s = glideStep(shown.current!, velocity.current, goal, dt, reduce);
+      // Every row's grid reads the variable, so each write lays out the whole
+      // list: write only whole device pixels, and only when that changes (the
+      // spring's long sub-pixel tail no longer relays the list every frame).
+      const px = (v: number) => Math.round(v * devicePixelRatio) / devicePixelRatio;
+      const was = px(shown.current!);
+      shown.current = s.x;
+      velocity.current = s.v;
+      if (px(s.x) !== was || s.settled) el.style.setProperty(prop, `${px(s.x)}px`);
+      return s.settled;
     };
     const step = (now: number) => {
-      const dt = (now - last) / 1000;
-      last = now;
+      const dt = frameDt(now, glideLast.current);
+      glideLast.current = now;
       const a = glide(termGoal.current!, termShown, termVelocity, "--term-w", dt);
-      const b = !split || glide(backGoal.current!, backShown, backVelocity, "--back-w", dt);
-      if (!a || !b) raf = requestAnimationFrame(step);
+      const b =
+        !glideSplit.current ||
+        backGoal.current === null ||
+        backShown.current === null ||
+        glide(backGoal.current, backShown, backVelocity, "--back-w", dt);
+      if (a && b) {
+        glideRaf.current = 0;
+        glideLast.current = null;
+      } else glideRaf.current = requestAnimationFrame(step);
     };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    glideRaf.current = requestAnimationFrame(step);
   }, [from, to, scrollTop, viewH, pad, queue, measureTerm, measureCells, hasExamples, rem, touch]);
 
   const done = grades.size;
   const minutes = (Date.now() - started.current) / 60_000;
   const ahead = queue.filter((_, i) => i >= row && !grades.has(i));
   const dueLeft = ahead.filter((it) => it.kind !== "new").length;
+  // Not the new words in the loaded batch (always ~80 at the start): the
+  // words in scope never seen yet (lib/words/unseen.ts).
+  const unseen = unseenLeft(scopeAtStart, countGradedNew(queue, grades.keys()));
 
   const status = (it: Item, i: number) => {
     const g = grades.get(i);
@@ -2707,25 +3396,24 @@ function Study({
       if (g.card) return <Countdown due={dueOf(g.card)} back={requeued.current.has(i)} />;
       return previewInterval(it.card, g.rating, paramsOf.get(it.listId)!);
     }
-    if (it.kind === "new" || !it.card) return "new";
-    return `${formatInterval(Date.now() - dueOf(it.card))} ago`;
+    if (it.kind === "new" || !it.card) return text.statusNew.value;
+    return fill(text.ago.value, { t: formatInterval(Date.now() - dueOf(it.card)) });
   };
 
   // The help strip's text, by the input used last (keys or gestures).
   const hintText =
     exhausted && ahead.length === 0 ? (
       <>
-        Every word learned. <Icon name="confetti" className="ms-0.5" />
+        {text.everyWordLearned} <Icon name="confetti" className="ms-0.5" />
       </>
     ) : modality === null ? null : modality === "touch" ? (
       // The gestures exist only in the touch layout; a touchscreen
       // laptop's tap is a click (= Again), and has no swipe to explain.
-      touch &&
-      "tap = show + say · hold = listen (loops) · swipe ← a little Hard, far Again · swipe → a little Good, far Easy · ↶ undo"
+      touch && fill(text.helpTouch.value, grades4)
     ) : help ? (
-      "↑↓ / W S / I U move (the focused row shows its meaning) · Space pin · E show all · 1 Again · 2 Hard · 3 Good · 4 Easy (right hand mirrored: L Again · K Hard · J Good · H Easy) · grading again re-grades · click = Again · Z / M undo (repeat to go further back) · Esc undo this row · Enter next ungraded · V sound · ? hide help"
+      fill(text.helpKeys.value, grades4)
     ) : (
-      "1 Again · 2 Hard · 3 Good · 4 Easy · Z undo · ? all keys"
+      fill(text.helpKeysShort.value, grades4)
     );
 
   return (
@@ -2791,26 +3479,34 @@ function Study({
                 ))}
               </>
             )}
-            {done} done · {minutes > 0.2 ? Math.round(done / minutes) : "–"}/min · {dueLeft} due ·{" "}
-            {ahead.length - dueLeft} new
+            {fill(text.stats.value, {
+              done,
+              rate: minutes > 0.2 ? Math.round(done / minutes) : "–",
+              due: dueLeft,
+              new: unseen,
+            })}
             {sync.pending > 0 ? (
               <span
                 data-sync="pending"
                 className={sync.online ? "" : "text-amber-700 dark:text-amber-300"}
               >
                 {sync.online
-                  ? ` · ${sync.pending} saving…`
-                  : ` · offline · ${sync.pending} to sync`}
+                  ? ` · ${fill(text.saving.value, { n: sync.pending })}`
+                  : ` · ${text.offline.value} · ${fill(text.toSync.value, { n: sync.pending })}`}
               </span>
             ) : (
               <span data-sync="synced">
-                {!sync.online || offlineCopy ? " · offline" : ""}
-                {sync.online && grades.size > 0 ? " · synced ✓" : ""}
+                {!sync.online || offlineCopy ? ` · ${text.offline.value}` : ""}
+                {sync.online && grades.size > 0 ? ` · ${text.synced.value}` : ""}
               </span>
             )}
           </span>
         </div>
-        {syncError && <div className="text-red-500 text-sm mt-1">Not saved: {syncError}</div>}
+        {syncError && (
+          <div className="text-red-500 text-sm mt-1">
+            {fill(text.couldntLoadMore.value, { error: syncError })}
+          </div>
+        )}
         {notice && <div className="text-amber-600 dark:text-amber-300 text-sm mt-1">{notice}</div>}
       </div>
 
@@ -2822,61 +3518,69 @@ function Study({
           data-words-settings
           className="lk-words-bar lk-words-sheet lk-glass border-b border-[var(--glass-line)] py-2 text-sm"
           style={{ top: bar.top, maxHeight: `calc(100dvh - ${bar.top + bar.bottom + 16}px)` }}
-          aria-label="Study settings"
+          aria-label={text.studySettings.value}
         >
           <div className="flex flex-wrap gap-2">
             <TogglePill
               on={showAll}
               onChange={setShowAll}
-              label="Show all meanings"
-              hint="Every meaning visible, not only the focused row (E)"
+              label={text.showAll.value}
+              hint={text.showAllHint.value}
             />
             {speech.available && (
               <TogglePill
                 on={speech.on}
                 onChange={() => speech.toggle()}
-                label="Read cards aloud"
-                hint="Speak the word and its example (V)"
+                label={text.readAloud.value}
+                hint={text.readAloudHint.value}
               />
             )}
             {speech.on && (
               <TogglePill
                 on={serverVoice}
                 onChange={setServerVoice}
-                label="Server voice"
-                hint="Use Lianki's voices (en, es, fr, de, it, pt, ru, zh, ja, ko) instead of the browser's"
+                label={text.serverVoice.value}
+                hint={text.serverVoiceHint.value}
               />
             )}
             {speech.on && serverVoice && (
               <span className="w-full text-xs opacity-60" data-voice-credit>
-                Voices: VOICEVOX:No.7 (Japanese) · Kokoro · Piper (Thorsten-Voice, Dmitri) · MeloTTS
+                {/* Credits: the voice names stay as their makers write them. */}
+                {text.voices} VOICEVOX:No.7 ({text.japanese}) · Kokoro · Piper (Thorsten-Voice,
+                Dmitri) · MeloTTS
               </span>
             )}
             <TogglePill
               on={tones}
               onChange={setTones}
-              label="Grade tones"
-              hint="A short tone per grade, for studying without looking"
+              label={text.gradeTones.value}
+              hint={text.gradeTonesHint.value}
             />
             {touch && (
               <TogglePill
                 on={swipeSpeak}
                 onChange={setSwipeSpeak}
-                label="Speak on swipe"
-                hint="Say the word as a swipe starts"
+                label={text.speakOnSwipe.value}
+                hint={text.speakOnSwipeHint.value}
               />
             )}
             {touch && !fs.standalone && (
               <TogglePill
                 on={fs.active}
                 onChange={toggleFullscreen}
-                label="Full screen"
-                hint="Hide the address bar while studying"
+                label={text.fullScreen.value}
+                hint={text.fullScreenHint.value}
               />
             )}
+            <TogglePill
+              on={animationsOff}
+              onChange={setMotionOff}
+              label={text.animationsOff.value}
+              hint={text.animationsOffHint.value}
+            />
             <div className="w-full pt-1" data-experimental>
               <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
-                Experimental
+                {text.experimental}
               </div>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 {touch && (
@@ -2887,9 +3591,28 @@ function Study({
                       setSwipeVariant(v);
                       setSwipeAb(v);
                     }}
-                    label="New swipe"
-                    hint="Swipes done by the browser's own scrolling"
+                    label={text.newSwipe.value}
+                    hint={text.newSwipeHint.value}
                   />
+                )}
+                {/* The swipe's feel (docs/swipe-core.md): debug mode only, this device only. */}
+                {touch && debug && (
+                  <>
+                    <TogglePill
+                      on={feelPrefs.preset === "heavy"}
+                      onChange={(on) =>
+                        setFeelPrefs({ ...feelPrefs, preset: on ? "heavy" : "light", tweaks: {} })
+                      }
+                      label={text.heavySwipe.value}
+                      hint={text.heavySwipeHint.value}
+                    />
+                    <TogglePill
+                      on={feelPrefs.tune}
+                      onChange={(on) => setFeelPrefs({ ...feelPrefs, tune: on })}
+                      label={text.tuneSwipe.value}
+                      hint={text.tuneSwipeHint.value}
+                    />
+                  </>
                 )}
                 <TogglePill
                   on={paperScrolls}
@@ -2898,15 +3621,15 @@ function Study({
                   hint={text.paperScrollsHint.value}
                 />
                 <span className="text-xs opacity-60">
-                  {touch ? "Native scrolling swipe. " : ""}It may change or go away.
+                  {touch ? `${text.nativeSwipeNote.value} ` : ""}
+                  {text.mayChange}
                 </span>
               </div>
             </div>
           </div>
           {fsHint && (
             <div className="text-sm mt-2 opacity-80" onClick={() => setFsHint(false)}>
-              This browser can&apos;t hide its address bar for a page. On iPhone: Share → Add to
-              Home Screen, then open Lianki from the home screen — it runs without the address bar.
+              {text.fsHint}
             </div>
           )}
         </div>
@@ -2914,29 +3637,32 @@ function Study({
 
       {loadError ? (
         <div className="space-y-3 py-8 text-center">
-          <div className="text-red-500">Couldn't load: {loadError}</div>
+          <div className="text-red-500">{fill(text.couldntLoad.value, { error: loadError })}</div>
           <button
             className="px-4 py-2 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
             onClick={() => location.reload()}
           >
-            Retry
+            {text.retry}
           </button>
         </div>
       ) : loading ? (
-        <div className="opacity-60">Loading…</div>
+        <div className="opacity-60">{text.loading}</div>
       ) : queue.length === 0 ? (
         <div className="py-8 text-center text-lg">
           {exhausted ? (
             <>
-              Every word learned.{" "}
+              {text.everyWordLearned}{" "}
               <Icon name="confetti" className="ms-1 text-blue-600 dark:text-blue-400" />
             </>
           ) : (
-            "Loading more…"
+            text.loadingMore
           )}
         </div>
       ) : (
-        <>
+        <SwipeFeelProvider>
+          {/* The feel's sources and its tuner: islands (docs/swipe-core.md). */}
+          {touch && <SwipeFeelIsland />}
+          {touch && <SwipeTunerIsland />}
           <div
             ref={setListRef}
             // The whole window, edge to edge, under the glass overlays
@@ -2951,10 +3677,18 @@ function Study({
               scrollPaddingBottom: bar.bottom,
             }}
             onScroll={(e) => {
-              setScrollTop(e.currentTarget.scrollTop);
+              syncScroll(e.currentTarget.scrollTop);
               lastScrollAt.current = performance.now();
+              const to = advancing.current;
+              if (to && Math.abs(e.currentTarget.scrollTop - to.top) < 1) advancing.current = null;
+              keepAnchor(e.currentTarget.scrollTop);
             }}
-            onPointerDownCapture={() => (touchingList.current = true)}
+            onPointerDownCapture={() => {
+              touchingList.current = true;
+              // A list at rest is the finger's now: the next advance starts from
+              // where it is. One still on its way keeps its target.
+              if (!scrollingNow()) advancing.current = null;
+            }}
             onPointerUpCapture={() => (touchingList.current = false)}
             onPointerCancelCapture={() => (touchingList.current = false)}
             // pointerup, not pointerdown: for touch it is the event that grants
@@ -3030,31 +3764,45 @@ function Study({
                       quietFocus.current = i;
                       startTransition(() => setFocusLine(i));
                     }
+                    // The word, or with every meaning shown the whole card. Never
+                    // over a long-press reading: that one plays on through the swipe.
                     if (swipeSpeak)
-                      speech.once([
-                        {
-                          kind: "word",
-                          text: spokenText(it, it.lang, !!config.readingOnBack),
-                          lang: it.lang,
-                        },
-                      ]);
+                      speech.once(
+                        showAll
+                          ? partsOf(it)
+                          : [
+                              {
+                                kind: "word",
+                                text: spokenText(it, it.lang, !!config.readingOnBack),
+                                lang: it.lang,
+                              },
+                            ],
+                        false,
+                        { yieldToHold: true },
+                      );
                   }}
                   onHold={() => {
                     setHolding(i);
-                    speech.loop(partsOf(it), true);
+                    speech.hold(partsOf(it));
                   }}
                   onHoldEnd={() => {
                     setHolding(null);
-                    speech.loop([]);
+                    // Not cut on lifting: the pass in progress reads to its end,
+                    // through a swipe that follows.
+                    speech.release();
                   }}
                   onSwipe={(r) => {
+                    // Auto-advance is for a card met for the first time: editing
+                    // a grade already given stays on that card (the owner, 2026-10-30).
+                    // Read now, not from this render: see gradesNow.
+                    const advance = shouldAdvance(gradesNow.current, i);
                     // The slip glides home meanwhile: the grade's re-render can wait.
                     startTransition(() => {
                       grade(i, r);
-                      if (touch) setFocusLine(Math.min(queue.length - 1, i + 1));
+                      if (touch && advance) setFocusLine(Math.min(queue.length - 1, i + 1));
                     });
                     // The next word slides up under the thumb.
-                    listRef.current?.scrollBy({ top: ROW_H, behavior: "smooth" });
+                    if (advance) advanceList(i);
                   }}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none ${
                     touch
@@ -3068,7 +3816,7 @@ function Study({
                   {/* The grade, stamped like a small seal (盖章) at the slip's left end. */}
                   <span className="flex justify-center text-[10px]" data-stamp-cell>
                     {rating ? (
-                      <i key={rating} className="lk-stamp" aria-label={RATING_LABEL[rating]} />
+                      <i key={rating} className="lk-stamp" aria-label={ratingLabel[rating]} />
                     ) : !touch && i === row ? (
                       <span className="opacity-40">▸</span>
                     ) : null}
@@ -3089,18 +3837,48 @@ function Study({
                       <span className="ml-2 text-xs font-normal opacity-60">{it.reading}</span>
                     )}
                   </Glance>
-                  <Glance
-                    active={glancing && show}
-                    title={show ? it.back : undefined}
-                    className={`text-sm opacity-80 transition-[filter] duration-75 ${
-                      show ? "" : "slip-blank"
-                    }`}
-                  >
-                    {config.readingOnBack && it.reading && it.reading !== it.term && (
-                      <span className="mr-2 font-medium">{it.reading}</span>
-                    )}
-                    {it.back}
-                  </Glance>
+                  {(() => {
+                    const meaning = (
+                      <Glance
+                        active={glancing && show}
+                        title={show ? it.back : undefined}
+                        className={`text-sm opacity-80 transition-[filter] duration-75 ${
+                          touch ? "block min-w-0" : ""
+                        } ${show ? "" : "slip-blank"}`}
+                      >
+                        {config.readingOnBack && it.reading && it.reading !== it.term && (
+                          <span className="mr-2 font-medium">{it.reading}</span>
+                        )}
+                        {it.back}
+                      </Glance>
+                    );
+                    if (!touch || !it.ex) return meaning;
+                    // Phones: one row is the whole card — the front, then everything
+                    // on the back (meaning, then example), as "Show all meanings"
+                    // shows and reads it. Two lines in the row's fixed height (one
+                    // line on a wider screen), so the windowing stays exact.
+                    // Tags (level, list) are only in the double-tap sheet.
+                    return (
+                      <span
+                        className="flex min-w-0 flex-col justify-center gap-1 sm:flex-row sm:items-baseline sm:gap-3"
+                        data-row-back
+                      >
+                        {meaning}
+                        <Glance
+                          active={glancing && show}
+                          title={show ? `${it.ex}\n${it.exTr ?? ""}` : undefined}
+                          className={`block min-w-0 text-xs opacity-60 transition-[filter] duration-75 sm:flex-1 ${
+                            show ? "" : "slip-blank"
+                          }`}
+                        >
+                          <span lang={it.lang} data-row-example>
+                            {it.ex}
+                          </span>
+                          {it.exTr && <span className="ml-2 opacity-80">{it.exTr}</span>}
+                        </Glance>
+                      </span>
+                    );
+                  })()}
                   {hasExamples && !touch && (
                     // The example is part of the answer side: hidden with the meaning.
                     <Glance
@@ -3118,7 +3896,7 @@ function Study({
                   <span
                     className={`flex items-center justify-end gap-1.5 text-[11px] tabular-nums ${rating ? "font-medium" : "opacity-40"}`}
                     style={rating ? { color: "var(--grade)" } : undefined}
-                    title={rating ? RATING_LABEL[rating] : "due"}
+                    title={rating ? ratingLabel[rating] : text.dueTitle.value}
                   >
                     {status(it, i)}
                   </span>
@@ -3134,6 +3912,7 @@ function Study({
           {sheet !== null && queue[sheet] && (
             <SlipSheet
               item={queue[sheet]}
+              tags={tagsOf(queue[sheet])}
               status={status(queue[sheet], sheet)}
               onClose={() => setSheet(null)}
               onListen={() => {
@@ -3142,7 +3921,7 @@ function Study({
               }}
               onCopy={() => {
                 void navigator.clipboard?.writeText(queue[sheet].term).catch(() => {});
-                setNotice(`Copied “${queue[sheet].term}”`);
+                setNotice(fill(text.copied.value, { term: queue[sheet].term }));
               }}
             />
           )}
@@ -3157,7 +3936,7 @@ function Study({
               <span className="opacity-75">{hintText}</span>
             </div>
           )}
-        </>
+        </SwipeFeelProvider>
       )}
     </div>
   );
@@ -3175,12 +3954,15 @@ function Study({
  */
 function SlipSheet({
   item,
+  tags,
   status,
   onClose,
   onListen,
   onCopy,
 }: {
   item: Item;
+  /** The word's tags (its list, the list's level): shown here only, never in the row. */
+  tags: string[];
   status: React.ReactNode;
   onClose: () => void;
   onListen: () => void;
@@ -3195,12 +3977,18 @@ function SlipSheet({
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [onClose]);
+  const text = useIntlayer("words-page");
   const actions: [IconName, string, () => void][] = [
-    ["speakerHigh", "Listen again (loops)", onListen],
-    ["copy", "Copy the word", onCopy],
+    ["speakerHigh", text.listenAgain.value, onListen],
+    ["copy", text.copyWord.value, onCopy],
   ];
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-label="Word actions" data-slip-sheet>
+    <div
+      className="fixed inset-0 z-50"
+      role="dialog"
+      aria-label={text.wordActions.value}
+      data-slip-sheet
+    >
       <div className="absolute inset-0 bg-black/30 lk-fade-in" onClick={dismiss} />
       <div className="absolute inset-x-0 bottom-0 mx-auto max-w-lg rounded-t-2xl bg-[var(--background)] px-4 pt-2 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-8px_30px_oklch(0_0_0/0.25)] lk-sheet-in">
         <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-current opacity-20" />
@@ -3209,7 +3997,19 @@ function SlipSheet({
           <span className="truncate opacity-70">{item.back}</span>
           <small className="ml-auto shrink-0 text-xs opacity-60">{status}</small>
         </div>
-        {/* Phones have no example column: the sheet is where the example shows. */}
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-1 pt-2" data-sheet-tags>
+            {tags.map((t) => (
+              <span
+                key={t}
+                className="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5 text-xs opacity-80"
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
+        {/* The row shows the example too; here it is in full. */}
         {item.ex && (
           <div
             className="border-b border-black/10 dark:border-white/10 px-1 py-3"
@@ -3239,7 +4039,7 @@ function SlipSheet({
           className="mt-2 w-full rounded-xl bg-black/10 dark:bg-white/10 py-3 font-semibold"
           onClick={onClose}
         >
-          Cancel
+          {text.cancel}
         </button>
       </div>
     </div>
@@ -3252,6 +4052,14 @@ function SlipSheet({
  * and dragged along as the slip slides. Loosening and tightening take 200 ms
  * of minimum jerk. Runs frames only while easing or while the slip is off
  * its rest position.
+ *
+ * Every rendered row has one (tied: hidden), and rows mount all the time as
+ * the list scrolls. So a tied cord that stays tied runs no frame at all, and
+ * the row's size is read once per run, in its first frame, not every frame.
+ * Before, each mounted row ran 200 ms of frames that each read
+ * offsetHeight/offsetWidth after the previous row's writes: a forced layout
+ * per row per frame while scrolling. Animations off ran one frame instead,
+ * which is why turning them off felt so much smoother on an iPhone.
  */
 function SlipCords({
   loose,
@@ -3269,26 +4077,35 @@ function SlipCords({
     const el = host.current;
     const row = el?.parentElement;
     if (!el || !row) return;
-    const [left, right] = Array.from(el.querySelectorAll("path"));
     const from = slack.current;
     const to = loose ? 1 : 0;
+    // Tied and staying tied, at rest: nothing to draw (the host starts hidden).
+    if (from === 0 && to === 0 && !moving && !(pos?.current(performance.now()) ?? 0)) return;
+    const [left, right] = Array.from(el.querySelectorAll("path"));
+    let size: { h: number; w: number } | null = null;
     const t0 = performance.now();
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const still = motionOff();
     let raf = 0;
+    let last = "";
     const frame = (now: number) => {
       const c0 = swipePerf.on ? performance.now() : 0;
       const t = still ? 1 : Math.min(1, (now - t0) / 200);
       slack.current = from + (to - from) * minJerk(t);
-      const h = row.offsetHeight;
-      const w = row.offsetWidth;
+      size ??= { h: row.offsetHeight, w: row.offsetWidth };
+      const { h, w } = size;
       const x = pos?.current(now) ?? 0;
       const pull = cordPull(x, slack.current, h);
       const bow = CORD_BOW * h * slack.current;
-      el.style.transform = x ? `translateX(${-x}px)` : "";
-      el.style.visibility = slack.current > 0.001 ? "visible" : "hidden";
-      left.setAttribute("d", cordPath(4.5, h, bow, pull));
-      right.setAttribute("d", cordPath(35.5, h, -bow, pull));
-      right.parentElement!.style.left = `${w - 40}px`;
+      // Write only what changed: an idle loose cord (moving, x 0) costs nothing.
+      const key = `${x}|${slack.current}|${h}|${w}`;
+      if (key !== last) {
+        last = key;
+        el.style.transform = x ? `translateX(${-x}px)` : "";
+        el.style.visibility = slack.current > 0.001 ? "visible" : "hidden";
+        left.setAttribute("d", cordPath(4.5, h, bow, pull));
+        right.setAttribute("d", cordPath(35.5, h, -bow, pull));
+        right.parentElement!.style.left = `${w - 40}px`;
+      }
       if (swipePerf.on) {
         swipePerf.cordFrames++;
         swipePerf.cordMs += performance.now() - c0;
@@ -3316,6 +4133,12 @@ function SlipCords({
   );
 }
 
+/** The grade zones island, labelled with the grades' names in the app's language. */
+function GradeZones() {
+  const l = useRatingLabel();
+  return <SwipeGradesIsland again={l[1]} hard={l[2]} good={l[3]} easy={l[4]} />;
+}
+
 /**
  * What a sliding slip uncovers: one static strip per list, put under the slip
  * as it starts to slide. Slid right, the slip uncovers Good (its first row's
@@ -3337,51 +4160,7 @@ function SwipeUnderlay({ ref }: { ref: React.RefObject<HTMLDivElement | null> })
   );
 }
 
-/** The strip's zones, in a row-wide box with --a set: shared by SwipeUnderlay and NativeSlipRow. */
-function GradeZones() {
-  // One slot per side, the width of both detents. Its first detent's grade
-  // shows until the slip reaches the far detent; then the far grade takes
-  // over the same spot (crossfade + a short slide, CSS .lk-reveal), and
-  // gives it back on the way home. The container's data-good / data-hard
-  // (showReveal) pick which.
-  const layer = (r: Rating, side: "left" | "right", far: boolean) => (
-    <span
-      data-reveal={r}
-      data-far={far ? "" : undefined}
-      className="lk-reveal absolute inset-0"
-      style={{ background: SWIPE_BG[r] }}
-    >
-      <span
-        className="absolute inset-y-0 flex items-center justify-center text-[11px] font-medium opacity-90"
-        style={{ [side]: 0, width: "var(--a)" }}
-      >
-        {RATING_LABEL[r]}
-      </span>
-    </span>
-  );
-  return (
-    <>
-      <span
-        data-reveal-slot="good"
-        className="absolute inset-y-0 left-0 overflow-hidden"
-        style={{ width: "calc(var(--a) * 2.5)" }}
-      >
-        {layer(3, "left", false)}
-        {layer(4, "left", true)}
-      </span>
-      <span
-        data-reveal-slot="hard"
-        className="absolute inset-y-0 right-0 overflow-hidden"
-        style={{ width: "calc(var(--a) * 2.5)" }}
-      >
-        {layer(2, "right", false)}
-        {layer(1, "right", true)}
-      </span>
-    </>
-  );
-}
-
-/** Point a GradeZones container at level `k`: which grade each side shows. */
+/** Point a grade-zones container (SwipeGrades) at level `k`: which grade each side shows. */
 function showReveal(el: HTMLElement | null | undefined, k: number) {
   if (!el) return;
   const s = revealShown(k);
@@ -3414,13 +4193,53 @@ type RowProps = {
   children: React.ReactNode;
 };
 
-function WordRow({
+function WordRow(props: RowProps) {
+  // Desktop rows never slide: no gesture core, no islands.
+  return props.touch ? <TouchWordRow {...props} /> : <DeskWordRow {...props} />;
+}
+
+function DeskWordRow({
   index,
-  touch,
   loose = false,
   onHover,
   onTap,
   onMore,
+  className,
+  style,
+  children,
+}: RowProps) {
+  return (
+    <div
+      role="listitem"
+      data-i={index}
+      // Only a real mouse move takes the cursor: Chrome replays mouse events
+      // at a resting pointer when rows re-render, which would otherwise yank
+      // the cursor back under the mouse after every key press.
+      onMouseMove={(e) => (e.movementX || e.movementY) && onHover()}
+      onClick={(e) => onTap(e.timeStamp)}
+      onContextMenu={(e) => {
+        if (!onMore) return;
+        e.preventDefault();
+        onMore();
+      }}
+      className={`relative ${className} ${loose ? "slip-loose" : ""}`}
+      style={style}
+    >
+      {children}
+      <SlipCords loose={loose} moving={false} />
+    </div>
+  );
+}
+
+/**
+ * The js swipe (variant A): the headless core (lib/words/swipe-core.tsx)
+ * runs the gesture and moves the card; the card and its lift are islands
+ * that read the core's context (docs/swipe-core.md).
+ */
+function TouchWordRow({
+  index,
+  loose = false,
+  onTap,
   onSwipe,
   onSwipeStart,
   onHold,
@@ -3431,231 +4250,78 @@ function WordRow({
   style,
   children,
 }: RowProps) {
-  const start = useRef<{ x: number; y: number } | null>(null);
-  /** Sliding sideways: re-renders only as a drag starts and ends. */
-  const [moving, setMoving] = useState(false);
-  /** Where the slip is held now. The drag writes it straight to the row's
-   * style once a frame — a React render per pointermove dropped frames on Android. */
-  const dx = useRef(0);
-  const frame = useRef(0);
-  /** Where the slip is at a given moment, for its cords: the finger while
-   * dragging, then the return spring — no reading the transform back. */
-  const pos = useRef<(now: number) => number>(() => 0);
-  const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const held = useRef(false);
-  /** The axis this gesture committed to (lib/words/swipe.ts lockAxis). */
-  const axis = useRef<Axis | null>(null);
-  const rowEl = useRef<HTMLDivElement>(null);
-  // touch-action: pan-y alone does not hold: iOS Safari still takes over a
-  // sideways drag that wanders vertically, scrolling and cancelling the
-  // swipe. A non-passive touchmove keeps the page from scrolling once the
-  // gesture is sideways — and while it is undecided but leaning sideways,
-  // since a scroll that has started can no longer be stopped.
-  useEffect(() => {
-    const el = rowEl.current;
-    if (!el || !touch) return;
-    let x0 = 0;
-    let y0 = 0;
-    const down = (e: TouchEvent) => {
-      x0 = e.touches[0].clientX;
-      y0 = e.touches[0].clientY;
-    };
-    const move = (e: TouchEvent) => {
-      if (axis.current === "v" || !e.cancelable) return;
-      const dx = Math.abs(e.touches[0].clientX - x0);
-      const dy = Math.abs(e.touches[0].clientY - y0);
-      if (axis.current === "h" || dx > dy) e.preventDefault();
-    };
-    el.addEventListener("touchstart", down, { passive: true });
-    el.addEventListener("touchmove", move, { passive: false });
-    return () => {
-      el.removeEventListener("touchstart", down);
-      el.removeEventListener("touchmove", move);
-    };
-  }, [touch]);
-  /** The touch landed on a moving list: it stops the fling, nothing more. */
-  const catching = useRef(false);
-  /** Recent finger positions, for the release velocity. */
-  const samples = useRef<{ t: number; x: number }[]>([]);
-  /** The finger's own travel (the row resists beyond a, so they differ). */
-  const finger = useRef(0);
-  /** The level the slip has snapped to: crossing into another gives a light buzz. */
-  const level = useRef<SwipeLevel>(0);
   /** Travel unit: the row's own height. */
   const a = typeof style.height === "number" ? style.height : 44;
-  if (swipePerf.on && touch) swipePerf.renders++;
-
-  if (!touch)
-    return (
-      <div
-        role="listitem"
-        data-i={index}
-        // Only a real mouse move takes the cursor: Chrome replays mouse events
-        // at a resting pointer when rows re-render, which would otherwise yank
-        // the cursor back under the mouse after every key press.
-        onMouseMove={(e) => (e.movementX || e.movementY) && onHover()}
-        onClick={(e) => onTap(e.timeStamp)}
-        onContextMenu={(e) => {
-          if (!onMore) return;
-          e.preventDefault();
-          onMore();
-        }}
-        className={`relative ${className} ${loose ? "slip-loose" : ""}`}
-        style={style}
-      >
-        {children}
-        <SlipCords loose={loose} moving={false} />
-      </div>
-    );
-
-  /** Moves the slip to dx, tinted by what it would grade if released now. */
-  const paint = () => {
-    frame.current = 0;
-    const el = rowEl.current;
-    if (!el) return;
-    const x = dx.current;
-    el.style.transform = x ? `translateX(${x}px)` : "";
-  };
-  /** Back to rest: spring home from where it was let go, on the compositor. */
-  const release = () => {
-    const el = rowEl.current;
-    cancelAnimationFrame(frame.current);
-    const x0 = dx.current;
-    if (el && x0) {
-      el.style.transition = `transform ${SWIPE_RETURN_S}s ${SPRING_EASING}`;
-      const t0 = performance.now();
-      pos.current = (now) => x0 * (1 - springProgress((now - t0) / 1000 / SWIPE_RETURN_S));
-    }
-    dx.current = 0;
-    paint();
-    if (el) el.style.willChange = "";
-    setMoving(false);
-  };
-  return (
-    <div
-      ref={rowEl}
-      role="listitem"
-      data-i={index}
-      className={`relative ${className} ${loose ? "slip-loose" : ""}`}
-      style={{
+  const { feel, reducedMotion } = useSwipeFeel(SWIPE_CORE_IFACE);
+  if (swipePerf.on) swipePerf.renders++;
+  const core = useSwipeGesture({
+    a,
+    feel,
+    reducedMotion,
+    holdMs: HOLD_MS,
+    scrolling,
+    onTap,
+    onSwipe,
+    onSwipeStart,
+    onHold,
+    onHoldEnd,
+    perf: swipePerf,
+    onSlide: (row) => {
+      // Only one slip slides at a time: the list's underlay goes under it,
+      // once — what the slip uncovers then shows the grade, with no repaint
+      // as the level changes.
+      const u = underlay?.current;
+      if (!u) return;
+      u.style.top = `${row.offsetTop}px`;
+      u.style.height = `${row.offsetHeight}px`;
+      // Under the row itself: on a tablet the list is padded by the glass
+      // nav, and the zones must line up with the slip.
+      u.style.left = `${row.offsetLeft}px`;
+      u.style.right = "auto";
+      u.style.width = `${row.offsetWidth}px`;
+      u.style.setProperty("--a", `${a}px`);
+      showReveal(u, 0);
+      u.style.visibility = "visible";
+    },
+    onLevel: (k) => {
+      // A light tick at each level, either way (Android; iOS has no API).
+      navigator.vibrate?.(Math.abs(k) === 2 ? 12 : 6);
+      showReveal(underlay?.current, k);
+    },
+    onRelease: (r) =>
+      logSwipe({ finger: r.finger, v: r.v, projected: r.projected, rating: r.rating, a }),
+  });
+  const moving = core.phase === "dragging" || core.phase === "settling";
+  const value: SwipeRowValue = {
+    iface: 1,
+    variant: "js",
+    phase: core.phase,
+    feel,
+    reducedMotion,
+    card: {
+      bind: core.bind,
+      index,
+      className: `relative ${className} ${loose ? "slip-loose" : ""}`,
+      style: {
         ...style,
         touchAction: "pan-y",
         // A hold is listen mode, not iOS's callout / text-selection menu.
         WebkitTouchCallout: "none",
-        // transform and transition are the drag's: paint() writes them.
-      }}
-      onPointerDown={(e) => {
-        start.current = { x: e.clientX, y: e.clientY };
-        samples.current = [{ t: performance.now(), x: 0 }];
-        held.current = false;
-        axis.current = null;
-        level.current = 0;
-        finger.current = 0;
-        catching.current = scrolling?.() ?? false;
-        swipePerf.start();
-        // Keep receiving the gesture even if the finger leaves this row.
-        e.currentTarget.setPointerCapture(e.pointerId);
-        clearTimeout(holdTimer.current);
-        if (catching.current) return;
-        holdTimer.current = setTimeout(() => {
-          held.current = true;
-          onHold?.();
-        }, HOLD_MS);
-      }}
-      onPointerMove={(e) => {
-        if (!start.current) return;
-        const x = e.clientX - start.current.x;
-        const y = e.clientY - start.current.y;
-        // Commit to one axis once past the slop; until then nothing moves,
-        // so the start of a scroll never jiggles the row.
-        if (!axis.current) {
-          axis.current = lockAxis(x, y);
-          if (!axis.current) return;
-          // Any real movement is a swipe or a scroll, not a hold.
-          if (!held.current) clearTimeout(holdTimer.current);
-          if (axis.current === "h" && !held.current) {
-            // Following the finger: no easing, on its own layer.
-            e.currentTarget.style.transition = "none";
-            e.currentTarget.style.willChange = "transform";
-            pos.current = () => dx.current;
-            // Only one slip slides at a time: the list's underlay goes under
-            // it, once — what the slip uncovers then shows the grade, with no
-            // repaint as the level changes.
-            const u = underlay?.current;
-            if (u) {
-              const row = e.currentTarget;
-              u.style.top = `${row.offsetTop}px`;
-              u.style.height = `${row.offsetHeight}px`;
-              // Under the row itself: on a tablet the list is padded by the
-              // glass nav, and the zones must line up with the slip.
-              u.style.left = `${row.offsetLeft}px`;
-              u.style.right = "auto";
-              u.style.width = `${row.offsetWidth}px`;
-              u.style.setProperty("--a", `${a}px`);
-              showReveal(u, 0);
-              u.style.visibility = "visible";
-            }
-            setMoving(true);
-            onSwipeStart?.();
-          }
-        }
-        // A scroll stays a scroll however it drifts; a hold stays a hold.
-        if (axis.current === "h" && !held.current) {
-          const t = performance.now();
-          const kept = samples.current.filter((s) => t - s.t <= SWIPE_VELOCITY_MS * 2);
-          kept.push({ t, x });
-          samples.current = kept;
-          finger.current = x;
-          const k = swipeLevel(x, level.current, a);
-          if (k !== level.current) {
-            // A light tick at each level, either way (Android; iOS has no API).
-            navigator.vibrate?.(Math.abs(k) === 2 ? 12 : 6);
-            level.current = k;
-            showReveal(underlay?.current, k);
-          }
-          dx.current = snapSwipe(x, a);
-          frame.current ||= requestAnimationFrame(paint);
-        }
-      }}
-      onPointerUp={(e) => {
-        clearTimeout(holdTimer.current);
-        swipePerf.stop(axis.current === "h" ? "swipe" : axis.current === "v" ? "scroll" : "tap");
-        release();
-        if (!start.current) return;
-        start.current = null;
-        if (held.current) {
-          // Listening, not grading: the hold ends, nothing else happens.
-          held.current = false;
-          onHoldEnd?.();
-          return;
-        }
-        if (axis.current === "h") {
-          const v = releaseVelocity(samples.current, performance.now());
-          const r = releaseRating(finger.current, v, level.current, a);
-          logSwipe({
-            finger: finger.current,
-            v,
-            projected: releaseLevel(finger.current, v, level.current, a) * a,
-            rating: r,
-            a,
-          });
-          if (r) onSwipe(r);
-        }
-        // Never moved past the slop: a tap — unless it was catching a fling.
-        else if (axis.current === null && !catching.current) onTap(e.timeStamp);
-      }}
-      onPointerCancel={() => {
-        clearTimeout(holdTimer.current);
-        swipePerf.stop(axis.current === "h" ? "swipe-cancel" : "scroll");
-        if (held.current) onHoldEnd?.();
-        held.current = false;
-        start.current = null;
-        release();
-      }}
-    >
-      {children}
-      <SlipCords loose={loose} moving={moving} pos={pos} />
-    </div>
+        // transform and transition are the core's: it writes them.
+      },
+      children: (
+        <>
+          {children}
+          <SwipeCueIsland />
+          <SlipCords loose={loose} moving={moving} pos={core.pos} />
+        </>
+      ),
+    },
+  };
+  return (
+    <SwipeRowProvider value={value}>
+      <SwipeCardIsland />
+    </SwipeRowProvider>
   );
 }
 
@@ -3688,9 +4354,30 @@ function NativeSlipRow({
   useLayoutEffect(() => {
     if (scroller.current) scroller.current.scrollLeft = 2 * a;
   }, [a]);
+  const { feel, reducedMotion } = useSwipeFeel(SWIPE_CORE_IFACE);
+  /** The gesture's phase, for the lift cue: changes only as a gesture starts and ends. */
+  const [phase, setPhase] = useState<SwipePhase>("idle");
   // The listeners below are attached once; they call the latest props.
-  const props = useRef({ onTap, onSwipe, onSwipeStart, onHold, onHoldEnd, scrolling });
-  props.current = { onTap, onSwipe, onSwipeStart, onHold, onHoldEnd, scrolling };
+  const props = useRef({
+    onTap,
+    onSwipe,
+    onSwipeStart,
+    onHold,
+    onHoldEnd,
+    scrolling,
+    feel,
+    reducedMotion,
+  });
+  props.current = {
+    onTap,
+    onSwipe,
+    onSwipeStart,
+    onHold,
+    onHoldEnd,
+    scrolling,
+    feel,
+    reducedMotion,
+  };
   if (swipePerf.on) swipePerf.renders++;
   useEffect(() => {
     const el = scroller.current;
@@ -3716,8 +4403,64 @@ function NativeSlipRow({
       y0: 0,
       finger: 0,
       hold: undefined as ReturnType<typeof setTimeout> | undefined,
+      /** The level the slide is on (hysteresis, as WordRow), for the spring release. */
+      level: 0 as SwipeLevel,
+      /** Recent offsets while the finger is down, for the release velocity. */
+      samples: [] as { t: number; x: number }[],
+      /** The spring release's frame while it runs (feel.nativeRelease). */
+      springing: 0,
     };
     const hasScrollEnd = "onscrollend" in window;
+    /**
+     * The heavy feel's release (feel.nativeRelease): the browser's coast and
+     * snap are stopped at the lift, and the slip follows the core's release
+     * path instead (coast under friction, then the spring home), written to
+     * scrollLeft once a frame. The grade is decided at the lift, by the same
+     * tiers as WordRow's (releaseRating). Returns false when it doesn't apply.
+     */
+    const springRelease = () => {
+      const { feel: f, reducedMotion: still } = props.current;
+      if (!f.nativeRelease || !g.moved || g.steep || g.held) return false;
+      const offset = home - el.scrollLeft; // + = slid right
+      const v = releaseVelocity(g.samples, performance.now());
+      const r = releaseRating(offset, v, g.level, a);
+      g.panned = g.moved = false;
+      swipePerf.stop(r ? "swipe" : "swipe-cancel");
+      logSwipe({
+        finger: g.finger,
+        v,
+        projected: releaseLevel(offset, v, g.level, a) * a,
+        rating: r,
+        a,
+        params: `${NATIVE_PARAMS}+spring`,
+      });
+      // overflow hidden stops WebKit's momentum; no snap, or each write would re-snap.
+      el.style.overflowX = "hidden";
+      el.style.scrollSnapType = "none";
+      const done = () => {
+        g.springing = 0;
+        el.scrollLeft = home;
+        el.style.overflowX = "";
+        el.style.scrollSnapType = "";
+        setPhase("idle");
+      };
+      const tr = releaseTrajectory(offset, v * 1000, f, 2 * a);
+      if (still || tr.seconds <= 0) done();
+      else {
+        setPhase("settling");
+        const t0 = performance.now();
+        const frame = (now: number) => {
+          const t = (now - t0) / 1000;
+          if (t >= tr.seconds) return done();
+          // The track ends at ±2a: the slip meets it as a wall.
+          el.scrollLeft = home - Math.max(-2 * a, Math.min(2 * a, tr.at(t)));
+          g.springing = requestAnimationFrame(frame);
+        };
+        g.springing = requestAnimationFrame(frame);
+      }
+      if (r) props.current.onSwipe(r);
+      return true;
+    };
     const glideHome = () => {
       g.returning = true;
       el.scrollTo({ left: home, behavior: "smooth" });
@@ -3725,6 +4468,7 @@ function NativeSlipRow({
     /** The scroller came to rest: grade where it landed, then glide home. */
     const settle = () => {
       if (g.touching) return; // still under the finger: the gesture isn't over
+      if (g.springing) return; // the spring release has it
       const offset = home - el.scrollLeft; // + = slid right
       if (g.returning) {
         if (Math.abs(offset) < 1) g.returning = false;
@@ -3745,17 +4489,23 @@ function NativeSlipRow({
     /** The first scroll under the finger: a slide (a vertical drag never scrolls this). */
     const slid = () => {
       g.moved = true;
-      if (!g.caught && !g.steep) props.current.onSwipeStart?.();
+      if (g.caught || g.steep) return;
+      setPhase("dragging");
+      props.current.onSwipeStart?.();
     };
     const touchstart = (e: TouchEvent) => {
       g.touching = true;
-      g.caught = g.returning;
+      // A slip still springing home finishes its path: this touch only catches it.
+      g.caught = g.returning || !!g.springing;
       g.returning = false;
       g.panned = g.moved = false;
       g.x0 = e.touches[0].clientX;
       g.y0 = e.touches[0].clientY;
       g.finger = 0;
       g.steep = false;
+      g.level = 0;
+      g.samples = [{ t: performance.now(), x: home - el.scrollLeft }];
+      if (!g.caught) setPhase("pressed");
       swipePerf.start();
       el.addEventListener("scroll", slid, { once: true, passive: true });
       el.addEventListener("touchmove", axis, { passive: false });
@@ -3775,6 +4525,7 @@ function NativeSlipRow({
       if (locked === "v") {
         g.steep = true;
         el.style.overflowX = "hidden";
+        setPhase("scrolling");
       }
     };
     const touchend = (e: TouchEvent) => {
@@ -3784,6 +4535,8 @@ function NativeSlipRow({
       el.removeEventListener("scroll", slid);
       el.removeEventListener("touchmove", axis);
       if (g.steep && !g.held) el.style.overflowX = "";
+      if (!g.caught && springRelease()) return;
+      if (!g.springing) setPhase("idle");
       if (!g.moved) swipePerf.stop(g.panned ? "scroll" : "tap");
       // Lifted while resting on a level, nothing more scrolls: no scrollend
       // follows (WebKit fires it while the finger is still down, and settle
@@ -3824,6 +4577,7 @@ function NativeSlipRow({
     const pointercancel = () => {
       // Scrolling began (this slip or the list): not a tap, not a hold.
       g.panned = true;
+      if (!g.moved && !g.springing) setPhase("scrolling");
       endHold();
     };
     const snapping = () => g.touching && navigator.vibrate?.(6);
@@ -3836,8 +4590,16 @@ function NativeSlipRow({
     // The reveal follows the detent the slip is nearest (the far one's grade
     // takes over the first one's spot).
     const strip = el.parentElement?.querySelector<HTMLElement>("[data-swipe-strip]");
-    const reveal = () =>
-      showReveal(strip, Math.max(-2, Math.min(2, Math.round((home - el.scrollLeft) / a))));
+    const reveal = () => {
+      const offset = home - el.scrollLeft;
+      showReveal(strip, Math.max(-2, Math.min(2, Math.round(offset / a))));
+      if (!g.touching) return;
+      // For the spring release: the level (with hysteresis) and the recent offsets.
+      g.level = swipeLevel(offset, g.level, a);
+      const t = performance.now();
+      g.samples = g.samples.filter((s) => t - s.t <= SWIPE_VELOCITY_MS * 2);
+      g.samples.push({ t, x: offset });
+    };
     el.addEventListener("scroll", reveal, { passive: true });
     el.addEventListener("touchstart", touchstart, { passive: true });
     el.addEventListener("touchend", touchend, { passive: true });
@@ -3851,6 +4613,7 @@ function NativeSlipRow({
     return () => {
       clearTimeout(g.hold);
       clearTimeout(quiet);
+      cancelAnimationFrame(g.springing);
       el.removeEventListener("touchstart", touchstart);
       el.removeEventListener("touchend", touchend);
       el.removeEventListener("touchcancel", touchend);
@@ -3865,36 +4628,49 @@ function NativeSlipRow({
       el.removeEventListener("touchmove", axis);
     };
   }, [a]);
+  const value: SwipeRowValue = {
+    iface: 1,
+    variant: "native",
+    phase,
+    feel,
+    reducedMotion,
+    card: null,
+  };
   return (
-    <div
-      role="listitem"
-      data-i={index}
-      data-swipe="native"
-      // The wrapper lifts the focused slip (z-index, shadow): the scroller
-      // would clip a shadow drawn by the face.
-      className={`slip-native ${loose ? "slip-loose" : ""}`}
-      style={{ height: style.height, ["--a" as string]: `${a}px` }}
-    >
-      {/* Behind the scroller, not inside it: the face (opaque, above) uncovers
+    <SwipeRowProvider value={value}>
+      <div
+        role="listitem"
+        data-i={index}
+        data-swipe="native"
+        // Raised over its neighbours while lifted, so the lift's shadow shows (globals.css).
+        data-swipe-phase={feel.lift > 0 ? phase : undefined}
+        // The wrapper lifts the focused slip (z-index, shadow): the scroller
+        // would clip a shadow drawn by the face.
+        className={`slip-native ${loose ? "slip-loose" : ""}`}
+        style={{ height: style.height, ["--a" as string]: `${a}px` }}
+      >
+        <SwipeCueIsland />
+        {/* Behind the scroller, not inside it: the face (opaque, above) uncovers
           it only by sliding away. A sticky strip inside the scroller painted
           over the face on iOS (WebKit composites sticky layers on their own). */}
-      <div aria-hidden className="slip-strip" data-swipe-strip>
-        <GradeZones />
-      </div>
-      <div ref={scroller} className="slip-scroller" style={{ WebkitTouchCallout: "none" }}>
-        <div className="slip-track">
-          {[0, 1, 2, 3, 4].map((k) => (
-            <i key={k} className="slip-snap" style={{ left: k * a }} />
-          ))}
-          <div className={`slip-face ${className} ${loose ? "slip-loose" : ""}`}>
-            {children}
-            {/* Counter-moved by the scroll position (CSS): the cords stay pinned. */}
-            <span className="slip-pin pointer-events-none absolute inset-0">
-              <SlipCords loose={loose} moving={false} />
-            </span>
+        <div aria-hidden className="slip-strip" data-swipe-strip>
+          <GradeZones />
+        </div>
+        <div ref={scroller} className="slip-scroller" style={{ WebkitTouchCallout: "none" }}>
+          <div className="slip-track">
+            {[0, 1, 2, 3, 4].map((k) => (
+              <i key={k} className="slip-snap" style={{ left: k * a }} />
+            ))}
+            <div className={`slip-face ${className} ${loose ? "slip-loose" : ""}`}>
+              {children}
+              {/* Counter-moved by the scroll position (CSS): the cords stay pinned. */}
+              <span className="slip-pin pointer-events-none absolute inset-0">
+                <SlipCords loose={loose} moving={false} />
+              </span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </SwipeRowProvider>
   );
 }

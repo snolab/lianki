@@ -13,9 +13,11 @@
     "dev:db": "node scripts/dev-mongo.mjs",
     "qa:api": "node scripts/qa/qa-api.mjs",
     "qa:ui": "node scripts/qa/qa-ui.mjs",
-    "qa:all": "node scripts/qa/qa-all.mjs",
+    "qa:lang-menu": "bash scripts/qa/with-muted-mac.sh node scripts/qa/qa-lang-menu.mjs",
+    "qa:all": "bash scripts/qa/with-muted-mac.sh node scripts/qa/qa-all.mjs",
     "build": "next build --turbopack",
     "start": "next start",
+    "lint": "oxlint --ignore-pattern 'packages/**' && oxfmt --check '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**'",
     "fix": "oxlint --fix --ignore-pattern 'packages/**' && oxfmt '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**'",
     "typecheck": "tsgo --noEmit",
     "prepare": "husky",
@@ -74,7 +76,8 @@
     "streamdown": "^2.4.0",
     "ts-fsrs": "^5.2.3",
     "yaml": "^2.9.0",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "zustand": "5.0.15"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",

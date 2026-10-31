@@ -29,6 +29,11 @@ FROM lianki_metrics WHERE index1 = 'req' AND timestamp > NOW() - INTERVAL '1' DA
 GROUP BY path ORDER BY n DESC
 ```
 
+`lianki-voice` (`workers/voice`, the word clips at the edge) also names the
+monitor as tail consumer: its requests land under `index1 = 'voice'` (same
+blobs and doubles), timings only — a clip it passes on is counted, and
+alerted on, again as the main Worker's request.
+
 ## New-version push (`lianki-push`)
 
 `workers/push`: one Durable Object holds every open page's WebSocket
@@ -274,6 +279,14 @@ session listing carry the current path) and sends the listeners
 `{type:"page-changed", label, thread, email?, at}`, which `chat` prints as a
 JSON line. Silent on the page, never stored, never in the chat log. A
 friend's page can only relabel its own socket.
+
+**Page errors.** The owner's pages also send `{type:"page-error", kind,
+message, stack?, path, status?, at, rev?}` — uncaught errors, rejections,
+console.error, failed `/api/*` calls, media load errors — scrubbed on the
+page; the hub adds `label` and `hubAt` and forwards them live to the
+approved listeners only, never stored, a friend's dropped. `chat` prints
+them; `eval.ts errors --out <file>` prints only them.
+docs/dev-debug-widget.md, "Page errors".
 
 **The chat bar, the state tree and the menu.** No title bar: the controls
 and the input are one rounded glass container (`debug-chat-pill`): the mark,

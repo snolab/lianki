@@ -16,6 +16,7 @@
  */
 import type { UttMarks } from "./latency";
 import type { LocalFinal, LocalUtt } from "./local-stt";
+import type { WakeSpot } from "./wake";
 
 /** Longest utterance: past this it is cut and sent, and listening goes on. */
 export const MAX_UTTERANCE_MS = 30_000;
@@ -241,8 +242,24 @@ export const HALLUCINATIONS = [
   "字幕由…提供",
   "字幕製作…",
   "请不吝点赞 订阅 转发…",
+  "請不吝點贊 訂閱 轉發…",
+  "请不吝点赞订阅转发…",
   "谢谢观看",
+  "謝謝觀看",
+  "感谢观看",
+  "感謝觀看",
+  "感谢收看",
+  "感謝收看",
+  "谢谢收看",
+  "謝謝收看",
+  "谢谢您的观看",
+  "謝謝您的觀看",
+  "感谢您的观看",
+  "感謝您的觀看",
+  "字幕志愿者…",
+  "字幕志願者…",
   "…明镜与点点栏目…",
+  "…明鏡與點點欄目…",
   "Ondertiteling …",
   "Sous-titres réalisés par …",
 ] as const;
@@ -273,6 +290,21 @@ const HALLUCINATION_RE = new RegExp(
 export function isHallucinationPhrase(text: string): boolean {
   const n = normalizeTranscript(text);
   return !!n && HALLUCINATION_RE.test(n);
+}
+
+/**
+ * A real sentence with a credit tacked on ("…，感谢观看。"): STT adds one over
+ * the silence after the speech. Trailing clauses (split at sentence and
+ * clause punctuation) that are hallucination phrases are cut off; a text
+ * that is nothing but phrases is returned as is, for isHallucination to judge.
+ */
+export function stripHallucinationTail(text: string): string {
+  const parts = text.split(/(?<=[。！？!?．.，,、；;\n])/u);
+  let end = parts.length;
+  while (end > 0 && (isHallucinationPhrase(parts[end - 1]) || !normalizeTranscript(parts[end - 1])))
+    end--;
+  if (end === parts.length || !parts.slice(0, end).some((p) => normalizeTranscript(p))) return text;
+  return parts.slice(0, end).join("").trimEnd();
 }
 
 /**
@@ -448,6 +480,26 @@ export type UploadInfo = {
   partial: boolean;
   /** The local streaming STT's final for this utterance (it may reject: then fall back). */
   local?: Promise<LocalFinal>;
+  /**
+   * The upload calls this when it drops the transcript as the agent's own
+   * echo (echo.ts): an echo is not "not for the agent", so it never counts
+   * towards passive mode (the wake gate's verdict is skipped).
+   */
+  onEcho?: () => void;
+};
+/**
+ * The wake-word gate (wake.ts, docs/wake-word.md). While `passive()` is true
+ * when an utterance starts, it is neither streamed nor sent in partials; at
+ * its end `spot` checks it on-device, and only the words after "Linky" are
+ * uploaded (a bare "Linky" uploads nothing). `verdict` hears each final in
+ * active mode: false for an empty or hallucinated transcript.
+ */
+export type WakeGate = {
+  passive(): boolean;
+  spot(audio: Float32Array): Promise<WakeSpot & { ms?: number; error?: string }>;
+  /** "Linky" was heard: the mic becomes active. */
+  onWake(): void;
+  verdict(ok: boolean, why: "ok" | "empty" | "hallucination"): void;
 };
 /** What createMic needs of a streaming STT (local-stt.ts LocalStt). */
 export type StreamStt = {
@@ -485,6 +537,8 @@ export function createMic(d: {
    * then `{t_sttDone, dropped}`. Partials are not timed.
    */
   timing?: (seq: number, marks: UttMarks) => void;
+  /** The wake-word gate; without it every utterance is uploaded (as before). */
+  wake?: WakeGate;
   now?: () => number;
   setTimer?: (f: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
@@ -527,6 +581,8 @@ export function createMic(d: {
   let probN = 0;
   /** When the last frame at or over SPEECH_FRAME_PROB was heard (Silero only). */
   let lastVoice: number | undefined;
+  /** The utterance being captured began in passive mode: only the wake gate hears it. */
+  let gated = false;
   /** VAD pause/start calls, in order. */
   let ctl: Promise<unknown> = Promise.resolve();
   const toMs = (n: number) => Math.round((n / RATE) * 1000);
@@ -592,8 +648,10 @@ export function createMic(d: {
       dropUtt();
       ep.heard = ep.sent = false;
       ep.quiet = 0;
-      utt =
-        d.stream?.()?.begin((text) => {
+      gated = d.wake?.passive() ?? false;
+      utt = gated
+        ? null
+        : d.stream?.()?.begin((text) => {
           if (g !== gen || held) return;
           const seq = cur ?? (cur = q.add());
           q.partial(seq, text);
@@ -632,6 +690,7 @@ export function createMic(d: {
       if (utt) return void utt.frame(frame);
       if (
         partialsOn &&
+        !gated &&
         !partialBusy &&
         liveLen >= toSamples(PARTIAL_MIN_MS) &&
         sincePartial >= toSamples(PARTIAL_EVERY_MS)
@@ -670,27 +729,81 @@ export function createMic(d: {
       });
       lastVoice = undefined;
       pending();
-      const wav = encodeWav(audio);
-      const local = u?.end(audio);
-      local?.catch(() => {}); // upload decides; never an unhandled rejection
-      d.timing?.(seq, { t_uploadStart: now() });
-      d.upload(wav, { seq, durationMs: toMs(audio.length), partial: false, local })
-        .then(
-          (text) => {
-            const drop = isHallucination(text, ms, prob);
-            if (drop) d.log?.({ ev: "stt-hallucination", text: text.slice(0, 80), ms, prob });
-            d.timing?.(seq, { t_sttDone: now(), dropped: drop || !text.trim() });
-            q.resolve(seq, drop ? null : text);
+      if (gated && d.wake) {
+        // Passive: nothing leaves the phone unless "Linky" is in it.
+        const w = d.wake;
+        gated = false;
+        u?.cancel();
+        void w.spot(audio).then(
+          (r) => {
+            d.log?.({
+              ev: "wake-spot",
+              hit: r.hit,
+              audioMs: toMs(audio.length),
+              ...(r.ms !== undefined ? { ms: r.ms } : {}),
+              ...(r.error ? { error: r.error } : {}),
+              ...(r.hit ? { tokens: r.tokens.join(" "), restMs: toMs(r.rest.length) } : {}),
+            });
+            if (!r.hit) {
+              d.timing?.(seq, { t_sttDone: now(), dropped: true });
+              q.resolve(seq, null);
+              return report();
+            }
+            w.onWake();
+            if (!r.rest.length) {
+              d.timing?.(seq, { t_sttDone: now(), dropped: true });
+              q.resolve(seq, null);
+              return report();
+            }
+            send(seq, r.rest, toMs(r.rest.length), prob);
           },
-          (e) => {
-            d.timing?.(seq, { t_sttDone: now(), dropped: true });
+          () => {
             q.resolve(seq, null);
-            fail(e);
+            report();
           },
-        )
-        .finally(report);
+        );
+        return;
+      }
+      send(seq, audio, ms, prob, u?.end(audio));
     },
   });
+  /** Upload one final utterance and hand its transcript to the queue in order. */
+  const send = (
+    seq: number,
+    audio: Float32Array,
+    ms: number,
+    prob: number | undefined,
+    local?: Promise<LocalFinal>,
+  ) => {
+    const wav = encodeWav(audio);
+    local?.catch(() => {}); // upload decides; never an unhandled rejection
+    d.timing?.(seq, { t_uploadStart: now() });
+    let echo = false;
+    d.upload(wav, {
+      seq,
+      durationMs: toMs(audio.length),
+      partial: false,
+      local,
+      onEcho: () => void (echo = true),
+    })
+      .then(
+        (heard) => {
+          const text = stripHallucinationTail(heard);
+          if (text !== heard) d.log?.({ ev: "stt-hallucination-tail", cut: heard.slice(text.length, text.length + 80) });
+          const drop = isHallucination(text, ms, prob);
+          if (drop) d.log?.({ ev: "stt-hallucination", text: text.slice(0, 80), ms, prob });
+          d.timing?.(seq, { t_sttDone: now(), dropped: drop || !text.trim() });
+          if (!echo) d.wake?.verdict(!drop && !!text.trim(), drop ? "hallucination" : text.trim() ? "ok" : "empty");
+          q.resolve(seq, drop ? null : text);
+        },
+        (e) => {
+          d.timing?.(seq, { t_sttDone: now(), dropped: true });
+          q.resolve(seq, null);
+          fail(e);
+        },
+      )
+      .finally(report);
+  };
   const on = async () => {
     const g = ++gen;
     partialsOn = d.partials !== false;
