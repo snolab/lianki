@@ -1,4 +1,5 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys } from "@/lib/i18n-context";
 
 /**
  * The bottom island navigation (docs/bottom-nav.md): its buttons, the search
@@ -6,7 +7,7 @@ import { t, type DeclarationContent } from "intlayer";
  * `landing-page.nav`; the partner's name from `learning-partner`. `{n}` and
  * `{url}` are filled in by the island.
  */
-const bottomNavContent = {
+const dictionary = {
   key: "bottom-nav",
   content: {
     navigation: t({
@@ -117,6 +118,60 @@ const bottomNavContent = {
       mr: "शोध बंद करा",
       ko: "검색 닫기",
     }),
+    close: t({
+      en: "Close",
+      zh: "关闭",
+      hi: "बंद करें",
+      es: "Cerrar",
+      fr: "Fermer",
+      ar: "إغلاق",
+      bn: "বন্ধ করুন",
+      pt: "Fechar",
+      ru: "Закрыть",
+      ur: "بند کریں",
+      id: "Tutup",
+      de: "Schließen",
+      ja: "閉じる",
+      sw: "Funga",
+      mr: "बंद करा",
+      ko: "닫기",
+    }),
+    gestures: t({
+      en: "Gestures & shortcuts",
+      zh: "手势与快捷键",
+      hi: "जेस्चर और शॉर्टकट",
+      es: "Gestos y atajos",
+      fr: "Gestes et raccourcis",
+      ar: "الإيماءات والاختصارات",
+      bn: "জেসচার ও শর্টকাট",
+      pt: "Gestos e atalhos",
+      ru: "Жесты и сочетания клавиш",
+      ur: "اشارے اور شارٹ کٹس",
+      id: "Gestur & pintasan",
+      de: "Gesten & Tastenkürzel",
+      ja: "ジェスチャーとショートカット",
+      sw: "Ishara na njia za mkato",
+      mr: "जेश्चर आणि शॉर्टकट",
+      ko: "제스처 및 단축키",
+    }),
+    searchAllWords: t({
+      en: "Search all words",
+      zh: "搜索全部单词",
+      hi: "सभी शब्दों में खोजें",
+      es: "Buscar en todas las palabras",
+      fr: "Chercher dans tous les mots",
+      ar: "ابحث في كل الكلمات",
+      bn: "সব শব্দে খুঁজুন",
+      pt: "Pesquisar em todas as palavras",
+      ru: "Искать по всем словам",
+      ur: "تمام الفاظ میں تلاش کریں",
+      id: "Cari di semua kata",
+      de: "Alle Wörter durchsuchen",
+      ja: "すべての単語を検索",
+      sw: "Tafuta maneno yote",
+      mr: "सर्व शब्दांत शोधा",
+      ko: "모든 단어 검색",
+    }),
     noResults: t({
       en: "Nothing found",
       zh: "没有找到",
@@ -170,24 +225,6 @@ const bottomNavContent = {
       sw: "Unda",
       mr: "तयार करा",
       ko: "만들기",
-    }),
-    holdForCreate: t({
-      en: "Hold for Create",
-      zh: "长按新建",
-      hi: "बनाने के लिए दबाकर रखें",
-      es: "Mantén pulsado para crear",
-      fr: "Appui long pour créer",
-      ar: "اضغط مطولًا للإنشاء",
-      bn: "তৈরি করতে চেপে ধরুন",
-      pt: "Toque e segure para criar",
-      ru: "Удерживайте, чтобы создать",
-      ur: "بنانے کے لیے دبائے رکھیں",
-      id: "Tekan lama untuk membuat",
-      de: "Gedrückt halten zum Erstellen",
-      ja: "長押しで作成",
-      sw: "Bonyeza kwa muda kuunda",
-      mr: "तयार करण्यासाठी दाबून ठेवा",
-      ko: "길게 눌러 만들기",
     }),
     groupGo: t({
       en: "Go to",
@@ -532,6 +569,74 @@ const bottomNavContent = {
       ko: "현재 위치",
     }),
   },
-} satisfies DeclarationContent;
+};
 
-export default bottomNavContent;
+const context: Record<keyof typeof dictionary.content, string> = {
+  navigation:
+    "Screen-reader label of the floating bar of four buttons at the bottom of a phone screen (Home, Menu, Create, Search). A noun phrase naming the app's main navigation.",
+  home: "Label under the house icon on the bottom bar; goes to the app's home page. One short word, a noun.",
+  menu: "Label under the three-lines icon on the bottom bar; opens the side drawer with every page of the app. One short word, a noun (the main menu).",
+  search:
+    "Label under the magnifier on the bottom bar, and the search dialog's screen-reader name. Imperative verb or noun, one word.",
+  searchPlaceholder:
+    "Grey placeholder text inside the empty search box: what you can search for (your own words, page cards and the app's pages). Ends with an ellipsis.",
+  closeSearch:
+    "Screen-reader label of the ✕ button and of the dimmed backdrop that close the search dialog. Imperative.",
+  close:
+    "Screen-reader label of the ✕ button that dismisses a sheet or a one-time tip at the bottom of the screen. Imperative, one word.",
+  gestures:
+    "Label of the '?' button in the side drawer's header, and the heading of the panel it opens: how to study words by tapping and swiping (or which keys to press). A short noun phrase.",
+  searchAllWords:
+    "A row at the end of the search results when long word lists were only partly searched (for speed): tap to search every word of every list. Imperative.",
+  noResults:
+    "Shown in the search dialog when nothing matches what was typed. Short sentence or phrase.",
+  loading:
+    "Shown under the search results while more results (your words, cards) are still being looked up on the device. Ends with an ellipsis.",
+  create:
+    "Screen-reader label of the large ＋ button in the middle of the bottom bar, the title of the sheet it opens, and a heading in search results: adding something new (words, a page as a card, an import). Imperative verb, one word.",
+  groupGo:
+    "Heading above the app's pages in the search results (Home, Word lists, Settings…): places you can jump to. Short, like 'Go to'.",
+  groupWords:
+    "Heading above matching words (vocabulary items) in the search results. A plural noun.",
+  groupCards:
+    "Heading above matching Lianki cards (saved web pages to review) in the search results. A plural noun; 'cards' as in flashcards.",
+  groupTree:
+    "Heading above matching items of the developer's project plan (shown to the site owner only) in the search results. A noun phrase.",
+  wordsFromDeck:
+    "Item in the Create sheet: import the words of an Anki deck file. Keep 'Anki' and '(.apkg)' as is. A noun phrase.",
+  addLink:
+    "Item in the Create sheet: save a web page link as a card to review later. Imperative phrase.",
+  addThisUrl:
+    "Top search result when a web address was typed or pasted: tap to save that address as a card. Keep {url} as is. Imperative phrase.",
+  pasteLink:
+    "Placeholder in the search box after 'Add a link as a card' was chosen: asks the user to paste a web address. Imperative sentence.",
+  importCards:
+    "Item in the Create sheet: import cards from Anki decks or restore a backup file. Imperative phrase.",
+  aiWords:
+    "Item in the Create sheet: have the AI suggest new vocabulary to learn. Imperative phrase.",
+  due: "Screen-reader text for the red number on the Home button: how many word reviews are due now. Keep {n}. Short.",
+  offline:
+    "Screen-reader text for the grey dot on the Menu button: the device has no internet connection. One word or short phrase.",
+  pending:
+    "Screen-reader text for the amber dot on the Menu button: reviews made offline that are not yet saved to the server. Keep {n}.",
+  synced:
+    "Screen-reader text on the Menu button when every review is saved to the server. Past participle, one word.",
+  pinned:
+    "Heading in the side drawer above the pages the user pinned for quick access. Past participle used as a heading.",
+  recent:
+    "Heading in the side drawer above the pages visited recently in this tab. Short adjective used as a heading.",
+  pin: "Screen-reader label and tooltip of the pin icon button in the side drawer: keep the current page in the Pinned list. Imperative.",
+  unpin:
+    "Screen-reader label and tooltip of the same pin button when the current page is already pinned: remove it from the Pinned list. Imperative.",
+  breadcrumb:
+    "Screen-reader label of the small path at the top of the side drawer (Home › section › page) that shows where the user is. Short phrase.",
+};
+
+export default {
+  ...dictionary,
+  title: "Bottom island navigation, its search and its Create sheet",
+  description: describeKeys(
+    "The floating glass bar at the bottom of a phone screen (Home, Menu, ＋ Create, Search), the search dialog it opens, the Create sheet, and the extra rows of the side drawer (path, pinned and recent pages). Lianki and Anki are names; keep .apkg, {n} and {url} as they are.",
+    context,
+  ),
+} satisfies DeclarationContent;
