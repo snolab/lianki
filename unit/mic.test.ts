@@ -35,6 +35,8 @@ import {
   isHallucination,
   isHallucinationPhrase,
   stripHallucinationTail,
+  cleanTranscript,
+  collapseRepeats,
   normalizeTranscript,
   ENDPOINT_MAX,
   ENDPOINT_MIN,
@@ -43,6 +45,8 @@ import {
   endsSentence,
   semanticMs,
 } from "@lianki/debug-chat/mic";
+import { STT_PROMPTS } from "@lianki/debug-chat/stt-hint";
+import { sttPrompt } from "@/lib/stt";
 
 const domErr = (name: string) => Object.assign(new Error(name), { name });
 
@@ -964,7 +968,146 @@ describe("the Whisper hallucination guard", () => {
   it("createMic: a tail phrase is cut from a final and logged", async () => {
     const r = await say("明天见。谢谢观看", 2, 0.9);
     expect(r.texts).toEqual(["明天见。"]);
-    expect(r.logs).toEqual([{ ev: "stt-hallucination-tail", text: "谢谢观看" }]);
+    expect(r.logs).toEqual([
+      { ev: "stt-cleaned", prompt: 0, phrase: 1, repeat: 0, dropped: false, text: "谢谢观看" },
+    ]);
+  });
+
+  it("createMic: the owner's 2026-10-31 final is all Whisper's, and dropped", async () => {
+    const r = await say(OWNER_FINAL, 3, 0.9);
+    expect(r.texts).toEqual([]);
+    expect(r.logs).toMatchObject([{ ev: "stt-cleaned", dropped: true }]);
+  });
+
+  it("createMic: real speech around a prompt echo is kept, the echo cut", async () => {
+    const r = await say("我说中文，有时夹杂日本語和English。明天八点开会。", 3, 0.9);
+    expect(r.texts).toEqual(["明天八点开会。"]);
+  });
+});
+
+/** The owner's final transcript, Android cloud Whisper, 2026-10-31 18:07 JST. */
+const OWNER_FINAL = "我说中文，中文字幕提供。…ert ert ert ert ert. 中文。有时夹杂日本語和English。";
+
+describe("cleanTranscript", () => {
+  const clean = (t: string) => cleanTranscript(t);
+
+  it("the owner's 2026-10-31 final: prompt echo, credit and loop, nothing left", () => {
+    const c = clean(OWNER_FINAL);
+    expect(c.drop).toBe(true);
+    expect(c.prompt).toBeGreaterThanOrEqual(2);
+    expect(c.phrase).toBe(1);
+    expect(c.repeat).toBe(1);
+  });
+
+  it("strips the whole prompt and its clauses, wherever they are", () => {
+    expect(clean("我说中文，有时夹杂日本語和English。").drop).toBe(true);
+    expect(clean("我说中文有时夹杂日本语和English").drop).toBe(false); // 语 ≠ 語: not the prompt
+    expect(clean("好的。我说中文，有时夹杂日本語和English。").text).toBe("好的。");
+    expect(clean("我说中文，今天去超市。").text).toBe("今天去超市。");
+    expect(clean("今天去超市，有时夹杂日本語和English").text).toBe("今天去超市，");
+    // Inside a clause, normalized: full-width, other spacing and marks.
+    expect(clean("明天见 有时夹杂 日本語和ｅｎｇｌｉｓｈ").text).toBe("明天见");
+    expect(clean("これは日本語、English、中文が混ざります。テストです。").text).toBe(
+      "これはテストです。",
+    );
+    expect(clean("日本語、English、中文が混ざります。").drop).toBe(true);
+  });
+
+  it("keeps a short word that is merely in the prompt", () => {
+    for (const t of [
+      "中文",
+      "中文。",
+      "我说中文的时候很慢。",
+      "English",
+      "日本語が好き。",
+      "我说中文吧",
+    ])
+      expect(clean(t)).toMatchObject({ text: t, drop: false, prompt: 0 });
+  });
+
+  it("but drops prompt scraps once an echo was found", () => {
+    expect(clean("中文。有时夹杂日本語和English。").drop).toBe(true);
+    expect(clean("中文。有时夹杂日本語和English。好的").text).toBe("中文。好的");
+  });
+
+  it("strips a stock phrase that is a clause of its own anywhere in the text", () => {
+    expect(clean("中文字幕提供。明天见。").text).toBe("明天见。");
+    expect(clean("你好，感谢观看，明天见。").text).toBe("你好，明天见。");
+    expect(clean("ご視聴ありがとうございました。次の単語。").text).toBe("次の単語。");
+    expect(clean("请订阅。我们开始吧").text).toBe("我们开始吧");
+    expect(clean("嗯 字幕志愿者 李宗盛").text).toBe("嗯");
+    expect(clean("Thanks for watching! Next word.").text).toBe("Next word.");
+    expect(clean("明天见。谢谢观看").text).toBe("明天见。");
+    // Inside a sentence it stays.
+    for (const t of [
+      "他说感谢观看这个视频的人",
+      "我喜欢李宗盛",
+      "打开中文字幕吧",
+      "Thanks for watching the kids",
+      // Said mid-sentence for real: only ever dropped as a whole message.
+      "おやすみなさい、また明日。",
+      "じゃあね、おやすみなさい",
+    ])
+      expect(clean(t).text).toBe(t);
+  });
+
+  it("leaves a message of stock phrases alone to isHallucination", () => {
+    for (const t of ["感谢观看。", "谢谢观看 谢谢观看", "Thanks for watching!"])
+      expect(clean(t)).toMatchObject({ text: t, drop: false, phrase: 0 });
+  });
+
+  it("collapses a loop of 4 or more; drops a fragment loop", () => {
+    expect(clean("Hello ert ert ert ert ert.").text).toBe("Hello.");
+    expect(clean("Hello ert ert ert ert world").text).toBe("Hello world");
+    expect(clean("我说中文，中文字幕提供。今天学了二十个单词。").text).toBe("今天学了二十个单词。");
+    expect(clean("OK, let's start. 感谢观看。").text).toBe("OK, let's start.");
+    expect(clean("the the the the cat").text).toBe("the cat");
+    expect(clean("I want to go go go go home").text).toBe("I want to go home");
+    expect(clean("好的好的好的好的，走吧").text).toBe("好的，走吧");
+    expect(clean("thank you thank you thank you thank you").text).toBe("thank you");
+    expect(clean("ert ert ert ert").drop).toBe(true);
+    expect(clean("bcd bcd bcd bcd").drop).toBe(true);
+  });
+
+  it("keeps real repetition", () => {
+    for (const t of [
+      "no no no",
+      "No, no, no, I said dot.",
+      "哈哈哈哈",
+      "はははは",
+      "谢谢谢谢",
+      "very very very good",
+    ])
+      expect(clean(t)).toMatchObject({ text: t, drop: false, repeat: 0 });
+  });
+
+  it("leaves normal text exactly as it is", () => {
+    for (const t of [
+      "",
+      "。",
+      "今天天气不错。",
+      "Subtitles are on.",
+      "Visit amara.org, then 3.5 km.",
+      "おやすみなさい、また明日。",
+    ])
+      expect(clean(t)).toEqual({
+        text: t,
+        drop: false,
+        prompt: 0,
+        phrase: 0,
+        repeat: 0,
+        removed: [],
+      });
+  });
+
+  it("knows the prompts the route sends", () => {
+    expect(STT_PROMPTS).toContain(sttPrompt("zh"));
+    expect(STT_PROMPTS).toContain(sttPrompt("ja"));
+  });
+
+  it("collapseRepeats on its own", () => {
+    expect(collapseRepeats("ert ert ert ert ert")).toEqual({ text: "", runs: ["ert"] });
+    expect(collapseRepeats("abc")).toEqual({ text: "abc", runs: [] });
   });
 });
 

@@ -45,9 +45,10 @@ Why:
   clips, and in the field it **read its own prompt back as speech twice**
   (「我说中文，有时夹杂日本語和English。」, the `?hint=zh` prompt from
   `lib/stt.ts`) and appended Whisper's subtitle credits three times
-  (「感谢观看。」 ×2, 「文字幕志愿者 李宗盛。」). The mic's hallucination
-  guard drops only a whole message that is a listed phrase, and 感谢观看,
-  字幕志愿者 and the prompt are not on its list.
+  (「感谢观看。」 ×2, 「文字幕志愿者 李宗盛。」). At the time the mic's
+  hallucination guard dropped only a whole message that was a listed phrase;
+  since 2026-10-31 `cleanTranscript` (`mic.ts`) also cuts them out of real
+  speech (docs/workers-ai.md, "Whisper's additions inside real speech").
 - **Restatement and correction are rare on both paths** (2% each on the
   cloud, see "Field metrics"); the cloud's real cost in the field is the
   hallucinated tails, not repeats.
@@ -394,7 +395,9 @@ the Android should default to off for the better playback.
 
 - Set `lk:agent-local-stt` on the Android: it is still on the cloud route,
   slower and with the hallucinations above.
-- `HALLUCINATIONS` (`mic.ts`) lacks 感谢观看, 字幕志愿者 / 李宗盛 and the
-  route's own prompt, and the guard drops only whole messages; the field
-  shows them appended to real speech. Strip a trailing listed phrase too.
+- Done (2026-10-31): `HALLUCINATIONS` (`mic.ts`) has 感谢观看, 字幕志愿者 /
+  李宗盛, 中文字幕提供 and the route's prompts, and `cleanTranscript` strips
+  a prompt echo, a stock phrase that is a clause of its own anywhere in the
+  message, and decoding loops ("ert ert ert ert") from every final, cloud
+  or local (docs/workers-ai.md, "Whisper's additions inside real speech").
 - Send `track` with each clip (above), then record the 20 + 20.
