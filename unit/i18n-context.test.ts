@@ -3,6 +3,8 @@ import words from "@/app/(app)/words/page.content";
 import wordsImportAnkiweb from "@/app/(app)/words/import/ankiweb.content";
 import bottomNav from "@/app/components/bottom-nav.content";
 import learningPartner from "@/app/components/learning-partner.content";
+import reviewPage from "@/app/(app)/review/page.content";
+import navHome from "@/app/(app)/home/page.content";
 import { describeKeys, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -29,6 +31,8 @@ describe.each([
   ["words-import-ankiweb", wordsImportAnkiweb],
   ["bottom-nav", bottomNav],
   ["learning-partner", learningPartner],
+  ["review-page", reviewPage],
+  ["nav-home", navHome],
 ])("%s", (_name, dict) => {
   const keys = Object.entries(dict.content as Record<string, { nodeType?: string }>)
     .filter(([, v]) => v?.nodeType === "translation")

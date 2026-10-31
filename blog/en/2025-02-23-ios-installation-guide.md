@@ -197,6 +197,29 @@ When a card is due for review:
 
 ---
 
+## Reviewing Without the Userscript
+
+Can't install a userscript on this iPhone, or just want to try Lianki first? The site has its own review page: [lianki.com/review](https://lianki.com/review) (also **Home → Advanced → Review**).
+
+1. **Tap "Open this card"** — Safari opens the card's page in a new tab. Because you tap it yourself, Safari never blocks it.
+2. **Read it, then come back** — tap the tabs button (two squares) and pick the Lianki tab.
+3. **Tap Again, Hard, Good or Easy** — each button shows when the card will come back. The next card loads on the same page.
+
+When nothing is left, the page says **"All reviews done for today"**. A short version of these steps sits at the top of the review page; fold it away once you know it.
+
+**Grading from the card's page: the bookmarklet.** The review page also offers a small bookmarklet. Save it once, and on any card's page it opens that card on lianki.com, ready to grade:
+
+1. On [lianki.com/review](https://lianki.com/review), open **"Grade from the card's page"** and tap **Copy code**.
+2. Bookmark any page: tap **Share** (the square with an arrow) → **Add Bookmark** → **Save**.
+3. Open **Bookmarks**, tap **Edit**, tap that bookmark, name it **Lianki**, and paste the code over its address.
+4. On a card's page, open Bookmarks and tap **Lianki** (or type "Lianki" in the address bar and tap the bookmark).
+
+Why doesn't it grade right there on the page? Safari never sends your Lianki sign-in to other websites, so a bookmarklet can't talk to Lianki from someone else's page. It opens the Lianki review page for that page instead. The userscript has no such limit — it grades on the page itself, with no tab switching — which is why it remains the better experience.
+
+The original plain review page is still there too, linked at the bottom of the review page.
+
+---
+
 ## Alternative Methods
 
 While we recommend the Userscripts app for most users, here are other options:
@@ -444,7 +467,7 @@ Still deciding between Userscripts (Safari extension) and Gear Browser (standalo
 
 Now that Lianki is installed on your iPhone/iPad:
 
-- **Check your review queue**: Visit [lianki.com/list](https://www.lianki.com/list) in Safari
+- **Check your review queue**: Visit [lianki.com/list](https://www.lianki.com/list) in Safari, or review in the browser at [lianki.com/review](https://lianki.com/review)
 - **Learn the algorithm**: Read [Understanding the FSRS Algorithm](/blog/2025-01-15-fsrs-algorithm)
 - **Install on desktop too**: Follow the [Desktop Browser Installation Guide](/blog/2025-02-22-browser-installation-guide)
 

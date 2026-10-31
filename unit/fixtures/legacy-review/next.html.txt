@@ -1,0 +1,4 @@
+200 text/html
+
+<script>window.open("https://example.com/fixture-page"); location.href='/api/fsrs/repeat/?id=65a1b2c3d4e5f60718293a4b'</script>
+<script>window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')</script>

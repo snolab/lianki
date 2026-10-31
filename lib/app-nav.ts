@@ -36,7 +36,7 @@ export const APP_NAV: NavItem[] = [
   { key: "read", href: "/read", icon: "bookOpen", group: "main" },
   { key: "roadmap", href: "/roadmap", icon: "mapTrifold", group: "main" },
   { key: "sites", href: "/sites", icon: "globe", group: "advanced" },
-  { key: "review", href: "/next", icon: "play", group: "advanced" },
+  { key: "review", href: "/review", icon: "play", group: "advanced" },
   { key: "cards", href: "/list", icon: "cards", group: "advanced" },
   { key: "addNote", href: "/add-note", icon: "plusCircle", group: "advanced" },
   { key: "lab", href: "/lab", icon: "flask", group: "advanced" },

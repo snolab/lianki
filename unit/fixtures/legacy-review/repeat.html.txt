@@ -1,0 +1,43 @@
+200 text/html; charset=utf-8
+
+Current due: -1d<script>document.title = "[-1d] Fixture <page> & title";</script><br/><a href="javascript:review(1)" rel="noopener noreferrer" accessKey='1'>Again 1m</a><br/><a href="javascript:review(2)" rel="noopener noreferrer" accessKey='2'>Hard 6m</a><br/><a href="javascript:review(3)" rel="noopener noreferrer" accessKey='3'>Good 10m</a><br/><a href="javascript:review(4)" rel="noopener noreferrer" accessKey='4'>Easy 9d</a><br/>
+            <div>
+              hotkeys: <br/>
+              hjlm = easy, good, again, delete <br/>
+              asdt = easy, good, again, delete <br/>
+              1,2,3,4,5 = again, hard, good, easy, delete <br/>
+            </div>
+            <script>
+            async function review(rating) {
+              await fetch('/api/fsrs/review/' + rating + '/?id=65a1b2c3d4e5f60718293a4b');
+              location.href = '/api/fsrs/next';
+            }
+            async function deleteCard() {
+              await fetch('/api/fsrs/delete/?id=65a1b2c3d4e5f60718293a4b');
+              location.href = '/api/fsrs/next';
+            }
+            addEventListener('keydown', (e) => {
+              if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+              // no modifier keys
+              if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+              if (e.code === 'Digit1') review(1);
+              if (e.code === 'Digit2') review(2);
+              if (e.code === 'Digit3') review(3);
+              if (e.code === 'Digit4') review(4);
+              if (e.code === 'Digit5') deleteCard();
+
+              // wasd: a again, s hard, w good, d easy; t delete
+              if (e.code === 'KeyA') review(1);
+              if (e.code === 'KeyS') review(2);
+              if (e.code === 'KeyW') review(3);
+              if (e.code === 'KeyD') review(4);
+              if (e.code === 'KeyT') deleteCard();
+
+              // hjkl: h again, j hard, k good, l easy; m delete
+              if (e.code === 'KeyH') review(1);
+              if (e.code === 'KeyJ') review(2);
+              if (e.code === 'KeyK') review(3);
+              if (e.code === 'KeyL') review(4);
+              if (e.code === 'KeyM') deleteCard();
+            });
+          </script><br/>Reviewing <a target="_blank" href="https://example.com/fixture-page">Fixture <page> & title - https://example.com/fixture-page</a><br/><a href="javascript:deleteCard()" accessKey='5'> DELETE </a><br/>Due cards:1<br/>Total cards:2<br/><br/>
