@@ -8,6 +8,7 @@ import { Icon } from "@/app/components/icons";
 import { PASSES, type PassId } from "@/lib/payments/passes";
 import { GITHUB_SPONSORS_URL } from "@/lib/payments/sponsors";
 import { InviteCard } from "./InviteCard";
+import { WalletCard } from "./WalletCard";
 import { longDate } from "@/lib/dates";
 
 const yen = (n: number) =>
@@ -38,6 +39,8 @@ export default function MembershipClient() {
   const [passesOnSale, setPassesOnSale] = useState(false);
   const [buying, setBuying] = useState<PassId | null>(null);
   const [justPaid, setJustPaid] = useState(false);
+  // Bumped when something outside the wallet (a gift code) may have changed it.
+  const [walletKey, setWalletKey] = useState(0);
   // Card-testing protection: checkout needs a Turnstile token (checkout-guard.ts).
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
   const turnstileRef = useRef<TurnstileInstance | null>(null);
@@ -193,6 +196,8 @@ export default function MembershipClient() {
           )}
         </div>
 
+        <WalletCard refreshKey={walletKey} onProChanged={fetchMembership} />
+
         {/* Features Comparison */}
         <div className="grid md:grid-cols-2 gap-6">
           {/* Free Tier */}
@@ -298,7 +303,12 @@ export default function MembershipClient() {
           </div>
         </div>
 
-        <InviteCard onProChanged={fetchMembership} />
+        <InviteCard
+          onProChanged={() => {
+            fetchMembership();
+            setWalletKey((k) => k + 1);
+          }}
+        />
       </div>
     </div>
   );

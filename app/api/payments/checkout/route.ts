@@ -57,7 +57,7 @@ export async function POST(req: Request) {
   const origin = new URL(req.url).origin;
   try {
     const url = await createCheckoutSession({
-      pass,
+      purchase: { kind: "pass", pass },
       userId: session.user.id,
       email: session.user.email,
       successUrl: `${origin}/membership?paid=1`,

@@ -6,6 +6,7 @@
  * check may run any number of times.
  */
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
+import { creditStmts } from "@/lib/payments/credits-store";
 import { extendedProEnd } from "@/lib/payments/passes";
 import {
   ACTIVATION_REVIEW_DAYS,
@@ -322,7 +323,10 @@ export async function inviteSummary(
 // ── Gift codes ──────────────────────────────────────────────────────────────────
 
 export interface GiftCodeInput {
+  /** Pro days; may be 0 for a credits-only code. */
   days: number;
+  /** JPY of wallet credits (lib/payments/credits*.ts); 0 for a days-only code. */
+  credits?: number;
   maxUses: number;
   note?: string;
   expiresAt?: Date;
@@ -339,11 +343,12 @@ export async function createGiftCode(
     try {
       await d1
         .prepare(
-          "INSERT INTO gift_code (code, days, maxUses, note, createdBy, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO gift_code (code, days, credits, maxUses, note, createdBy, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(
           code,
           input.days,
+          input.credits ?? 0,
           input.maxUses,
           input.note ?? null,
           createdBy,
@@ -362,6 +367,7 @@ export async function createGiftCode(
 export type GiftCodeRow = {
   code: string;
   days: number;
+  credits: number;
   maxUses: number;
   uses: number;
   note: string | null;
@@ -373,14 +379,14 @@ export async function listGiftCodes(d1: D1Like): Promise<GiftCodeRow[]> {
   return (
     await d1
       .prepare(
-        "SELECT code, days, maxUses, uses, note, createdAt, expiresAt FROM gift_code ORDER BY createdAt DESC LIMIT 200",
+        "SELECT code, days, credits, maxUses, uses, note, createdAt, expiresAt FROM gift_code ORDER BY createdAt DESC LIMIT 200",
       )
       .all<GiftCodeRow>()
   ).results;
 }
 
 export type RedeemResult =
-  | { status: "redeemed"; days: number }
+  | { status: "redeemed"; days: number; credits: number }
   | { status: "rejected"; reason: "unknown code" | "expired" | "used up" | "already redeemed" };
 
 export async function redeemGiftCode(
@@ -390,9 +396,9 @@ export async function redeemGiftCode(
   now = new Date(),
 ): Promise<RedeemResult> {
   const gift = await d1
-    .prepare("SELECT days, expiresAt FROM gift_code WHERE code = ?")
+    .prepare("SELECT days, credits, expiresAt FROM gift_code WHERE code = ?")
     .bind(code)
-    .first<{ days: number; expiresAt: string | null }>();
+    .first<{ days: number; credits: number | null; expiresAt: string | null }>();
   if (!gift) return { status: "rejected", reason: "unknown code" };
   if (gift.expiresAt && new Date(gift.expiresAt) <= now)
     return { status: "rejected", reason: "expired" };
@@ -411,9 +417,15 @@ export async function redeemGiftCode(
     .bind(code)
     .first();
   if (!took) return { status: "rejected", reason: "used up" };
-  if (!(await grantPro(d1, userId, gift.days, "gift", refId, now))) {
+  // Credits ride in the grant's batch: both or neither, once per person per code.
+  const credits = Number(gift.credits ?? 0);
+  const extra =
+    credits > 0
+      ? creditStmts(d1, { userId, amount: credits, reason: "gift", refId }, now.toISOString())
+      : [];
+  if (!(await grantPro(d1, userId, gift.days, "gift", refId, now, extra))) {
     await d1.prepare("UPDATE gift_code SET uses = uses - 1 WHERE code = ?").bind(code).run();
     return { status: "rejected", reason: "already redeemed" };
   }
-  return { status: "redeemed", days: gift.days };
+  return { status: "redeemed", days: gift.days, credits };
 }

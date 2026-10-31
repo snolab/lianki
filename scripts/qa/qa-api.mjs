@@ -86,6 +86,9 @@ for (const [method, path] of [
   ["GET", "/api/dev/gift-codes"],
   ["POST", "/api/dev/gift-codes"],
   ["POST", "/api/dev/membership"],
+  ["GET", "/api/dev/credits?email=x@y.z"],
+  ["POST", "/api/dev/credits"],
+  ["GET", "/dev/credits"],
   ["GET", "/dev/users"],
   ["GET", "/dev/gift-codes"],
 ]) {
@@ -429,6 +432,81 @@ let goalId;
     "DELETE note",
     r.status === 200 && r.data?.ok === true,
     `HTTP ${r.status} next=${r.data?.nextUrl ?? "-"}`,
+  );
+}
+
+// ── CREDITS (docs/payments.md, "Credits") — local D1, no provider secrets ──
+{
+  const w = await call("GET", "/api/payments/credits");
+  rec(
+    "CREDITS new wallet is empty",
+    w.status === 200 && w.data?.balance === 0 && w.data?.entries?.length === 0,
+    `HTTP ${w.status} balance=${w.data?.balance}`,
+  );
+  rec(
+    "CREDITS quick amounts line up with the passes",
+    JSON.stringify(w.data?.topup?.quick) === "[600,1200,3000,5000]" &&
+      w.data?.topup?.min === 100 &&
+      w.data?.topup?.max === 10000,
+    JSON.stringify(w.data?.topup ?? null),
+  );
+  rec(
+    "CREDITS only enabled providers are listed",
+    Array.isArray(w.data?.topup?.providers) &&
+      w.data.topup.providers.every((p) => p.id && p.label && !("envKeys" in p)),
+    JSON.stringify(w.data?.topup?.providers ?? null),
+  );
+
+  const short = await call("POST", "/api/payments/buy-pass", {
+    passId: "pro-1m",
+    key: crypto.randomUUID(),
+  });
+  rec(
+    "CREDITS buy-pass with no balance -> 402 + missing",
+    short.status === 402 && short.data?.missing === 600 && short.data?.price === 600,
+    `HTTP ${short.status} missing=${short.data?.missing}`,
+  );
+  const bad = await call("POST", "/api/payments/buy-pass", { passId: "pro-forever" });
+  rec("CREDITS buy-pass unknown pass -> 400", bad.status === 400, `HTTP ${bad.status}`);
+
+  for (const amount of [99, 10001, 600.5, "abc"]) {
+    const r = await call("POST", "/api/payments/topup", { amount });
+    rec(`CREDITS topup ${JSON.stringify(amount)} -> 400`, r.status === 400, `HTTP ${r.status}`);
+  }
+  // A valid amount: 503 with no provider secrets set (the qa:all default),
+  // otherwise a provider answer — never a credit without a payment.
+  const ok = await call("POST", "/api/payments/topup", { amount: 600 });
+  rec(
+    "CREDITS topup 600 -> 503 (no provider) or a checkout",
+    ok.status === 503 || (ok.status === 200 && ok.data?.kind),
+    `HTTP ${ok.status}`,
+  );
+  const after = await call("GET", "/api/payments/credits");
+  rec(
+    "CREDITS balance unchanged by refused calls",
+    after.data?.balance === 0,
+    `${after.data?.balance}`,
+  );
+
+  const hook = await call("POST", "/api/payments/webhook/komoju", {});
+  rec("CREDITS webhook for a disabled provider -> 503", hook.status === 503, `HTTP ${hook.status}`);
+  const nohook = await call("POST", "/api/payments/webhook/nope", {});
+  rec(
+    "CREDITS webhook for an unknown provider -> 404",
+    nohook.status === 404,
+    `HTTP ${nohook.status}`,
+  );
+
+  const saved = cookie;
+  cookie = "";
+  const u1 = await call("GET", "/api/payments/credits");
+  const u2 = await call("POST", "/api/payments/buy-pass", { passId: "pro-1m" });
+  const u3 = await call("POST", "/api/payments/topup", { amount: 600 });
+  cookie = saved;
+  rec(
+    "CREDITS unauth credits/buy-pass/topup -> 401",
+    u1.status === 401 && u2.status === 401 && u3.status === 401,
+    `HTTP ${u1.status}/${u2.status}/${u3.status}`,
   );
 }
 

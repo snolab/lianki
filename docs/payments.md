@@ -52,7 +52,122 @@ review asks for them), and the owner's 資格外活動許可.
 
 - WeChat Pay on Stripe shows a QR code even on phones, and does not work inside
   WeChat's in-app browser.
-- No refunds UI: refund in the Dashboard and shorten `proEndsAt` by hand.
+- No refunds UI for passes paid by card: refund in the Dashboard and shorten
+  `proEndsAt` by hand. Credit-wallet refunds are at `/dev/credits` (below).
+
+## Credits (prepaid wallet)
+
+A wallet balance in JPY, modelled on wallets like renzhe.cloud's: top up once
+through any enabled payment method, then spend the balance on passes; a pass
+bought with the balance activates at once, with no payment page in between.
+Rules in `lib/payments/credits.ts`, D1 side in `lib/payments/credits-store.ts`,
+tables in `db/migrations/0017_credits.sql`, UI in
+`app/(app)/membership/WalletCard.tsx`.
+
+### Ledger
+
+- `credit_ledger` is append-only: one row per change, amount in JPY signed
+  (+ top-up, gift, sponsor, refund to the wallet; − a pass, a reversed
+  top-up), reason `topup | pass | refund | gift | sponsor | adjust`, and
+  **UNIQUE (reason, refId)** — each entry is once-only.
+- `credit_balance` caches the sum. Every ledger row and its balance change are
+  written in the **same D1 batch** (one transaction), so the two never
+  disagree. `CHECK (balance >= 0)` is the no-negative rule: an overdraft fails
+  the UPDATE and rolls back the whole batch, Pro extension included. The
+  pre-read balance only shapes the answer; the CHECK is the guard, so two
+  concurrent spends cannot both pass (unit test "atomic").
+- The row is created at 0 and then updated — not upserted with the delta:
+  SQLite checks CHECK on the proposed INSERT row before `ON CONFLICT`.
+- refIds: top-up `<provider>:<paymentId>`; pass `<userId>:<client key>` (one
+  key per click, so a retried request buys once); refund `pass:<spend refId>`
+  or `topup:<top-up refId>`; gift `<code>:<userId>`; admin `admin:<uuid>`.
+
+### Endpoints
+
+| endpoint                                 | does                                                                                                                                                                 |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/payments/credits`              | balance, the newest 50 entries, top-up limits and the **enabled** providers                                                                                          |
+| `POST /api/payments/topup`               | `{amount, provider?, turnstileToken}`, ¥100–¥10,000 whole yen → `{kind:"redirect",url}` or `{kind:"qr",qr}`. Same rate limit + Turnstile as pass checkout           |
+| `POST /api/payments/buy-pass`            | `{passId, key}` → 200 `{balance, proEndsAt}`, or **402** `{balance, price, missing}` — the page offers a top-up of exactly `missing` (at least the ¥100 minimum)      |
+| `POST /api/payments/webhook/<provider>`  | the provider's webhook; it verifies its own signature, then credits the ledger keyed by provider + paymentId                                                         |
+| `POST /api/payments/stripe-webhook`      | Stripe's single endpoint: passes as before, and sessions with `metadata.kind = "topup"` credit the wallet                                                            |
+| `GET/POST /api/dev/credits`, `/dev/credits` | owner only (404 otherwise): look a wallet up; add/take credits (`sponsor`/`adjust`/`gift`); refund a credit-bought pass to the wallet; reverse a refunded top-up |
+
+Quick amounts are ¥600, ¥1,200, ¥3,000 and ¥5,000, so they line up with the
+passes. A Stripe top-up credits `amount_total` — what was actually paid, JPY
+only — not the amount the metadata asked for. Buying a pass with credits also
+triggers the inviter's first-pass bonus.
+
+Gift codes can carry credits (`gift_code.credits`) as well as, or instead of,
+Pro days; both land in one batch with the `membership_grant` marker, once per
+person per code.
+
+### Refunds
+
+- **A pass bought with credits**: `/dev/credits` → "退回余额" returns the
+  price to the wallet and takes the pass's days off `proEndsAt` (never before
+  now), once.
+- **A top-up refunded at the provider** (Stripe Dashboard): `/dev/credits` →
+  "撤回充值" takes the credits back. Refused if they were already spent — the
+  balance never goes negative; refund the pass first, or settle by hand.
+- No refund of unused credits to the user's card yet — see the open question
+  below.
+
+### Providers
+
+The wallet is provider-plural (`lib/payments/providers/`). A provider is
+listed on `/membership` only when it is **implemented and every one of its
+`envKeys` is set** on the Worker.
+
+| id                | kind     | methods                                     | env (secrets)                                  | state       |
+| ----------------- | -------- | ------------------------------------------- | ---------------------------------------------- | ----------- |
+| `stripe`          | checkout | card, Alipay, WeChat Pay                    | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`   | implemented |
+| `komoju`          | checkout | card, konbini, PayPay, Alipay, WeChat Pay   | `KOMOJU_SECRET_KEY`, `KOMOJU_WEBHOOK_SECRET`   | slot        |
+| `payjp`           | checkout | card (3-D Secure, checkout-policy.ts)       | `PAYJP_SECRET_KEY`, `PAYJP_WEBHOOK_TOKEN`      | slot        |
+| `paddle`          | checkout | card, PayPal, Apple Pay                     | `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`      | slot        |
+| `usdt`            | checkout | USDT TRC-20 / ERC-20 (QR)                   | `USDT_GATEWAY_API_KEY`, `USDT_GATEWAY_WEBHOOK_SECRET` | slot |
+| `afdian`          | grant    | 爱发电 (Alipay, WeChat Pay)                  | `AFDIAN_USER_ID`, `AFDIAN_API_TOKEN`           | slot        |
+| `patreon`         | grant    | Patreon                                     | `PATREON_WEBHOOK_SECRET`                       | slot        |
+| `github-sponsors` | grant    | GitHub Sponsors (as credits, not Pro days)  | `GITHUB_SPONSORS_CREDITS`                      | slot        |
+
+`checkout` providers start a payment of an amount the user picks; `grant`
+providers have no button — money arrives on another platform and its webhook
+credits the wallet as `sponsor`.
+
+#### Adding a provider
+
+1. Write `lib/payments/providers/<id>.ts` exporting a `PaymentProvider`
+   (`types.ts`): `createTopup(amount, user, urls)` returns
+   `{kind: "redirect", url}` or `{kind: "qr", qr}`; `verifyWebhook(req)` checks
+   the provider's signature (Web Crypto, constant time — no Node-only SDKs on
+   the Worker) and returns `{status: "paid", paymentId, amount, userId}`, or
+   `ignored` / `invalid`. Put `userId` in the provider's metadata when the
+   payment is created, and credit the JPY actually paid.
+2. Credit only on the provider's "settled" event (konbini and crypto settle
+   later than the redirect).
+3. Replace its stub in `stubs.ts` with the real module in `index.ts`'s
+   `PROVIDERS` (or add a new id to `ProviderId`).
+4. Register the webhook at `https://lianki.com/api/payments/webhook/<id>` and
+   `bunx wrangler secret put` each of its `envKeys`. It shows up on
+   `/membership` once all are set.
+5. Card providers must request 3-D Secure (`checkout-policy.ts`), and
+   `/api/payments/topup` already runs the rate limit + Turnstile before any
+   provider is called.
+6. Unit-test its webhook parsing; idempotency comes from the ledger
+   (`<id>:<paymentId>`), not from the adapter.
+
+### Open questions (owner)
+
+- **Minimum top-up**: ¥100 now (`TOPUP_MIN`); Stripe's JPY minimum is ¥50.
+  Card fees (~3.6%) make tiny top-ups poor value — ¥500 or ¥600 may be better.
+- **Expiry**: none (suggested). Note that unexpiring prepaid credits are a
+  自家型前払式支払手段 under 資金決済法: no registration, but if the unused
+  balance on 3/31 or 9/30 exceeds ¥10M, a 届出 and a deposit of half of it are
+  required. Credits valid ≤ 6 months are outside the act.
+- **Refunds of unused credits**: 資金決済法 in principle forbids paying back
+  前払式支払手段 except when the business stops (or small amounts). The
+  refund policy should say unused credits are not refundable except as the law
+  requires; passes bought with credits can be refunded to the wallet.
 
 ## Invites and gift codes
 
