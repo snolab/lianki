@@ -60,6 +60,13 @@ import {
   sessionIsOwner,
   verifyDevice,
 } from "./whole-page-guard";
+import {
+  SESSION_COOKIE,
+  type Verified,
+  createGate,
+  downstreamHeaders,
+  upstreamHeaders,
+} from "./preview-gate";
 
 const STATE_FILE = ".dev-whole-page.json";
 const SESSION_CACHE_MS = 60_000;
@@ -71,6 +78,8 @@ type State = {
   guardSecret: string;
   /** DEV_BRIDGE_SECRET's only other copy (the lianki Worker's): lib/dev-bridge.ts. */
   bridgeSecret: string;
+  /** Signs the tunnel gate's session cookie (scripts/dev/preview-gate.ts). */
+  previewKey: string;
 };
 
 function arg(name: string, fallback: string): string {
@@ -88,6 +97,7 @@ function loadState(): State {
     deviceSecret: old.deviceSecret ?? hex(),
     guardSecret: old.guardSecret ?? hex(),
     bridgeSecret: old.bridgeSecret ?? hex(),
+    previewKey: old.previewKey ?? hex(),
   };
   if (JSON.stringify(state) !== JSON.stringify(old)) {
     writeFileSync(STATE_FILE, JSON.stringify(state), { mode: 0o600 });
@@ -181,6 +191,38 @@ async function serve() {
 
   const tokens = new EnterTokens();
   const device = await deviceCookieValue(state.deviceSecret);
+
+  // The public tunnel (docs/dev-whole-page.md, "Off the tailnet"): only with
+  // --public-host, on a loopback listener that only cloudflared targets.
+  const publicHost = arg("public-host", "").toLowerCase();
+  if (publicHost && !/^[a-z0-9-]+\.lianki\.com$/.test(publicHost))
+    throw new Error(`--public-host must be a lianki.com subdomain, got ${publicHost}`);
+  const verifyCall = async (body: unknown) => {
+    const r = await fetch(`${HUB_ORIGIN}/api/dev-access/verify`, {
+      method: "POST",
+      headers: { [DEV_BRIDGE_HEADER]: state.bridgeSecret, "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
+    });
+    return r;
+  };
+  const gate = publicHost
+    ? createGate({
+        publicHost,
+        ownerEmail: ownerEmails(owners)[0] ?? "",
+        sessionKey: state.previewKey,
+        verify: async (token) => {
+          const r = await verifyCall({ token });
+          return r.ok ? ((await r.json()) as Verified) : null;
+        },
+        active: async (ids) => {
+          const r = await verifyCall({ ids });
+          if (!r.ok) throw new Error(`verify answered ${r.status}`);
+          return ((await r.json()) as { active: string[] }).active;
+        },
+        log: (m) => console.error(`[whole-page] ${m}`),
+      })
+    : undefined;
   const sessions = new Map<string, { owner: boolean; exp: number }>();
 
   async function ownerSession(cookie: string | undefined): Promise<boolean> {
@@ -337,49 +379,166 @@ async function serve() {
           });
           return res.end(landingHtml(lab, origin));
         }
-        const hub = isHubPath(url.pathname) || isBridgedPath(url.pathname);
-        const labPath = Boolean(lab) && isLabPath(url.pathname);
-        const remote = hub || labPath;
-        const up = (remote ? https : http).request(
-          labPath
-            ? {
-                host: new URL(lab).host,
-                port: 443,
-                method: req.method,
-                path: req.url,
-                headers: labHeaders(req.headers),
-              }
-            : hub
-              ? {
-                  host: new URL(HUB_ORIGIN).host,
-                  port: 443,
-                  method: req.method,
-                  path: req.url,
-                  headers: hubHeaders(req.headers),
-                }
-              : {
-                  host: "127.0.0.1",
-                  port: inner,
-                  method: req.method,
-                  path: req.url,
-                  headers: forwardHeaders(req.headers),
-                },
-          (r) => {
-            res.writeHead(r.statusCode ?? 502, framable(r.headers));
-            r.pipe(res);
-          },
-        );
-        up.on("error", (e) => {
-          if (!res.headersSent) res.writeHead(502);
-          res.end(String(e.message));
-        });
-        req.pipe(up);
+        return proxy(req, res, url, framable);
       } catch (e) {
         console.error("[whole-page] guard error:", (e as Error).message);
         if (!res.headersSent) res.writeHead(500);
         res.end();
       }
     };
+
+  /** Forward to next dev, the hub or the lab site; `down` shapes the response headers. */
+  function proxy(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    url: URL,
+    down: (h: http.IncomingHttpHeaders) => http.OutgoingHttpHeaders,
+  ) {
+    const hub = isHubPath(url.pathname) || isBridgedPath(url.pathname);
+    const labPath = Boolean(lab) && isLabPath(url.pathname);
+    const remote = hub || labPath;
+    const up = (remote ? https : http).request(
+      labPath
+        ? {
+            host: new URL(lab).host,
+            port: 443,
+            method: req.method,
+            path: req.url,
+            headers: labHeaders(req.headers),
+          }
+        : hub
+          ? {
+              host: new URL(HUB_ORIGIN).host,
+              port: 443,
+              method: req.method,
+              path: req.url,
+              headers: hubHeaders(req.headers),
+            }
+          : {
+              host: "127.0.0.1",
+              port: inner,
+              method: req.method,
+              path: req.url,
+              headers: forwardHeaders(req.headers),
+            },
+      (r) => {
+        res.writeHead(r.statusCode ?? 502, down(r.headers));
+        r.pipe(res);
+      },
+    );
+    up.on("error", (e) => {
+      if (!res.headersSent) res.writeHead(502);
+      res.end(String(e.message));
+    });
+    req.pipe(up);
+  }
+
+  /** Swap a request's headers in place (the gate's upstream view of them). */
+  function setHeaders(req: http.IncomingMessage, h: Record<string, string | string[] | undefined>) {
+    for (const k of Object.keys(req.headers)) delete req.headers[k];
+    for (const [k, v] of Object.entries(h)) if (v !== undefined) req.headers[k] = v;
+  }
+
+  function readBody(req: http.IncomingMessage, max = 8192): Promise<string> {
+    return new Promise((resolve, reject) => {
+      let n = 0;
+      const parts: Buffer[] = [];
+      req.on("data", (c: Buffer) => {
+        n += c.length;
+        if (n > max) {
+          reject(new Error("body too large"));
+          req.destroy();
+        } else parts.push(c);
+      });
+      req.on("end", () => resolve(Buffer.concat(parts).toString("utf8")));
+      req.on("error", reject);
+    });
+  }
+
+  const tunnelDrop = [GUARD_HEADER, DEV_BRIDGE_HEADER];
+
+  /**
+   * The public tunnel's listener (preview.lianki.com via cloudflared): the
+   * gate first (scripts/dev/preview-gate.ts) — 503 without a valid dev token —
+   * then his owner session, added server-side, as for his tailnet devices.
+   */
+  async function tunnelHandle(req: http.IncomingMessage, res: http.ServerResponse) {
+    try {
+      if (!gate) {
+        res.writeHead(503, { "cache-control": "no-store" });
+        return res.end();
+      }
+      const g = await gate.handle({
+        method: req.method ?? "GET",
+        url: req.url ?? "/",
+        headers: req.headers,
+        body: () => readBody(req),
+      });
+      if (g.kind === "respond") {
+        res.writeHead(g.status, g.headers);
+        return res.end(g.body);
+      }
+      const url = new URL(req.url ?? "/", origin);
+      if (url.pathname === "/api/auth/sign-out") {
+        // Signing out on the tunnel ends the tunnel session, not his owner session.
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+          "set-cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
+        });
+        return res.end('{"success":true}');
+      }
+      setHeaders(req, upstreamHeaders(req.headers, { publicHost, origin, drop: tunnelDrop }));
+      req.headers.cookie = await withOwnerSession(req.headers.cookie);
+      const d = decide(url.pathname, true);
+      if (d.kind === "enter") return deny(res, "enter links are for the LAN and tailnet only");
+      if (d.kind === "deny") return deny(res, d.reason);
+      if (d.kind === "owner" && !(await ownerSession(req.headers.cookie)))
+        return deny(res, "the owner session could not be made");
+      if (url.pathname === LANDING_PATH) {
+        res.writeHead(200, {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        return res.end(landingHtml(lab, origin));
+      }
+      return proxy(
+        req,
+        res,
+        url,
+        (h) =>
+          downstreamHeaders(framable(h) as Record<string, string | string[] | undefined>, {
+            publicHost,
+            origin,
+          }) as http.OutgoingHttpHeaders,
+      );
+    } catch (e) {
+      console.error("[whole-page] tunnel error:", (e as Error).message);
+      if (!res.headersSent) res.writeHead(503, { "cache-control": "no-store" });
+      res.end();
+    }
+  }
+
+  async function tunnelUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer) {
+    const g = gate
+      ? await gate.handle({ method: "GET", url: req.url ?? "/", headers: req.headers })
+      : undefined;
+    if (!g || g.kind !== "forward") {
+      socket.end("HTTP/1.1 503 Service Unavailable\r\n\r\n");
+      return;
+    }
+    const url = new URL(req.url ?? "/", origin);
+    setHeaders(req, upstreamHeaders(req.headers, { publicHost, origin, drop: tunnelDrop }));
+    req.headers.cookie = await withOwnerSession(req.headers.cookie);
+    const d = decide(url.pathname, true);
+    const ok =
+      d.kind === "pass" || (d.kind === "owner" && (await ownerSession(req.headers.cookie)));
+    if (!ok) {
+      socket.end("HTTP/1.1 503 Service Unavailable\r\n\r\n");
+      return;
+    }
+    pipeUpgrade(req, socket, head, url);
+  }
 
   // Websockets: HMR (device cookie) to next dev; the hub's (device + owner) to
   // lianki-push on lianki.com.
@@ -402,27 +561,31 @@ async function serve() {
         socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
         return;
       }
-      const hub = isHubPath(url.pathname);
-      const headers = hub ? hubHeaders(req.headers) : forwardHeaders(req.headers);
-      const hubHost = new URL(HUB_ORIGIN).host;
-      const connectUp = (onReady: () => void) =>
-        hub
-          ? tls.connect(443, hubHost, { servername: hubHost }, onReady)
-          : net.connect(inner, "127.0.0.1", onReady);
-      const up = connectUp(() => {
-        const lines = [`${req.method} ${req.url} HTTP/1.1`];
-        for (const [k, v] of Object.entries(headers)) {
-          for (const val of Array.isArray(v) ? v : [v])
-            if (val !== undefined) lines.push(`${k}: ${val}`);
-        }
-        up.write(`${lines.join("\r\n")}\r\n\r\n`);
-        if (head.length) up.write(head);
-        up.pipe(socket);
-        socket.pipe(up);
-      });
-      up.on("error", () => socket.destroy());
-      socket.on("error", () => up.destroy());
+      pipeUpgrade(req, socket, head, url);
     };
+
+  function pipeUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer, url: URL) {
+    const hub = isHubPath(url.pathname);
+    const headers = hub ? hubHeaders(req.headers) : forwardHeaders(req.headers);
+    const hubHost = new URL(HUB_ORIGIN).host;
+    const connectUp = (onReady: () => void) =>
+      hub
+        ? tls.connect(443, hubHost, { servername: hubHost }, onReady)
+        : net.connect(inner, "127.0.0.1", onReady);
+    const up = connectUp(() => {
+      const lines = [`${req.method} ${req.url} HTTP/1.1`];
+      for (const [k, v] of Object.entries(headers)) {
+        for (const val of Array.isArray(v) ? v : [v])
+          if (val !== undefined) lines.push(`${k}: ${val}`);
+      }
+      up.write(`${lines.join("\r\n")}\r\n\r\n`);
+      if (head.length) up.write(head);
+      up.pipe(socket);
+      socket.pipe(up);
+    });
+    up.on("error", () => socket.destroy());
+    socket.on("error", () => up.destroy());
+  }
 
   // The LAN listener (never believes a Tailscale identity) and the loopback one
   // that `tailscale serve --https=8443` targets (believes it, for his login only).
@@ -438,6 +601,17 @@ async function serve() {
       `[whole-page] tailnet listener 127.0.0.1:${tsPort} (owner login: ${tsLogin || "none"})`,
     ),
   );
+
+  if (gate) {
+    const tunnelPort = port + 4;
+    const tunnel = http.createServer(tunnelHandle);
+    tunnel.on("upgrade", tunnelUpgrade);
+    tunnel.listen(tunnelPort, "127.0.0.1", () =>
+      console.error(
+        `[whole-page] tunnel listener 127.0.0.1:${tunnelPort} for https://${publicHost} (dev token required)`,
+      ),
+    );
+  }
 
   // Publishing: next dev serves THIS worktree, which follows the merge branch
   // (--follow, default preview/live) only when asked, PUBLISH_QUIET_MS after

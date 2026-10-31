@@ -11,6 +11,8 @@ import { cookies } from "next/headers";
 import { InviteClaim } from "@/app/components/InviteClaim";
 import { PrefSync } from "@/app/components/PrefSync";
 import { INVITE_COOKIE } from "@/lib/referrals/cookie";
+import { devSwitchFor } from "@/lib/dev-server-switch.server";
+import type { DevSwitchLabels } from "@/app/components/DevSwitchItem";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   announceBuild();
@@ -47,6 +49,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             labels={labels}
             user={user}
             firstRun={firstRun}
+            devSwitch={devSwitchFor(
+              user?.email,
+              // Strings for the owner only: anyone else's page carries none of them.
+              () => getIntlayer("dev-switch", locale) as unknown as DevSwitchLabels,
+            )}
           >
             {pendingInvite && <InviteClaim />}
             <PrefSync signedIn={Boolean(user)} />

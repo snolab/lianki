@@ -85,12 +85,135 @@ other site can frame it.
 `tailnetIdentity` in `whole-page-guard.ts` holds the rule. `send-login` still
 works for a device that is not on the tailnet.
 
+## Off the tailnet: preview.lianki.com (dev access tokens)
+
+Owner request, 2026-11-01 02:55–03:02 JST: reach the dev server without
+Tailscale, gated by an access token he mints himself, signed in
+automatically, and switchable from the account menu. Tailscale `:8443`
+works exactly as before; this is a second way in.
+
+```
+phone ─ https://preview.lianki.com ─▶ Cloudflare (rate rule on /_lk/*) ─▶ tunnel "lianki-preview"
+      ─▶ cloudflared (oxmgr lianki-preview-tunnel, --token-file) ─▶ 127.0.0.1:3104  the gate
+      ─▶ (valid dev token only) the guard adds his owner session ─▶ next dev 127.0.0.1:3101
+gate ─ POST https://lianki.com/api/dev-access/verify (x-lianki-dev-bridge) ─▶ D1 dev_access_token
+```
+
+**Tokens** (`lib/dev-access.ts`, table `dev_access_token`): minted on
+`lianki.com/dev/tokens` by the owner's session only (named, 1–90 days, at
+most 20 live), shown **once**; D1 keeps only the SHA-256. Revoke one, or
+"revoke all", on the same page. Each token signs in as the account that
+minted it, which must be an owner, and the gate also requires it to be the
+owner its login route mints (`OWNER_EMAILS[0]`): it can never sign in as
+anyone else. Tokens are checked only by the gate, which proves itself with
+`DEV_BRIDGE_SECRET`; without it `/api/dev-access/verify` answers 401, so a
+token cannot be tested from anywhere else.
+
+**The gate** (`scripts/dev/preview-gate.ts`, on the loopback listener
+`port + 4` that only cloudflared targets):
+
+- **503 for everything** without a valid token: pages, static files, auth
+  routes, `/__dev/enter`, the hub paths.
+- Only `Host: preview.lianki.com` is served; any other Host is 503. Trust
+  comes from the listener, never from a header: a `Tailscale-User-Login`
+  header on the tunnel is stripped and never believed, and the LAN and
+  tailnet listeners ignore this hostname entirely.
+- **Browsers**: `/_lk/dev-auth` takes the token once, in a form POST (the
+  profile menu and the tokens page post it; a pasted link carries it after
+  `#`, which no server sees, and the page strips it from the address bar
+  before posting). A token in the query is refused unread (400). The
+  answer is `303` with `Cache-Control: no-store`, `Referrer-Policy:
+  no-referrer`, and a `__Host-lk_preview` cookie: HttpOnly, Secure,
+  SameSite=Lax, host-only, holding a sealed session (HMAC with
+  `previewKey` in `.dev-whole-page.json`), not the token.
+- **Tools**: `Authorization: Bearer lkdev_…` (named tokens only; a handoff
+  is refused). Stripped before anything goes upstream.
+- **Sessions** last 12 h at most and never past their token. The gate
+  re-checks a session's token id with lianki.com at most 30 s apart, so
+  **revoking the token ends its sessions** within 30 s; lianki.com
+  unreachable means closed, not open.
+- **Auto sign-in**: past the gate, the guard adds his owner session
+  server-side, as for his tailnet devices. The browser never holds a
+  better-auth cookie of its own here (incoming ones are dropped, outgoing
+  `Set-Cookie`s for it are stripped), so the token is the only key.
+  Sign-out on the tunnel ends the tunnel session only.
+- **Limits**: 10 failed tokens per IP (and 100 in all) per 10 minutes →
+  429; Cloudflare's shared rate rule counts `/_lk/*` on this host
+  (`scripts/ops/tunnel-rate-rule.ts`).
+- Upstream, Host/Origin/Referer become the dev server's own origin; the
+  gate cookie, `Authorization`, `cf-*`, `x-forwarded-*`, Tailscale and the
+  guard's secret headers are removed.
+
+**On his iPhone**: on lianki.com, the account menu's "Dev server (production
+data)" item does it all (next section). For a device without a lianki.com
+session: `/dev/tokens` → new token → "copy the link for another device",
+open that link once in Safari there; the cookie lasts up to 12 h, after which
+the link (or a new one) is opened again. In the home-screen app, use the
+menu item: its cookies are its own.
+
+**Turning it on** (ops lane, after this is on `main` and deployed):
+
+```bash
+# once: an API token (below) at ~/.config/lianki/cf-api-token, mode 0600
+bun scripts/dev/whole-page.ts serve … --public-host preview.lianki.com   # adds the gate on :3104
+scripts/dev/preview-tunnel.sh up       # tunnel + ingress + DNS + rate rule (API), connector under oxmgr
+scripts/dev/preview-tunnel.sh status   # gate 503 locally and through https://preview.lianki.com
+```
+
+`up` refuses unless the gate already answers 503 on `127.0.0.1:3104`, so the
+tunnel can only ever reach the gate. The tunnel is remotely managed and made
+through the API (`scripts/ops/cf-tunnel.ts`): no `cloudflared tunnel login`,
+no cert.pem, no credentials JSON. Its run token is written to
+`~/.config/lianki/preview-tunnel-token` (0600, replaced, never written
+through a symlink) and passed with `--token-file`, never on a command line;
+`check-secret` refuses it if it is a symlink, not his, or not 0600. The
+ingress is `preview.lianki.com → http://127.0.0.1:3104` and `http_status:404`
+for anything else.
+
+The API token needs, on the lianki.com account and zone: **Account ·
+Cloudflare Tunnel · Edit, Zone · DNS · Edit, Zone · Zone WAF · Edit, Zone ·
+Zone · Read**. Wrangler's login on the Mac reaches the tunnel API but has no
+DNS or WAF edit (checked 2026-11-01), so it does not cover this.
+
+**Rollback**: `scripts/dev/preview-tunnel.sh down` stops the connector,
+deletes the tunnel (its connections first) and its DNS record through the
+API, and removes the token file. The shared rate rule stays (the STT tunnel
+uses it). Restart `serve` without `--public-host` to close the loopback
+gate too. Revoke-all on `/dev/tokens` ends every session at once.
+
+## The profile menu switch
+
+For the owner only, decided on the server (`devSwitchFor`,
+`lib/dev-server-switch.server.ts`: anyone else's page carries none of it):
+
+- On lianki.com the account menu shows **"Dev server (production data)"**.
+  When the menu opens it checks once, with one fetch to
+  `https://preview.lianki.com/_lk/up` (1.5 s timeout; the gate answers 503
+  with an `x-lianki-gate` marker, readable by lianki.com only): green and
+  tappable when up, grey "Dev server is off" when not. No polling, no timer.
+  (A push from `serve` through the hub would also work, but needs hub
+  changes; the open-time check is the owner's allowed alternative.)
+- Tapping it mints a **single-use handoff**, 60 s (`POST /api/dev/dev-handoff`),
+  and posts it to `/_lk/dev-auth` in a form body with the current path and
+  query: never in a URL. The dev server opens on the same page, signed in.
+- On the dev server the same spot reads **"Back to lianki.com"**: a plain
+  link to the same path and query on production. Every dev-server page shows
+  a **"Dev server · production data"** badge in its top bar.
+- Strings: `app/components/dev-switch.content.ts`, 16 locales, each key with
+  its context line.
+
+Tests: `unit/dev-access.test.ts`, `unit/preview-gate.test.ts`,
+`unit/cf-tunnel.test.ts`, `unit/preview-tunnel.test.ts`,
+`unit/dev-server-switch.test.ts`; `qa:api` checks non-owners get 404 from the
+token routes and the verify route 401 without the bridge.
+
 ## The locks (all of them, in order)
 
 Rules: `scripts/dev/whole-page-guard.ts`. Tests: `unit/whole-page-guard.test.ts`.
 
-1. **Network.** The guard is the only listener on the LAN IP. There is no
-   tunnel, no funnel and no public route.
+1. **Network.** The guard is the only listener on the LAN IP. No funnel. The
+   one public route is the token-gated tunnel (next section), and only when
+   `serve` runs with `--public-host`.
 2. **Device.** Every request needs the `lk_dev_device` cookie, an HMAC of a
    local secret, with HttpOnly and a lifetime of one year. Without it the
    answer is 403, static files included. The cookie is set only by a
