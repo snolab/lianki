@@ -7,7 +7,7 @@ import {
   MAX_CLIP_BYTES,
   clipName,
   clipsDir,
-  handleClips,
+  handleClips as sinkHandle,
   listClips,
 } from "@/scripts/dev/clip-sink";
 import {
@@ -19,6 +19,19 @@ import {
   markdown,
   normalize,
 } from "@/scripts/dev/stt-bench-lib";
+
+/**
+ * The sink as the owner's own clients use it: each request with the key it
+ * needs (clip-sink.ts: write for POST /clips, read for the rest). The keys
+ * themselves are tested in clips-session.test.ts.
+ */
+const KEYS = { read: "r".repeat(43), write: "w".repeat(43) };
+const handleClips = (req: Request, dir: string, now?: () => Date) => {
+  const write = req.method === "POST" && new URL(req.url).pathname.endsWith("/clips");
+  const headers = new Headers(req.headers);
+  headers.set("authorization", `Bearer ${write ? KEYS.write : KEYS.read}`);
+  return sinkHandle(new Request(req, { headers }), dir, now, undefined, KEYS);
+};
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -263,8 +276,9 @@ describe("bench scoring", () => {
     expect(markdown(aggregate([], []))).toContain("# STT bench");
   });
 
-  it("benchCode is a function body that reports back to the sink", () => {
-    const code = benchCode("https://box.example/w/", ["m1"], "run-1");
+  it("benchCode is a function body that reports back to the sink, with the read key", () => {
+    const code = benchCode("https://box.example/w/", ["m1"], "run-1", KEYS.read);
+    expect(code).toContain(`authorization: "Bearer ${KEYS.read}"`);
     expect(code).toContain('const sink = "https://box.example/w";');
     expect(code).toContain('"/clips/bench?run=run-1"');
     expect(code).toContain("/api/debug/stt?model=");

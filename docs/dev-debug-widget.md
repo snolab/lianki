@@ -707,12 +707,103 @@ The folder is `--clips-dir`, else `LIANKI_CLIPS_DIR`, else
 | `POST /clips/bench?run=<id>` | the bench's raw results, written once as `bench-raw-<id>.json`                                                                                                                                      |
 
 A clip is at most 5 MB, and webm, ogg, m4a, wav or mp3. Cross-origin
-requests are allowed from `https://lianki.com` only (with
-`Access-Control-Allow-Private-Network`). Any other `Origin` gets 403.
+requests are allowed from `https://lianki.com`, plus each exact https origin
+listed in `LIANKI_DEV_ORIGINS` or `LIANKI_CLIPS_ORIGINS` (comma-separated, no
+wildcards: the whole-page dev server's `https://<mac>.<tailnet>.ts.net:8443`,
+a widget preview origin). The answer echoes that origin, with
+`Access-Control-Allow-Private-Network`. Any other `Origin` gets 403. Nothing
+deletes a clip: the sink has no delete route and nothing cleans up. Ask the
+owner before removing any.
 
-The page posts to the sink only when the owner has set
-`localStorage["lk:debug-clip-sink"]` to the server's origin, e.g.
-`https://<machine>.<tailnet>.ts.net/lianki-widget`.
+**Keys.** An allowed origin is not enough. Every request carries
+`authorization: Bearer <key>`, with one of two random keys in
+`~/.config/lianki/clip-sink-keys.json` (0600, made on first use;
+`LIANKI_CLIP_SINK_KEYS` overrides the path). The **write** key is for
+`POST /clips`. `eval.ts clips on` hands it to the hub, which gives it only
+to the owner's pages of a recording session. The **read** key is for
+`GET /clips/*` and `POST /clips/bench`, and only the agent and `stt-bench.ts`
+use it (it travels to the page inside the bench's eval code). A request
+without the right key gets 401: another account's page on lianki.com, or a
+client with no Origin, can neither read nor add.
+
+### Recording: a window session held by the hub
+
+Owner, 2026-10-31: the switch is not in any origin's storage, and it follows
+the window across URLs and origins (lianki.com, the :8443 dev server, the
+widget previews). It is session-scoped, like sessionStorage. The rules are in
+`packages/debug-chat/src/clips.ts`, the hub's side in `workers/push/src/debug.ts`
+("Voice-clip recording"), the page's in `clips-store.ts` (zustand, through
+`@lianki/ui-state`) and `ClipsBadge.tsx`.
+
+- **Ids.** Each window has a session id in sessionStorage (`lk:ui:clips`).
+  Each origin has a device id in localStorage (`lk:pref:clips-device`). The
+  first page on an origin makes one. When the hub puts a page in an existing
+  session, its answer carries that session's device id, and the page keeps
+  it. The page sends both on its hub socket (`?ws=&dev=`).
+- **The hub keeps** `clips:<sid>` only while recording: device, since,
+  optional auto-stop, sink and its write key, the owner's origins, the hash
+  of a one-time handoff token, and since when no page has been connected. It
+  also keeps `clipsink`, the sink the agent last set up, so that a tap can
+  reuse it. Every page of the session hears `{type:"clips", sid, device, on,
+  until?, left?, sink?, sinkKey?, origins?, handoff?, paused?, resumable?,
+  canStart?}` on connect and on each change.
+- **Across origins.** The session moves only between the owner's origins,
+  matched exactly: lianki.com plus the list `eval.ts clips on` passes. That
+  list is the sink's own allowlist (`LIANKI_DEV_ORIGINS`,
+  `LIANKI_CLIPS_ORIGINS`), or `--origins a,b`. Any other host never sees the
+  token, including another person's tailnet host or another port. A tap on a
+  link to one of these origins gets `?lkws=<token>` added as it is followed. The new page takes it out of the address bar and knocks with
+  `&hand=<token>`, and the hub puts it in the same session. The token works
+  once and rotates on every join. `__lkClips.go(url)` does the same from
+  eval. An address typed by hand carries no token: the page of the same
+  device continues a session that just lost its page; on another device it
+  is only offered ("Continue recording", a tap).
+- **When it ends.** Stop on the badge, the agent's `clips off`, the optional
+  auto-stop, or no page of the session for `CLIPS_GONE_MS` (2 min: a closed
+  window). A page reports `hidden` (screen off, app in the background)
+  before its socket drops, and `leaving` on pagehide. A hidden session lasts
+  `CLIPS_HIDDEN_MS` (12 h). When the screen comes back, the same document
+  says so (`cont=1`: it was recording when its socket dropped, and it never
+  went through pagehide), and recording resumes with no tap. The badge then
+  shows "paused N min" for a minute. Other pages rejoin silently only after a
+  quick reload or navigation (not hidden, within 2 min). That excludes a tab
+  closed while hidden and restored later, and a page back from the bfcache:
+  a document that went through pagehide knocks with `back=1`, and the hub
+  never joins it by itself, not even within those 2 min. Those pages are
+  offered "Continue recording" and need a tap.
+- **Stop is local first.** A tap on Stop turns recording off on the page at
+  once (`stopPending`, kept in sessionStorage), whether or not the hub can be
+  told. Each clip checks at send time that its session still records. The
+  page sends `clips-off` again on every reconnect, and a hub state saying
+  that same recording (same `since`) is on never turns it back on. Only a new
+  tap, or a new `clips on` from the agent, does.
+- **Wake lock.** While recording and visible, the page holds
+  `navigator.wakeLock.request("screen")` ("Screen kept on" on the badge). It
+  asks again when the page is visible after the system dropped it, and
+  releases it when recording stops. Without the API, the badge says it
+  pauses when the screen sleeps.
+- **The badge** ("录音中 / Recording") is a glass pill at the top of every
+  page of the session, with a one-tap Stop. It always shows how many clips
+  the sink acknowledged. A failed post turns it to "Saving failed" in red,
+  and the page logs `clip-post-failed` (status and sink host only, never
+  audio or text) to `/api/dev/log`.
+- **The sink URL has one source**: the hub. `eval.ts clips on` sets it,
+  defaulting to `https://<this Mac's tailnet>/lianki-widget`, and checks
+  first that it answers with the read key. A tap in the menu reuses the
+  sink the agent last set up; the menu item shows only when there is one
+  (`canStart`). No origin's localStorage key is read any more, so a stale
+  `lk:agent-clip-sink` cannot win (it once sent every clip to a dead host).
+- **On and off.** The agent: `bun scripts/dev/eval.ts clips` (list),
+  `clips on --device <text> [--minutes N] [--sink <url>]`, `clips off
+  [--device <text>]`. `<text>` matches a session or device id prefix, or text
+  in a page label ("Android"). The page: the chat menu's "Record voice clips"
+  (with an "Auto-stop after 60 min" switch, off by default), and Stop on the
+  badge. Turning it on is always a tap or the agent, never the voice.
+- **Off the critical path.** The upload is built and sent in a later task,
+  after the mic has its final transcript (`mic.ts sideClip`). It never delays
+  recognition, and the VAD never waits on it. `unit/clips-session.test.ts`
+  measures this: 20 utterances with a 200 ms sink take no longer than with no
+  sink.
 
 **Reference text.** To score a clip, put what was really said in
 `<name>.ref.txt` next to it. The bench then adds a CER for each model.
