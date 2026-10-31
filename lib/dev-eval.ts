@@ -21,6 +21,7 @@ import {
   type VoiceTiming,
   cleanTiming,
 } from "../packages/debug-chat/src/wire";
+import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
 
 export {
   MAX_AGENT_ID,
@@ -137,6 +138,8 @@ export type FriendRecord = {
 /** Messages a controller (the sender CLI) may send to the hub. */
 export type ControllerMessage =
   | { type: "eval"; code: string; target?: string }
+  /** An ask card (ask.ts): `to` a thread as for say (absent = the owner's). */
+  | { type: "ask"; ask: Ask; to?: string }
   /**
    * `to`: a friend's thread (user id or email); `node`: a state-tree node to
    * address instead (a `to` starting with "/"). `taskPath`/`agentId`: the
@@ -174,6 +177,8 @@ export type ControllerMessage =
   | { type: "ungrant"; from: string; to: string };
 /** Messages an owner page may send to the hub. */
 export type PageMessage =
+  /** A tap on an ask card: which options, per question. The hub stamps the rest. */
+  | { type: "answer"; askId: string; choices: Record<string, unknown> }
   /**
    * `pages`: the page ids the grant covers, or "all" (also every page that
    * connects later). Absent (a page from before) = "all". `scope` is the old
@@ -348,6 +353,18 @@ export function parseControllerMessage(
       },
     };
   }
+  if (m?.type === "ask") {
+    const r = parseAsk(m, Date.now(), () => crypto.randomUUID().slice(0, 12));
+    if (!r.ok) return { ok: false, error: r.error };
+    const to = str(m.to, 320)?.trim();
+    return { ok: true, value: { type: "ask", ask: r.ask, ...(to ? { to } : {}) } };
+  }
+  // A tap is a person on a page: an agent or controller can never answer.
+  if (m?.type === "answer")
+    return {
+      ok: false,
+      error: "answers come only from a tap on a page; a controller cannot answer",
+    };
   if (m?.type === "edit") {
     const id = str(m.id, 64)?.trim();
     if (!id) return { ok: false, error: "edit needs the id of the message to polish" };
@@ -427,6 +444,12 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
   if (m.type === "page") {
     const label = cleanLabel(str(m.label, MAX_LABEL * 2));
     return label ? { type: "page", label } : null;
+  }
+  if (m.type === "answer") {
+    const askId = str(m.askId, 64);
+    if (!askId || !m.choices || typeof m.choices !== "object" || Array.isArray(m.choices))
+      return null;
+    return { type: "answer", askId, choices: m.choices as Record<string, unknown> };
   }
   if (m.type === "chat") {
     const id = str(m.id, 64);

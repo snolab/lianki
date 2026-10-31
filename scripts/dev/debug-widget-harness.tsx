@@ -20,6 +20,7 @@
  * to"), and the owner's line to a node shows "→ /words › prefetch". Typing
  * "@/" offers the listed nodes; `?target=/words/prefetch` starts with that chip.
  */
+import { type Ask, askText } from "@lianki/debug-chat/ask";
 import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
 import type { ChatMessage } from "@/lib/dev-eval";
@@ -158,6 +159,18 @@ function Harness() {
         at,
       }),
     );
+  // An ask card from the agent (ask.ts): `__ask({ askId, questions })`.
+  (globalThis as { __ask?: (ask: Ask) => void }).__ask = (ask) =>
+    setMessages((l) =>
+      add(l, {
+        id: `ask-${ask.askId}`,
+        from: "agent",
+        label: "agent",
+        text: askText(ask),
+        at: Date.now(),
+        ask,
+      }),
+    );
   (globalThis as { __polish?: (text: string) => void }).__polish = (text) =>
     setMessages((l) => {
       const i = l.findLastIndex((m) => m.from === "owner" && !m.thread);
@@ -233,6 +246,31 @@ function Harness() {
           (w.__ended ??= []).push(x.pair);
         }}
         nodes={HARNESS_NODES}
+        // As the hub would: record the tap, then stamp the answer onto the ask's line.
+        onAnswer={(askId, choices) => {
+          record("__answers", { askId, choices });
+          setTimeout(
+            () =>
+              setMessages((l) =>
+                l.map((m) =>
+                  m.ask?.askId === askId
+                    ? {
+                        ...m,
+                        answer: {
+                          choices,
+                          source: "tap",
+                          thread: "owner",
+                          label: "/harness",
+                          at: Date.now(),
+                        },
+                      }
+                    : m,
+                ),
+              ),
+            50,
+          );
+          return !q.has("noanswer");
+        }}
         onSend={(text, to, opts) => {
           record("__sent", { text, source: opts?.source ?? null });
           setMessages((l) =>

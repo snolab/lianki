@@ -192,7 +192,36 @@ const boolFlag = (name: string) => {
   args.splice(i, 1);
   return true;
 };
+/**
+ * ask: `--q "question" --opt "a" --opt "b" [--multi] [--q …]`, in order: each
+ * --q starts a question, the --opt after it are its options (the first one
+ * recommended), --multi lets it take several. Taken out of args here.
+ */
+const askQuestions: {
+  question: string;
+  options: { label: string; recommended?: boolean }[];
+  multi?: boolean;
+}[] = [];
+for (let i = 0; i < args.length; ) {
+  const a = args[i];
+  if (a === "--q" && args[i + 1] !== undefined) {
+    askQuestions.push({ question: args[i + 1]!, options: [] });
+    args.splice(i, 2);
+  } else if (a === "--opt" && args[i + 1] !== undefined && askQuestions.length) {
+    const q = askQuestions.at(-1)!;
+    q.options.push({
+      label: args[i + 1]!,
+      ...(q.options.length === 0 ? { recommended: true } : {}),
+    });
+    args.splice(i, 2);
+  } else if (a === "--multi" && askQuestions.length) {
+    askQuestions.at(-1)!.multi = true;
+    args.splice(i, 1);
+  } else i++;
+}
 const noPair = boolFlag("--no-pair");
+/** ask: wait for the tap and print the answer (or time out). */
+const waitFlag = boolFlag("--wait");
 /** edit: the owner's latest line, instead of an id. */
 const lastFlag = boolFlag("--last");
 /** chat: exit on {type:"pages-idle"} instead of staying for pages-back. */
@@ -211,6 +240,8 @@ const to = flag("--to");
 const forEmail = flag("--for");
 const fromFlag = flag("--from");
 const hoursFlag = flag("--hours");
+/** ask --wait: give up after this many seconds (default 600). */
+const timeoutFlag = flag("--timeout");
 const placed = nodeOpts({ taskPath: flag("--task-path"), agent: flag("--agent") });
 if ("error" in placed) {
   console.error(placed.error);
@@ -397,7 +428,17 @@ function chat(out?: string, errorsOnly = false) {
           const thread = String(msg.thread ?? "owner");
           ws.send(beatMessage(thread === "owner" ? {} : { to: String(msg.email ?? thread) }));
         }
-      } else if (m.type === "edited")
+      } else if (m.type === "answered")
+        // An ask card tapped on a page: stamped by the hub (source "tap").
+        print({
+          type: "answered",
+          id: m.id,
+          askId: m.askId,
+          thread: m.thread ?? "owner",
+          answer: m.answer,
+          labels: m.labels,
+        });
+      else if (m.type === "edited")
         print({
           type: "edited",
           id: m.id,
@@ -527,6 +568,61 @@ function sendOnce(msg: Record<string, unknown>, done: string): Promise<Msg> {
     ws.onclose = (e) => {
       clearTimeout(give);
       // Refused: forget it, and fail. say never pairs.
+      if (e.code === GRANT_INVALID) rmSync(grant.file, { force: true });
+      reject(new Error(`socket closed (${e.code}${e.reason ? ` ${e.reason}` : ""})`));
+    };
+  });
+}
+
+/**
+ * Ask with a card (tappable options). Resolves with the hub's {type:"asked"};
+ * with `wait`, keeps listening and resolves with {type:"answered"} for this
+ * ask once it is tapped (event-driven), or rejects after `timeoutMs`. Never
+ * pairs.
+ */
+function ask(
+  questions: typeof askQuestions,
+  to: string | undefined,
+  wait: boolean,
+  timeoutMs: number,
+): Promise<Msg> {
+  const grant = chatGrant();
+  if (!grant)
+    return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
+  return new Promise((resolve, reject) => {
+    const ws = openControl(grant.token);
+    let askId: string | undefined;
+    const give = setTimeout(
+      () => {
+        ws.close();
+        reject(
+          new Error(
+            askId ? `no tap within ${timeoutMs / 1000} s` : "no answer from the hub within 15 s",
+          ),
+        );
+      },
+      wait ? timeoutMs : 15_000,
+    );
+    const done = (fn: () => void) => {
+      clearTimeout(give);
+      ws.close();
+      fn();
+    };
+    ws.onmessage = (e) => {
+      const m = JSON.parse(String(e.data)) as Msg;
+      if (m.type === "approved")
+        ws.send(
+          JSON.stringify({ type: "ask", questions, ...(to && to !== "owner" ? { to } : {}) }),
+        );
+      else if (m.type === "asked") {
+        askId = String(m.askId);
+        if (!wait) done(() => resolve(m));
+        else console.error(`asked (${askId}); waiting for the tap…`);
+      } else if (m.type === "answered" && askId && m.askId === askId) done(() => resolve(m));
+      else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
+    };
+    ws.onclose = (e) => {
+      clearTimeout(give);
       if (e.code === GRANT_INVALID) rmSync(grant.file, { force: true });
       reject(new Error(`socket closed (${e.code}${e.reason ? ` ${e.reason}` : ""})`));
     };
@@ -733,6 +829,19 @@ async function main() {
       process.exit(2);
     }
     console.log(JSON.stringify(await edit(text, id, lastFlag)));
+    return;
+  }
+  if (args[0] === "ask") {
+    if (!askQuestions.length || askQuestions.some((q) => !q.options.length)) {
+      console.error(
+        'usage: bun scripts/dev/eval.ts ask [--to owner|<email>] --q "question" --opt "a" --opt "b" [--multi] [--q …] [--wait] [--timeout <s>]',
+      );
+      process.exit(2);
+    }
+    const secs = Number(timeoutFlag ?? 600);
+    console.log(
+      JSON.stringify(await ask(askQuestions, to, waitFlag, (secs > 0 ? secs : 600) * 1000)),
+    );
     return;
   }
   if (args[0] === "wake") {
