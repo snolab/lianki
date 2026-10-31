@@ -137,7 +137,9 @@ token cannot be tested from anywhere else.
   with its token id and session end, one timer per token id re-checks it
   every 30 s (no extra polling: the same cadence), and a revoked token, a
   failed re-check or an ended session closes every socket of that token.
-  The timer stops with the token's last socket.
+  A one-shot timer per token at the earliest session end among its sockets
+  closes those at that moment (not at the next 30 s tick), then re-arms.
+  Both timers stop with the token's last socket.
 - **Where a handshake lands** (`next`): only a path on this origin. Any
   control character (TAB, LF, CR, NUL, DEL) or backslash is refused, since
   browsers drop the first three and read `\` as `/` (`/%09/evil.example`
@@ -148,11 +150,21 @@ token cannot be tested from anywhere else.
   better-auth cookie of its own here (incoming ones are dropped, outgoing
   `Set-Cookie`s for it are stripped), so the token is the only key.
   Sign-out on the tunnel ends the tunnel session only.
-- **Limits**: 10 failed tokens per IP per 10 minutes → 429. No global
-  lockout: one would let anyone with a few IPs lock the owner out without a
-  token. Load is bounded instead by at most 4 token checks in flight; more
-  wait their turn and are never refused. Cloudflare's shared rate rule
-  counts `/_lk/*` on this host (`scripts/ops/tunnel-rate-rule.ts`).
+- **Limits**: 10 failed tokens per IP per 10 minutes → 429, and attempts
+  still in flight count towards it. No global lockout: one would let anyone
+  with a few IPs lock the owner out without a token. Token checks go through
+  a bounded queue (`VerifyQueue`): 4 in flight, at most 32 waiting in all
+  and 2 per IP (waiting + running); past that the answer is at once (429
+  for the IP, 503 busy). A waiter has 5 s, then 503, and is dropped the
+  moment its client disconnects; its IP's admission is checked again when
+  its turn comes. A token verified in the last 30 s, and every signed-in
+  session, skip the queue entirely, so a flood never stalls the owner.
+- **Edge rule**: Cloudflare's shared rate rule counts `/_lk/*` on this host
+  (`scripts/ops/tunnel-rate-rule.ts`), not the whole host, on purpose. The
+  Free plan has one rule, shared with the STT tunnel at 10 per 10 s per IP;
+  a dev page load is a hundred-odd requests (Next's dev chunks, HMR), so the
+  whole host under that rule would block the owner's own pages. The gate's
+  limits above cover `/` and everything else.
 - Upstream, Host/Origin/Referer become the dev server's own origin; the
   gate cookie, `Authorization`, `cf-*`, `x-forwarded-*`, Tailscale and the
   guard's secret headers are removed.

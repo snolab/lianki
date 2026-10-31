@@ -32,13 +32,18 @@ export const RECHECK_MS = 30_000;
 /**
  * Failed token checks per IP before 429. There is deliberately no global
  * failure lockout: one would let anyone with a few IPs lock the owner out
- * with no token at all. Load is bounded by VERIFY_CONCURRENCY instead, which
+ * with no token at all. Load is bounded by VerifyQueue instead (below),
  * queues and never refuses a credential that would verify.
  */
 export const FAILS_PER_IP = 10;
 export const FAIL_WINDOW_MS = 10 * 60 * 1000;
-/** Token checks in flight to lianki.com at once; more wait their turn. */
+/** Token checks in flight to lianki.com at once (VerifyQueue)… */
 export const VERIFY_CONCURRENCY = 4;
+/** …waiting behind them, in all and per IP (waiting + running)… */
+export const VERIFY_MAX_PENDING = 32;
+export const VERIFY_PER_IP = 2;
+/** …and how long one may wait before it is answered 503. */
+export const VERIFY_DEADLINE_MS = 5_000;
 /** Where a handshake lands unless it names a path of its own. */
 export const DEFAULT_NEXT = "/__dev/landing";
 /** lianki.com, where the owner's profile menu posts handoffs from. */
@@ -71,6 +76,8 @@ export type GateRequest = {
   headers: Headers;
   /** The body, read only for the handshake POST. */
   body?: () => Promise<string>;
+  /** Aborted when the client goes away: a queued token check is then dropped. */
+  signal?: AbortSignal;
 };
 export type GateResult =
   | { kind: "respond"; status: number; headers: Record<string, string | string[]>; body: string }
@@ -187,52 +194,164 @@ export function handshakeHtml(): string {
 </script>`;
 }
 
-/** Failure counting for the handshake and bearer checks. */
+/** Failure counting for the handshake and bearer checks, per IP. */
 export class Fails {
   private hits = new Map<string, number[]>();
   constructor(private now: () => number) {}
   private recent(k: string): number[] {
     const cut = this.now() - FAIL_WINDOW_MS;
     const v = (this.hits.get(k) ?? []).filter((t) => t > cut);
-    this.hits.set(k, v);
+    if (v.length) this.hits.set(k, v);
+    else this.hits.delete(k);
     return v;
   }
-  blocked(ip: string): boolean {
-    return this.recent(`ip:${ip}`).length >= FAILS_PER_IP;
+  /** Blocked once its recent failures plus its attempts still in flight reach the limit. */
+  blocked(ip: string, inFlight = 0): boolean {
+    return this.recent(`ip:${ip}`).length + inFlight >= FAILS_PER_IP;
   }
   add(ip: string) {
-    this.recent(`ip:${ip}`).push(this.now());
+    const v = this.recent(`ip:${ip}`);
+    v.push(this.now());
+    this.hits.set(`ip:${ip}`, v);
   }
 }
 
-/** At most `n` calls at once; the rest wait (nothing is refused). */
-export function limiter(n: number) {
-  let running = 0;
-  const waiting: (() => void)[] = [];
-  return async <T>(f: () => Promise<T>): Promise<T> => {
-    if (running >= n) await new Promise<void>((r) => waiting.push(r));
-    running++;
-    try {
-      return await f();
-    } finally {
-      running--;
-      waiting.shift()?.();
+export type QueueRefusal = "busy" | "ip" | "timeout" | "aborted";
+export type QueueResult<T> = { ok: true; value: T } | { ok: false; why: QueueRefusal };
+
+/**
+ * Token checks to lianki.com: at most `concurrency` in flight; a bounded
+ * queue behind them (`maxPending` in all, `perIp` per IP counting both
+ * waiting and running); every waiter has a deadline and is dropped the
+ * moment its client goes away; and the per-IP admission is checked again
+ * when a waiter's turn comes. Refusals are immediate answers, never a
+ * backlog that runs after its clients have left.
+ */
+export class VerifyQueue {
+  private running = 0;
+  private pending: {
+    ip: string;
+    go: () => void;
+    fail: (why: QueueRefusal) => void;
+  }[] = [];
+  private perIpCount = new Map<string, number>();
+
+  constructor(
+    private o: {
+      concurrency: number;
+      maxPending: number;
+      perIp: number;
+      deadlineMs: number;
+      /** May this IP try now? `others`: its other attempts waiting or running. */
+      admit: (ip: string, others: number) => boolean;
+      setTimer?: (f: () => void, ms: number) => unknown;
+      clearTimer?: (t: unknown) => void;
+    },
+  ) {}
+
+  /** This IP's attempts waiting or running. */
+  count(ip: string): number {
+    return this.perIpCount.get(ip) ?? 0;
+  }
+
+  /** Waiting and running in all (tests and logs). */
+  size() {
+    return { running: this.running, pending: this.pending.length };
+  }
+
+  private inc(ip: string, by: number) {
+    const n = this.count(ip) + by;
+    if (n > 0) this.perIpCount.set(ip, n);
+    else this.perIpCount.delete(ip);
+  }
+
+  async run<T>(ip: string, f: () => Promise<T>, signal?: AbortSignal): Promise<QueueResult<T>> {
+    if (signal?.aborted) return { ok: false, why: "aborted" };
+    if (!this.o.admit(ip, this.count(ip)) || this.count(ip) >= this.o.perIp)
+      return { ok: false, why: "ip" };
+    if (this.running >= this.o.concurrency || this.pending.length) {
+      if (this.pending.length >= this.o.maxPending) return { ok: false, why: "busy" };
+      this.inc(ip, 1);
+      const setT = this.o.setTimer ?? ((g, ms) => setTimeout(g, ms));
+      const clearT = this.o.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
+      const why = await new Promise<QueueRefusal | null>((resolve) => {
+        const w = {
+          ip,
+          go: () => {
+            done();
+            resolve(null);
+          },
+          fail: (r: QueueRefusal) => {
+            done();
+            resolve(r);
+          },
+        };
+        const leave = (r: QueueRefusal) => {
+          const i = this.pending.indexOf(w);
+          if (i >= 0) this.pending.splice(i, 1);
+          w.fail(r);
+        };
+        const timer = setT(() => leave("timeout"), this.o.deadlineMs);
+        const onAbort = () => leave("aborted");
+        signal?.addEventListener("abort", onAbort, { once: true });
+        const done = () => {
+          clearT(timer);
+          signal?.removeEventListener("abort", onAbort);
+        };
+        this.pending.push(w);
+      });
+      if (why) {
+        this.inc(ip, -1);
+        return { ok: false, why };
+      }
+      // Its turn (next() reserved the slot): the client may have gone, or its
+      // IP filled up meanwhile.
+      if (signal?.aborted || !this.o.admit(ip, this.count(ip) - 1)) {
+        this.running--;
+        this.inc(ip, -1);
+        this.next();
+        return { ok: false, why: signal?.aborted ? "aborted" : "ip" };
+      }
+    } else {
+      this.inc(ip, 1);
+      this.running++;
     }
-  };
+    try {
+      return { ok: true, value: await f() };
+    } finally {
+      this.running--;
+      this.inc(ip, -1);
+      this.next();
+    }
+  }
+
+  /** Give a free slot to the next waiter, reserving it now so nothing jumps the queue. */
+  private next() {
+    if (this.running >= this.o.concurrency) return;
+    const w = this.pending.shift();
+    if (!w) return;
+    this.running++;
+    w.go();
+  }
 }
 
 /**
  * Upgraded sockets (HMR, the hub's chat) outlive the request that was gated,
- * so they are watched: each is registered with its token id and session end,
- * and ONE timer per token id re-checks that id with lianki.com every
- * RECHECK_MS (the same cadence as page requests). A revoked token, a failed
- * re-check (lianki.com unreachable) or an ended session closes every socket
- * of that token. The timer stops with the token's last socket.
+ * so they are watched: each is registered with its token id and session end.
+ * Per token id there is ONE re-check timer, every RECHECK_MS (the same cadence
+ * as page requests): a revoked token or a failed re-check (lianki.com
+ * unreachable) closes every socket of that token. And ONE one-shot timer at
+ * the earliest session end among its sockets closes those exactly then, and
+ * re-arms for the next. Both stop with the token's last socket.
  */
 export class SocketWatch {
   private byToken = new Map<
     string,
-    { timer: unknown; socks: Map<number, { until: number; close: () => void }> }
+    {
+      timer: unknown;
+      end?: { at: number; timer: unknown };
+      socks: Map<number, { until: number; close: () => void }>;
+    }
   >();
   private nextId = 1;
   constructor(
@@ -241,12 +360,20 @@ export class SocketWatch {
       now?: () => number;
       every?: (f: () => void, ms: number) => unknown;
       stop?: (t: unknown) => void;
+      once?: (f: () => void, ms: number) => unknown;
+      cancel?: (t: unknown) => void;
       log?: (msg: string) => void;
     },
   ) {}
 
   private now() {
     return (this.d.now ?? Date.now)();
+  }
+  private once(f: () => void, ms: number) {
+    return (this.d.once ?? ((g, m) => setTimeout(g, m)))(f, ms);
+  }
+  private cancel(t: unknown) {
+    (this.d.cancel ?? ((x) => clearTimeout(x as ReturnType<typeof setTimeout>)))(t);
   }
 
   /** Watch one socket; returns its unwatch (call it when the socket closes). */
@@ -264,6 +391,7 @@ export class SocketWatch {
     }
     const id = this.nextId++;
     t.socks.set(id, { until: untilMs, close });
+    this.arm(tokenId);
     return () => this.drop(tokenId, id);
   }
 
@@ -274,14 +402,40 @@ export class SocketWatch {
     return { socks, timers: this.byToken.size };
   }
 
+  /** The one-shot timer at the earliest session end of this token's sockets. */
+  private arm(tokenId: string) {
+    const t = this.byToken.get(tokenId);
+    if (!t) return;
+    let at = Infinity;
+    for (const s of t.socks.values()) at = Math.min(at, s.until);
+    if (t.end && t.end.at === at) return;
+    if (t.end) this.cancel(t.end.timer);
+    t.end = undefined;
+    if (at === Infinity) return;
+    t.end = { at, timer: this.once(() => this.expire(tokenId), Math.max(0, at - this.now())) };
+  }
+
+  private expire(tokenId: string) {
+    const t = this.byToken.get(tokenId);
+    if (!t) return;
+    t.end = undefined;
+    for (const [id, s] of [...t.socks])
+      if (s.until <= this.now()) {
+        this.drop(tokenId, id);
+        s.close();
+      }
+    this.arm(tokenId);
+  }
+
   private drop(tokenId: string, id: number) {
     const t = this.byToken.get(tokenId);
     if (!t) return;
     t.socks.delete(id);
     if (!t.socks.size) {
       (this.d.stop ?? ((x) => clearInterval(x as ReturnType<typeof setInterval>)))(t.timer);
+      if (t.end) this.cancel(t.end.timer);
       this.byToken.delete(tokenId);
-    }
+    } else this.arm(tokenId);
   }
 
   /** Close every socket of a token (revoked, or the re-check failed). */
@@ -298,12 +452,8 @@ export class SocketWatch {
   async check(tokenId: string): Promise<void> {
     const t = this.byToken.get(tokenId);
     if (!t) return;
-    // Sessions that ended close on their own, whatever lianki.com says.
-    for (const [id, s] of [...t.socks])
-      if (s.until <= this.now()) {
-        this.drop(tokenId, id);
-        s.close();
-      }
+    // Ended sessions close on their own (the one-shot timer does it too).
+    this.expire(tokenId);
     if (!this.byToken.has(tokenId)) return;
     let ok = false;
     try {
@@ -319,8 +469,40 @@ export function createGate(d: GateDeps) {
   const now = d.now ?? Date.now;
   const log = d.log ?? (() => {});
   const fails = new Fails(now);
-  const verifyLimit = limiter(VERIFY_CONCURRENCY);
-  const verify = (t: string) => verifyLimit(() => d.verify(t));
+  const queue = new VerifyQueue({
+    concurrency: VERIFY_CONCURRENCY,
+    maxPending: VERIFY_MAX_PENDING,
+    perIp: VERIFY_PER_IP,
+    deadlineMs: VERIFY_DEADLINE_MS,
+    // Attempts in flight count towards the IP's limit, at entry and at its turn.
+    admit: (ip, others) => !fails.blocked(ip, others),
+  });
+  /** A token check through the queue: the verification, or why it was not run. */
+  async function verify(
+    t: string,
+    ip: string,
+    signal?: AbortSignal,
+  ): Promise<{ v: Verified | null } | { refused: QueueRefusal }> {
+    const r = await queue.run(
+      ip,
+      async () => {
+        try {
+          return await d.verify(t);
+        } catch {
+          return null;
+        }
+      },
+      signal,
+    );
+    return r.ok ? { v: r.value } : { refused: r.why };
+  }
+  const refusedAnswer = (why: QueueRefusal) =>
+    why === "ip"
+      ? respond(429, "429 — too many token attempts from here; wait a moment.\n", {
+          "retry-after": "60",
+        })
+      : (log(`gate: 503 (token check ${why})`),
+        respond(503, "503 — Lianki dev server: busy, try again.\n", { "retry-after": "5" }));
   /** token id → when it was last confirmed active. */
   const confirmed = new Map<string, number>();
   /** Bearer tokens (by sha-256) → their verification, briefly. */
@@ -385,12 +567,9 @@ export function createGate(d: GateDeps) {
     const form = new URLSearchParams((await req.body?.()) ?? "");
     const token = form.get("token") ?? form.get("handoff") ?? "";
     const next = safeNext(form.get("next"), d.publicHost);
-    let v: Verified | null = null;
-    try {
-      v = await verify(token.trim());
-    } catch {
-      v = null;
-    }
+    const r = await verify(token.trim(), ip, req.signal);
+    if ("refused" in r) return refusedAnswer(r.refused);
+    const v = r.v;
     if (!okFor(v) || !v) {
       fails.add(ip);
       return closed("handshake: bad, used, expired or revoked token");
@@ -430,16 +609,15 @@ export function createGate(d: GateDeps) {
       if (auth) {
         const m = /^Bearer\s+(lkdev_[A-Za-z0-9_-]+)$/.exec(auth.trim());
         if (!m) return closed("bad authorization");
-        if (fails.blocked(ip)) return respond(429, "429\n", { "retry-after": "600" });
         const key = new Bun.CryptoHasher("sha256").update(m[1]).digest("hex");
         const hit = bearer.get(key);
+        // A token verified moments ago is served at once, never queued.
         let v = hit && now() - hit.at < RECHECK_MS ? hit.v : null;
         if (!v) {
-          try {
-            v = await verify(m[1]);
-          } catch {
-            v = null;
-          }
+          if (fails.blocked(ip)) return respond(429, "429\n", { "retry-after": "600" });
+          const r = await verify(m[1], ip, req.signal);
+          if ("refused" in r) return refusedAnswer(r.refused);
+          v = r.v;
           if (v) bearer.set(key, { v, at: now() });
         }
         if (!okFor(v) || !v) {

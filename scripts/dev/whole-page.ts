@@ -475,11 +475,17 @@ async function serve() {
         res.writeHead(503, { "cache-control": "no-store" });
         return res.end();
       }
+      // The client going away drops its queued token check (VerifyQueue).
+      const gone = new AbortController();
+      res.on("close", () => {
+        if (!res.writableFinished) gone.abort();
+      });
       const g = await gate.handle({
         method: req.method ?? "GET",
         url: req.url ?? "/",
         headers: req.headers,
         body: () => readBody(req),
+        signal: gone.signal,
       });
       if (g.kind === "respond") {
         res.writeHead(g.status, g.headers);
@@ -527,9 +533,17 @@ async function serve() {
   }
 
   async function tunnelUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer) {
+    const gone = new AbortController();
+    socket.once("close", () => gone.abort());
     const g = gate
-      ? await gate.handle({ method: "GET", url: req.url ?? "/", headers: req.headers })
+      ? await gate.handle({
+          method: "GET",
+          url: req.url ?? "/",
+          headers: req.headers,
+          signal: gone.signal,
+        })
       : undefined;
+    if (gone.signal.aborted) return;
     if (!g || g.kind !== "forward") {
       socket.end("HTTP/1.1 503 Service Unavailable\r\n\r\n");
       return;

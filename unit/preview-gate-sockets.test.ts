@@ -15,7 +15,7 @@ import {
   SocketWatch,
   VERIFY_CONCURRENCY,
   createGate,
-  limiter,
+  VerifyQueue,
   safeNext,
   type GateResult,
   type Verified,
@@ -156,24 +156,156 @@ describe("no global lockout", () => {
     expect(rs.every((r) => status(r) === 303)).toBe(true);
     expect(peak).toBeLessThanOrEqual(VERIFY_CONCURRENCY);
   });
+});
 
-  test("limiter: runs everything, never more than n at once", async () => {
-    const lim = limiter(2);
-    let running = 0;
-    let peak = 0;
-    const out = await Promise.all(
-      [1, 2, 3, 4, 5].map((x) =>
-        lim(async () => {
-          running++;
-          peak = Math.max(peak, running);
-          await new Promise((r) => setTimeout(r, 2));
-          running--;
-          return x;
-        }),
-      ),
-    );
-    expect(out).toEqual([1, 2, 3, 4, 5]);
-    expect(peak).toBe(2);
+describe("the token-check queue (VerifyQueue)", () => {
+  /** A queue whose deadline timers the test fires by hand, and checks it releases by hand. */
+  function q(o: Partial<{ concurrency: number; maxPending: number; perIp: number }> = {}) {
+    const timers: { f: () => void; live: boolean }[] = [];
+    const fails = new Map<string, number>();
+    const queue = new VerifyQueue({
+      concurrency: o.concurrency ?? 1,
+      maxPending: o.maxPending ?? 3,
+      perIp: o.perIp ?? 2,
+      deadlineMs: 5000,
+      admit: (ip, others) => (fails.get(ip) ?? 0) + others < FAILS_PER_IP,
+      setTimer: (f) => {
+        const x = { f, live: true };
+        timers.push(x);
+        return x;
+      },
+      clearTimer: (x) => {
+        (x as { live: boolean }).live = false;
+      },
+    });
+    const gates: (() => void)[] = [];
+    let ran = 0;
+    const job = () =>
+      new Promise<string>((resolve) => {
+        ran++;
+        gates.push(() => resolve("done"));
+      });
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    return { queue, timers, fails, gates, job, ran: () => ran, flush };
+  }
+
+  test("a flood is refused at once past the bounds: 2 per IP, 32 (here 3) pending in all", async () => {
+    const h = q();
+    const first = h.queue.run("a", h.job); // running
+    const second = h.queue.run("a", h.job); // waiting
+    expect(await h.queue.run("a", h.job)).toEqual({ ok: false, why: "ip" }); // a third from "a"
+    const others = [h.queue.run("b", h.job), h.queue.run("c", h.job)];
+    expect(await h.queue.run("d", h.job)).toEqual({ ok: false, why: "busy" }); // 3 waiting
+    expect(h.queue.size()).toEqual({ running: 1, pending: 3 });
+    // Drain: everything that was admitted runs, one at a time.
+    for (let i = 0; i < 4; i++) {
+      await h.flush();
+      h.gates.shift()?.();
+    }
+    expect((await Promise.all([first, second, ...others])).every((r) => r.ok)).toBe(true);
+    expect(h.queue.size()).toEqual({ running: 0, pending: 0 });
+  });
+
+  test("a waiter whose client went away is dropped, and never runs", async () => {
+    const h = q();
+    const running = h.queue.run("a", h.job);
+    const ac = new AbortController();
+    const waiting = h.queue.run("b", h.job, ac.signal);
+    ac.abort();
+    expect(await waiting).toEqual({ ok: false, why: "aborted" });
+    expect(h.queue.size().pending).toBe(0);
+    expect(h.queue.count("b")).toBe(0);
+    await h.flush();
+    h.gates.shift()?.();
+    await running;
+    expect(h.ran()).toBe(1); // b's check never ran
+    // Already gone before it asked: not even queued.
+    const gone = new AbortController();
+    gone.abort();
+    expect(await h.queue.run("c", h.job, gone.signal)).toEqual({ ok: false, why: "aborted" });
+  });
+
+  test("a waiter past its deadline gets 503 (timeout) and never runs", async () => {
+    const h = q();
+    const running = h.queue.run("a", h.job);
+    const waiting = h.queue.run("b", h.job);
+    for (const t of h.timers.filter((x) => x.live)) t.f();
+    expect(await waiting).toEqual({ ok: false, why: "timeout" });
+    await h.flush();
+    h.gates.shift()?.();
+    await running;
+    expect(h.ran()).toBe(1);
+  });
+
+  test("the per-IP admission is checked again at its turn", async () => {
+    const h = q();
+    const running = h.queue.run("a", h.job);
+    const waiting = h.queue.run("b", h.job);
+    h.fails.set("b", FAILS_PER_IP); // b failed meanwhile, elsewhere
+    await h.flush();
+    h.gates.shift()?.();
+    await running;
+    expect(await waiting).toEqual({ ok: false, why: "ip" });
+    expect(h.ran()).toBe(1);
+  });
+
+  test("in-flight attempts count towards the IP's failure limit", async () => {
+    const h = q({ concurrency: 4, perIp: 4 });
+    h.fails.set("a", FAILS_PER_IP - 2);
+    const r1 = h.queue.run("a", h.job);
+    const r2 = h.queue.run("a", h.job);
+    // 8 failures + 2 in flight = the limit: the next is refused before it runs.
+    expect(await h.queue.run("a", h.job)).toEqual({ ok: false, why: "ip" });
+    await h.flush();
+    for (const g of h.gates.splice(0)) g();
+    await Promise.all([r1, r2]);
+  });
+
+  test("the gate: a flood of bad bearers on / never stalls the owner, and gets fast answers", async () => {
+    let calls = 0;
+    const slow: (() => void)[] = [];
+    const gate = createGate({
+      publicHost: HOST,
+      ownerEmail: OWNER,
+      sessionKey: KEY,
+      verify: (token) => {
+        calls++;
+        if (token === GOOD)
+          return Promise.resolve({
+            id: "t1",
+            email: OWNER,
+            kind: "token",
+            sessionUntilMs: Date.now() + 1e7,
+          } as Verified);
+        // lianki.com slow for the flood's tokens.
+        return new Promise((r) => slow.push(() => r(null)));
+      },
+      active: async (ids) => ids,
+    });
+    const at = (ip: string, auth: string) =>
+      gate.handle({
+        method: "GET",
+        url: "/",
+        headers: { host: HOST, "cf-connecting-ip": ip, authorization: auth },
+      });
+    const bad = (i: number) => `Bearer lkdev_${String(i).padStart(43, "x")}`;
+    // The owner's bearer, verified once before the flood.
+    expect(status(await at("192.0.2.1", `Bearer ${GOOD}`))).toBe("forward");
+    const flood: Promise<GateResult>[] = [];
+    for (let ip = 0; ip < 40; ip++)
+      for (let k = 0; k < 3; k++) flood.push(at(`198.51.100.${ip}`, bad(ip * 3 + k)));
+    // Past the bounds the flood is answered at once (429 per IP, 503 busy), not queued.
+    const settled = await Promise.race([
+      Promise.all(flood.slice(-10)),
+      new Promise((r) => setTimeout(() => r("hung"), 200)),
+    ]);
+    expect(settled).not.toBe("hung");
+    // The owner's cached bearer is served at once, behind no queue.
+    const t0 = performance.now();
+    expect(status(await at("192.0.2.1", `Bearer ${GOOD}`))).toBe("forward");
+    expect(performance.now() - t0).toBeLessThan(50);
+    expect(calls).toBeLessThanOrEqual(1 + VERIFY_CONCURRENCY);
+    for (const s of slow.splice(0)) s();
   });
 });
 
@@ -184,6 +316,7 @@ describe("upgraded sockets are watched (SocketWatch)", () => {
     let down = false;
     let checks = 0;
     const timers: { f: () => void; ms: number; live: boolean }[] = [];
+    const ends: { f: () => void; at: number; live: boolean }[] = [];
     const w = new SocketWatch({
       now: () => t,
       active: async (ids) => {
@@ -199,7 +332,23 @@ describe("upgraded sockets are watched (SocketWatch)", () => {
       stop: (x) => {
         (x as { live: boolean }).live = false;
       },
+      once: (f, ms) => {
+        const x = { f, at: t + ms, live: true };
+        ends.push(x);
+        return x;
+      },
+      cancel: (x) => {
+        (x as { live: boolean }).live = false;
+      },
     });
+    /** Move the clock and fire the one-shot end timers that came due (no re-check tick). */
+    const advanceTo = (ms: number) => {
+      t = ms;
+      for (const x of ends.filter((y) => y.live && y.at <= t)) {
+        x.live = false;
+        x.f();
+      }
+    };
     const tick = async () => {
       for (const x of timers.filter((y) => y.live)) x.f();
       await new Promise((r) => setTimeout(r, 0));
@@ -211,6 +360,8 @@ describe("upgraded sockets are watched (SocketWatch)", () => {
       tick,
       setDown: () => (down = true),
       advance: (ms: number) => (t += ms),
+      advanceTo,
+      ends,
       checks: () => checks,
       now: () => t,
     };
@@ -268,6 +419,39 @@ describe("upgraded sockets are watched (SocketWatch)", () => {
     await s.tick();
     expect(closed).toEqual(["short"]);
     expect(s.w.count().socks).toBe(1);
+  });
+
+  test("a session end closes its socket at that moment, not at the next re-check; then re-arms", () => {
+    const s = watchSetup();
+    const closed: string[] = [];
+    const t0 = s.now();
+    s.w.add("t1", t0 + 7_000, () => closed.push("7s"));
+    s.w.add("t1", t0 + 12_000, () => closed.push("12s"));
+    s.w.add("t1", t0 + 1e6, () => closed.push("long"));
+    // One one-shot timer per token, at the earliest end.
+    expect(s.ends.filter((x) => x.live).map((x) => x.at)).toEqual([t0 + 7_000]);
+    s.advanceTo(t0 + 6_999);
+    expect(closed).toEqual([]);
+    s.advanceTo(t0 + 7_000); // well before the 30 s re-check
+    expect(closed).toEqual(["7s"]);
+    // Re-armed for the next end.
+    expect(s.ends.filter((x) => x.live).map((x) => x.at)).toEqual([t0 + 12_000]);
+    s.advanceTo(t0 + 12_000);
+    expect(closed).toEqual(["7s", "12s"]);
+    expect(s.w.count()).toEqual({ socks: 1, timers: 1 });
+    expect(s.checks()).toBe(0); // no network for any of it
+  });
+
+  test("an earlier session joining moves the end timer forward; the last socket leaving cancels it", () => {
+    const s = watchSetup();
+    const t0 = s.now();
+    const un1 = s.w.add("t1", t0 + 20_000, () => {});
+    const un2 = s.w.add("t1", t0 + 5_000, () => {});
+    expect(s.ends.filter((x) => x.live).map((x) => x.at)).toEqual([t0 + 5_000]);
+    un2();
+    expect(s.ends.filter((x) => x.live).map((x) => x.at)).toEqual([t0 + 20_000]);
+    un1();
+    expect(s.ends.filter((x) => x.live)).toEqual([]);
   });
 
   test("already ended: closed at once, never watched", () => {
