@@ -23,7 +23,9 @@ Protocol (one socket per page, utterances one after another):
   server → client  {"t":"ready","engine":…,"model":…}
                    {"t":"partial","id":N,"text":…,"audioMs":…}
                    {"t":"final","id":N,"text":…,"lang":…,"model":…,"ms":decode ms,
-                    "audioMs":…,"endToFinalMs":…}
+                    "audioMs":…,"endToFinalMs":…[,"langAuto":…]}
+                   (langAuto: on a short utterance whose auto-detected language
+                   lost to a forced ja/zh reading; engines.LangPicker)
                    {"t":"error","id":N,"error":…}
 
 GET /health answers {"ok":true,"engine":…} (the same port, plain HTTP).
@@ -98,6 +100,14 @@ class Server:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.pool, self.engine.transcribe, audio)
 
+    async def decode_final(self, audio: np.ndarray):
+        """(text, lang, the auto language it replaced or None): engines with a final pass use it."""
+        fin = getattr(self.engine, "final", None)
+        if fin is None:
+            return (*(await self.decode(audio)), None)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self.pool, fin, audio)
+
     async def handler(self, ws):
         peer = ws.request.headers.get("origin", "?")
         log(f"page attached ({peer})")
@@ -129,25 +139,27 @@ class Server:
             t0 = time.perf_counter()
             audio = u.audio()
             try:
-                text, lang = await self.decode(audio)
+                text, lang, auto_lang = await self.decode_final(audio)
             except Exception as e:
                 await send({"t": "error", "id": u.id, "error": str(e)[:200]})
                 return
             ms = int((time.perf_counter() - t0) * 1000)
-            await send(
-                {
-                    "t": "final",
-                    "id": u.id,
-                    "text": text,
-                    "lang": lang,
-                    "model": self.engine.model,
-                    "ms": ms,
-                    "audioMs": int(len(audio) / RATE * 1000),
-                    "endToFinalMs": ms,
-                    "firstPartialMs": u.first_partial_ms,
-                }
-            )
-            log(f"final #{u.id}: {len(audio) / RATE:.1f}s audio, decode {ms} ms, {len(text)} chars")
+            msg = {
+                "t": "final",
+                "id": u.id,
+                "text": text,
+                "lang": lang,
+                "model": self.engine.model,
+                "ms": ms,
+                "audioMs": int(len(audio) / RATE * 1000),
+                "endToFinalMs": ms,
+                "firstPartialMs": u.first_partial_ms,
+            }
+            if auto_lang:
+                msg["langAuto"] = auto_lang  # what auto-detect said before the short-utterance pick
+            await send(msg)
+            picked = f", lang {auto_lang}->{lang}" if auto_lang else ""
+            log(f"final #{u.id}: {len(audio) / RATE:.1f}s audio, decode {ms} ms, {len(text)} chars{picked}")
 
         await send({"t": "ready", "engine": self.engine.name, "model": self.engine.model})
         try:
