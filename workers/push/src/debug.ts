@@ -118,7 +118,8 @@
  * hand) continues it; another device's is only offered (`resumable`, a tap).
  * A page silently rejoins its own session after a long gap only when it is
  * the same document coming back (`cont=1`: the screen was off); a tab closed
- * while hidden and restored, or one back from the bfcache, is offered it.
+ * while hidden and restored, or one back from the bfcache (`back=1`: it went
+ * through pagehide; never joined by itself, even right away), is offered it.
  * The sink the agent set up (`clipsink`: URL, write key, the owner's exact
  * origins) is what a tap reuses; pages get the key and the origins only
  * while their session records.
@@ -1723,6 +1724,8 @@ export class DebugHub {
     if (!isClipsId(device)) device = randomId();
     const hand = url.searchParams.get("hand");
     const cont = url.searchParams.get("cont") === "1";
+    // The page went through pagehide (a bfcache return): it is only ever offered its session.
+    const back = url.searchParams.get("back") === "1";
     const all = await this.clipRecords();
     const canStart = !!(await this.sinkConfig());
     let rec: ClipsRec | undefined;
@@ -1734,12 +1737,12 @@ export class DebugHub {
       !r.hidden && (r.goneAt === undefined || t - r.goneAt < CLIPS_GONE_MS);
     if (!rec) {
       const own = all.find((r) => r.sid === sid);
-      if (own && (cont || quick(own))) rec = own;
+      if (own && !back && (cont || quick(own))) rec = own;
     }
     // A page that said it is leaving counts as gone already (its close may come after this knock).
     const orphan = (r: ClipsRec) => this.clipPages(r.sid, ws).length === 0;
     // No token (an address typed by hand): this device's session that just lost its page.
-    if (!rec) {
+    if (!rec && !back) {
       const mine = all.filter((r) => r.device === device && r.sid !== sid && quick(r) && orphan(r));
       if (mine.length === 1) rec = mine[0];
     }

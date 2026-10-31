@@ -28,8 +28,7 @@ import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
 import {
   clipsConnectQuery,
-  clipsDeparted,
-  clipsRestored,
+  installClipsLifecycle,
   onClipsState,
   setClipsSender,
 } from "@lianki/debug-chat/clips-store";
@@ -447,12 +446,9 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           ws.send(JSON.stringify({ type: "clips-vis", state }));
       } catch {}
     };
-    // This document no longer resumes recording by itself (a bfcache return asks for a tap).
-    const leaving = () => {
-      vis("leaving");
-      clipsDeparted();
-    };
-    const restored = (e: PageTransitionEvent) => e.persisted && clipsRestored();
+    const leaving = () => vis("leaving");
+    // pagehide → departed, pageshow from the bfcache → off until a tap (clips-store.ts).
+    const unClips = installClipsLifecycle(window);
     const update = () => {
       vis(document.visibilityState === "visible" ? "visible" : "hidden");
       clearTimeout(idle);
@@ -466,13 +462,12 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
 
     update();
     window.addEventListener("pagehide", leaving);
-    window.addEventListener("pageshow", restored);
     document.addEventListener("visibilitychange", update);
     window.addEventListener(DEBUG_EVENT, update);
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener("pagehide", leaving);
-      window.removeEventListener("pageshow", restored);
+      unClips();
       document.removeEventListener("visibilitychange", update);
       window.removeEventListener(DEBUG_EVENT, update);
       window.removeEventListener("storage", onStorage);

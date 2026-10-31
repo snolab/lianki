@@ -99,7 +99,9 @@ let pendingHandoff: string | null = null;
 /**
  * This document went through pagehide (closed, navigated, or into the
  * bfcache). Once it has, it never claims to be "the same page coming back"
- * (`cont=1`): restored from the bfcache it is offered the session, by a tap.
+ * (`cont=1`), and it tells the hub so (`back=1`): the hub then never joins it
+ * to its session by itself, not even within the quick-reload window. Back
+ * from the bfcache, it is offered the session, by a tap.
  */
 let departed = false;
 
@@ -112,6 +114,25 @@ export function clipsDeparted() {
 export function clipsRestored() {
   const s = clipsLive().getState();
   if (s.hub?.on) clipsLive().setState({ hub: { ...s.hub, on: false }, deadline: null });
+}
+
+/**
+ * The document's lifecycle for recording: pagehide marks it departed;
+ * pageshow from the bfcache (`persisted`) turns recording off here until a
+ * tap. DebugEval installs it before its own socket handlers. Returns the
+ * uninstaller.
+ */
+export function installClipsLifecycle(win: Pick<Window, "addEventListener" | "removeEventListener"> = window) {
+  const hide = () => clipsDeparted();
+  const show = (e: Event) => {
+    if ((e as PageTransitionEvent).persisted) clipsRestored();
+  };
+  win.addEventListener("pagehide", hide);
+  win.addEventListener("pageshow", show);
+  return () => {
+    win.removeEventListener("pagehide", hide);
+    win.removeEventListener("pageshow", show);
+  };
 }
 
 /**
@@ -139,6 +160,8 @@ export function clipsConnectQuery(
   // The same document that was recording when its socket dropped (the screen went off).
   const st = s.getState();
   if (st.hub?.on && !departed && !st.stopPending) q.set("cont", "1");
+  // A document that went through pagehide (a bfcache return): never joined by itself.
+  if (departed) q.set("back", "1");
   return `&${q}`;
 }
 

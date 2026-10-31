@@ -20,12 +20,11 @@ import {
   clipPosted,
   clipsAction,
   clipsConnectQuery,
-  clipsDeparted,
   clipsDevice,
   clipsExpired,
   clipsLive,
-  clipsRestored,
   holdWakeLock,
+  installClipsLifecycle,
   onClipsState,
   postSessionClip,
   setClipsSender,
@@ -587,16 +586,45 @@ describe("the page's taps and the sink a tap offers", () => {
     setClipsSender(null);
   });
 
-  it("the same document coming back says so (cont=1); one that went through pagehide does not", () => {
-    onClipsState({ type: "clips", sid: SID_A, device: DEV_PHONE, on: true, since: 300 });
+  it("bfcache lifecycle: pagehide then pageshow(persisted) within 2 min is offered, not rejoined", async () => {
+    const s = setup();
+    const win = new EventTarget();
+    const unClips = installClipsLifecycle(win as never);
+    const pageEvent = (type: string, persisted: boolean) =>
+      Object.assign(new Event(type), { persisted }) as Event;
+    // The page records: its knock is what DebugEval sends (clipsConnectQuery).
+    const knock = (label = "/words pwa Android") =>
+      s.page(
+        Object.fromEntries(
+          new URLSearchParams(clipsConnectQuery({ href: "https://lianki.com/words" }, () => {})),
+        ),
+        label,
+      );
+    clipsLive().setState({ sid: SID_A, stopPending: false, stoppedSince: 0 });
+    clipsDevice().setState({ device: DEV_PHONE });
+    const p = await knock();
+    await s.msg(p, { type: "clips-on" });
+    onClipsState(p.clips());
+    expect(clipsLive().getState().hub?.on).toBe(true);
+    // Screen off and on, same document, no pagehide: it says cont=1 and rejoins by itself.
     const q1 = new URLSearchParams(clipsConnectQuery({ href: "https://lianki.com/" }, () => {}));
-    expect(q1.get("cont")).toBe("1");
-    clipsDeparted();
-    clipsRestored(); // back from the bfcache: nothing is posted until the hub says again
-    expect(clipsLive().getState().hub?.on).toBe(false);
-    onClipsState({ type: "clips", sid: SID_A, device: DEV_PHONE, on: true, since: 300 });
+    expect([q1.get("cont"), q1.get("back")]).toEqual(["1", null]);
+    // Into the bfcache: pagehide (DebugEval also sends "leaving"), the socket closes.
+    win.dispatchEvent(pageEvent("pagehide", true));
+    await s.msg(p, { type: "clips-vis", state: "leaving" });
+    await s.leave(p);
+    s.tick(10_000); // well within CLIPS_GONE_MS
+    win.dispatchEvent(pageEvent("pageshow", true));
+    expect(clipsLive().getState().hub?.on).toBe(false); // nothing posted meanwhile
+    const back = await knock();
     const q2 = new URLSearchParams(clipsConnectQuery({ href: "https://lianki.com/" }, () => {}));
-    expect(q2.get("cont")).toBeNull();
+    expect([q2.get("cont"), q2.get("back")]).toEqual([null, "1"]);
+    expect(back.clips()).toMatchObject({ on: false, sid: SID_A, resumable: [{ sid: SID_A }] });
+    expect(back.clips()?.sinkKey).toBeUndefined();
+    // Continue is one tap.
+    await s.msg(back, { type: "clips-adopt", sid: SID_A });
+    expect(back.clips()).toMatchObject({ on: true, sid: SID_A });
+    unClips();
   });
 
   it("a wake lock that is refused says so; one granted after Stop is let go", async () => {

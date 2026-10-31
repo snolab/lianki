@@ -767,8 +767,10 @@ widget previews). It is session-scoped, like sessionStorage. The rules are in
   went through pagehide), and recording resumes with no tap. The badge then
   shows "paused N min" for a minute. Other pages rejoin silently only after a
   quick reload or navigation (not hidden, within 2 min). That excludes a tab
-  closed while hidden and restored later, and a page back from the bfcache.
-  Those pages are offered "Continue recording" and need a tap.
+  closed while hidden and restored later, and a page back from the bfcache:
+  a document that went through pagehide knocks with `back=1`, and the hub
+  never joins it by itself, not even within those 2 min. Those pages are
+  offered "Continue recording" and need a tap.
 - **Stop is local first.** A tap on Stop turns recording off on the page at
   once (`stopPending`, kept in sessionStorage), whether or not the hub can be
   told. Each clip checks at send time that its session still records. The
