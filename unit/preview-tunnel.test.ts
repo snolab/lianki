@@ -30,9 +30,16 @@ case "$1" in
 esac
 `;
 // The gate's answer is STUB_GATE (default 503).
+// STUB_GATE: the status the gate answers (default 503); STUB_NO_MARKER: a 503
+// that does not come from the gate (no x-lianki-gate header).
 const CURL = `#!/bin/bash
 echo "curl $*" >> "$STUB_STATE/log"
-printf '%s' "\${STUB_GATE:-503}"
+case " $* " in
+  *" -D - "*) printf 'HTTP/1.1 %s Service Unavailable\\r\\n' "\${STUB_GATE:-503}"
+    [ -z "$STUB_NO_MARKER" ] && printf 'x-lianki-gate: 1\\r\\n'
+    printf '\\r\\n' ;;
+  *) printf '%s' "\${STUB_GATE:-503}" ;;
+esac
 `;
 const API = `#!/bin/bash
 echo "api $*" >> "$STUB_STATE/log"
@@ -105,6 +112,15 @@ describe("scripts/dev/preview-tunnel.sh", () => {
       const r = h.sh("up", { STUB_GATE: code });
       expect(r.code).toBe(3);
     }
+    expect(h.log()).not.toContain("api up");
+    expect(h.proc()).toBeNull();
+  });
+
+  test("a 503 that is not the gate's (no marker) is not taken for the gate", () => {
+    expect(h.sh("up", { STUB_NO_MARKER: "1" }).code).toBe(3);
+    expect(h.log()).toContain(
+      "-D - --max-time 5 -H Host: preview.lianki.com http://127.0.0.1:3104/_lk/up",
+    );
     expect(h.log()).not.toContain("api up");
     expect(h.proc()).toBeNull();
   });

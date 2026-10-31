@@ -62,6 +62,7 @@ import {
 } from "./whole-page-guard";
 import {
   SESSION_COOKIE,
+  SocketWatch,
   type Verified,
   createGate,
   downstreamHeaders,
@@ -206,6 +207,11 @@ async function serve() {
     });
     return r;
   };
+  const activeCall = async (ids: string[]) => {
+    const r = await verifyCall({ ids });
+    if (!r.ok) throw new Error(`verify answered ${r.status}`);
+    return ((await r.json()) as { active: string[] }).active;
+  };
   const gate = publicHost
     ? createGate({
         publicHost,
@@ -215,14 +221,15 @@ async function serve() {
           const r = await verifyCall({ token });
           return r.ok ? ((await r.json()) as Verified) : null;
         },
-        active: async (ids) => {
-          const r = await verifyCall({ ids });
-          if (!r.ok) throw new Error(`verify answered ${r.status}`);
-          return ((await r.json()) as { active: string[] }).active;
-        },
+        active: activeCall,
         log: (m) => console.error(`[whole-page] ${m}`),
       })
     : undefined;
+  // Upgraded sockets on the tunnel: re-checked per token, closed on revoke (preview-gate.ts).
+  const watch = new SocketWatch({
+    active: activeCall,
+    log: (m) => console.error(`[whole-page] ${m}`),
+  });
   const sessions = new Map<string, { owner: boolean; exp: number }>();
 
   async function ownerSession(cookie: string | undefined): Promise<boolean> {
@@ -537,7 +544,15 @@ async function serve() {
       socket.end("HTTP/1.1 503 Service Unavailable\r\n\r\n");
       return;
     }
-    pipeUpgrade(req, socket, head, url);
+    const up = pipeUpgrade(req, socket, head, url);
+    // Gated once at the upgrade is not enough: the socket lives on, so it is
+    // closed when its token is revoked, its re-check fails or its session ends.
+    const unwatch = watch.add(g.tokenId, g.untilMs, () => {
+      socket.destroy();
+      up.destroy();
+    });
+    socket.on("close", unwatch);
+    up.on("close", unwatch);
   }
 
   // Websockets: HMR (device cookie) to next dev; the hub's (device + owner) to
@@ -564,7 +579,7 @@ async function serve() {
       pipeUpgrade(req, socket, head, url);
     };
 
-  function pipeUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer, url: URL) {
+  function pipeUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer, url: URL): Duplex {
     const hub = isHubPath(url.pathname);
     const headers = hub ? hubHeaders(req.headers) : forwardHeaders(req.headers);
     const hubHost = new URL(HUB_ORIGIN).host;
@@ -585,6 +600,7 @@ async function serve() {
     });
     up.on("error", () => socket.destroy());
     socket.on("error", () => up.destroy());
+    return up;
   }
 
   // The LAN listener (never believes a Tailscale identity) and the loopback one

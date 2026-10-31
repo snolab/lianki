@@ -31,10 +31,16 @@ api() {
 has_proc() { "$OXMGR" status "$1" >/dev/null 2>&1; }
 
 # The gate answers 503 to a request without a token: up, and closed.
+# Both: a page without a token is 503, and /_lk/up carries the gate's own
+# marker (x-lianki-gate: 1), so a 503 from anything else (a crashed proxy, a
+# different server on the port) is not taken for the gate.
 gate_closed() {
-  local code
+  local code head
   code="$("$CURL" -s -o /dev/null -w '%{http_code}' --max-time 5 -H "Host: $HOST" "$GATE/" || true)"
-  [ "$code" = 503 ]
+  [ "$code" = 503 ] || return 1
+  head="$("$CURL" -s -o /dev/null -D - --max-time 5 -H "Host: $HOST" "$GATE/_lk/up" || true)"
+  printf '%s' "$head" | grep -q '^HTTP/[0-9.]* 503' || return 1
+  printf '%s' "$head" | grep -qi '^x-lianki-gate: 1'
 }
 
 up() {

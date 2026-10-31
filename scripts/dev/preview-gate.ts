@@ -29,10 +29,16 @@ export const SESSION_COOKIE = "__Host-lk_preview";
 export const SESSION_MAX_MS = 12 * 60 * 60 * 1000;
 /** A session's token id is re-checked with lianki.com at most this far apart. */
 export const RECHECK_MS = 30_000;
-/** Failed token checks per IP before 429, and in all. */
+/**
+ * Failed token checks per IP before 429. There is deliberately no global
+ * failure lockout: one would let anyone with a few IPs lock the owner out
+ * with no token at all. Load is bounded by VERIFY_CONCURRENCY instead, which
+ * queues and never refuses a credential that would verify.
+ */
 export const FAILS_PER_IP = 10;
-export const FAILS_ALL = 100;
 export const FAIL_WINDOW_MS = 10 * 60 * 1000;
+/** Token checks in flight to lianki.com at once; more wait their turn. */
+export const VERIFY_CONCURRENCY = 4;
 /** Where a handshake lands unless it names a path of its own. */
 export const DEFAULT_NEXT = "/__dev/landing";
 /** lianki.com, where the owner's profile menu posts handoffs from. */
@@ -68,7 +74,7 @@ export type GateRequest = {
 };
 export type GateResult =
   | { kind: "respond"; status: number; headers: Record<string, string | string[]>; body: string }
-  | { kind: "forward"; tokenId: string };
+  | { kind: "forward"; tokenId: string; untilMs: number };
 
 const NO_STORE = {
   "cache-control": "no-store, max-age=0",
@@ -135,13 +141,33 @@ export async function openSession(
   }
 }
 
-/** A same-site path to land on: "/…" but never "//…" or "/\\…" (another host). */
-export function safeNext(raw: string | null | undefined): string {
-  const v = (raw ?? "").trim();
-  if (!v.startsWith("/") || v.startsWith("//") || v.startsWith("/\\") || v.length > 2000)
+/**
+ * A same-origin path to land on, or DEFAULT_NEXT. Browsers drop TAB, LF and
+ * CR from a URL before parsing it, and read "\\" as "/", so "/\t/evil.example"
+ * or "/\\evil.example" would leave the site: any control character or
+ * backslash is refused outright. What is left must parse, against the
+ * preview origin, to that same origin and a path with a single leading "/".
+ */
+export function safeNext(
+  raw: string | null | undefined,
+  publicHost = "preview.lianki.com",
+): string {
+  const v = raw ?? "";
+  if (!v || v.length > 2000) return DEFAULT_NEXT;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f\\]/.test(v)) return DEFAULT_NEXT;
+  if (!v.startsWith("/") || v.startsWith("//")) return DEFAULT_NEXT;
+  const base = `https://${publicHost}`;
+  let u: URL;
+  try {
+    u = new URL(v, base);
+  } catch {
     return DEFAULT_NEXT;
-  if (/[\r\n]/.test(v)) return DEFAULT_NEXT;
-  return v;
+  }
+  if (u.origin !== base) return DEFAULT_NEXT;
+  const out = `${u.pathname}${u.search}${u.hash}`;
+  if (!out.startsWith("/") || out.startsWith("//")) return DEFAULT_NEXT;
+  return out;
 }
 
 /** The handshake page: takes the token from the #fragment (never sent anywhere), strips it, posts it. */
@@ -172,11 +198,120 @@ export class Fails {
     return v;
   }
   blocked(ip: string): boolean {
-    return this.recent(`ip:${ip}`).length >= FAILS_PER_IP || this.recent("all").length >= FAILS_ALL;
+    return this.recent(`ip:${ip}`).length >= FAILS_PER_IP;
   }
   add(ip: string) {
     this.recent(`ip:${ip}`).push(this.now());
-    this.recent("all").push(this.now());
+  }
+}
+
+/** At most `n` calls at once; the rest wait (nothing is refused). */
+export function limiter(n: number) {
+  let running = 0;
+  const waiting: (() => void)[] = [];
+  return async <T>(f: () => Promise<T>): Promise<T> => {
+    if (running >= n) await new Promise<void>((r) => waiting.push(r));
+    running++;
+    try {
+      return await f();
+    } finally {
+      running--;
+      waiting.shift()?.();
+    }
+  };
+}
+
+/**
+ * Upgraded sockets (HMR, the hub's chat) outlive the request that was gated,
+ * so they are watched: each is registered with its token id and session end,
+ * and ONE timer per token id re-checks that id with lianki.com every
+ * RECHECK_MS (the same cadence as page requests). A revoked token, a failed
+ * re-check (lianki.com unreachable) or an ended session closes every socket
+ * of that token. The timer stops with the token's last socket.
+ */
+export class SocketWatch {
+  private byToken = new Map<
+    string,
+    { timer: unknown; socks: Map<number, { until: number; close: () => void }> }
+  >();
+  private nextId = 1;
+  constructor(
+    private d: {
+      active: (ids: string[]) => Promise<string[]>;
+      now?: () => number;
+      every?: (f: () => void, ms: number) => unknown;
+      stop?: (t: unknown) => void;
+      log?: (msg: string) => void;
+    },
+  ) {}
+
+  private now() {
+    return (this.d.now ?? Date.now)();
+  }
+
+  /** Watch one socket; returns its unwatch (call it when the socket closes). */
+  add(tokenId: string, untilMs: number, close: () => void): () => void {
+    if (untilMs <= this.now()) {
+      close();
+      return () => {};
+    }
+    let t = this.byToken.get(tokenId);
+    if (!t) {
+      const every = this.d.every ?? ((f, ms) => setInterval(f, ms));
+      t = { timer: undefined, socks: new Map() };
+      this.byToken.set(tokenId, t);
+      t.timer = every(() => void this.check(tokenId), RECHECK_MS);
+    }
+    const id = this.nextId++;
+    t.socks.set(id, { until: untilMs, close });
+    return () => this.drop(tokenId, id);
+  }
+
+  /** Sockets watched now, and token timers running (for tests and logs). */
+  count() {
+    let socks = 0;
+    for (const t of this.byToken.values()) socks += t.socks.size;
+    return { socks, timers: this.byToken.size };
+  }
+
+  private drop(tokenId: string, id: number) {
+    const t = this.byToken.get(tokenId);
+    if (!t) return;
+    t.socks.delete(id);
+    if (!t.socks.size) {
+      (this.d.stop ?? ((x) => clearInterval(x as ReturnType<typeof setInterval>)))(t.timer);
+      this.byToken.delete(tokenId);
+    }
+  }
+
+  /** Close every socket of a token (revoked, or the re-check failed). */
+  closeToken(tokenId: string, why: string) {
+    const t = this.byToken.get(tokenId);
+    if (!t) return;
+    this.d.log?.(`gate: closing ${t.socks.size} socket(s) of ${tokenId} (${why})`);
+    for (const [id, s] of [...t.socks]) {
+      this.drop(tokenId, id);
+      s.close();
+    }
+  }
+
+  async check(tokenId: string): Promise<void> {
+    const t = this.byToken.get(tokenId);
+    if (!t) return;
+    // Sessions that ended close on their own, whatever lianki.com says.
+    for (const [id, s] of [...t.socks])
+      if (s.until <= this.now()) {
+        this.drop(tokenId, id);
+        s.close();
+      }
+    if (!this.byToken.has(tokenId)) return;
+    let ok = false;
+    try {
+      ok = (await this.d.active([tokenId])).includes(tokenId);
+    } catch {
+      ok = false; // fail closed
+    }
+    if (!ok) this.closeToken(tokenId, "revoked, expired or not re-checked");
   }
 }
 
@@ -184,6 +319,8 @@ export function createGate(d: GateDeps) {
   const now = d.now ?? Date.now;
   const log = d.log ?? (() => {});
   const fails = new Fails(now);
+  const verifyLimit = limiter(VERIFY_CONCURRENCY);
+  const verify = (t: string) => verifyLimit(() => d.verify(t));
   /** token id → when it was last confirmed active. */
   const confirmed = new Map<string, number>();
   /** Bearer tokens (by sha-256) → their verification, briefly. */
@@ -247,10 +384,10 @@ export function createGate(d: GateDeps) {
       });
     const form = new URLSearchParams((await req.body?.()) ?? "");
     const token = form.get("token") ?? form.get("handoff") ?? "";
-    const next = safeNext(form.get("next"));
+    const next = safeNext(form.get("next"), d.publicHost);
     let v: Verified | null = null;
     try {
-      v = await d.verify(token.trim());
+      v = await verify(token.trim());
     } catch {
       v = null;
     }
@@ -299,7 +436,7 @@ export function createGate(d: GateDeps) {
         let v = hit && now() - hit.at < RECHECK_MS ? hit.v : null;
         if (!v) {
           try {
-            v = await d.verify(m[1]);
+            v = await verify(m[1]);
           } catch {
             v = null;
           }
@@ -311,7 +448,7 @@ export function createGate(d: GateDeps) {
           return closed("bearer: bad token");
         }
         if (v.sessionUntilMs <= now()) return closed("bearer: expired");
-        return { kind: "forward", tokenId: v.id };
+        return { kind: "forward", tokenId: v.id, untilMs: v.sessionUntilMs };
       }
 
       const s = await openSession(
@@ -321,7 +458,7 @@ export function createGate(d: GateDeps) {
       );
       if (!s) return closed("no session");
       if (!(await stillActive(s.tid))) return closed("token revoked or expired");
-      return { kind: "forward", tokenId: s.tid };
+      return { kind: "forward", tokenId: s.tid, untilMs: s.exp };
     },
   };
 }

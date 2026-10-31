@@ -132,14 +132,27 @@ token cannot be tested from anywhere else.
   re-checks a session's token id with lianki.com at most 30 s apart, so
   **revoking the token ends its sessions** within 30 s; lianki.com
   unreachable means closed, not open.
+- **Upgraded sockets** (HMR, the hub's chat on `/api/version/*`) are gated
+  at the upgrade and then **watched** (`SocketWatch`): each is registered
+  with its token id and session end, one timer per token id re-checks it
+  every 30 s (no extra polling: the same cadence), and a revoked token, a
+  failed re-check or an ended session closes every socket of that token.
+  The timer stops with the token's last socket.
+- **Where a handshake lands** (`next`): only a path on this origin. Any
+  control character (TAB, LF, CR, NUL, DEL) or backslash is refused, since
+  browsers drop the first three and read `\` as `/` (`/%09/evil.example`
+  would otherwise leave the site); what is left must parse to this origin
+  with a single leading `/`. Otherwise `/__dev/landing`.
 - **Auto sign-in**: past the gate, the guard adds his owner session
   server-side, as for his tailnet devices. The browser never holds a
   better-auth cookie of its own here (incoming ones are dropped, outgoing
   `Set-Cookie`s for it are stripped), so the token is the only key.
   Sign-out on the tunnel ends the tunnel session only.
-- **Limits**: 10 failed tokens per IP (and 100 in all) per 10 minutes →
-  429; Cloudflare's shared rate rule counts `/_lk/*` on this host
-  (`scripts/ops/tunnel-rate-rule.ts`).
+- **Limits**: 10 failed tokens per IP per 10 minutes → 429. No global
+  lockout: one would let anyone with a few IPs lock the owner out without a
+  token. Load is bounded instead by at most 4 token checks in flight; more
+  wait their turn and are never refused. Cloudflare's shared rate rule
+  counts `/_lk/*` on this host (`scripts/ops/tunnel-rate-rule.ts`).
 - Upstream, Host/Origin/Referer become the dev server's own origin; the
   gate cookie, `Authorization`, `cf-*`, `x-forwarded-*`, Tailscale and the
   guard's secret headers are removed.
@@ -160,7 +173,7 @@ scripts/dev/preview-tunnel.sh up       # tunnel + ingress + DNS + rate rule (API
 scripts/dev/preview-tunnel.sh status   # gate 503 locally and through https://preview.lianki.com
 ```
 
-`up` refuses unless the gate already answers 503 on `127.0.0.1:3104`, so the
+`up` refuses unless the gate already answers 503 on `127.0.0.1:3104`, with its own `x-lianki-gate` marker on `/_lk/up`, so the
 tunnel can only ever reach the gate. The tunnel is remotely managed and made
 through the API (`scripts/ops/cf-tunnel.ts`): no `cloudflared tunnel login`,
 no cert.pem, no credentials JSON. Its run token is written to
