@@ -22,6 +22,7 @@
 // the CPU to read closer to a phone.
 import { chromium, devices } from "playwright";
 import { writeFileSync } from "node:fs";
+import { launchSilent, newSilentContext } from "./silent.mjs";
 
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 const MINUTES = Number(process.env.SOAK_MIN || 16);
@@ -48,10 +49,10 @@ function silentWav(seconds = 0.4, rate = 8000) {
 }
 const WAV = silentWav();
 
-const browser = await chromium.launch({
+const browser = await launchSilent(chromium, {
   args: ["--mute-audio", "--autoplay-policy=no-user-gesture-required"],
 });
-const ctx = await browser.newContext({ ...devices["iPhone 13"] });
+const ctx = await newSilentContext(browser, { ...devices["iPhone 13"] });
 await ctx.addInitScript(() => {
   localStorage.setItem("lk:first-run", "account");
   // Pending timers and frames, and blob URLs, counted live.

@@ -10,6 +10,8 @@
  * on the next one after it closes.
  */
 
+import { reportPageError } from "./page-errors";
+
 /** localStorage: the local STT server's WebSocket URL (owner pages only). */
 export const LOCAL_STT_KEY = "lk:debug-local-stt";
 /** No final within this long after the end: fall back. */
@@ -201,11 +203,17 @@ export function createLocalStt(
       }
     };
     s.onerror = () => {};
-    s.onclose = () => {
+    s.onclose = (e) => {
       clearTimer(connectTimer);
       if (ws === s) {
         ws = null;
         d.log?.({ ev: "local-stt", state: ready ? "closed" : "unreachable", url });
+        // Not closed by us: the agent hears it (page-errors.ts; owner pages only).
+        const code = (e as { code?: unknown } | undefined)?.code;
+        reportPageError({
+          kind: "socket",
+          message: `local STT socket ${ready ? "closed" : "unreachable"}${typeof code === "number" ? ` (${code})` : ""}`,
+        });
         ready = false;
         setSt("down");
       }

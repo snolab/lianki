@@ -347,6 +347,8 @@ type Chat = {
     taskPath?: string;
     agentId?: string;
     to?: string;
+    quiet?: true;
+    loud?: true;
   };
 };
 const chats = (ws: FakeSocket) =>
@@ -383,6 +385,33 @@ describe("DebugHub chat", () => {
     await msg(c, { type: "say", text: "on it" });
     expect(chats(p).at(-1)).toMatchObject({ from: "agent", label: "main lane", text: "on it" });
     expect(c.last("said")?.id).toBe(chats(p).at(-1)?.id as string);
+  });
+
+  it("say --quiet / --loud: the hub keeps the flag (true only) and forwards it, live and in history", async () => {
+    const { hub, page, controller, msg, pairOf } = setup();
+    const p = page();
+    const c = controller("main lane");
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    await msg(c, { type: "say", text: "deployed", quiet: true });
+    await msg(c, { type: "say", text: "approve?", loud: true });
+    await msg(c, { type: "say", text: "plain" });
+    // Not booleans: dropped. Both: loud wins (it may need his answer).
+    await msg(c, { type: "say", text: "junk", quiet: "yes", loud: 1 });
+    await msg(c, { type: "say", text: "both", quiet: true, loud: true });
+    const lines = chats(p).slice(-5);
+    expect(lines.map((m) => [m.text, m.quiet, m.loud])).toEqual([
+      ["deployed", true, undefined],
+      ["approve?", undefined, true],
+      ["plain", undefined, undefined],
+      ["junk", undefined, undefined],
+      ["both", undefined, true],
+    ]);
+    for (const m of lines.slice(2)) expect(m).not.toHaveProperty("quiet");
+    const again = page();
+    await hub.history();
+    const h = again.last("history") as { messages: Record<string, unknown>[] };
+    expect(h.messages.find((m) => m.text === "deployed")).toMatchObject({ quiet: true });
+    expect(h.messages.find((m) => m.text === "approve?")).toMatchObject({ loud: true });
   });
 
   it("an unapproved controller cannot say", async () => {
@@ -2552,5 +2581,86 @@ describe("DebugHub agent edits of voice messages", () => {
     await s.msg(owner, voice("v1", "hi"));
     await s.msg(ws, { type: "edit", id: "v1", text: "Hi." });
     expect((owner.last("edited") as { edited: { by: string } }).edited.by).toBe("chat-lane");
+  });
+});
+
+describe("DebugHub page errors", () => {
+  const err = (over: Record<string, unknown> = {}) => ({
+    type: "page-error",
+    kind: "fetch",
+    message: "GET /api/words/tts 503",
+    path: "/api/words/tts?text=secret",
+    status: 503,
+    at: 999,
+    rev: "abc123",
+    label: "/forged",
+    ...over,
+  });
+  const errors = (ws: FakeSocket) => ws.sent.filter((m) => m.type === "page-error");
+
+  it("an owner page's error reaches the approved listeners only, with the hub's label, never stored", async () => {
+    const s = setup();
+    const owner = s.page();
+    const other = s.page("/list Macintosh");
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    const waiting = s.controller("stranger");
+    const before = [...s.storage.store.keys()].sort();
+    await s.msg(owner, err());
+    expect(errors(c)).toEqual([
+      {
+        type: "page-error",
+        kind: "fetch",
+        message: "GET /api/words/tts 503",
+        path: "/api/words/tts",
+        status: 503,
+        at: 999,
+        rev: "abc123",
+        label: "/words pwa iPhone",
+        hubAt: 1_000_000,
+      },
+    ]);
+    expect(errors(waiting)).toEqual([]);
+    expect(errors(owner)).toEqual([]);
+    expect(errors(other)).toEqual([]);
+    expect([...s.storage.store.keys()].sort()).toEqual(before);
+  });
+
+  it("a friend's page-error is dropped, even with the agent listening", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    const f = await s.friend();
+    await s.msg(f, err());
+    expect(errors(c)).toEqual([]);
+  });
+
+  it("a friend's preview pairing never hears the owner's page errors", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    const token = c.last("approved")?.token as string;
+    const f = await s.friend("f1", "f1@x.com");
+    const preview = await s.forFriend(token, "f1@x.com");
+    await s.msg(f, { type: "allow", pair: s.pairOf(f) });
+    await s.msg(owner, err());
+    expect(errors(c)).toHaveLength(1);
+    expect(errors(preview)).toEqual([]);
+  });
+
+  it("a malformed page-error (unknown kind, no message) is dropped; long fields are capped", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    await s.msg(owner, err({ kind: "chat" }));
+    await s.msg(owner, err({ message: "   " }));
+    await s.msg(owner, err({ message: "x".repeat(5000), stack: "s".repeat(9000) }));
+    const got = errors(c) as { message: string; stack: string }[];
+    expect(got).toHaveLength(1);
+    expect(got[0].message.length).toBe(500);
+    expect(got[0].stack.length).toBe(1500);
   });
 });

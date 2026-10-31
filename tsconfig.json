@@ -25,7 +25,8 @@
       // see the @lianki/core/watchStats import in src/lianki.user.ts.
       "@lianki/core/*": ["./packages/core/src/*.ts"],
       "@lianki/debug-chat/*": ["./packages/debug-chat/src/*"],
-      "@lianki/ui-state": ["./packages/ui-state/src/index.ts"]
+      "@lianki/ui-state": ["./packages/ui-state/src/index.ts"],
+      "@lianki/ui-state/account": ["./packages/ui-state/src/account.ts"]
     },
     "target": "ES2017"
   },

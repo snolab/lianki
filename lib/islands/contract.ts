@@ -26,8 +26,12 @@ type Static<T extends StaticProps> = T;
 
 /** Each island's static props (`Record<string, never>` for none). */
 export interface IslandProps {
-  /** The name beside the seal in the top bar (app/components/BrandName.tsx). */
-  "header.brand": Static<{ appName: string }>;
+  /**
+   * The wordmark beside the seal in the top bar (app/components/BrandName.tsx,
+   * lib/brand.ts): 鏈記 (lianki.com) for zh/ja/ko, Lianki.com elsewhere.
+   * `locale` picks the form; `appName`, the localized name, is its tooltip.
+   */
+  "header.brand": Static<{ appName: string; locale: string }>;
   /*
    * The /words swipe's UI over its headless core (docs/swipe-core.md). Each
    * reads the core's contexts (lib/words/swipe-core.tsx, a shared module) at
@@ -59,7 +63,7 @@ export type IslandName = keyof IslandProps;
 
 /** Each island's contract version: bump it when its props change shape. */
 export const ISLAND_VERSIONS: { readonly [K in IslandName]: number } = {
-  "header.brand": 1,
+  "header.brand": 2,
   "words.swipeCard": 1,
   "words.swipeCue": 1,
   "words.swipeGrades": 2,

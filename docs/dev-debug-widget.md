@@ -77,6 +77,11 @@ bun scripts/dev/debug-widget-server.ts --port 5180 --no-tunnel
 bun scripts/dev/debug-widget-server.ts --port 5180 --tunnel lianki-dev-mac --origin https://dev-mac.lianki.com
 ```
 
+Pages on other origins (e.g. the whole-page dev server, docs/dev-whole-page.md) are
+answered cross-origin only when listed exactly in `LIANKI_DEV_ORIGINS` (comma-separated
+https origins, no wildcards), for both this server and `scripts/dev/islands-server.ts`:
+`LIANKI_DEV_ORIGINS=https://<mac>.<tailnet>.ts.net:8443 bun scripts/dev/debug-widget-server.ts …`.
+
 Then, on the owner's page in debug mode, run this once in the console, or
 with `bun scripts/dev/eval.ts`:
 
@@ -222,14 +227,14 @@ routing is tested in `unit/debug-hub.test.ts`, "DebugHub node paths".
 **Fields.** Every field is optional, and lines and listeners without them
 work as before.
 
-| Field              | On                          | Meaning                                                          |
-| ------------------ | --------------------------- | ---------------------------------------------------------------- |
-| `taskPath`         | an agent's line             | the sender's node, e.g. `/words/prefetch`                        |
-| `agentId`          | an agent's line             | the node's assignee, e.g. `prefetcher`                           |
-| `to`               | an owner's or agent's line  | the node it is addressed to; absent or `/` = the main thread     |
-| `observed`         | the `chat` envelope         | delivered to an ancestor of `to`, not to `to` itself             |
-| `?node=`/`?agent=` | the controller's socket URL | the node a listener subscribes at, and its assignee              |
-| `nodes`            | the pages' `state`          | the listeners' nodes (never `/`), for the input's completions    |
+| Field              | On                          | Meaning                                                       |
+| ------------------ | --------------------------- | ------------------------------------------------------------- |
+| `taskPath`         | an agent's line             | the sender's node, e.g. `/words/prefetch`                     |
+| `agentId`          | an agent's line             | the node's assignee, e.g. `prefetcher`                        |
+| `to`               | an owner's or agent's line  | the node it is addressed to; absent or `/` = the main thread  |
+| `observed`         | the `chat` envelope         | delivered to an ancestor of `to`, not to `to` itself          |
+| `?node=`/`?agent=` | the controller's socket URL | the node a listener subscribes at, and its assignee           |
+| `nodes`            | the pages' `state`          | the listeners' nodes (never `/`), for the input's completions |
 
 The hub validates every path the same way: it trims it, splits it on `/` or
 `›`, accepts only the characters `A–Z a–z 0–9 . _ ~ -` in each segment, refuses
@@ -366,6 +371,63 @@ the raw STT text, muted; another tap goes back. The icon is one slot:
 `POLISHED_ICON` in `packages/debug-chat/src/icons.tsx`, or the widget's
 `polishedIcon` prop.
 
+## Quiet lines and quiet hours
+
+Agent lines must not wake the owner (owner, 2026-10-31). Every agent line is
+shown; what changes is whether it is also read aloud.
+
+**Which `say` to use** (agents, read this):
+
+| Line                                                                     | Command                   | Read aloud                                   |
+| ------------------------------------------------------------------------ | ------------------------- | -------------------------------------------- |
+| FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                                        |
+| the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, but not in his quiet hours              |
+| urgent, or it needs his confirmation now                                 | `eval.ts say --loud "…"`  | yes, even in quiet hours, unless he muted it |
+| an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | counts as loud                               |
+
+Default to `--quiet` whenever the line is not a reply to him. `--loud` is
+rare: something broke in production, or a decision blocks you and he is
+expected to be awake for it. `--quiet` and `--loud` together are refused.
+
+**Wire.** `{type:"say", text, quiet?: true, loud?: true}`. The hub
+(`parseControllerMessage` in `lib/dev-eval.ts`) keeps each only as boolean
+`true`, drops anything else, and keeps only `loud` when both are sent. It
+copies them onto the `ChatMessage`, so pages get them live and in history,
+and logs them in `debug.say`. An older hub drops them, and the line is read
+as a plain `say`.
+
+**On the page** (`packages/debug-chat/src/quiet-hours.ts`, gated in
+`voice.ts` `gateVoice`). In order:
+
+1. **Hidden page or locked screen** (`document.visibilityState` "hidden"):
+   never spoken, not even a loud line. Hiding the page also stops a reading
+   under way.
+2. **Loud** (`loud: true`, or a line with an `ask`): read by the usual rules
+   (mic on, or the speaker toggle on and the input focused). His mute (the
+   speaker toggle, with the mic off) still silences it.
+3. **Quiet** (`quiet: true`): never spoken, even with the mic on.
+4. **Quiet hours**: nothing else is spoken. A device-local setting,
+   `lk:agent-quiet-hours` = `{on, from, to}`, default on, 23:00–08:00 in the
+   device's own time zone; a window whose end is before its start wraps past
+   midnight. Never synced (docs/prefs-sync.md): his phone and his Mac may
+   keep different hours. It is set on /words → Settings, debug mode only
+   ("Quiet hours", From, To).
+
+A line kept silent is logged as `{ev:"voice-silent", why}` (hidden, quiet,
+quiet-hours) on the voice session's log. Lines carry `data-volume="quiet"` or
+`"loud"` in the log, for tests; they look the same.
+
+**Hot-loadable.** The gate wraps `reply` on the shared voice session
+(`globalThis.__lkVoice`), so a hot-loaded widget applies quiet hours and the
+hidden rule even under a deployed DebugEval that still calls
+`speakReply(text)` without the line. Quiet and loud need both the hub
+change (lianki-push) and the DebugEval that passes the line
+(`speakReply(m.text, m)`); until then every line is treated as plain.
+
+Tests: `unit/quiet-hours.test.ts` (the window, past midnight; the setting;
+the order above; the gate), `unit/debug-hub.test.ts` ("say --quiet / --loud"),
+`unit/dev-eval.test.ts`, `unit/node-args.test.ts`.
+
 ## The state tree, live
 
 The chat's Tree view (menu → Tree; `docs/state-tree.md`) normally shows the
@@ -423,6 +485,68 @@ Not kept, on purpose:
 made Bun wrap the React shim as CommonJS with its ESM exports empty. So the
 shim (`hostModule` in `scripts/dev/debug-widget-build.ts`) is now CommonJS
 outright: `module.exports = globalThis.__lkReact.React`.
+
+## Page errors
+
+The owner's pages report their own errors to the agent, so it can watch them
+and fix them without being told (owner's order, 2026-10-31).
+`packages/debug-chat/src/page-errors.ts` hooks the page, and
+`app/components/DebugEval.tsx` wires it to the debug socket.
+
+**What is caught:** window `error` and `unhandledrejection`; every
+`console.error` (still logged as usual); same-origin `/api/*` fetches
+answering ≥ 400 (`fetch`, e.g. `/api/words/tts` 503, `/api/debug/stt` 502)
+or failing on the network (`network`; an abort is not an error);
+`<audio>`/`<video>`/`<img>`/`<source>` load errors (`media`, listened for in
+the capture phase on `window`); and the local STT socket closing on its own
+(`socket`, reported by `local-stt.ts` through `reportPageError`).
+
+**Who reports:** the hooks go in when the debug socket is first wanted
+(debug mode on), and errors are queued (at most 10) until the hub's `state`
+arrives with no `friend-status` first — the owner's page. Then the queue,
+and every later error, goes over the socket. A friend's page drops its queue
+and removes the hooks at `friend-status`; ordinary users never open the
+socket, so never hook. The hub ignores a page-error from a friend's page
+anyway. Debug mode off removes the hooks.
+
+**Wire.** Page → hub `{type:"page-error", kind, message, stack?, path,
+status?, at, rev?}` — `kind` one of error, rejection, console, fetch,
+network, media, socket; `path` the page's (or the failed request's) path,
+never a query; `rev` the build (`NEXT_PUBLIC_BUILD_ID`, `dev` under next
+dev). The hub (`workers/push/src/debug.ts`) adds the socket's own `label`
+(the page's path and user agent; a label in the message is ignored) and
+`hubAt`, and sends it live to the owner-approved listeners only — not
+heartbeat sockets, not a friend's preview pairing, never a page. It is never
+stored. Log: `debug.page-error` (kind, path, status, first 80 characters).
+
+**Scrubbing (on the page, before anything is kept):** emails →
+`<email>`; `Bearer …`/JWTs → `<token>`; `token=`/`password:`/`cookie`/
+`session`/`api_key`/`sig`… values → `<redacted>`; cookie strings →
+`<cookie>`; query strings and fragments → `?…`; opaque strings of 32+
+letters and digits → `<token>`. Text the user typed or said is cut out as
+`<typed>`: the current values of every input, textarea and contenteditable,
+and the chat's latest 50 lines (owner, friend and agent; so chat and STT
+text never leave). Arguments to `console.error` that are objects are never
+serialized (`[Object]`, `[Array]`); Errors become `Name: message`. Message
+≤ 500 characters, stack ≤ 12 lines and 1500 characters (the hub caps the
+same).
+
+**Dedupe and rate.** The same kind + message + path is sent once per 5
+minutes; at most 10 errors a minute go out (the rest are dropped, and are
+not even scrubbed).
+
+**Listening.** `eval.ts chat` prints them as `{"type":"page-error","kind",
+"message","stack","path","status","label","rev","at"}` lines (and appends
+them to `--out`). A dedicated watcher, printing only those:
+
+```bash
+# In the background (run_in_background); the main lane watches the file with Monitor.
+bun scripts/dev/eval.ts errors --no-pair --out /tmp/lianki-page-errors.jsonl
+```
+
+It holds the saved chat grant like `chat` (same reconnects, no polling);
+`--no-pair` never asks the owner — with no grant it prints
+`{"type":"error"}` and waits for one to be saved.
 
 ## Testing
 

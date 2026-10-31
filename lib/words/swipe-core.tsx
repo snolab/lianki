@@ -72,7 +72,8 @@ export const feelPrefsStore = createUiStore(
   "swipe-feel",
   1,
   { preset: DEFAULT_PREFS.preset, tweaks: DEFAULT_PREFS.tweaks },
-  { storage: "local", clean: cleanPrefs },
+  // Synced with the account (docs/prefs-sync.md): Heavy swipe and its tuning.
+  { storage: "account", clean: cleanPrefs },
 );
 /** The tuner panel open or not: UI state of this tab (sessionStorage, `lk:ui:swipe-tuner`). */
 export const tunerStore = createUiStore("swipe-tuner", 1, { open: false }, { storage: "session" });

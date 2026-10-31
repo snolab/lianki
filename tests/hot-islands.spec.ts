@@ -37,7 +37,7 @@ const freePort = () =>
 const entrySource = (body: string) => `
 import { useState } from "react";
 export const ISLANDS_API = 1;
-export const versions = { "header.brand": 1 };
+export const versions = { "header.brand": 2 };
 function RemoteBrand({ appName }) {
   const [n, setN] = useState(0);
   ${body}

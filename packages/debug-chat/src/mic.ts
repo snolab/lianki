@@ -256,6 +256,7 @@ export const HALLUCINATIONS = [
   "謝謝您的觀看",
   "感谢您的观看",
   "感謝您的觀看",
+  // "字幕志愿者 李宗盛" and the like: a subtitle credit (never 李宗盛 alone, a real name).
   "字幕志愿者…",
   "字幕志願者…",
   // Our own route's STT hint prompt, which cloud Whisper reads back as speech.
@@ -842,7 +843,7 @@ export function createMic(d: {
       .then(
         (heard) => {
           const text = stripHallucinationTail(heard);
-          if (text !== heard) d.log?.({ ev: "stt-hallucination-tail", cut: heard.slice(text.length, text.length + 80) });
+          if (text !== heard) d.log?.({ ev: "stt-hallucination-tail", text: heard.slice(text.length).slice(0, 80) });
           const drop = isHallucination(text, ms, prob);
           if (drop) d.log?.({ ev: "stt-hallucination", text: text.slice(0, 80), ms, prob });
           d.timing?.(seq, { t_sttDone: now(), dropped: drop || !text.trim() });
