@@ -77,6 +77,12 @@ for (const scheme of ["light", "dark"]) {
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
+  // React reports a bad child (a function or an object rendered as text) with
+  // console.error, not as a page error: "Functions are not valid as a React child".
+  page.on("console", (m) => {
+    if (m.type() === "error" && /not valid as a React child/.test(m.text()))
+      errors.push(m.text().slice(0, 300));
+  });
   // Viewport-size shots (what the phone shows), scrolled to `target` when given:
   // a full-page capture would paint the fixed bottom bar mid-page.
   const shot = async (name, target) => {
@@ -184,6 +190,26 @@ for (const scheme of ["light", "dark"]) {
     await page.getByRole("radio", { name: "Android" }).click();
     check(await page.getByText("press Back").isVisible(), "Android toggle shows the Android steps");
     await shot("android");
+  }
+
+  // Every locale renders every string: no empty line, no function child.
+  if (scheme === "light") {
+    const LOCALES = "en zh hi es fr ar bn pt ru ur id de ja sw mr ko".split(" ");
+    for (const lang of LOCALES) {
+      const before = errors.length;
+      await page.goto(`/review?lang=${lang}`, { waitUntil: "networkidle" });
+      await page.locator("[data-testid=review-bookmarklet] summary").click();
+      const blank = await page.evaluate(
+        () =>
+          [
+            ...document.querySelectorAll(
+              "[data-testid=review-bookmarklet] li, [data-testid=review-bookmarklet] p, footer a, [data-testid=review-tutorial] li",
+            ),
+          ].filter((el) => !el.textContent?.trim()).length,
+      );
+      check(blank === 0 && errors.length === before, `${lang}: every /review string renders`);
+    }
+    await page.goto("/review?lang=en", { waitUntil: "networkidle" });
   }
 
   check(errors.length === 0, `${scheme}: no page errors ${errors.join(" | ")}`);
