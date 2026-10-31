@@ -150,6 +150,97 @@ export function latencyRows(
   };
 }
 
+/** The labels of the two-line latency readout (ui-strings.ts). */
+export type LatencyLineLabels = Pick<
+  UiStrings,
+  | "latSpeechLine"
+  | "latReplyLine"
+  | "latTotal"
+  | "latPause"
+  | "latRecog"
+  | "latLocal"
+  | "latCloud"
+  | "latSend"
+  | "latHub"
+  | "latToAgent"
+  | "latAgent"
+  | "latVoiceStart"
+  | "latOther"
+>;
+type Group = { total: string; parts: [string, string][] };
+/** An "other" part shows the rest once it reaches this (so the parts add up). */
+export const OTHER_MIN_MS = 50;
+
+/**
+ * The menu's latency, as two lines whose parts each add up to their total:
+ * - speech → text (sent): the pause detection, the recognition (local or
+ *   cloud), the page's own steps (encode, wait, send);
+ * - the reply: to the agent (its listener's busy beat, else the hub's copy
+ *   back), the agent's turn, the voice's start;
+ * and the overall total. Where the measured parts fall short of a line's
+ * span, an "other" part holds the rest. Pure: from one record.
+ */
+export function latencyLines(
+  r: Pick<LatencyRecord, "timing"> & Partial<LatencyRecord>,
+  l: LatencyLineLabels,
+  via?: "local" | "cloud",
+): { total?: string; speech?: Group; reply?: Group } {
+  const t = r.timing;
+  const start = t.t_lastVoice ?? t.t_speechEnd;
+  const end = r.t_audible ?? r.t_reply;
+  const group = (span: number | undefined, parts: [string, number | undefined][]) => {
+    if (span === undefined) return undefined;
+    const known = parts.filter((p): p is [string, number] => p[1] !== undefined);
+    const rest = span - known.reduce((a, p) => a + p[1], 0);
+    if (rest >= OTHER_MIN_MS) known.push([l.latOther, rest]);
+    return { total: secs(span), parts: known.map(([k, v]) => [k, secs(v)] as [string, string]) };
+  };
+  const own = [diff(t.t_speechEnd, t.t_uploadStart), diff(t.t_sttDone, t.t_shown), diff(t.t_shown ?? t.t_sttDone, t.t_sent)]
+    .filter((x) => x !== undefined) as number[];
+  const recog = via ? `${l.latRecog} (${via === "local" ? l.latLocal : l.latCloud})` : l.latRecog;
+  const speech = group(diff(start, t.t_sent), [
+    [l.latPause, diff(t.t_lastVoice, t.t_speechEnd)],
+    [recog, diff(t.t_uploadStart, t.t_sttDone)],
+    [l.latSend, own.length ? own.reduce((a, x) => a + x, 0) : undefined],
+  ]);
+  const heardAt = r.t_ack ?? r.t_echo;
+  const reply = group(diff(t.t_sent, end), [
+    [r.t_ack !== undefined ? l.latToAgent : l.latHub, diff(t.t_sent, heardAt)],
+    [l.latAgent, diff(heardAt ?? t.t_sent, r.t_reply)],
+    [l.latVoiceStart, diff(r.t_reply, r.t_audible)],
+  ]);
+  const total = diff(start, end);
+  return {
+    ...(total !== undefined ? { total: secs(total) } : {}),
+    ...(speech ? { speech } : {}),
+    ...(reply ? { reply } : {}),
+  };
+}
+
+/**
+ * Which recognizer made each final (MicButton): the owner's Mac (local) or
+ * the route (cloud), with when it finished, so the menu can say which one
+ * a record's text came from (matched by time: the wire's timing carries
+ * numbers only). On globalThis: kept across a hot swap.
+ */
+export function sttVia(): { at: number; via: "local" | "cloud" }[] {
+  const g = globalThis as { __lkSttVia?: { at: number; via: "local" | "cloud" }[] };
+  return (g.__lkSttVia ??= []);
+}
+export function noteSttVia(via: "local" | "cloud", at = Date.now()) {
+  const l = sttVia();
+  l.push({ at, via });
+  if (l.length > 20) l.shift();
+}
+/** The recognizer of the final that finished nearest `t` (within 2 s). */
+export function viaAt(t: number | undefined): "local" | "cloud" | undefined {
+  if (t === undefined) return undefined;
+  let best: { at: number; via: "local" | "cloud" } | undefined;
+  for (const e of sttVia())
+    if (Math.abs(e.at - t) <= 2000 && (!best || Math.abs(e.at - t) < Math.abs(best.at - t))) best = e;
+  return best?.via;
+}
+
 /** Marks older than this are forgotten (an utterance that never made it). */
 export const MARK_TTL_MS = 120_000;
 /** The finished records kept (latest last), for the menu and the logs. */

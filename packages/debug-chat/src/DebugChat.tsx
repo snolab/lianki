@@ -32,7 +32,7 @@ import {
   pathLabel,
   type VoiceTiming,
 } from "./wire";
-import { latencyRows, voiceLatency } from "./latency";
+import { latencyLines, viaAt, voiceLatency } from "./latency";
 import { getKey, setKey } from "./storage-keys";
 import { LiagentMark } from "./LiagentMark";
 import { Avatar } from "./Avatar";
@@ -2196,18 +2196,24 @@ export function DebugChat({
         <div data-testid="debug-menu-latency" className="px-3 py-1 text-gray-500">
           {lastLatency ? (
             (() => {
-              const rows = latencyRows(lastLatency.breakdown, ui);
+              const lines = latencyLines(lastLatency, ui, viaAt(lastLatency.timing.t_sttDone));
+              const line = (title: string, g?: { total: string; parts: [string, string][] }) =>
+                g && (
+                  <div className="tabular-nums">
+                    {title}: <span className="font-semibold">{g.total} s</span>
+                    {g.parts.length > 0 && ` (${g.parts.map(([k, v]) => `${k} ${v}`).join(" · ")})`}
+                  </div>
+                );
               return (
                 <>
-                  <div>
-                    {ui.latency}
-                    {rows.total && (
-                      <span className="ms-1 font-semibold tabular-nums">{rows.total} s</span>
-                    )}
-                  </div>
-                  <div className="tabular-nums">
-                    {rows.parts.map(([k, v]) => `${k} ${v}`).join(" · ")}
-                  </div>
+                  <div>{ui.latency}</div>
+                  {line(ui.latSpeechLine, lines.speech)}
+                  {line(ui.latReplyLine, lines.reply)}
+                  {lines.total && (
+                    <div className="tabular-nums">
+                      {ui.latTotal}: <span className="font-semibold">{lines.total} s</span>
+                    </div>
+                  )}
                 </>
               );
             })()
