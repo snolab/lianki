@@ -13,7 +13,7 @@ The variables:
 | (a) mic processing | `getUserMedia` echoCancellation / noiseSuppression / autoGainControl on, or off |
 | (b) transport | streaming to the local SenseVoice (partials every 0.4 s, #323), or the whole clip uploaded (local, or cloud Whisper with #321's `?hint=`) |
 | (c) endpoint | the mic's own end of speech while streaming: 400 / **600** (today) / 800 / 1000 ms, or vad-web's 1400 ms |
-| (d) denoiser | already rejected: DeepFilterNet made SenseVoice worse ([local-stt.md](local-stt.md), "Noise") |
+| (d) denoiser | none: five denoisers re-checked on real noise and a shop PA, and all make SenseVoice worse (see "Noise and speaker grid") |
 
 ## Recommendation
 
@@ -390,6 +390,217 @@ alternating on, off, on, off in the same room, so the noise is shared. The
 field metrics above run on the same session as a second opinion. If AEC off
 is not worse by more than 0.05 CER and does not let the agent's voice in,
 the Android should default to off for the better playback.
+
+## Noise and speaker grid
+
+The owner's request (2026-10-31 18:20 JST), from a noisy place where 降噪
+came out as 降道: try several noise-reduction methods and speaker
+recognition on the same recordings, and compare. The harness is offline and
+works from files only. Nothing is played, nothing leaves the Mac, and it
+writes no transcripts, only aggregate numbers:
+
+```bash
+# work on a copy; the harness only reads it
+cp -p ~/lianki-voice-clips/* /tmp/grid-clips/
+nice -n 20 taskpolicy -b env OMP_NUM_THREADS=2 ~/.cache/lianki-stt/grid-venv/bin/python -I \
+  scripts/local-stt/grid-eval.py --clips /tmp/grid-clips --yield-dir ~/lianki-voice-clips \
+  --batches 2026-10-31T09-35=quiet-outdoor,2026-10-31T09-37=noisy-pharmacy --ckpt /tmp/grid.jsonl
+nice -n 20 taskpolicy -b env OMP_NUM_THREADS=2 ~/.cache/lianki-stt/grid-venv/bin/python -I \
+  scripts/local-stt/speaker-grid.py --clips /tmp/grid-clips --yield-dir ~/lianki-voice-clips --batches …
+```
+
+**It shares the Mac with his live STT server.** The first run used seven
+workers. That pushed the live server's decode from 20–90 ms to 0.5–5 s and
+the Mac into swap. The harness now runs one worker per process, at
+`nice 20` and background QoS. `--yield-dir` pauses the workers (SIGSTOP)
+while clips are still landing in the folder, that is while he is talking,
+and resumes them two minutes after the last one. `--ckpt` saves each job as
+it finishes, so a killed run resumes where it stopped. Two processes can
+share the work: run `--only scored` with `--reverse` beside a forward run,
+then build the report with `--report a.jsonl,b.jsonl`.
+
+The venv is its own, `~/.cache/lianki-stt/grid-venv`. It has the server's
+packages plus `pyrnnoise`, `noisereduce`, `deepfilternet` and
+`scipy==1.13.1` (that scipy still runs on numpy 1.26, which DeepFilterNet
+pins). The shared venv is left alone.
+
+### Data
+
+- **His clips:** the 20 with a reference (`refs-agent.json`, iPhone,
+  10-29/10-30).
+- **Synthetic noise** on those 20, at 10 / 5 / 0 dB SNR over his speech
+  frames:
+  - restaurant and street from DEMAND (Zenodo 1227121, CC BY 4.0, channel 1,
+    `~/.cache/lianki-stt/noise-demand/`);
+  - babble: six TTS talkers in seven languages;
+  - **family voice:** one Chinese TTS talker through a short room reverb;
+  - **shop PA:** a Japanese TTS announcement in the telephone band, hard
+    limited, in a 0.8 s hall.
+
+  None of the noise is made from his own voice.
+- **Live batches** (his Android, all through the local SenseVoice, no
+  `track` in the sidecars): `quiet-outdoor`, 20 clips from 18:35 JST, and
+  `noisy-pharmacy`, 65 clips from 18:37 JST (a pharmacy with in-store PA
+  announcements). Batches follow the coordinator's times and his spoken
+  markers 吵了 / 安静了. The harness checks the sidecar transcript only for
+  those two markers. None of these clips has a reference, so their CER is
+  against the medoid of their own transcripts. That measures agreement, not
+  truth. The restaurant itself produced no clips: a stale sink key on his
+  page pointed at an old host until 18:36. Clips from 18:42 JST on went
+  through cloud Whisper while his Android was off the tailnet. None of those
+  reached the sink, so none is in the grid.
+- **False-trigger trials** (no owner in them): 6 s of the PA or the family
+  voice alone, over a restaurant bed 10 dB under it, at his speech level and
+  at 10 dB below it, 12 trials per set.
+
+Pipeline: the phone's VAD as today (Silero v5, start 0.3, pre-pad 800 ms,
+min 250 ms, endpoint 600 ms), run on the noisy audio. The pieces are decoded
+by SenseVoice from the denoised audio, which is the server-side position for
+a denoiser. "VAD on denoised" is the browser-side position, before the VAD.
+
+### Denoisers (SenseVoice, 20 referenced clips, CER)
+
+| denoiser | clean | 10 dB | 5 dB | 0 dB | dropped · added @5 dB | family-voice text leaked @5 | PA text leaked @5 | algorithmic delay |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **none** | **0.065** | **0.219** | **0.347** | **0.554** | 0.123 · 0.083 | 8% | 1% | 0 |
+| RNNoise | 0.105 | 0.382 | 0.580 | 0.763 | **0.375** · 0.050 | 3% | 1% | 20 ms |
+| DeepFilterNet3 | 0.170 | 0.305 | 0.437 | 0.712 | 0.210 · 0.059 | 10% | 1% | 40 ms |
+| DFN3, 12 dB cap | 0.104 | 0.224 | 0.353 | 0.557 | 0.134 · 0.080 | 11% | 1% | 40 ms |
+| noisereduce (spectral gating) | 0.160 | 0.312 | 0.421 | 0.643 | 0.169 · 0.061 | 11% | 1% | whole utterance |
+| spectral subtraction | 0.126 | 0.232 | 0.353 | 0.584 | 0.121 · 0.078 | 12% | 1% | 32 ms |
+
+By noise type at 5 dB, none / best other: restaurant 0.476 / 0.465
+(DFN3-cap), street 0.244 / 0.239 (DFN3-cap), babble 0.417 / 0.442, family
+voice 0.348 / 0.361, PA 0.253 / 0.211 (spectral subtraction). The only
+gains of 0.05 or more anywhere are spectral subtraction in the restaurant
+(10 dB: 0.345 vs 0.395; 0 dB: 0.693 vs 0.767). Each denoiser costs
+0.04–0.10 CER on clean speech.
+
+- **No denoiser is worth it.** DFN3 with a 12 dB cap and spectral
+  subtraction come close to none in noise. They are never clearly better,
+  and they are worse on clean speech, which is most of his speech. This
+  confirms the earlier DFN3 result ("Noise" in
+  [local-stt.md](local-stt.md)) on real noise types.
+- **RNNoise works as a voice gate, not a cleaner.** It drops 37.5% of his
+  characters at 5 dB. Run before the VAD, it also cuts the PA alone from
+  30 characters per trial to 2–6, and fires on the quiet PA in only 42% of
+  trials. It cannot tell the PA from him, though, so it eats his speech in
+  the same noise.
+- **Latency:** every streamable denoiser adds at most 20–42 ms of
+  algorithmic delay, inside the 0.1 s target. The run was throttled
+  (background QoS), so its processing times are about 3× the unloaded ones. An
+  unloaded check on 2 clips gave DFN3 ~22 ms and RNNoise ~49 ms per audio
+  second (RNNoise as a per-frame Python loop; the C library in a browser
+  worklet is far cheaper). noisereduce needs the whole utterance, so its
+  cost lands after the end (~27 ms throttled).
+- **Browser noiseSuppression on/off:** cannot be compared yet. No clip, old
+  or live, carries `track`, and both constraint sets in `voice-out.ts` have
+  it on.
+
+### VAD and gain (SenseVoice, CER)
+
+| setting | clean | restaurant 5 | PA 5 | PA 0 | family voice 5 | family voice 0 |
+| --- | --- | --- | --- | --- | --- | --- |
+| **start 0.3, pad 800 (today)** | **0.065** | 0.476 | 0.253 | 0.390 | 0.348 | 0.710 |
+| start 0.3, pad 200 | 0.077 | 0.510 | 0.223 | 0.353 | 0.380 | 0.786 |
+| start 0.5, pad 800 | 0.065 | 0.491 | 0.224 | 0.369 | 0.338 | 0.710 |
+| start 0.7, pad 800 | 0.065 | 0.523 | 0.227 | 0.366 | 0.337 | 0.710 |
+| no VAD (whole clip) | 0.066 | 0.412 | 0.213 | 0.356 | 0.358 | 0.691 |
+| gain −12 dB | 0.128 | 0.741 | 0.419 | 0.605 | 0.503 | 0.713 |
+| gain +12 dB | 0.050 | 0.494 | 0.247 | 0.380 | 0.431 | 0.743 |
+| AGC to −26 dBFS | 0.065 | 0.519 | 0.234 | 0.431 | 0.393 | 0.708 |
+
+- **Keep the VAD as it is.** A higher start threshold or a shorter pad is
+  within ±0.05 of today in noise, and the short pad costs clean speech. The
+  whole clip is a little better in the restaurant (fewer cuts in noise),
+  which supports joining pieces (see "VAD sensitivity").
+- **Never attenuate.** −12 dB costs 0.06 clean and up to 0.27 in noise. +12 dB
+  and AGC are no better (up to 0.08 worse with a voice under him). Holding the phone closer (a higher SNR,
+  not a higher gain) is the lever: CER doubles from 10 dB to 0 dB.
+
+### False triggers: the PA or the family voice alone
+
+| | VAD fires | characters out per 6 s trial |
+| --- | --- | --- |
+| PA at his level | 100% | 30 |
+| PA 10 dB under him | 100% | 18 |
+| family voice at his level | 100% | 19 |
+| family voice 10 dB under him | 100% | 15 |
+| same, RNNoise before the VAD | 42–100% | 2–13 |
+
+Silero is level-blind (as in "VAD sensitivity"), so **any voice reaches
+the recogniser**. Only a denoiser placed before the VAD reduces this:
+RNNoise and noisereduce most (the PA 10 dB under him fires in 42–58% of
+trials, with 2–4 characters), and none of them on the family voice at his
+level. Recognition leaks 8% of a background talker's
+text into his transcript at 5 dB, and 1% of the PA's (the PA is Japanese in
+a telephone band, and SenseVoice mostly ignores it under his Chinese).
+
+Live batches, without references: the pharmacy gave 65 clips in about 4
+minutes, a median of 2.3 s and 4 characters each. 39 of the 65 came out with
+3 characters or fewer (10 of the 20 outdoors). That is the same pattern of
+short triggers as the synthetic PA.
+
+### Speaker check (`speaker-grid.py`, continues #380)
+
+Enrolment is 5-fold on his 20 clean iPhone clips, and the tests are noisy
+copies of the held-out clips. The other voices are 55 recordings of real
+people (the sherpa-onnx speaker test set: three Chinese men, plus the model
+packages' own test recordings), 54 TTS voices in nine languages, and the
+PA. Each is used clean, under restaurant noise at 10/5/0 dB, and "in the
+background" (alone, through the room, 10 dB under his level, over restaurant
+noise). The threshold is set for 1% false accepts over all other-voice
+trials of the same length.
+
+| scorer | EER, all conditions (2 s · whole) | EER, clean (whole) | his speech rejected: clean · restaurant 5 · PA 5 · family voice 5 (whole) | PA alone accepted | his live Android clips rejected (outdoor · pharmacy) |
+| --- | --- | --- | --- | --- | --- |
+| pitch (F0 median + range) | 54% · 60% | 59% | 100% everywhere | 0% | 95% · 100% |
+| pitch + centroid + MFCC means | 40% · 42% | 36% | 100% everywhere | 0% | 100% · 100% |
+| **CAM++** (zh-en, 28 MB) | 21% · 20% | 3.8% | 0% · 15% · 55% · 85% | **≤ 0.6%** | **25% · 40%** |
+| **ERes2NetV2** (zh-cn, 71 MB) | **12% · 7%** | **0.2%** | 0% · 0% · 5% · 10% | **0%** | 85% · 98% |
+
+(sherpa-onnx publishes no ECAPA export, so ERes2NetV2, 3D-Speaker's stronger
+model, stands in for the second embedding.)
+
+- **Pitch is no better than chance**, as in #380. The real Chinese male
+  voices sit in his range.
+- **Both embeddings reject the PA**: at most 0.6% accepted (CAM++, 2 s crops), 0% whole. CAM++
+  at #380's fixed thresholds (owner ≥ 0.3, other < 0.2) calls 87–91% of PA
+  trials "other" and the rest "unknown". Others in the background: 0–0.2%
+  "owner".
+- **ERes2NetV2 is far better on the iPhone, but rejects his Android.** It
+  rejects 85–98% of his live Android clips, where CAM++ rejects 25–40%. The
+  enrolment is iPhone-only, so this is a channel mismatch (and the live
+  clips are short: median 2.3 s). It needs a per-device enrolment before it
+  can be used. CAM++ is the one that works cross-device today.
+- **Noise and a talker under him still cost his own speech.** At 0 dB, CAM++
+  rejects 30–100% of his clips and ERes2NetV2 25–75%. The tag must therefore
+  only ever drop "other" in passive mode, never in active mode (#380's
+  design), and "unknown" must pass.
+
+### Pick
+
+- **Recognition:** SenseVoice, no denoiser, VAD and endpoint unchanged,
+  gain never below unity. In noise the lever is SNR (the phone near the
+  mouth), not processing. 降噪 → 降道 is a near-homophone in noise; the
+  polish-edit (#313) or a vocabulary hint is the place for it, not the
+  audio chain.
+- **PA and family voices:** the speaker tag. Both embeddings reject the PA
+  and background voices at ≤ 1% while denoisers do not. Use CAM++ now
+  (cross-device). Move to ERes2NetV2 once he has enrolled on the Android
+  (10–20 clean utterances), since it is the more accurate of the two in
+  noise. Drop only "other", in passive mode. The wake word stays the gate
+  in active mode.
+- **Next data:** a few clips with `track` (noiseSuppression on and off), and
+  10–20 `.ref.txt` references for live noisy clips, which would turn the
+  live CER from agreement into accuracy.
+
+Limits: the references are the agent's (see "Clip replay"). The noise is
+synthetic except for the 85 live clips, which have no reference. The other
+real voices are three men and a few test speakers, not his family. The
+streaming Paraformer was left out of the full run to keep memory down. On
+a 2-clip smoke test it trailed SenseVoice (clean 0.07 vs 0.03, 5 dB 0.56 vs
+0.37).
 
 ## Follow-ups this found (not in this PR)
 
