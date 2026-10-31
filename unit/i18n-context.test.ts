@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import words from "@/app/(app)/words/page.content";
 import wordsImportAnkiweb from "@/app/(app)/words/import/ankiweb.content";
 import bottomNav from "@/app/components/bottom-nav.content";
+import learningPartner from "@/app/components/learning-partner.content";
 import { describeKeys, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -27,6 +28,7 @@ describe.each([
   ["words-page", words],
   ["words-import-ankiweb", wordsImportAnkiweb],
   ["bottom-nav", bottomNav],
+  ["learning-partner", learningPartner],
 ])("%s", (_name, dict) => {
   const keys = Object.entries(dict.content as Record<string, { nodeType?: string }>)
     .filter(([, v]) => v?.nodeType === "translation")

@@ -347,6 +347,75 @@ One socket per page; utterances one after another (`server.py` docstring):
 
 `GET /health` on the same port answers `{ok, engine, model}`.
 
+A final also carries `langAuto` when the short-utterance pick below replaced
+the auto-detected language (`lang` is then the forced one). The server log
+line says `lang en->ja`, never the text.
+
+## Short utterances and the language
+
+SenseVoice's auto language ID gets short Japanese wrong. On 2026-10-31 the
+owner said 「もしもし」 three times (2–3 s each). `language="auto"` gave
+'Moice, miss.' (en), 'Mice mouse.' (en) and '没关系没关系。' (zh); with ja
+forced, all three read 「もしもし。」. He mixes Chinese, Japanese and English,
+so no language can be fixed.
+
+**What the server does** (`engines.py`, `SenseVoice.final` + `LangPicker`):
+a final of **4 s or less** is also scored by the same model, int8, run through
+onnxruntime once as a batch of three: language `auto`, `ja` and `zh`. That runs
+on a side thread while sherpa-onnx does the usual auto decode. A forced reading
+replaces the auto one only if all of these hold (`choose()`):
+
+- it is in its own script: kana for ja; Han and no kana for zh;
+- it is not the auto language (yue counts as zh);
+- its mean best log-prob per frame (CTC, blanks included) beats auto's by at
+  least **0.02**;
+- its mean log-prob per emitted token beats auto's by at least **0.4**.
+
+If both forced readings qualify, the larger per-frame gain wins. Partials and
+longer finals are the auto decode, exactly as before. The scores have to come
+from onnxruntime because sherpa-onnx returns only the argmax for SenseVoice
+(`ys_log_probs` is empty). The filterbank is numpy (`fbank()`, the same as
+kaldi-native-fbank to within 1e-3 in log-mel), so nothing new needs
+installing. `LIANKI_STT_LANG_PICK=0` turns it off, and so does a missing
+`model.int8.onnx` or onnxruntime. Either way the server logs `lang picker off`
+and works as before.
+
+**Measured** on 2026-10-31 over the owner's 211 saved clips, files only:
+
+| set                                                     | clips | auto only | with the pick |
+| ------------------------------------------------------- | ----- | --------- | ------------- |
+| short Japanese                                          | 7     | 4         | **7**         |
+| short Chinese (2 of them were misread as en by auto)    | 30    | 28        | **30**        |
+| short English                                           | 10    | 10        | 10            |
+| other short clips, unlabelled (mostly background, noise) | 96    | –         | 7 switched    |
+| longer than 4 s                                         | 68    | –         | untouched     |
+
+The labels are the agent's own judgement, made from the forced decodes and
+the conversation around each clip; no clip had a `.ref.txt`. The thresholds
+were tuned on this same small set, and it has only three misread Japanese
+lines, so these numbers are optimistic. Every labelled English and Chinese
+line that was right stayed right. The 7 unlabelled switches are clips where
+neither reading can be checked without listening: background talk and
+one-word replies.
+
+**Cost.** The scorer takes a median of 2.1× one auto decode of the same clip
+(332 ms against about 170 ms when measured on 2 threads at background
+priority, beside the live server). It runs alongside the auto decode, so the
+final waits about 1.1× an auto decode longer. At normal priority a ≤ 4 s
+utterance decodes in about 20–40 ms (about 9 ms per audio second, "Which
+engine"), so the expected cost is about **25–45 ms** per short final, and
+nothing on long ones. That is an estimate scaled from the background
+measurement, not a foreground measurement. Memory is about 0.3 GB more (the
+int8 session).
+
+**Not chosen:** sending the page's hint (`stt-hint.ts`) per stream. The hint
+is learnt from typed lines, so it is one language at a time, mostly zh for
+him, and it would push 「もしもし」 towards zh. A per-device "primary languages"
+setting has the same problem: all three are primary for him. Calling
+`set_config(language=…)` on sherpa for forced decodes works, but it gives no
+scores to choose between the readings, and it changes the recognizer for every
+decode running at the same time.
+
 ## Fallback
 
 `createLocalStt` (`packages/debug-chat/src/local-stt.ts`) opens the socket
@@ -385,6 +454,13 @@ noise does. Babble of the owner's own voice is the hardest case there is
 near the mouth) and the noise-adaptive endpoint are the levers. Hold-to-talk
 remains the option if those are not enough.
 
+Re-checked on 2026-10-31 with real noise types (DEMAND restaurant and
+street, a shop PA, a family voice) and five denoisers: RNNoise, DFN3 with
+and without a cap, noisereduce and spectral subtraction. None beats no
+denoiser, and each costs 0.04–0.10 CER on clean speech. A speaker check
+(CAM++ / ERes2NetV2) is what keeps the PA and background voices out:
+[stt-ab.md](stt-ab.md), "Noise and speaker grid".
+
 ## WebRTC
 
 Not needed for this. The phone already reaches the Mac over the tailnet, and a
@@ -421,12 +497,16 @@ this is owner-only.
   oxmgr, cloudflared and curl: the oxmgr entry left exactly as it was, the
   custom key path reaching the server, and the restore when the listener
   fails to start, `/health` fails, or the server never says "listening".
+- `unit/local-stt-lang-pick.test.ts` runs `scripts/local-stt/test_lang_pick.py`
+  with the venv: the pick rule, `final()` with stubs, the filterbank, and the
+  int8 scorer when the model is there (skipped in CI).
 - By hand: `bun scripts/local-stt/stream-clip.ts --url ws://127.0.0.1:5193`
   streams every saved clip at real-time pace and prints partials and timings;
   `python -I scripts/local-stt/bench.py` is the whole-clip A/B above;
   `noisy.py <dir>` then `bench-noise.py [--atten 10]` the noise table;
-  `ab-eval.py` the streaming / endpoint / AEC A/B and the field metrics
-  ([stt-ab.md](stt-ab.md)).
+  `ab-eval.py` the streaming / endpoint / AEC A/B and the field metrics;
+  `grid-eval.py` and `speaker-grid.py` the noise / VAD / gain grid and the
+  speaker check, niced and pausing while he talks ([stt-ab.md](stt-ab.md)).
 - `server.py` logs each connection, each final (length and decode time,
   never the text) and every refused handshake (a wrong Origin) through the
   `websockets` logger.

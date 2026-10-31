@@ -60,6 +60,24 @@
  *       waits for "Linky"; ignored = the last line was not for the agent.
  *       Each owner line carries "wake" (the mode it was sent in) while the mic is on.
  *
+ *   bun scripts/dev/eval.ts clips
+ *   bun scripts/dev/eval.ts clips on --device <text> [--minutes N] [--sink <url>]
+ *   bun scripts/dev/eval.ts clips off [--device <text>]
+ *       Voice-clip recording on the owner's window sessions (docs/dev-debug-widget.md,
+ *       "Voice clips"). Alone: list them, {"type":"clips-list","sessions":[{sid,
+ *       device,on,pages,until?,sink?,goneAt?,hidden?}]}. `on` starts it in every
+ *       open window whose session id or device id starts with <text>, or one of
+ *       whose page labels (path + user agent) contains it ("Android", "/words");
+ *       it follows that window across URLs and origins, with a 录音中 badge and
+ *       a Stop on the page. No auto-stop unless --minutes (1–1440). The sink
+ *       defaults to this Mac's https://<tailnet>/lianki-widget, and is checked
+ *       (with its read key) before turning on; its write key goes to the hub,
+ *       which hands it only to that session's pages (clip-sink.ts sinkKeys).
+ *       The session moves only between the owner's exact origins: lianki.com,
+ *       LIANKI_DEV_ORIGINS and LIANKI_CLIPS_ORIGINS (the sink's own allowlist),
+ *       or --origins a,b. `off` stops the matching ones (all without --device).
+ *       Never deletes a clip.
+ *
  *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet | --loud] "text"   (or - for stdin)
  *       Reply with the saved grant (the chat grant, else the eval grant:
  *       eval implies chat; never pairs), and exit: to the owner by default, or to
@@ -153,6 +171,8 @@ import { routeTo } from "@/lib/dev-eval";
 import { type BusyArgs, beatMessage, endsBeat, idleFor, parseBusyArgs } from "./busy";
 import { ENDED, GRANT_INVALID, chatClose, chatStep, serveClose } from "./eval-grant";
 import { DEAD, PONG, keepalive } from "./keepalive";
+import { tailnetHost } from "./tailnet";
+import { clipsOrigins, sinkKeys } from "./clip-sink";
 import {
   EVAL_TOKEN_FILE,
   type Msg,
@@ -245,6 +265,10 @@ const fromFlag = flag("--from");
 const hoursFlag = flag("--hours");
 /** ask --wait: give up after this many seconds (default 600). */
 const timeoutFlag = flag("--timeout");
+const deviceFlag = flag("--device");
+const minutesFlag = flag("--minutes");
+const sinkFlag = flag("--sink");
+const originsFlag = flag("--origins");
 const placed = nodeOpts({ taskPath: flag("--task-path"), agent: flag("--agent") });
 if ("error" in placed) {
   console.error(placed.error);
@@ -874,6 +898,53 @@ async function main() {
     console.log(
       JSON.stringify(await ask(askQuestions, to, waitFlag, (secs > 0 ? secs : 600) * 1000)),
     );
+    return;
+  }
+  if (args[0] === "clips") {
+    const op = args[1] ?? "list";
+    if (op !== "list" && op !== "on" && op !== "off") {
+      console.error(
+        "usage: bun scripts/dev/eval.ts clips [on --device <text> [--minutes N] [--sink <url>] | off [--device <text>]]",
+      );
+      process.exit(2);
+    }
+    const minutes = minutesFlag === undefined ? undefined : Number(minutesFlag);
+    let sink = sinkFlag;
+    if (op === "on") {
+      if (!deviceFlag) {
+        console.error("clips on needs --device <text> (see `eval.ts clips` for the sessions)");
+        process.exit(2);
+      }
+      sink ??= `https://${tailnetHost()}/lianki-widget`;
+      // A sink that does not answer would only look like recording: check it first.
+      const ok = await fetch(`${sink.replace(/\/+$/, "")}/clips/index.json`, {
+        headers: { authorization: `Bearer ${sinkKeys().read}` },
+        signal: AbortSignal.timeout(5_000),
+      }).then(
+        (r) => r.ok,
+        () => false,
+      );
+      if (!ok) {
+        console.error(
+          `the sink ${sink} does not answer /clips/index.json: start debug-widget-server.ts`,
+        );
+        process.exit(1);
+      }
+    }
+    const msg = {
+      type: "clips",
+      op,
+      ...(deviceFlag ? { match: deviceFlag } : {}),
+      ...(minutes !== undefined ? { minutes } : {}),
+      ...(op === "on" && sink
+        ? {
+            sink,
+            sinkKey: sinkKeys().write,
+            origins: originsFlag ? originsFlag.split(",").map((o) => o.trim()) : clipsOrigins(),
+          }
+        : {}),
+    };
+    console.log(JSON.stringify(await sendOnce(msg, op === "list" ? "clips-list" : "clips-done")));
     return;
   }
   if (args[0] === "wake") {

@@ -20,7 +20,7 @@
 import { existsSync, readFileSync, watch, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { STT_MODELS } from "../../lib/stt";
-import { clipsDir, listClips } from "./clip-sink";
+import { clipsDir, listClips, sinkKeys } from "./clip-sink";
 import { type BenchResult, aggregate, benchCode, markdown } from "./stt-bench-lib";
 
 const args = Bun.argv.slice(2);
@@ -40,7 +40,9 @@ const target = flag("target");
 const dir = flag("clips-dir") ? resolve(flag("clips-dir") as string) : clipsDir();
 const clips = listClips(dir);
 if (!clips.length) {
-  console.error(`No clips in ${dir} yet: turn on the mic with lk:debug-clip-sink set, and talk.`);
+  console.error(
+    `No clips in ${dir} yet: turn recording on (bun scripts/dev/eval.ts clips on --device <text>) and talk.`,
+  );
   process.exit(1);
 }
 const run = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -65,7 +67,7 @@ const landed = new Promise<void>((resolve, reject) => {
 
 const evalTs = join(import.meta.dir, "eval.ts");
 const p = Bun.spawn(["bun", evalTs, ...(target ? ["--target", target] : []), "-"], {
-  stdin: new TextEncoder().encode(benchCode(sink, models, run)),
+  stdin: new TextEncoder().encode(benchCode(sink, models, run, sinkKeys().read)),
   stdout: "inherit",
   stderr: "inherit",
 });

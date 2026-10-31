@@ -39,7 +39,7 @@ import {
   harnessCss,
   sse,
 } from "./debug-widget-build";
-import { clipsDir, handleClips } from "./clip-sink";
+import { clipsDir, handleClips, sinkKeys } from "./clip-sink";
 import { serveOnTailnet, tailnetHost, unserveOnTailnet, validTailnetPath } from "./tailnet";
 
 const argv = Bun.argv.slice(2);
@@ -68,6 +68,8 @@ if (TUNNEL && !flag("origin")) {
 
 /** Where the mic's clips are kept: --clips-dir, LIANKI_CLIPS_DIR, or ~/lianki-voice-clips. */
 const CLIPS = flag("clips-dir") ? resolve(flag("clips-dir")) : clipsDir();
+/** The sink's read and write keys (clip-sink.ts): made once, 0600, shared with eval.ts and the bench. */
+const SINK_KEYS = sinkKeys();
 const log = (msg: string) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${msg}`);
 
 let code = "";
@@ -125,8 +127,8 @@ function startServer() {
     idleTimeout: 0,
     async fetch(req) {
       const url = new URL(req.url);
-      // The mic's voice clips (scripts/dev/clip-sink.ts): lianki.com only, kept on this machine.
-      const clip = await handleClips(req, CLIPS);
+      // The mic's voice clips (scripts/dev/clip-sink.ts): lianki.com and LIANKI_DEV_ORIGINS / LIANKI_CLIPS_ORIGINS, kept on this machine.
+      const clip = await handleClips(req, CLIPS, undefined, undefined, SINK_KEYS);
       if (clip) return clip;
       const h = cors(req);
       if (req.method === "OPTIONS")

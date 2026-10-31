@@ -174,19 +174,21 @@ export function markdown(b: Bench, title = "STT bench"): string {
 }
 
 /**
- * The code run on the owner's page (through eval.ts): fetch each clip from the
+ * The code run on the owner's page (through eval.ts), with the sink's read
+ * key (clip-sink.ts sinkKeys; it travels only over the owner's eval grant): fetch each clip from the
  * dev server, transcribe it with each model through the page's own session,
  * and post the raw results back to the dev server (an eval answer is too small
  * to carry them). Returns how many transcriptions it made.
  */
-export function benchCode(sink: string, models: string[], run: string): string {
+export function benchCode(sink: string, models: string[], run: string, key = ""): string {
   return `
 const sink = ${JSON.stringify(sink.replace(/\/+$/, ""))};
 const models = ${JSON.stringify(models)};
-const { clips } = await (await fetch(sink + "/clips/index.json")).json();
+const auth = { authorization: ${JSON.stringify(`Bearer ${key}`)} };
+const { clips } = await (await fetch(sink + "/clips/index.json", { headers: auth })).json();
 const results = [];
 for (const c of clips) {
-  const audio = await (await fetch(sink + "/clips/" + c.file)).blob();
+  const audio = await (await fetch(sink + "/clips/" + c.file, { headers: auth })).blob();
   for (const model of models) {
     const t0 = performance.now();
     try {
@@ -202,7 +204,7 @@ for (const c of clips) {
     }
   }
 }
-await fetch(sink + "/clips/bench?run=${run}", { method: "POST", body: JSON.stringify({ run: "${run}", results }) });
+await fetch(sink + "/clips/bench?run=${run}", { method: "POST", headers: auth, body: JSON.stringify({ run: "${run}", results }) });
 return { clips: clips.length, results: results.length };
 `;
 }

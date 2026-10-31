@@ -27,6 +27,7 @@ import type { ChatMessage } from "@/lib/dev-eval";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
 import { voice } from "@lianki/debug-chat/voice";
+import { clipPosted, onClipsState, setClipsSender } from "@lianki/debug-chat/clips-store";
 
 {
   // Before the first render: the chat reads it once, when it mounts.
@@ -353,6 +354,47 @@ function HarnessTree() {
       ))}
     </ul>
   );
+}
+
+/**
+ * `?clips=on|failing|remind|continue`: the recording badge with a made-up
+ * hub (clips-store.ts): on with 3 clips saved; a failed save; 4 min left of
+ * an auto-stop; another window's session offered. Stop and Continue answer
+ * as the hub would (with a sink set up, so the menu offers "Record voice clips").
+ */
+{
+  const q = new URLSearchParams(location.search);
+  const mode = q.get("clips");
+  if (mode) {
+    const sid = "harnessSESSIONsid0001";
+    const device = "harnessDEVICEid000001";
+    const sink = "https://example.ts.net/lianki-widget";
+    const on = (extra: Record<string, unknown> = {}) =>
+      onClipsState({ type: "clips", sid, device, on: true, since: Date.now(), sink, ...extra });
+    setClipsSender((m) => {
+      if (m.type === "clips-off")
+        onClipsState({ type: "clips", sid, device, on: false, canStart: true });
+      else if (m.type === "clips-on" || m.type === "clips-adopt")
+        on(m.type === "clips-on" && m.minutes ? { left: m.minutes * 60_000 } : {});
+      return true;
+    });
+    if (mode === "continue")
+      onClipsState({
+        type: "clips",
+        sid,
+        device,
+        on: false,
+        canStart: true,
+        resumable: [
+          { sid: "otherWINDOWsession01", label: "/words pwa Android", since: Date.now() },
+        ],
+      });
+    else {
+      on(mode === "remind" ? { left: 4 * 60_000 } : {});
+      if (mode !== "remind") for (let i = 0; i < 3; i++) clipPosted({ ok: true }, sink);
+      if (mode === "failing") clipPosted({ ok: false, status: 502, error: "sink 502" }, sink);
+    }
+  }
 }
 
 createRoot(document.getElementById("root") as HTMLElement).render(<Harness />);

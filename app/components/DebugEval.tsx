@@ -27,6 +27,12 @@ import { voice } from "@lianki/debug-chat/voice";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
 import {
+  clipsConnectQuery,
+  installClipsLifecycle,
+  onClipsState,
+  setClipsSender,
+} from "@lianki/debug-chat/clips-store";
+import {
   type PageErrorReporter,
   createPageErrorReporter,
   installPageErrorHooks,
@@ -235,13 +241,24 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
         tab = sessionStorage.getItem(TAB_KEY) ?? "";
         if (!tab) sessionStorage.setItem(TAB_KEY, (tab = crypto.randomUUID().slice(0, 12)));
       } catch {}
+      // The recording session (packages/debug-chat/src/clips.ts): this window's
+      // id, the device's, and a handoff token if the page came from another origin.
+      let clipsQ = "";
+      try {
+        clipsQ = clipsConnectQuery();
+      } catch {}
       const sock = new WebSocket(
-        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}`,
+        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}${clipsQ}`,
       );
       ws = sock;
       sockRef.current = sock;
       sock.onopen = () => {
         opened.add(sock);
+        setClipsSender((m) => {
+          if (sock.readyState !== WebSocket.OPEN) return false;
+          sock.send(JSON.stringify(m));
+          return true;
+        });
         liveRef.current = true;
         setLive(true);
         setChat(true);
@@ -265,6 +282,8 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
         } catch {
           return;
         }
+        // This window's recording session (the hub holds it, not this origin).
+        if (msg.type === "clips") return void onClipsState(msg);
         if (msg.type === "friend-status") {
           friendRef.current = true;
           // Never a friend's errors: nothing queued is sent, nothing more is kept.
@@ -378,6 +397,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
       sock.onclose = (e) => {
         if (ws !== sock) return;
         ws = null;
+        setClipsSender(null);
         reporter.detach();
         sockRef.current = null;
         liveRef.current = false;
@@ -404,6 +424,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
       }
       const sock = ws;
       ws = null;
+      setClipsSender(null);
       sockRef.current = null;
       liveRef.current = false;
       beatRef.current = null;
@@ -413,7 +434,23 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
       sock?.close();
     };
     const wanted = () => document.visibilityState === "visible" && debugOn();
+    /**
+     * Tell the hub how this window is doing, while the socket is still open:
+     * hidden (screen off, app in the background) keeps a recording session
+     * for hours; leaving (closed, or navigating away) only for a couple of
+     * minutes, enough to land on the next page (clips.ts CLIPS_GONE_MS).
+     */
+    const vis = (state: "hidden" | "visible" | "leaving") => {
+      try {
+        if (ws?.readyState === WebSocket.OPEN)
+          ws.send(JSON.stringify({ type: "clips-vis", state }));
+      } catch {}
+    };
+    const leaving = () => vis("leaving");
+    // pagehide → departed, pageshow from the bfcache → off until a tap (clips-store.ts).
+    const unClips = installClipsLifecycle(window);
     const update = () => {
+      vis(document.visibilityState === "visible" ? "visible" : "hidden");
       clearTimeout(idle);
       if (wanted()) connect();
       else if (!debugOn()) disconnect();
@@ -424,10 +461,13 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
     };
 
     update();
+    window.addEventListener("pagehide", leaving);
     document.addEventListener("visibilitychange", update);
     window.addEventListener(DEBUG_EVENT, update);
     window.addEventListener("storage", onStorage);
     return () => {
+      window.removeEventListener("pagehide", leaving);
+      unClips();
       document.removeEventListener("visibilitychange", update);
       window.removeEventListener(DEBUG_EVENT, update);
       window.removeEventListener("storage", onStorage);
