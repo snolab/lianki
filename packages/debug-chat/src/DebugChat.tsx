@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   type ChatMessage,
   MAX_CHAT,
@@ -53,7 +54,7 @@ import {
 } from "./float-lines";
 import { Icon, POLISHED_ICON } from "./icons";
 import { PolishedMark } from "./PolishedMark";
-import { LINE_HALO, logSurface } from "./log-surface";
+import { LINE_HALO, fullLogBox, fullLogHeight, keepEndGap, logSurface } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
 import { TreeChips, navIndexOf } from "./TreeChips";
 import {
@@ -256,6 +257,26 @@ function useDrag() {
   };
 }
 
+/** The full-screen log's wipe in and out (and its sheet's fade). */
+const WIPE = "clip-path 200ms ease-out";
+/** The input-started full-screen log fades in and out, as the bar does the other way. */
+const FADE = "opacity 200ms ease-out";
+/** The glass sheet behind the full-screen log (design-principles.md): page colour, blurred. */
+const SHEET_BG = "color-mix(in oklch, var(--background) 60%, transparent)";
+const SHEET_BG_SOLID = "color-mix(in oklch, var(--background) 90%, transparent)";
+const SHEET_FILTER = "blur(12px) saturate(1.4)";
+/** The sheet goes near-opaque where blur is missing or transparency is reduced. */
+const sheetBg = () => {
+  const blur =
+    typeof CSS !== "undefined" &&
+    (CSS.supports("backdrop-filter", SHEET_FILTER) ||
+      CSS.supports("-webkit-backdrop-filter", SHEET_FILTER));
+  const reduce =
+    typeof matchMedia !== "undefined" &&
+    matchMedia("(prefers-reduced-transparency: reduce)").matches;
+  return blur && !reduce ? SHEET_BG : SHEET_BG_SOLID;
+};
+
 /** The box's keyboard lift, px (0 when the keyboard covers nothing). */
 const KB_LIFT_VAR = "--lk-kb-lift";
 const liftOf = (box: HTMLElement) =>
@@ -272,6 +293,16 @@ function safeSides() {
     left: Number.parseFloat(cs.paddingLeft) || 0,
     right: Number.parseFloat(cs.paddingRight) || 0,
   };
+  probe.remove();
+  return v;
+}
+
+/** env(safe-area-inset-bottom) in px (the home indicator), measured once per drag. */
+function safeBottom() {
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;visibility:hidden;padding-bottom:env(safe-area-inset-bottom)";
+  document.body.append(probe);
+  const v = Number.parseFloat(getComputedStyle(probe).paddingBottom) || 0;
   probe.remove();
   return v;
 }
@@ -822,6 +853,207 @@ export function DebugChat({
     setScrolledUp(!end);
     if (end) setBelow(0);
   };
+  /**
+   * A vertical drag on the bar (the mic, or the empty input) scrolls the log,
+   * and for as long as it lasts the log goes full screen: it grows upward to
+   * the top of the visible area over a glass sheet, while the bar stays put
+   * and floats over it. The lines at its bottom edge do not move; the older
+   * ones are revealed above them (a clip-path wipe and the sheet's fade,
+   * ~200 ms ease-out; at once under reduced motion). On release it folds
+   * back the same way: the bar's resting log is the compact one, and a sheet
+   * left up over the page would need its own way out.
+   */
+  const [fullLog, setFullLog] = useState<"off" | "on" | "leaving">("off");
+  const fullRef = useRef<{
+    maxH: number;
+    fromH: number;
+    gap: number;
+    lastDy: number;
+    /** From the empty input: the log's own box (fullLogBox, section-relative px). */
+    box: { left: number; width: number; bottom: number; height: number; hideBar: boolean } | null;
+  }>({ maxH: 0, fromH: 0, gap: 0, lastDy: 0, box: null });
+  const wasFull = useRef(false);
+  const reducedMotion = () =>
+    typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const logDrag = {
+    /**
+     * `from: "input"` (the empty input): the log takes its size-snapped box
+     * (log-surface.ts fullLogBox): on a narrow screen it spans the whole
+     * screen and the bar steps aside; on a wide one it keeps its width and
+     * only grows to the full height. From the mic, the bar stays (the finger
+     * is on it) and the log only grows upward, as before.
+     */
+    start: (from: "mic" | "input" = "mic") => {
+      const el = log.current;
+      if (!el || !open) return;
+      const r = el.getBoundingClientRect();
+      const sec = root.current?.getBoundingClientRect();
+      let box: (typeof fullRef.current)["box"] = null;
+      if (from === "input" && sec) {
+        const vv = typeof visualViewport === "undefined" ? null : visualViewport;
+        const sides = safeSides();
+        const b = fullLogBox({
+          vw: document.documentElement.clientWidth || innerWidth,
+          vh: innerHeight,
+          visibleTop: vv?.offsetTop ?? 0,
+          visibleBottom: vv ? vv.offsetTop + vv.height : innerHeight,
+          safe: { top: notch.current, bottom: safeBottom(), left: sides.left, right: sides.right },
+          log: { left: r.left, width: r.width, bottom: r.bottom, height: r.height },
+        });
+        // Section-relative: the box's bottom and left edges do not move when
+        // the log leaves the flow (the box hangs from its bottom).
+        box = {
+          left: b.left - sec.left,
+          width: b.width,
+          bottom: sec.bottom - b.bottom,
+          height: b.bottom - b.top,
+          hideBar: b.hideBar,
+        };
+      }
+      fullRef.current = {
+        box,
+        maxH: fullLogHeight({
+          bottom: r.bottom,
+          height: r.height,
+          safeTop: notch.current,
+          vvTop: typeof visualViewport === "undefined" ? 0 : (visualViewport?.offsetTop ?? 0),
+        }),
+        fromH: el.clientHeight,
+        gap: el.scrollHeight - el.scrollTop - el.clientHeight,
+        lastDy: 0,
+      };
+      setFullLog("on");
+    },
+    /** Finger travel since the press: the log scrolls by the change (no render). */
+    move: (dy: number) => {
+      const el = log.current;
+      if (!el) return;
+      el.scrollTop -= dy - fullRef.current.lastDy;
+      fullRef.current.lastDy = dy;
+    },
+    end: () => setFullLog((s) => (s === "on" ? "leaving" : s)),
+  };
+  /** The log's surface props, full screen: lifted to the visible top, or its own snapped box. */
+  const fullSurface = (p: ReturnType<typeof logSurface>) => {
+    if (fullLog === "off") return p;
+    const box = fullRef.current.box;
+    const transition = reducedMotion() ? "none" : box ? FADE : WIPE;
+    return {
+      ...p,
+      style: {
+        ...p.style,
+        // The size switches at once; only the wipe (or the fade) animates.
+        transition,
+        ...(box
+          ? {
+              position: "absolute" as const,
+              left: box.left,
+              width: box.width,
+              bottom: box.bottom,
+              height: box.height,
+              maxHeight: box.height,
+            }
+          : { maxHeight: fullRef.current.maxH }),
+      },
+    };
+  };
+  /** The bar steps aside while the log spans the screen (fullLogBox hideBar). */
+  const barAside = fullLog === "on" && !!fullRef.current.box?.hideBar;
+  /**
+   * The empty input takes the same vertical drag (with a draft, a drag is the
+   * draft's own: it scrolls or selects its text). A tap still focuses it.
+   */
+  const inputAxis = useRef(createAxisLock());
+  const inputDrag = {
+    onPointerDown: (e: React.PointerEvent<HTMLTextAreaElement>) => {
+      if (open && !draftRef.current) inputAxis.current.down(e.clientX, e.clientY);
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLTextAreaElement>) => {
+      const was = inputAxis.current.axis();
+      const m = inputAxis.current.move(e.clientX, e.clientY);
+      if (!m || m.axis !== "y") return;
+      if (!was) {
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        logDrag.start("input");
+      }
+      logDrag.move(m.dy);
+    },
+    onPointerUp: () => {
+      if (inputAxis.current.up() === "y") logDrag.end();
+    },
+    onPointerCancel: () => {
+      if (inputAxis.current.up() === "y") logDrag.end();
+    },
+  };
+  /** The wipe's start (the height the log gained), for the way in and out. */
+  const revealed = () => {
+    const el = log.current;
+    return el ? Math.max(0, el.clientHeight - fullRef.current.fromH) : 0;
+  };
+  useLayoutEffect(() => {
+    const el = log.current;
+    const was = wasFull.current;
+    wasFull.current = fullLog !== "off";
+    if (!el) return;
+    if (fullLog === "on") {
+      // Taller now: keep the bottom lines where they were.
+      el.scrollTop = keepEndGap({
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        gap: fullRef.current.gap,
+      });
+      if (reducedMotion()) return;
+      if (fullRef.current.box) {
+        // Its own box (it may be wider, its lines rewrapped): a fade in.
+        el.style.transition = "none";
+        el.style.opacity = "0";
+        void el.offsetHeight;
+        el.style.transition = FADE;
+        el.style.opacity = "1";
+        return;
+      }
+      const h = revealed();
+      if (!h) return;
+      el.style.transition = "none";
+      el.style.clipPath = `inset(${h}px 0 0 0)`;
+      void el.offsetHeight; // the start of the wipe, once per switch
+      el.style.transition = WIPE;
+      el.style.clipPath = "inset(0px 0 0 0)";
+    } else if (fullLog === "leaving") {
+      fullRef.current.gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const h = revealed();
+      if (reducedMotion() || (!h && !fullRef.current.box)) return setFullLog("off");
+      if (fullRef.current.box) el.style.opacity = "0";
+      else el.style.clipPath = `inset(${h}px 0 0 0)`;
+      // transitionend ends it (below); a one-shot fallback if it never fires.
+      const t = setTimeout(() => setFullLog((s) => (s === "leaving" ? "off" : s)), 320);
+      return () => clearTimeout(t);
+    } else if (was) {
+      // Back to its resting height at once (the wipe already hid the rest):
+      // the newest lines when idle, as the compact log always shows; typing,
+      // the lines that were at its bottom edge.
+      const faded = !!fullRef.current.box && !reducedMotion();
+      fullRef.current.box = null;
+      el.style.transition = "none";
+      el.style.clipPath = "";
+      el.style.opacity = faded ? "0" : "";
+      el.scrollTop =
+        typing || micActive
+          ? keepEndGap({
+              scrollHeight: el.scrollHeight,
+              clientHeight: el.clientHeight,
+              gap: fullRef.current.gap,
+            })
+          : el.scrollHeight;
+      void el.offsetHeight;
+      if (faded) {
+        // Back in its place: the compact log fades in where it rests.
+        el.style.transition = FADE;
+        el.style.opacity = "1";
+      } else el.style.transition = "";
+      onLogScroll();
+    }
+  }, [fullLog]);
   const input = useRef<HTMLTextAreaElement | null>(null);
   /** Dictated text just landed: put the caret after it and show the end. */
   const caretToEnd = useRef(false);
@@ -1183,8 +1415,8 @@ export function DebugChat({
         return;
       }
       if (open) {
-        const list = log.current;
-        if (list) list.scrollTop = micPress.current.scroll - m.dy;
+        if (!was) logDrag.start();
+        logDrag.move(m.dy);
         return;
       }
       if (!was) setScrubbing(true);
@@ -1196,7 +1428,8 @@ export function DebugChat({
       if (!axis) return;
       micDragged.current.dragEnded();
       if (axis === "x") handle.onPointerUp();
-      else if (!open) {
+      else if (open) logDrag.end();
+      else {
         setScrubbing(false);
         setFloatEpoch((e) => e + 1); // the dwell starts over from the release
       }
@@ -1204,10 +1437,13 @@ export function DebugChat({
     onPointerCancel: () => {
       const axis = micAxis.current.up();
       if (axis === "x") handle.onPointerCancel();
-      if (axis === "y") setScrubbing(false);
+      if (axis === "y") {
+        setScrubbing(false);
+        logDrag.end();
+      }
     },
     onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => {
-      if (open || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+      if (open ||(e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
       e.preventDefault();
       const from = floats.length ? back.current : -1;
       const n = Math.max(0, Math.min(Math.max(0, messages.length - 1), from + (e.key === "ArrowUp" ? 1 : -1)));
@@ -1828,6 +2064,23 @@ export function DebugChat({
       style={offset}
       className={`fixed right-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-40 flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo text-xs text-gray-800 dark:text-gray-100`}
     >
+      {fullLog !== "off" &&
+        typeof document !== "undefined" &&
+        createPortal(
+          // The full-screen log's glass sheet: over the page, under the chat.
+          // Out of the box, whose transform would trap a fixed child.
+          <div
+            aria-hidden
+            data-testid="debug-chat-log-sheet"
+            style={{
+              background: sheetBg(),
+              backdropFilter: SHEET_FILTER,
+              WebkitBackdropFilter: SHEET_FILTER,
+            }}
+            className={`pointer-events-none fixed inset-0 z-[39] transition-opacity duration-200 ease-out starting:opacity-0 motion-reduce:transition-none ${fullLog === "leaving" ? "opacity-0" : "opacity-100"}`}
+          />,
+          document.body,
+        )}
       {/* One column, one scroller: the state tree (when open) on top, the
       messages below it, the newest at the bottom. Hidden minimized. */}
       <div
@@ -1845,11 +2098,22 @@ export function DebugChat({
         hidden={!open}
         onTransitionEnd={(e) => {
           if (e.target !== e.currentTarget) return;
+          // The full-screen log's wipe out ended: back to its resting height.
+          if (e.propertyName === "clip-path" || e.propertyName === "opacity") {
+            if (fullLog === "leaving") setFullLog("off");
+            // The fade back in ended: the inline styles go.
+            else if (fullLog === "off" && e.propertyName === "opacity") {
+              e.currentTarget.style.transition = "";
+              e.currentTarget.style.opacity = "";
+            }
+            return;
+          }
           // Shrunk: land on the newest lines again, now that the height settled.
           if (!typing && !micActive) log.current?.scrollTo({ top: log.current.scrollHeight });
           onLogScroll();
         }}
-        {...logSurface({ expanded: typing || micActive, fade })}
+        data-full={fullLog === "off" ? undefined : fullLog}
+        {...fullSurface(logSurface({ expanded: typing || micActive, fade }))}
       >
       {open && tree && treePanel(false)}
       <ol
@@ -2056,7 +2320,12 @@ export function DebugChat({
           onPointerMove={(e) => e.target === e.currentTarget && handle.onPointerMove(e)}
           onPointerUp={(e) => e.target === e.currentTarget && handle.onPointerUp()}
           onPointerCancel={(e) => e.target === e.currentTarget && handle.onPointerCancel()}
-          style={{ background: INPUT_BG }}
+          style={{
+            background: INPUT_BG,
+            // Aside while the log spans the screen; it keeps the pointer (captured).
+            opacity: barAside ? 0 : undefined,
+            transition: reducedMotion() ? undefined : FADE,
+          }}
           className={`pointer-events-auto relative flex items-end rounded-[1.125rem] border border-current/25 text-gray-600 backdrop-blur-md backdrop-saturate-150 dark:text-gray-300 ${open ? "p-0.5" : "p-px"}`}
         >
           {armed > 0 && (
@@ -2175,7 +2444,9 @@ export function DebugChat({
                     submit();
                   }}
                   // A drag on a long draft scrolls its text, never the page or the box.
-                  className={`block h-[2.125rem] max-h-32 min-h-[2.125rem] min-w-0 flex-1 resize-none self-end overflow-y-auto overscroll-contain touch-pan-y border border-transparent bg-transparent px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
+                  {...inputDrag}
+                  // Empty, a vertical drag scrolls the log (full screen), not the page.
+                  className={`block h-[2.125rem] max-h-32 min-h-[2.125rem] min-w-0 flex-1 resize-none self-end overflow-y-auto overscroll-contain ${draft ? "touch-pan-y" : "touch-none"} border border-transparent bg-transparent px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
                 />
                 {holding && draft && (
                   // The draft hides the placeholder: the hint sits over it instead.
