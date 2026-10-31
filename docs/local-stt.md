@@ -142,6 +142,14 @@ never changes: its command, health check and other flags stay as they are,
 and turning the tunnel on or off is that file plus `oxmgr restart`.
 `--public-config ""` ignores the file (the tests use it).
 
+Both `public.json` and the ticket key must be regular files owned by the
+user running the server and writable by no one else (not group- or
+world-writable), and neither may be a symlink (`file_problem` in
+`ticket.py`). Otherwise the server logs `public listener off: <file> is a
+symlink` (or `is not owned by this user`, `is group- or world-writable`) and
+runs the tailnet listener only. `tunnel.sh` writes `public.json` as a fresh
+0600 file.
+
 **No Cloudflare Access** in front: tickets only, as the evaluation
 recommended. Access service tokens need request headers a browser WebSocket
 cannot send, and an Access login cookie expires silently into a grey dot.

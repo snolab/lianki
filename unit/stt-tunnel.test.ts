@@ -151,6 +151,8 @@ describe("scripts/local-stt/tunnel.sh", () => {
   test("the key path given (STT_TICKET_PUB) is the one the server is told to use", () => {
     h.sh("up");
     expect(JSON.parse(readFileSync(h.pubConf, "utf8"))).toEqual({ port: 5188, pubkey: h.pub });
+    // Written as server.py accepts it: a regular file, 0600 (it refuses group/world-writable).
+    expect(statSync(h.pubConf).mode & 0o777).toBe(0o600);
   });
 
   test("up twice: no second tunnel, no second restart", () => {

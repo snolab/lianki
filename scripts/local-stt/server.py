@@ -54,7 +54,7 @@ from websockets.exceptions import ConnectionClosed
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from engines import RATE, load_engine  # noqa: E402
-from ticket import SUBPROTOCOL, Tickets, load_public_key, offered  # noqa: E402
+from ticket import SUBPROTOCOL, Tickets, file_problem, load_public_key, offered  # noqa: E402
 
 #: A partial every this much new audio…
 PARTIAL_STEP_S = 0.4
@@ -257,7 +257,11 @@ class PublicGate:
 def public_settings(port: int, pubkey: str | None, config: str) -> tuple[int, str]:
     """The tunnel listener's port (0 = off) and key file: the flags, else tunnel.sh's config file."""
     conf: dict = {}
-    if config and os.path.exists(config):
+    if config and os.path.lexists(config):
+        why = file_problem(config)
+        if why:
+            log(f"public listener off: {config} {why}")
+            return 0, ""
         try:
             with open(config, encoding="utf-8") as f:
                 conf = json.load(f)
@@ -319,7 +323,8 @@ async def main() -> None:
             gate = PublicGate(Tickets(load_public_key(pubkey)))
         except (OSError, ValueError) as e:
             # Fail closed: no key, no public listener (the tailnet one still runs).
-            log(f"public listener off: no ticket key at {pubkey} ({type(e).__name__})")
+            reason = str(e) if isinstance(e, ValueError) else type(e).__name__
+            log(f"public listener off: no usable ticket key at {pubkey} ({reason})")
 
     from websockets.asyncio.server import serve
     from websockets.http11 import Response

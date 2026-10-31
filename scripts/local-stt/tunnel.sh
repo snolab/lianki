@@ -95,6 +95,14 @@ PY
   "$CURL" -fsS --max-time 5 "$HEALTH_URL" >/dev/null || { say "$HEALTH_URL does not answer"; return 1; }
 }
 
+# public.json as server.py accepts it: a fresh regular file of ours, mode 0600
+# (it refuses a symlink or a group/world-writable file). rm first, so an
+# existing symlink is replaced, never written through.
+write_conf() {
+  rm -f "$PUBCONF"
+  (umask 077 && printf '%s\n' "$1" >"$PUBCONF")
+}
+
 # Turn the tunnel listener on or off through server.py's config file
 # (~/.config/lianki-stt/public.json), so the oxmgr entry and all its flags stay
 # exactly as they are. On "on", a failed check puts the server back as it was.
@@ -123,13 +131,13 @@ server_public() {
     local backup=""
     [ -f "$PUBCONF" ] && { backup="$(cat "$PUBCONF")"; }
     mkdir -p "$(dirname "$PUBCONF")"
-    printf '%s\n' "$want" >"$PUBCONF"
+    write_conf "$want"
     if restart_and_check on; then
       say "STT server: tunnel listener on 127.0.0.1:$PORT (key $PUB)"
       return 0
     fi
     say "check failed: restoring the STT server as it was"
-    if [ -n "$backup" ]; then printf '%s\n' "$backup" >"$PUBCONF"; else rm -f "$PUBCONF"; fi
+    if [ -n "$backup" ]; then write_conf "$backup"; else rm -f "$PUBCONF"; fi
     restart_and_check any || say "the STT server did not come back healthy: oxmgr logs $SERVER"
     return 1
   fi

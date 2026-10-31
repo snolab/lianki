@@ -16,7 +16,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402
 
-from ticket import Tickets, offered  # noqa: E402
+from ticket import Tickets, file_problem, load_public_key, offered  # noqa: E402
 
 NOW = 1_800_000_000
 
@@ -95,6 +95,54 @@ class TicketTest(unittest.TestCase):
 
     def test_offered(self):
         self.assertEqual(offered("lianki-stt, abc.def"), (True, "abc.def"))
+
+
+class FileProblemTest(unittest.TestCase):
+    """public.json and the ticket key: a regular file of ours, writable by no one else."""
+
+    def setUp(self):
+        import tempfile
+
+        self.dir = tempfile.mkdtemp()
+        self.path = os.path.join(self.dir, "ticket.pub")
+        key = Ed25519PrivateKey.generate().public_key()
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+        with open(self.path, "w") as f:
+            f.write(b64(key.public_bytes(Encoding.Raw, PublicFormat.Raw)) + "\n")
+        os.chmod(self.path, 0o644)
+
+    def test_ours_and_not_writable_by_others(self):
+        self.assertIsNone(file_problem(self.path))
+        self.assertIsNotNone(load_public_key(self.path))
+        os.chmod(self.path, 0o600)
+        self.assertIsNone(file_problem(self.path))
+
+    def test_group_writable(self):
+        os.chmod(self.path, 0o664)
+        self.assertEqual(file_problem(self.path), "is group- or world-writable")
+
+    def test_world_writable(self):
+        os.chmod(self.path, 0o646)
+        self.assertEqual(file_problem(self.path), "is group- or world-writable")
+
+    def test_not_ours(self):
+        self.assertEqual(file_problem(self.path, uid=os.getuid() + 1), "is not owned by this user")
+
+    def test_symlink(self):
+        link = os.path.join(self.dir, "link.pub")
+        os.symlink(self.path, link)
+        self.assertEqual(file_problem(link), "is a symlink")
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            load_public_key(link)
+
+    def test_not_a_file(self):
+        self.assertEqual(file_problem(self.dir), "is not a regular file")
+        self.assertTrue(file_problem(os.path.join(self.dir, "missing")).startswith("cannot read"))
+
+
+class OfferedTest(unittest.TestCase):
+    def test_offered(self):
         self.assertEqual(offered("abc.def"), (False, "abc.def"))
         self.assertEqual(offered("lianki-stt"), (True, None))
         self.assertEqual(offered("lianki-stt, a.b, c.d"), (True, None))

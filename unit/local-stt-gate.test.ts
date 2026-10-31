@@ -7,7 +7,14 @@
  * cryptography), not the model. Skipped where the venv is missing (CI).
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { connect } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -82,7 +89,7 @@ describe.skipIf(!hasVenv)("local STT tunnel listener: the ticket gate", () => {
     k = await keys();
     const dir = mkdtempSync(join(tmpdir(), "stt-gate-"));
     const pubFile = join(dir, "ticket.pub");
-    writeFileSync(pubFile, `${k.pub}\n`);
+    writeFileSync(pubFile, `${k.pub}\n`, { mode: 0o644 });
     proc = Bun.spawn(
       [
         PY,
@@ -227,7 +234,7 @@ describe.skipIf(!hasVenv)("local STT tunnel listener: starting it", () => {
     const port = PORT + 10;
     const taken = Bun.listen({ hostname: "127.0.0.1", port: port + 1, socket: { data() {} } });
     const dir = mkdtempSync(join(tmpdir(), "stt-gate-"));
-    writeFileSync(join(dir, "ticket.pub"), `${(await keys()).pub}\n`);
+    writeFileSync(join(dir, "ticket.pub"), `${(await keys()).pub}\n`, { mode: 0o644 });
     const s = await startServer([
       "--port",
       String(port),
@@ -251,9 +258,11 @@ describe.skipIf(!hasVenv)("local STT tunnel listener: starting it", () => {
     const port = PORT + 20;
     const dir = mkdtempSync(join(tmpdir(), "stt-gate-"));
     const k2 = await keys();
-    writeFileSync(join(dir, "custom.pub"), `${k2.pub}\n`);
+    writeFileSync(join(dir, "custom.pub"), `${k2.pub}\n`, { mode: 0o644 });
     const conf = join(dir, "public.json");
-    writeFileSync(conf, JSON.stringify({ port: port + 1, pubkey: join(dir, "custom.pub") }));
+    writeFileSync(conf, JSON.stringify({ port: port + 1, pubkey: join(dir, "custom.pub") }), {
+      mode: 0o644,
+    });
     const s = await startServer(["--port", String(port), "--public-config", conf]);
     try {
       expect(s.out).toContain(`public listener on ws://127.0.0.1:${port + 1}`);
@@ -282,7 +291,115 @@ describe.skipIf(!hasVenv)("local STT tunnel listener: starting it", () => {
     writeFileSync(conf, JSON.stringify({ port: port + 1, pubkey: join(dir, "missing.pub") }));
     const s = await startServer(["--port", String(port), "--public-config", conf]);
     try {
-      expect(s.out).toContain("public listener off: no ticket key");
+      expect(s.out).toContain("public listener off: no usable ticket key");
+      expect(s.out).not.toContain("public listener on");
+      expect((await fetch(`http://127.0.0.1:${port}/health`)).ok).toBe(true);
+    } finally {
+      s.proc.kill();
+    }
+  }, 30_000);
+});
+
+/**
+ * public.json and the ticket key decide who reaches the decoder from the
+ * internet: a symlink, or a file someone else can write, never turns the
+ * tunnel listener on. (Not owned by this user: test_ticket.py, which can fake
+ * the uid; a test cannot chown.) The tailnet listener stays up in every case.
+ */
+describe.skipIf(!hasVenv)("local STT tunnel listener: refusing unsafe files", () => {
+  let n = 0;
+  /** dir has ticket.pub (0644) and public.json (0644) naming it; `prepare` makes dir/conf. */
+  async function attempt(prepare: (dir: string, port: number) => void, reason: RegExp) {
+    const port = PORT + 40 + 2 * n++;
+    const dir = mkdtempSync(join(tmpdir(), "stt-gate-"));
+    writeFileSync(join(dir, "ticket.pub"), `${(await keys()).pub}\n`);
+    chmodSync(join(dir, "ticket.pub"), 0o644);
+    writeFileSync(
+      join(dir, "public.json"),
+      JSON.stringify({ port: port + 1, pubkey: join(dir, "ticket.pub") }),
+    );
+    chmodSync(join(dir, "public.json"), 0o644);
+    prepare(dir, port);
+    const s = await startServer(["--port", String(port), "--public-config", join(dir, "conf")]);
+    try {
+      expect(s.out).toMatch(reason);
+      expect(s.out).not.toContain("public listener on");
+      expect((await fetch(`http://127.0.0.1:${port}/health`)).ok).toBe(true);
+    } finally {
+      s.proc.kill();
+    }
+  }
+  /** A real file (not a link) with public.json's content, in this mode. */
+  const copyConf = (dir: string, mode = 0o644) => {
+    writeFileSync(join(dir, "conf"), readFileSync(join(dir, "public.json")));
+    chmodSync(join(dir, "conf"), mode);
+  };
+
+  it("the control: a safe public.json and key turn it on", async () => {
+    const port = PORT + 90;
+    const dir = mkdtempSync(join(tmpdir(), "stt-gate-"));
+    writeFileSync(join(dir, "ticket.pub"), `${(await keys()).pub}\n`);
+    chmodSync(join(dir, "ticket.pub"), 0o644);
+    writeFileSync(
+      join(dir, "conf"),
+      JSON.stringify({ port: port + 1, pubkey: join(dir, "ticket.pub") }),
+    );
+    chmodSync(join(dir, "conf"), 0o600);
+    const s = await startServer(["--port", String(port), "--public-config", join(dir, "conf")]);
+    s.proc.kill();
+    expect(s.out).toContain("public listener on");
+  }, 30_000);
+
+  it("public.json as a symlink", async () => {
+    await attempt(
+      (dir) => symlinkSync(join(dir, "public.json"), join(dir, "conf")),
+      /public listener off: .*conf is a symlink/,
+    );
+  }, 30_000);
+
+  it("public.json group-writable", async () => {
+    await attempt((dir) => copyConf(dir, 0o664), /conf is group- or world-writable/);
+  }, 30_000);
+
+  it("public.json world-writable", async () => {
+    await attempt((dir) => copyConf(dir, 0o646), /conf is group- or world-writable/);
+  }, 30_000);
+
+  it("the ticket key as a symlink", async () => {
+    await attempt((dir, port) => {
+      symlinkSync(join(dir, "ticket.pub"), join(dir, "link.pub"));
+      writeFileSync(
+        join(dir, "conf"),
+        JSON.stringify({ port: port + 1, pubkey: join(dir, "link.pub") }),
+      );
+      chmodSync(join(dir, "conf"), 0o644);
+    }, /no usable ticket key .*the ticket key is a symlink/);
+  }, 30_000);
+
+  it("the ticket key group- or world-writable", async () => {
+    await attempt((dir) => {
+      copyConf(dir);
+      chmodSync(join(dir, "ticket.pub"), 0o666);
+    }, /no usable ticket key .*the ticket key is group- or world-writable/);
+  }, 30_000);
+
+  it("the ticket key from --ticket-pubkey is checked too", async () => {
+    const port = PORT + 80;
+    const dir = mkdtempSync(join(tmpdir(), "stt-gate-"));
+    writeFileSync(join(dir, "ticket.pub"), `${(await keys()).pub}\n`);
+    chmodSync(join(dir, "ticket.pub"), 0o664);
+    const s = await startServer([
+      "--port",
+      String(port),
+      "--public-port",
+      String(port + 1),
+      "--ticket-pubkey",
+      join(dir, "ticket.pub"),
+      "--public-config",
+      "",
+    ]);
+    try {
+      expect(s.out).toContain("the ticket key is group- or world-writable");
       expect(s.out).not.toContain("public listener on");
       expect((await fetch(`http://127.0.0.1:${port}/health`)).ok).toBe(true);
     } finally {

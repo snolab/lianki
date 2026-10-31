@@ -210,7 +210,11 @@ tailnet"):
   ticket: Ed25519, `aud` `lianki-stt`, 60 s, single use (jti replay store),
   issued by `POST /api/dev/stt-ticket` to the owner's session only. The
   private key is the Worker secret `STT_TICKET_KEY`; the Mac has only the
-  public key. Never in a URL or a log. No public key, no listener.
+  public key. Never in a URL or a log. No public key, no listener. The
+  listener is switched on only by files the server trusts: `public.json` and
+  the public key must be the running user's own regular files, not symlinks,
+  and not group- or world-writable; otherwise it stays off, with the reason
+  logged, and the tailnet listener runs alone.
 - **Limits.** At most 2 sockets at once (503); the existing per-utterance
   length (`MAX_S`) and 4 MB frame limits; one Cloudflare rate-limiting rule
   on the host (10 handshakes per 10 s per IP, `scripts/ops/stt-edge.ts`).

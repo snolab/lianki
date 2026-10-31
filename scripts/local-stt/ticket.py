@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import time
 
@@ -36,10 +37,36 @@ def b64url_decode(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
 
+def file_problem(path: str, uid: int | None = None) -> str | None:
+    """
+    Why this file must not switch on or configure the tunnel listener, or None.
+    public.json and the ticket key decide who may reach the decoder from the
+    internet, so only a regular file of our own, writable by no one else, counts.
+    """
+    import stat
+
+    try:
+        st = os.lstat(path)
+    except OSError as e:
+        return f"cannot read ({type(e).__name__})"
+    if stat.S_ISLNK(st.st_mode):
+        return "is a symlink"
+    if not stat.S_ISREG(st.st_mode):
+        return "is not a regular file"
+    if st.st_uid != (os.getuid() if uid is None else uid):
+        return "is not owned by this user"
+    if st.st_mode & 0o022:
+        return "is group- or world-writable"
+    return None
+
+
 def load_public_key(path: str):
     """The raw 32-byte Ed25519 public key, base64url, one line (scripts/local-stt/ticket-key.ts writes it)."""
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+    why = file_problem(path)
+    if why:
+        raise ValueError(f"the ticket key {why}")
     with open(path, encoding="ascii") as f:
         raw = b64url_decode(f.read().strip())
     if len(raw) != 32:
