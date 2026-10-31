@@ -50,18 +50,20 @@ Linux and runs the gate normally.
 
 Don't confuse them when debugging a rejected push:
 
-- *Classic branch protection* holds the required check (`Typecheck + unit`
-  only, since qa:all went nightly on 2026-10-31), `strict: true`,
+- _Classic branch protection_ holds the required check (`Typecheck + unit`
+  only, since qa:all went nightly on 2026-10-31), `strict: false`,
   `enforce_admins: true`, and **no**
   required PR reviews. Read it with
   `gh api repos/snolab/lianki/branches/main/protection`.
-  `strict: true` ("require branches to be up to date") is there because two
-  PRs, each green against an older main, were squashed together and broke
-  main's typecheck (#342 + #344, fixed in #347): a PR must now re-run the
-  check on top of the current main before it merges. The check is ~20 s, so
-  the cost is small; auto-merge PRs still need `gh pr update-branch <N>` (or a
-  rebase) when main moves under them.
-- *Ruleset `cipass`* (id 13053938) blocks deletion, force-push, and non-linear
+  Merging goes through a **merge queue** (since 2026-10-31): `gh pr merge
+<N> --auto` queues the PR, CI runs on the `merge_group` event against main
+  plus the PRs ahead of it, and it merges only if that combination is green.
+  Two PRs that are green apart and red together (#342 + #344 broke main that
+  way) can no longer both land, and no one runs `gh pr update-branch` by hand.
+  This replaced `strict: true`, which made every auto-merge PR stall as
+  BEHIND whenever main moved. The queue is the `merge_queue` rule on the
+  `cipass` ruleset.
+- _Ruleset `cipass`_ (id 13053938) blocks deletion, force-push, and non-linear
   history. Read it with `gh api repos/snolab/lianki/rulesets/13053938`.
 - Emergency override:
   `gh api --method DELETE repos/snolab/lianki/branches/main/protection/enforce_admins`.
@@ -73,7 +75,7 @@ The repo's "Allow auto-merge" setting must be ON (it is).
 
 **Gotcha**: if that setting is OFF, `--auto` returns exit 0 but silently does
 nothing. Confirm it armed with `gh pr view <N> --json autoMergeRequest` (should
-be non-null). With no required checks, `--auto` merges *immediately* — which is
+be non-null). With no required checks, `--auto` merges _immediately_ — which is
 why protection must stay in place.
 
 ## QA after every deploy

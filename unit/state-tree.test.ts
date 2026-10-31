@@ -466,7 +466,7 @@ describe("the tree's source: live from the dev server, else the bundled copy", (
         }
       },
     };
-    return { deps, fetched, sources };
+    return { deps, fetched, sources, responses };
   };
   const tick = () => new Promise((r) => setTimeout(r, 0));
   const SRC = "https://mac.example.ts.net/lianki-widget/debug-chat.js";
@@ -524,5 +524,28 @@ describe("the tree's source: live from the dev server, else the bundled copy", (
     );
     await tick();
     expect(errors.map((e) => (e as Error).message).sort()).toEqual(["HTTP 404", "offline"]);
+  });
+
+  it("a failed load is tried again when the stream (re)opens, and then delivers", async () => {
+    const live = "https://mac.example.ts.net/lianki-widget/state-tree.md";
+    const f = fakes({});
+    const got: string[] = [];
+    const errors: unknown[] = [];
+    hotTreeSource(new URL(SRC), undefined, f.deps).subscribe(
+      (md) => got.push(md),
+      (e) => errors.push(e),
+    );
+    await tick();
+    expect(errors.length).toBe(1);
+    // The dev server is back: its stream opens, the load runs again and succeeds.
+    f.responses[live] = "## Back";
+    f.sources[0].fns.open();
+    await tick();
+    expect(got).toEqual(["## Back"]);
+    // Opened again after a success: nothing refetched.
+    const n = f.fetched.length;
+    f.sources[0].fns.open();
+    await tick();
+    expect(f.fetched.length).toBe(n);
   });
 });

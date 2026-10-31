@@ -14,6 +14,10 @@ paths = [
 # A deliberately fake Stripe-shaped key: unit/security.test.ts checks that the
 # public-dir hygiene scan flags one. Committed in 3346e79, so it must stay
 # allowed for the history scan; the test now builds it at runtime.
+# RFC 6455's sample Sec-WebSocket-Key ("the sample nonce" in base64), sent by a
+# handshake test in 987e0972. CI's checkout fetches every branch, so one pushed
+# copy fails the scan on every PR; it is public and never a secret.
 regexes = [
   '''sk_live_abcdefghijklmnop1234''',
+  '''dGhlIHNhbXBsZSBub25jZQ==''',
 ]

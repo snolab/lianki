@@ -35,7 +35,9 @@
  *       thread has been closed for a minute and {"type":"pages-back",
  *       "thread","label","at"} when one opens again. It stays connected
  *       through idle (--exit-on-idle exits instead). Also appended to
- *       --out. Reconnects on close, backing off, by resuming the grant: it
+ *       --out. Reconnects on close, backing off, by resuming the grant —
+ *       also when a ping every 20 s goes unanswered (a socket that died
+ *       with no close event, e.g. on a push Worker redeploy; ./keepalive.ts): it
  *       pairs at most once per run. With no grant left after that it prints
  *       {"type":"error"} and waits, without asking again, until restarted or
  *       a grant is saved by another run. A live line also carries "lagMs"
@@ -44,10 +46,50 @@
  *       once with one busy beat, so the page's spinner shows "heard you"
  *       before the agent's turn (docs/monitoring.md, "Voice latency").
  *
- *   bun scripts/dev/eval.ts say [--to <thread|email>] "text"      (or - for stdin)
+ *       It also prints {"type":"page-error","kind","message","stack","path",
+ *       "status","label","rev","at"}: the owner's pages' console errors
+ *       (docs/dev-debug-widget.md, "Page errors").
+ *
+ *   bun scripts/dev/eval.ts errors [--no-pair] [--out /tmp/lianki-page-errors.jsonl]
+ *       The same listener (same grant, same reconnects), printing only the
+ *       page-error lines: a dedicated error watcher. --no-pair: with no
+ *       saved chat grant, say so and wait instead of asking the owner.
+ *
+ *   bun scripts/dev/eval.ts wake active|passive|ignored [--to <thread|email>]
+ *       The mic's wake-word mode on those pages (docs/wake-word.md): passive
+ *       waits for "Linky"; ignored = the last line was not for the agent.
+ *       Each owner line carries "wake" (the mode it was sent in) while the mic is on.
+ *
+ *   bun scripts/dev/eval.ts clips
+ *   bun scripts/dev/eval.ts clips on --device <text> [--minutes N] [--sink <url>]
+ *   bun scripts/dev/eval.ts clips off [--device <text>]
+ *       Voice-clip recording on the owner's window sessions (docs/dev-debug-widget.md,
+ *       "Voice clips"). Alone: list them, {"type":"clips-list","sessions":[{sid,
+ *       device,on,pages,until?,sink?,goneAt?,hidden?}]}. `on` starts it in every
+ *       open window whose session id or device id starts with <text>, or one of
+ *       whose page labels (path + user agent) contains it ("Android", "/words");
+ *       it follows that window across URLs and origins, with a 录音中 badge and
+ *       a Stop on the page. No auto-stop unless --minutes (1–1440). The sink
+ *       defaults to this Mac's https://<tailnet>/lianki-widget, and is checked
+ *       (with its read key) before turning on; its write key goes to the hub,
+ *       which hands it only to that session's pages (clip-sink.ts sinkKeys).
+ *       The session moves only between the owner's exact origins: lianki.com,
+ *       LIANKI_DEV_ORIGINS and LIANKI_CLIPS_ORIGINS (the sink's own allowlist),
+ *       or --origins a,b. `off` stops the matching ones (all without --device).
+ *       Never deletes a clip.
+ *
+ *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet | --loud] "text"   (or - for stdin)
  *       Reply with the saved grant (the chat grant, else the eval grant:
  *       eval implies chat; never pairs), and exit: to the owner by default, or to
  *       a friend's thread by user id or email.
+ *
+ *       Agent lines must not wake the owner (docs/dev-debug-widget.md,
+ *       "Quiet lines and quiet hours"): --quiet for FYI, progress and deploy
+ *       notices (shown, never read aloud); plain say for an answer to what
+ *       he just said (read aloud, but not in his quiet hours, default
+ *       23:00–08:00 on his device); --loud only when urgent or it needs his
+ *       confirmation (read even in quiet hours, unless he muted the page).
+ *       A hidden page or a locked screen never speaks.
  *
  *       A line spoken into the widget's mic carries "source":"stt"; when
  *       the agent polishes one, {"type":"edited","id","thread","text","raw",
@@ -124,10 +166,13 @@ import {
 import { homedir, hostname } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { type NodeOpts, chatLine, nodeOpts } from "./node-args";
+import { type NodeOpts, type SayVolume, chatLine, nodeOpts, sayVolume } from "./node-args";
 import { routeTo } from "@/lib/dev-eval";
 import { type BusyArgs, beatMessage, endsBeat, idleFor, parseBusyArgs } from "./busy";
 import { ENDED, GRANT_INVALID, chatClose, chatStep, serveClose } from "./eval-grant";
+import { DEAD, PONG, keepalive } from "./keepalive";
+import { tailnetHost } from "./tailnet";
+import { clipsOrigins, sinkKeys } from "./clip-sink";
 import {
   EVAL_TOKEN_FILE,
   type Msg,
@@ -170,13 +215,46 @@ const boolFlag = (name: string) => {
   args.splice(i, 1);
   return true;
 };
+/**
+ * ask: `--q "question" --opt "a" --opt "b" [--multi] [--q …]`, in order: each
+ * --q starts a question, the --opt after it are its options (the first one
+ * recommended), --multi lets it take several. Taken out of args here.
+ */
+const askQuestions: {
+  question: string;
+  options: { label: string; recommended?: boolean }[];
+  multi?: boolean;
+}[] = [];
+for (let i = 0; i < args.length; ) {
+  const a = args[i];
+  if (a === "--q" && args[i + 1] !== undefined) {
+    askQuestions.push({ question: args[i + 1]!, options: [] });
+    args.splice(i, 2);
+  } else if (a === "--opt" && args[i + 1] !== undefined && askQuestions.length) {
+    const q = askQuestions.at(-1)!;
+    q.options.push({
+      label: args[i + 1]!,
+      ...(q.options.length === 0 ? { recommended: true } : {}),
+    });
+    args.splice(i, 2);
+  } else if (a === "--multi" && askQuestions.length) {
+    askQuestions.at(-1)!.multi = true;
+    args.splice(i, 1);
+  } else i++;
+}
 const noPair = boolFlag("--no-pair");
+/** ask: wait for the tap and print the answer (or time out). */
+const waitFlag = boolFlag("--wait");
 /** edit: the owner's latest line, instead of an id. */
 const lastFlag = boolFlag("--last");
 /** chat: exit on {type:"pages-idle"} instead of staying for pages-back. */
 const exitOnIdle = boolFlag("--exit-on-idle");
 /** chat: answer each live owner/friend line at once with one busy beat ("heard you"). */
 const ackFlag = boolFlag("--ack");
+/** say: shown on his page, never read aloud (FYI, progress, deploy notices). */
+const quietFlag = boolFlag("--quiet");
+/** say: read aloud even in his quiet hours (urgent, or it needs his answer). */
+const loudFlag = boolFlag("--loud");
 const labelFlag = flag("--label");
 const label = labelFlag ?? `lianki main lane on ${hostname()}`;
 const target = flag("--target");
@@ -185,6 +263,12 @@ const to = flag("--to");
 const forEmail = flag("--for");
 const fromFlag = flag("--from");
 const hoursFlag = flag("--hours");
+/** ask --wait: give up after this many seconds (default 600). */
+const timeoutFlag = flag("--timeout");
+const deviceFlag = flag("--device");
+const minutesFlag = flag("--minutes");
+const sinkFlag = flag("--sink");
+const originsFlag = flag("--origins");
 const placed = nodeOpts({ taskPath: flag("--task-path"), agent: flag("--agent") });
 if ("error" in placed) {
   console.error(placed.error);
@@ -290,14 +374,18 @@ async function viaSession(code: string): Promise<Msg[] | null> {
  * Listen to the owner's chat: one JSON line per new owner message, on stdout
  * and appended to --out. Resumes with the saved grant; pairs when there is
  * none (or it was refused) — at most once per run (chatStep/chatClose).
- * Reconnects only when the socket closes.
+ * Reconnects (with backoff) when the socket closes, or when its keepalive
+ * finds it dead without a close (./keepalive.ts). `errorsOnly` (`eval.ts errors`):
+ * the same socket and grant, but only page-error lines (and pending/error)
+ * are printed.
  */
-function chat(out?: string) {
+function chat(out?: string, errorsOnly = false) {
   const seen = new Set<string>();
   let first = true;
   let backoff = 1_000;
   let asked = false;
   const print = (v: Record<string, unknown>) => {
+    if (errorsOnly && v.type !== "page-error" && v.type !== "error") return;
     const line = JSON.stringify(v);
     console.log(line);
     if (out) appendFileSync(out, `${line}\n`);
@@ -334,12 +422,36 @@ function chat(out?: string) {
   };
   const connect = () => {
     const token = loadToken();
-    const step = chatStep({ token, paired: asked });
+    // --no-pair: never ask the owner; with no grant, give up as if asked once.
+    const step = chatStep({ token, paired: asked || noPair });
     if (step === "give-up") return giveUp();
     if (step === "pair") asked = true;
     const ws = openControl(token, undefined, "chat");
+    /** This socket is done with (closed, or found dead): handled once. */
+    let gone = false;
+    // A socket can die with no close event (a redeploy of the push Worker,
+    // the edge dropping the connection): a ping it cannot answer, or one that
+    // never opens, counts as closed — dropped here and reconnected.
+    const alive = keepalive(ws, (why) => {
+      console.error(`socket dead (${why}); dropping it.`);
+      try {
+        ws.close(DEAD, why.slice(0, 100));
+      } catch {}
+      closed(DEAD);
+    });
+    ws.onerror = () => {
+      // Bun follows an error with a close; if it does not, the keepalive does.
+      console.error("socket error");
+    };
     ws.onmessage = (e) => {
-      const m = JSON.parse(String(e.data)) as Msg;
+      alive.heard();
+      if (e.data === PONG) return;
+      let m: Msg;
+      try {
+        m = JSON.parse(String(e.data)) as Msg;
+      } catch {
+        return;
+      }
       if (m.type === "pending") {
         console.log(JSON.stringify({ type: "pending", code: m.code, label }));
         console.error(
@@ -367,7 +479,17 @@ function chat(out?: string) {
           const thread = String(msg.thread ?? "owner");
           ws.send(beatMessage(thread === "owner" ? {} : { to: String(msg.email ?? thread) }));
         }
-      } else if (m.type === "edited")
+      } else if (m.type === "answered")
+        // An ask card tapped on a page: stamped by the hub (source "tap").
+        print({
+          type: "answered",
+          id: m.id,
+          askId: m.askId,
+          thread: m.thread ?? "owner",
+          answer: m.answer,
+          labels: m.labels,
+        });
+      else if (m.type === "edited")
         print({
           type: "edited",
           id: m.id,
@@ -406,10 +528,28 @@ function chat(out?: string) {
           email: m.email,
           at: new Date(Number(m.at)).toISOString(),
         });
+      else if (m.type === "page-error")
+        // An owner page's console error (docs/dev-debug-widget.md, "Page errors").
+        print({
+          type: "page-error",
+          kind: m.kind,
+          message: m.message,
+          ...(m.stack ? { stack: m.stack } : {}),
+          path: m.path,
+          ...(m.status !== undefined ? { status: m.status } : {}),
+          label: m.label,
+          rev: m.rev ?? null,
+          at: new Date(Number(m.at) || Number(m.hubAt)).toISOString(),
+        });
       else if (m.type === "error") console.error(`hub: ${m.error}`);
     };
-    ws.onclose = (e) => {
-      const what = chatClose(e.code);
+    ws.onclose = (e) => closed(e.code);
+    const closed = (code: number) => {
+      if (gone) return;
+      gone = true;
+      alive.stop();
+      ws.onmessage = ws.onclose = ws.onerror = null;
+      const what = chatClose(code);
       if (what === "refused") {
         // The grant is gone (ended, or expired): forget it. connect() pairs
         // only if this run has not asked the owner yet.
@@ -425,7 +565,7 @@ function chat(out?: string) {
       // No grant to resume with (a pairing that was never answered, or
       // failed): connect() gives up rather than asking again.
       if (!loadToken()) return connect();
-      console.error(`socket closed (${e.code}); resuming in ${backoff / 1000}s`);
+      console.error(`socket closed (${code}); resuming in ${backoff / 1000}s`);
       setTimeout(connect, backoff);
       backoff = Math.min(backoff * 2, 60_000);
     };
@@ -434,7 +574,31 @@ function chat(out?: string) {
 }
 
 /** Reply with the saved grant (to the owner, or `to` a friend); resolves once the hub has it. */
-function say(text: string, to?: string): Promise<Msg> {
+function say(text: string, to?: string, volume: SayVolume = {}): Promise<Msg> {
+  return sendOnce(
+    {
+      type: "say",
+      text,
+      ...(to ? { to } : {}),
+      ...(where.node ? { taskPath: where.node } : {}),
+      ...(where.agent ? { agentId: where.agent } : {}),
+      ...volume,
+    },
+    "said",
+  );
+}
+
+/**
+ * Set the mic's wake-word mode on the owner's (or `to` a friend's) pages
+ * (docs/wake-word.md): "passive" waits for "Linky", "active" hears
+ * everything, "ignored" counts the last line as not for the agent.
+ */
+function wake(mode: string, to?: string): Promise<Msg> {
+  return sendOnce({ type: "wake", mode, ...(to ? { to } : {}) }, "woke");
+}
+
+/** One controller message with the saved grant; resolves on the hub's `done` answer. */
+function sendOnce(msg: Record<string, unknown>, done: string): Promise<Msg> {
   const grant = chatGrant();
   if (!grant)
     return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
@@ -446,17 +610,8 @@ function say(text: string, to?: string): Promise<Msg> {
     }, 15_000);
     ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data)) as Msg;
-      if (m.type === "approved")
-        ws.send(
-          JSON.stringify({
-            type: "say",
-            text,
-            ...(to ? { to } : {}),
-            ...(where.node ? { taskPath: where.node } : {}),
-            ...(where.agent ? { agentId: where.agent } : {}),
-          }),
-        );
-      else if (m.type === "said") {
+      if (m.type === "approved") ws.send(JSON.stringify(msg));
+      else if (m.type === done) {
         clearTimeout(give);
         ws.close();
         resolve(m);
@@ -469,6 +624,61 @@ function say(text: string, to?: string): Promise<Msg> {
     ws.onclose = (e) => {
       clearTimeout(give);
       // Refused: forget it, and fail. say never pairs.
+      if (e.code === GRANT_INVALID) rmSync(grant.file, { force: true });
+      reject(new Error(`socket closed (${e.code}${e.reason ? ` ${e.reason}` : ""})`));
+    };
+  });
+}
+
+/**
+ * Ask with a card (tappable options). Resolves with the hub's {type:"asked"};
+ * with `wait`, keeps listening and resolves with {type:"answered"} for this
+ * ask once it is tapped (event-driven), or rejects after `timeoutMs`. Never
+ * pairs.
+ */
+function ask(
+  questions: typeof askQuestions,
+  to: string | undefined,
+  wait: boolean,
+  timeoutMs: number,
+): Promise<Msg> {
+  const grant = chatGrant();
+  if (!grant)
+    return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
+  return new Promise((resolve, reject) => {
+    const ws = openControl(grant.token);
+    let askId: string | undefined;
+    const give = setTimeout(
+      () => {
+        ws.close();
+        reject(
+          new Error(
+            askId ? `no tap within ${timeoutMs / 1000} s` : "no answer from the hub within 15 s",
+          ),
+        );
+      },
+      wait ? timeoutMs : 15_000,
+    );
+    const done = (fn: () => void) => {
+      clearTimeout(give);
+      ws.close();
+      fn();
+    };
+    ws.onmessage = (e) => {
+      const m = JSON.parse(String(e.data)) as Msg;
+      if (m.type === "approved")
+        ws.send(
+          JSON.stringify({ type: "ask", questions, ...(to && to !== "owner" ? { to } : {}) }),
+        );
+      else if (m.type === "asked") {
+        askId = String(m.askId);
+        if (!wait) done(() => resolve(m));
+        else console.error(`asked (${askId}); waiting for the tap…`);
+      } else if (m.type === "answered" && askId && m.askId === askId) done(() => resolve(m));
+      else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
+    };
+    ws.onclose = (e) => {
+      clearTimeout(give);
       if (e.code === GRANT_INVALID) rmSync(grant.file, { force: true });
       reject(new Error(`socket closed (${e.code}${e.reason ? ` ${e.reason}` : ""})`));
     };
@@ -662,6 +872,7 @@ async function main() {
   }
   if (args[0] === "serve") return serve();
   if (args[0] === "chat") return chat(out);
+  if (args[0] === "errors") return chat(out, true);
   if (args[0] === "edit") {
     const rest = args.slice(1);
     const id = lastFlag ? undefined : rest.length > 1 ? rest[0] : undefined;
@@ -676,19 +887,94 @@ async function main() {
     console.log(JSON.stringify(await edit(text, id, lastFlag)));
     return;
   }
-  if (args[0] === "say") {
-    const text = (args[1] === "-" ? await Bun.stdin.text() : (args[1] ?? "")).trim();
-    if (!text) {
-      console.error('usage: bun scripts/dev/eval.ts say [--to <thread|email>] "text" | -');
+  if (args[0] === "ask") {
+    if (!askQuestions.length || askQuestions.some((q) => !q.options.length)) {
+      console.error(
+        'usage: bun scripts/dev/eval.ts ask [--to owner|<email>] --q "question" --opt "a" --opt "b" [--multi] [--q …] [--wait] [--timeout <s>]',
+      );
       process.exit(2);
     }
-    console.log(JSON.stringify(await say(text, to)));
+    const secs = Number(timeoutFlag ?? 600);
+    console.log(
+      JSON.stringify(await ask(askQuestions, to, waitFlag, (secs > 0 ? secs : 600) * 1000)),
+    );
+    return;
+  }
+  if (args[0] === "clips") {
+    const op = args[1] ?? "list";
+    if (op !== "list" && op !== "on" && op !== "off") {
+      console.error(
+        "usage: bun scripts/dev/eval.ts clips [on --device <text> [--minutes N] [--sink <url>] | off [--device <text>]]",
+      );
+      process.exit(2);
+    }
+    const minutes = minutesFlag === undefined ? undefined : Number(minutesFlag);
+    let sink = sinkFlag;
+    if (op === "on") {
+      if (!deviceFlag) {
+        console.error("clips on needs --device <text> (see `eval.ts clips` for the sessions)");
+        process.exit(2);
+      }
+      sink ??= `https://${tailnetHost()}/lianki-widget`;
+      // A sink that does not answer would only look like recording: check it first.
+      const ok = await fetch(`${sink.replace(/\/+$/, "")}/clips/index.json`, {
+        headers: { authorization: `Bearer ${sinkKeys().read}` },
+        signal: AbortSignal.timeout(5_000),
+      }).then(
+        (r) => r.ok,
+        () => false,
+      );
+      if (!ok) {
+        console.error(
+          `the sink ${sink} does not answer /clips/index.json: start debug-widget-server.ts`,
+        );
+        process.exit(1);
+      }
+    }
+    const msg = {
+      type: "clips",
+      op,
+      ...(deviceFlag ? { match: deviceFlag } : {}),
+      ...(minutes !== undefined ? { minutes } : {}),
+      ...(op === "on" && sink
+        ? {
+            sink,
+            sinkKey: sinkKeys().write,
+            origins: originsFlag ? originsFlag.split(",").map((o) => o.trim()) : clipsOrigins(),
+          }
+        : {}),
+    };
+    console.log(JSON.stringify(await sendOnce(msg, op === "list" ? "clips-list" : "clips-done")));
+    return;
+  }
+  if (args[0] === "wake") {
+    const mode = args[1];
+    if (mode !== "active" && mode !== "passive" && mode !== "ignored") {
+      console.error(
+        "usage: bun scripts/dev/eval.ts wake active|passive|ignored [--to <thread|email>]",
+      );
+      process.exit(2);
+    }
+    console.log(JSON.stringify(await wake(mode, to)));
+    return;
+  }
+  if (args[0] === "say") {
+    const text = (args[1] === "-" ? await Bun.stdin.text() : (args[1] ?? "")).trim();
+    const volume = sayVolume({ quiet: quietFlag, loud: loudFlag });
+    if (!text || "error" in volume) {
+      if ("error" in volume) console.error(volume.error);
+      console.error(
+        'usage: bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet | --loud] "text" | -',
+      );
+      process.exit(2);
+    }
+    console.log(JSON.stringify(await say(text, to, volume)));
     return;
   }
   const code = args[0] === "-" ? await Bun.stdin.text() : args[0];
   if (!code?.trim()) {
     console.error(
-      "usage: bun scripts/dev/eval.ts [--for <email>] [--target <text>] [--no-pair] '<code>' | - | serve [--for <email>] [--no-pair] | chat [--out <file>] [--exit-on-idle] | say [--to <thread|email>] <text>",
+      "usage: bun scripts/dev/eval.ts [--for <email>] [--target <text>] [--no-pair] '<code>' | - | serve [--for <email>] [--no-pair] | chat [--out <file>] [--exit-on-idle] | errors [--no-pair] [--out <file>] | say [--to <thread|email>] [--quiet | --loud] <text>",
     );
     process.exit(2);
   }

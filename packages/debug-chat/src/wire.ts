@@ -5,6 +5,8 @@
  * bundle this file.
  */
 
+import type { Ask, AskAnswer } from "./ask";
+
 export * from "./node-path";
 
 /** Largest chat message (owner's or agent's), in characters. */
@@ -78,6 +80,38 @@ export type ChatMessage = {
    * send none, and an older hub drops it.
    */
   timing?: VoiceTiming;
+  /**
+   * An agent line sent with `say --quiet` (FYI, progress, deploy notices):
+   * shown, never read aloud. Only ever `true`; the hub drops anything else.
+   */
+  quiet?: true;
+  /**
+   * An agent line sent with `say --loud` (urgent, or it needs his answer):
+   * read aloud even in quiet hours, unless he muted the page. An ask card
+   * counts as loud too (quiet-hours.ts). Only ever `true`.
+   */
+  loud?: true;
+  /**
+   * The mic's wake-word mode when the owner sent the line (docs/wake-word.md):
+   * "active", or "passive" (it came through "Linky"). Absent = the mic was
+   * off. The chat lane sets it with {type: "wake", mode}.
+   */
+  wake?: "active" | "passive";
+  /** An agent line that asks: the question(s) and their options (ask.ts). */
+  ask?: Ask;
+  /** Its answer, stamped by the hub from a tap on a page (ask.ts). */
+  answer?: AskAnswer;
+};
+
+/** The hub telling pages and listeners that an ask was answered by a tap. */
+export type AnsweredEvent = {
+  type: "answered";
+  /** The ask's message id, and the ask's own id. */
+  id: string;
+  askId: string;
+  answer: AskAnswer;
+  /** Option labels per question, for a listener that prints it. */
+  labels: Record<string, string[]>;
 };
 
 /** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */
@@ -343,6 +377,28 @@ export type ChatStrings = {
   statusOffline: string;
   /** The mark on a voice line the agent polished (tooltip and label). */
   polished: string;
+  /** Voice-clip recording (ClipsBadge.tsx): the badge's title while it records. */
+  clipsRecording: string;
+  /** The badge's button that stops recording. */
+  clipsStop: string;
+  /** Badge note: the screen wake lock is held while recording. */
+  clipsScreenOn: string;
+  /** Badge note: no wake lock; recording pauses while the screen is off. */
+  clipsScreenMaySleep: string;
+  /** Badge note after a gap; `{n}` = minutes. */
+  clipsPaused: string;
+  /** Badge reminder before an auto-stop; `{n}` = minutes. */
+  clipsStopsIn: string;
+  /** Button: continue another window's recording session on this page. */
+  clipsContinue: string;
+  /** Badge note: clips the sink acknowledged; `{n}` = the count. */
+  clipsSaved: string;
+  /** Badge state while the latest clip did not reach the sink. */
+  clipsSaveFailed: string;
+  /** Menu item that starts recording voice clips in this window. */
+  clipsStart: string;
+  /** Menu switch: a tap on clipsStart also sets an auto-stop; `{n}` = minutes. */
+  clipsAutoStop: string;
 };
 
 export const CHAT_STRINGS_EN: ChatStrings = {
@@ -357,6 +413,17 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   listening: "Your {name} is listening ({n})",
   statusOffline: "Your {name} is offline · messages wait until it is back",
   polished: "Polished by your {name}",
+  clipsRecording: "Recording",
+  clipsStop: "Stop",
+  clipsScreenOn: "Screen kept on",
+  clipsScreenMaySleep: "Pauses when the screen sleeps",
+  clipsPaused: "Paused {n} min",
+  clipsStopsIn: "Stops in {n} min",
+  clipsContinue: "Continue recording",
+  clipsSaved: "{n} saved",
+  clipsSaveFailed: "Saving failed",
+  clipsStart: "Record voice clips",
+  clipsAutoStop: "Auto-stop after {n} min",
 };
 
 /** Defaults filled in and `{name}` substituted. */

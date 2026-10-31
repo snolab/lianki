@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { shouldAdvance } from "@/lib/words/advance";
+import { advanceTop, shouldAdvance } from "@/lib/words/advance";
 import {
   applyMotionAttr,
   installMotionAttr,
@@ -26,6 +26,24 @@ describe("auto-advance (owner, 2026-10-30)", () => {
   });
   test("re-grading a card already graded stays put", () => {
     expect(shouldAdvance(new Map([[3, { rating: 1 }]]), 3)).toBe(false);
+  });
+});
+
+describe("advanceTop: one grade scrolls exactly one row (owner, 2026-10-31)", () => {
+  const o = { rowH: 44, max: 10_000, pending: null };
+  test("one row on from where the list rests", () => {
+    expect(advanceTop({ ...o, row: 5, scrollTop: 418 })).toBe(462);
+  });
+  test("a second advance for the same row is dropped", () => {
+    expect(advanceTop({ ...o, row: 5, scrollTop: 430, pending: { row: 5, top: 462 } })).toBe(null);
+  });
+  test("while the last advance is on its way, the step is from its target", () => {
+    // Mid-way (440 of 418 → 462): the next row lands at 506, not 484.
+    expect(advanceTop({ ...o, row: 6, scrollTop: 440, pending: { row: 5, top: 462 } })).toBe(506);
+  });
+  test("never past the end of the list, never above the top", () => {
+    expect(advanceTop({ ...o, row: 5, scrollTop: 990, max: 1000 })).toBe(1000);
+    expect(advanceTop({ ...o, row: 0, scrollTop: 0, max: -5 })).toBe(0);
   });
 });
 

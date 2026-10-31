@@ -4,8 +4,9 @@
 
 - secretlint runs pre-commit; gitleaks scans the **full history** in CI. Run it
   locally with `bun run scan:secrets`; config in `.gitleaks.toml`.
-- `.env.local` and `.dev.vars` are gitignored and unrecoverable — never delete
-  them. `.dev.vars` is auto-created from `.dev.vars.example` on the first
+- `.env.local` and `.dev.vars` are gitignored and have no other copy — never
+  delete them (encrypted backup proposed in
+  [secrets-backup-plan.md](secrets-backup-plan.md), not done yet). `.dev.vars` is auto-created from `.dev.vars.example` on the first
   `qa:all` run.
 
 ## Magic-link email
@@ -98,7 +99,10 @@ lianki-push passes it on, and `/api/debug/identity` answers with the **owner**
 Since 2026-10-31 02:11 JST (the owner typed "1同意"), the same header also
 works on `/api/words/tts` and `/api/debug/stt`, as the owner, so the dev page
 can read words aloud and transcribe without Workers AI credentials on the
-Mac. These are the only routes that accept it (`lib/dev-bridge-user.ts`).
+Mac. Since 2026-10-31 (owner, decision D in docs/prefs-sync.md) it also
+works on `/api/prefs`, read and write, so the dev page and lianki.com share
+his settings. These are the only routes that accept it
+(`lib/dev-bridge-user.ts`).
 
 - A wrong value gets 401, with no fall back to the cookie.
 - Unset, or shorter than 32 characters, the bridge is shut.
@@ -108,3 +112,29 @@ Mac. These are the only routes that accept it (`lib/dev-bridge-user.ts`).
 The only other copy is `.dev-whole-page.json` (gitignored, 0600) in the dev
 server's worktree. To rotate it, generate a new value there and
 `wrangler secret put DEV_BRIDGE_SECRET` from the file, never by echoing it.
+
+## STT tickets (`STT_TICKET_KEY`)
+
+A Worker secret on `lianki`: an Ed25519 **private** key (a JWK) that signs
+the tickets for the owner's local STT server over the public tunnel
+(`wss://stt.lianki.com`; [local-stt.md](local-stt.md), "Off the tailnet").
+`POST /api/dev/stt-ticket` answers the owner's session only (`isOwner`, 404
+for anyone else; 503 while the secret is unset) with a ticket good for 60 s
+and one connection (`aud` `lianki-stt`, a random `jti`). The Mac holds only
+the **public** key (`~/.config/lianki-stt/ticket.pub`), so nothing on the Mac
+can mint a ticket, and no secret is shared: `AUTH_SECRET` and
+`DEV_BRIDGE_SECRET` are not involved.
+
+Set or rotate it (a production secret: the owner's OK first). The script
+writes the public key file and hands the private key only to the pipe; it
+refuses to print it to a terminal, and no other copy is kept:
+
+```bash
+bun scripts/local-stt/ticket-key.ts | bunx wrangler secret put STT_TICKET_KEY
+oxmgr restart lianki-stt   # the server reads the new public key
+```
+
+Rotating kills every outstanding ticket at once (they live 60 s anyway).
+The cloudflared tunnel's own credentials (`~/.cloudflared/<uuid>.json`,
+`cert.pem`) are separate: mode 0600, on the Mac only, never committed;
+whoever holds the credentials file can run a connector for the tunnel.

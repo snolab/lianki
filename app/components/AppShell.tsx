@@ -14,14 +14,16 @@ import { useIntlayer } from "next-intlayer";
 import { useUi } from "@lianki/ui-state";
 import { island } from "@/lib/islands/Island";
 import { navUi, setDrawerOpen } from "@/lib/nav/ui-store";
-import { BottomNav } from "./nav/BottomNav";
-import { NavDrawerExtra } from "./nav/NavDrawerExtra";
+import { BottomIsland } from "@/lib/nav/islands/BottomIsland";
+import { NavRows } from "@/lib/nav/islands/NavRows";
 
 const SIDEBAR_KEY = "lk:sidebar";
 
 /** The bottom island and the nav's extra rows (docs/bottom-nav.md): hot-swappable slots. */
-const BottomNavIsland = island("nav.bottom", BottomNav);
-const NavDrawerIsland = island("nav.drawer", NavDrawerExtra);
+const BottomNavIsland = island("nav.bottom", BottomIsland);
+const NavDrawerIsland = island("nav.drawer", NavRows);
+/** The wordmark, the same island as the Header's (lib/brand.ts). */
+const BrandIsland = island("header.brand", BrandName);
 
 export type ShellUser = {
   name: string;
@@ -203,7 +205,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a tiny static SVG */}
           <img src="/icon.svg" alt="" width={28} height={28} className="rounded-md" />
-          <BrandName appName={appName} />
+          <BrandIsland appName={appName} locale={locale} />
         </Link>
 
         <div className="ms-auto flex items-center gap-3">

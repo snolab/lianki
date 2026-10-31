@@ -3,34 +3,90 @@
  * he speaks, the mic's frames go over one WebSocket to scripts/local-stt
  * (SenseVoice), which answers partials as he talks and the final text the
  * moment the VAD ends the utterance. Owner pages only, behind
- * localStorage[LOCAL_STT_KEY] (a wss:// URL on the tailnet). Any failure —
- * not connected, a dropped socket, an error, no final in time — is a reject,
- * and the mic falls back to /api/debug/stt for that utterance, as before.
- * Nothing here polls: the socket is opened on the first utterance and again
- * on the next one after it closes.
+ * localStorage[LOCAL_STT_KEY]: one wss:// URL, or several separated by spaces
+ * or commas (the tailnet first, then wss://stt.lianki.com, the tunnel). Any
+ * failure — not connected, a dropped socket, an error, no final in time — is
+ * a reject, and the mic falls back to /api/debug/stt for that utterance, as
+ * before. Nothing here polls: the socket is opened on the first utterance and
+ * again on the next one after it closes.
+ *
+ * With several URLs, opening is a race (happy eyeballs): the first URL at
+ * once, each next one RACE_STAGGER_MS later (or at once when the one before
+ * it has already failed); the first to say `ready` is kept and the others are
+ * closed. A tunnel URL (TICKET_HOSTS: wss://stt.lianki.com) needs a ticket
+ * from /api/dev/stt-ticket, offered as a subprotocol beside "lianki-stt"
+ * (lib/stt-ticket.ts); it is fetched when the race starts, fresh each time.
  */
 
-/** localStorage: the local STT server's WebSocket URL (owner pages only). */
+import { reportPageError } from "./page-errors";
+
+/** localStorage: the local STT server's WebSocket URL(s) (owner pages only). */
 export const LOCAL_STT_KEY = "lk:debug-local-stt";
 /** No final within this long after the end: fall back. */
 export const FINAL_TIMEOUT_MS = 4_000;
 /** Connecting takes longer than this: this utterance goes the old way. */
 export const CONNECT_TIMEOUT_MS = 2_500;
+/** The next URL in the race starts this long after the one before it. */
+export const RACE_STAGGER_MS = 150;
+/** The subprotocol the tunnel listener selects (scripts/local-stt/ticket.py). */
+export const STT_SUBPROTOCOL = "lianki-stt";
+/** Where an owner page gets a ticket for the tunnel (app/api/dev/stt-ticket). */
+export const STT_TICKET_PATH = "/api/dev/stt-ticket";
 
 const TAG_FRAME = 1;
 const TAG_PRE = 2;
 
-/** The URL from localStorage, if it is one the owner's page may use (wss, or ws on localhost). */
-export function localSttFrom(raw: string | null | undefined): string | undefined {
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
+
+function oneUrl(raw: string): string | undefined {
   let u: URL;
   try {
-    u = new URL((raw ?? "").trim());
+    u = new URL(raw);
   } catch {
     return undefined;
   }
-  const local = ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
+  const local = LOCAL_HOSTS.includes(u.hostname);
   if (u.protocol !== "wss:" && !(u.protocol === "ws:" && local)) return undefined;
   return u.href;
+}
+
+/**
+ * The URL(s) from localStorage the owner's page may use (wss, or ws on
+ * localhost), in order, joined by one space; undefined when none is.
+ */
+export function localSttFrom(raw: string | null | undefined): string | undefined {
+  const urls = (raw ?? "")
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .map(oneUrl)
+    .filter((u): u is string => !!u);
+  const uniq = [...new Set(urls)];
+  return uniq.length ? uniq.join(" ") : undefined;
+}
+
+/**
+ * The tunnel's hosts. Only these are sent a ticket: a ticket is good for the
+ * tunnel, so it must never go to any other host a localStorage value names.
+ */
+export const TICKET_HOSTS = ["stt.lianki.com"];
+
+/** A tunnel URL (wss on TICKET_HOSTS) needs a ticket; the tailnet and localhost do not. */
+export function needsTicket(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "wss:" && TICKET_HOSTS.includes(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** A ticket from lianki.com for the tunnel (owner session; 404 for anyone else). */
+export async function fetchSttTicket(f: typeof fetch = fetch): Promise<string> {
+  const res = await f(STT_TICKET_PATH, { method: "POST", credentials: "same-origin" });
+  if (!res.ok) throw new Error(`stt ticket: HTTP ${res.status}`);
+  const { ticket } = (await res.json()) as { ticket?: unknown };
+  if (typeof ticket !== "string" || !ticket) throw new Error("stt ticket: none");
+  return ticket;
 }
 
 /** 16-bit little-endian PCM behind a one-byte tag. */
@@ -103,23 +159,37 @@ type Pending = {
 };
 
 export function createLocalStt(
-  url: string,
+  url: string | string[],
   d: {
-    open?: (url: string) => WsLike;
+    open?: (url: string, protocols?: string[]) => WsLike;
+    /** A fresh ticket for a tunnel URL (default: POST /api/dev/stt-ticket). */
+    ticket?: () => Promise<string>;
     now?: () => number;
     setTimer?: (f: () => void, ms: number) => unknown;
     clearTimer?: (t: unknown) => void;
     log?: (ev: Record<string, unknown>) => void;
   } = {},
 ): LocalStt {
-  const open = d.open ?? ((u) => new WebSocket(u) as unknown as WsLike);
+  const urls = (Array.isArray(url) ? url : url.split(/[\s,]+/)).filter(Boolean);
+  const open =
+    d.open ?? ((u, protocols) => new WebSocket(u, protocols) as unknown as WsLike);
+  const getTicket = d.ticket ?? (() => fetchSttTicket());
   const now = d.now ?? (() => performance.now());
   const setTimer = d.setTimer ?? ((f, ms) => setTimeout(f, ms));
   const clearTimer = d.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
+  /** The socket in use: the race's winner. */
   let ws: WsLike | null = null;
   let ready = false;
   let nextId = 1;
-  let connectTimer: unknown;
+  /** Opening, while no URL has said ready yet. */
+  type Race = {
+    socks: Map<WsLike, string>;
+    started: number;
+    failed: number;
+    timers: unknown[];
+    over: boolean;
+  };
+  let race: Race | null = null;
   const utts = new Map<number, Pending>();
   let st: LocalState = "idle";
   const subs = new Set<(s: LocalState) => void>();
@@ -136,81 +206,149 @@ export function createLocalStt(
       utts.delete(id);
     }
   };
-  const connect = () => {
-    if (ws) return;
-    let s: WsLike;
+  const hostOf = (u: string) => {
     try {
-      s = open(url);
-    } catch (e) {
-      d.log?.({ ev: "local-stt", state: "error", error: String(e).slice(0, 100) });
-      setSt("down");
-      return;
+      return new URL(u).host;
+    } catch {
+      return "?";
     }
+  };
+  type Msg = {
+    t?: string;
+    id?: number;
+    text?: string;
+    model?: string;
+    lang?: string;
+    ms?: number;
+    error?: string;
+  };
+  const parse = (e: { data: unknown }): Msg | undefined => {
+    if (typeof e.data !== "string") return undefined;
+    try {
+      return JSON.parse(e.data) as Msg;
+    } catch {
+      return undefined;
+    }
+  };
+  /** The winner's messages: partials, finals and errors of the utterances. */
+  const onMsg = (m: Msg) => {
+    const p = m.id === undefined ? undefined : utts.get(m.id);
+    if (!p) return;
+    if (m.t === "partial" && typeof m.text === "string" && !p.resolve) {
+      p.firstPartialMs ??= Math.round(now() - p.began);
+      p.onPartial(m.text);
+    } else if (m.t === "partial" && typeof m.text === "string") {
+      // Already ended: only the final counts now.
+    } else if (m.t === "final" && p.resolve) {
+      clearTimer(p.timer);
+      utts.delete(m.id as number);
+      p.resolve({
+        text: m.text ?? "",
+        model: `local:${m.model ?? "?"}`,
+        lang: m.lang,
+        ms: m.ms ?? 0,
+        endToFinalMs: Math.round(now() - (p.endAt ?? now())),
+        firstPartialMs: p.firstPartialMs,
+      });
+    } else if (m.t === "error") {
+      clearTimer(p.timer);
+      utts.delete(m.id as number);
+      p.reject?.(new Error(m.error ?? "local stt error"));
+    }
+  };
+  /** Not closed by us: the agent hears it (page-errors.ts; owner pages only). */
+  const lost = (what: "closed" | "unreachable", code: unknown, where: string) => {
+    d.log?.({ ev: "local-stt", state: what, url: where });
+    reportPageError({
+      kind: "socket",
+      message: `local STT socket ${what}${typeof code === "number" ? ` (${code})` : ""}`,
+    });
+    ready = false;
+    setSt("down");
+    failAll("local stt closed");
+  };
+  const endRace = (r: Race) => {
+    r.over = true;
+    for (const t of r.timers) clearTimer(t);
+    const socks = [...r.socks.keys()];
+    r.socks.clear(); // their onclose is no longer ours to handle
+    if (race === r) race = null;
+    return socks;
+  };
+  const win = (r: Race, s: WsLike, u: string, model?: string) => {
+    for (const o of endRace(r)) if (o !== s) o.close();
     ws = s;
+    ready = true;
+    setSt("ready");
+    d.log?.({ ev: "local-stt", state: "ready", model, via: hostOf(u) });
+  };
+  const connect = () => {
+    if (ws || race || !urls.length) return;
+    const r: Race = { socks: new Map(), started: 0, failed: 0, timers: [], over: false };
+    race = r;
     setSt("connecting");
-    s.binaryType = "arraybuffer";
-    connectTimer = setTimer(() => {
-      if (ws === s && !ready) s.close();
-    }, CONNECT_TIMEOUT_MS);
-    s.onopen = () => {};
-    s.onmessage = (e) => {
-      if (typeof e.data !== "string") return;
-      let m: {
-        t?: string;
-        id?: number;
-        text?: string;
-        model?: string;
-        lang?: string;
-        ms?: number;
-        error?: string;
-      };
+    // One ticket per race, asked for at once, so it is there by the time its URL starts.
+    let tk: Promise<string> | undefined;
+    if (urls.some(needsTicket)) {
+      tk = getTicket();
+      tk.catch(() => {}); // each tunnel URL handles its own failure
+    }
+    const fail = (u: string, why: string) => {
+      if (r.over) return;
+      r.failed++;
+      d.log?.({ ev: "local-stt", state: "lost-race", via: hostOf(u), why });
+      if (r.failed >= urls.length) {
+        endRace(r);
+        lost("unreachable", undefined, urls.join(" "));
+      } else start(); // happy eyeballs: a failure starts the next one now
+    };
+    const launch = (u: string, protocols?: string[]) => {
+      if (r.over) return;
+      let s: WsLike;
       try {
-        m = JSON.parse(e.data);
-      } catch {
-        return;
+        s = open(u, protocols);
+      } catch (e) {
+        d.log?.({ ev: "local-stt", state: "error", error: String(e).slice(0, 100) });
+        return fail(u, "open");
       }
-      if (m.t === "ready") {
-        ready = true;
-        clearTimer(connectTimer);
-        setSt("ready");
-        d.log?.({ ev: "local-stt", state: "ready", model: m.model });
-        return;
-      }
-      const p = m.id === undefined ? undefined : utts.get(m.id);
-      if (!p) return;
-      if (m.t === "partial" && typeof m.text === "string" && !p.resolve) {
-        p.firstPartialMs ??= Math.round(now() - p.began);
-        p.onPartial(m.text);
-      } else if (m.t === "partial" && typeof m.text === "string") {
-        // Already ended: only the final counts now.
-      } else if (m.t === "final" && p.resolve) {
-        clearTimer(p.timer);
-        utts.delete(m.id as number);
-        p.resolve({
-          text: m.text ?? "",
-          model: `local:${m.model ?? "?"}`,
-          lang: m.lang,
-          ms: m.ms ?? 0,
-          endToFinalMs: Math.round(now() - (p.endAt ?? now())),
-          firstPartialMs: p.firstPartialMs,
-        });
-      } else if (m.t === "error") {
-        clearTimer(p.timer);
-        utts.delete(m.id as number);
-        p.reject?.(new Error(m.error ?? "local stt error"));
-      }
+      r.socks.set(s, u);
+      s.binaryType = "arraybuffer";
+      s.onopen = () => {};
+      s.onerror = () => {};
+      s.onmessage = (e) => {
+        const m = parse(e);
+        if (!m) return;
+        if (ws === s) return onMsg(m);
+        if (m.t === "ready" && r.socks.has(s) && !r.over) win(r, s, u, m.model);
+      };
+      s.onclose = (e) => {
+        if (ws === s) {
+          ws = null;
+          lost(ready ? "closed" : "unreachable", (e as { code?: unknown } | undefined)?.code, u);
+          return;
+        }
+        if (r.socks.delete(s)) fail(u, "closed");
+      };
     };
-    s.onerror = () => {};
-    s.onclose = () => {
-      clearTimer(connectTimer);
-      if (ws === s) {
-        ws = null;
-        d.log?.({ ev: "local-stt", state: ready ? "closed" : "unreachable", url });
-        ready = false;
-        setSt("down");
-      }
-      failAll("local stt closed");
+    const start = () => {
+      if (r.over || r.started >= urls.length) return;
+      const u = urls[r.started++];
+      if (r.started < urls.length) r.timers.push(setTimer(start, RACE_STAGGER_MS));
+      if (!needsTicket(u)) return launch(u);
+      if (!tk) return fail(u, "ticket");
+      tk.then(
+        (t) => launch(u, [STT_SUBPROTOCOL, t]),
+        () => fail(u, "ticket"),
+      );
     };
+    r.timers.push(
+      setTimer(() => {
+        if (r.over) return;
+        for (const o of endRace(r)) o.close();
+        lost("unreachable", undefined, urls.join(" "));
+      }, CONNECT_TIMEOUT_MS),
+    );
+    start();
   };
   const live = () => !!ws && ready && ws.readyState === 1;
   const send = (x: string | Uint8Array) => {
@@ -235,6 +373,7 @@ export function createLocalStt(
       ws = null;
       ready = false;
       setSt("idle");
+      if (race) for (const o of endRace(race)) o.close();
       s?.close();
       failAll("local stt closed");
     },

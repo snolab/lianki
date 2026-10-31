@@ -1,22 +1,28 @@
 "use client";
 
+import { type Adaptive, LIMIT, voiceAdapt } from "./adaptive";
+import { VOICE_CAPTURE_EVENT, voiceTune } from "./voice-tune";
 import { useEffect, useRef, useState } from "react";
 import {
   type MicState,
   type Vad,
   type VadEvents,
+  type MicAdapt,
   RATE,
   energyGate,
   micErrorNote,
   micStatus,
   postClip,
+  sideClip,
   postStt,
   resample,
   scheduleTick,
 } from "./mic";
-import { voiceLatency } from "./latency";
+import { voiceLatency, noteSttVia } from "./latency";
+import { postSessionClip } from "./clips-store";
 import { createLocalStt } from "./local-stt";
-import { localSttStrings } from "./ui-strings";
+import { localSttStrings, wakeStrings } from "./ui-strings";
+import { createKws } from "./wake-kws";
 import { type MicSession, type MicView, micSession } from "./mic-session";
 import { sttHint } from "./stt-hint";
 import { voice } from "./voice";
@@ -42,6 +48,8 @@ const VAD = "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/";
 const REC = "oklch(0.6 0.22 25)";
 /** The agent speaking (capture held): a calm blue, unlike the red of REC. */
 const TALK = "oklch(0.62 0.14 250)";
+/** Passive (docs/wake-word.md): on, but only waiting for "Linky": a quiet grey-violet. */
+const WAIT = "oklch(0.62 0.06 290)";
 /** The local-STT dot: the Mac's model, connecting, or the cloud fallback. */
 const LOCAL_DOT = {
   ready: "oklch(0.7 0.16 150)",
@@ -99,6 +107,64 @@ const micStream = async () => {
 };
 
 /**
+ * Whisper mode's input gain (adaptive.ts): the mic → a gain → a tanh soft
+ * limiter at 0.9 FS → a stream for the VAD, in a context of its own (the
+ * shared one is suspended while the mic is off and nothing speaks). The
+ * gain is set per frame by the estimator (0 dB in normal mode). The shaper
+ * maps [-1, 1] to ±HEADROOM of real signal, so a +30 dB gain is limited,
+ * not clipped. Where the context cannot run (no gesture on iOS after a
+ * reload), the mic's own stream is used, unprocessed.
+ */
+const HEADROOM = 32;
+async function agcChain(raw: MediaStream) {
+  const AC =
+    globalThis.AudioContext ??
+    (globalThis as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AC) return null;
+  const ctx = new AC();
+  await ctx.resume().catch(() => {});
+  if (ctx.state !== "running") {
+    void ctx.close().catch(() => {});
+    return null;
+  }
+  const src = ctx.createMediaStreamSource(raw);
+  const gain = ctx.createGain();
+  const lin = (db: number) => 10 ** (db / 20) / HEADROOM;
+  gain.gain.value = lin(voiceAdapt().state().gainDb);
+  const shaper = ctx.createWaveShaper();
+  const curve = new Float32Array(2049);
+  for (let i = 0; i < curve.length; i++) {
+    const x = ((i / (curve.length - 1)) * 2 - 1) * HEADROOM;
+    curve[i] = LIMIT * Math.tanh(x / LIMIT);
+  }
+  shaper.curve = curve;
+  const dest = ctx.createMediaStreamDestination();
+  src.connect(gain).connect(shaper).connect(dest);
+  let last = Number.NaN;
+  return {
+    stream: dest.stream,
+    setGain: (db: number) => {
+      if (db === last) return;
+      last = db;
+      gain.gain.setTargetAtTime(lin(db), ctx.currentTime, 0.01);
+    },
+    close: () => {
+      src.disconnect();
+      void ctx.close().catch(() => {});
+    },
+  };
+}
+/** The running chain, for the estimator's per-frame gain. */
+let agcNow: { setGain(db: number): void } | null = null;
+
+/** The estimator as the mic sees it: each frame sets the chain's gain. */
+const micAdapt = (a: Adaptive): MicAdapt => ({
+  frame: (f, p, capturing) => void agcNow?.setGain(a.frame(f, p, capturing)),
+  end: () => {},
+  state: () => a.state(),
+});
+
+/**
  * Silero, on the session's stream. It ends an utterance after vad-web's
  * default `redemptionMs` of silence: 1400 ms in 0.0.30 (43 frames of 32 ms),
  * the largest fixed wait on the voice → reply path (latency.ts `vadMs`).
@@ -108,21 +174,41 @@ async function silero(ev: VadEvents, stream: MediaStream): Promise<Vad> {
   await script(`${VAD}bundle.min.js`);
   const g = (globalThis as unknown as { vad?: VadGlobal }).vad;
   if (!g) throw new Error("vad-web did not load");
+  const t = voiceTune();
+  const adapt = voiceAdapt();
+  const agc = await agcChain(stream).catch(() => null);
+  agcNow = agc;
+  const input = agc?.stream ?? stream;
+  // The page's overrides (__lkVoiceTune) win over the adaptive values.
+  const over = (globalThis as { __lkVoiceTune?: Record<string, unknown> }).__lkVoiceTune ?? {};
+  const pick = () =>
+    Object.fromEntries(Object.entries(adapt.vad()).filter(([k]) => !(k in over)));
   const v = await g.MicVAD.new({
+    // From the VAD A/B (voice-tune.ts), then the adaptive values (adaptive.ts).
+    positiveSpeechThreshold: t.positiveSpeechThreshold,
+    negativeSpeechThreshold: t.negativeSpeechThreshold,
+    minSpeechMs: t.minSpeechMs,
+    ...pick(),
+    preSpeechPadMs: t.preSpeechPadMs,
+    redemptionMs: t.redemptionMs,
     baseAssetPath: VAD,
     onnxWASMBasePath: ORT,
     model: "v5",
     submitUserSpeechOnPause: true,
     startOnLoad: false,
-    getStream: async () => stream,
+    getStream: async () => input,
     pauseStream: async () => {},
-    resumeStream: async () => stream,
+    resumeStream: async () => input,
     onSpeechStart: ev.onSpeechStart,
     onSpeechEnd: ev.onSpeechEnd,
     onVADMisfire: ev.onMisfire,
     onFrameProcessed: (p: { isSpeech?: number } | undefined, frame: Float32Array) =>
       ev.onFrame?.(frame, p?.isSpeech),
   });
+  // Normal ↔ whisper (between utterances): Silero takes the new start settings live.
+  const off = adapt.subscribe(() =>
+    (v as MicVAD & { setOptions?: (o: Record<string, unknown>) => void }).setOptions?.(pick()),
+  );
   return {
     start: () => v.start(),
     pause: () => v.pause(),
@@ -130,7 +216,12 @@ async function silero(ev: VadEvents, stream: MediaStream): Promise<Vad> {
       await v.pause();
       await v.start();
     },
-    destroy: () => v.destroy(),
+    destroy: async () => {
+      off();
+      await v.destroy();
+      if (agcNow === agc) agcNow = null;
+      agc?.close();
+    },
   };
 }
 
@@ -176,11 +267,22 @@ async function energy(ev: VadEvents, stream: MediaStream): Promise<Vad> {
   };
 }
 
+/** The wake word is off on this device (localStorage lk:agent-wake = "0"; docs/wake-word.md). */
+const wakeOff = () => {
+  try {
+    return localStorage.getItem("lk:agent-wake") === "0";
+  } catch {
+    return false;
+  }
+};
+
 /** The page's mic session, built with this module's browser pieces (mic-session.ts). */
 function session(): MicSession {
   const v = voice();
   return micSession({
     getStream: micStream,
+    // Learns nothing while the agent's voice is out (adaptive.ts).
+    adapt: micAdapt(voiceAdapt(() => v.state().speaking)),
     load: (ev, s) => silero(ev, s as MediaStream),
     fallback: (ev, s) => energy(ev, s as MediaStream),
     onState: (s, last) => {
@@ -188,7 +290,11 @@ function session(): MicSession {
       v.setMic(active);
       // The user starts talking: over the agent it ducks (a barge-in if they
       // keep going), else the reading pauses; it reads on once they are done.
-      if (s === "capturing") v.userSpeech();
+      if (s === "capturing") {
+        v.userSpeech();
+        // A line held for joining waits for this speech (voice-tune.ts createJoiner).
+        window.dispatchEvent(new Event(VOICE_CAPTURE_EVENT));
+      }
       else if (last === "capturing") v.userIdle();
       if (!active && !v.state().speaking) void existingCtx()?.suspend().catch(() => {});
     },
@@ -199,17 +305,22 @@ function session(): MicSession {
       return v.subscribe((x) => f(x.hold));
     },
     localStt: (url) => createLocalStt(url, { log: (ev) => v.log(ev) }),
-    upload: async (wav, { seq, durationMs, partial, local }, cfg) => {
+    // The "Linky" spotter: made (and downloaded) the first time the mic goes passive.
+    // localStorage lk:agent-wake = "0" turns the wake word off (never passive).
+    kws: wakeOff() ? undefined : (onState) => createKws({ log: (ev) => v.log(ev), onState }),
+    upload: async (wav, { seq, durationMs, partial, local, onEcho }, cfg) => {
       const at = Date.now();
       const sink = partial ? undefined : cfg.clipSink;
       try {
         // `ms`: the server's own time, the route's or the Mac's decode (sttServerMs in the timing).
         let out: { text: string; model?: string; ms?: number };
+        let via: "local" | "cloud" = "cloud";
         if (local) {
           // Streamed to the owner's Mac (local-stt.ts); on any failure, the route as before.
           try {
             const f = await local;
             out = f;
+            via = "local";
             v.log({
               ev: "local-stt-final",
               model: f.model,
@@ -240,21 +351,32 @@ function session(): MicSession {
           });
         if (echo.drop) {
           if (!partial) v.echoDropped();
+          onEcho?.();
           return "";
         }
         // The route's own ms, for the latency record (latency.ts).
         if (!partial && out.ms !== undefined) voiceLatency().mark(seq, { sttServerMs: out.ms });
-        if (sink)
-          void postClip(sink, wav, {
+        // Which recognizer it was, for the menu's latency (latency.ts viaAt).
+        if (!partial) noteSttVia(via);
+        // Off the critical path: the clip goes after the transcript is returned (sideClip).
+        if (sink) {
+          const meta = {
             at,
             durationMs,
             label: cfg.label,
             transcript: out.text,
             model: out.model,
-          });
+            aec: v.aec(),
+            track: appliedSettings(),
+          };
+          sideClip(() => postSessionClip(sink, (key) => postClip(sink, wav, meta, fetch, key), v.log));
+        }
         return out.text;
       } catch (e) {
-        if (sink) void postClip(sink, wav, { at, durationMs, label: cfg.label });
+        if (sink) {
+          const meta = { at, durationMs, label: cfg.label, aec: v.aec(), track: appliedSettings() };
+          sideClip(() => postSessionClip(sink, (key) => postClip(sink, wav, meta, fetch, key), v.log));
+        }
         throw e;
       }
     },
@@ -356,9 +478,13 @@ export function DebugMic({
     interim: "",
     error: null,
     resume: false,
+    wake: "active",
   });
   /** The agent's reply is being read (voice session). */
   const [talking, setTalking] = useState(false);
+  /** Whisper settings in force (adaptive.ts): shown on the button's tooltip. */
+  const [whisper, setWhisper] = useState(() => voiceAdapt().state().whisper);
+  useEffect(() => voiceAdapt().subscribe((s) => setWhisper(s.whisper)), []);
   const cb = useRef({ onText, onPending, onActive, clipSink, localStt, label });
   cb.current = { onText, onPending, onActive, clipSink, localStt, label };
   const mic = useRef<MicSession | null>(null);
@@ -401,7 +527,14 @@ export function DebugMic({
   }, [clipSink, localStt, label]);
   const state = view.state;
   const pending = view.pending;
-  const note = view.error ? micErrorNote(view.error) : null;
+  const ws = wakeStrings();
+  const note = view.error
+    ? micErrorNote(view.error)
+    : view.state !== "off" && view.kws === "failed"
+      ? ws.failed
+      : view.state !== "off" && view.kws === "needs-wifi"
+        ? ws.wifi
+        : null;
 
   useEffect(() => {
     if (state === "off") return;
@@ -416,6 +549,9 @@ export function DebugMic({
   const listening = state === "listening" || rec;
   const status = micStatus(state, pending, talking);
   const speaking = status === "speaking";
+  /** On, but only waiting for "Linky" (the agent never hears what is said meanwhile). */
+  const passive = state !== "off" && view.wake === "passive" && !speaking;
+  const wakeLabel = view.kws === "loading" ? ws.loading : ws.passive;
   return (
     // The chat bar's last control, right of the input.
     <div className="relative flex shrink-0">
@@ -435,6 +571,8 @@ export function DebugMic({
         data-state={state}
         data-resume={(view.resume && state === "off") || undefined}
         data-status={status}
+        data-wake={state !== "off" ? view.wake : undefined}
+        data-whisper={whisper || undefined}
         aria-pressed={state !== "off"}
         aria-label={
           state === "off"
@@ -443,12 +581,20 @@ export function DebugMic({
               : "Dictate: listen and type what you say"
             : speaking
               ? "Agent speaking; tap to interrupt and talk"
-              : rec
+              : passive
+                ? wakeLabel
+                : rec
               ? "Recording; tap to stop listening"
               : "Listening; tap to stop"
         }
         aria-description={gesture?.description}
-        title={gesture?.description}
+        title={
+          passive
+            ? wakeLabel
+            : whisper && state !== "off"
+              ? `Whisper mode${gesture?.description ? ` · ${gesture.description}` : ""}`
+              : gesture?.description
+        }
         // Keeps the input's focus: the log stays open while dictating.
         onPointerDown={(e) => {
           e.preventDefault();
@@ -472,7 +618,7 @@ export function DebugMic({
         }}
         // 40px wide, and 40px tall to the touch (tap-40); no scrolling under a drag.
         className={`tap-40 pointer-events-auto relative flex h-8 w-10 touch-none flex-col items-center justify-center rounded-full text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
-        style={{ color: state === "off" ? undefined : speaking ? TALK : REC }}
+        style={{ color: state === "off" ? undefined : speaking ? TALK : passive ? WAIT : REC }}
       >
         {speaking ? (
           // The agent speaks: a slow blue ring, so it is never mistaken for REC.
@@ -481,6 +627,14 @@ export function DebugMic({
             data-testid="debug-chat-mic-speaking"
             className="pointer-events-none absolute inset-x-1.5 inset-y-0.5 animate-pulse rounded-full"
             style={{ boxShadow: `0 0 0 2px ${TALK}`, animationDuration: "2.4s" }}
+          />
+        ) : passive ? (
+          // Passive: a dashed ring, pulsing slowly while the spotter downloads.
+          <span
+            aria-hidden
+            data-testid="debug-chat-mic-passive"
+            className={`pointer-events-none absolute inset-x-1.5 inset-y-0.5 rounded-full border-2 border-dashed ${view.kws === "loading" ? "animate-pulse motion-reduce:animate-none" : ""}`}
+            style={{ borderColor: WAIT }}
           />
         ) : view.resume && state === "off" ? (
           // Reloaded with the mic on, and it could not resume by itself: one tap does.
@@ -510,6 +664,15 @@ export function DebugMic({
             className={`pointer-events-none absolute end-1 top-0 size-1.5 rounded-full ${view.local === "connecting" ? "animate-pulse motion-reduce:animate-none" : ""}`}
             style={{ background: LOCAL_DOT[view.local] }}
           />
+        )}
+        {passive && !rec && (
+          <span
+            data-testid="debug-chat-mic-wake"
+            className="text-[8px] font-bold leading-none"
+            style={{ color: WAIT }}
+          >
+            {ws.badge}
+          </span>
         )}
         {rec && (
           <span

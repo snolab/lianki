@@ -20,6 +20,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { chromium, devices } from "playwright";
+import { launchSilent, newSilentContext } from "../qa/silent.mjs";
 
 const MINUTES = Number(process.env.SOAK_MIN || 10);
 const port = await new Promise((resolve, reject) => {
@@ -47,7 +48,7 @@ await new Promise((resolve, reject) => {
   server.on("exit", (c) => reject(new Error(`widget server exited (${c})`)));
 });
 
-const browser = await chromium.launch({
+const browser = await launchSilent(chromium, {
   args: [
     "--mute-audio",
     "--use-fake-device-for-media-stream",
@@ -55,7 +56,10 @@ const browser = await chromium.launch({
     "--autoplay-policy=no-user-gesture-required",
   ],
 });
-const ctx = await browser.newContext({ ...devices["iPhone 13"], permissions: ["microphone"] });
+const ctx = await newSilentContext(browser, {
+  ...devices["iPhone 13"],
+  permissions: ["microphone"],
+});
 await ctx.addInitScript((src) => {
   localStorage.setItem("lk:debug-widget-src", src);
   const live = { timeouts: new Set(), intervals: new Set(), rafs: new Set() };

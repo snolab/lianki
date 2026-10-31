@@ -12,6 +12,10 @@
  * - "local": localStorage, key `lk:pref:<name>`. A device preference that
  *   outlives the tab (theme, voice rate, a feel preset); other tabs follow
  *   through the `storage` event.
+ * - "account": stored exactly as "local" (`lk:pref:<name>`, the device's copy,
+ *   read for the first paint), and kept in step with the account by the sync
+ *   engine (./account.ts, docs/prefs-sync.md). Each write tells the engine
+ *   (`lk:pref-write`); the app says which fields go to the server.
  *
  * Every store is one instance per page, kept on globalThis by its key: a
  * hot-swapped island (or the hot-loaded chat widget) that creates "the same"
@@ -30,8 +34,16 @@
 import { useSyncExternalStore } from "react";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import { createStore, type StoreApi } from "zustand/vanilla";
+import { notePrefWrite } from "./account";
 
-export type UiStorage = "session" | "local";
+export {
+  notePrefWrite,
+  notePrefApplied,
+  PREF_APPLIED_EVENT,
+  PREF_WRITE_EVENT,
+} from "./account";
+
+export type UiStorage = "session" | "local" | "account";
 
 export type UiStoreOptions<T> = {
   storage: UiStorage;
@@ -50,7 +62,7 @@ export type UiStore<T> = StoreApi<T> & {
   readonly storage: UiStorage;
 };
 
-/** `lk:ui:<name>` (session) or `lk:pref:<name>` (local). */
+/** `lk:ui:<name>` (session) or `lk:pref:<name>` (local, account). */
 export const uiKey = (name: string, storage: UiStorage) =>
   `lk:${storage === "session" ? "ui" : "pref"}:${name}`;
 
@@ -67,7 +79,7 @@ export function safeStorage(kind: UiStorage, memory = new Map<string, string>())
   const real = (): Storage | null => {
     try {
       if (typeof window === "undefined") return null;
-      return kind === "session" ? window.sessionStorage : window.localStorage;
+      return kind === "session" ? window.sessionStorage : window.localStorage; // local, account
     } catch {
       return null;
     }
@@ -152,11 +164,13 @@ export function createUiStore<T extends object>(
   const ui = Object.assign(store, { key, version, initial, storage: opts.storage }) as UiStore<T>;
   if (browser) {
     registry().set(key, ui as UiStore<unknown>);
-    // A preference changed in another tab: follow it.
-    if (opts.storage === "local")
+    // A preference changed in another tab (or applied from the account): follow it.
+    if (opts.storage !== "session")
       window.addEventListener("storage", (e) => {
         if (e.key === key) void (store as unknown as { persist: { rehydrate: () => void } }).persist.rehydrate();
       });
+    // Tell the account sync engine, which compares and pushes what changed.
+    if (opts.storage === "account") store.subscribe(() => notePrefWrite());
   }
   return ui;
 }
