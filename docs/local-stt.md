@@ -329,6 +329,13 @@ noise does. Babble of the owner's own voice is the hardest case there is
 near the mouth) and the noise-adaptive endpoint are the levers. Hold-to-talk
 remains the option if those are not enough.
 
+Re-checked on 2026-10-31 with real noise types (DEMAND restaurant and
+street, a shop PA, a family voice) and five denoisers: RNNoise, DFN3 with
+and without a cap, noisereduce and spectral subtraction. None beats no
+denoiser, and each costs 0.04–0.10 CER on clean speech. A speaker check
+(CAM++ / ERes2NetV2) is what keeps the PA and background voices out:
+[stt-ab.md](stt-ab.md), "Noise and speaker grid".
+
 ## WebRTC
 
 Not needed for this. The phone already reaches the Mac over the tailnet, and a
@@ -355,8 +362,9 @@ this is owner-only.
   streams every saved clip at real-time pace and prints partials and timings;
   `python -I scripts/local-stt/bench.py` is the whole-clip A/B above;
   `noisy.py <dir>` then `bench-noise.py [--atten 10]` the noise table;
-  `ab-eval.py` the streaming / endpoint / AEC A/B and the field metrics
-  ([stt-ab.md](stt-ab.md)).
+  `ab-eval.py` the streaming / endpoint / AEC A/B and the field metrics;
+  `grid-eval.py` and `speaker-grid.py` the noise / VAD / gain grid and the
+  speaker check, niced and pausing while he talks ([stt-ab.md](stt-ab.md)).
 - `server.py` logs each connection, each final (length and decode time,
   never the text) and every refused handshake (a wrong Origin) through the
   `websockets` logger.
