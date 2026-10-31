@@ -40,6 +40,7 @@ import { learnSttHint } from "./stt-hint";
 import { DebugMic, canCapture, playSentTick } from "./MicButton";
 import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
 import { cloudOut, outMode } from "./voice-out";
+import type { SpeakMeta } from "./quiet-hours";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
   FADE_MS,
@@ -68,6 +69,7 @@ import {
   treeNav,
 } from "./tree-nav";
 import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
+import { notePrefWrite } from "@lianki/ui-state/account";
 import { type AnchorSide, placeBox } from "./anchor";
 import { keyboardLift } from "./keyboard-lift";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
@@ -356,9 +358,12 @@ if (typeof window !== "undefined")
  * called for a reply that arrived live, never for history. With the mic on it
  * is always read; otherwise only to someone typing here with the speaker on.
  * DebugEval calls this bundled copy; the hot-loaded chat shares the session.
+ * `meta` is the line itself (its quiet, loud and ask): a hidden page, a quiet
+ * line and quiet hours keep it silent (quiet-hours.ts), a loud one is exempt
+ * from quiet hours.
  */
-export function speakReply(text: string): boolean {
-  return voice().reply(text);
+export function speakReply(text: string, meta?: SpeakMeta): boolean {
+  return voice().reply(text, meta);
 }
 
 let unlocked = false;
@@ -1537,6 +1542,7 @@ export function DebugChat({
     const v = !speak;
     setSpeak(v);
     write(SPEAK_KEY, v ? "1" : "0");
+    notePrefWrite(); // synced with the account by the app (docs/prefs-sync.md)
     if (!v && !voice().state().mic) voice().stop();
   };
 
@@ -2136,6 +2142,8 @@ export function DebugChat({
               data-testid="debug-chat-line"
               data-from={m.from}
               data-node={node?.node}
+              // say --quiet / --loud: shown alike; only reading it aloud differs (quiet-hours.ts).
+              data-volume={m.loud ? "loud" : m.quiet ? "quiet" : undefined}
               title={node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)}
               className="flex items-start gap-1.5 leading-snug"
               style={
@@ -2554,7 +2562,10 @@ function FloatLine({
     setPhase("dwell");
     const l = createFloatLife({
       ms: dwellMs(m.text),
-      reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+      // The app's "Turn off animations" (lib/motion-pref.ts) sets data-motion="off".
+      reducedMotion:
+        document.documentElement.dataset.motion === "off" ||
+        matchMedia("(prefers-reduced-motion: reduce)").matches,
       paused: live.current.paused,
       onPhase: (p) => (p === "gone" ? live.current.onGone() : setPhase(p)),
     });

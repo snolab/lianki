@@ -10,6 +10,7 @@
  */
 
 import { chromium } from "playwright";
+import { launchSilent, newSilentContext } from "../scripts/qa/silent.mjs";
 
 const ORIGIN = process.env.LIANKI_URL || "https://lianki.com";
 const TEST_URL = "https://en.wikipedia.org/wiki/Spaced_repetition";
@@ -24,12 +25,12 @@ async function test() {
   const isCI = process.env.CI || !process.env.DISPLAY;
   console.log(`Mode: ${isCI ? "headless (CI)" : "headed (local)"}\n`);
 
-  const browser = await chromium.launch({
+  const browser = await launchSilent(chromium, {
     headless: isCI ? true : false,
     slowMo: isCI ? 100 : 500,
   });
 
-  const context = await browser.newContext();
+  const context = await newSilentContext(browser);
   const page = await context.newPage();
 
   // Collect console logs

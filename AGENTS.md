@@ -14,8 +14,9 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 - **NEVER `git reset --hard`** to move a branch — it silently destroys
   uncommitted work. Use `git reset --keep`, which aborts instead of overwriting.
 - Always bump `@version` in `lianki.user.js` when changing the userscript.
-- `.env.local` and `.dev.vars` are gitignored and unrecoverable — never delete
-  them.
+- `.env.local` and `.dev.vars` are gitignored and have no other copy — never
+  delete them. An encrypted backup is proposed in
+  [docs/secrets-backup-plan.md](docs/secrets-backup-plan.md) (not done yet).
 - Use owner `snolab` for every `gh` / `gh api` call. A wrong owner returns a
   plan-gated 403 that misleadingly reads as "branch protection is off".
 
@@ -26,7 +27,8 @@ bun run dev            # Next.js :3000   (bun run dev:db first for local Mongo)
 bun run typecheck      # tsgo --noEmit
 bun test               # unit tests
 bun fix                # oxlint --fix + oxfmt
-bun run qa:all         # full integration gate — what CI runs, and pre-push
+bun run lint           # oxlint + oxfmt --check (check-only; hooks and CI run it)
+bun run qa:all         # full integration gate — pre-push, and CI nightly (not per push)
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
 
@@ -37,6 +39,10 @@ build of `app/**` with `DB_BACKEND=d1`. It is attached by a Worker **route**
 `lianki.com/*` on the zone; the DNS record still points at Vercel underneath,
 so the route alone decides. A second route covers `www.lianki.com/*`, so that
 hostname is the **Worker** too — it 308s to the apex with no `x-vercel-id`.
+Two narrower routes go to small Workers first: `lianki.com/api/version/*` to
+`lianki-push` (`workers/push`) and `lianki.com/api/words/tts*` to
+`lianki-voice` (`workers/voice`: recorded word clips at the edge; the rest
+passed on to `lianki`). A recorded clip never shows in `wrangler tail lianki`.
 
 | signal                                        | reading                                                         |
 | --------------------------------------------- | --------------------------------------------------------------- |
@@ -68,6 +74,15 @@ procedure, and the cutover scripts are in
 [docs/cf-d1-migration.md](docs/cf-d1-migration.md). `dev.lianki.com` is
 unrelated — a Cloudflare tunnel to the local userscript dev server.
 
+## i18n: never translate a string without its context
+
+UI strings are intlayer `*.content.ts` files, 16 locales. Never send a short
+string (a setting name, menu item, button, logo text) to translation on its
+own: each key carries a context line — where it appears, what it is for, how
+it is used — and is translated together with it. New keys get their line in
+the same change; translators read it before every string. How:
+[docs/i18n.md](docs/i18n.md).
+
 ## Report progress to the state tree
 
 While working on Lianki, report to the live state tree
@@ -93,13 +108,22 @@ that are expensive to rediscover.
 | Anything calling an LLM or TTS                                | [docs/workers-ai.md](docs/workers-ai.md)                            |
 | The owner's local streaming speech-to-text (mic → his Mac)    | [docs/local-stt.md](docs/local-stt.md)                              |
 | The userscript's dev loader (hot reload over a CF tunnel)     | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)      |
+| Hot-swapping headless core modules (kernel, swap, leak tests) | [docs/hot-core.md](docs/hot-core.md)                                |
 | The debug chat widget (packages/debug-chat), hot-loading      | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
+| Hot islands: swappable components, shared state               | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                  |
+| The /words swipe: headless core, UI islands, feel presets     | [docs/swipe-core.md](docs/swipe-core.md)                            |
+| UI state: what is kept where (session, local, URL, server)    | [docs/ui-state.md](docs/ui-state.md)                                |
 | Screenshots of the owner's phone page (`scripts/dev/shot.ts`) | [docs/dev-debug-widget.md](docs/dev-debug-widget.md), "Screenshots" |
+| UI strings, translations: every key carries context           | [docs/i18n.md](docs/i18n.md)                                        |
 | Blog posts                                                    | [blog/AGENTS.md](blog/AGENTS.md)                                    |
 | The Chrome extension, and publishing it                       | [packages/ext/README.md](packages/ext/README.md)                    |
+| /words new-word order: in order + pass, take turns, simulator | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)            |
 | Sync/offline architecture                                     | [docs/sync-architecture.md](docs/sync-architecture.md)              |
 | Sync conflicts, deletions, tombstones                         | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
+| Settings that follow the account (`lk:*` key classes)         | [docs/prefs-sync.md](docs/prefs-sync.md)                            |
 | Metrics, slowness and error alerts (Slack #lianki)            | [docs/monitoring.md](docs/monitoring.md)                            |
 | Payments, Pro passes, Stripe, invites, gift codes             | [docs/payments.md](docs/payments.md)                                |
 | Security measures: admin gate, lockout, scans, card testing   | [docs/security-measures.md](docs/security-measures.md)              |
 | UI layout: content fills the screen, glass overlays           | [docs/design-principles.md](docs/design-principles.md)              |
+| Leaving Next.js: Vite + RR7 + Hono strangler plan             | [docs/framework-migration.md](docs/framework-migration.md)          |
+| Node tree, study plan, calendar, Google Calendar (design)     | [docs/calendar-plan.md](docs/calendar-plan.md)                      |

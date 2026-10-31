@@ -40,4 +40,9 @@ MINGW* | MSYS* | CYGWIN*)
   ;;
 esac
 
+# Cheap gates first, so a lint or type error fails in a second, not after the
+# multi-minute build.
+bun run lint
+bun run typecheck
+# qa:all mutes the Mac while it runs (scripts/qa/with-muted-mac.sh).
 bun run qa:all

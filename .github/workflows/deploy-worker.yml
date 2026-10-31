@@ -7,7 +7,9 @@ name: Deploy Worker
 # which failed the differential gate for reasons that had nothing to do with
 # the Workers runtime. See docs/cf-d1-migration.md.
 #
-# Runs only after CI passes on main — never deploys a red commit.
+# Runs only after CI passes on main — never deploys a red commit. CI is the
+# fast `Typecheck + unit` job only; qa:all runs nightly (nightly-qa.yml) and
+# in the pre-push hook, so the deploy does not wait ~4 min for it.
 on:
   workflow_run:
     workflows: [CI]
@@ -69,9 +71,25 @@ jobs:
         run: bunx wrangler deploy -c workers/push/wrangler.jsonc
       - name: Deploy
         run: bunx wrangler deploy
+      # lianki-voice owns the zone route lianki.com/api/words/tts* (word clips
+      # at the edge, workers/voice) and passes the rest to the main Worker.
+      # After the main Deploy and never blocking it: without lianki-voice the
+      # main Worker still serves /api/words/tts itself, only slower. A failure
+      # here fails the run at the very end ("Voice service deployed?").
+      - name: Deploy the voice service
+        id: voice
+        continue-on-error: true
+        run: bunx wrangler deploy -c workers/voice/wrangler.jsonc
       # Differential check against lianki.com. Advisory until cutover: Vercel
       # deploys the same commit on its own schedule, so the asset comparison can
       # race it.
       - name: Differential gate
         continue-on-error: true
         run: bun scripts/qa/qa-worker.mjs https://lianki.snomiao.workers.dev
+      # Last, so the app and every check above are already out: a voice deploy
+      # that failed turns the run red instead of passing unnoticed.
+      - name: Voice service deployed?
+        if: steps.voice.outcome == 'failure'
+        run: |
+          echo "::error title=lianki-voice not deployed::The app deployed, but lianki-voice did not (see 'Deploy the voice service'). /api/words/tts is served by the main Worker meanwhile. Likely cause: the token lacks Zone · Workers Routes · Edit on lianki.com."
+          exit 1

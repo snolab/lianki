@@ -10,6 +10,14 @@ type Fetcher = { fetch(url: string, init?: RequestInit): Promise<Response> };
 export const DEBUG_ORIGIN = "https://lianki.com";
 
 /**
+ * The owner's whole-page dev server (docs/dev-whole-page.md) proves itself
+ * with this header instead of a lianki.com cookie (its sessions are signed with
+ * a local secret). lianki-push only passes it on: the main Worker compares it
+ * with DEV_BRIDGE_SECRET and answers with the owner, never anyone else.
+ */
+export const DEV_BRIDGE_HEADER = "x-lianki-dev-bridge";
+
+/**
  * Who is this upgrade request, from a lianki.com page? The cookie is checked
  * by the main Worker itself (/api/debug/identity → {userId, email, owner} for
  * any signed-in user, 401 for a guest), so lianki-push holds no secret and no
@@ -21,12 +29,15 @@ export async function debugIdentity(
 ): Promise<Identity | null> {
   if (req.headers.get("origin") !== DEBUG_ORIGIN) return null;
   const cookie = req.headers.get("cookie");
-  if (!cookie || !main) return null;
+  const bridge = req.headers.get(DEV_BRIDGE_HEADER);
+  if ((!cookie && !bridge) || !main) return null;
   try {
-    const res = await main.fetch(`${DEBUG_ORIGIN}/api/debug/identity`, { headers: { cookie } });
+    const headers: Record<string, string> = bridge ? { [DEV_BRIDGE_HEADER]: bridge } : {};
+    if (cookie) headers.cookie = cookie;
+    const res = await main.fetch(`${DEBUG_ORIGIN}/api/debug/identity`, { headers });
     // A main Worker from before friends has no such route: ask the old
     // owner-only check, so deploying lianki-push first never locks the owner out.
-    if (res.status === 404) return await ownerFallback(main, cookie);
+    if (res.status === 404) return cookie ? await ownerFallback(main, cookie) : null;
     if (res.status !== 200) return null;
     const body = (await res.json()) as Partial<Record<keyof Identity, unknown>>;
     if (!isUserId(body.userId) || typeof body.email !== "string") return null;
