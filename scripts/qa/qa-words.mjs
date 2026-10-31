@@ -2,6 +2,7 @@
 // grade one screen by exception, and check what the server stored.
 import { chromium } from "playwright";
 import { buildApkg } from "./apkg-fixture.mjs";
+import { launchSilent, newSilentContext } from "./silent.mjs";
 const BASE = process.env.QA_BASE || "http://localhost:3000";
 // QA_SHOTS=<dir>: also save screenshots of the list, to look at the layout.
 const shot = (pg, name) =>
@@ -9,8 +10,8 @@ const shot = (pg, name) =>
 const EMAIL = `qa+words${Date.now()}@lianki.test`;
 const PW = "qa-test-pass-1234";
 
-const browser = await chromium.launch();
-const ctx = await browser.newContext();
+const browser = await launchSilent(chromium);
+const ctx = await newSilentContext(browser);
 // A signed-up user has answered the first-run question; skip its modal.
 await ctx.addInitScript(() => localStorage.setItem("lk:first-run", "account"));
 // Grade tones: a silent stand-in for Web Audio that records each note's pitch,
@@ -675,7 +676,7 @@ try {
     const listUrl = page.url().replace(/[?&]lang=[^&]*/, "");
     /** Visible text, aria-labels and titles of the sheet, toolbar controls and help strip. */
     const studyText = async (lang, colorScheme) => {
-      const c = await browser.newContext({
+      const c = await newSilentContext(browser, {
         ...devices["iPhone 13"],
         colorScheme,
         storageState: await ctx.storageState(),
@@ -820,7 +821,7 @@ try {
       !!who.email,
     `the debug identity names a signed-in non-owner as a friend (${identity.status()} ${JSON.stringify({ owner: who.owner, hasId: !!who.userId })})`,
   );
-  const guest = await browser.newContext();
+  const guest = await newSilentContext(browser);
   const guestIdentity = await guest.request.get(`${new URL(page.url()).origin}/api/debug/identity`);
   await guest.close();
   check(
@@ -971,7 +972,7 @@ try {
   // Both must look and behave the same; only the gesture mechanism differs.
   {
     const { devices } = await import("playwright");
-    const phone = await browser.newContext({
+    const phone = await newSilentContext(browser, {
       ...devices["iPhone 13"],
       storageState: await ctx.storageState(),
     });
@@ -1050,8 +1051,29 @@ try {
           .waitFor({ timeout: 3000 })
           .catch(() => {});
         const typed = [await gestures(), await keys()].join();
+        // On a phone the bottom island hides the strip, which lets taps
+        // through to the slips (docs/bottom-nav.md): touch the header's empty
+        // middle there instead, a touch that changes nothing on the list.
+        // The island's own rim (its padding, no button), or its small
+        // capsule while it is shrunk: a touch that changes nothing on the list.
+        const rim = await m.evaluate(() => {
+          const nav = document.querySelector("[data-nav-island] nav");
+          if (!nav) return null;
+          const b = nav.getBoundingClientRect();
+          const p = { x: b.left + 3, y: b.top + b.height / 2 };
+          const el = document.elementFromPoint(p.x, p.y);
+          if (el && el.closest("[data-nav-island]")) return p;
+          const cap = document.querySelector("[data-nav-island] > button");
+          const c = cap?.getBoundingClientRect();
+          return c ? { x: c.left + c.width / 2, y: c.top + c.height / 2 } : null;
+        });
+        const hidden = await m
+          .locator("[data-words-help]")
+          .evaluate((el) => getComputedStyle(el).opacity === "0")
+          .catch(() => false);
         const hint = await m.locator("text=? all keys").boundingBox();
-        if (hint) await m.touchscreen.tap(hint.x + 5, hint.y + 5);
+        if (hidden && rim) await m.touchscreen.tap(rim.x, rim.y);
+        else if (hint) await m.touchscreen.tap(hint.x + 5, hint.y + 5);
         await m
           .locator("text=/tap = show/")
           .waitFor({ timeout: 3000 })
@@ -1148,6 +1170,32 @@ try {
           (await mrows.nth(0).locator('[data-cords="loose"]').count()) === 1,
         `${tag} the tapped slip is the one loose slip`,
       );
+      // Visual: the loose cords hang at the slip's two edges, with animations
+      // on and off ("Disable animations" sets html[data-motion=off], which
+      // zeroes every animation-duration: B's scroll-driven .slip-pin then
+      // sat on its last keyframe and hung the cords 2a into the slip).
+      for (const motion of ["on", "off"]) {
+        const cords = await mrows.nth(0).evaluate(async (row, motion) => {
+          if (motion === "off") document.documentElement.dataset.motion = "off";
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          const rb = row.getBoundingClientRect();
+          const paths = [...row.querySelectorAll('[data-cords="loose"] path')].map((p) => {
+            const b = p.getBoundingClientRect();
+            return [Math.round(b.left - rb.left), Math.round(rb.right - b.right)];
+          });
+          return paths;
+        }, motion);
+        await shot(m, `cords-${variant}-motion-${motion}`);
+        check(
+          cords.length === 2 &&
+            cords[0][0] >= 0 &&
+            cords[0][0] <= 12 &&
+            cords[1][1] >= 0 &&
+            cords[1][1] <= 12,
+          `${tag} the loose cords hang at the slip's edges, animations ${motion} (${JSON.stringify(cords)})`,
+        );
+      }
+      await m.evaluate(() => delete document.documentElement.dataset.motion);
       // A double tap opens the slip's other actions in a sheet; it does not
       // change what the slip shows.
       await m.waitForTimeout(400); // not part of the tap above
@@ -1479,6 +1527,108 @@ try {
       );
       await m.close();
     }
+    // One grade = one row (the owner, 2026-10-31: "it scrolls two rows"). In
+    // every mode — both swipes, both feels, animations on and off — grading
+    // the focused word moves the focus to the next row and scrolls the list
+    // by exactly one row; re-grading a word already graded moves neither
+    // (lib/words/advance.ts).
+    for (const variant of ["js", "native"])
+      for (const feel of ["light", "heavy"])
+        for (const motion of ["on", "off"]) {
+          const tag = `phone/${variant}+${feel}+motion-${motion}:`;
+          const m = await phone.newPage();
+          m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
+          // Off as the owner has it: Settings → Turn off animations
+          // (lk:pref:motion, <html data-motion="off">), not the system setting.
+          await m.addInitScript((off) => {
+            const v = { state: { animations: off ? "off" : "on" }, version: 1 };
+            localStorage.setItem("lk:pref:motion", JSON.stringify(v));
+          }, motion === "off");
+          const u = new URL(page.url());
+          u.searchParams.set("swipe", variant);
+          u.searchParams.set("feel", feel);
+          await m.goto(u.href, { waitUntil: "networkidle" });
+          await m.locator('[role="listitem"]').nth(8).waitFor({ timeout: 15000 });
+          const cdp = variant === "native" ? await phone.newCDPSession(m) : null;
+          const at = () =>
+            m.evaluate(() => {
+              const list = document.querySelector('[role="list"]');
+              const f = document.querySelector('[role="listitem"].slip-loose');
+              return { top: Math.round(list.scrollTop), focus: f ? Number(f.dataset.i) : -1 };
+            });
+          // The first ungraded row fully below the toolbar, or the focused one.
+          const target = (focused) =>
+            m.evaluate((focused) => {
+              const bar = document.querySelector("[data-words-top]").getBoundingClientRect();
+              const rows = [...document.querySelectorAll('[role="listitem"]')];
+              const r = focused
+                ? document.querySelector('[role="listitem"].slip-loose')
+                : rows.find(
+                    (x) =>
+                      x.getBoundingClientRect().top > bar.bottom + 4 &&
+                      !x.querySelector(".lk-stamp"),
+                  );
+              const b = r.getBoundingClientRect();
+              return { i: Number(r.dataset.i), x: b.left + b.width / 2, y: b.top + b.height / 2 };
+            }, focused);
+          const swipe = async ({ x, y }) => {
+            const dx = 70;
+            if (cdp) {
+              const t = (type, x, y) =>
+                cdp.send("Input.dispatchTouchEvent", {
+                  type,
+                  touchPoints: type === "touchEnd" ? [] : [{ x, y }],
+                });
+              await t("touchStart", x, y);
+              for (let k = 1; k <= 8; k++) {
+                await t("touchMove", x + (dx * k) / 8, y);
+                await m.waitForTimeout(16);
+              }
+              await m.waitForTimeout(80);
+              await t("touchEnd");
+            } else {
+              await m.mouse.move(x, y);
+              await m.mouse.down();
+              for (let k = 1; k <= 8; k++) await m.mouse.move(x + (dx * k) / 8, y);
+              await m.waitForTimeout(80);
+              await m.mouse.up();
+            }
+            await m.waitForTimeout(1500); // the slip home, the list's scroll done
+          };
+          // Headless Chromium can drop a page's very first smooth scroll (no
+          // scroll event at all, on the account's fuller lists): one grade
+          // first, unmeasured, so the checks below see the steady state.
+          await swipe(await target(false));
+          const dm = await m.evaluate(() => document.documentElement.dataset.motion ?? "on");
+          check(dm === motion, `${tag} animations are ${motion} on the page (data-motion ${dm})`);
+          const steps = [];
+          for (let n = 0; n < 3; n++) {
+            const t = await target(true);
+            const a = await at();
+            await swipe(t);
+            const b = await at();
+            steps.push({ i: t.i, focus: b.focus - t.i, top: b.top - a.top });
+          }
+          check(
+            steps.every((s) => s.focus === 1 && s.top === 44),
+            `${tag} each grade moves the focus and the list by exactly one row (${JSON.stringify(steps)})`,
+          );
+          // Re-grade the row just graded (now one row above the focus): nothing moves.
+          const back = await m.evaluate(() => {
+            const f = document.querySelector('[role="listitem"].slip-loose');
+            const r = f.previousElementSibling;
+            const b = r.getBoundingClientRect();
+            return { i: Number(r.dataset.i), x: b.left + b.width / 2, y: b.top + b.height / 2 };
+          });
+          const a = await at();
+          await swipe(back);
+          const b = await at();
+          check(
+            b.top === a.top && b.focus === back.i,
+            `${tag} re-grading a graded word moves nothing (top ${a.top} → ${b.top}, focus ${a.focus} → ${b.focus}, row ${back.i})`,
+          );
+          await m.close();
+        }
     await phone.close();
   }
 
@@ -1487,11 +1637,11 @@ try {
   // load, on reload, and when the list is shown again (pageshow).
   {
     const { webkit, devices } = await import("playwright");
-    const wk = await webkit.launch();
+    const wk = await launchSilent(webkit);
     const listUrl = page.url();
     for (const variant of ["js", "native"]) {
       const tag = `webkit-iphone/${variant}:`;
-      const c = await wk.newContext({
+      const c = await newSilentContext(wk, {
         ...devices["iPhone 13"],
         storageState: await ctx.storageState(),
       });
@@ -1843,6 +1993,94 @@ try {
   await page.goto(`${BASE}/words?list=all`, { waitUntil: "networkidle" });
   await rows.first().waitFor({ timeout: 15000 });
   check((await rows.count()) > 0, "study all works with groups present");
+
+  // ── A row's ⋯ menu: rename (keyboard only), delete with Undo ──
+  const serverLists = () =>
+    page.evaluate(async () => (await (await fetch("/api/words/lists")).json()).lists);
+  const waitFor = async (pred) => {
+    let v;
+    for (let i = 0; i < 20 && !pred((v = await serverLists())); i++) await page.waitForTimeout(300);
+    return v;
+  };
+  // The picker: forget this tab's open list, or /words reopens it.
+  await page.evaluate(() => {
+    for (const k of Object.keys(sessionStorage))
+      if (k.startsWith("lk:ui:")) sessionStorage.removeItem(k);
+  });
+  await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
+  const groupMenu = page.getByRole("button", { name: /More actions for .QA group/ });
+  await groupMenu.waitFor({ timeout: 15000 });
+  const menuBox = await groupMenu.boundingBox();
+  check(
+    menuBox && menuBox.width >= 44 && menuBox.height >= 44,
+    `the ⋯ button is a 44px target (${menuBox?.width}×${menuBox?.height})`,
+  );
+  await groupMenu.focus();
+  await page.keyboard.press("ArrowDown");
+  const renameItem = page.getByRole("menuitem", { name: "Rename" });
+  check(
+    await renameItem.evaluate((el) => el === document.activeElement),
+    "↓ on ⋯ opens the menu on its first item",
+  );
+  await page.keyboard.press("Escape");
+  check(
+    (await page.getByRole("menu").count()) === 0 &&
+      (await groupMenu.evaluate((el) => el === document.activeElement)),
+    "Escape closes the menu back to the ⋯ button",
+  );
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter"); // Rename, the focused first item
+  const field = page.getByRole("textbox", { name: /New name for .QA group/ });
+  await field.waitFor({ timeout: 5000 });
+  await field.fill("QA folder");
+  await page.keyboard.press("Enter");
+  const renamed = await waitFor((ls) => ls.find((l) => l.id === group)?.name === "QA folder");
+  check(
+    renamed.find((l) => l.id === group)?.name === "QA folder",
+    "rename from the ⋯ menu reaches the server (through the pending queue)",
+  );
+  await page.reload({ waitUntil: "networkidle" });
+  const folderMenu = page.getByRole("button", { name: /More actions for .QA folder/ });
+  await folderMenu.waitFor({ timeout: 15000 });
+  check(true, "the new name survives a reload");
+
+  // Delete, then Undo: nothing is deleted.
+  await folderMenu.click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  const toast = page.locator("[data-undo-delete]");
+  await toast.waitFor({ timeout: 5000 });
+  check(
+    (await toast.innerText()).includes("QA folder") && (await folderMenu.count()) === 0,
+    "delete hides the row at once and shows an Undo notice",
+  );
+  const undoButton = toast.getByRole("button", { name: "Undo" });
+  check(
+    await undoButton.evaluate((el) => el === document.activeElement),
+    "the Undo button takes the focus",
+  );
+  await undoButton.click();
+  await folderMenu.waitFor({ timeout: 5000 });
+  await page.waitForTimeout(9000); // past the undo window
+  check(
+    (await serverLists()).some((l) => l.id === group),
+    "Undo keeps the group on the server",
+  );
+
+  // Delete for real: it goes out when the notice runs out; the lists stay.
+  await folderMenu.click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  await toast.waitFor({ timeout: 5000 });
+  check(
+    (await serverLists()).some((l) => l.id === group),
+    "the delete waits for the Undo window",
+  );
+  await page.waitForTimeout(8000); // the Undo window (UNDO_MS)
+  const settled = await waitFor((ls) => !ls.some((l) => l.id === group));
+  check(
+    !settled.some((l) => l.id === group) &&
+      after.every((id) => settled.find((l) => l.id === id)?.parentId === null),
+    "after the Undo window the group is deleted and its lists move up",
+  );
 
   // ── /words/import: an Anki deck dropped in becomes a word list ──
   const deckNotes = [

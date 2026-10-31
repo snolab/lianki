@@ -1,11 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
-import { createElement } from "react";
-import { renderToString } from "react-dom/server";
 import config from "@/intlayer.config";
 import bottomNav from "@/app/components/bottom-nav.content";
-import { BottomNav } from "@/app/components/nav/BottomNav";
-import { NavDrawerExtra } from "@/app/components/nav/NavDrawerExtra";
 import { ACTIONS, ISLAND_VERSIONS } from "@/lib/islands/contract";
 import {
   MAX_PINS,
@@ -21,30 +17,25 @@ import {
   withRecent,
 } from "@/lib/nav/ui-store";
 
-// The bottom island navigation (docs/bottom-nav.md). This first step only
-// mounts its slots: production renders nothing new until the island is
-// approved and becomes the built-in.
+// The bottom island navigation (docs/bottom-nav.md): the islands, their
+// stores and their strings. The islands' DOM glue needs a browser; its rules
+// are in lib/nav/nav-core.ts (unit/nav-core.test.ts).
 
-describe("the nav slots", () => {
+const src = (f: string) => readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
+
+describe("the nav islands", () => {
   it("are in the islands contract and the dev server's entry", () => {
     expect(ISLAND_VERSIONS["nav.bottom"]).toBe(1);
     expect(ISLAND_VERSIONS["nav.drawer"]).toBe(1);
-    const entry = readFileSync(new URL("../lib/islands/entry.ts", import.meta.url), "utf8");
-    expect(entry).toContain('"nav.bottom": BottomNav');
-    expect(entry).toContain('"nav.drawer": NavDrawerExtra');
+    const entry = src("lib/islands/entry.ts");
+    expect(entry).toContain('"nav.bottom": BottomIsland');
+    expect(entry).toContain('"nav.drawer": NavRows');
   });
 
-  it("render nothing built in, so production is unchanged", () => {
-    expect(renderToString(createElement(BottomNav, { signedIn: true }))).toBe("");
-    expect(
-      renderToString(createElement(NavDrawerExtra, { place: "drawer", collapsed: false })),
-    ).toBe("");
-  });
-
-  it("are mounted by the app shell, the drawer slot in both the drawer and the sidebar", () => {
-    const shell = readFileSync(new URL("../app/components/AppShell.tsx", import.meta.url), "utf8");
-    expect(shell).toContain('island("nav.bottom", BottomNav)');
-    expect(shell).toContain('island("nav.drawer", NavDrawerExtra)');
+  it("are mounted by the app shell, the drawer rows in both the drawer and the sidebar", () => {
+    const shell = src("app/components/AppShell.tsx");
+    expect(shell).toContain('island("nav.bottom", BottomIsland)');
+    expect(shell).toContain('island("nav.drawer", NavRows)');
     expect(shell).toContain('sidebar("drawer")');
     expect(shell).toContain('sidebar("sidebar")');
   });
@@ -53,6 +44,37 @@ describe("the nav slots", () => {
     expect(ACTIONS["chat.open"].safeParse({}).success).toBe(true);
     expect(ACTIONS["chat.open"].safeParse({ node: "/words/swipe" }).success).toBe(true);
     expect(ACTIONS["chat.open"].safeParse({ node: 3 }).success).toBe(false);
+  });
+});
+
+describe.each([
+  "lib/nav/islands/BottomIsland.tsx",
+  "lib/nav/islands/SearchPalette.tsx",
+  "lib/nav/islands/CreateSheet.tsx",
+  "lib/nav/islands/NavRows.tsx",
+])("%s", (file) => {
+  const code = src(file);
+
+  it("takes labels from bottom-nav, not string literals", () => {
+    const literals = [...code.matchAll(/\b(label|title|aria-label|placeholder)="([^"]*)"/g)]
+      .filter(([, , v]) => /[A-Za-z]{2}/.test(v))
+      .map(([m]) => m);
+    expect(literals).toEqual([]);
+  });
+
+  it("has no English words as JSX text", () => {
+    const text = [...code.matchAll(/(?<![=-])>\s*([A-Z][a-z]+(?: [A-Za-z]+)*)\s*</g)].map(
+      ([, t]) => t,
+    );
+    expect(text).toEqual([]);
+  });
+
+  it("writes colours in oklch only", () => {
+    expect(code.match(/#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(/gi) ?? []).toEqual([]);
+  });
+
+  it("never polls", () => {
+    expect(code).not.toContain("setInterval");
   });
 });
 

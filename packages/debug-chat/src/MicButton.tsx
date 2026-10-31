@@ -17,7 +17,8 @@ import {
 } from "./mic";
 import { voiceLatency, noteSttVia } from "./latency";
 import { createLocalStt } from "./local-stt";
-import { localSttStrings } from "./ui-strings";
+import { localSttStrings, wakeStrings } from "./ui-strings";
+import { createKws } from "./wake-kws";
 import { type MicSession, type MicView, micSession } from "./mic-session";
 import { sttHint } from "./stt-hint";
 import { voice } from "./voice";
@@ -43,6 +44,8 @@ const VAD = "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/";
 const REC = "oklch(0.6 0.22 25)";
 /** The agent speaking (capture held): a calm blue, unlike the red of REC. */
 const TALK = "oklch(0.62 0.14 250)";
+/** Passive (docs/wake-word.md): on, but only waiting for "Linky": a quiet grey-violet. */
+const WAIT = "oklch(0.62 0.06 290)";
 /** The local-STT dot: the Mac's model, connecting, or the cloud fallback. */
 const LOCAL_DOT = {
   ready: "oklch(0.7 0.16 150)",
@@ -184,6 +187,15 @@ async function energy(ev: VadEvents, stream: MediaStream): Promise<Vad> {
   };
 }
 
+/** The wake word is off on this device (localStorage lk:agent-wake = "0"; docs/wake-word.md). */
+const wakeOff = () => {
+  try {
+    return localStorage.getItem("lk:agent-wake") === "0";
+  } catch {
+    return false;
+  }
+};
+
 /** The page's mic session, built with this module's browser pieces (mic-session.ts). */
 function session(): MicSession {
   const v = voice();
@@ -211,7 +223,10 @@ function session(): MicSession {
       return v.subscribe((x) => f(x.hold));
     },
     localStt: (url) => createLocalStt(url, { log: (ev) => v.log(ev) }),
-    upload: async (wav, { seq, durationMs, partial, local }, cfg) => {
+    // The "Linky" spotter: made (and downloaded) the first time the mic goes passive.
+    // localStorage lk:agent-wake = "0" turns the wake word off (never passive).
+    kws: wakeOff() ? undefined : (onState) => createKws({ log: (ev) => v.log(ev), onState }),
+    upload: async (wav, { seq, durationMs, partial, local, onEcho }, cfg) => {
       const at = Date.now();
       const sink = partial ? undefined : cfg.clipSink;
       try {
@@ -254,6 +269,7 @@ function session(): MicSession {
           });
         if (echo.drop) {
           if (!partial) v.echoDropped();
+          onEcho?.();
           return "";
         }
         // The route's own ms, for the latency record (latency.ts).
@@ -381,6 +397,7 @@ export function DebugMic({
     interim: "",
     error: null,
     resume: false,
+    wake: "active",
   });
   /** The agent's reply is being read (voice session). */
   const [talking, setTalking] = useState(false);
@@ -426,7 +443,14 @@ export function DebugMic({
   }, [clipSink, localStt, label]);
   const state = view.state;
   const pending = view.pending;
-  const note = view.error ? micErrorNote(view.error) : null;
+  const ws = wakeStrings();
+  const note = view.error
+    ? micErrorNote(view.error)
+    : view.state !== "off" && view.kws === "failed"
+      ? ws.failed
+      : view.state !== "off" && view.kws === "needs-wifi"
+        ? ws.wifi
+        : null;
 
   useEffect(() => {
     if (state === "off") return;
@@ -441,6 +465,9 @@ export function DebugMic({
   const listening = state === "listening" || rec;
   const status = micStatus(state, pending, talking);
   const speaking = status === "speaking";
+  /** On, but only waiting for "Linky" (the agent never hears what is said meanwhile). */
+  const passive = state !== "off" && view.wake === "passive" && !speaking;
+  const wakeLabel = view.kws === "loading" ? ws.loading : ws.passive;
   return (
     // The chat bar's last control, right of the input.
     <div className="relative flex shrink-0">
@@ -460,6 +487,7 @@ export function DebugMic({
         data-state={state}
         data-resume={(view.resume && state === "off") || undefined}
         data-status={status}
+        data-wake={state !== "off" ? view.wake : undefined}
         aria-pressed={state !== "off"}
         aria-label={
           state === "off"
@@ -468,12 +496,14 @@ export function DebugMic({
               : "Dictate: listen and type what you say"
             : speaking
               ? "Agent speaking; tap to interrupt and talk"
-              : rec
+              : passive
+                ? wakeLabel
+                : rec
               ? "Recording; tap to stop listening"
               : "Listening; tap to stop"
         }
         aria-description={gesture?.description}
-        title={gesture?.description}
+        title={passive ? wakeLabel : gesture?.description}
         // Keeps the input's focus: the log stays open while dictating.
         onPointerDown={(e) => {
           e.preventDefault();
@@ -497,7 +527,7 @@ export function DebugMic({
         }}
         // 40px wide, and 40px tall to the touch (tap-40); no scrolling under a drag.
         className={`tap-40 pointer-events-auto relative flex h-8 w-10 touch-none flex-col items-center justify-center rounded-full text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
-        style={{ color: state === "off" ? undefined : speaking ? TALK : REC }}
+        style={{ color: state === "off" ? undefined : speaking ? TALK : passive ? WAIT : REC }}
       >
         {speaking ? (
           // The agent speaks: a slow blue ring, so it is never mistaken for REC.
@@ -506,6 +536,14 @@ export function DebugMic({
             data-testid="debug-chat-mic-speaking"
             className="pointer-events-none absolute inset-x-1.5 inset-y-0.5 animate-pulse rounded-full"
             style={{ boxShadow: `0 0 0 2px ${TALK}`, animationDuration: "2.4s" }}
+          />
+        ) : passive ? (
+          // Passive: a dashed ring, pulsing slowly while the spotter downloads.
+          <span
+            aria-hidden
+            data-testid="debug-chat-mic-passive"
+            className={`pointer-events-none absolute inset-x-1.5 inset-y-0.5 rounded-full border-2 border-dashed ${view.kws === "loading" ? "animate-pulse motion-reduce:animate-none" : ""}`}
+            style={{ borderColor: WAIT }}
           />
         ) : view.resume && state === "off" ? (
           // Reloaded with the mic on, and it could not resume by itself: one tap does.
@@ -535,6 +573,15 @@ export function DebugMic({
             className={`pointer-events-none absolute end-1 top-0 size-1.5 rounded-full ${view.local === "connecting" ? "animate-pulse motion-reduce:animate-none" : ""}`}
             style={{ background: LOCAL_DOT[view.local] }}
           />
+        )}
+        {passive && !rec && (
+          <span
+            data-testid="debug-chat-mic-wake"
+            className="text-[8px] font-bold leading-none"
+            style={{ color: WAIT }}
+          >
+            {ws.badge}
+          </span>
         )}
         {rec && (
           <span

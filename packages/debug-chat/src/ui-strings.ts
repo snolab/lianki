@@ -243,3 +243,52 @@ export function localSttStrings(
   if (/^ja\b/i.test(lang ?? "")) return LOCAL_STT.ja;
   return LOCAL_STT.en;
 }
+
+/**
+ * The mic's wake-word state (MicButton.tsx, docs/wake-word.md).
+ *
+ * Context for translators: "Linky" is the learning partner's name and the
+ * word the user says to wake it; keep it in Latin letters in every language.
+ * Passive = the mic is on but only waits for that word, on the device;
+ * nothing is transcribed or sent until it hears it.
+ */
+export type WakeStrings = {
+  /** Under the mic icon while passive (at most 6 characters): the word it waits for. */
+  badge: string;
+  /** The mic button's label and tooltip while passive: what to do to talk again. */
+  passive: string;
+  /** The same while the on-device spotter downloads (the first time only, ~25 MB). */
+  loading: string;
+  /** The note when the spotter could not load; the mic went back to hearing everything. */
+  failed: string;
+  /** The note when the first download waits for Wi-Fi (on cellular data or Data Saver). */
+  wifi: string;
+};
+const WAKE: Record<"en" | "zh" | "ja", WakeStrings> = {
+  en: {
+    badge: "Linky?",
+    passive: "Waiting for “Linky”: say it, then talk, or tap",
+    loading: "Getting the wake word ready…",
+    failed: "Wake word unavailable: listening to everything",
+    wifi: "Wake word downloads on Wi-Fi (25 MB): listening to everything",
+  },
+  zh: {
+    badge: "Linky?",
+    passive: "等你叫“Linky”：叫一声再说，或点一下",
+    loading: "正在准备唤醒词…",
+    failed: "唤醒词不可用，照常听所有声音",
+    wifi: "唤醒词需连 Wi-Fi 下载（25 MB），先照常听所有声音",
+  },
+  ja: {
+    badge: "Linky?",
+    passive: "「Linky」待ち：呼んでから話すか、タップしてください",
+    loading: "ウェイクワードを準備中…",
+    failed: "ウェイクワードが使えません。すべて聞き取ります",
+    wifi: "ウェイクワードは Wi-Fi でダウンロードします（25 MB）。今はすべて聞き取ります",
+  },
+};
+export function wakeStrings(
+  lang: string | null | undefined = globalThis.document?.documentElement.lang,
+): WakeStrings {
+  return isZh(lang) ? WAKE.zh : isJa(lang) ? WAKE.ja : WAKE.en;
+}

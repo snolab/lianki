@@ -60,6 +60,7 @@ import {
   sentenceState,
 } from "./read-progress";
 import { aecOn, cloudOut, outMode, setAec } from "./voice-out";
+import type { SpeakMeta } from "./quiet-hours";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
   FADE_MS,
@@ -100,6 +101,7 @@ import {
   treeNav,
 } from "./tree-nav";
 import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
+import { notePrefWrite } from "@lianki/ui-state/account";
 import { type AnchorSide, placeBox } from "./anchor";
 import { keyboardLift } from "./keyboard-lift";
 import { onChatOpen } from "./island-bus";
@@ -403,9 +405,12 @@ if (typeof window !== "undefined")
  * called for a reply that arrived live, never for history. With the mic on it
  * is always read; otherwise only to someone typing here with the speaker on.
  * DebugEval calls this bundled copy; the hot-loaded chat shares the session.
+ * `meta` is the line itself (its quiet, loud and ask): a hidden page, a quiet
+ * line and quiet hours keep it silent (quiet-hours.ts), a loud one is exempt
+ * from quiet hours.
  */
-export function speakReply(text: string): boolean {
-  return voice().reply(text);
+export function speakReply(text: string, meta?: SpeakMeta): boolean {
+  return voice().reply(text, meta);
 }
 
 let unlocked = false;
@@ -1791,6 +1796,7 @@ export function DebugChat({
     const v = !speak;
     setSpeak(v);
     write(SPEAK_KEY, v ? "1" : "0");
+    notePrefWrite(); // synced with the account by the app (docs/prefs-sync.md)
     if (!v && !voice().state().mic) voice().stop();
   };
 
@@ -2068,6 +2074,15 @@ export function DebugChat({
             <FloatLine
               key={m.id}
               m={m}
+              // The same identity as in the log: the avatar, never the name in its place.
+              who={lineAvatar(m, {
+                friend,
+                viewer,
+                agentAvatar,
+                avatarFor,
+                agentName: t.name,
+                you: t.you,
+              })}
               text={p.text}
               mark={p.mark}
               epoch={floatEpoch}
@@ -2617,6 +2632,8 @@ export function DebugChat({
                         data-from={m.from}
                         data-node={node?.node}
                         data-run-start={k === 0 || undefined}
+                        // say --quiet / --loud: shown alike; only reading it aloud differs (quiet-hours.ts).
+                        data-volume={m.loud ? "loud" : m.quiet ? "quiet" : undefined}
                         title={
                           node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)
                         }
@@ -3025,6 +3042,7 @@ function TreeIcon() {
  */
 function FloatLine({
   m,
+  who,
   text,
   mark,
   epoch,
@@ -3033,6 +3051,8 @@ function FloatLine({
   onGone,
 }: {
   m: ChatMessage;
+  /** Who said it (avatar-rules.ts lineAvatar), drawn as in the log. */
+  who: ReturnType<typeof lineAvatar>;
   /** What the line shows (a polished line's text, or its raw STT text), and its mark. */
   text: ReactNode;
   mark: ReactNode;
@@ -3079,12 +3099,17 @@ function FloatLine({
       // snaps back to full at once. Reduced motion: no fade, it just goes.
       className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto line-clamp-3 max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
     >
-      <span
-        className="me-1 font-medium"
-        style={{ color: m.from !== "agent" ? "oklch(0.55 0.13 250)" : "oklch(0.55 0.14 150)" }}
-      >
-        {m.from !== "agent" ? "you" : m.label || "agent"}:
+      <span className="me-1 inline-block align-[-0.25em]">
+        <Avatar
+          src={who.src}
+          name={who.name}
+          initialFrom={who.initialFrom}
+          seed={who.seed}
+          size={AVATAR_PX}
+          hidden
+        />
       </span>
+      <span className="sr-only">{who.name}: </span>
       {text}
       {mark}
     </li>
