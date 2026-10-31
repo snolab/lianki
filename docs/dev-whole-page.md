@@ -153,7 +153,7 @@ token cannot be tested from anywhere else.
 - **Limits**: 10 failed tokens per IP per 10 minutes → 429, and attempts
   still in flight count towards it. No global lockout: one would let anyone
   with a few IPs lock the owner out without a token. Token checks go through
-  a bounded queue (`VerifyQueue`): 4 in flight, at most 32 waiting in all
+  a bounded queue (`VerifyQueue`): 4 in flight, at most 32 waiting behind them (36 in all)
   and 2 per IP (waiting + running); past that the answer is at once (429
   for the IP, 503 busy). A waiter has 5 s, then 503, and is dropped the
   moment its client disconnects; its IP's admission is checked again when

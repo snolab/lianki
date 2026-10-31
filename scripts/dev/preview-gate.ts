@@ -39,7 +39,7 @@ export const FAILS_PER_IP = 10;
 export const FAIL_WINDOW_MS = 10 * 60 * 1000;
 /** Token checks in flight to lianki.com at once (VerifyQueue)… */
 export const VERIFY_CONCURRENCY = 4;
-/** …waiting behind them, in all and per IP (waiting + running)… */
+/** …waiting behind them: VERIFY_MAX_PENDING waiting (not counting the ones running, so up to 36 in all), and VERIFY_PER_IP per IP counting waiting + running… */
 export const VERIFY_MAX_PENDING = 32;
 export const VERIFY_PER_IP = 2;
 /** …and how long one may wait before it is answered 503. */
@@ -221,7 +221,7 @@ export type QueueResult<T> = { ok: true; value: T } | { ok: false; why: QueueRef
 
 /**
  * Token checks to lianki.com: at most `concurrency` in flight; a bounded
- * queue behind them (`maxPending` in all, `perIp` per IP counting both
+ * queue behind them (`maxPending` waiting, not counting the running ones; `perIp` per IP counting both
  * waiting and running); every waiter has a deadline and is dropped the
  * moment its client goes away; and the per-IP admission is checked again
  * when a waiter's turn comes. Refusals are immediate answers, never a
@@ -412,13 +412,22 @@ export class SocketWatch {
     if (t.end) this.cancel(t.end.timer);
     t.end = undefined;
     if (at === Infinity) return;
-    t.end = { at, timer: this.once(() => this.expire(tokenId), Math.max(0, at - this.now())) };
+    t.end = {
+      at,
+      timer: this.once(() => this.expire(tokenId, true), Math.max(0, at - this.now())),
+    };
   }
 
-  private expire(tokenId: string) {
+  /**
+   * Close the sockets whose session has ended, then re-arm. `fired`: called by
+   * the one-shot timer itself, which is spent; otherwise (the 30 s check) the
+   * pending one-shot is left to arm(), which keeps it if the earliest end is
+   * unchanged and cancels it before replacing it — never an orphan timer.
+   */
+  private expire(tokenId: string, fired = false) {
     const t = this.byToken.get(tokenId);
     if (!t) return;
-    t.end = undefined;
+    if (fired) t.end = undefined;
     for (const [id, s] of [...t.socks])
       if (s.until <= this.now()) {
         this.drop(tokenId, id);

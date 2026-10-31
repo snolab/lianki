@@ -189,7 +189,7 @@ describe("the token-check queue (VerifyQueue)", () => {
     return { queue, timers, fails, gates, job, ran: () => ran, flush };
   }
 
-  test("a flood is refused at once past the bounds: 2 per IP, 32 (here 3) pending in all", async () => {
+  test("a flood is refused at once past the bounds: 2 per IP, 32 (here 3) waiting behind the running ones", async () => {
     const h = q();
     const first = h.queue.run("a", h.job); // running
     const second = h.queue.run("a", h.job); // waiting
@@ -452,6 +452,53 @@ describe("upgraded sockets are watched (SocketWatch)", () => {
     expect(s.ends.filter((x) => x.live).map((x) => x.at)).toEqual([t0 + 20_000]);
     un1();
     expect(s.ends.filter((x) => x.live)).toEqual([]);
+  });
+
+  test("no orphan one-shot timers: repeated re-checks before the end keep one; unwatching all leaves none", async () => {
+    const s = watchSetup();
+    const t0 = s.now();
+    const un1 = s.w.add("t1", t0 + SESSION_MAX_MS, () => {});
+    const un2 = s.w.add("t1", t0 + SESSION_MAX_MS + 5, () => {});
+    for (let i = 0; i < 100; i++) {
+      s.advance(RECHECK_MS);
+      await s.w.check("t1");
+    }
+    expect(s.ends.filter((x) => x.live)).toHaveLength(1);
+    un1();
+    un2();
+    expect(s.ends.filter((x) => x.live)).toHaveLength(0);
+  });
+
+  test("no orphan one-shot timers with the real setTimeout either", async () => {
+    const live = new Set<unknown>();
+    const [st, ct] = [globalThis.setTimeout, globalThis.clearTimeout];
+    globalThis.setTimeout = ((f: () => void, ms?: number) => {
+      const id = st(() => {
+        live.delete(id);
+        f();
+      }, ms);
+      live.add(id);
+      return id;
+    }) as typeof setTimeout;
+    globalThis.clearTimeout = ((id: ReturnType<typeof setTimeout>) => {
+      live.delete(id);
+      ct(id);
+    }) as typeof clearTimeout;
+    try {
+      const w = new SocketWatch({
+        active: async (ids) => ids,
+        every: () => ({}),
+        stop: () => {},
+      });
+      const un = w.add("t1", Date.now() + SESSION_MAX_MS, () => {});
+      for (let i = 0; i < 50; i++) await w.check("t1");
+      expect(live.size).toBe(1);
+      un();
+      expect(live.size).toBe(0);
+    } finally {
+      globalThis.setTimeout = st;
+      globalThis.clearTimeout = ct;
+    }
   });
 
   test("already ended: closed at once, never watched", () => {
