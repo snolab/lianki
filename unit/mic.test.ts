@@ -40,6 +40,8 @@ import {
   ENDPOINT_MIN,
   ENDPOINT_MS,
   endpointThreshold,
+  endsSentence,
+  semanticMs,
 } from "@lianki/debug-chat/mic";
 
 const domErr = (name: string) => Object.assign(new Error(name), { name });
@@ -1099,6 +1101,32 @@ describe("createMic: our own end of speech while streaming", () => {
     expect(logs.at(-1)).toMatchObject({ ev: "stt-endpoint" });
     frames(h, 1, 0.1); // once per utterance
     expect(h.v.did.filter((x) => x === "flush")).toHaveLength(1);
+  });
+
+  it("semantic endpoint: a partial ending a sentence ends sooner, when turned on", async () => {
+    expect(semanticMs({})).toBe(0);
+    expect(semanticMs({ semanticMs: 300 })).toBe(300);
+    expect(semanticMs({ semanticMs: -1 })).toBe(0);
+    expect(semanticMs(null)).toBe(0);
+    expect(endsSentence("好的。")).toBe(true);
+    expect(endsSentence("and then, ")).toBe(false);
+    expect(endsSentence("我想、")).toBe(false);
+    const g = globalThis as { __lkVoiceTune?: unknown };
+    g.__lkVoiceTune = { semanticMs: 300 };
+    try {
+      const s = fakeStream();
+      const logs: Record<string, unknown>[] = [];
+      const h = harness({ stream: () => s.stt, log: (e) => logs.push(e) });
+      await h.mic.toggle();
+      h.v.ev().onSpeechStart();
+      frames(h, 1, 0.9);
+      s.partial("Is it done?");
+      frames(h, 0.3, 0.1);
+      expect(h.v.did.filter((x) => x === "flush")).toHaveLength(1);
+      expect(logs.at(-1)).toMatchObject({ ev: "stt-endpoint", semantic: true, waitMs: 300 });
+    } finally {
+      delete g.__lkVoiceTune;
+    }
   });
 
   it("a noisy floor raises the bar: steady noise does not hold speech open", async () => {

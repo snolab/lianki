@@ -1,11 +1,13 @@
 "use client";
 
+import { type Adaptive, LIMIT, voiceAdapt } from "./adaptive";
 import { VOICE_CAPTURE_EVENT, voiceTune } from "./voice-tune";
 import { useEffect, useRef, useState } from "react";
 import {
   type MicState,
   type Vad,
   type VadEvents,
+  type MicAdapt,
   RATE,
   energyGate,
   micErrorNote,
@@ -103,6 +105,64 @@ const micStream = async () => {
 };
 
 /**
+ * Whisper mode's input gain (adaptive.ts): the mic → a gain → a tanh soft
+ * limiter at 0.9 FS → a stream for the VAD, in a context of its own (the
+ * shared one is suspended while the mic is off and nothing speaks). The
+ * gain is set per frame by the estimator (0 dB in normal mode). The shaper
+ * maps [-1, 1] to ±HEADROOM of real signal, so a +30 dB gain is limited,
+ * not clipped. Where the context cannot run (no gesture on iOS after a
+ * reload), the mic's own stream is used, unprocessed.
+ */
+const HEADROOM = 32;
+async function agcChain(raw: MediaStream) {
+  const AC =
+    globalThis.AudioContext ??
+    (globalThis as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AC) return null;
+  const ctx = new AC();
+  await ctx.resume().catch(() => {});
+  if (ctx.state !== "running") {
+    void ctx.close().catch(() => {});
+    return null;
+  }
+  const src = ctx.createMediaStreamSource(raw);
+  const gain = ctx.createGain();
+  const lin = (db: number) => 10 ** (db / 20) / HEADROOM;
+  gain.gain.value = lin(voiceAdapt().state().gainDb);
+  const shaper = ctx.createWaveShaper();
+  const curve = new Float32Array(2049);
+  for (let i = 0; i < curve.length; i++) {
+    const x = ((i / (curve.length - 1)) * 2 - 1) * HEADROOM;
+    curve[i] = LIMIT * Math.tanh(x / LIMIT);
+  }
+  shaper.curve = curve;
+  const dest = ctx.createMediaStreamDestination();
+  src.connect(gain).connect(shaper).connect(dest);
+  let last = Number.NaN;
+  return {
+    stream: dest.stream,
+    setGain: (db: number) => {
+      if (db === last) return;
+      last = db;
+      gain.gain.setTargetAtTime(lin(db), ctx.currentTime, 0.01);
+    },
+    close: () => {
+      src.disconnect();
+      void ctx.close().catch(() => {});
+    },
+  };
+}
+/** The running chain, for the estimator's per-frame gain. */
+let agcNow: { setGain(db: number): void } | null = null;
+
+/** The estimator as the mic sees it: each frame sets the chain's gain. */
+const micAdapt = (a: Adaptive): MicAdapt => ({
+  frame: (f, p, capturing) => void agcNow?.setGain(a.frame(f, p, capturing)),
+  end: () => {},
+  state: () => a.state(),
+});
+
+/**
  * Silero, on the session's stream. It ends an utterance after vad-web's
  * default `redemptionMs` of silence: 1400 ms in 0.0.30 (43 frames of 32 ms),
  * the largest fixed wait on the voice → reply path (latency.ts `vadMs`).
@@ -113,11 +173,20 @@ async function silero(ev: VadEvents, stream: MediaStream): Promise<Vad> {
   const g = (globalThis as unknown as { vad?: VadGlobal }).vad;
   if (!g) throw new Error("vad-web did not load");
   const t = voiceTune();
+  const adapt = voiceAdapt();
+  const agc = await agcChain(stream).catch(() => null);
+  agcNow = agc;
+  const input = agc?.stream ?? stream;
+  // The page's overrides (__lkVoiceTune) win over the adaptive values.
+  const over = (globalThis as { __lkVoiceTune?: Record<string, unknown> }).__lkVoiceTune ?? {};
+  const pick = () =>
+    Object.fromEntries(Object.entries(adapt.vad()).filter(([k]) => !(k in over)));
   const v = await g.MicVAD.new({
-    // From the VAD A/B (voice-tune.ts): tunable on the page.
+    // From the VAD A/B (voice-tune.ts), then the adaptive values (adaptive.ts).
     positiveSpeechThreshold: t.positiveSpeechThreshold,
     negativeSpeechThreshold: t.negativeSpeechThreshold,
     minSpeechMs: t.minSpeechMs,
+    ...pick(),
     preSpeechPadMs: t.preSpeechPadMs,
     redemptionMs: t.redemptionMs,
     baseAssetPath: VAD,
@@ -125,15 +194,19 @@ async function silero(ev: VadEvents, stream: MediaStream): Promise<Vad> {
     model: "v5",
     submitUserSpeechOnPause: true,
     startOnLoad: false,
-    getStream: async () => stream,
+    getStream: async () => input,
     pauseStream: async () => {},
-    resumeStream: async () => stream,
+    resumeStream: async () => input,
     onSpeechStart: ev.onSpeechStart,
     onSpeechEnd: ev.onSpeechEnd,
     onVADMisfire: ev.onMisfire,
     onFrameProcessed: (p: { isSpeech?: number } | undefined, frame: Float32Array) =>
       ev.onFrame?.(frame, p?.isSpeech),
   });
+  // Normal ↔ whisper (between utterances): Silero takes the new start settings live.
+  const off = adapt.subscribe(() =>
+    (v as MicVAD & { setOptions?: (o: Record<string, unknown>) => void }).setOptions?.(pick()),
+  );
   return {
     start: () => v.start(),
     pause: () => v.pause(),
@@ -141,7 +214,12 @@ async function silero(ev: VadEvents, stream: MediaStream): Promise<Vad> {
       await v.pause();
       await v.start();
     },
-    destroy: () => v.destroy(),
+    destroy: async () => {
+      off();
+      await v.destroy();
+      if (agcNow === agc) agcNow = null;
+      agc?.close();
+    },
   };
 }
 
@@ -201,6 +279,8 @@ function session(): MicSession {
   const v = voice();
   return micSession({
     getStream: micStream,
+    // Learns nothing while the agent's voice is out (adaptive.ts).
+    adapt: micAdapt(voiceAdapt(() => v.state().speaking)),
     load: (ev, s) => silero(ev, s as MediaStream),
     fallback: (ev, s) => energy(ev, s as MediaStream),
     onState: (s, last) => {
@@ -401,6 +481,9 @@ export function DebugMic({
   });
   /** The agent's reply is being read (voice session). */
   const [talking, setTalking] = useState(false);
+  /** Whisper settings in force (adaptive.ts): shown on the button's tooltip. */
+  const [whisper, setWhisper] = useState(() => voiceAdapt().state().whisper);
+  useEffect(() => voiceAdapt().subscribe((s) => setWhisper(s.whisper)), []);
   const cb = useRef({ onText, onPending, onActive, clipSink, localStt, label });
   cb.current = { onText, onPending, onActive, clipSink, localStt, label };
   const mic = useRef<MicSession | null>(null);
@@ -488,6 +571,7 @@ export function DebugMic({
         data-resume={(view.resume && state === "off") || undefined}
         data-status={status}
         data-wake={state !== "off" ? view.wake : undefined}
+        data-whisper={whisper || undefined}
         aria-pressed={state !== "off"}
         aria-label={
           state === "off"
@@ -503,7 +587,13 @@ export function DebugMic({
               : "Listening; tap to stop"
         }
         aria-description={gesture?.description}
-        title={passive ? wakeLabel : gesture?.description}
+        title={
+          passive
+            ? wakeLabel
+            : whisper && state !== "off"
+              ? `Whisper mode${gesture?.description ? ` · ${gesture.description}` : ""}`
+              : gesture?.description
+        }
         // Keeps the input's focus: the log stays open while dictating.
         onPointerDown={(e) => {
           e.preventDefault();
