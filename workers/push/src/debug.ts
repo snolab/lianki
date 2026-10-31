@@ -55,6 +55,12 @@
  * per FRIEND_CHAT_WINDOW_MS; the owner can Block one (/dev/friends →
  * /internal/friends), which closes their sockets and refuses them after.
  *
+ * Page errors. An owner page sends {type:"page-error", kind, message, stack?,
+ * path, status?, at, rev?} (scrubbed on the page: page-errors.ts); the hub
+ * adds the socket's own `label` and `hubAt` and forwards it live to the
+ * owner-approved listeners (not heartbeat sockets). Never stored, never sent
+ * to a page; a friend's page-error is dropped.
+ *
  * Avatars. index.ts also passes the user's name and picture (x-debug-name,
  * percent-encoded, and x-debug-image, from better-auth's user.image). The
  * page keeps them as a Sender (wire.ts: the user id hashed, never the
@@ -1061,6 +1067,24 @@ export class DebugHub {
       );
       return this.broadcast(target.ws);
     }
+    if (m.type === "page-error") {
+      // The owner's pages only: a friend's page never reports one (and is
+      // ignored if it does). Forwarded live to the owner-approved listeners,
+      // never stored, never sent to any page.
+      if (page.thread !== OWNER_THREAD) return;
+      console.log(
+        JSON.stringify({
+          msg: "debug.page-error",
+          kind: m.kind,
+          path: m.path,
+          ...(m.status !== undefined ? { status: m.status } : {}),
+          head: head(m.message),
+        }),
+      );
+      const out = { ...m, label: page.label, hubAt: t };
+      for (const { ws: c } of this.agents()) send(c, out);
+      return;
+    }
     if (m.type === "chat") {
       console.log(
         JSON.stringify({
@@ -1085,6 +1109,7 @@ export class DebugHub {
         ...(m.to ? { to: m.to } : {}),
         ...(m.source ? { source: m.source } : {}),
         ...(m.timing ? { timing: m.timing } : {}),
+        ...(m.wake ? { wake: m.wake } : {}),
       });
     }
     // A tap on an ask card: stamped here, never by the page or an agent.
@@ -1367,6 +1392,21 @@ export class DebugHub {
         send(ws, { type: "beat", thread: dest.thread, delivered: pages.length, at: t });
       });
     }
+    if (m.value.type === "wake") {
+      if (c.forUser)
+        return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
+      const { to, mode } = m.value;
+      return this.sayTarget(to).then((dest) => {
+        if ("error" in dest) return send(ws, { type: "error", error: dest.error });
+        // That thread's pages set their mic's mode (docs/wake-word.md); not stored.
+        const pages = this.reach(c, dest.thread);
+        for (const { ws: p } of pages) send(p, { type: "wake", mode, at: t });
+        console.log(
+          JSON.stringify({ msg: "debug.wake", thread: dest.thread, mode, delivered: pages.length }),
+        );
+        send(ws, { type: "woke", thread: dest.thread, mode, delivered: pages.length, at: t });
+      });
+    }
     if (m.value.type === "grant" || m.value.type === "ungrant") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
@@ -1377,7 +1417,7 @@ export class DebugHub {
     if (m.value.type === "say") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
-      const { text, to, node, agentId } = m.value;
+      const { text, to, node, agentId, quiet, loud } = m.value;
       // The sender's node: what the line says, within the node its socket listens at.
       const home = c.node ?? ROOT_NODE;
       const from = m.value.taskPath ?? home;
@@ -1406,6 +1446,9 @@ export class DebugHub {
           ...(from !== ROOT_NODE ? { taskPath: from } : {}),
           ...(who ? { agentId: who } : {}),
           ...(node ? { to: node } : {}),
+          // say --quiet / --loud (already booleans): the page reads it aloud or not.
+          ...(quiet ? { quiet } : {}),
+          ...(loud ? { loud } : {}),
         };
         console.log(
           JSON.stringify({
@@ -1415,6 +1458,8 @@ export class DebugHub {
             thread: said.thread,
             ...(said.taskPath ? { taskPath: said.taskPath } : {}),
             ...(said.to ? { to: said.to } : {}),
+            ...(quiet ? { quiet } : {}),
+            ...(loud ? { loud } : {}),
             len: text.length,
             head: head(text),
           }),

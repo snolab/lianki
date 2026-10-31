@@ -23,6 +23,7 @@ import {
   voice,
 } from "@lianki/debug-chat/voice";
 import { RESUME_REWIND_S, createCloudOut } from "@lianki/debug-chat/voice-out";
+import { QUIET_HOURS_KEY } from "@lianki/debug-chat/quiet-hours";
 
 describe("sentences", () => {
   it("cuts Latin text after . ! ? before a space or the end, keeping 3.14 and e.g. whole", () => {
@@ -341,7 +342,8 @@ describe("voice(): the browser session, shared on globalThis", () => {
       ),
     );
     const spoken: (EventTarget & { text: string; lang: string; voice?: unknown })[] = [];
-    let store: Record<string, string> | null = {};
+    // Quiet hours off: this test must not depend on the hour it runs at (quiet-hours.test.ts).
+    let store: Record<string, string> | null = { [QUIET_HOURS_KEY]: '{"on":false}' };
     const doc = { visibilityState: "visible", activeElement: null as unknown };
     try {
       g.SpeechSynthesisUtterance = class extends EventTarget {

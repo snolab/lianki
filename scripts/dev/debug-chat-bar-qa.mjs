@@ -32,6 +32,7 @@ import { mkdirSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { chromium } from "playwright";
+import { launchSilent, newSilentContext } from "../qa/silent.mjs";
 
 const argv = process.argv.slice(2);
 const shotsAt = argv.indexOf("--shots");
@@ -70,10 +71,10 @@ const check = (ok, what) => {
   if (!ok) failures.push(what);
 };
 
-const browser = await chromium.launch();
+const browser = await launchSilent(chromium);
 try {
   const open = async (query, colorScheme = "light", width = 390, height = 844) => {
-    const ctx = await browser.newContext({
+    const ctx = await newSilentContext(browser, {
       viewport: { width, height },
       deviceScaleFactor: 2,
       colorScheme,
@@ -732,7 +733,7 @@ try {
   // inside the visible area and over 100px tall with a long log, with the
   // keyboard up (a stubbed visualViewport), and in the full-screen log.
   {
-    const ctx = await browser.newContext({ viewport: { width: 461, height: 902 } });
+    const ctx = await newSilentContext(browser, { viewport: { width: 461, height: 902 } });
     await ctx.addInitScript((src) => {
       localStorage.setItem("lk:debug-widget-src", src);
       const vv = new EventTarget();
@@ -964,10 +965,10 @@ try {
   {
     // Audio may start without a gesture here (as on a page the browser trusts):
     // the auto path. Headless Chrome's default keeps it suspended (the tap path).
-    const audioBrowser = await chromium.launch({
+    const audioBrowser = await launchSilent(chromium, {
       args: ["--autoplay-policy=no-user-gesture-required"],
     });
-    const ctx = await audioBrowser.newContext({ viewport: { width: 390, height: 844 } });
+    const ctx = await newSilentContext(audioBrowser, { viewport: { width: 390, height: 844 } });
     await ctx.route(/cdn\.jsdelivr\.net/, (r) => r.abort()); // no Silero: the energy fallback
     await ctx.addInitScript((src) => {
       localStorage.setItem("lk:debug-widget-src", src);
@@ -1280,7 +1281,7 @@ try {
   }
   // Long press (touch) on the agent id shows the full one.
   {
-    const ctx = await browser.newContext({
+    const ctx = await newSilentContext(browser, {
       viewport: { width: 390, height: 844 },
       hasTouch: true,
       isMobile: true,

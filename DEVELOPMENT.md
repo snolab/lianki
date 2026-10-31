@@ -43,6 +43,20 @@ Both target `http://localhost:3000` (override with `QA_BASE`) and use throwaway
 (better-auth rejects writes without a trusted origin — browsers send it
 automatically).
 
+### Silent QA (owner rule, 2026-10-31)
+
+QA may run at any hour, but the Mac must not make a sound:
+
+- Every Playwright launch goes through `scripts/qa/silent.mjs` (`launchSilent`,
+  `newSilentContext`, `launchPersistentSilent`). Chromium gets `--mute-audio`,
+  and every engine gets an init script that mutes media elements, zeroes Web
+  Audio and stubs `speechSynthesis`.
+  `unit/qa-silent.test.ts` fails on a launcher that skips it.
+- `bun run qa:all` runs under `scripts/qa/with-muted-mac.sh`. It mutes the
+  Mac's output for the run, restores the previous state afterwards, is
+  ref-counted across concurrent runs, and survives `kill -9`. Wrap any other
+  browser script the same way: `bash scripts/qa/with-muted-mac.sh <cmd>`.
+
 ### QA the **deployed D1/Workers path** — `bun run qa:all`
 
 `bun run dev` runs the MongoDB backend. The deployed Worker runs `DB_BACKEND=d1`
@@ -312,9 +326,9 @@ run on each page and each registers its own handlers.
 Two sources, switched from the userscript-manager menu
 ("Lianki dev: set dev server origin"):
 
-| Source | Origin | Use when |
-| ------ | ------ | -------- |
-| local  | `http://localhost:3002` (default) | developing on this machine |
+| Source | Origin                             | Use when                               |
+| ------ | ---------------------------------- | -------------------------------------- |
+| local  | `http://localhost:3002` (default)  | developing on this machine             |
 | tunnel | `https://<name>.trycloudflare.com` | testing on a phone against your laptop |
 
 The tunnel case is why `vite.config.userscript.ts` sets
@@ -364,12 +378,12 @@ the hostname changes on every restart (quick tunnels are ephemeral).
 
 **Two modes, because neither covers everything:**
 
-| | default (`loader`) | `--monkey` |
-| --- | --- | --- |
+|                           | default (`loader`)                                                                                  | `--monkey`                                              |
+| ------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | How code reaches the page | installed shim fetches the bundle over `GM_xmlhttpRequest` and `eval`s it in the userscript sandbox | vite-plugin-monkey injects `<script src>` into the page |
-| Reload granularity | whole script | per-module HMR |
-| Works on YouTube | **yes** | **no** — see below |
-| GM\_\* APIs | the real ones | shims mounted on `window` via `mountGmApi` |
+| Reload granularity        | whole script                                                                                        | per-module HMR                                          |
+| Works on YouTube          | **yes**                                                                                             | **no** — see below                                      |
+| GM\_\* APIs               | the real ones                                                                                       | shims mounted on `window` via `mountGmApi`              |
 
 `--monkey` is the nicer feedback loop, but the page's CSP gets a veto over an
 injected `<script src>`. YouTube sends `script-src` with an explicit host

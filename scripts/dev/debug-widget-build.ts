@@ -139,13 +139,33 @@ export async function buildHarness(): Promise<string> {
   return out.outputs[0].text();
 }
 
-/** Whom /debug-chat.js and /events answer cross-origin: lianki.com, or a local page. */
-export function allowOrigin(origin: string | null): string {
+/**
+ * Extra page origins the dev servers answer, from LIANKI_DEV_ORIGINS (comma-separated,
+ * exact origins such as the whole-page dev server's tailnet origin, docs/dev-whole-page.md).
+ * Exact matches only: never a wildcard.
+ */
+export function devOrigins(raw: string | undefined = process.env.LIANKI_DEV_ORIGINS): string[] {
+  const out: string[] = [];
+  for (const part of (raw ?? "").split(",")) {
+    try {
+      const u = new URL(part.trim());
+      if (u.protocol === "https:") out.push(u.origin);
+    } catch {}
+  }
+  return out;
+}
+
+/**
+ * Whom /debug-chat.js, /events and /state-tree.md answer cross-origin: lianki.com, a local
+ * page, or one of LIANKI_DEV_ORIGINS.
+ */
+export function allowOrigin(origin: string | null, extra: string[] = devOrigins()): string {
   if (!origin) return "https://lianki.com";
   try {
     const u = new URL(origin);
     if (u.origin === "https://lianki.com") return origin;
     if (["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)) return origin;
+    if (extra.includes(u.origin)) return u.origin;
   } catch {}
   return "https://lianki.com";
 }

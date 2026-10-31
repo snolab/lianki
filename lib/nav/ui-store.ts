@@ -4,7 +4,8 @@
  * - `navUi` (sessionStorage `lk:ui:nav`, this tab): whether the drawer is
  *   open (memory only — a drawer is an overlay and never reopens on a
  *   refresh) and the pages visited recently in this tab.
- * - `navPins` (localStorage `lk:pref:nav-pins`, this device): pinned pages.
+ * - `navPins` (localStorage `lk:pref:nav-pins`, synced with the account,
+ *   docs/prefs-sync.md): pinned pages.
  *
  * Both hold paths only, never page content. The shell (AppShell) and the
  * nav islands (nav.bottom, nav.drawer) read and write the same stores: one
@@ -57,7 +58,15 @@ export const navPins: UiStore<NavPins> = createUiStore(
   "nav-pins",
   1,
   { pinned: [] },
-  { storage: "local", clean: cleanNavPins },
+  { storage: "account", clean: cleanNavPins }, // docs/prefs-sync.md
+);
+
+/** The first-visit /words tip above the island (local `lk:pref:nav-tip`): shown once, until dismissed. */
+export const navTip: UiStore<{ dismissed: boolean }> = createUiStore(
+  "nav-tip",
+  1,
+  { dismissed: false },
+  { storage: "local" },
 );
 
 export const setDrawerOpen = (open: boolean) => {

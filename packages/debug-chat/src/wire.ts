@@ -80,6 +80,23 @@ export type ChatMessage = {
    * send none, and an older hub drops it.
    */
   timing?: VoiceTiming;
+  /**
+   * An agent line sent with `say --quiet` (FYI, progress, deploy notices):
+   * shown, never read aloud. Only ever `true`; the hub drops anything else.
+   */
+  quiet?: true;
+  /**
+   * An agent line sent with `say --loud` (urgent, or it needs his answer):
+   * read aloud even in quiet hours, unless he muted the page. An ask card
+   * counts as loud too (quiet-hours.ts). Only ever `true`.
+   */
+  loud?: true;
+  /**
+   * The mic's wake-word mode when the owner sent the line (docs/wake-word.md):
+   * "active", or "passive" (it came through "Linky"). Absent = the mic was
+   * off. The chat lane sets it with {type: "wake", mode}.
+   */
+  wake?: "active" | "passive";
   /** An agent line that asks: the question(s) and their options (ask.ts). */
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */
