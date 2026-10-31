@@ -70,6 +70,7 @@ import {
 import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
 import { notePrefWrite } from "@lianki/ui-state/account";
 import { type AnchorSide, placeBox } from "./anchor";
+import { keyboardLift } from "./keyboard-lift";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import type { Frontier } from "./frontier-view";
@@ -179,7 +180,7 @@ function useDrag() {
       const box = e.currentTarget.closest("[data-debug-chat]") as HTMLElement;
       const row = (box.querySelector("[data-debug-chat-row]") ?? box).getBoundingClientRect();
       const left = row.left - (pos.x - d.x);
-      const top = row.top - (pos.y - d.y);
+      const top = row.top + liftOf(box) - (pos.y - d.y);
       const x = d.x + Math.max(-left, Math.min(innerWidth - row.width - left, dx));
       const y = d.y + Math.max(safeTop() - top, Math.min(innerHeight - row.height - top, dy));
       setPos({ x, y });
@@ -215,11 +216,19 @@ function useDrag() {
    * box (its width still animating now), so the box's own edges count.
    */
   const fit = (box: HTMLElement | null, wide: boolean) => {
-    const bar = box?.querySelector("[data-debug-chat-row]")?.getBoundingClientRect();
-    if (!box || !bar) return;
+    const lifted = box?.querySelector("[data-debug-chat-row]")?.getBoundingClientRect();
+    if (!box || !lifted) return;
     // Not laid out as the overlay yet (a hot-loaded widget's CSS still on its
     // way): its rect means nothing, and a refit would save a wild offset.
     if (getComputedStyle(box).position !== "fixed") return;
+    // Where it rests: the keyboard lift is transient and never saved.
+    const kb = liftOf(box);
+    const bar = { ...lifted.toJSON(), top: lifted.top + kb, bottom: lifted.bottom + kb } as {
+      left: number;
+      right: number;
+      top: number;
+      bottom: number;
+    };
     const full = box.getBoundingClientRect();
     const row = { left: wide ? full.left : bar.left, right: wide ? full.right : bar.right };
     const top = safeTop();
@@ -236,7 +245,9 @@ function useDrag() {
   /** The click that ends a drag is not a click. */
   const wasDrag = () => dragged.current.wasDrag();
   return {
-    offset: { transform: `translate(${pos.x}px, ${pos.y}px)` },
+    // The keyboard lift (keyboard-lift.ts) is a CSS variable set straight on
+    // the box from visualViewport events: no render, and never saved.
+    offset: { transform: `translate(${pos.x}px, calc(${pos.y}px - var(${KB_LIFT_VAR}, 0px)))` },
     handle,
     begin,
     wasDrag,
@@ -244,6 +255,11 @@ function useDrag() {
     fit,
   };
 }
+
+/** The box's keyboard lift, px (0 when the keyboard covers nothing). */
+const KB_LIFT_VAR = "--lk-kb-lift";
+const liftOf = (box: HTMLElement) =>
+  Number.parseFloat(box.style.getPropertyValue(KB_LIFT_VAR)) || 0;
 
 /** env(safe-area-inset-left/right) in px (a landscape notch). */
 function safeSides() {
@@ -531,18 +547,61 @@ export function DebugChat({
   // Re-placed when what it holds changes, after a drag, and on any resize
   // (window, rotation, the visual viewport, the box's own size). All events.
   useLayoutEffect(() => placeRef.current());
+  /** The notch, px: measured on mount and on rotation, not per viewport event. */
+  const notch = useRef(0);
+  /**
+   * Under the on-screen keyboard: lift the bar by the covered amount
+   * (keyboard-lift.ts), back to 0 once the keyboard closes. One read (the
+   * bar's rect) then one write (a CSS variable on the box), no render.
+   */
+  const liftRef = useRef(() => {});
+  liftRef.current = () => {
+    const box = root.current;
+    const bar = box?.querySelector("[data-debug-chat-row]")?.getBoundingClientRect();
+    const vv = typeof visualViewport === "undefined" ? null : visualViewport;
+    if (!box || !bar) return;
+    const cur = liftOf(box);
+    let next = vv
+      ? keyboardLift({
+          barTop: bar.top + cur,
+          barBottom: bar.bottom + cur,
+          vvTop: vv.offsetTop,
+          vvHeight: vv.height,
+          vvScale: vv.scale,
+          safeTop: notch.current,
+        })
+      : 0;
+    // Not the overlay yet (a hot-loaded widget's CSS on its way): its rect means nothing.
+    if (next && getComputedStyle(box).position !== "fixed") next = 0;
+    if (next === cur) return;
+    box.style.setProperty(KB_LIFT_VAR, `${next}px`);
+    if (next) box.dataset.kbLift = String(next);
+    else delete box.dataset.kbLift;
+  };
+  useLayoutEffect(() => liftRef.current());
   useEffect(() => {
+    notch.current = safeTop();
     const again = () => {
       placeRef.current();
       fitRef.current();
+      liftRef.current();
     };
+    const rotate = () => {
+      notch.current = safeTop();
+      again();
+    };
+    // The visual viewport scrolls too (iOS pans it to the focused input):
+    // only the lift follows that.
+    const lift = () => liftRef.current();
     addEventListener("resize", again);
-    addEventListener("orientationchange", again);
+    addEventListener("orientationchange", rotate);
     visualViewport?.addEventListener("resize", again);
+    visualViewport?.addEventListener("scroll", lift);
     return () => {
       removeEventListener("resize", again);
-      removeEventListener("orientationchange", again);
+      removeEventListener("orientationchange", rotate);
       visualViewport?.removeEventListener("resize", again);
+      visualViewport?.removeEventListener("scroll", lift);
     };
   }, []);
   /** The box comes and goes: a ref callback watches each one's size. */
