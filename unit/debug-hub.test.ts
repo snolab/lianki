@@ -1205,6 +1205,61 @@ describe("DebugHub heartbeat (agent is working)", () => {
   });
 });
 
+describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
+  const agent = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    return c;
+  };
+  const wakes = (ws: FakeSocket) => ws.sent.filter((m) => m.type === "wake");
+
+  it("goes to the owner's pages, unstored, and is acknowledged", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const f = await s.friend("f1", "f1@x.com");
+    const keys = s.storage.store.size;
+    await s.msg(c, { type: "wake", mode: "passive" });
+    expect(wakes(owner)).toEqual([{ type: "wake", mode: "passive", at: 1_000_000 }]);
+    expect(wakes(f)).toEqual([]);
+    expect(c.last("woke")).toEqual({
+      type: "woke",
+      thread: "owner",
+      mode: "passive",
+      delivered: 1,
+      at: 1_000_000,
+    });
+    expect(s.storage.store.size).toBe(keys);
+  });
+
+  it("refuses an unknown mode and a friend's pairing", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    await s.msg(c, { type: "wake", mode: "asleep" });
+    expect(c.last("error")?.error).toBe('wake needs mode "active", "passive" or "ignored"');
+    expect(wakes(owner)).toEqual([]);
+  });
+
+  it("an owner line keeps the mode it was sent in; anything else is dropped", async () => {
+    const s = setup();
+    const owner = s.page();
+    await agent(s, owner);
+    await s.msg(owner, {
+      type: "chat",
+      id: "w1",
+      text: "next word",
+      source: "stt",
+      wake: "passive",
+    });
+    await s.msg(owner, { type: "chat", id: "w2", text: "typed", wake: "sleepy" });
+    const stored = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as Record<string, unknown>);
+    expect(stored.map((m) => m.wake)).toEqual(["passive", undefined]);
+  });
+});
+
 describe("DebugHub page moves (relabel)", () => {
   it("relabels only that socket, tells the listeners silently, and later chat carries the new path", async () => {
     const s = setup();
