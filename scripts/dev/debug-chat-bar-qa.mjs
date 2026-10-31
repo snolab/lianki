@@ -687,6 +687,47 @@ try {
     );
     await ctx.close();
   }
+  // Minimized, a tree drag must not move the tree with each level (the owner,
+  // 2026-10-30: "the tree jumps while I drag"): the body takes its full height
+  // once, then the focused row stays put while levels open and fold.
+  {
+    const { ctx, page } = await open("?min");
+    await page.click('[data-testid="debug-chat-tree-button"]');
+    await page.waitForTimeout(350);
+    const b = await page.locator('[data-testid="debug-chat-tree-button"]').boundingBox();
+    const cx = b.x + b.width / 2;
+    const cy = b.y + b.height / 2;
+    const focusTop = () =>
+      page.evaluate(() =>
+        Math.round(
+          document.querySelector('[data-testid="tree-chips"] [data-focus]')?.getBoundingClientRect()
+            .top ?? -1,
+        ),
+      );
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + 12, cy); // axis locked: the body grows once
+    await page.waitForTimeout(300); // its max-height transition
+    const tops = [];
+    for (const dx of [20, 35, 50, 65, 80, 95, 80, 60, 40, 20, 5, -20, 5, 40, 80]) {
+      await page.mouse.move(cx + dx, cy);
+      tops.push(await focusTop());
+    }
+    // Inside one detent (2 cells: 80 → 95 px) the hint still follows the
+    // finger, set straight on it rather than by a render.
+    const hint = page.locator('[data-testid="debug-chat-tree-hint"]');
+    const before = await hint.evaluate((el) => el.style.transform);
+    await page.mouse.move(cx + 95, cy);
+    const after = await hint.evaluate((el) => el.style.transform);
+    await page.mouse.up();
+    const spread = Math.max(...tops) - Math.min(...tops);
+    check(
+      spread <= 2,
+      `minimized drag: the focused row stays still across levels (tops ${[...new Set(tops)].join(",")})`,
+    );
+    check(before !== after, `inside a detent the hint follows the finger (${before} → ${after})`);
+    await ctx.close();
+  }
 
   // Regression (iPhone, 1761627): with the history capped (same length every
   // time) and skewed timestamps, every new line while minimized still floats.
