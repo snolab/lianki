@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
+  BACKOFF_BASE_MS,
   CONNECT_TIMEOUT_MS,
+  STABLE_MS,
   FINAL_TIMEOUT_MS,
   RACE_STAGGER_MS,
   STT_TICKET_PATH,
@@ -245,7 +247,7 @@ describe("createLocalStt: racing the tailnet and the tunnel", () => {
     expect(h.stt.state()).toBe("ready");
   });
 
-  it("both fail: down, and begin() is null so the utterance goes to the cloud", async () => {
+  it("both fail: down; the next utterance races again, and goes to the cloud if that fails too", async () => {
     const h = race();
     h.stt.warm();
     h.socks[0].drop();
@@ -253,9 +255,14 @@ describe("createLocalStt: racing the tailnet and the tunnel", () => {
     h.socks[1].drop();
     expect(h.stt.state()).toBe("down");
     expect(h.logs.at(-1)).toMatchObject({ state: "unreachable" });
-    expect(h.stt.begin(() => {})).toBeNull(); // and a new race starts for next time
+    const u = h.stt.begin(() => {})!; // held while a new race runs
     expect(h.socks).toHaveLength(3);
     expect(h.tickets()).toBe(2); // a fresh ticket per race: each is single-use
+    const f = u.end(new Float32Array(10));
+    h.socks[2].drop();
+    await h.flush();
+    h.socks[3].drop();
+    await expect(f).rejects.toThrow("unreachable");
   });
 
   it("no ticket (not the owner, or tickets off): the tunnel is out, the tailnet still races", async () => {
@@ -300,7 +307,7 @@ describe("createLocalStt: racing the tailnet and the tunnel", () => {
     h.ready(h.socks[0]);
     h.socks[0].drop();
     expect(h.stt.state()).toBe("down");
-    expect(h.stt.begin(() => {})).toBeNull();
+    expect(h.stt.begin(() => {})).not.toBeNull(); // held, not lost
     expect(h.socks.at(-1)?.url).toBe(TAILNET);
     expect(h.stt.state()).toBe("connecting");
   });
@@ -318,11 +325,17 @@ describe("packPcm", () => {
 });
 
 describe("createLocalStt", () => {
-  it("not connected: begin is null and opens the socket for next time", () => {
+  it("not connected: begin holds the utterance and opens the socket", () => {
     const h = setup();
-    expect(h.stt.begin(() => {})).toBeNull();
+    expect(h.stt.begin(() => {})).not.toBeNull();
     expect(h.w.socks).toHaveLength(1);
+    expect(h.w.socks[0].sent).toHaveLength(0); // nothing until ready
     expect(h.stt.connected()).toBe(false);
+  });
+
+  it("no URL at all: begin is null", () => {
+    const stt = createLocalStt("", { open: fakeWs().open });
+    expect(stt.begin(() => {})).toBeNull();
   });
 
   it("streams frames, shows partials, and resolves the final with its timings", async () => {
@@ -363,7 +376,7 @@ describe("createLocalStt", () => {
     const done = u.end(new Float32Array(10));
     s.drop();
     await expect(done).rejects.toThrow("closed");
-    expect(h.stt.begin(() => {})).toBeNull();
+    expect(h.stt.begin(() => {})).not.toBeNull(); // held while it reconnects
     expect(h.w.socks).toHaveLength(2);
   });
 
@@ -454,5 +467,322 @@ describe("createLocalStt", () => {
     expect(json(s.sent.at(-1)!)).toEqual({ t: "cancel", id: 1 });
     u.cancel(); // once only
     expect(s.sent).toHaveLength(2);
+  });
+});
+
+/**
+ * A clock, one-shot timers and the page's events the test drives: the held
+ * utterance, reopening while the mic is on, and the close log.
+ */
+function page(o: { visible?: boolean } = {}) {
+  type Sock = WsLike & {
+    sent: (string | Uint8Array)[];
+    say: (m: object) => void;
+    drop: (e?: { code?: number; reason?: string; wasClean?: boolean }) => void;
+  };
+  const socks: Sock[] = [];
+  let t = 0;
+  const timers: { f: () => void; ms: number; live: boolean }[] = [];
+  const logs: Record<string, unknown>[] = [];
+  let fire: ((why: "visible" | "online") => void) | null = null;
+  let watching = 0;
+  let visible = o.visible ?? true;
+  const stt = createLocalStt("wss://mac.ts.net/lianki-stt", {
+    open: () => {
+      const s: Sock = {
+        readyState: 0,
+        binaryType: "blob",
+        sent: [],
+        send: (d) => void s.sent.push(d),
+        close: () => s.drop({ code: 1000, reason: "", wasClean: true }),
+        onopen: null,
+        onclose: null,
+        onerror: null,
+        onmessage: null,
+        say: (m) => s.onmessage?.({ data: JSON.stringify(m) }),
+        drop: (e = {}) => {
+          s.readyState = 3;
+          s.onclose?.(e);
+        },
+      };
+      socks.push(s);
+      return s;
+    },
+    now: () => t,
+    setTimer: (f, ms) => {
+      const x = { f, ms, live: true };
+      timers.push(x);
+      return x;
+    },
+    clearTimer: (x) => {
+      if (x) (x as { live: boolean }).live = false;
+    },
+    log: (ev) => logs.push(ev),
+    watch: (f) => {
+      fire = f;
+      watching++;
+      return () => {
+        fire = null;
+        watching--;
+      };
+    },
+    visible: () => visible,
+  });
+  const ready = (s = socks.at(-1)!) => {
+    s.readyState = 1;
+    s.say({ t: "ready", engine: "sensevoice", model: "m" });
+    return s;
+  };
+  const live = (ms?: number) => timers.filter((x) => x.live && (ms === undefined || x.ms === ms));
+  const run = (ms: number) => {
+    for (const x of live(ms)) {
+      x.live = false;
+      x.f();
+    }
+  };
+  return {
+    stt,
+    socks,
+    logs,
+    ready,
+    live,
+    run,
+    advance: (ms: number) => void (t += ms),
+    event: (why: "visible" | "online") => fire?.(why),
+    watching: () => watching,
+    setVisible: (v: boolean) => void (visible = v),
+  };
+}
+
+describe("createLocalStt: an utterance begun while the socket is down", () => {
+  it("is held, then streamed in order the moment the socket is ready", async () => {
+    const h = page();
+    const partials: string[] = [];
+    const u = h.stt.begin((x) => partials.push(x))!;
+    u.frame(new Float32Array(512).fill(0.1));
+    u.frame(new Float32Array(512).fill(0.2));
+    const s = h.socks[0];
+    expect(s.sent).toHaveLength(0);
+    h.advance(300);
+    h.ready(s);
+    // begin, then the two held frames, in order.
+    expect(json(s.sent[0])).toEqual({ t: "begin", id: 1 });
+    expect(s.sent.slice(1).map((x) => (x as Uint8Array).length)).toEqual([1025, 1025]);
+    u.frame(new Float32Array(512)); // live from here on
+    expect(s.sent).toHaveLength(4);
+    h.advance(200);
+    s.say({ t: "partial", id: 1, text: "你好" });
+    expect(partials).toEqual(["你好"]);
+    const f = u.end(new Float32Array(512 * 3));
+    expect(json(s.sent.at(-1)!)).toEqual({ t: "end", id: 1 });
+    s.say({ t: "final", id: 1, text: "你好。", model: "sv", ms: 30 });
+    const out = await f;
+    expect(out.text).toBe("你好。");
+    expect(out.firstPartialMs).toBe(500); // measured from begin, the wait included
+    expect(h.logs).toContainEqual(
+      expect.objectContaining({ state: "held-streamed", heldMs: 300, frames: 2, ended: false }),
+    );
+  });
+
+  it("an end() before ready: begin, frames, pre-pad and end all go out on ready", async () => {
+    const h = page();
+    const u = h.stt.begin(() => {})!;
+    u.frame(new Float32Array(100));
+    const f = u.end(new Float32Array(100 + 40));
+    u.frame(new Float32Array(100)); // after the end: dropped
+    const s = h.ready();
+    expect(json(s.sent[0])).toEqual({ t: "begin", id: 1 });
+    expect((s.sent[1] as Uint8Array)[0]).toBe(1);
+    expect((s.sent[2] as Uint8Array)[0]).toBe(2); // the 40-sample pre-pad
+    expect((s.sent[2] as Uint8Array).length).toBe(1 + 40 * 2);
+    expect(json(s.sent[3])).toEqual({ t: "end", id: 1 });
+    expect(s.sent).toHaveLength(4);
+    s.say({ t: "final", id: 1, text: "ok", ms: 5 });
+    expect((await f).text).toBe("ok");
+  });
+
+  it("opening fails within CONNECT_TIMEOUT_MS: the end() rejects, so the cloud takes it", async () => {
+    const h = page();
+    const u = h.stt.begin(() => {})!;
+    u.frame(new Float32Array(100));
+    const f = u.end(new Float32Array(100));
+    h.run(CONNECT_TIMEOUT_MS);
+    await expect(f).rejects.toThrow("unreachable");
+    // A held utterance whose socket failed before its end rejects at once too.
+    const v = h.stt.begin(() => {})!;
+    h.socks.at(-1)!.drop();
+    await expect(v.end(new Float32Array(1))).rejects.toThrow("unreachable");
+  });
+
+  it("cancelled while held: nothing of it is sent on ready", () => {
+    const h = page();
+    const u = h.stt.begin(() => {})!;
+    u.frame(new Float32Array(100));
+    u.cancel();
+    const s = h.ready();
+    expect(s.sent).toHaveLength(0);
+  });
+
+  it("the steady state is unchanged: with the socket up nothing is held and no timer is added", () => {
+    const h = page();
+    h.stt.warm();
+    const s = h.ready();
+    const timersBefore = h.live().length;
+    const logsBefore = h.logs.length;
+    const u = h.stt.begin(() => {})!;
+    // Sent at once, no buffering: begin, then each frame as it comes.
+    expect(json(s.sent[0])).toEqual({ t: "begin", id: 1 });
+    u.frame(new Float32Array(10));
+    expect(s.sent).toHaveLength(2);
+    expect(h.live().length).toBe(timersBefore);
+    expect(h.logs.length).toBe(logsBefore);
+    void u.end(new Float32Array(10)).catch(() => {});
+    expect(h.live(FINAL_TIMEOUT_MS)).toHaveLength(1); // only the final's own timeout, as before
+  });
+});
+
+describe("createLocalStt: reopening while the mic is on (keep), event-driven", () => {
+  it("a close reopens at once while kept; not once keep(false)", () => {
+    const h = page();
+    h.stt.keep(true);
+    expect(h.watching()).toBe(1);
+    const s = h.ready();
+    h.advance(STABLE_MS);
+    s.drop({ code: 1006, reason: "", wasClean: false });
+    expect(h.socks).toHaveLength(2);
+    expect(h.stt.state()).toBe("connecting");
+    expect(h.logs).toContainEqual(expect.objectContaining({ state: "reconnect", why: "close" }));
+    h.ready();
+    h.stt.keep(false);
+    expect(h.watching()).toBe(0);
+    h.socks[1].drop();
+    expect(h.socks).toHaveLength(2);
+    expect(h.stt.state()).toBe("down");
+  });
+
+  it("visible and online reopen a socket that is down, and do nothing while it is up", () => {
+    const h = page();
+    h.stt.keep(true);
+    h.ready();
+    h.event("visible");
+    h.event("online");
+    expect(h.socks).toHaveLength(1);
+    h.stt.keep(false);
+    h.socks[0].drop();
+    h.stt.keep(true); // mic on again
+    expect(h.socks).toHaveLength(2);
+    h.socks[1].drop(); // that open fails
+    h.advance(10 * BACKOFF_BASE_MS);
+    h.event("online");
+    expect(h.socks).toHaveLength(3);
+    expect(h.logs.at(-1)).toMatchObject({ state: "reconnect", why: "online" });
+  });
+
+  it("a socket left closed without its onclose (back from suspend) is replaced on visible", () => {
+    const h = page();
+    h.stt.keep(true);
+    const s = h.ready();
+    s.readyState = 3; // iOS: dead, no close event yet
+    h.event("visible");
+    expect(h.socks).toHaveLength(2);
+    expect(h.logs).toContainEqual(expect.objectContaining({ state: "stale", readyState: 3 }));
+    h.ready();
+    s.onclose?.({}); // its late close changes nothing
+    expect(h.stt.state()).toBe("ready");
+  });
+
+  it("a hidden page does not reopen on close; visible does", () => {
+    const h = page();
+    h.stt.keep(true);
+    const s = h.ready();
+    h.advance(STABLE_MS);
+    h.setVisible(false);
+    s.drop();
+    expect(h.socks).toHaveLength(1);
+    h.setVisible(true);
+    h.event("visible");
+    expect(h.socks).toHaveLength(2);
+  });
+
+  it("backs off after failures: one deferred attempt per event, 1 s then 2 s, never a loop", () => {
+    const h = page();
+    h.stt.keep(true);
+    h.socks[0].drop(); // the first open fails: fails = 1
+    expect(h.live().filter((x) => x.ms !== CONNECT_TIMEOUT_MS)).toHaveLength(0);
+    h.event("online");
+    h.event("visible"); // coalesced into the same deferred attempt
+    expect(h.socks).toHaveLength(1);
+    expect(h.live().map((x) => x.ms)).toEqual([BACKOFF_BASE_MS]);
+    h.advance(BACKOFF_BASE_MS);
+    h.run(BACKOFF_BASE_MS);
+    expect(h.socks).toHaveLength(2);
+    h.socks[1].drop(); // fails = 2, and nothing is scheduled by the failure itself
+    expect(h.live().filter((x) => x.ms !== CONNECT_TIMEOUT_MS)).toHaveLength(0);
+    h.event("online");
+    expect(h.live().map((x) => x.ms)).toEqual([2 * BACKOFF_BASE_MS]);
+    // An utterance does not wait for the backoff: it opens at once.
+    h.stt.begin(() => {});
+    expect(h.socks).toHaveLength(3);
+    expect(h.live(2 * BACKOFF_BASE_MS)).toHaveLength(0);
+  });
+
+  it("a socket that drops soon after ready counts as a failure; one that lived STABLE_MS resets", () => {
+    const h = page();
+    h.stt.keep(true);
+    h.ready().drop(); // dropped at once: fails = 1, the reopen waits
+    expect(h.socks).toHaveLength(1);
+    expect(
+      h
+        .live()
+        .filter((x) => x.ms !== CONNECT_TIMEOUT_MS)
+        .map((x) => x.ms),
+    ).toEqual([BACKOFF_BASE_MS]);
+    h.advance(BACKOFF_BASE_MS);
+    h.run(BACKOFF_BASE_MS);
+    h.ready();
+    h.advance(STABLE_MS);
+    h.socks[1].drop(); // lived long enough: reopened at once
+    expect(h.socks).toHaveLength(3);
+  });
+
+  it("close() stops watching the page", () => {
+    const h = page();
+    h.stt.keep(true);
+    h.stt.close();
+    expect(h.watching()).toBe(0);
+    expect(h.stt.state()).toBe("idle");
+  });
+});
+
+describe("createLocalStt: the browser's close code", () => {
+  it("logs local-stt-close {code, reason, wasClean} for a close that was not ours", () => {
+    const h = page();
+    h.stt.warm();
+    h.advance(5);
+    const s = h.ready();
+    h.advance(1200);
+    s.drop({ code: 1006, reason: "", wasClean: false });
+    expect(h.logs).toContainEqual({
+      ev: "local-stt-close",
+      code: 1006,
+      reason: "",
+      wasClean: false,
+      via: "mac.ts.net",
+      livedMs: 1200,
+    });
+  });
+
+  it("logs a race socket's close too, and never one we closed", () => {
+    const h = page();
+    h.stt.warm();
+    h.socks[0].drop({ code: 1015, reason: "TLS", wasClean: false });
+    expect(h.logs).toContainEqual(
+      expect.objectContaining({ ev: "local-stt-close", code: 1015, reason: "TLS", phase: "race" }),
+    );
+    const n = h.logs.filter((x) => x.ev === "local-stt-close").length;
+    h.stt.warm();
+    h.ready();
+    h.stt.close();
+    expect(h.logs.filter((x) => x.ev === "local-stt-close")).toHaveLength(n);
   });
 });

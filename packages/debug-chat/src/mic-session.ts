@@ -27,6 +27,7 @@ import {
   type Vad,
   type VadEvents,
   createMic,
+  keepStream,
 } from "./mic";
 import type { LocalState } from "./local-stt";
 import type { KwsState } from "./wake-kws";
@@ -42,7 +43,7 @@ export type LocalClient = StreamStt & {
 /** globalThis key of the session. */
 export const MIC_SESSION_KEY = "__lkMic";
 /** Bumped when the session's shape changes; an older one is migrated, its stream kept. */
-export const MIC_SESSION_V = 7;
+export const MIC_SESSION_V = 8;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -276,7 +277,7 @@ export function createMicSession(
     configure(c: MicConfig) {
       cfg = c;
       localStream(); // a changed or removed URL takes effect (and shows) at once
-      if (mic.state() !== "off") local?.c.warm?.();
+      if (mic.state() !== "off") keepStream(local?.c, true);
     },
     /** Active or passive (wake.ts); the chat lane's {type: "wake"} and the tests. */
     wake: (c: WakeCommand, reason?: WakeReason) => command(c, reason),

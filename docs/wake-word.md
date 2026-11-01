@@ -55,6 +55,8 @@ mic → Silero VAD (already on, 32 ms frames) → utterance Float32Array (onSpee
   in `onSpeechEnd` before `d.upload`. In passive mode `d.stream()` returns
   undefined and partials are off, so nothing is streamed or uploaded while
   he is speaking. It stays pure and tested with fakes, as `mic.ts` is now.
+  The rest after "Linky" goes to the local STT (docs/local-stt.md) when its
+  socket is up, else to the cloud.
 - **Running per segment, not as a stream, saves the battery.** The VAD is
   already running all the time. KWS work is about 1 % of the speech time
   natively, maybe 3–5 % in WASM on an iPhone (to measure), and only while

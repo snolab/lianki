@@ -95,6 +95,12 @@ export type UiStrings = {
   askExpired: string;
   askAnswered: string;
   askSent: string;
+  /**
+   * Compact mode (compact-view.ts), until the host passes localized ones
+   * (ChatStrings): the menu switch, and the compact line's tap hint.
+   */
+  compactIdle: string;
+  compactShowAll: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -139,6 +145,8 @@ export const UI_EN: UiStrings = {
   askAnswered: "Answered",
   askSent: "Sent",
   aecHint: "On: you can talk over replies; on Android the speaker may sound like a call. Off: fuller sound, the mic pauses while replies play. Applies the next time the mic turns on.",
+  compactIdle: "Only the last message while not typing",
+  compactShowAll: "Show the whole chat",
 };
 
 export const UI_ZH: UiStrings = {
@@ -183,6 +191,8 @@ export const UI_ZH: UiStrings = {
   askAnswered: "已回答",
   askSent: "已发送",
   aecHint: "开：回复朗读时也能插话；安卓上扬声器可能变成通话音质。关：音质更好，朗读回复时麦克风暂停。下次打开麦克风时生效。",
+  compactIdle: "不打字时只显示最后一条消息",
+  compactShowAll: "显示完整聊天",
 };
 
 export const UI_JA: UiStrings = {
@@ -227,6 +237,8 @@ export const UI_JA: UiStrings = {
   askAnswered: "回答済み",
   askSent: "送信しました",
   aecHint: "オン：返事の読み上げ中も話しかけられます。Android ではスピーカーが通話の音質になることがあります。オフ：音質が良く、読み上げ中はマイクが一時停止します。次にマイクをオンにしたときから有効。",
+  compactIdle: "入力していないときは最後のメッセージだけ表示",
+  compactShowAll: "チャット全体を表示",
 };
 
 /** The tree's strings in Chinese (StateTree.tsx TreeStrings). */

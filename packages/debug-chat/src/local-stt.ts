@@ -5,10 +5,22 @@
  * moment the VAD ends the utterance. Owner pages only, behind
  * localStorage[LOCAL_STT_KEY]: one wss:// URL, or several separated by spaces
  * or commas (the tailnet first, then wss://stt.lianki.com, the tunnel). Any
- * failure — not connected, a dropped socket, an error, no final in time — is
+ * failure — not reachable, a dropped socket, an error, no final in time — is
  * a reject, and the mic falls back to /api/debug/stt for that utterance, as
- * before. Nothing here polls: the socket is opened on the first utterance and
- * again on the next one after it closes.
+ * before.
+ *
+ * An utterance that starts while the socket is down is held, not lost: its
+ * frames are buffered while the socket opens (bounded by CONNECT_TIMEOUT_MS,
+ * the race's deadline) and streamed the moment it is ready; only if opening
+ * fails does it go to the cloud. With the socket up, begin() streams at once,
+ * exactly as before.
+ *
+ * Nothing here polls. While the mic is on (`keep(true)`) the socket is
+ * reopened at once when it closes, when the page becomes visible again and
+ * when the browser comes back online — events only, with a backoff after
+ * failures (one deferred attempt per event, never a retry loop). Every close
+ * that was not ours is logged with the browser's own code and reason
+ * (`local-stt-close`): iOS sends no close frame, so the server sees nothing.
  *
  * With several URLs, opening is a race (happy eyeballs): the first URL at
  * once, each next one RACE_STAGGER_MS later (or at once when the one before
@@ -28,6 +40,12 @@ export const FINAL_TIMEOUT_MS = 4_000;
 export const CONNECT_TIMEOUT_MS = 2_500;
 /** The next URL in the race starts this long after the one before it. */
 export const RACE_STAGGER_MS = 150;
+/** After a failed open (or a socket that dropped within STABLE_MS), the next event-driven attempt waits this, doubling… */
+export const BACKOFF_BASE_MS = 1_000;
+/** …up to this. */
+export const BACKOFF_MAX_MS = 30_000;
+/** A socket that lived this long before closing was good: the backoff starts over. */
+export const STABLE_MS = 10_000;
 /** The subprotocol the tunnel listener selects (scripts/local-stt/ticket.py). */
 export const STT_SUBPROTOCOL = "lianki-stt";
 /** Where an owner page gets a ticket for the tunnel (app/api/dev/stt-ticket). */
@@ -125,10 +143,19 @@ export type LocalUtt = {
 export type LocalState = "idle" | "connecting" | "ready" | "down";
 
 export type LocalStt = {
-  /** Start an utterance; null when the socket isn't open (it is opened for next time). */
+  /**
+   * Start an utterance. With the socket up it streams at once; with it down
+   * it is held (frames buffered) while the socket opens, then streamed, and
+   * its end() rejects if opening fails. Null only with no URL at all.
+   */
   begin(onPartial: (text: string) => void): LocalUtt | null;
   /** Open the socket now (on mic on), so the first utterance can stream. */
   warm(): void;
+  /**
+   * While the mic is on (true): open now, and reopen on close, on the page
+   * becoming visible and on coming online, with backoff. False stops that.
+   */
+  keep(on: boolean): void;
   close(): void;
   connected(): boolean;
   state(): LocalState;
@@ -168,6 +195,10 @@ export function createLocalStt(
     setTimer?: (f: () => void, ms: number) => unknown;
     clearTimer?: (t: unknown) => void;
     log?: (ev: Record<string, unknown>) => void;
+    /** Subscribe to the page's "visible again" and "online" events; returns an unsubscribe. */
+    watch?: (f: (why: "visible" | "online") => void) => () => void;
+    /** Whether the page is visible (a hidden page waits for visibilitychange). */
+    visible?: () => boolean;
   } = {},
 ): LocalStt {
   const urls = (Array.isArray(url) ? url : url.split(/[\s,]+/)).filter(Boolean);
@@ -177,6 +208,9 @@ export function createLocalStt(
   const now = d.now ?? (() => performance.now());
   const setTimer = d.setTimer ?? ((f, ms) => setTimeout(f, ms));
   const clearTimer = d.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
+  const watch = d.watch ?? watchPage;
+  const visible =
+    d.visible ?? (() => typeof document === "undefined" || document.visibilityState !== "hidden");
   /** The socket in use: the race's winner. */
   let ws: WsLike | null = null;
   let ready = false;
@@ -191,6 +225,16 @@ export function createLocalStt(
   };
   let race: Race | null = null;
   const utts = new Map<number, Pending>();
+  /** Utterances begun while the socket was down: streamed on ready, failed if opening fails. */
+  type Waiter = { go(): void; fail(why: string): void };
+  const waiting = new Set<Waiter>();
+  /** Reopening while the mic is on (keep): the events, the backoff, its one deferred attempt. */
+  let kept = false;
+  let unwatch: (() => void) | null = null;
+  let fails = 0;
+  let lastFail = 0;
+  let wonAt = 0;
+  let retry: unknown = null;
   let st: LocalState = "idle";
   const subs = new Set<(s: LocalState) => void>();
   const setSt = (s: LocalState) => {
@@ -205,6 +249,9 @@ export function createLocalStt(
       p.reject?.(new Error(why));
       utts.delete(id);
     }
+    const held = [...waiting];
+    waiting.clear();
+    for (const w of held) w.fail(why);
   };
   const hostOf = (u: string) => {
     try {
@@ -257,15 +304,50 @@ export function createLocalStt(
     }
   };
   /** Not closed by us: the agent hears it (page-errors.ts; owner pages only). */
-  const lost = (what: "closed" | "unreachable", code: unknown, where: string) => {
+  const lost = (
+    what: "closed" | "unreachable",
+    code: unknown,
+    where: string,
+    reason?: string,
+  ) => {
     d.log?.({ ev: "local-stt", state: what, url: where });
-    reportPageError({
-      kind: "socket",
-      message: `local STT socket ${what}${typeof code === "number" ? ` (${code})` : ""}`,
-    });
+    const why = typeof code === "number" ? ` (${code}${reason ? ` ${reason}` : ""})` : "";
+    reportPageError({ kind: "socket", message: `local STT socket ${what}${why}` });
     ready = false;
     setSt("down");
-    failAll("local stt closed");
+    failAll(what === "closed" ? "local stt closed" : "local stt unreachable");
+  };
+  /** A failed open, or a socket that dropped soon after ready: the next attempt backs off. */
+  const failed = () => {
+    fails++;
+    lastFail = now();
+  };
+  /** Reopen while the mic is on: at once, or once the backoff since the last failure is over. */
+  const reconnect = (why: string) => {
+    if (!kept || live() || race || !visible()) return;
+    const wait = fails
+      ? Math.min(BACKOFF_BASE_MS * 2 ** (fails - 1), BACKOFF_MAX_MS) - (now() - lastFail)
+      : 0;
+    if (wait > 0) {
+      // One deferred attempt for this event; a failure schedules nothing more.
+      if (retry === null)
+        retry = setTimer(() => {
+          retry = null;
+          reconnect(why);
+        }, wait);
+      return;
+    }
+    d.log?.({ ev: "local-stt", state: "reconnect", why, fails });
+    connect();
+  };
+  /** The browser's own close event (iOS sends no close frame, so only the page knows). */
+  const closeInfo = (e: unknown) => {
+    const c = (e ?? {}) as { code?: unknown; reason?: unknown; wasClean?: unknown };
+    return {
+      code: typeof c.code === "number" ? c.code : undefined,
+      reason: typeof c.reason === "string" ? c.reason.slice(0, 100) : "",
+      wasClean: typeof c.wasClean === "boolean" ? c.wasClean : undefined,
+    };
   };
   const endRace = (r: Race) => {
     r.over = true;
@@ -279,11 +361,25 @@ export function createLocalStt(
     for (const o of endRace(r)) if (o !== s) o.close();
     ws = s;
     ready = true;
+    wonAt = now();
     setSt("ready");
     d.log?.({ ev: "local-stt", state: "ready", model, via: hostOf(u) });
+    const go = [...waiting];
+    waiting.clear();
+    for (const w of go) w.go();
   };
   const connect = () => {
+    if (ws && ws.readyState > 1) {
+      // Closing or closed, its onclose not here yet (a page back from suspend): open anew.
+      d.log?.({ ev: "local-stt", state: "stale", readyState: ws.readyState });
+      ws = null;
+      ready = false;
+    }
     if (ws || race || !urls.length) return;
+    if (retry !== null) {
+      clearTimer(retry);
+      retry = null;
+    }
     const r: Race = { socks: new Map(), started: 0, failed: 0, timers: [], over: false };
     race = r;
     setSt("connecting");
@@ -299,6 +395,7 @@ export function createLocalStt(
       d.log?.({ ev: "local-stt", state: "lost-race", via: hostOf(u), why });
       if (r.failed >= urls.length) {
         endRace(r);
+        failed();
         lost("unreachable", undefined, urls.join(" "));
       } else start(); // happy eyeballs: a failure starts the next one now
     };
@@ -323,11 +420,21 @@ export function createLocalStt(
       };
       s.onclose = (e) => {
         if (ws === s) {
+          const c = closeInfo(e);
+          const livedMs = Math.round(now() - wonAt);
+          d.log?.({ ev: "local-stt-close", ...c, via: hostOf(u), livedMs });
           ws = null;
-          lost(ready ? "closed" : "unreachable", (e as { code?: unknown } | undefined)?.code, u);
+          if (livedMs < STABLE_MS) failed();
+          else fails = 0;
+          lost(ready ? "closed" : "unreachable", c.code, u, c.reason);
+          reconnect("close");
           return;
         }
-        if (r.socks.delete(s)) fail(u, "closed");
+        if (r.socks.has(s)) {
+          d.log?.({ ev: "local-stt-close", ...closeInfo(e), via: hostOf(u), phase: "race" });
+          r.socks.delete(s);
+          fail(u, "closed");
+        }
       };
     };
     const start = () => {
@@ -345,6 +452,7 @@ export function createLocalStt(
       setTimer(() => {
         if (r.over) return;
         for (const o of endRace(r)) o.close();
+        failed();
         lost("unreachable", undefined, urls.join(" "));
       }, CONNECT_TIMEOUT_MS),
     );
@@ -360,6 +468,120 @@ export function createLocalStt(
     }
   };
 
+  const keep = (on: boolean) => {
+    kept = on;
+    if (on) {
+      unwatch ??= watch((why) => reconnect(why));
+      connect();
+      return;
+    }
+    unwatch?.();
+    unwatch = null;
+    if (retry !== null) clearTimer(retry);
+    retry = null;
+  };
+  /**
+   * Begun while the socket is down: the frames wait here while it opens
+   * (connect's deadline bounds that), then go out as one burst behind the
+   * begin, and an end() that came first is sent right after. If opening
+   * fails, end() rejects (the cloud takes the utterance).
+   */
+  const hold = (onPartial: (t: string) => void, began: number): LocalUtt => {
+    let held: Float32Array[] | null = [];
+    let inner: LocalUtt | null = null;
+    let ending: { audio: Float32Array; ok: (f: LocalFinal) => void; ko: (e: Error) => void } | null =
+      null;
+    let lostWhy = "local stt closed";
+    const w: Waiter = {
+      go() {
+        if (!held) return; // cancelled meanwhile
+        const frames = held;
+        held = null;
+        inner = stream(onPartial, began);
+        for (const f of frames) inner.frame(f);
+        d.log?.({
+          ev: "local-stt",
+          state: "held-streamed",
+          heldMs: Math.round(now() - began),
+          frames: frames.length,
+          ended: !!ending,
+        });
+        const e = ending;
+        ending = null;
+        if (e) inner.end(e.audio).then(e.ok, e.ko);
+      },
+      fail(why) {
+        held = null;
+        lostWhy = why;
+        const e = ending;
+        ending = null;
+        e?.ko(new Error(why));
+      },
+    };
+    waiting.add(w);
+    connect();
+    return {
+      frame(f) {
+        if (inner) return inner.frame(f);
+        if (held && !ending) held.push(f);
+      },
+      end(audio) {
+        if (inner) return inner.end(audio);
+        if (!held || ending) return Promise.reject(new Error(lostWhy));
+        return new Promise<LocalFinal>((ok, ko) => void (ending = { audio, ok, ko }));
+      },
+      cancel() {
+        if (inner) return inner.cancel();
+        if (!held || ending) return;
+        held = null;
+        waiting.delete(w);
+      },
+    };
+  };
+  /** An utterance on the open socket (the steady path). */
+  const stream = (onPartial: (t: string) => void, began = now()): LocalUtt => {
+    const id = nextId++;
+    const p: Pending = { onPartial, began };
+    utts.set(id, p);
+    send(JSON.stringify({ t: "begin", id }));
+    let streamed = 0;
+    let over = false;
+    return {
+      frame(f) {
+        if (over || !live()) return;
+        streamed += f.length;
+        send(packPcm(TAG_FRAME, f));
+      },
+      end(audio) {
+        over = true;
+        return new Promise<LocalFinal>((resolve, reject) => {
+          if (!live() || !utts.has(id)) {
+            utts.delete(id);
+            return reject(new Error("local stt not connected"));
+          }
+          p.resolve = resolve;
+          p.reject = reject;
+          // The VAD's pre-pad: the head of its audio that came before the first frame.
+          const head = audio.length - streamed;
+          if (head > 0) send(packPcm(TAG_PRE, audio.subarray(0, head)));
+          p.endAt = now();
+          send(JSON.stringify({ t: "end", id }));
+          p.timer = setTimer(() => {
+            if (!utts.has(id)) return;
+            utts.delete(id);
+            reject(new Error("local stt timed out"));
+          }, FINAL_TIMEOUT_MS);
+        });
+      },
+      cancel() {
+        if (over) return;
+        over = true;
+        utts.delete(id);
+        if (live()) send(JSON.stringify({ t: "cancel", id }));
+      },
+    };
+  };
+
   return {
     connected: live,
     state: () => st,
@@ -368,7 +590,9 @@ export function createLocalStt(
       return () => void subs.delete(f);
     },
     warm: connect,
+    keep,
     close() {
+      keep(false);
       const s = ws;
       ws = null;
       ready = false;
@@ -378,50 +602,25 @@ export function createLocalStt(
       failAll("local stt closed");
     },
     begin(onPartial) {
-      if (!live()) {
-        connect();
-        return null;
-      }
-      const id = nextId++;
-      const p: Pending = { onPartial, began: now() };
-      utts.set(id, p);
-      send(JSON.stringify({ t: "begin", id }));
-      let streamed = 0;
-      let over = false;
-      return {
-        frame(f) {
-          if (over || !live()) return;
-          streamed += f.length;
-          send(packPcm(TAG_FRAME, f));
-        },
-        end(audio) {
-          over = true;
-          return new Promise<LocalFinal>((resolve, reject) => {
-            if (!live() || !utts.has(id)) {
-              utts.delete(id);
-              return reject(new Error("local stt not connected"));
-            }
-            p.resolve = resolve;
-            p.reject = reject;
-            // The VAD's pre-pad: the head of its audio that came before the first frame.
-            const head = audio.length - streamed;
-            if (head > 0) send(packPcm(TAG_PRE, audio.subarray(0, head)));
-            p.endAt = now();
-            send(JSON.stringify({ t: "end", id }));
-            p.timer = setTimer(() => {
-              if (!utts.has(id)) return;
-              utts.delete(id);
-              reject(new Error("local stt timed out"));
-            }, FINAL_TIMEOUT_MS);
-          });
-        },
-        cancel() {
-          if (over) return;
-          over = true;
-          utts.delete(id);
-          if (live()) send(JSON.stringify({ t: "cancel", id }));
-        },
-      };
+      if (live()) return stream(onPartial);
+      if (!urls.length) return null;
+      // Down: hold this utterance while the socket opens, instead of losing it to the cloud.
+      return hold(onPartial, now());
     },
+  };
+}
+
+/** The page's "visible again" and "online" events (none outside a browser). */
+function watchPage(f: (why: "visible" | "online") => void): () => void {
+  if (typeof window === "undefined" || typeof document === "undefined") return () => {};
+  const vis = () => {
+    if (document.visibilityState === "visible") f("visible");
+  };
+  const onl = () => f("online");
+  document.addEventListener("visibilitychange", vis);
+  window.addEventListener("online", onl);
+  return () => {
+    document.removeEventListener("visibilitychange", vis);
+    window.removeEventListener("online", onl);
   };
 }
