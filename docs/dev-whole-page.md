@@ -200,6 +200,21 @@ Cloudflare Tunnel · Edit, Zone · DNS · Edit, Zone · Zone WAF · Edit, Zone �
 Zone · Read**. Wrangler's login on the Mac reaches the tunnel API but has no
 DNS or WAF edit (checked 2026-11-01), so it does not cover this.
 
+**Without the API token, cert.pem** (the fallback, 2026-11-01): when
+`cloudflared tunnel login` has left `~/.cloudflared/cert.pem` and there is
+no API token, `up` makes a **locally managed** tunnel instead: `cloudflared
+tunnel create lianki-preview` (credentials JSON, 0600, checked),
+`~/.cloudflared/lianki-preview.yml` (0600) with the same ingress (gate
+only, 404 for the rest), `cloudflared tunnel route dns`, and the connector
+with `--config`. Two things still need the API token: the **rate-limit
+rule** (not applied; the gate's own per-IP limits and queue apply
+meanwhile), and **deleting the DNS record** on `down` (cloudflared cannot;
+with the tunnel deleted the record reaches nothing, 1033, and `down` exits
+1 saying so). Once the token exists, `down` removes the cert-made tunnel and
+the record through the API, and `up` makes the remotely managed one (it
+refuses while a locally managed tunnel of that name exists, so run `down`
+first).
+
 **Rollback**: `scripts/dev/preview-tunnel.sh down` stops the connector,
 deletes the tunnel (its connections first) and its DNS record through the
 API, and removes the token file. The shared rate rule stays (the STT tunnel
