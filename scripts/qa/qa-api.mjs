@@ -442,6 +442,33 @@ let goalId;
   rec("GUARD unauth -> 401", r.status === 401, `HTTP ${r.status}`);
 }
 
+// ── LEGAL pages: public, in English and Japanese, linked from the homepage ──
+{
+  const saved = cookie;
+  cookie = "";
+  const pages = {
+    terms: ["Terms of Service", "利用規約"],
+    privacy: ["Privacy Policy", "プライバシーポリシー"],
+    refund: ["Refund Policy", "返金ポリシー"],
+    tokushoho: ["Specified Commercial Transactions Act", "特定商取引法に基づく表記"],
+  };
+  for (const [slug, [en, ja]] of Object.entries(pages)) {
+    const e = await call("GET", `/legal/${slug}?lang=en`);
+    rec(`LEGAL /legal/${slug} (en)`, e.status === 200 && e.text.includes(en), `HTTP ${e.status}`);
+    const j = await call("GET", `/legal/${slug}?lang=ja`);
+    rec(`LEGAL /legal/${slug} (ja)`, j.status === 200 && j.text.includes(ja), `HTTP ${j.status}`);
+  }
+  const home = await call("GET", "/en");
+  rec(
+    "LEGAL homepage links every legal page and a contact email",
+    home.status === 200 &&
+      Object.keys(pages).every((s) => home.text.includes(`/legal/${s}`)) &&
+      home.text.includes("mailto:"),
+    `HTTP ${home.status}`,
+  );
+  cookie = saved;
+}
+
 const pass = results.filter((r) => r.ok).length;
 console.log(`\n=== ${pass}/${results.length} checks passed ===`);
 if (pass !== results.length) {
