@@ -87,11 +87,24 @@ for (const [method, path] of [
   ["POST", "/api/dev/gift-codes"],
   ["POST", "/api/dev/membership"],
   ["POST", "/api/dev/stt-ticket"],
+  ["GET", "/api/dev/dev-tokens"],
+  ["POST", "/api/dev/dev-tokens"],
+  ["POST", "/api/dev/dev-handoff"],
+  ["GET", "/dev/tokens"],
   ["GET", "/dev/users"],
   ["GET", "/dev/gift-codes"],
 ]) {
   const r = await call(method, path, method === "POST" ? {} : undefined);
   rec(`SEC   non-owner ${method} ${path} → 404`, r.status === 404, `HTTP ${r.status}`);
+}
+// The dev server's token check answers only its gate (the dev bridge secret).
+{
+  const r = await call("POST", "/api/dev-access/verify", { token: "lkdev_x" });
+  rec(
+    "SEC   /api/dev-access/verify without the bridge → 401",
+    r.status === 401,
+    `HTTP ${r.status}`,
+  );
 }
 // Live view (docs/live-view.md): the pointer is the owner's only, and only the
 // dev key can write it — an unsigned or foreign-signed one is refused.

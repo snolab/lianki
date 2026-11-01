@@ -458,62 +458,67 @@ Checks and screenshots: `node scripts/dev/debug-chat-compact-qa.mjs --shots
 <dir>` (silent browsers, getUserMedia refused, 390×844, light and dark);
 the rules in `unit/chat-compact.test.ts`.
 
-## Quiet lines and quiet hours
+## Quiet lines
 
-Agent lines must not wake the owner (owner, 2026-10-31). Every agent line is
-shown; what changes is whether it is also read aloud.
+Every agent line is shown; what changes is whether it is also read aloud.
+There is no time of day in it, and no setting
+(owner, 2026-11-01).
 
 **Which `say` to use** (agents, read this):
 
-| Line                                                                     | Command                   | Read aloud                                   |
-| ------------------------------------------------------------------------ | ------------------------- | -------------------------------------------- |
-| FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                                        |
-| the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, but not in his quiet hours              |
-| urgent, or it needs his confirmation now                                 | `eval.ts say --loud "…"`  | yes, even in quiet hours, unless he muted it |
-| an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | counts as loud                               |
+| Line                                                                     | Command                   | Read aloud                          |
+| ------------------------------------------------------------------------ | ------------------------- | ----------------------------------- |
+| FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                               |
+| the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, by the page's usual rules      |
+| an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | yes, like a plain line              |
 
 Default to `--quiet` whenever the line is not a reply to him. `--loud` is
-rare: something broke in production, or a decision blocks you and he is
-expected to be awake for it. `--quiet` and `--loud` together are refused.
-
-**Wire.** `{type:"say", text, quiet?: true, loud?: true}`. The hub
-(`parseControllerMessage` in `lib/dev-eval.ts`) keeps each only as boolean
-`true`, drops anything else, and keeps only `loud` when both are sent. It
-copies them onto the `ChatMessage`, so pages get them live and in history,
-and logs them in `debug.say`. An older hub drops them, and the line is read
+deprecated: `eval.ts` still accepts it and prints a note, and the line goes
 as a plain `say`.
 
-**On the page** (`packages/debug-chat/src/quiet-hours.ts`, gated in
-`voice.ts` `gateVoice`). In order:
+**Wire.** `{type:"say", text, quiet?: true}`. The hub
+(`parseControllerMessage` in `lib/dev-eval.ts`) keeps `quiet` only as
+boolean `true` and drops anything else (an old `loud` included). It copies
+it onto the `ChatMessage`, so pages get it live and in history, and logs it
+in `debug.say`.
 
-1. **Hidden page or locked screen** (`document.visibilityState` "hidden"):
-   never spoken, not even a loud line. Hiding the page also stops a reading
-   under way.
-2. **Loud** (`loud: true`, or a line with an `ask`): read by the usual rules
-   (mic on, or the speaker toggle on and the input focused). His mute (the
-   speaker toggle, with the mic off) still silences it.
-3. **Quiet** (`quiet: true`): never spoken, even with the mic on.
-4. **Quiet hours**: nothing else is spoken. A device-local setting,
-   `lk:agent-quiet-hours` = `{on, from, to}`, default on, 23:00–08:00 in the
-   device's own time zone; a window whose end is before its start wraps past
-   midnight. Never synced (docs/prefs-sync.md): his phone and his Mac may
-   keep different hours. It is set on /words → Settings, debug mode only
-   ("Quiet hours", From, To).
+**On the page** (`packages/debug-chat/src/speak-rules.ts`, gated in
+`voice.ts` `gateVoice`), on top of the usual rules (mic on, or the speaker
+toggle on and the input focused):
 
-A line kept silent is logged as `{ev:"voice-silent", why}` (hidden, quiet,
-quiet-hours) on the voice session's log. Lines carry `data-volume="quiet"` or
-`"loud"` in the log, for tests; they look the same.
+1. **Quiet** (`quiet: true`): never spoken, even with the mic on.
+2. **Hidden page or locked screen** (`document.visibilityState` "hidden"):
+   never spoken (the browser would not let it). Hiding the page also stops a
+   reading under way. When the page is visible again, the newest line that
+   arrived while it was hidden is read once (not a backlog); the lines left
+   unread show a small note, "not read aloud: the page was in the
+   background" (`ChatStrings.notReadHidden`, `data-testid="debug-chat-unheard"`).
+
+A line kept silent is logged as `{ev:"voice-silent", why}` (quiet, hidden)
+on the voice session's log, and a missed line read on return as
+`{ev:"voice-missed"}`. Quiet lines carry `data-volume="quiet"` in the log,
+for tests; they look the same.
+
+**No voice on the device.** With the output on "speech" (the default), a
+reply in a language speechSynthesis has no voice for (some Android Chromes
+report `getVoices()` = 0) is read through the cloud (`/api/words/tts`,
+`voice-out.ts`) instead of staying silent; it is logged with
+`fallback: "no-voice"`. The cloud's `<audio>` element is unlocked in the
+first gesture on such a device.
 
 **Hot-loadable.** The gate wraps `reply` on the shared voice session
-(`globalThis.__lkVoice`), so a hot-loaded widget applies quiet hours and the
-hidden rule even under a deployed DebugEval that still calls
-`speakReply(text)` without the line. Quiet and loud need both the hub
-change (lianki-push) and the DebugEval that passes the line
-(`speakReply(m.text, m)`); until then every line is treated as plain.
+(`globalThis.__lkVoice`), so a hot-loaded widget applies these rules even
+under a deployed DebugEval that still calls `speakReply(text)` without the
+line.
 
-Tests: `unit/quiet-hours.test.ts` (the window, past midnight; the setting;
-the order above; the gate), `unit/debug-hub.test.ts` ("say --quiet / --loud"),
-`unit/dev-eval.test.ts`, `unit/node-args.test.ts`.
+**Cleanup.** An older build kept a time-of-day setting under
+`lk:agent-quiet-hours`; the gate removes that key once on load
+(`dropRetiredKeys`), so nothing of it is left on his devices.
+
+Tests: `unit/speak-rules.test.ts` (the rules, the gate, the missed line, the
+cleanup), `unit/voice-session.test.ts` (the no-voice fallback),
+`unit/debug-hub.test.ts` ("say --quiet"), `unit/dev-eval.test.ts`,
+`unit/node-args.test.ts`.
 
 ## The state tree, live
 

@@ -28,7 +28,7 @@
     "./voice": "./src/voice.ts",
     "./voiceprint": "./src/voiceprint.ts",
     "./VoiceprintPanel": "./src/VoiceprintPanel.tsx",
-    "./quiet-hours": "./src/quiet-hours.ts",
+    "./speak-rules": "./src/speak-rules.ts",
     "./wake": "./src/wake.ts",
     "./wake-kws": "./src/wake-kws.ts",
     "./voice-out": "./src/voice-out.ts",

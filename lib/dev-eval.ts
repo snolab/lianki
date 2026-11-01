@@ -159,9 +159,8 @@ export type ControllerMessage =
       node?: string;
       taskPath?: string;
       agentId?: string;
-      /** `say --quiet`: shown, never read aloud. `say --loud`: read even in quiet hours. */
+      /** `say --quiet`: shown, never read aloud. */
       quiet?: true;
-      loud?: true;
     }
   | { type: "busy"; to?: string; label?: string }
   /**
@@ -348,9 +347,8 @@ export function parseControllerMessage(
     if (m.taskPath !== undefined && !taskPath)
       return { ok: false, error: `not a node path: ${String(m.taskPath)}` };
     const agentId = agentIdOf(m.agentId);
-    // Booleans only, and only `true` is kept; loud wins over quiet (it may need his answer).
-    const loud = m.loud === true;
-    const quiet = m.quiet === true && !loud;
+    // A boolean only, and only `true` is kept. An old `loud` is dropped: it means nothing now.
+    const quiet = m.quiet === true;
     return {
       ok: true,
       value: {
@@ -361,7 +359,6 @@ export function parseControllerMessage(
         ...(taskPath && taskPath !== ROOT_NODE ? { taskPath } : {}),
         ...(agentId ? { agentId } : {}),
         ...(quiet ? { quiet: true as const } : {}),
-        ...(loud ? { loud: true as const } : {}),
       },
     };
   }

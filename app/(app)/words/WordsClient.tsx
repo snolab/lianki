@@ -58,7 +58,6 @@ import {
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
-import { QuietHoursSetting } from "./QuietHoursSetting";
 import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
@@ -3637,18 +3636,6 @@ function Study({
               label={text.animationsOff.value}
               hint={text.animationsOffHint.value}
             />
-            {/* The learning partner's quiet hours: debug mode only, this device only. */}
-            {debug && (
-              <QuietHoursSetting
-                Toggle={TogglePill}
-                text={{
-                  label: text.quietHours.value,
-                  hint: text.quietHoursHint.value,
-                  from: text.quietFrom.value,
-                  to: text.quietTo.value,
-                }}
-              />
-            )}
             <div className="w-full pt-1" data-experimental>
               <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
                 {text.experimental}

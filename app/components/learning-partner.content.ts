@@ -1001,6 +1001,24 @@ const learningPartnerContent = {
       mr: "तुमचा आवाज, पडताळलेला",
       ko: "내 목소리로 확인됨",
     }),
+    notReadHidden: t({
+      en: "· not read aloud: the page was in the background",
+      zh: "· 未朗读：页面当时在后台",
+      hi: "· पढ़कर नहीं सुनाया: पेज तब बैकग्राउंड में था",
+      es: "· no se leyó en voz alta: la página estaba en segundo plano",
+      fr: "· non lu à voix haute : la page était en arrière-plan",
+      ar: "· لم تُقرأ بصوت عالٍ: كانت الصفحة في الخلفية",
+      bn: "· জোরে পড়া হয়নি: পেজটি তখন ব্যাকগ্রাউন্ডে ছিল",
+      pt: "· não lida em voz alta: a página estava em segundo plano",
+      ru: "· не прочитано вслух: страница была в фоне",
+      ur: "· پڑھ کر نہیں سنایا: صفحہ اس وقت پس منظر میں تھا",
+      id: "· tidak dibacakan: halaman sedang di latar belakang",
+      de: "· nicht vorgelesen: die Seite war im Hintergrund",
+      ja: "· 読み上げなし：ページがバックグラウンドでした",
+      sw: "· haikusomwa kwa sauti: ukurasa ulikuwa nyuma",
+      mr: "· मोठ्याने वाचले नाही: पेज तेव्हा बॅकग्राउंडमध्ये होते",
+      ko: "· 읽어 주지 않음: 페이지가 백그라운드에 있었어요",
+    }),
   },
 } satisfies DeclarationContent;
 
@@ -1110,6 +1128,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Button and screen-reader label that closes the voiceprint panel (shown as ✕ or under a finished step). Imperative verb, one word.",
   vpVerified:
     "Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: the owner's Mac confirmed the line was spoken in his own voice. Short phrase, no full stop.",
+  notReadHidden:
+    "Small grey note right after an assistant's message in the chat log: this message was shown but not spoken aloud, because the page was hidden (another tab or app in front, or the screen locked) when it arrived; browsers do not let a hidden page speak. Starts with a middle dot like the 'waiting' note; a short status phrase, not a sentence or an error.",
 };
 
 export default {

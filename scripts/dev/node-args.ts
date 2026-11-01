@@ -62,11 +62,14 @@ export function chatLine(
   };
 }
 
-/** How loud a `say` is: `--quiet` (shown, never read aloud) or `--loud` (read even in quiet hours). */
-export type SayVolume = { quiet?: true; loud?: true };
+/** Whether a `say` is read aloud: `--quiet` = shown, never read aloud. */
+export type SayVolume = { quiet?: true };
 
-/** The say's volume flags; both at once is an error. */
-export function sayVolume(f: { quiet: boolean; loud: boolean }): SayVolume | { error: string } {
-  if (f.quiet && f.loud) return { error: "say takes --quiet or --loud, not both" };
-  return f.quiet ? { quiet: true } : f.loud ? { loud: true } : {};
+/** The say's flags as sent to the hub. */
+export function sayVolume(f: { quiet: boolean }): SayVolume {
+  return f.quiet ? { quiet: true } : {};
 }
+
+/** Printed (stderr) when an old command still passes `say --loud`: it does nothing now. */
+export const LOUD_DEPRECATED =
+  "say --loud is deprecated and does nothing (a plain say); it is accepted so old commands still work";

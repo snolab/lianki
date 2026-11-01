@@ -371,8 +371,8 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
             // (voice.ts): always read while the mic is on, else by the focus rule.
             const fresh = !spokenIds.current.has(m.id);
             spokenIds.current.add(m.id);
-            // Never on a hidden page, never a quiet line, and not in quiet hours
-            // unless it is loud (quiet-hours.ts): the line itself is the meta.
+            // Never a quiet line; a hidden page reads the newest one when it is
+            // back (speak-rules.ts): the line itself is the meta.
             const spoken = fresh && (tabsRef.current?.isSpeaker() ?? true) && speakReply(m.text, m);
             voiceLatency().heard(m, spoken === true);
           } else {

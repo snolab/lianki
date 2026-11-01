@@ -1,12 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { chatLine, nodeOpts, sayVolume } from "@/scripts/dev/node-args";
+import { LOUD_DEPRECATED, chatLine, nodeOpts, sayVolume } from "@/scripts/dev/node-args";
 
-describe("eval.ts say --quiet / --loud", () => {
-  it("one or neither; both is an error", () => {
-    expect(sayVolume({ quiet: true, loud: false })).toEqual({ quiet: true });
-    expect(sayVolume({ quiet: false, loud: true })).toEqual({ loud: true });
-    expect(sayVolume({ quiet: false, loud: false })).toEqual({});
-    expect(sayVolume({ quiet: true, loud: true })).toHaveProperty("error");
+describe("eval.ts say --quiet", () => {
+  it("--quiet is sent as quiet: true; without it, nothing", () => {
+    expect(sayVolume({ quiet: true })).toEqual({ quiet: true });
+    expect(sayVolume({ quiet: false })).toEqual({});
+  });
+  it("--loud is a deprecated no-op: eval.ts only prints a note", () => {
+    expect(LOUD_DEPRECATED).toContain("deprecated");
   });
 });
 

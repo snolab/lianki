@@ -34,6 +34,7 @@ import {
   cloudOut,
   existingCtx,
   micConstraints,
+  noSpeechVoices,
   noteTrack,
   outMode,
 } from "./voice-out";
@@ -627,7 +628,8 @@ export function DebugMic({
           // Made in this gesture, so iOS lets it play the send tick (and cloud replies) later.
           if (state === "off") {
             void audioCtx()?.resume().catch(() => {});
-            if (outMode() === "cloud") cloudOut()?.unlock();
+            // The cloud reads replies when this device has no speechSynthesis voice (voice.ts).
+            if (outMode() === "cloud" || noSpeechVoices()) cloudOut()?.unlock();
           }
           void mic.current?.toggle();
         }}

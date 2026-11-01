@@ -61,7 +61,7 @@ import { learnSttHint } from "./stt-hint";
 import { DebugMic, canCapture, pageMic, playSentTick, voiceDevice } from "./MicButton";
 import { VoiceMark, VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
-import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
+import { SPEAK_KEY, type VoiceState, speechEnabled, unheard, voice } from "./voice";
 import {
   type ReadingLeft,
   initialRead,
@@ -72,8 +72,8 @@ import {
   sentenceRanges,
   sentenceState,
 } from "./read-progress";
-import { aecOn, cloudOut, outMode, setAec } from "./voice-out";
-import type { SpeakMeta } from "./quiet-hours";
+import { aecOn, cloudOut, noSpeechVoices, outMode, setAec } from "./voice-out";
+import type { SpeakMeta } from "./speak-rules";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
   FADE_MS,
@@ -420,9 +420,8 @@ if (typeof window !== "undefined")
  * called for a reply that arrived live, never for history. With the mic on it
  * is always read; otherwise only to someone typing here with the speaker on.
  * DebugEval calls this bundled copy; the hot-loaded chat shares the session.
- * `meta` is the line itself (its quiet, loud and ask): a hidden page, a quiet
- * line and quiet hours keep it silent (quiet-hours.ts), a loud one is exempt
- * from quiet hours.
+ * `meta` is the line itself (its id and quiet): a hidden page and a quiet
+ * line keep it silent (speak-rules.ts).
  */
 export function speakReply(text: string, meta?: SpeakMeta): boolean {
   return voice().reply(text, meta);
@@ -435,8 +434,9 @@ function unlockSpeech() {
   if (unlocked || !s) return;
   unlocked = true;
   s.speak(new SpeechSynthesisUtterance(""));
-  // The cloud voice's <audio> element too (lk:voice-out = "cloud").
-  if (outMode() === "cloud") cloudOut()?.unlock();
+  // The cloud voice's <audio> element too: lk:voice-out = "cloud", or a
+  // device with no speechSynthesis voices, whose replies the cloud reads.
+  if (outMode() === "cloud" || noSpeechVoices()) cloudOut()?.unlock();
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -747,6 +747,13 @@ export function DebugChat({
   const fetchedTree = useFragmentSource(tree && !renderTree && !treeSource);
   /** The widget's strings for the page's language (ui-strings.ts), under the host's. */
   const ui = uiStrings();
+  /** Agent lines not read aloud because the page was in the background (voice.ts gateVoice). */
+  const [unheardIds, setUnheardIds] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    const u = unheard();
+    setUnheardIds(u.ids);
+    return u.subscribe(() => setUnheardIds(u.ids));
+  }, []);
   /** The latest voice → reply breakdown (latency.ts), for the menu. */
   const [lastLatency, setLastLatency] = useState(() => voiceLatency().latest());
   useEffect(() => {
@@ -2930,8 +2937,8 @@ export function DebugChat({
                         data-from={m.from}
                         data-node={node?.node}
                         data-run-start={k === 0 || undefined}
-                        // say --quiet / --loud: shown alike; only reading it aloud differs (quiet-hours.ts).
-                        data-volume={m.loud ? "loud" : m.quiet ? "quiet" : undefined}
+                        // say --quiet: shown alike; only reading it aloud differs (speak-rules.ts).
+                        data-volume={m.quiet ? "quiet" : undefined}
                         title={
                           node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)
                         }
@@ -2951,6 +2958,14 @@ export function DebugChat({
                         )}
                         {polish(m).mark}
                         {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
+                        {m.from === "agent" && unheardIds.has(m.id) && (
+                          <span
+                            data-testid="debug-chat-unheard"
+                            className="ms-1 text-[10px] text-gray-500"
+                          >
+                            {t.notReadHidden}
+                          </span>
+                        )}
                         {!agentOnline && m.from !== "agent" && i > lastAgent && (
                           <span
                             data-testid="debug-chat-queued"

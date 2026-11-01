@@ -86,12 +86,6 @@ export type ChatMessage = {
    */
   quiet?: true;
   /**
-   * An agent line sent with `say --loud` (urgent, or it needs his answer):
-   * read aloud even in quiet hours, unless he muted the page. An ask card
-   * counts as loud too (quiet-hours.ts). Only ever `true`.
-   */
-  loud?: true;
-  /**
    * The mic's wake-word mode when the owner sent the line (docs/wake-word.md):
    * "active", or "passive" (it came through "Linky"). Absent = the mic was
    * off. The chat lane sets it with {type: "wake", mode}.
@@ -466,6 +460,8 @@ export type ChatStrings = {
   vpClose: string;
   /** Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: the owner's Mac confirmed the line was spoken in his own voice. Short phrase, no full stop. */
   vpVerified: string;
+  /** A small note on an agent line that was not read aloud because the page was in the background. */
+  notReadHidden: string;
 };
 
 export const CHAT_STRINGS_EN: ChatStrings = {
@@ -521,6 +517,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpFailed: "Voiceprint: something went wrong ({error})",
   vpClose: "Close",
   vpVerified: "Your voice, verified",
+  notReadHidden: "· not read aloud: the page was in the background",
 };
 
 /** Defaults filled in and `{name}` substituted. */

@@ -48,8 +48,9 @@ describe("parseControllerMessage", () => {
       return r.ok ? r.value : null;
     };
     expect(say({ quiet: true })).toEqual({ type: "say", text: "hi", quiet: true });
-    expect(say({ loud: true })).toEqual({ type: "say", text: "hi", loud: true });
-    expect(say({ quiet: true, loud: true })).toEqual({ type: "say", text: "hi", loud: true });
+    // An old `loud` is dropped (it means nothing now); quiet still holds beside it.
+    expect(say({ loud: true })).toEqual({ type: "say", text: "hi" });
+    expect(say({ quiet: true, loud: true })).toEqual({ type: "say", text: "hi", quiet: true });
     expect(say({ quiet: "true", loud: 1 })).toEqual({ type: "say", text: "hi" });
     expect(say({ quiet: false })).toEqual({ type: "say", text: "hi" });
   });
