@@ -90,9 +90,12 @@ export function createLiveViewStore(
 
 export type LiveViewStore = ReturnType<typeof createLiveViewStore>;
 
-/** The page's one store, shared by the boot component, the widget host and the islands. */
-export const liveView: LiveViewStore = ((globalThis as Record<string, unknown>).__lkLiveView ??=
-  createLiveViewStore()) as LiveViewStore;
+/**
+ * The page's one store, shared by the boot component, the widget host and the
+ * islands. Module-local on purpose, never on globalThis: no other script on
+ * the page can plant a store that says "on" with a source of its choosing.
+ */
+export const liveView: LiveViewStore = createLiveViewStore();
 
 export function useLiveView(store: LiveViewStore = liveView): LiveState {
   return useSyncExternalStore(store.subscribe, store.get, () => OFF);

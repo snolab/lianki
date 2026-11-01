@@ -41,7 +41,15 @@ import {
 import { liveViewFor } from "@/lib/live-view/shell.server";
 import { createIslandStore } from "@/lib/islands/store";
 import { LIVE_VIEW_ORIGINS } from "@/lib/live-view/origins";
-import { hostWidgetSrc, importPinned, setHostWidgetSrc } from "@lianki/debug-chat/debug-widget";
+import {
+  hostGate,
+  hostWidgetSrc,
+  importPinned,
+  moduleImports,
+  setHostWidgetSrc,
+} from "@lianki/debug-chat/debug-widget";
+import { buildWidget } from "../scripts/dev/debug-widget-build";
+import { buildIslands } from "../scripts/dev/islands-build";
 
 const NOW = Date.parse("2026-11-01T03:00:00Z");
 const T = Math.floor(NOW / 1000);
@@ -684,4 +692,90 @@ describe("the host's widget-source decision (TreeFragment, every package copy)",
     setHostWidgetSrc(undefined);
     expect(hostWidgetSrc(() => "https://from-the-key")).toBe("https://from-the-key");
   });
+
+  test("later code can neither assign nor redefine the gate", () => {
+    const g = globalThis as Record<string, unknown>;
+    expect(setHostWidgetSrc(null)).toBe(true);
+    expect(() => {
+      "use strict";
+      g.__lkWidgetHostSrc = { v: "https://evil.example/x.js" };
+    }).toThrow();
+    expect(() =>
+      Object.defineProperty(globalThis, "__lkWidgetHostSrc", {
+        value: { v: "https://evil.example" },
+      }),
+    ).toThrow();
+    expect(hostWidgetSrc(() => "key")).toBeNull();
+    // Another copy of the package (a hot-loaded widget) reads the same answer.
+    expect(hostGate(globalThis).get(() => "key")).toBeNull();
+    setHostWidgetSrc(undefined);
+  });
+
+  test("a gate someone planted first, configurable: replaced by the host's", () => {
+    const t: Record<string, unknown> = {};
+    Object.defineProperty(t, "__lkWidgetHostSrc", {
+      value: { v: "https://evil.example" },
+      configurable: true,
+    });
+    const g = hostGate(t);
+    expect(g.set(null)).toBe(true);
+    expect((t.__lkWidgetHostSrc as { v: unknown }).v).toBeNull();
+  });
+
+  test("a gate someone planted first, frozen: the host fails closed", () => {
+    const t: Record<string, unknown> = {};
+    Object.defineProperty(t, "__lkWidgetHostSrc", { value: { v: "https://evil.example" } });
+    const g = hostGate(t);
+    expect(g.set("https://taku.onca-tint.ts.net/w.js")).toBe(false);
+    expect(g.get(() => "key")).toBeNull();
+    expect(g.set(undefined)).toBe(false);
+    expect(g.get(() => "key")).toBeNull();
+  });
+});
+
+describe("live modules must be single files (importPinned refuses imports)", () => {
+  test("finds static, re-export and literal dynamic imports", () => {
+    expect(moduleImports(`import x from "./dep.js";`)).toEqual(["./dep.js"]);
+    expect(moduleImports(`const a=1;import "/side.js"`)).toEqual(["/side.js"]);
+    expect(moduleImports(`import {a as b, c} from 'https://cdn.example/m.js'`)).toEqual([
+      "https://cdn.example/m.js",
+    ]);
+    expect(moduleImports(`export * from "./all.js"`)).toEqual(["./all.js"]);
+    expect(moduleImports(`export { a } from "./a.js"`)).toEqual(["./a.js"]);
+    expect(moduleImports("f(); const m = await import(`./chunk.js`)")).toEqual(["./chunk.js"]);
+    expect(moduleImports(`import("")`)).toEqual(["(empty)"]);
+  });
+
+  test("leaves plain code, computed imports and look-alikes alone", () => {
+    expect(moduleImports(`export const a = 1; export function f() {}`)).toEqual([]);
+    expect(moduleImports(`const lib = await import(blob);`)).toEqual([]);
+    expect(moduleImports(`x.import("a"); const important = "b";`)).toEqual([]);
+  });
+
+  test("importPinned refuses a module that imports, with the reason", async () => {
+    let imported = false;
+    const d = {
+      fetch: async () =>
+        ({
+          ok: true,
+          status: 200,
+          redirected: false,
+          url: W,
+          text: async () => `import a from "./a.js";`,
+        }) as Response,
+      importer: async () => {
+        imported = true;
+        return {};
+      },
+      blobUrl: () => "blob:x",
+      revoke: () => {},
+    };
+    await expect(importPinned(W, d.importer, d)).rejects.toThrow(/single-file/);
+    expect(imported).toBe(false);
+  });
+
+  test("today's widget and islands bundles import nothing", async () => {
+    expect(moduleImports((await buildWidget()).code)).toEqual([]);
+    expect(moduleImports((await buildIslands()).code)).toEqual([]);
+  }, 120_000);
 });

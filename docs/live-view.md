@@ -131,6 +131,25 @@ at its URLs. So:
   used by the widget host and the islands loader). A redirect, another origin,
   or a second request serving other code cannot get in. The modules are
   single files: they import nothing themselves.
+- **Bundles must stay single-file.** Inside a `blob:` module a relative
+  import (`./dep.js`, `/dep.js`) cannot resolve, and an absolute one would
+  load code that was never pinned. So `importPinned` scans the fetched text
+  and refuses any static `import`, `export … from` or `import("literal")`,
+  with the error "live modules must be single-file bundles" (`moduleImports`;
+  a unit test checks today's widget and islands bundles have none). A
+  computed `import(expr)` cannot be judged statically and is allowed: the
+  widget uses one for the wake-word worker's own blob. Splitting a bundle
+  needs a dependency loader that pins and validates every chunk the same
+  way first.
+- **The gates cannot be planted or flipped.** The source the page may load
+  lives in a module-local store (`lib/live-view/client.ts`), never on
+  `globalThis`. The one global that copies of the chat package share (the
+  host's decision, which TreeFragment follows) is a getter defined once,
+  non-configurable and with no setter (`hostGate`). Later code cannot assign
+  it or redefine it. If a script defined it first and it cannot be replaced,
+  the host loads nothing (fail closed). A script that runs before
+  Lianki's own on lianki.com could do anything as the user anyway; this
+  stops code loaded later, such as a hot island, from widening the source.
 - **What remains trusted:** the dev servers on the Mac and whoever can write
   their working trees (the agents), `tailscale serve` on the Mac, the tailnet
   itself, and the Mac's private key file. The hot reload's SSE stream only

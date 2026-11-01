@@ -139,7 +139,7 @@ class Boundary extends Component<{ onError: (e: unknown) => void; children: Reac
  */
 export function DebugChatHost({
   hot,
-  src: given,
+  src: asked,
   ...rest
 }: DebugChatProps & {
   hot: boolean;
@@ -151,8 +151,9 @@ export function DebugChatHost({
   src?: string | null;
 }) {
   // Shared with every copy of the package on the page (TreeFragment reads it),
-  // before any child's effect runs.
-  setHostWidgetSrc(given);
+  // before any child's effect runs. If something else took the global gate
+  // first, load nothing (fail closed).
+  const given = setHostWidgetSrc(asked) ? asked : null;
   const [w, fail] = useHotWidget(hot, given);
   const note = w.note ?? rest.note;
   // Hot-loading on: the tree comes live from the same dev server
