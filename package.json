@@ -19,6 +19,7 @@
     "start": "next start",
     "lint": "oxlint --ignore-pattern 'packages/**' && oxfmt --check '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**'",
     "fix": "oxlint --fix --ignore-pattern 'packages/**' && oxfmt '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**'",
+    "lianki": "bun scripts/dev/lianki.ts",
     "typecheck": "tsgo --noEmit",
     "prepare": "husky",
     "test": "playwright test",

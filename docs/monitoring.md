@@ -251,6 +251,14 @@ bun scripts/dev/eval.ts say --quiet "PR #390 opened, CI running."
 bun scripts/dev/eval.ts edit --last --no-pair "Fix the sync button on /words."
 ```
 
+**Keeping it running (macOS).** `bun run lianki serve install` writes a
+LaunchAgent (`com.lianki.chat-listener`) that runs this listener with
+`--no-pair --ack`, appending to `/tmp/lianki-chat-fast.jsonl`, and lets launchd
+restart it if the process exits (no polling). `serve start|stop|restart|status|uninstall`
+manage it; `stop` unloads it until `start`. It runs from the checkout that
+installed it, so keep that checkout. Log: `~/Library/Logs/lianki-chat-listener.log`.
+It only keeps the listener alive; something still has to read the file and answer.
+
 The listener reconnects whenever its socket closes, backing off from 1 s to
 a minute, by resuming its grant; no timer touches the network otherwise. It
 pairs at most once per run: if its grant is refused (4498) it pairs once,
