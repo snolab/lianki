@@ -150,6 +150,18 @@ describe("style isolation helpers", () => {
     );
     expect(remToPx("b{x:0.3333rem}")).toBe("b{x:5.3328px}");
     expect(remToPx("c{line-height:1.5;font-size:2em}")).toBe("c{line-height:1.5;font-size:2em}");
+    // Values only: Tailwind's class names carry rem too, and must still match the element.
+    expect(
+      remToPx(
+        String.raw`.w-\[min\(20rem\,calc\(100vw-1rem\)\)\]{width:min(20rem, calc(100vw - 1rem))}`,
+      ),
+    ).toBe(
+      String.raw`.w-\[min\(20rem\,calc\(100vw-1rem\)\)\]{width:min(320px, calc(100vw - 16px))}`,
+    );
+    expect(remToPx(String.raw`.right-\[calc\(0\.5rem\)\]:hover{right:calc(0.5rem)}`)).toBe(
+      String.raw`.right-\[calc\(0\.5rem\)\]:hover{right:calc(8px)}`,
+    );
+    expect(remToPx(":host{--spacing:.25rem}")).toBe(":host{--spacing:4px}");
   });
 
   it("moves :root, html and body rules onto the host", () => {

@@ -48,6 +48,7 @@ re-exports for the hub and the sender.
 | `debug-chat-widget.ts`                                   | the widget entry: `DebugChat` and `WIDGET_API`           |
 | `DebugChat.tsx`                                          | the chat box: log, the bar (controls + input), menu      |
 | `float-lines.ts`                                         | minimized: floating lines, their dwell and timers        |
+| `compact-view.ts`                                        | compact mode: last message only, when to fold again      |
 | `log-surface.ts`                                         | the log's display, shared by the log and the state tree  |
 | `Frontier.tsx`, `frontier-view.ts`                       | minimized: the ✓ ▶ › frontier lines and their rules      |
 | `DebugChatHost.tsx`                                      | the page's loader: import, re-import on reload, fallback |
@@ -82,8 +83,12 @@ answered cross-origin only when listed exactly in `LIANKI_DEV_ORIGINS` (comma-se
 https origins, no wildcards), for both this server and `scripts/dev/islands-server.ts`:
 `LIANKI_DEV_ORIGINS=https://<mac>.<tailnet>.ts.net:8443 bun scripts/dev/debug-widget-server.ts …`.
 
-Then, on the owner's page in debug mode, run this once in the console, or
-with `bun scripts/dev/eval.ts`:
+**On lianki.com, use live view** ([live-view.md](live-view.md)):
+`bun scripts/dev/live-view.ts on --widget /lianki-widget`, then "Live view" in
+the account menu. Since 2026-11-01 the unsigned key below is ignored on
+production; it still works on localhost and in dev builds (the harness, the
+whole-page dev server). There, run this once in the console, or with
+`bun scripts/dev/eval.ts`:
 
 ```js
 localStorage.setItem(
@@ -568,62 +573,99 @@ page. A voice line (stt) is **never** enough to approve anything sensitive:
 it can be misheard, overheard or played from a speaker. A typed line is no
 approval either. Ask with a card and act on the `answered` event.
 
-## Quiet lines and quiet hours
+## Compact mode: only the last message while not typing
 
-Agent lines must not wake the owner (owner, 2026-10-31). Every agent line is
-shown; what changes is whether it is also read aloud.
+For talking to the chat by voice with less on screen (owner, 2026-11-01:
+"相当于最小化模式或者只显示最后一条消息", "让他减少干扰"). While the input
+does not have the focus, the open chat shows only its last message, one line
+of at most two rows with the avatar (never the name), as the minimized
+chat's floating lines do. The bar, the input, the mic and the live interim
+transcript are unchanged and keep working.
+
+- **The setting** is per device: the chat's menu → "Only the last message
+  while not typing" (zh 不打字时只显示最后一条消息), kept in localStorage
+  `lk:pref:chat-view` (`chatPrefs` in `ui-store.ts`), off by default and never
+  synced. Turn it on in the window where you want it (the installed /words
+  app), and it stays off everywhere else.
+- **Whole chat back**: a tap on the input (focus) or on the compact line, or
+  a vertical drag on the mic or the empty input (the full-screen log).
+- **Folding again** (`compact-view.ts` `foldIn`): after the latest hold —
+  1.5 s after the input's blur, 8 s after a tap on the line, 3 s after the
+  last scroll or touch in the log, and a new reply's reading time
+  (`dwellMs`). Never while typing, while the log is scrolled up, or with the
+  menu, the tree or the full-screen log up. One timer, re-armed when it
+  fires; scrolling only moves a ref, so nothing re-renders per scroll.
+- **Ask cards** (above) that are still open show in full above the line (the
+  newest two), their pills tappable; an ask that is the last message is the
+  line itself, in full.
+- **State tree**: when the tree has the log's place, it stays.
+
+Checks and screenshots: `node scripts/dev/debug-chat-compact-qa.mjs --shots
+
+<dir>` (silent browsers, getUserMedia refused, 390×844, light and dark);
+the rules in `unit/chat-compact.test.ts`.
+
+## Quiet lines
+
+Every agent line is shown; what changes is whether it is also read aloud.
+There is no time of day in it, and no setting
+(owner, 2026-11-01).
 
 **Which `say` to use** (agents, read this):
 
-| Line                                                                     | Command                   | Read aloud                                   |
-| ------------------------------------------------------------------------ | ------------------------- | -------------------------------------------- |
-| FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                                        |
-| the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, but not in his quiet hours              |
-| urgent, or it needs his confirmation now                                 | `eval.ts say --loud "…"`  | yes, even in quiet hours, unless he muted it |
-| an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | counts as loud                               |
+| Line                                                                     | Command                   | Read aloud                          |
+| ------------------------------------------------------------------------ | ------------------------- | ----------------------------------- |
+| FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                               |
+| the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, by the page's usual rules      |
+| an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | yes, like a plain line              |
 
 Default to `--quiet` whenever the line is not a reply to him. `--loud` is
-rare: something broke in production, or a decision blocks you and he is
-expected to be awake for it. `--quiet` and `--loud` together are refused.
-
-**Wire.** `{type:"say", text, quiet?: true, loud?: true}`. The hub
-(`parseControllerMessage` in `lib/dev-eval.ts`) keeps each only as boolean
-`true`, drops anything else, and keeps only `loud` when both are sent. It
-copies them onto the `ChatMessage`, so pages get them live and in history,
-and logs them in `debug.say`. An older hub drops them, and the line is read
+deprecated: `eval.ts` still accepts it and prints a note, and the line goes
 as a plain `say`.
 
-**On the page** (`packages/debug-chat/src/quiet-hours.ts`, gated in
-`voice.ts` `gateVoice`). In order:
+**Wire.** `{type:"say", text, quiet?: true}`. The hub
+(`parseControllerMessage` in `lib/dev-eval.ts`) keeps `quiet` only as
+boolean `true` and drops anything else (an old `loud` included). It copies
+it onto the `ChatMessage`, so pages get it live and in history, and logs it
+in `debug.say`.
 
-1. **Hidden page or locked screen** (`document.visibilityState` "hidden"):
-   never spoken, not even a loud line. Hiding the page also stops a reading
-   under way.
-2. **Loud** (`loud: true`, or a line with an `ask`): read by the usual rules
-   (mic on, or the speaker toggle on and the input focused). His mute (the
-   speaker toggle, with the mic off) still silences it.
-3. **Quiet** (`quiet: true`): never spoken, even with the mic on.
-4. **Quiet hours**: nothing else is spoken. A device-local setting,
-   `lk:agent-quiet-hours` = `{on, from, to}`, default on, 23:00–08:00 in the
-   device's own time zone; a window whose end is before its start wraps past
-   midnight. Never synced (docs/prefs-sync.md): his phone and his Mac may
-   keep different hours. It is set on /words → Settings, debug mode only
-   ("Quiet hours", From, To).
+**On the page** (`packages/debug-chat/src/speak-rules.ts`, gated in
+`voice.ts` `gateVoice`), on top of the usual rules (mic on, or the speaker
+toggle on and the input focused):
 
-A line kept silent is logged as `{ev:"voice-silent", why}` (hidden, quiet,
-quiet-hours) on the voice session's log. Lines carry `data-volume="quiet"` or
-`"loud"` in the log, for tests; they look the same.
+1. **Quiet** (`quiet: true`): never spoken, even with the mic on.
+2. **Hidden page or locked screen** (`document.visibilityState` "hidden"):
+   never spoken (the browser would not let it). Hiding the page also stops a
+   reading under way. When the page is visible again, the newest line that
+   arrived while it was hidden is read once (not a backlog); the lines left
+   unread show a small note, "not read aloud: the page was in the
+   background" (`ChatStrings.notReadHidden`, `data-testid="debug-chat-unheard"`).
+
+A line kept silent is logged as `{ev:"voice-silent", why}` (quiet, hidden)
+on the voice session's log, and a missed line read on return as
+`{ev:"voice-missed"}`. Quiet lines carry `data-volume="quiet"` in the log,
+for tests; they look the same.
+
+**No voice on the device.** With the output on "speech" (the default), a
+reply in a language speechSynthesis has no voice for (some Android Chromes
+report `getVoices()` = 0) is read through the cloud (`/api/words/tts`,
+`voice-out.ts`) instead of staying silent; it is logged with
+`fallback: "no-voice"`. The cloud's `<audio>` element is unlocked in the
+first gesture on such a device.
 
 **Hot-loadable.** The gate wraps `reply` on the shared voice session
-(`globalThis.__lkVoice`), so a hot-loaded widget applies quiet hours and the
-hidden rule even under a deployed DebugEval that still calls
-`speakReply(text)` without the line. Quiet and loud need both the hub
-change (lianki-push) and the DebugEval that passes the line
-(`speakReply(m.text, m)`); until then every line is treated as plain.
+(`globalThis.__lkVoice`), so a hot-loaded widget applies these rules even
+under a deployed DebugEval that still calls `speakReply(text)` without the
+line.
 
-Tests: `unit/quiet-hours.test.ts` (the window, past midnight; the setting;
-the order above; the gate), `unit/debug-hub.test.ts` ("say --quiet / --loud"),
-`unit/dev-eval.test.ts`, `unit/node-args.test.ts`.
+**Cleanup.** An older build kept a time-of-day setting under
+`lk:agent-quiet-hours`; the gate removes that key once on load
+(`dropRetiredKeys`), so nothing of it is left on his devices.
+
+Tests: `unit/speak-rules.test.ts` (the rules, the gate, the missed line, the
+cleanup), `unit/voice-session.test.ts` (the no-voice fallback),
+`unit/debug-hub.test.ts` ("say --quiet"), `unit/dev-eval.test.ts`,
+`unit/node-args.test.ts`.
 
 ## The state tree, live
 
@@ -903,8 +945,8 @@ widget previews). It is session-scoped, like sessionStorage. The rules are in
   of a one-time handoff token, and since when no page has been connected. It
   also keeps `clipsink`, the sink the agent last set up, so that a tap can
   reuse it. Every page of the session hears `{type:"clips", sid, device, on,
-  until?, left?, sink?, sinkKey?, origins?, handoff?, paused?, resumable?,
-  canStart?}` on connect and on each change.
+until?, left?, sink?, sinkKey?, origins?, handoff?, paused?, resumable?,
+canStart?}` on connect and on each change.
 - **Across origins.** The session moves only between the owner's origins,
   matched exactly: lianki.com plus the list `eval.ts clips on` passes. That
   list is the sink's own allowlist (`LIANKI_DEV_ORIGINS`,
@@ -953,7 +995,7 @@ widget previews). It is session-scoped, like sessionStorage. The rules are in
   `lk:agent-clip-sink` cannot win (it once sent every clip to a dead host).
 - **On and off.** The agent: `bun scripts/dev/eval.ts clips` (list),
   `clips on --device <text> [--minutes N] [--sink <url>]`, `clips off
-  [--device <text>]`. `<text>` matches a session or device id prefix, or text
+[--device <text>]`. `<text>` matches a session or device id prefix, or text
   in a page label ("Android"). The page: the chat menu's "Record voice clips"
   (with an "Auto-stop after 60 min" switch, off by default), and Stop on the
   badge. Turning it on is always a tap or the agent, never the voice.

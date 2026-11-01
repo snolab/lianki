@@ -29,8 +29,10 @@ import sherpa_onnx
 KEYWORDS = """L IH1 NG K IY0 @LINKY
 L IH1 NG K IY1 @LINKY
 L IH1 N K IY1 @LINKY
+L EH1 NG K IY0 @LINKY
 l ín k ì @LINKY
 l ín q í @LINKY
+l ín k ī @LINKY
 """
 
 

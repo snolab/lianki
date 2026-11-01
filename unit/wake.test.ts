@@ -3,14 +3,17 @@ import {
   LINKY,
   MIN_REQUEST_MS,
   REJECTS_TO_PASSIVE,
+  WAKE_REASONS,
   afterKeyword,
   createWake,
   isWakeCommand,
+  isWakeReason,
   keywordEnd,
   type WakeSpot,
 } from "@lianki/debug-chat/wake";
 import {
   KWS_SHA256,
+  LOAD_TIMEOUT_MS,
   TAIL_PAD_S,
   type WorkerLike,
   createKws,
@@ -18,7 +21,7 @@ import {
   padForSpot,
   workerSource,
 } from "@lianki/debug-chat/wake-kws";
-import { type VadEvents, createMic } from "@lianki/debug-chat/mic";
+import { type StreamStt, type VadEvents, WAKE_GATE_MS, createMic } from "@lianki/debug-chat/mic";
 import { type MicDeps, createMicSession } from "@lianki/debug-chat/mic-session";
 import { parseControllerMessage } from "@/lib/dev-eval";
 import { wakeStrings } from "@lianki/debug-chat/ui-strings";
@@ -32,9 +35,10 @@ describe("the wake state machine", () => {
     const w = createWake({ onChange: (v, from, why) => seen.push(`${from}→${v.mode} ${why}`) });
     expect(w.mode()).toBe("active");
     for (let i = 1; i < REJECTS_TO_PASSIVE; i++) expect(w.reject()).toBe(false);
-    expect(w.view()).toEqual({ mode: "active", rejects: REJECTS_TO_PASSIVE - 1 });
+    expect(w.view()).toEqual({ mode: "active", rejects: REJECTS_TO_PASSIVE - 1, reason: "mic-on" });
     expect(w.reject()).toBe(true);
     expect(w.mode()).toBe("passive");
+    expect(w.view().reason).toBe("rejects");
     expect(seen).toEqual(["active→passive rejects"]);
     // Passive: further rejections change nothing.
     expect(w.reject()).toBe(false);
@@ -63,6 +67,13 @@ describe("the wake state machine", () => {
     expect(["active", "passive", "ignored"].every(isWakeCommand)).toBe(true);
     expect(isWakeCommand("asleep")).toBe(false);
   });
+
+  it("knows every wake reason, and nothing else", () => {
+    expect(WAKE_REASONS.every(isWakeReason)).toBe(true);
+    expect(isWakeReason("kws-failed")).toBe(true);
+    expect(isWakeReason("sleepy")).toBe(false);
+    expect(isWakeReason(1)).toBe(false);
+  });
 });
 
 describe("the keyword and the cut after it", () => {
@@ -71,6 +82,18 @@ describe("the keyword and the cut after it", () => {
     expect(new Set(seqs).size).toBe(seqs.length);
     expect(seqs).toContain("L IH1 NG K IY0");
     expect(seqs).toContain("l ín q í");
+  });
+
+  it("LINKY covers 'Lenky' and lín kī, at the looser setting; líng kī stays out", () => {
+    const seqs = LINKY.matches.map((m) => m.tokens.join(" "));
+    expect(seqs).toContain("L EH1 NG K IY0");
+    expect(seqs).toContain("l ín k ī");
+    // Measured: it cost 2 of 12 Chinese-voice positives and gained none (docs/wake-word.md).
+    expect(seqs).not.toContain("l íng k ī");
+    // Each pinyin token is one model token (an initial, then a toned final).
+    for (const m of LINKY.matches) expect(m.tokens.every((t) => t && !/\s/.test(t))).toBe(true);
+    expect(LINKY.threshold).toBe(0.15);
+    expect(LINKY.score).toBe(1.5);
   });
 
   it("cuts after the keyword's last token; a bare wake has no rest", () => {
@@ -173,7 +196,11 @@ describe("createKws: the page side of the spotter", () => {
         ).w,
       allowed: async () => true,
     });
-    expect(await k.spot(new Float32Array(10))).toEqual({ hit: false, error: "digest mismatch" });
+    expect(await k.spot(new Float32Array(10))).toEqual({
+      hit: false,
+      error: "digest mismatch",
+      unchecked: true,
+    });
     expect(k.state()).toBe("failed");
     fail = false;
     await k.load();
@@ -198,6 +225,48 @@ describe("createKws: the page side of the spotter", () => {
       timeoutMs: 5,
     });
     expect(await k.spot(new Float32Array(10))).toMatchObject({ hit: false, error: "timeout" });
+  });
+
+  it("a load that stalls fails after the load timeout; the same Worker can still get ready", async () => {
+    let made = 0;
+    const states: string[] = [];
+    const logs: Record<string, unknown>[] = [];
+    const f = fakeWorker((m) =>
+      m.type === "spot" ? { type: "spotted", id: m.id, hits: [] } : null,
+    );
+    const k = createKws({
+      worker: () => (made++, f.w),
+      allowed: async () => true,
+      loadTimeoutMs: 5,
+      onState: (s) => states.push(s),
+      log: (ev) => void logs.push(ev),
+    });
+    expect(LOAD_TIMEOUT_MS).toBe(15_000);
+    // An utterance waiting on the stalled load is let go as no hit.
+    expect(await k.spot(new Float32Array(10))).toEqual({
+      hit: false,
+      error: "load-timeout",
+      unchecked: true,
+    });
+    expect(k.state()).toBe("failed");
+    expect(logs).toContainEqual(expect.objectContaining({ ev: "wake-kws", error: "load-timeout" }));
+    // A retry waits on the same Worker (the download goes on), and it gets ready late.
+    const again = k.load();
+    expect(made).toBe(1);
+    f.w.onmessage?.({ data: { type: "ready", ms: 20_000, downloaded: true } });
+    await again;
+    expect(k.state()).toBe("ready");
+    expect(states).toEqual(["loading", "failed", "loading", "ready"]);
+    await k.load();
+    expect(made).toBe(1);
+    expect(await k.spot(new Float32Array(10))).toMatchObject({ hit: false });
+    // Ready late with nobody waiting: still kept for the next passive turn.
+    const f2 = fakeWorker(() => null);
+    const k2 = createKws({ worker: () => f2.w, allowed: async () => true, loadTimeoutMs: 5 });
+    await expect(k2.load()).rejects.toThrow("load-timeout");
+    f2.w.onmessage?.({ data: { type: "ready" } });
+    expect(k2.state()).toBe("ready");
+    await k2.load();
   });
 
   it("by default a Blob module Worker; a Worker that cannot start is a failed load; dispose", async () => {
@@ -260,9 +329,13 @@ describe("createKws: the page side of the spotter", () => {
 });
 
 /** createMic with a fake VAD, uploads and wake gate. */
-function gated(spot: (a: Float32Array) => Promise<WakeSpot>) {
+function gated(
+  spot: (a: Float32Array) => Promise<WakeSpot & { error?: string }>,
+  stream?: () => StreamStt,
+  timers?: { setTimer: (f: () => void, ms: number) => unknown; clearTimer: (t: unknown) => void },
+) {
   let ev: VadEvents | null = null;
-  const uploads: { samples: number; echo: () => void }[] = [];
+  const uploads: { samples: number; echo: () => void; local?: Promise<unknown> }[] = [];
   const verdicts: string[] = [];
   const texts: string[] = [];
   let passive = true;
@@ -274,9 +347,15 @@ function gated(spot: (a: Float32Array) => Promise<WakeSpot>) {
       return { start() {}, pause() {}, flush() {}, destroy() {} };
     },
     upload: async (wav, info) => {
-      uploads.push({ samples: (wav.length - 44) / 2, echo: () => info.onEcho?.() });
+      uploads.push({
+        samples: (wav.length - 44) / 2,
+        echo: () => info.onEcho?.(),
+        local: info.local,
+      });
       return answer;
     },
+    stream,
+    ...timers,
     onState: () => {},
     onText: (t) => texts.push(t),
     onPending: () => {},
@@ -330,6 +409,45 @@ describe("createMic with the wake gate", () => {
     expect(g.texts).toEqual(["what's next"]);
   });
 
+  it("passive: the rest after Linky streams to the local STT when its socket is up", async () => {
+    const calls: string[] = [];
+    let up = true;
+    const stt: StreamStt = {
+      connected: () => up,
+      begin: () => {
+        calls.push("begin");
+        return {
+          frame: () => void calls.push("frame"),
+          end: async (a) => {
+            calls.push(`end ${a.length}`);
+            return { text: "下一个", model: "local:sv", ms: 9, endToFinalMs: 20 };
+          },
+          cancel: () => void calls.push("cancel"),
+        };
+      },
+    };
+    const g = gated(
+      async (a) => ({ hit: true, rest: a.subarray(RATE), tokens: ["L"] }),
+      () => stt,
+    );
+    await g.mic.toggle();
+    g.say(3);
+    await tick();
+    await tick();
+    // Passive while heard: nothing streamed; then only the rest, whole, as pre-pad + end.
+    expect(calls).toEqual(["begin", `end ${RATE * 2}`]);
+    expect(await g.uploads[0].local).toMatchObject({ text: "下一个" });
+    // The socket down: the rest goes to the cloud alone, without waiting for a connect.
+    up = false;
+    g.setPassive(true);
+    calls.length = 0;
+    g.say(3);
+    await tick();
+    await tick();
+    expect(calls).toEqual([]);
+    expect(g.uploads[1].local).toBeUndefined();
+  });
+
   it("passive: a bare Linky wakes it and uploads nothing", async () => {
     const g = gated(async () => ({ hit: true, rest: new Float32Array(0), tokens: ["L"] }));
     await g.mic.toggle();
@@ -338,6 +456,62 @@ describe("createMic with the wake gate", () => {
     await tick();
     expect(g.woke()).toBe(1);
     expect(g.uploads).toEqual([]);
+  });
+
+  it("passive: a check that never settles is released after WAKE_GATE_MS; later lines are not held", async () => {
+    const timers = new Map<number, { f: () => void; ms: number }>();
+    let n = 0;
+    const fire = (ms: number) => {
+      for (const [k, t] of [...timers]) if (t.ms === ms) (timers.delete(k), t.f());
+    };
+    let calls = 0;
+    const g = gated(
+      // The first check hangs (a stalled first download); the rest answer at once.
+      (a) =>
+        calls++ === 0
+          ? new Promise(() => {})
+          : Promise.resolve({ hit: true, rest: a.subarray(RATE), tokens: ["L"] }),
+      undefined,
+      {
+        setTimer: (f, ms) => (timers.set(++n, { f, ms }), n),
+        clearTimer: (t) => void timers.delete(t as number),
+      },
+    );
+    await g.mic.toggle();
+    g.say(2);
+    await tick();
+    g.say(3); // "Linky, what's next" right after
+    await tick();
+    await tick();
+    expect(g.uploads.map((u) => u.samples)).toEqual([RATE * 2]);
+    // Held behind the first, still unchecked, utterance.
+    expect(g.texts).toEqual([]);
+    fire(WAKE_GATE_MS);
+    await tick();
+    await tick();
+    expect(g.texts).toEqual(["what's next"]);
+  });
+
+  it("an unchecked utterance (the spotter failed) goes up once the mic is active again", async () => {
+    let g: ReturnType<typeof gated> | null = null;
+    g = gated(async () => {
+      g!.setPassive(false); // the session put it back to active ("kws-failed")
+      return { hit: false, error: "load-timeout", unchecked: true };
+    });
+    await g.mic.toggle();
+    g.say(2);
+    await tick();
+    await tick();
+    expect(g.uploads.map((u) => u.samples)).toEqual([RATE * 2]);
+    await tick();
+    expect(g.texts).toEqual(["what's next"]);
+    // Unchecked but still passive (no fallback to active): dropped, as before.
+    const g2 = gated(async () => ({ hit: false, error: "load-timeout", unchecked: true as const }));
+    await g2.mic.toggle();
+    g2.say(2);
+    await tick();
+    await tick();
+    expect(g2.uploads).toEqual([]);
   });
 
   it("active: each final gets a verdict; an echo drop gets none", async () => {
@@ -435,6 +609,7 @@ describe("the mic session's wake mode", () => {
     t.s.wake("passive");
     await tick();
     expect(t.s.view().wake).toBe("active");
+    expect(t.s.view().wakeReason).toBe("kws-failed");
     expect(t.s.view().kws).toBe("failed");
     expect(t.logs).toContainEqual({
       ev: "wake",
@@ -442,6 +617,43 @@ describe("the mic session's wake mode", () => {
       to: "active",
       reason: "kws-failed",
     });
+  });
+
+  it("a stalled first download: back to active after the load timeout, and the line still goes up", async () => {
+    let events: VadEvents | null = null;
+    const uploads: number[] = [];
+    const texts: string[] = [];
+    const logs: Record<string, unknown>[] = [];
+    const s = createMicSession({
+      getStream: async () => ({ id: "s", getTracks: () => [{ readyState: "live", stop() {} }] }),
+      load: async (ev) => {
+        events = ev;
+        return { start() {}, pause() {}, flush() {}, destroy() {} };
+      },
+      upload: async (wav) => (uploads.push(wav.length), "Linky, what's next"),
+      log: (ev) => void logs.push(ev),
+      // The real page side, on a Worker that never answers its init.
+      kws: (onState) =>
+        createKws({
+          worker: () => fakeWorker(() => null).w,
+          allowed: async () => true,
+          loadTimeoutMs: 5,
+          onState,
+        }),
+    });
+    s.attach({ onText: (t) => void texts.push(t), onPending: () => {} });
+    await s.toggle();
+    s.wake("passive");
+    expect(s.view().wake).toBe("passive");
+    events!.onSpeechStart();
+    events!.onSpeechEnd(new Float32Array(RATE));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(s.view()).toMatchObject({ wake: "active", wakeReason: "kws-failed", kws: "failed" });
+    expect(uploads).toHaveLength(1);
+    expect(texts).toEqual(["Linky, what's next"]);
+    expect(logs).toContainEqual(
+      expect.objectContaining({ ev: "wake-spot", hit: false, error: "load-timeout" }),
+    );
   });
 
   it("turning listening on again starts active", async () => {

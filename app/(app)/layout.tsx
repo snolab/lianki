@@ -11,6 +11,10 @@ import { cookies } from "next/headers";
 import { InviteClaim } from "@/app/components/InviteClaim";
 import { PrefSync } from "@/app/components/PrefSync";
 import { INVITE_COOKIE } from "@/lib/referrals/cookie";
+import { devSwitchFor } from "@/lib/dev-server-switch.server";
+import type { DevSwitchLabels } from "@/app/components/DevSwitchItem";
+import { LIVE_VIEW_COOKIE, liveViewFor } from "@/lib/live-view/shell.server";
+import type { LiveViewLabels } from "@/app/components/LiveView";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   announceBuild();
@@ -22,7 +26,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // data) have a guest mode, and the sign-in page itself lives in this group, so
   // the shell must never trigger authUser()'s redirect-to-/sign-in.
   const user = (await authUserOrNull()) as ShellUser;
-  const pendingInvite = Boolean(user) && (await cookies()).has(INVITE_COOKIE);
+  const jar = await cookies();
+  const pendingInvite = Boolean(user) && jar.has(INVITE_COOKIE);
+  // Live view (docs/live-view.md): the owner only; strings and pointer for nobody else.
+  const liveView = await liveViewFor(
+    user?.email,
+    jar.get(LIVE_VIEW_COOKIE)?.value,
+    () => getIntlayer("live-view", locale) as unknown as LiveViewLabels,
+  );
 
   const { appName, nav } = getIntlayer("landing-page", locale);
   const shell = getIntlayer("app-shell", locale);
@@ -47,6 +58,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             labels={labels}
             user={user}
             firstRun={firstRun}
+            devSwitch={devSwitchFor(
+              user?.email,
+              // Strings for the owner only: anyone else's page carries none of them.
+              () => getIntlayer("dev-switch", locale) as unknown as DevSwitchLabels,
+            )}
+            liveView={liveView}
           >
             {pendingInvite && <InviteClaim />}
             <PrefSync signedIn={Boolean(user)} />

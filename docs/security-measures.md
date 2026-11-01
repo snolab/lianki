@@ -16,14 +16,20 @@ passkey — there is no password login in production.
 | surface                                   | what                                                  |
 | ----------------------------------------- | ----------------------------------------------------- |
 | `/dev/*` pages                            | users, friends, gift codes, membership grants, roadmap, A/B |
-| `/api/dev/*`                              | whoami, log, friends, state-tree, membership, gift-codes, stt-ticket |
+| `/api/dev/*`                              | whoami, log, friends, state-tree, membership, gift-codes, stt-ticket, dev-tokens, dev-handoff |
+| `https://preview.lianki.com` (tunnel to the owner's dev server, production D1) | 503 to everything without a dev access token; the token signs in as the owner only (docs/dev-whole-page.md, "Off the tailnet") |
+| `POST /api/dev-access/verify`             | the dev server gate's token check: `DEV_BRIDGE_SECRET` only, 401 otherwise |
 | `wss://stt.lianki.com` (cloudflared tunnel to the owner's Mac) | his local STT server; a 60 s single-use Ed25519 ticket from `/api/dev/stt-ticket` before any upgrade (section 7) |
+| `/api/live-view`                          | live view's pointer to the owner's dev JS: POST only with a pointer the Mac's Ed25519 key signed (serials only grow); GET/DELETE the owner's session, 404 otherwise (section 8) |
 | `/api/version/debug/control` (lianki-push) | remote-eval/chat controller: useless until the owner approves it on a page, or holds a grant |
 | `POST /api/version/progress` (lianki-push) | agent progress reports: `Authorization: Bearer PROGRESS_TOKEN` |
 | Cloudflare, GitHub, Resend, payment dashboards | the providers' own consoles                     |
 
 `/api/debug/identity` and `/api/debug/stt` are not admin: any signed-in user
-reaches their own data there. Gift-code management moved from
+reaches their own data there. The debug hub's pre-renewal session check is
+not a route at all: it is the main Worker's `DebugSessions` RPC entrypoint
+(`worker.ts`), reachable only over lianki-push's `SESSIONS` service binding,
+input-bounded and rate-limited. Gift-code management moved from
 `/api/gift-codes` to `/api/dev/gift-codes` so every owner-only API is under one
 prefix; redeeming stays at `/api/gift-codes/redeem`.
 
@@ -56,7 +62,21 @@ gives their 2FA. Consequences:
   not go through the zone, so Access does not touch it.
 - The lianki-push controller endpoints are not under Access: agents' CLIs
   reach them with grants or the progress token, and a controller can do
-  nothing without the owner's approval on a signed-in page.
+  nothing without the owner's approval on a signed-in page. The owner's
+  8-hour eval grant renews itself only while his page on the approving
+  device and sign-in session is connected and the auth db confirms that
+  session is live, for 30 days from the tap at most; End or sign-out stops
+  it at once, and it never renews for a friend (docs/monitoring.md,
+  "Renewal").
+- What "same device" means there, plainly: the device id is chosen by the
+  page (`?dev=`, kept in its storage; a page joining a voice-clip session
+  adopts that session's id), so it is not bound to hardware. Any client
+  holding the owner's signed-in session can send the same id. The binding
+  that matters is the session: renewal needs a real owner page connected
+  with that live session. The controller's grant token is a bearer token —
+  whoever holds it (a stolen copy too) keeps the grant renewing while such a
+  page is connected, and no longer: End, sign-out, the session expiring or
+  30 days end it. Guard the token file (mode 600, never committed).
 
 Alternative to Access if the owner has a fixed IP: a WAF custom rule (Security
 → WAF → Custom rules), action Block:
@@ -227,6 +247,34 @@ tailnet"):
   for the DNS record and the rule). Tests: `unit/stt-ticket.test.ts`,
   `unit/local-stt-gate.test.ts`, `unit/stt-tunnel.test.ts`; `qa:api` checks a
   non-owner gets 404 from `/api/dev/stt-ticket`.
+
+## 8. Live view: the owner's dev JS on lianki.com
+
+Since 2026-11-01 (owner's approval, 11:41 JST), the owner's pages can load the
+Learning Partner widget and the hot islands from his dev server
+([live-view.md](live-view.md)). That is code running on lianki.com with his
+session, so:
+
+- **Only a signed pointer.** The Mac's Ed25519 key signs `{widget, islands,
+  branch, sha, serial, iat, exp ≤ 12 h}`. The public key is committed in
+  `lib/live-view/keys.ts`. The server verifies before it stores and again
+  before it serves, and the page verifies once more with WebCrypto. Sources
+  must be one of the exact owner origins in `lib/live-view/origins.ts` (today
+  only his Mac's tailnet origin). The module is fetched with redirects
+  refused, checked to come from that origin, and imported from those exact
+  bytes.
+- **Cheap to refuse.** The anonymous POST rejects a body over 4 KB (by
+  Content-Length, then by a streamed cap) and allows 30 per IP per 10
+  minutes (D1 counter) before any signature work.
+- **No replay.** The row keeps the highest serial ever accepted, on or off,
+  and anything not above it gets 409.
+- **Owner only.** The pointer, the switch and the banner reach the owner's
+  session alone (`isOwner`, checked in the layout and the route; 404
+  otherwise). A visible banner names the branch and commit while it is live.
+- **The unsigned localStorage overrides are off on production.** They work
+  only under `next dev` and on localhost.
+- **Stop:** `bun scripts/dev/live-view.ts off`, the owner's DELETE, or simply
+  expiry.
 
 ## Owner checklist
 

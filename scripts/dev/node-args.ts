@@ -57,16 +57,22 @@ export function chatLine(
     ...(m.source === "stt" ? { source: "stt" } : {}),
     // A voice line's timestamps on the page's clock (VoiceTiming; latency.ts).
     ...(m.timing && typeof m.timing === "object" ? { timing: m.timing } : {}),
+    // The mic's wake-word mode when it was sent (docs/wake-word.md), and why it was in it.
+    ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
+    ...(typeof m.wakeReason === "string" ? { wakeReason: m.wakeReason } : {}),
     ...(m.edited && typeof m.edited === "object" ? { raw: m.raw, edited: m.edited } : {}),
     ...(observed ? { observed: true } : {}),
   };
 }
 
-/** How loud a `say` is: `--quiet` (shown, never read aloud) or `--loud` (read even in quiet hours). */
-export type SayVolume = { quiet?: true; loud?: true };
+/** Whether a `say` is read aloud: `--quiet` = shown, never read aloud. */
+export type SayVolume = { quiet?: true };
 
-/** The say's volume flags; both at once is an error. */
-export function sayVolume(f: { quiet: boolean; loud: boolean }): SayVolume | { error: string } {
-  if (f.quiet && f.loud) return { error: "say takes --quiet or --loud, not both" };
-  return f.quiet ? { quiet: true } : f.loud ? { loud: true } : {};
+/** The say's flags as sent to the hub. */
+export function sayVolume(f: { quiet: boolean }): SayVolume {
+  return f.quiet ? { quiet: true } : {};
 }
+
+/** Printed (stderr) when an old command still passes `say --loud`: it does nothing now. */
+export const LOUD_DEPRECATED =
+  "say --loud is deprecated and does nothing (a plain say); it is accepted so old commands still work";

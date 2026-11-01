@@ -387,7 +387,7 @@ describe("DebugHub chat", () => {
     expect(c.last("said")?.id).toBe(chats(p).at(-1)?.id as string);
   });
 
-  it("say --quiet / --loud: the hub keeps the flag (true only) and forwards it, live and in history", async () => {
+  it("say --quiet: the hub keeps the flag (true only) and forwards it, live and in history; an old loud is dropped", async () => {
     const { hub, page, controller, msg, pairOf } = setup();
     const p = page();
     const c = controller("main lane");
@@ -395,23 +395,24 @@ describe("DebugHub chat", () => {
     await msg(c, { type: "say", text: "deployed", quiet: true });
     await msg(c, { type: "say", text: "approve?", loud: true });
     await msg(c, { type: "say", text: "plain" });
-    // Not booleans: dropped. Both: loud wins (it may need his answer).
+    // Not booleans: dropped. loud means nothing now: dropped, quiet kept.
     await msg(c, { type: "say", text: "junk", quiet: "yes", loud: 1 });
     await msg(c, { type: "say", text: "both", quiet: true, loud: true });
     const lines = chats(p).slice(-5);
     expect(lines.map((m) => [m.text, m.quiet, m.loud])).toEqual([
       ["deployed", true, undefined],
-      ["approve?", undefined, true],
+      ["approve?", undefined, undefined],
       ["plain", undefined, undefined],
       ["junk", undefined, undefined],
-      ["both", undefined, true],
+      ["both", true, undefined],
     ]);
-    for (const m of lines.slice(2)) expect(m).not.toHaveProperty("quiet");
+    for (const m of lines) expect(m).not.toHaveProperty("loud");
+    for (const m of lines.slice(1, 4)) expect(m).not.toHaveProperty("quiet");
     const again = page();
     await hub.history();
     const h = again.last("history") as { messages: Record<string, unknown>[] };
     expect(h.messages.find((m) => m.text === "deployed")).toMatchObject({ quiet: true });
-    expect(h.messages.find((m) => m.text === "approve?")).toMatchObject({ loud: true });
+    expect(h.messages.find((m) => m.text === "approve?")).not.toHaveProperty("loud");
   });
 
   it("an unapproved controller cannot say", async () => {
@@ -587,6 +588,62 @@ describe("lianki-push debug routes", () => {
       owner: true,
     });
     expect(calls).toEqual(["https://lianki.com/api/debug/identity s=1"]);
+  });
+
+  it("the session tag and expiry pass through only when well-formed", async () => {
+    const answer = (body: unknown) => ({
+      fetch: async () => Response.json(body),
+    });
+    const req = upgrade("/api/version/debug", { origin: "https://lianki.com", cookie: "s=1" });
+    const base = { userId: "u1", email: "o@x", owner: true };
+    expect(
+      await debugIdentity(req, answer({ ...base, session: "a".repeat(64), sessionUntil: 5 })),
+    ).toEqual({ ...base, session: "a".repeat(64), sessionUntil: 5 });
+    expect(
+      await debugIdentity(req, answer({ ...base, session: "raw-session-id", sessionUntil: "x" })),
+    ).toEqual(base);
+  });
+
+  it("the session headers reach the hub from index.ts, and a page's own are dropped", async () => {
+    const seen: Headers[] = [];
+    const e = {
+      HUB: { idFromName: () => "v", get: () => ({ fetch: async () => new Response("v") }) },
+      DEBUG: {
+        idFromName: () => "d",
+        get: () => ({
+          fetch: async (r: Request) => {
+            seen.push(r.headers);
+            return new Response("d");
+          },
+        }),
+      },
+      MAIN: {
+        fetch: async () =>
+          Response.json({
+            userId: "u1",
+            email: "o@x",
+            owner: true,
+            session: "a".repeat(64),
+            sessionUntil: 77,
+          }),
+      },
+    } as unknown as Env;
+    await push.fetch(
+      upgrade("/api/version/debug", {
+        origin: "https://lianki.com",
+        cookie: "s=1",
+        "x-debug-session": "f".repeat(64),
+      }),
+      e,
+    );
+    expect(seen[0].get("x-debug-session")).toBe("a".repeat(64));
+    expect(seen[0].get("x-debug-session-until")).toBe("77");
+    // A sender cannot claim a session either.
+    await push.fetch(
+      upgrade("/api/version/debug/control", { "x-debug-session": "f".repeat(64) }),
+      e,
+    );
+    expect(seen[1].get("x-debug-session")).toBeNull();
   });
 
   it("the dev bridge header goes to the main Worker in place of a cookie", async () => {
@@ -867,6 +924,12 @@ describe("lianki-push routing", () => {
     );
     expect(await go("https://lianki-push/internal/friends", {})).toBe("200 debug");
     expect(await go("https://lianki.com/internal/friends", {})).toStartWith("404");
+    expect(await go("https://lianki-push/internal/signed-out", { method: "POST" })).toBe(
+      "200 debug",
+    );
+    expect(await go("https://lianki.com/internal/signed-out", { method: "POST" })).toStartWith(
+      "404",
+    );
     expect(await go("https://lianki.com/api/version/stream", {})).toContain("lianki-push");
     expect(await go("https://lianki.com/elsewhere", {})).toStartWith("404");
   });
@@ -1280,12 +1343,29 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
       text: "next word",
       source: "stt",
       wake: "passive",
+      wakeReason: "rejects",
     });
-    await s.msg(owner, { type: "chat", id: "w2", text: "typed", wake: "sleepy" });
+    await s.msg(owner, {
+      type: "chat",
+      id: "w2",
+      text: "typed",
+      wake: "sleepy",
+      wakeReason: "rejects",
+    });
+    await s.msg(owner, {
+      type: "chat",
+      id: "w3",
+      text: "woken",
+      wake: "active",
+      wakeReason: "made-up",
+    });
     const stored = [...s.storage.store.entries()]
       .filter(([k]) => k.startsWith("msg:"))
-      .map(([, v]) => v as Record<string, unknown>);
-    expect(stored.map((m) => m.wake)).toEqual(["passive", undefined]);
+      .map(([, v]) => v as Record<string, unknown>)
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    expect(stored.map((m) => m.wake)).toEqual(["passive", undefined, "active"]);
+    // The reason rides only with a mode, and only a known one.
+    expect(stored.map((m) => m.wakeReason)).toEqual(["rejects", undefined, undefined]);
   });
 });
 

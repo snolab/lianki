@@ -112,6 +112,7 @@ that are expensive to rediscover.
 | Hot-swapping headless core modules (kernel, swap, leak tests) | [docs/hot-core.md](docs/hot-core.md)                                |
 | The debug chat widget (packages/debug-chat), hot-loading      | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
 | Hot islands: swappable components, shared state               | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                  |
+| Live view: dev JS on lianki.com via a signed pointer          | [docs/live-view.md](docs/live-view.md)                              |
 | The /words swipe: headless core, UI islands, feel presets     | [docs/swipe-core.md](docs/swipe-core.md)                            |
 | UI state: what is kept where (session, local, URL, server)    | [docs/ui-state.md](docs/ui-state.md)                                |
 | Screenshots of the owner's phone page (`scripts/dev/shot.ts`) | [docs/dev-debug-widget.md](docs/dev-debug-widget.md), "Screenshots" |

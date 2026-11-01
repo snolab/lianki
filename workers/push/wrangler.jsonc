@@ -25,7 +25,12 @@
   ],
   // Asks the main Worker whether a debug socket's cookie is the owner's
   // (/api/dev/whoami). Circular with its PUSH binding to us; that is allowed.
-  "services": [{ "binding": "MAIN", "service": "lianki" }],
+  // SESSIONS: the main Worker's DebugSessions RPC entrypoint (worker.ts), which
+  // the debug hub asks before each eval-grant renewal; no URL, no secret.
+  "services": [
+    { "binding": "MAIN", "service": "lianki" },
+    { "binding": "SESSIONS", "service": "lianki", "entrypoint": "DebugSessions" },
+  ],
   // Secret PROGRESS_TOKEN (wrangler secret put PROGRESS_TOKEN -c workers/push/wrangler.jsonc):
   // agents' bearer token for live progress. Unset = writes answer 503.
   // Secret PARTNER_TICKET_PUB (wrangler secret put PARTNER_TICKET_PUB -c workers/push/wrangler.jsonc

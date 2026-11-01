@@ -86,12 +86,6 @@ export type ChatMessage = {
    */
   quiet?: true;
   /**
-   * An agent line sent with `say --loud` (urgent, or it needs his answer):
-   * read aloud even in quiet hours, unless he muted the page. An ask card
-   * counts as loud too (quiet-hours.ts). Only ever `true`.
-   */
-  loud?: true;
-  /**
    * The mic's wake-word mode when the owner sent the line (docs/wake-word.md):
    * "active", or "passive" (it came through "Linky"). Absent = the mic was
    * off. The chat lane sets it with {type: "wake", mode}.
@@ -399,6 +393,12 @@ export type ChatStrings = {
   clipsStart: string;
   /** Menu switch: a tap on clipsStart also sets an auto-stop; `{n}` = minutes. */
   clipsAutoStop: string;
+  /** Menu switch: compact mode (compact-view.ts), this device only. */
+  compactIdle: string;
+  /** The compact line's tooltip and screen-reader hint: a tap shows the whole chat. */
+  compactShowAll: string;
+  /** A small note on an agent line that was not read aloud because the page was in the background. */
+  notReadHidden: string;
 };
 
 export const CHAT_STRINGS_EN: ChatStrings = {
@@ -424,6 +424,9 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   clipsSaveFailed: "Saving failed",
   clipsStart: "Record voice clips",
   clipsAutoStop: "Auto-stop after {n} min",
+  compactIdle: "Only the last message while not typing",
+  compactShowAll: "Show the whole chat",
+  notReadHidden: "· not read aloud: the page was in the background",
 };
 
 /** Defaults filled in and `{name}` substituted. */

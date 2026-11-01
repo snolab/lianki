@@ -2,7 +2,7 @@
  * Who may open a debug socket (debug.ts). Kept out of index.ts: a Worker's
  * entry module may export only handlers and Durable Object classes.
  */
-import { type Identity, avatarUrl, isUserId } from "../../../lib/dev-eval";
+import { type Identity, avatarUrl, isSessionTag, isUserId } from "../../../lib/dev-eval";
 import {
   type JtiStore,
   PARTNER_SUBPROTOCOL,
@@ -55,6 +55,11 @@ export async function debugIdentity(
       // For the chat's avatars; an older main Worker sends neither.
       ...(typeof body.name === "string" && body.name ? { name: body.name } : {}),
       ...(avatarUrl(body.image) ? { image: avatarUrl(body.image) } : {}),
+      // The sign-in session (a hash) and its expiry: an eval grant's renewal is bound to it.
+      ...(isSessionTag(body.session) ? { session: body.session } : {}),
+      ...(typeof body.sessionUntil === "number" && Number.isFinite(body.sessionUntil)
+        ? { sessionUntil: body.sessionUntil }
+        : {}),
     };
   } catch {
     return null;

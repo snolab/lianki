@@ -65,16 +65,28 @@ jobs:
       # never leaves the schema a migration behind the code.
       - name: D1 migrations
         run: bunx wrangler d1 migrations apply lianki --remote
-      # The monitor and the push service first: the main Worker names them
-      # (tail consumer; service binding). lianki-push owns the zone route
-      # lianki.com/api/version/*, so the token needs Zone · Workers Routes ·
-      # Edit on lianki.com (granted 2026-10-29; docs/monitoring.md).
+      # worker.ts must keep every export of the OpenNext build (its Durable
+      # Object classes, the default handler) and add only DebugSessions.
+      - name: Worker exports unchanged
+        run: bun scripts/ci/check-worker-exports.ts
+      # Order: the monitor, then the main Worker, then lianki-push (docs/shipping.md,
+      # "Deploy order"). The monitor first: the main Worker names it as its tail
+      # consumer. The main Worker before lianki-push: lianki-push binds a named
+      # entrypoint of it (SESSIONS → lianki#DebugSessions), and a binding to an
+      # entrypoint the callee does not export yet can be refused at deploy;
+      # Cloudflare's advice is callee first. The other way round needs nothing
+      # new: the main Worker's PUSH binding is to lianki-push's default fetch,
+      # which already exists, and a route lianki-push gains later (e.g.
+      # /internal/signed-out) is only called with a fallback (the outbox).
+      # lianki-push owns the zone route lianki.com/api/version/*, so the token
+      # needs Zone · Workers Routes · Edit on lianki.com (granted 2026-10-29;
+      # docs/monitoring.md).
       - name: Deploy the monitor
         run: bunx wrangler deploy -c workers/monitor/wrangler.jsonc
-      - name: Deploy the push service
-        run: bunx wrangler deploy -c workers/push/wrangler.jsonc
       - name: Deploy
         run: bunx wrangler deploy
+      - name: Deploy the push service
+        run: bunx wrangler deploy -c workers/push/wrangler.jsonc
       # lianki-voice owns the zone route lianki.com/api/words/tts* (word clips
       # at the edge, workers/voice) and passes the rest to the main Worker.
       # After the main Deploy and never blocking it: without lianki-voice the

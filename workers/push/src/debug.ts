@@ -103,6 +103,31 @@
  * pages' sessions (code "idle"), so End reaches it while it sleeps. A
  * friend's preview pairing is never stored: one socket, APPROVAL_MS.
  *
+ * Renewal (the owner's eval grant only). The Allow binds the grant to the
+ * answering page's device id and sign-in session (`renew`: {device, session,
+ * user, start, count}; a session tag is a hash, lib/dev-eval.ts sessionTag). With
+ * at most EVAL_RENEW_BEFORE_MS left, it is extended to EVAL_GRANT_MS from
+ * now — never past start + EVAL_CHAIN_MS, after which a tap is needed again —
+ * on any of these events, and only while an owner page of that device and
+ * session (unexpired) is connected, and the main Worker confirms right then
+ * that the session is still live in the auth db (the SESSIONS binding to its
+ * DebugSessions RPC entrypoint, worker.ts; at most once per grant per 30 s;
+ * any doubt = no renewal, "gone" = stopRenewal). The write after that answer
+ * re-reads the grant and re-checks it all under blockConcurrencyWhile, so
+ * an End or sign-out that landed meanwhile wins:
+ *   use     a message from a socket holding the grant
+ *   resume  a reconnect with its token
+ *   page    that device's page connecting
+ *   alarm   the one alarm set for until − EVAL_RENEW_BEFORE_MS
+ * No polling. Each socket holding the grant hears {type:"renewed", until,
+ * count} (its attachment's `until` moves too); `debug.renew` logs the count
+ * and device. End (revoke) deletes the grant, so nothing renews; the session
+ * being deleted (sign-out: the main Worker's POST /internal/signed-out)
+ * drops `renew` from every grant bound to it at once, and the session from
+ * every owner page attachment that carried it. A chat grant, a
+ * friend's preview, and a grant approved without a session (the dev bridge,
+ * an older main Worker) are never renewed.
+ *
  * Voice-clip recording (packages/debug-chat/src/clips.ts). The switch is a
  * window session's, held here, never in an origin's storage. An owner page
  * knocks with `?ws=<its window's session id>&dev=<device id>` (and
@@ -131,7 +156,9 @@ import {
   CHAT_HISTORY,
   CHAT_MS,
   type ChatMessage,
+  EVAL_CHAIN_MS,
   EVAL_GRANT_MS,
+  EVAL_RENEW_BEFORE_MS,
   FRIEND_CHAT_MAX,
   FRIEND_CHAT_WINDOW_MS,
   type EditedEvent,
@@ -155,6 +182,7 @@ import {
   agentIdOf,
   cleanLabel,
   isPageId,
+  isSessionTag,
   isWithin,
   mayAddress,
   nodePath,
@@ -202,7 +230,7 @@ export type Storage = {
   put(key: string, value: unknown): Promise<void>;
   delete(key: string): Promise<boolean>;
   list<T>(opts: { prefix: string; reverse?: boolean; limit?: number }): Promise<Map<string, T>>;
-  /** The Durable Object alarm: one per hub, used only for the pages-idle check. */
+  /** The Durable Object alarm: one per hub (pages idle, clips auto-stop, eval-grant renewal). */
   getAlarm(): Promise<number | null>;
   setAlarm(at: number): Promise<void>;
 };
@@ -214,6 +242,8 @@ export type DebugState = {
    * WebSocketRequestResponsePair): the listeners' keepalive ping.
    */
   setWebSocketAutoResponse?(pair?: unknown): void;
+  /** The runtime's gate: no other event is delivered until `f` settles. */
+  blockConcurrencyWhile?<T>(f: () => Promise<T>): Promise<T>;
   storage: Storage;
 };
 /** A controller's keepalive (scripts/dev/keepalive.ts): "ping" is answered "pong". */
@@ -236,6 +266,11 @@ type PageAtt = {
   /** The owner's window session (clips.ts) and device; never on a friend's page. */
   sid?: string;
   device?: string;
+  /** The owner's sign-in session (a tag, never the id) and its expiry; never on a friend's page. */
+  session?: string;
+  sessionUntil?: number;
+  /** The owner's user id, kept with the session (the main Worker's lookup key). */
+  user?: string;
   /** The page said it is going (pagehide): it no longer holds its session open. */
   leaving?: boolean;
   /**
@@ -302,9 +337,38 @@ type ControllerAtt = {
 /**
  * A stored grant (`grant:<sha256 of its token>`). `scope` absent = "chat"
  * (grants from before eval grants were stored). `pages`: the owner's page ids
- * an eval grant reaches (absent = all). `at`: when it was allowed.
+ * an eval grant reaches (absent = all). `at`: when it was allowed. `renew`:
+ * the owner's eval grant only, what its renewal is bound to ("Renewal" above).
  */
-type Grant = { label: string; until: number; scope?: Scope; pages?: string[]; at?: number };
+type Grant = {
+  label: string;
+  until: number;
+  scope?: Scope;
+  pages?: string[];
+  at?: number;
+  renew?: Renewal;
+};
+/**
+ * The approving page's device id and session tag, when the chain began (the
+ * tap), and how many times it was renewed since.
+ */
+type Renewal = {
+  device: string;
+  session: string;
+  /** The owner's user id: what the main Worker looks the session up under. */
+  user?: string;
+  start: number;
+  count: number;
+};
+/** In the renewal window: at most EVAL_RENEW_BEFORE_MS left (so "not due" is strictly before it). */
+const renewDueAt = (until: number, t: number) => until - t <= EVAL_RENEW_BEFORE_MS;
+/**
+ * The main Worker's DebugSessions RPC entrypoint (worker.ts, over the
+ * SESSIONS service binding: no URL, nothing public): "live" | "gone" | "busy".
+ */
+type SessionsRpc = { live(user: string, session: string): Promise<unknown> };
+/** At most one live-session check per grant in this long (a burst of uses asks once). */
+const SESSION_CHECK_MIN_MS = 30_000;
 /** A sleeping eval grant's pair id in the pages' state: "g:" + the start of its hash. */
 const DORMANT = "g:";
 const dormantPair = (hash: string) => `${DORMANT}${hash.slice(0, 40)}`;
@@ -320,7 +384,12 @@ export const IDENTITY_HEADERS = {
   /** Percent-encoded display name, and picture URL: the chat's avatars only. */
   name: "x-debug-name",
   image: "x-debug-image",
+  /** The sign-in session's tag and expiry (ms): what an eval grant's renewal is bound to. */
+  session: "x-debug-session",
+  sessionUntil: "x-debug-session-until",
 } as const;
+/** The main Worker tells the hub a session was deleted (sign-out), over its PUSH binding. */
+const SIGNED_OUT_PATH = "/internal/signed-out";
 type Att = PageAtt | ControllerAtt;
 declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
 
@@ -408,12 +477,19 @@ export class DebugHub {
    */
   private grants?: Map<string, Grant>;
   private loadingGrants?: Promise<void>;
+  /** A renewal in flight per grant hash: two events at once renew once. */
+  private renewing = new Map<string, Promise<void>>();
+  /** The main Worker (service binding): asked whether a renewal's session is still live. */
+  private sessions?: SessionsRpc;
+  /** When each grant's session was last checked (the per-grant rate limit). */
+  private checkedAt = new Map<string, number>();
 
   constructor(
     private ctx: DebugState,
-    _env?: unknown,
+    env?: unknown,
     private now: () => number = Date.now,
   ) {
+    this.sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
     // The listener pings to find a socket that died without a close (a
     // redeploy, a dropped connection); the runtime answers it while the hub
     // hibernates, so it costs no wake-up.
@@ -756,6 +832,7 @@ export class DebugHub {
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
+    if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);
     const control = url.pathname.endsWith("/control");
     let who: Identity | undefined;
     if (!control) {
@@ -769,12 +846,16 @@ export class DebugHub {
         name = decodeURIComponent(h.get(IDENTITY_HEADERS.name) ?? "");
       } catch {}
       const image = h.get(IDENTITY_HEADERS.image) ?? "";
+      const session = h.get(IDENTITY_HEADERS.session);
+      const sessionUntil = Number(h.get(IDENTITY_HEADERS.sessionUntil));
       who = {
         userId,
         email: h.get(IDENTITY_HEADERS.email) ?? "",
         owner,
         ...(name ? { name } : {}),
         ...(image ? { image } : {}),
+        ...(isSessionTag(session) ? { session } : {}),
+        ...(Number.isFinite(sessionUntil) && sessionUntil > 0 ? { sessionUntil } : {}),
       };
     }
     // A ticket socket from another site (index.ts verified the signature):
@@ -842,6 +923,182 @@ export class DebugHub {
     const rec = await this.block(body.userId, body.action === "block");
     if (!rec) return Response.json({ error: "no such chat user" }, { status: 404 });
     return Response.json({ ok: true, friend: { userId: body.userId, ...rec } });
+  }
+
+  /**
+   * POST /internal/signed-out {session}: the main Worker deleted that sign-in
+   * session (sign-out). Reached only over its PUSH binding, like the friends API.
+   */
+  private async signedOutApi(req: Request): Promise<Response> {
+    if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+    let body: { session?: unknown };
+    try {
+      body = (await req.json()) as typeof body;
+    } catch {
+      return Response.json({ error: "bad json" }, { status: 400 });
+    }
+    if (!isSessionTag(body.session))
+      return Response.json({ error: "expected {session}" }, { status: 400 });
+    return Response.json({ ok: true, stopped: await this.stopRenewal(body.session) });
+  }
+
+  /**
+   * `session` is over (sign-out, or the main Worker says it is gone): no eval
+   * grant bound to it renews any more, and the owner pages that connected
+   * with it lose it (their attachment no longer names a session, so they can
+   * never vouch for a renewal). How many grants were bound.
+   */
+  async stopRenewal(session: string, why = "signed-out"): Promise<number> {
+    await this.loadGrants();
+    let n = 0;
+    for (const [hash, g] of this.grants ?? []) {
+      if (g.renew?.session !== session) continue;
+      const { renew: r, ...rest } = g;
+      await this.putGrant(hash, rest satisfies Grant);
+      console.log(
+        JSON.stringify({ msg: "debug.renew-stop", why, device: r.device, count: r.count }),
+      );
+      n++;
+    }
+    for (const { ws, a } of this.pages(OWNER_THREAD))
+      if (a.session === session) {
+        const { session: _s, sessionUntil: _u, user: _user, ...rest } = a;
+        ws.serializeAttachment(rest satisfies PageAtt);
+      }
+    return n;
+  }
+
+  /**
+   * Is the session behind a renewal still live? Asked of the main Worker's
+   * DebugSessions RPC entrypoint (SESSIONS binding: an auth-db lookup of the
+   * owner's live sessions by tag) right before each renewal, at most once per
+   * grant per SESSION_CHECK_MIN_MS. "unsure" — no binding, no user id, an
+   * error, "busy", an odd answer, too soon — renews nothing.
+   */
+  private async sessionLive(hash: string, r: Renewal): Promise<"live" | "gone" | "unsure"> {
+    if (!this.sessions || !r.user) return "unsure";
+    const t = this.now();
+    const last = this.checkedAt.get(hash);
+    if (last !== undefined && t - last < SESSION_CHECK_MIN_MS) return "unsure";
+    this.checkedAt.set(hash, t);
+    try {
+      const said = await this.sessions.live(r.user, r.session);
+      return said === "live" ? "live" : said === "gone" ? "gone" : "unsure";
+    } catch {
+      return "unsure";
+    }
+  }
+
+  /** Run read-check-write with no other event in between (the DO's own gate, where there is one). */
+  private exclusive<T>(f: () => Promise<T>): Promise<T> {
+    return this.ctx.blockConcurrencyWhile ? this.ctx.blockConcurrencyWhile(f) : f();
+  }
+
+  /**
+   * Renew the owner's eval grant `hash` if it is due ("Renewal" above): less
+   * than EVAL_RENEW_BEFORE_MS left, the chain not at its cap, and an owner page
+   * of the approving device and session connected. Otherwise nothing.
+   */
+  private async renew(hash: string, via: "use" | "resume" | "page" | "alarm") {
+    if (this.renewing.has(hash)) return this.renewing.get(hash);
+    const run = this.renewNow(hash, via).finally(() => this.renewing.delete(hash));
+    this.renewing.set(hash, run);
+    return run;
+  }
+
+  private async renewNow(hash: string, via: string) {
+    const t = this.now();
+    const g = await this.ctx.storage.get<Grant>(`grant:${hash}`);
+    const r = g?.renew;
+    if (!g || !r || g.scope !== "eval" || g.until <= t || !renewDueAt(g.until, t)) return;
+    // The chain is at its cap: the next grant needs a tap.
+    if (Math.min(t + EVAL_GRANT_MS, r.start + EVAL_CHAIN_MS) <= g.until) return;
+    if (!this.approverHere(r, t)) return;
+    // The auth db has the last word: a session it does not know renews nothing.
+    const live = await this.sessionLive(hash, r);
+    if (live === "gone") await this.stopRenewal(r.session, "session-gone");
+    if (live !== "live") return;
+    // That answer took a while: End, sign-out or another renewal may have
+    // happened meanwhile. Re-read and re-check everything, and write only if
+    // it is still the same grant in the same state, with no event in between.
+    const next = await this.exclusive(async () => {
+      const t2 = this.now();
+      const now = await this.ctx.storage.get<Grant>(`grant:${hash}`);
+      const r2 = now?.renew;
+      if (!now || !r2 || now.scope !== "eval" || now.until !== g.until || now.until <= t2)
+        return null;
+      if (
+        r2.count !== r.count ||
+        r2.start !== r.start ||
+        r2.device !== r.device ||
+        r2.session !== r.session ||
+        r2.user !== r.user ||
+        !this.approverHere(r2, t2)
+      )
+        return null;
+      const n: Grant = {
+        ...now,
+        until: Math.min(t2 + EVAL_GRANT_MS, r2.start + EVAL_CHAIN_MS),
+        renew: { ...r2, count: r2.count + 1 },
+      };
+      if (n.until <= now.until) return null;
+      await this.putGrant(hash, n);
+      return n;
+    });
+    if (!next?.renew) {
+      console.log(JSON.stringify({ msg: "debug.renew-skip", why: "changed while checking" }));
+      return;
+    }
+    const { count } = next.renew;
+    const until = next.until;
+    for (const c of this.sockets("controller"))
+      if (c.a.grant === hash) {
+        c.ws.serializeAttachment({ ...c.a, until } satisfies ControllerAtt);
+        send(c.ws, { type: "renewed", until, count });
+      }
+    console.log(
+      JSON.stringify({
+        msg: "debug.renew",
+        via,
+        label: g.label,
+        device: r.device,
+        count,
+        until,
+        chainEnds: r.start + EVAL_CHAIN_MS,
+      }),
+    );
+    this.broadcast();
+    await this.scheduleRenewal(next);
+  }
+
+  /** An owner page of that device and that (unexpired) session is connected now. */
+  private approverHere(r: Renewal, t: number) {
+    return this.pages(OWNER_THREAD).some(
+      (p) => p.a.device === r.device && p.a.session === r.session && (p.a.sessionUntil ?? 0) > t,
+    );
+  }
+
+  /** The one alarm for a renewable grant: when its renewal window opens. */
+  private async scheduleRenewal(g: Grant) {
+    if (g.renew && g.scope === "eval") await this.schedule(g.until - EVAL_RENEW_BEFORE_MS);
+  }
+
+  /**
+   * The alarm, or an approving page connecting: renew what is due. A grant
+   * whose window has not opened yet sets the alarm for when it does; one due
+   * with no approving page waits for that page (its connect is the event).
+   */
+  private async renewDue(via: "page" | "alarm", only?: { device: string; session: string }) {
+    await this.loadGrants();
+    const t = this.now();
+    for (const [hash, g] of this.grants ?? []) {
+      const r = g.renew;
+      if (!r || g.scope !== "eval" || g.until <= t) continue;
+      if (only && (r.device !== only.device || r.session !== only.session)) continue;
+      // Not due yet means the window opens strictly later: the alarm always moves forward.
+      if (renewDueAt(g.until, t)) await this.renew(hash, via);
+      else await this.scheduleRenewal(g);
+    }
   }
 
   /** Block (or unblock) a friend: blocking closes their pages and every pairing made for them. */
@@ -916,7 +1173,13 @@ export class DebugHub {
         ...me,
         id,
         at: this.now(),
-        ...(embed ? { embed: true as const } : {}),
+        // A chat-only page (a ticket socket, or a page another site frames) never
+        // carries the owner's session: no eval grant is ever bound to or renewed on it.
+        ...(embed
+          ? { embed: true as const }
+          : who?.owner && who.session
+            ? { session: who.session, sessionUntil: who.sessionUntil ?? 0, user: who.userId }
+            : {}),
       } satisfies PageAtt);
     const thread = audience(att(ws) as PageAtt);
     // The page's own avatar (older pages ignore an unknown type).
@@ -935,6 +1198,17 @@ export class DebugHub {
     await this.pageBack(thread, label);
     // The owner's window session: recording follows it across URLs and origins.
     if (thread === OWNER_THREAD && !embed) await this.clipsJoin(ws, url);
+    // The device that approved an eval grant is back: renew what is due on it
+    // (never from a chat-only page: it carries no session).
+    const joined = att(ws);
+    if (
+      !embed &&
+      joined?.role === "page" &&
+      joined.thread === OWNER_THREAD &&
+      joined.session &&
+      joined.device
+    )
+      await this.renewDue("page", { device: joined.device, session: joined.session });
   }
 
   /**
@@ -1056,7 +1330,10 @@ export class DebugHub {
       send(ws, { type: "error", error: "grant is not valid (expired or ended)" });
       return close(ws, 4498, "grant invalid");
     }
-    const { hash, g } = live;
+    const { hash } = live;
+    // A reconnect is a use: renew first if it is due, so `approved` carries the new until.
+    await this.renew(hash, "resume");
+    const g = (await this.ctx.storage.get<Grant>(`grant:${hash}`)) ?? live.g;
     const scope: Scope = g.scope === "eval" ? "eval" : "chat";
     const a: ControllerAtt = {
       role: "controller",
@@ -1182,6 +1459,7 @@ export class DebugHub {
     this.sweep();
     await this.checkIdle();
     await this.clipsSweep();
+    await this.renewDue("alarm");
   }
 
   webSocketMessage(ws: Socket, raw: string | ArrayBuffer): void | Promise<void> {
@@ -1193,7 +1471,16 @@ export class DebugHub {
     if (raw === KEEPALIVE.ping) return ws.send(KEEPALIVE.pong);
     const a = att(ws);
     if (a?.role === "page") return this.fromPage(ws, a, raw);
-    if (a?.role === "controller") return this.fromController(ws, a, raw);
+    if (a?.role !== "controller") return;
+    // A use of the owner's eval grant near its end renews it first (if allowed).
+    const t = this.now();
+    if (a.grant && a.scope === "eval" && !a.forUser && a.until && a.until > t)
+      if (renewDueAt(a.until, t))
+        return this.renew(a.grant, "use").then(() => {
+          const b = att(ws);
+          return b?.role === "controller" ? this.fromController(ws, b, raw) : undefined;
+        });
+    return this.fromController(ws, a, raw);
   }
 
   private fromPage(ws: Socket, page: PageAtt, raw: unknown): void | Promise<void> {
@@ -1276,6 +1563,7 @@ export class DebugHub {
         ...(m.source ? { source: m.source } : {}),
         ...(m.timing ? { timing: m.timing } : {}),
         ...(m.wake ? { wake: m.wake } : {}),
+        ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
       });
     }
     // A tap on an ask card: stamped here, never by the page or an agent.
@@ -1298,7 +1586,7 @@ export class DebugHub {
       // A chat grant is for every page: a phone's page comes and goes with the app.
       return (c.a.scope === "chat" || m.scope === "chat") && !c.a.forUser
         ? this.allowChat(c.ws, c.a)
-        : this.allowEval(c.ws, c.a, pages);
+        : this.allowEval(c.ws, c.a, pages, page);
     }
     if (m.type === "deny" || m.type === "revoke") return this.end(m.type, c.ws, c.a);
     // A result (or a streamed piece of one) goes back only to an approved
@@ -1394,8 +1682,10 @@ export class DebugHub {
    * "Allow" for eval. The owner's: code and chat for EVAL_GRANT_MS, with a
    * grant token the controller resumes with (pages and all). A friend's
    * preview: code only, for APPROVAL_MS, on this socket only — no token.
+   * The owner's is bound for renewal to the answering page's device and
+   * session, when that page has both ("Renewal" above).
    */
-  private async allowEval(ws: Socket, a: ControllerAtt, pages?: string[]) {
+  private async allowEval(ws: Socket, a: ControllerAtt, pages?: string[], by?: PageAtt) {
     const t = this.now();
     if (a.forUser) {
       const until = t + APPROVAL_MS;
@@ -1410,18 +1700,39 @@ export class DebugHub {
     const until = t + EVAL_GRANT_MS;
     const token = hex(crypto.getRandomValues(new Uint8Array(32)));
     const grant = await hashToken(token);
-    await this.putGrant(grant, {
+    // Only an owner page signed in with a session, on a known device, starts a chain.
+    const renew: Renewal | undefined =
+      by?.thread === OWNER_THREAD && by.session && by.device && by.user
+        ? { device: by.device, session: by.session, user: by.user, start: t, count: 0 }
+        : undefined;
+    const g: Grant = {
       label: a.label,
       until,
       scope: "eval",
       at: t,
       ...(pages ? { pages } : {}),
-    } satisfies Grant);
+      ...(renew ? { renew } : {}),
+    };
+    await this.putGrant(grant, g);
     ws.serializeAttachment({ ...a, until, scope: "eval", pages, grant } satisfies ControllerAtt);
-    send(ws, { type: "approved", until, scope: "eval", token });
+    send(ws, {
+      type: "approved",
+      until,
+      scope: "eval",
+      token,
+      ...(renew ? { renewsUntil: t + EVAL_CHAIN_MS } : {}),
+    });
     console.log(
-      JSON.stringify({ msg: "debug.allow", pair: a.pair, label: a.label, until, scope: "eval" }),
+      JSON.stringify({
+        msg: "debug.allow",
+        pair: a.pair,
+        label: a.label,
+        until,
+        scope: "eval",
+        ...(renew ? { device: renew.device, renewable: true } : {}),
+      }),
     );
+    await this.scheduleRenewal(g);
     this.broadcast();
     send(ws, { type: "history", messages: forNode(await this.history(), a.node) });
   }
@@ -1594,7 +1905,7 @@ export class DebugHub {
     if (m.value.type === "say") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
-      const { text, to, node, agentId, quiet, loud } = m.value;
+      const { text, to, node, agentId, quiet } = m.value;
       // The sender's node: what the line says, within the node its socket listens at.
       const home = c.node ?? ROOT_NODE;
       const from = m.value.taskPath ?? home;
@@ -1623,9 +1934,8 @@ export class DebugHub {
           ...(from !== ROOT_NODE ? { taskPath: from } : {}),
           ...(who ? { agentId: who } : {}),
           ...(node ? { to: node } : {}),
-          // say --quiet / --loud (already booleans): the page reads it aloud or not.
+          // say --quiet (already a boolean): shown, never read aloud.
           ...(quiet ? { quiet } : {}),
-          ...(loud ? { loud } : {}),
         };
         console.log(
           JSON.stringify({
@@ -1636,7 +1946,6 @@ export class DebugHub {
             ...(said.taskPath ? { taskPath: said.taskPath } : {}),
             ...(said.to ? { to: said.to } : {}),
             ...(quiet ? { quiet } : {}),
-            ...(loud ? { loud } : {}),
             len: text.length,
             head: head(text),
           }),

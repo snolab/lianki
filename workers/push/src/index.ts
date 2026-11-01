@@ -38,6 +38,9 @@
  *   GET/POST /internal/friends The main Worker's owner-only /api/dev/friends,
  *                              over its PUSH binding: list chat users, read
  *                              one's thread, Block or unblock (debug.ts).
+ *   POST /internal/signed-out  The main Worker, when a sign-in session is
+ *                              deleted (sign-out): body {session: its tag}.
+ *                              Every eval grant renewing on it stops at once.
  *
  * /internal/* is answered only on the binding's own hostname (lianki-push):
  * there is no workers.dev URL, and the zone route covers /api/version/* only.
@@ -78,6 +81,8 @@ export type Env = {
   /** Optional only so older test envs type-check; deployed, it is always bound. */
   PROGRESS?: Namespace;
   MAIN?: Fetcher;
+  /** The main Worker's DebugSessions RPC entrypoint (worker.ts): is a session still live? */
+  SESSIONS?: { live(user: string, session: string): Promise<unknown> };
   /** Agents' bearer token for POST /api/version/progress (a Worker secret). */
   PROGRESS_TOKEN?: string;
   /**
@@ -172,6 +177,8 @@ export default {
       // A header holds bytes, not any name: percent-encoded.
       if (who.name) headers.set(IDENTITY_HEADERS.name, encodeURIComponent(who.name));
       if (who.image) headers.set(IDENTITY_HEADERS.image, who.image);
+      if (who.session) headers.set(IDENTITY_HEADERS.session, who.session);
+      if (who.sessionUntil) headers.set(IDENTITY_HEADERS.sessionUntil, String(who.sessionUntil));
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
     }
     if (
@@ -211,7 +218,11 @@ export default {
       headers.delete("x-liagent-token");
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
     }
-    if (url.pathname.startsWith("/internal/friends") && isInternal(url))
+    // Friends, and a signed-out session (it stops eval-grant renewal bound to it).
+    if (
+      (url.pathname.startsWith("/internal/friends") || url.pathname === "/internal/signed-out") &&
+      isInternal(url)
+    )
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(req);
     if (url.pathname === "/internal/publish" && req.method === "POST" && isInternal(url))
       return env.HUB.get(env.HUB.idFromName("version")).fetch(req);

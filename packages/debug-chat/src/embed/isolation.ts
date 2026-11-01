@@ -41,10 +41,19 @@ export const ROOT_PX = 16;
 
 /** `1.5rem` → `24px`, everywhere in a stylesheet (calc() included). */
 export function remToPx(css: string, base = ROOT_PX): string {
-  return css.replace(/(-?(?:\d+\.?\d*|\.\d+))rem\b/g, (_m, n: string) => {
-    const px = Number(n) * base;
-    return `${Number.isInteger(px) ? px : Number(px.toFixed(4))}px`;
-  });
+  const toPx = (value: string) =>
+    value.replace(/(^|[^\w.\\])(-?(?:\d+\.?\d*|\.\d+))rem\b/g, (_m, pre: string, n: string) => {
+      const px = Number(n) * base;
+      return `${pre}${Number.isInteger(px) ? px : Number(px.toFixed(4))}px`;
+    });
+  // Declaration values only (`prop: value` up to `;` or `}`), never selectors:
+  // Tailwind's class names carry rem too (`.w-\[min\(20rem…`), and rewriting
+  // them breaks the match with the element's class.
+  return css.replace(
+    /(^|[;{\s])(--?[\w-]+|[a-z][\w-]*)(\s*:)([^;{}]*)(?=[;}])/gi,
+    (_m, lead: string, prop: string, colon: string, value: string) =>
+      `${lead}${prop}${colon}${toPx(value)}`,
+  );
 }
 
 /**

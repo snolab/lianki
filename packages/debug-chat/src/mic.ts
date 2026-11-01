@@ -17,10 +17,16 @@
 import type { UttMarks } from "./latency";
 import type { LocalFinal, LocalUtt } from "./local-stt";
 import { STT_PROMPTS } from "./stt-hint";
-import type { WakeSpot } from "./wake";
+import type { SpotResult, WakeSpot } from "./wake";
 
 /** Longest utterance: past this it is cut and sent, and listening goes on. */
 export const MAX_UTTERANCE_MS = 30_000;
+/**
+ * The longest a passive utterance waits for the wake gate's verdict (the
+ * spotter's load timeout plus one check, with room to spare). Past it the
+ * utterance counts as "no wake word", so the ones after it are not held back.
+ */
+export const WAKE_GATE_MS = 30_000;
 /** The VADs hand over 16 kHz mono. */
 export const RATE = 16_000;
 /** Partials: one every PARTIAL_EVERY_MS of speech, once it is PARTIAL_MIN_MS long… */
@@ -792,7 +798,7 @@ export type UploadInfo = {
  */
 export type WakeGate = {
   passive(): boolean;
-  spot(audio: Float32Array): Promise<WakeSpot & { ms?: number; error?: string }>;
+  spot(audio: Float32Array): Promise<SpotResult>;
   /** "Linky" was heard: the mic becomes active. */
   onWake(): void;
   verdict(ok: boolean, why: "ok" | "empty" | "hallucination"): void;
@@ -801,7 +807,16 @@ export type WakeGate = {
 export type StreamStt = {
   begin(onPartial: (text: string) => void): LocalUtt | null;
   warm?(): void;
+  /** While the mic is on: keep the socket open (reopen on close, visible, online). */
+  keep?(on: boolean): void;
+  /** The socket is up now (the post-"Linky" rest streams only then: it is already over). */
+  connected?(): boolean;
 };
+/** Mic on: keep the stream's socket open (or just open it, for one without keep). */
+export function keepStream(s: StreamStt | undefined, on: boolean) {
+  if (s?.keep) s.keep(on);
+  else if (on) s?.warm?.();
+}
 
 /**
  * Listening mode. `toggle()` turns it on (loading the VAD, or the fallback if
@@ -1046,7 +1061,15 @@ export function createMic(d: {
         const w = d.wake;
         gated = false;
         u?.cancel();
-        void w.spot(audio).then(
+        // Never hold the queue: a check that does not settle in WAKE_GATE_MS is "no hit".
+        const checked = new Promise<SpotResult>((resolve, reject) => {
+          const t = setTimer(() => resolve({ hit: false, error: "gate-timeout" }), WAKE_GATE_MS);
+          w.spot(audio).then(
+            (r) => (clearTimer(t), resolve(r)),
+            (e) => (clearTimer(t), reject(e)),
+          );
+        });
+        void checked.then(
           (r) => {
             d.log?.({
               ev: "wake-spot",
@@ -1056,6 +1079,9 @@ export function createMic(d: {
               ...(r.error ? { error: r.error } : {}),
               ...(r.hit ? { tokens: r.tokens.join(" "), restMs: toMs(r.rest.length) } : {}),
             });
+            // Never deaf: the spotter could not check it (it failed to load, say) and
+            // the mic is active again by now, so it goes up as an active utterance would.
+            if (!r.hit && r.unchecked && !w.passive()) return send(seq, audio, ms, prob);
             if (!r.hit) {
               d.timing?.(seq, { t_sttDone: now(), dropped: true });
               q.resolve(seq, null);
@@ -1067,7 +1093,11 @@ export function createMic(d: {
               q.resolve(seq, null);
               return report();
             }
-            send(seq, r.rest, toMs(r.rest.length), prob);
+            // The words after "Linky" go to the Mac too when its socket is up (as a
+            // pre-pad and an end: the audio is already whole); else the cloud.
+            const s = d.stream?.();
+            const lu = s?.connected?.() ? s.begin(() => {}) : null;
+            send(seq, r.rest, toMs(r.rest.length), prob, lu?.end(r.rest));
           },
           () => {
             q.resolve(seq, null);
@@ -1149,7 +1179,7 @@ export function createMic(d: {
     }
     if (g !== gen) return void v.destroy();
     vad = v;
-    d.stream?.()?.warm?.();
+    keepStream(d.stream?.(), true);
     if (!held) await v.start();
     set("listening");
   };
@@ -1164,6 +1194,7 @@ export function createMic(d: {
     cur = null;
     resetLive();
     set("off");
+    keepStream(d.stream?.(), false);
     if (v) {
       // Speech under way when listening stops is still sent.
       await v.flush();

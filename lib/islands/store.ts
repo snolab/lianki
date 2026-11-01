@@ -21,6 +21,10 @@ export function createIslandStore(timers = realTimers) {
   const listeners = new Set<() => void>();
   let until: number | null = null;
   let expiry: ReturnType<typeof setTimeout> | undefined;
+  /** The live-view pointer's expiry (docs/live-view.md): a second, independent permission. */
+  let liveUntil: number | null = null;
+  let liveExpiry: ReturnType<typeof setTimeout> | undefined;
+  const any = () => until !== null || liveUntil !== null;
   const emit = () => {
     for (const l of listeners) l();
   };
@@ -31,8 +35,8 @@ export function createIslandStore(timers = realTimers) {
     },
     get: (name: string) => overrides.get(name),
     names: () => [...overrides.keys()],
-    /** Whether this page holds a live code-run grant. */
-    granted: () => until !== null,
+    /** Whether this page may show hot islands: a live code-run grant, or a verified live-view pointer. */
+    granted: any,
     /**
      * The code-run grant: until when it lasts, or null for none. When it lapses
      * (one local timeout) or is withdrawn, every island goes back to built in.
@@ -45,12 +49,27 @@ export function createIslandStore(timers = realTimers) {
       const left = v === null ? 0 : v - now;
       if (v !== null && left < 2 ** 31 - 1)
         expiry = timers.setTimeout(() => store.setGrant(null), left);
-      if (v === null) overrides.clear();
+      if (!any()) overrides.clear();
+      emit();
+    },
+    /**
+     * The live-view pointer (signed by the dev key, verified on the page): until
+     * when it lasts, or null. Independent of the code-run grant: either one is enough.
+     */
+    setLive(next: number | null, now = Date.now()) {
+      const v = next !== null && next > now ? next : null;
+      if (v === liveUntil) return;
+      timers.clearTimeout(liveExpiry);
+      liveUntil = v;
+      const left = v === null ? 0 : v - now;
+      if (v !== null && left < 2 ** 31 - 1)
+        liveExpiry = timers.setTimeout(() => store.setLive(null), left);
+      if (!any()) overrides.clear();
       emit();
     },
     /** Install or replace these islands only; the others keep their component (no remount). */
     put(next: Record<string, Override>) {
-      if (until === null) return;
+      if (!any()) return;
       for (const [k, o] of Object.entries(next)) overrides.set(k, o);
       emit();
     },

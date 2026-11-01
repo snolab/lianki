@@ -302,10 +302,10 @@ if (import.meta.main) {
   if (TAILNET) startTailnet();
   log(`listening on http://localhost:${PORT} · harness http://localhost:${PORT}/harness`);
   console.log(
-    `\n  On the owner's page (debug mode), in the console or with eval.ts:\n` +
-      `    localStorage.setItem("lk:debug-widget-src", "${ORIGIN}/debug-chat.js"); location.reload()\n` +
-      `  Back to the built-in chat:\n` +
-      `    localStorage.removeItem("lk:debug-widget-src"); location.reload()\n`,
+    `\n  On lianki.com (live view, docs/live-view.md), then "Live view" in the account menu:\n` +
+      `    bun scripts/dev/live-view.ts on --widget ${ORIGIN}/debug-chat.js\n` +
+      `  On localhost or a dev build only, the unsigned key still works:\n` +
+      `    localStorage.setItem("lk:debug-widget-src", "${ORIGIN}/debug-chat.js"); location.reload()\n`,
   );
   const stop = () => {
     stopping = true;

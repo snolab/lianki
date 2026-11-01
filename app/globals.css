@@ -575,6 +575,56 @@ ruby rt {
   -webkit-backdrop-filter: inherit;
   backdrop-filter: inherit;
 }
+/* Landscape: the body pads the notch side, so the header steps back out over
+ * it to reach both screen edges, and pads its own buttons clear of it. */
+.lk-header-bleed {
+  margin-left: calc(-1 * env(safe-area-inset-left));
+  margin-right: calc(-1 * env(safe-area-inset-right));
+  padding-left: calc(1rem + env(safe-area-inset-left));
+  padding-right: calc(1rem + env(safe-area-inset-right));
+}
+
+/* The home-screen app on an iPhone (statusBarStyle "black-translucent",
+ * app/layout.tsx): the page runs under the status bar, whose clock and icons
+ * are always white. This band behind them is a darker glass, so the clock
+ * stays readable over the light paper and over whatever scrolls under it;
+ * the content still shows through. Off in a browser tab (the inset is 0
+ * there anyway) and in embed mode. */
+.lk-statusbar {
+  display: none;
+  position: fixed;
+  top: 0;
+  inset-inline: 0;
+  height: env(safe-area-inset-top);
+  z-index: 100;
+  pointer-events: none;
+  background: linear-gradient(oklch(0.22 0.015 65 / 0.62), oklch(0.22 0.015 65 / 0.48));
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  backdrop-filter: blur(12px) saturate(1.4);
+}
+@media (prefers-color-scheme: dark) {
+  .lk-statusbar {
+    background: oklch(from var(--background) l c h / 0.6);
+  }
+}
+@media (display-mode: standalone) {
+  .lk-statusbar {
+    display: block;
+  }
+}
+html[data-standalone] .lk-statusbar {
+  display: block;
+}
+html[data-embed] .lk-statusbar {
+  display: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .lk-statusbar {
+    background: oklch(0.22 0.015 65 / 0.9);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
 
 /* Tablet (768–1279px): the app nav floats over the content as glass and takes
  * no layout width; the content is padded by its width (--nav-w, AppShell), so
@@ -589,6 +639,15 @@ ruby rt {
     z-index: 30;
     overflow-y: auto;
     padding-bottom: env(safe-area-inset-bottom);
+    /* A landscape iPhone: the glass runs from the screen edge, under the
+     * notch, and its links start beside it (the content is padded by the
+     * same inset through the body). */
+    box-sizing: content-box;
+    padding-left: env(safe-area-inset-left);
+  }
+  [dir="rtl"] .lk-nav-overlay {
+    padding-left: 0;
+    padding-right: env(safe-area-inset-right);
     border-color: var(--glass-line);
     background: var(--glass-bg);
     -webkit-backdrop-filter: blur(12px) saturate(1.4);

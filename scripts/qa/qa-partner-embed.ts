@@ -214,6 +214,7 @@ try {
         inputFont: cs.fontFamily,
         inputSize: cs.fontSize,
         inputVisible: box.width > 40 && box.height > 10 && box.bottom <= innerHeight,
+        inputBox: `${Math.round(box.width)}x${Math.round(box.height)} @${Math.round(box.left)},${Math.round(box.top)}; root ${Math.round((m.root.querySelector("[data-debug-chat]") as HTMLElement)?.getBoundingClientRect().width ?? -1)}w open=${(m.root.querySelector("[data-debug-chat]") as HTMLElement)?.dataset.open ?? "?"}`,
         sheets: document.styleSheets.length,
         styles: document.querySelectorAll("style").length,
         adopted: document.adoptedStyleSheets.length,
@@ -257,7 +258,7 @@ try {
       inside.inputSize === "16px",
       `${tag} the input is 16px, not 40px-scaled (${inside.inputSize})`,
     );
-    check(inside.inputVisible, `${tag} the input is on screen`);
+    check(inside.inputVisible, `${tag} the input is on screen (${inside.inputBox})`);
     check(
       inside.sheets === before.sheets &&
         inside.styles === before.styles &&

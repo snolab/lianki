@@ -22,6 +22,7 @@ import type { ThrottleDb } from "./lib/security/throttle";
 import { passwordAuthEnabled, runtimeNodeEnv } from "./lib/auth-env";
 import { PASSKEY_RP_NAME, passkeyRelyingParty } from "./lib/passkey";
 import { settleUserSponsorships, type D1WithBatch } from "./lib/payments/sponsors-store";
+import { notifySignedOut } from "./lib/push-signed-out";
 
 // The heavy half of auth: better-auth, its plugins, zod, kysely. Only ever
 // reached through the dynamic import in ./auth.ts, so it is one shared async
@@ -122,6 +123,15 @@ function baseOptions() {
     // Sponsors sponsorship that was waiting for its id (docs/payments.md).
     // Never fails the sign-in; the next membership status read retries.
     databaseHooks: {
+      // Sign-out (or any session deleted): the debug hub stops renewing the
+      // owner's eval grants bound to that session at once (docs/monitoring.md, "Renewal").
+      session: {
+        delete: {
+          after: async (session: { id: string }) => {
+            await notifySignedOut(session.id);
+          },
+        },
+      },
       account: {
         create: {
           after: async (account: { providerId: string; userId: string }) => {
