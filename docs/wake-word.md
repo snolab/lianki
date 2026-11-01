@@ -183,7 +183,7 @@ on the Mac now, behind the KWS hit: [local-stt.md](local-stt.md), "Voiceprint".
 
 | Piece | Where |
 | --- | --- |
-| State machine, the `LINKY` keyword (5 pronunciations), the cut after it | `packages/debug-chat/src/wake.ts` |
+| State machine, the `LINKY` keyword (7 pronunciations), the cut after it | `packages/debug-chat/src/wake.ts` |
 | The spotter: a Blob Worker running `@sherpaw/kws@0.3.0` (sherpa-onnx WASM, Apache-2.0) with the zh-en 3M model (fp32, 13 MB, pinned Hugging Face commit) | `packages/debug-chat/src/wake-kws.ts` |
 | The gate on each VAD segment, before upload, only in passive mode | `createMic` `wake` (`mic.ts`) |
 | Mode, rejections, lazy load, never-deaf fallback, `__lkMic.wake(mode)` | `mic-session.ts` |
@@ -210,6 +210,55 @@ on the Mac now, behind the KWS hit: [local-stt.md](local-stt.md), "Voiceprint".
   `ignored`. Echo drops (the agent's own voice) do not count.
 - **Off switch:** localStorage `lk:agent-wake` = `"0"` means the mic is
   never passive.
+- **Load timeout (2026-11-02):** `load()` gives up after `LOAD_TIMEOUT_MS`
+  (15 s): the spotter is "failed" (`{ev: "wake-kws", error: "load-timeout"}`),
+  the mic goes back to active (`kws-failed`), and an utterance that was
+  waiting on it is sent as an active one would be (`unchecked`). The Worker
+  keeps downloading; if it gets ready later, the next passive turn uses it.
+  The 15 s applies everywhere: on cellular nothing uncached is fetched
+  anyway. In `createMic`, a passive utterance never waits more than
+  `WAKE_GATE_MS` (30 s) for its verdict, so a stalled check cannot hold back
+  the transcripts after it in the ordered queue.
+- **The agents see the mode:** each owner line carries `wake` (`active` /
+  `passive`) and `wakeReason` (the WakeReason that put it there:
+  `wake-word`, `rejects`, `tap`, `agent`, `kws-failed`, `mic-on`), and
+  `eval.ts chat` prints both.
+
+## Tuning on his voice (2026-11-02)
+
+He reported "Linky" often not waking the mic (2026-11-01 23:53 JST,
+Android; STT heard "Lenky"). The first setting, 0.25 / 1.0 with five
+spellings, was tuned only on synthetic voices.
+
+**There are no real "Linky" recordings of him yet.** All 211 clips in
+`~/lianki-voice-clips` (the latest from 2026-10-31 23:26 JST) were checked by
+their sidecar transcripts: none has him saying "Linky". So recall on his
+own voice could not be measured. The positives below are the synthetic
+set (46 Kokoro English/accented + 12 Chinese-voice 林琪/林基). The
+negatives are his real clips, which is the set that decides false wakes.
+The sweep used the browser's fp32 model and the whole segment plus 1 s of
+silence, as `padForSpot` does. It ran on files only, with nothing played.
+
+| Setting                                    | Positives (58) | +babble 10 dB | +babble 5 dB | **His clips (211)** | His noisy copies (48) | Adversarial (52) |
+| ------------------------------------------ | -------------- | ------------- | ------------ | ------------------- | --------------------- | ---------------- |
+| Before: 5 spellings, 0.25 / 1.0            | 46             | 43            | 39           | **0**               | 0                     | 9                |
+| After: 7 spellings, 0.15 / 1.5             | 47             | 44            | 41           | **0**               | 0                     | 12               |
+
+- The threshold barely matters on these sets. Across 0.05–0.30 × score
+  1.0–2.0, his clips gave **0 false wakes at every point**; positives moved
+  by at most 3. With 0 in 211, the 95 % upper bound is about 1.4 per 100
+  clips, so the ≤ 1 per 100 target cannot be told apart from zero yet.
+- **Added:** `L EH1 NG K IY0` ("Lenky") and `l ín k ī`. Neither changed a
+  synthetic hit; they are for how he actually says it.
+- **Not added: `l íng k ī`** (líng kī). With it, 2 of the 12 Chinese-voice
+  positives were lost and none gained, at every per-keyword boost tried
+  (0.5–2.5). It competes with the `l ín …` paths in the search.
+- The cost is near-misses: 3 more adversarial hits (12 of 52). Watch
+  `{ev: "wake-spot"}` for wakes he did not mean.
+- **Next:** record 30–50 real "Linky" utterances through the clip sink
+  (evaluation plan, step 2). Then rerun the sweep
+  (`scripts/local-stt/wake-eval.py`) with an equal number of his
+  non-Linky clips, and set the threshold from that.
 
 ## Sources
 

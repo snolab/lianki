@@ -25,6 +25,7 @@ import {
 } from "../packages/debug-chat/src/wire";
 import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
 import { cleanProofs } from "./speaker-proof";
+import { type WakeReason, isWakeReason } from "../packages/debug-chat/src/wake";
 
 export {
   MAX_AGENT_ID,
@@ -237,6 +238,8 @@ export type PageMessage =
        * (lib/speaker-proof.ts). The hub verifies them; a page-made tag is never taken.
        */
       speakerProof?: string[];
+      /** Why the mic is in that mode (wake.ts WakeReason: "rejects", "wake-word", "kws-failed", …). */
+      wakeReason?: WakeReason;
     }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
@@ -505,6 +508,9 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(timing ? { timing } : {}),
       ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
       ...(speakerProof ? { speakerProof } : {}),
+      ...((m.wake === "active" || m.wake === "passive") && isWakeReason(m.wakeReason)
+        ? { wakeReason: m.wakeReason }
+        : {}),
     };
   }
   if (m.type === "page-error") return parsePageError(m);

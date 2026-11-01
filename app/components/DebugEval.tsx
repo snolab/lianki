@@ -549,9 +549,12 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
       const speakerProof = opts?.source === "stt" ? opts.speakerProof?.slice(0, 8) : undefined;
       // The mic's wake-word mode rides along, so the agent sees it (docs/wake-word.md).
       const mic = (
-        globalThis as { __lkMic?: { view?: () => { state: string; wake?: string } } }
+        globalThis as {
+          __lkMic?: { view?: () => { state: string; wake?: string; wakeReason?: string } };
+        }
       ).__lkMic?.view?.();
       const wake = mic && mic.state !== "off" ? mic.wake : undefined;
+      const wakeReason = wake ? mic?.wakeReason : undefined;
       sock.send(
         JSON.stringify({
           type: "chat",
@@ -562,6 +565,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           ...(timing ? { timing } : {}),
           ...(wake === "active" || wake === "passive" ? { wake } : {}),
           ...(speakerProof?.length ? { speakerProof } : {}),
+          ...(wakeReason ? { wakeReason } : {}),
         }),
       );
       // Its reply is timed against it (latency.ts); main-thread lines only.

@@ -100,6 +100,10 @@ call `getD1()` inside the handler.
 - `app/api/export/yaml` + `app/api/import/yaml` — **DONE** (all repos).
 - `app/api/token/route.ts` — **DONE** (`ApiTokensD1Repo`; the token_hash is the
   D1 id).
+- Bearer auth (`lib/authEmailOrToken.ts` → `lib/apiTokenAuth.ts`) — **DONE**
+  2026-11-02. It read MongoDB until then, so on D1 a token revoked there still
+  passed against the frozen copy. Now it follows `dbBackend()` with no Mongo
+  fallback; `unit/api-token-auth.test.ts`.
 - `app/api/roadmap/route.ts` — **DONE** (`RoadmapGoalsD1Repo`).
 - `app/fsrs.ts` + `app/api/fsrs/[[...all]]` — **DONE**. `app/fsrsNotesD1Collection.ts`
   is a shim implementing the MongoDB Collection subset the handler uses, backed

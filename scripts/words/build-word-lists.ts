@@ -1308,16 +1308,25 @@ for (const lang of ["fr", "es", "de", "en", "ko", "it", "pt", "ru"]) {
   buildFrequencyLang(lang, await loadKaikki(p));
 }
 
-// merge with an existing index so partial (WORDS_ONLY) runs keep other lists
+// merge with an existing index so partial (WORDS_ONLY) runs keep other lists;
+// the phrase decks (kind "phrase", build-phrase-decks.ts) are always kept
 const indexPath = join(OUT, "index.json");
-let lists: ListMeta[] = [];
-if (only && existsSync(indexPath)) {
-  lists = (JSON.parse(readFileSync(indexPath, "utf8")).lists as ListMeta[]).filter(
-    (l) => !index.some((n) => n.id === l.id) && !only.includes(l.lang),
+let lists: (ListMeta & { kind?: string })[] = [];
+if (existsSync(indexPath)) {
+  lists = (
+    JSON.parse(readFileSync(indexPath, "utf8")).lists as (ListMeta & { kind?: string })[]
+  ).filter(
+    (l) =>
+      l.kind === "phrase" ||
+      (!!only && !index.some((n) => n.id === l.id) && !only.includes(l.lang)),
   );
 }
 const order = ["ja", "zh", "fr", "es", "de", "en", "ko", "it", "pt", "ru"];
-// stable sort: language order, then build order (N5→N1, HSK 1→7–9, band 1→6)
-lists = [...lists, ...index].sort((a, b) => order.indexOf(a.lang) - order.indexOf(b.lang));
+// stable sort: language order, word lists before phrase decks, then build
+// order (N5→N1, HSK 1→7–9, band 1→6)
+const isPhrase = (l: ListMeta & { kind?: string }) => (l.kind === "phrase" ? 1 : 0);
+lists = [...lists, ...index].sort(
+  (a, b) => order.indexOf(a.lang) - order.indexOf(b.lang) || isPhrase(a) - isPhrase(b),
+);
 writeFileSync(indexPath, JSON.stringify({ lists }));
 console.log(`index.json: ${lists.length} lists`);

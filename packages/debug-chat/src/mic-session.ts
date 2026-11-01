@@ -32,7 +32,7 @@ import {
 import type { LocalFinal, LocalState } from "./local-stt";
 import type { SpeakerTag } from "./wire";
 import type { KwsState } from "./wake-kws";
-import { type WakeCommand, type WakeMode, type WakeReason, type WakeSpot, createWake } from "./wake";
+import { type SpotResult, type WakeCommand, type WakeMode, type WakeReason, createWake } from "./wake";
 
 /** What the session needs of a local STT client (local-stt.ts LocalStt). */
 export type LocalClient = StreamStt & {
@@ -46,7 +46,7 @@ export type LocalClient = StreamStt & {
 /** globalThis key of the session. */
 export const MIC_SESSION_KEY = "__lkMic";
 /** Bumped when the session's shape changes; an older one is migrated, its stream kept. */
-export const MIC_SESSION_V = 8;
+export const MIC_SESSION_V = 9;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -68,6 +68,8 @@ export type MicView = {
   local?: LocalState;
   /** Active: everything goes to STT. Passive: only "Linky" wakes it (wake.ts). */
   wake: WakeMode;
+  /** Why it is in that mode (its last change), sent with each chat line for the agents. */
+  wakeReason?: WakeReason;
   /** The on-device spotter, once passive mode first asked for it (wake-kws.ts). */
   kws?: Exclude<KwsState, "idle">;
 };
@@ -110,7 +112,7 @@ export type MicDeps = {
    */
   kws?: (onState: (s: KwsState) => void) => {
     load(): Promise<void>;
-    spot(audio: Float32Array): Promise<WakeSpot & { ms?: number; error?: string }>;
+    spot(audio: Float32Array): Promise<SpotResult>;
   };
 };
 
@@ -134,6 +136,7 @@ export function createMicSession(
     error: null,
     resume: false,
     wake: "active",
+    wakeReason: "mic-on",
   };
   let cfg: MicConfig = { label: "" };
   const listeners = new Set<Listener>();
@@ -208,7 +211,7 @@ export function createMicSession(
   };
   const wake = createWake({
     onChange: (v, from, reason) => {
-      emit({ wake: v.mode });
+      emit({ wake: v.mode, wakeReason: v.reason });
       deps.log?.({ ev: "wake", from, to: v.mode, reason });
       if (v.mode === "passive") void spotter()?.load().catch(() => {});
     },
@@ -252,7 +255,7 @@ export function createMicSession(
       prev = s;
       // Listening always starts active: a tap on means "I'm talking to you".
       if (was === "off" && s !== "off") wake.set("active", "mic-on");
-      emit({ state: s, ...(s !== "off" ? { resume: false } : {}) });
+      emit({ state: s, wakeReason: wake.view().reason, ...(s !== "off" ? { resume: false } : {}) });
       deps.onState?.(s, was);
     },
     onText: (t) => (sink ? sink.onText(t) : void held.push(t)),

@@ -90,6 +90,31 @@ export function secretFileProblem(path: string, uid = process.getuid?.() ?? -1):
   return null;
 }
 
+/** The same, before its mode is fixed: a regular file of this user, not a symlink (any mode). */
+export function ownedFileProblem(path: string, uid = process.getuid?.() ?? -1): string | null {
+  const why = secretFileProblem(path, uid);
+  return why?.startsWith("is readable or writable") ? null : why;
+}
+
+/**
+ * Where secrets are kept (~/.cloudflared): a real directory of this user that
+ * no one else can write, or a local process could swap a symlink or a
+ * config in under it.
+ */
+export function secretDirProblem(path: string, uid = process.getuid?.() ?? -1): string | null {
+  let st;
+  try {
+    st = lstatSync(path);
+  } catch (e) {
+    return `cannot read (${(e as NodeJS.ErrnoException).code ?? "error"})`;
+  }
+  if (st.isSymbolicLink()) return "is a symlink";
+  if (!st.isDirectory()) return "is not a directory";
+  if (st.uid !== uid) return "is not owned by this user";
+  if (st.mode & 0o022) return "is writable by group or others";
+  return null;
+}
+
 /** The API token: the env var, else the checked file. */
 export function apiToken(env: Env = process.env): string {
   if (env.CLOUDFLARE_API_TOKEN) return env.CLOUDFLARE_API_TOKEN.trim();
@@ -249,8 +274,14 @@ export async function main(argv: string[], d: { cf?: Cf; env?: Env } = {}) {
   const dryRun = argv.includes("--dry-run");
   const i = argv.indexOf("--token-out");
   const tokenOut = i >= 0 ? argv[i + 1] : undefined;
-  if (cmd === "check-secret") {
-    const why = argv[1] ? secretFileProblem(argv[1]) : "no path given";
+  if (cmd === "check-secret" || cmd === "check-owned" || cmd === "check-dir") {
+    const check =
+      cmd === "check-dir"
+        ? secretDirProblem
+        : cmd === "check-owned"
+          ? ownedFileProblem
+          : secretFileProblem;
+    const why = argv[1] ? check(argv[1]) : "no path given";
     if (why) console.error(`${argv[1] ?? ""} ${why}`);
     return why ? 1 : 0;
   }

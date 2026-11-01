@@ -1342,12 +1342,29 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
       text: "next word",
       source: "stt",
       wake: "passive",
+      wakeReason: "rejects",
     });
-    await s.msg(owner, { type: "chat", id: "w2", text: "typed", wake: "sleepy" });
+    await s.msg(owner, {
+      type: "chat",
+      id: "w2",
+      text: "typed",
+      wake: "sleepy",
+      wakeReason: "rejects",
+    });
+    await s.msg(owner, {
+      type: "chat",
+      id: "w3",
+      text: "woken",
+      wake: "active",
+      wakeReason: "made-up",
+    });
     const stored = [...s.storage.store.entries()]
       .filter(([k]) => k.startsWith("msg:"))
-      .map(([, v]) => v as Record<string, unknown>);
-    expect(stored.map((m) => m.wake)).toEqual(["passive", undefined]);
+      .map(([, v]) => v as Record<string, unknown>)
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    expect(stored.map((m) => m.wake)).toEqual(["passive", undefined, "active"]);
+    // The reason rides only with a mode, and only a known one.
+    expect(stored.map((m) => m.wakeReason)).toEqual(["rejects", undefined, undefined]);
   });
 
   it("a voice line keeps only a speaker tag the Mac signed over exactly its words", async () => {

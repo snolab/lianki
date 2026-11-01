@@ -11,10 +11,15 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -51,7 +56,7 @@ echo "api $*" >> "$STUB_STATE/log"
 case "$1" in
   up) shift; [ "$1" = --token-out ] && { mkdir -p "$(dirname "$2")"; rm -f "$2"; (umask 077; echo "${RUN_TOKEN}" > "$2"); } ;;
   down) [ -n "$STUB_API_FAIL" ] && exit 1; exit 0 ;;
-  check-secret) exec bun "${CF_TUNNEL}" check-secret "$2" ;;
+  check-secret|check-owned|check-dir) exec bun "${CF_TUNNEL}" "$1" "$2" ;;
   status) echo "tunnel: stub" ;;
 esac
 `;
@@ -63,7 +68,8 @@ case "$2" in
   list) [ -f "$STUB_STATE/tunnel" ] && echo '[{"id":"${UUID}","name":"lianki-preview"}]' || echo '[]' ;;
   create) touch "$STUB_STATE/tunnel"; echo '{"AccountTag":"x"}' > "$CLOUDFLARED_DIR/${UUID}.json"; chmod 644 "$CLOUDFLARED_DIR/${UUID}.json" ;;
   delete) rm -f "$STUB_STATE/tunnel" ;;
-  route|cleanup) ;;
+  route) [ -n "$STUB_PLANT" ] && { rm -f "$CLOUDFLARED_DIR/lianki-preview.yml"; ln -s "$STUB_PLANT" "$CLOUDFLARED_DIR/lianki-preview.yml"; }; exit 0 ;;
+  cleanup) ;;
 esac
 `;
 
@@ -248,6 +254,90 @@ describe("scripts/dev/preview-tunnel.sh (cert.pem fallback)", () => {
     expect(existsSync(join(h.cfd, `${UUID}.json`))).toBe(false);
     expect(existsSync(join(h.cfd, "lianki-preview.yml"))).toBe(false);
     expect(r.out).toContain("DNS record preview.lianki.com NOT removed");
+  });
+
+  test("a symlinked cert.pem is refused, and its target's mode is never touched", () => {
+    const env = h.certMode();
+    const target = join(h.root, "elsewhere.pem");
+    writeFileSync(target, "x", { mode: 0o644 });
+    rmSync(join(h.cfd, "cert.pem"));
+    symlinkSync(target, join(h.cfd, "cert.pem"));
+    const r = h.sh("up", env);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("is a symlink");
+    expect(statSync(target).mode & 0o777).toBe(0o644); // chmod never followed the link
+    expect(h.log()).not.toContain("tunnel create");
+    expect(h.proc()).toBeNull();
+  });
+
+  test("a symlinked credentials file is refused before any chmod", () => {
+    const env = h.certMode();
+    const target = join(h.root, "elsewhere.json");
+    writeFileSync(target, "{}", { mode: 0o644 });
+    writeFileSync(join(h.root, "state", "tunnel"), ""); // the tunnel exists already
+    symlinkSync(target, join(h.cfd, `${UUID}.json`));
+    const r = h.sh("up", env);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("is a symlink");
+    expect(statSync(target).mode & 0o777).toBe(0o644);
+    expect(h.proc()).toBeNull();
+  });
+
+  test("a symlinked config left at the name is replaced, never written through", () => {
+    const env = h.certMode();
+    const target = join(h.root, "victim.txt");
+    writeFileSync(target, "untouched", { mode: 0o644 });
+    symlinkSync(target, join(h.cfd, "lianki-preview.yml"));
+    const r = h.sh("up", env);
+    expect({ code: r.code, out: r.code ? r.out : "" }).toEqual({ code: 0, out: "" });
+    expect(readFileSync(target, "utf8")).toBe("untouched");
+    const conf = join(h.cfd, "lianki-preview.yml");
+    expect(lstatSync(conf).isSymbolicLink()).toBe(false);
+    expect(statSync(conf).mode & 0o777).toBe(0o600);
+    // No temp files left behind.
+    expect(readdirSync(h.cfd).filter((f) => f.startsWith(".lianki-preview.yml."))).toEqual([]);
+  });
+
+  test("a config swapped in after it was written (a race) stops the start", () => {
+    const env = h.certMode();
+    const planted = join(h.root, "planted.yml");
+    writeFileSync(planted, "ingress:\n  - service: http://127.0.0.1:22\n", { mode: 0o600 });
+    const r = h.sh("up", { ...env, STUB_PLANT: planted });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("refusing to start");
+    expect(h.proc()).toBeNull(); // cloudflared never ran with it
+  });
+
+  test("a group- or world-writable ~/.cloudflared is refused before anything", () => {
+    const env = h.certMode();
+    for (const mode of [0o775, 0o757]) {
+      chmodSync(h.cfd, mode);
+      const r = h.sh("up", env);
+      expect(r.code).toBe(1);
+      expect(r.out).toContain("is writable by group or others");
+    }
+    chmodSync(h.cfd, 0o755);
+    expect(h.log()).not.toContain("tunnel create");
+    expect(statSync(join(h.cfd, "cert.pem")).mode & 0o777).toBe(0o644); // untouched
+  });
+
+  test("a symlinked ~/.cloudflared is refused", () => {
+    const env = h.certMode();
+    const real = join(h.root, "real-cfd");
+    renameSync(h.cfd, real);
+    symlinkSync(real, h.cfd);
+    const r = h.sh("up", env);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("is a symlink");
+  });
+
+  test("down only ever deletes a credentials file named by a tunnel UUID", () => {
+    const env = h.certMode();
+    const victim = join(h.root, "victim.json");
+    writeFileSync(victim, "keep");
+    writeFileSync(join(h.cfd, "lianki-preview.yml"), `tunnel: ../victim\n`, { mode: 0o600 });
+    h.sh("down", env);
+    expect(existsSync(victim)).toBe(true);
   });
 
   test("once the API token exists, down removes the cert-made tunnel and DNS through the API", () => {

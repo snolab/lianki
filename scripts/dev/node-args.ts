@@ -57,6 +57,9 @@ export function chatLine(
     ...(m.source === "stt" ? { source: "stt" } : {}),
     // A voice line's timestamps on the page's clock (VoiceTiming; latency.ts).
     ...(m.timing && typeof m.timing === "object" ? { timing: m.timing } : {}),
+    // The mic's wake-word mode when it was sent (docs/wake-word.md), and why it was in it.
+    ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
+    ...(typeof m.wakeReason === "string" ? { wakeReason: m.wakeReason } : {}),
     ...(m.edited && typeof m.edited === "object" ? { raw: m.raw, edited: m.edited } : {}),
     ...(observed ? { observed: true } : {}),
   };

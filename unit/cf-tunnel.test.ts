@@ -25,6 +25,8 @@ import {
   ingress,
   main,
   makeCf,
+  ownedFileProblem,
+  secretDirProblem,
   secretFileProblem,
   up,
   writeSecretFile,
@@ -237,6 +239,49 @@ describe("token files", () => {
     expect(secretFileProblem(join(d, "l"))).toBe("is a symlink");
     expect(secretFileProblem(join(d, "missing"))).toContain("cannot read");
     expect(secretFileProblem(d)).toBe("is not a regular file");
+  });
+
+  test("ownedFileProblem ignores the mode only; secretDirProblem wants our own unwritable directory", () => {
+    const d = dir();
+    const f = join(d, "f");
+    writeFileSync(f, "x", { mode: 0o644 });
+    expect(ownedFileProblem(f)).toBeNull();
+    symlinkSync(f, join(d, "l"));
+    expect(ownedFileProblem(join(d, "l"))).toBe("is a symlink");
+    expect(ownedFileProblem(f, (process.getuid?.() ?? 0) + 1)).toBe("is not owned by this user");
+    chmodSync(d, 0o700);
+    expect(secretDirProblem(d)).toBeNull();
+    chmodSync(d, 0o770);
+    expect(secretDirProblem(d)).toBe("is writable by group or others");
+    chmodSync(d, 0o757);
+    expect(secretDirProblem(d)).toBe("is writable by group or others");
+    chmodSync(d, 0o700);
+    expect(secretDirProblem(d, (process.getuid?.() ?? 0) + 1)).toBe("is not owned by this user");
+    expect(secretDirProblem(f)).toBe("is not a directory");
+    const ld = join(mkdtempSync(join(tmpdir(), "cf-tunnel-")), "ld");
+    symlinkSync(d, ld);
+    expect(secretDirProblem(ld)).toBe("is a symlink");
+    expect(secretDirProblem(join(d, "missing"))).toContain("cannot read");
+  });
+
+  test("check-dir and check-owned need no API token", async () => {
+    const d = dir();
+    chmodSync(d, 0o700);
+    const f = join(d, "f");
+    writeFileSync(f, "x", { mode: 0o644 });
+    const err = console.error;
+    console.error = () => {};
+    try {
+      expect(await main(["check-dir", d], { env: {} })).toBe(0);
+      expect(await main(["check-owned", f], { env: {} })).toBe(0);
+      expect(await main(["check-secret", f], { env: {} })).toBe(1);
+      chmodSync(d, 0o777);
+      expect(await main(["check-dir", d], { env: {} })).toBe(1);
+      expect(await main(["check-dir"], { env: {} })).toBe(1);
+    } finally {
+      console.error = err;
+      chmodSync(d, 0o700);
+    }
   });
 
   test("the API token: env first, else a checked file", () => {

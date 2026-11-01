@@ -1525,6 +1525,7 @@ export class DebugHub {
           ...(m.source ? { source: m.source } : {}),
           ...(m.timing ? { timing: m.timing } : {}),
           ...(m.wake ? { wake: m.wake } : {}),
+          ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
           // Only a tag the Mac signed over these words (lib/speaker-proof.ts); voice
           // approvals later must rely on this, never on what a page says.
           ...(speaker ? { speaker } : {}),
