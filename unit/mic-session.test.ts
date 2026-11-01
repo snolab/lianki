@@ -219,6 +219,35 @@ describe("mic session after a reload", () => {
   });
 });
 
+describe("mic session: the local STT kept open while the mic is on", () => {
+  it("mic on keeps it, a URL set while on keeps the new client, off and a removed URL stop it", async () => {
+    const made: { url: string; keeps: boolean[]; closed: boolean }[] = [];
+    const f = fakes({
+      localStt: (url) => {
+        const c = { url, keeps: [] as boolean[], closed: false };
+        made.push(c);
+        return {
+          begin: () => null,
+          keep: (on: boolean) => void c.keeps.push(on),
+          close: () => void (c.closed = true),
+          state: () => "idle" as const,
+          subscribe: () => () => {},
+        };
+      },
+    });
+    const s = createMicSession(f.deps);
+    s.configure({ label: "", localStt: "wss://a.ts.net/x" });
+    expect(made[0].keeps).toEqual([]); // mic off: nothing opened
+    await s.toggle();
+    expect(made[0].keeps).toEqual([true]);
+    s.configure({ label: "", localStt: "wss://b.ts.net/x" });
+    expect(made[0].closed).toBe(true);
+    expect(made[1].keeps).toEqual([true]);
+    await s.toggle(); // off
+    expect(made[1].keeps).toEqual([true, false]);
+  });
+});
+
 describe("mic session wiring", () => {
   it("tells subscribers, the voice hooks and the upload what they need", async () => {
     const states: string[] = [];

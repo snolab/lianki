@@ -1177,6 +1177,17 @@ describe("createMic: streaming to the local STT", () => {
     expect(h.texts).toEqual(["这个麦克风。"]);
   });
 
+  it("mic on keeps the socket open (keep(true)); mic off stops reopening it (keep(false))", async () => {
+    const s = fakeStream();
+    const keeps: boolean[] = [];
+    const h = harness({ stream: () => ({ ...s.stt, keep: (on: boolean) => void keeps.push(on) }) });
+    await h.mic.toggle();
+    expect(keeps).toEqual([true]);
+    expect(s.log).toEqual([]); // keep replaces warm
+    await h.mic.toggle();
+    expect(keeps).toEqual([true, false]);
+  });
+
   it("not connected: the old path (chunk partials, no local final)", async () => {
     const s = fakeStream(false);
     const h = harness({ stream: () => s.stt });
