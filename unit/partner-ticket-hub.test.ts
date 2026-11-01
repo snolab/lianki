@@ -318,6 +318,43 @@ describe("DebugHub: an embedded page is chat-only", () => {
     expect((embed.last("chat") as { message: { id: string } }).message.id).toBe("e1");
   });
 
+  it("a cookie page framed by another site (frame=foreign) is chat-only: no pairing, no Allow, no eval", async () => {
+    const { hub, sockets, msg } = setup();
+    const framed = async () => {
+      await hub.fetch(
+        new Request("https://lianki.com/api/version/debug?label=%2Fwords&frame=foreign", {
+          headers: { "x-debug-user": "u1", "x-debug-owner": "1" },
+        }),
+      );
+      return sockets.at(-1)!;
+    };
+    const f = await framed();
+    // Only a framed page open: a pairing is refused outright (nothing could show it but the frame).
+    await hub.fetch(new Request("https://lianki.com/api/version/debug/control?label=agent"));
+    const lone = sockets.at(-1)!;
+    expect(lone.closed).toBe(4404);
+    // With a real owner page too, the framed one sees no pairing and cannot Allow it.
+    const owner = await (async () => {
+      await hub.fetch(
+        new Request("https://lianki.com/api/version/debug?label=%2Flist", {
+          headers: { "x-debug-user": "u1", "x-debug-owner": "1" },
+        }),
+      );
+      return sockets.at(-1)!;
+    })();
+    await hub.fetch(new Request("https://lianki.com/api/version/debug/control?label=agent2"));
+    const ctl = sockets.at(-1)!;
+    const pair = (owner.last("state") as { pending: { pair: string } }).pending.pair;
+    for (const s of f.sent.filter((m) => m.type === "state"))
+      expect(Object.keys(s).sort()).toEqual(["listeners", "pending", "sessions", "type"]);
+    await msg(f, { type: "allow", pair });
+    expect(ctl.last("approved")).toBeUndefined();
+    await msg(owner, { type: "allow", pair });
+    await msg(ctl, { type: "eval", code: "1" });
+    expect(owner.last("eval")).toBeTruthy();
+    expect(f.sent.some((m) => m.type === "eval" || m.type === "pending")).toBe(false);
+  });
+
   it("a raw ticket client never sees pairings, sessions, pages, nodes or ids, in any state", async () => {
     const { hub, sockets, embedReq, ownerPage, msg } = setup();
     const owner = await ownerPage();

@@ -266,6 +266,20 @@ own document; the host page never sees them.
   on the ticket alone (`offersPartner`), chat only, as before. A hostile
   parent that gets its hello in first can only keep the frame from working;
   it never receives a ticket or typed text.
+- **No owner boots in the frame.** `/embed/partner` is framable by any site,
+  so the root layout mounts none of the owner's page boots there
+  (`OwnerBoots`: DebugEval with its cookie socket, pairing / Allow UI, eval
+  and hot islands; the service worker; the version notice). middleware.ts
+  sets `x-lianki-partner-frame` from the path alone (a request can neither
+  set nor clear it), and app/layout.tsx skips `OwnerBoots` on it. It does
+  not rely on third-party cookie blocking.
+- **Defence in depth.** DebugEval never connects from a frame whose
+  ancestors are not its own origin (`lib/frame-context.ts`), and says where
+  it sits (`&frame=top|same|foreign`). The hub treats a `frame=foreign` page
+  as chat-only, like a ticket socket (no pairing, no Allow, no eval, minimal
+  state), and refuses a pairing when no real owner page is open.
+  Tests: `unit/partner-frame-route.test.ts`, `unit/partner-ticket-hub.test.ts`;
+  the real route in a frame: `scripts/qa/qa-partner-frame-route.ts` (in qa:all).
 - **Blocked → read-only**: the shadow widget (`mountPartner({readOnly:
   true})`) shows the replies, and in place of the input a note ("This site
   blocks private typing…") with a link to reply on lianki.com. No key is

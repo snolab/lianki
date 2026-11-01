@@ -39,6 +39,7 @@ import {
   typedText,
 } from "@lianki/debug-chat/page-errors";
 import { grantUntil } from "@/lib/islands/rules";
+import { frameContext } from "@/lib/frame-context";
 import { islandStore } from "@/lib/islands/store";
 import { useIslands } from "@/lib/islands/useIslands";
 
@@ -248,7 +249,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
         clipsQ = clipsConnectQuery();
       } catch {}
       const sock = new WebSocket(
-        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}${clipsQ}`,
+        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}${clipsQ}&frame=${frameContext()}`,
       );
       ws = sock;
       sockRef.current = sock;
@@ -433,7 +434,10 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
       setState(null);
       sock?.close();
     };
-    const wanted = () => document.visibilityState === "visible" && debugOn();
+    // Never inside another site's frame: no cookie socket, no pairing or Allow UI
+    // a parent could clickjack (lib/frame-context.ts). The hub refuses too.
+    const wanted = () =>
+      document.visibilityState === "visible" && debugOn() && frameContext() !== "foreign";
     /**
      * Tell the hub how this window is doing, while the socket is still open:
      * hidden (screen off, app in the background) keeps a recording session

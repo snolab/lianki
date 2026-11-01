@@ -11,6 +11,10 @@ import { frameShell } from "../../src/partner-frame";
     win: window,
     origin,
     label: `${location.host}${location.pathname}`,
-    ticket: async () => "TK-frame",
+    ticket: async () => {
+      const w = window as unknown as { __tickets?: number };
+      w.__tickets = (w.__tickets ?? 0) + 1;
+      return "TK-frame";
+    },
     gripLabel: "Drag to move; double-click to minimize",
   }).result;

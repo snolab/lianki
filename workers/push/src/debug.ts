@@ -872,7 +872,11 @@ export class DebugHub {
    * history and its audience's state. A blocked friend is told and closed.
    * Called without an identity (the unit tests' shorthand) it is an owner page.
    */
-  async connectPage(ws: Socket, url: URL, who?: Identity, embed = false) {
+  async connectPage(ws: Socket, url: URL, who?: Identity, ticketSocket = false) {
+    // A page that says another site frames it (lib/frame-context.ts) is chat-only
+    // like a ticket socket: no pairing, no Allow, no eval, no clips (defence in
+    // depth: the page itself never connects from such a frame).
+    const embed = ticketSocket || url.searchParams.get("frame") === "foreign";
     const label = cleanLabel(url.searchParams.get("label"), MAX_LABEL);
     // The tab's own id (kept across reloads), so "this page" grants survive them.
     const tab = url.searchParams.get("tab");
@@ -947,7 +951,8 @@ export class DebugHub {
     if (token) return this.resume(ws, url, token);
     const label = cleanLabel(url.searchParams.get("label"), 80) || "unnamed controller";
     if (!this.clearPending(ws, OWNER_THREAD)) return;
-    if (this.pages(OWNER_THREAD, ws).length === 0) {
+    // Only a real owner page can answer a pairing: never a ticket socket or a framed page.
+    if (this.pages(OWNER_THREAD, ws).filter((p) => !p.a.embed).length === 0) {
       send(ws, { type: "error", error: "no owner page in debug mode is open" });
       return close(ws, 4404, "no debug page");
     }

@@ -6,7 +6,9 @@ import {
   DEFAULT_LOCALE,
   LOCALE_HEADER,
   LOCALE_PARAM,
+  PARTNER_FRAME_HEADER,
   isAppRoute,
+  isPartnerFramePath,
   localeFromAcceptLanguage,
 } from "@/lib/app-locale";
 
@@ -58,6 +60,9 @@ export function middleware(request: NextRequest) {
     const locale = appRouteLocale(request);
     const headers = new Headers(request.headers);
     headers.set(LOCALE_HEADER, locale);
+    // Decided here from the path alone; a request can never set or clear it itself.
+    headers.delete(PARTNER_FRAME_HEADER);
+    if (isPartnerFramePath(pathname)) headers.set(PARTNER_FRAME_HEADER, "1");
 
     const response = NextResponse.next({ request: { headers } });
     // An explicit ?lang= (a language switch, or a shared link) sticks, so the
