@@ -310,8 +310,8 @@ bun scripts/dev/eval.ts chat --label "agent on $(hostname -s)" --out /tmp/lianki
 # Reply (uses the saved grant; exits once the hub has it):
 bun scripts/dev/eval.ts say "On it — fixing the swipe now."
 echo "multi-line reply" | bun scripts/dev/eval.ts say -
-# FYI / progress / deploy notices: shown, never read aloud. --loud only when
-# urgent or it needs his confirmation (docs/dev-debug-widget.md, "Quiet lines and quiet hours"):
+# FYI / progress / deploy notices: shown, never read aloud
+# (docs/dev-debug-widget.md, "Quiet lines"):
 bun scripts/dev/eval.ts say --quiet "PR #390 opened, CI running."
 
 # A line with "source":"stt" was spoken: polish its misheard words first
