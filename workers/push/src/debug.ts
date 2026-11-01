@@ -203,6 +203,8 @@ import {
 } from "../../../packages/debug-chat/src/ask";
 import type { AnsweredEvent, SpeakerTag } from "../../../packages/debug-chat/src/wire";
 import { verifySpeakerProofs } from "../../../lib/speaker-proof";
+import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
+import { EMBED_HEADER } from "./auth";
 import {
   CLIPS_GONE_MS,
   CLIPS_HIDDEN_MS,
@@ -272,6 +274,12 @@ type PageAtt = {
   user?: string;
   /** The page said it is going (pagehide): it no longer holds its session open. */
   leaving?: boolean;
+  /**
+   * The Learning Partner on another site (a ticket socket, index.ts): the
+   * owner's thread, chat only. It never gets eval, never counts for a
+   * pairing or a grant's pages, never joins a recording session.
+   */
+  embed?: true;
 };
 /** A recording window session (`clips:<sid>`), see "Voice-clip recording" above. */
 type ClipsRec = {
@@ -423,6 +431,16 @@ function clipsParse<R>(raw: unknown, f: (m: Record<string, unknown>) => R | null
     return null;
   }
 }
+/**
+ * The state one page is sent. An embedded page (a ticket socket on another
+ * site) gets the listener count only: never a pairing, a session, a grant,
+ * the page list (labels, ids) or the nodes, and no `self`.
+ */
+function pageState(a: PageAtt, s: HubState): HubState & { self?: string } {
+  if (a.embed) return { type: "state", pending: null, sessions: [], listeners: s.listeners ?? 0 };
+  return { ...s, self: a.id };
+}
+
 /** Whose a socket is: a page's thread, or the audience a controller was paired for. */
 const audience = (a: Att) => (a.role === "page" ? a.thread : (a.forUser ?? OWNER_THREAD));
 
@@ -506,7 +524,8 @@ export class DebugHub {
    * was authorized for some pages only and this is its own audience's thread.
    */
   private reach(c: ControllerAtt, thread: string) {
-    const all = this.pages(thread);
+    // An embedded page (another site) is never reached by eval.
+    const all = this.pages(thread).filter((p) => !p.a.embed);
     // A chat grant reaches every page (one made before that rule may still carry pages).
     if (!c.pages || c.scope === "chat" || thread !== audience(c)) return all;
     return all.filter((p) => p.a.id && c.pages?.includes(p.a.id));
@@ -560,11 +579,14 @@ export class DebugHub {
             scope: "eval",
             ...(g.pages ? { pages: g.pages } : {}),
           });
-    const pages = this.pages(who, except).map(({ a }) => ({
-      id: a.id ?? "",
-      label: a.label,
-      at: a.at ?? 0,
-    }));
+    // Embedded pages are not listed: nothing can be granted to them.
+    const pages = this.pages(who, except)
+      .filter(({ a }) => !a.embed)
+      .map(({ a }) => ({
+        id: a.id ?? "",
+        label: a.label,
+        at: a.at ?? 0,
+      }));
     const agents = this.agents(except);
     const nodes = [...new Set(agents.map((c) => c.a.node).filter((n): n is string => !!n))].sort();
     return {
@@ -583,7 +605,7 @@ export class DebugHub {
     for (const { ws, a } of this.sockets("page", except)) {
       let s = by.get(a.thread);
       if (!s) by.set(a.thread, (s = this.state(a.thread, except)));
-      send(ws, { ...s, self: a.id });
+      send(ws, pageState(a, s));
     }
   }
 
@@ -841,12 +863,43 @@ export class DebugHub {
         ...(Number.isFinite(sessionUntil) && sessionUntil > 0 ? { sessionUntil } : {}),
       };
     }
+    // A ticket socket from another site (index.ts verified the signature):
+    // its ticket is burned here, once, before the upgrade is accepted.
+    const ticket = control ? null : req.headers.get(EMBED_HEADER);
+    const embed = ticket !== null;
+    if (embed && !(await this.burnTicket(ticket)))
+      return new Response("forbidden", { status: 403 });
     const pair = new WebSocketPair();
     const ws = pair[1];
     this.ctx.acceptWebSocket(ws);
     if (control) await this.connectController(ws, url, req.headers.get(TOKEN_HEADER));
-    else await this.connectPage(ws, url, who);
-    return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit);
+    else await this.connectPage(ws, url, who, embed);
+    // The browser fails a socket whose offered subprotocol is not selected.
+    return new Response(null, {
+      status: 101,
+      webSocket: pair[0],
+      ...(embed ? { headers: { "sec-websocket-protocol": PARTNER_SUBPROTOCOL } } : {}),
+    } as ResponseInit);
+  }
+
+  /**
+   * A partner ticket (`<jti>.<exp>`, from index.ts) is good once: its jti is
+   * kept until it expires. Expired ones are swept as new ones arrive.
+   */
+  async burnTicket(raw: string): Promise<boolean> {
+    const at = raw.lastIndexOf(".");
+    const jti = raw.slice(0, at);
+    const exp = Number(raw.slice(at + 1));
+    const t = this.now();
+    if (at <= 0 || !/^[A-Za-z0-9_-]{8,64}$/.test(jti) || !Number.isFinite(exp)) return false;
+    if (exp * 1000 + STT_TICKET_SKEW_S * 1000 < t) return false;
+    const key = `pjti:${jti}`;
+    if ((await this.ctx.storage.get<number>(key)) !== undefined) return false;
+    await this.ctx.storage.put(key, exp);
+    const old = await this.ctx.storage.list<number>({ prefix: "pjti:", limit: 200 });
+    for (const [k, e] of old)
+      if (e * 1000 + STT_TICKET_SKEW_S * 1000 < t) await this.ctx.storage.delete(k);
+    return true;
   }
 
   /**
@@ -1081,7 +1134,11 @@ export class DebugHub {
    * history and its audience's state. A blocked friend is told and closed.
    * Called without an identity (the unit tests' shorthand) it is an owner page.
    */
-  async connectPage(ws: Socket, url: URL, who?: Identity) {
+  async connectPage(ws: Socket, url: URL, who?: Identity, ticketSocket = false) {
+    // A page that says another site frames it (lib/frame-context.ts) is chat-only
+    // like a ticket socket: no pairing, no Allow, no eval, no clips (defence in
+    // depth: the page itself never connects from such a frame).
+    const embed = ticketSocket || url.searchParams.get("frame") === "foreign";
     const label = cleanLabel(url.searchParams.get("label"), MAX_LABEL);
     // The tab's own id (kept across reloads), so "this page" grants survive them.
     const tab = url.searchParams.get("tab");
@@ -1121,10 +1178,13 @@ export class DebugHub {
         ...me,
         id,
         at: this.now(),
-        // The owner's sign-in session: what an eval grant's renewal is bound to.
-        ...(who?.owner && who.session
-          ? { session: who.session, sessionUntil: who.sessionUntil ?? 0, user: who.userId }
-          : {}),
+        // A chat-only page (a ticket socket, or a page another site frames) never
+        // carries the owner's session: no eval grant is ever bound to or renewed on it.
+        ...(embed
+          ? { embed: true as const }
+          : who?.owner && who.session
+            ? { session: who.session, sessionUntil: who.sessionUntil ?? 0, user: who.userId }
+            : {}),
       } satisfies PageAtt);
     const thread = audience(att(ws) as PageAtt);
     // The page's own avatar (older pages ignore an unknown type).
@@ -1132,7 +1192,7 @@ export class DebugHub {
     // A granted page is back: its pairings' grace clock stops at once.
     this.sweep();
     // Everyone sees the new page in their list; this one gets its state first.
-    send(ws, { ...this.state(thread), self: id });
+    send(ws, pageState(att(ws) as PageAtt, this.state(thread)));
     send(ws, { type: "history", messages: await this.history(thread) });
     this.broadcast(ws);
     // First page since the hub woke: list the sleeping eval grants too.
@@ -1142,10 +1202,12 @@ export class DebugHub {
     }
     await this.pageBack(thread, label);
     // The owner's window session: recording follows it across URLs and origins.
-    if (thread === OWNER_THREAD) await this.clipsJoin(ws, url);
-    // The device that approved an eval grant is back: renew what is due on it.
+    if (thread === OWNER_THREAD && !embed) await this.clipsJoin(ws, url);
+    // The device that approved an eval grant is back: renew what is due on it
+    // (never from a chat-only page: it carries no session).
     const joined = att(ws);
     if (
+      !embed &&
       joined?.role === "page" &&
       joined.thread === OWNER_THREAD &&
       joined.session &&
@@ -1168,7 +1230,8 @@ export class DebugHub {
     if (token) return this.resume(ws, url, token);
     const label = cleanLabel(url.searchParams.get("label"), 80) || "unnamed controller";
     if (!this.clearPending(ws, OWNER_THREAD)) return;
-    if (this.pages(OWNER_THREAD, ws).length === 0) {
+    // Only a real owner page can answer a pairing: never a ticket socket or a framed page.
+    if (this.pages(OWNER_THREAD, ws).filter((p) => !p.a.embed).length === 0) {
       send(ws, { type: "error", error: "no owner page in debug mode is open" });
       return close(ws, 4404, "no debug page");
     }
@@ -1451,6 +1514,12 @@ export class DebugHub {
   }
 
   private fromPage(ws: Socket, page: PageAtt, raw: unknown): void | Promise<void> {
+    // An embedded page (another site) may only chat and say where it is:
+    // no answers, no pairings, no results, no clips, no page errors.
+    if (page.embed) {
+      const em = parsePageMessage(raw);
+      if (!em || (em.type !== "chat" && em.type !== "page")) return;
+    }
     const cm = clipsParse(raw, parseClipsPageMessage);
     if (cm) return page.thread === OWNER_THREAD ? this.clipsFromPage(ws, page, cm) : undefined;
     const m = parsePageMessage(raw);
@@ -1628,7 +1697,11 @@ export class DebugHub {
    */
   private grantPages(page: PageAtt, want: string[] | "all" | undefined) {
     if (want === undefined || want === "all") return undefined;
-    const open = new Set(this.pages(page.thread).map((p) => p.a.id));
+    const open = new Set(
+      this.pages(page.thread)
+        .filter((p) => !p.a.embed)
+        .map((p) => p.a.id),
+    );
     const ids = want.filter((id) => open.has(id));
     return ids.length ? [...new Set(ids)] : page.id ? [page.id] : undefined;
   }
@@ -1943,7 +2016,7 @@ export class DebugHub {
           : "the page you were authorized for is not connected now; the pairing ends if it stays away 5 min",
       });
     for (const p of reach) {
-      if (!matchesTarget(p.a.label, m.value.target)) continue;
+      if (p.a.embed || !matchesTarget(p.a.label, m.value.target)) continue;
       send(p.ws, { type: "eval", id, code: m.value.code, to: c.pair });
       labels.push(p.a.label);
     }

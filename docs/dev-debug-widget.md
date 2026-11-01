@@ -181,6 +181,164 @@ userscript loader apply ([dev-userscript-loader.md](dev-userscript-loader.md)):
 the server binds `::`, and if the tunnel is remotely managed, its port must
 match. The URL is public, but it serves only the widget code.
 
+## On every site (the userscript)
+
+Owner, 2026-11-01: the Learning Partner renders on every site through the
+userscript, without touching the site's CSS or being touched by it.
+
+**Who gets it.** Off for everyone by default. It runs only when (1) debug
+mode is on for that browser on lianki.com (`lk:agent`/`lk:debug` = "1"; the
+userscript mirrors it into its own storage as `lianki_partner_on` when he
+visits lianki.com), (2) `POST /api/debug/partner-ticket` answers with a
+ticket, which it does for the owner only (404 for anyone else), and (3) it is
+the top window and not a site he hid it on (the note's ×, `lianki_partner_hidden`).
+
+**Files.** `src/partner.ts` (the userscript's side: switch, ticket, fetch,
+mount), `packages/debug-chat/src/embed/` (`isolation.ts` the shadow host,
+styles and key guard; `guard.ts` when it may run and why not;
+`partner-client.ts` the socket; `partner-embed.tsx` the entry),
+`scripts/build-partner-embed.ts` (the build), `scripts/qa/qa-partner-embed.ts`
+(`bun run qa:partner`, silent, against a hostile fixture page).
+
+**Isolation.** One plain `<div>` on `<html>` (never a custom tag: a page could predefine one and take the root through attachInternals), its style set
+inline with `!important` through the CSSOM (beats `* { all: unset
+!important }`; CSP does not govern the CSSOM), and a **closed** shadow root.
+Inside: `:host { all: initial }`, a reset in `@layer base` (under Tailwind's
+utilities), the font stack `system-ui` first (a generic family no page
+`@font-face` can redefine), and every `rem` of the widget's CSS rewritten to
+px, so the page's `html { font-size }` changes nothing. All CSS goes into the
+root as constructed sheets (`adoptedStyleSheets`, which CSP `style-src` does
+not block), else a `<style>` inside the root. `:root` becomes `:host`;
+`@font-face`, `@property` and `@import` are dropped, so nothing leaks out.
+
+**Keys.** Keyboard events are stopped at the shadow root in the bubble phase,
+after the widget's own handlers and before the page's document/window
+listeners. Only events from inside the root pass there, so a key typed on the
+page is never touched. Nothing listens on document or window for keys; the
+tree's Escape (a window listener) acts only while focus is inside the chat
+(`embedded`). Limit: a page listener in the capture phase still sees the key
+first (as a key on a custom element).
+
+**What the widget may reach.** The bundle is one function; inside it,
+`localStorage` is the userscript's GM storage (`lianki_partner_ls:*`),
+`sessionStorage` is memory, and `fetch`, `EventSource`, `WebSocket`,
+`XMLHttpRequest` throw, and `navigator` has no `mediaDevices`/`sendBeacon`.
+`window.X`/`globalThis.X`/`self.X` of those names are rewritten at build
+time. So nothing lands in the site's storage and no request goes to the site.
+`embedded` also drops the mic and voice-clip recording.
+
+**Auth.** The userscript fetches a 60 s single-use ticket with
+GM_xmlhttpRequest (its lianki.com session or `lk:token`, header
+`x-lianki-userscript: 1`), signed with the STT ticket key under another
+audience (`lianki-partner`, `lib/stt-ticket.ts`). It is offered in
+`Sec-WebSocket-Protocol: lianki-partner, <ticket>`, never in the URL.
+lianki-push (`workers/push/src/auth.ts` `partnerTicket`) verifies it with
+`PARTNER_TICKET_PUB` and the hub burns its jti (`pjti:*`) before accepting.
+The split is strict: from https://lianki.com only the cookie counts; from any
+other origin only a ticket. A ticket socket is the owner's thread, **chat
+only**: the hub sends it no eval, lists it in no page list, never counts it
+for a grant, and drops everything it sends except `chat` and `page`
+(`unit/partner-ticket-hub.test.ts`). Its `state`, on connect and in every
+broadcast, is `{type, pending: null, sessions: [], listeners}` only: no
+pairing, session, grant, page label or id, node or `self` (`pageState` in
+`workers/push/src/debug.ts`). The label is host + path, never the query.
+
+**The frame: private typing (owner, 2026-11-01).** A shadow widget cannot
+keep keys private: the host page's capture listeners on document or window
+see every `KeyboardEvent.key` (and composed `input` events) before any
+guard. So the chat runs in a **lianki.com frame**, `/embed/partner`
+(`app/embed/partner/`), the one route any site may frame
+(`frame-ancestors *`, next.config.mjs). Keys typed there go to the frame's
+own document; the host page never sees them.
+
+- **Shell** (`src/partner-frame.ts`, trusted userscript code, plain DOM): a
+  plain div with a closed root holding a grip and the iframe. It keeps the
+  position (drag the grip; kept in `lianki_partner_pos`), minimize
+  (double-click the grip) and the iframe's size (the frame reports its
+  chat's box, so the rest of the page keeps its clicks).
+- **Handshake** (`embed/frame-protocol.ts`, `embed/frame-guest.ts`): the frame
+  posts `{lk:"partner-frame-up"}` to its parent (nothing secret); the shell
+  checks it came from its own iframe on the app origin and answers with
+  `{lk:"partner-hello", label}` and a `MessagePort`, to that origin only; the
+  frame says `ready` on the port. No `up` within 800 ms of the frame's load
+  (10 s overall), or a CSP report refusing the frame (`frame-src`,
+  `child-src`), means blocked. The handshake decides, not a site list: he
+  runs an extension that blocks frames on some sites.
+- **Tickets**: the frame holds no session (third-party: no cookie). It asks
+  for a ticket on the port; the shell fetches one with GM_xmlhttpRequest and
+  writes it into its own port only. The frame's socket comes from
+  https://lianki.com with the partner subprotocol, so lianki-push judges it
+  on the ticket alone (`offersPartner`), chat only, as before. A hostile
+  parent that gets its hello in first can only keep the frame from working;
+  it never receives a ticket or typed text.
+- **No owner boots in the frame.** `/embed/partner` is framable by any site,
+  so the root layout mounts none of the owner's page boots there
+  (`OwnerBoots`: DebugEval with its cookie socket, pairing / Allow UI, eval
+  and hot islands; the service worker; the version notice). middleware.ts
+  sets `x-lianki-partner-frame` from the path alone (a request can neither
+  set nor clear it), and app/layout.tsx skips `OwnerBoots` on it. It does
+  not rely on third-party cookie blocking.
+- **Defence in depth.** DebugEval never connects from a frame whose
+  ancestors are not its own origin (`lib/frame-context.ts`), and says where
+  it sits (`&frame=top|same|foreign`). The hub treats a `frame=foreign` page
+  as chat-only, like a ticket socket (no pairing, no Allow, no eval, minimal
+  state), and refuses a pairing when no real owner page is open.
+  Tests: `unit/partner-frame-route.test.ts`, `unit/partner-ticket-hub.test.ts`;
+  the real route in a frame: `scripts/qa/qa-partner-frame-route.ts` (in qa:all).
+- **Blocked → read-only**: the shadow widget (`mountPartner({readOnly:
+  true})`) shows the replies, and in place of the input a note ("This site
+  blocks private typing…") with a link to reply on lianki.com. No key is
+  asked for on such a site.
+- **ScriptCat's network rules** ("移除 CSP、改写请求头"): an options-page
+  feature only (Tools → Network rules), with actions to remove or set whole
+  response headers; no metadata key or GM API lets a script add one, and a
+  DNR rule cannot add one source to one directive (a second CSP header only
+  narrows). So nothing is added for it; the handshake still decides.
+
+**Where it must not run.** `guard.ts` decides, and a small glass note says
+why instead of the chat (strings `EmbedStrings` in `ui-strings.ts`, by the
+browser's language):
+
+| Blocker     | When                                                                                         |
+| ----------- | -------------------------------------------------------------------------------------------- |
+| `pageRealm` | the manager runs the script in the page's own JS realm (the site could patch WebSocket, read memory) |
+| `connect`   | a CSP `connect-src` report names the hub, or the socket constructor throws                  |
+| `styles`    | constructed sheets unsupported and the `<style>` fallback blocked                           |
+| `script`    | a CSP report on eval/inline script or Trusted Types                                          |
+| `load`      | the widget threw while rendering                                                            |
+
+Isolation is decided fail-closed from the manager's own `GM_info` only (a
+binding in our scope, never a page global; `window.Object` and the like can
+be made to answer anything), read as own properties through syntax alone (a
+null-prototype spread, strict string equality: no built-in the page could
+replace). A page word refuses (`injectInto: "page"`, a declared
+`@inject-into page`, `sandboxMode` "raw" or "js"); then it needs a positive
+word (`injectInto: "content"`, or `sandboxMode: "dom"`); anything else,
+including an unknown manager, counts as the page's realm. So the chat runs
+only where the manager says it injected into the content/DOM world; the
+default page modes of Tampermonkey, Violentmonkey and ScriptCat get the note.
+In the page's realm `startPartner` stops
+before anything privileged: no ticket is asked for, nothing is downloaded or
+evaluated, no callback is handed out (the page could replace `eval` and
+capture them). The `pageRealm` note there is drawn by the userscript's own
+code (`pageRealmNote` in `src/partner.ts`: plain DOM, CSSOM styles, a closed
+root on a div). Never a broken page: every step catches.
+
+**The host is a plain div**, never a custom tag: a page could define that tag
+first with a class calling `attachInternals()`, and `ElementInternals.shadowRoot`
+would hand it our closed root (`qa:partner` checks it, with a control).
+
+**Serving.** Production: `public/partner-embed.js`, built in
+`deploy-worker.yml` (gitignored). Dev: the userscript dev server
+(`bun run dev:loader`) serves `/partner-embed.js` and rebuilds on any change
+in `packages/debug-chat/src`, so a widget edit reaches every attached tab.
+
+**Deploy needs.** `PARTNER_TICKET_PUB` on lianki-push
+(`wrangler secret put PARTNER_TICKET_PUB -c workers/push/wrangler.jsonc <
+~/.config/lianki-stt/ticket.pub`) and `STT_TICKET_KEY` on the main Worker
+(already set for the STT). Without them, tickets are refused and the
+partner stays off.
+
 ## Avatars
 
 Each log line starts with an 18px round avatar instead of a name. Who it

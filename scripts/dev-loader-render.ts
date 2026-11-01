@@ -10,6 +10,133 @@ import { dirname, resolve } from "node:path";
 
 const TEMPLATE = resolve(dirname(Bun.fileURLToPath(import.meta.url)), "dev-loader.user.js");
 
+/**
+ * Did this request come through the tunnel (Cloudflare adds these), rather
+ * than from this machine? Public requests get no client list and no paths.
+ */
+export function isPublicRequest(h: Headers): boolean {
+  return h.has("cf-connecting-ip") || h.has("cf-ray") || h.has("x-forwarded-for");
+}
+
+/** A client id as the loader makes it (letters, digits, `_`, `-`; ≤ 40); anything else is "". */
+export function cleanClientId(id: string | null | undefined): string {
+  return typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id) ? id : "";
+}
+
+/**
+ * A request body read up to `max` bytes while it streams: null as soon as it
+ * goes over (or its content-length says it will), never buffering more.
+ */
+export async function readCapped(req: Request, max: number): Promise<string | null> {
+  const declared = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > max) return null;
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    parts.push(value);
+  }
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const p of parts) {
+    all.set(p, at);
+    at += p.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+
+/**
+ * Keep the client table bounded: drop clients unseen for `ttlMs`, then the
+ * least recently seen beyond `max`. Mutates and returns the map.
+ */
+export function pruneClients<C extends { last: number }>(
+  clients: Map<string, C>,
+  now: number,
+  max: number,
+  ttlMs: number,
+): Map<string, C> {
+  for (const [id, c] of clients) if (now - c.last > ttlMs) clients.delete(id);
+  if (clients.size > max) {
+    const oldest = [...clients].sort((a, b) => a[1].last - b[1].last);
+    for (const [id] of oldest.slice(0, clients.size - max)) clients.delete(id);
+  }
+  return clients;
+}
+
+export type DevClient = {
+  id: string;
+  first: number;
+  last: number;
+  page: string;
+  loads: number;
+  errors: number;
+};
+
+/**
+ * Record a client seen now (a valid id only), then keep the table bounded.
+ * `last` is set before pruning: a new client is never pruned as stale.
+ * Returns the client, or undefined for an id that is not loader-shaped.
+ */
+export function touchClient(
+  clients: Map<string, DevClient>,
+  raw: string,
+  now: number,
+  o: { page?: string; max: number; ttlMs: number; onNew?: (id: string) => void },
+): DevClient | undefined {
+  const id = cleanClientId(raw);
+  if (!id) return undefined;
+  let c = clients.get(id);
+  if (!c) {
+    c = { id, first: now, last: now, page: o.page ?? "", loads: 0, errors: 0 };
+    clients.set(id, c);
+    o.onNew?.(id);
+  }
+  c.last = now;
+  if (o.page) c.page = o.page;
+  pruneClients(clients, now, o.max, o.ttlMs);
+  return clients.get(id);
+}
+
+/** Printable, one line per field: control characters (terminal escapes) go. */
+const printable = (s: unknown, max: number) =>
+  String(s ?? "")
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "")
+    .slice(0, max);
+
+/**
+ * An /error report as it may be printed: bounded fields, no escapes, the
+ * page's query and fragment cut off (they can hold tokens). The body is
+ * anyone's on a public tunnel; nothing here is trusted or executed.
+ */
+export function cleanErrorReport(
+  raw: string,
+  id: string,
+): { id: string; what: string; detail: string; page: string } {
+  let body: { what?: unknown; detail?: unknown; page?: unknown } = {};
+  try {
+    const v = JSON.parse(raw);
+    if (v && typeof v === "object") body = v;
+  } catch {
+    body = { detail: raw };
+  }
+  let page = printable(body.page, 300);
+  page = page.replace(/[?#].*$/, "");
+  return {
+    id: printable(id, 40).replace(/[^\w.-]/g, ""),
+    what: printable(body.what ?? "error", 60),
+    detail: printable(body.detail, 2000).replace(/\n/g, "\n   "),
+    page,
+  };
+}
+
 export function renderLoader(opts: {
   origin: string;
   appOrigin: string;

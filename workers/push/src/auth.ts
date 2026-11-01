@@ -3,6 +3,13 @@
  * entry module may export only handlers and Durable Object classes.
  */
 import { type Identity, avatarUrl, isSessionTag, isUserId } from "../../../lib/dev-eval";
+import {
+  type JtiStore,
+  PARTNER_SUBPROTOCOL,
+  PARTNER_TICKET_AUD,
+  importTicketPublicKey,
+  verifySttTicket,
+} from "../../../lib/stt-ticket";
 
 type Fetcher = { fetch(url: string, init?: RequestInit): Promise<Response> };
 
@@ -69,4 +76,56 @@ async function ownerFallback(main: Fetcher, cookie: string): Promise<Identity | 
   if (res.status !== 200) return null;
   const body = (await res.json()) as { owner?: unknown };
   return body.owner === true ? { userId: "owner", email: "", owner: true } : null;
+}
+
+/**
+ * The Learning Partner on another site (the userscript, docs/dev-debug-widget.md
+ * "On every site"): its socket comes from the host site's origin with no
+ * lianki.com cookie, and carries a 60 s owner ticket from lianki.com
+ * (/api/debug/partner-ticket) in Sec-WebSocket-Protocol: `lianki-partner, <ticket>`.
+ *
+ * The split is strict both ways: a socket that offers the partner
+ * subprotocol is judged on its ticket alone (a cookie there counts for
+ * nothing), from any browser origin: the host site's shadow widget, or the
+ * lianki.com frame, which is third-party there and so has no cookie. Any
+ * other socket is judged on its cookie alone, and only from https://lianki.com.
+ * No Origin at all (not a browser) is refused here too.
+ */
+export const EMBED_HEADER = "x-debug-embed";
+
+/** The ticket's single-use id and expiry, for the hub to burn; null = refuse. */
+export type PartnerTicket = { jti: string; exp: number };
+
+/** Seen in this isolate (the hub also burns each jti in its storage, across isolates). */
+const seenHere: JtiStore = new Map();
+
+/** Does this upgrade offer the partner subprotocol? Then it is judged on its ticket alone. */
+export function offersPartner(req: Request): boolean {
+  return (req.headers.get("sec-websocket-protocol") ?? "")
+    .split(",")
+    .some((s) => s.trim() === PARTNER_SUBPROTOCOL);
+}
+
+export async function partnerTicket(
+  req: Request,
+  pub: string | undefined,
+  seen: JtiStore = seenHere,
+  now: number = Date.now(),
+): Promise<PartnerTicket | null> {
+  const origin = req.headers.get("origin");
+  // Any browser origin: the host site (shadow widget) or lianki.com (the frame,
+  // third-party, so cookieless). Never without one: not a browser.
+  if (!origin || !pub) return null;
+  const offered = (req.headers.get("sec-websocket-protocol") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (offered.length !== 2 || offered[0] !== PARTNER_SUBPROTOCOL) return null;
+  try {
+    const key = await importTicketPublicKey(pub);
+    const r = await verifySttTicket(offered[1], key, seen, now, PARTNER_TICKET_AUD);
+    return r.ok ? { jti: r.payload.jti, exp: r.payload.exp } : null;
+  } catch {
+    return null;
+  }
 }

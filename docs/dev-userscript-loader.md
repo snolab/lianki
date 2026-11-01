@@ -53,6 +53,19 @@ strips comments and the output is identical.
 | `GET /wait?id=<cid>&rev=<rev>`      | **Long poll.** Holds the request open while `rev` equals the current build rev; responds with the new rev the moment a rebuild lands. Must return before the client's `timeout` (loader uses 35 s — resolve with the current rev at ~30 s and let the client re-poll). |
 | `GET /bundle.js?id=<cid>&rev=<rev>` | The complete IIFE bundle as plain JS. Not an HMR shim — the loader only evals.                                                                                                                                                                                         |
 | `POST /error?id=<cid>`              | JSON `{what, detail, page}` sink; print to the dev console.                                                                                                                                                                                                            |
+| `GET /partner-embed.js`             | The Learning Partner's script (docs/dev-debug-widget.md, "On every site"); the bundle is built pointing at it.                                                                                                                                                         |
+
+**The tunnel is public.** Everything above is code or a rev: no session, token
+or file from this machine. `/error` takes writes from anyone, so it only ever
+prints to this terminal: at most 60 a minute, the body cut off at 8 KB while
+it streams (413), fields bounded, control characters (terminal escapes)
+stripped, the page's query and fragment cut (`cleanErrorReport`,
+`readCapped` in `scripts/dev-loader-render.ts`). A client `id` must be
+`[A-Za-z0-9_-]{1,40}` or it is not tracked; the client table holds at most
+200, forgotten after a day unseen; at most 64 `/wait` polls park at once
+(the rest get 503 and the loader backs off), each for 30 s. Requests through the
+tunnel (`cf-connecting-ip`/`cf-ray`) get `/health` as `{rev, version}` only and
+no client list on `/`; the full status page is for localhost.
 
 `id` is a stable per-browser client id so the server log can say _which_ attached
 client broke.
@@ -115,6 +128,32 @@ Three things that will waste an afternoon otherwise:
 - **`dev.lianki.com` returning 530 / error 1033** means the DNS route exists but
   no connector is attached — i.e. nothing is running, not a DNS problem.
 
+### Switching dev.lianki.com to this Mac
+
+`dev.lianki.com` may point at another dev box's tunnel. To serve the loader
+from this Mac instead, without the old box's credentials, use
+`scripts/dev/dev-host-switch.sh` (the Cloudflare side is
+`scripts/dev/dev-host-switch.ts`, through the API; no `cloudflared login`):
+
+```bash
+bun scripts/dev-userscript-server.ts --origin https://dev.lianki.com --port 3003   # the loader, no tunnel of its own
+bash scripts/dev/dev-host-switch.sh plan        # read-only: the records now → the new CNAME, and the undo
+bash scripts/dev/dev-host-switch.sh up --yes    # only with the owner's approval: DNS changes
+bash scripts/dev/dev-host-switch.sh status
+bash scripts/dev/dev-host-switch.sh down        # rollback: the old records back exactly
+```
+
+`up --yes` saves the records found at `dev.lianki.com` to
+`~/.config/lianki/dev-host-prev.json` (0600) once, before anything changes,
+and never overwrites that file on a later `up`; `down` puts those records
+back with the same type, content, proxied flag, TTL and comment, deletes the
+tunnel `lianki-dev-loader-mac` and its run-token file. The tunnel's ingress
+reaches only `http://localhost:3003`. It needs a Cloudflare API token at
+`~/.config/lianki/cf-api-token` (0600) with Account · Cloudflare Tunnel ·
+Edit, Zone · DNS · Edit and Zone · Zone · Read on lianki.com. An installed
+loader keeps updating across the switch: same `@name`/`@namespace`, same
+`/loader.user.js` path, and a higher `@version`.
+
 ### Keeping it up across reboots
 
 `cloudflared service install` does **not** apply on the dev box: it writes a
@@ -170,6 +209,15 @@ reproducing what it prevents.
   runs inside the loader's grants, not its own header's.
 - `@run-at document-start`, so the loader is polling before the page settles —
   but see the DOM wait below.
+- `@inject-into content` (Violentmonkey) and `@sandbox DOM` (Tampermonkey,
+  ScriptCat): the dev build runs in the manager's own world, so the Learning
+  Partner may run (docs/dev-debug-widget.md, "On every site"). The
+  production userscript stays in the page's world. In the isolated world,
+  `window.LIANKI_USERSCRIPT_INSTALLED` is invisible to the page (nothing in
+  the app reads it today); `navigation`'s events and the srcdoc key relay
+  still work. The loader's own `eval` may be refused by the extension's
+  isolated-world CSP (Manifest V3): the loader then reports `eval-blocked`
+  once to the dev log, and that is the signal to look at.
 - `@connect` every origin the loader may talk to; `@downloadURL`/`@updateURL`
   point at `/loader.user.js` on the tunnel host.
 

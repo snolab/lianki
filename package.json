@@ -15,6 +15,7 @@
     "qa:ui": "node scripts/qa/qa-ui.mjs",
     "qa:lang-menu": "bash scripts/qa/with-muted-mac.sh node scripts/qa/qa-lang-menu.mjs",
     "qa:all": "bash scripts/qa/with-muted-mac.sh node scripts/qa/qa-all.mjs",
+    "qa:partner": "bash scripts/qa/with-muted-mac.sh bun scripts/qa/qa-partner-embed.ts",
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "oxlint --ignore-pattern 'packages/**' && oxfmt --check '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**'",
