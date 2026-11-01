@@ -82,9 +82,13 @@ location.reload();
 ```
 
 It is read with `getKey` (storage-keys.ts): `lk:agent-local-stt` first, then
-the legacy `lk:debug-local-stt`. A stale value under the new name wins over a
-fresh one under the old, which is how the first preview loaded the wrong
-widget (`lk:agent-widget-src` held the old URL); set the `lk:agent-*` name.
+the legacy `lk:debug-local-stt`. When both are set and differ, the one
+written since the last read wins and is copied to the other name (getKey
+keeps the pair it last saw in `lk:agent-seen`). Before this, a stale value
+under the new name silently won over a fresh one under the old, which is how
+the first preview loaded the wrong widget and how a phone kept an old STT
+URL. Two names that already differed before any read still give the new
+name (logged once in the console); set the `lk:agent-*` name to be sure.
 
 While the mic is on, a dot at the button's top corner says where speech goes:
 green, the local model (`ready`); amber and pulsing, connecting; grey, not
@@ -161,8 +165,9 @@ before it has already failed (Tailscale off). The ticket is asked for when
 the race starts, so it is there by 150 ms. The first socket to say `ready` is
 used and the others are closed; if all fail, or none is ready within
 `CONNECT_TIMEOUT_MS`, the dot is grey and the utterance goes to the cloud. A
-new race (and a new ticket) starts on the next utterance after the socket
-drops. Nothing polls. The devLog says which route won: `local-stt
+new race (and a new ticket) starts when the socket drops while the mic is
+on, when the page is visible again, when it comes back online, and on the
+next utterance ("Fallback"). Nothing polls. The devLog says which route won: `local-stt
 {state:"ready", via:"stt.lianki.com"}`, and `lost-race {via, why}` for the
 others.
 
@@ -419,13 +424,41 @@ decode running at the same time.
 ## Fallback
 
 `createLocalStt` (`packages/debug-chat/src/local-stt.ts`) opens the socket
-when the mic turns on, and again on the next utterance after it drops; there
-is no polling. An utterance streams only when the socket is open and the
-server said `ready`; otherwise it takes the old path whole (chunk partials,
-upload). The final is handed to the upload as `info.local`
-(`packages/debug-chat/src/mic.ts`); the upload in `MicButton.tsx` awaits it
-and, on any rejection (socket closed, `error`, no final within 4 s), posts the
-WAV to `/api/debug/stt` instead. The echo guard, the hallucination guard and
+when the mic turns on and keeps it open while the mic is on (`keep(true)`):
+it reopens at once when the socket closes, on `visibilitychange` to visible
+and on `online`. These are events, not a timer: after a failed open (or a
+socket that dropped within `STABLE_MS`, 10 s, of ready), the next event waits
+out a backoff of 1 s, doubling to 30 s, as one deferred attempt; a failure
+schedules nothing by itself. A page that is hidden waits for visible.
+
+An utterance that starts with the socket down is **held, not sent to the
+cloud**: it opens the socket at once (skipping the backoff), buffers the
+frames, and streams them behind its `begin` the moment the server says
+`ready`, then goes on live; an `end` that came first is sent right after.
+Only if opening fails (all URLs, or `CONNECT_TIMEOUT_MS`, 2.5 s, from the
+race's start) does its final reject, so it takes the route. The wait costs
+nothing unless the connect outlasts the utterance itself; the devLog shows it
+as `local-stt {state:"held-streamed", heldMs, frames, ended}`. With the
+socket up, the path is exactly the old one (same messages, same timers;
+measured 294 vs 295 µs per one-second utterance on a fake socket). While held
+the mic uses the streaming endpoint and no chunk partials, so an utterance
+that does fall back has no partials shown.
+
+After "Linky" in passive mode, the rest of the utterance (already whole) goes
+to the Mac too when its socket is up, as a pre-pad and an `end`; with it down
+the rest goes to the cloud at once, without waiting for a connect.
+
+Each close the page did not make is logged with the browser's own close
+event: `local-stt-close {code, reason, wasClean, via, livedMs}` (and `phase:
+"race"` for a socket that lost before `ready`). iOS sends no close frame, so
+on the server such a drop shows only as "page detached"; on the page it is
+typically `1006`, not clean.
+
+An utterance begun while the mic is passive is not streamed. The final is
+handed to the upload as `info.local` (`packages/debug-chat/src/mic.ts`); the
+upload in `MicButton.tsx` awaits it and, on any rejection (unreachable,
+socket closed, `error`, no final within 4 s), posts the WAV to
+`/api/debug/stt` instead. The echo guard, the hallucination guard and
 the clip sink see the text exactly as they do a route transcript.
 
 ## Noise
@@ -474,7 +507,17 @@ this is owner-only.
 ## Testing
 
 - `unit/local-stt.test.ts`: the client against a fake WebSocket (frames,
-  partials, pre-pad, final timings, drop, timeout, error, cancel).
+  partials, pre-pad, final timings, drop, timeout, error, cancel); "an
+  utterance begun while the socket is down" (held then streamed in order, an
+  end before ready, opening failing to the cloud, cancel while held, the
+  steady state unchanged); "reopening while the mic is on" (close, visible,
+  online, a dead socket without its onclose, a hidden page, the backoff with
+  one deferred attempt per event, the stable reset, close() unwatching); "the
+  browser's close code".
+- `unit/wake.test.ts`, "the rest after Linky streams to the local STT when
+  its socket is up"; `unit/mic.test.ts` and `unit/mic-session.test.ts`: mic
+  on and off keep and release the socket; `unit/agent-keys.test.ts`: the
+  stale-key cases.
 - `unit/mic.test.ts`, "streaming to the local STT": the mic streams instead of
   chunking, shows the partials, hands the final over, cancels on misfire and
   hold.

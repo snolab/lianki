@@ -3,7 +3,8 @@
  * partner (docs/dev-debug-widget.md, "Naming"); the code calls it "debug",
  * and the keys used to be `lk:debug*`. They are moving to `lk:agent*`:
  *
- * - reads try the `lk:agent*` key first, then the `lk:debug*` one;
+ * - reads try the `lk:agent*` key first, then the `lk:debug*` one; when both
+ *   are set and differ, the one written since the last read wins (getKey);
  * - writes go to both, so a rollback to the previous release still sees them;
  * - `migrateKeys` copies every `lk:debug*` key to its `lk:agent*` twin once
  *   per device and keeps the old keys (drop them one release later).
@@ -34,14 +35,69 @@ const local = (): KeyStore | null => {
   }
 };
 
-/** The value under the new key, else under the legacy one. */
+/**
+ * The pair of values each key had when last read (`{legacy: [agent, legacy]}`),
+ * so a read can tell which of two differing values was written since.
+ */
+export const SEEN_KEY = "lk:agent-seen";
+
+/** Keys whose two values differ with nothing to tell which is newer (logged once a page). */
+const unresolved = new Set<string>();
+
+/**
+ * The value under the new key, else under the legacy one. setKey writes both,
+ * so two differing values mean one was written by hand (or by an older
+ * release): the one that changed since the last read wins, and is copied to
+ * the other name, so they agree again. With no earlier read to compare, the
+ * new name wins, as before.
+ */
 export function getKey(legacy: string, store: KeyStore | null = local()): string | null {
   if (!store) return null;
   try {
-    return store.getItem(agentKey(legacy)) ?? store.getItem(legacy);
+    const a = store.getItem(agentKey(legacy));
+    const l = store.getItem(legacy);
+    if (a === l || l === null || a === null) {
+      if (a !== null || l !== null) see(store, legacy, a, l);
+      return a ?? l;
+    }
+    const was = seen(store)[legacy];
+    // The legacy value changed since, the new one did not: the legacy one is newer.
+    const pick = was && was[0] === a && was[1] !== l ? l : a;
+    if (!was && !unresolved.has(legacy)) {
+      unresolved.add(legacy);
+      console.info(`[storage-keys] ${legacy}: both names set and differ; using ${agentKey(legacy)}`);
+    }
+    if (was) {
+      try {
+        store.setItem(agentKey(legacy), pick);
+        store.setItem(legacy, pick);
+      } catch {}
+      see(store, legacy, pick, pick);
+    } else see(store, legacy, a, l);
+    return pick;
   } catch {
     return null;
   }
+}
+
+function seen(store: KeyStore): Record<string, [string | null, string | null]> {
+  try {
+    const v = JSON.parse(store.getItem(SEEN_KEY) ?? "{}");
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Best effort: a store that cannot be written (full, read-only) still reads. */
+function see(store: KeyStore, legacy: string, a: string | null, l: string | null) {
+  try {
+    const all = seen(store);
+    const was = all[legacy];
+    if (was && was[0] === a && was[1] === l) return;
+    all[legacy] = [a, l];
+    store.setItem(SEEN_KEY, JSON.stringify(all));
+  } catch {}
 }
 
 /** Write under both names (the legacy one stays for one release). */
@@ -50,6 +106,7 @@ export function setKey(legacy: string, value: string, store: KeyStore | null = l
   try {
     store.setItem(agentKey(legacy), value);
     store.setItem(legacy, value);
+    see(store, legacy, value, value);
   } catch {}
 }
 
