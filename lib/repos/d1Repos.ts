@@ -128,6 +128,27 @@ export class PreferencesD1Repo {
     return asReviewOrder(row?.review_order);
   }
 
+  /** The stored IANA zone, or null when none is known (callers then use UTC). */
+  async timeZone(): Promise<string | null> {
+    const row = await this.db
+      .prepare("SELECT time_zone FROM preferences WHERE user_id = ?")
+      .bind(this.userId)
+      .first<{ time_zone?: string | null }>();
+    return row?.time_zone ?? null;
+  }
+
+  /** Store the zone (already validated by the caller), keeping every other preference. */
+  async setTimeZone(tz: string | null): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO preferences (user_id, mobile_exclude_patterns, time_zone, updated_at)
+         VALUES (?, '[]', ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET time_zone = excluded.time_zone, updated_at = excluded.updated_at`,
+      )
+      .bind(this.userId, tz, new Date().toISOString())
+      .run();
+  }
+
   async set(
     patterns: FilterPattern[],
     reviewOrder?: ReviewOrder,
