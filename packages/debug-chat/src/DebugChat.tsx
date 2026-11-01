@@ -10,9 +10,18 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { useUi } from "@lianki/ui-state";
-import { chatUi } from "./ui-store";
+import { chatPrefs, chatUi } from "./ui-store";
+import {
+  COMPACT_BLUR_MS,
+  COMPACT_PEEK_MS,
+  COMPACT_SCROLL_MS,
+  compactLines,
+  foldIn,
+  holdAtLeast,
+  isCompact,
+} from "./compact-view";
 import {
   type ChatMessage,
   MAX_CHAT,
@@ -993,6 +1002,59 @@ export function DebugChat({
     /** The line the reader is on, kept in place across the height change (pickAnchor). */
     anchor: { id: string; top: number; height: number } | null;
   }>({ maxH: 0, fromH: 0, gap: 0, lastDy: 0, box: null, anchor: null });
+  /**
+   * Compact mode (compact-view.ts; this device's setting, off by default):
+   * while the input has no focus, the open chat shows only its last message.
+   * `expanded` is the whole chat brought back by an action (the input's
+   * focus, a tap on the compact line, a drag on the log); it folds again
+   * after the latest hold (the blur, a scroll, a reply arriving), never while
+   * typing, scrolled up, or with a panel or the full-screen log up. One timer,
+   * re-armed when it fires: no polling, and no render per scroll.
+   */
+  const compactPref = useUi(chatPrefs(), (s) => s.compact);
+  const [expanded, setExpanded] = useState(false);
+  const holdUntil = useRef(0);
+  const hold = (ms: number) => {
+    holdUntil.current = holdAtLeast(holdUntil.current, Date.now(), ms);
+  };
+  const [foldTick, setFoldTick] = useState(0);
+  const compact = isCompact({
+    pref: compactPref,
+    open,
+    expanded,
+    typing,
+    tree,
+    fullLog: fullLog !== "off",
+  });
+  /** The whole chat, from the compact line: for reading, so a longer hold. */
+  const peek = () => {
+    hold(COMPACT_PEEK_MS);
+    atEnd.current = true;
+    setExpanded(true);
+  };
+  useEffect(() => {
+    const d = foldIn({
+      pref: compactPref,
+      open,
+      expanded,
+      typing,
+      scrolledUp,
+      busy: panel !== "none" || fullLog !== "off",
+      holdUntil: holdUntil.current,
+      now: Date.now(),
+    });
+    if (d === null) return;
+    if (d === "now") return setExpanded(false);
+    const t = setTimeout(() => setFoldTick((n) => n + 1), d);
+    return () => clearTimeout(t);
+  }, [compactPref, open, expanded, typing, scrolledUp, panel, fullLog, foldTick]);
+  // A reply arriving while the whole chat is up: he is reading it, so the
+  // fold waits for its reading time (float-lines.ts dwellMs).
+  const lastMsg = messages.at(-1);
+  useEffect(() => {
+    if (!lastMsg || !expanded) return;
+    hold(dwellMs(lastMsg.text));
+  }, [lastMsg?.id]);
   /** The line nearest the log's centre (its focus line), with where it is now. */
   const anchorNow = () => {
     const el = log.current;
@@ -1044,6 +1106,8 @@ export function DebugChat({
       // The tree in the log's place: the drag scrolls it; no full-screen log.
       if (tree) fullRef.current.lastDy = 0;
       if (!el || !open || tree) return;
+      // Compact: the log comes back first, so it can be measured.
+      if (compact) flushSync(() => setExpanded(true));
       const r = el.getBoundingClientRect();
       const sec = root.current?.getBoundingClientRect();
       let box: (typeof fullRef.current)["box"] = null;
@@ -1093,7 +1157,10 @@ export function DebugChat({
       el.scrollTop -= dy - fullRef.current.lastDy;
       fullRef.current.lastDy = dy;
     },
-    end: () => setFullLog((s) => (s === "on" ? "leaving" : s)),
+    end: () => {
+      hold(COMPACT_SCROLL_MS);
+      setFullLog((s) => (s === "on" ? "leaving" : s));
+    },
   };
   /** The log's surface props, full screen: lifted to the visible top, or its own snapped box. */
   const fullSurface = (p: ReturnType<typeof logSurface>) => {
@@ -2190,6 +2257,20 @@ export function DebugChat({
         </span>
         {ui.aec}
       </button>
+      {/* Compact mode (compact-view.ts): this device only (lk:pref:chat-view). */}
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        data-testid="debug-menu-compact"
+        aria-checked={compactPref}
+        onClick={() => chatPrefs().setState({ compact: !compactPref })}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
+      >
+        <span aria-hidden className="w-[1em] text-center">
+          {compactPref ? "◉" : "○"}
+        </span>
+        {strings?.compactIdle ? t.compactIdle : ui.compactIdle}
+      </button>
       {/* Reading speed, per device: from the next sentence on. */}
       <div
         role="radiogroup"
@@ -2577,6 +2658,89 @@ export function DebugChat({
       at: m.at,
     })),
   );
+  /**
+   * Compact mode's view (compact-view.ts): the open ask cards in full (they
+   * need a tap), then the last message as one short line with its avatar,
+   * as the minimized chat's floating lines show it. A tap on the line brings
+   * the whole chat back.
+   */
+  const compactRow = (m: ChatMessage, line: boolean) => {
+    const who = lineAvatar(m, { friend, viewer, agentAvatar, avatarFor, agentName: t.name, you: t.you });
+    const p = polish(m);
+    const showAll = strings?.compactShowAll ? t.compactShowAll : ui.compactShowAll;
+    const asLine = line && !m.ask;
+    return (
+      <div
+        key={m.id}
+        data-testid={asLine ? "debug-chat-compact-line" : "debug-chat-compact-ask"}
+        data-msg={m.id}
+        data-from={m.from}
+        {...(asLine
+          ? {
+              role: "button",
+              tabIndex: 0,
+              title: showAll,
+              "aria-controls": "debug-chat-column",
+              "aria-expanded": false,
+              onClick: (e: React.MouseEvent) => {
+                // Its polish mark is its own button (shows the raw STT text).
+                if ((e.target as HTMLElement).closest("button")) return;
+                peek();
+              },
+              onKeyDown: (e: React.KeyboardEvent) => {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                e.preventDefault();
+                peek();
+              },
+            }
+          : {})}
+        // A 40px tap target over the page; the text keeps the box's halo.
+        className={`pointer-events-auto flex min-h-10 items-start gap-1.5 py-1 leading-snug ${asLine ? "cursor-pointer" : ""}`}
+      >
+        <Avatar
+          src={who.src}
+          name={who.name}
+          initialFrom={who.initialFrom}
+          seed={who.seed}
+          size={AVATAR_PX}
+          hidden
+        />
+        <p
+          className={`m-0 min-w-0 flex-1 break-words pt-px ${asLine ? "line-clamp-2" : "whitespace-pre-wrap"}`}
+        >
+          <span className="sr-only">{who.name}: </span>
+          {m.ask
+            ? m.ask.questions.length === 1
+              ? m.ask.questions[0]!.question
+              : ""
+            : readText(m, p.text)}
+          {m.ask && (
+            <AskCard
+              ask={m.ask}
+              answer={m.answer}
+              onAnswer={onAnswer}
+              sendText={(text) => sendRef.current(text)}
+            />
+          )}
+          {p.mark}
+          {asLine && <span className="sr-only"> · {showAll}</span>}
+        </p>
+      </div>
+    );
+  };
+  const compactEl = (() => {
+    const { asks, last } = compactLines(messages, Date.now());
+    return (
+      <div
+        data-testid="debug-chat-compact"
+        // Click-through but for its rows, as the log is.
+        className="pointer-events-none flex flex-col px-0 pt-1"
+      >
+        {asks.map((m) => compactRow(m, false))}
+        {last ? compactRow(last, true) : <p className="m-0 py-1 text-gray-500">{t.hint}</p>}
+      </div>
+    );
+  })();
   return (
     <section
       ref={root}
@@ -2619,17 +2783,22 @@ export function DebugChat({
       {/* The log: the messages, the newest at the bottom. Hidden minimized, and while the tree has its place. */}
       <div
         ref={log}
+        id="debug-chat-column"
         data-testid="debug-chat-column"
         onScroll={onLogScroll}
         onWheel={() => {
           userScrollAt.current = Date.now();
+          hold(COMPACT_SCROLL_MS);
         }}
         onTouchMove={() => {
           userScrollAt.current = Date.now();
+          hold(COMPACT_SCROLL_MS);
         }}
+        // A tap on a line (its polish mark, an ask card) is use too.
+        onPointerDown={() => hold(COMPACT_SCROLL_MS)}
         data-fade={fade || undefined}
         data-expanded={typing || undefined}
-        hidden={!open || tree}
+        hidden={!open || tree || compact}
         onTransitionEnd={(e) => {
           if (e.target !== e.currentTarget) return;
           // The full-screen log's wipe out ended: back to its resting height.
@@ -2642,7 +2811,9 @@ export function DebugChat({
           onLogScroll();
         }}
         data-full={fullLog === "off" ? undefined : fullLog}
-        {...fullSurface(logSurface({ expanded: typing || micActive, fade }))}
+        {...fullSurface(
+          logSurface({ expanded: typing || micActive || (compactPref && expanded), fade }),
+        )}
       >
       <ol
         data-testid="debug-chat-log"
@@ -2757,6 +2928,7 @@ export function DebugChat({
         })}
       </ol>
       </div>
+      {compact && compactEl}
       {open && warning && (
         <div
           role="alert"
@@ -2995,13 +3167,17 @@ export function DebugChat({
                     voice().interrupt("typing");
                     arm();
                   }}
-                  onFocus={() => setTyping(true)}
+                  onFocus={() => {
+                    setExpanded(true);
+                    setTyping(true);
+                  }}
                   // The caret is kept with the draft (ui-store.ts).
                   onSelect={(e) => {
                     const c = e.currentTarget.selectionEnd;
                     if (uiStore.getState().caret !== c) uiStore.setState({ caret: c });
                   }}
                   onBlur={() => {
+                    hold(COMPACT_BLUR_MS);
                     setTyping(false);
                     // resumeNow's own focus and blur: the reading it queued goes on.
                     if (keepReading.current) return;

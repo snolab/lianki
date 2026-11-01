@@ -48,6 +48,7 @@ re-exports for the hub and the sender.
 | `debug-chat-widget.ts`                                   | the widget entry: `DebugChat` and `WIDGET_API`           |
 | `DebugChat.tsx`                                          | the chat box: log, the bar (controls + input), menu      |
 | `float-lines.ts`                                         | minimized: floating lines, their dwell and timers        |
+| `compact-view.ts`                                        | compact mode: last message only, when to fold again      |
 | `log-surface.ts`                                         | the log's display, shared by the log and the state tree  |
 | `Frontier.tsx`, `frontier-view.ts`                       | minimized: the ✓ ▶ › frontier lines and their rules      |
 | `DebugChatHost.tsx`                                      | the page's loader: import, re-import on reload, fallback |
@@ -410,6 +411,38 @@ page. A voice line (stt) is **never** enough to approve anything sensitive:
 it can be misheard, overheard or played from a speaker. A typed line is no
 approval either. Ask with a card and act on the `answered` event.
 
+## Compact mode: only the last message while not typing
+
+For talking to the chat by voice with less on screen (owner, 2026-11-01:
+"相当于最小化模式或者只显示最后一条消息", "让他减少干扰"). While the input
+does not have the focus, the open chat shows only its last message, one line
+of at most two rows with the avatar (never the name), as the minimized
+chat's floating lines do. The bar, the input, the mic and the live interim
+transcript are unchanged and keep working.
+
+- **The setting** is per device: the chat's menu → "Only the last message
+  while not typing" (zh 不打字时只显示最后一条消息), kept in localStorage
+  `lk:pref:chat-view` (`chatPrefs` in `ui-store.ts`), off by default and never
+  synced. Turn it on in the window where you want it (the installed /words
+  app), and it stays off everywhere else.
+- **Whole chat back**: a tap on the input (focus) or on the compact line, or
+  a vertical drag on the mic or the empty input (the full-screen log).
+- **Folding again** (`compact-view.ts` `foldIn`): after the latest hold —
+  1.5 s after the input's blur, 8 s after a tap on the line, 3 s after the
+  last scroll or touch in the log, and a new reply's reading time
+  (`dwellMs`). Never while typing, while the log is scrolled up, or with the
+  menu, the tree or the full-screen log up. One timer, re-armed when it
+  fires; scrolling only moves a ref, so nothing re-renders per scroll.
+- **Ask cards** (above) that are still open show in full above the line (the
+  newest two), their pills tappable; an ask that is the last message is the
+  line itself, in full.
+- **State tree**: when the tree has the log's place, it stays.
+
+Checks and screenshots: `node scripts/dev/debug-chat-compact-qa.mjs --shots
+
+<dir>` (silent browsers, getUserMedia refused, 390×844, light and dark);
+the rules in `unit/chat-compact.test.ts`.
+
 ## Quiet lines and quiet hours
 
 Agent lines must not wake the owner (owner, 2026-10-31). Every agent line is
@@ -745,8 +778,8 @@ widget previews). It is session-scoped, like sessionStorage. The rules are in
   of a one-time handoff token, and since when no page has been connected. It
   also keeps `clipsink`, the sink the agent last set up, so that a tap can
   reuse it. Every page of the session hears `{type:"clips", sid, device, on,
-  until?, left?, sink?, sinkKey?, origins?, handoff?, paused?, resumable?,
-  canStart?}` on connect and on each change.
+until?, left?, sink?, sinkKey?, origins?, handoff?, paused?, resumable?,
+canStart?}` on connect and on each change.
 - **Across origins.** The session moves only between the owner's origins,
   matched exactly: lianki.com plus the list `eval.ts clips on` passes. That
   list is the sink's own allowlist (`LIANKI_DEV_ORIGINS`,
@@ -795,7 +828,7 @@ widget previews). It is session-scoped, like sessionStorage. The rules are in
   `lk:agent-clip-sink` cannot win (it once sent every clip to a dead host).
 - **On and off.** The agent: `bun scripts/dev/eval.ts clips` (list),
   `clips on --device <text> [--minutes N] [--sink <url>]`, `clips off
-  [--device <text>]`. `<text>` matches a session or device id prefix, or text
+[--device <text>]`. `<text>` matches a session or device id prefix, or text
   in a page label ("Android"). The page: the chat menu's "Record voice clips"
   (with an "Auto-stop after 60 min" switch, off by default), and Stop on the
   badge. Turning it on is always a tap or the agent, never the voice.
