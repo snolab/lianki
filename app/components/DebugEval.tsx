@@ -18,13 +18,7 @@ import {
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
 import { isKey } from "@lianki/debug-chat/storage-keys";
-import {
-  type ChatStrings,
-  type SpeakerTag,
-  type VoiceTiming,
-  cleanSpeaker,
-  cleanTiming,
-} from "@lianki/debug-chat/wire";
+import { type ChatStrings, type VoiceTiming, cleanTiming } from "@lianki/debug-chat/wire";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
@@ -543,7 +537,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
   const sendChat = (
     text: string,
     to?: string,
-    opts?: { source?: "stt"; timing?: VoiceTiming; speaker?: SpeakerTag },
+    opts?: { source?: "stt"; timing?: VoiceTiming; speakerProof?: string[] },
   ) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return false;
@@ -551,8 +545,8 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
       const id = crypto.randomUUID().slice(0, 12);
       // A voice line's timestamps ride along (an older hub drops them).
       const timing = opts?.source === "stt" ? cleanTiming(opts.timing) : undefined;
-      // The Mac's speaker check (docs/local-stt.md, "Voiceprint"), structured, on voice lines only.
-      const speaker = opts?.source === "stt" ? cleanSpeaker(opts.speaker) : undefined;
+      // The Mac's signed speaker attestations (lib/speaker-proof.ts); the hub verifies them.
+      const speakerProof = opts?.source === "stt" ? opts.speakerProof?.slice(0, 8) : undefined;
       // The mic's wake-word mode rides along, so the agent sees it (docs/wake-word.md).
       const mic = (
         globalThis as { __lkMic?: { view?: () => { state: string; wake?: string } } }
@@ -567,7 +561,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           ...(opts?.source === "stt" ? { source: "stt" } : {}),
           ...(timing ? { timing } : {}),
           ...(wake === "active" || wake === "passive" ? { wake } : {}),
-          ...(speaker ? { speaker } : {}),
+          ...(speakerProof?.length ? { speakerProof } : {}),
         }),
       );
       // Its reply is timed against it (latency.ts); main-thread lines only.

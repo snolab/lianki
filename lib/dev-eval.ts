@@ -24,6 +24,7 @@ import {
   cleanSpeaker,
 } from "../packages/debug-chat/src/wire";
 import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
+import { cleanProofs } from "./speaker-proof";
 
 export {
   MAX_AGENT_ID,
@@ -204,8 +205,11 @@ export type PageMessage =
       timing?: VoiceTiming;
       /** The mic's wake-word mode when the line was sent (docs/wake-word.md); absent = mic off. */
       wake?: "active" | "passive";
-      /** The Mac's speaker check on a voice line (docs/local-stt.md, "Voiceprint"). */
-      speaker?: SpeakerTag;
+      /**
+       * The Mac's signed speaker attestations for a voice line's finals
+       * (lib/speaker-proof.ts). The hub verifies them; a page-made tag is never taken.
+       */
+      speakerProof?: string[];
     }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
@@ -466,7 +470,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     // An address that is not a node path is dropped: the line goes to the main thread.
     const to = nodePath(m.to);
     const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
-    const speaker = m.source === "stt" ? cleanSpeaker(m.speaker) : undefined;
+    const speakerProof = m.source === "stt" ? cleanProofs(m.speakerProof) : undefined;
     return {
       type: "chat",
       id,
@@ -475,7 +479,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
       ...(timing ? { timing } : {}),
       ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
-      ...(speaker ? { speaker } : {}),
+      ...(speakerProof ? { speakerProof } : {}),
     };
   }
   if (m.type === "page-error") return parsePageError(m);

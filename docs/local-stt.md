@@ -361,13 +361,14 @@ The voiceprint adds these (next section):
 | from   | message                                                                         | meaning                                                         |
 | ------ | ------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | client | `{"t":"hello","device":"iphone"}`                                               | after `ready`: score this socket's finals against that print    |
-| client | `{"t":"begin","id":N,"enrol":true}`                                             | an enrolment sentence: not scored, its final carries `enrol`    |
+| client | `{"t":"begin","id":N,"enrol":"<enrolment id>"}`                                 | an enrolment sentence: not scored, its final carries `enrol`    |
 | client | `{"t":"end","id":N,"textFrom":S}`                                               | text from sample S on (after "Linky"); the speaker hears it all |
-| client | `{"t":"enrol","op":"start","rid","device","consent":true,"keepAudio":false}`    | open an enrolment (refused without `consent: true`)             |
-| client | `{"t":"enrol","op":"commit"\|"cancel","rid"}`                                   | save it (10 sentences at least), or drop it                     |
-| client | `{"t":"voiceprint","op":"status"\|"delete","rid"[,"device":D\|"*"]}`            | what is enrolled; delete one device's print, or all             |
+| client | `{"t":"enrol","op":"start","rid","device","ticket","keepAudio":false}`          | open an enrolment: needs an `enrol` ticket for that device (passkey) |
+| client | `{"t":"enrol","op":"commit"\|"cancel","rid","enrolment"}`                       | save it (10 sentences at least), or drop it                     |
+| client | `{"t":"voiceprint","op":"status"\|"delete","rid","ticket"[,"device":D\|"*"]}`   | what is enrolled (status ticket); delete (passkey ticket)       |
 | server | `ready` + `"speaker":{"models":["campp"]}`                                      | the check is on                                                 |
 | server | `final` + `"speaker":{score,decision,model,device,speechS,snrDb[,reason]}`      | the check on that final                                         |
+| server | `final` + `"speakerProof":"<payload>.<sig>"`                                    | the Mac's signature over that tag and the final's text          |
 | server | `final` + `"enrol":{ok,n[,reason]}`                                             | an enrolment sentence kept (or why not)                         |
 | server | `{"t":"enrol"\|"voiceprint","rid","ok"[,"error"],…}`                            | the answer to a request                                         |
 
@@ -395,11 +396,50 @@ not a recording; they are kept only on the Mac at
 `~/.config/lianki-stt/voiceprints`, never on Lianki's servers; what it is
 for; that he can delete it there at any time; and a switch, off by default,
 to also keep the sentences' audio on the Mac. **Nothing is captured until
-his tap on "I agree, start"** (`createEnrolment().consent()` is the only way
-into recording, and the server refuses `enrol start` without
-`consent: true`). Voice can neither start enrolment nor delete
-(docs/dev-debug-widget.md: recording is turned on by a tap, never by
-voice).
+his tap on "I agree, start" and his passkey** (next section). Voice can
+neither start enrolment nor delete (docs/dev-debug-widget.md: recording is
+turned on by a tap, never by voice).
+
+### Voiceprint: who may enrol and delete
+
+A page's own signals can be faked by page code (eval, a script's
+`element.click()`), and any page that reaches the Mac (a friend's page on
+lianki.com with tailnet reach, or the public tunnel with an STT ticket)
+could otherwise send voiceprint ops. So the Mac takes **no voiceprint op
+without a voiceprint ticket** from lianki.com, on any socket, tailnet or
+tunnel (review of #411, 2026-11-02):
+
+```
+tap (isTrusted) → POST /api/dev/voiceprint-ticket {op, device, step:"options"}   owner session, else 404
+               ← WebAuthn options: his passkeys, userVerification "required", a signed challenge token
+navigator.credentials.get → Face ID / Touch ID (the OS prompt: page code cannot answer it)
+               → POST {…, step:"verify", token, response}: assertion verified (@simplewebauthn/server),
+                 UV flag required, counter saved
+               ← ticket {aud:"lianki-voiceprint", op, device, uv:true, jti = the challenge, 60 s}
+page → the Mac {t:"enrol"|"voiceprint", op, …, ticket}   ticket.py: signature, aud, op, device, uv, once
+```
+
+- **status** needs a read-only owner ticket (`uv:false`, the session alone);
+  **enrol** and **delete** a passkey ticket for exactly that op and device
+  (`*` for every device). An STT ticket (`aud:"lianki-stt"`) is refused, so
+  is another op's or device's, a replay, or another key's. Commit and cancel
+  name an enrolment by the unguessable id its start returned.
+- The tickets are signed with the STT ticket key (`STT_TICKET_KEY` on the
+  Worker; the Mac checks with `~/.config/lianki-stt/ticket.pub`, or
+  `--voiceprint-pubkey`). **Without that public key on the Mac, every
+  voiceprint op is refused** (`voiceprint ops off` in the log): set it up
+  with step 2 of "Setting it up" above. The passkey is the owner's, from
+  the profile page (lib/passkey.ts; D1 `passkey`); with none, enrol and
+  delete answer 409.
+- `__lkMic` (the page-wide mic session) has no voiceprint request: the
+  panel opens its own socket to the Mac (`panelDeps`). The Enrol, Agree,
+  Delete buttons also ignore untrusted (synthetic) clicks.
+- **Delete wins over a pending enrolment.** Each device has a generation in
+  `voiceprints/generations.json` (0600); a delete, from the panel or the CLI,
+  bumps it (`*` for all). An enrolment remembers the generations it began
+  with and refuses to commit after a delete; a delete on the server also
+  drops the open enrolments of that device at once, so sentences still
+  queued are not kept either.
 
 Then the panel shows one sentence at a time (20, in Chinese, Japanese and
 English: `ENROL_SENTENCES`, reading material, not translated). Each
@@ -477,14 +517,21 @@ bands on those after he enrols, before anything relies on them.
 - **Active mode:** nothing is dropped (#380: noise and a talker under him
   still cost his own speech). An "other" counts as one rejection towards
   passive (docs/wake-word.md, "State machine").
-- **The line:** the tag rides on the voice line as `speaker` (the weakest of
-  its utterances, `combineSpeaker`; an utterance that went to the cloud
-  makes it `unknown`), is kept by the hub on the stored line, and a small
-  green check after the line shows it was verified as him (`VoiceMark`,
-  "Your voice, verified").
-- **Not built:** the voice approvals themselves. The tag is structured so the
-  hub can require `decision: "me"` later; today the page reports it and the
-  hub does not verify it (a signature from the Mac would be the next step).
+- **The line, signed:** the Mac signs each final's tag together with its
+  text, `{v:1, uid, at, text, decision, score, model, device, …}`, with an
+  Ed25519 key only it holds (`~/.config/lianki-stt/speaker-attest.key`,
+  0600; `voiceprint.py attest-key` makes it and prints the public key). The
+  page passes the signatures on with the line (`speakerProof`, one per
+  utterance); a page-made `speaker` is ignored. The hub (lianki-push, secret
+  `STT_SPEAKER_PUB`) keeps a `speaker` tag on the stored line only when every
+  proof verifies, is under 10 min old and unused, and the signed texts cover
+  at least 80 % of the line's letters (`lib/speaker-proof.ts`): no tag can be
+  forged, replayed or moved onto other words. It computes the tag itself
+  (the weakest utterance). Only such a tag shows the small green check
+  (`VoiceMark`, "Your voice, verified"). Without `STT_SPEAKER_PUB` no tag is
+  ever kept.
+- **Not built:** the voice approvals themselves. **They must rely on this
+  hub-verified tag only**, never on anything a page reports.
 
 **Latency** (`scripts/local-stt/voiceprint-bench.py`, 2026-11-01, 40 of his
 clips 1.8–14.4 s, a throwaway print in a temp folder, at `nice 20` and

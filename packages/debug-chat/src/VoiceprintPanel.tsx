@@ -10,6 +10,8 @@
  * compiled CSS, which has only the classes the app itself was built with.
  */
 import { useEffect, useRef, useState } from "react";
+import { createLocalStt } from "./local-stt";
+import { voiceprintTicket } from "./webauthn";
 import {
   ENROL_MAX,
   ENROL_MIN,
@@ -35,24 +37,57 @@ const pill = {
 /** The delete button and its confirmation: a warm red, never the main action's weight. */
 const DANGER = "oklch(0.58 0.2 27)";
 
+/**
+ * The panel's page side, made when it opens: its own socket to the Mac for
+ * the voiceprint requests (never one reachable from globalThis, unlike the
+ * mic session), and tickets from lianki.com (webauthn.ts).
+ */
+export function panelDeps(o: {
+  url: string;
+  device: string;
+  capture: EnrolDeps["capture"];
+  log?: (ev: Record<string, unknown>) => void;
+}): EnrolDeps & { close(): void } {
+  const c = createLocalStt(o.url, { device: o.device, log: o.log });
+  return {
+    device: o.device,
+    request: (m) => c.request(m),
+    ticket: (op, device) => voiceprintTicket(op, device),
+    capture: o.capture,
+    log: o.log,
+    close: () => c.close(),
+  };
+}
+
+
 export function VoiceprintPanel({
   t,
-  deps,
+  deps: make,
   onClose,
 }: {
   t: ChatStrings;
-  deps: EnrolDeps;
+  /** Made once per open panel; `close` (if any) when it unmounts. */
+  deps: () => EnrolDeps & { close?(): void };
   onClose: () => void;
 }) {
   const [view, setView] = useState<EnrolView>({ step: "closed" });
-  const ctl = useRef<ReturnType<typeof createEnrolment> | null>(null);
-  ctl.current ??= createEnrolment(deps, setView);
-  const c = ctl.current;
+  const ctl = useRef<{ c: ReturnType<typeof createEnrolment>; d: EnrolDeps & { close?(): void } } | null>(
+    null,
+  );
+  if (!ctl.current) {
+    const d = make();
+    ctl.current = { c: createEnrolment(d, setView), d };
+  }
+  const { c, d } = ctl.current;
   useEffect(() => {
     void c.open();
     // Closing the panel drops an enrolment under way (unsaved) and gives the mic back.
-    return () => c.close();
-  }, [c]);
+    return () => {
+      c.close();
+      // The cancel goes out first; then the panel's socket closes.
+      setTimeout(() => d.close?.(), 500);
+    };
+  }, [c, d]);
   const close = () => {
     c.close();
     onClose();
@@ -61,14 +96,15 @@ export function VoiceprintPanel({
     testid: string,
     label: string,
     onClick: () => void,
-    o: { primary?: boolean; danger?: boolean; disabled?: boolean } = {},
+    o: { primary?: boolean; danger?: boolean; disabled?: boolean; trusted?: boolean } = {},
   ) => (
     <button
       type="button"
       data-testid={testid}
       disabled={o.disabled}
       onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
+      // Enrol and delete: a real tap only (defence in depth; the passkey is the real gate).
+      onClick={(e) => (o.trusted && !e.nativeEvent.isTrusted ? undefined : onClick())}
       className="tap-40 pointer-events-auto"
       style={{
         ...pill,
@@ -121,8 +157,8 @@ export function VoiceprintPanel({
           {!view.local && note(t.vpOff, "debug-voiceprint-off")}
           {row(
             <>
-              {view.local && btn("debug-voiceprint-enrol", t.vpEnrol, () => c.enrol(), { primary: true })}
-              {view.local && view.prints.length > 0 && btn("debug-voiceprint-delete", t.vpDelete, () => c.askDelete(), { danger: true })}
+              {view.local && btn("debug-voiceprint-enrol", t.vpEnrol, () => c.enrol(), { primary: true, trusted: true })}
+              {view.local && view.prints.length > 0 && btn("debug-voiceprint-delete", t.vpDelete, () => c.askDelete(), { danger: true, trusted: true })}
               {btn("debug-voiceprint-close", t.vpClose, close)}
             </>,
           )}
@@ -146,7 +182,7 @@ export function VoiceprintPanel({
           </label>
           {row(
             <>
-              {btn("debug-voiceprint-agree", t.vpAgree, () => void c.consent(), { primary: true })}
+              {btn("debug-voiceprint-agree", t.vpAgree, () => void c.consent(), { primary: true, trusted: true })}
               {btn("debug-voiceprint-cancel", t.vpCancel, close)}
             </>,
           )}
@@ -199,7 +235,10 @@ export function VoiceprintPanel({
           </p>
           {row(
             <>
-              {btn("debug-voiceprint-delete-yes", t.vpDeleteYes, () => void c.confirmDelete(), { danger: true })}
+              {btn("debug-voiceprint-delete-yes", t.vpDeleteYes, () => void c.confirmDelete(), {
+                danger: true,
+                trusted: true,
+              })}
               {btn("debug-voiceprint-cancel", t.vpCancel, () => void c.open())}
             </>,
           )}

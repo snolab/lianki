@@ -300,7 +300,7 @@ describe("mic session: voiceprint enrolment", () => {
     const f = fakes();
     const s = createMicSession(f.deps);
     const finals: unknown[] = [];
-    await s.enrolCapture(true, (p) => void finals.push(p));
+    await s.enrolCapture(true, (p) => void finals.push(p), "E1");
     expect(s.view().state).toBe("listening");
     expect(s.enrolling()).toBe(true);
     // No local STT configured: each sentence is dropped (null), never uploaded.
@@ -316,7 +316,7 @@ describe("mic session: voiceprint enrolment", () => {
     const f = fakes();
     const s = createMicSession(f.deps);
     await s.toggle();
-    await s.enrolCapture(true, () => {});
+    await s.enrolCapture(true, () => {}, "E1");
     await s.enrolCapture(false, () => {});
     expect(s.view().state).toBe("listening");
     const g = fakes({
@@ -325,14 +325,18 @@ describe("mic session: voiceprint enrolment", () => {
       },
     });
     const t = createMicSession(g.deps);
-    await expect(t.enrolCapture(true, () => {})).rejects.toThrow("microphone not available");
+    await expect(t.enrolCapture(true, () => {}, "E1")).rejects.toThrow("microphone not available");
     expect(t.enrolling()).toBe(false);
   });
 
-  it("voiceprint requests need a local STT", async () => {
+  it("no voiceprint request on the page-wide session (globalThis.__lkMic)", () => {
     const s = createMicSession(fakes().deps);
-    await expect(s.voiceprint({ t: "voiceprint", op: "status" })).rejects.toThrow(
-      "no local speech model",
-    );
+    expect((s as Record<string, unknown>).voiceprint).toBeUndefined();
+  });
+
+  it("no enrolment id: enrolCapture routes nothing", async () => {
+    const s = createMicSession(fakes().deps);
+    await s.enrolCapture(true, () => {});
+    expect(s.enrolling()).toBe(false);
   });
 });

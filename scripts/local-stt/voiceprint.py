@@ -40,7 +40,12 @@ import numpy as np
 RATE = 16_000
 MODELS_DIR = os.path.expanduser(os.environ.get("LIANKI_STT_MODELS", "~/.cache/lianki-stt/models"))
 STORE_DIR = os.path.expanduser(os.environ.get("LIANKI_STT_VOICEPRINTS", "~/.config/lianki-stt/voiceprints"))
+#: The Mac's Ed25519 key that signs each final's speaker tag (Attestor); the hub
+#: holds only its public half (STT_SPEAKER_PUB) and stores a tag only if it verifies.
+ATTEST_KEY = os.path.expanduser(os.environ.get("LIANKI_STT_ATTEST_KEY", "~/.config/lianki-stt/speaker-attest.key"))
 FORMAT = 1
+#: Per-device generations: a delete bumps them, and an enrolment begun before cannot commit.
+GENERATIONS = "generations.json"
 
 #: The noise gate (docs/stt-ab.md: CAM++ rejects 30-100 % of his speech at 0 dB,
 #: and 1 s crops are far less reliable): below either, the decision is "unknown".
@@ -294,10 +299,50 @@ class Store:
         p["_centroid"] = c
         return p
 
-    def delete(self, device: str | None) -> int:
-        """Remove one device's prints (every model) and its kept audio, or all (device None). Count of files."""
+    # -- generations
+    def generation(self, device: str) -> int:
+        """How many times this device's prints (or, for "*", all prints) were deleted."""
+        g = self._generations()
+        return int(g.get(device, 0)) if isinstance(g.get(device, 0), int) else 0
+
+    def _generations(self) -> dict:
         if not self._ready(create=False):
-            return 0
+            return {}
+        f = os.path.join(self.root, GENERATIONS)
+        if not os.path.lexists(f):
+            return {}
+        why = path_problem(f, want_dir=False)
+        if why:
+            raise StoreError(f"{GENERATIONS} {why}")
+        try:
+            with open(f, encoding="utf-8") as fh:
+                g = json.load(fh)
+        except (OSError, ValueError) as e:
+            raise StoreError(f"{GENERATIONS} unreadable ({type(e).__name__})") from e
+        return g if isinstance(g, dict) else {}
+
+    def bump(self, device: str | None) -> None:
+        """A delete: enrolments of this device (None: of every device) begun before it can no longer commit."""
+        self._ready(create=True)
+        g = self._generations()
+        k = "*" if device is None else device
+        g[k] = int(g.get(k, 0)) + 1 if isinstance(g.get(k, 0), int) else 1
+        write_private(os.path.join(self.root, GENERATIONS), json.dumps(g).encode())
+
+    def delete(self, device: str | None) -> int:
+        """
+        Remove one device's prints (every model) and its kept audio, or all
+        (device None), and bump the generation so a pending enrolment cannot
+        save over the delete. Count of files.
+        """
+        if device is not None and not valid_device(device):
+            raise StoreError("bad device")
+        self._ready(create=True)
+        n = self._delete(device)
+        self.bump(device)
+        return n
+
+    def _delete(self, device: str | None) -> int:
         n = 0
         for name in sorted(os.listdir(self.root)):
             full = os.path.join(self.root, name)
@@ -519,6 +564,10 @@ class Enrolment:
         self.v = verifier
         self.device = device
         self.keep_audio = keep_audio
+        #: The generations when it began: a delete since (server or CLI) makes commit refuse.
+        self.gen = (verifier.store.generation(device), verifier.store.generation("*"))
+        #: Dropped by a delete on this server: sentences still queued are not kept.
+        self.dropped = False
         self.embs: dict[str, list[np.ndarray]] = {m: [] for m in verifier.order}
         self.speech: list[float] = []
         self.audio: list[np.ndarray] = []
@@ -530,6 +579,8 @@ class Enrolment:
     def add(self, audio: np.ndarray) -> dict:
         speech_s, snr = speech_stats(audio)
         res = {"speechS": round(speech_s, 2), "snrDb": round(snr, 1)}
+        if self.dropped:
+            return {"ok": False, "reason": "dropped", "n": self.n, **res}
         if self.n >= ENROL_MAX:
             return {"ok": False, "reason": "full", "n": self.n, **res}
         if speech_s < MIN_SPEECH_S:
@@ -555,7 +606,14 @@ class Enrolment:
             self.audio.append(np.asarray(audio, dtype=np.float32).copy())
         return {"ok": True, "n": self.n, **res}
 
+    def stale(self) -> bool:
+        st = self.v.store
+        return self.dropped or self.gen != (st.generation(self.device), st.generation("*"))
+
     def commit(self) -> dict:
+        if self.stale():
+            self.dropped = True
+            raise StoreError("the voiceprint was deleted meanwhile: enrol again")
         if self.n < ENROL_MIN:
             raise StoreError(f"need {ENROL_MIN} sentences, have {self.n}")
         saved = {}
@@ -567,6 +625,68 @@ class Enrolment:
                 self.v.store.keep_audio(self.device, i, a)
         self.v.refresh()
         return {"n": self.n, "models": list(saved), "self": saved[self.v.order[0]]}
+
+
+# ---------------------------------------------------------------- the attestation
+def _b64url(b: bytes) -> str:
+    import base64
+
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode("ascii")
+
+
+class Attestor:
+    """
+    Signs each final's speaker tag with an Ed25519 key that lives only on this
+    Mac (ATTEST_KEY, 0600 in a 0700 folder, made on first use). The hub knows
+    only the public key (the lianki-push secret STT_SPEAKER_PUB) and stores a
+    tag only when this signature verifies and the signed text matches the line
+    (lib/speaker-proof.ts). Wire form: `<payload b64url>.<signature b64url>`,
+    the signature over the ASCII of the first part; payload
+    `{v:1, uid, at, text, decision, score, model, device, speechS, snrDb[, reason]}`.
+    """
+
+    def __init__(self, path: str = ATTEST_KEY, create: bool = True):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+        if not os.path.lexists(path):
+            if not create:
+                raise StoreError(f"no attestation key at {path} (voiceprint.py attest-key makes one)")
+            d = os.path.dirname(path)
+            if not os.path.lexists(d):
+                os.makedirs(d, mode=0o700, exist_ok=True)
+                os.chmod(d, 0o700)
+            k = Ed25519PrivateKey.generate()
+            from cryptography.hazmat.primitives import serialization as ser
+
+            raw = k.private_bytes(ser.Encoding.Raw, ser.PrivateFormat.Raw, ser.NoEncryption())
+            write_private(path, (_b64url(raw) + "\n").encode("ascii"))
+        why = path_problem(path, want_dir=False)
+        if why:
+            raise StoreError(f"the attestation key {why}")
+        import base64
+
+        with open(path, encoding="ascii") as fh:
+            t = fh.read().strip()
+        raw = base64.urlsafe_b64decode(t + "=" * (-len(t) % 4))
+        if len(raw) != 32:
+            raise StoreError("the attestation key is not an Ed25519 key")
+        self.key = Ed25519PrivateKey.from_private_bytes(raw)
+
+    def public(self) -> str:
+        from cryptography.hazmat.primitives import serialization as ser
+
+        return _b64url(self.key.public_key().public_bytes(ser.Encoding.Raw, ser.PublicFormat.Raw))
+
+    def sign(self, tag: dict, text: str, at_ms: int | None = None) -> str:
+        payload = {
+            "v": 1,
+            "uid": _b64url(os.urandom(12)),
+            "at": int(at_ms if at_ms is not None else time.time() * 1000),
+            "text": text[:2000],
+            **{k: tag[k] for k in ("decision", "score", "model", "device", "speechS", "snrDb", "reason") if k in tag},
+        }
+        body = _b64url(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        return f"{body}.{_b64url(self.key.sign(body.encode('ascii')))}"
 
 
 # ---------------------------------------------------------------- the CLI
@@ -594,6 +714,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("wavs", nargs="+")
     s.add_argument("--device", default=None)
     s.add_argument("--models", default="campp")
+    sub.add_parser("attest-key", help="print the public key the hub needs (STT_SPEAKER_PUB); makes the key if missing")
     a = ap.parse_args(argv)
     store = Store(a.store)
     try:
@@ -611,6 +732,9 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             n = store.delete(None if a.all else a.device)
             print(f"deleted {n} file(s) from {a.store}")
+            return 0
+        if a.cmd == "attest-key":
+            print(Attestor().public())
             return 0
         if a.cmd == "score":
             v = Verifier(store, [m for m in a.models.split(",") if m])

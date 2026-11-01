@@ -77,7 +77,7 @@ function fakeStorage(
   };
 }
 
-function setup() {
+function setup(env?: unknown) {
   const sockets: FakeSocket[] = [];
   let t = 1_000_000;
   const storage = fakeStorage();
@@ -87,7 +87,7 @@ function setup() {
       getWebSockets: () => sockets,
       storage,
     },
-    undefined,
+    env,
     () => t,
   );
   const page = (label = "/words pwa iPhone") => {
@@ -1288,8 +1288,9 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
     expect(stored.map((m) => m.wake)).toEqual(["passive", undefined]);
   });
 
-  it("a voice line keeps the Mac's speaker check, structured; typed lines and junk carry none", async () => {
-    const s = setup();
+  it("a voice line keeps only a speaker tag the Mac signed over its words", async () => {
+    const mac = await speakerKey();
+    const s = setup({ STT_SPEAKER_PUB: mac.pub });
     const owner = s.page();
     await agent(s, owner);
     const tag = {
@@ -1300,21 +1301,120 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
       speechS: 2.4,
       snrDb: 21,
     };
-    await s.msg(owner, { type: "chat", id: "s1", text: "next word", source: "stt", speaker: tag });
-    await s.msg(owner, { type: "chat", id: "s2", text: "typed", speaker: tag });
+    const at = 1_000_000;
+    const good = await mac.sign({ ...tag, text: "Next word.", uid: "u1", at });
+    // Signed, fresh, the line's words: kept.
     await s.msg(owner, {
       type: "chat",
-      id: "s3",
-      text: "odd",
+      id: "s1",
+      text: "next word",
       source: "stt",
-      speaker: { decision: "boss" },
+      speakerProof: [good],
+    });
+    // The same proof again (replayed onto another line): dropped.
+    await s.msg(owner, {
+      type: "chat",
+      id: "s2",
+      text: "next word",
+      source: "stt",
+      speakerProof: [good],
+    });
+    // A page's own tag, no proof: dropped.
+    await s.msg(owner, { type: "chat", id: "s3", text: "hi there", source: "stt", speaker: tag });
+    // A real proof moved onto other words: dropped.
+    const other = await mac.sign({ ...tag, text: "next word", uid: "u2", at });
+    await s.msg(owner, {
+      type: "chat",
+      id: "s4",
+      text: "delete everything now",
+      source: "stt",
+      speakerProof: [other],
+    });
+    // Signed by another key (a forged Mac): dropped.
+    const forger = await speakerKey();
+    const forged = await forger.sign({ ...tag, text: "next word", uid: "u3", at });
+    await s.msg(owner, {
+      type: "chat",
+      id: "s5",
+      text: "next word",
+      source: "stt",
+      speakerProof: [forged],
+    });
+    // Stale (signed 11 minutes before): dropped.
+    const stale = await mac.sign({ ...tag, text: "next word", uid: "u4", at: at - 11 * 60_000 });
+    await s.msg(owner, {
+      type: "chat",
+      id: "s6",
+      text: "next word",
+      source: "stt",
+      speakerProof: [stale],
     });
     const stored = [...s.storage.store.entries()]
       .filter(([k]) => k.startsWith("msg:"))
       .map(([, v]) => v as Record<string, unknown>);
-    expect(stored.map((m) => m.speaker)).toEqual([tag, undefined, undefined]);
+    expect(stored.map((m) => m.speaker)).toEqual([
+      tag,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it("without STT_SPEAKER_PUB no tag is ever kept", async () => {
+    const mac = await speakerKey();
+    const s = setup();
+    const owner = s.page();
+    await agent(s, owner);
+    const p = await mac.sign({
+      decision: "me",
+      score: 0.5,
+      text: "next word",
+      uid: "u1",
+      at: 1_000_000,
+    });
+    await s.msg(owner, {
+      type: "chat",
+      id: "s1",
+      text: "next word",
+      source: "stt",
+      speakerProof: [p],
+    });
+    const stored = [...s.storage.store.values()].filter(
+      (v) => (v as { id?: string }).id === "s1",
+    ) as Record<string, unknown>[];
+    expect(stored[0]?.speaker).toBeUndefined();
   });
 });
+
+/** A stand-in for the Mac's attestation key (voiceprint.py Attestor), same wire form. */
+async function speakerKey() {
+  const kp = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
+  const b64 = (b: Uint8Array) =>
+    btoa(String.fromCharCode(...b))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  const pub = b64(new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey)));
+  return {
+    pub,
+    async sign(payload: Record<string, unknown>) {
+      const body = b64(new TextEncoder().encode(JSON.stringify({ v: 1, ...payload })));
+      const sig = new Uint8Array(
+        await crypto.subtle.sign(
+          { name: "Ed25519" },
+          kp.privateKey,
+          new TextEncoder().encode(body),
+        ),
+      );
+      return `${body}.${b64(sig)}`;
+    },
+  };
+}
 
 describe("DebugHub page moves (relabel)", () => {
   it("relabels only that socket, tells the listeners silently, and later chat carries the new path", async () => {

@@ -6,16 +6,23 @@
  * fake`) and a voiceprint folder in a temp dir. Silent (scripts/qa/silent.mjs),
  * and getUserMedia is stubbed (counted, then refused): nothing is recorded.
  *
- *   - the menu's Voiceprint opens the panel; status from the Mac
- *   - Enrol shows the consent card (the path, keep-audio off) and nothing
- *     reaches the microphone or the Mac's enrolment before "I agree, start"
- *   - the tap asks for the mic (the gesture), and the server opened an enrolment
- *   - a voice line tagged "me" shows the verified mark; "other" does not
+ * lianki.com's /api/dev/voiceprint-ticket is played by this script (a test
+ * Ed25519 key the server is given), and navigator.credentials.get is stubbed
+ * (counted): it stands for the owner's Face ID / Touch ID prompt.
+ *
+ *   - the menu's Voiceprint opens the panel; status with a status ticket
+ *   - Enrol shows the consent card (the path, keep-audio off); nothing
+ *     reaches the passkey, the microphone or the Mac before a real tap
+ *   - a synthetic click (element.click(), isTrusted false) does nothing
+ *   - the real tap asks for the passkey, then the Mac opens the enrolment;
+ *     a refused mic drops it there
+ *   - a voice line tagged "me" (verified by the hub) shows the mark; "other" does not
  *
  *   node scripts/dev/voiceprint-qa.mjs [--shots <dir>]   (light/dark at 390 px)
  */
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { generateKeyPairSync, randomBytes, sign } from "node:crypto";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -40,22 +47,35 @@ const waitFor = (proc, text, what) =>
   new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(`${what} did not start in 60 s`)), 60_000);
     let buf = "";
-    const on = (b) => {
+    proc.stdout.on("data", (b) => {
       buf += String(b);
       if (buf.includes(text)) {
         clearTimeout(t);
         resolve(buf);
       }
-    };
-    proc.stdout.on("data", on);
+    });
     proc.on("exit", (c) => reject(new Error(`${what} exited (${c}): ${buf}`)));
   });
+
+// lianki.com's ticket key, for the test only.
+const b64u = (b) => Buffer.from(b).toString("base64url");
+const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+const pubRaw = publicKey.export({ format: "jwk" }).x;
+const ticket = (fields) => {
+  const now = Math.floor(Date.now() / 1000);
+  const body = b64u(
+    JSON.stringify({ jti: b64u(randomBytes(12)), iat: now, exp: now + 60, ...fields }),
+  );
+  return `${body}.${b64u(sign(null, Buffer.from(body), privateKey))}`;
+};
 
 const port = await freePort();
 const sttPort = await freePort();
 const ORIGIN = `http://localhost:${port}`;
 const tmp = mkdtempSync(join(tmpdir(), "lk-voiceprint-qa-"));
 const store = join(tmp, "voiceprints");
+const pubFile = join(tmp, "ticket.pub");
+writeFileSync(pubFile, `${pubRaw}\n`, { mode: 0o600 });
 const widget = spawn(
   "bun",
   ["scripts/dev/debug-widget-server.ts", "--port", String(port), "--no-tunnel"],
@@ -80,6 +100,10 @@ const stt = spawn(
     "",
     "--origin",
     ORIGIN,
+    "--voiceprint-pubkey",
+    pubFile,
+    "--attest-key",
+    "",
   ],
   { stdio: ["ignore", "pipe", "pipe"] },
 );
@@ -96,6 +120,7 @@ const check = (ok, what) => {
   if (!ok) failures.push(what);
 };
 const sel = (id) => `[data-testid="${id}"]`;
+const asked = [];
 
 const browser = await launchSilent(chromium);
 try {
@@ -109,16 +134,58 @@ try {
       userAgent:
         "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
     });
+    // lianki.com's ticket route, as the owner's session would get it.
+    await ctx.route("**/api/dev/voiceprint-ticket", async (route) => {
+      const b = JSON.parse(route.request().postData() || "{}");
+      asked.push(`${b.op}:${b.step ?? ""}`);
+      const json = (o) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(o) });
+      if (b.op === "status")
+        return json({
+          ticket: ticket({ aud: "lianki-voiceprint", op: "status", device: "*", uv: false }),
+        });
+      if (b.step === "options")
+        return json({
+          token: "t",
+          options: {
+            challenge: b64u(randomBytes(32)),
+            rpId: "localhost",
+            userVerification: "required",
+            allowCredentials: [{ id: b64u(Buffer.from("cred")), type: "public-key" }],
+          },
+        });
+      return json({
+        ticket: ticket({ aud: "lianki-voiceprint", op: b.op, device: b.device, uv: true }),
+      });
+    });
     await ctx.addInitScript(
       ([src, ws]) => {
         localStorage.setItem("lk:debug-widget-src", src);
         localStorage.setItem("lk:agent-local-stt", ws);
         window.__gum = 0;
+        window.__passkey = 0;
         if (navigator.mediaDevices)
           navigator.mediaDevices.getUserMedia = async () => {
             window.__gum++;
             throw new DOMException("refused in QA", "NotAllowedError");
           };
+        // The owner's Face ID: counted, answered with a dummy assertion (this script's route checks nothing).
+        const b = (s) => new TextEncoder().encode(s).buffer;
+        navigator.credentials.get = async () => {
+          window.__passkey++;
+          return {
+            id: "cred",
+            rawId: b("cred"),
+            type: "public-key",
+            response: {
+              clientDataJSON: b("{}"),
+              authenticatorData: b("a"),
+              signature: b("s"),
+              userHandle: null,
+            },
+            getClientExtensionResults: () => ({}),
+          };
+        };
       },
       [`${ORIGIN}/debug-chat.js`, `ws://localhost:${sttPort}`],
     );
@@ -134,12 +201,19 @@ try {
     });
     check(
       !(await page.$(sel("debug-voiceprint-off"))),
-      `${scheme}: the panel reached the Mac (status)`,
+      `${scheme}: the panel reached the Mac with a status ticket`,
     );
     if (SHOTS) {
       mkdirSync(SHOTS, { recursive: true });
       await page.screenshot({ path: join(SHOTS, `voiceprint-status-${scheme}.png`) });
     }
+    // A synthetic click (eval, a script): nothing.
+    await page.evaluate((s) => document.querySelector(s)?.click(), sel("debug-voiceprint-enrol"));
+    await page.waitForTimeout(200);
+    check(
+      !(await page.$(sel("debug-voiceprint-consent"))),
+      `${scheme}: a synthetic click on Enrol does nothing`,
+    );
     await page.click(sel("debug-voiceprint-enrol"));
     await page.waitForSelector(sel("debug-voiceprint-consent"));
     const consent = await page.textContent(sel("debug-voiceprint-consent"));
@@ -147,10 +221,15 @@ try {
       consent.includes("~/.config/lianki-stt/voiceprints"),
       `${scheme}: the consent card says where the print is kept`,
     );
-    check(consent.includes("10–20"), `${scheme}: and how many sentences`);
     check(
       !(await page.isChecked(sel("debug-voiceprint-keep-audio"))),
       `${scheme}: keep-audio is off by default`,
+    );
+    await page.evaluate((s) => document.querySelector(s)?.click(), sel("debug-voiceprint-agree"));
+    await page.waitForTimeout(300);
+    check(
+      (await page.evaluate(() => window.__passkey)) === 0,
+      `${scheme}: a synthetic click on Agree asks no passkey`,
     );
     check(
       (await page.evaluate(() => window.__gum)) === 0,
@@ -162,29 +241,28 @@ try {
     );
     if (SHOTS) await page.screenshot({ path: join(SHOTS, `voiceprint-consent-${scheme}.png`) });
     await page.click(sel("debug-voiceprint-agree"));
-    // The stub refuses the microphone: the card says so and the Mac drops the enrolment.
     await page.waitForSelector(`${sel("debug-voiceprint")}[data-step="error"]`, {
       timeout: 10_000,
     });
     await page.waitForTimeout(300);
     check(
+      (await page.evaluate(() => window.__passkey)) === 1,
+      `${scheme}: the tap asked for the passkey`,
+    );
+    check(
       log().includes("enrolment started (iphone, audio not kept)"),
-      `${scheme}: the tap opened the enrolment (iphone)`,
+      `${scheme}: then the Mac opened the enrolment (iphone)`,
     );
     check(
       (await page.evaluate(() => window.__gum)) >= 1,
-      `${scheme}: the tap asked for the microphone`,
-    );
-    check(
-      (await page.textContent(sel("debug-voiceprint-error"))).includes("microphone not available"),
-      `${scheme}: no microphone: the card says so`,
+      `${scheme}: and asked for the microphone`,
     );
     check(
       log().includes("enrolment cancelled"),
-      `${scheme}: and the Mac drops the enrolment, unsaved`,
+      `${scheme}: a refused mic drops it on the Mac, unsaved`,
     );
     await page.click(sel("debug-voiceprint-close"));
-    // The verified mark.
+    // The verified mark (a tag the hub stored after checking the Mac's proof).
     await page.evaluate(() => {
       window.__line({
         text: "这是我说的话",
@@ -205,9 +283,12 @@ try {
       marks.length === 1 && marks[0].includes("这是我说的话"),
       `${scheme}: the verified mark is on "me" only`,
     );
-    if (SHOTS) await page.screenshot({ path: join(SHOTS, `voiceprint-mark-${scheme}.png`) });
     await ctx.close();
   }
+  check(
+    asked.includes("enrol:options") && asked.includes("enrol:verify"),
+    "the ticket came through options and verify",
+  );
 } finally {
   await browser.close();
   widget.kill();

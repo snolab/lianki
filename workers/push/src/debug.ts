@@ -173,7 +173,8 @@ import {
   askText,
   checkChoices,
 } from "../../../packages/debug-chat/src/ask";
-import type { AnsweredEvent } from "../../../packages/debug-chat/src/wire";
+import type { AnsweredEvent, SpeakerTag } from "../../../packages/debug-chat/src/wire";
+import { type SeenProofs, verifySpeakerProofs } from "../../../lib/speaker-proof";
 import {
   CLIPS_GONE_MS,
   CLIPS_HIDDEN_MS,
@@ -390,12 +391,17 @@ export class DebugHub {
    */
   private grants?: Map<string, Grant>;
   private loadingGrants?: Promise<void>;
+  /** STT_SPEAKER_PUB, and the attestations already used (one line each). */
+  private speakerPub?: string;
+  private seenProofs: SeenProofs = new Map();
 
   constructor(
     private ctx: DebugState,
-    _env?: unknown,
+    env?: unknown,
     private now: () => number = Date.now,
   ) {
+    // The Mac's speaker-attestation public key (voiceprint.py attest-key); without it no tag is kept.
+    this.speakerPub = (env as { STT_SPEAKER_PUB?: string } | undefined)?.STT_SPEAKER_PUB;
     // The listener pings to find a socket that died without a close (a
     // redeploy, a dropped connection); the runtime answers it while the hub
     // hibernates, so it costs no wake-up.
@@ -1199,21 +1205,33 @@ export class DebugHub {
       );
       // A friend's line is always their own thread's: no node addressing there.
       if (page.thread !== OWNER_THREAD) return this.friendChat(ws, page, m.id, m.text);
-      return this.post({
-        id: m.id,
-        from: "owner",
-        label: page.label,
-        text: m.text,
-        at: t,
-        thread: OWNER_THREAD,
-        ...(page.sender ? { sender: page.sender } : {}),
-        ...(m.to ? { to: m.to } : {}),
-        ...(m.source ? { source: m.source } : {}),
-        ...(m.timing ? { timing: m.timing } : {}),
-        ...(m.wake ? { wake: m.wake } : {}),
-        // Kept structured for later (voice approvals may require "me"); reported by the page.
-        ...(m.speaker ? { speaker: m.speaker } : {}),
-      });
+      const line = (speaker: SpeakerTag | undefined) =>
+        this.post({
+          id: m.id,
+          from: "owner",
+          label: page.label,
+          text: m.text,
+          at: t,
+          thread: OWNER_THREAD,
+          ...(page.sender ? { sender: page.sender } : {}),
+          ...(m.to ? { to: m.to } : {}),
+          ...(m.source ? { source: m.source } : {}),
+          ...(m.timing ? { timing: m.timing } : {}),
+          ...(m.wake ? { wake: m.wake } : {}),
+          // Only a tag the Mac signed over these words (lib/speaker-proof.ts); voice
+          // approvals later must rely on this, never on what a page says.
+          ...(speaker ? { speaker } : {}),
+        });
+      // A voice line with the Mac's signed attestations: verified first, then stored.
+      if (m.source === "stt" && m.speakerProof?.length)
+        return verifySpeakerProofs(
+          m.speakerProof,
+          m.text,
+          this.speakerPub,
+          this.seenProofs,
+          this.now(),
+        ).then(line);
+      return line(undefined);
     }
     // A tap on an ask card: stamped here, never by the page or an agent.
     if (m.type === "answer") return this.answer(ws, page, m.askId, m.choices);

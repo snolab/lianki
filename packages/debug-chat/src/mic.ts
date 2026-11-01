@@ -859,8 +859,8 @@ export function createMic(d: {
   wake?: WakeGate;
   /** Voiceprint enrolment (voiceprint.ts); while active it takes every utterance. */
   enrol?: EnrolTap;
-  /** Each kept final's speaker tag from the Mac (undefined: the cloud, or no check there). */
-  speaker?: (tag: SpeakerTag | undefined) => void;
+  /** Each kept final's speaker tag from the Mac and its signed proof (undefined: the cloud, or no check there). */
+  speaker?: (tag: SpeakerTag | undefined, proof?: string) => void;
   /** The adaptive estimator (adaptive.ts); without it the endpoint is the fixed one. */
   adapt?: MicAdapt;
   now?: () => number;
@@ -1167,8 +1167,12 @@ export function createMic(d: {
     local?.catch(() => {}); // upload decides; never an unhandled rejection
     /** The Mac's speaker check on it; "other" in active mode counts towards passive. */
     let spk: SpeakerTag | undefined;
+    let proof: string | undefined;
     local?.then(
-      (f) => void (spk = f.speaker),
+      (f) => {
+        spk = f.speaker;
+        proof = f.proof;
+      },
       () => {},
     );
     d.timing?.(seq, { t_uploadStart: now() });
@@ -1199,7 +1203,7 @@ export function createMic(d: {
           d.timing?.(seq, { t_sttDone: now(), dropped: drop || !text.trim() });
           const other = spk?.decision === "other";
           // The line's speaker tag (voiceprint.ts noteSpeaker): only for text that lands.
-          if (!drop && text.trim()) d.speaker?.(spk);
+          if (!drop && text.trim()) d.speaker?.(spk, proof);
           if (!echo)
             d.wake?.verdict(
               !drop && !!text.trim() && !other,

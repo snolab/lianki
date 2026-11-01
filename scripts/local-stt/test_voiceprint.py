@@ -176,9 +176,9 @@ class StoreFiles(unittest.TestCase):
         self.store.keep_audio("iphone", 0, tone(300))
         self.store.save("android", "campp", self.emb(), [2.0] * 12, audio=False)
         self.assertEqual(self.store.delete("iphone"), 3)  # two prints and one kept sentence
-        self.assertEqual(sorted(os.listdir(self.root)), ["android.campp.json"])
+        self.assertEqual(sorted(os.listdir(self.root)), ["android.campp.json", V.GENERATIONS])
         self.assertEqual(self.store.delete(None), 1)
-        self.assertEqual(os.listdir(self.root), [])
+        self.assertEqual(os.listdir(self.root), [V.GENERATIONS])
         self.assertEqual(sorted(os.listdir(clips)), before)
         self.assertEqual(self.store.delete(None), 0)
 
@@ -194,7 +194,9 @@ class StoreFiles(unittest.TestCase):
         r = subprocess.run([py, "-I", cli, "--store", self.root, "delete", "--device", "iphone"], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0)
         self.assertIn("deleted 1 file", r.stdout)
-        self.assertEqual(os.listdir(self.root), [])
+        self.assertEqual(os.listdir(self.root), [V.GENERATIONS])
+        self.assertEqual(mode(os.path.join(self.root, V.GENERATIONS)), 0o600)
+        self.assertEqual(V.Store(self.root).generation("iphone"), 1)
 
     def test_bad_names(self):
         for d in ("", "../etc", "iPhone", "a/b", "x" * 40, None, 3):
@@ -298,6 +300,75 @@ class Enrolling(unittest.TestCase):
         self.assertEqual(e.add(tone(300))["reason"], "full")
 
 
+class Generations(unittest.TestCase):
+    """A delete (server or CLI) makes an enrolment begun before it unable to save."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = os.path.join(self.tmp.name, "vp")
+        self.v = fake_verifier(self.root)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def filled(self, device="iphone"):
+        e = V.Enrolment(self.v, device, keep_audio=False)
+        for i in range(V.ENROL_MIN):
+            e.add(tone(300, seed=i))
+        return e
+
+    def test_delete_of_that_device_invalidates(self):
+        e = self.filled()
+        V.Store(self.root).delete("iphone")  # the CLI, say
+        with self.assertRaises(V.StoreError):
+            e.commit()
+        self.assertEqual(os.listdir(self.root), [V.GENERATIONS])  # nothing saved
+        self.assertEqual(e.add(tone(300))["reason"], "dropped")
+
+    def test_delete_all_invalidates_every_device(self):
+        a, b = self.filled("iphone"), self.filled("android")
+        V.Store(self.root).delete(None)
+        for e in (a, b):
+            with self.assertRaises(V.StoreError):
+                e.commit()
+
+    def test_other_device_delete_leaves_it(self):
+        e = self.filled("iphone")
+        V.Store(self.root).delete("android")
+        self.assertEqual(e.commit()["n"], V.ENROL_MIN)
+
+    def test_generations_file_is_private_and_checked(self):
+        st = V.Store(self.root)
+        st.delete("iphone")
+        f = os.path.join(self.root, V.GENERATIONS)
+        self.assertEqual(mode(f), 0o600)
+        os.chmod(f, 0o644)
+        with self.assertRaises(V.StoreError):
+            st.generation("iphone")
+
+
+class Attesting(unittest.TestCase):
+    def test_sign_and_verify(self):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "cfg", "speaker-attest.key")
+            a = V.Attestor(path)
+            self.assertEqual(mode(path), 0o600)
+            self.assertEqual(mode(os.path.dirname(path)), 0o700)
+            self.assertEqual(V.Attestor(path).public(), a.public())  # kept, not remade
+            tok = a.sign({"decision": "me", "score": 0.5, "model": "campp", "device": "iphone"}, "下一个")
+            body, sig = tok.split(".")
+            pad = lambda x: x + "=" * (-len(x) % 4)  # noqa: E731
+            import base64
+
+            pub = Ed25519PublicKey.from_public_bytes(base64.urlsafe_b64decode(pad(a.public())))
+            pub.verify(base64.urlsafe_b64decode(pad(sig)), body.encode())
+            p = json.loads(base64.urlsafe_b64decode(pad(body)))
+            self.assertEqual((p["v"], p["decision"], p["text"], p["device"]), (1, "me", "下一个", "iphone"))
+            self.assertIn("uid", p)
+
+
 def free_port() -> int:
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
@@ -306,17 +377,56 @@ def free_port() -> int:
     return p
 
 
+def b64u(b: bytes) -> str:
+    import base64
+
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+class Signer:
+    """lianki.com's side in the tests: the same wire form as lib/stt-ticket.ts and lib/voiceprint-ticket.ts."""
+
+    def __init__(self):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives import serialization as ser
+
+        self.k = Ed25519PrivateKey.generate()
+        self.pub = b64u(self.k.public_key().public_bytes(ser.Encoding.Raw, ser.PublicFormat.Raw))
+
+    def ticket(self, **fields) -> str:
+        now = int(time.time())
+        p = {"jti": b64u(os.urandom(12)), "iat": now, "exp": now + 60, **fields}
+        body = b64u(json.dumps(p).encode())
+        return f"{body}.{b64u(self.k.sign(body.encode()))}"
+
+    def vp(self, op, device="*", uv=True):
+        return self.ticket(aud="lianki-voiceprint", op=op, device=device, uv=uv)
+
+
 class ServerProtocol(unittest.TestCase):
-    """The real server.py (--engine fake --speaker fake): consent gating, enrol, verify, delete."""
+    """
+    The real server.py (--engine fake --speaker fake): voiceprint ops only with a
+    voiceprint ticket for that op and device, over any socket; enrolment by id;
+    a delete dropping open enrolments; signed speaker tags.
+    """
 
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.root = os.path.join(cls.tmp.name, "vp")
+        cls.signer = Signer()
+        cls.pubfile = os.path.join(cls.tmp.name, "ticket.pub")
+        fd = os.open(cls.pubfile, os.O_WRONLY | os.O_CREAT, 0o600)
+        os.write(fd, (cls.signer.pub + "\n").encode())
+        os.close(fd)
+        cls.attest = os.path.join(cls.tmp.name, "cfg", "speaker-attest.key")
+        V.Attestor(cls.attest)  # as `voiceprint.py attest-key` would
         cls.port = free_port()
+        cls.public = free_port()
         cls.proc = subprocess.Popen(
             [sys.executable, "-I", os.path.join(HERE, "server.py"), "--engine", "fake", "--port", str(cls.port),
-             "--speaker", "fake", "--voiceprints", cls.root, "--public-config", ""],
+             "--speaker", "fake", "--voiceprints", cls.root, "--public-config", "",
+             "--public-port", str(cls.public), "--ticket-pubkey", cls.pubfile, "--attest-key", cls.attest],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         cls.lines: list[str] = []
         deadline = time.time() + 30
@@ -336,29 +446,35 @@ class ServerProtocol(unittest.TestCase):
         cls.proc.stdout.close()
         cls.tmp.cleanup()
 
-    def run_ws(self, fn):
+    def run_ws(self, fn, public=False):
         from websockets.asyncio.client import connect
 
         async def go():
-            async with connect(f"ws://127.0.0.1:{self.port}", origin="https://lianki.com") as ws:
+            kw = {"origin": "https://lianki.com"}
+            url = f"ws://127.0.0.1:{self.port}"
+            if public:
+                # The tunnel listener, with a good STT ticket: a plain STT socket.
+                url = f"ws://127.0.0.1:{self.public}"
+                kw["subprotocols"] = ["lianki-stt", self.signer.ticket(aud="lianki-stt")]
+            async with connect(url, **kw) as ws:
                 ready = json.loads(await ws.recv())
                 self.assertEqual(ready["t"], "ready")
-                self.assertEqual(ready["speaker"], {"models": ["campp"]})
                 return await fn(ws)
 
         return asyncio.run(go())
 
     @staticmethod
     async def ask(ws, msg):
+        msg = {"rid": b64u(os.urandom(6)), **msg}
         await ws.send(json.dumps(msg))
         while True:
             m = json.loads(await ws.recv())
-            if m.get("rid") == msg.get("rid"):
+            if m.get("rid") == msg["rid"]:
                 return m
 
     @staticmethod
-    async def utter(ws, uid, audio, enrol=False, text_from=None):
-        await ws.send(json.dumps({"t": "begin", "id": uid, **({"enrol": True} if enrol else {})}))
+    async def utter(ws, uid, audio, enrol=None, text_from=None):
+        await ws.send(json.dumps({"t": "begin", "id": uid, **({"enrol": enrol} if enrol else {})}))
         pcm = (np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes()
         await ws.send(b"\x01" + pcm)
         await ws.send(json.dumps({"t": "end", "id": uid, **({"textFrom": text_from} if text_from else {})}))
@@ -367,62 +483,138 @@ class ServerProtocol(unittest.TestCase):
             if m.get("t") == "final" and m.get("id") == uid:
                 return m
 
+    def refused_everywhere(self, public: bool):
+        sg = self.signer
+
+        async def flow(ws):
+            out = []
+            for msg in (
+                {"t": "voiceprint", "op": "status"},
+                {"t": "voiceprint", "op": "delete", "device": "*"},
+                {"t": "enrol", "op": "start", "device": "iphone", "consent": True},
+                # An STT ticket is not a voiceprint ticket.
+                {"t": "voiceprint", "op": "delete", "device": "*", "ticket": sg.ticket(aud="lianki-stt")},
+                # A ticket for another op or device.
+                {"t": "voiceprint", "op": "delete", "device": "*", "ticket": sg.vp("status")},
+                {"t": "enrol", "op": "start", "device": "iphone", "ticket": sg.vp("enrol", "android")},
+                # Enrol and delete need the passkey (uv) behind the ticket.
+                {"t": "enrol", "op": "start", "device": "iphone", "ticket": sg.vp("enrol", "iphone", uv=False)},
+                # Another key's ticket.
+                {"t": "voiceprint", "op": "status", "ticket": Signer().vp("status")},
+            ):
+                r = await self.ask(ws, msg)
+                out.append((r["ok"], r.get("error", "")))
+            return out
+
+        res = self.run_ws(flow, public=public)
+        self.assertTrue(all(not ok for ok, _ in res), res)
+        self.assertTrue(all(e.startswith("ticket") for _, e in res), res)
+
+    def test_plain_socket_gets_no_voiceprint_ops(self):
+        # A lianki.com page (a friend's included) on the tailnet port: no ticket, no op.
+        self.refused_everywhere(public=False)
+
+    def test_stt_ticket_socket_gets_no_voiceprint_ops(self):
+        self.refused_everywhere(public=True)
+
     def test_flow(self):
+        sg = self.signer
+
         async def flow(ws):
             await ws.send(json.dumps({"t": "hello", "device": "iphone"}))
-            # Nothing enrolled: unknown, and the text as before.
             f = await self.utter(ws, 1, tone(300))
-            self.assertEqual(f["speaker"]["decision"], "unknown")
             self.assertEqual(f["speaker"]["reason"], "no-print")
-            self.assertEqual(f["text"], "3.50s")
-            # No consent, no enrolment: the server refuses, and enrol sentences are not kept.
-            r = await self.ask(ws, {"t": "enrol", "op": "start", "rid": "a", "device": "iphone"})
-            self.assertEqual((r["ok"], r["error"]), (False, "no consent"))
-            f = await self.utter(ws, 2, tone(300), enrol=True)
+            r = await self.ask(ws, {"t": "voiceprint", "op": "status", "ticket": sg.vp("status")})
+            self.assertEqual((r["ok"], r["prints"]), (True, []))
+            # An enrol sentence for an enrolment that does not exist: not kept.
+            f = await self.utter(ws, 2, tone(300), enrol="nope")
             self.assertEqual(f["enrol"]["reason"], "no-enrolment")
-            self.assertNotIn("speaker", f)
-            r = await self.ask(ws, {"t": "enrol", "op": "commit", "rid": "b"})
-            self.assertFalse(r["ok"])
-            self.assertFalse(os.path.exists(self.root))
-            # With consent.
-            r = await self.ask(ws, {"t": "enrol", "op": "start", "rid": "c", "device": "iphone", "consent": True})
-            self.assertTrue(r["ok"])
-            self.assertEqual((r["min"], r["max"]), (10, 20))
-            f = await self.utter(ws, 3, tone(300, speech_s=1.0), enrol=True)
-            self.assertEqual(f["enrol"]["reason"], "short")
+            r = await self.ask(ws, {"t": "enrol", "op": "start", "device": "iphone", "consent": True,
+                                    "ticket": sg.vp("enrol", "iphone")})
+            self.assertTrue(r["ok"], r)
+            eid = r["enrolment"]
+            # The same ticket twice: single use.
+            t = sg.vp("enrol", "iphone")
+            r1 = await self.ask(ws, {"t": "enrol", "op": "start", "device": "iphone", "ticket": t})
+            r2 = await self.ask(ws, {"t": "enrol", "op": "start", "device": "iphone", "ticket": t})
+            self.assertTrue(r1["ok"])
+            self.assertEqual(r2["error"], "ticket replayed")
+            await self.ask(ws, {"t": "enrol", "op": "cancel", "enrolment": r1["enrolment"]})
             for i in range(10):
-                f = await self.utter(ws, 10 + i, tone(300, seed=i), enrol=True)
-                self.assertTrue(f["enrol"]["ok"])
-                self.assertEqual(f["enrol"]["n"], i + 1)
-            self.assertFalse(os.path.exists(self.root))  # nothing on disk before the save
-            r = await self.ask(ws, {"t": "enrol", "op": "commit", "rid": "d"})
-            self.assertTrue(r["ok"])
-            self.assertEqual(r["n"], 10)
-            self.assertEqual(mode(self.root), 0o700)
+                f = await self.utter(ws, 10 + i, tone(300, seed=i), enrol=eid)
+                self.assertTrue(f["enrol"]["ok"], f)
+            self.assertFalse(os.path.exists(os.path.join(self.root, "iphone.campp.json")))
+            r = await self.ask(ws, {"t": "enrol", "op": "commit", "enrolment": eid})
+            self.assertTrue(r["ok"], r)
             self.assertEqual(mode(os.path.join(self.root, "iphone.campp.json")), 0o600)
-            r = await self.ask(ws, {"t": "voiceprint", "op": "status", "rid": "e"})
-            self.assertEqual([(p["device"], p["model"], p["n"]) for p in r["prints"]], [("iphone", "campp", 10)])
-            # Verified finals.
+            # Verified finals carry a proof the Mac signed over the text.
             f = await self.utter(ws, 30, tone(300))
             self.assertEqual(f["speaker"]["decision"], "me")
-            self.assertEqual(f["speaker"]["device"], "iphone")
+            self.assertIn("speakerProof", f)
+            body = f["speakerProof"].split(".")[0]
+            import base64
+
+            p = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+            self.assertEqual((p["text"], p["decision"], p["device"]), (f["text"], "me", "iphone"))
             f = await self.utter(ws, 31, tone(900))
             self.assertEqual(f["speaker"]["decision"], "other")
-            # After "Linky": the text from textFrom on, the speaker on the whole.
-            f = await self.utter(ws, 32, tone(300), text_from=RATE)
-            self.assertEqual(f["text"], "2.50s")
-            self.assertEqual(f["speaker"]["decision"], "me")
-            self.assertGreater(f["speaker"]["speechS"], 2.0)
-            # Delete: bad names refused, then this device's print gone.
-            r = await self.ask(ws, {"t": "voiceprint", "op": "delete", "rid": "f", "device": "../x"})
-            self.assertFalse(r["ok"])
-            r = await self.ask(ws, {"t": "voiceprint", "op": "delete", "rid": "g", "device": "iphone"})
+            # Delete with its ticket.
+            r = await self.ask(ws, {"t": "voiceprint", "op": "delete", "device": "iphone",
+                                    "ticket": sg.vp("delete", "iphone")})
             self.assertEqual((r["ok"], r["deleted"]), (True, 1))
             f = await self.utter(ws, 33, tone(300))
             self.assertEqual(f["speaker"]["reason"], "no-print")
             return True
 
         self.assertTrue(self.run_ws(flow))
+
+    def test_delete_drops_a_pending_enrolment(self):
+        """Page A enrols; page B deletes; A can neither add nor commit."""
+        sg = self.signer
+
+        async def page_a_start(ws):
+            r = await self.ask(ws, {"t": "enrol", "op": "start", "device": "ipad", "consent": True,
+                                    "ticket": sg.vp("enrol", "ipad")})
+            for i in range(10):
+                f = await self.utter(ws, 50 + i, tone(300, seed=i), enrol=r["enrolment"])
+                self.assertTrue(f["enrol"]["ok"])
+            return r["enrolment"]
+
+        eid = self.run_ws(page_a_start)
+
+        async def page_b(ws):
+            return await self.ask(ws, {"t": "voiceprint", "op": "delete", "device": "*",
+                                       "ticket": sg.vp("delete", "*")})
+
+        self.assertTrue(self.run_ws(page_b)["ok"])
+
+        async def page_a_after(ws):
+            f = await self.utter(ws, 70, tone(300), enrol=eid)
+            r = await self.ask(ws, {"t": "enrol", "op": "commit", "enrolment": eid})
+            return f["enrol"], r
+
+        sentence, commit = self.run_ws(page_a_after)
+        self.assertFalse(sentence["ok"])
+        self.assertEqual(commit["error"], "no enrolment")
+        self.assertFalse(os.path.exists(os.path.join(self.root, "ipad.campp.json")))
+
+    def test_cli_delete_refuses_a_later_commit(self):
+        sg = self.signer
+
+        async def flow(ws):
+            r = await self.ask(ws, {"t": "enrol", "op": "start", "device": "mac", "consent": True,
+                                    "ticket": sg.vp("enrol", "mac")})
+            for i in range(10):
+                await self.utter(ws, 80 + i, tone(300, seed=i), enrol=r["enrolment"])
+            # The CLI, from another process, while the enrolment is open.
+            subprocess.run([sys.executable, "-I", os.path.join(HERE, "voiceprint.py"), "--store", self.root,
+                            "delete", "--device", "mac"], check=True, capture_output=True)
+            return await self.ask(ws, {"t": "enrol", "op": "commit", "enrolment": r["enrolment"]})
+
+        r = self.run_ws(flow)
+        self.assertFalse(r["ok"])
+        self.assertIn("deleted meanwhile", r["error"])
+        self.assertFalse(os.path.exists(os.path.join(self.root, "mac.campp.json")))
 
 
 @unittest.skipUnless(os.path.exists(CAMPP), "CAM++ model not here")

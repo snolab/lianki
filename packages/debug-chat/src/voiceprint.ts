@@ -95,30 +95,37 @@ export function matchesPrompt(heard: string, prompt: string): boolean {
 }
 
 // ---------------------------------------------------------------- tags on voice lines
+type Noted = { tag?: SpeakerTag; proof?: string };
 /** The tags of the utterances in the draft since the last send (page-wide: a hot swap keeps them). */
 const TAGS_KEY = "__lkSpeakerTags";
-const tagList = (): (SpeakerTag | undefined)[] => {
-  const g = globalThis as unknown as Record<string, (SpeakerTag | undefined)[] | undefined>;
+const tagList = (): Noted[] => {
+  const g = globalThis as unknown as Record<string, Noted[] | undefined>;
   return (g[TAGS_KEY] ??= []);
 };
 /**
- * An utterance's final landed in the draft: its tag (or none: the cloud, or
- * no check on the Mac), so a line of several utterances carries the weakest.
+ * An utterance's final landed in the draft: its tag and the Mac's signed proof
+ * (or none: the cloud, or no check on the Mac).
  */
-export function noteSpeaker(tag: SpeakerTag | undefined): void {
+export function noteSpeaker(tag: SpeakerTag | undefined, proof?: string): void {
   const l = tagList();
-  l.push(tag);
+  l.push({ tag, proof });
   if (l.length > 50) l.splice(0, l.length - 50);
 }
 /**
- * The line is sent: its tag, and the list starts over. Any utterance without
- * a tag makes the line "unknown"; none at all leaves it untagged.
+ * The line is sent: what the page saw (`tag`, the weakest; "unknown" when an
+ * utterance had none) and the proofs it passes on. Only the hub's check of the
+ * proofs (lib/speaker-proof.ts) puts a tag on the stored line: a line with an
+ * unproven utterance gets none there.
  */
-export function takeSpeaker(): SpeakerTag | undefined {
+export function takeSpeaker(): { tag?: SpeakerTag; proofs?: string[] } {
   const l = tagList().splice(0);
-  if (!l.some(Boolean)) return undefined;
-  if (l.some((t) => !t)) return { ...combineSpeaker(l)!, decision: "unknown", reason: "untagged" };
-  return combineSpeaker(l);
+  if (!l.some((n) => n.tag)) return {};
+  const tags = l.map((n) => n.tag);
+  const tag = tags.some((t) => !t)
+    ? { ...combineSpeaker(tags)!, decision: "unknown" as const, reason: "untagged" }
+    : combineSpeaker(tags);
+  const proofs = l.every((n) => n.proof) ? l.map((n) => n.proof!) : undefined;
+  return { tag, ...(proofs ? { proofs } : {}) };
 }
 /** Typed text replaced the dictation: the tags no longer describe the draft. */
 export function clearSpeaker(): void {
@@ -148,8 +155,14 @@ export type AgainReason = "short" | "noise" | "mismatch" | "text" | "unreachable
 
 /** What the card needs of the page (the local STT socket, the mic session). */
 export type EnrolDeps = {
-  /** A voiceprint request to the Mac (local-stt.ts request). */
+  /** A voiceprint request to the Mac (local-stt.ts request on the panel's own socket). */
   request(msg: Record<string, unknown>): Promise<Record<string, unknown>>;
+  /**
+   * A voiceprint ticket from lianki.com for this op (app/api/dev/voiceprint-ticket):
+   * status with the owner session; enrol and delete only after the owner's
+   * passkey with Face ID / Touch ID (webauthn.ts). The Mac takes no op without one.
+   */
+  ticket(op: "status" | "enrol" | "delete", device: string): Promise<string>;
   /** This device's slug. */
   device: string;
   /**
@@ -157,7 +170,11 @@ export type EnrolDeps = {
    * (off); `on` also turns the mic on if it was off (the tap on "I agree" is
    * the gesture getUserMedia needs).
    */
-  capture(on: boolean, onFinal: (f: Promise<LocalFinal> | null) => void): Promise<void> | void;
+  capture(
+    on: boolean,
+    onFinal: (f: Promise<LocalFinal> | null) => void,
+    id?: string,
+  ): Promise<void> | void;
   log?: (ev: Record<string, unknown>) => void;
 };
 
@@ -170,6 +187,14 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
   let view: EnrolView = { step: "closed" };
   /** Bumped when the card closes or restarts: an answer for an older run is ignored. */
   let run = 0;
+  /** The open enrolment's id on the Mac (from its start answer). */
+  let eid = "";
+  const cancelOnMac = () => {
+    if (!eid) return;
+    const id = eid;
+    eid = "";
+    void d.request({ t: "enrol", op: "cancel", enrolment: id }).catch(() => {});
+  };
   const set = (v: EnrolView) => {
     view = v;
     onChange(v);
@@ -221,7 +246,8 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
     stopCapture();
     set({ step: "saving", kept });
     try {
-      const r = ok(await d.request({ t: "enrol", op: "commit" }));
+      const r = ok(await d.request({ t: "enrol", op: "commit", enrolment: eid }));
+      eid = "";
       if (my !== run) return;
       d.log?.({ ev: "voiceprint-saved", n: r.n });
       set({ step: "saved", kept: typeof r.n === "number" ? r.n : kept });
@@ -237,7 +263,9 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
       const my = ++run;
       set({ step: "loading" });
       try {
-        const r = await d.request({ t: "voiceprint", op: "status" });
+        // A read-only owner ticket: the Mac answers nothing without one.
+        const ticket = await d.ticket("status", "*");
+        const r = await d.request({ t: "voiceprint", op: "status", ticket });
         if (my !== run) return;
         const prints = Array.isArray(r.prints) ? (r.prints as PrintInfo[]) : [];
         set({ step: "status", prints, local: r.ok === true });
@@ -254,22 +282,33 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
     keepAudio(on: boolean) {
       if (view.step === "consent") set({ step: "consent", keepAudio: on });
     },
-    /** The tap on "I agree, start": the only way into recording. */
+    /**
+     * The tap on "I agree, start": the only way into recording. It asks for
+     * the owner's passkey (Face ID / Touch ID) first; lianki.com turns that
+     * into a one-time ticket for enrolling this device, and only then does
+     * the Mac open an enrolment.
+     */
     async consent() {
       if (view.step !== "consent") return;
       const keepAudio = view.keepAudio;
       const my = ++run;
       try {
-        ok(await d.request({ t: "enrol", op: "start", device: d.device, consent: true, keepAudio }));
+        const ticket = await d.ticket("enrol", d.device);
         if (my !== run) return;
+        const r = ok(
+          await d.request({ t: "enrol", op: "start", device: d.device, consent: true, keepAudio, ticket }),
+        );
+        if (typeof r.enrolment !== "string") throw new Error("no enrolment");
+        eid = r.enrolment;
+        if (my !== run) return cancelOnMac();
         d.log?.({ ev: "voiceprint-enrol", device: d.device, keepAudio });
         set({ step: "recording", index: 0, kept: 0 });
-        await d.capture(true, onFinal(my));
+        await d.capture(true, onFinal(my), eid);
       } catch (e) {
         if (my === run) {
           stopCapture();
           // The Mac may have opened it already: drop it there, unsaved.
-          void d.request({ t: "enrol", op: "cancel" }).catch(() => {});
+          cancelOnMac();
           fail(e);
         }
       }
@@ -295,7 +334,10 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
       if (view.step !== "confirm-delete") return;
       const my = ++run;
       try {
-        const r = ok(await d.request({ t: "voiceprint", op: "delete", device: "*" }));
+        // The owner's passkey again: deleting needs its own one-time ticket.
+        const ticket = await d.ticket("delete", "*");
+        if (my !== run) return;
+        const r = ok(await d.request({ t: "voiceprint", op: "delete", device: "*", ticket }));
         if (my !== run) return;
         d.log?.({ ev: "voiceprint-deleted", files: r.deleted });
         set({ step: "deleted", files: typeof r.deleted === "number" ? r.deleted : 0 });
@@ -307,10 +349,8 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
     close() {
       const was = view.step;
       run++;
-      if (was === "recording" || was === "saving") {
-        stopCapture();
-        void d.request({ t: "enrol", op: "cancel" }).catch(() => {});
-      }
+      if (was === "recording" || was === "saving") stopCapture();
+      cancelOnMac();
       set({ step: "closed" });
     },
   };

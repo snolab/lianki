@@ -22,6 +22,9 @@ import re
 import time
 
 AUD = "lianki-stt"
+#: Voiceprint tickets (lib/voiceprint-ticket.ts): the same key, another audience, so
+#: an STT ticket never opens a voiceprint op and a voiceprint ticket never a socket.
+VOICEPRINT_AUD = "lianki-voiceprint"
 SUBPROTOCOL = "lianki-stt"
 TTL_S = 60
 SKEW_S = 5
@@ -77,8 +80,9 @@ def load_public_key(path: str):
 class Tickets:
     """Verifies tickets against one public key and remembers each jti until it expires."""
 
-    def __init__(self, public_key, clock=time.time, max_seen: int = MAX_SEEN):
+    def __init__(self, public_key, clock=time.time, max_seen: int = MAX_SEEN, aud: str = AUD):
         self.key = public_key
+        self.aud = aud
         self.clock = clock
         self.max_seen = max_seen
         self.seen: dict[str, int] = {}
@@ -94,8 +98,12 @@ class Tickets:
         self.prune()
         return len(self.seen) >= self.max_seen
 
-    def check(self, ticket: str) -> str | None:
-        """None when the ticket is good (and now spent); else why not. Never logs the ticket."""
+    def check(self, ticket: str, expect: dict | None = None) -> str | None:
+        """
+        None when the ticket is good (and now spent); else why not. Never logs
+        the ticket. `expect`: payload fields that must equal these values
+        (a voiceprint ticket's op and device).
+        """
         from cryptography.exceptions import InvalidSignature
 
         now = int(self.clock())
@@ -119,8 +127,11 @@ class Tickets:
             return "malformed"
         if not isinstance(p, dict):
             return "malformed"
-        if p.get("aud") != AUD:
+        if p.get("aud") != self.aud:
             return "wrong aud"
+        for k, v in (expect or {}).items():
+            if p.get(k) != v:
+                return f"wrong {k}"
         exp, iat, jti = p.get("exp"), p.get("iat"), p.get("jti")
         if not isinstance(exp, int) or not isinstance(iat, int) or not isinstance(jti, str) or not jti:
             return "malformed"

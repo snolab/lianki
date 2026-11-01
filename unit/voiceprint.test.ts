@@ -85,52 +85,45 @@ describe("wire: the speaker tag", () => {
     });
   });
 
-  it("noteSpeaker / takeSpeaker: per line; an untagged utterance makes it unknown", () => {
+  it("noteSpeaker / takeSpeaker: per line, with the Mac's proofs; untagged makes it unknown", () => {
     clearSpeaker();
-    expect(takeSpeaker()).toBeUndefined();
-    noteSpeaker(me(0.6));
-    noteSpeaker(me(0.4));
-    expect(takeSpeaker()).toMatchObject({ decision: "me", score: 0.4 });
-    expect(takeSpeaker()).toBeUndefined(); // taken
-    noteSpeaker(me());
-    noteSpeaker(undefined); // went to the cloud
-    expect(takeSpeaker()).toMatchObject({ decision: "unknown", reason: "untagged" });
+    expect(takeSpeaker()).toEqual({});
+    noteSpeaker(me(0.6), "p1");
+    noteSpeaker(me(0.4), "p2");
+    expect(takeSpeaker()).toMatchObject({
+      tag: { decision: "me", score: 0.4 },
+      proofs: ["p1", "p2"],
+    });
+    expect(takeSpeaker()).toEqual({}); // taken
+    noteSpeaker(me(), "p3");
+    noteSpeaker(undefined); // went to the cloud: no proof for the line at all
+    const t = takeSpeaker();
+    expect(t.tag).toMatchObject({ decision: "unknown", reason: "untagged" });
+    expect(t.proofs).toBeUndefined();
     noteSpeaker(undefined);
-    expect(takeSpeaker()).toBeUndefined();
-    noteSpeaker(other());
+    expect(takeSpeaker()).toEqual({});
+    noteSpeaker(other(), "p4");
     clearSpeaker();
-    expect(takeSpeaker()).toBeUndefined();
+    expect(takeSpeaker()).toEqual({});
   });
 
-  it("the hub's parser keeps it on voice lines only", () => {
+  it("the hub's parser keeps only the Mac's proofs on voice lines, never a page's tag", () => {
     const v = parsePageMessage(
       JSON.stringify({
         type: "chat",
         id: "a",
         text: "hi",
         source: "stt",
-        speaker: { ...me(), junk: 1 },
+        speaker: me(),
+        speakerProof: ["a.b", 3, "c.d"],
       }),
-    );
-    expect(v).toMatchObject({
-      type: "chat",
-      speaker: { decision: "me", score: 0.6, model: "campp", device: "iphone" },
-    });
-    expect((v as { speaker?: { junk?: unknown } }).speaker?.junk).toBeUndefined();
+    ) as { speaker?: unknown; speakerProof?: string[] };
+    expect(v.speaker).toBeUndefined();
+    expect(v.speakerProof).toEqual(["a.b", "c.d"]);
     const typed = parsePageMessage(
-      JSON.stringify({ type: "chat", id: "b", text: "hi", speaker: me() }),
-    );
-    expect((typed as { speaker?: unknown }).speaker).toBeUndefined();
-    const bad = parsePageMessage(
-      JSON.stringify({
-        type: "chat",
-        id: "c",
-        text: "hi",
-        source: "stt",
-        speaker: { decision: "admin" },
-      }),
-    );
-    expect((bad as { speaker?: unknown }).speaker).toBeUndefined();
+      JSON.stringify({ type: "chat", id: "b", text: "hi", speakerProof: ["a.b"] }),
+    ) as { speakerProof?: unknown };
+    expect(typed.speakerProof).toBeUndefined();
   });
 });
 
@@ -167,8 +160,9 @@ describe("deviceSlug and matchesPrompt", () => {
 });
 
 /** The card with a fake Mac and a fake mic. */
-function card(o: { local?: boolean; startOk?: boolean } = {}) {
+function card(o: { local?: boolean; startOk?: boolean; passkey?: boolean } = {}) {
   const sent: Record<string, unknown>[] = [];
+  const tickets: string[] = [];
   const captures: boolean[] = [];
   let onFinal: ((f: Promise<LocalFinal> | null) => void) | null = null;
   let kept = 0;
@@ -180,13 +174,22 @@ function card(o: { local?: boolean; startOk?: boolean } = {}) {
       if (o.local === false) throw new Error("local stt not connected");
       if (m.t === "voiceprint" && m.op === "status") return { ok: true, prints: [] };
       if (m.t === "enrol" && m.op === "start")
-        return o.startOk === false ? { ok: false, error: "no consent" } : { ok: true };
+        return o.startOk === false
+          ? { ok: false, error: "ticket bad signature" }
+          : { ok: true, enrolment: "E1" };
       if (m.t === "enrol" && m.op === "commit") return { ok: true, n: kept };
       if (m.t === "voiceprint" && m.op === "delete") return { ok: true, deleted: 2 };
       return { ok: true };
     },
-    capture(on, f) {
+    async ticket(op, device) {
+      tickets.push(`${op}:${device}`);
+      // enrol and delete stand for the owner's Face ID / Touch ID.
+      if (op !== "status" && o.passkey === false) throw new Error("passkey cancelled");
+      return `T-${op}`;
+    },
+    capture(on, f, id) {
       captures.push(on);
+      if (on) expect(id).toBe("E1");
       onFinal = on ? f : null;
     },
   };
@@ -205,7 +208,7 @@ function card(o: { local?: boolean; startOk?: boolean } = {}) {
     );
     await tick();
   };
-  return { c, sent, captures, views, sentence, hasHook: () => !!onFinal };
+  return { c, sent, captures, tickets, views, sentence, hasHook: () => !!onFinal };
 }
 
 describe("the enrolment card: consent first", () => {
@@ -224,12 +227,16 @@ describe("the enrolment card: consent first", () => {
     expect(h.c.view().step).toBe("consent");
     h.c.keepAudio(true);
     await h.c.consent();
+    // The tap asked for the owner's passkey first; the start carries that ticket.
+    expect(h.tickets).toEqual(["status:*", "enrol:iphone"]);
+    expect(h.sent[0]).toMatchObject({ t: "voiceprint", op: "status", ticket: "T-status" });
     expect(h.sent[1]).toEqual({
       t: "enrol",
       op: "start",
       device: "iphone",
       consent: true,
       keepAudio: true,
+      ticket: "T-enrol",
     });
     expect(h.captures).toEqual([true]);
     expect(h.c.view()).toEqual({ step: "recording", index: 0, kept: 0 });
@@ -249,7 +256,17 @@ describe("the enrolment card: consent first", () => {
     await h.c.open();
     h.c.enrol();
     await h.c.consent();
-    expect(h.c.view()).toMatchObject({ step: "error", error: "no consent" });
+    expect(h.c.view()).toMatchObject({ step: "error", error: "ticket bad signature" });
+    expect(h.captures).toEqual([false]);
+  });
+
+  it("no passkey (cancelled, or none): no ticket, nothing sent to the Mac, nothing captured", async () => {
+    const h = card({ passkey: false });
+    await h.c.open();
+    h.c.enrol();
+    await h.c.consent();
+    expect(h.c.view()).toMatchObject({ step: "error", error: "passkey cancelled" });
+    expect(h.sent.map((m) => m.op)).toEqual(["status"]);
     expect(h.captures).toEqual([false]);
   });
 
@@ -299,7 +316,7 @@ describe("the enrolment card: reading", () => {
     await h.sentence(ENROL_SENTENCES[ENROL_MIN - 1]!);
     h.c.save();
     await tick();
-    expect(h.sent.at(-1)).toEqual({ t: "enrol", op: "commit" });
+    expect(h.sent.at(-1)).toEqual({ t: "enrol", op: "commit", enrolment: "E1" });
     expect(h.captures).toEqual([true, false]);
     expect(h.c.view()).toEqual({ step: "saved", kept: ENROL_MIN });
   });
@@ -316,7 +333,7 @@ describe("the enrolment card: reading", () => {
     await h.sentence(ENROL_SENTENCES[0]!);
     h.c.close();
     await tick();
-    expect(h.sent.at(-1)).toEqual({ t: "enrol", op: "cancel" });
+    expect(h.sent.at(-1)).toEqual({ t: "enrol", op: "cancel", enrolment: "E1" });
     expect(h.captures).toEqual([true, false]);
     expect(h.sent.some((m) => m.op === "commit")).toBe(false);
     // A late answer for the closed run changes nothing.
@@ -335,8 +352,23 @@ describe("the delete control", () => {
     expect(h.c.view()).toEqual({ step: "confirm-delete" });
     expect(h.sent.some((m) => m.op === "delete")).toBe(false);
     await h.c.confirmDelete();
-    expect(h.sent.at(-1)).toEqual({ t: "voiceprint", op: "delete", device: "*" });
+    expect(h.tickets.at(-1)).toBe("delete:*");
+    expect(h.sent.at(-1)).toEqual({
+      t: "voiceprint",
+      op: "delete",
+      device: "*",
+      ticket: "T-delete",
+    });
     expect(h.c.view()).toEqual({ step: "deleted", files: 2 });
+  });
+
+  it("delete without the passkey sends nothing", async () => {
+    const h = card({ passkey: false });
+    await h.c.open();
+    h.c.askDelete();
+    await h.c.confirmDelete();
+    expect(h.sent.some((m) => m.op === "delete")).toBe(false);
+    expect(h.c.view()).toMatchObject({ step: "error" });
   });
 
   it("every string the panel shows has an English default", () => {
@@ -435,7 +467,7 @@ describe("the mic and enrolment", () => {
       stream: m.stt,
       enrol: {
         active: () => on,
-        begin: (cb) => m.stt.begin(cb, { enrol: true }),
+        begin: (cb) => m.stt.begin(cb, { enrol: "E1" }),
         done: (f) => void done.push(f),
       },
     });
@@ -463,7 +495,7 @@ describe("the mic and enrolment", () => {
       stream: m.stt,
       enrol: {
         active: () => true,
-        begin: (cb) => m.stt.begin(cb, { enrol: true }),
+        begin: (cb) => m.stt.begin(cb, { enrol: "E1" }),
         done: (f) => void done.push(f),
       },
     });
@@ -604,8 +636,8 @@ describe("createLocalStt: the voiceprint protocol", () => {
 
   it("an enrolment sentence is flagged; textFrom rides on the end; the tag comes back cleaned", async () => {
     const { s, stt } = setup();
-    const u = stt.begin(() => {}, { enrol: true })!;
-    expect(json(s.sent[1]!)).toEqual({ t: "begin", id: 1, enrol: true });
+    const u = stt.begin(() => {}, { enrol: "E1" })!;
+    expect(json(s.sent[1]!)).toEqual({ t: "begin", id: 1, enrol: "E1" });
     const e = u.end(new Float32Array(10));
     s.say({ t: "final", id: 1, text: "x", enrol: { ok: false, n: 3, reason: "noise", extra: 1 } });
     expect((await e).enrol).toEqual({ ok: false, n: 3, reason: "noise" });
@@ -617,8 +649,11 @@ describe("createLocalStt: the voiceprint protocol", () => {
       id: 2,
       text: "下一个",
       speaker: { decision: "me", score: 0.512, model: "campp", device: "iphone", bogus: true },
+      speakerProof: "PAYLOAD.SIG",
     });
-    expect((await f).speaker).toEqual({
+    const got = await f;
+    expect(got.proof).toBe("PAYLOAD.SIG");
+    expect(got.speaker).toEqual({
       decision: "me",
       score: 0.512,
       model: "campp",

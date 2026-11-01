@@ -40,7 +40,6 @@ import {
   pageParts,
   parseAddress,
   pathLabel,
-  type SpeakerTag,
   type VoiceTiming,
 } from "./wire";
 import { latencyLines, viaAt, voiceLatency } from "./latency";
@@ -60,8 +59,8 @@ import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttFrom } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
 import { DebugMic, canCapture, pageMic, playSentTick, voiceDevice } from "./MicButton";
-import { VoiceMark, VoiceprintPanel } from "./VoiceprintPanel";
-import { type EnrolDeps, clearSpeaker, takeSpeaker } from "./voiceprint";
+import { VoiceMark, VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
+import { clearSpeaker, takeSpeaker } from "./voiceprint";
 import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
 import {
   type ReadingLeft,
@@ -472,7 +471,7 @@ export type DebugChatProps = {
   onSend: (
     text: string,
     to?: string,
-    opts?: { source?: MessageSource; timing?: VoiceTiming; speaker?: SpeakerTag },
+    opts?: { source?: MessageSource; timing?: VoiceTiming; speakerProof?: string[] },
   ) => boolean;
   /**
    * A tap on an ask card (AskCard.tsx): the page sends {type:"answer",
@@ -1485,13 +1484,14 @@ export function DebugChat({
     // A voice line carries its timestamps (latency.ts): the latest utterance in it.
     const timing = source ? voiceLatency().take() : undefined;
     // And the Mac's speaker check (voiceprint.ts): the weakest of its utterances.
-    const speaker = source ? takeSpeaker() : (clearSpeaker(), undefined);
+    // The Mac's signed proofs ride along; the hub verifies them and stores the tag.
+    const speakerProof = source ? takeSpeaker().proofs : (clearSpeaker(), undefined);
     if (
       !sendRef.current(
         text,
         to === ROOT_NODE ? undefined : to,
         source
-          ? { source, ...(timing ? { timing } : {}), ...(speaker ? { speaker } : {}) }
+          ? { source, ...(timing ? { timing } : {}), ...(speakerProof?.length ? { speakerProof } : {}) }
           : undefined,
       )
     ) {
@@ -2224,12 +2224,13 @@ export function DebugChat({
     </div>
   );
   /** The voiceprint panel's page side: the Mac over the local STT socket, and the mic session. */
-  const voiceprintDeps: EnrolDeps = {
-    request: (m) => pageMic().voiceprint(m),
-    device: voiceDevice(),
-    capture: (on, onFinal) => pageMic().enrolCapture(on, onFinal),
-    log: (ev) => voice().log(ev),
-  };
+  const voiceprintDeps = () =>
+    panelDeps({
+      url: localSttFrom(read(LOCAL_STT_KEY)) ?? "",
+      device: voiceDevice(),
+      capture: (on, onFinal, id) => pageMic().enrolCapture(on, onFinal, id),
+      log: (ev) => voice().log(ev),
+    });
   /** The menu (a double tap on the mark), open or minimized. */
   const menuEl = menu && (
     <div

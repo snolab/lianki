@@ -132,6 +132,11 @@ export type LocalFinal = {
   firstPartialMs?: number;
   /** The Mac's speaker check against the owner's voiceprint (docs/local-stt.md, "Voiceprint"). */
   speaker?: SpeakerTag;
+  /**
+   * The Mac's signature over that tag and this final's text (lib/speaker-proof.ts):
+   * the page passes it on with the line, and only the hub's check makes a tag count.
+   */
+  proof?: string;
   /** On an enrolment sentence: whether it was kept, and why not. */
   enrol?: EnrolSentence;
 };
@@ -157,8 +162,8 @@ export type LocalUtt = {
   cancel(): void;
 };
 
-/** `enrol`: an enrolment sentence (its final carries `enrol`, never `speaker`). */
-export type BeginOpts = { enrol?: boolean };
+/** `enrol`: an enrolment sentence of that open enrolment (its final carries `enrol`, never `speaker`). */
+export type BeginOpts = { enrol?: string };
 
 /** How long a voiceprint request (status, enrol, delete) may take, connecting included. */
 export const REQUEST_TIMEOUT_MS = 6_000;
@@ -314,6 +319,7 @@ export function createLocalStt(
     ms?: number;
     error?: string;
     speaker?: unknown;
+    speakerProof?: unknown;
     enrol?: unknown;
   };
   const enrolOf = (raw: unknown): EnrolSentence | undefined => {
@@ -362,6 +368,9 @@ export function createLocalStt(
         endToFinalMs: Math.round(now() - (p.endAt ?? now())),
         firstPartialMs: p.firstPartialMs,
         ...(speaker ? { speaker } : {}),
+        ...(speaker && typeof m.speakerProof === "string" && m.speakerProof.length <= 6000
+          ? { proof: m.speakerProof }
+          : {}),
         ...(enrol ? { enrol } : {}),
       });
     } else if (m.t === "error") {
