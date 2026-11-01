@@ -354,6 +354,7 @@ function mac(connected = true) {
   const log: string[] = [];
   const finals: ((f: Partial<LocalFinal>) => void)[] = [];
   const stt: StreamStt = {
+    connected: () => connected,
     begin(_p, opts) {
       if (!connected) return null;
       log.push(opts?.enrol ? "begin enrol" : "begin");

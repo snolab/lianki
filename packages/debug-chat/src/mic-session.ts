@@ -27,6 +27,7 @@ import {
   type Vad,
   type VadEvents,
   createMic,
+  keepStream,
 } from "./mic";
 import type { LocalFinal, LocalState } from "./local-stt";
 import type { SpeakerTag } from "./wire";
@@ -290,7 +291,7 @@ export function createMicSession(
     configure(c: MicConfig) {
       cfg = c;
       localStream(); // a changed or removed URL takes effect (and shows) at once
-      if (mic.state() !== "off") local?.c.warm?.();
+      if (mic.state() !== "off") keepStream(local?.c, true);
     },
     /** Active or passive (wake.ts); the chat lane's {type: "wake"} and the tests. */
     wake: (c: WakeCommand, reason?: WakeReason) => command(c, reason),

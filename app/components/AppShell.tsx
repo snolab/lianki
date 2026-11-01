@@ -16,6 +16,7 @@ import { island } from "@/lib/islands/Island";
 import { navUi, setDrawerOpen } from "@/lib/nav/ui-store";
 import { BottomIsland } from "@/lib/nav/islands/BottomIsland";
 import { NavRows } from "@/lib/nav/islands/NavRows";
+import { LiveViewBoot, LiveViewItem, type LiveViewShell } from "./LiveView";
 
 const SIDEBAR_KEY = "lk:sidebar";
 
@@ -43,10 +44,20 @@ interface AppShellProps {
   user: ShellUser;
   /** Absent only if a caller has no content for it; the prompt then stays off. */
   firstRun?: FirstRunLabels;
+  /** Live view (docs/live-view.md): set by the server for the owner only. */
+  liveView?: LiveViewShell;
   children: React.ReactNode;
 }
 
-export function AppShell({ locale, appName, labels, user, firstRun, children }: AppShellProps) {
+export function AppShell({
+  locale,
+  appName,
+  labels,
+  user,
+  firstRun,
+  liveView,
+  children,
+}: AppShellProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   // The nav store (lib/nav/ui-store.ts): the bottom island opens the drawer too.
@@ -128,7 +139,11 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
         return (
           <div key={group}>
             {!collapsed && (
-              <h2 className="px-3 mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              // The page-card group is headed by the brand LiCards, which an
+              // uppercase transform would turn into LICARDS.
+              <h2
+                className={`px-3 mb-1 text-xs font-semibold tracking-wide text-gray-400 dark:text-gray-500 ${group === "advanced" ? "" : "uppercase"}`}
+              >
                 {labels.groups[group]}
               </h2>
             )}
@@ -179,8 +194,9 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
         collapsed ? "md:[--nav-w:4rem]" : "md:[--nav-w:14rem]"
       }`}
     >
+      {liveView && <LiveViewBoot lv={liveView} />}
       {/* Slim topbar: glass, above full-screen content such as the /words list. */}
-      <header className="lk-glass lk-glass-bleed-top relative z-30 flex items-center gap-3 px-4 h-14 border-b border-[var(--glass-line)] shrink-0">
+      <header className="lk-glass lk-glass-bleed-top lk-header-bleed relative z-30 flex items-center gap-3 h-14 border-b border-[var(--glass-line)] shrink-0">
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
@@ -263,6 +279,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
                   <MenuLink href="/profile">{labels.profile}</MenuLink>
                   <MenuLink href="/preferences">{labels.preferences}</MenuLink>
                   <MenuLink href="/membership">{labels.membership}</MenuLink>
+                  {liveView && <LiveViewItem lv={liveView} />}
                   <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
                     <Link
                       href="/auth/logout"

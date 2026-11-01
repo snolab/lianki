@@ -405,6 +405,10 @@ export type ChatStrings = {
   clipsStart: string;
   /** Menu switch: a tap on clipsStart also sets an auto-stop; `{n}` = minutes. */
   clipsAutoStop: string;
+  /** Menu switch: compact mode (compact-view.ts), this device only. */
+  compactIdle: string;
+  /** The compact line's tooltip and screen-reader hint: a tap shows the whole chat. */
+  compactShowAll: string;
   // The voiceprint panel (VoiceprintPanel.tsx, voiceprint.ts; docs/local-stt.md, "Voiceprint").
   /** Item in the chat's menu (owner only) that opens the voiceprint panel: enrol his voice on this device, or delete the voiceprint. A noun, the feature's name. */
   vpMenu: string;
@@ -487,6 +491,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   clipsSaveFailed: "Saving failed",
   clipsStart: "Record voice clips",
   clipsAutoStop: "Auto-stop after {n} min",
+  compactIdle: "Only the last message while not typing",
+  compactShowAll: "Show the whole chat",
   vpMenu: "Voiceprint",
   vpTitle: "Your voiceprint",
   vpNone: "No voiceprint yet.",

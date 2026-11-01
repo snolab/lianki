@@ -18,7 +18,7 @@ import {
   padForSpot,
   workerSource,
 } from "@lianki/debug-chat/wake-kws";
-import { type VadEvents, createMic } from "@lianki/debug-chat/mic";
+import { type StreamStt, type VadEvents, createMic } from "@lianki/debug-chat/mic";
 import { type MicDeps, createMicSession } from "@lianki/debug-chat/mic-session";
 import { parseControllerMessage } from "@/lib/dev-eval";
 import { wakeStrings } from "@lianki/debug-chat/ui-strings";
@@ -260,9 +260,9 @@ describe("createKws: the page side of the spotter", () => {
 });
 
 /** createMic with a fake VAD, uploads and wake gate. */
-function gated(spot: (a: Float32Array) => Promise<WakeSpot>) {
+function gated(spot: (a: Float32Array) => Promise<WakeSpot>, stream?: () => StreamStt) {
   let ev: VadEvents | null = null;
-  const uploads: { samples: number; echo: () => void }[] = [];
+  const uploads: { samples: number; echo: () => void; local?: Promise<unknown> }[] = [];
   const verdicts: string[] = [];
   const texts: string[] = [];
   let passive = true;
@@ -274,9 +274,14 @@ function gated(spot: (a: Float32Array) => Promise<WakeSpot>) {
       return { start() {}, pause() {}, flush() {}, destroy() {} };
     },
     upload: async (wav, info) => {
-      uploads.push({ samples: (wav.length - 44) / 2, echo: () => info.onEcho?.() });
+      uploads.push({
+        samples: (wav.length - 44) / 2,
+        echo: () => info.onEcho?.(),
+        local: info.local,
+      });
       return answer;
     },
+    stream,
     onState: () => {},
     onText: (t) => texts.push(t),
     onPending: () => {},
@@ -328,6 +333,46 @@ describe("createMic with the wake gate", () => {
     expect(g.uploads.map((u) => u.samples)).toEqual([RATE * 2]);
     await tick();
     expect(g.texts).toEqual(["what's next"]);
+  });
+
+  it("passive: the rest after Linky streams to the local STT when its socket is up", async () => {
+    const calls: string[] = [];
+    let up = true;
+    const stt: StreamStt = {
+      connected: () => up,
+      begin: () => {
+        calls.push("begin");
+        return {
+          frame: () => void calls.push("frame"),
+          end: async (a) => {
+            calls.push(`end ${a.length}`);
+            return { text: "下一个", model: "local:sv", ms: 9, endToFinalMs: 20 };
+          },
+          cancel: () => void calls.push("cancel"),
+        };
+      },
+    };
+    const g = gated(
+      async (a) => ({ hit: true, rest: a.subarray(RATE), tokens: ["L"] }),
+      () => stt,
+    );
+    await g.mic.toggle();
+    g.say(3);
+    await tick();
+    await tick();
+    // Passive while heard: nothing streamed; then the whole utterance as pre-pad + end, the
+    // text read from after "Linky" (textFrom) and the speaker check on all of it (Voiceprint).
+    expect(calls).toEqual(["begin", `end ${RATE * 3}`]);
+    expect(await g.uploads[0].local).toMatchObject({ text: "下一个" });
+    // The socket down: the rest goes to the cloud alone, without waiting for a connect.
+    up = false;
+    g.setPassive(true);
+    calls.length = 0;
+    g.say(3);
+    await tick();
+    await tick();
+    expect(calls).toEqual([]);
+    expect(g.uploads[1].local).toBeUndefined();
   });
 
   it("passive: a bare Linky wakes it and uploads nothing", async () => {

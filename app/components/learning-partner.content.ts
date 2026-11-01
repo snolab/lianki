@@ -461,6 +461,42 @@ const learningPartnerContent = {
       mr: "{n} मिनिटांनी आपोआप थांबवा",
       ko: "{n}분 후 자동 중지",
     }),
+    compactIdle: t({
+      en: "Only the last message while not typing",
+      zh: "不打字时只显示最后一条消息",
+      hi: "टाइप न करते समय सिर्फ़ आख़िरी संदेश",
+      es: "Solo el último mensaje cuando no escribes",
+      fr: "Seulement le dernier message hors saisie",
+      ar: "آخر رسالة فقط عند عدم الكتابة",
+      bn: "টাইপ না করার সময় শুধু শেষ বার্তা",
+      pt: "Só a última mensagem quando não está digitando",
+      ru: "Только последнее сообщение, когда не печатаете",
+      ur: "ٹائپ نہ کرتے وقت صرف آخری پیغام",
+      id: "Hanya pesan terakhir saat tidak mengetik",
+      de: "Nur letzte Nachricht, wenn nicht getippt wird",
+      ja: "入力していないときは最後のメッセージだけ表示",
+      sw: "Ujumbe wa mwisho tu usipoandika",
+      mr: "टाइप करत नसताना फक्त शेवटचा संदेश",
+      ko: "입력하지 않을 때는 마지막 메시지만",
+    }),
+    compactShowAll: t({
+      en: "Show the whole chat",
+      zh: "显示完整聊天",
+      hi: "पूरी चैट दिखाएँ",
+      es: "Mostrar todo el chat",
+      fr: "Afficher toute la discussion",
+      ar: "عرض المحادثة كاملة",
+      bn: "পুরো চ্যাট দেখান",
+      pt: "Mostrar a conversa inteira",
+      ru: "Показать весь чат",
+      ur: "پوری چیٹ دکھائیں",
+      id: "Tampilkan seluruh obrolan",
+      de: "Ganzen Chat anzeigen",
+      ja: "チャット全体を表示",
+      sw: "Onyesha mazungumzo yote",
+      mr: "संपूर्ण चॅट दाखवा",
+      ko: "전체 채팅 보기",
+    }),
     vpMenu: t({
       en: "Voiceprint",
       zh: "声纹",
@@ -1014,6 +1050,10 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Item in the chat's menu that starts recording voice clips in this window (for testing speech recognition). Imperative phrase.",
   clipsAutoStop:
     "On/off switch in the chat's menu under that item: when on, starting a recording also stops it by itself after {n} minutes. Keep {n}; abbreviate minutes.",
+  compactIdle:
+    "On/off switch in the chat's menu, saved on this device only: when on, the open chat shrinks to just its latest message (one short line over the input) whenever the text input is not focused, to cut distraction while talking by voice. Names the setting as a short noun phrase, not a command.",
+  compactShowAll:
+    "Tooltip and screen-reader hint on that single latest-message line: tapping it brings back the whole chat log. Imperative phrase, short.",
   vpMenu:
     "Item in the chat's menu (owner only) that opens the voiceprint panel: enrol his voice on this device, or delete the voiceprint. A noun, the feature's name.",
   vpTitle:
