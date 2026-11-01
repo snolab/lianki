@@ -49,7 +49,13 @@
  * Types are declared here rather than taken from @cloudflare/workers-types:
  * the repo's root tsconfig type-checks this folder with the DOM lib.
  */
-import { DEV_BRIDGE_HEADER, debugIdentity } from "./auth";
+import {
+  DEBUG_ORIGIN,
+  DEV_BRIDGE_HEADER,
+  EMBED_HEADER,
+  debugIdentity,
+  partnerTicket,
+} from "./auth";
 import { IDENTITY_HEADERS } from "./debug";
 import { PROGRESS_OWNER_HEADER, progressGate } from "./progress";
 
@@ -73,6 +79,12 @@ export type Env = {
   MAIN?: Fetcher;
   /** Agents' bearer token for POST /api/version/progress (a Worker secret). */
   PROGRESS_TOKEN?: string;
+  /**
+   * The Learning Partner tickets' public key (raw Ed25519, base64url: the
+   * STT_TICKET_KEY pair's, ~/.config/lianki-stt/ticket.pub). Unset = every
+   * socket from another site is refused.
+   */
+  PARTNER_TICKET_PUB?: string;
 };
 declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
 
@@ -128,12 +140,29 @@ export default {
     }
     if (url.pathname === "/api/version/debug") {
       if (!wantsSocket) return new Response("WebSocket only", { status: 426 });
+      // Another site's page (the userscript's Learning Partner): its ticket
+      // alone, never a cookie; chat-only in the owner's thread (debug.ts).
+      if (req.headers.get("origin") !== DEBUG_ORIGIN) {
+        const t = await partnerTicket(req, env.PARTNER_TICKET_PUB);
+        if (!t) return new Response("forbidden", { status: 403 });
+        const headers = new Headers(req.headers);
+        for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
+        headers.delete(DEV_BRIDGE_HEADER);
+        headers.delete("cookie");
+        headers.set(IDENTITY_HEADERS.user, "owner");
+        headers.set(IDENTITY_HEADERS.email, "");
+        headers.set(IDENTITY_HEADERS.owner, "1");
+        headers.set(EMBED_HEADER, `${t.jti}.${t.exp}`);
+        return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
+      }
       const who = await debugIdentity(req, env.MAIN);
       if (!who) return new Response("forbidden", { status: 403 });
       const headers = new Headers(req.headers);
       // Only what the main Worker said: a page cannot claim any of these itself.
       for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
       headers.delete(DEV_BRIDGE_HEADER);
+      // A lianki.com page is never an embedded one, whatever it sends.
+      headers.delete(EMBED_HEADER);
       headers.set(IDENTITY_HEADERS.user, who.userId);
       headers.set(IDENTITY_HEADERS.email, who.email);
       headers.set(IDENTITY_HEADERS.owner, who.owner ? "1" : "0");

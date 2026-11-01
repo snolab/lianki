@@ -28,5 +28,8 @@
   "services": [{ "binding": "MAIN", "service": "lianki" }],
   // Secret PROGRESS_TOKEN (wrangler secret put PROGRESS_TOKEN -c workers/push/wrangler.jsonc):
   // agents' bearer token for live progress. Unset = writes answer 503.
+  // Secret PARTNER_TICKET_PUB (wrangler secret put PARTNER_TICKET_PUB -c workers/push/wrangler.jsonc
+  // < ~/.config/lianki-stt/ticket.pub): the Learning Partner tickets' public key
+  // (docs/dev-debug-widget.md, "On every site"). Unset = sockets from other sites are refused.
   "observability": { "enabled": true },
 }
