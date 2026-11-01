@@ -198,13 +198,23 @@ every 8 hours (owner's decision, 2026-11-01). The rules, in the hub
   Another device, a new session (signed out and in again), or a friend's
   page (the hub keeps no session or device for one) renews nothing.
 - **The auth db has the last word.** Right before renewing, the hub asks the
-  main Worker over its MAIN binding — `POST /api/debug/session-live
-  {user, session}` → `{live}`, a lookup of the owner's unexpired sessions by
-  tag (`lib/debug-session.ts`). Only `live: true` renews. A network error, a
-  non-200 or an odd body renews nothing (fail closed) and keeps the chain for
-  a later try; `live: false` drops the chain and the session from the pages,
-  as a sign-out notice would. So a lost sign-out notice cannot keep a grant
-  renewing.
+  main Worker — `SESSIONS.live(user, session)`, the `DebugSessions` RPC
+  entrypoint that `worker.ts` adds to the OpenNext build, a D1 lookup of the
+  owner's unexpired sessions by tag (`lib/debug-session.ts`). It is not an
+  HTTP route: an RPC entrypoint has no URL, only lianki-push's service
+  binding reaches it, so no shared secret is needed. Inputs are bounded
+  before any DB work; it allows 60 checks a minute per isolate ("busy"
+  after), and the hub asks at most once per grant per 30 s. Only `"live"`
+  renews. An error, `"busy"`, an odd answer or no binding renews nothing
+  (fail closed) and keeps the chain for a later try; `"gone"` drops the
+  chain and the session from the pages, as a sign-out notice would. So a
+  lost sign-out notice cannot keep a grant renewing.
+- **No stale write.** The answer may take a while. After it, the hub
+  re-reads the grant and writes the renewal only if it is still there, with
+  the same `until`, the same chain (start, count, device, session, user) and
+  an approving page still connected with that session — all inside
+  `blockConcurrencyWhile`, so an End or sign-out that landed meanwhile wins
+  and a revoked token stays dead (`debug.renew-skip` is logged).
 - **Cap.** Never past 30 days from the tap (`EVAL_CHAIN_MS`); then the grant
   lapses and the next pairing asks again.
 - **Stops at once.** End (live or on the sleeping `idle` entry) deletes the
@@ -216,10 +226,11 @@ every 8 hours (owner's decision, 2026-11-01). The rules, in the hub
   (a stale tab can no longer vouch for a renewal). The notice is durable: one
   that is not acknowledged (2xx) is written to the D1 outbox
   `debug_signout_outbox` (migration 0023) before sign-out returns, retried
-  after the response (1 s, 4 s, 15 s), then on later events — an owner's
-  debug page connecting (`/api/debug/identity`) or the hub's live-session
-  check — with an exponential backoff (1 min doubling, at most 1 h), until
-  acknowledged or no chain could still use it (30 days).
+  after the response (1 s, 4 s, 15 s), then when the owner's debug page
+  connects (`/api/debug/identity`, signed in as the owner; after the
+  response, at most one flush a minute per isolate, 20 rows), each row on an
+  exponential backoff (1 min doubling, at most 1 h), until acknowledged or
+  no chain could still use it (30 days).
 - **Never for anyone else.** Chat grants, friends' previews, and grants
   approved on a page with no session (the dev bridge) are never renewed.
 - **The sender.** Each socket holding the grant hears

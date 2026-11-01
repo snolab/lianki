@@ -24,9 +24,10 @@ passkey — there is no password login in production.
 | Cloudflare, GitHub, Resend, payment dashboards | the providers' own consoles                     |
 
 `/api/debug/identity` and `/api/debug/stt` are not admin: any signed-in user
-reaches their own data there. `POST /api/debug/session-live` (the debug hub's
-pre-renewal check) answers only `{live}` for a 256-bit session tag of the
-owner's, `false` for anything else, so it tells a caller without a tag nothing. Gift-code management moved from
+reaches their own data there. The debug hub's pre-renewal session check is
+not a route at all: it is the main Worker's `DebugSessions` RPC entrypoint
+(`worker.ts`), reachable only over lianki-push's `SESSIONS` service binding,
+input-bounded and rate-limited. Gift-code management moved from
 `/api/gift-codes` to `/api/dev/gift-codes` so every owner-only API is under one
 prefix; redeeming stays at `/api/gift-codes/redeem`.
 

@@ -74,6 +74,8 @@ export type Env = {
   /** Optional only so older test envs type-check; deployed, it is always bound. */
   PROGRESS?: Namespace;
   MAIN?: Fetcher;
+  /** The main Worker's DebugSessions RPC entrypoint (worker.ts): is a session still live? */
+  SESSIONS?: { live(user: string, session: string): Promise<unknown> };
   /** Agents' bearer token for POST /api/version/progress (a Worker secret). */
   PROGRESS_TOKEN?: string;
 };

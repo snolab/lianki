@@ -21,11 +21,12 @@ import {
   type OutboxDb,
   RETRY_MS,
   flushSignedOut,
+  FLUSH_MIN_MS,
   flushSignedOutSoon,
   notifySignedOut,
   outboxBackoff,
 } from "@/lib/push-signed-out";
-import { sessionLive } from "@/lib/debug-session";
+import { type SessionDb, rateLimiter, sessionLive } from "@/lib/debug-session";
 import { TestD1Database } from "@/lib/d1/testDb";
 
 class FakeSocket implements Socket {
@@ -97,21 +98,30 @@ type Stored = {
 };
 
 /**
- * The main Worker's /api/debug/session-live, as the auth db would answer it:
- * `live` holds the owner's sessions still signed in. `mode` breaks it.
+ * The main Worker's DebugSessions RPC entrypoint, as the auth db would answer:
+ * `signedIn` holds the owner's sessions still signed in. `mode` breaks it;
+ * "hold" keeps the answer back until `release()`.
  */
 function fakeMain() {
   const m = {
-    live: new Set<string>([SESSION]),
-    mode: "db" as "db" | "throw" | "500" | "odd",
-    calls: [] as { url: string; body: { user: string; session: string } }[],
-    fetch: async (url: string, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body));
-      m.calls.push({ url, body });
+    signedIn: new Set<string>([SESSION]),
+    mode: "db" as "db" | "throw" | "busy" | "odd" | "hold",
+    calls: [] as { body: { user: string; session: string } }[],
+    held: [] as (() => void)[],
+    release: () => {
+      for (const f of m.held.splice(0)) f();
+    },
+    live_: (user: string, session: string) =>
+      user === "owner1" && m.signedIn.has(session) ? "live" : "gone",
+    async live(user: string, session: string): Promise<unknown> {
+      m.calls.push({ body: { user, session } });
       if (m.mode === "throw") throw new Error("main down");
-      if (m.mode === "500") return new Response("no", { status: 500 });
-      if (m.mode === "odd") return Response.json({ live: "yes" });
-      return Response.json({ live: body.user === "owner1" && m.live.has(body.session) });
+      if (m.mode === "busy") return "busy";
+      if (m.mode === "odd") return true;
+      // A held answer is the one the auth db gave when asked (say, still live).
+      const answer = m.live_(user, session);
+      if (m.mode === "hold") return new Promise((r) => m.held.push(() => r(answer)));
+      return answer;
     },
   };
   return m;
@@ -124,7 +134,7 @@ function setup(o: { noMain?: boolean } = {}) {
   const main = fakeMain();
   const hub = new DebugHub(
     { acceptWebSocket: () => {}, getWebSockets: () => sockets, storage },
-    o.noMain ? undefined : { MAIN: main },
+    o.noMain ? undefined : { SESSIONS: main },
     () => t,
   );
   const add = () => {
@@ -635,15 +645,31 @@ describe("the main Worker's sign-out notice", () => {
       await Promise.all(x.pending);
     });
     await quiet(() => flushSignedOut({ ...x.d, db: broken }));
+  });
+
+  it("flushSignedOutSoon starts at most one flush a minute per isolate", () => {
+    let t = 10 * EVAL_CHAIN_MS;
     const later: Promise<unknown>[] = [];
-    flushSignedOutSoon({ ...x.d, later: (p) => void later.push(p) });
-    expect(later).toHaveLength(1);
+    const d: NoticeDeps = {
+      push: { fetch: async () => new Response("{}") },
+      db: { prepare: () => ({ bind: () => ({ all: async () => ({ results: [] }) }) }) } as never,
+      now: () => t,
+      sleep: async () => {},
+      later: (p) => void later.push(p),
+    };
+    expect(flushSignedOutSoon(d)).toBe(true);
+    t += FLUSH_MIN_MS - 1;
+    expect(flushSignedOutSoon(d)).toBe(false);
+    t += 1;
+    expect(flushSignedOutSoon(d)).toBe(true);
+    expect(later).toHaveLength(2);
+    expect(flushSignedOutSoon({ ...d, db: null })).toBe(false);
   });
 
   it("reaches the hub end to end: the grant stops renewing, the page loses the session", async () => {
     const s = setup();
     const tag = await sessionTag("sess-9");
-    s.main.live.add(tag);
+    s.main.signedIn.add(tag);
     const p = await s.ownerPage({ session: tag });
     const { hash } = await s.grant(p);
     const x = await deps(pushStub((req) => s.hub.fetch(req)));
@@ -667,7 +693,7 @@ describe("the main Worker's sign-out notice", () => {
     const x = await deps(push);
     await quiet(() => notifySignedOut("whatever-id", x.d));
     await quiet(() => Promise.all(x.pending));
-    s.main.live.delete(SESSION);
+    s.main.signedIn.delete(SESSION);
     s.tick(INTO_WINDOW);
     await s.msg(c, { type: "eval", code: "1" });
     expect(renewals(c)).toEqual([]);
@@ -679,8 +705,8 @@ describe("the main Worker's sign-out notice", () => {
 });
 
 describe("eval grant renewal: the live-session check fails closed", () => {
-  for (const mode of ["throw", "500", "odd"] as const)
-    it(`main Worker ${mode}: no renewal, the chain is kept for when it answers`, async () => {
+  for (const mode of ["throw", "busy", "odd"] as const)
+    it(`main Worker answers ${mode}: no renewal, the chain is kept for when it answers`, async () => {
       const s = setup();
       const p = await s.ownerPage();
       const { c, hash } = await s.grant(p);
@@ -690,11 +716,12 @@ describe("eval grant renewal: the live-session check fails closed", () => {
       expect(renewals(c)).toEqual([]);
       expect(s.stored(hash)?.renew).toBeTruthy();
       s.main.mode = "db";
+      s.tick(30_000);
       await s.msg(c, { type: "eval", code: "1" });
       expect(renewals(c)).toHaveLength(1);
     });
 
-  it("no MAIN binding: never renews", async () => {
+  it("no SESSIONS binding: never renews", async () => {
     const s = setup({ noMain: true });
     const p = await s.ownerPage();
     const { c } = await s.grant(p);
@@ -725,6 +752,113 @@ describe("eval grant renewal: the live-session check fails closed", () => {
     await s.hub.alarm();
     expect(s.main.calls).toEqual([]);
   });
+
+  it("rate-limited per grant: a burst of uses asks the main Worker once per 30 s", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c } = await s.grant(p);
+    s.main.mode = "busy";
+    s.tick(INTO_WINDOW);
+    for (let i = 0; i < 10; i++) await s.msg(c, { type: "eval", code: "1" });
+    expect(s.main.calls).toHaveLength(1);
+    s.tick(29_999);
+    await s.msg(c, { type: "eval", code: "1" });
+    expect(s.main.calls).toHaveLength(1);
+    s.tick(1);
+    await s.msg(c, { type: "eval", code: "1" });
+    expect(s.main.calls).toHaveLength(2);
+  });
+});
+
+describe("eval grant renewal: what happens while the live check is out", () => {
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+  /** Start a renewal whose live check is held, and let the hub reach the await. */
+  const held = async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const g = await s.grant(p);
+    s.main.mode = "hold";
+    s.tick(INTO_WINDOW);
+    const using = s.msg(g.c, { type: "eval", code: "1" });
+    await settle();
+    expect(s.main.held).toHaveLength(1);
+    return { s, p, ...g, using };
+  };
+
+  it("End before a delayed live answer: no renewal, and the token stays dead", async () => {
+    const { s, p, c, token, hash, using } = await held();
+    const st = p.last("state") as unknown as { sessions: { pair: string }[] };
+    await s.msg(p, { type: "revoke", pair: st.sessions[0].pair });
+    expect(s.stored(hash)).toBeUndefined();
+    s.main.release();
+    await using;
+    expect(renewals(c)).toEqual([]);
+    expect(s.stored(hash)).toBeUndefined();
+    s.main.mode = "db";
+    expect((await s.resume(token)).closed).toBe(4498);
+  });
+
+  it("End on the sleeping entry before a delayed answer to a resume: the same", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c, token, hash } = await s.grant(p);
+    s.leave(c, 1006);
+    s.main.mode = "hold";
+    s.tick(INTO_WINDOW);
+    const back = s.resume(token);
+    await settle();
+    expect(s.main.held).toHaveLength(1);
+    const st = p.last("state") as unknown as { sessions: { pair: string }[] };
+    await s.msg(p, { type: "revoke", pair: st.sessions[0].pair });
+    s.main.release();
+    const again = await back;
+    expect(again.last("renewed")).toBeUndefined();
+    expect(again.last("approved")?.until).toBe(T0 + EVAL_GRANT_MS);
+    expect(s.stored(hash)).toBeUndefined();
+    s.main.mode = "db";
+    expect((await s.resume(token)).closed).toBe(4498);
+  });
+
+  it("sign-out before a delayed live answer: no renewal, the chain stays dropped", async () => {
+    const { s, c, hash, using } = await held();
+    await s.signOut();
+    s.main.release();
+    await using;
+    expect(renewals(c)).toEqual([]);
+    expect(s.stored(hash)?.renew).toBeUndefined();
+    expect(s.stored(hash)?.until).toBe(T0 + EVAL_GRANT_MS);
+  });
+
+  it("the approving page leaves before a delayed answer: no renewal", async () => {
+    const { s, p, c, using } = await held();
+    s.leave(p);
+    s.main.release();
+    await using;
+    expect(renewals(c)).toEqual([]);
+  });
+
+  it("nothing changed meanwhile: the delayed answer renews", async () => {
+    const { s, c, using } = await held();
+    s.main.release();
+    await using;
+    expect(renewals(c)).toHaveLength(1);
+  });
+
+  it("the read-check-write runs inside the runtime's blockConcurrencyWhile", async () => {
+    const s = setup();
+    let gated = 0;
+    (s.hub as unknown as { ctx: { blockConcurrencyWhile?: unknown } }).ctx.blockConcurrencyWhile =
+      async <R>(f: () => Promise<R>) => {
+        gated++;
+        return f();
+      };
+    const p = await s.ownerPage();
+    const { c } = await s.grant(p);
+    s.tick(INTO_WINDOW);
+    await s.msg(c, { type: "eval", code: "1" });
+    expect(renewals(c)).toHaveLength(1);
+    expect(gated).toBe(1);
+  });
 });
 
 describe("eval grant renewal: the alarm always moves forward", () => {
@@ -751,28 +885,57 @@ describe("eval grant renewal: the alarm always moves forward", () => {
   });
 });
 
-describe("the main Worker's live-session lookup", () => {
+describe("the main Worker's live-session lookup (DebugSessions RPC)", () => {
   const OWNER = "owner@x.com";
-  const lookup = (sessions: { id: string; expiresAt: Date | number }[], email = OWNER) => ({
-    emailOf: async (id: string) => (id === "u1" ? email : null),
-    sessionsOf: async () => sessions,
-    isOwner: (e: string | null | undefined) => e === OWNER,
-    now: () => T0,
-  });
+  const db = async () => {
+    const d = new TestD1Database();
+    await d.exec(
+      "CREATE TABLE user (id TEXT PRIMARY KEY, email TEXT); CREATE TABLE session (id TEXT PRIMARY KEY, userId TEXT, expiresAt TEXT);",
+    );
+    const add = (sql: string, ...v: unknown[]) =>
+      d
+        .prepare(sql)
+        .bind(...v)
+        .run();
+    await add("INSERT INTO user VALUES (?, ?)", "u1", OWNER);
+    await add("INSERT INTO user VALUES (?, ?)", "u2", "f@x.com");
+    const at = (ms: number) => new Date(ms).toISOString();
+    await add("INSERT INTO session VALUES (?, ?, ?)", "s1", "u1", at(T0 + 1));
+    await add("INSERT INTO session VALUES (?, ?, ?)", "s0", "u1", at(T0));
+    await add("INSERT INTO session VALUES (?, ?, ?)", "f1", "u2", at(T0 + 1));
+    return d as unknown as SessionDb;
+  };
+  const opts = { ownerEmails: OWNER, now: () => T0 };
 
   it("live only for the owner's unexpired session with that tag", async () => {
-    const tag = await sessionTag("s1");
-    const db = lookup([{ id: "s1", expiresAt: new Date(T0 + 1) }]);
-    expect(await sessionLive("u1", tag, db)).toBe(true);
-    expect(await sessionLive("u1", await sessionTag("s2"), db)).toBe(false);
-    expect(await sessionLive("u1", tag, lookup([{ id: "s1", expiresAt: T0 }]))).toBe(false);
-    expect(await sessionLive("u1", tag, lookup([{ id: "s1", expiresAt: T0 + 1 }], "f@x.com"))).toBe(
+    const d = await db();
+    const live = (u: unknown, t: unknown, o: Parameters<typeof sessionLive>[3] = opts) =>
+      sessionLive(d, u, t, o);
+    expect(await live("u1", await sessionTag("s1"))).toBe(true);
+    expect(await live("u1", await sessionTag("s0"))).toBe(false);
+    expect(await live("u1", await sessionTag("nope"))).toBe(false);
+    expect(await live("u2", await sessionTag("f1"))).toBe(false);
+    expect(await live("u1", await sessionTag("s1"), { ownerEmails: "", now: () => T0 })).toBe(
       false,
     );
-    expect(await sessionLive("u2", tag, db)).toBe(false);
-    expect(await sessionLive("u1", "s1", db)).toBe(false);
-    expect(await sessionLive(undefined, tag, db)).toBe(false);
-    expect(await sessionLive("u1", tag, { ...db, now: undefined })).toBe(false);
+    // Real clock: T0 is long past.
+    expect(await live("u1", await sessionTag("s1"), { ownerEmails: OWNER })).toBe(false);
+    // Bounded before any DB work: no db, a malformed user id or tag.
+    expect(await sessionLive(null, "u1", await sessionTag("s1"))).toBe(false);
+    expect(await live("u1".repeat(40), await sessionTag("s1"))).toBe(false);
+    expect(await live("u1", "s1")).toBe(false);
+    expect(await live(undefined, await sessionTag("s1"))).toBe(false);
+  });
+
+  it("the entrypoint's own rate limit: a fixed window per isolate", () => {
+    let t = 0;
+    const allow = rateLimiter(2, 1000, () => t);
+    expect([allow(), allow(), allow()]).toEqual([true, true, false]);
+    t = 999;
+    expect(allow()).toBe(false);
+    t = 1000;
+    expect([allow(), allow(), allow()]).toEqual([true, true, false]);
+    expect(rateLimiter(1, 10)()).toBe(true);
   });
 });
 

@@ -11,8 +11,8 @@ import { EVAL_CHAIN_MS, sessionTag } from "@/lib/dev-eval";
  * Durable until acknowledged (a 2xx from the hub). A notice that does not get
  * through is written to the D1 outbox (`debug_signout_outbox`) before the
  * sign-out returns, retried after the response with a short backoff, and
- * after that on every later event that calls flushSignedOutSoon (a debug page
- * connecting, the hub's live-session check), with an exponential backoff, for
+ * after that when the owner's debug page connects (flushSignedOutSoon, at
+ * most once a minute per isolate, ≤ 20 rows), with an exponential backoff, for
  * as long as a renewal chain could still be bound to it (EVAL_CHAIN_MS). No
  * timers that outlive a request, no polling.
  *
@@ -146,7 +146,20 @@ export async function flushSignedOut(d: NoticeDeps = noticeDeps()) {
   });
 }
 
-/** flushSignedOut after the response (an event that happens anyway: no timer of its own). */
-export function flushSignedOutSoon(d: NoticeDeps = noticeDeps()) {
-  if (d.push && d.db) d.later(flushSignedOut(d));
+/** The least time between two flushes in one isolate. */
+export const FLUSH_MIN_MS = 60_000;
+let lastFlush = -Infinity;
+
+/**
+ * flushSignedOut after the response, on an event that happens anyway (the
+ * owner's debug page connecting: no timer of its own), at most once per
+ * FLUSH_MIN_MS per isolate. True when one was started.
+ */
+export function flushSignedOutSoon(d: NoticeDeps = noticeDeps()): boolean {
+  if (!d.push || !d.db) return false;
+  const t = d.now();
+  if (t - lastFlush < FLUSH_MIN_MS) return false;
+  lastFlush = t;
+  d.later(flushSignedOut(d));
+  return true;
 }

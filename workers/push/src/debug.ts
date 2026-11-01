@@ -110,8 +110,11 @@
  * now — never past start + EVAL_CHAIN_MS, after which a tap is needed again —
  * on any of these events, and only while an owner page of that device and
  * session (unexpired) is connected, and the main Worker confirms right then
- * that the session is still live in the auth db (MAIN, POST
- * /api/debug/session-live; any doubt = no renewal, "gone" = stopRenewal):
+ * that the session is still live in the auth db (the SESSIONS binding to its
+ * DebugSessions RPC entrypoint, worker.ts; at most once per grant per 30 s;
+ * any doubt = no renewal, "gone" = stopRenewal). The write after that answer
+ * re-reads the grant and re-checks it all under blockConcurrencyWhile, so
+ * an End or sign-out that landed meanwhile wins:
  *   use     a message from a socket holding the grant
  *   resume  a reconnect with its token
  *   page    that device's page connecting
@@ -237,6 +240,8 @@ export type DebugState = {
    * WebSocketRequestResponsePair): the listeners' keepalive ping.
    */
   setWebSocketAutoResponse?(pair?: unknown): void;
+  /** The runtime's gate: no other event is delivered until `f` settles. */
+  blockConcurrencyWhile?<T>(f: () => Promise<T>): Promise<T>;
   storage: Storage;
 };
 /** A controller's keepalive (scripts/dev/keepalive.ts): "ping" is answered "pong". */
@@ -349,9 +354,13 @@ type Renewal = {
 };
 /** In the renewal window: at most EVAL_RENEW_BEFORE_MS left (so "not due" is strictly before it). */
 const renewDueAt = (until: number, t: number) => until - t <= EVAL_RENEW_BEFORE_MS;
-/** The main Worker's live-session check (app/api/debug/session-live), over the MAIN binding. */
-const SESSION_LIVE_URL = "https://lianki.com/api/debug/session-live";
-type Fetcher = { fetch(url: string, init?: RequestInit): Promise<Response> };
+/**
+ * The main Worker's DebugSessions RPC entrypoint (worker.ts, over the
+ * SESSIONS service binding: no URL, nothing public): "live" | "gone" | "busy".
+ */
+type SessionsRpc = { live(user: string, session: string): Promise<unknown> };
+/** At most one live-session check per grant in this long (a burst of uses asks once). */
+const SESSION_CHECK_MIN_MS = 30_000;
 /** A sleeping eval grant's pair id in the pages' state: "g:" + the start of its hash. */
 const DORMANT = "g:";
 const dormantPair = (hash: string) => `${DORMANT}${hash.slice(0, 40)}`;
@@ -453,14 +462,16 @@ export class DebugHub {
   /** A renewal in flight per grant hash: two events at once renew once. */
   private renewing = new Map<string, Promise<void>>();
   /** The main Worker (service binding): asked whether a renewal's session is still live. */
-  private main?: Fetcher;
+  private sessions?: SessionsRpc;
+  /** When each grant's session was last checked (the per-grant rate limit). */
+  private checkedAt = new Map<string, number>();
 
   constructor(
     private ctx: DebugState,
     env?: unknown,
     private now: () => number = Date.now,
   ) {
-    this.main = (env as { MAIN?: Fetcher } | undefined)?.MAIN;
+    this.sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
     // The listener pings to find a socket that died without a close (a
     // redeploy, a dropped connection); the runtime answers it while the hub
     // hibernates, so it costs no wake-up.
@@ -905,25 +916,29 @@ export class DebugHub {
   }
 
   /**
-   * Is the session behind a renewal still live? Asked of the main Worker
-   * (MAIN binding, POST /api/debug/session-live: an auth-db lookup of the
-   * owner's live sessions by tag) right before each renewal. "unsure" — no
-   * binding, a network error, a non-200, an odd body — renews nothing.
+   * Is the session behind a renewal still live? Asked of the main Worker's
+   * DebugSessions RPC entrypoint (SESSIONS binding: an auth-db lookup of the
+   * owner's live sessions by tag) right before each renewal, at most once per
+   * grant per SESSION_CHECK_MIN_MS. "unsure" — no binding, no user id, an
+   * error, "busy", an odd answer, too soon — renews nothing.
    */
-  private async sessionLive(r: Renewal): Promise<"live" | "gone" | "unsure"> {
-    if (!this.main || !r.user) return "unsure";
+  private async sessionLive(hash: string, r: Renewal): Promise<"live" | "gone" | "unsure"> {
+    if (!this.sessions || !r.user) return "unsure";
+    const t = this.now();
+    const last = this.checkedAt.get(hash);
+    if (last !== undefined && t - last < SESSION_CHECK_MIN_MS) return "unsure";
+    this.checkedAt.set(hash, t);
     try {
-      const res = await this.main.fetch(SESSION_LIVE_URL, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ user: r.user, session: r.session }),
-      });
-      if (res.status !== 200) return "unsure";
-      const body = (await res.json()) as { live?: unknown };
-      return body.live === true ? "live" : body.live === false ? "gone" : "unsure";
+      const said = await this.sessions.live(r.user, r.session);
+      return said === "live" ? "live" : said === "gone" ? "gone" : "unsure";
     } catch {
       return "unsure";
     }
+  }
+
+  /** Run read-check-write with no other event in between (the DO's own gate, where there is one). */
+  private exclusive<T>(f: () => Promise<T>): Promise<T> {
+    return this.ctx.blockConcurrencyWhile ? this.ctx.blockConcurrencyWhile(f) : f();
   }
 
   /**
@@ -943,17 +958,46 @@ export class DebugHub {
     const g = await this.ctx.storage.get<Grant>(`grant:${hash}`);
     const r = g?.renew;
     if (!g || !r || g.scope !== "eval" || g.until <= t || !renewDueAt(g.until, t)) return;
-    const until = Math.min(t + EVAL_GRANT_MS, r.start + EVAL_CHAIN_MS);
     // The chain is at its cap: the next grant needs a tap.
-    if (until <= g.until) return;
+    if (Math.min(t + EVAL_GRANT_MS, r.start + EVAL_CHAIN_MS) <= g.until) return;
     if (!this.approverHere(r, t)) return;
     // The auth db has the last word: a session it does not know renews nothing.
-    const live = await this.sessionLive(r);
+    const live = await this.sessionLive(hash, r);
     if (live === "gone") await this.stopRenewal(r.session, "session-gone");
     if (live !== "live") return;
-    const count = r.count + 1;
-    const next: Grant = { ...g, until, renew: { ...r, count } };
-    await this.putGrant(hash, next);
+    // That answer took a while: End, sign-out or another renewal may have
+    // happened meanwhile. Re-read and re-check everything, and write only if
+    // it is still the same grant in the same state, with no event in between.
+    const next = await this.exclusive(async () => {
+      const t2 = this.now();
+      const now = await this.ctx.storage.get<Grant>(`grant:${hash}`);
+      const r2 = now?.renew;
+      if (!now || !r2 || now.scope !== "eval" || now.until !== g.until || now.until <= t2)
+        return null;
+      if (
+        r2.count !== r.count ||
+        r2.start !== r.start ||
+        r2.device !== r.device ||
+        r2.session !== r.session ||
+        r2.user !== r.user ||
+        !this.approverHere(r2, t2)
+      )
+        return null;
+      const n: Grant = {
+        ...now,
+        until: Math.min(t2 + EVAL_GRANT_MS, r2.start + EVAL_CHAIN_MS),
+        renew: { ...r2, count: r2.count + 1 },
+      };
+      if (n.until <= now.until) return null;
+      await this.putGrant(hash, n);
+      return n;
+    });
+    if (!next?.renew) {
+      console.log(JSON.stringify({ msg: "debug.renew-skip", why: "changed while checking" }));
+      return;
+    }
+    const { count } = next.renew;
+    const until = next.until;
     for (const c of this.sockets("controller"))
       if (c.a.grant === hash) {
         c.ws.serializeAttachment({ ...c.a, until } satisfies ControllerAtt);
