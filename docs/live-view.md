@@ -127,8 +127,8 @@ the event and one for the module.
   rotation), lifetimes, sources, replay and older serials (also after off),
   the owner's stop, the owner-only shell, the page store (refusal reasons,
   expiry), unsigned overrides refused on production, islands under live view.
-- `scripts/qa/qa-api.mjs`: a non-owner gets 404 from GET and DELETE; an unsigned
-  pointer gets 400; one signed by another key gets 401.
+- `scripts/qa/qa-api.mjs`: a non-owner gets 404 from GET and DELETE; a malformed
+  token gets 400; one signed by another key gets 401.
 - `bun scripts/dev/live-view-qa.ts [--shots <dir>]`: silent Chromium on the real
   banner and switch (`scripts/dev/live-view-harness.tsx`), verifying with the
   browser's WebCrypto against a throwaway key. A good pointer shows the banner.

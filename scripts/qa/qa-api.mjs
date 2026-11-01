@@ -100,8 +100,8 @@ for (const method of ["GET", "DELETE"]) {
   rec(`SEC   non-owner ${method} /api/live-view → 404`, r.status === 404, `HTTP ${r.status}`);
 }
 {
-  const r = await call("POST", "/api/live-view", { token: "unsigned.pointer" });
-  rec("SEC   unsigned live-view pointer → 400", r.status === 400, `HTTP ${r.status}`);
+  const r = await call("POST", "/api/live-view", { token: "not-a-signed-pointer" });
+  rec("SEC   malformed live-view pointer → 400", r.status === 400, `HTTP ${r.status}`);
   const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
   const b64 = (b) => Buffer.from(b).toString("base64url");
   const t = Math.floor(Date.now() / 1000);
