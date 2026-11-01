@@ -54,6 +54,7 @@ import {
   DEV_BRIDGE_HEADER,
   EMBED_HEADER,
   debugIdentity,
+  offersPartner,
   partnerTicket,
 } from "./auth";
 import { IDENTITY_HEADERS } from "./debug";
@@ -140,9 +141,11 @@ export default {
     }
     if (url.pathname === "/api/version/debug") {
       if (!wantsSocket) return new Response("WebSocket only", { status: 426 });
-      // Another site's page (the userscript's Learning Partner): its ticket
+      // A socket offering the partner subprotocol (the userscript's shadow
+      // widget on another site, or the lianki.com frame inside it): its ticket
       // alone, never a cookie; chat-only in the owner's thread (debug.ts).
-      if (req.headers.get("origin") !== DEBUG_ORIGIN) {
+      // Any other socket: the cookie alone, and only from https://lianki.com.
+      if (offersPartner(req) || req.headers.get("origin") !== DEBUG_ORIGIN) {
         const t = await partnerTicket(req, env.PARTNER_TICKET_PUB);
         if (!t) return new Response("forbidden", { status: 403 });
         const headers = new Headers(req.headers);

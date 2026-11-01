@@ -636,7 +636,10 @@ function hostDeps(o: {
   code?: string;
   codeStatus?: number;
   info?: unknown;
+  frame?: "ready" | "blocked";
 }) {
+  const frames: { ticket: () => Promise<string | null>; label: string }[] = [];
+  const destroyed: number[] = [];
   const store = new Map<string, unknown>([
     [PARTNER_ON_KEY, o.on ?? true],
     [PARTNER_HIDDEN_KEY, JSON.stringify(o.hidden ?? [])],
@@ -672,7 +675,18 @@ function hostDeps(o: {
       listValues: () => [...store.keys()],
       info: o.info ?? { injectInto: "content" },
       report: (w: string, d: string) => void reports.push(`${w} ${d}`),
+      path: "/a/b",
+      // The frame shell: blocked by default here (these tests are about the read-only fallback).
+      frame: ((fd: { ticket: () => Promise<string | null>; label: string }) => {
+        frames.push(fd);
+        return {
+          result: Promise.resolve(o.frame ?? "blocked"),
+          destroy: () => void destroyed.push(1),
+        };
+      }) as never,
     },
+    frames,
+    destroyed,
   };
 }
 
@@ -753,12 +767,27 @@ describe("the userscript's side (src/partner.ts)", () => {
     });
   });
 
+  it("the owner, frame ready: no download, no eval; the frame gets tickets through the shell", async () => {
+    const g = globalThis as { __partnerTest?: unknown };
+    g.__partnerTest = undefined;
+    const h = hostDeps({ code: FAKE_BUNDLE, frame: "ready" });
+    const stop = await startPartner(h.deps);
+    expect(h.calls.map((c) => c.url)).toEqual(["https://lianki.com/api/debug/partner-ticket"]);
+    expect(g.__partnerTest).toBeUndefined();
+    expect(h.reports).toContain("partner-frame ready github.com");
+    expect(await h.frames[0].ticket()).toBe("tk1"); // the spare first ticket
+    stop();
+    expect(h.destroyed.length).toBe(1);
+  });
+
   it("the owner: mounts with the CSS, the first ticket, and storage of its own", async () => {
     const h = hostDeps({ code: FAKE_BUNDLE });
     const stop = await startPartner(h.deps);
     const s = seen();
     expect(s.o.css).toEqual(["a{}"]);
     expect(s.o.blocked).toBeUndefined();
+    expect((s.o as { readOnly?: boolean }).readOnly).toBe(true); // the frame was blocked
+    expect(h.frames[0].label).toBe("github.com/a/b");
     expect(s.o.appOrigin).toBe("https://lianki.com");
     expect(await s.o.ticket()).toBe("tk1");
     expect(await s.o.ticket()).toBe("tk3");
@@ -768,7 +797,10 @@ describe("the userscript's side (src/partner.ts)", () => {
     expect(s.gm.keys()).toEqual(["k"]);
     s.gm.del("k");
     expect(h.store.has("lianki_partner_ls:k")).toBe(false);
-    expect(h.reports).toEqual(["partner-mode isolated github.com"]);
+    expect(h.reports).toEqual([
+      "partner-mode isolated github.com",
+      "partner-frame blocked github.com",
+    ]);
     s.o.hide();
     expect(JSON.parse(String(h.store.get(PARTNER_HIDDEN_KEY)))).toEqual(["github.com"]);
     expect(s.destroyed).toBe(true);

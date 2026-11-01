@@ -17,10 +17,13 @@
  */
 import { blockerText, isolatedWorld, partnerWanted } from "../packages/debug-chat/src/embed/guard";
 import { EMBED_NAME, EMBED_STRINGS, embedLang } from "../packages/debug-chat/src/ui-strings";
+import { frameShell } from "./partner-frame";
 
 /** GM keys, under the userscript's own namespace (not the app's `lk:` cards). */
 export const PARTNER_ON_KEY = "lianki_partner_on";
 export const PARTNER_HIDDEN_KEY = "lianki_partner_hidden";
+/** The frame shell's offset from the bottom-right corner (drag), per device. */
+export const PARTNER_POS_KEY = "lianki_partner_pos";
 const PARTNER_STORE_PREFIX = "lianki_partner_ls:";
 /** The stop() of a partner that never started. */
 export const NOOP = () => {};
@@ -47,6 +50,10 @@ export type PartnerHostDeps = {
   top?: boolean;
   doc?: Document;
   WebSocket?: new (url: string, protocols: string[]) => unknown;
+  win?: Pick<Window, "addEventListener" | "removeEventListener">;
+  path?: string;
+  /** The frame shell (src/partner-frame.ts); tests pass a fake. */
+  frame?: typeof frameShell;
 };
 
 /**
@@ -115,6 +122,30 @@ export async function startPartner(d: PartnerHostDeps): Promise<() => void> {
     return s && Date.now() - s.at < 30_000 ? s.t : ticket();
   };
 
+  // First the lianki.com frame: typing inside it is private from this page.
+  // The handshake decides (not a site list): ready → the frame; blocked (CSP
+  // frame-src/child-src, a blocking extension, no answer) → read-only below.
+  const lang = embedLang();
+  const shell = (d.frame ?? frameShell)({
+    doc: d.doc ?? document,
+    win: d.win ?? (globalThis as unknown as Window),
+    origin: d.origin,
+    label: `${host}${d.path ?? location.pathname}`.slice(0, 300),
+    ticket: nextTicket,
+    gripLabel: EMBED_STRINGS[lang].grip,
+    pos: {
+      get: () => {
+        const p = d.getValue(PARTNER_POS_KEY, null);
+        return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null;
+      },
+      set: (p) => d.setValue(PARTNER_POS_KEY, { x: Math.round(p.x), y: Math.round(p.y) }),
+    },
+  });
+  const how = await shell.result;
+  d.report("partner-frame", `${how} ${host}`);
+  if (how === "ready") return () => shell.destroy();
+  shell.destroy();
+
   let code: string;
   try {
     const r = await d.gmFetch(d.src);
@@ -155,6 +186,7 @@ export async function startPartner(d: PartnerHostDeps): Promise<() => void> {
       appOrigin: d.origin,
       ticket: nextTicket,
       WebSocket: d.WebSocket ?? WebSocket,
+      readOnly: true,
       report: d.report,
       hide: () => {
         hideHere();

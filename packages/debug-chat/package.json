@@ -54,6 +54,8 @@
     "./tree-keep": "./src/tree-keep.ts",
     "./ui-store": "./src/ui-store.ts",
     "./embed/guard": "./src/embed/guard.ts",
+    "./embed/frame-guest": "./src/embed/frame-guest.ts",
+    "./embed/frame-protocol": "./src/embed/frame-protocol.ts",
     "./embed/isolation": "./src/embed/isolation.ts",
     "./embed/partner-client": "./src/embed/partner-client.ts",
     "./embed/partner-embed": "./src/embed/partner-embed.tsx"

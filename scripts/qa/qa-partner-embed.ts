@@ -51,6 +51,8 @@ const page = (csp: string) => `<!doctype html><html lang="fr"><head><meta charse
   window.addEventListener("keypress", (e) => window.__pageKeys.push("press:" + e.key));
   window.addEventListener("keydown", (e) => window.__pageWindowCapture.push(e.key), true);
   window.__pageAlive = true;
+  window.__pageMessages = [];
+  window.addEventListener("message", (e) => window.__pageMessages.push(e.data), true);
   // Squat every tag we might use: whoever upgrades one grabs its internals,
   // whose shadowRoot is the closed root (P1 from the PR #403 review).
   window.__stolen = [];
@@ -70,6 +72,17 @@ const check = (ok: unknown, what: string) => {
 };
 
 const built = await buildPartner();
+// The userscript's frame shell and the frame's guest protocol, as plain scripts for the fixtures.
+const QA_DIR = new URL(".", import.meta.url).pathname;
+const bundle = (entry: string) =>
+  Bun.build({
+    entrypoints: [`${QA_DIR}${entry}`],
+    target: "browser",
+    format: "iife",
+    minify: true,
+  }).then((o) => o.outputs[0].text());
+const shellJs = await bundle("partner-frame-fixture-shell.ts");
+const guestJs = await bundle("partner-frame-fixture-guest.ts");
 const hubSeen: { url: string; protocol: string | null; messages: string[] }[] = [];
 
 type HubConn = { url: string; protocol: string | null; messages: string[] };
@@ -92,6 +105,24 @@ const server = Bun.serve<HubConn, never>({
     }
     if (url.pathname === "/hostile")
       return new Response(page(""), { headers: { "content-type": "text/html; charset=utf-8" } });
+    // The frame: a stand-in for the app origin's /embed/partner with the real guest protocol.
+    if (url.pathname === "/embed/partner")
+      return new Response(
+        `<!doctype html><meta charset=utf-8><body style="margin:0;background:oklch(0.97 0.01 82)"><textarea id=t aria-label=chat></textarea><script>${guestJs}</script>`,
+        { headers: { "content-type": "text/html; charset=utf-8" } },
+      );
+    if (url.pathname === "/shell.js")
+      return new Response(shellJs, { headers: { "content-type": "text/javascript" } });
+    if (url.pathname === "/frame-allowed")
+      return new Response(page(""), { headers: { "content-type": "text/html; charset=utf-8" } });
+    if (url.pathname === "/frame-blocked")
+      return new Response(page("frame-src 'self'"), {
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "content-security-policy":
+            "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; frame-src 'self'; connect-src 'self' ws://localhost:* http://localhost:*",
+        },
+      });
     if (url.pathname === "/hostile-csp")
       return new Response(page("connect-src 'self'"), {
         headers: {
@@ -331,6 +362,100 @@ try {
     check(hubSeen.length === hubBefore, `${tag} CSP connect-src: no socket reached the hub`);
     check(note.alive === true, `${tag} CSP: the page's own script still ran`);
     if (SHOTS) await c.screenshot({ path: `${SHOTS}/partner-csp-${scheme}.png` });
+
+    // The lianki.com frame: typing in it is private from the page.
+    const f = await ctx.newPage();
+    await f.goto(`${PAGE}/frame-allowed`);
+    await f.addScriptTag({ url: `${PAGE}/shell.js` });
+    const runShell = (app: string) =>
+      (window as unknown as { __lkShell: (o: string) => Promise<string> }).__lkShell(app);
+    const how = await f.evaluate(runShell, APP);
+    check(how === "ready", `${tag} frame allowed: the handshake says ready (${how})`);
+    const frame = f.frames().find((x) => x.url().startsWith(`${APP}/embed/partner`));
+    check(!!frame, `${tag} frame allowed: the app-origin frame is there`);
+    if (frame) {
+      await frame.waitForFunction(() => document.body.dataset.ticket === "TK-frame", undefined, {
+        timeout: 5000,
+      });
+      check(true, `${tag} frame allowed: the frame got its ticket over the port`);
+      await frame.click("#t");
+      await f.keyboard.type("secret words");
+      const seen = await f.evaluate(() => {
+        const w = window as unknown as {
+          __pageKeys: string[];
+          __pageWindowCapture: string[];
+          __pageMessages: unknown[];
+        };
+        return {
+          keys: [...w.__pageKeys, ...w.__pageWindowCapture],
+          msgs: JSON.stringify(w.__pageMessages),
+        };
+      });
+      const typed = await frame.evaluate(
+        () => (document.getElementById("t") as HTMLTextAreaElement).value,
+      );
+      check(
+        typed === "secret words",
+        `${tag} frame allowed: the text arrives in the frame ("${typed}")`,
+      );
+      check(
+        seen.keys.length === 0,
+        `${tag} frame allowed: the page's capture and bubble key listeners saw none of it (${seen.keys.length})`,
+      );
+      check(
+        !seen.msgs.includes("TK-frame") && !seen.msgs.includes("secret"),
+        `${tag} frame allowed: no ticket or text in any message the page can hear`,
+      );
+    }
+    if (SHOTS) await f.screenshot({ path: `${SHOTS}/partner-frame-${scheme}.png` });
+
+    const b = await ctx.newPage();
+    await b.goto(`${PAGE}/frame-blocked`);
+    await b.addScriptTag({ url: `${PAGE}/shell.js` });
+    const t0 = Date.now();
+    const blocked = await b.evaluate(runShell, APP);
+    check(
+      blocked === "blocked",
+      `${tag} frame-src blocks it: the handshake says blocked (${blocked}, ${Date.now() - t0} ms)`,
+    );
+    // Then read-only: replies show, no input, a link to reply on lianki.com.
+    await b.evaluate(
+      ({ code, app }) => {
+        const bb = (0, eval)(code)(null);
+        (window as unknown as { __m: unknown }).__m = bb.api.mountPartner({
+          doc: document,
+          css: bb.css,
+          appOrigin: app,
+          ticket: async () => "TICKET-ro.x",
+          WebSocket,
+          hide() {},
+          readOnly: true,
+        });
+      },
+      { code: built.code, app: APP },
+    );
+    await b.waitForFunction(
+      () =>
+        !!(window as unknown as { __m: { root: ShadowRoot } }).__m.root.querySelector(
+          '[data-testid="debug-chat-notice-link"]',
+        ),
+      undefined,
+      { timeout: 10_000 },
+    );
+    const ro = await b.evaluate(() => {
+      const r = (window as unknown as { __m: { root: ShadowRoot } }).__m.root;
+      return {
+        input: !!r.querySelector('[data-testid="debug-chat-input"]'),
+        notice: r.querySelector('[data-testid="debug-chat-notice"]')?.textContent ?? "",
+        reply: r.textContent?.includes("Hello from the hub") ?? false,
+      };
+    });
+    check(
+      !ro.input && /private typing/.test(ro.notice),
+      `${tag} read-only: no input, the note says why ("${ro.notice.slice(0, 50)}…")`,
+    );
+    check(ro.reply, `${tag} read-only: the replies still show`);
+    if (SHOTS) await b.screenshot({ path: `${SHOTS}/partner-readonly-${scheme}.png` });
     await ctx.close();
   }
 } finally {

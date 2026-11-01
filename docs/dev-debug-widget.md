@@ -238,11 +238,43 @@ broadcast, is `{type, pending: null, sessions: [], listeners}` only: no
 pairing, session, grant, page label or id, node or `self` (`pageState` in
 `workers/push/src/debug.ts`). The label is host + path, never the query.
 
-**Keyboard privacy (open, owner to decide).** What he types in the chat on
-another site is not private from that site: its capture-phase listeners on
-document or window see each `KeyboardEvent.key`, and composed `input`
-events, before the shadow root's guard. Options under discussion: the input
-(or the whole chat) in a lianki.com iframe, or read-only on other sites.
+**The frame: private typing (owner, 2026-11-01).** A shadow widget cannot
+keep keys private: the host page's capture listeners on document or window
+see every `KeyboardEvent.key` (and composed `input` events) before any
+guard. So the chat runs in a **lianki.com frame**, `/embed/partner`
+(`app/embed/partner/`), the one route any site may frame
+(`frame-ancestors *`, next.config.mjs). Keys typed there go to the frame's
+own document; the host page never sees them.
+
+- **Shell** (`src/partner-frame.ts`, trusted userscript code, plain DOM): a
+  plain div with a closed root holding a grip and the iframe. It keeps the
+  position (drag the grip; kept in `lianki_partner_pos`), minimize
+  (double-click the grip) and the iframe's size (the frame reports its
+  chat's box, so the rest of the page keeps its clicks).
+- **Handshake** (`embed/frame-protocol.ts`, `embed/frame-guest.ts`): the frame
+  posts `{lk:"partner-frame-up"}` to its parent (nothing secret); the shell
+  checks it came from its own iframe on the app origin and answers with
+  `{lk:"partner-hello", label}` and a `MessagePort`, to that origin only; the
+  frame says `ready` on the port. No `up` within 800 ms of the frame's load
+  (10 s overall), or a CSP report refusing the frame (`frame-src`,
+  `child-src`), means blocked. The handshake decides, not a site list: he
+  runs an extension that blocks frames on some sites.
+- **Tickets**: the frame holds no session (third-party: no cookie). It asks
+  for a ticket on the port; the shell fetches one with GM_xmlhttpRequest and
+  writes it into its own port only. The frame's socket comes from
+  https://lianki.com with the partner subprotocol, so lianki-push judges it
+  on the ticket alone (`offersPartner`), chat only, as before. A hostile
+  parent that gets its hello in first can only keep the frame from working;
+  it never receives a ticket or typed text.
+- **Blocked → read-only**: the shadow widget (`mountPartner({readOnly:
+  true})`) shows the replies, and in place of the input a note ("This site
+  blocks private typing…") with a link to reply on lianki.com. No key is
+  asked for on such a site.
+- **ScriptCat's network rules** ("移除 CSP、改写请求头"): an options-page
+  feature only (Tools → Network rules), with actions to remove or set whole
+  response headers; no metadata key or GM API lets a script add one, and a
+  DNR rule cannot add one source to one directive (a second CSP header only
+  narrows). So nothing is added for it; the handshake still decides.
 
 **Where it must not run.** `guard.ts` decides, and a small glass note says
 why instead of the chat (strings `EmbedStrings` in `ui-strings.ts`, by the

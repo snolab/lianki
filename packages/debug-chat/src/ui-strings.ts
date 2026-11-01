@@ -378,6 +378,12 @@ export type EmbedStrings = {
   openLianki: string;
   /** The × button's accessible label and tooltip: hides the note and the chat on this website only (until re-enabled). Imperative. */
   hideHere: string;
+  /** Shown in place of the chat's input box on a site that blocks the private typing frame: replies still show, but typing here could be read by the site, so it is off. A full sentence. */
+  readOnly: string;
+  /** The link after `readOnly` that opens lianki.com in a new tab, to reply there: imperative, short. */
+  replyOnLianki: string;
+  /** The tooltip and accessible label of the small grip above the chat frame: drag to move it, double-click to minimize or restore. */
+  grip: string;
 };
 export const EMBED_STRINGS: Record<"en" | "zh" | "ja", EmbedStrings> = {
   en: {
@@ -389,6 +395,9 @@ export const EMBED_STRINGS: Record<"en" | "zh" | "ja", EmbedStrings> = {
     load: "Your {name} could not load on this page.",
     openLianki: "Open on lianki.com",
     hideHere: "Hide on this site",
+    readOnly: "This site blocks private typing, so replies only show here.",
+    replyOnLianki: "Reply on lianki.com",
+    grip: "Drag to move; double-click to minimize",
   },
   zh: {
     pageRealm:
@@ -399,6 +408,9 @@ export const EMBED_STRINGS: Record<"en" | "zh" | "ja", EmbedStrings> = {
     load: "{name}在此页面加载失败。",
     openLianki: "在 lianki.com 打开",
     hideHere: "在本网站隐藏",
+    readOnly: "本网站不允许私密输入，这里只显示回复。",
+    replyOnLianki: "去 lianki.com 回复",
+    grip: "拖动可移动；双击可最小化",
   },
   ja: {
     pageRealm:
@@ -409,6 +421,9 @@ export const EMBED_STRINGS: Record<"en" | "zh" | "ja", EmbedStrings> = {
     load: "このページでは{name}を読み込めませんでした。",
     openLianki: "lianki.com で開く",
     hideHere: "このサイトでは非表示",
+    readOnly: "このサイトでは安全に入力できないため、返信の表示のみです。",
+    replyOnLianki: "lianki.com で返信",
+    grip: "ドラッグで移動、ダブルクリックで最小化",
   },
 };
 /** The feature's name in the same three languages (docs/dev-debug-widget.md, "Naming"). */

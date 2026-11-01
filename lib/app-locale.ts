@@ -14,6 +14,7 @@ export const APP_ROUTES = [
   "contacts",
   "data",
   "dev",
+  "embed",
   "home",
   "i",
   "import",

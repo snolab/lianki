@@ -209,6 +209,15 @@ reproducing what it prevents.
   runs inside the loader's grants, not its own header's.
 - `@run-at document-start`, so the loader is polling before the page settles —
   but see the DOM wait below.
+- `@inject-into content` (Violentmonkey) and `@sandbox DOM` (Tampermonkey,
+  ScriptCat): the dev build runs in the manager's own world, so the Learning
+  Partner may run (docs/dev-debug-widget.md, "On every site"). The
+  production userscript stays in the page's world. In the isolated world,
+  `window.LIANKI_USERSCRIPT_INSTALLED` is invisible to the page (nothing in
+  the app reads it today); `navigation`'s events and the srcdoc key relay
+  still work. The loader's own `eval` may be refused by the extension's
+  isolated-world CSP (Manifest V3): the loader then reports `eval-blocked`
+  once to the dev log, and that is the signal to look at.
 - `@connect` every origin the loader may talk to; `@downloadURL`/`@updateURL`
   point at `/loader.user.js` on the tunnel host.
 

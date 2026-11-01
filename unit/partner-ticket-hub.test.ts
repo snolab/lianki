@@ -40,10 +40,11 @@ describe("partnerTicket: the ticket half of the split", () => {
     expect(await partnerTicket(req(), k.pub, seen, NOW + 2000)).toBeNull();
   });
 
-  it("refuses it from lianki.com, from no origin, without the key, or as the wrong audience", async () => {
+  it("refuses it from no origin, without the key, or as the wrong audience; takes it from the lianki.com frame", async () => {
     const k = await keys();
     const { ticket } = await signSttTicket(k.priv, { aud: PARTNER_TICKET_AUD, now: NOW });
     const proto = { "sec-websocket-protocol": `${PARTNER_SUBPROTOCOL}, ${ticket}` };
+    // The frame (/embed/partner) is lianki.com, third-party on the host site: no cookie, a ticket.
     expect(
       await partnerTicket(
         upgrade({ origin: "https://lianki.com", ...proto }),
@@ -51,7 +52,7 @@ describe("partnerTicket: the ticket half of the split", () => {
         new Map(),
         NOW,
       ),
-    ).toBeNull();
+    ).not.toBeNull();
     expect(await partnerTicket(upgrade(proto), k.pub, new Map(), NOW)).toBeNull();
     expect(
       await partnerTicket(
@@ -159,7 +160,7 @@ describe("lianki-push: cookie sockets from lianki.com only, ticket sockets from 
     expect(seen).toEqual([]);
   });
 
-  it("lianki.com with a ticket and no cookie is refused: there, only the cookie counts", async () => {
+  it("lianki.com (the frame) with a ticket and no cookie is a ticket socket: chat-only, cookie never asked", async () => {
     const seen: Headers[] = [];
     const calls: string[] = [];
     const { e, k } = await env(seen, calls);
@@ -167,11 +168,31 @@ describe("lianki-push: cookie sockets from lianki.com only, ticket sockets from 
     const res = await push.fetch(
       upgrade({
         origin: "https://lianki.com",
+        cookie: "better-auth.session_token=x",
         "sec-websocket-protocol": `${PARTNER_SUBPROTOCOL}, ${ticket}`,
       }),
       e,
     );
+    expect(await res.text()).toBe("hub");
+    expect(calls).toEqual([]); // the cookie is not looked at on a ticket socket
+    expect(seen[0].get("cookie")).toBeNull();
+    expect(seen[0].get(EMBED_HEADER)).toBeTruthy();
+  });
+
+  it("offering the partner subprotocol with no valid ticket is refused, even from lianki.com with a cookie", async () => {
+    const seen: Headers[] = [];
+    const calls: string[] = [];
+    const { e } = await env(seen, calls);
+    const res = await push.fetch(
+      upgrade({
+        origin: "https://lianki.com",
+        cookie: "s=1",
+        "sec-websocket-protocol": `${PARTNER_SUBPROTOCOL}, forged.ticket`,
+      }),
+      e,
+    );
     expect(res.status).toBe(403);
+    expect(calls).toEqual([]);
     expect(seen).toEqual([]);
   });
 

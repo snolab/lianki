@@ -479,6 +479,8 @@ export type DebugChatProps = {
   friend?: boolean;
   /** Shown instead of the input when this account cannot chat (blocked). */
   notice?: string;
+  /** With `notice`: a link under it (the read-only partner on another site: type on lianki.com). */
+  noticeHref?: { href: string; label: string };
   /** A one-line note above the input (a message dropped by the rate limit). */
   warning?: string;
   /**
@@ -572,6 +574,7 @@ export function DebugChat({
   evalRan = false,
   friend = false,
   notice,
+  noticeHref,
   warning,
   busy = null,
   note,
@@ -2965,6 +2968,17 @@ export function DebugChat({
                 className="min-w-0 flex-1 px-2 py-2 text-gray-600 dark:text-gray-400"
               >
                 {notice}
+                {noticeHref && (
+                  <a
+                    href={noticeHref.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="debug-chat-notice-link"
+                    className="pointer-events-auto ms-1 underline"
+                  >
+                    {noticeHref.label}
+                  </a>
+                )}
               </p>
             ) : (
               <>

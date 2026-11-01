@@ -79,10 +79,12 @@ async function ownerFallback(main: Fetcher, cookie: string): Promise<Identity | 
  * lianki.com cookie, and carries a 60 s owner ticket from lianki.com
  * (/api/debug/partner-ticket) in Sec-WebSocket-Protocol: `lianki-partner, <ticket>`.
  *
- * The split is strict both ways: a socket from https://lianki.com is judged on
- * its cookie alone (debugIdentity; a ticket there counts for nothing), and a
- * socket from any other origin on its ticket alone (a cookie there counts for
- * nothing). No Origin at all (not a browser) is refused here too.
+ * The split is strict both ways: a socket that offers the partner
+ * subprotocol is judged on its ticket alone (a cookie there counts for
+ * nothing), from any browser origin: the host site's shadow widget, or the
+ * lianki.com frame, which is third-party there and so has no cookie. Any
+ * other socket is judged on its cookie alone, and only from https://lianki.com.
+ * No Origin at all (not a browser) is refused here too.
  */
 export const EMBED_HEADER = "x-debug-embed";
 
@@ -92,6 +94,13 @@ export type PartnerTicket = { jti: string; exp: number };
 /** Seen in this isolate (the hub also burns each jti in its storage, across isolates). */
 const seenHere: JtiStore = new Map();
 
+/** Does this upgrade offer the partner subprotocol? Then it is judged on its ticket alone. */
+export function offersPartner(req: Request): boolean {
+  return (req.headers.get("sec-websocket-protocol") ?? "")
+    .split(",")
+    .some((s) => s.trim() === PARTNER_SUBPROTOCOL);
+}
+
 export async function partnerTicket(
   req: Request,
   pub: string | undefined,
@@ -99,7 +108,9 @@ export async function partnerTicket(
   now: number = Date.now(),
 ): Promise<PartnerTicket | null> {
   const origin = req.headers.get("origin");
-  if (!origin || origin === DEBUG_ORIGIN || !pub) return null;
+  // Any browser origin: the host site (shadow widget) or lianki.com (the frame,
+  // third-party, so cookieless). Never without one: not a browser.
+  if (!origin || !pub) return null;
   const offered = (req.headers.get("sec-websocket-protocol") ?? "")
     .split(",")
     .map((s) => s.trim())

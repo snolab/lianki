@@ -847,7 +847,7 @@ html[data-embed] [data-words-top] {
 html[data-embed] header,
 html[data-embed] nav,
 html[data-embed] footer,
-html[data-embed] [data-debug-chat] {
+html[data-embed]:not([data-partner-frame]) [data-debug-chat] {
   display: none !important;
 }
 html[data-embed],

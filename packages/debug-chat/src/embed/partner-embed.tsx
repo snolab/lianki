@@ -32,6 +32,12 @@ export type MountOptions = {
   hide: () => void;
   /** Forced from the start (the userscript already knows it cannot run here). */
   blocked?: Blocker;
+  /**
+   * Read-only (the site blocks the private typing frame): replies show, the
+   * input is replaced by a note and a link to reply on lianki.com. Keys typed
+   * here could be read by the site's capture listeners, so none are asked for.
+   */
+  readOnly?: boolean;
   /** Errors go to the userscript's reporter (the dev loader's sink), never the page. */
   report?: (what: string, detail: string) => void;
 };
@@ -136,6 +142,12 @@ function Partner({ client, o, portal }: { client: PartnerClient; o: MountOptions
       viewer={s.viewer}
       agentAvatar={`${o.appOrigin}/icon-192.png`}
       strings={{ name }}
+      {...(o.readOnly
+        ? {
+            notice: strings.readOnly,
+            noticeHref: { href: o.appOrigin, label: strings.replyOnLianki },
+          }
+        : {})}
     />
   );
 }
