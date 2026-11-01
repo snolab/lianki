@@ -488,6 +488,8 @@ export type DebugChatProps = {
   friend?: boolean;
   /** Shown instead of the input when this account cannot chat (blocked). */
   notice?: string;
+  /** With `notice`: a link under it (the read-only partner on another site: type on lianki.com). */
+  noticeHref?: { href: string; label: string };
   /** A one-line note above the input (a message dropped by the rate limit). */
   warning?: string;
   /**
@@ -544,6 +546,14 @@ export type DebugChatProps = {
   avatarFor?: (m: ChatMessage) => Sender | undefined;
   /** The mark on a voice line the agent polished (default POLISHED_ICON, a sparkle). */
   polishedIcon?: ReactNode;
+  /**
+   * On another site (the userscript, embed/; docs/dev-debug-widget.md "On
+   * every site"): no mic, no voice-clip recording, and Escape is taken only
+   * while focus is inside the chat, so the page's own keys are never touched.
+   */
+  embedded?: boolean;
+  /** Where the full-screen sheet and badges are portalled (default document.body; the shadow root's container when embedded). */
+  portalRoot?: Element;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -573,6 +583,7 @@ export function DebugChat({
   evalRan = false,
   friend = false,
   notice,
+  noticeHref,
   warning,
   busy = null,
   note,
@@ -593,6 +604,8 @@ export function DebugChat({
   avatarFor,
   nodes = [],
   polishedIcon = POLISHED_ICON,
+  embedded = false,
+  portalRoot,
 }: DebugChatProps) {
   const t = chatStrings(strings);
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
@@ -909,6 +922,12 @@ export function DebugChat({
     if (!tree) return;
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // On another site, the page's Escape stays the page's unless the chat has focus.
+      if (embedded) {
+        const box = root.current;
+        const scope = box?.getRootNode() as Document | ShadowRoot | undefined;
+        if (!box || !scope?.activeElement || !box.contains(scope.activeElement)) return;
+      }
       e.stopPropagation();
       setPanel("none");
     };
@@ -1528,7 +1547,8 @@ export function DebugChat({
   const micPending = useRef(0);
   /** This browser can capture (the mic button shows inside the input). */
   const [hasMic, setHasMic] = useState(false);
-  useEffect(() => setHasMic(canCapture()), []);
+  // No mic on another site: its speech-to-text and voice are lianki.com's.
+  useEffect(() => setHasMic(!embedded && canCapture()), [embedded]);
   /** Dimmed after the draft: partial transcripts, or "…" for those still out. */
   const [interim, setInterim] = useState("");
   const mirror = useRef<HTMLDivElement | null>(null);
@@ -2386,7 +2406,7 @@ export function DebugChat({
         </button>
       )}
       {/* Voice clips (clips.ts): a tap turns this window's recording on; the badge stops it. */}
-      {!friend && !clipsHub?.on && clipsCanStart && (
+      {!friend && !embedded && !clipsHub?.on && clipsCanStart && (
         <>
           <button
             type="button"
@@ -2764,8 +2784,9 @@ export function DebugChat({
     >
       {/* The recording badge, top of the screen, out of the box's transform. */}
       {!friend &&
+        !embedded &&
         typeof document !== "undefined" &&
-        createPortal(<ClipsBadge strings={t} />, document.body)}
+        createPortal(<ClipsBadge strings={t} />, portalRoot ?? document.body)}
       {fullLog !== "off" &&
         typeof document !== "undefined" &&
         createPortal(
@@ -2783,7 +2804,7 @@ export function DebugChat({
             }}
             className={`pointer-events-none fixed -inset-12 z-[39] transition-opacity duration-200 ease-out starting:opacity-0 motion-reduce:transition-none ${fullLog === "leaving" ? "opacity-0" : "opacity-100"}`}
           />,
-          document.body,
+          portalRoot ?? document.body,
         )}
       {/* Expanded, one or the other in the log's slot: the state tree, or the log. */}
       {open && tree && treePanel(false)}
@@ -3134,6 +3155,17 @@ export function DebugChat({
                 className="min-w-0 flex-1 px-2 py-2 text-gray-600 dark:text-gray-400"
               >
                 {notice}
+                {noticeHref && (
+                  <a
+                    href={noticeHref.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="debug-chat-notice-link"
+                    className="pointer-events-auto ms-1 underline"
+                  >
+                    {noticeHref.label}
+                  </a>
+                )}
               </p>
             ) : (
               <>

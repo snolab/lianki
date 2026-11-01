@@ -21,6 +21,21 @@ export const STT_TICKET_TTL_S = 60;
 /** The subprotocol the page offers beside the ticket, and the server selects. */
 export const STT_SUBPROTOCOL = "lianki-stt";
 
+/**
+ * The same keys sign the Learning Partner's userscript tickets
+ * (docs/dev-debug-widget.md, "On every site"): another audience, so an STT
+ * ticket never opens a hub socket and a hub ticket never reaches the STT.
+ */
+export const PARTNER_TICKET_AUD = "lianki-partner";
+/** The subprotocol a userscript's hub socket offers beside its ticket. */
+export const PARTNER_SUBPROTOCOL = "lianki-partner";
+/**
+ * The userscript asks for a partner ticket with this header (value "1"). A
+ * web page cannot send it cross-origin without a CORS preflight, which the
+ * route never answers.
+ */
+export const PARTNER_TICKET_HEADER = "x-lianki-userscript";
+
 export type SttTicketPayload = { aud: string; jti: string; iat: number; exp: number };
 
 const ED = { name: "Ed25519" } as const;
@@ -89,6 +104,7 @@ export async function verifySttTicket(
   pub: CryptoKey,
   seen: JtiStore,
   now: number = Date.now(),
+  aud: string = STT_TICKET_AUD,
 ): Promise<VerifyResult> {
   const t = Math.floor(now / 1000);
   for (const [j, e] of seen) if (e + STT_TICKET_SKEW_S < t) seen.delete(j);
@@ -109,7 +125,7 @@ export async function verifySttTicket(
   } catch {
     return { ok: false, error: "malformed" };
   }
-  if (p.aud !== STT_TICKET_AUD) return { ok: false, error: "wrong aud" };
+  if (p.aud !== aud) return { ok: false, error: "wrong aud" };
   if (typeof p.exp !== "number" || typeof p.iat !== "number" || typeof p.jti !== "string" || !p.jti)
     return { ok: false, error: "malformed" };
   if (p.exp - p.iat > STT_TICKET_TTL_S || p.iat > t + STT_TICKET_SKEW_S)

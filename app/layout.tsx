@@ -4,10 +4,9 @@ import "./globals.css";
 import { IntlayerServerProvider } from "next-intlayer/server";
 import { getIntlayer } from "intlayer";
 import { cookies, headers } from "next/headers";
-import { ServiceWorkerRegistration } from "./components/ServiceWorkerRegistration";
-import { NewVersionNotice } from "./components/NewVersionNotice";
-import { DebugEval, type PartnerStrings } from "./components/DebugEval";
-import { LOCALE_HEADER, resolveLocale } from "@/lib/app-locale";
+import type { PartnerStrings } from "./components/DebugEval";
+import { OwnerBoots } from "./components/OwnerBoots";
+import { LOCALE_HEADER, PARTNER_FRAME_HEADER, resolveLocale } from "@/lib/app-locale";
 import { LANG_TAGS } from "@/lib/constants";
 
 export const metadata: Metadata = {
@@ -66,6 +65,8 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await getRootLocale();
+  // /embed/partner (framable by any site): none of the owner's page boots.
+  const partnerFrame = (await headers()).get(PARTNER_FRAME_HEADER) === "1";
   // The chat's user-facing name and strings ("Learning Partner"; code: debug).
   const partner = Object.fromEntries(
     Object.entries(getIntlayer("learning-partner", locale as never)).map(([k, v]) => [
@@ -117,9 +118,7 @@ export default async function RootLayout({
         {/* The band behind the status bar's white clock (home-screen app only). */}
         <div aria-hidden="true" className="lk-statusbar" />
         <IntlayerServerProvider locale={locale}>
-          <ServiceWorkerRegistration />
-          <NewVersionNotice />
-          <DebugEval strings={partner} />
+          {partnerFrame ? null : <OwnerBoots strings={partner} />}
           {children}
         </IntlayerServerProvider>
       </body>

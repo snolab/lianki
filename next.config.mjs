@@ -65,6 +65,16 @@ const nextConfig = {
       source: "/:file(lianki.user.js|lianki.meta.js)",
       headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
     },
+    // The Learning Partner's frame (docs/dev-debug-widget.md, "The frame"): the one
+    // route any site may frame. It holds no session; it connects only with a
+    // ticket the userscript hands it over a MessagePort.
+    {
+      source: "/embed/partner",
+      headers: [
+        { key: "Content-Security-Policy", value: "frame-ancestors *" },
+        { key: "Cache-Control", value: "no-store" },
+      ],
+    },
   ],
 };
 

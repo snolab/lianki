@@ -11,6 +11,8 @@
 // @author      lianki.com
 // @description Lianki dev loader — install once; the build is pushed from your dev server over a long poll.
 // @run-at      document-start
+// @inject-into content
+// @sandbox     DOM
 // __CONNECT__
 // @downloadURL __ORIGIN__/loader.user.js
 // @updateURL   __ORIGIN__/loader.user.js

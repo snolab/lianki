@@ -45,6 +45,10 @@ jobs:
           node-version: 22
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
+      # The Learning Partner for other sites (docs/dev-debug-widget.md, "On every
+      # site"): built here, served as /partner-embed.js, never committed.
+      - name: Partner embed build
+        run: bun scripts/build-partner-embed.ts
       # Same flags as qa:all's build. NEXT_PUBLIC_* is inlined at build time, so
       # the real Turnstile site key must be present here, not as a Worker var.
       - name: OpenNext build
