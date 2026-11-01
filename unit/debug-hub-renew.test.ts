@@ -15,7 +15,18 @@ import {
   sessionTag,
   isSessionTag,
 } from "@/lib/dev-eval";
-import { notifySignedOut } from "@/lib/push-signed-out";
+import { readFileSync } from "node:fs";
+import {
+  type NoticeDeps,
+  type OutboxDb,
+  RETRY_MS,
+  flushSignedOut,
+  flushSignedOutSoon,
+  notifySignedOut,
+  outboxBackoff,
+} from "@/lib/push-signed-out";
+import { sessionLive } from "@/lib/debug-session";
+import { TestD1Database } from "@/lib/d1/testDb";
 
 class FakeSocket implements Socket {
   sent: Record<string, unknown>[] = [];
@@ -82,16 +93,38 @@ const INTO_WINDOW = EVAL_GRANT_MS - EVAL_RENEW_BEFORE_MS + 1;
 type Opts = { device?: string; session?: string; sessionUntil?: number; tab?: string };
 type Stored = {
   until: number;
-  renew?: { device: string; session: string; start: number; count: number };
+  renew?: { device: string; session: string; user?: string; start: number; count: number };
 };
 
-function setup() {
+/**
+ * The main Worker's /api/debug/session-live, as the auth db would answer it:
+ * `live` holds the owner's sessions still signed in. `mode` breaks it.
+ */
+function fakeMain() {
+  const m = {
+    live: new Set<string>([SESSION]),
+    mode: "db" as "db" | "throw" | "500" | "odd",
+    calls: [] as { url: string; body: { user: string; session: string } }[],
+    fetch: async (url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      m.calls.push({ url, body });
+      if (m.mode === "throw") throw new Error("main down");
+      if (m.mode === "500") return new Response("no", { status: 500 });
+      if (m.mode === "odd") return Response.json({ live: "yes" });
+      return Response.json({ live: body.user === "owner1" && m.live.has(body.session) });
+    },
+  };
+  return m;
+}
+
+function setup(o: { noMain?: boolean } = {}) {
   const sockets: FakeSocket[] = [];
   let t = T0;
   const storage = fakeStorage();
+  const main = fakeMain();
   const hub = new DebugHub(
     { acceptWebSocket: () => {}, getWebSockets: () => sockets, storage },
-    undefined,
+    o.noMain ? undefined : { MAIN: main },
     () => t,
   );
   const add = () => {
@@ -167,6 +200,7 @@ function setup() {
   return {
     hub,
     storage,
+    main,
     ownerPage,
     friendPage,
     controller,
@@ -193,6 +227,7 @@ describe("eval grant renewal: what the Allow binds", () => {
     expect(s.stored(hash)?.renew).toEqual({
       device: DEVICE,
       session: SESSION,
+      user: "owner1",
       start: T0,
       count: 0,
     });
@@ -477,47 +512,267 @@ describe("eval grant renewal: never for anyone but the owner", () => {
 });
 
 describe("the main Worker's sign-out notice", () => {
-  it("posts only the session's tag to lianki-push, and never throws", async () => {
-    const seen: { url: string; body: string }[] = [];
-    const ok = {
+  /** A PUSH binding that fails while `down`, recording what it was sent. */
+  const pushStub = (route?: (req: Request) => Promise<Response>) => {
+    const p = {
+      down: false as boolean | "throw",
+      seen: [] as { url: string; body: string }[],
       fetch: async (url: string, init?: RequestInit) => {
-        seen.push({ url, body: String(init?.body) });
-        return new Response("{}");
+        p.seen.push({ url, body: String(init?.body) });
+        if (p.down === "throw") throw new Error("push down");
+        if (p.down) return new Response("no", { status: 503 });
+        return route ? route(new Request(url, init)) : new Response("{}");
       },
     };
-    await notifySignedOut("sess-1", ok);
-    expect(seen).toEqual([
+    return p;
+  };
+  /** Deps with a D1 outbox (the real migration), a clock, and waitUntil collected. */
+  const deps = async (push: ReturnType<typeof pushStub> | null) => {
+    const db = new TestD1Database();
+    await db.exec(readFileSync("db/migrations/0023_debug_signout_outbox.sql", "utf8"));
+    let t = T0;
+    const pending: Promise<unknown>[] = [];
+    const d: NoticeDeps = {
+      push,
+      db: db as unknown as OutboxDb,
+      now: () => t,
+      sleep: async () => {},
+      later: (p) => void pending.push(p),
+    };
+    const rows = async () =>
+      (await db.prepare("SELECT * FROM debug_signout_outbox").all<Record<string, number>>())
+        .results;
+    return { d, db, rows, pending, tick: (ms: number) => (t += ms) };
+  };
+  const quiet = async (f: () => Promise<unknown>) => {
+    const err = console.error;
+    console.error = () => {};
+    try {
+      await f();
+    } finally {
+      console.error = err;
+    }
+  };
+
+  it("posts only the session's tag to lianki-push; nothing queued once acknowledged", async () => {
+    const push = pushStub();
+    const x = await deps(push);
+    await notifySignedOut("sess-1", x.d);
+    expect(push.seen).toEqual([
       {
         url: "https://lianki-push/internal/signed-out",
         body: JSON.stringify({ session: await sessionTag("sess-1") }),
       },
     ]);
-    expect(seen[0].body).not.toContain("sess-1");
-    const err = console.error;
-    console.error = () => {};
-    try {
-      await notifySignedOut("sess-1", { fetch: async () => new Response("no", { status: 500 }) });
-      await notifySignedOut("sess-1", {
-        fetch: async () => {
-          throw new Error("down");
-        },
-      });
-    } finally {
-      console.error = err;
-    }
-    // No binding (dev, QA), or no id: nothing at all.
-    await notifySignedOut("sess-1", null);
-    await notifySignedOut("", ok);
+    expect(push.seen[0].body).not.toContain("sess-1");
+    expect(await x.rows()).toEqual([]);
+    // No binding (dev, QA), or no id: nothing at all. The real deps off a Worker: none.
+    await notifySignedOut("sess-1", { ...x.d, push: null });
+    await notifySignedOut("", x.d);
     await notifySignedOut("sess-1");
-    expect(seen).toHaveLength(1);
+    await flushSignedOut();
+    flushSignedOutSoon();
+    expect(push.seen).toHaveLength(1);
   });
 
-  it("reaches the hub end to end: the bound grant stops renewing", async () => {
+  it("a failed notice is kept in the outbox before sign-out returns, then retried until acknowledged", async () => {
+    const push = pushStub();
+    push.down = true;
+    const x = await deps(push);
+    const tag = await sessionTag("sess-1");
+    await quiet(() => notifySignedOut("sess-1", x.d));
+    expect(await x.rows()).toMatchObject([{ tag, tries: 0, next_ms: T0 + outboxBackoff(0) }]);
+    // The in-request retries (waitUntil) all fail: the row stays.
+    await quiet(() => Promise.all(x.pending));
+    expect(push.seen).toHaveLength(1 + RETRY_MS.length);
+    expect(await x.rows()).toHaveLength(1);
+    // A later event: not due yet, then due but failing (backoff grows), then acknowledged.
+    await quiet(() => flushSignedOut(x.d));
+    expect(push.seen).toHaveLength(1 + RETRY_MS.length);
+    x.tick(outboxBackoff(0));
+    push.down = "throw";
+    await quiet(() => flushSignedOut(x.d));
+    expect(await x.rows()).toMatchObject([
+      { tries: 1, next_ms: T0 + outboxBackoff(0) + outboxBackoff(1) },
+    ]);
+    x.tick(outboxBackoff(1));
+    push.down = false;
+    await flushSignedOut(x.d);
+    expect(await x.rows()).toEqual([]);
+    expect(outboxBackoff(20)).toBe(60 * 60_000);
+  });
+
+  it("an in-request retry that gets through clears the outbox", async () => {
+    const push = pushStub();
+    push.down = true;
+    const x = await deps(push);
+    await quiet(() => notifySignedOut("sess-1", x.d));
+    push.down = false;
+    await Promise.all(x.pending);
+    expect(await x.rows()).toEqual([]);
+  });
+
+  it("a notice no chain could still use is dropped unsent; a broken outbox never throws", async () => {
+    const push = pushStub();
+    push.down = true;
+    const x = await deps(push);
+    await quiet(async () => {
+      await notifySignedOut("sess-1", x.d);
+      await Promise.all(x.pending);
+    });
+    x.tick(EVAL_CHAIN_MS + 1);
+    const before = push.seen.length;
+    await flushSignedOut(x.d);
+    expect(await x.rows()).toEqual([]);
+    expect(push.seen).toHaveLength(before);
+    const broken = {
+      prepare: () => {
+        throw new Error("no such table");
+      },
+    } as unknown as OutboxDb;
+    await quiet(async () => {
+      await notifySignedOut("sess-2", { ...x.d, db: broken });
+      await Promise.all(x.pending);
+    });
+    await quiet(() => flushSignedOut({ ...x.d, db: broken }));
+    const later: Promise<unknown>[] = [];
+    flushSignedOutSoon({ ...x.d, later: (p) => void later.push(p) });
+    expect(later).toHaveLength(1);
+  });
+
+  it("reaches the hub end to end: the grant stops renewing, the page loses the session", async () => {
     const s = setup();
-    const p = await s.ownerPage({ session: await sessionTag("sess-9") });
+    const tag = await sessionTag("sess-9");
+    s.main.live.add(tag);
+    const p = await s.ownerPage({ session: tag });
     const { hash } = await s.grant(p);
-    await notifySignedOut("sess-9", { fetch: (url, init) => s.hub.fetch(new Request(url, init)) });
+    const x = await deps(pushStub((req) => s.hub.fetch(req)));
+    await notifySignedOut("sess-9", x.d);
     expect(s.stored(hash)?.renew).toBeUndefined();
+    const a = p.deserializeAttachment() as {
+      session?: string;
+      sessionUntil?: number;
+      user?: string;
+    };
+    expect([a.session, a.sessionUntil, a.user]).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("a lost notice: the next renewal asks the auth db, which says gone — no renewal", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c, hash } = await s.grant(p);
+    // Sign-out: the session leaves the auth db, but lianki-push never hears of it.
+    const push = pushStub();
+    push.down = "throw";
+    const x = await deps(push);
+    await quiet(() => notifySignedOut("whatever-id", x.d));
+    await quiet(() => Promise.all(x.pending));
+    s.main.live.delete(SESSION);
+    s.tick(INTO_WINDOW);
+    await s.msg(c, { type: "eval", code: "1" });
+    expect(renewals(c)).toEqual([]);
+    expect(s.main.calls.at(-1)?.body).toEqual({ user: "owner1", session: SESSION });
+    // "Gone" is definite: the chain is dropped and the stale page no longer vouches.
+    expect(s.stored(hash)?.renew).toBeUndefined();
+    expect((p.deserializeAttachment() as { session?: string }).session).toBeUndefined();
+  });
+});
+
+describe("eval grant renewal: the live-session check fails closed", () => {
+  for (const mode of ["throw", "500", "odd"] as const)
+    it(`main Worker ${mode}: no renewal, the chain is kept for when it answers`, async () => {
+      const s = setup();
+      const p = await s.ownerPage();
+      const { c, hash } = await s.grant(p);
+      s.main.mode = mode;
+      s.tick(INTO_WINDOW);
+      await s.msg(c, { type: "eval", code: "1" });
+      expect(renewals(c)).toEqual([]);
+      expect(s.stored(hash)?.renew).toBeTruthy();
+      s.main.mode = "db";
+      await s.msg(c, { type: "eval", code: "1" });
+      expect(renewals(c)).toHaveLength(1);
+    });
+
+  it("no MAIN binding: never renews", async () => {
+    const s = setup({ noMain: true });
+    const p = await s.ownerPage();
+    const { c } = await s.grant(p);
+    s.tick(INTO_WINDOW);
+    await s.msg(c, { type: "eval", code: "1" });
+    expect(renewals(c)).toEqual([]);
+  });
+
+  it("a grant bound without the owner's user id (an older hub) never renews", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c, hash } = await s.grant(p);
+    const g = s.storage.store.get(`grant:${hash}`) as { renew: Record<string, unknown> };
+    delete g.renew.user;
+    (s.hub as unknown as { grants?: unknown }).grants = undefined;
+    s.tick(INTO_WINDOW);
+    await s.msg(c, { type: "eval", code: "1" });
+    expect(renewals(c)).toEqual([]);
+    expect(s.main.calls).toEqual([]);
+  });
+
+  it("the check is made only when a renewal is otherwise due", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c } = await s.grant(p);
+    s.tick(60_000);
+    await s.msg(c, { type: "eval", code: "1" });
+    await s.hub.alarm();
+    expect(s.main.calls).toEqual([]);
+  });
+});
+
+describe("eval grant renewal: the alarm always moves forward", () => {
+  it("at exactly EVAL_RENEW_BEFORE_MS left it renews, and the next alarm is later", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c, hash } = await s.grant(p);
+    s.tick(EVAL_GRANT_MS - EVAL_RENEW_BEFORE_MS);
+    expect(s.storage.alarm).toBe(s.now());
+    await s.hub.alarm();
+    expect(renewals(c)).toHaveLength(1);
+    expect(s.storage.alarm as number).toBeGreaterThan(s.now());
+    expect(s.storage.alarm).toBe((s.stored(hash)?.until as number) - EVAL_RENEW_BEFORE_MS);
+  });
+
+  it("not due yet: the alarm is set strictly after now", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    await s.grant(p);
+    s.storage.alarm = null;
+    s.tick(EVAL_GRANT_MS - EVAL_RENEW_BEFORE_MS - 1);
+    await s.hub.alarm();
+    expect(s.storage.alarm as number | null).toBe(s.now() + 1);
+  });
+});
+
+describe("the main Worker's live-session lookup", () => {
+  const OWNER = "owner@x.com";
+  const lookup = (sessions: { id: string; expiresAt: Date | number }[], email = OWNER) => ({
+    emailOf: async (id: string) => (id === "u1" ? email : null),
+    sessionsOf: async () => sessions,
+    isOwner: (e: string | null | undefined) => e === OWNER,
+    now: () => T0,
+  });
+
+  it("live only for the owner's unexpired session with that tag", async () => {
+    const tag = await sessionTag("s1");
+    const db = lookup([{ id: "s1", expiresAt: new Date(T0 + 1) }]);
+    expect(await sessionLive("u1", tag, db)).toBe(true);
+    expect(await sessionLive("u1", await sessionTag("s2"), db)).toBe(false);
+    expect(await sessionLive("u1", tag, lookup([{ id: "s1", expiresAt: T0 }]))).toBe(false);
+    expect(await sessionLive("u1", tag, lookup([{ id: "s1", expiresAt: T0 + 1 }], "f@x.com"))).toBe(
+      false,
+    );
+    expect(await sessionLive("u2", tag, db)).toBe(false);
+    expect(await sessionLive("u1", "s1", db)).toBe(false);
+    expect(await sessionLive(undefined, tag, db)).toBe(false);
+    expect(await sessionLive("u1", tag, { ...db, now: undefined })).toBe(false);
   });
 });
 

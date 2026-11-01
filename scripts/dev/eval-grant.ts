@@ -39,6 +39,16 @@ export function readGrantFile(text: string | undefined, now: number): string | u
 }
 
 /**
+ * The token in a token file's text, whatever its `until` says. For the eval
+ * grant, whose `until` is only a hint: the hub renews it (docs/monitoring.md,
+ * "Renewal"), possibly while no socket was there to hear, so the token is
+ * tried with the hub, which answers 4498 when it is really gone.
+ */
+export function readGrantToken(text: string | undefined): string | undefined {
+  return readGrantFile(text, -Infinity);
+}
+
+/**
  * The hub renewed the eval grant this socket holds ({type:"renewed", until}),
  * or a resume came back with its until ({type:"approved", scope:"eval"}):
  * the token file's new body, when the file holds this same token — so the
@@ -70,7 +80,8 @@ export type EvalStep =
 
 /**
  * What `serve` or a one-shot eval does to get an approved socket.
- * `token`: the saved eval token (undefined if missing or expired).
+ * `token`: the saved eval token (undefined if missing; its file's `until` is
+ * only a hint — readGrantToken — since the hub may have renewed it).
  * `rejected`: the hub refused that token (4498) — it is gone now.
  * `paired`: this process has already asked the owner once.
  */

@@ -105,11 +105,13 @@
  *
  * Renewal (the owner's eval grant only). The Allow binds the grant to the
  * answering page's device id and sign-in session (`renew`: {device, session,
- * start, count}; a session tag is a hash, lib/dev-eval.ts sessionTag). With
- * less than EVAL_RENEW_BEFORE_MS left, it is extended to EVAL_GRANT_MS from
+ * user, start, count}; a session tag is a hash, lib/dev-eval.ts sessionTag). With
+ * at most EVAL_RENEW_BEFORE_MS left, it is extended to EVAL_GRANT_MS from
  * now — never past start + EVAL_CHAIN_MS, after which a tap is needed again —
  * on any of these events, and only while an owner page of that device and
- * session (unexpired) is connected:
+ * session (unexpired) is connected, and the main Worker confirms right then
+ * that the session is still live in the auth db (MAIN, POST
+ * /api/debug/session-live; any doubt = no renewal, "gone" = stopRenewal):
  *   use     a message from a socket holding the grant
  *   resume  a reconnect with its token
  *   page    that device's page connecting
@@ -118,7 +120,8 @@
  * count} (its attachment's `until` moves too); `debug.renew` logs the count
  * and device. End (revoke) deletes the grant, so nothing renews; the session
  * being deleted (sign-out: the main Worker's POST /internal/signed-out)
- * drops `renew` from every grant bound to it at once. A chat grant, a
+ * drops `renew` from every grant bound to it at once, and the session from
+ * every owner page attachment that carried it. A chat grant, a
  * friend's preview, and a grant approved without a session (the dev bridge,
  * an older main Worker) are never renewed.
  *
@@ -259,6 +262,8 @@ type PageAtt = {
   /** The owner's sign-in session (a tag, never the id) and its expiry; never on a friend's page. */
   session?: string;
   sessionUntil?: number;
+  /** The owner's user id, kept with the session (the main Worker's lookup key). */
+  user?: string;
   /** The page said it is going (pagehide): it no longer holds its session open. */
   leaving?: boolean;
 };
@@ -334,7 +339,19 @@ type Grant = {
  * The approving page's device id and session tag, when the chain began (the
  * tap), and how many times it was renewed since.
  */
-type Renewal = { device: string; session: string; start: number; count: number };
+type Renewal = {
+  device: string;
+  session: string;
+  /** The owner's user id: what the main Worker looks the session up under. */
+  user?: string;
+  start: number;
+  count: number;
+};
+/** In the renewal window: at most EVAL_RENEW_BEFORE_MS left (so "not due" is strictly before it). */
+const renewDueAt = (until: number, t: number) => until - t <= EVAL_RENEW_BEFORE_MS;
+/** The main Worker's live-session check (app/api/debug/session-live), over the MAIN binding. */
+const SESSION_LIVE_URL = "https://lianki.com/api/debug/session-live";
+type Fetcher = { fetch(url: string, init?: RequestInit): Promise<Response> };
 /** A sleeping eval grant's pair id in the pages' state: "g:" + the start of its hash. */
 const DORMANT = "g:";
 const dormantPair = (hash: string) => `${DORMANT}${hash.slice(0, 40)}`;
@@ -435,12 +452,15 @@ export class DebugHub {
   private loadingGrants?: Promise<void>;
   /** A renewal in flight per grant hash: two events at once renew once. */
   private renewing = new Map<string, Promise<void>>();
+  /** The main Worker (service binding): asked whether a renewal's session is still live. */
+  private main?: Fetcher;
 
   constructor(
     private ctx: DebugState,
-    _env?: unknown,
+    env?: unknown,
     private now: () => number = Date.now,
   ) {
+    this.main = (env as { MAIN?: Fetcher } | undefined)?.MAIN;
     // The listener pings to find a socket that died without a close (a
     // redeploy, a dropped connection); the runtime answers it while the hub
     // hibernates, so it costs no wake-up.
@@ -858,8 +878,13 @@ export class DebugHub {
     return Response.json({ ok: true, stopped: await this.stopRenewal(body.session) });
   }
 
-  /** No eval grant bound to `session` renews any more (sign-out). How many were. */
-  async stopRenewal(session: string): Promise<number> {
+  /**
+   * `session` is over (sign-out, or the main Worker says it is gone): no eval
+   * grant bound to it renews any more, and the owner pages that connected
+   * with it lose it (their attachment no longer names a session, so they can
+   * never vouch for a renewal). How many grants were bound.
+   */
+  async stopRenewal(session: string, why = "signed-out"): Promise<number> {
     await this.loadGrants();
     let n = 0;
     for (const [hash, g] of this.grants ?? []) {
@@ -867,16 +892,38 @@ export class DebugHub {
       const { renew: r, ...rest } = g;
       await this.putGrant(hash, rest satisfies Grant);
       console.log(
-        JSON.stringify({
-          msg: "debug.renew-stop",
-          why: "signed-out",
-          device: r.device,
-          count: r.count,
-        }),
+        JSON.stringify({ msg: "debug.renew-stop", why, device: r.device, count: r.count }),
       );
       n++;
     }
+    for (const { ws, a } of this.pages(OWNER_THREAD))
+      if (a.session === session) {
+        const { session: _s, sessionUntil: _u, user: _user, ...rest } = a;
+        ws.serializeAttachment(rest satisfies PageAtt);
+      }
     return n;
+  }
+
+  /**
+   * Is the session behind a renewal still live? Asked of the main Worker
+   * (MAIN binding, POST /api/debug/session-live: an auth-db lookup of the
+   * owner's live sessions by tag) right before each renewal. "unsure" — no
+   * binding, a network error, a non-200, an odd body — renews nothing.
+   */
+  private async sessionLive(r: Renewal): Promise<"live" | "gone" | "unsure"> {
+    if (!this.main || !r.user) return "unsure";
+    try {
+      const res = await this.main.fetch(SESSION_LIVE_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ user: r.user, session: r.session }),
+      });
+      if (res.status !== 200) return "unsure";
+      const body = (await res.json()) as { live?: unknown };
+      return body.live === true ? "live" : body.live === false ? "gone" : "unsure";
+    } catch {
+      return "unsure";
+    }
   }
 
   /**
@@ -895,12 +942,15 @@ export class DebugHub {
     const t = this.now();
     const g = await this.ctx.storage.get<Grant>(`grant:${hash}`);
     const r = g?.renew;
-    if (!g || !r || g.scope !== "eval" || g.until <= t) return;
-    if (g.until - t >= EVAL_RENEW_BEFORE_MS) return;
+    if (!g || !r || g.scope !== "eval" || g.until <= t || !renewDueAt(g.until, t)) return;
     const until = Math.min(t + EVAL_GRANT_MS, r.start + EVAL_CHAIN_MS);
     // The chain is at its cap: the next grant needs a tap.
     if (until <= g.until) return;
     if (!this.approverHere(r, t)) return;
+    // The auth db has the last word: a session it does not know renews nothing.
+    const live = await this.sessionLive(r);
+    if (live === "gone") await this.stopRenewal(r.session, "session-gone");
+    if (live !== "live") return;
     const count = r.count + 1;
     const next: Grant = { ...g, until, renew: { ...r, count } };
     await this.putGrant(hash, next);
@@ -948,7 +998,8 @@ export class DebugHub {
       const r = g.renew;
       if (!r || g.scope !== "eval" || g.until <= t) continue;
       if (only && (r.device !== only.device || r.session !== only.session)) continue;
-      if (g.until - t < EVAL_RENEW_BEFORE_MS) await this.renew(hash, via);
+      // Not due yet means the window opens strictly later: the alarm always moves forward.
+      if (renewDueAt(g.until, t)) await this.renew(hash, via);
       else await this.scheduleRenewal(g);
     }
   }
@@ -1023,7 +1074,7 @@ export class DebugHub {
         at: this.now(),
         // The owner's sign-in session: what an eval grant's renewal is bound to.
         ...(who?.owner && who.session
-          ? { session: who.session, sessionUntil: who.sessionUntil ?? 0 }
+          ? { session: who.session, sessionUntil: who.sessionUntil ?? 0, user: who.userId }
           : {}),
       } satisfies PageAtt);
     const thread = audience(att(ws) as PageAtt);
@@ -1317,7 +1368,7 @@ export class DebugHub {
     // A use of the owner's eval grant near its end renews it first (if allowed).
     const t = this.now();
     if (a.grant && a.scope === "eval" && !a.forUser && a.until && a.until > t)
-      if (a.until - t < EVAL_RENEW_BEFORE_MS)
+      if (renewDueAt(a.until, t))
         return this.renew(a.grant, "use").then(() => {
           const b = att(ws);
           return b?.role === "controller" ? this.fromController(ws, b, raw) : undefined;
@@ -1533,8 +1584,8 @@ export class DebugHub {
     const grant = await hashToken(token);
     // Only an owner page signed in with a session, on a known device, starts a chain.
     const renew: Renewal | undefined =
-      by?.thread === OWNER_THREAD && by.session && by.device
-        ? { device: by.device, session: by.session, start: t, count: 0 }
+      by?.thread === OWNER_THREAD && by.session && by.device && by.user
+        ? { device: by.device, session: by.session, user: by.user, start: t, count: 0 }
         : undefined;
     const g: Grant = {
       label: a.label,

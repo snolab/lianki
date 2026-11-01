@@ -4,6 +4,7 @@ import { DEV_BRIDGE_HEADER } from "@/lib/dev-bridge";
 import { devBridgeUser } from "@/lib/dev-bridge-user";
 import { sessionTag } from "@/lib/dev-eval";
 import { isOwner } from "@/lib/owner";
+import { flushSignedOutSoon } from "@/lib/push-signed-out";
 
 /**
  * Who is this session, for lianki-push (workers/push) before it accepts a
@@ -29,6 +30,8 @@ export const GET = async (req: Request) => {
   const got = await authSessionOrNull();
   const user = got?.user;
   if (!user?.id) return NextResponse.json({ error: "Sign in" }, { status: 401 });
+  // An event that happens anyway: retry sign-out notices still in the outbox.
+  if (isOwner(user.email)) flushSignedOutSoon();
   const session = got?.session;
   const until = session?.expiresAt ? new Date(session.expiresAt).getTime() : NaN;
   return NextResponse.json(

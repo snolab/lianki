@@ -12,6 +12,7 @@ import {
   freshenedGrantFile,
   grantFileBody,
   readGrantFile,
+  readGrantToken,
   GRANT_INVALID,
 } from "./eval-grant";
 
@@ -23,7 +24,7 @@ const PAIR_MS = 2 * 60_000;
 export type Msg = Record<string, unknown> & { type?: string };
 
 /** The main checkout's root, shared by every worktree: where the grant tokens live. */
-function mainRoot() {
+export function mainRoot() {
   const git = Bun.spawnSync(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], {
     cwd: import.meta.dir,
   });
@@ -64,8 +65,26 @@ const freshen = (token: string, data: string) => {
       console.error(`Eval grant renewed until ${new Date(Number(m.until)).toLocaleString()}.`);
   } catch {}
 };
+/**
+ * The hub renews the eval grant on use (docs/monitoring.md, "Renewal"): keep
+ * the token file's `until` in step on every socket holding it — resumed, or
+ * just paired — so the next run resumes instead of pairing.
+ */
+export const keepFresh = (ws: Pick<WebSocket, "addEventListener">, token: string) =>
+  ws.addEventListener("message", (e) => freshen(token, String((e as MessageEvent).data)));
 export const loadToken = () => loadFrom(TOKEN_FILE);
-export const loadEvalToken = () => loadFrom(EVAL_TOKEN_FILE);
+/**
+ * The saved eval token, whatever its file's `until` says: that is only a hint
+ * (the hub may have renewed it while no socket was here to hear), so the hub
+ * decides — a lapsed one is refused with 4498, and only then do we pair.
+ */
+export const loadEvalToken = () => {
+  try {
+    return readGrantToken(readFileSync(EVAL_TOKEN_FILE, "utf8"));
+  } catch {
+    return undefined;
+  }
+};
 /** A grant that may chat: the chat grant, else the eval grant (eval implies chat). */
 export const chatGrant = () => {
   const chat = loadToken();
@@ -119,9 +138,7 @@ export function controller({ label, labelFlag, forEmail, noPair, node, agent }: 
     const ws = new WebSocket(controlUrl(token, forEmail, scope, beat), {
       headers: { "x-debug-token": token },
     } as unknown as string[]);
-    // The hub renews the eval grant on use (docs/monitoring.md, "Renewal"):
-    // keep the token file's `until` in step, so the next run resumes, not pairs.
-    ws.addEventListener("message", (e) => freshen(token, String(e.data)));
+    keepFresh(ws, token);
     return ws;
   };
 
@@ -159,8 +176,11 @@ export function controller({ label, labelFlag, forEmail, noPair, node, agent }: 
         else if (m.type === "approved") {
           clearTimeout(give);
           ws.onmessage = null;
-          if (!forEmail && typeof m.token === "string")
+          if (!forEmail && typeof m.token === "string") {
             saveTo(EVAL_TOKEN_FILE, m.token, Number(m.until));
+            // This socket now holds the grant: follow its renewals too (a long `serve`).
+            keepFresh(ws, m.token);
+          }
           console.error(`Approved until ${new Date(Number(m.until)).toLocaleTimeString()}.`);
           resolve(ws);
         } else if (m.type === "error" || m.type === "denied" || m.type === "expired") {

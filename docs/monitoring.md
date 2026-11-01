@@ -188,14 +188,23 @@ every 8 hours (owner's decision, 2026-11-01). The rules, in the hub
   token. `/api/debug/identity` answers `session` and `sessionUntil`;
   lianki-push passes them to the hub as `x-debug-session(-until)`, set by
   itself only (a page's or a sender's own are removed).
-- **When.** With less than 2 hours left (`EVAL_RENEW_BEFORE_MS`), the grant
+- **When.** With at most 2 hours left (`EVAL_RENEW_BEFORE_MS`), the grant
   is extended to 8 hours from now on the next event: a message from a socket
   holding it, a resume with its token, that device's page connecting, or the
-  one Durable Object alarm set for `until − 2 h`. No polling.
+  one Durable Object alarm set for `until − 2 h` (a grant not yet due always
+  sets it strictly later than now). No polling.
 - **Only on that device and session.** At that moment an owner page with
   the same device id and the same, unexpired session must be connected.
   Another device, a new session (signed out and in again), or a friend's
   page (the hub keeps no session or device for one) renews nothing.
+- **The auth db has the last word.** Right before renewing, the hub asks the
+  main Worker over its MAIN binding — `POST /api/debug/session-live
+  {user, session}` → `{live}`, a lookup of the owner's unexpired sessions by
+  tag (`lib/debug-session.ts`). Only `live: true` renews. A network error, a
+  non-200 or an odd body renews nothing (fail closed) and keeps the chain for
+  a later try; `live: false` drops the chain and the session from the pages,
+  as a sign-out notice would. So a lost sign-out notice cannot keep a grant
+  renewing.
 - **Cap.** Never past 30 days from the tap (`EVAL_CHAIN_MS`); then the grant
   lapses and the next pairing asks again.
 - **Stops at once.** End (live or on the sleeping `idle` entry) deletes the
@@ -203,13 +212,24 @@ every 8 hours (owner's decision, 2026-11-01). The rules, in the hub
   `session.delete.after` hook (`auth-impl.ts` → `lib/push-signed-out.ts`)
   posts its tag to lianki-push's `/internal/signed-out` over the PUSH
   binding: every grant bound to it stops renewing and ends at its current
-  `until`.
+  `until`, and every owner page attachment carrying that session loses it
+  (a stale tab can no longer vouch for a renewal). The notice is durable: one
+  that is not acknowledged (2xx) is written to the D1 outbox
+  `debug_signout_outbox` (migration 0023) before sign-out returns, retried
+  after the response (1 s, 4 s, 15 s), then on later events — an owner's
+  debug page connecting (`/api/debug/identity`) or the hub's live-session
+  check — with an exponential backoff (1 min doubling, at most 1 h), until
+  acknowledged or no chain could still use it (30 days).
 - **Never for anyone else.** Chat grants, friends' previews, and grants
   approved on a page with no session (the dev bridge) are never renewed.
 - **The sender.** Each socket holding the grant hears
   `{type:"renewed", until, count}`; `eval-socket.ts` moves the token file's
-  `until` (also on a resume's `approved`), so the next run resumes instead
-  of pairing. The first `approved` says `renewsUntil` (the cap).
+  `until` (on a resumed socket and on a freshly paired one, and on a resume's
+  `approved`), so the next run resumes instead of pairing. The file's `until`
+  is only a hint: a renewal made while no sender was connected (the alarm,
+  the page coming back) reaches no file, so the saved eval token is always
+  tried with the hub first, and dropped only on its 4498. The first
+  `approved` says `renewsUntil` (the cap). Tests: `unit/eval-socket.test.ts`.
 - **Logs.** `debug.renew` {via, label, device, count, until, chainEnds} and
   `debug.renew-stop` {why, device, count} — never code.
 
