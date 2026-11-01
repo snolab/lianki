@@ -128,7 +128,11 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
         return (
           <div key={group}>
             {!collapsed && (
-              <h2 className="px-3 mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              // The page-card group is headed by the brand LiCards, which an
+              // uppercase transform would turn into LICARDS.
+              <h2
+                className={`px-3 mb-1 text-xs font-semibold tracking-wide text-gray-400 dark:text-gray-500 ${group === "advanced" ? "" : "uppercase"}`}
+              >
                 {labels.groups[group]}
               </h2>
             )}
