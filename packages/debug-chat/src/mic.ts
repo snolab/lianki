@@ -801,7 +801,16 @@ export type WakeGate = {
 export type StreamStt = {
   begin(onPartial: (text: string) => void): LocalUtt | null;
   warm?(): void;
+  /** While the mic is on: keep the socket open (reopen on close, visible, online). */
+  keep?(on: boolean): void;
+  /** The socket is up now (the post-"Linky" rest streams only then: it is already over). */
+  connected?(): boolean;
 };
+/** Mic on: keep the stream's socket open (or just open it, for one without keep). */
+export function keepStream(s: StreamStt | undefined, on: boolean) {
+  if (s?.keep) s.keep(on);
+  else if (on) s?.warm?.();
+}
 
 /**
  * Listening mode. `toggle()` turns it on (loading the VAD, or the fallback if
@@ -1067,7 +1076,11 @@ export function createMic(d: {
               q.resolve(seq, null);
               return report();
             }
-            send(seq, r.rest, toMs(r.rest.length), prob);
+            // The words after "Linky" go to the Mac too when its socket is up (as a
+            // pre-pad and an end: the audio is already whole); else the cloud.
+            const s = d.stream?.();
+            const lu = s?.connected?.() ? s.begin(() => {}) : null;
+            send(seq, r.rest, toMs(r.rest.length), prob, lu?.end(r.rest));
           },
           () => {
             q.resolve(seq, null);
@@ -1149,7 +1162,7 @@ export function createMic(d: {
     }
     if (g !== gen) return void v.destroy();
     vad = v;
-    d.stream?.()?.warm?.();
+    keepStream(d.stream?.(), true);
     if (!held) await v.start();
     set("listening");
   };
@@ -1164,6 +1177,7 @@ export function createMic(d: {
     cur = null;
     resetLive();
     set("off");
+    keepStream(d.stream?.(), false);
     if (v) {
       // Speech under way when listening stops is still sent.
       await v.flush();

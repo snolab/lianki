@@ -82,6 +82,52 @@ describe("lk:debug* → lk:agent* keys", () => {
     expect(migrateKeys(blocked)).toBe(0);
   });
 
+  test("a stale lk:agent value no longer hides a legacy one written since (the local-stt trap)", () => {
+    const K = "lk:debug-local-stt";
+    const s = memory({ "lk:agent-local-stt": "wss://old.ts.net/x" });
+    expect(getKey(K, s)).toBe("wss://old.ts.net/x");
+    // Written by hand under the old name, after that read: the newer one wins…
+    s.setItem(K, "wss://new.ts.net/x");
+    expect(getKey(K, s)).toBe("wss://new.ts.net/x");
+    // …and both names hold it now, so it stays the answer.
+    expect(s.getItem("lk:agent-local-stt")).toBe("wss://new.ts.net/x");
+    expect(getKey(K, s)).toBe("wss://new.ts.net/x");
+  });
+
+  test("whichever name was written since the last read wins; setKey keeps them equal", () => {
+    const K = "lk:debug-widget-src";
+    const s = memory();
+    setKey(K, "a", s);
+    s.setItem("lk:agent-widget-src", "b"); // the new name, by hand
+    expect(getKey(K, s)).toBe("b");
+    expect(s.getItem(K)).toBe("b");
+    s.setItem(K, "c"); // then the old name, by hand
+    expect(getKey(K, s)).toBe("c");
+    setKey(K, "d", s);
+    s.setItem(K, "e"); // written right after a setKey, before any read
+    expect(getKey(K, s)).toBe("e");
+  });
+
+  test("two differing names never read before: the new name, as before, and nothing rewritten", () => {
+    const s = memory({ "lk:agent-x": "new", "lk:debug-x": "old" });
+    expect(getKey("lk:debug-x", s)).toBe("new");
+    expect(s.getItem("lk:debug-x")).toBe("old");
+    // From now on a change to either is seen.
+    s.setItem("lk:debug-x", "fresh");
+    expect(getKey("lk:debug-x", s)).toBe("fresh");
+  });
+
+  test("a store that cannot be written still reads (full, read-only)", () => {
+    const s = {
+      ...memory({ "lk:agent-y": "1", "lk:debug-y": "0", "lk:debug-z": "z" }),
+      setItem: () => {
+        throw new Error("QuotaExceededError");
+      },
+    } as KeyStore;
+    expect(getKey("lk:debug-z", s)).toBe("z");
+    expect(getKey("lk:debug-y", s)).toBe("1");
+  });
+
   test("storage events match either name", () => {
     expect(isKey("lk:debug", "lk:debug")).toBe(true);
     expect(isKey("lk:agent", "lk:debug")).toBe(true);

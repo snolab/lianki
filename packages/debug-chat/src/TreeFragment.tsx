@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, createElement, useEffect, useState } from "react";
-import { WIDGET_SRC_KEY, eventsUrl, widgetSrc } from "./debug-widget";
+import { WIDGET_SRC_KEY, eventsUrl, hostWidgetSrc, widgetSrc } from "./debug-widget";
 import {
   TREE_MAX_BYTES,
   TREE_SRC_KEY,
@@ -86,7 +86,8 @@ export function useTreeSource(active: boolean): TreeState | null {
     };
     void load();
     // Live: the hot-load server's `tree` event (if it ever sends one).
-    const hot = widgetSrc(read(WIDGET_SRC_KEY));
+    // The host's decision first (on lianki.com: only a signed live-view pointer).
+    const hot = widgetSrc(hostWidgetSrc(() => read(WIDGET_SRC_KEY)));
     let es: EventSource | null = null;
     if (hot && typeof EventSource !== "undefined") {
       es = new EventSource(eventsUrl(hot));

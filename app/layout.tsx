@@ -22,12 +22,22 @@ export const metadata: Metadata = {
     apple: "/apple-icon.png?v=3",
   },
   // Opened from the iPhone home screen, Lianki runs without Safari's address bar.
-  appleWebApp: { capable: true, title: "Lianki", statusBarStyle: "default" },
+  // "black-translucent" lets the page run under the status bar and the notch:
+  // env(safe-area-inset-top) becomes real there (with "default" iOS keeps a
+  // solid bar and the inset is 0). Its clock is always white, so .lk-statusbar
+  // (globals.css) tints the band behind it.
+  // A change only reaches an app installed before it once it is removed from
+  // the home screen and added again (WebKit bug 260508).
+  appleWebApp: { capable: true, title: "Lianki", statusBarStyle: "black-translucent" },
+  // Next.js emits `capable` as the generic mobile-web-app-capable only; iOS
+  // honours the status-bar style alongside the apple- one, so both are set.
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 /**
  * The status bar (and the notch around it) takes the page's paper colour, not
- * the seal red, light and dark alike (--background in globals.css).
+ * the seal red, light and dark alike (--background in globals.css). On the
+ * iPhone home-screen app the bar is see-through instead (statusBarStyle above).
  * viewportFit "cover" lets the page run under the notch and home indicator and
  * makes env(safe-area-inset-*) real; fixed bars pad themselves with it.
  */
@@ -95,8 +105,17 @@ export default async function RootLayout({
             __html: `try{if(self!==top||/[?&]embed=1(&|$)/.test(location.search))document.documentElement.dataset.embed=""}catch(e){document.documentElement.dataset.embed=""}`,
           }}
         />
+        {/* The home-screen app on iOS (navigator.standalone; elsewhere the
+            display-mode query in globals.css) shows .lk-statusbar. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(navigator.standalone)document.documentElement.dataset.standalone=""}catch(e){}`,
+          }}
+        />
       </head>
       <body>
+        {/* The band behind the status bar's white clock (home-screen app only). */}
+        <div aria-hidden="true" className="lk-statusbar" />
         <IntlayerServerProvider locale={locale}>
           <ServiceWorkerRegistration />
           <NewVersionNotice />

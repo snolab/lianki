@@ -4,6 +4,7 @@
  * page holds a code-run grant and `lk:slots-src` points at an allowed origin;
  * nothing else on the page pulls it (or host-modules.ts) in.
  */
+import { importPinned } from "@lianki/debug-chat/debug-widget";
 import { devLog } from "@/lib/debug-client";
 import { onAction } from "./actions";
 import { loadHostModules } from "./host-modules";
@@ -36,7 +37,8 @@ export function startIslandsInPage(src: URL): () => void {
   return startIslands({
     src,
     store: islandStore,
-    importer,
+    // Pinned: no redirects, same origin, exactly the bytes fetched (docs/live-view.md).
+    importer: (u) => importPinned(u, importer),
     modules: loadHostModules,
     eventSource: (u) => new EventSource(u),
     setCss,

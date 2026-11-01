@@ -16,7 +16,9 @@ import {
   WIDGET_SRC_KEY,
   eventsUrl,
   failNote,
+  importPinned,
   loadWidget,
+  setHostWidgetSrc,
   pickTreeSource,
   widgetSrc,
   widgetUrl,
@@ -53,13 +55,21 @@ function setCss(css: string | null) {
  * dev server and re-imports on each `reload`; any failure leaves Chat unset
  * and says why in `note`.
  */
-function useHotWidget(enabled: boolean): [Hot, (e: unknown) => void] {
+function useHotWidget(
+  enabled: boolean,
+  given: string | null | undefined,
+): [Hot, (e: unknown) => void] {
   const [hot, setHot] = useState<Hot>({});
   useEffect(() => {
     if (!enabled) return;
-    let raw: string | null = null;
-    raw = getKey(WIDGET_SRC_KEY);
-    if (!raw) return;
+    // The host's choice wins (a signed live-view pointer, or null = none);
+    // only a host that gives none falls back to the localStorage key.
+    const raw: string | null = given !== undefined ? given : getKey(WIDGET_SRC_KEY);
+    if (!raw) {
+      if (given === null && getKey(WIDGET_SRC_KEY))
+        setHot({ note: "dev widget key ignored here: turn on Live view (docs/live-view.md)" });
+      return;
+    }
     const src = widgetSrc(raw);
     if (!src) {
       setHot({
@@ -72,7 +82,7 @@ function useHotWidget(enabled: boolean): [Hot, (e: unknown) => void] {
     let live = true;
     let rev = "";
     const load = (r: string) =>
-      loadWidget<Chat>(widgetUrl(src, r), importer).then(
+      loadWidget<Chat>(widgetUrl(src, r), (u) => importPinned(u, importer)).then(
         (m) => {
           if (!live) return;
           setCss(m.css);
@@ -103,7 +113,7 @@ function useHotWidget(enabled: boolean): [Hot, (e: unknown) => void] {
       setCss(null);
       setHot({});
     };
-  }, [enabled]);
+  }, [enabled, given]);
   return [hot, (e) => setHot((h) => ({ note: failNote(e), rev: h.rev }))];
 }
 
@@ -127,8 +137,24 @@ class Boundary extends Component<{ onError: (e: unknown) => void; children: Reac
  * re-mounted on every rebuild. State lives in props and localStorage, so a
  * re-mount loses nothing.
  */
-export function DebugChatHost({ hot, ...rest }: DebugChatProps & { hot: boolean }) {
-  const [w, fail] = useHotWidget(hot);
+export function DebugChatHost({
+  hot,
+  src: asked,
+  ...rest
+}: DebugChatProps & {
+  hot: boolean;
+  /**
+   * The widget URL the host decided on (Lianki: a verified live-view pointer,
+   * docs/live-view.md), or null for none. Left out, the host reads the
+   * `lk:agent-widget-src` / `lk:debug-widget-src` key, as before.
+   */
+  src?: string | null;
+}) {
+  // Shared with every copy of the package on the page (TreeFragment reads it),
+  // before any child's effect runs. If something else took the global gate
+  // first, load nothing (fail closed).
+  const given = setHostWidgetSrc(asked) ? asked : null;
+  const [w, fail] = useHotWidget(hot, given);
   const note = w.note ?? rest.note;
   // Hot-loading on: the tree comes live from the same dev server
   // (/state-tree.md, refetched on its `tree` event), else the host's source.
@@ -136,8 +162,8 @@ export function DebugChatHost({ hot, ...rest }: DebugChatProps & { hot: boolean 
   useEffect(() => {
     if (!hot) return setSrc(null);
     // getKey, like useHotWidget: the lk:agent-* name first, then the legacy one.
-    setSrc(getKey(WIDGET_SRC_KEY));
-  }, [hot]);
+    setSrc(given !== undefined ? given : getKey(WIDGET_SRC_KEY));
+  }, [hot, given]);
   const treeSource = useMemo(
     () => pickTreeSource(src, rest.treeSource),
     [src, rest.treeSource],

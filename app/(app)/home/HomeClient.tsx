@@ -122,9 +122,10 @@ export default function HomeClient({ isLoggedIn }: { isLoggedIn: boolean }) {
         </ul>
       </section>
 
-      {/* Page cards: the advanced path. */}
+      {/* LiCards (链卡), the page cards: the advanced path. Not uppercased like
+          the other headings — the brand is spelled LiCards, not LICARDS. */}
       <section className="space-y-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.advanced}</h2>
+        <h2 className="text-xs font-semibold tracking-wide opacity-60">{t.advanced}</h2>
         <p className="text-sm opacity-70">{t.advancedHint}</p>
         <ul className="flex flex-wrap gap-2">
           {ADVANCED.map((k) => (

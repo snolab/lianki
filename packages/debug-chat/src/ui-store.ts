@@ -116,6 +116,16 @@ function migrateTree(v: unknown): KeptTree | null {
   return { focus: titlePath(t.focus), expanded, scroll };
 }
 
+/**
+ * The chat's device preferences for how it looks (localStorage
+ * `lk:pref:chat-view`, this device only, never synced): compact mode
+ * (compact-view.ts), off until he turns it on on this device.
+ */
+export type ChatView = { compact: boolean };
+export const CHAT_VIEW_INITIAL: ChatView = { compact: false };
+export const chatPrefs = () =>
+  createUiStore<ChatView>("chat-view", 1, CHAT_VIEW_INITIAL, { storage: "local" });
+
 /** The chat's UI store (one per page, shared by hot-swapped widget copies). */
 export const chatUi = () =>
   createUiStore<ChatUi>(CHAT_UI_NAME, CHAT_UI_VERSION, CHAT_UI_INITIAL, {
