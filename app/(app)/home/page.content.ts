@@ -222,22 +222,22 @@ const dictionary = {
       ko: "LiCards",
     }),
     advancedHint: t({
-      en: "Save any web page as a card and review it, with the browser userscript",
-      zh: "用浏览器用户脚本，把任意网页存成卡片来复习",
-      hi: "ब्राउज़र यूज़रस्क्रिप्ट से किसी भी पेज को कार्ड बनाकर दोहराएँ",
-      es: "Guarda cualquier página como tarjeta y repásala, con el userscript",
-      fr: "Enregistrez n'importe quelle page comme carte et révisez-la, avec le userscript",
-      ar: "احفظ أي صفحة كبطاقة وراجعها باستخدام سكربت المتصفح",
-      bn: "ইউজারস্ক্রিপ্ট দিয়ে যেকোনো পেজকে কার্ড বানিয়ে রিভিউ করুন",
-      pt: "Salve qualquer página como cartão e revise, com o userscript",
-      ru: "Сохраняйте любую страницу как карточку и повторяйте её с помощью userscript",
-      ur: "یوزر اسکرپٹ سے کسی بھی صفحے کو کارڈ بنا کر دہرائیں",
-      id: "Simpan halaman apa pun sebagai kartu dan ulangi, dengan userscript",
-      de: "Jede Webseite als Karte speichern und wiederholen, mit dem Userscript",
-      ja: "ユーザースクリプトで、どんなページもカードにして復習",
-      sw: "Hifadhi ukurasa wowote kama kadi na urudie, kwa userscript",
-      mr: "यूजरस्क्रिप्टने कोणतेही पेज कार्ड म्हणून जतन करून उजळणी करा",
-      ko: "유저스크립트로 어떤 웹페이지든 카드로 저장해 복습",
+      en: "Save any web page as a card and review it here, or right on the page with the browser userscript",
+      zh: "把任意网页存成卡片，在这里复习；装上浏览器用户脚本，还能直接在网页上复习",
+      hi: "किसी भी वेब पेज को कार्ड बनाकर यहाँ दोहराएँ, या ब्राउज़र यूज़रस्क्रिप्ट से सीधे उसी पेज पर",
+      es: "Guarda cualquier página como tarjeta y repásala aquí, o en la misma página con el userscript",
+      fr: "Enregistrez n'importe quelle page comme carte et révisez-la ici, ou directement sur la page avec le userscript",
+      ar: "احفظ أي صفحة ويب كبطاقة وراجعها هنا، أو على الصفحة نفسها باستخدام سكربت المتصفح",
+      bn: "যেকোনো ওয়েব পেজকে কার্ড বানিয়ে এখানে রিভিউ করুন, অথবা ইউজারস্ক্রিপ্ট দিয়ে সরাসরি সেই পেজেই",
+      pt: "Salve qualquer página como cartão e revise aqui, ou na própria página com o userscript",
+      ru: "Сохраняйте любую страницу как карточку и повторяйте её здесь или прямо на странице с помощью userscript",
+      ur: "کسی بھی ویب صفحے کو کارڈ بنا کر یہاں دہرائیں، یا یوزر اسکرپٹ سے سیدھے اسی صفحے پر",
+      id: "Simpan halaman web apa pun sebagai kartu dan ulangi di sini, atau langsung di halamannya dengan userscript",
+      de: "Jede Webseite als Karte speichern und hier wiederholen, oder direkt auf der Seite mit dem Userscript",
+      ja: "どんなウェブページもカードにして、ここで復習。ユーザースクリプトを入れればそのページ上で直接復習",
+      sw: "Hifadhi ukurasa wowote wa wavuti kama kadi na urudie hapa, au moja kwa moja kwenye ukurasa kwa userscript",
+      mr: "कोणतेही वेब पेज कार्ड म्हणून जतन करून येथे उजळणी करा, किंवा यूजरस्क्रिप्टने थेट त्याच पेजवर",
+      ko: "어떤 웹페이지든 카드로 저장해 여기서 복습하거나, 유저스크립트로 그 페이지에서 바로 복습",
     }),
   },
 };
@@ -262,7 +262,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   advanced:
     "Small uppercase heading above the page-card features on Home (sites, review, card list). LiCards is the product name of the feature that turns web pages into cards: never translate it; keep LiCards in every language except Chinese, which uses 链卡.",
   advancedHint:
-    "One-line explanation under the LiCards heading on Home of what the feature does: any web page can be saved as a review card and reviewed, with the browser userscript. Do not repeat the name LiCards here.",
+    "One-line explanation under the LiCards heading on Home of what the feature does: any web page can be saved as a review card; it is reviewed on the site's own Review page, or directly on that page if the browser userscript is installed. Do not repeat the name LiCards here.",
 };
 
 export default {
