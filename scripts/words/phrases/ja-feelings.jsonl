@@ -1,0 +1,32 @@
+{"term":"ありがとう。","reading":"ありがとう","back":"Thanks.","note":"To friends, family, anyone younger or close.","register":"casual","scene":"thanking","src":"tatoeba:1532832","by":"bunbuku"}
+{"term":"ありがとうございます。","reading":"ありがとうございます","back":"Thank you.","note":"The default polite thanks — staff, strangers, seniors.","register":"polite","scene":"thanking","src":"tatoeba:9559301","by":"Sim5634"}
+{"term":"どういたしまして。","reading":"どういたしまして","back":"You're welcome.","note":"Textbook reply; in real life many just say いえいえ.","register":"polite","scene":"replying to thanks","src":"tatoeba:408295","by":"bunbuku"}
+{"term":"すみません。","reading":"すみません","back":"Sorry. / Excuse me.","note":"Apology, getting attention, and even thanks — the most used word.","register":"polite","scene":"apologizing","src":"tatoeba:408301","by":"bunbuku"}
+{"term":"ごめんね。","reading":"ごめんね","back":"Sorry.","note":"Casual apology to friends and family.","register":"casual","scene":"apologizing","src":"generated"}
+{"term":"すみませんでした。","reading":"すみませんでした","back":"I'm sorry about that.","note":"Apologizing for something already done, to a senior or stranger.","register":"polite","scene":"apologizing","src":"tatoeba:10626981","by":"nihonjin"}
+{"term":"申し訳ありません。","reading":"もうしわけありません","back":"I'm very sorry.","note":"Serious, formal apology at work or from staff.","register":"polite","scene":"apologizing","src":"generated"}
+{"term":"気にしないでいいよ。","reading":"きにしないでいいよ","back":"Don't worry about it.","note":"Reply to someone's apology or thanks.","register":"casual","scene":"replying to apologies","src":"tatoeba:183275","by":"small_snow"}
+{"term":"大丈夫だよ。","reading":"だいじょうぶだよ","back":"It's fine. / I'm OK.","note":"Reassuring a friend.","register":"casual","scene":"reassuring","src":"tatoeba:1282984","by":"bunbuku"}
+{"term":"助かりました。","reading":"たすかりました","back":"That really helped.","note":"Thanking someone for help — warmer than just ありがとう.","register":"polite","scene":"thanking","src":"tatoeba:10984256","by":"small_snow"}
+{"term":"ごめん、待たせちゃった？","reading":"ごめんまたせちゃった","back":"Sorry, did I keep you waiting?","note":"Arriving to meet a friend.","register":"casual","scene":"apologizing","src":"tatoeba:5650413","by":"tommy_san"}
+{"term":"心配かけてごめんね。","reading":"しんぱいかけてごめんね","back":"Sorry I worried you.","note":"To family or friends after being ill or out of touch.","register":"casual","scene":"apologizing","src":"tatoeba:10090485","by":"small_snow"}
+{"term":"さっきは言いすぎてごめん。","reading":"さっきはいいすぎてごめん","back":"Sorry I said too much earlier.","note":"Making up after an argument.","register":"casual","scene":"making up","src":"tatoeba:3158402","by":"tommy_san"}
+{"term":"聞いてくれてありがとう。","reading":"きいてくれてありがとう","back":"Thanks for listening.","note":"After venting to a friend.","register":"casual","scene":"thanking","src":"tatoeba:10355885","by":"small_snow"}
+{"term":"心配してくれてありがとうね。","reading":"しんぱいしてくれてありがとうね","back":"Thanks for worrying about me.","note":"To a friend who checked on you.","register":"casual","scene":"thanking","src":"tatoeba:4478292","by":"tommy_san"}
+{"term":"そう言ってくれて嬉しいよ。","reading":"そういってくれてうれしいよ","back":"That means a lot.","note":"Reply to a compliment or kind words.","register":"casual","scene":"happiness","src":"tatoeba:4478301","by":"tommy_san"}
+{"term":"お気遣いありがとうございます。","reading":"おきづかいありがとうございます","back":"Thank you for your concern.","note":"Polite thanks to a colleague or senior who showed care.","register":"polite","scene":"thanking","src":"tatoeba:4478293","by":"tommy_san"}
+{"term":"ご心配をおかけしました。","reading":"ごしんぱいをおかけしました","back":"Sorry to have worried you.","note":"Polite version, e.g. returning to work after illness.","register":"polite","scene":"apologizing","src":"tatoeba:10657701","by":"small_snow"}
+{"term":"恐れ入ります。","reading":"おそれいります","back":"Thank you, that's very kind.","note":"Formal thanks or 'excuse me', used with customers and seniors.","register":"polite","scene":"thanking","src":"generated"}
+{"term":"よかったー！","reading":"よかったー","back":"Phew, that's great!","note":"Relief or joy at good news.","register":"casual","scene":"relief","src":"tatoeba:10117512","by":"bunbuku"}
+{"term":"ああ、ほっとした。","reading":"ああほっとした","back":"What a relief.","note":"When a worry turns out fine.","register":"casual","scene":"relief","src":"tatoeba:2261687","by":"verbum"}
+{"term":"マジで嬉しい！","reading":"まじでうれしい","back":"I'm so happy!","note":"Young, casual excitement. マジで = seriously.","register":"casual","scene":"happiness","src":"tatoeba:11049529","by":"small_snow"}
+{"term":"疲れたなぁ。","reading":"つかれたなぁ","back":"I'm beat.","note":"Said to yourself or friends at the end of the day.","register":"casual","scene":"tired","src":"tatoeba:9775149","by":"small_snow"}
+{"term":"眠い。","reading":"ねむい","back":"I'm sleepy.","note":"To family or friends; very common.","register":"casual","scene":"tired","src":"tatoeba:11256165","by":"sh5555"}
+{"term":"それは残念だね。","reading":"それはざんねんだね","back":"That's a shame.","note":"Reacting to a friend's bad news.","register":"casual","scene":"sympathy","src":"tatoeba:4591666","by":"wat"}
+{"term":"お気の毒に。","reading":"おきのどくに","back":"I'm so sorry to hear that.","note":"Polite sympathy for illness, loss or misfortune.","register":"polite","scene":"sympathy","src":"tatoeba:3621733","by":"arnab"}
+{"term":"怖いよ。","reading":"こわいよ","back":"I'm scared.","note":"Telling someone close that you're frightened.","register":"casual","scene":"fear","src":"tatoeba:10904982","by":"small_snow"}
+{"term":"少し緊張してます。","reading":"すこしきんちょうしてます","back":"I'm a little nervous.","note":"Before a speech, interview or first meeting.","register":"polite","scene":"nerves","src":"tatoeba:8604660","by":"small_snow"}
+{"term":"まだ怒ってる？","reading":"まだおこってる","back":"Are you still mad?","note":"Testing the waters after an argument.","register":"casual","scene":"making up","src":"tatoeba:2615036","by":"tommy_san"}
+{"term":"ああ、なんだかイライラする！","reading":"ああなんだかイライラする","back":"Ugh, I'm so irritated!","note":"Venting frustration.","register":"casual","scene":"anger","src":"tatoeba:891336","by":"bunbuku"}
+{"term":"恥ずかしいなぁ！","reading":"はずかしいなぁ","back":"How embarrassing!","note":"After a slip-up, or when being praised.","register":"casual","scene":"embarrassment","src":"tatoeba:126817","by":"bunbuku"}
+{"term":"ご無事でなにより。","reading":"ごぶじでなにより","back":"So glad you're safe.","note":"Polite relief that someone came through an accident or disaster OK.","register":"polite","scene":"relief","src":"tatoeba:11029766","by":"small_snow"}

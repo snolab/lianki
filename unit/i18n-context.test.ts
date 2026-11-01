@@ -12,6 +12,7 @@ import learn from "@/app/(app)/learn/page.content";
 import polyglot from "@/app/(app)/polyglot/page.content";
 import selfIntro from "@/app/(app)/self-intro/page.content";
 import wordsImport from "@/app/(app)/words/import/page.content";
+import wordsPhrases from "@/app/(app)/words/phrases.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -53,6 +54,7 @@ describe.each([
   ["polyglot-page", polyglot],
   ["self-intro-page", selfIntro],
   ["words-import", wordsImport],
+  ["words-phrases", wordsPhrases],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };
