@@ -18,6 +18,7 @@
  * Everything that touches the browser is injected (MicDeps), so this is
  * unit-tested with fakes.
  */
+import type { MicAdapt } from "./mic";
 import type { UttMarks } from "./latency";
 import {
   type MicState,
@@ -28,6 +29,8 @@ import {
   createMic,
 } from "./mic";
 import type { LocalState } from "./local-stt";
+import type { KwsState } from "./wake-kws";
+import { type WakeCommand, type WakeMode, type WakeReason, type WakeSpot, createWake } from "./wake";
 
 /** What the session needs of a local STT client (local-stt.ts LocalStt). */
 export type LocalClient = StreamStt & {
@@ -39,7 +42,7 @@ export type LocalClient = StreamStt & {
 /** globalThis key of the session. */
 export const MIC_SESSION_KEY = "__lkMic";
 /** Bumped when the session's shape changes; an older one is migrated, its stream kept. */
-export const MIC_SESSION_V = 5;
+export const MIC_SESSION_V = 7;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -59,6 +62,10 @@ export type MicView = {
   resume: boolean;
   /** The local streaming STT's socket, when one is configured (the button's dot). */
   local?: LocalState;
+  /** Active: everything goes to STT. Passive: only "Linky" wakes it (wake.ts). */
+  wake: WakeMode;
+  /** The on-device spotter, once passive mode first asked for it (wake-kws.ts). */
+  kws?: Exclude<KwsState, "idle">;
 };
 export type MicConfig = {
   clipSink?: string;
@@ -67,6 +74,8 @@ export type MicConfig = {
   localStt?: string;
 };
 export type MicDeps = {
+  /** The room and voice estimator (adaptive.ts): the endpoint follows it. */
+  adapt?: MicAdapt;
   /** getUserMedia with the session's constraints. */
   getStream: () => Promise<StreamLike>;
   /** The VAD on a stream (Silero), and the fallback (an energy gate). Neither stops the stream. */
@@ -89,6 +98,14 @@ export type MicDeps = {
   localStt?: (url: string) => LocalClient;
   /** A final utterance's timestamps (createMic's `timing`; latency.ts). */
   timing?: (seq: number, marks: UttMarks) => void;
+  /**
+   * The on-device "Linky" spotter (wake-kws.ts createKws), made on first use:
+   * the first time the mic goes passive. Without it the mic never goes passive.
+   */
+  kws?: (onState: (s: KwsState) => void) => {
+    load(): Promise<void>;
+    spot(audio: Float32Array): Promise<WakeSpot & { ms?: number; error?: string }>;
+  };
 };
 
 type Listener = (v: MicView) => void;
@@ -104,7 +121,14 @@ export function createMicSession(
   from?: { stream: StreamLike | null; on: boolean },
 ) {
   let stream: StreamLike | null = from?.stream ?? null;
-  let view: MicView = { state: "off", pending: 0, interim: "", error: null, resume: false };
+  let view: MicView = {
+    state: "off",
+    pending: 0,
+    interim: "",
+    error: null,
+    resume: false,
+    wake: "active",
+  };
   let cfg: MicConfig = { label: "" };
   const listeners = new Set<Listener>();
   let sink: Sink | null = null;
@@ -164,14 +188,54 @@ export function createMicSession(
     }
     return local.c;
   };
+  /** The spotter, made the first time the mic goes passive. */
+  let kws: ReturnType<NonNullable<MicDeps["kws"]>> | null = null;
+  const spotter = () => {
+    if (!kws && deps.kws)
+      kws = deps.kws((s) => {
+        emit({ kws: s === "idle" ? undefined : s });
+        // Never deaf: a spotter that cannot load puts the mic back in active mode.
+        if ((s === "failed" || s === "needs-wifi") && wake.mode() === "passive")
+          wake.set("active", "kws-failed");
+      });
+    return kws;
+  };
+  const wake = createWake({
+    onChange: (v, from, reason) => {
+      emit({ wake: v.mode });
+      deps.log?.({ ev: "wake", from, to: v.mode, reason });
+      if (v.mode === "passive") void spotter()?.load().catch(() => {});
+    },
+  });
+  /** Set the mode (the agent, a tap); "ignored": the agent says the last line was not for it. */
+  const command = (c: WakeCommand, reason: WakeReason = "agent") => {
+    if (c === "ignored") return void wake.reject();
+    if (c === "passive" && !deps.kws) return;
+    wake.set(c, reason);
+  };
   const mic = createMic({
     stream: localStream,
+    adapt: deps.adapt,
+    wake: deps.kws
+      ? {
+          // In whisper mode it stays active: the spotter is unproven on whispers.
+          passive: () => wake.mode() === "passive" && !deps.adapt?.state().whisper,
+          spot: async (audio) => {
+            const k = spotter();
+            return k ? k.spot(audio) : { hit: false };
+          },
+          onWake: () => void wake.set("active", "wake-word"),
+          verdict: (ok) => void (ok ? wake.accept() : wake.reject()),
+        }
+      : undefined,
     load: async (ev) => deps.load(ev, await ensureStream()),
     fallback: deps.fallback ? async (ev) => deps.fallback!(ev, await ensureStream()) : undefined,
     upload: (wav, info) => deps.upload(wav, info, cfg),
     onState: (s) => {
       const was = prev;
       prev = s;
+      // Listening always starts active: a tap on means "I'm talking to you".
+      if (was === "off" && s !== "off") wake.set("active", "mic-on");
       emit({ state: s, ...(s !== "off" ? { resume: false } : {}) });
       deps.onState?.(s, was);
     },
@@ -214,9 +278,12 @@ export function createMicSession(
       localStream(); // a changed or removed URL takes effect (and shows) at once
       if (mic.state() !== "off") local?.c.warm?.();
     },
-    /** A tap: on (remembered for a reload), or an explicit off. */
+    /** Active or passive (wake.ts); the chat lane's {type: "wake"} and the tests. */
+    wake: (c: WakeCommand, reason?: WakeReason) => command(c, reason),
+    /** A tap: on (remembered for a reload), back to active from passive, or an explicit off. */
     async toggle() {
       emit({ error: null });
+      if (mic.state() !== "off" && wake.mode() === "passive") return void wake.set("active", "tap");
       if (mic.state() === "off") {
         store.on();
         await mic.toggle();

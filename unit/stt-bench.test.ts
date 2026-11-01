@@ -7,7 +7,7 @@ import {
   MAX_CLIP_BYTES,
   clipName,
   clipsDir,
-  handleClips,
+  handleClips as sinkHandle,
   listClips,
 } from "@/scripts/dev/clip-sink";
 import {
@@ -19,6 +19,19 @@ import {
   markdown,
   normalize,
 } from "@/scripts/dev/stt-bench-lib";
+
+/**
+ * The sink as the owner's own clients use it: each request with the key it
+ * needs (clip-sink.ts: write for POST /clips, read for the rest). The keys
+ * themselves are tested in clips-session.test.ts.
+ */
+const KEYS = { read: "r".repeat(43), write: "w".repeat(43) };
+const handleClips = (req: Request, dir: string, now?: () => Date) => {
+  const write = req.method === "POST" && new URL(req.url).pathname.endsWith("/clips");
+  const headers = new Headers(req.headers);
+  headers.set("authorization", `Bearer ${write ? KEYS.write : KEYS.read}`);
+  return sinkHandle(new Request(req, { headers }), dir, now, undefined, KEYS);
+};
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -93,6 +106,20 @@ describe("clip sink", () => {
     expect(((await upload(dir, {}, undefined, "https://evil.example")) as Response).status).toBe(
       403,
     );
+  });
+
+  it("keeps the mic track's applied settings (AEC on/off), known fields only", async () => {
+    const dir = tmp();
+    const track = { echoCancellation: false, noiseSuppression: true, autoGainControl: false };
+    const res = (await upload(dir, {
+      track: { ...track, sampleRate: 48000, channelCount: "1", deviceId: "secret" },
+    })) as Response;
+    const { name } = await res.json();
+    const side = JSON.parse(readFileSync(join(dir, `${name}.json`), "utf8"));
+    expect(side.track).toEqual({ ...track, sampleRate: 48000 });
+    expect(listClips(dir)[0].track).toEqual({ ...track, sampleRate: 48000 });
+    const none = await (await upload(dir, { track: "on" }))!.json();
+    expect(JSON.parse(readFileSync(join(dir, `${none.name}.json`), "utf8")).track).toBeUndefined();
   });
 
   it("refuses what it should not keep", async () => {
@@ -249,8 +276,9 @@ describe("bench scoring", () => {
     expect(markdown(aggregate([], []))).toContain("# STT bench");
   });
 
-  it("benchCode is a function body that reports back to the sink", () => {
-    const code = benchCode("https://box.example/w/", ["m1"], "run-1");
+  it("benchCode is a function body that reports back to the sink, with the read key", () => {
+    const code = benchCode("https://box.example/w/", ["m1"], "run-1", KEYS.read);
+    expect(code).toContain(`authorization: "Bearer ${KEYS.read}"`);
     expect(code).toContain('const sink = "https://box.example/w";');
     expect(code).toContain('"/clips/bench?run=run-1"');
     expect(code).toContain("/api/debug/stt?model=");

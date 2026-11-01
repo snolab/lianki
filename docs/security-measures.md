@@ -16,7 +16,8 @@ passkey — there is no password login in production.
 | surface                                   | what                                                  |
 | ----------------------------------------- | ----------------------------------------------------- |
 | `/dev/*` pages                            | users, friends, gift codes, membership grants, roadmap, A/B |
-| `/api/dev/*`                              | whoami, log, friends, state-tree, membership, gift-codes |
+| `/api/dev/*`                              | whoami, log, friends, state-tree, membership, gift-codes, stt-ticket |
+| `wss://stt.lianki.com` (cloudflared tunnel to the owner's Mac) | his local STT server; a 60 s single-use Ed25519 ticket from `/api/dev/stt-ticket` before any upgrade (section 7) |
 | `/api/version/debug/control` (lianki-push) | remote-eval/chat controller: useless until the owner approves it on a page, or holds a grant |
 | `POST /api/version/progress` (lianki-push) | agent progress reports: `Authorization: Bearer PROGRESS_TOKEN` |
 | Cloudflare, GitHub, Resend, payment dashboards | the providers' own consoles                     |
@@ -194,6 +195,39 @@ Checkout requires a signed-in account, so the sign-in limits above apply too.
   biometric or PIN), and OAuth with the provider's 2FA. The emailed code
   proves control of the mailbox.
 
+## 7. The owner's local STT over a public tunnel
+
+Since 2026-10-31 (owner's approval, 18:18 JST), the speech-to-text server on
+the owner's Mac can be reached at `wss://stt.lianki.com` through a named
+cloudflared tunnel, beside the tailnet. A microphone service on the main dev
+machine is a serious surface, so ([local-stt.md](local-stt.md), "Off the
+tailnet"):
+
+- **No unauthenticated path.** The tunnel reaches only a dedicated listener
+  (127.0.0.1:5188; any other hostname is 404 at cloudflared). It refuses
+  before the WebSocket upgrade unless the Origin is lianki.com (403) and a
+  ticket is offered in `Sec-WebSocket-Protocol` and verifies (401). The
+  ticket: Ed25519, `aud` `lianki-stt`, 60 s, single use (jti replay store),
+  issued by `POST /api/dev/stt-ticket` to the owner's session only. The
+  private key is the Worker secret `STT_TICKET_KEY`; the Mac has only the
+  public key. Never in a URL or a log. No public key, no listener. The
+  listener is switched on only by files the server trusts: `public.json` and
+  the public key must be the running user's own regular files, not symlinks,
+  and not group- or world-writable; otherwise it stays off, with the reason
+  logged, and the tailnet listener runs alone.
+- **Limits.** At most 2 sockets at once (503); the existing per-utterance
+  length (`MAX_S`) and 4 MB frame limits; one Cloudflare rate-limiting rule
+  on the host (10 handshakes per 10 s per IP, `scripts/ops/stt-edge.ts`).
+- **No Cloudflare Access** in front: ticket only. Access service tokens need
+  headers a browser WebSocket cannot send; an Access cookie would expire into
+  a silent fallback.
+- **Known trade-off.** TLS ends at Cloudflare's edge, which therefore sees the
+  audio; the tailnet route is end to end and stays the first choice.
+- **Rollback**: `scripts/local-stt/tunnel.sh down` (with `CLOUDFLARE_API_TOKEN`
+  for the DNS record and the rule). Tests: `unit/stt-ticket.test.ts`,
+  `unit/local-stt-gate.test.ts`, `unit/stt-tunnel.test.ts`; `qa:api` checks a
+  non-owner gets 404 from `/api/dev/stt-ticket`.
+
 ## Owner checklist
 
 Things this repo cannot do by itself:
@@ -205,3 +239,5 @@ Things this repo cannot do by itself:
       `NEXT_PUBLIC_TURNSTILE_SITE_KEY` repo variable already exist for sign-in;
       in the Turnstile dashboard, make sure the widget's hostnames include `lianki.com`.
 - [ ] Read the first weekly ZAP report and the dependency audit; fix or waive.
+- [ ] STT tunnel (section 7): `cloudflared tunnel login`, `STT_TICKET_KEY`,
+      and a token for the rate-limit rule; then `scripts/local-stt/tunnel.sh up`.

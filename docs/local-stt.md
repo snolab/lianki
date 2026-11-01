@@ -21,7 +21,7 @@ On the Mac (once):
 
 ```bash
 uv venv -p 3.12 ~/.cache/lianki-stt/venv
-VIRTUAL_ENV=~/.cache/lianki-stt/venv uv pip install sherpa-onnx soundfile numpy opencc-python-reimplemented websockets mlx-whisper
+VIRTUAL_ENV=~/.cache/lianki-stt/venv uv pip install sherpa-onnx soundfile numpy opencc-python-reimplemented websockets mlx-whisper onnxruntime cryptography
 mkdir -p ~/.cache/lianki-stt/models && cd ~/.cache/lianki-stt/models
 curl -LO https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2
 tar xjf sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2
@@ -75,6 +75,8 @@ On the owner's page:
 
 ```js
 localStorage.setItem("lk:agent-local-stt", "wss://<mac>.ts.net/lianki-stt");
+// with the tunnel as a second route (see "Off the tailnet" below):
+localStorage.setItem("lk:agent-local-stt", "wss://<mac>.ts.net/lianki-stt wss://stt.lianki.com");
 location.reload();
 // off again: localStorage.removeItem("lk:agent-local-stt"); localStorage.removeItem("lk:debug-local-stt")
 ```
@@ -93,7 +95,130 @@ session's `view.local`).
 The flag is read only on owner pages (`friend ? undefined : …` in
 `DebugChat.tsx`, as for the clip sink), and only a `wss:` URL, or `ws:` on
 localhost, is taken (`localSttFrom`). The server accepts only lianki.com (and
-localhost) origins, and is reachable only from the tailnet.
+localhost) origins. Its main port is reachable only from the tailnet; the
+tunnel listener (next section) only with a ticket.
+
+## Off the tailnet: wss://stt.lianki.com
+
+A second route for the phone when Tailscale is off, approved by the owner on
+2026-10-31 (18:18 JST). Tailscale stays the first route (end to end, often a
+little faster) and the cloud (`/api/debug/stt`) the last.
+
+```
+page ─ POST /api/dev/stt-ticket (owner session) ─▶ lianki.com Worker: signs with STT_TICKET_KEY (Ed25519 private)
+page ─ wss://stt.lianki.com, Sec-WebSocket-Protocol: lianki-stt, <ticket> ─▶ Cloudflare edge (rate limit)
+     ─▶ named tunnel "lianki-stt" (cloudflared on the Mac, oxmgr lianki-stt-tunnel)
+     ─▶ 127.0.0.1:5188  server.py tunnel listener: Origin, ≤ 2 sockets, ticket — else 403/503/401, no upgrade
+```
+
+**The ticket** (`lib/stt-ticket.ts`, verified by `scripts/local-stt/ticket.py`):
+`{aud:"lianki-stt", jti, iat, exp}`, 60 s (5 s of clock skew allowed), good
+once (the server remembers each jti until it expires), signed with Ed25519.
+The private key is the Worker secret `STT_TICKET_KEY`; the Mac holds only the
+public key, `~/.config/lianki-stt/ticket.pub`. No `AUTH_SECRET` or other
+shared secret is involved. The ticket goes in `Sec-WebSocket-Protocol` beside
+`lianki-stt` (browsers cannot set other headers on a WebSocket), never in the
+URL, so it is in no access log. The page sends a ticket only to
+`TICKET_HOSTS` (`stt.lianki.com`), never to another host a stored value names.
+
+**The listener** is a second port of the same server process, on 127.0.0.1
+only, and the tunnel's ingress points at nothing else (`http_status:404` for
+any other hostname). It checks, in `process_request`, before any upgrade:
+Origin is lianki.com (403), fewer than 2 sockets open (503), a ticket offered
+(401), and the ticket valid (401: bad signature, wrong aud, expired, bad
+lifetime, replayed). It has no `/health`. The per-utterance limit (`MAX_S`)
+and the 4 MB frame limit apply as on the main port. Refusals are logged with
+the reason, never the ticket. Without the public key file the listener does
+not start at all (fail closed). If it cannot start (the port taken, say), the
+server logs `public listener off: cannot listen …` and carries on: the
+tunnel listener is optional and never takes the tailnet one down. Once its
+ticket store holds `MAX_SEEN` (1000) live jtis it answers 503, and expired
+jtis are pruned before that check, so a burst clears itself within a minute.
+
+It is switched on by `--public-port`/`--ticket-pubkey`, or by
+`~/.config/lianki-stt/public.json` (`{"port": 5188, "pubkey": "<path>"}`),
+which is what `tunnel.sh` writes. The oxmgr entry of `lianki-stt` therefore
+never changes: its command, health check and other flags stay as they are,
+and turning the tunnel on or off is that file plus `oxmgr restart`.
+`--public-config ""` ignores the file (the tests use it).
+
+Both `public.json` and the ticket key must be regular files owned by the
+user running the server and writable by no one else (not group- or
+world-writable), and neither may be a symlink (`file_problem` in
+`ticket.py`). Otherwise the server logs `public listener off: <file> is a
+symlink` (or `is not owned by this user`, `is group- or world-writable`) and
+runs the tailnet listener only. `tunnel.sh` writes `public.json` as a fresh
+0600 file.
+
+**No Cloudflare Access** in front: tickets only, as the evaluation
+recommended. Access service tokens need request headers a browser WebSocket
+cannot send, and an Access login cookie expires silently into a grey dot.
+
+**The race** (`createLocalStt`, `local-stt.ts`): with several URLs in
+`lk:agent-local-stt` (space or comma separated), the first opens at once and
+each next one `RACE_STAGGER_MS` (150 ms) later, or at once when the one
+before it has already failed (Tailscale off). The ticket is asked for when
+the race starts, so it is there by 150 ms. The first socket to say `ready` is
+used and the others are closed; if all fail, or none is ready within
+`CONNECT_TIMEOUT_MS`, the dot is grey and the utterance goes to the cloud. A
+new race (and a new ticket) starts on the next utterance after the socket
+drops. Nothing polls. The devLog says which route won: `local-stt
+{state:"ready", via:"stt.lianki.com"}`, and `lost-race {via, why}` for the
+others.
+
+**Trade-offs** (the evaluation, 2026-10-31): TLS ends at Cloudflare's edge,
+so Cloudflare sees the audio in clear (Tailscale is WireGuard end to end).
+The hostname can be found by DNS brute force, so nothing relies on it being
+hidden. The attack surface is Python `websockets` and the sherpa-onnx decode
+on the owner's main Mac, behind the ticket. Latency over the tunnel is about
+the same as Tailscale's DERP relay (+10–30 ms RTT, estimated).
+
+### Setting it up
+
+1. Once, in a browser: `cloudflared tunnel login` (pick the lianki.com zone).
+   It writes `~/.cloudflared/cert.pem`. `cloudflared` itself lives in
+   `~/.local/bin` (the `cloudflared-darwin-arm64.tgz` release).
+2. Once, with the owner's OK (a production secret):
+   `bun scripts/local-stt/ticket-key.ts | bunx wrangler secret put STT_TICKET_KEY`.
+   It writes the public key to `~/.config/lianki-stt/ticket.pub` and the
+   private key only into the pipe (it refuses a terminal). Running it again
+   rotates the pair.
+3. From the main checkout, after this is on `main`: `scripts/local-stt/tunnel.sh up`.
+   It creates the named tunnel `lianki-stt` (separate from
+   `lianki-userscript-dev` / dev.lianki.com), writes `~/.cloudflared/lianki-stt.yml`,
+   routes `stt.lianki.com` to it, writes `public.json` (port 5188, the key
+   at `STT_TICKET_PUB`, default `~/.config/lianki-stt/ticket.pub`), restarts
+   oxmgr `lianki-stt` and checks it: its "listening" line in its own log
+   within 90 s, "public listener on" among the lines before it, and
+   `/health` on the tailnet port. If any check fails it puts `public.json`
+   back as it was, restarts again, and stops before starting the connector.
+   Only then does it run cloudflared as oxmgr `lianki-stt-tunnel`.
+   The credentials file `~/.cloudflared/<uuid>.json`, the config and the
+   cert are mode 0600 and live only on the Mac (never in the repo).
+4. The rate-limit rule (Free plan's one: 10 handshakes per 10 s per IP, then
+   10 s blocked): `CLOUDFLARE_API_TOKEN=… bun scripts/ops/stt-edge.ts`
+   (`tunnel.sh up` runs it when the token is set). The token needs Zone · DNS
+   · Edit and Zone · Zone WAF · Edit on lianki.com; wrangler's login has
+   neither.
+5. `scripts/local-stt/tunnel.sh status`: `https://stt.lianki.com/` must
+   answer **401** (up, and refusing without a ticket).
+
+### Rollback
+
+```bash
+CLOUDFLARE_API_TOKEN=… scripts/local-stt/tunnel.sh down
+```
+
+Stops and deletes oxmgr `lianki-stt-tunnel`, removes `public.json` and
+restarts `lianki-stt` (its oxmgr entry untouched; the tailnet route keeps
+working, and is checked the same way), deletes the tunnel and its
+credentials file and config, and with the token deletes the `stt.lianki.com`
+record (only if it points at a tunnel) and the rate-limit rule. Without the
+token it does everything else, says the record is left, and exits 1; with the
+tunnel gone that record reaches nothing. `DRY_RUN=1` prints the commands
+instead. Idempotent; tested against stubs in `unit/stt-tunnel.test.ts`.
+Turning the route off on the page alone: set `lk:agent-local-stt` back to the
+tailnet URL.
 
 ## Which engine, and why
 
@@ -222,6 +347,75 @@ One socket per page; utterances one after another (`server.py` docstring):
 
 `GET /health` on the same port answers `{ok, engine, model}`.
 
+A final also carries `langAuto` when the short-utterance pick below replaced
+the auto-detected language (`lang` is then the forced one). The server log
+line says `lang en->ja`, never the text.
+
+## Short utterances and the language
+
+SenseVoice's auto language ID gets short Japanese wrong. On 2026-10-31 the
+owner said 「もしもし」 three times (2–3 s each). `language="auto"` gave
+'Moice, miss.' (en), 'Mice mouse.' (en) and '没关系没关系。' (zh); with ja
+forced, all three read 「もしもし。」. He mixes Chinese, Japanese and English,
+so no language can be fixed.
+
+**What the server does** (`engines.py`, `SenseVoice.final` + `LangPicker`):
+a final of **4 s or less** is also scored by the same model, int8, run through
+onnxruntime once as a batch of three: language `auto`, `ja` and `zh`. That runs
+on a side thread while sherpa-onnx does the usual auto decode. A forced reading
+replaces the auto one only if all of these hold (`choose()`):
+
+- it is in its own script: kana for ja; Han and no kana for zh;
+- it is not the auto language (yue counts as zh);
+- its mean best log-prob per frame (CTC, blanks included) beats auto's by at
+  least **0.02**;
+- its mean log-prob per emitted token beats auto's by at least **0.4**.
+
+If both forced readings qualify, the larger per-frame gain wins. Partials and
+longer finals are the auto decode, exactly as before. The scores have to come
+from onnxruntime because sherpa-onnx returns only the argmax for SenseVoice
+(`ys_log_probs` is empty). The filterbank is numpy (`fbank()`, the same as
+kaldi-native-fbank to within 1e-3 in log-mel), so nothing new needs
+installing. `LIANKI_STT_LANG_PICK=0` turns it off, and so does a missing
+`model.int8.onnx` or onnxruntime. Either way the server logs `lang picker off`
+and works as before.
+
+**Measured** on 2026-10-31 over the owner's 211 saved clips, files only:
+
+| set                                                     | clips | auto only | with the pick |
+| ------------------------------------------------------- | ----- | --------- | ------------- |
+| short Japanese                                          | 7     | 4         | **7**         |
+| short Chinese (2 of them were misread as en by auto)    | 30    | 28        | **30**        |
+| short English                                           | 10    | 10        | 10            |
+| other short clips, unlabelled (mostly background, noise) | 96    | –         | 7 switched    |
+| longer than 4 s                                         | 68    | –         | untouched     |
+
+The labels are the agent's own judgement, made from the forced decodes and
+the conversation around each clip; no clip had a `.ref.txt`. The thresholds
+were tuned on this same small set, and it has only three misread Japanese
+lines, so these numbers are optimistic. Every labelled English and Chinese
+line that was right stayed right. The 7 unlabelled switches are clips where
+neither reading can be checked without listening: background talk and
+one-word replies.
+
+**Cost.** The scorer takes a median of 2.1× one auto decode of the same clip
+(332 ms against about 170 ms when measured on 2 threads at background
+priority, beside the live server). It runs alongside the auto decode, so the
+final waits about 1.1× an auto decode longer. At normal priority a ≤ 4 s
+utterance decodes in about 20–40 ms (about 9 ms per audio second, "Which
+engine"), so the expected cost is about **25–45 ms** per short final, and
+nothing on long ones. That is an estimate scaled from the background
+measurement, not a foreground measurement. Memory is about 0.3 GB more (the
+int8 session).
+
+**Not chosen:** sending the page's hint (`stt-hint.ts`) per stream. The hint
+is learnt from typed lines, so it is one language at a time, mostly zh for
+him, and it would push 「もしもし」 towards zh. A per-device "primary languages"
+setting has the same problem: all three are primary for him. Calling
+`set_config(language=…)` on sherpa for forced decodes works, but it gives no
+scores to choose between the readings, and it changes the recognizer for every
+decode running at the same time.
+
 ## Fallback
 
 `createLocalStt` (`packages/debug-chat/src/local-stt.ts`) opens the socket
@@ -260,6 +454,13 @@ noise does. Babble of the owner's own voice is the hardest case there is
 near the mouth) and the noise-adaptive endpoint are the levers. Hold-to-talk
 remains the option if those are not enough.
 
+Re-checked on 2026-10-31 with real noise types (DEMAND restaurant and
+street, a shop PA, a family voice) and five denoisers: RNNoise, DFN3 with
+and without a cap, noisereduce and spectral subtraction. None beats no
+denoiser, and each costs 0.04–0.10 CER on clean speech. A speaker check
+(CAM++ / ERes2NetV2) is what keeps the PA and background voices out:
+[stt-ab.md](stt-ab.md), "Noise and speaker grid".
+
 ## WebRTC
 
 Not needed for this. The phone already reaches the Mac over the tailnet, and a
@@ -279,10 +480,33 @@ this is owner-only.
   hold.
 - `unit/local-stt-server.test.ts`: the real server with a saved clip; runs
   only where the venv, the model and the clips are (skipped in CI).
+- `unit/local-stt.test.ts`, "racing the tailnet and the tunnel": the stagger,
+  the ticket as a subprotocol, the winner kept and the loser closed, a
+  failure starting the next URL at once, all failing to the cloud, the
+  deadline, tickets only to `TICKET_HOSTS`.
+- `unit/stt-ticket.test.ts`: signing and verifying (expiry, replay, wrong
+  aud, wrong key, an edited payload, a long-lived ticket).
+- `unit/local-stt-gate.test.ts`: the tunnel listener of the real server
+  (`--engine fake`, no model) refusing before the upgrade — no ticket, a wrong
+  Origin, another key, expired, wrong aud, a replay, a third socket, no
+  `/health` — and admitting a good ticket; a taken tunnel port leaving the
+  tailnet listener up; `public.json` turning it on with the key it names, and
+  a missing key keeping it off. It runs `scripts/local-stt/test_ticket.py`
+  too (including the full ticket store recovering once its jtis expire). Skipped where the venv (with `cryptography`) is missing.
+- `unit/stt-tunnel.test.ts`: `tunnel.sh up` and `down` against stand-ins for
+  oxmgr, cloudflared and curl: the oxmgr entry left exactly as it was, the
+  custom key path reaching the server, and the restore when the listener
+  fails to start, `/health` fails, or the server never says "listening".
+- `unit/local-stt-lang-pick.test.ts` runs `scripts/local-stt/test_lang_pick.py`
+  with the venv: the pick rule, `final()` with stubs, the filterbank, and the
+  int8 scorer when the model is there (skipped in CI).
 - By hand: `bun scripts/local-stt/stream-clip.ts --url ws://127.0.0.1:5193`
   streams every saved clip at real-time pace and prints partials and timings;
   `python -I scripts/local-stt/bench.py` is the whole-clip A/B above;
-  `noisy.py <dir>` then `bench-noise.py [--atten 10]` the noise table.
+  `noisy.py <dir>` then `bench-noise.py [--atten 10]` the noise table;
+  `ab-eval.py` the streaming / endpoint / AEC A/B and the field metrics;
+  `grid-eval.py` and `speaker-grid.py` the noise / VAD / gain grid and the
+  speaker check, niced and pausing while he talks ([stt-ab.md](stt-ab.md)).
 - `server.py` logs each connection, each final (length and decode time,
   never the text) and every refused handshake (a wrong Origin) through the
   `websockets` logger.

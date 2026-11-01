@@ -347,6 +347,8 @@ type Chat = {
     taskPath?: string;
     agentId?: string;
     to?: string;
+    quiet?: true;
+    loud?: true;
   };
 };
 const chats = (ws: FakeSocket) =>
@@ -383,6 +385,33 @@ describe("DebugHub chat", () => {
     await msg(c, { type: "say", text: "on it" });
     expect(chats(p).at(-1)).toMatchObject({ from: "agent", label: "main lane", text: "on it" });
     expect(c.last("said")?.id).toBe(chats(p).at(-1)?.id as string);
+  });
+
+  it("say --quiet / --loud: the hub keeps the flag (true only) and forwards it, live and in history", async () => {
+    const { hub, page, controller, msg, pairOf } = setup();
+    const p = page();
+    const c = controller("main lane");
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    await msg(c, { type: "say", text: "deployed", quiet: true });
+    await msg(c, { type: "say", text: "approve?", loud: true });
+    await msg(c, { type: "say", text: "plain" });
+    // Not booleans: dropped. Both: loud wins (it may need his answer).
+    await msg(c, { type: "say", text: "junk", quiet: "yes", loud: 1 });
+    await msg(c, { type: "say", text: "both", quiet: true, loud: true });
+    const lines = chats(p).slice(-5);
+    expect(lines.map((m) => [m.text, m.quiet, m.loud])).toEqual([
+      ["deployed", true, undefined],
+      ["approve?", undefined, true],
+      ["plain", undefined, undefined],
+      ["junk", undefined, undefined],
+      ["both", undefined, true],
+    ]);
+    for (const m of lines.slice(2)) expect(m).not.toHaveProperty("quiet");
+    const again = page();
+    await hub.history();
+    const h = again.last("history") as { messages: Record<string, unknown>[] };
+    expect(h.messages.find((m) => m.text === "deployed")).toMatchObject({ quiet: true });
+    expect(h.messages.find((m) => m.text === "approve?")).toMatchObject({ loud: true });
   });
 
   it("an unapproved controller cannot say", async () => {
@@ -1202,6 +1231,61 @@ describe("DebugHub heartbeat (agent is working)", () => {
     expect(c.last("error")?.error).toBe("no chat thread for nobody@x.com");
     expect(beats(owner)).toEqual([]);
     expect(beats(f)).toEqual([]);
+  });
+});
+
+describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
+  const agent = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    return c;
+  };
+  const wakes = (ws: FakeSocket) => ws.sent.filter((m) => m.type === "wake");
+
+  it("goes to the owner's pages, unstored, and is acknowledged", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const f = await s.friend("f1", "f1@x.com");
+    const keys = s.storage.store.size;
+    await s.msg(c, { type: "wake", mode: "passive" });
+    expect(wakes(owner)).toEqual([{ type: "wake", mode: "passive", at: 1_000_000 }]);
+    expect(wakes(f)).toEqual([]);
+    expect(c.last("woke")).toEqual({
+      type: "woke",
+      thread: "owner",
+      mode: "passive",
+      delivered: 1,
+      at: 1_000_000,
+    });
+    expect(s.storage.store.size).toBe(keys);
+  });
+
+  it("refuses an unknown mode and a friend's pairing", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    await s.msg(c, { type: "wake", mode: "asleep" });
+    expect(c.last("error")?.error).toBe('wake needs mode "active", "passive" or "ignored"');
+    expect(wakes(owner)).toEqual([]);
+  });
+
+  it("an owner line keeps the mode it was sent in; anything else is dropped", async () => {
+    const s = setup();
+    const owner = s.page();
+    await agent(s, owner);
+    await s.msg(owner, {
+      type: "chat",
+      id: "w1",
+      text: "next word",
+      source: "stt",
+      wake: "passive",
+    });
+    await s.msg(owner, { type: "chat", id: "w2", text: "typed", wake: "sleepy" });
+    const stored = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as Record<string, unknown>);
+    expect(stored.map((m) => m.wake)).toEqual(["passive", undefined]);
   });
 });
 
@@ -2497,5 +2581,227 @@ describe("DebugHub agent edits of voice messages", () => {
     await s.msg(owner, voice("v1", "hi"));
     await s.msg(ws, { type: "edit", id: "v1", text: "Hi." });
     expect((owner.last("edited") as { edited: { by: string } }).edited.by).toBe("chat-lane");
+  });
+});
+
+describe("DebugHub ask cards (the agent asks, a person taps)", () => {
+  const agent = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+    const c = s.controller("main lane");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    return c;
+  };
+  const askOne = {
+    type: "ask",
+    askId: "cal1",
+    question: "Apply calendar changes directly?",
+    options: [{ label: "Apply, with undo", recommended: true }, "Ask each time"],
+  };
+
+  it("an ask reaches the owner's pages as an agent line carrying it", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    await s.msg(c, askOne);
+    const line = chats(owner).at(-1) as Record<string, unknown>;
+    expect(line).toMatchObject({
+      from: "agent",
+      thread: "owner",
+      text: "Apply calendar changes directly? — Apply, with undo / Ask each time",
+      ask: {
+        askId: "cal1",
+        questions: [
+          {
+            id: "q1",
+            options: [
+              { id: "o1", label: "Apply, with undo", recommended: true },
+              { id: "o2", label: "Ask each time" },
+            ],
+          },
+        ],
+      },
+    });
+    expect(c.last("asked")).toMatchObject({ askId: "cal1", thread: "owner" });
+  });
+
+  it("a tap is stamped by the hub (source tap, page, time) and reaches pages and listeners; one-shot", async () => {
+    const s = setup();
+    const owner = s.page("/words pwa iPhone");
+    const mac = s.page("/list Macintosh");
+    const c = await agent(s, owner);
+    await s.msg(c, askOne);
+    s.tick(7);
+    // The page claims a source and a time: ignored, the hub stamps its own.
+    await s.msg(owner, {
+      type: "answer",
+      askId: "cal1",
+      choices: { q1: "o1" },
+      source: "x",
+      at: 1,
+    });
+    const ev = {
+      type: "answered",
+      askId: "cal1",
+      answer: {
+        choices: { q1: ["o1"] },
+        source: "tap",
+        thread: "owner",
+        label: "/words pwa iPhone",
+        at: 1_000_007,
+      },
+      labels: { q1: ["Apply, with undo"] },
+    };
+    expect(owner.last("answered")).toMatchObject(ev);
+    expect(mac.last("answered")).toMatchObject(ev);
+    expect(c.last("answered")).toMatchObject(ev);
+    // Kept on the line: a page connecting later sees it answered.
+    const hist = await s.hub.history();
+    expect(hist.at(-1)?.answer).toMatchObject({ source: "tap", choices: { q1: ["o1"] } });
+    // A second tap is refused.
+    await s.msg(mac, { type: "answer", askId: "cal1", choices: { q1: "o2" } });
+    expect(mac.last("error")?.error).toContain("is answered");
+    expect((await s.hub.history()).at(-1)?.answer?.choices).toEqual({ q1: ["o1"] });
+  });
+
+  it("a controller can never answer (forgery guard)", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    await s.msg(c, askOne);
+    await s.msg(c, { type: "answer", askId: "cal1", choices: { q1: "o1" } });
+    expect(c.last("error")?.error).toContain("a controller cannot answer");
+    expect(owner.last("answered")).toBeUndefined();
+    expect((await s.hub.history()).at(-1)?.answer).toBeUndefined();
+  });
+
+  it("answers must fit the ask; an expired ask cannot be answered", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    await s.msg(c, {
+      type: "ask",
+      askId: "b1",
+      questions: [
+        { id: "a", question: "Which days?", options: ["Mon", "Tue", "Wed"], multi: true },
+        { id: "b", question: "Remind me?", options: ["Yes", "No"] },
+      ],
+    });
+    await s.msg(owner, { type: "answer", askId: "b1", choices: { a: ["o1"] } }); // b missing
+    expect(owner.last("error")?.error).toContain("does not fit");
+    await s.msg(owner, { type: "answer", askId: "b1", choices: { a: ["o1"], b: ["o1", "o2"] } });
+    expect(owner.last("error")?.error).toContain("does not fit");
+    await s.msg(owner, { type: "answer", askId: "b1", choices: { a: ["o1", "o3"], b: "o2" } });
+    expect(owner.last("answered")).toMatchObject({ labels: { a: ["Mon", "Wed"], b: ["No"] } });
+    // Expired (the hub's clock past expiresAt): refused.
+    await s.msg(c, { ...askOne, askId: "soon", expiresAt: Date.now() + 60_000 });
+    s.tick(Date.now() + 120_000);
+    await s.msg(owner, { type: "answer", askId: "soon", choices: { q1: "o1" } });
+    expect(owner.last("error")?.error).toContain("is expired");
+  });
+
+  it("a friend's page never sees the owner's asks and cannot answer them", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const f = await s.friend("f1", "f1@x.com");
+    await s.msg(c, askOne);
+    expect(chats(f)).toEqual([]);
+    await s.msg(f, { type: "answer", askId: "cal1", choices: { q1: "o1" } });
+    expect(f.last("error")?.error).toContain("no ask cal1 in this thread");
+    expect((await s.hub.history()).at(-1)?.answer).toBeUndefined();
+  });
+
+  it("an ask to a friend is answered in their thread, tagged with it", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const f = await s.friend("f1", "f1@x.com", "/words Android");
+    await s.msg(f, { type: "chat", id: "hi", text: "hello" }); // the thread exists once they chat
+    await s.msg(c, { ...askOne, askId: "fa", to: "f1@x.com" });
+    expect(chats(f).at(-1)).toMatchObject({ thread: "f1", ask: { askId: "fa" } });
+    expect(chats(owner)).toEqual([]);
+    await s.msg(f, { type: "answer", askId: "fa", choices: { q1: "o2" } });
+    expect(f.last("answered")).toMatchObject({ answer: { thread: "f1", source: "tap" } });
+    expect(c.last("answered")).toMatchObject({ thread: "f1", answer: { thread: "f1" } });
+  });
+});
+
+describe("DebugHub page errors", () => {
+  const err = (over: Record<string, unknown> = {}) => ({
+    type: "page-error",
+    kind: "fetch",
+    message: "GET /api/words/tts 503",
+    path: "/api/words/tts?text=secret",
+    status: 503,
+    at: 999,
+    rev: "abc123",
+    label: "/forged",
+    ...over,
+  });
+  const errors = (ws: FakeSocket) => ws.sent.filter((m) => m.type === "page-error");
+
+  it("an owner page's error reaches the approved listeners only, with the hub's label, never stored", async () => {
+    const s = setup();
+    const owner = s.page();
+    const other = s.page("/list Macintosh");
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    const waiting = s.controller("stranger");
+    const before = [...s.storage.store.keys()].sort();
+    await s.msg(owner, err());
+    expect(errors(c)).toEqual([
+      {
+        type: "page-error",
+        kind: "fetch",
+        message: "GET /api/words/tts 503",
+        path: "/api/words/tts",
+        status: 503,
+        at: 999,
+        rev: "abc123",
+        label: "/words pwa iPhone",
+        hubAt: 1_000_000,
+      },
+    ]);
+    expect(errors(waiting)).toEqual([]);
+    expect(errors(owner)).toEqual([]);
+    expect(errors(other)).toEqual([]);
+    expect([...s.storage.store.keys()].sort()).toEqual(before);
+  });
+
+  it("a friend's page-error is dropped, even with the agent listening", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    const f = await s.friend();
+    await s.msg(f, err());
+    expect(errors(c)).toEqual([]);
+  });
+
+  it("a friend's preview pairing never hears the owner's page errors", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    const token = c.last("approved")?.token as string;
+    const f = await s.friend("f1", "f1@x.com");
+    const preview = await s.forFriend(token, "f1@x.com");
+    await s.msg(f, { type: "allow", pair: s.pairOf(f) });
+    await s.msg(owner, err());
+    expect(errors(c)).toHaveLength(1);
+    expect(errors(preview)).toEqual([]);
+  });
+
+  it("a malformed page-error (unknown kind, no message) is dropped; long fields are capped", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    await s.msg(owner, err({ kind: "chat" }));
+    await s.msg(owner, err({ message: "   " }));
+    await s.msg(owner, err({ message: "x".repeat(5000), stack: "s".repeat(9000) }));
+    const got = errors(c) as { message: string; stack: string }[];
+    expect(got).toHaveLength(1);
+    expect(got[0].message.length).toBe(500);
+    expect(got[0].stack.length).toBe(1500);
   });
 });

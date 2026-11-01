@@ -44,4 +44,5 @@ esac
 # multi-minute build.
 bun run lint
 bun run typecheck
+# qa:all mutes the Mac while it runs (scripts/qa/with-muted-mac.sh).
 bun run qa:all

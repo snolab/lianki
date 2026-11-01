@@ -2,9 +2,13 @@ import { describe, expect, it } from "bun:test";
 import {
   CONNECT_TIMEOUT_MS,
   FINAL_TIMEOUT_MS,
+  RACE_STAGGER_MS,
+  STT_TICKET_PATH,
   type WsLike,
   createLocalStt,
+  fetchSttTicket,
   localSttFrom,
+  needsTicket,
   packPcm,
 } from "@lianki/debug-chat/local-stt";
 import { encodeWav } from "@lianki/debug-chat/mic";
@@ -96,6 +100,209 @@ describe("localSttFrom", () => {
     expect(localSttFrom("https://mac.ts.net")).toBeUndefined();
     expect(localSttFrom("nonsense")).toBeUndefined();
     expect(localSttFrom(null)).toBeUndefined();
+  });
+
+  it("takes a list, in order, dropping what it would not take alone and repeats", () => {
+    expect(localSttFrom(" wss://mac.ts.net/lianki-stt, wss://stt.lianki.com ")).toBe(
+      "wss://mac.ts.net/lianki-stt wss://stt.lianki.com/",
+    );
+    expect(
+      localSttFrom("ws://evil.example wss://stt.lianki.com wss://stt.lianki.com/ nonsense"),
+    ).toBe("wss://stt.lianki.com/");
+    expect(localSttFrom(" , ")).toBeUndefined();
+  });
+});
+
+describe("needsTicket / fetchSttTicket", () => {
+  it("the tunnel needs a ticket; the tailnet and localhost do not", () => {
+    expect(needsTicket("wss://stt.lianki.com/")).toBe(true);
+    expect(needsTicket("wss://mac.onca-tint.ts.net/lianki-stt")).toBe(false);
+    expect(needsTicket("ws://localhost:5193/")).toBe(false);
+    expect(needsTicket("ws://127.0.0.1:5193/")).toBe(false);
+    // A ticket goes to the tunnel only, never to another host a stored value names.
+    expect(needsTicket("wss://evil.example/")).toBe(false);
+    expect(needsTicket("wss://stt.lianki.com.evil.example/")).toBe(false);
+  });
+
+  it("POSTs to the owner route with the session cookie and returns the ticket", async () => {
+    const calls: [string, RequestInit | undefined][] = [];
+    const f = (async (u: string, init?: RequestInit) => {
+      calls.push([u, init]);
+      return new Response(JSON.stringify({ ticket: "a.b", exp: 1 }));
+    }) as unknown as typeof fetch;
+    expect(await fetchSttTicket(f)).toBe("a.b");
+    expect(calls).toEqual([[STT_TICKET_PATH, { method: "POST", credentials: "same-origin" }]]);
+    const no = (async () => new Response("{}", { status: 404 })) as unknown as typeof fetch;
+    await expect(fetchSttTicket(no)).rejects.toThrow("HTTP 404");
+    const empty = (async () => new Response("{}")) as unknown as typeof fetch;
+    await expect(fetchSttTicket(empty)).rejects.toThrow("none");
+  });
+});
+
+describe("createLocalStt: racing the tailnet and the tunnel", () => {
+  const TAILNET = "wss://mac.ts.net/lianki-stt";
+  const TUNNEL = "wss://stt.lianki.com/";
+
+  function race(ticket: () => Promise<string> = async () => "tk.sig") {
+    const socks: (ReturnType<ReturnType<typeof fakeWs>["open"]> & {
+      url: string;
+      protocols?: string[];
+      closedByUs: boolean;
+    })[] = [];
+    const w = fakeWs();
+    const timers: { f: () => void; ms: number; live: boolean }[] = [];
+    const logs: Record<string, unknown>[] = [];
+    let tickets = 0;
+    const stt = createLocalStt(`${TAILNET} ${TUNNEL}`, {
+      open: (url, protocols) => {
+        const s = Object.assign(w.open(), { url, protocols, closedByUs: false });
+        s.close = () => {
+          s.closedByUs = true;
+          s.drop();
+        };
+        socks.push(s);
+        return s;
+      },
+      ticket: () => {
+        tickets++;
+        return ticket();
+      },
+      setTimer: (f, ms) => {
+        const x = { f, ms, live: true };
+        timers.push(x);
+        return x;
+      },
+      clearTimer: (x) => {
+        if (x) (x as { live: boolean }).live = false;
+      },
+      log: (ev) => logs.push(ev),
+    });
+    /** Fire the live timers of this length (the stagger, the connect deadline). */
+    const fire = (ms: number) => {
+      for (const t of timers.filter((x) => x.live && x.ms === ms)) {
+        t.live = false;
+        t.f();
+      }
+    };
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    const ready = (s: (typeof socks)[number]) => {
+      s.readyState = 1;
+      s.say({ t: "ready", engine: "sensevoice", model: "m" });
+    };
+    return { stt, socks, fire, flush, ready, logs, tickets: () => tickets };
+  }
+
+  it("the tailnet at once, the tunnel 150 ms later with its ticket as a subprotocol", async () => {
+    const h = race();
+    h.stt.warm();
+    expect(h.socks.map((s) => s.url)).toEqual([TAILNET]);
+    expect(h.socks[0].protocols).toBeUndefined();
+    expect(h.tickets()).toBe(1); // asked for at once, so it is there in time
+    h.fire(RACE_STAGGER_MS);
+    await h.flush();
+    expect(h.socks.map((s) => s.url)).toEqual([TAILNET, TUNNEL]);
+    expect(h.socks[1].protocols).toEqual(["lianki-stt", "tk.sig"]);
+    expect(h.stt.state()).toBe("connecting");
+  });
+
+  it("the tunnel says ready first: it is used and the tailnet closed", async () => {
+    const h = race();
+    h.stt.warm();
+    h.fire(RACE_STAGGER_MS);
+    await h.flush();
+    h.ready(h.socks[1]);
+    expect(h.stt.state()).toBe("ready");
+    expect(h.socks[0].closedByUs).toBe(true);
+    expect(h.logs.at(-1)).toMatchObject({ state: "ready", via: "stt.lianki.com" });
+    // The utterance goes over the winner, and the loser's late close changes nothing.
+    const u = h.stt.begin(() => {})!;
+    expect(JSON.parse(h.socks[1].sent[0] as string)).toEqual({ t: "begin", id: 1 });
+    expect(h.socks[0].sent).toHaveLength(0);
+    const f = u.end(new Float32Array(0));
+    h.socks[1].say({ t: "final", id: 1, text: "好", model: "m", ms: 50 });
+    expect((await f).text).toBe("好");
+    expect(h.stt.connected()).toBe(true);
+  });
+
+  it("the tailnet ready within 150 ms: the tunnel is never opened", async () => {
+    const h = race();
+    h.stt.warm();
+    h.ready(h.socks[0]);
+    h.fire(RACE_STAGGER_MS); // cleared: nothing happens
+    await h.flush();
+    expect(h.socks).toHaveLength(1);
+    expect(h.stt.state()).toBe("ready");
+  });
+
+  it("the tailnet failing (Tailscale off) starts the tunnel at once, without the wait", async () => {
+    const h = race();
+    h.stt.warm();
+    h.socks[0].drop();
+    await h.flush();
+    expect(h.socks.map((s) => s.url)).toEqual([TAILNET, TUNNEL]);
+    expect(h.stt.state()).toBe("connecting");
+    h.ready(h.socks[1]);
+    expect(h.stt.state()).toBe("ready");
+  });
+
+  it("both fail: down, and begin() is null so the utterance goes to the cloud", async () => {
+    const h = race();
+    h.stt.warm();
+    h.socks[0].drop();
+    await h.flush();
+    h.socks[1].drop();
+    expect(h.stt.state()).toBe("down");
+    expect(h.logs.at(-1)).toMatchObject({ state: "unreachable" });
+    expect(h.stt.begin(() => {})).toBeNull(); // and a new race starts for next time
+    expect(h.socks).toHaveLength(3);
+    expect(h.tickets()).toBe(2); // a fresh ticket per race: each is single-use
+  });
+
+  it("no ticket (not the owner, or tickets off): the tunnel is out, the tailnet still races", async () => {
+    const h = race(async () => {
+      throw new Error("stt ticket: HTTP 404");
+    });
+    h.stt.warm();
+    h.fire(RACE_STAGGER_MS);
+    await h.flush();
+    expect(h.socks).toHaveLength(1);
+    expect(h.logs).toContainEqual(
+      expect.objectContaining({ state: "lost-race", via: "stt.lianki.com", why: "ticket" }),
+    );
+    expect(h.stt.state()).toBe("connecting");
+    h.socks[0].drop();
+    expect(h.stt.state()).toBe("down");
+  });
+
+  it("neither ready by the deadline: both closed, down", async () => {
+    const h = race();
+    h.stt.warm();
+    h.fire(RACE_STAGGER_MS);
+    await h.flush();
+    h.fire(CONNECT_TIMEOUT_MS);
+    expect(h.socks.every((s) => s.closedByUs)).toBe(true);
+    expect(h.stt.state()).toBe("down");
+  });
+
+  it("close() mid-race closes every socket and stays idle", async () => {
+    const h = race();
+    h.stt.warm();
+    h.fire(RACE_STAGGER_MS);
+    await h.flush();
+    h.stt.close();
+    expect(h.socks.every((s) => s.closedByUs)).toBe(true);
+    expect(h.stt.state()).toBe("idle");
+  });
+
+  it("the winner dropping later: down, and the next utterance races again", async () => {
+    const h = race();
+    h.stt.warm();
+    h.ready(h.socks[0]);
+    h.socks[0].drop();
+    expect(h.stt.state()).toBe("down");
+    expect(h.stt.begin(() => {})).toBeNull();
+    expect(h.socks.at(-1)?.url).toBe(TAILNET);
+    expect(h.stt.state()).toBe("connecting");
   });
 });
 
@@ -230,7 +437,7 @@ describe("createLocalStt", () => {
   });
 
   it("a socket that cannot even be made is down", () => {
-    const stt = createLocalStt("wss://x", {
+    const stt = createLocalStt("wss://x.ts.net", {
       open: () => {
         throw new Error("blocked");
       },

@@ -7,7 +7,6 @@ import {
   formatInterval,
   previewInterval,
   dayKey,
-  newRemaining,
   normalizeParams,
   reviewWord,
   reviewTime,
@@ -20,7 +19,8 @@ describe("word params", () => {
     const p = normalizeParams({ retention: 2, learningSteps: ["bogus"], newPerDay: 20 });
     expect(p.retention).toBe(0.97);
     expect(p.learningSteps).toEqual(DEFAULT_WORD_PARAMS.learningSteps);
-    expect(p.newPerDay).toBe(20);
+    // The old daily cap is not a param any more (no new-word quota).
+    expect("newPerDay" in p).toBe(false);
   });
 
   test("a new word rated Again comes back within minutes, not days", () => {
@@ -29,10 +29,8 @@ describe("word params", () => {
     expect(card.due.getTime() - now.getTime()).toBeLessThanOrEqual(5 * 60_000);
   });
 
-  test("daily new-word budget resets on a new day", () => {
-    const p = normalizeParams({ newPerDay: 10 });
-    expect(newRemaining({ new_day: "2026-10-27", new_today: 4 }, p, "2026-10-27")).toBe(6);
-    expect(newRemaining({ new_day: "2026-10-26", new_today: 10 }, p, "2026-10-27")).toBe(10);
+  test("the day key is the client's day, else the UTC day", () => {
+    expect(dayKey("2026-10-26")).toBe("2026-10-26");
     expect(dayKey("nope", new Date("2026-10-27T01:00:00Z"))).toBe("2026-10-27");
   });
 });
@@ -64,7 +62,7 @@ describe("WordsD1Repo", () => {
     expect(res!.cards).toHaveLength(2);
     const after = await repo.getList(id, now);
     expect(after).toMatchObject({ cursor: 2, cards: 2, newToday: 2 });
-    expect(res!.newRemaining).toBe(DEFAULT_WORD_PARAMS.newPerDay - 2);
+    expect(res).not.toHaveProperty("newRemaining");
 
     // "avoir" (Again) is due again within minutes; "être" (Good) is not yet.
     const soon = new Date(now.getTime() + 10 * 60_000);
@@ -229,7 +227,7 @@ test("one session query covers several lists", async () => {
   const s = await repo.sessionMany([a, b], "2026-10-28", later);
   expect(s.lists[a].due.map((c) => c.term)).toEqual(["chat"]);
   expect(s.lists[b].due.map((c) => c.term)).toEqual(["猫"]);
-  expect(s.lists[a].newRemaining).toBe(49);
+  expect(s.lists[a]).not.toHaveProperty("newRemaining");
   expect(s.more).toBe(false);
   expect((await repo.sessionMany([], "2026-10-28")).lists).toEqual({});
 });

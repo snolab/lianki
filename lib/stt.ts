@@ -3,6 +3,7 @@
  * text"): which Workers AI models may be asked for, what they cost, and how
  * their answers are read. Shared by /api/debug/stt and the STT bench. No I/O.
  */
+import { STT_PROMPT, STT_PROMPT_ZH } from "@lianki/debug-chat/stt-hint";
 
 /**
  * The Workers AI ASR models that take one audio file over REST, from
@@ -38,7 +39,7 @@ export const FALLBACK_STT_MODEL: SttModel = "@cf/openai/whisper";
  * makes it keep switching. Without it, a ja + en clip came back English only.
  * It does not leak into silence (tested: "" for 2 s of noise).
  */
-export const STT_PROMPT = "日本語、English、中文が混ざります。";
+export { STT_PROMPT };
 
 /** The languages a mic may hint (`?hint=`): the one the speaker mostly uses. */
 export const STT_HINTS = ["zh", "ja", "en"] as const;
@@ -56,7 +57,7 @@ export const sttHint = (raw: string | null | undefined): SttHint | undefined =>
  * turned the English clips into Chinese. ja and en keep STT_PROMPT.
  */
 export function sttPrompt(hint?: SttHint): string {
-  return hint === "zh" ? "我说中文，有时夹杂日本語和English。" : STT_PROMPT;
+  return hint === "zh" ? STT_PROMPT_ZH : STT_PROMPT;
 }
 
 /**

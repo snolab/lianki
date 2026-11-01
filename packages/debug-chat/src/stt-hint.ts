@@ -10,6 +10,17 @@ export const STT_HINT_KEY = "lk:agent:stt-hint";
 export type SttHint = "zh" | "ja" | "en";
 const HINTS: readonly string[] = ["zh", "ja", "en"];
 
+/**
+ * whisper-large-v3-turbo's `initial_prompt` with no hint, or a ja / en one
+ * (lib/stt.ts sttPrompt, which the route sends). Here, not in lib/, so the
+ * mic can strip an echo of it from a transcript (cleanTranscript, mic.ts).
+ */
+export const STT_PROMPT = "日本語、English、中文が混ざります。";
+/** The `?hint=zh` prompt: simplified Chinese leads. */
+export const STT_PROMPT_ZH = "我说中文，有时夹杂日本語和English。";
+/** Every prompt the route may send: what cloud Whisper can read back as speech. */
+export const STT_PROMPTS: readonly string[] = [STT_PROMPT_ZH, STT_PROMPT];
+
 /** A line's language by its script: any kana is Japanese, else Han is Chinese, else Latin is English. */
 export function scriptLang(text: string): SttHint | undefined {
   if (/[\p{sc=Hiragana}\p{sc=Katakana}]/u.test(text)) return "ja";

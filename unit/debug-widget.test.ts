@@ -10,6 +10,7 @@ import {
 } from "@lianki/debug-chat/debug-widget";
 import {
   allowOrigin,
+  devOrigins,
   buildHarness,
   buildWidget,
   candidates,
@@ -77,11 +78,10 @@ describe("loadWidget", () => {
 describe("the widget build", () => {
   it("hostModule reads React from the page", () => {
     const react = hostModule("react", ["default", "useState", "useRef", "not-an-ident"]);
-    expect(react).toContain(`globalThis["${REACT_GLOBAL}"].React`);
-    expect(react).toContain("export const { useState, useRef } = R;");
+    expect(react).toContain(`module.exports = globalThis["${REACT_GLOBAL}"].React;`);
     expect(react).not.toContain("not-an-ident");
     expect(hostModule("react-dom", [])).toContain(".ReactDOM;");
-    expect(hostModule("react-dom", [])).not.toContain("export const {");
+    expect(hostModule("react-dom", [])).not.toContain("export ");
     for (const rt of ["react/jsx-runtime", "react/jsx-dev-runtime"])
       expect(hostModule(rt, [])).toContain("export const jsxDEV");
   });
@@ -103,6 +103,17 @@ describe("the widget build", () => {
     expect(allowOrigin("https://evil.example")).toBe("https://lianki.com");
     expect(allowOrigin("garbage")).toBe("https://lianki.com");
     expect(allowOrigin(null)).toBe("https://lianki.com");
+    // LIANKI_DEV_ORIGINS: exact https origins only.
+    const dev = devOrigins(
+      " https://dev.example.ts.net:8443 , http://plain.example, junk,https://b.example/x",
+    );
+    expect(dev).toEqual(["https://dev.example.ts.net:8443", "https://b.example"]);
+    expect(allowOrigin("https://dev.example.ts.net:8443", dev)).toBe(
+      "https://dev.example.ts.net:8443",
+    );
+    expect(allowOrigin("https://dev.example.ts.net:9443", dev)).toBe("https://lianki.com");
+    expect(allowOrigin("https://evil.example", dev)).toBe("https://lianki.com");
+    expect(devOrigins(undefined)).toEqual([]);
     expect(sse("reload", "r1")).toBe("event: reload\ndata: r1\n\n");
   });
 
@@ -116,6 +127,9 @@ describe("the widget build", () => {
     expect(b.css).toContain(".animate-spin");
     expect(b.inputs.some((p) => p.endsWith("packages/debug-chat/src/DebugChat.tsx"))).toBe(true);
     expect((await buildWidget()).rev).toBe(b.rev);
+    // The bundle parses: two modules' top-level names once collided in it
+    // ("css" declared twice), and the hot widget silently fell back.
+    expect(() => new Bun.Transpiler({ loader: "js" }).scan(b.code)).not.toThrow();
   }, 30_000);
 
   it("splits a stylesheet into its top-level blocks", () => {

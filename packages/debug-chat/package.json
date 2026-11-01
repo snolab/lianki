@@ -1,9 +1,10 @@
 {
   "name": "@lianki/debug-chat",
   "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "description": "The debug chat widget: chat box, pill, menu, pairing modal, mic, hot-load host. No imports from the app; Lianki passes what it needs as props.",
+  "peerDependencies": {
+    "react": "*",
+    "react-dom": "*"
+  },
   "exports": {
     "./Avatar": "./src/Avatar.tsx",
     "./avatar-rules": "./src/avatar-rules.ts",
@@ -21,24 +22,42 @@
     "./latency": "./src/latency.ts",
     "./mic": "./src/mic.ts",
     "./node-path": "./src/node-path.ts",
+    "./page-errors": "./src/page-errors.ts",
     "./tap-gesture": "./src/tap-gesture.ts",
     "./wire": "./src/wire.ts",
     "./voice": "./src/voice.ts",
+    "./quiet-hours": "./src/quiet-hours.ts",
+    "./wake": "./src/wake.ts",
+    "./wake-kws": "./src/wake-kws.ts",
     "./voice-out": "./src/voice-out.ts",
     "./echo": "./src/echo.ts",
     "./storage-keys": "./src/storage-keys.ts",
+    "./stt-hint": "./src/stt-hint.ts",
     "./anchor": "./src/anchor.ts",
     "./detent": "./src/detent.ts",
+    "./keyboard-lift": "./src/keyboard-lift.ts",
+    "./joystick": "./src/joystick.ts",
+    "./island-bus": "./src/island-bus.ts",
+    "./read-progress": "./src/read-progress.ts",
+    "./voice-tune": "./src/voice-tune.ts",
+    "./ask": "./src/ask.ts",
+    "./clips": "./src/clips.ts",
+    "./clips-store": "./src/clips-store.ts",
+    "./ClipsBadge": "./src/ClipsBadge.tsx",
     "./float-lines": "./src/float-lines.ts",
     "./frontier-view": "./src/frontier-view.ts",
     "./log-surface": "./src/log-surface.ts",
     "./mic-session": "./src/mic-session.ts",
     "./speech-rate": "./src/speech-rate.ts",
     "./tree-source": "./src/tree-source.ts",
-    "./tree-nav": "./src/tree-nav.ts"
+    "./tree-nav": "./src/tree-nav.ts",
+    "./tree-keep": "./src/tree-keep.ts",
+    "./ui-store": "./src/ui-store.ts"
   },
-  "peerDependencies": {
-    "react": "*",
-    "react-dom": "*"
+  "description": "The debug chat widget: chat box, pill, menu, pairing modal, mic, hot-load host. No imports from the app; Lianki passes what it needs as props.",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@lianki/ui-state": "workspace:*"
   }
 }

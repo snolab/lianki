@@ -88,6 +88,9 @@
     "packages/debug-chat": {
       "name": "@lianki/debug-chat",
       "version": "0.0.0",
+      "dependencies": {
+        "@lianki/ui-state": "workspace:*",
+      },
       "peerDependencies": {
         "react": "*",
         "react-dom": "*",
