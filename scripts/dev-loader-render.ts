@@ -18,6 +18,59 @@ export function isPublicRequest(h: Headers): boolean {
   return h.has("cf-connecting-ip") || h.has("cf-ray") || h.has("x-forwarded-for");
 }
 
+/** A client id as the loader makes it (letters, digits, `_`, `-`; ≤ 40); anything else is "". */
+export function cleanClientId(id: string | null | undefined): string {
+  return typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id) ? id : "";
+}
+
+/**
+ * A request body read up to `max` bytes while it streams: null as soon as it
+ * goes over (or its content-length says it will), never buffering more.
+ */
+export async function readCapped(req: Request, max: number): Promise<string | null> {
+  const declared = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > max) return null;
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    parts.push(value);
+  }
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const p of parts) {
+    all.set(p, at);
+    at += p.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+
+/**
+ * Keep the client table bounded: drop clients unseen for `ttlMs`, then the
+ * least recently seen beyond `max`. Mutates and returns the map.
+ */
+export function pruneClients<C extends { last: number }>(
+  clients: Map<string, C>,
+  now: number,
+  max: number,
+  ttlMs: number,
+): Map<string, C> {
+  for (const [id, c] of clients) if (now - c.last > ttlMs) clients.delete(id);
+  if (clients.size > max) {
+    const oldest = [...clients].sort((a, b) => a[1].last - b[1].last);
+    for (const [id] of oldest.slice(0, clients.size - max)) clients.delete(id);
+  }
+  return clients;
+}
+
 /** Printable, one line per field: control characters (terminal escapes) go. */
 const printable = (s: unknown, max: number) =>
   String(s ?? "")

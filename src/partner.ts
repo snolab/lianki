@@ -15,7 +15,8 @@
  * The ticket is fetched with GM_xmlhttpRequest (cross-origin, the lianki.com
  * session or lk:token) and goes straight into the socket's subprotocol list.
  */
-import { type Blocker, isolatedWorld, partnerWanted } from "../packages/debug-chat/src/embed/guard";
+import { blockerText, isolatedWorld, partnerWanted } from "../packages/debug-chat/src/embed/guard";
+import { EMBED_NAME, EMBED_STRINGS, embedLang } from "../packages/debug-chat/src/ui-strings";
 
 /** GM keys, under the userscript's own namespace (not the app's `lk:` cards). */
 export const PARTNER_ON_KEY = "lianki_partner_on";
@@ -81,6 +82,17 @@ export async function startPartner(d: PartnerHostDeps): Promise<() => void> {
     top: d.top ?? window.self === window.top,
   });
   if (!wanted) return NOOP;
+  // In the page's own realm, the page could replace eval, WebSocket or any
+  // global we touch: no ticket is asked for, nothing is evaluated, and no
+  // callback is handed out. Only the note, drawn by this (trusted) code.
+  const isolated = isolatedWorld(
+    d.info as Parameters<typeof isolatedWorld>[0],
+    d.pageWindow as { Object?: unknown } | undefined,
+  );
+  d.report("partner-mode", `${isolated ? "isolated" : "page-realm"} ${host}`);
+  const hideHere = () =>
+    d.setValue(PARTNER_HIDDEN_KEY, JSON.stringify([...new Set([...hidden, host])]));
+  if (!isolated) return pageRealmNote(d.doc ?? document, d.origin, hideHere);
   // Owner only: the ticket route answers 404 to anyone else. Asked once up
   // front, so nothing is downloaded or drawn for a non-owner.
   const ticket = async (): Promise<string | null> => {
@@ -106,13 +118,6 @@ export async function startPartner(d: PartnerHostDeps): Promise<() => void> {
     spare = null;
     return s && Date.now() - s.at < 30_000 ? s.t : ticket();
   };
-
-  const isolated = isolatedWorld(
-    d.info as Parameters<typeof isolatedWorld>[0],
-    d.pageWindow as { Object?: unknown } | undefined,
-  );
-  const blocked: Blocker | undefined = isolated ? undefined : "pageRealm";
-  d.report("partner-mode", `${isolated ? "isolated" : "page-realm"} ${host}`);
 
   let code: string;
   try {
@@ -154,10 +159,9 @@ export async function startPartner(d: PartnerHostDeps): Promise<() => void> {
       appOrigin: d.origin,
       ticket: nextTicket,
       WebSocket: d.WebSocket ?? WebSocket,
-      blocked,
       report: d.report,
       hide: () => {
-        d.setValue(PARTNER_HIDDEN_KEY, JSON.stringify([...new Set([...hidden, host])]));
+        hideHere();
         mounted?.destroy();
         mounted = null;
       },
@@ -169,4 +173,83 @@ export async function startPartner(d: PartnerHostDeps): Promise<() => void> {
     mounted?.destroy();
     mounted = null;
   };
+}
+
+/** Set CSS through the CSSOM (no stylesheet, so no CSP question), each `!important`. */
+const styleAll = (el: HTMLElement, css: [string, string][]) => {
+  for (const [k, v] of css) el.style.setProperty(k, v, "important");
+};
+
+/**
+ * The page-realm note, from trusted userscript code only: plain DOM in a
+ * closed shadow root on a div, styled through the CSSOM, with nothing secret
+ * in it and no callback handed to any code but our own click listener (which
+ * only hides it on this site).
+ */
+export function pageRealmNote(doc: Document, origin: string, hideHere: () => void): () => void {
+  const lang = embedLang();
+  const t = EMBED_STRINGS[lang];
+  const host = doc.createElement("div");
+  styleAll(host, [
+    ["all", "initial"],
+    ["display", "block"],
+    ["position", "fixed"],
+    ["right", "8px"],
+    ["bottom", "8px"],
+    ["z-index", "2147483647"],
+  ]);
+  const root = host.attachShadow({ mode: "closed" });
+  const box = doc.createElement("div");
+  box.setAttribute("role", "status");
+  styleAll(box, [
+    ["all", "initial"],
+    ["display", "flex"],
+    ["gap", "8px"],
+    ["align-items", "flex-start"],
+    ["max-width", "min(320px, calc(100vw - 16px))"],
+    ["padding", "10px 12px"],
+    ["border-radius", "12px"],
+    ["background", "oklch(0.97 0.01 82 / 0.92)"],
+    ["color", "oklch(0.25 0.02 65)"],
+    ["border", "1px solid oklch(0.25 0.02 65 / 0.15)"],
+    ["font", "13px/18px system-ui, sans-serif"],
+  ]);
+  const text = doc.createElement("div");
+  text.textContent = blockerText("pageRealm", t, EMBED_NAME[lang]);
+  const link = doc.createElement("a");
+  link.href = origin;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = t.openLianki;
+  styleAll(link, [
+    ["display", "block"],
+    ["margin-top", "4px"],
+    ["color", "oklch(0.45 0.12 250)"],
+    ["text-decoration", "underline"],
+  ]);
+  text.append(link);
+  const close = doc.createElement("button");
+  close.type = "button";
+  close.textContent = "×";
+  close.setAttribute("aria-label", t.hideHere);
+  close.title = t.hideHere;
+  styleAll(close, [
+    ["all", "initial"],
+    ["width", "40px"],
+    ["height", "40px"],
+    ["margin", "-10px -8px -10px 0"],
+    ["font", "18px/40px system-ui, sans-serif"],
+    ["text-align", "center"],
+    ["cursor", "pointer"],
+    ["color", "oklch(0.25 0.02 65)"],
+  ]);
+  const remove = () => host.remove();
+  close.addEventListener("click", () => {
+    hideHere();
+    remove();
+  });
+  box.append(text, close);
+  root.append(box);
+  (doc.documentElement ?? doc.body).append(host);
+  return remove;
 }

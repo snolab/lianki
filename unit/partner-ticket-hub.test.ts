@@ -297,6 +297,38 @@ describe("DebugHub: an embedded page is chat-only", () => {
     expect((embed.last("chat") as { message: { id: string } }).message.id).toBe("e1");
   });
 
+  it("a raw ticket client never sees pairings, sessions, pages, nodes or ids, in any state", async () => {
+    const { hub, sockets, embedReq, ownerPage, msg } = setup();
+    const owner = await ownerPage();
+    await hub.fetch(embedReq());
+    const embed = sockets.at(-1)!;
+    // A listener at a node, a pending pairing, then an approved eval session: all broadcast.
+    await hub.fetch(
+      new Request("https://lianki.com/api/version/debug/control?label=secret-agent&node=/words"),
+    );
+    const ctl = sockets.at(-1)!;
+    const pair = (owner.last("state") as { pending: { pair: string } }).pending.pair;
+    await msg(owner, { type: "allow", pair });
+    await hub.fetch(new Request("https://lianki.com/api/version/debug/control?label=second"));
+    expect(ctl.last("approved")).toBeTruthy();
+    // The owner's page does see them (the control for this test).
+    expect(owner.sent.some((m) => m.type === "state" && (m.sessions as unknown[]).length > 0)).toBe(
+      true,
+    );
+    const states = embed.sent.filter((m) => m.type === "state");
+    expect(states.length).toBeGreaterThan(2);
+    for (const s of states)
+      expect(Object.keys(s).sort()).toEqual(["listeners", "pending", "sessions", "type"]);
+    for (const s of states) {
+      expect(s.pending).toBeNull();
+      expect(s.sessions).toEqual([]);
+    }
+    const raw = JSON.stringify(embed.sent);
+    for (const leak of ["secret-agent", "/words", pair, '"pages"', '"self"', '"pending":{'])
+      expect(raw).not.toContain(leak);
+    expect(embed.sent.some((m) => m.type === "pending" || m.type === "eval")).toBe(false);
+  });
+
   it("is never listed, never sent eval, and its pairing answers, taps and errors are ignored", async () => {
     const { hub, sockets, embedReq, ownerPage, msg } = setup();
     const owner = await ownerPage();

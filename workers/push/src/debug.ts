@@ -361,6 +361,16 @@ function clipsParse<R>(raw: unknown, f: (m: Record<string, unknown>) => R | null
     return null;
   }
 }
+/**
+ * The state one page is sent. An embedded page (a ticket socket on another
+ * site) gets the listener count only: never a pairing, a session, a grant,
+ * the page list (labels, ids) or the nodes, and no `self`.
+ */
+function pageState(a: PageAtt, s: HubState): HubState & { self?: string } {
+  if (a.embed) return { type: "state", pending: null, sessions: [], listeners: s.listeners ?? 0 };
+  return { ...s, self: a.id };
+}
+
 /** Whose a socket is: a page's thread, or the audience a controller was paired for. */
 const audience = (a: Att) => (a.role === "page" ? a.thread : (a.forUser ?? OWNER_THREAD));
 
@@ -514,7 +524,7 @@ export class DebugHub {
     for (const { ws, a } of this.sockets("page", except)) {
       let s = by.get(a.thread);
       if (!s) by.set(a.thread, (s = this.state(a.thread, except)));
-      send(ws, { ...s, self: a.id });
+      send(ws, pageState(a, s));
     }
   }
 
@@ -910,7 +920,7 @@ export class DebugHub {
     // A granted page is back: its pairings' grace clock stops at once.
     this.sweep();
     // Everyone sees the new page in their list; this one gets its state first.
-    send(ws, { ...this.state(thread), self: id });
+    send(ws, pageState(att(ws) as PageAtt, this.state(thread)));
     send(ws, { type: "history", messages: await this.history(thread) });
     this.broadcast(ws);
     // First page since the hub woke: list the sleeping eval grants too.

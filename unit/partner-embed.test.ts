@@ -37,9 +37,16 @@ import {
   NOOP,
   PARTNER_ON_KEY,
   mirrorPartnerSwitch,
+  pageRealmNote,
   startPartner,
 } from "@/src/partner";
-import { cleanErrorReport, isPublicRequest } from "@/scripts/dev-loader-render";
+import {
+  cleanClientId,
+  cleanErrorReport,
+  isPublicRequest,
+  pruneClients,
+  readCapped,
+} from "@/scripts/dev-loader-render";
 import {
   PROLOGUE,
   SHADOWED,
@@ -94,6 +101,10 @@ class FakeEl extends FakeTarget {
   }
   remove() {
     if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this);
+  }
+  attrs = new Map<string, string>();
+  setAttribute(k: string, v: string) {
+    this.attrs.set(k, v);
   }
   attachShadow(o: { mode: string }) {
     this.shadowMode = o.mode;
@@ -240,6 +251,7 @@ describe("createShadowHost", () => {
     const host = h.host as unknown as FakeEl;
     expect(d.documentElement.children).toEqual([host]);
     expect(host.tag).toBe(HOST_TAG);
+    expect(HOST_TAG).toBe("div"); // never a custom tag a page could predefine
     expect(host.shadowMode).toBe("closed");
     expect(h.styles).toBe("adopted");
     const sheets = (h.root as unknown as FakeRoot).adoptedStyleSheets as FakeSheet[];
@@ -686,7 +698,7 @@ describe("the userscript's side (src/partner.ts)", () => {
         throw new Error("Network error");
       },
     });
-    expect(h.reports).toEqual([]);
+    expect(h.reports).toEqual(["partner-mode isolated github.com"]); // and nothing loaded
   });
 
   it("not the owner (no ticket): downloads nothing", async () => {
@@ -722,11 +734,47 @@ describe("the userscript's side (src/partner.ts)", () => {
     stop();
   });
 
-  it("in the page's own realm: mounts only the note (pageRealm)", async () => {
+  it("in the page's own realm: no ticket, no download, no eval, no callbacks; only our own note", async () => {
+    const g = globalThis as { __partnerTest?: unknown; eval: typeof eval };
+    g.__partnerTest = undefined;
+    const realEval = g.eval;
+    let evals = 0;
+    g.eval = ((c: string) => (evals++, realEval(c))) as typeof eval;
     const h = hostDeps({ code: FAKE_BUNDLE, pageWindow: { Object } });
-    await startPartner(h.deps);
-    expect(seen().o.blocked).toBe("pageRealm");
-    expect(h.reports[0]).toBe("partner-mode page-realm github.com");
+    const d = new FakeDoc();
+    try {
+      const stop = await startPartner({ ...h.deps, doc: asDoc(d) });
+      expect(h.calls).toEqual([]); // not even the ticket
+      expect(evals).toBe(0);
+      expect(g.__partnerTest).toBeUndefined();
+      expect(h.reports).toEqual(["partner-mode page-realm github.com"]);
+      // The note: a plain div with a closed root, holding text, a link and ×.
+      const host = d.documentElement.children[0];
+      expect(host.tag).toBe("div");
+      expect(host.shadowMode).toBe("closed");
+      const box = host.shadow!.children[0];
+      const [text, close] = box.children;
+      expect(text.textContent).toContain(EMBED_NAME.en);
+      expect(text.children[0].tag).toBe("a");
+      expect(close.tag).toBe("button");
+      close.fire("click");
+      expect(JSON.parse(String(h.store.get(PARTNER_HIDDEN_KEY)))).toEqual(["github.com"]);
+      expect(d.documentElement.children).toEqual([]);
+      stop();
+    } finally {
+      g.eval = realEval;
+    }
+  });
+
+  it("the page-realm note is drawn into <body> when there is no documentElement", () => {
+    const d = new FakeDoc();
+    const body = new FakeEl("body", d);
+    (d as unknown as { documentElement: null; body: FakeEl }).documentElement = null;
+    (d as unknown as { body: FakeEl }).body = body;
+    const remove = pageRealmNote(asDoc(d), "https://lianki.com", () => {});
+    expect(body.children.length).toBe(1);
+    remove();
+    expect(body.children.length).toBe(0);
   });
 
   it("reports a failed download, a refused eval or a broken mount, and never throws", async () => {
@@ -748,6 +796,40 @@ describe("the userscript's side (src/partner.ts)", () => {
 // ── the dev loader server (public: bounded, cleaned) ─────────────────────────
 
 describe("dev loader server: what the public tunnel may see and send", () => {
+  it("accepts only loader-shaped client ids", () => {
+    expect(cleanClientId("abc_DEF-123")).toBe("abc_DEF-123");
+    for (const bad of ["", "a".repeat(41), "id\u001b[2J", "a b", "../x", null, undefined])
+      expect(cleanClientId(bad as string)).toBe("");
+  });
+
+  it("reads an /error body only up to the cap, while it streams", async () => {
+    const post = (body: BodyInit | null, headers: Record<string, string> = {}) =>
+      new Request("http://x/error", { method: "POST", body, headers });
+    expect(await readCapped(post("hello"), 8)).toBe("hello");
+    expect(await readCapped(post(null), 8)).toBe("");
+    expect(await readCapped(post("x".repeat(9)), 8)).toBeNull();
+    expect(await readCapped(post("x", { "content-length": "99999" }), 8)).toBeNull();
+    // A stream that never ends is cut at the cap, not read to the end.
+    let pulled = 0;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulled++;
+        c.enqueue(new Uint8Array(1024));
+      },
+    });
+    expect(await readCapped(post(endless), 8192)).toBeNull();
+    expect(pulled).toBeLessThan(20);
+  });
+
+  it("keeps the client table bounded and forgets old clients", () => {
+    const m = new Map<string, { last: number }>();
+    for (let i = 0; i < 10; i++) m.set(`c${i}`, { last: i * 1000 });
+    pruneClients(m, 10_000, 5, 7_500);
+    expect([...m.keys()]).toEqual(["c5", "c6", "c7", "c8", "c9"]);
+    pruneClients(m, 10_000, 3, 1e9);
+    expect([...m.keys()]).toEqual(["c7", "c8", "c9"]);
+  });
+
   it("tells tunnel requests from local ones", () => {
     expect(isPublicRequest(new Headers({ "cf-connecting-ip": "1.2.3.4" }))).toBe(true);
     expect(isPublicRequest(new Headers({ "cf-ray": "x" }))).toBe(true);

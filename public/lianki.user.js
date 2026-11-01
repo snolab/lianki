@@ -8,7 +8,7 @@
 // @grant       GM_deleteValue
 // @grant       GM_info
 // @grant       unsafeWindow
-// @version     2.24.21
+// @version     2.24.22
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1662,8 +1662,59 @@
     const sandbox = String(info?.sandboxMode ?? "").toLowerCase();
     return sandbox === "dom";
   }
+  function blockerText(b, strings, name) {
+    return strings[b].replaceAll("{name}", name);
+  }
   function partnerWanted(o) {
     return o.top && o.enabled && !o.hiddenHosts.includes(o.host);
+  }
+
+  // packages/debug-chat/src/ui-strings.ts
+  function isZh(lang = globalThis.document?.documentElement.lang) {
+    return /^zh\b/i.test(lang ?? "");
+  }
+  function isJa(lang = globalThis.document?.documentElement.lang) {
+    return /^ja\b/i.test(lang ?? "");
+  }
+  var EMBED_STRINGS = {
+    en: {
+      pageRealm:
+        "Your {name} is off on this site: your userscript manager runs Lianki inside the page, where the site's own scripts could read the chat.",
+      connect: "This site's security policy blocks the connection to your {name}.",
+      styles: "This site's security policy blocks your {name}'s styles.",
+      script: "This site's security policy blocks your {name}'s code.",
+      load: "Your {name} could not load on this page.",
+      openLianki: "Open on lianki.com",
+      hideHere: "Hide on this site",
+    },
+    zh: {
+      pageRealm:
+        "{name}在本网站已关闭：你的脚本管理器把 Lianki 运行在网页自身的环境里，网站的脚本可能读到聊天内容。",
+      connect: "本网站的安全策略阻止了与{name}的连接。",
+      styles: "本网站的安全策略阻止了{name}的样式。",
+      script: "本网站的安全策略阻止了{name}的代码运行。",
+      load: "{name}在此页面加载失败。",
+      openLianki: "在 lianki.com 打开",
+      hideHere: "在本网站隐藏",
+    },
+    ja: {
+      pageRealm:
+        "このサイトでは{name}をオフにしています。スクリプトマネージャーが Lianki をページ内で実行しており、サイトのスクリプトにチャットを読まれるおそれがあります。",
+      connect: "このサイトのセキュリティポリシーにより、{name}に接続できません。",
+      styles: "このサイトのセキュリティポリシーにより、{name}のスタイルが読み込めません。",
+      script: "このサイトのセキュリティポリシーにより、{name}のコードを実行できません。",
+      load: "このページでは{name}を読み込めませんでした。",
+      openLianki: "lianki.com で開く",
+      hideHere: "このサイトでは非表示",
+    },
+  };
+  var EMBED_NAME = {
+    en: "Learning Partner",
+    zh: "学习伙伴",
+    ja: "学習パートナー",
+  };
+  function embedLang(lang = globalThis.navigator?.language) {
+    return isZh(lang) ? "zh" : isJa(lang) ? "ja" : "en";
   }
 
   // src/partner.ts
@@ -1694,6 +1745,11 @@
       top: d.top ?? window.self === window.top,
     });
     if (!wanted) return NOOP;
+    const isolated = isolatedWorld(d.info, d.pageWindow);
+    d.report("partner-mode", `${isolated ? "isolated" : "page-realm"} ${host}`);
+    const hideHere = () =>
+      d.setValue(PARTNER_HIDDEN_KEY, JSON.stringify([...new Set([...hidden, host])]));
+    if (!isolated) return pageRealmNote(d.doc ?? document, d.origin, hideHere);
     const ticket = async () => {
       try {
         const r = await d.gmFetch(`${d.origin}/api/debug/partner-ticket`, {
@@ -1716,9 +1772,6 @@
       spare = null;
       return s && Date.now() - s.at < 30000 ? s.t : ticket();
     };
-    const isolated = isolatedWorld(d.info, d.pageWindow);
-    const blocked = isolated ? undefined : "pageRealm";
-    d.report("partner-mode", `${isolated ? "isolated" : "page-realm"} ${host}`);
     let code;
     try {
       const r = await d.gmFetch(d.src);
@@ -1753,10 +1806,9 @@
         appOrigin: d.origin,
         ticket: nextTicket,
         WebSocket: d.WebSocket ?? WebSocket,
-        blocked,
         report: d.report,
         hide: () => {
-          d.setValue(PARTNER_HIDDEN_KEY, JSON.stringify([...new Set([...hidden, host])]));
+          hideHere();
           mounted?.destroy();
           mounted = null;
         },
@@ -1768,6 +1820,76 @@
       mounted?.destroy();
       mounted = null;
     };
+  }
+  var styleAll = (el, css) => {
+    for (const [k, v] of css) el.style.setProperty(k, v, "important");
+  };
+  function pageRealmNote(doc, origin, hideHere) {
+    const lang = embedLang();
+    const t = EMBED_STRINGS[lang];
+    const host = doc.createElement("div");
+    styleAll(host, [
+      ["all", "initial"],
+      ["display", "block"],
+      ["position", "fixed"],
+      ["right", "8px"],
+      ["bottom", "8px"],
+      ["z-index", "2147483647"],
+    ]);
+    const root = host.attachShadow({ mode: "closed" });
+    const box = doc.createElement("div");
+    box.setAttribute("role", "status");
+    styleAll(box, [
+      ["all", "initial"],
+      ["display", "flex"],
+      ["gap", "8px"],
+      ["align-items", "flex-start"],
+      ["max-width", "min(320px, calc(100vw - 16px))"],
+      ["padding", "10px 12px"],
+      ["border-radius", "12px"],
+      ["background", "oklch(0.97 0.01 82 / 0.92)"],
+      ["color", "oklch(0.25 0.02 65)"],
+      ["border", "1px solid oklch(0.25 0.02 65 / 0.15)"],
+      ["font", "13px/18px system-ui, sans-serif"],
+    ]);
+    const text = doc.createElement("div");
+    text.textContent = blockerText("pageRealm", t, EMBED_NAME[lang]);
+    const link = doc.createElement("a");
+    link.href = origin;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = t.openLianki;
+    styleAll(link, [
+      ["display", "block"],
+      ["margin-top", "4px"],
+      ["color", "oklch(0.45 0.12 250)"],
+      ["text-decoration", "underline"],
+    ]);
+    text.append(link);
+    const close = doc.createElement("button");
+    close.type = "button";
+    close.textContent = "×";
+    close.setAttribute("aria-label", t.hideHere);
+    close.title = t.hideHere;
+    styleAll(close, [
+      ["all", "initial"],
+      ["width", "40px"],
+      ["height", "40px"],
+      ["margin", "-10px -8px -10px 0"],
+      ["font", "18px/40px system-ui, sans-serif"],
+      ["text-align", "center"],
+      ["cursor", "pointer"],
+      ["color", "oklch(0.25 0.02 65)"],
+    ]);
+    const remove = () => host.remove();
+    close.addEventListener("click", () => {
+      hideHere();
+      remove();
+    });
+    box.append(text, close);
+    root.append(box);
+    (doc.documentElement ?? doc.body).append(host);
+    return remove;
   }
 
   // src/lianki.user.ts

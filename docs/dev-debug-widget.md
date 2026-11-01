@@ -195,7 +195,7 @@ styles and key guard; `guard.ts` when it may run and why not;
 `scripts/build-partner-embed.ts` (the build), `scripts/qa/qa-partner-embed.ts`
 (`bun run qa:partner`, silent, against a hostile fixture page).
 
-**Isolation.** One `<lianki-partner>` element on `<html>`, its style set
+**Isolation.** One plain `<div>` on `<html>` (never a custom tag: a page could predefine one and take the root through attachInternals), its style set
 inline with `!important` through the CSSOM (beats `* { all: unset
 !important }`; CSP does not govern the CSSOM), and a **closed** shadow root.
 Inside: `:host { all: initial }`, a reset in `@layer base` (under Tailwind's
@@ -233,7 +233,16 @@ The split is strict: from https://lianki.com only the cookie counts; from any
 other origin only a ticket. A ticket socket is the owner's thread, **chat
 only**: the hub sends it no eval, lists it in no page list, never counts it
 for a grant, and drops everything it sends except `chat` and `page`
-(`unit/partner-ticket-hub.test.ts`). The label is host + path, never the query.
+(`unit/partner-ticket-hub.test.ts`). Its `state`, on connect and in every
+broadcast, is `{type, pending: null, sessions: [], listeners}` only: no
+pairing, session, grant, page label or id, node or `self` (`pageState` in
+`workers/push/src/debug.ts`). The label is host + path, never the query.
+
+**Keyboard privacy (open, owner to decide).** What he types in the chat on
+another site is not private from that site: its capture-phase listeners on
+document or window see each `KeyboardEvent.key`, and composed `input`
+events, before the shadow root's guard. Options under discussion: the input
+(or the whole chat) in a lianki.com iframe, or read-only on other sites.
 
 **Where it must not run.** `guard.ts` decides, and a small glass note says
 why instead of the chat (strings `EmbedStrings` in `ui-strings.ts`, by the
@@ -249,9 +258,16 @@ browser's language):
 
 Isolated means another realm (`unsafeWindow.Object !== Object`), or the
 manager saying so (Violentmonkey `injectInto: "content"`, Tampermonkey or
-ScriptCat `sandboxMode: "dom"`). If the script cannot even be evaluated (a
-page realm under a CSP without `'unsafe-eval'`), nothing is drawn and the
-error goes to the dev log. Never a broken page: every step catches.
+ScriptCat `sandboxMode: "dom"`). In the page's realm `startPartner` stops
+before anything privileged: no ticket is asked for, nothing is downloaded or
+evaluated, no callback is handed out (the page could replace `eval` and
+capture them). The `pageRealm` note there is drawn by the userscript's own
+code (`pageRealmNote` in `src/partner.ts`: plain DOM, CSSOM styles, a closed
+root on a div). Never a broken page: every step catches.
+
+**The host is a plain div**, never a custom tag: a page could define that tag
+first with a class calling `attachInternals()`, and `ElementInternals.shadowRoot`
+would hand it our closed root (`qa:partner` checks it, with a control).
 
 **Serving.** Production: `public/partner-embed.js`, built in
 `deploy-worker.yml` (gitignored). Dev: the userscript dev server

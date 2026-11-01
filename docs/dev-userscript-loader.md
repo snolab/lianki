@@ -57,9 +57,13 @@ strips comments and the output is identical.
 
 **The tunnel is public.** Everything above is code or a rev: no session, token
 or file from this machine. `/error` takes writes from anyone, so it only ever
-prints to this terminal: at most 60 a minute, fields bounded, control
-characters (terminal escapes) stripped, the page's query and fragment cut
-(`cleanErrorReport` in `scripts/dev-loader-render.ts`). Requests through the
+prints to this terminal: at most 60 a minute, the body cut off at 8 KB while
+it streams (413), fields bounded, control characters (terminal escapes)
+stripped, the page's query and fragment cut (`cleanErrorReport`,
+`readCapped` in `scripts/dev-loader-render.ts`). A client `id` must be
+`[A-Za-z0-9_-]{1,40}` or it is not tracked; the client table holds at most
+200, forgotten after a day unseen; at most 64 `/wait` polls park at once
+(the rest get 503 and the loader backs off), each for 30 s. Requests through the
 tunnel (`cf-connecting-ip`/`cf-ray`) get `/health` as `{rev, version}` only and
 no client list on `/`; the full status page is for localhost.
 

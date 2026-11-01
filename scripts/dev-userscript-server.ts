@@ -20,7 +20,14 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync, watch } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { buildPartner } from "./build-partner-embed";
-import { cleanErrorReport, isPublicRequest, renderLoader } from "./dev-loader-render";
+import {
+  cleanClientId,
+  cleanErrorReport,
+  isPublicRequest,
+  pruneClients,
+  readCapped,
+  renderLoader,
+} from "./dev-loader-render";
 
 const ROOT = resolve(dirname(Bun.fileURLToPath(import.meta.url)), "..");
 const ENTRY = resolve(ROOT, "src/lianki.user.ts");
@@ -133,13 +140,19 @@ type Client = {
   errors: number;
 };
 const clients = new Map<string, Client>();
+/** The table is public input: at most this many clients, forgotten after a day unseen. */
+const MAX_CLIENTS = 200;
+const CLIENT_TTL_MS = 24 * 60 * 60 * 1000;
 
-function touch(id: string, page = "") {
+function touch(raw: string, page = "") {
+  // Validated before it is a key or a log line: [A-Za-z0-9_-]{1,40}, else not tracked.
+  const id = cleanClientId(raw);
   if (!id) return;
   let c = clients.get(id);
   if (!c) {
     c = { id, first: Date.now(), last: 0, page, loads: 0, errors: 0 };
     clients.set(id, c);
+    pruneClients(clients, Date.now(), MAX_CLIENTS, CLIENT_TTL_MS);
     log(`client ${id} attached`);
   }
   c.last = Date.now();
@@ -151,6 +164,10 @@ function touch(id: string, page = "") {
 
 const waiters = new Set<(rev: string) => void>();
 const HOLD_MS = 30_000; // must stay under the loader's 35s request timeout
+/** Parked /wait requests at most; past it a poll gets 503 and the loader backs off. */
+const MAX_WAITERS = 64;
+/** /error bodies are cut off while streaming past this. */
+const ERROR_MAX_BYTES = 8192;
 
 function wake() {
   // Copy first: each callback deletes itself from the set as it resolves.
@@ -209,6 +226,7 @@ function startServer() {
       if (url.pathname === "/wait") {
         touch(id);
         if ((url.searchParams.get("rev") ?? "") !== rev) return text(rev);
+        if (waiters.size >= MAX_WAITERS) return new Response("busy", { status: 503 });
         // Park until the next changed build, then answer with the new rev. On
         // timeout answer with the CURRENT rev — the loader compares and re-polls.
         const parked = await new Promise<string>((resolvePoll) => {
@@ -229,8 +247,9 @@ function startServer() {
       // escapes) stripped, the page's query cut off, and a global rate cap.
       if (url.pathname === "/error" && req.method === "POST") {
         if (!errorBudget()) return text("ok");
-        const raw = (await req.text()).slice(0, 8192);
-        const r = cleanErrorReport(raw, id);
+        const raw = await readCapped(req, ERROR_MAX_BYTES);
+        if (raw === null) return new Response("too large", { status: 413 });
+        const r = cleanErrorReport(raw, cleanClientId(id));
         const c = touch(r.id);
         if (c) c.errors++;
         if (c && r.page) c.page = r.page;

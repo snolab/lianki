@@ -20,8 +20,14 @@
  *   the `<style>` fallback can be blocked; `attachStyles` reports that.
  */
 
-/** The host element's tag: a valid custom element name, so attachShadow works on it. */
-export const HOST_TAG = "lianki-partner";
+/**
+ * The host element's tag: a built-in `div`, never a custom element name. A
+ * page could define a custom tag first (customElements.define) with a class
+ * that calls attachInternals(); its ElementInternals.shadowRoot would then
+ * hand the page our closed root. A plain div created by us (no `is=`) can
+ * never be upgraded by page code.
+ */
+export const HOST_TAG = "div";
 
 /**
  * The widget's own font stack. `system-ui` (generic, unspoofable) first; the

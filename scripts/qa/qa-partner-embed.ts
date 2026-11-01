@@ -35,7 +35,7 @@ const HOSTILE_CSS = `
 * { all: unset !important; }
 html { font-size: 40px !important; }
 * { font-family: "Comic Sans MS", Papyrus, fantasy !important; color: oklch(0.6 0.25 330) !important; line-height: 3 !important; }
-lianki-partner { display: none !important; transform: scale(3) !important; }
+html > div { display: none !important; transform: scale(3) !important; }
 p { display: block !important; }
 `;
 
@@ -51,6 +51,14 @@ const page = (csp: string) => `<!doctype html><html lang="fr"><head><meta charse
   window.addEventListener("keypress", (e) => window.__pageKeys.push("press:" + e.key));
   window.addEventListener("keydown", (e) => window.__pageWindowCapture.push(e.key), true);
   window.__pageAlive = true;
+  // Squat every tag we might use: whoever upgrades one grabs its internals,
+  // whose shadowRoot is the closed root (P1 from the PR #403 review).
+  window.__stolen = [];
+  for (const tag of ["lianki-partner", "lianki-host", "lk-partner", "lianki-chat"]) {
+    customElements.define(tag, class extends HTMLElement {
+      constructor() { super(); window.__stolen.push(this.attachInternals()); }
+    });
+  }
 </script>
 ${csp ? `<p id="csp">${csp}</p>` : ""}
 </body></html>`;
@@ -161,7 +169,7 @@ try {
     );
     const inside = await p.evaluate(() => {
       const m = (window as unknown as { __m: { root: ShadowRoot } }).__m;
-      const host = document.querySelector("lianki-partner") as HTMLElement;
+      const host = m.root.host as HTMLElement;
       const input = m.root.querySelector('[data-testid="debug-chat-input"]') as HTMLElement;
       const container = m.root.querySelector(".lk-partner-root") as HTMLElement;
       const cs = getComputedStyle(input);
@@ -180,10 +188,27 @@ try {
         adopted: document.adoptedStyleSheets.length,
         ownFont: getComputedStyle(document.getElementById("own")!).fontFamily,
         hostAttrs: [...host.attributes].map((a) => a.name),
+        hostTag: host.localName,
+        stolenRoots: (window as unknown as { __stolen: ElementInternals[] }).__stolen.filter(
+          (i) => i.shadowRoot,
+        ).length,
+        stolen: (window as unknown as { __stolen: ElementInternals[] }).__stolen.length,
       };
     });
     const tag = `[${scheme}]`;
     check(inside.closed, `${tag} the shadow root is closed (host.shadowRoot is null)`);
+    check(
+      inside.hostTag === "div" && inside.stolen === 0 && inside.stolenRoots === 0,
+      `${tag} the host is a plain div: the page's predefined custom tags never upgrade it, no ElementInternals reach the root`,
+    );
+    // Control: the squat is a real attack on a custom-tag host (what the old code used).
+    const control = await p.evaluate(() => {
+      const el = document.createElement("lianki-partner");
+      el.attachShadow({ mode: "closed" }).append("secret");
+      const s = (window as unknown as { __stolen: ElementInternals[] }).__stolen;
+      return s.at(-1)?.shadowRoot?.textContent ?? null;
+    });
+    check(control === "secret", `${tag} control: a custom-tag host WOULD leak its closed root`);
     check(
       inside.hostDisplay === "block" && inside.hostTransform === "none",
       `${tag} the page's rules on the host lose to its inline !important`,
