@@ -138,3 +138,50 @@ Rotating kills every outstanding ticket at once (they live 60 s anyway).
 The cloudflared tunnel's own credentials (`~/.cloudflared/<uuid>.json`,
 `cert.pem`) are separate: mode 0600, on the Mac only, never committed;
 whoever holds the credentials file can run a connector for the tunnel.
+
+## CLI login (`lianki auth`, API tokens)
+
+`bun run lianki auth login` signs the command-line tool in to an account;
+`bun run lianki settings list | get <key> | set <key> <value>` then reads and
+writes that account's synced settings ([prefs-sync.md](prefs-sync.md)) through
+`/api/prefs`, checked against `lib/prefs/schema.ts` before anything is sent.
+Code: `scripts/dev/lianki-auth.ts` (commands), `scripts/dev/lianki-io.ts`
+(Keychain, browser), `lib/cli-login.ts` (server logic), `/cli-login` (page),
+`/api/cli-login/approve`, `/api/cli-login/token`, table `cli_login`
+(`db/migrations/0023_cli_login.sql`). No secret or Worker variable is involved.
+
+The browser flow (default), a loopback flow with a one-time code and PKCE:
+
+1. The CLI picks a random verifier, state and port, listens on
+   `127.0.0.1:<port>`, and opens
+   `/cli-login?redirect_uri=http://127.0.0.1:<port>/cb&state=…&code_challenge=…&code_challenge_method=S256&host=<hostname>`.
+2. The page needs a signed-in user (owner or anyone), checks every parameter
+   (the redirect only `http://127.0.0.1:<port>/cb` or `http://[::1]:<port>/cb`),
+   and shows what Approve creates: an API token named `lianki CLI <hostname>`
+   for that account, and where the code goes. Deny tells the CLI and creates
+   nothing.
+3. Approve (same-origin JSON, the page's request id and the state) turns the
+   request into a one-time code (60 s) and the page goes to
+   `http://127.0.0.1:<port>/cb?code=…&state=…`.
+4. The CLI checks the state, then POSTs the code, the verifier and the
+   redirect to `/api/cli-login/token` (10 per IP per 15 min) and gets the token
+   in the body.
+
+Paste mode: `lianki auth login --token -` reads a token made on the profile
+page from stdin (`--token lk_…` and `LIANKI_TOKEN=lk_…` work too, but leave
+it in the shell's history). `LIANKI_TOKEN`, when set, is used instead of the
+stored token; `LIANKI_URL` points the CLI at another site.
+
+Where the token lives: the macOS Keychain (service `lianki-cli`, account =
+the site's host), written through `security -i` on stdin; elsewhere, or if the
+Keychain refuses, `~/.config/lianki/cli.json` (0600, folder 0700), which
+otherwise holds only the account, the token's name and the CLI's device id.
+The CLI never prints the token. `lianki auth status` says who and whether the
+server still accepts it; `lianki auth logout` revokes it on the server
+(`DELETE /api/cli-login/token` with the token itself, which can delete only
+itself) and forgets it.
+
+Only `/api/prefs` accepts the token as `Authorization: Bearer` this way
+(`lib/api-token-user.ts`, D1 only; a bad token is 401, never a fall back to
+the cookie). The older `authEmailOrToken` routes are unchanged; note that its
+token lookup reads the Mongo copy, so on D1 it does not find new tokens.

@@ -228,6 +228,35 @@ tailnet"):
   `unit/local-stt-gate.test.ts`, `unit/stt-tunnel.test.ts`; `qa:api` checks a
   non-owner gets 404 from `/api/dev/stt-ticket`.
 
+## 8. The CLI login (`lianki auth login`)
+
+The command-line tool signs in through the browser and gets an API token
+(`lk_…`) — a long-lived credential, so the flow is built so that nothing
+else can catch it ([secrets-and-auth.md](secrets-and-auth.md), "CLI login"):
+
+- **The token is never in a URL.** The page sends only a one-time code to the
+  CLI's loopback listener; the CLI trades the code plus its PKCE verifier
+  (S256) for the token in a response body. A code works once (consumed in one
+  `UPDATE` before anything else is checked, so a wrong verifier burns it),
+  for 60 s, and only with the verifier whose challenge started the request.
+- **Loopback only.** The redirect must be exactly `http://127.0.0.1:<port>/cb`
+  or `http://[::1]:<port>/cb` (port 1–65535, digits only), matched as a whole
+  string and rebuilt from its parts: no `localhost`, `0.0.0.0`, other IPv6
+  spellings, userinfo, path, query or fragment. A bad parameter shows an
+  error, never a redirect.
+- **The user sees what is created** (token name `lianki CLI <hostname>`, the
+  account, the loopback address) and approves it. The Approve POST must be
+  same-origin JSON and carry the page's random request id (stored hashed,
+  10 minutes, bound to the session's user) and the state.
+- **Narrow reach.** Only `/api/prefs` takes the token as `Authorization:
+  Bearer` for a user's data (`lib/api-token-user.ts`; a test fails if any
+  other route imports it); a bad token is 401 with no fall back to the cookie.
+  `DELETE /api/cli-login/token` lets a token revoke itself and nothing else.
+- **Limits.** The exchange: 10 per IP per 15 minutes (`auth_throttle`).
+- **On the Mac**: the macOS Keychain, written through `security -i` on stdin
+  (never in a process list), else a 0600 file; the CLI never prints it.
+- Tests: `unit/cli-login.test.ts`, `unit/lianki-auth.test.ts`.
+
 ## Owner checklist
 
 Things this repo cannot do by itself:

@@ -8,6 +8,7 @@ export const LOCALE_PICK_KEY = "lk:ui-locale";
 
 export const APP_ROUTES = [
   "add-note",
+  "cli-login",
   "ai-vocab",
   "alphabet",
   "contact",

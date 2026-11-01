@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /**
- * The lianki CLI. For now one command: `serve`, a macOS background service
+ * The lianki CLI. `auth` and `settings` sign in to your account and manage its
+ * synced settings (scripts/dev/lianki-auth.ts). `serve` is a macOS background service
  * (launchd LaunchAgent `com.lianki.chat-listener`) that keeps the owner-chat
  * listener running, so chat messages are recorded whenever the chat is open
  * (docs/monitoring.md, "Chat with the agent").
@@ -24,12 +25,14 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { AUTH_USAGE, authMain } from "./lianki-auth";
 
 export const SERVICE_LABEL = "com.lianki.chat-listener";
 export const DEFAULT_CHAT_LABEL = "chat lane (fast)";
 export const DEFAULT_OUT = "/tmp/lianki-chat-fast.jsonl";
 
-const USAGE = `usage: lianki serve <install|start|stop|restart|status|uninstall> [--label "${DEFAULT_CHAT_LABEL}"] [--out ${DEFAULT_OUT}]`;
+const USAGE = `usage: lianki serve <install|start|stop|restart|status|uninstall> [--label "${DEFAULT_CHAT_LABEL}"] [--out ${DEFAULT_OUT}]
+       ${AUTH_USAGE.replace(/^usage: /, "")}`;
 
 const xml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -95,11 +98,12 @@ const launchctl = (...a: string[]) => {
   return { ok: r.exitCode === 0, out: `${r.stdout}${r.stderr}`.trim() };
 };
 
-function main(argv: string[]): number {
+function main(argv: string[]): number | Promise<number> {
   if (argv.includes("--help") || argv.includes("-h") || argv.length === 0) {
     console.log(USAGE);
     return argv.length === 0 ? 2 : 0;
   }
+  if (argv[0] === "auth" || argv[0] === "settings") return authMain(argv);
   const { values, positionals } = parseArgs({
     args: argv,
     allowPositionals: true,
@@ -206,4 +210,4 @@ function main(argv: string[]): number {
   }
 }
 
-if (import.meta.main) process.exit(main(process.argv.slice(2)));
+if (import.meta.main) process.exit(await main(process.argv.slice(2)));
