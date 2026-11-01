@@ -39,7 +39,7 @@ export function HotkeyHelp() {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-4 w-64">
+    <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-[calc(1rem+env(safe-area-inset-right))] z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-4 w-64">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-sm">Keyboard Shortcuts</h3>
         <button

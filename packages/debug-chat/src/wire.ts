@@ -399,6 +399,10 @@ export type ChatStrings = {
   clipsStart: string;
   /** Menu switch: a tap on clipsStart also sets an auto-stop; `{n}` = minutes. */
   clipsAutoStop: string;
+  /** Menu switch: compact mode (compact-view.ts), this device only. */
+  compactIdle: string;
+  /** The compact line's tooltip and screen-reader hint: a tap shows the whole chat. */
+  compactShowAll: string;
 };
 
 export const CHAT_STRINGS_EN: ChatStrings = {
@@ -424,6 +428,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   clipsSaveFailed: "Saving failed",
   clipsStart: "Record voice clips",
   clipsAutoStop: "Auto-stop after {n} min",
+  compactIdle: "Only the last message while not typing",
+  compactShowAll: "Show the whole chat",
 };
 
 /** Defaults filled in and `{name}` substituted. */

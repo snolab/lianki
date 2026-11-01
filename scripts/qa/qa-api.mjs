@@ -93,6 +93,34 @@ for (const [method, path] of [
   const r = await call(method, path, method === "POST" ? {} : undefined);
   rec(`SEC   non-owner ${method} ${path} → 404`, r.status === 404, `HTTP ${r.status}`);
 }
+// Live view (docs/live-view.md): the pointer is the owner's only, and only the
+// dev key can write it — an unsigned or foreign-signed one is refused.
+for (const method of ["GET", "DELETE"]) {
+  const r = await call(method, "/api/live-view");
+  rec(`SEC   non-owner ${method} /api/live-view → 404`, r.status === 404, `HTTP ${r.status}`);
+}
+{
+  const r = await call("POST", "/api/live-view", { token: "not-a-signed-pointer" });
+  rec("SEC   malformed live-view pointer → 400", r.status === 400, `HTTP ${r.status}`);
+  const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+  const b64 = (b) => Buffer.from(b).toString("base64url");
+  const t = Math.floor(Date.now() / 1000);
+  const body = b64(
+    JSON.stringify({
+      aud: "lianki-live-view",
+      op: "on",
+      serial: Date.now(),
+      iat: t,
+      exp: t + 600,
+      widget: "https://evil.example-tailnet.ts.net/debug-chat.js",
+      branch: "qa",
+      sha: "abcdef0",
+    }),
+  );
+  const sig = await crypto.subtle.sign({ name: "Ed25519" }, pair.privateKey, Buffer.from(body));
+  const w = await call("POST", "/api/live-view", { token: `${body}.${b64(sig)}` });
+  rec("SEC   live-view pointer signed by another key → 401", w.status === 401, `HTTP ${w.status}`);
+}
 // Uploads: only the one format each import reads.
 for (const [name, bytes, label] of [
   ["notes.txt", "hello", "a .txt"],

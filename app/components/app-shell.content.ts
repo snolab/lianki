@@ -1,4 +1,5 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys } from "@/lib/i18n-context";
 
 /**
  * Labels for the app-shell sidebar. Only what `landing-page.nav` does not
@@ -7,7 +8,7 @@ import { t, type DeclarationContent } from "intlayer";
  * `nav.profile` / `nav.preferences` / `nav.membership` / `nav.signOut`, none of
  * which were ever declared, so those links rendered with empty labels.)
  */
-const appShellContent = {
+const dictionary = {
   key: "app-shell",
   content: {
     nav: {
@@ -66,22 +67,22 @@ const appShellContent = {
         ko: "복습",
       }),
       cards: t({
-        en: "Lianki cards",
-        zh: "Lianki 卡片",
-        hi: "Lianki कार्ड",
-        es: "Tarjetas Lianki",
-        fr: "Cartes Lianki",
-        ar: "بطاقات Lianki",
-        bn: "Lianki কার্ড",
-        pt: "Cartões Lianki",
-        ru: "Карточки Lianki",
-        ur: "Lianki کارڈز",
-        id: "Kartu Lianki",
-        de: "Lianki-Karten",
-        ja: "Lianki カード",
-        sw: "Kadi za Lianki",
-        mr: "Lianki कार्ड",
-        ko: "Lianki 카드",
+        en: "My LiCards",
+        zh: "我的链卡",
+        hi: "मेरे LiCards",
+        es: "Mis LiCards",
+        fr: "Mes LiCards",
+        ar: "LiCards الخاصة بي",
+        bn: "আমার LiCards",
+        pt: "Meus LiCards",
+        ru: "Мои LiCards",
+        ur: "میرے LiCards",
+        id: "LiCards saya",
+        de: "Meine LiCards",
+        ja: "マイ LiCards",
+        sw: "LiCards zangu",
+        mr: "माझे LiCards",
+        ko: "내 LiCards",
       }),
       selfIntro: t({
         en: "Self Intro",
@@ -172,24 +173,6 @@ const appShellContent = {
         sw: "Ongeza Dokezo",
         mr: "टीप जोडा",
         ko: "노트 추가",
-      }),
-      advanced: t({
-        en: "Advanced",
-        zh: "进阶",
-        hi: "उन्नत",
-        es: "Avanzado",
-        fr: "Avancé",
-        ar: "متقدم",
-        bn: "উন্নত",
-        pt: "Avançado",
-        ru: "Расширенное",
-        ur: "ایڈوانسڈ",
-        id: "Lanjutan",
-        de: "Erweitert",
-        ja: "上級",
-        sw: "Ya juu",
-        mr: "प्रगत",
-        ko: "고급",
       }),
       data: t({
         en: "Data",
@@ -355,6 +338,24 @@ const appShellContent = {
         mr: "शिका",
         ko: "학습",
       }),
+      advanced: t({
+        en: "LiCards",
+        zh: "链卡",
+        hi: "LiCards",
+        es: "LiCards",
+        fr: "LiCards",
+        ar: "LiCards",
+        bn: "LiCards",
+        pt: "LiCards",
+        ru: "LiCards",
+        ur: "LiCards",
+        id: "LiCards",
+        de: "LiCards",
+        ja: "LiCards",
+        sw: "LiCards",
+        mr: "LiCards",
+        ko: "LiCards",
+      }),
       data: t({
         en: "Data",
         zh: "数据",
@@ -467,6 +468,72 @@ const appShellContent = {
       }),
     },
   },
-} satisfies DeclarationContent;
+};
 
-export default appShellContent;
+type Content = typeof dictionary.content;
+
+const context: {
+  [G in keyof Content]: Record<keyof Content[G], string>;
+} = {
+  nav: {
+    home: "Sidebar link (house icon) to the app's Home page. One short noun.",
+    sites:
+      "Sidebar link under the LiCards heading to the list of immersion websites (sites in the language being learned) to save pages from. Plural noun.",
+    review:
+      "Sidebar link under the LiCards heading that opens the next due saved web page to review. Imperative verb or noun, one word.",
+    cards:
+      "Sidebar link under the LiCards heading to the list of all the user's saved web-page cards. 'My' + the product name LiCards; LiCards is never translated (Chinese: 链卡).",
+    selfIntro:
+      "Sidebar link to the page where the user writes and practises a self-introduction in the language being learned. Short noun phrase.",
+    words:
+      "Sidebar link to the user's vocabulary word lists (the main study path). Plural noun phrase.",
+    alphabet:
+      "Sidebar link to the page that teaches a language's writing system (kana, hangul, Cyrillic…). Plural noun.",
+    read: "Sidebar link to the reader, where the user reads texts in the language being learned. Imperative verb or noun, one word.",
+    addNote:
+      "Sidebar link under the LiCards heading to the form that adds a free-text note as a card. Imperative phrase.",
+    data: "Sidebar link to the page that shows and exports the user's data and sync state. One noun.",
+    signIn: "Button in the sidebar header for a visitor who is not signed in. Imperative phrase.",
+    signOut:
+      "Item in the profile menu at the top right that signs the user out. Imperative phrase.",
+    dashboard:
+      "Item in the profile menu at the top right that opens the user's card list (their dashboard). One noun.",
+    profile:
+      "Item in the profile menu at the top right that opens the user's public profile. One noun.",
+    preferences:
+      "Sidebar link and profile-menu item to the user's settings page. Plural noun, like 'Settings'.",
+    membership:
+      "Sidebar link and profile-menu item to the Pro membership page (plan, payments, invites). One noun.",
+    lab: "Sidebar link under the LiCards heading to experimental features (laboratory). One short noun.",
+  },
+  groups: {
+    main: "Small uppercase heading of the sidebar's first group of links: the learning features. One short word, verb or noun.",
+    advanced:
+      "Small heading of the sidebar group with the page-card features (sites, review, card list), also shown in the drawer's breadcrumb. LiCards is the product name of the feature that turns web pages into cards: never translate it; keep LiCards in every language except Chinese, which uses 链卡.",
+    data: "Small uppercase heading of the sidebar group with import and data links. One noun.",
+    account:
+      "Small uppercase heading of the sidebar group with preferences and membership links. One noun.",
+  },
+  ui: {
+    menu: "Screen-reader label of the sidebar navigation and of the button that opens it on phones. One noun.",
+    collapse:
+      "Tooltip and screen-reader label of the button that narrows the desktop sidebar to icons only. Imperative phrase.",
+    expand:
+      "Tooltip and screen-reader label of the button that widens the icon-only desktop sidebar again. Imperative phrase.",
+    closeMenu:
+      "Screen-reader label of the button and backdrop that close the sidebar drawer on phones. Imperative phrase.",
+  },
+};
+
+export default {
+  ...dictionary,
+  title: "App shell — the sidebar, its groups and the profile menu",
+  description: describeKeys(
+    "Labels of the app's sidebar (desktop) and drawer (phone): links grouped under Learn, LiCards, Data and Account, plus the profile menu. Lianki and LiCards (zh: 链卡) are product names, not translated.",
+    Object.fromEntries(
+      Object.entries(context).flatMap(([group, keys]) =>
+        Object.entries(keys).map(([k, v]) => [`${group}.${k}`, v]),
+      ),
+    ),
+  ),
+} satisfies DeclarationContent;

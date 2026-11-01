@@ -45,6 +45,7 @@
     "./clips-store": "./src/clips-store.ts",
     "./ClipsBadge": "./src/ClipsBadge.tsx",
     "./float-lines": "./src/float-lines.ts",
+    "./compact-view": "./src/compact-view.ts",
     "./frontier-view": "./src/frontier-view.ts",
     "./log-surface": "./src/log-surface.ts",
     "./mic-session": "./src/mic-session.ts",

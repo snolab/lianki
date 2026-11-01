@@ -3,7 +3,15 @@ import words from "@/app/(app)/words/page.content";
 import wordsImportAnkiweb from "@/app/(app)/words/import/ankiweb.content";
 import bottomNav from "@/app/components/bottom-nav.content";
 import learningPartner from "@/app/components/learning-partner.content";
-import { describeKeys, keyContext } from "@/lib/i18n-context";
+import liveView from "@/app/components/live-view.content";
+import navHome from "@/app/(app)/home/page.content";
+import appShell from "@/app/components/app-shell.content";
+import landing from "@/app/[locale]/page.content";
+import learn from "@/app/(app)/learn/page.content";
+import polyglot from "@/app/(app)/polyglot/page.content";
+import selfIntro from "@/app/(app)/self-intro/page.content";
+import wordsImport from "@/app/(app)/words/import/page.content";
+import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
 // "Undo", "New swipe" or "Experimental" each read several ways. Every key
@@ -18,6 +26,12 @@ describe("describeKeys / keyContext", () => {
     expect(keyContext(d)).toEqual({ a: "Button on the toolbar.", b: "Heading." });
   });
 
+  it("reads nested context back as group.key lines", () => {
+    const flat = flattenContext({ nav: { home: "Sidebar link." }, a: { b: { c: "Deep." } } });
+    expect(flat).toEqual({ "nav.home": "Sidebar link.", "a.b.c": "Deep." });
+    expect(keyContext(describeKeys("About.", flat))).toEqual(flat);
+  });
+
   it("reads nothing from a description without per-key context", () => {
     expect(keyContext(undefined)).toEqual({});
     expect(keyContext("Just a sentence.")).toEqual({});
@@ -29,13 +43,29 @@ describe.each([
   ["words-import-ankiweb", wordsImportAnkiweb],
   ["bottom-nav", bottomNav],
   ["learning-partner", learningPartner],
+  ["live-view", liveView],
+  ["nav-home", navHome],
+  ["app-shell", appShell],
+  ["landing-page", landing],
+  ["learn-page", learn],
+  ["polyglot-page", polyglot],
+  ["self-intro-page", selfIntro],
+  ["words-import", wordsImport],
 ])("%s", (_name, dict) => {
-  const keys = Object.entries(dict.content as Record<string, { nodeType?: string }>)
-    .filter(([, v]) => v?.nodeType === "translation")
-    .map(([k]) => k);
+  // Translation leaves, nested groups included, keyed `group.key`.
+  type Node = { nodeType?: string; translation?: Record<string, string> };
+  const leaves = (node: Record<string, unknown>, prefix = ""): [string, Node][] =>
+    Object.entries(node).flatMap(([k, v]) =>
+      (v as Node)?.nodeType === "translation"
+        ? [[prefix + k, v as Node] as [string, Node]]
+        : v && typeof v === "object" && !(v as Node).nodeType
+          ? leaves(v as Record<string, unknown>, `${prefix}${k}.`)
+          : [],
+    );
+  const byKey = Object.fromEntries(leaves(dict.content as Record<string, unknown>));
+  const keys = Object.keys(byKey);
   const context = keyContext(dict.description);
-  const en = (k: string) =>
-    (dict.content as Record<string, { translation: Record<string, string> }>)[k].translation.en;
+  const en = (k: string) => byKey[k].translation!.en;
 
   it("gives every key its translation context", () => {
     expect(keys.filter((k) => !context[k])).toEqual([]);

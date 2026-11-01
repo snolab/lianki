@@ -208,10 +208,10 @@ if (import.meta.main) {
   }
   log(`listening on http://localhost:${PORT} · module ${ORIGIN}/islands.js`);
   console.log(
-    `\n  On the owner's page (debug mode, code-run grant live), in the console:\n` +
-      `    localStorage.setItem("lk:slots-src", "${ORIGIN}/islands.js"); location.reload()\n` +
-      `  Back to built-in islands:\n` +
-      `    localStorage.removeItem("lk:slots-src"); location.reload()\n`,
+    `\n  On lianki.com (live view, docs/live-view.md), then "Live view" in the account menu:\n` +
+      `    bun scripts/dev/live-view.ts on --islands ${ORIGIN}/islands.js\n` +
+      `  On localhost or a dev build only (code-run grant live), the unsigned key still works:\n` +
+      `    localStorage.setItem("lk:slots-src", "${ORIGIN}/islands.js"); location.reload()\n`,
   );
   const stop = () => {
     if (TAILNET) unserveOnTailnet(TAILNET);

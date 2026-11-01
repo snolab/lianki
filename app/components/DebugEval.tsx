@@ -41,6 +41,7 @@ import {
 import { grantUntil } from "@/lib/islands/rules";
 import { islandStore } from "@/lib/islands/store";
 import { useIslands } from "@/lib/islands/useIslands";
+import { useLiveView, widgetSource } from "@/lib/live-view/client";
 
 /** Hidden this long before the socket is dropped. */
 const IDLE_MS = 30_000;
@@ -132,8 +133,10 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
   const sentLabel = useRef("");
   const pathname = usePathname();
   const router = useRouter();
-  // Hot islands (docs/dev-hot-islands.md): on only with the code-run grant below.
+  // Hot islands (docs/dev-hot-islands.md): on with the code-run grant below, or live view.
   useIslands();
+  /** Live view (docs/live-view.md): the signed pointer, verified on this page. */
+  const liveState = useLiveView();
   /** This device's tabs agree on one to read replies aloud (BroadcastChannel). */
   const tabsRef = useRef<ReturnType<typeof joinTabs> | null>(null);
   useEffect(() => {
@@ -598,7 +601,9 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
     <>
       {chat && (
         <DebugChatHost
-          hot={owner && !isFriend}
+          // A verified pointer is the owner's (the server checked the session).
+          hot={(owner && !isFriend) || (liveState.on && !!liveState.claim.widget)}
+          src={widgetSource(liveState)}
           busy={busy}
           pages={state?.pages ?? []}
           selfPage={state?.self}
@@ -645,7 +650,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           aria-live="polite"
           data-debug-eval
           data-testid="debug-eval"
-          className="fixed bottom-2 left-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-start gap-1 text-xs"
+          className="fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-[calc(0.5rem+env(safe-area-inset-left))] z-50 flex max-w-[calc(100vw-1rem)] flex-col items-start gap-1 text-xs"
           style={{ color: "oklch(0.98 0 0)" }}
         >
           {sessions.map((s) => (
