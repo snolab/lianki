@@ -82,8 +82,12 @@ answered cross-origin only when listed exactly in `LIANKI_DEV_ORIGINS` (comma-se
 https origins, no wildcards), for both this server and `scripts/dev/islands-server.ts`:
 `LIANKI_DEV_ORIGINS=https://<mac>.<tailnet>.ts.net:8443 bun scripts/dev/debug-widget-server.ts …`.
 
-Then, on the owner's page in debug mode, run this once in the console, or
-with `bun scripts/dev/eval.ts`:
+**On lianki.com, use live view** ([live-view.md](live-view.md)):
+`bun scripts/dev/live-view.ts on --widget /lianki-widget`, then "Live view" in
+the account menu. Since 2026-11-01 the unsigned key below is ignored on
+production; it still works on localhost and in dev builds (the harness, the
+whole-page dev server). There, run this once in the console, or with
+`bun scripts/dev/eval.ts`:
 
 ```js
 localStorage.setItem(

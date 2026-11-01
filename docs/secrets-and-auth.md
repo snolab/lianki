@@ -113,6 +113,19 @@ The only other copy is `.dev-whole-page.json` (gitignored, 0600) in the dev
 server's worktree. To rotate it, generate a new value there and
 `wrangler secret put DEV_BRIDGE_SECRET` from the file, never by echoing it.
 
+## Live view key (no secret on the Worker)
+
+Live view ([live-view.md](live-view.md)) is the reverse of the STT tickets
+below: the owner's Mac signs and lianki.com verifies. The Ed25519 **private**
+key is `~/.config/lianki/live-view-key.json` (0600) on the Mac only, made by
+`bun scripts/dev/live-view.ts keygen`. The **public** key is committed in
+`lib/live-view/keys.ts`, so the Worker and the browser bundle trust the same
+key, and a change to it is a reviewed diff. There is no Worker var and no
+secret. `NEXT_PUBLIC_LIVE_VIEW_TEST_KEY` adds a test key in dev builds only;
+a production build ignores it. Rotate: keygen a new pair (move the old file
+away first), add the new key to `LIVE_VIEW_PUBLIC_KEYS`, deploy, then drop the
+old key.
+
 ## STT tickets (`STT_TICKET_KEY`)
 
 A Worker secret on `lianki`: an Ed25519 **private** key (a JWK) that signs

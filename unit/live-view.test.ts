@@ -1,0 +1,477 @@
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { useBackend, useD1 } from "./support/testMocks";
+import { createTestD1 } from "@/lib/d1/testDb";
+import { testSchema } from "@/lib/d1/testSchema";
+import { b64url } from "@/lib/stt-ticket";
+import {
+  LIVE_VIEW_AUD,
+  LIVE_VIEW_COOKIE,
+  LIVE_VIEW_MAX_S,
+  importLiveViewPrivateKey,
+  importLiveViewPublicKey,
+  liveLabel,
+  liveSourceOk,
+  signLiveView,
+  unsignedOverridesAllowed,
+  verifyLiveView,
+  type LiveViewClaim,
+} from "@/lib/live-view/rules";
+import {
+  clearPointer,
+  currentPointer,
+  handlePost,
+  readRow,
+  writeSigned,
+  type LiveViewDb,
+} from "@/lib/live-view/server";
+import { LIVE_VIEW_PUBLIC_KEYS, liveViewKeys, trustedLiveViewKeys } from "@/lib/live-view/keys";
+import { createElement } from "react";
+import { renderToString } from "react-dom/server";
+import {
+  createLiveViewStore,
+  liveWanted,
+  setLiveWanted,
+  useLiveView,
+  widgetSource,
+} from "@/lib/live-view/client";
+import { liveViewFor } from "@/lib/live-view/shell.server";
+import { createIslandStore } from "@/lib/islands/store";
+
+const NOW = Date.parse("2026-11-01T03:00:00Z");
+const T = Math.floor(NOW / 1000);
+const W = "https://mac.example-tailnet.ts.net/lianki-widget/debug-chat.js";
+const I = "https://mac.example-tailnet.ts.net/lianki-islands/islands.js";
+
+async function pair() {
+  const p = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
+  const jwk = await crypto.subtle.exportKey("jwk", p.privateKey);
+  const raw = b64url(new Uint8Array(await crypto.subtle.exportKey("raw", p.publicKey)));
+  return {
+    priv: await importLiveViewPrivateKey(jwk),
+    pub: await importLiveViewPublicKey(raw),
+    raw,
+  };
+}
+
+const dev = await pair();
+const other = await pair();
+const KEYS = [dev.pub];
+
+type Extra = Partial<Omit<LiveViewClaim, "aud">> & { aud?: string } & Record<string, unknown>;
+const on = (serial: number, x: Extra = {}, key = dev.priv) =>
+  signLiveView(key, {
+    op: "on",
+    serial,
+    iat: T,
+    exp: T + 3600,
+    widget: W,
+    islands: I,
+    branch: "feat/live-view",
+    sha: "abc1234def5678",
+    ...x,
+  } as Omit<LiveViewClaim, "aud">);
+const req = (op: "off" | "status", serial: number, x: Extra = {}) =>
+  signLiveView(dev.priv, { op, serial, iat: T, exp: T + 60, ...x } as Omit<LiveViewClaim, "aud">);
+
+const db = () => createTestD1(testSchema()) as unknown as LiveViewDb;
+
+describe("verifyLiveView", () => {
+  test("a good pointer verifies, with its sources and label", async () => {
+    const v = await verifyLiveView(await on(1), KEYS, { now: NOW, op: "on" });
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.claim).toMatchObject({
+      aud: LIVE_VIEW_AUD,
+      op: "on",
+      serial: 1,
+      widget: W,
+      islands: I,
+    });
+    expect(liveLabel(v.claim)).toBe("feat/live-view@abc1234");
+    expect(liveLabel({})).toBe("?@");
+  });
+
+  test("expired is refused", async () => {
+    const v = await verifyLiveView(await on(1), KEYS, { now: NOW + 3601_000 });
+    expect(v).toEqual({ ok: false, error: "expired" });
+  });
+
+  test("a key that is not trusted is refused", async () => {
+    expect(await verifyLiveView(await on(1, {}, other.priv), KEYS, { now: NOW })).toEqual({
+      ok: false,
+      error: "bad signature",
+    });
+    // …but any of several trusted keys will do (rotation).
+    expect(
+      (await verifyLiveView(await on(1, {}, other.priv), [dev.pub, other.pub], { now: NOW })).ok,
+    ).toBe(true);
+  });
+
+  test("a tampered payload fails the signature", async () => {
+    const [, sig] = (await on(1)).split(".");
+    const forged = b64url(
+      new TextEncoder().encode(
+        JSON.stringify({
+          aud: LIVE_VIEW_AUD,
+          op: "on",
+          serial: 1,
+          iat: T,
+          exp: T + 60,
+          widget: "https://evil.ts.net/x.js",
+          branch: "b",
+          sha: "abcdef0",
+        }),
+      ),
+    );
+    expect(await verifyLiveView(`${forged}.${sig}`, KEYS, { now: NOW })).toEqual({
+      ok: false,
+      error: "bad signature",
+    });
+  });
+
+  test("malformed tokens", async () => {
+    for (const t of [undefined, 42, "", "a", "a.b.c", "abc.!!", "x".repeat(3000)])
+      expect((await verifyLiveView(t, KEYS, { now: NOW })).ok).toBe(false);
+    expect(await verifyLiveView(await on(1), [], { now: NOW })).toEqual({
+      ok: false,
+      error: "malformed",
+    });
+    // Signed, but not JSON.
+    const body = b64url(new TextEncoder().encode("not json"));
+    const sig = b64url(
+      new Uint8Array(
+        await crypto.subtle.sign({ name: "Ed25519" }, dev.priv, new TextEncoder().encode(body)),
+      ),
+    );
+    expect(await verifyLiveView(`${body}.${sig}`, KEYS, { now: NOW })).toEqual({
+      ok: false,
+      error: "malformed",
+    });
+  });
+
+  test("audience, op and fields", async () => {
+    const bad = async (x: Extra) =>
+      (await verifyLiveView(await on(1, x), KEYS, { now: NOW })) as { error?: string };
+    expect((await bad({ aud: "lianki-stt" })).error).toBe("wrong aud");
+    expect((await bad({ op: "nope" as never })).error).toBe("malformed");
+    expect((await bad({ serial: 0 })).error).toBe("malformed");
+    expect((await bad({ serial: 1.5 })).error).toBe("malformed");
+    expect((await bad({ iat: "x" as never })).error).toBe("malformed");
+    expect((await bad({ branch: "a b" })).error).toBe("malformed");
+    expect((await bad({ sha: "XYZ" })).error).toBe("malformed");
+    expect((await bad({ widget: undefined, islands: undefined })).error).toBe("no source");
+    expect((await bad({ widget: "http://mac.ts.net/x.js" })).error).toBe("bad source");
+    const w = await verifyLiveView(await req("off", 2), KEYS, { now: NOW, op: "on" });
+    expect(w).toEqual({ ok: false, error: "wrong op" });
+    // Only one source is fine.
+    const one = await verifyLiveView(await on(1, { islands: undefined }), KEYS, { now: NOW });
+    expect(one.ok && one.claim.islands).toBe(undefined);
+  });
+
+  test("lifetime: on ≤ 12 h, off/status ≤ 5 min, not issued in the future", async () => {
+    const life = async (t: Promise<string>) =>
+      ((await verifyLiveView(await t, KEYS, { now: NOW })) as { error?: string }).error;
+    expect(await life(on(1, { exp: T + LIVE_VIEW_MAX_S }))).toBeUndefined();
+    expect(await life(on(1, { exp: T + LIVE_VIEW_MAX_S + 1 }))).toBe("bad lifetime");
+    expect(await life(on(1, { exp: T }))).toBe("bad lifetime");
+    expect(await life(on(1, { iat: T + 3600, exp: T + 7200 }))).toBe("bad lifetime");
+    expect(await life(req("off", 1, { exp: T + 301 }))).toBe("bad lifetime");
+    expect(await life(req("status", 1))).toBeUndefined();
+  });
+
+  test("sources: tailnet or a lianki.com subdomain over https; localhost only when allowed", () => {
+    expect(liveSourceOk(W)).toBe(true);
+    expect(liveSourceOk("https://dev-mac.lianki.com/debug-chat.js")).toBe(true);
+    for (const u of [
+      "https://lianki.com/x.js",
+      "https://evil.com/x.js",
+      "https://ts.net/x.js",
+      "https://evil-lianki.com/x.js",
+      "http://mac.ts.net/x.js",
+      "https://u:p@mac.ts.net/x.js",
+      "https://mac.ts.net/x.js#frag",
+      "not a url",
+      `https://mac.ts.net/${"a".repeat(300)}`,
+      7,
+    ])
+      expect(liveSourceOk(u)).toBe(false);
+    expect(liveSourceOk("http://localhost:5180/debug-chat.js")).toBe(false);
+    expect(liveSourceOk("http://localhost:5180/debug-chat.js", true)).toBe(true);
+    expect(liveSourceOk("file:///etc/passwd", true)).toBe(false);
+  });
+
+  test("private key import refuses anything but an Ed25519 private JWK", async () => {
+    await expect(importLiveViewPrivateKey({ kty: "OKP", crv: "Ed25519" })).rejects.toThrow();
+    await expect(importLiveViewPrivateKey({ kty: "EC", crv: "P-256", d: "x" })).rejects.toThrow();
+  });
+});
+
+describe("unsigned overrides (lk:agent-widget-src, lk:slots-src)", () => {
+  test("refused on a production page of lianki.com, kept on dev builds and localhost", () => {
+    expect(unsignedOverridesAllowed("production", "lianki.com")).toBe(false);
+    expect(unsignedOverridesAllowed("production", undefined)).toBe(false);
+    expect(unsignedOverridesAllowed("production", "localhost")).toBe(true);
+    expect(unsignedOverridesAllowed("development", "mac.ts.net")).toBe(true);
+  });
+
+  test("the widget host gets the signed widget, else null on production (never the key)", () => {
+    const live = { on: true as const, claim: { widget: W } as LiveViewClaim };
+    expect(widgetSource(live, false)).toBe(W);
+    expect(widgetSource({ on: false }, false)).toBeNull();
+    expect(widgetSource({ on: true, claim: { islands: I } as LiveViewClaim }, false)).toBeNull();
+    // Dev build / localhost: undefined = the host reads its old key.
+    expect(widgetSource({ on: false }, true)).toBeUndefined();
+    expect(
+      widgetSource({ on: true, claim: { islands: I } as LiveViewClaim }, true),
+    ).toBeUndefined();
+    expect(widgetSource(live, true)).toBe(W);
+  });
+});
+
+describe("the pointer store (D1) and POST /api/live-view", () => {
+  test("on stores the pointer; status reads it; off clears it", async () => {
+    const d = db();
+    const r = await handlePost({ token: await on(10) }, d, KEYS, NOW);
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ on: true, claim: { serial: 10, widget: W } });
+    expect((await currentPointer(d, KEYS, NOW))?.claim.serial).toBe(10);
+    const s = await handlePost({ token: await req("status", 1) }, d, KEYS, NOW);
+    expect(s.body).toMatchObject({ on: true, claim: { branch: "feat/live-view" } });
+    expect((await handlePost({ token: await req("off", 11) }, d, KEYS, NOW)).body).toEqual({
+      on: false,
+    });
+    expect(await currentPointer(d, KEYS, NOW)).toBeNull();
+    expect((await handlePost({ token: await req("status", 1) }, d, KEYS, NOW)).body).toEqual({
+      on: false,
+    });
+    expect(await readRow(d)).toEqual({ pointer: null, serial: 11 });
+  });
+
+  test("replays and older serials are refused (409), even after off", async () => {
+    const d = db();
+    const first = await on(10);
+    expect((await handlePost({ token: first }, d, KEYS, NOW)).status).toBe(200);
+    expect((await handlePost({ token: first }, d, KEYS, NOW)).status).toBe(409);
+    expect((await handlePost({ token: await on(9) }, d, KEYS, NOW)).status).toBe(409);
+    expect((await handlePost({ token: await req("off", 10) }, d, KEYS, NOW)).status).toBe(409);
+    expect((await handlePost({ token: await req("off", 12) }, d, KEYS, NOW)).status).toBe(200);
+    expect((await handlePost({ token: first }, d, KEYS, NOW)).status).toBe(409);
+    expect((await handlePost({ token: await on(11) }, d, KEYS, NOW)).status).toBe(409);
+    expect((await handlePost({ token: await on(13) }, d, KEYS, NOW)).status).toBe(200);
+  });
+
+  test("unsigned, wrong key, expired: refused, nothing written", async () => {
+    const d = db();
+    expect((await handlePost(null, d, KEYS, NOW)).status).toBe(400);
+    expect((await handlePost({ token: "x.y" }, d, KEYS, NOW)).status).toBe(400);
+    expect((await handlePost({ token: await on(5, {}, other.priv) }, d, KEYS, NOW)).status).toBe(
+      401,
+    );
+    expect((await handlePost({ token: await on(5) }, d, KEYS, NOW + 7200_000)).status).toBe(401);
+    expect(await readRow(d)).toBeNull();
+  });
+
+  test("a stored pointer that expires reads as off", async () => {
+    const d = db();
+    await handlePost({ token: await on(1) }, d, KEYS, NOW);
+    expect(await currentPointer(d, KEYS, NOW + 3600_000)).toBeNull();
+    expect(await currentPointer(d, [other.pub], NOW)).toBeNull();
+  });
+
+  test("the owner's stop clears the pointer and keeps the serial", async () => {
+    const d = db();
+    expect(await writeSigned(d, await on(7), 7, NOW)).toBe(true);
+    await clearPointer(d, NOW);
+    expect(await readRow(d)).toEqual({ pointer: null, serial: 7 });
+    expect(await writeSigned(d, await on(7), 7, NOW)).toBe(false);
+  });
+
+  test("localhost sources only where the server allows them (dev builds)", async () => {
+    const local = await on(1, { widget: "http://localhost:5180/debug-chat.js" });
+    expect((await handlePost({ token: local }, db(), KEYS, NOW)).status).toBe(401);
+    expect((await handlePost({ token: local }, db(), KEYS, NOW, true)).status).toBe(200);
+  });
+});
+
+describe("owner-only shell", () => {
+  const saved = process.env.OWNER_EMAILS;
+  const labels = () => ({ liveView: "Live view", normal: "Normal", waiting: "w", refused: "r" });
+  beforeEach(() => {
+    process.env.OWNER_EMAILS = "owner@example.com";
+    useBackend("d1");
+  });
+  afterAll(() => {
+    if (saved === undefined) delete process.env.OWNER_EMAILS;
+    else process.env.OWNER_EMAILS = saved;
+    useBackend("mongodb");
+  });
+
+  test("nobody but the owner gets anything (not the switch, not the pointer)", async () => {
+    const d = db();
+    useD1(d);
+    expect(await liveViewFor("someone@example.com", "1", labels)).toBeUndefined();
+    expect(await liveViewFor(null, "1", labels)).toBeUndefined();
+    process.env.OWNER_EMAILS = "";
+    expect(await liveViewFor("owner@example.com", "1", labels)).toBeUndefined();
+  });
+
+  test("the owner: the switch; the pointer only while it is on and still valid", async () => {
+    const d = db();
+    useD1(d);
+    expect(await liveViewFor("owner@example.com", undefined, labels)).toMatchObject({
+      wanted: false,
+      token: null,
+    });
+    // The real trusted key is the Mac's, so a test-signed pointer never verifies here.
+    await writeSigned(d, await on(1), 1, Date.now());
+    expect(await liveViewFor("Owner@Example.com", "1", labels)).toMatchObject({
+      wanted: true,
+      token: null,
+    });
+    // No table: stays normal rather than failing the page.
+    useD1(createTestD1(""));
+    expect(await liveViewFor("owner@example.com", "1", labels)).toMatchObject({ token: null });
+    useBackend("mongodb");
+    expect(await liveViewFor("owner@example.com", "1", labels)).toMatchObject({ token: null });
+  });
+});
+
+describe("keys", () => {
+  test("the committed key is a raw Ed25519 public key; test keys only off production", async () => {
+    expect(LIVE_VIEW_PUBLIC_KEYS.length).toBeGreaterThan(0);
+    for (const k of LIVE_VIEW_PUBLIC_KEYS) await importLiveViewPublicKey(k);
+    expect(trustedLiveViewKeys("production", dev.raw)).toEqual([...LIVE_VIEW_PUBLIC_KEYS]);
+    expect(trustedLiveViewKeys("test", dev.raw)).toEqual([...LIVE_VIEW_PUBLIC_KEYS, dev.raw]);
+    expect(trustedLiveViewKeys("test", " ")).toEqual([...LIVE_VIEW_PUBLIC_KEYS]);
+    expect((await liveViewKeys()).length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("the page's live-view store", () => {
+  const timers = () => {
+    const t: { fn?: () => void; ms?: number } = {};
+    return {
+      t,
+      timers: {
+        setTimeout: (fn: () => void, ms: number) => {
+          t.fn = fn;
+          t.ms = ms;
+          return 1 as unknown as ReturnType<typeof setTimeout>;
+        },
+        clearTimeout: () => {
+          t.fn = undefined;
+        },
+      },
+    };
+  };
+
+  test("verifies on the page: good → on; wrong key → off with the reason; none → off", async () => {
+    const { t, timers: tm } = timers();
+    const s = createLiveViewStore(tm);
+    let n = 0;
+    const off = s.subscribe(() => n++);
+    expect((await s.start(await on(1), { keys: KEYS, now: NOW })).on).toBe(true);
+    expect(t.ms).toBe(3600_000);
+    expect(await s.start(await on(1, {}, other.priv), { keys: KEYS, now: NOW })).toEqual({
+      on: false,
+      note: "live view refused: bad signature",
+    });
+    expect(await s.start(null)).toEqual({ on: false });
+    expect(n).toBe(3);
+    off();
+  });
+
+  test("turns itself off when the pointer expires (one local timer)", async () => {
+    const { t, timers: tm } = timers();
+    const s = createLiveViewStore(tm);
+    await s.start(await on(1), { keys: KEYS, now: NOW });
+    t.fn?.();
+    expect(s.get()).toEqual({ on: false, note: "expired" });
+    await s.start(await on(1), { keys: KEYS, now: NOW });
+    s.stop();
+    expect(s.get()).toEqual({ on: false });
+  });
+
+  test("refuses a localhost source on production even when signed", async () => {
+    const s = createLiveViewStore();
+    const local = await on(1, {
+      widget: "http://localhost:5180/debug-chat.js",
+      islands: undefined,
+    });
+    expect((await s.start(local, { keys: KEYS, now: NOW, allowLocal: false })).on).toBe(false);
+    s.stop();
+  });
+
+  test("useLiveView renders off on the server", () => {
+    function Probe() {
+      return createElement("i", null, useLiveView().on ? "on" : "off");
+    }
+    expect(renderToString(createElement(Probe))).toContain("off");
+  });
+
+  test("setLiveWanted writes and clears the cookie (secure on https)", () => {
+    const g = globalThis as Record<string, unknown>;
+    const saved = { d: g.document, l: g.location };
+    const doc = { cookie: "" };
+    g.document = doc;
+    g.location = { protocol: "https:" };
+    try {
+      setLiveWanted(true);
+      expect(doc.cookie).toBe(
+        `${LIVE_VIEW_COOKIE}=1; path=/; max-age=31536000; samesite=lax; secure`,
+      );
+      g.location = { protocol: "http:" };
+      setLiveWanted(false);
+      expect(doc.cookie).toBe(`${LIVE_VIEW_COOKIE}=; path=/; max-age=0; samesite=lax`);
+    } finally {
+      g.document = saved.d;
+      g.location = saved.l;
+    }
+  });
+
+  test("the device switch is the lk_live_view cookie", () => {
+    expect(liveWanted(`a=1; ${LIVE_VIEW_COOKIE}=1`)).toBe(true);
+    expect(liveWanted(`${LIVE_VIEW_COOKIE}=0`)).toBe(false);
+    expect(liveWanted("")).toBe(false);
+  });
+});
+
+describe("islands: the live-view permission", () => {
+  const C = (() => null) as never;
+  test("islands install under live view alone, and drop when it ends", () => {
+    const s = createIslandStore();
+    s.put({ "header.brand": { C, rev: "1" } });
+    expect(s.get("header.brand")).toBeUndefined();
+    s.setLive(NOW + 1000, NOW);
+    expect(s.granted()).toBe(true);
+    s.put({ "header.brand": { C, rev: "1" } });
+    expect(s.names()).toEqual(["header.brand"]);
+    // The code-run grant ending does not end live view.
+    s.setGrant(NOW + 500, NOW);
+    s.setGrant(null);
+    expect(s.names()).toEqual(["header.brand"]);
+    s.setLive(NOW + 1000, NOW); // same value: no-op
+    s.setLive(null);
+    expect(s.granted()).toBe(false);
+    expect(s.names()).toEqual([]);
+  });
+
+  test("live view lapses on its own timer", () => {
+    let fire: (() => void) | undefined;
+    const s = createIslandStore({
+      setTimeout: (fn) => {
+        fire = fn;
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      },
+      clearTimeout: () => {},
+    });
+    s.setLive(NOW + 1000, NOW);
+    fire?.();
+    expect(s.granted()).toBe(false);
+    s.setLive(NOW - 1, NOW);
+    expect(s.granted()).toBe(false);
+  });
+});

@@ -19,6 +19,7 @@
 import { Component, type ComponentType, type ReactNode, useSyncExternalStore } from "react";
 import { devLog } from "@/lib/debug-client";
 import type { IslandName, IslandProps } from "./contract";
+import { liveWanted } from "@/lib/live-view/client";
 import { ISLANDS_SRC_KEY, errLine } from "./rules";
 import { type IslandStore, islandStore } from "./store";
 
@@ -81,10 +82,14 @@ export function HotIsland<N extends IslandName>({
   );
 }
 
-/** Read once per page load: only a device with the key set ever subscribes. */
+/**
+ * Read once per page load: only a device with the key set, or with the live
+ * view switch on (docs/live-view.md), ever subscribes.
+ */
 function overridesPossible(): boolean {
   try {
-    return typeof window !== "undefined" && !!localStorage.getItem(ISLANDS_SRC_KEY);
+    if (typeof window === "undefined") return false;
+    return liveWanted() || !!localStorage.getItem(ISLANDS_SRC_KEY);
   } catch {
     return false;
   }
