@@ -124,6 +124,32 @@ Three things that will waste an afternoon otherwise:
 - **`dev.lianki.com` returning 530 / error 1033** means the DNS route exists but
   no connector is attached — i.e. nothing is running, not a DNS problem.
 
+### Switching dev.lianki.com to this Mac
+
+`dev.lianki.com` may point at another dev box's tunnel. To serve the loader
+from this Mac instead, without the old box's credentials, use
+`scripts/dev/dev-host-switch.sh` (the Cloudflare side is
+`scripts/dev/dev-host-switch.ts`, through the API; no `cloudflared login`):
+
+```bash
+bun scripts/dev-userscript-server.ts --origin https://dev.lianki.com --port 3003   # the loader, no tunnel of its own
+bash scripts/dev/dev-host-switch.sh plan        # read-only: the records now → the new CNAME, and the undo
+bash scripts/dev/dev-host-switch.sh up --yes    # only with the owner's approval: DNS changes
+bash scripts/dev/dev-host-switch.sh status
+bash scripts/dev/dev-host-switch.sh down        # rollback: the old records back exactly
+```
+
+`up --yes` saves the records found at `dev.lianki.com` to
+`~/.config/lianki/dev-host-prev.json` (0600) once, before anything changes,
+and never overwrites that file on a later `up`; `down` puts those records
+back with the same type, content, proxied flag, TTL and comment, deletes the
+tunnel `lianki-dev-loader-mac` and its run-token file. The tunnel's ingress
+reaches only `http://localhost:3003`. It needs a Cloudflare API token at
+`~/.config/lianki/cf-api-token` (0600) with Account · Cloudflare Tunnel ·
+Edit, Zone · DNS · Edit and Zone · Zone · Read on lianki.com. An installed
+loader keeps updating across the switch: same `@name`/`@namespace`, same
+`/loader.user.js` path, and a higher `@version`.
+
 ### Keeping it up across reboots
 
 `cloudflared service install` does **not** apply on the dev box: it writes a
