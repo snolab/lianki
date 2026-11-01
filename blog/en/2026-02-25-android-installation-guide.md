@@ -20,7 +20,7 @@ tags:
 
 _Posted February 25, 2026 by [lianki.com](https://www.lianki.com)_
 
-Want to use Lianki's spaced repetition system on your Android phone or tablet? This comprehensive guide will show you how to install and use the Lianki userscript on Android devices.
+Want to use Lianki's spaced repetition system on your Android phone or tablet? This comprehensive guide will show you how to install and use the Lianki userscript on Android devices. The userscript brings **LiCards** to your browser — Lianki's way of turning any web page into a review card.
 
 ## Table of Contents
 
@@ -201,7 +201,7 @@ Regardless of browser/manager combination:
    Or use the keyboard shortcut: **Alt+F** (if your keyboard supports it)
 
 4. **Add the page**:
-   - Tap the floating **Lianki button** (if visible)
+   - Tap the floating **LiCards button** (🔖, if visible)
    - Or type `javascript:` in address bar and select Lianki
 
 5. **Confirm**:
@@ -210,7 +210,7 @@ Regardless of browser/manager combination:
 
 ### Reviewing Cards
 
-With the userscript installed, a due card's own page opens with the Lianki review dialog — grade it there.
+With the userscript installed, a due card's own page opens with the LiCards review dialog — grade it there.
 
 Without it (or on a browser that can't run userscripts), review on the site:
 
@@ -220,7 +220,7 @@ Without it (or on a browser that can't run userscripts), review on the site:
    https://lianki.com/review
    ```
 
-   (also **Home → Advanced → Review**, or "**Next card**" on your card list)
+   (also **Home → LiCards → Review**, or "**Next card**" on your card list)
 
 2. **Tap "Open this card"**: the card's page opens in a new tab. You tap it yourself, so the browser doesn't block it as a pop-up.
 
@@ -243,7 +243,7 @@ A short version of these steps is at the top of the review page (switch between 
 
 ### Mobile-Friendly Tips
 
-- **Tap the floating button**: Lianki adds a floating action button for easy access
+- **Tap the floating button**: LiCards adds a floating action button for easy access
 - **Use landscape mode**: Better for reading long articles
 - **Enable dark mode**: Easier on the eyes (Firefox Settings → Theme)
 - **Pin Lianki tab**: Keep the `/list` page open for quick access

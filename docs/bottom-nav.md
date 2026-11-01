@@ -47,7 +47,7 @@ the device.
    (`lianki-search`, `lib/nav/islands/search-idb.ts`):
    - lists (by name);
    - words (term, reading, meaning, example);
-   - cards (page cards);
+   - cards (page cards — LiCards in the UI, heading `groupCards`);
    - the study plan (roadmap goals);
    - for the owner, the state tree.
 

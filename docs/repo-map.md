@@ -16,12 +16,12 @@
 | File | Purpose |
 | ---- | ------- |
 | `app/page.tsx` | Landing page |
-| `app/(app)/list/page.tsx` | Note listing (main app) |
+| `app/(app)/list/page.tsx` | Note listing — the page cards, named **LiCards** (zh 链卡) in the UI |
 | `lib/app-locale.ts` | `?lang=` locale helpers + APP_ROUTES |
 | `app/fsrs.ts` | Core FSRS handler logic |
 | `app/db.ts` | MongoDB client |
 | `auth.ts` / `auth-impl.ts` | better-auth: `auth.ts` is the light facade every route imports; the instance lives in `auth-impl.ts`, loaded by dynamic `import()` so it is one shared chunk, not a copy per route (Worker cold start) |
-| `src/lianki.user.ts` | Userscript source |
+| `src/lianki.user.ts` | Userscript source (the LiCards widget; `@name` stays `Lianki`, see its header) |
 | `public/lianki.user.js` | Built userscript (`lianki.meta.js` is auto-synced from its header) |
 | `public/loader.user.js` | Published dev loader — re-fetches from vite `:3002` per page load |
 | `scripts/dev-userscript-server.ts` | Dev loader server — pushes builds over a CF tunnel |
