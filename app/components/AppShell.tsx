@@ -184,7 +184,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
       }`}
     >
       {/* Slim topbar: glass, above full-screen content such as the /words list. */}
-      <header className="lk-glass lk-glass-bleed-top relative z-30 flex items-center gap-3 px-4 h-14 border-b border-[var(--glass-line)] shrink-0">
+      <header className="lk-glass lk-glass-bleed-top lk-header-bleed relative z-30 flex items-center gap-3 h-14 border-b border-[var(--glass-line)] shrink-0">
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}

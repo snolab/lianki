@@ -645,7 +645,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           aria-live="polite"
           data-debug-eval
           data-testid="debug-eval"
-          className="fixed bottom-2 left-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-start gap-1 text-xs"
+          className="fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-[calc(0.5rem+env(safe-area-inset-left))] z-50 flex max-w-[calc(100vw-1rem)] flex-col items-start gap-1 text-xs"
           style={{ color: "oklch(0.98 0 0)" }}
         >
           {sessions.map((s) => (
