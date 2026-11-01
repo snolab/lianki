@@ -51,9 +51,10 @@ function cf() {
   }
 }
 
+type Ctx = { env?: unknown; ctx?: { waitUntil(p: Promise<unknown>): void } } | null;
+
 /** The real bindings: PUSH, D1 when it is the backend, the request's waitUntil. */
-export function noticeDeps(): NoticeDeps {
-  const c = cf();
+export function noticeDeps(c: Ctx = cf()): NoticeDeps {
   const env = (c?.env ?? {}) as { PUSH?: Fetcher; DB?: OutboxDb };
   return {
     push: env.PUSH ?? null,

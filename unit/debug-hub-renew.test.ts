@@ -23,6 +23,7 @@ import {
   flushSignedOut,
   FLUSH_MIN_MS,
   flushSignedOutSoon,
+  noticeDeps,
   notifySignedOut,
   outboxBackoff,
 } from "@/lib/push-signed-out";
@@ -645,6 +646,32 @@ describe("the main Worker's sign-out notice", () => {
       await Promise.all(x.pending);
     });
     await quiet(() => flushSignedOut({ ...x.d, db: broken }));
+  });
+
+  it("noticeDeps: the Worker's bindings and waitUntil, or none off a Worker", async () => {
+    const waited: Promise<unknown>[] = [];
+    const PUSH = { fetch: async () => new Response("{}") };
+    const DB = { prepare: () => ({}) };
+    const before = process.env.DB_BACKEND;
+    try {
+      process.env.DB_BACKEND = "d1";
+      const on = noticeDeps({ env: { PUSH, DB }, ctx: { waitUntil: (p) => void waited.push(p) } });
+      expect(on.push).toBe(PUSH as never);
+      expect(on.db).toBe(DB as never);
+      on.later(Promise.resolve(1));
+      expect(waited).toHaveLength(1);
+      expect(typeof on.now()).toBe("number");
+      await on.sleep(0);
+      process.env.DB_BACKEND = "mongodb";
+      const off = noticeDeps(null);
+      expect([off.push, off.db]).toEqual([null, null]);
+      off.later(Promise.resolve(1));
+      expect(noticeDeps({ env: { PUSH, DB } }).db).toBeNull();
+      expect(noticeDeps().push).toBeNull();
+    } finally {
+      if (before === undefined) delete process.env.DB_BACKEND;
+      else process.env.DB_BACKEND = before;
+    }
   });
 
   it("flushSignedOutSoon starts at most one flush a minute per isolate", () => {
