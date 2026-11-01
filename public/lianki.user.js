@@ -7,8 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @grant       unsafeWindow
-// @version     2.24.22
+// @version     2.24.23
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1651,16 +1650,31 @@
   }
 
   // packages/debug-chat/src/embed/guard.ts
-  function isolatedWorld(info, pageWindow, ownObject = Object) {
+  function own(o) {
+    if (!o || typeof o !== "object") return { __proto__: null };
     try {
-      if (pageWindow && pageWindow.Object && pageWindow.Object !== ownObject) return true;
+      return { __proto__: null, ...o };
     } catch {
-      return true;
+      return { __proto__: null };
     }
-    const inject = String(info?.injectInto ?? "").toLowerCase();
-    if (inject === "content") return true;
-    const sandbox = String(info?.sandboxMode ?? "").toLowerCase();
-    return sandbox === "dom";
+  }
+  function is(v, ...words) {
+    if (typeof v !== "string") return false;
+    for (let k = 0; k < words.length; k++) if (v === words[k]) return true;
+    return false;
+  }
+  function isolatedWorld(info) {
+    const i = own(info);
+    const declared = own(i.script).injectInto;
+    if (is(i.injectInto, "page", "Page", "PAGE") || is(declared, "page", "Page", "PAGE"))
+      return false;
+    if (
+      is(i.sandboxMode, "raw", "Raw", "RAW", "js", "JS", "javascript", "JavaScript", "JAVASCRIPT")
+    )
+      return false;
+    return (
+      is(i.injectInto, "content", "Content", "CONTENT") || is(i.sandboxMode, "dom", "DOM", "Dom")
+    );
   }
   function blockerText(b, strings, name) {
     return strings[b].replaceAll("{name}", name);
@@ -1745,7 +1759,7 @@
       top: d.top ?? window.self === window.top,
     });
     if (!wanted) return NOOP;
-    const isolated = isolatedWorld(d.info, d.pageWindow);
+    const isolated = isolatedWorld(d.info);
     d.report("partner-mode", `${isolated ? "isolated" : "page-realm"} ${host}`);
     const hideHere = () =>
       d.setValue(PARTNER_HIDDEN_KEY, JSON.stringify([...new Set([...hidden, host])]));
@@ -4667,7 +4681,6 @@ ${actualUrl}
       setValue: GM_setValue,
       deleteValue: GM_deleteValue,
       info: GM_info,
-      pageWindow: typeof unsafeWindow === "undefined" ? undefined : unsafeWindow,
       report: (what, detail) =>
         what === "partner-mode" && detail.startsWith("isolated")
           ? console.debug(`[Lianki] ${what}: ${detail}`)

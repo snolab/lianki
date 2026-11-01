@@ -7,41 +7,70 @@
 /** Why the chat is not shown on this page; the note says so (ui-strings.ts EmbedStrings). */
 export type Blocker = "pageRealm" | "connect" | "styles" | "script" | "load";
 
-/** What the userscript manager tells us about where the script runs. */
+/** What the userscript manager tells us about where the script runs (its GM_info). */
 export type ManagerInfo = {
-  /** Violentmonkey: "page" or "content". */
+  /** Violentmonkey: the mode it actually used, "page" or "content". */
   injectInto?: unknown;
   /** Tampermonkey / ScriptCat: "raw", "js" (or "javascript"), "dom". */
   sandboxMode?: unknown;
   scriptHandler?: unknown;
+  /** The script's own metadata; Violentmonkey keeps the declared @inject-into here. */
+  script?: unknown;
 };
+
+/**
+ * Own properties only, through syntax alone: a null-prototype copy made by
+ * object spread. No built-in is called (the page may have replaced
+ * Object.keys, hasOwnProperty, getOwnPropertyDescriptor), and a getter the
+ * page put on Object.prototype for a key the manager never set is not read.
+ */
+function own(o: unknown): Record<string, unknown> {
+  if (!o || typeof o !== "object") return { __proto__: null } as Record<string, unknown>;
+  try {
+    return { __proto__: null, ...(o as object) } as Record<string, unknown>;
+  } catch {
+    return { __proto__: null } as Record<string, unknown>;
+  }
+}
+
+/**
+ * Is `v` one of these exact strings? Strict equality only: no toLowerCase,
+ * no includes (the page may have replaced String/Array methods), so each
+ * casing a manager uses is listed.
+ */
+function is(v: unknown, ...words: string[]): boolean {
+  if (typeof v !== "string") return false;
+  for (let k = 0; k < words.length; k++) if (v === words[k]) return true;
+  return false;
+}
 
 /**
  * Does the script run in a world of its own (an extension's isolated or
  * USER_SCRIPT world), where the page's scripts cannot see its globals, patch
- * its WebSocket, or read what it keeps in memory?
+ * its eval or WebSocket, or read what it keeps in memory? Fail closed.
  *
- * The strongest signal is a realm check: the page's window (unsafeWindow) has
- * another `Object` than ours. Then the managers' own words: Violentmonkey's
- * `injectInto: "content"`, Tampermonkey's and ScriptCat's `sandboxMode: "dom"`.
- * Anything else (page injection, "raw", an unknown manager) counts as the
- * page's own realm: the chat stays off there.
+ * Decided only from the manager's own GM_info (a binding in our scope, never
+ * a page global), read as own properties through syntax:
+ *
+ * 1. Any page-injection word refuses: Violentmonkey's `injectInto: "page"`,
+ *    a declared `@inject-into page` (`script.injectInto`), Tampermonkey's or
+ *    ScriptCat's `sandboxMode` "raw" or "js"/"javascript".
+ * 2. Then it needs a positive word from the manager: `injectInto: "content"`
+ *    or `sandboxMode: "dom"`.
+ * 3. Anything else (no word, an unknown manager, an unreadable GM_info) is
+ *    the page's realm: the note, and nothing privileged.
+ *
+ * Never a page global: the page can make `window.Object` (or anything on
+ * window) answer a new identity on every read, so no realm comparison is used.
  */
-export function isolatedWorld(
-  info: ManagerInfo | undefined,
-  pageWindow: { Object?: unknown } | undefined,
-  ownObject: unknown = Object,
-): boolean {
-  try {
-    if (pageWindow && pageWindow.Object && pageWindow.Object !== ownObject) return true;
-  } catch {
-    // A cross-world wrapper that throws on access is another world too.
-    return true;
-  }
-  const inject = String(info?.injectInto ?? "").toLowerCase();
-  if (inject === "content") return true;
-  const sandbox = String(info?.sandboxMode ?? "").toLowerCase();
-  return sandbox === "dom";
+export function isolatedWorld(info: ManagerInfo | undefined): boolean {
+  const i = own(info);
+  const declared = own(i.script).injectInto;
+  if (is(i.injectInto, "page", "Page", "PAGE") || is(declared, "page", "Page", "PAGE"))
+    return false;
+  if (is(i.sandboxMode, "raw", "Raw", "RAW", "js", "JS", "javascript", "JavaScript", "JAVASCRIPT"))
+    return false;
+  return is(i.injectInto, "content", "Content", "CONTENT") || is(i.sandboxMode, "dom", "DOM", "Dom");
 }
 
 /** A CSP report that is about us: our hub or app origin, in a directive we need. */

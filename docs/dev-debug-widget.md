@@ -256,9 +256,17 @@ browser's language):
 | `script`    | a CSP report on eval/inline script or Trusted Types                                          |
 | `load`      | the widget threw while rendering                                                            |
 
-Isolated means another realm (`unsafeWindow.Object !== Object`), or the
-manager saying so (Violentmonkey `injectInto: "content"`, Tampermonkey or
-ScriptCat `sandboxMode: "dom"`). In the page's realm `startPartner` stops
+Isolation is decided fail-closed from the manager's own `GM_info` only (a
+binding in our scope, never a page global; `window.Object` and the like can
+be made to answer anything), read as own properties through syntax alone (a
+null-prototype spread, strict string equality: no built-in the page could
+replace). A page word refuses (`injectInto: "page"`, a declared
+`@inject-into page`, `sandboxMode` "raw" or "js"); then it needs a positive
+word (`injectInto: "content"`, or `sandboxMode: "dom"`); anything else,
+including an unknown manager, counts as the page's realm. So the chat runs
+only where the manager says it injected into the content/DOM world; the
+default page modes of Tampermonkey, Violentmonkey and ScriptCat get the note.
+In the page's realm `startPartner` stops
 before anything privileged: no ticket is asked for, nothing is downloaded or
 evaluated, no callback is handed out (the page could replace `eval` and
 capture them). The `pageRealm` note there is drawn by the userscript's own

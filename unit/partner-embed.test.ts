@@ -46,6 +46,8 @@ import {
   isPublicRequest,
   pruneClients,
   readCapped,
+  touchClient,
+  type DevClient,
 } from "@/scripts/dev-loader-render";
 import {
   PROLOGUE,
@@ -266,24 +268,64 @@ describe("createShadowHost", () => {
 });
 
 describe("guard: when the partner may run", () => {
-  it("counts only another world as isolated", () => {
-    expect(isolatedWorld(undefined, { Object: class {} })).toBe(true);
-    expect(isolatedWorld(undefined, { Object })).toBe(false);
-    expect(isolatedWorld({ injectInto: "content" }, undefined)).toBe(true);
-    expect(isolatedWorld({ injectInto: "page" }, undefined)).toBe(false);
-    expect(isolatedWorld({ sandboxMode: "DOM" }, undefined)).toBe(true);
-    expect(isolatedWorld({ sandboxMode: "raw" }, undefined)).toBe(false);
-    expect(isolatedWorld({ sandboxMode: "js" }, { Object })).toBe(false);
-    expect(isolatedWorld(undefined, undefined)).toBe(false);
-    const throwing = new Proxy(
+  it("manager modes: isolated only on a positive word, page words refuse, unknown fails closed", () => {
+    expect(isolatedWorld({ injectInto: "content" })).toBe(true); // Violentmonkey, content
+    expect(isolatedWorld({ sandboxMode: "DOM" })).toBe(true); // Tampermonkey @sandbox DOM
+    expect(isolatedWorld({ sandboxMode: "dom" })).toBe(true);
+    expect(isolatedWorld({ injectInto: "page" })).toBe(false); // Violentmonkey, page
+    expect(isolatedWorld({ injectInto: "auto" })).toBe(false);
+    expect(isolatedWorld({ sandboxMode: "raw" })).toBe(false); // Tampermonkey / ScriptCat raw
+    expect(isolatedWorld({ sandboxMode: "JavaScript" })).toBe(false);
+    expect(isolatedWorld({ sandboxMode: "js", injectInto: "content" })).toBe(false); // any page word wins
+    expect(isolatedWorld({ injectInto: "content", script: { injectInto: "page" } })).toBe(false); // @inject-into page
+    expect(isolatedWorld({ scriptHandler: "Tampermonkey" })).toBe(false); // no word: unsure → unsafe
+    expect(isolatedWorld({})).toBe(false);
+    expect(isolatedWorld(undefined)).toBe(false);
+    expect(isolatedWorld("content" as never)).toBe(false);
+    expect(isolatedWorld({ injectInto: new String("content") as never })).toBe(false);
+  });
+
+  it("a page's Proxy getter on window.Object cannot make the page realm look isolated", () => {
+    // The reviewer's spoof: every read of window.Object answers a new identity.
+    const w = {} as { Object?: unknown };
+    Object.defineProperty(w, "Object", { get: () => new Proxy(Object, {}) });
+    expect(w.Object).not.toBe(w.Object);
+    // No window global takes part in the decision any more: same answer as without it.
+    expect(isolatedWorld({ injectInto: "page" })).toBe(false);
+    expect(isolatedWorld({ scriptHandler: "ScriptCat", sandboxMode: "raw" })).toBe(false);
+  });
+
+  it("a spoofed GM_info word on Object.prototype (or a patched String method) is not read", () => {
+    const proto = Object.prototype as Record<string, unknown>;
+    const lower = String.prototype.toLowerCase;
+    Object.defineProperty(proto, "injectInto", { configurable: true, get: () => "content" });
+    Object.defineProperty(proto, "sandboxMode", { configurable: true, get: () => "dom" });
+    String.prototype.toLowerCase = () => "content";
+    try {
+      // The manager set no word: the page's inherited getters must not count.
+      expect(({} as { injectInto?: unknown }).injectInto).toBe("content");
+      expect(isolatedWorld({ scriptHandler: "Tampermonkey" })).toBe(false);
+      expect(isolatedWorld({ script: {} })).toBe(false);
+      expect(isolatedWorld({ sandboxMode: "Raw" })).toBe(false);
+      // The manager's own word still counts.
+      expect(isolatedWorld({ injectInto: "content" })).toBe(true);
+    } finally {
+      delete proto.injectInto;
+      delete proto.sandboxMode;
+      String.prototype.toLowerCase = lower;
+    }
+  });
+
+  it("a GM_info that throws on read counts as unsafe", () => {
+    const hostile = new Proxy(
       {},
       {
-        get() {
-          throw new Error("cross-world");
+        ownKeys() {
+          throw new Error("nope");
         },
       },
     );
-    expect(isolatedWorld(undefined, throwing)).toBe(true);
+    expect(isolatedWorld(hostile as never)).toBe(false);
   });
 
   it("reads a CSP report about us as the right blocker, and ignores the page's own", () => {
@@ -593,7 +635,7 @@ function hostDeps(o: {
   ticketStatus?: number;
   code?: string;
   codeStatus?: number;
-  pageWindow?: unknown;
+  info?: unknown;
 }) {
   const store = new Map<string, unknown>([
     [PARTNER_ON_KEY, o.on ?? true],
@@ -628,8 +670,7 @@ function hostDeps(o: {
       setValue: (k: string, v: unknown) => void store.set(k, v),
       deleteValue: (k: string) => void store.delete(k),
       listValues: () => [...store.keys()],
-      info: {},
-      pageWindow: o.pageWindow ?? { Object: class {} },
+      info: o.info ?? { injectInto: "content" },
       report: (w: string, d: string) => void reports.push(`${w} ${d}`),
     },
   };
@@ -740,7 +781,7 @@ describe("the userscript's side (src/partner.ts)", () => {
     const realEval = g.eval;
     let evals = 0;
     g.eval = ((c: string) => (evals++, realEval(c))) as typeof eval;
-    const h = hostDeps({ code: FAKE_BUNDLE, pageWindow: { Object } });
+    const h = hostDeps({ code: FAKE_BUNDLE, info: { injectInto: "page" } });
     const d = new FakeDoc();
     try {
       const stop = await startPartner({ ...h.deps, doc: asDoc(d) });
@@ -764,6 +805,31 @@ describe("the userscript's side (src/partner.ts)", () => {
     } finally {
       g.eval = realEval;
     }
+  });
+
+  it("the reviewer's bypass: a Proxy getter on window.Object with injectInto 'page' still gets only the note", async () => {
+    const g = globalThis as { Object: ObjectConstructor; __partnerTest?: unknown };
+    const O = Object;
+    const desc = O.getOwnPropertyDescriptor(globalThis, "Object")!;
+    O.defineProperty(globalThis, "Object", { configurable: true, get: () => new Proxy(O, {}) });
+    g.__partnerTest = undefined;
+    const h = hostDeps({ code: FAKE_BUNDLE, info: { injectInto: "page" } });
+    const d = new FakeDoc();
+    try {
+      await startPartner({ ...h.deps, doc: asDoc(d) });
+    } finally {
+      O.defineProperty(globalThis, "Object", desc);
+    }
+    expect(h.calls).toEqual([]);
+    expect(g.__partnerTest).toBeUndefined();
+    expect(h.reports).toEqual(["partner-mode page-realm github.com"]);
+    expect(d.documentElement.children[0].tag).toBe("div");
+  });
+
+  it("an unknown manager (no isolation word) fails closed: no ticket", async () => {
+    const h = hostDeps({ code: FAKE_BUNDLE, info: { scriptHandler: "SomeManager" } });
+    await startPartner({ ...h.deps, doc: asDoc(new FakeDoc()) });
+    expect(h.calls).toEqual([]);
   });
 
   it("the page-realm note is drawn into <body> when there is no documentElement", () => {
@@ -819,6 +885,25 @@ describe("dev loader server: what the public tunnel may see and send", () => {
     });
     expect(await readCapped(post(endless), 8192)).toBeNull();
     expect(pulled).toBeLessThan(20);
+  });
+
+  it("a new client is tracked (last set before pruning), a bad id is not, and the table stays bounded", () => {
+    const m = new Map<string, DevClient>();
+    const added: string[] = [];
+    const o = { max: 2, ttlMs: 60_000, onNew: (id: string) => void added.push(id) };
+    const a = touchClient(m, "client_a", 1_000_000, { ...o, page: "/x" });
+    expect(a).toMatchObject({ id: "client_a", first: 1_000_000, last: 1_000_000, page: "/x" });
+    expect([...m.keys()]).toEqual(["client_a"]);
+    expect(touchClient(m, "bad id\u001b", 1_000_001, o)).toBeUndefined();
+    touchClient(m, "client_a", 1_000_500, o);
+    expect(m.get("client_a")!.last).toBe(1_000_500);
+    touchClient(m, "client_b", 1_001_000, o);
+    touchClient(m, "client_c", 1_002_000, o);
+    expect([...m.keys()].sort()).toEqual(["client_b", "client_c"]);
+    // Long unseen: forgotten when the next one arrives; the new one stays.
+    touchClient(m, "client_d", 1_200_000, o);
+    expect([...m.keys()]).toEqual(["client_d"]);
+    expect(added).toEqual(["client_a", "client_b", "client_c", "client_d"]);
   });
 
   it("keeps the client table bounded and forgets old clients", () => {

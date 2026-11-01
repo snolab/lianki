@@ -41,7 +41,6 @@ export type PartnerHostDeps = {
   deleteValue: (k: string) => void;
   listValues?: () => string[];
   info: unknown;
-  pageWindow: unknown;
   report: (what: string, detail: string) => void;
   /** The page's host, top-window flag, document and WebSocket (defaults: this page's; tests pass fakes). */
   host?: string;
@@ -85,10 +84,7 @@ export async function startPartner(d: PartnerHostDeps): Promise<() => void> {
   // In the page's own realm, the page could replace eval, WebSocket or any
   // global we touch: no ticket is asked for, nothing is evaluated, and no
   // callback is handed out. Only the note, drawn by this (trusted) code.
-  const isolated = isolatedWorld(
-    d.info as Parameters<typeof isolatedWorld>[0],
-    d.pageWindow as { Object?: unknown } | undefined,
-  );
+  const isolated = isolatedWorld(d.info as Parameters<typeof isolatedWorld>[0]);
   d.report("partner-mode", `${isolated ? "isolated" : "page-realm"} ${host}`);
   const hideHere = () =>
     d.setValue(PARTNER_HIDDEN_KEY, JSON.stringify([...new Set([...hidden, host])]));

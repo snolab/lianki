@@ -7,7 +7,6 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @grant       unsafeWindow
 // @version     __VERSION__
 // @author      lianki.com
 // @description Lianki dev loader — install once; the build is pushed from your dev server over a long poll.

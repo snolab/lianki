@@ -7,8 +7,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @grant       unsafeWindow
-// @version     2.24.22
+// @version     2.24.23
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -46,8 +45,6 @@ declare const GM_setValue: (key: string, value: any) => void;
 declare const GM_getValue: (key: string, defaultValue?: any) => any;
 declare const GM_deleteValue: (key: string) => void;
 declare const GM_info: { script: { version: string } };
-/** The page's own window (another world's, under an isolating manager). */
-declare const unsafeWindow: Window | undefined;
 /** Set by the dev loader's server only: where it serves the partner's script. */
 declare const __LK_PARTNER_SRC__: string | undefined;
 
@@ -3929,7 +3926,6 @@ function main() {
     setValue: GM_setValue,
     deleteValue: GM_deleteValue,
     info: GM_info,
-    pageWindow: typeof unsafeWindow === "undefined" ? undefined : unsafeWindow,
     report: (what, detail) =>
       what === "partner-mode" && detail.startsWith("isolated")
         ? console.debug(`[Lianki] ${what}: ${detail}`)

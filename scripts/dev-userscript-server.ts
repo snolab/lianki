@@ -21,12 +21,13 @@ import { readFileSync, watch } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { buildPartner } from "./build-partner-embed";
 import {
+  type DevClient,
   cleanClientId,
   cleanErrorReport,
   isPublicRequest,
-  pruneClients,
   readCapped,
   renderLoader,
+  touchClient,
 } from "./dev-loader-render";
 
 const ROOT = resolve(dirname(Bun.fileURLToPath(import.meta.url)), "..");
@@ -131,34 +132,19 @@ async function build(): Promise<boolean> {
 
 // ── clients ─────────────────────────────────────────────────────────────────
 
-type Client = {
-  id: string;
-  first: number;
-  last: number;
-  page: string;
-  loads: number;
-  errors: number;
-};
-const clients = new Map<string, Client>();
+const clients = new Map<string, DevClient>();
 /** The table is public input: at most this many clients, forgotten after a day unseen. */
 const MAX_CLIENTS = 200;
 const CLIENT_TTL_MS = 24 * 60 * 60 * 1000;
 
-function touch(raw: string, page = "") {
-  // Validated before it is a key or a log line: [A-Za-z0-9_-]{1,40}, else not tracked.
-  const id = cleanClientId(raw);
-  if (!id) return;
-  let c = clients.get(id);
-  if (!c) {
-    c = { id, first: Date.now(), last: 0, page, loads: 0, errors: 0 };
-    clients.set(id, c);
-    pruneClients(clients, Date.now(), MAX_CLIENTS, CLIENT_TTL_MS);
-    log(`client ${id} attached`);
-  }
-  c.last = Date.now();
-  if (page) c.page = page;
-  return c;
-}
+/** Validated before it is a key or a log line: [A-Za-z0-9_-]{1,40}, else not tracked. */
+const touch = (raw: string, page = "") =>
+  touchClient(clients, raw, Date.now(), {
+    page,
+    max: MAX_CLIENTS,
+    ttlMs: CLIENT_TTL_MS,
+    onNew: (id) => log(`client ${id} attached`),
+  });
 
 // ── long poll ───────────────────────────────────────────────────────────────
 

@@ -71,6 +71,40 @@ export function pruneClients<C extends { last: number }>(
   return clients;
 }
 
+export type DevClient = {
+  id: string;
+  first: number;
+  last: number;
+  page: string;
+  loads: number;
+  errors: number;
+};
+
+/**
+ * Record a client seen now (a valid id only), then keep the table bounded.
+ * `last` is set before pruning: a new client is never pruned as stale.
+ * Returns the client, or undefined for an id that is not loader-shaped.
+ */
+export function touchClient(
+  clients: Map<string, DevClient>,
+  raw: string,
+  now: number,
+  o: { page?: string; max: number; ttlMs: number; onNew?: (id: string) => void },
+): DevClient | undefined {
+  const id = cleanClientId(raw);
+  if (!id) return undefined;
+  let c = clients.get(id);
+  if (!c) {
+    c = { id, first: now, last: now, page: o.page ?? "", loads: 0, errors: 0 };
+    clients.set(id, c);
+    o.onNew?.(id);
+  }
+  c.last = now;
+  if (o.page) c.page = o.page;
+  pruneClients(clients, now, o.max, o.ttlMs);
+  return clients.get(id);
+}
+
 /** Printable, one line per field: control characters (terminal escapes) go. */
 const printable = (s: unknown, max: number) =>
   String(s ?? "")
