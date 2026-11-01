@@ -1211,6 +1211,8 @@ export class DebugHub {
         ...(m.source ? { source: m.source } : {}),
         ...(m.timing ? { timing: m.timing } : {}),
         ...(m.wake ? { wake: m.wake } : {}),
+        // Kept structured for later (voice approvals may require "me"); reported by the page.
+        ...(m.speaker ? { speaker: m.speaker } : {}),
       });
     }
     // A tap on an ask card: stamped here, never by the page or an agent.

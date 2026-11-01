@@ -19,6 +19,7 @@
  */
 
 import { reportPageError } from "./page-errors";
+import { type SpeakerTag, cleanSpeaker } from "./wire";
 
 /** localStorage: the local STT server's WebSocket URL(s) (owner pages only). */
 export const LOCAL_STT_KEY = "lk:debug-local-stt";
@@ -111,22 +112,53 @@ export type LocalFinal = {
   endToFinalMs: number;
   /** Utterance start → first partial shown, if any. */
   firstPartialMs?: number;
+  /** The Mac's speaker check against the owner's voiceprint (docs/local-stt.md, "Voiceprint"). */
+  speaker?: SpeakerTag;
+  /** On an enrolment sentence: whether it was kept, and why not. */
+  enrol?: EnrolSentence;
+};
+
+/** The server's verdict on one enrolment sentence (scripts/local-stt/voiceprint.py Enrolment.add). */
+export type EnrolSentence = {
+  ok: boolean;
+  /** Sentences kept so far. */
+  n: number;
+  /** "short" | "noise" | "mismatch" | "full" | "no-enrolment". */
+  reason?: string;
 };
 
 /** One utterance being streamed. */
 export type LocalUtt = {
   frame(f: Float32Array): void;
-  /** The whole utterance as the VAD cut it (its head, before the first frame, is sent as pre-pad). */
-  end(audio: Float32Array): Promise<LocalFinal>;
+  /**
+   * The whole utterance as the VAD cut it (its head, before the first frame,
+   * is sent as pre-pad). `textFrom`: decode the text from this sample on (the
+   * words after "Linky"), while the speaker check hears all of it.
+   */
+  end(audio: Float32Array, opts?: { textFrom?: number }): Promise<LocalFinal>;
   cancel(): void;
 };
+
+/** `enrol`: an enrolment sentence (its final carries `enrol`, never `speaker`). */
+export type BeginOpts = { enrol?: boolean };
+
+/** How long a voiceprint request (status, enrol, delete) may take, connecting included. */
+export const REQUEST_TIMEOUT_MS = 6_000;
 
 /** The socket, for the mic's indicator: connecting, connected (ready), or not reachable. */
 export type LocalState = "idle" | "connecting" | "ready" | "down";
 
 export type LocalStt = {
   /** Start an utterance; null when the socket isn't open (it is opened for next time). */
-  begin(onPartial: (text: string) => void): LocalUtt | null;
+  begin(onPartial: (text: string) => void, opts?: BeginOpts): LocalUtt | null;
+  /**
+   * A voiceprint request ({t:"enrol"|"voiceprint", op, …}): opens the socket
+   * if needed, and resolves with the server's answer to it (matched by a
+   * request id). Rejects when the Mac cannot be reached in time.
+   */
+  request(msg: Record<string, unknown>): Promise<Record<string, unknown>>;
+  /** The server's speaker-check models from its `ready` (undefined: no check there, or not connected). */
+  speaker(): string[] | undefined;
   /** Open the socket now (on mic on), so the first utterance can stream. */
   warm(): void;
   close(): void;
@@ -168,6 +200,8 @@ export function createLocalStt(
     setTimer?: (f: () => void, ms: number) => unknown;
     clearTimer?: (t: unknown) => void;
     log?: (ev: Record<string, unknown>) => void;
+    /** This device's slug ("iphone"), sent as {t:"hello"} so finals are scored against its print. */
+    device?: string;
   } = {},
 ): LocalStt {
   const urls = (Array.isArray(url) ? url : url.split(/[\s,]+/)).filter(Boolean);
@@ -191,6 +225,10 @@ export function createLocalStt(
   };
   let race: Race | null = null;
   const utts = new Map<number, Pending>();
+  /** Voiceprint requests waiting for their answer, by rid. */
+  const reqs = new Map<string, { resolve: (m: Record<string, unknown>) => void; reject: (e: Error) => void; timer: unknown }>();
+  let nextRid = 1;
+  let speakerModels: string[] | undefined;
   let st: LocalState = "idle";
   const subs = new Set<(s: LocalState) => void>();
   const setSt = (s: LocalState) => {
@@ -205,6 +243,12 @@ export function createLocalStt(
       p.reject?.(new Error(why));
       utts.delete(id);
     }
+    // A request sent on this socket has no answer coming.
+    for (const [rid, r] of reqs) {
+      clearTimer(r.timer);
+      r.reject(new Error(why));
+      reqs.delete(rid);
+    }
   };
   const hostOf = (u: string) => {
     try {
@@ -216,11 +260,23 @@ export function createLocalStt(
   type Msg = {
     t?: string;
     id?: number;
+    rid?: unknown;
     text?: string;
     model?: string;
     lang?: string;
     ms?: number;
     error?: string;
+    speaker?: unknown;
+    enrol?: unknown;
+  };
+  const enrolOf = (raw: unknown): EnrolSentence | undefined => {
+    if (!raw || typeof raw !== "object") return undefined;
+    const r = raw as Record<string, unknown>;
+    return {
+      ok: r.ok === true,
+      n: typeof r.n === "number" && Number.isFinite(r.n) ? r.n : 0,
+      ...(typeof r.reason === "string" ? { reason: r.reason.slice(0, 40) } : {}),
+    };
   };
   const parse = (e: { data: unknown }): Msg | undefined => {
     if (typeof e.data !== "string") return undefined;
@@ -232,6 +288,13 @@ export function createLocalStt(
   };
   /** The winner's messages: partials, finals and errors of the utterances. */
   const onMsg = (m: Msg) => {
+    if ((m.t === "enrol" || m.t === "voiceprint") && typeof m.rid === "string") {
+      const r = reqs.get(m.rid);
+      if (!r) return;
+      reqs.delete(m.rid);
+      clearTimer(r.timer);
+      return r.resolve(m as Record<string, unknown>);
+    }
     const p = m.id === undefined ? undefined : utts.get(m.id);
     if (!p) return;
     if (m.t === "partial" && typeof m.text === "string" && !p.resolve) {
@@ -242,6 +305,8 @@ export function createLocalStt(
     } else if (m.t === "final" && p.resolve) {
       clearTimer(p.timer);
       utts.delete(m.id as number);
+      const speaker = cleanSpeaker(m.speaker);
+      const enrol = enrolOf(m.enrol);
       p.resolve({
         text: m.text ?? "",
         model: `local:${m.model ?? "?"}`,
@@ -249,6 +314,8 @@ export function createLocalStt(
         ms: m.ms ?? 0,
         endToFinalMs: Math.round(now() - (p.endAt ?? now())),
         firstPartialMs: p.firstPartialMs,
+        ...(speaker ? { speaker } : {}),
+        ...(enrol ? { enrol } : {}),
       });
     } else if (m.t === "error") {
       clearTimer(p.timer);
@@ -264,6 +331,7 @@ export function createLocalStt(
       message: `local STT socket ${what}${typeof code === "number" ? ` (${code})` : ""}`,
     });
     ready = false;
+    speakerModels = undefined;
     setSt("down");
     failAll("local stt closed");
   };
@@ -275,10 +343,17 @@ export function createLocalStt(
     if (race === r) race = null;
     return socks;
   };
-  const win = (r: Race, s: WsLike, u: string, model?: string) => {
+  const win = (r: Race, s: WsLike, u: string, model?: string, spk?: unknown) => {
     for (const o of endRace(r)) if (o !== s) o.close();
     ws = s;
     ready = true;
+    const ms = (spk as { models?: unknown } | undefined)?.models;
+    speakerModels = Array.isArray(ms) ? ms.filter((x): x is string => typeof x === "string") : undefined;
+    // Which device this is, so its finals are scored against its own voiceprint.
+    if (d.device)
+      try {
+        s.send(JSON.stringify({ t: "hello", device: d.device }));
+      } catch {}
     setSt("ready");
     d.log?.({ ev: "local-stt", state: "ready", model, via: hostOf(u) });
   };
@@ -319,7 +394,8 @@ export function createLocalStt(
         const m = parse(e);
         if (!m) return;
         if (ws === s) return onMsg(m);
-        if (m.t === "ready" && r.socks.has(s) && !r.over) win(r, s, u, m.model);
+        if (m.t === "ready" && r.socks.has(s) && !r.over)
+          win(r, s, u, m.model, (m as { speaker?: unknown }).speaker);
       };
       s.onclose = (e) => {
         if (ws === s) {
@@ -360,24 +436,70 @@ export function createLocalStt(
     }
   };
 
+  /** Resolves once the socket is ready (opening it), rejects at the deadline or when every route failed. */
+  const whenReady = (deadline: number) =>
+    new Promise<void>((resolve, reject) => {
+      if (live()) return resolve();
+      let off = () => {};
+      const t = setTimer(() => {
+        off();
+        reject(new Error("local stt not connected"));
+      }, Math.max(0, deadline - now()));
+      off = (() => {
+        const f = (s: LocalState) => {
+          if (s === "ready" && live()) {
+            subs.delete(f);
+            clearTimer(t);
+            resolve();
+          } else if (s === "down") {
+            subs.delete(f);
+            clearTimer(t);
+            reject(new Error("local stt unreachable"));
+          }
+        };
+        subs.add(f);
+        return () => void subs.delete(f);
+      })();
+      connect();
+    });
+
   return {
     connected: live,
     state: () => st,
+    speaker: () => (live() ? speakerModels : undefined),
     subscribe(f) {
       subs.add(f);
       return () => void subs.delete(f);
     },
     warm: connect,
+    async request(msg) {
+      const deadline = now() + REQUEST_TIMEOUT_MS;
+      await whenReady(deadline);
+      const rid = `r${nextRid++}`;
+      return new Promise((resolve, reject) => {
+        const timer = setTimer(() => {
+          reqs.delete(rid);
+          reject(new Error("local stt: no answer"));
+        }, Math.max(0, deadline - now()));
+        reqs.set(rid, { resolve, reject, timer });
+        if (!send(JSON.stringify({ ...msg, rid }))) {
+          reqs.delete(rid);
+          clearTimer(timer);
+          reject(new Error("local stt: send failed"));
+        }
+      });
+    },
     close() {
       const s = ws;
       ws = null;
       ready = false;
+      speakerModels = undefined;
       setSt("idle");
       if (race) for (const o of endRace(race)) o.close();
       s?.close();
       failAll("local stt closed");
     },
-    begin(onPartial) {
+    begin(onPartial, opts) {
       if (!live()) {
         connect();
         return null;
@@ -385,7 +507,7 @@ export function createLocalStt(
       const id = nextId++;
       const p: Pending = { onPartial, began: now() };
       utts.set(id, p);
-      send(JSON.stringify({ t: "begin", id }));
+      send(JSON.stringify(opts?.enrol ? { t: "begin", id, enrol: true } : { t: "begin", id }));
       let streamed = 0;
       let over = false;
       return {
@@ -394,7 +516,7 @@ export function createLocalStt(
           streamed += f.length;
           send(packPcm(TAG_FRAME, f));
         },
-        end(audio) {
+        end(audio, eo) {
           over = true;
           return new Promise<LocalFinal>((resolve, reject) => {
             if (!live() || !utts.has(id)) {
@@ -407,7 +529,12 @@ export function createLocalStt(
             const head = audio.length - streamed;
             if (head > 0) send(packPcm(TAG_PRE, audio.subarray(0, head)));
             p.endAt = now();
-            send(JSON.stringify({ t: "end", id }));
+            const tf = eo?.textFrom;
+            send(
+              JSON.stringify(
+                tf !== undefined && Number.isInteger(tf) && tf > 0 ? { t: "end", id, textFrom: tf } : { t: "end", id },
+              ),
+            );
             p.timer = setTimer(() => {
               if (!utts.has(id)) return;
               utts.delete(id);

@@ -1287,6 +1287,33 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
       .map(([, v]) => v as Record<string, unknown>);
     expect(stored.map((m) => m.wake)).toEqual(["passive", undefined]);
   });
+
+  it("a voice line keeps the Mac's speaker check, structured; typed lines and junk carry none", async () => {
+    const s = setup();
+    const owner = s.page();
+    await agent(s, owner);
+    const tag = {
+      decision: "me",
+      score: 0.47,
+      model: "campp",
+      device: "iphone",
+      speechS: 2.4,
+      snrDb: 21,
+    };
+    await s.msg(owner, { type: "chat", id: "s1", text: "next word", source: "stt", speaker: tag });
+    await s.msg(owner, { type: "chat", id: "s2", text: "typed", speaker: tag });
+    await s.msg(owner, {
+      type: "chat",
+      id: "s3",
+      text: "odd",
+      source: "stt",
+      speaker: { decision: "boss" },
+    });
+    const stored = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as Record<string, unknown>);
+    expect(stored.map((m) => m.speaker)).toEqual([tag, undefined, undefined]);
+  });
 });
 
 describe("DebugHub page moves (relabel)", () => {

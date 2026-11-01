@@ -31,6 +31,7 @@ import {
   pageParts,
   parseAddress,
   pathLabel,
+  type SpeakerTag,
   type VoiceTiming,
 } from "./wire";
 import { latencyLines, viaAt, voiceLatency } from "./latency";
@@ -49,7 +50,9 @@ import { clipsAction, clipsDevice, clipsLive } from "./clips-store";
 import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttFrom } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
-import { DebugMic, canCapture, playSentTick } from "./MicButton";
+import { DebugMic, canCapture, pageMic, playSentTick, voiceDevice } from "./MicButton";
+import { VoiceMark, VoiceprintPanel } from "./VoiceprintPanel";
+import { type EnrolDeps, clearSpeaker, takeSpeaker } from "./voiceprint";
 import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
 import {
   type ReadingLeft,
@@ -460,7 +463,7 @@ export type DebugChatProps = {
   onSend: (
     text: string,
     to?: string,
-    opts?: { source?: MessageSource; timing?: VoiceTiming },
+    opts?: { source?: MessageSource; timing?: VoiceTiming; speaker?: SpeakerTag },
   ) => boolean;
   /**
    * A tap on an ask card (AskCard.tsx): the page sends {type:"answer",
@@ -611,7 +614,9 @@ export function DebugChat({
    * sessions; a double tap on the mark) or the state tree (the tree button).
    * Opening one closes the other.
    */
-  const [panel, setPanel] = useState<"none" | "menu" | "tree">(() => uiStore.getState().panel);
+  const [panel, setPanel] = useState<"none" | "menu" | "tree" | "voiceprint">(
+    () => uiStore.getState().panel,
+  );
   // Kept for a refresh or a hot swap (ui-store.ts): the tree, never the menu.
   useEffect(() => uiStore.setState({ panel: panel === "tree" ? "tree" : "none" }), [panel]);
   const menu = panel === "menu";
@@ -1412,11 +1417,15 @@ export function DebugChat({
     const source = draftSource(draftRef.current, pureDictation.current);
     // A voice line carries its timestamps (latency.ts): the latest utterance in it.
     const timing = source ? voiceLatency().take() : undefined;
+    // And the Mac's speaker check (voiceprint.ts): the weakest of its utterances.
+    const speaker = source ? takeSpeaker() : (clearSpeaker(), undefined);
     if (
       !sendRef.current(
         text,
         to === ROOT_NODE ? undefined : to,
-        source ? { source, ...(timing ? { timing } : {}) } : undefined,
+        source
+          ? { source, ...(timing ? { timing } : {}), ...(speaker ? { speaker } : {}) }
+          : undefined,
       )
     ) {
       setOffline(true);
@@ -2108,7 +2117,16 @@ export function DebugChat({
                 you: t.you,
               })}
               text={p.text}
-              mark={p.mark}
+              mark={
+                m.speaker?.decision === "me" ? (
+                  <>
+                    {p.mark}
+                    <VoiceMark label={t.vpVerified} />
+                  </>
+                ) : (
+                  p.mark
+                )
+              }
               epoch={floatEpoch}
               paused={floatHover || scrubbing}
               onHover={setFloatHover}
@@ -2138,6 +2156,13 @@ export function DebugChat({
       )}
     </div>
   );
+  /** The voiceprint panel's page side: the Mac over the local STT socket, and the mic session. */
+  const voiceprintDeps: EnrolDeps = {
+    request: (m) => pageMic().voiceprint(m),
+    device: voiceDevice(),
+    capture: (on, onFinal) => pageMic().enrolCapture(on, onFinal),
+    log: (ev) => voice().log(ev),
+  };
   /** The menu (a double tap on the mark), open or minimized. */
   const menuEl = menu && (
     <div
@@ -2295,6 +2320,21 @@ export function DebugChat({
             ☰
           </span>
           {treeStrings(treeText).tree}
+        </button>
+      )}
+      {/* The voiceprint (voiceprint.ts): owner pages with a local STT; enrolling and deleting are taps in its panel. */}
+      {!friend && localSttFrom(read(LOCAL_STT_KEY)) && (
+        <button
+          type="button"
+          role="menuitem"
+          data-testid="debug-menu-voiceprint"
+          onClick={() => setPanel("voiceprint")}
+          className="flex items-center gap-2 px-3 py-1.5 text-start"
+        >
+          <span aria-hidden className="w-[1em] text-center">
+            ◎
+          </span>
+          {t.vpMenu}
         </button>
       )}
       {/* Voice clips (clips.ts): a tap turns this window's recording on; the badge stops it. */}
@@ -2738,6 +2778,7 @@ export function DebugChat({
                           />
                         )}
                         {polish(m).mark}
+                        {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
                         {!agentOnline && m.from !== "agent" && i > lastAgent && (
                           <span
                             data-testid="debug-chat-queued"
@@ -3106,6 +3147,11 @@ export function DebugChat({
         <span aria-hidden />
         {floatBoxEl}
         {menuEl}
+        {panel === "voiceprint" && (
+          <div className="pointer-events-auto absolute inset-x-0 bottom-full mb-1">
+            <VoiceprintPanel t={t} deps={voiceprintDeps} onClose={() => setPanel("none")} />
+          </div>
+        )}
       </div>
     </section>
   );

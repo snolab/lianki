@@ -36,7 +36,22 @@ Protocol (one socket per page, utterances one after another):
                    lost to a forced ja/zh reading; engines.LangPicker)
                    {"t":"error","id":N,"error":…}
 
-GET /health answers {"ok":true,"engine":…} (the same port, plain HTTP).
+The voiceprint (voiceprint.py; docs/local-stt.md, "Voiceprint"):
+
+  client → server  {"t":"hello","device":D}                 which device's print to score against
+                   {"t":"begin","id":N,"enrol":true}         an enrolment sentence (not scored)
+                   {"t":"end","id":N,"textFrom":S}           decode the text from sample S on (after
+                                                             "Linky"); the speaker check hears it all
+                   {"t":"enrol","op":"start","rid":R,"device":D,"consent":true,"keepAudio":false}
+                   {"t":"enrol","op":"commit"|"cancel","rid":R}
+                   {"t":"voiceprint","op":"status","rid":R}
+                   {"t":"voiceprint","op":"delete","rid":R,"device":D|"*"}
+  server → client  ready gains "speaker":{"models":[…]} when the check is on
+                   final gains "speaker":{score,decision:"me"|"other"|"unknown",model,device,
+                    speechS,snrDb[,reason]}, or on an enrolment sentence "enrol":{ok,n[,reason],…}
+                   {"t":"enrol"|"voiceprint","rid":R,"ok":…[,"error"]…}
+
+GET /health answers {"ok":true,"engine":…,"speaker":[models]|false} (the same port, plain HTTP).
 """
 from __future__ import annotations
 
@@ -57,6 +72,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from engines import RATE, load_engine  # noqa: E402
 from ticket import SUBPROTOCOL, Tickets, file_problem, load_public_key, offered  # noqa: E402
+import voiceprint as VP  # noqa: E402
 
 #: A partial every this much new audio…
 PARTIAL_STEP_S = 0.4
@@ -97,6 +113,10 @@ class Utterance:
         self.done = False
         self.began = time.perf_counter()
         self.first_partial_ms: int | None = None
+        #: An enrolment sentence: its embedding joins the enrolment, nothing is scored.
+        self.enrol = False
+        #: The text is decoded from this sample on (the words after "Linky").
+        self.text_from = 0
 
     def audio(self) -> np.ndarray:
         parts = ([self.pre] if self.pre is not None else []) + self.chunks
@@ -108,9 +128,73 @@ def pcm(b: bytes) -> np.ndarray:
 
 
 class Server:
-    def __init__(self, engine, workers: int = 2):
+    def __init__(self, engine, workers: int = 2, verifier: "VP.Verifier | None" = None):
         self.engine = engine
         self.pool = ThreadPoolExecutor(max_workers=workers)
+        #: The speaker check (voiceprint.py), or None when it is off.
+        self.verifier = verifier
+        #: Its own thread, beside the decode, so the final waits only for the longer of the two.
+        self.spk_pool = ThreadPoolExecutor(max_workers=1)
+        #: Decisions so far (the log's counts; never text).
+        self.counts = {"me": 0, "other": 0, "unknown": 0}
+
+    async def verify(self, audio: np.ndarray, device: str | None):
+        if not self.verifier:
+            return None
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self.spk_pool, self.verifier.verify, audio, device)
+
+    async def enrol_add(self, enrol, audio: np.ndarray):
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self.spk_pool, enrol.add, audio)
+
+    async def control(self, m: dict, conn: dict) -> dict:
+        """An enrolment or voiceprint request on this socket; the reply carries its rid."""
+        t, op = m.get("t"), m.get("op")
+        out: dict = {"t": t, "rid": m.get("rid"), "op": op}
+        v = self.verifier
+        if not v:
+            return {**out, "ok": False, "error": "speaker check off"}
+        loop = asyncio.get_running_loop()
+        try:
+            if t == "enrol" and op == "start":
+                device = m.get("device")
+                # The page sends this only after the owner's tap on the consent card.
+                if m.get("consent") is not True:
+                    return {**out, "ok": False, "error": "no consent"}
+                if not VP.valid_device(device):
+                    return {**out, "ok": False, "error": "bad device"}
+                keep = m.get("keepAudio") is True
+                conn["enrol"] = VP.Enrolment(v, device, keep_audio=keep)
+                log(f"enrolment started ({device}, audio {'kept' if keep else 'not kept'})")
+                return {**out, "ok": True, "min": VP.ENROL_MIN, "max": VP.ENROL_MAX}
+            if t == "enrol" and op == "cancel":
+                conn["enrol"] = None
+                log("enrolment cancelled")
+                return {**out, "ok": True}
+            if t == "enrol" and op == "commit":
+                e = conn.get("enrol")
+                if not e:
+                    return {**out, "ok": False, "error": "no enrolment"}
+                res = await loop.run_in_executor(self.spk_pool, e.commit)
+                conn["enrol"] = None
+                log(f"voiceprint saved ({e.device}, {res['n']} sentences, {','.join(res['models'])}, self {res['self']})")
+                return {**out, "ok": True, **res}
+            if t == "voiceprint" and op == "status":
+                prints = await loop.run_in_executor(self.spk_pool, v.status)
+                return {**out, "ok": True, "prints": prints, "models": v.order}
+            if t == "voiceprint" and op == "delete":
+                device = m.get("device")
+                if device != "*" and not VP.valid_device(device):
+                    return {**out, "ok": False, "error": "bad device"}
+                n = await loop.run_in_executor(self.spk_pool, v.store.delete, None if device == "*" else device)
+                v.refresh()
+                log(f"voiceprint deleted ({device}, {n} files)")
+                return {**out, "ok": True, "deleted": n}
+        except VP.StoreError as e:
+            log(f"voiceprint {op} failed: {e}")
+            return {**out, "ok": False, "error": str(e)[:200]}
+        return {**out, "ok": False, "error": "unknown request"}
 
     async def decode(self, audio: np.ndarray):
         loop = asyncio.get_running_loop()
@@ -128,6 +212,8 @@ class Server:
         peer = ws.request.headers.get("origin", "?")
         log(f"page attached ({peer}, {via})")
         cur: Utterance | None = None
+        #: This socket's device (hello) and its open enrolment, if any.
+        conn: dict = {"device": None, "enrol": None}
 
         async def send(obj):
             try:
@@ -154,11 +240,24 @@ class Server:
         async def final(u: Utterance):
             t0 = time.perf_counter()
             audio = u.audio()
-            try:
-                text, lang, auto_lang = await self.decode_final(audio)
-            except Exception as e:
-                await send({"t": "error", "id": u.id, "error": str(e)[:200]})
+            heard = audio[u.text_from:] if u.text_from > 0 else audio
+            enrol = conn["enrol"] if u.enrol else None
+
+            async def text_of():
+                if len(heard) < RATE // 10:  # a bare "Linky": nothing after it to read
+                    return "", "", None
+                return await self.decode_final(heard)
+
+            # The speaker check runs beside the decode (its own thread), on the whole utterance.
+            side = self.enrol_add(enrol, audio) if enrol else self.verify(audio, conn["device"])
+            res = await asyncio.gather(text_of(), side, return_exceptions=True)
+            if isinstance(res[0], BaseException):
+                await send({"t": "error", "id": u.id, "error": str(res[0])[:200]})
                 return
+            text, lang, auto_lang = res[0]
+            spk = None if isinstance(res[1], BaseException) else res[1]
+            if isinstance(res[1], BaseException):
+                log(f"speaker check failed: {type(res[1]).__name__}: {res[1]}")
             ms = int((time.perf_counter() - t0) * 1000)
             msg = {
                 "t": "final",
@@ -173,11 +272,28 @@ class Server:
             }
             if auto_lang:
                 msg["langAuto"] = auto_lang  # what auto-detect said before the short-utterance pick
+            tag = ""
+            if enrol and spk is not None:
+                msg["enrol"] = spk
+                tag = f", enrol {'ok' if spk.get('ok') else spk.get('reason')} ({spk.get('n')})"
+            elif u.enrol:
+                msg["enrol"] = {"ok": False, "reason": "no-enrolment", "n": 0}
+            elif spk is not None:
+                msg["speaker"] = spk
+                d = spk["decision"]
+                self.counts[d] = self.counts.get(d, 0) + 1
+                sc = "-" if spk.get("score") is None else f"{spk['score']:.3f}"
+                why = f" {spk['reason']}" if spk.get("reason") else ""
+                c = self.counts
+                tag = f", spk {d} {sc}{why} (me {c['me']} other {c['other']} unknown {c['unknown']})"
             await send(msg)
             picked = f", lang {auto_lang}->{lang}" if auto_lang else ""
-            log(f"final #{u.id}: {len(audio) / RATE:.1f}s audio, decode {ms} ms, {len(text)} chars{picked}")
+            log(f"final #{u.id}: {len(audio) / RATE:.1f}s audio, decode {ms} ms, {len(text)} chars{picked}{tag}")
 
-        await send({"t": "ready", "engine": self.engine.name, "model": self.engine.model})
+        ready = {"t": "ready", "engine": self.engine.name, "model": self.engine.model}
+        if self.verifier:
+            ready["speaker"] = {"models": self.verifier.order}
+        await send(ready)
         try:
             async for msg in ws:
                 if isinstance(msg, bytes):
@@ -204,14 +320,25 @@ class Server:
                     m = json.loads(msg)
                 except ValueError:
                     continue
+                if not isinstance(m, dict):
+                    continue
                 t, uid = m.get("t"), m.get("id")
                 if t == "begin" and isinstance(uid, int):
                     if cur is not None:
                         cur.done = True
                     cur = Utterance(uid)
+                    cur.enrol = m.get("enrol") is True
                 elif t == "end" and cur is not None and cur.id == uid and not cur.done:
                     cur.done = True
+                    tf = m.get("textFrom")
+                    if isinstance(tf, int) and not isinstance(tf, bool) and tf > 0:
+                        cur.text_from = tf
                     asyncio.create_task(final(cur))
+                elif t == "hello":
+                    d = m.get("device")
+                    conn["device"] = d if VP.valid_device(d) else None
+                elif t in ("enrol", "voiceprint"):
+                    await send(await self.control(m, conn))
                 elif t == "cancel" and cur is not None and cur.id == uid:
                     cur.done = True
                     cur = None
@@ -220,6 +347,8 @@ class Server:
         except ConnectionClosed:
             pass  # the page went away (reload, backgrounded): no close frame from iOS
         finally:
+            if conn["enrol"] is not None:
+                log("enrolment dropped (page detached before saving)")
             log(f"page detached ({peer}, {via})")
 
 
@@ -304,6 +433,32 @@ async def start_public(serve, gate, srv, port: int):
     return public
 
 
+def load_verifier(models: str, root: str):
+    """The speaker check, or None (logged) when it is off or its model is missing: never fatal."""
+    names = [m for m in (models or "").split(",") if m and m != "0"]
+    if not names:
+        log("speaker check off")
+        return None
+    if names == ["fake"]:  # the tests: no model (voiceprint.FakeEmbedder)
+        log(f"speaker check on (fake, {root})")
+        return VP.Verifier(VP.Store(root), ["campp"], embedders={"campp": VP.FakeEmbedder()})
+    bad = [m for m in names if m not in VP.MODELS]
+    if bad:
+        log(f"speaker check off: unknown model {','.join(bad)}")
+        return None
+    try:
+        t0 = time.perf_counter()
+        v = VP.Verifier(VP.Store(root), names)
+        v.embed(v.order[0], np.full(RATE, 1e-3, dtype=np.float32))  # warm up
+        n = len(v.status())
+        log(f"speaker check on ({','.join(v.order)}, {n} print(s) in {root}) "
+            f"in {int((time.perf_counter() - t0) * 1000)} ms")
+        return v
+    except Exception as e:  # a missing model, an old sherpa-onnx: transcription as before
+        log(f"speaker check off: {type(e).__name__}: {e}")
+        return None
+
+
 def tailnet(path: str, port: int, on: bool) -> None:
     args = ["tailscale", "serve", "--bg", "--set-path", path, f"http://127.0.0.1:{port}"] if on else [
         "tailscale", "serve", "--set-path", path, "off"]
@@ -326,6 +481,9 @@ async def main() -> None:
                     help=f"the Ed25519 public key for tickets (default {DEFAULT_PUBKEY})")
     ap.add_argument("--public-config", default=PUBLIC_CONFIG,
                     help='{"port":…,"pubkey":…} written by tunnel.sh; "" for none')
+    ap.add_argument("--speaker", default=os.environ.get("LIANKI_STT_SPEAKER", "campp"),
+                    help='speaker check models in order ("campp", "campp,eres2netv2"); "" or 0 = off')
+    ap.add_argument("--voiceprints", default=VP.STORE_DIR, help="where the voiceprints are kept (0700)")
     a = ap.parse_args()
 
     port, pubkey = public_settings(a.public_port, a.ticket_pubkey, a.public_config)
@@ -352,11 +510,13 @@ async def main() -> None:
     engine = load_engine(a.engine)
     engine.transcribe(np.zeros(RATE // 2, dtype=np.float32))  # warm up
     log(f"{engine.name} ({engine.model}) ready in {int((time.perf_counter() - t0) * 1000)} ms")
-    srv = Server(engine)
+    verifier = load_verifier(a.speaker, a.voiceprints)
+    srv = Server(engine, verifier=verifier)
 
     def health(conn, req):
         if req.path.split("?")[0].rstrip("/").endswith("/health"):
-            body = json.dumps({"ok": True, "engine": engine.name, "model": engine.model}).encode()
+            body = json.dumps({"ok": True, "engine": engine.name, "model": engine.model,
+                               "speaker": verifier.order if verifier else False}).encode()
             return Response(HTTPStatus.OK, "OK", Headers({"content-type": "application/json",
                                                          "access-control-allow-origin": "*"}), body)
         return None

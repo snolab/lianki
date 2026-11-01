@@ -160,6 +160,18 @@ function Harness() {
         at,
       }),
     );
+  // Any line, e.g. an owner voice line with the Mac's speaker tag: `__line({ text, from, speaker })`.
+  (globalThis as { __line?: (m: Partial<ChatMessage>) => void }).__line = (m) =>
+    setMessages((l) =>
+      add(l, {
+        id: crypto.randomUUID(),
+        from: "owner",
+        label: "/harness",
+        text: "",
+        at: Date.now(),
+        ...m,
+      }),
+    );
   // An ask card from the agent (ask.ts): `__ask({ askId, questions })`.
   (globalThis as { __ask?: (ask: Ask) => void }).__ask = (ask) =>
     setMessages((l) =>
