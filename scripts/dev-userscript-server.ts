@@ -12,18 +12,22 @@
  *   GET  /loader.user.js       the loader, with origins/version filled in
  *   GET  /wait?id&rev          long poll — parks until the build changes
  *   GET  /bundle.js?id&rev     the current build
- *   POST /error?id             error sink from attached clients
+ *   GET  /partner-embed.js     the Learning Partner's script (build-partner-embed.ts)
+ *   POST /error?id             error sink from attached clients (public: bounded, cleaned)
  *   GET  /                     status page
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync, watch } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { renderLoader } from "./dev-loader-render";
+import { buildPartner } from "./build-partner-embed";
+import { cleanErrorReport, isPublicRequest, renderLoader } from "./dev-loader-render";
 
 const ROOT = resolve(dirname(Bun.fileURLToPath(import.meta.url)), "..");
 const ENTRY = resolve(ROOT, "src/lianki.user.ts");
 const TEMPLATE = resolve(ROOT, "scripts/dev-loader.user.js");
 const WATCH_DIR = resolve(ROOT, "src");
+/** The partner's sources (the chat widget) rebuild the bundle too. */
+const WATCH_PARTNER = resolve(ROOT, "packages/debug-chat/src");
 
 const argv = Bun.argv.slice(2);
 const flag = (name: string, fallback = "") => {
@@ -70,9 +74,16 @@ let builds = 0;
 
 const hash = (s: string) => Bun.hash(s).toString(36).slice(0, 6);
 
+/** The Learning Partner's script (scripts/build-partner-embed.ts), served at /partner-embed.js. */
+let partner = "";
+let partnerRev = "";
+
 async function build(): Promise<boolean> {
   const t0 = performance.now();
   try {
+    const p = await buildPartner();
+    partner = p.code;
+    partnerRev = p.rev;
     const out = await Bun.build({
       entrypoints: [ENTRY],
       target: "browser",
@@ -80,6 +91,11 @@ async function build(): Promise<boolean> {
       // Sourcemaps would double the payload for something that is eval'd as an
       // anonymous script anyway — the manager cannot map it back.
       sourcemap: "none",
+      // The bundle fetches the partner from here, not lianki.com; its rev in the
+      // URL makes a partner-only change a new bundle rev, so it is pushed too.
+      define: {
+        __LK_PARTNER_SRC__: JSON.stringify(`${origin}/partner-embed.js?rev=${partnerRev}`),
+      },
     });
     if (!out.success) throw new Error(out.logs.map(String).join("\n"));
     const code = await out.outputs[0].text();
@@ -184,6 +200,12 @@ function startServer() {
         return text(bundle, "text/javascript; charset=utf-8", { "x-lianki-rev": rev });
       }
 
+      // Code only, like /bundle.js: no session, no token, nothing from this machine.
+      if (url.pathname === "/partner-embed.js") {
+        if (!partner) return new Response("build not ready\n", { status: 503 });
+        return text(partner, "text/javascript; charset=utf-8", { "x-lianki-rev": partnerRev });
+      }
+
       if (url.pathname === "/wait") {
         touch(id);
         if ((url.searchParams.get("rev") ?? "") !== rev) return text(rev);
@@ -202,31 +224,36 @@ function startServer() {
         return text(parked);
       }
 
+      // Anyone on the internet can POST here (the tunnel is public): it only
+      // ever reaches this terminal, bounded, with control characters (terminal
+      // escapes) stripped, the page's query cut off, and a global rate cap.
       if (url.pathname === "/error" && req.method === "POST") {
-        const c = touch(id);
+        if (!errorBudget()) return text("ok");
+        const raw = (await req.text()).slice(0, 8192);
+        const r = cleanErrorReport(raw, id);
+        const c = touch(r.id);
         if (c) c.errors++;
-        let body: { what?: string; detail?: string; page?: string } = {};
-        try {
-          body = await req.json();
-        } catch {
-          body = { detail: await req.text() };
-        }
-        if (c && body.page) c.page = body.page;
-        log(
-          `✗ ${id || "?"} ${body.what ?? "error"} @ ${body.page ?? "?"}\n   ${body.detail ?? ""}`,
-        );
+        if (c && r.page) c.page = r.page;
+        log(`✗ ${r.id || "?"} ${r.what} @ ${r.page || "?"}\n   ${r.detail}`);
         return text("ok");
       }
 
+      // Through the tunnel: the rev and version only. The client list (the
+      // pages he has open) and build errors (paths on this machine) stay local.
+      const pub = isPublicRequest(req.headers);
       if (url.pathname === "/health") {
-        return Response.json({
-          rev,
-          version,
-          origin,
-          app: APP_ORIGIN,
-          clients: clients.size,
-          buildError,
-        });
+        return Response.json(
+          pub
+            ? { rev, version }
+            : { rev, version, origin, app: APP_ORIGIN, clients: clients.size, buildError },
+        );
+      }
+
+      if (url.pathname === "/" && pub) {
+        return text(
+          `<!doctype html><meta charset=utf-8><title>lianki dev loader</title><p>install once → <a href="${origin}/loader.user.js">${origin}/loader.user.js</a></p>`,
+          "text/html; charset=utf-8",
+        );
       }
 
       if (url.pathname === "/") {
@@ -270,9 +297,21 @@ function log(msg: string) {
 
 let debounce: ReturnType<typeof setTimeout> | null = null;
 
+/** At most this many error reports a minute are logged (the endpoint is public). */
+const ERRORS_PER_MIN = 60;
+let errWindow = 0;
+let errCount = 0;
+function errorBudget(now = Date.now()) {
+  if (now - errWindow >= 60_000) {
+    errWindow = now;
+    errCount = 0;
+  }
+  return ++errCount <= ERRORS_PER_MIN;
+}
+
 function startWatch() {
-  watch(WATCH_DIR, { recursive: true }, (_e, file) => {
-    if (file && !/\.(ts|js|css|json)$/.test(file)) return;
+  const onChange = (_e: unknown, file: string | null) => {
+    if (file && !/\.(tsx?|js|css|json)$/.test(file)) return;
     if (debounce) clearTimeout(debounce);
     debounce = setTimeout(async () => {
       if (await build()) {
@@ -280,7 +319,9 @@ function startWatch() {
         wake();
       }
     }, 120);
-  });
+  };
+  watch(WATCH_DIR, { recursive: true }, onChange);
+  watch(WATCH_PARTNER, { recursive: true }, onChange);
 }
 
 // ── tunnel ──────────────────────────────────────────────────────────────────
@@ -306,7 +347,11 @@ function startTunnel() {
   const scan = (chunk: Buffer) => {
     const s = chunk.toString();
     const m = s.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
-    if (m && m[0] !== origin) origin = m[0];
+    if (m && m[0] !== origin) {
+      origin = m[0];
+      // The bundle names where the partner is served: rebuild with the tunnel's host.
+      void build();
+    }
     if (/Registered tunnel connection|Connection [0-9a-f-]+ registered/i.test(s)) routable = true;
     // A named tunnel prints no URL — its hostname came from --origin, so a
     // registered connection is the only signal there is.

@@ -7,7 +7,8 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.20
+// @grant       unsafeWindow
+// @version     2.24.21
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -38,12 +39,17 @@ import {
 } from "@lianki/core/watchStats";
 import { heatmapBuckets, rateColor, videoDifficulty } from "@lianki/core/difficulty";
 import { dueWindow, isProvablyDeleted } from "@lianki/core/duePrune";
+import { mirrorPartnerSwitch, startPartner } from "./partner";
 
 declare const GM_xmlhttpRequest: Function;
 declare const GM_setValue: (key: string, value: any) => void;
 declare const GM_getValue: (key: string, defaultValue?: any) => any;
 declare const GM_deleteValue: (key: string) => void;
 declare const GM_info: { script: { version: string } };
+/** The page's own window (another world's, under an isolating manager). */
+declare const unsafeWindow: Window | undefined;
+/** Set by the dev loader's server only: where it serves the partner's script. */
+declare const __LK_PARTNER_SRC__: string | undefined;
 
 if (window.self === window.top) {
   globalThis.unload_Lianki?.();
@@ -931,6 +937,8 @@ function main() {
   // Match www too — it 308s to apex, but a stale tab can still be sitting on it.
   const originHost = new URL(ORIGIN).hostname;
   if (location.hostname === originHost || location.hostname === "www." + originHost) {
+    // This browser's debug-mode switch is the partner's opt-in on other sites.
+    mirrorPartnerSwitch(localStorage, GM_setValue);
     setTimeout(() => syncToSiteDB(), 500);
     return () => {};
   }
@@ -3910,7 +3918,31 @@ function main() {
     initOfflineStorage();
   }, 100);
 
+  // ── Learning Partner on every site (docs/dev-debug-widget.md, "On every site") ──
+  // The owner's only, opt-in (debug mode on lianki.com); a no-op for everyone else.
+  let stopPartner = () => {};
+  startPartner({
+    origin: ORIGIN,
+    src: typeof __LK_PARTNER_SRC__ === "string" ? __LK_PARTNER_SRC__ : `${ORIGIN}/partner-embed.js`,
+    gmFetch,
+    getValue: GM_getValue,
+    setValue: GM_setValue,
+    deleteValue: GM_deleteValue,
+    info: GM_info,
+    pageWindow: typeof unsafeWindow === "undefined" ? undefined : unsafeWindow,
+    report: (what, detail) =>
+      what === "partner-mode" && detail.startsWith("isolated")
+        ? console.debug(`[Lianki] ${what}: ${detail}`)
+        : console.error(`[Lianki] ${what}: ${detail}`),
+  })
+    .then((stop) => {
+      if (signal.aborted) stop();
+      else stopPartner = stop;
+    })
+    .catch((err) => console.error("[Lianki] partner failed:", err));
+
   return () => {
+    stopPartner();
     ac.abort();
     for (const id of intervals) clearInterval(id);
     intervals.length = 0;

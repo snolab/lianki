@@ -7,7 +7,8 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.20
+// @grant       unsafeWindow
+// @version     2.24.21
 // @author      lianki.com
 // @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @run-at      document-end
@@ -1649,6 +1650,126 @@
     return dueMs > w.lo && dueMs < w.hi;
   }
 
+  // packages/debug-chat/src/embed/guard.ts
+  function isolatedWorld(info, pageWindow, ownObject = Object) {
+    try {
+      if (pageWindow && pageWindow.Object && pageWindow.Object !== ownObject) return true;
+    } catch {
+      return true;
+    }
+    const inject = String(info?.injectInto ?? "").toLowerCase();
+    if (inject === "content") return true;
+    const sandbox = String(info?.sandboxMode ?? "").toLowerCase();
+    return sandbox === "dom";
+  }
+  function partnerWanted(o) {
+    return o.top && o.enabled && !o.hiddenHosts.includes(o.host);
+  }
+
+  // src/partner.ts
+  var PARTNER_ON_KEY = "lianki_partner_on";
+  var PARTNER_HIDDEN_KEY = "lianki_partner_hidden";
+  var PARTNER_STORE_PREFIX = "lianki_partner_ls:";
+  var NOOP = () => {};
+  function mirrorPartnerSwitch(store, setValue) {
+    try {
+      const v = store.getItem("lk:agent") ?? store.getItem("lk:debug");
+      setValue(PARTNER_ON_KEY, v === "1");
+    } catch {}
+  }
+  async function startPartner(d) {
+    const host = d.host ?? location.host;
+    const hidden = (() => {
+      try {
+        const v = JSON.parse(d.getValue(PARTNER_HIDDEN_KEY, "[]"));
+        return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+      } catch {
+        return [];
+      }
+    })();
+    const wanted = partnerWanted({
+      enabled: d.getValue(PARTNER_ON_KEY, false) === true,
+      hiddenHosts: hidden,
+      host,
+      top: d.top ?? window.self === window.top,
+    });
+    if (!wanted) return NOOP;
+    const ticket = async () => {
+      try {
+        const r = await d.gmFetch(`${d.origin}/api/debug/partner-ticket`, {
+          method: "POST",
+          headers: { "x-lianki-userscript": "1" },
+          credentials: "include",
+        });
+        if (!r.ok) return null;
+        const body = await r.json();
+        return typeof body?.ticket === "string" ? body.ticket : null;
+      } catch {
+        return null;
+      }
+    };
+    const first = await ticket();
+    if (!first) return NOOP;
+    let spare = { t: first, at: Date.now() };
+    const nextTicket = async () => {
+      const s = spare;
+      spare = null;
+      return s && Date.now() - s.at < 30000 ? s.t : ticket();
+    };
+    const isolated = isolatedWorld(d.info, d.pageWindow);
+    const blocked = isolated ? undefined : "pageRealm";
+    d.report("partner-mode", `${isolated ? "isolated" : "page-realm"} ${host}`);
+    let code;
+    try {
+      const r = await d.gmFetch(d.src);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      code = await r.text();
+    } catch (e) {
+      d.report("partner-load", String(e?.message ?? e));
+      return NOOP;
+    }
+    let built;
+    try {
+      const factory = (0, eval)(code);
+      const keys = () =>
+        (d.listValues?.() ?? [])
+          .filter((k) => k.startsWith(PARTNER_STORE_PREFIX))
+          .map((k) => k.slice(PARTNER_STORE_PREFIX.length));
+      built = factory({
+        get: (k) => d.getValue(PARTNER_STORE_PREFIX + k, null),
+        set: (k, v) => d.setValue(PARTNER_STORE_PREFIX + k, v),
+        del: (k) => d.deleteValue(PARTNER_STORE_PREFIX + k),
+        keys,
+      });
+    } catch (e) {
+      d.report("partner-eval", String(e?.message ?? e));
+      return NOOP;
+    }
+    let mounted = null;
+    try {
+      mounted = built.api.mountPartner({
+        doc: d.doc ?? document,
+        css: built.css,
+        appOrigin: d.origin,
+        ticket: nextTicket,
+        WebSocket: d.WebSocket ?? WebSocket,
+        blocked,
+        report: d.report,
+        hide: () => {
+          d.setValue(PARTNER_HIDDEN_KEY, JSON.stringify([...new Set([...hidden, host])]));
+          mounted?.destroy();
+          mounted = null;
+        },
+      });
+    } catch (e) {
+      d.report("partner-mount", String(e?.message ?? e));
+    }
+    return () => {
+      mounted?.destroy();
+      mounted = null;
+    };
+  }
+
   // src/lianki.user.ts
   if (window.self === window.top) {
     globalThis.unload_Lianki?.();
@@ -2201,6 +2322,7 @@
     }
     const originHost = new URL(ORIGIN).hostname;
     if (location.hostname === originHost || location.hostname === "www." + originHost) {
+      mirrorPartnerSwitch(localStorage, GM_setValue);
       setTimeout(() => syncToSiteDB(), 500);
       return () => {};
     }
@@ -4413,7 +4535,29 @@ ${actualUrl}
     setTimeout(() => {
       initOfflineStorage();
     }, 100);
+    let stopPartner = () => {};
+    startPartner({
+      origin: ORIGIN,
+      src:
+        typeof __LK_PARTNER_SRC__ === "string" ? __LK_PARTNER_SRC__ : `${ORIGIN}/partner-embed.js`,
+      gmFetch,
+      getValue: GM_getValue,
+      setValue: GM_setValue,
+      deleteValue: GM_deleteValue,
+      info: GM_info,
+      pageWindow: typeof unsafeWindow === "undefined" ? undefined : unsafeWindow,
+      report: (what, detail) =>
+        what === "partner-mode" && detail.startsWith("isolated")
+          ? console.debug(`[Lianki] ${what}: ${detail}`)
+          : console.error(`[Lianki] ${what}: ${detail}`),
+    })
+      .then((stop) => {
+        if (signal.aborted) stop();
+        else stopPartner = stop;
+      })
+      .catch((err) => console.error("[Lianki] partner failed:", err));
     return () => {
+      stopPartner();
       ac.abort();
       for (const id of intervals) clearInterval(id);
       intervals.length = 0;

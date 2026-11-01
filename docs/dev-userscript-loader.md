@@ -53,6 +53,15 @@ strips comments and the output is identical.
 | `GET /wait?id=<cid>&rev=<rev>`      | **Long poll.** Holds the request open while `rev` equals the current build rev; responds with the new rev the moment a rebuild lands. Must return before the client's `timeout` (loader uses 35 s — resolve with the current rev at ~30 s and let the client re-poll). |
 | `GET /bundle.js?id=<cid>&rev=<rev>` | The complete IIFE bundle as plain JS. Not an HMR shim — the loader only evals.                                                                                                                                                                                         |
 | `POST /error?id=<cid>`              | JSON `{what, detail, page}` sink; print to the dev console.                                                                                                                                                                                                            |
+| `GET /partner-embed.js`             | The Learning Partner's script (docs/dev-debug-widget.md, "On every site"); the bundle is built pointing at it.                                                                                                                                                         |
+
+**The tunnel is public.** Everything above is code or a rev: no session, token
+or file from this machine. `/error` takes writes from anyone, so it only ever
+prints to this terminal: at most 60 a minute, fields bounded, control
+characters (terminal escapes) stripped, the page's query and fragment cut
+(`cleanErrorReport` in `scripts/dev-loader-render.ts`). Requests through the
+tunnel (`cf-connecting-ip`/`cf-ray`) get `/health` as `{rev, version}` only and
+no client list on `/`; the full status page is for localhost.
 
 `id` is a stable per-browser client id so the server log can say _which_ attached
 client broke.

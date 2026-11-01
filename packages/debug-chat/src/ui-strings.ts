@@ -352,3 +352,74 @@ export function wakeStrings(
 ): WakeStrings {
   return isZh(lang) ? WAKE.zh : isJa(lang) ? WAKE.ja : WAKE.en;
 }
+
+/**
+ * The Learning Partner on another site (the userscript, embed/; docs/dev-debug-widget.md
+ * "On every site"). Picked by the browser's own language (navigator.language),
+ * not the site's: the site is someone else's page in any language.
+ *
+ * Context for translators: these show in one small glass note in the corner
+ * of a third-party website (GitHub, a news site), instead of the chat, when
+ * the chat cannot run safely there. `{name}` is the feature's localized name
+ * (Learning Partner / 学习伙伴); keep it. "lianki.com" is a domain: keep it.
+ */
+export type EmbedStrings = {
+  /** The note when the userscript manager runs Lianki inside the page's own JavaScript, where the site's scripts could read the chat: a full sentence saying it is off here, and why. */
+  pageRealm: string;
+  /** The note when this site's Content-Security-Policy blocks the connection to Lianki's server: a full sentence. */
+  connect: string;
+  /** The note when this site's Content-Security-Policy blocks the chat's styles (it would render unstyled): a full sentence. */
+  styles: string;
+  /** The note when this site's policy (CSP or Trusted Types) blocks running the chat's code: a full sentence. */
+  script: string;
+  /** The note when the chat's code could not be downloaded or failed to start: a full sentence. */
+  load: string;
+  /** A link under the note that opens lianki.com in a new tab, where the chat works: imperative, short. */
+  openLianki: string;
+  /** The × button's accessible label and tooltip: hides the note and the chat on this website only (until re-enabled). Imperative. */
+  hideHere: string;
+};
+export const EMBED_STRINGS: Record<"en" | "zh" | "ja", EmbedStrings> = {
+  en: {
+    pageRealm:
+      "Your {name} is off on this site: your userscript manager runs Lianki inside the page, where the site's own scripts could read the chat.",
+    connect: "This site's security policy blocks the connection to your {name}.",
+    styles: "This site's security policy blocks your {name}'s styles.",
+    script: "This site's security policy blocks your {name}'s code.",
+    load: "Your {name} could not load on this page.",
+    openLianki: "Open on lianki.com",
+    hideHere: "Hide on this site",
+  },
+  zh: {
+    pageRealm:
+      "{name}在本网站已关闭：你的脚本管理器把 Lianki 运行在网页自身的环境里，网站的脚本可能读到聊天内容。",
+    connect: "本网站的安全策略阻止了与{name}的连接。",
+    styles: "本网站的安全策略阻止了{name}的样式。",
+    script: "本网站的安全策略阻止了{name}的代码运行。",
+    load: "{name}在此页面加载失败。",
+    openLianki: "在 lianki.com 打开",
+    hideHere: "在本网站隐藏",
+  },
+  ja: {
+    pageRealm:
+      "このサイトでは{name}をオフにしています。スクリプトマネージャーが Lianki をページ内で実行しており、サイトのスクリプトにチャットを読まれるおそれがあります。",
+    connect: "このサイトのセキュリティポリシーにより、{name}に接続できません。",
+    styles: "このサイトのセキュリティポリシーにより、{name}のスタイルが読み込めません。",
+    script: "このサイトのセキュリティポリシーにより、{name}のコードを実行できません。",
+    load: "このページでは{name}を読み込めませんでした。",
+    openLianki: "lianki.com で開く",
+    hideHere: "このサイトでは非表示",
+  },
+};
+/** The feature's name in the same three languages (docs/dev-debug-widget.md, "Naming"). */
+export const EMBED_NAME: Record<"en" | "zh" | "ja", string> = {
+  en: "Learning Partner",
+  zh: "学习伙伴",
+  ja: "学習パートナー",
+};
+/** The browser's language (not the site's): en, zh or ja. */
+export function embedLang(
+  lang: string | null | undefined = globalThis.navigator?.language,
+): "en" | "zh" | "ja" {
+  return isZh(lang) ? "zh" : isJa(lang) ? "ja" : "en";
+}

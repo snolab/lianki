@@ -10,6 +10,46 @@ import { dirname, resolve } from "node:path";
 
 const TEMPLATE = resolve(dirname(Bun.fileURLToPath(import.meta.url)), "dev-loader.user.js");
 
+/**
+ * Did this request come through the tunnel (Cloudflare adds these), rather
+ * than from this machine? Public requests get no client list and no paths.
+ */
+export function isPublicRequest(h: Headers): boolean {
+  return h.has("cf-connecting-ip") || h.has("cf-ray") || h.has("x-forwarded-for");
+}
+
+/** Printable, one line per field: control characters (terminal escapes) go. */
+const printable = (s: unknown, max: number) =>
+  String(s ?? "")
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "")
+    .slice(0, max);
+
+/**
+ * An /error report as it may be printed: bounded fields, no escapes, the
+ * page's query and fragment cut off (they can hold tokens). The body is
+ * anyone's on a public tunnel; nothing here is trusted or executed.
+ */
+export function cleanErrorReport(
+  raw: string,
+  id: string,
+): { id: string; what: string; detail: string; page: string } {
+  let body: { what?: unknown; detail?: unknown; page?: unknown } = {};
+  try {
+    const v = JSON.parse(raw);
+    if (v && typeof v === "object") body = v;
+  } catch {
+    body = { detail: raw };
+  }
+  let page = printable(body.page, 300);
+  page = page.replace(/[?#].*$/, "");
+  return {
+    id: printable(id, 40).replace(/[^\w.-]/g, ""),
+    what: printable(body.what ?? "error", 60),
+    detail: printable(body.detail, 2000).replace(/\n/g, "\n   "),
+    page,
+  };
+}
+
 export function renderLoader(opts: {
   origin: string;
   appOrigin: string;
