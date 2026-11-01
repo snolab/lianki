@@ -9,7 +9,7 @@ import { notePrefWrite } from "@lianki/ui-state/account";
 
 export const SPEECH_RATE_KEY = "lk:agent-speech-rate";
 export const SPEECH_RATES = [1, 1.25, 1.5, 2] as const;
-export const DEFAULT_SPEECH_RATE = 1.5;
+export const DEFAULT_SPEECH_RATE = 1;
 
 type Store = { getItem(k: string): string | null; setItem(k: string, v: string): void };
 const store = (): Store | null => {
