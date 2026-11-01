@@ -15,8 +15,9 @@
  * which falls back to /api/debug/stt when it fails.
  */
 import type { UttMarks } from "./latency";
-import type { LocalFinal, LocalUtt } from "./local-stt";
+import type { BeginOpts, LocalFinal, LocalUtt } from "./local-stt";
 import { STT_PROMPTS } from "./stt-hint";
+import type { SpeakerTag } from "./wire";
 import type { SpotResult, WakeSpot } from "./wake";
 
 /** Longest utterance: past this it is cut and sent, and listening goes on. */
@@ -801,11 +802,12 @@ export type WakeGate = {
   spot(audio: Float32Array): Promise<SpotResult>;
   /** "Linky" was heard: the mic becomes active. */
   onWake(): void;
-  verdict(ok: boolean, why: "ok" | "empty" | "hallucination"): void;
+  /** "other": the Mac's speaker check said it was not his voice (docs/local-stt.md, "Voiceprint"). */
+  verdict(ok: boolean, why: "ok" | "empty" | "hallucination" | "other"): void;
 };
 /** What createMic needs of a streaming STT (local-stt.ts LocalStt). */
 export type StreamStt = {
-  begin(onPartial: (text: string) => void): LocalUtt | null;
+  begin(onPartial: (text: string) => void, opts?: BeginOpts): LocalUtt | null;
   warm?(): void;
   /** While the mic is on: keep the socket open (reopen on close, visible, online). */
   keep?(on: boolean): void;
@@ -817,6 +819,17 @@ export function keepStream(s: StreamStt | undefined, on: boolean) {
   if (s?.keep) s.keep(on);
   else if (on) s?.warm?.();
 }
+/**
+ * Enrolment (voiceprint.ts): while `active()`, each utterance streams to the
+ * local STT as an enrolment sentence and its final goes to `done`, never to
+ * the draft, the cloud or the clip sink. `begin` null (the Mac not reachable):
+ * the utterance is dropped and `done(null)` says so.
+ */
+export type EnrolTap = {
+  active(): boolean;
+  begin(onPartial: (text: string) => void): LocalUtt | null;
+  done(final: Promise<LocalFinal> | null): void;
+};
 
 /**
  * Listening mode. `toggle()` turns it on (loading the VAD, or the fallback if
@@ -850,6 +863,10 @@ export function createMic(d: {
   timing?: (seq: number, marks: UttMarks) => void;
   /** The wake-word gate; without it every utterance is uploaded (as before). */
   wake?: WakeGate;
+  /** Voiceprint enrolment (voiceprint.ts); while active it takes every utterance. */
+  enrol?: EnrolTap;
+  /** Each kept final's speaker tag from the Mac and its signed proof (undefined: the cloud, or no check there). */
+  speaker?: (tag: SpeakerTag | undefined, proof?: string) => void;
   /** The adaptive estimator (adaptive.ts); without it the endpoint is the fixed one. */
   adapt?: MicAdapt;
   now?: () => number;
@@ -896,6 +913,10 @@ export function createMic(d: {
   let lastVoice: number | undefined;
   /** The utterance being captured began in passive mode: only the wake gate hears it. */
   let gated = false;
+  /** The utterance being captured is an enrolment sentence: only the enrolment hears it. */
+  let enrolling = false;
+  /** Lines dropped in passive mode because the speaker check said "other" (logged as a count). */
+  let otherDrops = 0;
   /** VAD pause/start calls, in order. */
   let ctl: Promise<unknown> = Promise.resolve();
   const toMs = (n: number) => Math.round((n / RATE) * 1000);
@@ -962,6 +983,16 @@ export function createMic(d: {
       ep.heard = ep.sent = false;
       ep.quiet = 0;
       ep.partial = "";
+      enrolling = d.enrol?.active() ?? false;
+      if (enrolling) {
+        // An enrolment sentence: streamed (for the end of speech and its text), nothing else.
+        gated = false;
+        utt =
+          d.enrol?.begin((text) => {
+            ep.partial = text;
+          }) ?? null;
+        return;
+      }
       gated = d.wake?.passive() ?? false;
       utt = gated
         ? null
@@ -1015,6 +1046,7 @@ export function createMic(d: {
       if (
         partialsOn &&
         !gated &&
+        !enrolling &&
         !partialBusy &&
         liveLen >= toSamples(PARTIAL_MIN_MS) &&
         sincePartial >= toSamples(PARTIAL_EVERY_MS)
@@ -1044,6 +1076,18 @@ export function createMic(d: {
       if (mine) {
         cur = null;
         resetLive();
+      }
+      if (enrolling) {
+        // An enrolment sentence: to the Mac only (never the draft, the cloud or the clip sink).
+        enrolling = false;
+        speechLen = probSum = probN = 0;
+        lastVoice = undefined;
+        q.resolve(seq, null);
+        report();
+        const f = u ? u.end(audio) : null;
+        f?.catch(() => {});
+        d.enrol?.done(f);
+        return;
       }
       // Speech length and mean probability (Silero); without them, the clip's length.
       const ms = toMs(probN ? speechLen : audio.length);
@@ -1082,22 +1126,41 @@ export function createMic(d: {
             // Never deaf: the spotter could not check it (it failed to load, say) and
             // the mic is active again by now, so it goes up as an active utterance would.
             if (!r.hit && r.unchecked && !w.passive()) return send(seq, audio, ms, prob);
-            if (!r.hit) {
+            const drop = () => {
               d.timing?.(seq, { t_sttDone: now(), dropped: true });
               q.resolve(seq, null);
-              return report();
-            }
-            w.onWake();
-            if (!r.rest.length) {
-              d.timing?.(seq, { t_sttDone: now(), dropped: true });
-              q.resolve(seq, null);
-              return report();
-            }
-            // The words after "Linky" go to the Mac too when its socket is up (as a
-            // pre-pad and an end: the audio is already whole); else the cloud.
+              report();
+            };
+            if (!r.hit) return drop();
+            const wake = (f?: LocalFinal) => {
+              w.onWake();
+              if (!r.rest.length) return drop();
+              send(seq, r.rest, toMs(r.rest.length), prob, f ? Promise.resolve(f) : undefined);
+            };
+            // The Mac's speaker check first, when it is reachable: the whole utterance
+            // ("Linky" included) is scored, the text read from after it. Someone
+            // else's "Linky" wakes nothing (docs/local-stt.md, "Voiceprint").
+            // Only while its socket is up (as a pre-pad and an end: the audio is whole).
             const s = d.stream?.();
-            const lu = s?.connected?.() ? s.begin(() => {}) : null;
-            send(seq, r.rest, toMs(r.rest.length), prob, lu?.end(r.rest));
+            const local = s?.connected?.()
+              ? s.begin(() => {})?.end(audio, { textFrom: audio.length - r.rest.length })
+              : undefined;
+            if (!local) return wake();
+            local.then(
+              (f) => {
+                if (f.speaker?.decision !== "other") return wake(f);
+                otherDrops++;
+                d.log?.({
+                  ev: "speaker-other",
+                  mode: "passive",
+                  n: otherDrops,
+                  score: f.speaker.score,
+                  model: f.speaker.model,
+                });
+                drop();
+              },
+              () => wake(), // the Mac failed: as before, to the cloud
+            );
           },
           () => {
             q.resolve(seq, null);
@@ -1119,6 +1182,16 @@ export function createMic(d: {
   ) => {
     const wav = encodeWav(audio);
     local?.catch(() => {}); // upload decides; never an unhandled rejection
+    /** The Mac's speaker check on it; "other" in active mode counts towards passive. */
+    let spk: SpeakerTag | undefined;
+    let proof: string | undefined;
+    local?.then(
+      (f) => {
+        spk = f.speaker;
+        proof = f.proof;
+      },
+      () => {},
+    );
     d.timing?.(seq, { t_uploadStart: now() });
     let echo = false;
     d.upload(wav, {
@@ -1145,7 +1218,14 @@ export function createMic(d: {
           const drop = c.drop || isHallucination(text, ms, prob);
           if (drop && !c.drop) d.log?.({ ev: "stt-hallucination", text: text.slice(0, 80), ms, prob });
           d.timing?.(seq, { t_sttDone: now(), dropped: drop || !text.trim() });
-          if (!echo) d.wake?.verdict(!drop && !!text.trim(), drop ? "hallucination" : text.trim() ? "ok" : "empty");
+          const other = spk?.decision === "other";
+          // The line's speaker tag (voiceprint.ts noteSpeaker): only for text that lands.
+          if (!drop && text.trim()) d.speaker?.(spk, proof);
+          if (!echo)
+            d.wake?.verdict(
+              !drop && !!text.trim() && !other,
+              drop ? "hallucination" : !text.trim() ? "empty" : other ? "other" : "ok",
+            );
           q.resolve(seq, drop ? null : text);
         },
         (e) => {

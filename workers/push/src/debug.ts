@@ -201,7 +201,8 @@ import {
   askText,
   checkChoices,
 } from "../../../packages/debug-chat/src/ask";
-import type { AnsweredEvent } from "../../../packages/debug-chat/src/wire";
+import type { AnsweredEvent, SpeakerTag } from "../../../packages/debug-chat/src/wire";
+import { verifySpeakerProofs } from "../../../lib/speaker-proof";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import { EMBED_HEADER } from "./auth";
 import {
@@ -477,6 +478,8 @@ export class DebugHub {
    */
   private grants?: Map<string, Grant>;
   private loadingGrants?: Promise<void>;
+  /** STT_SPEAKER_PUB: the Mac's attestation key (lib/speaker-proof.ts). */
+  private speakerPub?: string;
   /** A renewal in flight per grant hash: two events at once renew once. */
   private renewing = new Map<string, Promise<void>>();
   /** The main Worker (service binding): asked whether a renewal's session is still live. */
@@ -489,6 +492,8 @@ export class DebugHub {
     env?: unknown,
     private now: () => number = Date.now,
   ) {
+    // The Mac's speaker-attestation public key (voiceprint.py attest-key); without it no tag is kept.
+    this.speakerPub = (env as { STT_SPEAKER_PUB?: string } | undefined)?.STT_SPEAKER_PUB;
     this.sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
     // The listener pings to find a socket that died without a close (a
     // redeploy, a dropped connection); the runtime answers it while the hub
@@ -1399,6 +1404,30 @@ export class DebugHub {
     await this.schedule(this.now() + PAGES_IDLE_MS);
   }
 
+  /**
+   * Burn speaker-proof uids in storage (`proof:<uid>` → until), so a proof
+   * serves one line only, across restarts, hibernation and deploys. Storage
+   * calls of one event never interleave with another's (the Durable Object's
+   * input gate), so check-then-put is atomic. The alarm sweeps them later.
+   */
+  private async burnProofs(uids: string[], until: number): Promise<boolean> {
+    for (const u of uids) if (await this.ctx.storage.get(`proof:${u}`)) return false;
+    for (const u of uids) await this.ctx.storage.put(`proof:${u}`, until);
+    await this.schedule(until);
+    return true;
+  }
+
+  /** Forget burned proofs past their window (they can no longer verify anyway). */
+  private async proofSweep() {
+    const all = await this.ctx.storage.list<number>({ prefix: "proof:" });
+    let next = Number.POSITIVE_INFINITY;
+    for (const [k, until] of all) {
+      if (until <= this.now()) await this.ctx.storage.delete(k);
+      else next = Math.min(next, until);
+    }
+    if (Number.isFinite(next)) await this.schedule(next);
+  }
+
   /** Make sure the alarm goes off by `at` (one already due is the one running now). */
   private async schedule(at: number) {
     const cur = await this.ctx.storage.getAlarm();
@@ -1459,6 +1488,7 @@ export class DebugHub {
     this.sweep();
     await this.checkIdle();
     await this.clipsSweep();
+    await this.proofSweep();
     await this.renewDue("alarm");
   }
 
@@ -1551,20 +1581,35 @@ export class DebugHub {
       );
       // A friend's line is always their own thread's: no node addressing there.
       if (page.thread !== OWNER_THREAD) return this.friendChat(ws, page, m.id, m.text);
-      return this.post({
-        id: m.id,
-        from: "owner",
-        label: page.label,
-        text: m.text,
-        at: t,
-        thread: OWNER_THREAD,
-        ...(page.sender ? { sender: page.sender } : {}),
-        ...(m.to ? { to: m.to } : {}),
-        ...(m.source ? { source: m.source } : {}),
-        ...(m.timing ? { timing: m.timing } : {}),
-        ...(m.wake ? { wake: m.wake } : {}),
-        ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
-      });
+      const line = (speaker: SpeakerTag | undefined) =>
+        this.post({
+          id: m.id,
+          from: "owner",
+          label: page.label,
+          text: m.text,
+          at: t,
+          thread: OWNER_THREAD,
+          ...(page.sender ? { sender: page.sender } : {}),
+          ...(m.to ? { to: m.to } : {}),
+          ...(m.source ? { source: m.source } : {}),
+          ...(m.timing ? { timing: m.timing } : {}),
+          ...(m.wake ? { wake: m.wake } : {}),
+          ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
+          // Only a tag the Mac signed over these words (lib/speaker-proof.ts); voice
+          // approvals later must rely on this, never on what a page says.
+          ...(speaker ? { speaker } : {}),
+        });
+      // A voice line with the Mac's signed attestations: verified first, then stored.
+      if (m.source === "stt" && m.speakerProof?.length)
+        return verifySpeakerProofs(
+          m.speakerProof,
+          m.text,
+          page.thread,
+          this.speakerPub,
+          (uids, until) => this.burnProofs(uids, until),
+          this.now(),
+        ).then(line);
+      return line(undefined);
     }
     // A tap on an ask card: stamped here, never by the page or an agent.
     if (m.type === "answer") return this.answer(ws, page, m.askId, m.choices);

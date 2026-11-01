@@ -356,6 +356,245 @@ A final also carries `langAuto` when the short-utterance pick below replaced
 the auto-detected language (`lang` is then the forced one). The server log
 line says `lang en->ja`, never the text.
 
+The voiceprint adds these (next section):
+
+| from   | message                                                                         | meaning                                                         |
+| ------ | ------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| client | `{"t":"hello","device":"iphone"}`                                               | after `ready`: score this socket's finals against that print    |
+| client | `{"t":"begin","id":N,"enrol":"<enrolment id>"}`                                 | an enrolment sentence: not scored, its final carries `enrol`    |
+| client | `{"t":"end","id":N,"textFrom":S}`                                               | text from sample S on (after "Linky"); the speaker hears it all |
+| client | `{"t":"enrol","op":"start","rid","device","ticket","keepAudio":false}`          | open an enrolment: needs an `enrol` ticket for that device (passkey) |
+| client | `{"t":"enrol","op":"commit"\|"cancel","rid","enrolment"}`                       | save it (10 sentences at least), or drop it                     |
+| client | `{"t":"voiceprint","op":"status"\|"delete","rid","ticket"[,"device":D\|"*"]}`   | what is enrolled (status ticket); delete (passkey ticket)       |
+| server | `ready` + `"speaker":{"models":["campp"]}`                                      | the check is on                                                 |
+| server | `final` + `"speaker":{score,decision,model,device,speechS,snrDb[,reason]}`      | the check on that final                                         |
+| server | `final` + `"speakerProof":"<payload>.<sig>"`                                    | the Mac's signature over that tag and the final's text          |
+| server | `final` + `"enrol":{ok,n[,reason]}`                                             | an enrolment sentence kept (or why not)                         |
+| server | `{"t":"enrol"\|"voiceprint","rid","ok"[,"error"],…}`                            | the answer to a request                                         |
+
+## Voiceprint: "only my voice"
+
+The owner asked on 2026-11-01 (21:28 JST) for real speaker enrolment and a
+check that a line is his voice, as the base for hands-free voice approvals
+later. The model is **CAM++** (3D-Speaker zh-en via sherpa-onnx, 28 MB,
+192-dim), as #394 picked: it is the one that works across his iPhone and
+Android today. ERes2NetV2 can be added per device later (below).
+
+```
+phone: mic (Silero VAD) ─ utterance ─▶ server.py ─┬─ SenseVoice decode        (as before)
+                                                  └─ CAM++ + noise gate (own thread, side by side)
+                                                       ↓ cosine to this device's print
+       ◀─ final + speaker {score, decision: me | other | unknown, model, device} ─
+```
+
+**Enrolment.** The chat menu's **Voiceprint** (owner pages with
+`lk:agent-local-stt`) opens a panel over the bar (`VoiceprintPanel.tsx`,
+`voiceprint.ts`): what is enrolled per device, **Enrol this device**, and
+**Delete my voiceprint**. Enrol shows the **consent card first**: he will read
+10–20 sentences; the Mac turns them into numbers that describe his voice,
+not a recording; they are kept only on the Mac at
+`~/.config/lianki-stt/voiceprints`, never on Lianki's servers; what it is
+for; that he can delete it there at any time; and a switch, off by default,
+to also keep the sentences' audio on the Mac. **Nothing is captured until
+his tap on "I agree, start" and his passkey** (next section). Voice can
+neither start enrolment nor delete (docs/dev-debug-widget.md: recording is
+turned on by a tap, never by voice).
+
+### Voiceprint: who may enrol and delete
+
+A page's own signals can be faked by page code (eval, a script's
+`element.click()`), and any page that reaches the Mac (a friend's page on
+lianki.com with tailnet reach, or the public tunnel with an STT ticket)
+could otherwise send voiceprint ops. So the Mac takes **no voiceprint op
+without a voiceprint ticket** from lianki.com, on any socket, tailnet or
+tunnel (review of #411, 2026-11-02):
+
+```
+tap (isTrusted) → POST /api/dev/voiceprint-ticket {op, device, step:"options"}   owner session, else 404
+               ← WebAuthn options: his passkeys, userVerification "required", a signed challenge token
+navigator.credentials.get → Face ID / Touch ID (the OS prompt: page code cannot answer it)
+               → POST {…, step:"verify", token, response}: assertion verified (@simplewebauthn/server),
+                 UV flag required, the challenge spent in D1 (once), counter saved
+               ← ticket {aud:"lianki-voiceprint", op, device, uv:true[, keepAudio], jti = the challenge,
+                         iat/exp = the challenge's, fixed when it was issued}
+page → the Mac {t:"enrol"|"voiceprint", op, …, ticket}   ticket.py: signature, aud, op, device, uv,
+                                                          keepAudio, once (spent jtis kept on disk)
+```
+
+- **status** needs a read-only owner ticket (`uv:false`, the session alone);
+  **enrol** and **delete** a passkey ticket for exactly that op and device
+  (`*` for every device). An STT ticket (`aud:"lianki-stt"`) is refused, so
+  is another op's or device's, a replay, or another key's. Commit and cancel
+  name an enrolment by the unguessable id its start returned.
+- **One approval, one ticket** (re-review, 2026-11-02). The challenge is
+  spent at its first good verification by a primary-key insert into D1's
+  `verification` table (`voiceprint-challenge:<challenge>`), so a replayed
+  assertion (a synced passkey's counter stays 0) is refused ("approval
+  already used"). The ticket's lifetime is the challenge's (60 s from the
+  options), never reminted at verify. The Mac keeps spent jtis in
+  `voiceprints/used-tickets.json` (0600) until exp + 5 s, so a restart
+  forgets none; a file it cannot trust (loose mode, unreadable) makes it
+  refuse every ticket.
+- **Keeping the audio is approved too:** `keepAudio` goes into the passkey
+  challenge and the ticket, and the Mac refuses a start whose `keepAudio`
+  differs from the ticket's.
+- The tickets are signed with the STT ticket key (`STT_TICKET_KEY` on the
+  Worker; the Mac checks with `~/.config/lianki-stt/ticket.pub`, or
+  `--voiceprint-pubkey`). **Without that public key on the Mac, every
+  voiceprint op is refused** (`voiceprint ops off` in the log): set it up
+  with step 2 of "Setting it up" above. The passkey is the owner's, from
+  the profile page (lib/passkey.ts; D1 `passkey`); with none, enrol and
+  delete answer 409.
+- `__lkMic` (the page-wide mic session) has no voiceprint request: the
+  panel opens its own socket to the Mac (`panelDeps`). The Enrol, Agree,
+  Delete buttons also ignore untrusted (synthetic) clicks.
+- **Delete wins over a pending enrolment.** Each device has a generation in
+  `voiceprints/generations.json` (0600); a delete, from the panel or the CLI,
+  bumps it (`*` for all). An enrolment remembers the generations it began
+  with and refuses to commit after a delete; a delete on the server also
+  drops the open enrolments of that device at once, so sentences still
+  queued are not kept either. The server and the CLI share an exclusive
+  `flock` on `voiceprints/.lock`, held across a commit's generation check
+  and all its writes (prints, kept audio) and across a delete and its
+  bump: a delete from another process either lands first (the commit is
+  refused) or waits until the commit is written, then deletes it.
+
+Then the panel shows one sentence at a time (20, in Chinese, Japanese and
+English: `ENROL_SENTENCES`, reading material, not translated). Each
+utterance goes over the same socket as speech, flagged `enrol`, and **only
+to the Mac**: never into the draft, never to `/api/debug/stt`, never to the
+clip sink (`createMic`'s `enrol` tap; with the Mac unreachable the sentence
+is dropped and the card says so). The server keeps a sentence when it has at
+least 1.5 s of speech, an SNR of 10 dB or more, and (from the fourth on) a
+score of 0.2 or more against the ones kept so far; the card asks again
+otherwise ("too short", "too noisy", "did not sound like the others"), and
+also when the text is not the sentence shown (`matchesPrompt`: half its
+letters, in order). **Save voiceprint** is enabled from 10 kept, and it saves
+by itself at 20. Nothing is written before the save; Cancel or closing the
+panel drops it. Each device enrols on its own (`deviceSlug`: iphone,
+android, mac…; `lk:agent-voice-device` overrides it).
+
+**Storage** (`scripts/local-stt/voiceprint.py` `Store`): on the Mac only,
+`~/.config/lianki-stt/voiceprints/` (`LIANKI_STT_VOICEPRINTS` or
+`--voiceprints` moves it), folder 0700, one file per device and model,
+`<device>.<model>.json`, 0600, written atomically (a fresh 0600 temp file,
+then a rename). It holds the embeddings, their mean, how long each sentence
+was, and the leave-one-out self scores; no text, no audio. The opted-in
+audio goes to `<device>.audio/NN.wav` (0700 / 0600). A file or folder that
+is a symlink, not ours, or readable by others is refused (logged, the check
+then says "unknown"). Never on the Worker, D1 or the hub; never committed.
+
+**Delete.** In the panel: **Delete my voiceprint**, then a confirming tap;
+it deletes every device's print and any kept enrolment audio. On the Mac:
+
+```bash
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py list
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete --device iphone   # or --all
+```
+
+The running server sees a CLI delete on the next final (it watches the
+folder's mtime). Neither touches `~/lianki-voice-clips`.
+
+**Verification.** Every final is scored against this device's print (the
+socket's `hello`), or, when this device has none, the best of the other
+devices' prints (`device` in the result says whose). The decision
+(`voiceprint.decide`):
+
+| speech in the final | `me` at score ≥ | `other` under | otherwise   |
+| ------------------- | --------------- | ------------- | ----------- |
+| < 1.5 s             | –               | –             | **unknown** (`short`) |
+| 1.5 – 3 s           | 0.28            | 0.18          | unknown (`between`) |
+| ≥ 3 s               | 0.30            | 0.20          | unknown (`between`) |
+| SNR < 10 dB (any)   | –               | –             | **unknown** (`noise`) |
+| nothing enrolled    | –               | –             | unknown (`no-print`) |
+
+`me` is #394's threshold for 1 % false accepts over 109 other voices (real
+people, TTS in nine languages, the shop PA, voices in the background) at
+that length: CAM++ 0.278 at 2 s, 0.300 on whole clips. `other` is #380's
+0.2, 0.02 lower on short speech. The speech length and SNR come from frame
+energies (`speech_stats`): calibrated on his 20 referenced clips under DEMAND
+restaurant noise, a true 20 / 10 / 5 / 0 dB reads as 19.4 / 11.2 / 7.8 / 5.0
+(medians), so the gate holds 5 dB back and lets 10 dB through.
+
+**The enrolment caveat.** #394's thresholds came from a 5-fold enrolment
+on his conversational iPhone clips, not from sentences read aloud on each
+device. Read speech and a per-device print will shift his own scores
+(likely up, on the same channel). The server logs every final's decision
+and score (`final #12: … spk me 0.412 (me 30 other 1 unknown 9)`, never the
+text) and the enrolment's own spread (`self {min, median}`); re-check the
+bands on those after he enrols, before anything relies on them.
+
+**What uses it.**
+
+- **Passive (wake) mode:** after a "Linky" hit, the whole utterance goes to
+  the Mac first (the text read from after the keyword, `textFrom`). If the
+  check says **other**, the line is dropped, the mic stays passive, and the
+  devLog gets `{ev: "speaker-other", mode: "passive", n, score, model}`
+  (a count, never the text). **unknown** passes, as before; so does a
+  failure of the Mac (the rest goes to the cloud, unchecked).
+- **Active mode:** nothing is dropped (#380: noise and a talker under him
+  still cost his own speech). An "other" counts as one rejection towards
+  passive (docs/wake-word.md, "State machine").
+- **The line, signed:** the Mac signs each final's tag together with its
+  text, `{v:1, uid, thread, at, text, decision, score, model, device, …}`,
+  where `uid` is the page's fresh id for that utterance (`begin`) and
+  `thread` the hub thread the page named in its hello ("owner"), with an
+  Ed25519 key only it holds (`~/.config/lianki-stt/speaker-attest.key`,
+  0600; `voiceprint.py attest-key` makes it and prints the public key). The
+  page passes the signatures on with the line (`speakerProof`, one per
+  utterance); a page-made `speaker` is ignored. The hub (lianki-push, secret
+  `STT_SPEAKER_PUB`) keeps a `speaker` tag on the stored line only when every
+  proof verifies, is under 10 min old, was signed for this line's thread,
+  and its uid was never used, and the signed texts, in order, are exactly
+  the line (`lib/speaker-proof.ts` `lineIsSigned`). The only differences
+  allowed are meaning-neutral: Unicode NFKC (？ and ? are one mark),
+  whitespace collapsed, utterances joined by a space or nothing, and one
+  "。" or "." the mic appends right after a signed text that had no final
+  punctuation. Signed punctuation is never stripped or substituted: a
+  signed ？ cannot become ！ or vanish (a question made an order), a … must
+  stay, and no ！ or ？ may be added (so a ？ the mic's formatter guesses for
+  an unpunctuated final also leaves the line untagged; SenseVoice nearly
+  always punctuates itself). A dropped word (a negation), an added or
+  replaced one, or the utterances reordered leave the line without a tag.
+  The stored tag carries the signed texts themselves (`speaker.signed`). Used uids are burned in the hub's
+  Durable Object storage (`proof:<uid>`) for twice the window, so a restart,
+  hibernation or deploy forgets none; the alarm sweeps them. So no tag can
+  be forged, replayed or moved onto other words. It computes the tag itself
+  (the weakest utterance). Only such a tag shows the small green check
+  (`VoiceMark`, "Your voice, verified"). Without `STT_SPEAKER_PUB` no tag is
+  ever kept.
+- **Not built:** the voice approvals themselves. **They must rely on this
+  hub-verified tag only**, never on anything a page reports, and must
+  read the words from `speaker.signed`, never from the displayed line.
+
+**Latency** (`scripts/local-stt/voiceprint-bench.py`, 2026-11-01, 40 of his
+clips 1.8–14.4 s, a throwaway print in a temp folder, at `nice 20` and
+background QoS, one thread each, beside the live server):
+
+| | median | p90 | max |
+| --- | --- | --- | --- |
+| SenseVoice final alone | 300 ms | 553 ms | 876 ms |
+| CAM++ + gate alone (17.7 ms per audio second) | 78 ms | 147 ms | 243 ms |
+| both side by side, as the server runs them | 307 ms | 572 ms | 958 ms |
+| **added to a final** | **13 ms** | **52 ms** | 111 ms |
+
+At normal priority (the live server: P-cores, the decode on 4 threads) the
+background figures are about 3× too slow (#394's unloaded check), so CAM++
+is about 25 ms on a median final and 6 ms per audio second, under the
+decode's ~9 ms per second: it finishes inside the decode and adds about
+**0–10 ms** (an estimate, not a foreground measurement). Memory: about 150 MB
+more at peak (CAM++ loaded and a 10 s embedding, measured).
+
+**Switches.** On by default where the model is
+(`~/.cache/lianki-stt/models/speaker/campplus_zh_en.onnx`); without it, or
+with `--speaker ""` / `LIANKI_STT_SPEAKER=0`, the server logs `speaker check
+off` and works as before. `--speaker campp,eres2netv2` loads both: enrolment
+then saves a print for each, and verification uses, per device, the first
+model in that list with a print. ERes2NetV2's bands (0.34 / 0.25, ≥ 3 s:
+0.37 / 0.27) are #394's 1 % FA points and marked `provisional`; it needs a
+per-device enrolment (#394: it rejected 85–98 % of his Android clips
+against an iPhone enrolment).
+
 ## Short utterances and the language
 
 SenseVoice's auto language ID gets short Japanese wrong. On 2026-10-31 the
@@ -540,6 +779,27 @@ this is owner-only.
   oxmgr, cloudflared and curl: the oxmgr entry left exactly as it was, the
   custom key path reaching the server, and the restore when the listener
   fails to start, `/health` fails, or the server never says "listening".
+- `unit/voiceprint.test.ts`: the page's side of the voiceprint: consent
+  gating (nothing captured or started on the Mac before the tap), reading
+  and its "again" reasons, save at 10 and by itself at 20, cancel, delete
+  only after the confirming tap; the mic routing enrolment sentences to the
+  Mac only; passive mode dropping "other" (a count in the log, no text);
+  the tag on voice lines; the socket's hello, `enrol`, `textFrom` and
+  requests; the hub's parser.
+- `unit/local-stt-voiceprint.test.ts` runs `scripts/local-stt/test_voiceprint.py`
+  with the venv: the bands and the noise gate, the store's modes (0700 /
+  0600 under a 000 umask, symlinks and loose modes refused), delete (one
+  device, all, never a clips folder beside it), the CLI, enrolment checks,
+  and the real server (`--engine fake --speaker fake`) end to end over
+  WebSocket. Synthetic tones in temp folders; skipped in CI.
+- `node scripts/dev/voiceprint-qa.mjs [--shots <dir>]`: the panel in a
+  silent browser on `/harness` against that fake server: the consent card
+  (the path, keep-audio off), no microphone and no enrolment on the Mac
+  before the tap, the tap opening it, a refused mic dropping it, and the
+  verified mark on "me" lines only; light and dark at 390 px.
+- `scripts/local-stt/voiceprint-bench.py`: the latency table above (a COPY
+  of the clips, a throwaway print in a temp folder, niced, waits while he
+  talks).
 - `unit/local-stt-lang-pick.test.ts` runs `scripts/local-stt/test_lang_pick.py`
   with the venv: the pick rule, `final()` with stubs, the filterbank, and the
   int8 scorer when the model is there (skipped in CI).

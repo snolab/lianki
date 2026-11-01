@@ -151,6 +151,27 @@ oxmgr restart lianki-stt   # the server reads the new public key
 ```
 
 Rotating kills every outstanding ticket at once (they live 60 s anyway).
+
+The same key signs the **voiceprint tickets** (`aud` `lianki-voiceprint`,
+`POST /api/dev/voiceprint-ticket`; enrol and delete only after the owner's
+passkey with user verification; [local-stt.md](local-stt.md), "Voiceprint:
+who may enrol and delete"). Without `ticket.pub` on the Mac, every
+voiceprint op is refused.
+
+## Speaker attestation key (`STT_SPEAKER_PUB`)
+
+A Worker secret on `lianki-push` (the hub): the **public** half of the Mac's
+Ed25519 key that signs each final's speaker tag
+(`~/.config/lianki-stt/speaker-attest.key`, 0600, on the Mac only). The hub
+keeps a speaker tag on a voice line only when its signature verifies
+(`lib/speaker-proof.ts`); without the secret no tag is kept. Set it (the
+owner's OK first):
+
+```bash
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py attest-key \
+  | bunx wrangler secret put STT_SPEAKER_PUB -c workers/push/wrangler.jsonc
+oxmgr restart lianki-stt   # the server loads the key and signs from then on
+```
 The cloudflared tunnel's own credentials (`~/.cloudflared/<uuid>.json`,
 `cert.pem`) are separate: mode 0600, on the Mac only, never committed;
 whoever holds the credentials file can run a connector for the tunnel.

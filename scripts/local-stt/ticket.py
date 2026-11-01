@@ -22,6 +22,9 @@ import re
 import time
 
 AUD = "lianki-stt"
+#: Voiceprint tickets (lib/voiceprint-ticket.ts): the same key, another audience, so
+#: an STT ticket never opens a voiceprint op and a voiceprint ticket never a socket.
+VOICEPRINT_AUD = "lianki-voiceprint"
 SUBPROTOCOL = "lianki-stt"
 TTL_S = 60
 SKEW_S = 5
@@ -77,11 +80,55 @@ def load_public_key(path: str):
 class Tickets:
     """Verifies tickets against one public key and remembers each jti until it expires."""
 
-    def __init__(self, public_key, clock=time.time, max_seen: int = MAX_SEEN):
+    def __init__(self, public_key, clock=time.time, max_seen: int = MAX_SEEN, aud: str = AUD,
+                 persist: str | None = None):
         self.key = public_key
+        self.aud = aud
         self.clock = clock
         self.max_seen = max_seen
         self.seen: dict[str, int] = {}
+        #: Spent jtis kept in this 0600 file until exp + skew, so a restart forgets none
+        #: (voiceprint tickets). Unreadable or loose: refuse every ticket (fail closed).
+        self.persist = persist
+        self.broken: str | None = None
+        if persist:
+            self._load()
+
+    def _load(self) -> None:
+        if not os.path.lexists(self.persist):
+            return
+        why = file_problem(self.persist)
+        if why is None and os.lstat(self.persist).st_mode & 0o077:
+            why = "is readable by others"
+        if why:
+            self.broken = f"{os.path.basename(self.persist)} {why}"
+            return
+        try:
+            with open(self.persist, encoding="utf-8") as f:
+                d = json.load(f)
+            self.seen = {str(k): int(v) for k, v in d.items()} if isinstance(d, dict) else {}
+        except (OSError, ValueError, TypeError):
+            self.broken = f"{os.path.basename(self.persist)} unreadable"
+
+    def _save(self) -> None:
+        import tempfile
+
+        d = os.path.dirname(self.persist) or "."
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-", suffix=".part")
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(self.seen, f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.persist)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     def prune(self) -> None:
         """Forget the jtis of tickets that have expired (they can no longer verify anyway)."""
@@ -94,11 +141,17 @@ class Tickets:
         self.prune()
         return len(self.seen) >= self.max_seen
 
-    def check(self, ticket: str) -> str | None:
-        """None when the ticket is good (and now spent); else why not. Never logs the ticket."""
+    def check(self, ticket: str, expect: dict | None = None) -> str | None:
+        """
+        None when the ticket is good (and now spent); else why not. Never logs
+        the ticket. `expect`: payload fields that must equal these values
+        (a voiceprint ticket's op and device).
+        """
         from cryptography.exceptions import InvalidSignature
 
         now = int(self.clock())
+        if self.broken:
+            return f"store {self.broken}"
         if self.full():
             return "store full"
         if not ticket or len(ticket) > MAX_LEN:
@@ -119,8 +172,11 @@ class Tickets:
             return "malformed"
         if not isinstance(p, dict):
             return "malformed"
-        if p.get("aud") != AUD:
+        if p.get("aud") != self.aud:
             return "wrong aud"
+        for k, v in (expect or {}).items():
+            if p.get(k) != v:
+                return f"wrong {k}"
         exp, iat, jti = p.get("exp"), p.get("iat"), p.get("jti")
         if not isinstance(exp, int) or not isinstance(iat, int) or not isinstance(jti, str) or not jti:
             return "malformed"
@@ -131,6 +187,11 @@ class Tickets:
         if jti in self.seen:
             return "replayed"
         self.seen[jti] = exp
+        if self.persist:
+            try:
+                self._save()  # spent on disk before the op runs
+            except OSError:
+                return "store not writable"
         return None
 
 

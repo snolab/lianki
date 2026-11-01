@@ -12,6 +12,7 @@
         "@dnd-kit/sortable": "10.0.0",
         "@dnd-kit/utilities": "3.2.2",
         "@marsidev/react-turnstile": "^1.4.2",
+        "@simplewebauthn/server": "13.3.3",
         "@tailwindcss/postcss": "^4.2.1",
         "ai": "^6.0.116",
         "better-auth": "1.7.10",

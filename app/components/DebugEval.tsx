@@ -538,13 +538,19 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
     } catch {}
   };
   /** `to`: the state-tree node the line is addressed to (absent = the main thread). */
-  const sendChat = (text: string, to?: string, opts?: { source?: "stt"; timing?: VoiceTiming }) => {
+  const sendChat = (
+    text: string,
+    to?: string,
+    opts?: { source?: "stt"; timing?: VoiceTiming; speakerProof?: string[] },
+  ) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return false;
     try {
       const id = crypto.randomUUID().slice(0, 12);
       // A voice line's timestamps ride along (an older hub drops them).
       const timing = opts?.source === "stt" ? cleanTiming(opts.timing) : undefined;
+      // The Mac's signed speaker attestations (lib/speaker-proof.ts); the hub verifies them.
+      const speakerProof = opts?.source === "stt" ? opts.speakerProof?.slice(0, 8) : undefined;
       // The mic's wake-word mode rides along, so the agent sees it (docs/wake-word.md).
       const mic = (
         globalThis as {
@@ -562,6 +568,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           ...(opts?.source === "stt" ? { source: "stt" } : {}),
           ...(timing ? { timing } : {}),
           ...(wake === "active" || wake === "passive" ? { wake } : {}),
+          ...(speakerProof?.length ? { speakerProof } : {}),
           ...(wakeReason ? { wakeReason } : {}),
         }),
       );

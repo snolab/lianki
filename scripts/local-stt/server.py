@@ -36,7 +36,22 @@ Protocol (one socket per page, utterances one after another):
                    lost to a forced ja/zh reading; engines.LangPicker)
                    {"t":"error","id":N,"error":…}
 
-GET /health answers {"ok":true,"engine":…} (the same port, plain HTTP).
+The voiceprint (voiceprint.py; docs/local-stt.md, "Voiceprint"):
+
+  client → server  {"t":"hello","device":D}                 which device's print to score against
+                   {"t":"begin","id":N,"enrol":true}         an enrolment sentence (not scored)
+                   {"t":"end","id":N,"textFrom":S}           decode the text from sample S on (after
+                                                             "Linky"); the speaker check hears it all
+                   {"t":"enrol","op":"start","rid":R,"device":D,"consent":true,"keepAudio":false}
+                   {"t":"enrol","op":"commit"|"cancel","rid":R}
+                   {"t":"voiceprint","op":"status","rid":R}
+                   {"t":"voiceprint","op":"delete","rid":R,"device":D|"*"}
+  server → client  ready gains "speaker":{"models":[…]} when the check is on
+                   final gains "speaker":{score,decision:"me"|"other"|"unknown",model,device,
+                    speechS,snrDb[,reason]}, or on an enrolment sentence "enrol":{ok,n[,reason],…}
+                   {"t":"enrol"|"voiceprint","rid":R,"ok":…[,"error"]…}
+
+GET /health answers {"ok":true,"engine":…,"speaker":[models]|false} (the same port, plain HTTP).
 """
 from __future__ import annotations
 
@@ -44,6 +59,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -56,7 +72,8 @@ from websockets.exceptions import ConnectionClosed
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from engines import RATE, load_engine  # noqa: E402
-from ticket import SUBPROTOCOL, Tickets, file_problem, load_public_key, offered  # noqa: E402
+from ticket import SUBPROTOCOL, VOICEPRINT_AUD, Tickets, file_problem, load_public_key, offered  # noqa: E402
+import voiceprint as VP  # noqa: E402
 
 #: A partial every this much new audio…
 PARTIAL_STEP_S = 0.4
@@ -64,6 +81,8 @@ PARTIAL_STEP_S = 0.4
 PARTIAL_MIN_S = 0.3
 #: Longest utterance kept (the mic cuts at 30 s).
 MAX_S = 40
+#: An enrolment not saved or cancelled within this long is dropped.
+ENROL_TTL_S = 30 * 60
 
 ORIGINS = [
     "https://lianki.com",
@@ -97,6 +116,12 @@ class Utterance:
         self.done = False
         self.began = time.perf_counter()
         self.first_partial_ms: int | None = None
+        #: An enrolment sentence (the enrolment's id): its embedding joins it, nothing is scored.
+        self.enrol: str | None = None
+        #: The page's id for this utterance, signed into the speaker proof (the hub burns it).
+        self.uid: str | None = None
+        #: The text is decoded from this sample on (the words after "Linky").
+        self.text_from = 0
 
     def audio(self) -> np.ndarray:
         parts = ([self.pre] if self.pre is not None else []) + self.chunks
@@ -108,9 +133,127 @@ def pcm(b: bytes) -> np.ndarray:
 
 
 class Server:
-    def __init__(self, engine, workers: int = 2):
+    def __init__(self, engine, workers: int = 2, verifier: "VP.Verifier | None" = None,
+                 vp_tickets: "Tickets | None" = None, attestor: "VP.Attestor | None" = None):
         self.engine = engine
         self.pool = ThreadPoolExecutor(max_workers=workers)
+        #: The speaker check (voiceprint.py), or None when it is off.
+        self.verifier = verifier
+        #: Voiceprint tickets (aud lianki-voiceprint, lib/voiceprint-ticket.ts): every op but
+        #: commit/cancel of an enrolment needs one; without the key no op is possible.
+        self.vp_tickets = vp_tickets
+        #: Signs each final's speaker tag for the hub (voiceprint.Attestor), or None.
+        self.attestor = attestor
+        #: Its own thread, beside the decode, so the final waits only for the longer of the two.
+        self.spk_pool = ThreadPoolExecutor(max_workers=1)
+        #: Decisions so far (the log's counts; never text).
+        self.counts = {"me": 0, "other": 0, "unknown": 0}
+        #: Open enrolments by id (the start answer's `enrolment`), and when each began.
+        self.enrolments: dict[str, "VP.Enrolment"] = {}
+        self.enrol_at: dict[str, float] = {}
+
+    async def verify(self, audio: np.ndarray, device: str | None):
+        if not self.verifier:
+            return None
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self.spk_pool, self.verifier.verify, audio, device)
+
+    async def enrol_add(self, enrol, audio: np.ndarray):
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self.spk_pool, enrol.add, audio)
+
+    def _drop_enrolments(self, device: str | None) -> int:
+        """A delete: open enrolments of that device (None: all) can neither add nor commit."""
+        gone = [k for k, e in self.enrolments.items() if device is None or e.device == device]
+        for k in gone:
+            self.enrolments.pop(k).dropped = True
+            self.enrol_at.pop(k, None)
+        return len(gone)
+
+    def _prune_enrolments(self) -> None:
+        old = [k for k, t in self.enrol_at.items() if time.time() - t > ENROL_TTL_S]
+        for k in old:
+            e = self.enrolments.pop(k, None)
+            if e:
+                e.dropped = True
+            self.enrol_at.pop(k, None)
+
+    #: What each op's ticket must say (lib/voiceprint-ticket.ts); commit and cancel need none:
+    #: they name an enrolment opened with a ticket, by its unguessable id.
+    TICKET_FOR = {
+        ("voiceprint", "status"): lambda m: {"op": "status"},
+        # keepAudio as approved with the passkey: retention cannot be turned on afterwards.
+        ("enrol", "start"): lambda m: {"op": "enrol", "device": m.get("device"), "uv": True,
+                                       "keepAudio": m.get("keepAudio") is True},
+        ("voiceprint", "delete"): lambda m: {"op": "delete", "device": m.get("device"), "uv": True},
+    }
+
+    async def control(self, m: dict) -> dict:
+        """An enrolment or voiceprint request; the reply carries its rid. Ops need a voiceprint ticket."""
+        t, op = m.get("t"), m.get("op")
+        out: dict = {"t": t, "rid": m.get("rid"), "op": op}
+        v = self.verifier
+        if not v:
+            return {**out, "ok": False, "error": "speaker check off"}
+        self._prune_enrolments()
+        want = self.TICKET_FOR.get((t, op))
+        if want is not None:
+            if not self.vp_tickets:
+                log(f"voiceprint {op}: refused, no ticket key on this Mac")
+                return {**out, "ok": False, "error": "no ticket key on the Mac"}
+            ticket = m.get("ticket")
+            why = self.vp_tickets.check(ticket if isinstance(ticket, str) else "", want(m))
+            if why:
+                log(f"voiceprint {op}: refused, ticket {why}")  # the reason only, never the ticket
+                return {**out, "ok": False, "error": f"ticket {why}"}
+        loop = asyncio.get_running_loop()
+        try:
+            if t == "enrol" and op == "start":
+                device = m.get("device")
+                if not VP.valid_device(device):
+                    return {**out, "ok": False, "error": "bad device"}
+                keep = m.get("keepAudio") is True
+                eid = VP._b64url(os.urandom(16))
+                self.enrolments[eid] = await loop.run_in_executor(
+                    self.spk_pool, lambda: VP.Enrolment(v, device, keep_audio=keep))
+                self.enrol_at[eid] = time.time()
+                log(f"enrolment started ({device}, audio {'kept' if keep else 'not kept'})")
+                return {**out, "ok": True, "enrolment": eid, "min": VP.ENROL_MIN, "max": VP.ENROL_MAX}
+            eid = m.get("enrolment")
+            if t == "enrol" and op == "cancel":
+                if isinstance(eid, str) and self.enrolments.pop(eid, None) is not None:
+                    self.enrol_at.pop(eid, None)
+                    log("enrolment cancelled")
+                return {**out, "ok": True}
+            if t == "enrol" and op == "commit":
+                e = self.enrolments.get(eid) if isinstance(eid, str) else None
+                if not e:
+                    return {**out, "ok": False, "error": "no enrolment"}
+                res = await loop.run_in_executor(self.spk_pool, e.commit)
+                self.enrolments.pop(eid, None)
+                self.enrol_at.pop(eid, None)
+                log(f"voiceprint saved ({e.device}, {res['n']} sentences, {','.join(res['models'])}, self {res['self']})")
+                return {**out, "ok": True, **res}
+            if t == "voiceprint" and op == "status":
+                prints = await loop.run_in_executor(self.spk_pool, v.status)
+                return {**out, "ok": True, "prints": prints, "models": v.order}
+            if t == "voiceprint" and op == "delete":
+                device = m.get("device")
+                if device != "*" and not VP.valid_device(device):
+                    return {**out, "ok": False, "error": "bad device"}
+                who = None if device == "*" else device
+                dropped = self._drop_enrolments(who)  # before the delete: queued sentences see it
+                n = await loop.run_in_executor(self.spk_pool, v.store.delete, who)
+                v.refresh()
+                log(f"voiceprint deleted ({device}, {n} files, {dropped} open enrolment(s) dropped)")
+                return {**out, "ok": True, "deleted": n}
+        except VP.StoreError as e:
+            if t == "enrol" and op == "commit" and isinstance(eid, str):
+                self.enrolments.pop(eid, None)
+                self.enrol_at.pop(eid, None)
+            log(f"voiceprint {op} failed: {e}")
+            return {**out, "ok": False, "error": str(e)[:200]}
+        return {**out, "ok": False, "error": "unknown request"}
 
     async def decode(self, audio: np.ndarray):
         loop = asyncio.get_running_loop()
@@ -128,6 +271,8 @@ class Server:
         peer = ws.request.headers.get("origin", "?")
         log(f"page attached ({peer}, {via})")
         cur: Utterance | None = None
+        #: This socket's device (hello): whose print its finals are scored against.
+        conn: dict = {"device": None, "thread": None}
 
         async def send(obj):
             try:
@@ -154,11 +299,24 @@ class Server:
         async def final(u: Utterance):
             t0 = time.perf_counter()
             audio = u.audio()
-            try:
-                text, lang, auto_lang = await self.decode_final(audio)
-            except Exception as e:
-                await send({"t": "error", "id": u.id, "error": str(e)[:200]})
+            heard = audio[u.text_from:] if u.text_from > 0 else audio
+            enrol = self.enrolments.get(u.enrol) if u.enrol else None
+
+            async def text_of():
+                if len(heard) < RATE // 10:  # a bare "Linky": nothing after it to read
+                    return "", "", None
+                return await self.decode_final(heard)
+
+            # The speaker check runs beside the decode (its own thread), on the whole utterance.
+            side = self.enrol_add(enrol, audio) if enrol else self.verify(audio, conn["device"])
+            res = await asyncio.gather(text_of(), side, return_exceptions=True)
+            if isinstance(res[0], BaseException):
+                await send({"t": "error", "id": u.id, "error": str(res[0])[:200]})
                 return
+            text, lang, auto_lang = res[0]
+            spk = None if isinstance(res[1], BaseException) else res[1]
+            if isinstance(res[1], BaseException):
+                log(f"speaker check failed: {type(res[1]).__name__}: {res[1]}")
             ms = int((time.perf_counter() - t0) * 1000)
             msg = {
                 "t": "final",
@@ -173,11 +331,31 @@ class Server:
             }
             if auto_lang:
                 msg["langAuto"] = auto_lang  # what auto-detect said before the short-utterance pick
+            tag = ""
+            if enrol and spk is not None:
+                msg["enrol"] = spk
+                tag = f", enrol {'ok' if spk.get('ok') else spk.get('reason')} ({spk.get('n')})"
+            elif u.enrol:
+                msg["enrol"] = {"ok": False, "reason": "no-enrolment", "n": 0}
+            elif spk is not None:
+                msg["speaker"] = spk
+                if self.attestor:
+                    # Signed for the hub: only a tag that verifies, over this text, is kept on a line.
+                    msg["speakerProof"] = self.attestor.sign(spk, text, uid=u.uid, thread=conn.get("thread"))
+                d = spk["decision"]
+                self.counts[d] = self.counts.get(d, 0) + 1
+                sc = "-" if spk.get("score") is None else f"{spk['score']:.3f}"
+                why = f" {spk['reason']}" if spk.get("reason") else ""
+                c = self.counts
+                tag = f", spk {d} {sc}{why} (me {c['me']} other {c['other']} unknown {c['unknown']})"
             await send(msg)
             picked = f", lang {auto_lang}->{lang}" if auto_lang else ""
-            log(f"final #{u.id}: {len(audio) / RATE:.1f}s audio, decode {ms} ms, {len(text)} chars{picked}")
+            log(f"final #{u.id}: {len(audio) / RATE:.1f}s audio, decode {ms} ms, {len(text)} chars{picked}{tag}")
 
-        await send({"t": "ready", "engine": self.engine.name, "model": self.engine.model})
+        ready = {"t": "ready", "engine": self.engine.name, "model": self.engine.model}
+        if self.verifier:
+            ready["speaker"] = {"models": self.verifier.order}
+        await send(ready)
         try:
             async for msg in ws:
                 if isinstance(msg, bytes):
@@ -204,14 +382,30 @@ class Server:
                     m = json.loads(msg)
                 except ValueError:
                     continue
+                if not isinstance(m, dict):
+                    continue
                 t, uid = m.get("t"), m.get("id")
                 if t == "begin" and isinstance(uid, int):
                     if cur is not None:
                         cur.done = True
                     cur = Utterance(uid)
+                    e = m.get("enrol")
+                    cur.enrol = e if isinstance(e, str) and 0 < len(e) <= 64 else None
+                    q = m.get("uid")
+                    cur.uid = q if isinstance(q, str) and re.fullmatch(r"[A-Za-z0-9_-]{16,64}", q) else None
                 elif t == "end" and cur is not None and cur.id == uid and not cur.done:
                     cur.done = True
+                    tf = m.get("textFrom")
+                    if isinstance(tf, int) and not isinstance(tf, bool) and tf > 0:
+                        cur.text_from = tf
                     asyncio.create_task(final(cur))
+                elif t == "hello":
+                    d = m.get("device")
+                    conn["device"] = d if VP.valid_device(d) else None
+                    th = m.get("thread")
+                    conn["thread"] = th if isinstance(th, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", th) else None
+                elif t in ("enrol", "voiceprint"):
+                    await send(await self.control(m))
                 elif t == "cancel" and cur is not None and cur.id == uid:
                     cur.done = True
                     cur = None
@@ -304,6 +498,32 @@ async def start_public(serve, gate, srv, port: int):
     return public
 
 
+def load_verifier(models: str, root: str):
+    """The speaker check, or None (logged) when it is off or its model is missing: never fatal."""
+    names = [m for m in (models or "").split(",") if m and m != "0"]
+    if not names:
+        log("speaker check off")
+        return None
+    if names == ["fake"]:  # the tests: no model (voiceprint.FakeEmbedder)
+        log(f"speaker check on (fake, {root})")
+        return VP.Verifier(VP.Store(root), ["campp"], embedders={"campp": VP.FakeEmbedder()})
+    bad = [m for m in names if m not in VP.MODELS]
+    if bad:
+        log(f"speaker check off: unknown model {','.join(bad)}")
+        return None
+    try:
+        t0 = time.perf_counter()
+        v = VP.Verifier(VP.Store(root), names)
+        v.embed(v.order[0], np.full(RATE, 1e-3, dtype=np.float32))  # warm up
+        n = len(v.status())
+        log(f"speaker check on ({','.join(v.order)}, {n} print(s) in {root}) "
+            f"in {int((time.perf_counter() - t0) * 1000)} ms")
+        return v
+    except Exception as e:  # a missing model, an old sherpa-onnx: transcription as before
+        log(f"speaker check off: {type(e).__name__}: {e}")
+        return None
+
+
 def tailnet(path: str, port: int, on: bool) -> None:
     args = ["tailscale", "serve", "--bg", "--set-path", path, f"http://127.0.0.1:{port}"] if on else [
         "tailscale", "serve", "--set-path", path, "off"]
@@ -326,6 +546,12 @@ async def main() -> None:
                     help=f"the Ed25519 public key for tickets (default {DEFAULT_PUBKEY})")
     ap.add_argument("--public-config", default=PUBLIC_CONFIG,
                     help='{"port":…,"pubkey":…} written by tunnel.sh; "" for none')
+    ap.add_argument("--speaker", default=os.environ.get("LIANKI_STT_SPEAKER", "campp"),
+                    help='speaker check models in order ("campp", "campp,eres2netv2"); "" or 0 = off')
+    ap.add_argument("--voiceprints", default=VP.STORE_DIR, help="where the voiceprints are kept (0700)")
+    ap.add_argument("--voiceprint-pubkey", default=None,
+                    help=f"the Ed25519 key voiceprint tickets are checked with (default: the ticket key, {DEFAULT_PUBKEY})")
+    ap.add_argument("--attest-key", default=VP.ATTEST_KEY, help='signs speaker tags for the hub; "" = no proofs')
     a = ap.parse_args()
 
     port, pubkey = public_settings(a.public_port, a.ticket_pubkey, a.public_config)
@@ -352,11 +578,30 @@ async def main() -> None:
     engine = load_engine(a.engine)
     engine.transcribe(np.zeros(RATE // 2, dtype=np.float32))  # warm up
     log(f"{engine.name} ({engine.model}) ready in {int((time.perf_counter() - t0) * 1000)} ms")
-    srv = Server(engine)
+    verifier = load_verifier(a.speaker, a.voiceprints)
+    vp_tickets, attestor = None, None
+    if verifier:
+        vk = a.voiceprint_pubkey or pubkey or DEFAULT_PUBKEY
+        try:
+            # Spent tickets on disk (0600) until they expire, so a restart forgets none.
+            vp_tickets = Tickets(load_public_key(vk), aud=VOICEPRINT_AUD,
+                                 persist=os.path.join(a.voiceprints, "used-tickets.json"))
+            log(f"voiceprint ops need tickets ({vk})")
+        except (OSError, ValueError) as e:
+            # Fail closed: no key, no enrolment, status or delete over any socket.
+            log(f"voiceprint ops off: no usable ticket key at {vk} ({type(e).__name__})")
+        if a.attest_key:
+            try:
+                attestor = VP.Attestor(a.attest_key, create=False)  # made by `voiceprint.py attest-key`
+                log(f"speaker tags signed (STT_SPEAKER_PUB {attestor.public()})")
+            except Exception as e:
+                log(f"speaker tags unsigned: {type(e).__name__}: {e}")
+    srv = Server(engine, verifier=verifier, vp_tickets=vp_tickets, attestor=attestor)
 
     def health(conn, req):
         if req.path.split("?")[0].rstrip("/").endswith("/health"):
-            body = json.dumps({"ok": True, "engine": engine.name, "model": engine.model}).encode()
+            body = json.dumps({"ok": True, "engine": engine.name, "model": engine.model,
+                               "speaker": verifier.order if verifier else False}).encode()
             return Response(HTTPStatus.OK, "OK", Headers({"content-type": "application/json",
                                                          "access-control-allow-origin": "*"}), body)
         return None

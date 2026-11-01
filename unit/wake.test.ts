@@ -434,8 +434,9 @@ describe("createMic with the wake gate", () => {
     g.say(3);
     await tick();
     await tick();
-    // Passive while heard: nothing streamed; then only the rest, whole, as pre-pad + end.
-    expect(calls).toEqual(["begin", `end ${RATE * 2}`]);
+    // Passive while heard: nothing streamed; then the whole utterance as pre-pad + end, the
+    // text read from after "Linky" (textFrom) and the speaker check on all of it (Voiceprint).
+    expect(calls).toEqual(["begin", `end ${RATE * 3}`]);
     expect(await g.uploads[0].local).toMatchObject({ text: "下一个" });
     // The socket down: the rest goes to the cloud alone, without waiting for a connect.
     up = false;

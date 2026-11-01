@@ -294,3 +294,49 @@ describe("mic session wiring", () => {
     expect(seen.at(-1)).toBe("listening"); // unsubscribed: no more updates
   });
 });
+
+describe("mic session: voiceprint enrolment", () => {
+  it("the consent tap turns the mic on for enrolment, and off again after", async () => {
+    const f = fakes();
+    const s = createMicSession(f.deps);
+    const finals: unknown[] = [];
+    await s.enrolCapture(true, (p) => void finals.push(p), "E1");
+    expect(s.view().state).toBe("listening");
+    expect(s.enrolling()).toBe(true);
+    // No local STT configured: each sentence is dropped (null), never uploaded.
+    f.events()?.onSpeechStart();
+    f.events()?.onSpeechEnd(new Float32Array(1600));
+    expect(finals).toEqual([null]);
+    await s.enrolCapture(false, () => {});
+    expect(s.enrolling()).toBe(false);
+    expect(s.view().state).toBe("off");
+  });
+
+  it("a mic already on stays on afterwards; a refused mic throws and routes nothing", async () => {
+    const f = fakes();
+    const s = createMicSession(f.deps);
+    await s.toggle();
+    await s.enrolCapture(true, () => {}, "E1");
+    await s.enrolCapture(false, () => {});
+    expect(s.view().state).toBe("listening");
+    const g = fakes({
+      getStream: async () => {
+        throw Object.assign(new Error("denied"), { name: "NotAllowedError" });
+      },
+    });
+    const t = createMicSession(g.deps);
+    await expect(t.enrolCapture(true, () => {}, "E1")).rejects.toThrow("microphone not available");
+    expect(t.enrolling()).toBe(false);
+  });
+
+  it("no voiceprint request on the page-wide session (globalThis.__lkMic)", () => {
+    const s = createMicSession(fakes().deps);
+    expect((s as Record<string, unknown>).voiceprint).toBeUndefined();
+  });
+
+  it("no enrolment id: enrolCapture routes nothing", async () => {
+    const s = createMicSession(fakes().deps);
+    await s.enrolCapture(true, () => {});
+    expect(s.enrolling()).toBe(false);
+  });
+});

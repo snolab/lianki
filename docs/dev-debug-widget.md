@@ -534,6 +534,17 @@ the raw STT text, muted; another tap goes back. The icon is one slot:
 `POLISHED_ICON` in `packages/debug-chat/src/icons.tsx`, or the widget's
 `polishedIcon` prop.
 
+## Voiceprint: enrolment and delete by a tap
+
+The chat menu's **Voiceprint** (owner pages with a local STT) opens a panel
+over the bar (`VoiceprintPanel.tsx`, `voiceprint.ts`): enrol this device
+(a consent card first, nothing captured until "I agree, start"), the
+sentences to read, and "Delete my voiceprint" (a confirming tap). The print
+lives only on the Mac; voice lines it verified as him get a small green
+check (`VoiceMark`). The same rule as recording: starting enrolment and
+deleting are taps, never voice. Details: [local-stt.md](local-stt.md),
+"Voiceprint".
+
 ## Ask cards: approvals by a tap
 
 The agent can ask with options instead of open text; the page shows them as
