@@ -108,6 +108,32 @@ for (const scheme of ["light", "dark"]) {
   );
   await shot("top");
   await shot("card", "[data-testid=review-card]");
+  check(
+    (await page.locator("[data-testid^=tutorial-step-]").count()) === 8,
+    `${scheme}: tutorial has the 8 steps, side by side`,
+  );
+
+  // Step 6: open the card's tab, close it, come back → "How did this card feel?".
+  {
+    const popup = ctx.waitForEvent("page", { timeout: 5000 }).catch(() => null);
+    await page.getByTestId("open-card").click();
+    const tab = await popup;
+    check(
+      !(await page.getByTestId("return-prompt").isVisible()),
+      `${scheme}: no grading prompt while the card's tab is open`,
+    );
+    await tab?.close();
+    await page.bringToFront();
+    const asked = await page
+      .getByTestId("return-prompt")
+      .waitFor({ timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+    check(asked, `${scheme}: back from the card's tab → "How did this card feel?"`);
+    if (asked) await shot("return-prompt", "[data-testid=return-prompt]");
+  }
+  // Auto-opened tabs (step 3, after a grade) are not needed here.
+  ctx.on("page", (p) => void p.close().catch(() => {}));
 
   if (scheme === "light") {
     // Grade by tap: the next card loads in place, no navigation.
@@ -203,7 +229,7 @@ for (const scheme of ["light", "dark"]) {
         () =>
           [
             ...document.querySelectorAll(
-              "[data-testid=review-bookmarklet] li, [data-testid=review-bookmarklet] p, footer a, [data-testid=review-tutorial] li",
+              "[data-testid=review-bookmarklet] li, [data-testid=review-bookmarklet] p, footer a, [data-testid=review-tutorial] td",
             ),
           ].filter((el) => !el.textContent?.trim()).length,
       );

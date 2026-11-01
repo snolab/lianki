@@ -11,8 +11,15 @@ import {
   installGuideHref,
   isHttpUrl,
   keyAction,
+  openPlaceholderTab,
   optionsFrom,
+  returnStep,
   reviewHrefFor,
+  sendTabTo,
+  stateAfterOpen,
+  type ReturnEvent,
+  type ReturnState,
+  type TabHandle,
 } from "@/lib/review-ui";
 
 describe("cards out of the existing API", () => {
@@ -108,6 +115,109 @@ describe("keyboard", () => {
     expect(keyAction({ code: "KeyA", altKey: true })).toBeNull();
     expect(keyAction({ code: "KeyA", typing: true })).toBeNull();
     expect(keyAction({ code: "KeyZ" })).toBeNull();
+  });
+});
+
+// Step 6 of the tutorial: back from the card's tab, the page asks "How did this card feel?".
+describe("coming back to grade (step 6)", () => {
+  const run = (events: ReturnEvent[], from: ReturnState = "idle") =>
+    events.reduce(returnStep, from);
+
+  test("iPhone: open, the tab is hidden, visible again → the prompt", () => {
+    expect(run(["open"])).toBe("opened");
+    expect(run(["open", "hidden"])).toBe("away");
+    expect(run(["open", "hidden", "visible"])).toBe("back");
+  });
+
+  test("desktop: open, the window blurs, focus again → the prompt", () => {
+    expect(run(["open", "blur", "focus"])).toBe("back");
+  });
+
+  test("visible and focus both firing on the way back is still one prompt", () => {
+    expect(run(["open", "hidden", "blur", "visible", "focus"])).toBe("back");
+  });
+
+  test("no prompt before the user has left: focus right after the open", () => {
+    expect(run(["open", "focus"])).toBe("opened");
+    expect(run(["open", "visible"])).toBe("opened");
+  });
+
+  test("no prompt for a tab switch when no card page was opened", () => {
+    expect(run(["hidden", "visible"])).toBe("idle");
+    expect(run(["blur", "focus"])).toBe("idle");
+  });
+
+  test("leaving again from the prompt, and coming back, asks again", () => {
+    expect(run(["hidden"], "back")).toBe("away");
+    expect(run(["hidden", "visible"], "back")).toBe("back");
+  });
+
+  test("a new card on screen clears the prompt", () => {
+    expect(run(["card"], "back")).toBe("idle");
+    expect(run(["open", "hidden", "visible", "card"])).toBe("idle");
+  });
+
+  test("after the auto-open, a tab already switched away is away", () => {
+    expect(stateAfterOpen({ hidden: true, focused: false })).toBe("away");
+    expect(stateAfterOpen({ hidden: false, focused: false })).toBe("away");
+    expect(stateAfterOpen({ hidden: false, focused: true })).toBe("opened");
+  });
+});
+
+describe("auto-open (step 3)", () => {
+  const tab = () => {
+    const t = {
+      closed: false,
+      opener: {} as unknown,
+      went: null as string | null,
+      shut: false,
+      location: { replace: (u: string) => void (t.went = u) },
+      close: () => void (t.shut = true),
+    };
+    return t;
+  };
+
+  test("the grade tap opens an empty tab, the url follows", () => {
+    const t = tab();
+    const opened: string[] = [];
+    const win = { open: (u: string) => (opened.push(u), t) };
+    const h = openPlaceholderTab(win, 3);
+    expect(opened).toEqual(["about:blank"]);
+    expect(sendTabTo(h, "https://x.test/next")).toBe(true);
+    expect(t.went).toBe("https://x.test/next");
+    expect(t.opener).toBeNull();
+  });
+
+  test("not for the last due card", () => {
+    let calls = 0;
+    expect(openPlaceholderTab({ open: () => (calls++, tab()) }, 1)).toBeNull();
+    expect(calls).toBe(0);
+  });
+
+  test("blocked: null, and nothing sent", () => {
+    expect(openPlaceholderTab({ open: () => null }, 5)).toBeNull();
+    const throws = {
+      open: () => {
+        throw new Error("blocked");
+      },
+    };
+    expect(openPlaceholderTab(throws, 5)).toBeNull();
+    expect(sendTabTo(null, "https://x.test")).toBe(false);
+  });
+
+  test("no next card, or not a web page: the empty tab is closed", () => {
+    const a = tab();
+    expect(sendTabTo(a as TabHandle, null)).toBe(false);
+    expect(a.shut).toBe(true);
+    const b = tab();
+    expect(sendTabTo(b as TabHandle, "data:text/html,x")).toBe(false);
+    expect(b.shut).toBe(true);
+    expect(b.went).toBeNull();
+  });
+
+  test("a tab the user already closed is left alone", () => {
+    const t = { ...tab(), closed: true };
+    expect(sendTabTo(t, "https://x.test")).toBe(false);
   });
 });
 

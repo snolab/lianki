@@ -134,6 +134,108 @@ export function keyAction(e: KeyInput): KeyAction | null {
 /** The key hint shown on each grade button: the digit, as on the legacy page. */
 export const gradeKey = (r: Rating) => String(r);
 
+// ── Opening the card, and coming back to grade it (steps 3–6) ───────────────
+
+/**
+ * Where the user is with the card's page, so the page knows when to ask
+ * "How did this card feel?". The tutorial's step 6: the prompt shows the
+ * moment the user is back from the card's tab.
+ *
+ * - `idle`: this card's page has not been opened from here.
+ * - `opened`: it was opened, but this tab never lost the user yet (a
+ *   background tab, or the browser has not switched over).
+ * - `away`: this tab was hidden or lost focus after the open: the user is
+ *   reading the card.
+ * - `back`: this tab is visible and focused again: show the grading prompt.
+ */
+export type ReturnState = "idle" | "opened" | "away" | "back";
+
+export type ReturnEvent =
+  /** The card's page was opened (the button, the O key, or the auto-open). */
+  | "open"
+  /** `visibilitychange` to hidden, or window `blur`. */
+  | "hidden"
+  | "blur"
+  /** `visibilitychange` to visible, or window `focus`. */
+  | "visible"
+  | "focus"
+  /** A new card is on screen (graded, deleted, or loaded): start over. */
+  | "card";
+
+export function returnStep(state: ReturnState, event: ReturnEvent): ReturnState {
+  switch (event) {
+    case "open":
+      return "opened";
+    case "card":
+      return "idle";
+    case "hidden":
+    case "blur":
+      return state === "idle" ? "idle" : "away";
+    case "visible":
+    case "focus":
+      return state === "away" ? "back" : state;
+  }
+}
+
+/**
+ * The state right after an open: if the browser already switched to the new
+ * tab (this one is hidden or unfocused), the user is away; otherwise opened.
+ * The auto-open navigates its tab only after the grade is saved, by when the
+ * switch has usually happened already and its events are gone.
+ */
+export function stateAfterOpen(doc: { hidden: boolean; focused: boolean }): ReturnState {
+  return doc.hidden || !doc.focused ? "away" : "opened";
+}
+
+/**
+ * Step 3, the auto-open. A browser lets a page open a tab only during a tap
+ * (or key press), and the next card's url is known only after the grade is
+ * saved — too late for that tap on iOS Safari. So the grade tap opens an
+ * empty tab right away, and the card's url is sent to it once known.
+ * Not when this is the last due card: there would be nothing to send.
+ * Null when the browser blocked it; the big "Open this card" button stays.
+ */
+export function openPlaceholderTab(
+  win: { open: (url: string, target: string) => unknown },
+  dueCount: number | null,
+): TabHandle | null {
+  if (dueCount !== null && dueCount <= 1) return null;
+  try {
+    return (win.open("about:blank", "_blank") as TabHandle | null) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** The bits of a Window the auto-open touches. */
+export type TabHandle = {
+  closed?: boolean;
+  opener: unknown;
+  location: { replace: (url: string) => void };
+  close: () => void;
+};
+
+/**
+ * Send the placeholder tab to the card's page; false if it was closed or
+ * blocked. The opener link is cut first, as `noopener` would have.
+ */
+export function sendTabTo(tab: TabHandle | null, url: string | null): boolean {
+  if (!tab || tab.closed) return false;
+  if (!url || !isHttpUrl(url)) {
+    try {
+      tab.close();
+    } catch {}
+    return false;
+  }
+  try {
+    tab.opener = null;
+    tab.location.replace(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ── Platform (which tutorial) ────────────────────────────────────────────────
 
 export type Platform = "ios" | "android";
@@ -171,7 +273,7 @@ export function reviewHrefFor(origin: string, pageUrl: string): string {
  * held an API token instead would hand it to every page it ran on. So it does
  * the honest thing: it opens /review for this page's url, a top-level visit
  * where the cookie is sent. The tap that ran it counts as the user's gesture,
- * so the new tab opens; where a browser blocks it anyway, a small Lianki
+ * so the new tab opens; where a browser blocks it anyway, a small LiCards
  * button appears on the page and one more tap on it opens the tab.
  */
 export function bookmarkletSource(origin: string): string {
@@ -183,7 +285,7 @@ export function bookmarkletSource(origin: string): string {
     "if(w)return;",
     "var id='lianki-bm';var o=document.getElementById(id);if(o)o.remove();",
     "var a=document.createElement('a');a.id=id;a.href=u;a.target='_blank';a.rel='noopener';",
-    "a.textContent='Lianki: grade this page \\u2197';",
+    "a.textContent='LiCards: grade this page \\u2197';",
     "a.style.cssText='position:fixed;z-index:2147483647;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));" +
       "padding:12px 16px;border-radius:12px;font:600 16px system-ui,sans-serif;text-decoration:none;" +
       "background:oklch(0.53 0.207 22.3);color:oklch(0.985 0.01 85);box-shadow:0 4px 16px oklch(0 0 0/0.3)';",
