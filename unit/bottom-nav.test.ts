@@ -150,9 +150,28 @@ describe("bottom-nav strings", () => {
   });
 
   it("translate French and Chinese rather than repeating the English", () => {
+    // A product name stays as it is outside Chinese (docs/i18n.md, "Product names").
+    const brands = new Set(["LiCards"]);
     const same = entries.flatMap(([k, v]) =>
-      ["fr", "zh"].filter((l) => v.translation![l] === v.translation!.en).map((l) => `${k}:${l}`),
+      brands.has(v.translation!.en)
+        ? v.translation!.zh === v.translation!.en
+          ? [`${k}:zh`]
+          : []
+        : ["fr", "zh"]
+            .filter((l) => v.translation![l] === v.translation!.en)
+            .map((l) => `${k}:${l}`),
     );
     expect(same).toEqual([]);
+  });
+
+  it("keep the product name LiCards in every locale, 链卡 in Chinese", () => {
+    const off = entries
+      .filter(([, v]) => v.translation!.en.includes("LiCards"))
+      .flatMap(([k, v]) =>
+        Object.entries(v.translation!)
+          .filter(([l, s]) => (l === "zh" ? !s.includes("链卡") : !s.includes("LiCards")))
+          .map(([l]) => `${k}:${l}`),
+      );
+    expect(off).toEqual([]);
   });
 });

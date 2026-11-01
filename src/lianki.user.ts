@@ -1,5 +1,8 @@
 // ==UserScript==
 // @name        Lianki
+// @name:en     Lianki LiCards
+// @name:zh     链卡 Lianki
+// @name:zh-CN  链卡 Lianki
 // @namespace   Violentmonkey Scripts
 // @match       *://*/*
 // @grant       GM_xmlhttpRequest
@@ -7,15 +10,23 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.20
+// @version     2.24.21
 // @author      lianki.com
-// @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
+// @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
+// @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
+// @description:zh-CN 链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
 // @run-at      document-end
 // @downloadURL https://lianki.com/lianki.user.js
 // @updateURL   https://lianki.com/lianki.meta.js
 // @connect     lianki.com
 // @connect     www.lianki.com
 // ==/UserScript==
+
+// The feature is named LiCards (zh: 链卡) — docs/i18n.md, "Product names". The
+// bare @name stays "Lianki": a script manager identifies an installed script by
+// @name + @namespace, so renaming it would make a fresh install from lianki.com
+// a second copy beside the old one. The localized @name:* lines change only
+// what the manager displays.
 
 import { fsrs, generatorParameters, Rating } from "ts-fsrs";
 // Watch-time accounting is a grow-only CRDT whose merge rules the server relies
@@ -1357,7 +1368,7 @@ function main() {
     };
 
     const slowerBtn = makeBtn("⏪", "Slower (,/v)", () => pardon(-3, 0.7));
-    const liankiBtn = makeBtn("🔖", "Lianki (Alt+F)", () =>
+    const liankiBtn = makeBtn("🔖", "LiCards (Alt+F)", () =>
       dialog ? closeDialog() : openDialog(),
     );
     const fasterBtn = makeBtn("⏩", "Faster (./b)", () => pardon(0, 1.2));
@@ -1386,7 +1397,7 @@ function main() {
       const icon = hasCard ? "📗" : "🔖";
       if (liankiBtn.textContent !== icon) {
         liankiBtn.textContent = icon;
-        liankiBtn.title = hasCard ? "Review this card (Alt+F)" : "Add to Lianki (Alt+F)";
+        liankiBtn.title = hasCard ? "Review this card (Alt+F)" : "Add to LiCards (Alt+F)";
       }
     };
     addInterval(updateLiankiIcon, 1000);
@@ -1749,7 +1760,7 @@ function main() {
     });
     const titleSpan = document.createElement("span");
     Object.assign(titleSpan.style, { fontWeight: "700", fontSize: "16px" });
-    titleSpan.textContent = "🔖 Lianki";
+    titleSpan.textContent = "🔖 LiCards";
 
     // Where the cards live, and how many are waiting. Both were invisible: the
     // panel looked the same signed in or out, and the only way to see the queue

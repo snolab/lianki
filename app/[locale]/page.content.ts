@@ -1,6 +1,7 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys, flattenContext, type KeyContext } from "@/lib/i18n-context";
 
-const landingContent = {
+const dictionary = {
   key: "landing-page",
   content: {
     appName: t({
@@ -249,22 +250,22 @@ const landingContent = {
       },
       browser: {
         title: t({
-          en: "Browser Integration",
-          zh: "浏览器集成",
-          ja: "ブラウザ統合",
-          ko: "브라우저 통합",
-          hi: "ब्राउज़र इंटीग्रेशन",
-          es: "Integración con navegador",
-          fr: "Intégration navigateur",
-          ar: "تكامل المتصفح",
-          bn: "ব্রাউজার ইন্টিগ্রেশন",
-          pt: "Integração com navegador",
-          ru: "Интеграция с браузером",
-          ur: "براؤزر انٹیگریشن",
-          id: "Integrasi browser",
-          de: "Browser-Integration",
-          sw: "Ujumuishaji wa kivinjari",
-          mr: "ब्राउझर एकत्रीकरण",
+          en: "LiCards",
+          zh: "链卡",
+          ja: "LiCards",
+          ko: "LiCards",
+          hi: "LiCards",
+          es: "LiCards",
+          fr: "LiCards",
+          ar: "LiCards",
+          bn: "LiCards",
+          pt: "LiCards",
+          ru: "LiCards",
+          ur: "LiCards",
+          id: "LiCards",
+          de: "LiCards",
+          sw: "LiCards",
+          mr: "LiCards",
         }),
         description: t({
           en: "Add flashcards from any webpage with our Tampermonkey userscript.",
@@ -457,6 +458,75 @@ const landingContent = {
       }),
     },
   },
-} satisfies DeclarationContent;
+};
 
-export default landingContent;
+const context: KeyContext<typeof dictionary.content> = {
+  appName:
+    "The app's name shown as the logo text in the landing page header. A product name; keep the spelling each locale already uses.",
+  nav: {
+    blog: "Link in the landing page header to the blog (articles and guides). One noun.",
+    polyglot:
+      "Header link to the Polyglot Matrix page, where one question is answered in several languages. Product-like noun, one word.",
+    learn:
+      "Link in the landing page header to the page that imports learning materials (recommended lists, playlists, URL lists). One short verb or noun.",
+    import:
+      "Link in the landing page header to the page that imports cards from files such as Anki decks. One short verb or noun.",
+    aiVocab:
+      "Link in the landing page header to the AI vocabulary generator. Keep AI as is; very short noun phrase.",
+    roadmap: "Header link to the public roadmap page listing planned features. One noun.",
+  },
+  hero: {
+    title:
+      "Big headline at the top of the landing page for visitors. Marketing slogan: learning made much stronger by spaced repetition.",
+    description:
+      "One-sentence paragraph under the landing headline that says what Lianki is. Lianki is the app name, never translated.",
+    cta: "Main call-to-action button under the landing headline; opens the app. Imperative phrase, says it costs nothing.",
+  },
+  features: {
+    title: "Heading above the three feature boxes on the landing page. Short noun phrase.",
+    fsrs: {
+      title:
+        "Heading of the first landing feature box: the FSRS scheduling algorithm. Keep FSRS as is.",
+      description:
+        "Sentence in the first landing feature box: FSRS decides when each card is reviewed next. Keep FSRS as is.",
+    },
+    browser: {
+      title:
+        "Heading of the second landing feature box, about turning web pages into cards with the browser userscript. It is the product name LiCards: never translate it; keep LiCards in every language except Chinese, which uses 链卡.",
+      description:
+        "Sentence in the LiCards feature box on the landing page: any web page can be added as a card with the Tampermonkey userscript. Keep Tampermonkey as is.",
+    },
+    multiUser: {
+      title:
+        "Heading of the third landing feature box: each person has an account with private progress. Short noun phrase.",
+      description:
+        "Sentence in the third landing feature box: sign in with email, GitHub or Google; progress stays private. Keep GitHub and Google as is.",
+    },
+  },
+  howItWorks: {
+    title: "Heading above the numbered how-to steps on the landing page. Short phrase.",
+    step1:
+      "Rest of step 1 on the landing page, right after the link 'Install the userscript'; continues that sentence (starts lowercase). Keep Tampermonkey and Violentmonkey as is.",
+    step2:
+      "Step 2 on the landing page: a keyboard shortcut saves the current web page as a card. Keep Alt+F as is.",
+    step3:
+      "Step 3 on the landing page: review the cards that are due each day in the app. Imperative sentence.",
+    step4:
+      "Step 4 on the landing page: the FSRS algorithm picks the next review date from how well the user did. Keep FSRS as is.",
+    installLink:
+      "Link at the start of step 1 on the landing page that downloads the userscript; the step's text continues after it. Imperative phrase.",
+  },
+  footer: {
+    brand:
+      "App name in the landing page footer after the copyright sign and year. A product name; keep the spelling each locale already uses.",
+  },
+};
+
+export default {
+  ...dictionary,
+  title: "Landing page — the public front page for visitors",
+  description: describeKeys(
+    "The public landing page of Lianki: header links, headline, three feature boxes, how-to steps and footer. Lianki and LiCards (zh: 链卡) are product names, not translated.",
+    flattenContext(context),
+  ),
+} satisfies DeclarationContent;

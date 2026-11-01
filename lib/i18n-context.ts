@@ -10,6 +10,25 @@
  * TypeScript type requires a line for every key of `content`.
  */
 
+/**
+ * Context lines for a nested `content`: the same shape, one string per
+ * translation (`t(...)`) leaf, so a leaf without a line is a type error.
+ */
+export type KeyContext<C> = {
+  [K in keyof C]: C[K] extends { nodeType: unknown } ? string : KeyContext<C[K]>;
+};
+
+/** Nested context lines → `group.key` entries for `describeKeys`. */
+export function flattenContext(context: object, prefix = ""): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(context).flatMap(([k, v]) =>
+      typeof v === "string"
+        ? [[prefix + k, v]]
+        : Object.entries(flattenContext(v as object, `${prefix}${k}.`)),
+    ),
+  );
+}
+
 const HEADER = "Context per key (where it appears · what it is for · how it is used):";
 
 /** The dictionary `description`: its purpose, then one `- key: context` line per key. */
@@ -24,7 +43,7 @@ export function keyContext(description: string | undefined): Record<string, stri
   if (at < 0) return {};
   const out: Record<string, string> = {};
   for (const line of description!.slice(at + HEADER.length).split("\n")) {
-    const m = line.match(/^- (\w+): (.*)$/);
+    const m = line.match(/^- ([\w.]+): (.*)$/);
     if (m) out[m[1]] = m[2].trim();
   }
   return out;
