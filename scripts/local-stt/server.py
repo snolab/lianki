@@ -59,6 +59,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -117,6 +118,8 @@ class Utterance:
         self.first_partial_ms: int | None = None
         #: An enrolment sentence (the enrolment's id): its embedding joins it, nothing is scored.
         self.enrol: str | None = None
+        #: The page's id for this utterance, signed into the speaker proof (the hub burns it).
+        self.uid: str | None = None
         #: The text is decoded from this sample on (the words after "Linky").
         self.text_from = 0
 
@@ -179,7 +182,9 @@ class Server:
     #: they name an enrolment opened with a ticket, by its unguessable id.
     TICKET_FOR = {
         ("voiceprint", "status"): lambda m: {"op": "status"},
-        ("enrol", "start"): lambda m: {"op": "enrol", "device": m.get("device"), "uv": True},
+        # keepAudio as approved with the passkey: retention cannot be turned on afterwards.
+        ("enrol", "start"): lambda m: {"op": "enrol", "device": m.get("device"), "uv": True,
+                                       "keepAudio": m.get("keepAudio") is True},
         ("voiceprint", "delete"): lambda m: {"op": "delete", "device": m.get("device"), "uv": True},
     }
 
@@ -267,7 +272,7 @@ class Server:
         log(f"page attached ({peer}, {via})")
         cur: Utterance | None = None
         #: This socket's device (hello): whose print its finals are scored against.
-        conn: dict = {"device": None}
+        conn: dict = {"device": None, "thread": None}
 
         async def send(obj):
             try:
@@ -336,7 +341,7 @@ class Server:
                 msg["speaker"] = spk
                 if self.attestor:
                     # Signed for the hub: only a tag that verifies, over this text, is kept on a line.
-                    msg["speakerProof"] = self.attestor.sign(spk, text)
+                    msg["speakerProof"] = self.attestor.sign(spk, text, uid=u.uid, thread=conn.get("thread"))
                 d = spk["decision"]
                 self.counts[d] = self.counts.get(d, 0) + 1
                 sc = "-" if spk.get("score") is None else f"{spk['score']:.3f}"
@@ -386,6 +391,8 @@ class Server:
                     cur = Utterance(uid)
                     e = m.get("enrol")
                     cur.enrol = e if isinstance(e, str) and 0 < len(e) <= 64 else None
+                    q = m.get("uid")
+                    cur.uid = q if isinstance(q, str) and re.fullmatch(r"[A-Za-z0-9_-]{16,64}", q) else None
                 elif t == "end" and cur is not None and cur.id == uid and not cur.done:
                     cur.done = True
                     tf = m.get("textFrom")
@@ -395,6 +402,8 @@ class Server:
                 elif t == "hello":
                     d = m.get("device")
                     conn["device"] = d if VP.valid_device(d) else None
+                    th = m.get("thread")
+                    conn["thread"] = th if isinstance(th, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", th) else None
                 elif t in ("enrol", "voiceprint"):
                     await send(await self.control(m))
                 elif t == "cancel" and cur is not None and cur.id == uid:
@@ -574,7 +583,9 @@ async def main() -> None:
     if verifier:
         vk = a.voiceprint_pubkey or pubkey or DEFAULT_PUBKEY
         try:
-            vp_tickets = Tickets(load_public_key(vk), aud=VOICEPRINT_AUD)
+            # Spent tickets on disk (0600) until they expire, so a restart forgets none.
+            vp_tickets = Tickets(load_public_key(vk), aud=VOICEPRINT_AUD,
+                                 persist=os.path.join(a.voiceprints, "used-tickets.json"))
             log(f"voiceprint ops need tickets ({vk})")
         except (OSError, ValueError) as e:
             # Fail closed: no key, no enrolment, status or delete over any socket.

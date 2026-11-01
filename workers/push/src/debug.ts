@@ -174,7 +174,7 @@ import {
   checkChoices,
 } from "../../../packages/debug-chat/src/ask";
 import type { AnsweredEvent, SpeakerTag } from "../../../packages/debug-chat/src/wire";
-import { type SeenProofs, verifySpeakerProofs } from "../../../lib/speaker-proof";
+import { verifySpeakerProofs } from "../../../lib/speaker-proof";
 import {
   CLIPS_GONE_MS,
   CLIPS_HIDDEN_MS,
@@ -391,9 +391,8 @@ export class DebugHub {
    */
   private grants?: Map<string, Grant>;
   private loadingGrants?: Promise<void>;
-  /** STT_SPEAKER_PUB, and the attestations already used (one line each). */
+  /** STT_SPEAKER_PUB: the Mac's attestation key (lib/speaker-proof.ts). */
   private speakerPub?: string;
-  private seenProofs: SeenProofs = new Map();
 
   constructor(
     private ctx: DebugState,
@@ -1069,6 +1068,30 @@ export class DebugHub {
     await this.schedule(this.now() + PAGES_IDLE_MS);
   }
 
+  /**
+   * Burn speaker-proof uids in storage (`proof:<uid>` → until), so a proof
+   * serves one line only, across restarts, hibernation and deploys. Storage
+   * calls of one event never interleave with another's (the Durable Object's
+   * input gate), so check-then-put is atomic. The alarm sweeps them later.
+   */
+  private async burnProofs(uids: string[], until: number): Promise<boolean> {
+    for (const u of uids) if (await this.ctx.storage.get(`proof:${u}`)) return false;
+    for (const u of uids) await this.ctx.storage.put(`proof:${u}`, until);
+    await this.schedule(until);
+    return true;
+  }
+
+  /** Forget burned proofs past their window (they can no longer verify anyway). */
+  private async proofSweep() {
+    const all = await this.ctx.storage.list<number>({ prefix: "proof:" });
+    let next = Number.POSITIVE_INFINITY;
+    for (const [k, until] of all) {
+      if (until <= this.now()) await this.ctx.storage.delete(k);
+      else next = Math.min(next, until);
+    }
+    if (Number.isFinite(next)) await this.schedule(next);
+  }
+
   /** Make sure the alarm goes off by `at` (one already due is the one running now). */
   private async schedule(at: number) {
     const cur = await this.ctx.storage.getAlarm();
@@ -1129,6 +1152,7 @@ export class DebugHub {
     this.sweep();
     await this.checkIdle();
     await this.clipsSweep();
+    await this.proofSweep();
   }
 
   webSocketMessage(ws: Socket, raw: string | ArrayBuffer): void | Promise<void> {
@@ -1227,8 +1251,9 @@ export class DebugHub {
         return verifySpeakerProofs(
           m.speakerProof,
           m.text,
+          page.thread,
           this.speakerPub,
-          this.seenProofs,
+          (uids, until) => this.burnProofs(uids, until),
           this.now(),
         ).then(line);
       return line(undefined);

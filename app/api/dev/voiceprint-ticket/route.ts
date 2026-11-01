@@ -84,6 +84,23 @@ export const POST = async (req: Request) => {
         newCounter: r.authenticationInfo.newCounter,
       };
     },
+    consume: async (challenge, exp) => {
+      // better-auth's verification table: its primary key makes this insert succeed once.
+      const r = await db
+        .prepare(
+          "INSERT OR IGNORE INTO verification (id, identifier, value, expiresAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(
+          `voiceprint-challenge:${challenge}`,
+          "voiceprint-challenge",
+          "used",
+          new Date(exp * 1000 + 60_000).toISOString(),
+          new Date().toISOString(),
+          new Date().toISOString(),
+        )
+        .run();
+      return (r.meta?.changes ?? 0) === 1;
+    },
     saveCounter: async (id, counter) => {
       await db.prepare("UPDATE passkey SET counter = ? WHERE id = ?").bind(counter, id).run();
     },

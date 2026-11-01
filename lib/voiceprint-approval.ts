@@ -44,6 +44,12 @@ export type ApprovalDeps = {
   passkeys: () => Promise<StoredPasskey[]>;
   check: AssertionCheck;
   saveCounter: (id: string, counter: number) => Promise<void>;
+  /**
+   * Spend this challenge for good (atomic: D1, a primary-key insert): true the
+   * first time, false ever after. A replayed assertion (a synced passkey's
+   * counter stays 0) can therefore never mint a second ticket.
+   */
+  consume: (challenge: string, exp: number) => Promise<boolean>;
   rp: { rpID: string; origins: string[] };
   now?: number;
 };
@@ -67,6 +73,8 @@ export async function voiceprintApproval(body: unknown, d: ApprovalDeps): Promis
   if (op !== "enrol" && op !== "delete") return bad(400, "bad op");
   const device = b.device;
   if (!validDevice(device, op)) return bad(400, "bad device");
+  // Enrol: keeping the audio is part of what he approves with the passkey.
+  const keepAudio = op === "enrol" && b.keepAudio === true;
   const keys = await d.passkeys();
   if (!keys.length) return bad(409, "no passkey: add one on the profile page first");
   if (b.step === "options") {
@@ -74,6 +82,7 @@ export async function voiceprintApproval(body: unknown, d: ApprovalDeps): Promis
       op,
       device,
       uid: d.userId,
+      keepAudio,
       now: d.now,
     });
     return {
@@ -99,6 +108,7 @@ export async function voiceprintApproval(body: unknown, d: ApprovalDeps): Promis
     op,
     device,
     uid: d.userId,
+    keepAudio,
     now: d.now,
   });
   if (!ch) return bad(401, "challenge expired or not for this op");
@@ -124,13 +134,18 @@ export async function voiceprintApproval(body: unknown, d: ApprovalDeps): Promis
   }
   // Face ID / Touch ID, not mere presence: the UV flag is required.
   if (!r.verified || !r.userVerified) return bad(401, "passkey check failed");
+  // Once: the first good assertion spends the challenge; any replay stops here.
+  if (!(await d.consume(ch.challenge, ch.exp))) return bad(401, "approval already used");
   await d.saveCounter(pk.id, r.newCounter);
   const { ticket, exp } = await signVoiceprintTicket(d.key, {
     op,
     device,
     uv: true,
+    keepAudio,
     jti: ch.challenge,
-    now: d.now,
+    // The challenge's own lifetime, fixed when it was issued: never extended.
+    iat: ch.iat,
+    exp: ch.exp,
   });
   return { status: 200, json: { ticket, exp } };
 }

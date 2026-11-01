@@ -77,10 +77,9 @@ function fakeStorage(
   };
 }
 
-function setup(env?: unknown) {
+function setup(env?: unknown, storage = fakeStorage()) {
   const sockets: FakeSocket[] = [];
   let t = 1_000_000;
-  const storage = fakeStorage();
   const hub = new DebugHub(
     {
       acceptWebSocket: (ws) => sockets.push(ws as FakeSocket),
@@ -1289,7 +1288,7 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
     expect(stored.map((m) => m.wake)).toEqual(["passive", undefined]);
   });
 
-  it("a voice line keeps only a speaker tag the Mac signed over its words", async () => {
+  it("a voice line keeps only a speaker tag the Mac signed over exactly its words", async () => {
     const mac = await speakerKey();
     const s = setup({ STT_SPEAKER_PUB: mac.pub });
     const owner = s.page();
@@ -1303,64 +1302,72 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
       snrDb: 21,
     };
     const at = 1_000_000;
-    const good = await mac.sign({ ...tag, text: "Next word.", uid: "u1", at });
-    // Signed, fresh, the line's words: kept.
-    await s.msg(owner, {
-      type: "chat",
-      id: "s1",
-      text: "next word",
-      source: "stt",
-      speakerProof: [good],
-    });
+    const sign = (text: string, uid: string, o: Record<string, unknown> = {}) =>
+      mac.sign({ ...tag, text, uid: uid.padEnd(16, "x"), thread: "owner", at, ...o });
+    const say = (id: string, text: string, speakerProof: string[]) =>
+      s.msg(owner, { type: "chat", id, text, source: "stt", speakerProof });
+    const good = await sign("Next  word", "u1");
+    // Signed, fresh, this thread, the line's words (NFKC, spaces, final punctuation only): kept.
+    await say("s1", "Next word。", [good]);
+    // Two utterances, in order, joined by the page: kept.
+    await say("s2", "你好。 下一个", [await sign("你好", "u2"), await sign("下一个!", "u3")]);
     // The same proof again (replayed onto another line): dropped.
-    await s.msg(owner, {
-      type: "chat",
-      id: "s2",
-      text: "next word",
-      source: "stt",
-      speakerProof: [good],
-    });
+    await say("s3", "Next word", [good]);
     // A page's own tag, no proof: dropped.
-    await s.msg(owner, { type: "chat", id: "s3", text: "hi there", source: "stt", speaker: tag });
-    // A real proof moved onto other words: dropped.
-    const other = await mac.sign({ ...tag, text: "next word", uid: "u2", at });
-    await s.msg(owner, {
-      type: "chat",
-      id: "s4",
-      text: "delete everything now",
-      source: "stt",
-      speakerProof: [other],
-    });
-    // Signed by another key (a forged Mac): dropped.
+    await s.msg(owner, { type: "chat", id: "s4", text: "hi there", source: "stt", speaker: tag });
+    // A signed word dropped (the negation): dropped.
+    await say("s5", "delete all my cards", [await sign("do not delete all my cards", "u5")]);
+    // A word added, or replaced: dropped.
+    await say("s6", "next word now", [await sign("next word", "u6")]);
+    await say("s7", "next bird", [await sign("next word", "u7")]);
+    // The utterances out of order: dropped.
+    await say("s8", "下一个 你好", [await sign("你好", "u8"), await sign("下一个", "u9")]);
+    // Another key, another thread, stale: dropped.
     const forger = await speakerKey();
-    const forged = await forger.sign({ ...tag, text: "next word", uid: "u3", at });
-    await s.msg(owner, {
-      type: "chat",
-      id: "s5",
-      text: "next word",
-      source: "stt",
-      speakerProof: [forged],
-    });
-    // Stale (signed 11 minutes before): dropped.
-    const stale = await mac.sign({ ...tag, text: "next word", uid: "u4", at: at - 11 * 60_000 });
-    await s.msg(owner, {
-      type: "chat",
-      id: "s6",
-      text: "next word",
-      source: "stt",
-      speakerProof: [stale],
-    });
+    await say("s9", "next word", [
+      await forger.sign({
+        ...tag,
+        text: "next word",
+        uid: "u10".padEnd(16, "x"),
+        thread: "owner",
+        at,
+      }),
+    ]);
+    await say("s10", "next word", [await sign("next word", "u11", { thread: "friend-1" })]);
+    await say("s11", "next word", [await sign("next word", "u12", { at: at - 11 * 60_000 })]);
     const stored = [...s.storage.store.entries()]
       .filter(([k]) => k.startsWith("msg:"))
       .map(([, v]) => v as Record<string, unknown>);
-    expect(stored.map((m) => m.speaker)).toEqual([
-      tag,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+    expect(stored.map((m) => !!m.speaker)).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
     ]);
+    expect(stored[0]!.speaker).toEqual(tag);
+    // Burned durably: a new hub on the same storage (a restart, a deploy) refuses it too.
+    const again = setup({ STT_SPEAKER_PUB: mac.pub }, s.storage);
+    const p2 = again.page();
+    await agent(again, p2);
+    await again.msg(p2, {
+      type: "chat",
+      id: "r1",
+      text: "Next word",
+      source: "stt",
+      speakerProof: [good],
+    });
+    const r1 = [...again.storage.store.values()].find((v) => (v as { id?: string }).id === "r1") as
+      | Record<string, unknown>
+      | undefined;
+    expect(r1?.speaker).toBeUndefined();
+    expect([...s.storage.store.keys()].filter((k) => k.startsWith("proof:")).length).toBe(3);
   });
 
   it("without STT_SPEAKER_PUB no tag is ever kept", async () => {
@@ -1372,7 +1379,8 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
       decision: "me",
       score: 0.5,
       text: "next word",
-      uid: "u1",
+      uid: "u1".padEnd(16, "x"),
+      thread: "owner",
       at: 1_000_000,
     });
     await s.msg(owner, {

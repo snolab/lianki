@@ -49,6 +49,11 @@ def fake_verifier(root: str) -> V.Verifier:
     return V.Verifier(V.Store(root), ["campp"], embedders={"campp": V.FakeEmbedder()})
 
 
+def ls(d: str) -> list[str]:
+    """A folder's files, without the dotfiles (the store's .lock)."""
+    return sorted(f for f in os.listdir(d) if not f.startswith("."))
+
+
 def mode(p: str) -> int:
     return stat.S_IMODE(os.lstat(p).st_mode)
 
@@ -124,7 +129,7 @@ class StoreFiles(unittest.TestCase):
         self.assertEqual(mode(self.root), 0o700)
         f = os.path.join(self.root, "iphone.campp.json")
         self.assertEqual(mode(f), 0o600)
-        self.assertEqual(os.listdir(self.root), ["iphone.campp.json"])  # no temp file left
+        self.assertEqual(ls(self.root), ["iphone.campp.json"])  # no temp file left
         p = json.load(open(f))
         self.assertEqual((p["device"], p["model"], p["n"], p["audio"]), ("iphone", "campp", 12, False))
         self.assertIn("embeddings", p)
@@ -176,9 +181,9 @@ class StoreFiles(unittest.TestCase):
         self.store.keep_audio("iphone", 0, tone(300))
         self.store.save("android", "campp", self.emb(), [2.0] * 12, audio=False)
         self.assertEqual(self.store.delete("iphone"), 3)  # two prints and one kept sentence
-        self.assertEqual(sorted(os.listdir(self.root)), ["android.campp.json", V.GENERATIONS])
+        self.assertEqual(sorted(ls(self.root)), ["android.campp.json", V.GENERATIONS])
         self.assertEqual(self.store.delete(None), 1)
-        self.assertEqual(os.listdir(self.root), [V.GENERATIONS])
+        self.assertEqual(ls(self.root), [V.GENERATIONS])
         self.assertEqual(sorted(os.listdir(clips)), before)
         self.assertEqual(self.store.delete(None), 0)
 
@@ -194,7 +199,7 @@ class StoreFiles(unittest.TestCase):
         r = subprocess.run([py, "-I", cli, "--store", self.root, "delete", "--device", "iphone"], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0)
         self.assertIn("deleted 1 file", r.stdout)
-        self.assertEqual(os.listdir(self.root), [V.GENERATIONS])
+        self.assertEqual(ls(self.root), [V.GENERATIONS])
         self.assertEqual(mode(os.path.join(self.root, V.GENERATIONS)), 0o600)
         self.assertEqual(V.Store(self.root).generation("iphone"), 1)
 
@@ -291,7 +296,7 @@ class Enrolling(unittest.TestCase):
         for i in range(V.ENROL_MIN):
             e.add(tone(300, seed=i))
         e.commit()
-        self.assertEqual(os.listdir(self.root), ["iphone.campp.json"])
+        self.assertEqual(ls(self.root), ["iphone.campp.json"])
 
     def test_at_most_max(self):
         e = V.Enrolment(self.v, "iphone", keep_audio=False)
@@ -322,7 +327,7 @@ class Generations(unittest.TestCase):
         V.Store(self.root).delete("iphone")  # the CLI, say
         with self.assertRaises(V.StoreError):
             e.commit()
-        self.assertEqual(os.listdir(self.root), [V.GENERATIONS])  # nothing saved
+        self.assertEqual(ls(self.root), [V.GENERATIONS])  # nothing saved
         self.assertEqual(e.add(tone(300))["reason"], "dropped")
 
     def test_delete_all_invalidates_every_device(self):
@@ -369,6 +374,74 @@ class Attesting(unittest.TestCase):
             self.assertIn("uid", p)
 
 
+class SpentTickets(unittest.TestCase):
+    """The Mac remembers spent voiceprint tickets on disk (0600) until they expire: a restart forgets none."""
+
+    def test_survives_a_restart_and_fails_closed(self):
+        import ticket as T
+
+        sg = Signer()
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        import base64
+
+        key = Ed25519PublicKey.from_public_bytes(base64.urlsafe_b64decode(sg.pub + "=" * (-len(sg.pub) % 4)))
+        with tempfile.TemporaryDirectory() as tmp:
+            f = os.path.join(tmp, "used-tickets.json")
+            t = sg.vp("delete", "*")
+            a = T.Tickets(key, aud=T.VOICEPRINT_AUD, persist=f)
+            self.assertIsNone(a.check(t, {"op": "delete"}))
+            self.assertEqual(mode(f), 0o600)
+            b = T.Tickets(key, aud=T.VOICEPRINT_AUD, persist=f)  # the server restarted
+            self.assertEqual(b.check(t, {"op": "delete"}), "replayed")
+            os.chmod(f, 0o644)
+            c = T.Tickets(key, aud=T.VOICEPRINT_AUD, persist=f)
+            self.assertTrue(c.check(sg.vp("status"), {"op": "status"}).startswith("store"))
+
+
+class Locking(unittest.TestCase):
+    """The store's flock: a CLI delete never interleaves with a commit's check and writes."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = os.path.join(self.tmp.name, "vp")
+        self.v = fake_verifier(self.root)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def cli_delete(self, device):
+        return subprocess.Popen([sys.executable, "-I", os.path.join(HERE, "voiceprint.py"), "--store", self.root,
+                                 "delete", "--device", device], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def test_cli_delete_waits_for_the_lock(self):
+        st = V.Store(self.root)
+        with st.lock():
+            p = self.cli_delete("iphone")
+            time.sleep(0.8)
+            self.assertIsNone(p.poll())  # blocked on the lock
+        self.assertEqual(p.wait(20), 0)
+
+    def test_delete_during_a_commit_runs_after_its_writes(self):
+        e = V.Enrolment(self.v, "iphone", keep_audio=True)
+        for i in range(V.ENROL_MIN):
+            e.add(tone(300, seed=i))
+        procs = []
+        save = self.v.store.save
+
+        def slow_save(*a, **k):
+            # Another process deletes in the middle of the commit's writes.
+            procs.append(self.cli_delete("iphone"))
+            time.sleep(0.8)
+            return save(*a, **k)
+
+        self.v.store.save = slow_save
+        e.commit()
+        self.assertEqual(procs[0].wait(20), 0)
+        # The delete ran after the whole commit: nothing of it survives.
+        self.assertEqual(ls(self.root), [V.GENERATIONS])
+        self.assertEqual(V.Store(self.root).generation("iphone"), 1)
+
+
 def free_port() -> int:
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
@@ -399,8 +472,9 @@ class Signer:
         body = b64u(json.dumps(p).encode())
         return f"{body}.{b64u(self.k.sign(body.encode()))}"
 
-    def vp(self, op, device="*", uv=True):
-        return self.ticket(aud="lianki-voiceprint", op=op, device=device, uv=uv)
+    def vp(self, op, device="*", uv=True, keep_audio=False):
+        extra = {"keepAudio": keep_audio} if op == "enrol" else {}
+        return self.ticket(aud="lianki-voiceprint", op=op, device=device, uv=uv, **extra)
 
 
 class ServerProtocol(unittest.TestCase):
@@ -473,8 +547,9 @@ class ServerProtocol(unittest.TestCase):
                 return m
 
     @staticmethod
-    async def utter(ws, uid, audio, enrol=None, text_from=None):
-        await ws.send(json.dumps({"t": "begin", "id": uid, **({"enrol": enrol} if enrol else {})}))
+    async def utter(ws, uid, audio, enrol=None, text_from=None, page_uid=None):
+        await ws.send(json.dumps({"t": "begin", "id": uid, **({"enrol": enrol} if enrol else {}),
+                                  **({"uid": page_uid} if page_uid else {})}))
         pcm = (np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes()
         await ws.send(b"\x01" + pcm)
         await ws.send(json.dumps({"t": "end", "id": uid, **({"textFrom": text_from} if text_from else {})}))
@@ -499,6 +574,9 @@ class ServerProtocol(unittest.TestCase):
                 {"t": "enrol", "op": "start", "device": "iphone", "ticket": sg.vp("enrol", "android")},
                 # Enrol and delete need the passkey (uv) behind the ticket.
                 {"t": "enrol", "op": "start", "device": "iphone", "ticket": sg.vp("enrol", "iphone", uv=False)},
+                # Approved without keeping audio: a start asking to keep it is refused.
+                {"t": "enrol", "op": "start", "device": "iphone", "keepAudio": True,
+                 "ticket": sg.vp("enrol", "iphone", keep_audio=False)},
                 # Another key's ticket.
                 {"t": "voiceprint", "op": "status", "ticket": Signer().vp("status")},
             ):
@@ -521,7 +599,7 @@ class ServerProtocol(unittest.TestCase):
         sg = self.signer
 
         async def flow(ws):
-            await ws.send(json.dumps({"t": "hello", "device": "iphone"}))
+            await ws.send(json.dumps({"t": "hello", "device": "iphone", "thread": "owner"}))
             f = await self.utter(ws, 1, tone(300))
             self.assertEqual(f["speaker"]["reason"], "no-print")
             r = await self.ask(ws, {"t": "voiceprint", "op": "status", "ticket": sg.vp("status")})
@@ -548,7 +626,7 @@ class ServerProtocol(unittest.TestCase):
             self.assertTrue(r["ok"], r)
             self.assertEqual(mode(os.path.join(self.root, "iphone.campp.json")), 0o600)
             # Verified finals carry a proof the Mac signed over the text.
-            f = await self.utter(ws, 30, tone(300))
+            f = await self.utter(ws, 30, tone(300), page_uid="U" * 22)
             self.assertEqual(f["speaker"]["decision"], "me")
             self.assertIn("speakerProof", f)
             body = f["speakerProof"].split(".")[0]
@@ -556,6 +634,8 @@ class ServerProtocol(unittest.TestCase):
 
             p = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
             self.assertEqual((p["text"], p["decision"], p["device"]), (f["text"], "me", "iphone"))
+            # Bound to the page's utterance id and its thread (the hub checks both and burns the uid).
+            self.assertEqual((p["uid"], p["thread"]), ("U" * 22, "owner"))
             f = await self.utter(ws, 31, tone(900))
             self.assertEqual(f["speaker"]["decision"], "other")
             # Delete with its ticket.

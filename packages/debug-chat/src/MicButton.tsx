@@ -316,7 +316,7 @@ function session(): MicSession {
       return v.subscribe((x) => f(x.hold));
     },
     // The device goes along, so the Mac scores finals against this device's voiceprint.
-    localStt: (url) => createLocalStt(url, { log: (ev) => v.log(ev), device: voiceDevice() }),
+    localStt: (url) => createLocalStt(url, { log: (ev) => v.log(ev), device: voiceDevice(), thread: "owner" }),
     speaker: noteSpeaker,
     // The "Linky" spotter: made (and downloaded) the first time the mic goes passive.
     // localStorage lk:agent-wake = "0" turns the wake word off (never passive).

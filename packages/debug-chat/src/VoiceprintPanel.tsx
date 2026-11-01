@@ -52,7 +52,7 @@ export function panelDeps(o: {
   return {
     device: o.device,
     request: (m) => c.request(m),
-    ticket: (op, device) => voiceprintTicket(op, device),
+    ticket: (op, device, t) => voiceprintTicket(op, device, { keepAudio: t?.keepAudio }),
     capture: o.capture,
     log: o.log,
     close: () => c.close(),

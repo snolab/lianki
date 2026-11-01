@@ -637,7 +637,9 @@ describe("createLocalStt: the voiceprint protocol", () => {
   it("an enrolment sentence is flagged; textFrom rides on the end; the tag comes back cleaned", async () => {
     const { s, stt } = setup();
     const u = stt.begin(() => {}, { enrol: "E1" })!;
-    expect(json(s.sent[1]!)).toEqual({ t: "begin", id: 1, enrol: "E1" });
+    expect(json(s.sent[1]!)).toMatchObject({ t: "begin", id: 1, enrol: "E1" });
+    // A fresh id per utterance, signed by the Mac into the proof (the hub burns it).
+    expect(json(s.sent[1]!).uid).toMatch(/^[A-Za-z0-9_-]{22}$/);
     const e = u.end(new Float32Array(10));
     s.say({ t: "final", id: 1, text: "x", enrol: { ok: false, n: 3, reason: "noise", extra: 1 } });
     expect((await e).enrol).toEqual({ ok: false, n: 3, reason: "noise" });

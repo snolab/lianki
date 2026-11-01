@@ -71,6 +71,8 @@ export async function voiceprintTicket(
   d: {
     fetch?: typeof fetch;
     creds?: Pick<CredentialsContainer, "get">;
+    /** Enrol: keep the sentences' audio on the Mac, approved with the passkey. */
+    keepAudio?: boolean;
   } = {},
 ): Promise<string> {
   const f = d.fetch ?? fetch;
@@ -90,9 +92,10 @@ export async function voiceprintTicket(
     if (typeof j.ticket !== "string") throw new Error("no ticket");
     return j.ticket;
   }
-  const o = await post({ op, device, step: "options" });
+  const keepAudio = op === "enrol" && d.keepAudio === true;
+  const o = await post({ op, device, step: "options", keepAudio });
   const response = await getAssertion(o.options as OptionsJSON, d.creds ?? navigator.credentials);
-  const j = await post({ op, device, step: "verify", token: o.token, response });
+  const j = await post({ op, device, step: "verify", token: o.token, response, keepAudio });
   if (typeof j.ticket !== "string") throw new Error("no ticket");
   return j.ticket;
 }

@@ -162,7 +162,11 @@ export type EnrolDeps = {
    * status with the owner session; enrol and delete only after the owner's
    * passkey with Face ID / Touch ID (webauthn.ts). The Mac takes no op without one.
    */
-  ticket(op: "status" | "enrol" | "delete", device: string): Promise<string>;
+  ticket(
+    op: "status" | "enrol" | "delete",
+    device: string,
+    o?: { keepAudio?: boolean },
+  ): Promise<string>;
   /** This device's slug. */
   device: string;
   /**
@@ -293,7 +297,8 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
       const keepAudio = view.keepAudio;
       const my = ++run;
       try {
-        const ticket = await d.ticket("enrol", d.device);
+        // keepAudio is part of the approval: the Mac refuses a start that differs.
+        const ticket = await d.ticket("enrol", d.device, { keepAudio });
         if (my !== run) return;
         const r = ok(
           await d.request({ t: "enrol", op: "start", device: d.device, consent: true, keepAudio, ticket }),

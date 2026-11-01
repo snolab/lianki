@@ -299,6 +299,30 @@ class Store:
         p["_centroid"] = c
         return p
 
+    # -- the lock
+    def lock(self):
+        """
+        An exclusive flock on `<root>/.lock`, shared by the server and the CLI:
+        held across a commit's generation check and all its writes, and across
+        a delete and its generation bump, so neither interleaves with the other.
+        """
+        import contextlib
+        import fcntl
+
+        @contextlib.contextmanager
+        def held():
+            self._ready(create=True)
+            f = os.path.join(self.root, ".lock")
+            fd = os.open(f, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                yield
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+                os.close(fd)
+
+        return held()
+
     # -- generations
     def generation(self, device: str) -> int:
         """How many times this device's prints (or, for "*", all prints) were deleted."""
@@ -338,8 +362,9 @@ class Store:
         if device is not None and not valid_device(device):
             raise StoreError("bad device")
         self._ready(create=True)
-        n = self._delete(device)
-        self.bump(device)
+        with self.lock():
+            n = self._delete(device)
+            self.bump(device)
         return n
 
     def _delete(self, device: str | None) -> int:
@@ -611,11 +636,17 @@ class Enrolment:
         return self.dropped or self.gen != (st.generation(self.device), st.generation("*"))
 
     def commit(self) -> dict:
-        if self.stale():
-            self.dropped = True
-            raise StoreError("the voiceprint was deleted meanwhile: enrol again")
         if self.n < ENROL_MIN:
             raise StoreError(f"need {ENROL_MIN} sentences, have {self.n}")
+        # Check and write under the store's lock: a delete (another process too)
+        # either finished before (stale: refused) or waits until this is written.
+        with self.v.store.lock():
+            if self.stale():
+                self.dropped = True
+                raise StoreError("the voiceprint was deleted meanwhile: enrol again")
+            return self._write()
+
+    def _write(self) -> dict:
         saved = {}
         for m in self.v.order:
             p = self.v.store.save(self.device, m, self.embs[m], self.speech, self.keep_audio)
@@ -677,10 +708,13 @@ class Attestor:
 
         return _b64url(self.key.public_key().public_bytes(ser.Encoding.Raw, ser.PublicFormat.Raw))
 
-    def sign(self, tag: dict, text: str, at_ms: int | None = None) -> str:
+    def sign(self, tag: dict, text: str, at_ms: int | None = None, uid: str | None = None,
+             thread: str | None = None) -> str:
+        """`uid`: the page's id for this utterance; `thread`: the hub thread its socket said (hello)."""
         payload = {
             "v": 1,
-            "uid": _b64url(os.urandom(12)),
+            "uid": uid or _b64url(os.urandom(12)),
+            **({"thread": thread} if thread else {}),
             "at": int(at_ms if at_ms is not None else time.time() * 1000),
             "text": text[:2000],
             **{k: tag[k] for k in ("decision", "score", "model", "device", "speechS", "snrDb", "reason") if k in tag},

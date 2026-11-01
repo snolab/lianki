@@ -23,7 +23,11 @@ import { b64url, fromB64url } from "@/lib/stt-ticket";
 export const VOICEPRINT_AUD = "lianki-voiceprint";
 export const CHALLENGE_AUD = "lianki-voiceprint-challenge";
 export const VOICEPRINT_TICKET_TTL_S = 60;
-export const CHALLENGE_TTL_S = 120;
+/**
+ * The challenge and the ticket share one lifetime, fixed when the options are
+ * issued: the ticket's iat/exp are the challenge's, never reminted at verify.
+ */
+export const CHALLENGE_TTL_S = VOICEPRINT_TICKET_TTL_S;
 export type VoiceprintOp = "status" | "enrol" | "delete";
 export const VOICEPRINT_OPS: readonly VoiceprintOp[] = ["status", "enrol", "delete"];
 
@@ -82,15 +86,26 @@ export function randomId(bytes = 16): string {
 /** The ticket the Mac checks: op, device, and whether a passkey with UV stood behind it. */
 export async function signVoiceprintTicket(
   key: CryptoKey,
-  o: { op: VoiceprintOp; device: string; uv: boolean; jti?: string; now?: number },
+  o: {
+    op: VoiceprintOp;
+    device: string;
+    uv: boolean;
+    keepAudio?: boolean;
+    jti?: string;
+    now?: number;
+    /** Fixed lifetime (the challenge's), when there is one. */
+    iat?: number;
+    exp?: number;
+  },
 ): Promise<{ ticket: string; exp: number }> {
-  const iat = Math.floor((o.now ?? Date.now()) / 1000);
-  const exp = iat + VOICEPRINT_TICKET_TTL_S;
+  const iat = o.iat ?? Math.floor((o.now ?? Date.now()) / 1000);
+  const exp = o.exp ?? iat + VOICEPRINT_TICKET_TTL_S;
   const ticket = await signPayload(key, {
     aud: VOICEPRINT_AUD,
     op: o.op,
     device: o.device,
     uv: o.uv,
+    ...(o.op === "enrol" ? { keepAudio: o.keepAudio === true } : {}),
     jti: o.jti ?? randomId(),
     iat,
     exp,
@@ -104,22 +119,27 @@ export type Challenge = {
   op: VoiceprintOp;
   device: string;
   uid: string;
+  /** Enrol: whether the enrolment audio may be kept, as the owner approved it. */
+  keepAudio: boolean;
+  iat: number;
   exp: number;
 };
 
 export async function signChallenge(
   key: CryptoKey,
-  o: { op: VoiceprintOp; device: string; uid: string; now?: number },
+  o: { op: VoiceprintOp; device: string; uid: string; keepAudio?: boolean; now?: number },
 ): Promise<{ token: string; challenge: string }> {
   const challenge = randomId(32);
-  const exp = Math.floor((o.now ?? Date.now()) / 1000) + CHALLENGE_TTL_S;
+  const iat = Math.floor((o.now ?? Date.now()) / 1000);
   const p: Challenge = {
     aud: CHALLENGE_AUD,
     challenge,
     op: o.op,
     device: o.device,
     uid: o.uid,
-    exp,
+    keepAudio: o.keepAudio === true,
+    iat,
+    exp: iat + CHALLENGE_TTL_S,
   };
   return { token: await signPayload(key, p), challenge };
 }
@@ -128,11 +148,12 @@ export async function signChallenge(
 export async function openChallenge(
   token: string,
   pub: CryptoKey,
-  want: { op: VoiceprintOp; device: string; uid: string; now?: number },
+  want: { op: VoiceprintOp; device: string; uid: string; keepAudio?: boolean; now?: number },
 ): Promise<Challenge | null> {
   const p = await openPayload(token, pub);
   if (!p || p.aud !== CHALLENGE_AUD) return null;
   if (p.op !== want.op || p.device !== want.device || p.uid !== want.uid) return null;
+  if (p.keepAudio !== (want.keepAudio === true) || typeof p.iat !== "number") return null;
   if (typeof p.exp !== "number" || p.exp < Math.floor((want.now ?? Date.now()) / 1000)) return null;
   if (typeof p.challenge !== "string" || p.challenge.length < 32) return null;
   return p as unknown as Challenge;

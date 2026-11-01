@@ -165,6 +165,13 @@ export type LocalUtt = {
 /** `enrol`: an enrolment sentence of that open enrolment (its final carries `enrol`, never `speaker`). */
 export type BeginOpts = { enrol?: string };
 
+/** 16 random bytes, base64url: an utterance's id for its speaker proof. */
+export function utteranceId(): string {
+  let s = "";
+  for (const b of crypto.getRandomValues(new Uint8Array(16))) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 /** How long a voiceprint request (status, enrol, delete) may take, connecting included. */
 export const REQUEST_TIMEOUT_MS = 6_000;
 
@@ -238,6 +245,11 @@ export function createLocalStt(
     visible?: () => boolean;
     /** This device's slug ("iphone"), sent as {t:"hello"} so finals are scored against its print. */
     device?: string;
+    /**
+     * The hub thread this page's lines go to ("owner"), sent in the hello: the
+     * Mac signs it, with a fresh id per utterance, into each speaker proof.
+     */
+    thread?: string;
   } = {},
 ): LocalStt {
   const urls = (Array.isArray(url) ? url : url.split(/[\s,]+/)).filter(Boolean);
@@ -444,7 +456,9 @@ export function createLocalStt(
     // Which device this is, so its finals are scored against its own voiceprint.
     if (d.device)
       try {
-        s.send(JSON.stringify({ t: "hello", device: d.device }));
+        s.send(
+          JSON.stringify({ t: "hello", device: d.device, ...(d.thread ? { thread: d.thread } : {}) }),
+        );
       } catch {}
     setSt("ready");
     d.log?.({ ev: "local-stt", state: "ready", model, via: hostOf(u) });
@@ -633,7 +647,9 @@ export function createLocalStt(
     const p: Pending = { onPartial, began };
     utts.set(id, p);
     const enrol = opts?.enrol;
-    send(JSON.stringify(enrol ? { t: "begin", id, enrol } : { t: "begin", id }));
+    // A fresh id per utterance when the page says who it is: signed into its speaker proof.
+    const uid = d.device ? utteranceId() : undefined;
+    send(JSON.stringify({ t: "begin", id, ...(enrol ? { enrol } : {}), ...(uid ? { uid } : {}) }));
     let streamed = 0;
     let over = false;
     return {

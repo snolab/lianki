@@ -37,6 +37,7 @@ const NOW = 1_800_000_000_000;
 async function deps(o: { uv?: boolean; verified?: boolean; passkeys?: number } = {}) {
   const k = await keys();
   const saved: [string, number][] = [];
+  const used = new Set<string>();
   const checked: unknown[] = [];
   const d: ApprovalDeps = {
     key: k.key,
@@ -57,6 +58,7 @@ async function deps(o: { uv?: boolean; verified?: boolean; passkeys?: number } =
       return { verified: o.verified ?? true, userVerified: o.uv ?? true, newCounter: 5 };
     },
     saveCounter: async (id, c) => void saved.push([id, c]),
+    consume: async (ch) => (used.has(ch) ? false : (used.add(ch), true)),
   };
   return { d, k, saved, checked };
 }
@@ -180,6 +182,49 @@ describe("voiceprint approval", () => {
     );
   });
 
+  it("one approval, one ticket: a replayed assertion fails, and the ticket's exp is fixed at issuance", async () => {
+    const { d } = await deps();
+    const opt = await voiceprintApproval({ op: "delete", device: "*", step: "options" }, d);
+    const body = {
+      op: "delete",
+      device: "*",
+      step: "verify",
+      token: opt.json.token,
+      response: { id: "cred0" },
+    };
+    const first = await voiceprintApproval(body, { ...d, now: NOW + 30_000 });
+    expect(first.status).toBe(200);
+    const p = payload(first.json.ticket as string);
+    // The challenge's own lifetime: issued at NOW, not at the verify 30 s later.
+    expect(p.iat).toBe(NOW / 1000);
+    expect(p.exp).toBe(NOW / 1000 + 60);
+    const replay = await voiceprintApproval(body, { ...d, now: NOW + 40_000 });
+    expect(replay).toEqual({ status: 401, json: { error: "approval already used" } });
+  });
+
+  it("keepAudio is part of what the passkey approves", async () => {
+    const { d } = await deps();
+    const opt = await voiceprintApproval(
+      { op: "enrol", device: "iphone", step: "options", keepAudio: false },
+      d,
+    );
+    const v = (keepAudio: boolean) =>
+      voiceprintApproval(
+        {
+          op: "enrol",
+          device: "iphone",
+          step: "verify",
+          token: opt.json.token,
+          response: { id: "cred0" },
+          keepAudio,
+        },
+        d,
+      );
+    expect((await v(true)).status).toBe(401);
+    const ok = await v(false);
+    expect(payload(ok.json.ticket as string)).toMatchObject({ op: "enrol", keepAudio: false });
+  });
+
   it("openPayload refuses another key's signature", async () => {
     const a = await keys();
     const b = await keys();
@@ -211,6 +256,19 @@ describe.skipIf(!hasVenv)("the Mac's check of voiceprint tickets (ticket.py)", (
       )
     ).json.ticket as string;
     const stt = (await signSttTicket(k.key, { now: NOW })).ticket;
+    const eo = await voiceprintApproval({ op: "enrol", device: "iphone", step: "options" }, d);
+    const enrol = (
+      await voiceprintApproval(
+        {
+          op: "enrol",
+          device: "iphone",
+          step: "verify",
+          token: eo.json.token,
+          response: { id: "cred0" },
+        },
+        d,
+      )
+    ).json.ticket as string;
     const script = `
 import sys, json
 sys.path.insert(0, ${JSON.stringify(resolve(import.meta.dir, "../scripts/local-stt"))})
@@ -227,10 +285,12 @@ print(json.dumps([
   t.check(a["del"], {"op": "delete", "device": "*", "uv": True}),
   t.check(a["del"], {"op": "delete", "device": "*", "uv": True}),
   t.check(a["status"], {"op": "status"}),
+  t.check(a["enrol"], {"op": "enrol", "device": "iphone", "uv": True, "keepAudio": True}),
+  t.check(a["enrol"], {"op": "enrol", "device": "iphone", "uv": True, "keepAudio": False}),
 ]))
 `;
     const r = Bun.spawnSync([PY, "-I", "-c", script], {
-      stdin: new TextEncoder().encode(JSON.stringify({ del, status, stt })),
+      stdin: new TextEncoder().encode(JSON.stringify({ del, status, stt, enrol })),
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -242,6 +302,8 @@ print(json.dumps([
       "wrong aud",
       null,
       "replayed",
+      null,
+      "wrong keepAudio",
       null,
     ]);
   });

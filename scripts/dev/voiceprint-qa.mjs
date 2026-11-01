@@ -155,7 +155,13 @@ try {
           },
         });
       return json({
-        ticket: ticket({ aud: "lianki-voiceprint", op: b.op, device: b.device, uv: true }),
+        ticket: ticket({
+          aud: "lianki-voiceprint",
+          op: b.op,
+          device: b.device,
+          uv: true,
+          ...(b.op === "enrol" ? { keepAudio: b.keepAudio === true } : {}),
+        }),
       });
     });
     await ctx.addInitScript(

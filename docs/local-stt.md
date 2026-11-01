@@ -414,9 +414,11 @@ tap (isTrusted) → POST /api/dev/voiceprint-ticket {op, device, step:"options"}
                ← WebAuthn options: his passkeys, userVerification "required", a signed challenge token
 navigator.credentials.get → Face ID / Touch ID (the OS prompt: page code cannot answer it)
                → POST {…, step:"verify", token, response}: assertion verified (@simplewebauthn/server),
-                 UV flag required, counter saved
-               ← ticket {aud:"lianki-voiceprint", op, device, uv:true, jti = the challenge, 60 s}
-page → the Mac {t:"enrol"|"voiceprint", op, …, ticket}   ticket.py: signature, aud, op, device, uv, once
+                 UV flag required, the challenge spent in D1 (once), counter saved
+               ← ticket {aud:"lianki-voiceprint", op, device, uv:true[, keepAudio], jti = the challenge,
+                         iat/exp = the challenge's, fixed when it was issued}
+page → the Mac {t:"enrol"|"voiceprint", op, …, ticket}   ticket.py: signature, aud, op, device, uv,
+                                                          keepAudio, once (spent jtis kept on disk)
 ```
 
 - **status** needs a read-only owner ticket (`uv:false`, the session alone);
@@ -424,6 +426,18 @@ page → the Mac {t:"enrol"|"voiceprint", op, …, ticket}   ticket.py: signatur
   (`*` for every device). An STT ticket (`aud:"lianki-stt"`) is refused, so
   is another op's or device's, a replay, or another key's. Commit and cancel
   name an enrolment by the unguessable id its start returned.
+- **One approval, one ticket** (re-review, 2026-11-02). The challenge is
+  spent at its first good verification by a primary-key insert into D1's
+  `verification` table (`voiceprint-challenge:<challenge>`), so a replayed
+  assertion (a synced passkey's counter stays 0) is refused ("approval
+  already used"). The ticket's lifetime is the challenge's (60 s from the
+  options), never reminted at verify. The Mac keeps spent jtis in
+  `voiceprints/used-tickets.json` (0600) until exp + 5 s, so a restart
+  forgets none; a file it cannot trust (loose mode, unreadable) makes it
+  refuse every ticket.
+- **Keeping the audio is approved too:** `keepAudio` goes into the passkey
+  challenge and the ticket, and the Mac refuses a start whose `keepAudio`
+  differs from the ticket's.
 - The tickets are signed with the STT ticket key (`STT_TICKET_KEY` on the
   Worker; the Mac checks with `~/.config/lianki-stt/ticket.pub`, or
   `--voiceprint-pubkey`). **Without that public key on the Mac, every
@@ -439,7 +453,11 @@ page → the Mac {t:"enrol"|"voiceprint", op, …, ticket}   ticket.py: signatur
   bumps it (`*` for all). An enrolment remembers the generations it began
   with and refuses to commit after a delete; a delete on the server also
   drops the open enrolments of that device at once, so sentences still
-  queued are not kept either.
+  queued are not kept either. The server and the CLI share an exclusive
+  `flock` on `voiceprints/.lock`, held across a commit's generation check
+  and all its writes (prints, kept audio) and across a delete and its
+  bump: a delete from another process either lands first (the commit is
+  refused) or waits until the commit is written, then deletes it.
 
 Then the panel shows one sentence at a time (20, in Chinese, Japanese and
 English: `ENROL_SENTENCES`, reading material, not translated). Each
@@ -518,15 +536,24 @@ bands on those after he enrols, before anything relies on them.
   still cost his own speech). An "other" counts as one rejection towards
   passive (docs/wake-word.md, "State machine").
 - **The line, signed:** the Mac signs each final's tag together with its
-  text, `{v:1, uid, at, text, decision, score, model, device, …}`, with an
+  text, `{v:1, uid, thread, at, text, decision, score, model, device, …}`,
+  where `uid` is the page's fresh id for that utterance (`begin`) and
+  `thread` the hub thread the page named in its hello ("owner"), with an
   Ed25519 key only it holds (`~/.config/lianki-stt/speaker-attest.key`,
   0600; `voiceprint.py attest-key` makes it and prints the public key). The
   page passes the signatures on with the line (`speakerProof`, one per
   utterance); a page-made `speaker` is ignored. The hub (lianki-push, secret
   `STT_SPEAKER_PUB`) keeps a `speaker` tag on the stored line only when every
-  proof verifies, is under 10 min old and unused, and the signed texts cover
-  at least 80 % of the line's letters (`lib/speaker-proof.ts`): no tag can be
-  forged, replayed or moved onto other words. It computes the tag itself
+  proof verifies, is under 10 min old, was signed for this line's thread,
+  and its uid was never used, and the signed texts, in order, are exactly
+  the line (`lib/speaker-proof.ts` `lineIsSigned`). The only differences
+  allowed are meaning-neutral: Unicode NFKC, whitespace collapsed, and
+  sentence-final punctuation (。．.!?！？…) at the end of each signed text.
+  A dropped word (a negation), an added or replaced one, or the utterances
+  reordered leave the line without a tag. Used uids are burned in the hub's
+  Durable Object storage (`proof:<uid>`) for twice the window, so a restart,
+  hibernation or deploy forgets none; the alarm sweeps them. So no tag can
+  be forged, replayed or moved onto other words. It computes the tag itself
   (the weakest utterance). Only such a tag shows the small green check
   (`VoiceMark`, "Your voice, verified"). Without `STT_SPEAKER_PUB` no tag is
   ever kept.
