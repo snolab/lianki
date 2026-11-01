@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { authUserOrNull } from "@/app/signInEmail";
+import { authSessionOrNull } from "@/app/signInEmail";
 import { DEV_BRIDGE_HEADER } from "@/lib/dev-bridge";
 import { devBridgeUser } from "@/lib/dev-bridge-user";
+import { sessionTag } from "@/lib/dev-eval";
 import { isOwner } from "@/lib/owner";
 
 /**
@@ -12,6 +13,10 @@ import { isOwner } from "@/lib/owner";
  * Lianki keeps no avatar of its own), for the chat's avatars. The owner
  * gets the owner's thread and pairings; anyone else their own thread only
  * (docs/monitoring.md, "Friends"). /api/dev/whoami stays the owner-only check.
+ * `session` is sessionTag(session id) — a hash, never the id or its token —
+ * and `sessionUntil` its expiry: the hub binds an eval grant's auto-renewal to
+ * the session that approved it (docs/monitoring.md, "Renewal"). A dev-bridge
+ * answer has neither, so a grant approved there is never renewed.
  *
  * Or the dev bridge (lib/dev-bridge.ts): the owner's whole-page dev server,
  * which has no lianki.com cookie, sends DEV_BRIDGE_SECRET instead and is told
@@ -21,8 +26,11 @@ import { isOwner } from "@/lib/owner";
 export const GET = async (req: Request) => {
   const bridge = req.headers.get(DEV_BRIDGE_HEADER);
   if (bridge !== null) return bridgeIdentity(req);
-  const user = await authUserOrNull();
+  const got = await authSessionOrNull();
+  const user = got?.user;
   if (!user?.id) return NextResponse.json({ error: "Sign in" }, { status: 401 });
+  const session = got?.session;
+  const until = session?.expiresAt ? new Date(session.expiresAt).getTime() : NaN;
   return NextResponse.json(
     {
       userId: user.id,
@@ -30,6 +38,8 @@ export const GET = async (req: Request) => {
       owner: isOwner(user.email),
       name: user.name ?? "",
       image: user.image ?? "",
+      ...(session?.id ? { session: await sessionTag(session.id) } : {}),
+      ...(Number.isFinite(until) ? { sessionUntil: until } : {}),
     },
     { headers: { "cache-control": "no-store" } },
   );

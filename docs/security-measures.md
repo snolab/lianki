@@ -56,7 +56,11 @@ gives their 2FA. Consequences:
   not go through the zone, so Access does not touch it.
 - The lianki-push controller endpoints are not under Access: agents' CLIs
   reach them with grants or the progress token, and a controller can do
-  nothing without the owner's approval on a signed-in page.
+  nothing without the owner's approval on a signed-in page. The owner's
+  8-hour eval grant renews itself only while his page on the approving
+  device and sign-in session is connected, for 30 days from the tap at most;
+  End or sign-out stops it at once, and it never renews for a friend
+  (docs/monitoring.md, "Renewal").
 
 Alternative to Access if the owner has a fixed IP: a WAF custom rule (Security
 → WAF → Custom rules), action Block:

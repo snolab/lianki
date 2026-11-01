@@ -38,6 +38,31 @@ export function readGrantFile(text: string | undefined, now: number): string | u
   }
 }
 
+/**
+ * The hub renewed the eval grant this socket holds ({type:"renewed", until}),
+ * or a resume came back with its until ({type:"approved", scope:"eval"}):
+ * the token file's new body, when the file holds this same token — so the
+ * next run still sees it unexpired and resumes instead of asking the owner.
+ * undefined = leave the file alone (another token, or nothing to say).
+ */
+export function freshenedGrantFile(
+  fileText: string | undefined,
+  token: string,
+  msg: { type?: unknown; scope?: unknown; until?: unknown },
+): string | undefined {
+  const renewed = msg.type === "renewed" || (msg.type === "approved" && msg.scope === "eval");
+  const until = Number(msg.until);
+  if (!renewed || !Number.isFinite(until) || !fileText) return undefined;
+  try {
+    const v = JSON.parse(fileText) as { token?: unknown; until?: unknown };
+    if (v.token !== token) return undefined;
+    if (typeof v.until === "string" && Date.parse(v.until) >= until) return undefined;
+  } catch {
+    return undefined;
+  }
+  return grantFileBody(token, until);
+}
+
 export type EvalStep =
   | { kind: "resume"; token: string }
   | { kind: "pair" }

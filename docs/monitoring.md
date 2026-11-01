@@ -176,6 +176,43 @@ the token on the next command; End or Deny stops it. Without a running
 a random token are kept in `~/.config/lianki/eval-session.json` (mode 600)
 while `serve` runs.
 
+#### Renewal
+
+The owner's eval grant renews itself, so the Allow prompt does not come back
+every 8 hours (owner's decision, 2026-11-01). The rules, in the hub
+(`workers/push/src/debug.ts`, "Renewal"; tests in `unit/debug-hub-renew.test.ts`):
+
+- **Bound at the tap.** The Allow stores, with the grant, the answering
+  page's device id (the `dev=` it connects with) and its sign-in session —
+  as a tag, `sessionTag(session id)`, a SHA-256, never the id or the cookie
+  token. `/api/debug/identity` answers `session` and `sessionUntil`;
+  lianki-push passes them to the hub as `x-debug-session(-until)`, set by
+  itself only (a page's or a sender's own are removed).
+- **When.** With less than 2 hours left (`EVAL_RENEW_BEFORE_MS`), the grant
+  is extended to 8 hours from now on the next event: a message from a socket
+  holding it, a resume with its token, that device's page connecting, or the
+  one Durable Object alarm set for `until − 2 h`. No polling.
+- **Only on that device and session.** At that moment an owner page with
+  the same device id and the same, unexpired session must be connected.
+  Another device, a new session (signed out and in again), or a friend's
+  page (the hub keeps no session or device for one) renews nothing.
+- **Cap.** Never past 30 days from the tap (`EVAL_CHAIN_MS`); then the grant
+  lapses and the next pairing asks again.
+- **Stops at once.** End (live or on the sleeping `idle` entry) deletes the
+  grant. Sign-out deletes the session, and better-auth's
+  `session.delete.after` hook (`auth-impl.ts` → `lib/push-signed-out.ts`)
+  posts its tag to lianki-push's `/internal/signed-out` over the PUSH
+  binding: every grant bound to it stops renewing and ends at its current
+  `until`.
+- **Never for anyone else.** Chat grants, friends' previews, and grants
+  approved on a page with no session (the dev bridge) are never renewed.
+- **The sender.** Each socket holding the grant hears
+  `{type:"renewed", until, count}`; `eval-socket.ts` moves the token file's
+  `until` (also on a resume's `approved`), so the next run resumes instead
+  of pairing. The first `approved` says `renewsUntil` (the cap).
+- **Logs.** `debug.renew` {via, label, device, count, until, chainEnds} and
+  `debug.renew-stop` {why, device, count} — never code.
+
 ### Chat with the agent
 
 Every owner page that holds the debug socket also shows a small chat box at

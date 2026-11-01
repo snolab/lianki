@@ -7,7 +7,13 @@
  */
 import { chmodSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { evalStep, grantFileBody, readGrantFile, GRANT_INVALID } from "./eval-grant";
+import {
+  evalStep,
+  freshenedGrantFile,
+  grantFileBody,
+  readGrantFile,
+  GRANT_INVALID,
+} from "./eval-grant";
 
 export const BASE = (process.env.LIANKI_URL ?? "https://lianki.com").replace(/\/+$/, "");
 /** How long to wait for the pages' results after sending. */
@@ -40,6 +46,23 @@ const loadFrom = (file: string) => {
 export const saveTo = (file: string, token: string, until: number) => {
   writeFileSync(file, grantFileBody(token, until), { mode: 0o600 });
   chmodSync(file, 0o600);
+};
+/** A renewal (or a resume's until) for the eval token this socket holds: rewrite its file. */
+const freshen = (token: string, data: string) => {
+  if (!data.includes('"renewed"') && !data.includes('"approved"')) return;
+  try {
+    let text: string | undefined;
+    try {
+      text = readFileSync(EVAL_TOKEN_FILE, "utf8");
+    } catch {}
+    const m = JSON.parse(data) as Msg;
+    const body = freshenedGrantFile(text, token, m);
+    if (!body) return;
+    writeFileSync(EVAL_TOKEN_FILE, body, { mode: 0o600 });
+    chmodSync(EVAL_TOKEN_FILE, 0o600);
+    if (m.type === "renewed")
+      console.error(`Eval grant renewed until ${new Date(Number(m.until)).toLocaleString()}.`);
+  } catch {}
 };
 export const loadToken = () => loadFrom(TOKEN_FILE);
 export const loadEvalToken = () => loadFrom(EVAL_TOKEN_FILE);
@@ -91,12 +114,16 @@ export function controller({ label, labelFlag, forEmail, noPair, node, agent }: 
     forEmail?: string,
     scope: "chat" | "eval" = "eval",
     beat = false,
-  ) =>
-    token
-      ? new WebSocket(controlUrl(token, forEmail, scope, beat), {
-          headers: { "x-debug-token": token },
-        } as unknown as string[])
-      : new WebSocket(controlUrl(undefined, undefined, scope));
+  ) => {
+    if (!token) return new WebSocket(controlUrl(undefined, undefined, scope));
+    const ws = new WebSocket(controlUrl(token, forEmail, scope, beat), {
+      headers: { "x-debug-token": token },
+    } as unknown as string[]);
+    // The hub renews the eval grant on use (docs/monitoring.md, "Renewal"):
+    // keep the token file's `until` in step, so the next run resumes, not pairs.
+    ws.addEventListener("message", (e) => freshen(token, String(e.data)));
+    return ws;
+  };
 
   /**
    * Open the controller socket and wait for the owner's answer — once: a

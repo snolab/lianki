@@ -87,6 +87,16 @@ export const APPROVAL_MS = 60 * 60_000;
  * then, or until End revokes it.
  */
 export const EVAL_GRANT_MS = 8 * 60 * 60_000;
+/**
+ * Auto-renewal of the owner's eval grant (docs/monitoring.md, "Renewal"): with
+ * less than this left, a use of the grant (or the one alarm set for that
+ * moment, or the approving page coming back) extends it by EVAL_GRANT_MS —
+ * only while the owner's page on the device that approved it, signed in with
+ * the same session, is connected.
+ */
+export const EVAL_RENEW_BEFORE_MS = 2 * 60 * 60_000;
+/** A renewal chain ends this long after the tap that started it: then a new tap. */
+export const EVAL_CHAIN_MS = 30 * 24 * 60 * 60_000;
 /** How long "Allow chat" lasts — and its resumable grant token. */
 export const CHAT_MS = 30 * 24 * 60 * 60_000;
 /** Chat messages the hub keeps per thread (and sends a page on connect). */
@@ -117,7 +127,25 @@ export type Identity = {
   /** Display name and picture URL (better-auth's user.name / user.image), when known: the chat's avatars. */
   name?: string;
   image?: string;
+  /**
+   * The sign-in session: sessionTag(session id), never the id or its token,
+   * and when it expires (ms). Binds an eval grant's renewal to it.
+   */
+  session?: string;
+  sessionUntil?: number;
 };
+
+/** A sign-in session as the debug hub knows it: a SHA-256 of its id, never the id itself. */
+export async function sessionTag(sessionId: string): Promise<string> {
+  const d = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`lianki-debug-session:${sessionId}`),
+  );
+  return Array.from(new Uint8Array(d), (x) => x.toString(16).padStart(2, "0")).join("");
+}
+/** A session tag as sessionTag makes it. */
+export const isSessionTag = (v: unknown): v is string =>
+  typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
 
 /** A user id usable as a thread and a storage key: no separators, bounded. */
 export const isUserId = (v: unknown): v is string =>
