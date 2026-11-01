@@ -610,6 +610,13 @@ export type SpeakerTag = {
   reason?: string;
   speechS?: number;
   snrDb?: number;
+  /**
+   * The texts the Mac signed, in order: set only by the hub after it verified
+   * the proofs (lib/speaker-proof.ts), never taken from a page (cleanSpeaker
+   * drops it). Any decision based on a voice line must use these words, not
+   * the line's displayed text.
+   */
+  signed?: string[];
 };
 const SPEAKER_DECISIONS: readonly SpeakerDecision[] = ["me", "other", "unknown"];
 const SLUG = /^[a-z0-9][a-z0-9-]{0,31}$/;

@@ -1389,7 +1389,7 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
     // Signed, fresh, this thread, the line's words (NFKC, spaces, final punctuation only): kept.
     await say("s1", "Next word。", [good]);
     // Two utterances, in order, joined by the page: kept.
-    await say("s2", "你好。 下一个", [await sign("你好", "u2"), await sign("下一个!", "u3")]);
+    await say("s2", "你好。 下一个!", [await sign("你好", "u2"), await sign("下一个!", "u3")]);
     // The same proof again (replayed onto another line): dropped.
     await say("s3", "Next word", [good]);
     // A page's own tag, no proof: dropped.
@@ -1430,7 +1430,8 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
       false,
       false,
     ]);
-    expect(stored[0]!.speaker).toEqual(tag);
+    // The signed words ride on the stored tag (an approval must use them, not the line).
+    expect(stored[0]!.speaker).toEqual({ ...tag, signed: ["Next  word"] });
     // Burned durably: a new hub on the same storage (a restart, a deploy) refuses it too.
     const again = setup({ STT_SPEAKER_PUB: mac.pub }, s.storage);
     const p2 = again.page();

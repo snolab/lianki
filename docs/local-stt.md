@@ -547,10 +547,16 @@ bands on those after he enrols, before anything relies on them.
   proof verifies, is under 10 min old, was signed for this line's thread,
   and its uid was never used, and the signed texts, in order, are exactly
   the line (`lib/speaker-proof.ts` `lineIsSigned`). The only differences
-  allowed are meaning-neutral: Unicode NFKC, whitespace collapsed, and
-  sentence-final punctuation (。．.!?！？…) at the end of each signed text.
-  A dropped word (a negation), an added or replaced one, or the utterances
-  reordered leave the line without a tag. Used uids are burned in the hub's
+  allowed are meaning-neutral: Unicode NFKC (？ and ? are one mark),
+  whitespace collapsed, utterances joined by a space or nothing, and one
+  "。" or "." the mic appends right after a signed text that had no final
+  punctuation. Signed punctuation is never stripped or substituted: a
+  signed ？ cannot become ！ or vanish (a question made an order), a … must
+  stay, and no ！ or ？ may be added (so a ？ the mic's formatter guesses for
+  an unpunctuated final also leaves the line untagged; SenseVoice nearly
+  always punctuates itself). A dropped word (a negation), an added or
+  replaced one, or the utterances reordered leave the line without a tag.
+  The stored tag carries the signed texts themselves (`speaker.signed`). Used uids are burned in the hub's
   Durable Object storage (`proof:<uid>`) for twice the window, so a restart,
   hibernation or deploy forgets none; the alarm sweeps them. So no tag can
   be forged, replayed or moved onto other words. It computes the tag itself
@@ -558,7 +564,8 @@ bands on those after he enrols, before anything relies on them.
   (`VoiceMark`, "Your voice, verified"). Without `STT_SPEAKER_PUB` no tag is
   ever kept.
 - **Not built:** the voice approvals themselves. **They must rely on this
-  hub-verified tag only**, never on anything a page reports.
+  hub-verified tag only**, never on anything a page reports, and must
+  read the words from `speaker.signed`, never from the displayed line.
 
 **Latency** (`scripts/local-stt/voiceprint-bench.py`, 2026-11-01, 40 of his
 clips 1.8–14.4 s, a throwaway print in a temp folder, at `nice 20` and

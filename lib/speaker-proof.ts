@@ -23,35 +23,35 @@ export const MAX_PROOF_LEN = 6000;
 const UID = /^[A-Za-z0-9_-]{16,64}$/;
 
 /**
- * The only edits allowed between the signed texts and the line, each one
- * meaning-neutral:
- * - Unicode NFKC (full-width ↔ half-width, compatibility forms);
- * - whitespace runs collapsed to one space, and trimmed;
- * - sentence-final punctuation at the end of each signed text (the mic's
- *   punctuate() adds or the decoder leaves 。．.!?！？…, and joined
- *   utterances may differ only there).
- * Anything else (a word dropped, added or replaced, a negation removed)
- * leaves the line unverified.
+ * The only differences allowed between the signed texts and the line, each
+ * one meaning-neutral:
+ * - Unicode NFKC (full-width ↔ half-width forms: ？ and ? are the same mark);
+ * - whitespace runs collapsed to one space, and trimmed; utterances joined
+ *   by a space or by nothing;
+ * - one full stop appended: "。" or "." right after a signed text that has
+ *   no final punctuation of its own (the mic's punctuate() adds it), and
+ *   nothing else.
+ * Signed punctuation is never stripped or substituted: a signed ？ must stay
+ * ？ (not ！, not dropped), a signed … must stay …, and no ！ or ？ may be
+ * added. Anything else (a word dropped, added or replaced, a negation
+ * removed, a question made an order) leaves the line unverified.
  */
-const FINAL_PUNCT = /[\s。．.!?！？…]+$/u;
 export const canon = (s: string) => s.normalize("NFKC").replace(/\s+/gu, " ").trim();
-export const canonSegment = (s: string) => canon(s).replace(FINAL_PUNCT, "");
+const ENDS_PUNCT = /\p{P}$/u;
+const FULL_STOP = /^[。.]/u;
 
-/** The line is exactly the signed texts, in order, up to the safe edits above. */
+/** The line is exactly the signed texts, in order, up to the safe differences above. */
 export function lineIsSigned(line: string, texts: string[]): boolean {
   const l = canon(line);
   let pos = 0;
-  const skip = (re: RegExp) => {
-    const m = re.exec(l.slice(pos));
-    if (m) pos += m[0].length;
-  };
-  for (const t of texts) {
-    const seg = canonSegment(t);
+  for (const [i, t] of texts.entries()) {
+    const seg = canon(t);
     if (!seg) return false;
-    skip(/^ +/u);
+    if (i > 0 && l[pos] === " ") pos++;
     if (!l.startsWith(seg, pos)) return false;
     pos += seg.length;
-    skip(/^[\s。．.!?！？…]+/u);
+    // The mic's own full stop, only where the signed text ended without punctuation.
+    if (!ENDS_PUNCT.test(seg) && FULL_STOP.test(l.slice(pos))) pos++;
   }
   return pos === l.length && texts.length > 0;
 }
@@ -143,5 +143,7 @@ export async function verifySpeakerProofs(
   // The signed words must be the line's words, exactly, in order.
   if (!lineIsSigned(lineText, texts)) return undefined;
   if (!(await burn(uids, now + 2 * PROOF_WINDOW_MS))) return undefined;
-  return combineSpeaker(tags);
+  // The signed words themselves ride on the stored tag: a decision (a voice
+  // approval later) must read these, never the displayed line.
+  return { ...combineSpeaker(tags)!, signed: texts };
 }
