@@ -206,7 +206,14 @@ no API token, `up` makes a **locally managed** tunnel instead: `cloudflared
 tunnel create lianki-preview` (credentials JSON, 0600, checked),
 `~/.cloudflared/lianki-preview.yml` (0600) with the same ingress (gate
 only, 404 for the rest), `cloudflared tunnel route dns`, and the connector
-with `--config`. Two things still need the API token: the **rate-limit
+with `--config`. Symlink-safe throughout: `~/.cloudflared` must be a real
+directory of his that no one else can write (checked first); cert.pem and
+the credentials file must be regular files of his, checked **before** any
+`chmod` (which would follow a link); the config is written to a fresh
+`mktemp` file (exclusive, 0600), checked, and renamed into place (a rename
+replaces whatever is at the name, a symlink included); and all three are
+checked again right before cloudflared starts. `down` only deletes a
+credentials file named by a tunnel UUID. Two things still need the API token: the **rate-limit
 rule** (not applied; the gate's own per-IP limits and queue apply
 meanwhile), and **deleting the DNS record** on `down` (cloudflared cannot;
 with the tunnel deleted the record reaches nothing, 1033, and `down` exits

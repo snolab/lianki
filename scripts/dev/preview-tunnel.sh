@@ -44,7 +44,7 @@ api() {
 }
 has_proc() { "$OXMGR" status "$1" >/dev/null 2>&1; }
 have_api() { [ -n "${CLOUDFLARE_API_TOKEN:-}" ] || [ -e "$API_TOKEN_FILE" ]; }
-have_cert() { [ -e "$CERT" ]; }
+have_cert() { [ -e "$CERT" ] || [ -L "$CERT" ]; } # a symlinked cert is found, then refused
 # Owner-only, 0600, not a symlink (scripts/ops/cf-tunnel.ts secretFileProblem): no API token needed.
 secret_ok() { CF_API_TOKEN_FILE="$API_TOKEN_FILE" api check-secret "$1"; }
 
@@ -78,10 +78,20 @@ up_api() {
   start_connector "$CFD tunnel --no-autoupdate run --token-file $TOKEN_FILE"
 }
 
+# A secret file as found: a regular file of ours, never a symlink, checked
+# BEFORE its mode is touched (chmod follows symlinks); then 0600, then checked.
+own_secret() {
+  CF_API_TOKEN_FILE="$API_TOKEN_FILE" api check-owned "$1" || { say "refusing to use $1"; exit 1; }
+  chmod 600 "$1"
+  secret_ok "$1" || { say "refusing to use $1"; exit 1; }
+}
+
 up_cert() {
-  chmod 600 "$CERT"
-  secret_ok "$CERT" || { say "refusing to use $CERT"; exit 1; }
-  local id creds
+  # The directory first: a real directory of ours that no one else can write,
+  # so nothing can plant a symlink or a config under us.
+  CF_API_TOKEN_FILE="$API_TOKEN_FILE" api check-dir "$DIR" || { say "refusing to use $DIR"; exit 1; }
+  own_secret "$CERT"
+  local id creds tmp
   id="$(tunnel_id)"
   if [ -z "$id" ]; then
     "$CFD" tunnel create "$NAME" >/dev/null
@@ -89,12 +99,14 @@ up_cert() {
     [ -n "$id" ] || { say "cloudflared tunnel create $NAME failed"; exit 1; }
   fi
   creds="$DIR/$id.json"
-  [ -e "$creds" ] || { say "no credentials file for $NAME on this Mac ($creds)"; exit 1; }
-  chmod 600 "$creds"
-  secret_ok "$creds" || { say "refusing to use $creds"; exit 1; }
-  # Only the gate is reachable through the tunnel; anything else is 404 at cloudflared.
-  rm -f "$CONF"
-  (umask 077 && cat >"$CONF" <<EOF
+  [ -e "$creds" ] || [ -L "$creds" ] || { say "no credentials file for $NAME on this Mac ($creds)"; exit 1; }
+  own_secret "$creds"
+  # Only the gate is reachable through the tunnel; anything else is 404 at
+  # cloudflared. Written to a fresh file made exclusively (mktemp, 0600),
+  # checked, then renamed into place: a rename replaces whatever is at the
+  # name, a symlink included, and never writes through it.
+  tmp="$(umask 077 && mktemp "$DIR/.$NAME.yml.XXXXXX")"
+  cat >>"$tmp" <<EOF
 tunnel: $id
 credentials-file: $creds
 no-autoupdate: true
@@ -103,8 +115,13 @@ ingress:
     service: $ORIGIN_URL
   - service: http_status:404
 EOF
-  )
+  secret_ok "$tmp" || { rm -f "$tmp"; say "refusing the config written to $tmp"; exit 1; }
+  mv -f "$tmp" "$CONF"
   "$CFD" tunnel route dns "$NAME" "$HOST" >/dev/null
+  # Last look before cloudflared reads them: nothing swapped in meanwhile.
+  for f in "$CONF" "$creds" "$CERT"; do
+    secret_ok "$f" || { say "refusing to start: $f changed"; exit 1; }
+  done
   start_connector "$CFD tunnel --no-autoupdate --config $CONF run $NAME"
   say "rate-limit rule NOT applied (needs the API token); the gate's own limits apply meanwhile"
 }
@@ -127,7 +144,10 @@ up() {
 down() {
   local left=0 id=""
   if has_proc "$PROC"; then "$OXMGR" delete "$PROC" >/dev/null; say "connector stopped"; else say "no $PROC running"; fi
-  [ -e "$CONF" ] && id="$(sed -n 's/^tunnel: *//p' "$CONF")"
+  # The credentials file named by our config: only ever a tunnel UUID, never a path.
+  if [ -f "$CONF" ] && [ ! -L "$CONF" ]; then
+    id="$(sed -n 's/^tunnel: *\([0-9a-f-]\{36\}\)$/\1/p' "$CONF" | head -1)"
+  fi
   if have_api; then
     # Tunnel (either kind, found by name, connections first) and its DNS record.
     if api down; then :; else
