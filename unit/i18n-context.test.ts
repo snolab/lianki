@@ -3,6 +3,7 @@ import words from "@/app/(app)/words/page.content";
 import wordsImportAnkiweb from "@/app/(app)/words/import/ankiweb.content";
 import bottomNav from "@/app/components/bottom-nav.content";
 import learningPartner from "@/app/components/learning-partner.content";
+import liveView from "@/app/components/live-view.content";
 import navHome from "@/app/(app)/home/page.content";
 import appShell from "@/app/components/app-shell.content";
 import landing from "@/app/[locale]/page.content";
@@ -42,6 +43,7 @@ describe.each([
   ["words-import-ankiweb", wordsImportAnkiweb],
   ["bottom-nav", bottomNav],
   ["learning-partner", learningPartner],
+  ["live-view", liveView],
   ["nav-home", navHome],
   ["app-shell", appShell],
   ["landing-page", landing],

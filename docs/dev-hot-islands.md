@@ -34,7 +34,11 @@ bun scripts/dev/islands-server.ts --port 5181 --tailnet /lianki-islands
 bun scripts/dev/islands-server.ts --port 5181      # localhost only
 ```
 
-On the owner's page, in debug mode, run this once in the console:
+**On lianki.com, use live view** ([live-view.md](live-view.md)):
+`bun scripts/dev/live-view.ts on --islands /lianki-islands`, then "Live view"
+in the account menu. The signed pointer replaces the key and the grant below.
+The key is ignored on production since 2026-11-01; on localhost and in dev
+builds, on the owner's page in debug mode, run this once in the console:
 
 ```js
 localStorage.setItem("lk:slots-src", "https://<tailnet-host>/lianki-islands/islands.js");
@@ -55,7 +59,9 @@ not: `{active, rev, names, note}`.
 
 ## Security model
 
-Nothing new is granted. An override needs all three of these:
+On lianki.com an override needs a verified live-view pointer that names the
+islands ([live-view.md](live-view.md)); its expiry is the permission. On
+localhost and in dev builds, the older route needs all three of these:
 
 1. **A live code-run grant for this page.** This is the eval pairing the
    owner approved in the pairing modal, scope `eval`, covering this page and

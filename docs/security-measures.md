@@ -18,6 +18,7 @@ passkey — there is no password login in production.
 | `/dev/*` pages                            | users, friends, gift codes, membership grants, roadmap, A/B |
 | `/api/dev/*`                              | whoami, log, friends, state-tree, membership, gift-codes, stt-ticket |
 | `wss://stt.lianki.com` (cloudflared tunnel to the owner's Mac) | his local STT server; a 60 s single-use Ed25519 ticket from `/api/dev/stt-ticket` before any upgrade (section 7) |
+| `/api/live-view`                          | live view's pointer to the owner's dev JS: POST only with a pointer the Mac's Ed25519 key signed (serials only grow); GET/DELETE the owner's session, 404 otherwise (section 8) |
 | `/api/version/debug/control` (lianki-push) | remote-eval/chat controller: useless until the owner approves it on a page, or holds a grant |
 | `POST /api/version/progress` (lianki-push) | agent progress reports: `Authorization: Bearer PROGRESS_TOKEN` |
 | Cloudflare, GitHub, Resend, payment dashboards | the providers' own consoles                     |
@@ -227,6 +228,34 @@ tailnet"):
   for the DNS record and the rule). Tests: `unit/stt-ticket.test.ts`,
   `unit/local-stt-gate.test.ts`, `unit/stt-tunnel.test.ts`; `qa:api` checks a
   non-owner gets 404 from `/api/dev/stt-ticket`.
+
+## 8. Live view: the owner's dev JS on lianki.com
+
+Since 2026-11-01 (owner's approval, 11:41 JST), the owner's pages can load the
+Learning Partner widget and the hot islands from his dev server
+([live-view.md](live-view.md)). That is code running on lianki.com with his
+session, so:
+
+- **Only a signed pointer.** The Mac's Ed25519 key signs `{widget, islands,
+  branch, sha, serial, iat, exp ≤ 12 h}`. The public key is committed in
+  `lib/live-view/keys.ts`. The server verifies before it stores and again
+  before it serves, and the page verifies once more with WebCrypto. Sources
+  must be one of the exact owner origins in `lib/live-view/origins.ts` (today
+  only his Mac's tailnet origin). The module is fetched with redirects
+  refused, checked to come from that origin, and imported from those exact
+  bytes.
+- **Cheap to refuse.** The anonymous POST rejects a body over 4 KB (by
+  Content-Length, then by a streamed cap) and allows 30 per IP per 10
+  minutes (D1 counter) before any signature work.
+- **No replay.** The row keeps the highest serial ever accepted, on or off,
+  and anything not above it gets 409.
+- **Owner only.** The pointer, the switch and the banner reach the owner's
+  session alone (`isOwner`, checked in the layout and the route; 404
+  otherwise). A visible banner names the branch and commit while it is live.
+- **The unsigned localStorage overrides are off on production.** They work
+  only under `next dev` and on localhost.
+- **Stop:** `bun scripts/dev/live-view.ts off`, the owner's DELETE, or simply
+  expiry.
 
 ## Owner checklist
 
