@@ -598,7 +598,7 @@ export function DebugChat({
   const [speak, setSpeak] = useState(speechEnabled);
   /** Echo cancellation on the mic (lk:voice-aec): the menu's A/B switch. */
   const [aec, setAecState] = useState(aecOn);
-  /** How fast replies are read (speech-rate.ts; per device, default 1.5×). */
+  /** How fast replies are read (speech-rate.ts; per device, default 1×). */
   const [rate, setRate] = useState(speechRate);
   const { offset, handle, begin, wasDrag, holding, fit } = useDrag();
   /** Session UI state (draft, panel, tree): survives a refresh and a hot swap. */

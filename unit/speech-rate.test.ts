@@ -18,10 +18,10 @@ const mem = () => {
 };
 
 describe("speech rate setting", () => {
-  it("defaults to 1.5×", () => {
-    expect(DEFAULT_SPEECH_RATE).toBe(1.5);
-    expect(speechRate(mem())).toBe(1.5);
-    expect(speechRate(null)).toBe(1.5);
+  it("defaults to 1× (owner, 2026-11-01: 1.5× was too fast)", () => {
+    expect(DEFAULT_SPEECH_RATE).toBe(1);
+    expect(speechRate(mem())).toBe(1);
+    expect(speechRate(null)).toBe(1);
   });
 
   it("persists one of 1, 1.25, 1.5, 2 under lk:agent-speech-rate", () => {
@@ -34,7 +34,7 @@ describe("speech rate setting", () => {
     setSpeechRate(3, s); // not offered: ignored
     expect(speechRate(s)).toBe(1.25);
     s.m.set(SPEECH_RATE_KEY, "fast");
-    expect(speechRate(s)).toBe(1.5);
+    expect(speechRate(s)).toBe(1);
   });
 
   it("survives storage that throws", () => {
@@ -46,7 +46,7 @@ describe("speech rate setting", () => {
         throw new Error("private");
       },
     };
-    expect(speechRate(bad)).toBe(1.5);
+    expect(speechRate(bad)).toBe(1);
     expect(() => setSpeechRate(2, bad)).not.toThrow();
   });
 });
