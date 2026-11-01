@@ -20,4 +20,8 @@ paths = [
 regexes = [
   '''sk_live_abcdefghijklmnop1234''',
   '''dGhlIHNhbXBsZSBub25jZQ==''',
+  # A fake cloudflared run token ({"a":"RUN-TOKEN-SECRET"} in base64), the
+  # fixture of unit/cf-tunnel.test.ts in 51467306 (#399): pushed history, so
+  # it stays allowed for the scan of every branch.
+  '''eyJhIjoiUlVOLVRPS0VOLVNFQ1JFVCJ9''',
 ]

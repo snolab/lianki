@@ -1,0 +1,27 @@
+{
+  // The whole-page dev server's bindings (scripts/dev/whole-page.ts,
+  // docs/dev-whole-page.md): `next dev` reads these through
+  // initOpenNextCloudflareForDev (next.config.mjs). D1 and R2 are the REMOTE
+  // production ones (`remote: true`) — the guard proxy in front keeps every
+  // request owner-only. Nothing else is bound: no lianki-push service (no build
+  // announcements), no tail consumer, no routes, no crons.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lianki-dev-whole-page",
+  "compatibility_date": "2025-05-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lianki",
+      "database_id": "a2c6b8cf-8a94-4cdc-99fd-bbbf6b679f4c",
+      "remote": true
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BLOBS",
+      "bucket_name": "lianki-blobs",
+      "remote": true
+    }
+  ]
+}

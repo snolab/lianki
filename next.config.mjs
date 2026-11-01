@@ -2,6 +2,11 @@ import { withIntlayer } from "next-intlayer/server";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The whole-page dev server (docs/dev-whole-page.md) is opened on its LAN
+  // address; next dev refuses dev assets to other origins unless listed.
+  ...(process.env.LIANKI_DEV_WHOLE_PAGE === "1" && process.env.BETTER_AUTH_BASE_URL
+    ? { allowedDevOrigins: [new URL(process.env.BETTER_AUTH_BASE_URL).hostname] }
+    : {}),
   // Which build this is, inlined into server and client alike: a page whose
   // id differs from the one lianki-push announces is out of date (workers/push;
   // CI publishes this same value after each deploy).
@@ -73,7 +78,14 @@ const nextConfig = {
 // and at module scope it would run during `next build` too.
 if (process.env.NODE_ENV === "development") {
   const { initOpenNextCloudflareForDev } = await import("@opennextjs/cloudflare");
-  await initOpenNextCloudflareForDev();
+  // The whole-page dev server (scripts/dev/whole-page.ts, docs/dev-whole-page.md)
+  // swaps in a config whose D1 and R2 are the REMOTE production ones; its guard
+  // proxy is what keeps that owner-only.
+  await initOpenNextCloudflareForDev(
+    process.env.LIANKI_DEV_WHOLE_PAGE === "1"
+      ? { configPath: "wrangler.dev-whole-page.jsonc", remoteBindings: true }
+      : undefined,
+  );
 }
 
 export default withIntlayer(nextConfig);
