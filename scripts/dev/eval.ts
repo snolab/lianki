@@ -8,7 +8,9 @@
  *       Hold an eval session: resumes the saved eval grant if there is one
  *       (no prompt), else pairs — prints a short code that the page's prompt
  *       shows too; the owner taps Allow if they match, which grants eval
- *       (and chat) for 8 hours and saves the grant. Keep it running (in the
+ *       (and chat) for 8 hours and saves the grant (it renews itself while
+ *       the approving device's page is connected, up to 30 days: docs/monitoring.md,
+ *       "Renewal"; the file's until follows). Keep it running (in the
  *       background); the commands below then go through it. If its socket
  *       drops (the authorized page was away 5 min, a deploy, the network),
  *       the next command resumes with the grant, silently.

@@ -590,6 +590,62 @@ describe("lianki-push debug routes", () => {
     expect(calls).toEqual(["https://lianki.com/api/debug/identity s=1"]);
   });
 
+  it("the session tag and expiry pass through only when well-formed", async () => {
+    const answer = (body: unknown) => ({
+      fetch: async () => Response.json(body),
+    });
+    const req = upgrade("/api/version/debug", { origin: "https://lianki.com", cookie: "s=1" });
+    const base = { userId: "u1", email: "o@x", owner: true };
+    expect(
+      await debugIdentity(req, answer({ ...base, session: "a".repeat(64), sessionUntil: 5 })),
+    ).toEqual({ ...base, session: "a".repeat(64), sessionUntil: 5 });
+    expect(
+      await debugIdentity(req, answer({ ...base, session: "raw-session-id", sessionUntil: "x" })),
+    ).toEqual(base);
+  });
+
+  it("the session headers reach the hub from index.ts, and a page's own are dropped", async () => {
+    const seen: Headers[] = [];
+    const e = {
+      HUB: { idFromName: () => "v", get: () => ({ fetch: async () => new Response("v") }) },
+      DEBUG: {
+        idFromName: () => "d",
+        get: () => ({
+          fetch: async (r: Request) => {
+            seen.push(r.headers);
+            return new Response("d");
+          },
+        }),
+      },
+      MAIN: {
+        fetch: async () =>
+          Response.json({
+            userId: "u1",
+            email: "o@x",
+            owner: true,
+            session: "a".repeat(64),
+            sessionUntil: 77,
+          }),
+      },
+    } as unknown as Env;
+    await push.fetch(
+      upgrade("/api/version/debug", {
+        origin: "https://lianki.com",
+        cookie: "s=1",
+        "x-debug-session": "f".repeat(64),
+      }),
+      e,
+    );
+    expect(seen[0].get("x-debug-session")).toBe("a".repeat(64));
+    expect(seen[0].get("x-debug-session-until")).toBe("77");
+    // A sender cannot claim a session either.
+    await push.fetch(
+      upgrade("/api/version/debug/control", { "x-debug-session": "f".repeat(64) }),
+      e,
+    );
+    expect(seen[1].get("x-debug-session")).toBeNull();
+  });
+
   it("the dev bridge header goes to the main Worker in place of a cookie", async () => {
     const seen: Headers[] = [];
     const main = {
@@ -868,6 +924,12 @@ describe("lianki-push routing", () => {
     );
     expect(await go("https://lianki-push/internal/friends", {})).toBe("200 debug");
     expect(await go("https://lianki.com/internal/friends", {})).toStartWith("404");
+    expect(await go("https://lianki-push/internal/signed-out", { method: "POST" })).toBe(
+      "200 debug",
+    );
+    expect(await go("https://lianki.com/internal/signed-out", { method: "POST" })).toStartWith(
+      "404",
+    );
     expect(await go("https://lianki.com/api/version/stream", {})).toContain("lianki-push");
     expect(await go("https://lianki.com/elsewhere", {})).toStartWith("404");
   });
