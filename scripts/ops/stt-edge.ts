@@ -16,30 +16,11 @@
  * record is deleted only if it points at a Cloudflare tunnel.
  */
 
-export const HOST = "stt.lianki.com";
-export const ZONE = "lianki.com";
-export const RULE_REF = "lianki_stt_handshakes";
+import { RULE_REF, STT_HOST, rateRule } from "./tunnel-rate-rule";
 
-/**
- * The Free plan's one rate-limiting rule: per IP (and colo), 10 s period and
- * 10 s block are the only values it allows. A page opens one socket per
- * race, so 10 handshakes in 10 s is far above the owner's use.
- */
-export function rateRule(requests = 10) {
-  return {
-    ref: RULE_REF,
-    description: "lianki-stt: handshakes to the local STT tunnel (docs/local-stt.md)",
-    expression: `(http.host eq "${HOST}")`,
-    action: "block",
-    ratelimit: {
-      characteristics: ["cf.colo.id", "ip.src"],
-      period: 10,
-      requests_per_period: requests,
-      mitigation_timeout: 10,
-    },
-    enabled: true,
-  };
-}
+export const HOST = STT_HOST;
+export const ZONE = "lianki.com";
+export { RULE_REF, rateRule };
 
 type CfResult<T> = { success: boolean; result: T; errors?: { message: string }[] };
 

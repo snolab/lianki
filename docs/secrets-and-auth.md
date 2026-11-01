@@ -101,8 +101,11 @@ works on `/api/words/tts` and `/api/debug/stt`, as the owner, so the dev page
 can read words aloud and transcribe without Workers AI credentials on the
 Mac. Since 2026-10-31 (owner, decision D in docs/prefs-sync.md) it also
 works on `/api/prefs`, read and write, so the dev page and lianki.com share
-his settings. These are the only routes that accept it
-(`lib/dev-bridge-user.ts`).
+his settings. These are the only routes that accept it as the owner
+(`lib/dev-bridge-user.ts`). Separately, since 2026-11-01 it is what the dev
+server's tunnel gate proves itself with on `POST /api/dev-access/verify`,
+which checks a dev access token and answers nothing else (no owner session
+is made there); without the header that route answers 401.
 
 - A wrong value gets 401, with no fall back to the cookie.
 - Unset, or shorter than 32 characters, the bridge is shut.
@@ -151,3 +154,23 @@ Rotating kills every outstanding ticket at once (they live 60 s anyway).
 The cloudflared tunnel's own credentials (`~/.cloudflared/<uuid>.json`,
 `cert.pem`) are separate: mode 0600, on the Mac only, never committed;
 whoever holds the credentials file can run a connector for the tunnel.
+
+## Dev access tokens (the dev server's tunnel)
+
+Keys to the owner's whole-page dev server at `https://preview.lianki.com`
+(docs/dev-whole-page.md, "Off the tailnet"). Minted on `lianki.com/dev/tokens`
+by the owner's session only, shown once, stored as a SHA-256 in D1
+(`dev_access_token`); the profile menu mints single-use 60 s handoffs
+instead. No new Worker secret: the gate verifies through
+`/api/dev-access/verify` with `DEV_BRIDGE_SECRET`. A token signs in only as
+the owner who minted it; revoking it ends its dev-server sessions within
+30 s. It is never logged and never left in a URL (form POST, or a `#`
+fragment stripped at once; a token in a query string is refused).
+
+On the Mac (all mode 0600, never committed): `~/.config/lianki/cf-api-token`
+(the Cloudflare API token for `scripts/ops/cf-tunnel.ts`: Account ·
+Cloudflare Tunnel · Edit, Zone · DNS · Edit, Zone · Zone WAF · Edit, Zone ·
+Zone · Read), `~/.config/lianki/preview-tunnel-token` (the tunnel's run
+token, from the API, for `cloudflared --token-file`), and `previewKey` in
+`.dev-whole-page.json` (seals the gate's session cookie; delete it to end
+every tunnel session).
