@@ -16,7 +16,9 @@ import {
   WIDGET_SRC_KEY,
   eventsUrl,
   failNote,
+  importPinned,
   loadWidget,
+  setHostWidgetSrc,
   pickTreeSource,
   widgetSrc,
   widgetUrl,
@@ -80,7 +82,7 @@ function useHotWidget(
     let live = true;
     let rev = "";
     const load = (r: string) =>
-      loadWidget<Chat>(widgetUrl(src, r), importer).then(
+      loadWidget<Chat>(widgetUrl(src, r), (u) => importPinned(u, importer)).then(
         (m) => {
           if (!live) return;
           setCss(m.css);
@@ -148,6 +150,9 @@ export function DebugChatHost({
    */
   src?: string | null;
 }) {
+  // Shared with every copy of the package on the page (TreeFragment reads it),
+  // before any child's effect runs.
+  setHostWidgetSrc(given);
   const [w, fail] = useHotWidget(hot, given);
   const note = w.note ?? rest.note;
   // Hot-loading on: the tree comes live from the same dev server

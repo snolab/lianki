@@ -17,9 +17,13 @@ import {
   type LiveViewClaim,
 } from "@/lib/live-view/rules";
 import {
+  LIVE_VIEW_BODY_MAX,
+  LIVE_VIEW_POSTS,
   clearPointer,
   currentPointer,
   handlePost,
+  handleRequest,
+  readCapped,
   readRow,
   writeSigned,
   type LiveViewDb,
@@ -36,11 +40,14 @@ import {
 } from "@/lib/live-view/client";
 import { liveViewFor } from "@/lib/live-view/shell.server";
 import { createIslandStore } from "@/lib/islands/store";
+import { LIVE_VIEW_ORIGINS } from "@/lib/live-view/origins";
+import { hostWidgetSrc, importPinned, setHostWidgetSrc } from "@lianki/debug-chat/debug-widget";
 
 const NOW = Date.parse("2026-11-01T03:00:00Z");
 const T = Math.floor(NOW / 1000);
-const W = "https://mac.example-tailnet.ts.net/lianki-widget/debug-chat.js";
-const I = "https://mac.example-tailnet.ts.net/lianki-islands/islands.js";
+const MAC = LIVE_VIEW_ORIGINS[0];
+const W = `${MAC}/lianki-widget/debug-chat.js`;
+const I = `${MAC}/lianki-islands/islands.js`;
 
 async function pair() {
   const p = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
@@ -163,7 +170,9 @@ describe("verifyLiveView", () => {
     expect((await bad({ branch: "a b" })).error).toBe("malformed");
     expect((await bad({ sha: "XYZ" })).error).toBe("malformed");
     expect((await bad({ widget: undefined, islands: undefined })).error).toBe("no source");
-    expect((await bad({ widget: "http://mac.ts.net/x.js" })).error).toBe("bad source");
+    expect((await bad({ widget: `${MAC.replace("https:", "http:")}/x.js` })).error).toBe(
+      "bad source",
+    );
     const w = await verifyLiveView(await req("off", 2), KEYS, { now: NOW, op: "on" });
     expect(w).toEqual({ ok: false, error: "wrong op" });
     // Only one source is fine.
@@ -182,25 +191,45 @@ describe("verifyLiveView", () => {
     expect(await life(req("status", 1))).toBeUndefined();
   });
 
-  test("sources: tailnet or a lianki.com subdomain over https; localhost only when allowed", () => {
+  test("sources: exactly the owner's origins, over https; localhost only when allowed", () => {
+    expect(LIVE_VIEW_ORIGINS).toContain("https://taku.onca-tint.ts.net");
     expect(liveSourceOk(W)).toBe(true);
-    expect(liveSourceOk("https://dev-mac.lianki.com/debug-chat.js")).toBe(true);
+    expect(liveSourceOk(`${MAC}/lianki-widget-compact/debug-chat.js`)).toBe(true);
     for (const u of [
       "https://lianki.com/x.js",
       "https://evil.com/x.js",
-      "https://ts.net/x.js",
+      // Signed or not, another tailnet host, another port, a tunnel not listed:
+      "https://someone-else.onca-tint.ts.net/x.js",
+      "https://mac.example-tailnet.ts.net/x.js",
+      `${MAC}:8443/x.js`,
+      "https://dev-mac.lianki.com/debug-chat.js",
       "https://evil-lianki.com/x.js",
-      "http://mac.ts.net/x.js",
-      "https://u:p@mac.ts.net/x.js",
-      "https://mac.ts.net/x.js#frag",
+      `${MAC.replace("https:", "http:")}/x.js`,
+      `${MAC.replace("https://", "https://u:p@")}/x.js`,
+      `${MAC}/x.js#frag`,
       "not a url",
-      `https://mac.ts.net/${"a".repeat(300)}`,
+      `${MAC}/${"a".repeat(300)}`,
       7,
     ])
       expect(liveSourceOk(u)).toBe(false);
+    // An explicitly listed origin (a tunnel the owner runs) is fine.
+    expect(
+      liveSourceOk("https://dev-mac.lianki.com/x.js", false, ["https://dev-mac.lianki.com"]),
+    ).toBe(true);
     expect(liveSourceOk("http://localhost:5180/debug-chat.js")).toBe(false);
     expect(liveSourceOk("http://localhost:5180/debug-chat.js", true)).toBe(true);
     expect(liveSourceOk("file:///etc/passwd", true)).toBe(false);
+  });
+
+  test("a signed pointer to an origin not on the list is refused", async () => {
+    const v = await verifyLiveView(
+      await on(1, { widget: "https://other.onca-tint.ts.net/x.js" }),
+      KEYS,
+      {
+        now: NOW,
+      },
+    );
+    expect(v).toEqual({ ok: false, error: "bad source" });
   });
 
   test("private key import refuses anything but an Ed25519 private JWK", async () => {
@@ -473,5 +502,186 @@ describe("islands: the live-view permission", () => {
     expect(s.granted()).toBe(false);
     s.setLive(NOW - 1, NOW);
     expect(s.granted()).toBe(false);
+  });
+});
+
+describe("a start() still verifying never undoes a later stop() or start()", () => {
+  test("stop() before the verify finishes: stays off, no timer", async () => {
+    let timers = 0;
+    const s = createLiveViewStore({
+      setTimeout: () => {
+        timers++;
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      },
+      clearTimeout: () => {},
+    });
+    const p = s.start(await on(1), { keys: KEYS, now: NOW });
+    s.stop();
+    await p;
+    expect(s.get()).toEqual({ on: false });
+    expect(timers).toBe(0);
+  });
+
+  test("overlapping starts: the newest wins, whatever order they finish in", async () => {
+    const s = createLiveViewStore();
+    const older = s.start(await on(1, { branch: "old" }), { keys: KEYS, now: NOW });
+    const newer = s.start(await on(2, { branch: "new" }), { keys: KEYS, now: NOW });
+    await newer;
+    await older;
+    const st = s.get();
+    expect(st.on && st.claim.branch).toBe("new");
+    // A later start(null) wins over an earlier good one too.
+    const good = s.start(await on(3), { keys: KEYS, now: NOW });
+    await s.start(null);
+    await good;
+    expect(s.get()).toEqual({ on: false });
+    s.stop();
+  });
+
+  test("a stop() while the keys are still importing is honoured too", async () => {
+    const s = createLiveViewStore();
+    const p = s.start(await on(1), { now: NOW }); // imports the bundled keys
+    s.stop();
+    await p;
+    expect(s.get()).toEqual({ on: false });
+  });
+});
+
+describe("POST /api/live-view: body cap and per-IP limit", () => {
+  const post = (body: BodyInit | null, headers: Record<string, string> = {}) =>
+    new Request("https://lianki.com/api/live-view", {
+      method: "POST",
+      body,
+      headers: { "cf-connecting-ip": "203.0.113.7", ...headers },
+    });
+
+  test("a declared oversized body is 413 before anything is read or counted", async () => {
+    const d = db();
+    const r = await handleRequest(
+      post("x", { "content-length": String(LIVE_VIEW_BODY_MAX + 1) }),
+      d,
+      KEYS,
+      NOW,
+    );
+    expect(r.status).toBe(413);
+    const bad = await handleRequest(post("x", { "content-length": "nope" }), d, KEYS, NOW);
+    expect(bad.status).toBe(413);
+  });
+
+  test("a streamed body past the cap is cut off: 413", async () => {
+    let pulled = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulled++;
+        c.enqueue(new Uint8Array(1024));
+        if (pulled > 100) c.close();
+      },
+    });
+    const r = await handleRequest(post(stream), db(), KEYS, NOW);
+    expect(r.status).toBe(413);
+    expect(pulled).toBeLessThan(10);
+  });
+
+  test("readCapped reads small bodies, empty ones, and multi-chunk ones", async () => {
+    expect(await readCapped(new Request("https://x/", { method: "POST" }))).toBe("");
+    const two = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode("ab"));
+        c.enqueue(new TextEncoder().encode("cd"));
+        c.close();
+      },
+    });
+    expect(await readCapped(new Request("https://x/", { method: "POST", body: two }))).toBe("abcd");
+  });
+
+  test("a good signed request passes; past the per-IP limit: 429 with Retry-After", async () => {
+    const d = db();
+    const ok = await handleRequest(post(JSON.stringify({ token: await on(1) })), d, KEYS, NOW);
+    expect(ok.status).toBe(200);
+    for (let i = 1; i < LIVE_VIEW_POSTS.max; i++) await handleRequest(post("{}"), d, KEYS, NOW + i);
+    const over = await handleRequest(post("{}"), d, KEYS, NOW + 100);
+    expect(over.status).toBe(429);
+    expect(over.retryAfterS).toBeGreaterThan(0);
+    // Another IP is not affected; neither is the same IP in the next window.
+    expect(
+      (await handleRequest(post("{}", { "cf-connecting-ip": "203.0.113.8" }), d, KEYS, NOW)).status,
+    ).toBe(400);
+    expect(
+      (await handleRequest(post("not json"), d, KEYS, NOW + LIVE_VIEW_POSTS.windowMs + 1)).status,
+    ).toBe(400);
+  });
+});
+
+describe("pinned module import (no redirects, same origin, the fetched bytes)", () => {
+  const deps = (r: Partial<Response>) => {
+    const seen: { init?: RequestInit; imported?: string; revoked?: string } = {};
+    return {
+      seen,
+      d: {
+        fetch: async (_u: string, init: RequestInit) => {
+          seen.init = init;
+          return {
+            ok: true,
+            status: 200,
+            redirected: false,
+            url: W,
+            text: async () => "export const x = 1",
+            ...r,
+          } as Response;
+        },
+        importer: async (u: string) => {
+          seen.imported = u;
+          return { x: 1 };
+        },
+        blobUrl: (code: string) => `blob:${code.length}`,
+        revoke: (u: string) => void (seen.revoked = u),
+      },
+    };
+  };
+
+  test("imports exactly the fetched bytes, with redirects refused and no cookies", async () => {
+    const { seen, d } = deps({});
+    expect(await importPinned(W, d.importer, d)).toEqual({ x: 1 });
+    expect(seen.init).toMatchObject({ redirect: "error", credentials: "omit" });
+    expect(seen.imported).toBe("blob:18");
+    expect(seen.revoked).toBe("blob:18");
+  });
+
+  test("a redirect, another origin, or an error status is refused", async () => {
+    for (const r of [
+      { redirected: true },
+      { url: "https://evil.example/x.js" },
+      { ok: false, status: 404 },
+    ]) {
+      const { seen, d } = deps(r);
+      await expect(importPinned(W, d.importer, d)).rejects.toThrow();
+      expect(seen.imported).toBeUndefined();
+    }
+  });
+
+  test("the default deps build a blob from the response", async () => {
+    const saved = globalThis.fetch;
+    globalThis.fetch = (async () => new Response("export const y = 2")) as unknown as typeof fetch;
+    try {
+      let got = "";
+      await importPinned(W, async (u) => {
+        got = u;
+        return {};
+      });
+      expect(got.startsWith("blob:")).toBe(true);
+    } finally {
+      globalThis.fetch = saved;
+    }
+  });
+});
+
+describe("the host's widget-source decision (TreeFragment, every package copy)", () => {
+  test("a decision (a URL, or null) wins over the localStorage key; none reads the key", () => {
+    setHostWidgetSrc(null);
+    expect(hostWidgetSrc(() => "https://from-the-key")).toBeNull();
+    setHostWidgetSrc(W);
+    expect(hostWidgetSrc(() => "https://from-the-key")).toBe(W);
+    setHostWidgetSrc(undefined);
+    expect(hostWidgetSrc(() => "https://from-the-key")).toBe("https://from-the-key");
   });
 });

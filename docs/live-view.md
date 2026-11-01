@@ -51,9 +51,11 @@ Rules (`lib/live-view/rules.ts`, shared by the route, the page and the script):
 
 - an "on" lives at most 12 h; "off" and "status" at most 5 min; `iat` may be
   at most 60 s in the future;
-- sources: https on `*.ts.net` (tailscale serve) or a `*.lianki.com`
-  subdomain (a tunnel). lianki.com itself is never allowed, and neither are
-  credentials, a fragment, or more than 300 characters. `http://localhost`
+- sources: only the exact origins in `lib/live-view/origins.ts` (scheme,
+  host and port), over https. Today that is the owner's Mac on the tailnet,
+  `https://taku.onca-tint.ts.net`. Any other `*.ts.net` host, another port,
+  or a tunnel not on the list is refused, signed or not. Credentials, a
+  fragment, or more than 300 characters are refused too. `http://localhost`
   is allowed only in dev builds;
 - `branch` and `sha` are required, so the banner always names the code.
 
@@ -63,7 +65,11 @@ highest serial ever accepted. `POST /api/live-view {token}` takes a signed
 "on" (stores it), "off" (clears it) or "status" (reads it). On and off must
 carry a serial above every serial seen so far, or they get 409. So an old
 pointer cannot be replayed, not even after "off". No session is involved:
-the signature is the authority. The owner's session can also
+the signature is the authority. Because the POST is anonymous, it costs
+little: a Content-Length over 4 KB is 413 at once, the body is read as a
+stream and cut off at 4 KB (413), and each IP gets 30 POSTs per 10 minutes
+(429 with Retry-After; the `auth_throttle` counters) before any signature
+is checked. The owner's session can also
 `DELETE /api/live-view` (stop). That only reduces what loads, so the session
 alone is enough. `GET` returns the current pointer to the owner's session.
 Both answer 404 to anyone else. The route is not under `/api/dev`, because
@@ -100,9 +106,36 @@ phone through eval, and that was enough on lianki.com. Now, on lianki.com:
 2. the owner turns on **Live view** once on that device. It stays on until he
    turns it off, and later pointers need no tap.
 
+**The compact-mode preview (#401)**, hot-loaded today through
+`lk:agent-widget-src` from `/lianki-widget-compact`, keeps working after
+this deploys with `bun scripts/dev/live-view.ts on --widget /lianki-widget-compact`
+(run in the #401 checkout, so the banner names it), plus the Live view
+switch on the phone.
+
 One pointer at a time: a new `on` replaces the previous one. The widget
 shows only where the chat does (debug mode on); islands show on every page
 of the app shell.
+
+## What is trusted
+
+A signed pointer hands code authority for up to 12 h to whatever is served
+at its URLs. So:
+
+- **Only the owner's own origins** (origins.ts, a reviewed list). Today that is
+  his Mac's `tailscale serve`, which only his tailnet can reach. Adding a
+  tunnel host means adding its exact origin there.
+- **Pinned import.** The page never `import()`s the URL directly. It fetches
+  the module with `redirect: "error"` and no cookies, and checks that the
+  response came from that same origin. It then imports exactly those bytes from
+  a `blob:` URL (`importPinned` in packages/debug-chat/src/debug-widget.ts,
+  used by the widget host and the islands loader). A redirect, another origin,
+  or a second request serving other code cannot get in. The modules are
+  single files: they import nothing themselves.
+- **What remains trusted:** the dev servers on the Mac and whoever can write
+  their working trees (the agents), `tailscale serve` on the Mac, the tailnet
+  itself, and the Mac's private key file. The hot reload's SSE stream only
+  says *when* to re-import, never *what*. The re-import goes through the same
+  pinned path.
 
 ## HMR
 
@@ -126,7 +159,9 @@ the event and one for the module.
 - `unit/live-view.test.ts`: signatures (good, expired, wrong key, tampered,
   rotation), lifetimes, sources, replay and older serials (also after off),
   the owner's stop, the owner-only shell, the page store (refusal reasons,
-  expiry), unsigned overrides refused on production, islands under live view.
+  expiry, a stop or a newer start during a verify), unsigned overrides refused on
+  production, islands under live view, exact origins, the pinned import
+  (redirects, other origins), the body cap and the per-IP limit.
 - `scripts/qa/qa-api.mjs`: a non-owner gets 404 from GET and DELETE; a malformed
   token gets 400; one signed by another key gets 401.
 - `bun scripts/dev/live-view-qa.ts [--shots <dir>]`: silent Chromium on the real

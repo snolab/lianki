@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { liveViewKeys } from "@/lib/live-view/keys";
-import { clearPointer, currentPointer, handlePost, publicClaim } from "@/lib/live-view/server";
+import { clearPointer, currentPointer, handleRequest, publicClaim } from "@/lib/live-view/server";
 import { isOwner } from "@/lib/owner";
 
 /**
@@ -25,15 +25,12 @@ const notFound = () =>
 export const POST = async (req: Request) => {
   if (dbBackend() !== "d1")
     return NextResponse.json({ error: "D1 only" }, { status: 503, headers: NO_STORE });
-  const text = await req.text();
-  if (text.length > 4096)
-    return NextResponse.json({ error: "too large" }, { status: 413, headers: NO_STORE });
-  let body: unknown = null;
-  try {
-    body = JSON.parse(text);
-  } catch {}
-  const a = await handlePost(body, getD1(), await liveViewKeys(), Date.now(), LOCAL_OK);
-  return NextResponse.json(a.body, { status: a.status, headers: NO_STORE });
+  // Content-Length and a streamed byte cap (413), a per-IP counter (429),
+  // then the signed message (lib/live-view/server.ts handleRequest).
+  const a = await handleRequest(req, getD1(), await liveViewKeys(), Date.now(), LOCAL_OK);
+  const headers: Record<string, string> = { ...NO_STORE };
+  if (a.retryAfterS) headers["retry-after"] = String(a.retryAfterS);
+  return NextResponse.json(a.body, { status: a.status, headers });
 };
 
 export const GET = async () => {

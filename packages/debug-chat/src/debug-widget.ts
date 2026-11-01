@@ -11,6 +11,25 @@
 
 /** localStorage key: the widget module's URL, e.g. https://dev-mac.lianki.com/debug-chat.js. */
 export const WIDGET_SRC_KEY = "lk:debug-widget-src";
+/** Where the host puts its decision about the widget's source (see hostWidgetSrc). */
+const HOST_SRC = "__lkWidgetHostSrc";
+
+/**
+ * The host's decision about the widget URL, shared on globalThis so every
+ * copy of this package on the page (the built-in chat and a hot-loaded one)
+ * obeys it: a string (Lianki: a verified live-view pointer), null (none: the
+ * localStorage keys are not to be read), or undefined (no decision: read them).
+ */
+export function setHostWidgetSrc(v: string | null | undefined) {
+  (globalThis as Record<string, unknown>)[HOST_SRC] = v === undefined ? undefined : { v };
+}
+
+/** The widget URL to use: the host's decision if it made one, else `fallback()` (the key). */
+export function hostWidgetSrc(fallback: () => string | null): string | null {
+  const d = (globalThis as Record<string, unknown>)[HOST_SRC] as { v: string | null } | undefined;
+  return d ? d.v : fallback();
+}
+
 /** Where the page hands the widget its React: {React, jsx, ReactDOM}. */
 export const REACT_GLOBAL = "__lkReact";
 /** Bumped when what the page expects of the module changes (its exports, DebugChat's props). */
@@ -58,6 +77,44 @@ export async function loadWidget<C>(
     css: typeof m.css === "string" ? m.css : "",
     rev: typeof m.rev === "string" ? m.rev : "",
   };
+}
+
+type PinDeps = {
+  fetch: (url: string, init: RequestInit) => Promise<Response>;
+  importer: (url: string) => Promise<Record<string, unknown>>;
+  blobUrl: (code: string) => string;
+  revoke: (url: string) => void;
+};
+const pinDeps = (importer: PinDeps["importer"]): PinDeps => ({
+  fetch: (u, i) => globalThis.fetch(u, i),
+  importer,
+  blobUrl: (code) => URL.createObjectURL(new Blob([code], { type: "text/javascript" })),
+  revoke: (u) => URL.revokeObjectURL(u),
+});
+
+/**
+ * Import a dev module pinned to its own URL (docs/live-view.md, "What is
+ * trusted"): fetched with redirects refused and without cookies, checked to
+ * have come from that same URL's origin, and imported from exactly those
+ * bytes (a blob: URL), so no redirect and no second request can swap in other
+ * code. The modules are single files: they import nothing themselves.
+ */
+export async function importPinned(
+  url: string,
+  importer: PinDeps["importer"],
+  deps: PinDeps = pinDeps(importer),
+): Promise<Record<string, unknown>> {
+  const want = new URL(url);
+  const r = await deps.fetch(url, { redirect: "error", credentials: "omit", cache: "no-store" });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  if (r.redirected || (r.url && new URL(r.url).origin !== want.origin))
+    throw new Error("the module was redirected");
+  const blob = deps.blobUrl(await r.text());
+  try {
+    return await deps.importer(blob);
+  } finally {
+    deps.revoke(blob);
+  }
 }
 
 /** One line for the chat's menu, from whatever was thrown. */

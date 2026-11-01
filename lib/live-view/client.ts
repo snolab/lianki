@@ -30,6 +30,11 @@ export function createLiveViewStore(
 ) {
   let state: LiveState = OFF;
   let expiry: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * Bumped by every start() and stop(): a start() still awaiting its keys or
+   * its verify when a newer call came in publishes nothing.
+   */
+  let gen = 0;
   const listeners = new Set<() => void>();
   const set = (s: LiveState) => {
     state = s;
@@ -49,17 +54,22 @@ export function createLiveViewStore(
       token: string | null | undefined,
       o: { keys?: CryptoKey[]; now?: number; allowLocal?: boolean } = {},
     ): Promise<LiveState> {
+      const mine = ++gen;
       timers.clearTimeout(expiry);
       if (!token) {
         set(OFF);
         return state;
       }
       const now = o.now ?? Date.now();
-      const v = await verifyLiveView(token, o.keys ?? (await liveViewKeys()), {
+      const keys = o.keys ?? (await liveViewKeys());
+      if (mine !== gen) return state;
+      const v = await verifyLiveView(token, keys, {
         op: "on",
         now,
         allowLocal: o.allowLocal ?? unsignedOverridesAllowed(),
       });
+      // Stopped, or superseded, while verifying: leave the newer state alone.
+      if (mine !== gen) return state;
       if (!v.ok) {
         set({ on: false, note: `live view refused: ${v.error}` });
         return state;
@@ -71,6 +81,7 @@ export function createLiveViewStore(
       return state;
     },
     stop() {
+      gen++;
       timers.clearTimeout(expiry);
       set(OFF);
     },

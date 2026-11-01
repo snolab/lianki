@@ -17,6 +17,7 @@ import { launchSilent, newSilentContext } from "../qa/silent.mjs";
 import { b64url } from "../../lib/stt-ticket";
 import { importLiveViewPrivateKey, signLiveView } from "../../lib/live-view/rules";
 import { ROOT, harnessCss, widgetCss } from "./debug-widget-build";
+import { LIVE_VIEW_ORIGINS } from "../../lib/live-view/origins";
 
 const i = process.argv.indexOf("--shots");
 const SHOTS = resolve(i >= 0 ? process.argv[i + 1] : join(ROOT, ".shots"));
@@ -41,8 +42,8 @@ const claim = (exp = t + 3600) => ({
   serial: Date.now(),
   iat: Math.min(t, exp - 1),
   exp,
-  widget: "https://mac.example-tailnet.ts.net/lianki-widget/debug-chat.js",
-  islands: "https://mac.example-tailnet.ts.net/lianki-islands/islands.js",
+  widget: `${LIVE_VIEW_ORIGINS[0]}/lianki-widget/debug-chat.js`,
+  islands: `${LIVE_VIEW_ORIGINS[0]}/lianki-islands/islands.js`,
   branch: "feat/live-view",
   sha: "abc1234def5678",
 });

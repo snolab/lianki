@@ -150,7 +150,8 @@ async function on() {
       ? undefined
       : src(opt("islands"), "/lianki-islands", "islands.js");
   for (const u of [widget, islands])
-    if (u && !liveSourceOk(u)) die(`${u}: only https on *.ts.net or a *.lianki.com subdomain`);
+    if (u && !liveSourceOk(u))
+      die(`${u}: not one of the owner's origins (lib/live-view/origins.ts)`);
   for (const u of [widget, islands]) {
     if (!u || (await reachable(u))) continue;
     if (named)

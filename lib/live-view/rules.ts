@@ -21,6 +21,7 @@
  * Pure and isomorphic: the route, the page and the Mac's script share it.
  */
 import { b64url, fromB64url } from "@/lib/stt-ticket";
+import { LIVE_VIEW_ORIGINS } from "./origins";
 
 export const LIVE_VIEW_AUD = "lianki-live-view";
 /** An "on" pointer lives at most this long (seconds). */
@@ -70,13 +71,16 @@ const BRANCH = /^[A-Za-z0-9._/+-]{1,80}$/;
 const SHA = /^[0-9a-f]{7,40}$/;
 
 /**
- * Where live JS may come from: https on the tailnet (`*.ts.net`, tailscale
- * serve) or on a lianki.com subdomain (a Cloudflare tunnel, e.g.
- * dev-mac.lianki.com) — never lianki.com itself. `allowLocal` adds
+ * Where live JS may come from: exactly one of `origins` (LIVE_VIEW_ORIGINS,
+ * the owner's own hosts — origins.ts), over https. `allowLocal` adds
  * http(s)://localhost, for dev builds and tests only. No credentials, no
  * fragment, at most 300 characters.
  */
-export function liveSourceOk(raw: unknown, allowLocal = false): raw is string {
+export function liveSourceOk(
+  raw: unknown,
+  allowLocal = false,
+  origins: readonly string[] = LIVE_VIEW_ORIGINS,
+): raw is string {
   if (typeof raw !== "string" || raw.length > 300) return false;
   let u: URL;
   try {
@@ -87,9 +91,7 @@ export function liveSourceOk(raw: unknown, allowLocal = false): raw is string {
   if (u.username || u.password || u.hash) return false;
   if (allowLocal && LOCAL.has(u.hostname) && (u.protocol === "http:" || u.protocol === "https:"))
     return true;
-  if (u.protocol !== "https:") return false;
-  const h = u.hostname.toLowerCase();
-  return (h.endsWith(".ts.net") && h.length > 7) || (h.endsWith(".lianki.com") && h.length > 11);
+  return u.protocol === "https:" && origins.includes(u.origin);
 }
 
 /** A public key from its raw 32 bytes, base64url. */
@@ -157,7 +159,7 @@ async function verified(token: string, keys: CryptoKey[]): Promise<unknown | "ba
 export async function verifyLiveView(
   token: unknown,
   keys: CryptoKey[],
-  o: { op?: LiveViewOp; now?: number; allowLocal?: boolean } = {},
+  o: { op?: LiveViewOp; now?: number; allowLocal?: boolean; origins?: readonly string[] } = {},
 ): Promise<LiveViewResult> {
   if (typeof token !== "string" || token.length > LIVE_VIEW_MAX_LEN || !keys.length)
     return { ok: false, error: "malformed" };
@@ -189,7 +191,7 @@ export async function verifyLiveView(
   if (c.op === "on") {
     if (c.widget === undefined && c.islands === undefined) return { ok: false, error: "no source" };
     for (const s of [c.widget, c.islands])
-      if (s !== undefined && !liveSourceOk(s, o.allowLocal))
+      if (s !== undefined && !liveSourceOk(s, o.allowLocal, o.origins))
         return { ok: false, error: "bad source" };
     if (typeof c.branch !== "string" || !BRANCH.test(c.branch))
       return { ok: false, error: "malformed" };

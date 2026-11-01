@@ -4,6 +4,7 @@
  * with an older serial. The route (app/api/live-view/route.ts) and the app
  * layout call these; tests pass a test D1 and their own keys.
  */
+import { type Limit, type ThrottleDb, clientIp, hit, ipKey } from "@/lib/security/throttle";
 import { type LiveViewClaim, verifyLiveView } from "./rules";
 
 /** The part of D1 used here. */
@@ -109,4 +110,71 @@ export async function handlePost(
     status: 200,
     body: c.op === "on" ? { on: true, claim: publicClaim(c) } : { on: false },
   };
+}
+
+/** The longest POST body read (a token is at most 2 KB). */
+export const LIVE_VIEW_BODY_MAX = 4096;
+/** Anonymous POSTs per IP: signature checks are cheap, but not free. */
+export const LIVE_VIEW_POSTS: Limit = { max: 30, windowMs: 10 * 60_000 };
+
+const tooLong = (len: string | null, max: number) => len !== null && !(Number(len) <= max);
+
+/**
+ * The body as text, read as a stream and cut off at `max` bytes: null when
+ * it is longer (or says so in Content-Length), so nothing large is buffered.
+ */
+export async function readCapped(req: Request, max = LIVE_VIEW_BODY_MAX): Promise<string | null> {
+  if (tooLong(req.headers.get("content-length"), max)) return null;
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const parts: Uint8Array[] = [];
+  let n = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    n += value.byteLength;
+    if (n > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    parts.push(value);
+  }
+  const all = new Uint8Array(n);
+  let at = 0;
+  for (const p of parts) {
+    all.set(p, at);
+    at += p.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+
+/**
+ * The whole anonymous POST: a declared body over the cap is 413 before
+ * anything else; then one per-IP counter (429 past it); then the body,
+ * streamed with the same cap; then the signed message. Never a session.
+ */
+export async function handleRequest(
+  req: Request,
+  db: LiveViewDb,
+  keys: CryptoKey[],
+  now = Date.now(),
+  allowLocal = false,
+): Promise<ApiAnswer & { retryAfterS?: number }> {
+  if (tooLong(req.headers.get("content-length"), LIVE_VIEW_BODY_MAX))
+    return { status: 413, body: { error: "too large" } };
+  const ip = clientIp(req.headers);
+  const rate = await hit(db as unknown as ThrottleDb, ipKey("live-view", ip), LIVE_VIEW_POSTS, now);
+  if (!rate.allowed)
+    return {
+      status: 429,
+      body: { error: "too many requests" },
+      retryAfterS: Math.ceil(rate.retryAfterMs / 1000),
+    };
+  const text = await readCapped(req);
+  if (text === null) return { status: 413, body: { error: "too large" } };
+  let body: unknown = null;
+  try {
+    body = JSON.parse(text);
+  } catch {}
+  return handlePost(body, db, keys, now, allowLocal);
 }

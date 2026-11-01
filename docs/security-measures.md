@@ -240,7 +240,13 @@ session, so:
   branch, sha, serial, iat, exp ≤ 12 h}`. The public key is committed in
   `lib/live-view/keys.ts`. The server verifies before it stores and again
   before it serves, and the page verifies once more with WebCrypto. Sources
-  must be https on `*.ts.net` or a `*.lianki.com` subdomain.
+  must be one of the exact owner origins in `lib/live-view/origins.ts` (today
+  only his Mac's tailnet origin). The module is fetched with redirects
+  refused, checked to come from that origin, and imported from those exact
+  bytes.
+- **Cheap to refuse.** The anonymous POST rejects a body over 4 KB (by
+  Content-Length, then by a streamed cap) and allows 30 per IP per 10
+  minutes (D1 counter) before any signature work.
 - **No replay.** The row keeps the highest serial ever accepted, on or off,
   and anything not above it gets 409.
 - **Owner only.** The pointer, the switch and the banner reach the owner's
