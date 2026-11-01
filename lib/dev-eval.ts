@@ -22,6 +22,7 @@ import {
   cleanTiming,
 } from "../packages/debug-chat/src/wire";
 import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
+import { type WakeReason, isWakeReason } from "../packages/debug-chat/src/wake";
 
 export {
   MAX_AGENT_ID,
@@ -225,6 +226,8 @@ export type PageMessage =
       timing?: VoiceTiming;
       /** The mic's wake-word mode when the line was sent (docs/wake-word.md); absent = mic off. */
       wake?: "active" | "passive";
+      /** Why the mic is in that mode (wake.ts WakeReason: "rejects", "wake-word", "kws-failed", …). */
+      wakeReason?: WakeReason;
     }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
@@ -491,6 +494,9 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
       ...(timing ? { timing } : {}),
       ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
+      ...((m.wake === "active" || m.wake === "passive") && isWakeReason(m.wakeReason)
+        ? { wakeReason: m.wakeReason }
+        : {}),
     };
   }
   if (m.type === "page-error") return parsePageError(m);

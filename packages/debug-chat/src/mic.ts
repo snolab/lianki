@@ -17,10 +17,16 @@
 import type { UttMarks } from "./latency";
 import type { LocalFinal, LocalUtt } from "./local-stt";
 import { STT_PROMPTS } from "./stt-hint";
-import type { WakeSpot } from "./wake";
+import type { SpotResult, WakeSpot } from "./wake";
 
 /** Longest utterance: past this it is cut and sent, and listening goes on. */
 export const MAX_UTTERANCE_MS = 30_000;
+/**
+ * The longest a passive utterance waits for the wake gate's verdict (the
+ * spotter's load timeout plus one check, with room to spare). Past it the
+ * utterance counts as "no wake word", so the ones after it are not held back.
+ */
+export const WAKE_GATE_MS = 30_000;
 /** The VADs hand over 16 kHz mono. */
 export const RATE = 16_000;
 /** Partials: one every PARTIAL_EVERY_MS of speech, once it is PARTIAL_MIN_MS long… */
@@ -792,7 +798,7 @@ export type UploadInfo = {
  */
 export type WakeGate = {
   passive(): boolean;
-  spot(audio: Float32Array): Promise<WakeSpot & { ms?: number; error?: string }>;
+  spot(audio: Float32Array): Promise<SpotResult>;
   /** "Linky" was heard: the mic becomes active. */
   onWake(): void;
   verdict(ok: boolean, why: "ok" | "empty" | "hallucination"): void;
@@ -1055,7 +1061,15 @@ export function createMic(d: {
         const w = d.wake;
         gated = false;
         u?.cancel();
-        void w.spot(audio).then(
+        // Never hold the queue: a check that does not settle in WAKE_GATE_MS is "no hit".
+        const checked = new Promise<SpotResult>((resolve, reject) => {
+          const t = setTimer(() => resolve({ hit: false, error: "gate-timeout" }), WAKE_GATE_MS);
+          w.spot(audio).then(
+            (r) => (clearTimer(t), resolve(r)),
+            (e) => (clearTimer(t), reject(e)),
+          );
+        });
+        void checked.then(
           (r) => {
             d.log?.({
               ev: "wake-spot",
@@ -1065,6 +1079,9 @@ export function createMic(d: {
               ...(r.error ? { error: r.error } : {}),
               ...(r.hit ? { tokens: r.tokens.join(" "), restMs: toMs(r.rest.length) } : {}),
             });
+            // Never deaf: the spotter could not check it (it failed to load, say) and
+            // the mic is active again by now, so it goes up as an active utterance would.
+            if (!r.hit && r.unchecked && !w.passive()) return send(seq, audio, ms, prob);
             if (!r.hit) {
               d.timing?.(seq, { t_sttDone: now(), dropped: true });
               q.resolve(seq, null);
