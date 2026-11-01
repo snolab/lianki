@@ -23,7 +23,6 @@ import {
   voice,
 } from "@lianki/debug-chat/voice";
 import { RESUME_REWIND_S, createCloudOut } from "@lianki/debug-chat/voice-out";
-import { QUIET_HOURS_KEY } from "@lianki/debug-chat/quiet-hours";
 
 describe("sentences", () => {
   it("cuts Latin text after . ! ? before a space or the end, keeping 3.14 and e.g. whole", () => {
@@ -342,8 +341,7 @@ describe("voice(): the browser session, shared on globalThis", () => {
       ),
     );
     const spoken: (EventTarget & { text: string; lang: string; voice?: unknown })[] = [];
-    // Quiet hours off: this test must not depend on the hour it runs at (quiet-hours.test.ts).
-    let store: Record<string, string> | null = { [QUIET_HOURS_KEY]: '{"on":false}' };
+    let store: Record<string, string> | null = {};
     const doc = { visibilityState: "visible", activeElement: null as unknown };
     try {
       g.SpeechSynthesisUtterance = class extends EventTarget {
@@ -448,7 +446,12 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /** The session with the real cloud output over fakes (fetch, element, AudioContext, GainNode). */
 function cloudHarness(
-  o: { aec?: boolean; mode?: "speech" | "cloud"; status?: (text: string) => number } = {},
+  o: {
+    aec?: boolean;
+    mode?: "speech" | "cloud";
+    status?: (text: string) => number;
+    hasVoice?: (lang: string) => boolean;
+  } = {},
 ) {
   const h0 = { t: 0 };
   const el = new FakeEl();
@@ -493,6 +496,7 @@ function cloudHarness(
     enabled: () => true,
     here: () => false,
     cloud: () => cloud,
+    hasVoice: o.hasVoice,
     mode: () => flags.mode,
     aec: () => flags.aec,
     now: () => h0.t,
@@ -741,6 +745,64 @@ describe("voice session: the cloud route falls back to speech per sentence", () 
     await tick();
     await tick();
     expect(v.state()).toMatchObject({ queued: 0 });
+  });
+});
+
+describe("voice session: no speechSynthesis voice for the language → the cloud reads it", () => {
+  it("speech mode, getVoices() empty (Android Chrome): read through /api/words/tts, not silent", async () => {
+    const h = cloudHarness({ mode: "speech", hasVoice: () => false });
+    h.v.setMic(true);
+    expect(h.v.reply("你好。")).toBe(true);
+    await h.loaded();
+    expect(h.spoken).toEqual([]);
+    expect(h.el.plays).toHaveLength(1);
+    expect(h.fetched[0]).toContain("/api/words/tts?lang=zh&text=");
+    expect(h.logs.find((l) => l.ev === "voice-out")).toMatchObject({
+      out: "cloud",
+      route: "audio",
+      fallback: "no-voice",
+    });
+  });
+
+  it("speech mode with a voice for the language stays on speechSynthesis", async () => {
+    const h = cloudHarness({ mode: "speech", hasVoice: (l) => l.startsWith("en") });
+    h.v.setMic(true);
+    h.v.reply("Hello there.");
+    await tick();
+    expect(h.spoken.map((u) => u.text)).toEqual(["Hello there."]);
+    expect(h.fetched).toEqual([]);
+    // A language it has no voice for, in the same session: the cloud.
+    h.spoken[0].onend?.();
+    h.v.reply("こんにちは。");
+    await h.loaded();
+    expect(h.el.plays).toHaveLength(1);
+    expect(h.spoken).toHaveLength(1);
+  });
+
+  it("no speechSynthesis at all, cloud available: replies are still read (canSpeak)", async () => {
+    const h = cloudHarness();
+    const v = createVoice({
+      synth: () => null,
+      utter: () => ({}) as UtterLike,
+      enabled: () => true,
+      here: () => true,
+      cloud: () =>
+        createCloudOut({
+          fetch: async () => ({
+            ok: true,
+            status: 200,
+            headers: { get: () => null },
+            blob: async () => new Blob(["x"]),
+          }),
+          element: () => h.el,
+          ctx: () => null,
+          toUrl: () => "blob:x",
+        }),
+      mode: () => "speech",
+    });
+    expect(v.reply("Read me.")).toBe(true);
+    await h.loaded();
+    expect(h.el.plays).toHaveLength(1);
   });
 });
 
