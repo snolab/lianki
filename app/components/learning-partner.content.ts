@@ -497,6 +497,24 @@ const learningPartnerContent = {
       mr: "संपूर्ण चॅट दाखवा",
       ko: "전체 채팅 보기",
     }),
+    notReadHidden: t({
+      en: "· not read aloud: the page was in the background",
+      zh: "· 未朗读：页面当时在后台",
+      hi: "· पढ़कर नहीं सुनाया: पेज तब बैकग्राउंड में था",
+      es: "· no se leyó en voz alta: la página estaba en segundo plano",
+      fr: "· non lu à voix haute : la page était en arrière-plan",
+      ar: "· لم تُقرأ بصوت عالٍ: كانت الصفحة في الخلفية",
+      bn: "· জোরে পড়া হয়নি: পেজটি তখন ব্যাকগ্রাউন্ডে ছিল",
+      pt: "· não lida em voz alta: a página estava em segundo plano",
+      ru: "· не прочитано вслух: страница была в фоне",
+      ur: "· پڑھ کر نہیں سنایا: صفحہ اس وقت پس منظر میں تھا",
+      id: "· tidak dibacakan: halaman sedang di latar belakang",
+      de: "· nicht vorgelesen: die Seite war im Hintergrund",
+      ja: "· 読み上げなし：ページがバックグラウンドでした",
+      sw: "· haikusomwa kwa sauti: ukurasa ulikuwa nyuma",
+      mr: "· मोठ्याने वाचले नाही: पेज तेव्हा बॅकग्राउंडमध्ये होते",
+      ko: "· 읽어 주지 않음: 페이지가 백그라운드에 있었어요",
+    }),
   },
 } satisfies DeclarationContent;
 
@@ -550,6 +568,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "On/off switch in the chat's menu, saved on this device only: when on, the open chat shrinks to just its latest message (one short line over the input) whenever the text input is not focused, to cut distraction while talking by voice. Names the setting as a short noun phrase, not a command.",
   compactShowAll:
     "Tooltip and screen-reader hint on that single latest-message line: tapping it brings back the whole chat log. Imperative phrase, short.",
+  notReadHidden:
+    "Small grey note right after an assistant's message in the chat log: this message was shown but not spoken aloud, because the page was hidden (another tab or app in front, or the screen locked) when it arrived; browsers do not let a hidden page speak. Starts with a middle dot like the 'waiting' note; a short status phrase, not a sentence or an error.",
 };
 
 export default {

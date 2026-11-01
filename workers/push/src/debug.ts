@@ -1525,7 +1525,7 @@ export class DebugHub {
     if (m.value.type === "say") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
-      const { text, to, node, agentId, quiet, loud } = m.value;
+      const { text, to, node, agentId, quiet } = m.value;
       // The sender's node: what the line says, within the node its socket listens at.
       const home = c.node ?? ROOT_NODE;
       const from = m.value.taskPath ?? home;
@@ -1554,9 +1554,8 @@ export class DebugHub {
           ...(from !== ROOT_NODE ? { taskPath: from } : {}),
           ...(who ? { agentId: who } : {}),
           ...(node ? { to: node } : {}),
-          // say --quiet / --loud (already booleans): the page reads it aloud or not.
+          // say --quiet (already a boolean): shown, never read aloud.
           ...(quiet ? { quiet } : {}),
-          ...(loud ? { loud } : {}),
         };
         console.log(
           JSON.stringify({
@@ -1567,7 +1566,6 @@ export class DebugHub {
             ...(said.taskPath ? { taskPath: said.taskPath } : {}),
             ...(said.to ? { to: said.to } : {}),
             ...(quiet ? { quiet } : {}),
-            ...(loud ? { loud } : {}),
             len: text.length,
             head: head(text),
           }),
