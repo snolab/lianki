@@ -141,6 +141,8 @@ What this shows:
   were rejected and 0 of 40 others accepted. His rejected clips are the short
   or garbled ones (possibly not his voice). Use it for the passive decision
   and as a wake confirmation, never as the only gate.
+  The full measurement, with crop lengths, a pitch/MFCC baseline and the
+  privacy design, is in [speaker-id.md](speaker-id.md).
 
 ## Evaluation plan
 
