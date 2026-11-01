@@ -8,6 +8,13 @@ Heavy swipe and its tuning, paper scrolls) are synced too (owner, 02:22 JST).
 This also fixes the dev origin opening with default settings: once it signs in
 through the dev bridge, it pulls the owner's preferences like any other device.
 
+The terminal is a device too: `bun run lianki settings list | get | set`
+reads and writes `/api/prefs` with `Authorization: Bearer lk_…` (the only
+route that takes an API token this way; `lianki auth login` makes one —
+[secrets-and-auth.md](secrets-and-auth.md), "CLI login"). Values are checked
+against the registry before they are sent, and each write takes a clock newer
+than the stored one, under its own device id (`cli…`).
+
 It adds a fifth row to the table in [ui-state.md](ui-state.md). The **account**
 mode is a localStorage copy (the device's cache, read for the first paint)
 kept in step with the server.

@@ -58,4 +58,8 @@ coveragePathIgnorePatterns = [
   # (swipe-physics, swipe-machine, swipe-feel); the glue needs a browser and is
   # covered by qa-words' phone checks (light and heavy, both swipes).
   "lib/words/swipe-core.tsx",
+  # The lianki CLI's dispatcher and launchd glue (`serve` runs launchctl); the
+  # suites test its pure parts (the LaunchAgent file) and lianki-auth.ts, which
+  # is held to 90%. The real Keychain/browser I/O (lianki-io.ts) is never loaded.
+  "scripts/dev/lianki.ts",
 ]
