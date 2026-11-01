@@ -65,4 +65,17 @@ describe("eval.ts chat output: voice lines", () => {
       chatLine({ ...base, source: "stt", text: "Hi.", raw: "hi", edited }, {}, false),
     ).toMatchObject({ text: "Hi.", raw: "hi", edited });
   });
+  it("prints the mic's wake mode and why it is in it; a line sent with the mic off has neither", () => {
+    expect(
+      chatLine({ ...base, source: "stt", wake: "active", wakeReason: "wake-word" }, {}, false),
+    ).toMatchObject({ wake: "active", wakeReason: "wake-word" });
+    expect(chatLine({ ...base, wake: "passive", wakeReason: "rejects" }, {}, false)).toMatchObject({
+      wake: "passive",
+      wakeReason: "rejects",
+    });
+    const off = chatLine(base, {}, false);
+    expect(off).not.toHaveProperty("wake");
+    expect(off).not.toHaveProperty("wakeReason");
+    expect(chatLine({ ...base, wake: "sleepy" }, {}, false)).not.toHaveProperty("wake");
+  });
 });

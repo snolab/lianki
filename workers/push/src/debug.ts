@@ -1211,6 +1211,7 @@ export class DebugHub {
         ...(m.source ? { source: m.source } : {}),
         ...(m.timing ? { timing: m.timing } : {}),
         ...(m.wake ? { wake: m.wake } : {}),
+        ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
       });
     }
     // A tap on an ask card: stamped here, never by the page or an agent.
