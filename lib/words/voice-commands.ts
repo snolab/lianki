@@ -9,6 +9,7 @@
  *   inside a longer sentence never matches: "我觉得下一张更难" is nothing.
  * - **Chinese first**, with English and Japanese synonyms. Simplified and
  *   Traditional both match (toSimplified), and so do the usual STT slips.
+ * - **Grades exactly as said.** again/hard/good/easy/←/→ take no slip.
  * - **Fuzzy, but never a guess.** One edit is forgiven on CJK phrases of 3+
  *   characters and Latin ones of 7+ letters (2 from 10). Shorter phrases
  *   match exactly. A slip never adds or drops a negation (不/没). Two
@@ -297,6 +298,16 @@ export function slack(phrase: string): number {
 const NEGATION = /不|没|沒|未|別|别|无|無|莫|no|not|dont|never|ない|ません|ず/gu;
 const negations = (s: string) => s.match(NEGATION)?.length ?? 0;
 
+/** Commands that change a card's grade: exact phrases only, never a slip. */
+const EXACT_ONLY: ReadonlySet<VoiceCommand> = new Set([
+  "again",
+  "hard",
+  "good",
+  "easy",
+  "left",
+  "right",
+]);
+
 /** Each normalized phrase and its command. A phrase in two commands is a bug (tested). */
 const PHRASES: readonly { phrase: string; cmd: VoiceCommand }[] = VOICE_COMMANDS.flatMap((cmd) =>
   GRAMMAR[cmd].map((p) => ({ phrase: normalizeUtterance(p), cmd })),
@@ -324,6 +335,8 @@ export function matchCommand(text: string): VoiceMatch | null {
   let best: VoiceMatch | null = null;
   let tie = false;
   for (const { phrase, cmd } of PHRASES) {
+    // Grades are taken only as said: "有点累" is not 有点难, "很简短" not 很简单.
+    if (EXACT_ONLY.has(cmd)) continue;
     const s = slack(phrase);
     // A slip may change or lose a character, never add one: an added word is
     // a different sentence ("no show answer", "未记住了"), not an STT error.
@@ -395,7 +408,16 @@ export function isCardEcho(
           if (sl && Math.abs(run.length - n.length) <= sl && editDistance(run, n) <= sl)
             return true;
         }
-    } else if (flat.replace(/[\p{P}\p{S}\s]/gu, "").includes(n)) return true;
+    } else {
+      const chars = [...flat.replace(/[\p{P}\p{S}\s]/gu, "")];
+      if (chars.join("").includes(n)) return true;
+      // Within a slip too, as matchCommand allows one: 下一章 in 请看下一张图片.
+      const len = [...n].length;
+      const sl = slack(n);
+      for (let w = len - sl; sl && w <= len + sl; w++)
+        for (let i = 0; w > 0 && i + w <= chars.length; i++)
+          if (editDistance(chars.slice(i, i + w).join(""), n) <= sl) return true;
+    }
   }
   for (const t of cardTexts) {
     if (!t) continue;

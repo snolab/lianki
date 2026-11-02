@@ -141,6 +141,13 @@ describe("voice grammar", () => {
     expect(cmd("显示答")).toBe("show");
   });
 
+  it("takes a grade only exactly as said (review of 8f57caa8)", () => {
+    expect(cmd("有点累")).toBeNull(); // not 有点难 (Hard)
+    expect(cmd("很简短")).toBeNull(); // not 很简单 (Easy)
+    expect(cmd("太简丹")).toBeNull();
+    expect(cmd("有点难")).toBe("hard");
+  });
+
   it("refuses a slip equally close to two commands", () => {
     // 啥一张: one edit from both 上一张 (prev) and 下一张 (next).
     expect(cmd("啥一张")).toBeNull();
@@ -197,6 +204,10 @@ describe("voice grammar", () => {
     expect(isCardEcho("previus", [], ["the previous day"])).toBe(true);
     expect(isCardEcho("show answer", [], ["Show your answer"])).toBe(false);
     expect(isCardEcho("next", [], ["context"])).toBe(false);
+    // CJK within a slip (review of 8f57caa8).
+    expect(isCardEcho("下一章", [], ["请看下一张图片"])).toBe(true);
+    expect(isCardEcho("再读一边", [], ["请再读一遍这个句子"])).toBe(true);
+    expect(isCardEcho("撤销", [], ["撤回"])).toBe(false); // two characters: exact only
   });
 });
 

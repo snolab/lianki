@@ -57,6 +57,9 @@ working as before: a new focus reads its word.
   punctuation, spaces, SenseVoice `<|tags|>` and padding such as 嗯/请/吧,
   "okay", "please" and ください. Anything longer than 16 characters is a
   sentence. "我觉得下一张更难" does nothing.
+- **Grades exactly as said.** Again/Hard/Good/Easy and 左/右 take no slip at
+  all: 有点累 is not 有点难, 很简短 is not 很简单. Only moving, the answer,
+  reading, undo and exit forgive a slip.
 - **Fuzzy only where it is safe.** A slip may change or lose a character,
   never add one. One is forgiven on CJK phrases of 3+ characters
   (再读一边 → 再读一遍, 显示答 → 显示答案) and on Latin phrases of 7+ letters
@@ -71,7 +74,8 @@ working as before: a new focus reads its word.
   (within a slip) the word, reading, meaning, example or a read-aloud part of
   any card near the focus. It is also no command when it is merely
   contained in what the focused card, or the one before it, reads aloud
-  (`sayParts`): a whole word for Latin, anywhere for CJK. So "easy" read from
+  (`sayParts`), within a slip: a run of whole words for Latin ("go down" in
+  "go down the street"), anywhere for CJK (下一章 in 请看下一张图片). So "easy" read from
   "easy (not difficult)" never grades Easy, an English list's "good" never
   grades Good, and a Japanese 上 never moves the cursor. The cost: a grade
   word inside the focused card's meaning (简单 in 简单的) is not taken for
