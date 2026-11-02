@@ -11,13 +11,19 @@ import {
   testLedger,
 } from "@/lib/payments/credits-store";
 import { PASSES } from "@/lib/payments/passes";
-import { providerMode, providerOpenTo, providersFor } from "@/lib/payments/providers";
+import {
+  providerMode,
+  providerOpenTo,
+  providerSettleMode,
+  providersFor,
+} from "@/lib/payments/providers";
 import { stripeProvider } from "@/lib/payments/providers/stripe";
 import {
   createCheckoutSession,
   hmacSha256Hex,
   readStripeEvent,
   stripeEnabled,
+  stripeKeyMode,
   stripeMode,
   stripeOpenTo,
 } from "@/lib/payments/stripe";
@@ -27,7 +33,8 @@ import { claimInvite, getOrCreateInviteCode } from "@/lib/referrals/store";
 
 /**
  * Stripe's test/live switch. What matters: nothing charges real money unless
- * the owner set a live key AND STRIPE_LIVE=1; any other combination is off; a
+ * the owner set a live key AND turned the payments.stripe.live flag on; any
+ * other combination is off; a
  * test-mode payment is offered to, and credits, the owner only — marked as test
  * mode — and a signed event for the other mode credits nothing.
  */
@@ -42,8 +49,8 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
+/** The key on the Worker; the live FLAG is passed to the functions that start a payment. */
 function env(mode: "test" | "live" | "none", key?: string) {
-  delete process.env.STRIPE_LIVE;
   process.env.OWNER_EMAILS = OWNER;
   if (mode === "none") {
     delete process.env.STRIPE_SECRET_KEY;
@@ -52,7 +59,6 @@ function env(mode: "test" | "live" | "none", key?: string) {
   }
   process.env.STRIPE_SECRET_KEY = key ?? (mode === "live" ? "sk_live_x" : "sk_test_x");
   process.env.STRIPE_WEBHOOK_SECRET = WH;
-  if (mode === "live") process.env.STRIPE_LIVE = "1";
 }
 
 function setup() {
@@ -97,31 +103,51 @@ async function delivery(
   });
 }
 
+const LIVE = { "payments.stripe.live": true } as const;
+
 describe("stripeMode", () => {
-  test("test needs sk_test_ and no flag; live needs sk_live_ and STRIPE_LIVE=1; else off", () => {
+  test("test needs sk_test_ and the flag off; live needs sk_live_ and the flag on; else off", () => {
     const base = { STRIPE_SECRET_KEY: "sk_test_a", STRIPE_WEBHOOK_SECRET: "w" };
+    const liveKey = { ...base, STRIPE_SECRET_KEY: "sk_live_a" };
     expect(stripeMode({})).toBeNull();
     expect(stripeMode({ STRIPE_SECRET_KEY: "sk_test_a" })).toBeNull();
     expect(stripeMode({ STRIPE_WEBHOOK_SECRET: "w" })).toBeNull();
     expect(stripeMode({ ...base, STRIPE_WEBHOOK_SECRET: "  " })).toBeNull();
     expect(stripeMode(base)).toBe("test");
+    expect(stripeMode(base, { "payments.stripe.live": false })).toBe("test");
     expect(stripeMode({ ...base, STRIPE_SECRET_KEY: "  sk_test_a  " })).toBe("test");
-    expect(stripeMode({ ...base, STRIPE_LIVE: "1" })).toBeNull(); // test key, live flag
-    expect(stripeMode({ ...base, STRIPE_SECRET_KEY: "sk_live_a" })).toBeNull(); // live key, no flag
-    expect(stripeMode({ ...base, STRIPE_SECRET_KEY: "sk_live_a", STRIPE_LIVE: "1" })).toBe("live");
-    expect(stripeMode({ ...base, STRIPE_SECRET_KEY: "sk_live_a", STRIPE_LIVE: " 1 " })).toBe(
-      "live",
-    );
-    for (const flag of ["true", "yes", "0", ""])
-      expect(stripeMode({ ...base, STRIPE_SECRET_KEY: "sk_live_a", STRIPE_LIVE: flag })).toBeNull();
+    expect(stripeMode(base, LIVE)).toBeNull(); // test key, live flag
+    expect(stripeMode(liveKey)).toBeNull(); // live key, flag off: no test mode on a live key
+    expect(stripeMode(liveKey, LIVE)).toBe("live");
+    // The old env switch is gone: STRIPE_LIVE no longer turns anything on.
+    expect(stripeMode({ ...liveKey, STRIPE_LIVE: "1" })).toBeNull();
+    // Only exactly true is on (a snapshot is typed, but fail closed anyway).
+    for (const v of ["true", 1, null, undefined])
+      expect(stripeMode(liveKey, { "payments.stripe.live": v as never })).toBeNull();
+    // KOMOJU's flag does not open Stripe.
+    expect(stripeMode(liveKey, { "payments.komoju.live": true })).toBeNull();
     // Any key whose prefix does not prove its mode is off either way —
     // restricted keys included (the code uses a full secret key only).
     for (const k of ["rk_test_a", "rk_live_a", "pk_live_a", "pk_test_a", "sk_a", "SK_LIVE_A"]) {
       expect(stripeMode({ ...base, STRIPE_SECRET_KEY: k })).toBeNull();
-      expect(stripeMode({ ...base, STRIPE_SECRET_KEY: k, STRIPE_LIVE: "1" })).toBeNull();
+      expect(stripeMode({ ...base, STRIPE_SECRET_KEY: k }, LIVE)).toBeNull();
+      expect(stripeKeyMode({ ...base, STRIPE_SECRET_KEY: k })).toBeNull();
     }
     expect(stripeEnabled(base)).toBe(true);
-    expect(stripeEnabled({ ...base, STRIPE_LIVE: "1" })).toBe(false);
+    expect(stripeEnabled(base, LIVE)).toBe(false);
+    expect(stripeEnabled(liveKey, LIVE)).toBe(true);
+  });
+
+  test("the key alone decides how the webhook settles (flags ignored)", () => {
+    const base = { STRIPE_SECRET_KEY: "sk_test_a", STRIPE_WEBHOOK_SECRET: "w" };
+    expect(stripeKeyMode({})).toBeNull();
+    expect(stripeKeyMode({ STRIPE_SECRET_KEY: "sk_live_a" })).toBeNull();
+    expect(stripeKeyMode(base)).toBe("test");
+    expect(stripeKeyMode({ ...base, STRIPE_SECRET_KEY: "sk_live_a" })).toBe("live");
+    expect(providerSettleMode(stripeProvider, { ...base, STRIPE_SECRET_KEY: "sk_live_a" })).toBe(
+      "live",
+    );
+    expect(providerSettleMode(stripeProvider, {})).toBeNull();
   });
 
   test("test mode is the owner's alone; live is everyone's", () => {
@@ -131,15 +157,18 @@ describe("stripeMode", () => {
     expect(stripeOpenTo("u@x.com", t)).toBe(false);
     expect(stripeOpenTo(null, t)).toBe(false);
     expect(stripeOpenTo(OWNER, { ...t, OWNER_EMAILS: "" })).toBe(false);
-    const live = { ...t, STRIPE_SECRET_KEY: "sk_live_a", STRIPE_LIVE: "1" };
-    expect(stripeOpenTo("u@x.com", live)).toBe(true);
-    expect(stripeOpenTo(null, live)).toBe(true);
-    expect(stripeOpenTo(OWNER, { ...t, STRIPE_LIVE: "1" })).toBe(false);
+    const live = { ...t, STRIPE_SECRET_KEY: "sk_live_a" };
+    expect(stripeOpenTo("u@x.com", live, LIVE)).toBe(true);
+    expect(stripeOpenTo(null, live, LIVE)).toBe(true);
+    expect(stripeOpenTo(OWNER, live)).toBe(false); // live key, flag off: off for the owner too
+    expect(stripeOpenTo(OWNER, t, LIVE)).toBe(false);
     // The wallet's provider list follows the same rule.
     expect(providerMode(stripeProvider, t)).toBe("test");
     expect(providerOpenTo(stripeProvider, "u@x.com", t)).toBe(false);
     expect(providersFor(OWNER, t).map((p) => p.id)).toEqual(["stripe"]);
-    expect(providersFor("u@x.com", live).map((p) => p.id)).toEqual(["stripe"]);
+    expect(providersFor("u@x.com", live, LIVE).map((p) => p.id)).toEqual(["stripe"]);
+    expect(providersFor("u@x.com", live).map((p) => p.id)).toEqual([]);
+    expect(providersFor(OWNER, live).map((p) => p.id)).toEqual([]);
   });
 });
 
@@ -159,24 +188,31 @@ describe("createCheckoutSession", () => {
     return calls;
   };
 
-  test("off: never calls Stripe", async () => {
+  test("off, or a key not in the caller's mode: never calls Stripe", async () => {
     env("test", "rk_live_x");
     const calls = answer(true);
-    await expect(createCheckoutSession(input)).rejects.toThrow("Stripe is off");
+    await expect(createCheckoutSession(input, "live")).rejects.toThrow("Stripe is off");
+    await expect(createCheckoutSession(input, "test")).rejects.toThrow("Stripe is off");
+    env("test");
+    await expect(createCheckoutSession(input, "live")).rejects.toThrow("Stripe is off");
+    env("live");
+    await expect(createCheckoutSession(input, "test")).rejects.toThrow("Stripe is off");
     expect(calls).toHaveLength(0);
   });
 
   test("a session in the other mode is refused", async () => {
     env("test");
     answer(true);
-    await expect(createCheckoutSession(input)).rejects.toThrow("mode mismatch");
+    await expect(createCheckoutSession(input, "test")).rejects.toThrow("mode mismatch");
     env("live");
     answer(false);
-    await expect(createCheckoutSession(input)).rejects.toThrow("mode mismatch");
+    await expect(createCheckoutSession(input, "live")).rejects.toThrow("mode mismatch");
     answer(undefined);
-    await expect(createCheckoutSession(input)).rejects.toThrow("mode mismatch");
+    await expect(createCheckoutSession(input, "live")).rejects.toThrow("mode mismatch");
     answer(true);
-    expect(await createCheckoutSession(input)).toBe("https://checkout.stripe.com/c/pay/cs_1");
+    expect(await createCheckoutSession(input, "live")).toBe(
+      "https://checkout.stripe.com/c/pay/cs_1",
+    );
   });
 });
 
@@ -217,9 +253,8 @@ describe("handleStripeWebhook", () => {
   test("off (no secrets, or keys that do not prove the mode) → 503, nothing written", async () => {
     for (const [mode, key] of [
       ["none", undefined],
-      ["test", "sk_live_x"],
       ["test", "rk_test_x"],
-      ["live", "sk_test_x"],
+      ["live", "rk_live_x"],
     ] as const) {
       env(mode, key);
       const r = await handleStripeWebhook(d1, await delivery(pass("owner")), NOW);
@@ -382,7 +417,7 @@ describe("stripe on the provider webhook route", () => {
   test("off → 503; other mode → 400; test credits the owner only, noted", async () => {
     const d1 = setup();
     const req = (s: unknown, o?: Parameters<typeof delivery>[1]) => delivery(s, o);
-    env("test", "sk_live_x");
+    env("test", "rk_live_x");
     expect(
       (await handleProviderWebhook(d1, stripeProvider, await req(topup("owner")))).status,
     ).toBe(503);
@@ -415,5 +450,51 @@ describe("stripe on the provider webhook route", () => {
     ).toBe("applied");
     expect(await getBalance(d1, "owner")).toBe(0);
     expect(await getTestBalance(d1, "owner")).toBe(1200);
+  });
+});
+
+describe("a flag flip while a checkout is in flight", () => {
+  /**
+   * The rule (docs/payments.md, "Live mode and the kill switch"): the flag
+   * gates STARTING a payment; the webhook settles by the key alone. A live
+   * session can only have been started while the flag was on, so a genuinely
+   * live, signed event is credited after the flag was turned off — the kill
+   * switch never loses a customer's money.
+   */
+  test("started live, flag turned off, then paid: the pass and the top-up are credited", async () => {
+    const d1 = setup();
+    env("live");
+    // While the flag is on, the session may start…
+    expect(stripeMode(process.env, LIVE)).toBe("live");
+    // …then the owner flips it off: nothing new may start, for anyone.
+    expect(stripeMode(process.env, {})).toBeNull();
+    expect(stripeOpenTo("u@x.com", process.env, {})).toBe(false);
+    // The webhook for the session already paid still credits, as real money.
+    const r = await handleStripeWebhook(d1, await delivery(pass("u"), { livemode: true }), NOW);
+    expect(r.body.status).toBe("applied");
+    const t = await handleStripeWebhook(d1, await delivery(topup("u"), { livemode: true }), NOW);
+    expect(t.body.status).toBe("applied");
+    expect(await getBalance(d1, "u")).toBe(1200);
+    // Same on the provider route.
+    const p = await handleProviderWebhook(
+      d1,
+      stripeProvider,
+      await delivery(topup("u", "cs_t_late"), { livemode: true }),
+      NOW,
+    );
+    expect(p.body.status).toBe("applied");
+    expect(await getBalance(d1, "u")).toBe(2400);
+  });
+
+  test("a test event on a live key is still refused, flag or not", async () => {
+    const d1 = setup();
+    env("live");
+    const r = await handleStripeWebhook(d1, await delivery(pass("owner")), NOW);
+    expect(r).toEqual({ status: 503, body: { error: "Mode mismatch" } });
+    expect(
+      (await handleProviderWebhook(d1, stripeProvider, await delivery(topup("owner")), NOW)).status,
+    ).toBe(400);
+    expect(await getBalance(d1, "owner")).toBe(0);
+    expect(await getTestBalance(d1, "owner")).toBe(0);
   });
 });

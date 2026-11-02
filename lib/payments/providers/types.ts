@@ -4,6 +4,8 @@
  * ledger, idempotency and the no-negative rule live in credits-store.ts, the
  * same for all of them. How to add one: docs/payments.md, "Adding a provider".
  */
+import type { FlagValues } from "@/lib/flags";
+
 export type ProviderId =
   | "stripe"
   | "komoju"
@@ -67,14 +69,30 @@ export interface PaymentProvider {
   /** Env vars / Worker secrets that must all be set for it to be enabled. */
   envKeys: string[];
   /**
-   * Test or live, from the server's env; null = off even with every envKey set
-   * (e.g. a key that contradicts the mode). Absent = live whenever enabled.
+   * Whether a payment may START, and in which mode: from the server's env and
+   * the owner's feature flags (a `readFlags()` snapshot; lib/flags.ts); null =
+   * off even with every envKey set (e.g. a live key with its live flag off).
+   * Absent = live whenever enabled.
    */
-  mode?(env?: Record<string, string | undefined>): ProviderMode | null;
+  mode?(env?: Record<string, string | undefined>, flags?: FlagValues): ProviderMode | null;
+  /**
+   * The mode its webhook SETTLES in: what the key alone proves, flags ignored,
+   * so a payment started while the live flag was on is still credited after it
+   * is turned off. Absent = `mode` with no flags.
+   */
+  keyMode?(env?: Record<string, string | undefined>): ProviderMode | null;
   /** False for a reserved slot whose adapter is not written yet. */
   implemented: boolean;
-  /** Start a top-up of `amount` JPY. Required for `checkout` providers. */
-  createTopup?(amount: number, user: TopupUser, urls: TopupUrls): Promise<TopupStart>;
+  /**
+   * Start a top-up of `amount` JPY in `mode` (the caller's `providerMode`).
+   * Required for `checkout` providers.
+   */
+  createTopup?(
+    amount: number,
+    user: TopupUser,
+    urls: TopupUrls,
+    mode: ProviderMode,
+  ): Promise<TopupStart>;
   /** Verify and read a webhook delivery. Must check the provider's signature. */
   verifyWebhook(req: Request): Promise<WebhookOutcome>;
 }

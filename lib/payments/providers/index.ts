@@ -4,6 +4,7 @@
  * set on the Worker and its mode is not off; a test-mode provider is shown to
  * the owner alone.
  */
+import type { FlagValues } from "@/lib/flags";
 import { isOwner } from "@/lib/owner";
 import { komojuProvider } from "./komoju";
 import { stripeProvider } from "./stripe";
@@ -26,14 +27,43 @@ export const PROVIDERS: PaymentProvider[] = [
 
 type Env = Record<string, string | undefined>;
 
-/** Test or live; null when the provider is off. */
-export function providerMode(p: PaymentProvider, env: Env = process.env): ProviderMode | null {
-  if (!p.implemented || !p.envKeys.every((k) => Boolean(env[k]?.trim()))) return null;
+function configured(p: PaymentProvider, env: Env): boolean {
+  return p.implemented && p.envKeys.every((k) => Boolean(env[k]?.trim()));
+}
+
+/**
+ * Whether a payment through `p` may START, test or live; null when off.
+ * `flags` is a `readFlags()` snapshot (lib/flags-store.ts); a missing flag is
+ * off, so a live provider needs its live flag on.
+ */
+export function providerMode(
+  p: PaymentProvider,
+  env: Env = process.env,
+  flags: FlagValues = {},
+): ProviderMode | null {
+  if (!configured(p, env)) return null;
+  return p.mode ? p.mode(env, flags) : "live";
+}
+
+/**
+ * The mode `p`'s webhook settles in: the key alone, flags ignored, so a
+ * payment started while live was on is credited after it is turned off.
+ */
+export function providerSettleMode(
+  p: PaymentProvider,
+  env: Env = process.env,
+): ProviderMode | null {
+  if (!configured(p, env)) return null;
+  if (p.keyMode) return p.keyMode(env);
   return p.mode ? p.mode(env) : "live";
 }
 
-export function providerEnabled(p: PaymentProvider, env: Env = process.env): boolean {
-  return providerMode(p, env) !== null;
+export function providerEnabled(
+  p: PaymentProvider,
+  env: Env = process.env,
+  flags: FlagValues = {},
+): boolean {
+  return providerMode(p, env, flags) !== null;
 }
 
 /** Whether `email` may pay through `p`: live for everyone, test for the owner only. */
@@ -41,18 +71,23 @@ export function providerOpenTo(
   p: PaymentProvider,
   email: string | null | undefined,
   env: Env = process.env,
+  flags: FlagValues = {},
 ): boolean {
-  const mode = providerMode(p, env);
+  const mode = providerMode(p, env, flags);
   return mode === "live" || (mode === "test" && isOwner(email, env.OWNER_EMAILS));
 }
 
-export function enabledProviders(env: Env = process.env) {
-  return PROVIDERS.filter((p) => providerEnabled(p, env));
+export function enabledProviders(env: Env = process.env, flags: FlagValues = {}) {
+  return PROVIDERS.filter((p) => providerEnabled(p, env, flags));
 }
 
 /** The providers `email` may pay through. */
-export function providersFor(email: string | null | undefined, env: Env = process.env) {
-  return PROVIDERS.filter((p) => providerOpenTo(p, email, env));
+export function providersFor(
+  email: string | null | undefined,
+  env: Env = process.env,
+  flags: FlagValues = {},
+) {
+  return PROVIDERS.filter((p) => providerOpenTo(p, email, env, flags));
 }
 
 export function providerFor(id: unknown): PaymentProvider | null {
@@ -60,10 +95,10 @@ export function providerFor(id: unknown): PaymentProvider | null {
 }
 
 /** What the page needs to render a provider choice. */
-export function publicProvider(p: PaymentProvider, env: Env = process.env) {
+export function publicProvider(p: PaymentProvider, env: Env = process.env, flags: FlagValues = {}) {
   return {
     id: p.id,
-    label: providerMode(p, env) === "test" ? `${p.label} (test)` : p.label,
+    label: providerMode(p, env, flags) === "test" ? `${p.label} (test)` : p.label,
     methods: p.methods,
     kind: p.kind,
   };

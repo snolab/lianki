@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { QUICK_TOPUPS, TOPUP_MAX, TOPUP_MIN } from "@/lib/payments/credits";
 import { getBalance, getTestBalance, ledger, testLedger } from "@/lib/payments/credits-store";
+import { readFlags } from "@/lib/flags-store";
 import { providersFor, publicProvider } from "@/lib/payments/providers";
 
 /**
@@ -16,7 +17,10 @@ export async function GET() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const d1 = getD1();
-  const providers = providersFor(session.user.email).map((p) => publicProvider(p));
+  const flags = await readFlags();
+  const providers = providersFor(session.user.email, process.env, flags).map((p) =>
+    publicProvider(p, process.env, flags),
+  );
   // Test-mode top-ups (owner only), kept apart: not part of `balance`, not spendable.
   const testEntries = await testLedger(d1, session.user.id, 50);
   return NextResponse.json({

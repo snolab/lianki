@@ -343,7 +343,6 @@ describe("provider adapters", () => {
   });
 
   test("Stripe createTopup redirects to a Checkout Session for the amount", async () => {
-    delete process.env.STRIPE_LIVE;
     process.env.STRIPE_SECRET_KEY = "sk_test_x";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_t";
     let body = "";
@@ -355,6 +354,7 @@ describe("provider adapters", () => {
       3000,
       { id: "u", email: "u@x.com" },
       { successUrl: "https://x/ok", cancelUrl: "https://x/no" },
+      "test",
     );
     expect(start).toEqual({ kind: "redirect", url: "https://checkout.stripe.com/c/pay/cs_t" });
     expect(body).toContain("metadata%5Bkind%5D=topup");
@@ -362,7 +362,6 @@ describe("provider adapters", () => {
   });
 
   test("Stripe verifyWebhook: signed top-up → paid; bad signature → invalid", async () => {
-    delete process.env.STRIPE_LIVE;
     process.env.STRIPE_SECRET_KEY = "sk_test_x";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_t";
     const event = (type: string) =>

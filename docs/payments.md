@@ -30,22 +30,26 @@ Node-only reaches the Worker. D1 only — on the Mongo backend the routes 503.
 
 ## Turning it on
 
-Stripe has a **test / live mode** decided by the Worker's settings only
-(`stripeMode` in `lib/payments/stripe.ts`), and it fails closed — the same
-rule as KOMOJU:
+Stripe has a **test / live mode** decided by the server alone — the key's
+prefix and the owner's **`payments.stripe.live` feature flag**
+([feature-flags.md](feature-flags.md), toggled at `/dev/flags`, no deploy, no
+secret change) — in `stripeMode` (`lib/payments/stripe.ts`). It fails closed,
+the same rule as KOMOJU:
 
-| `STRIPE_SECRET_KEY` | `STRIPE_LIVE` | mode     | who can see and pay                     |
-| ------------------- | ------------- | -------- | --------------------------------------- |
-| `sk_test_…`         | unset         | **test** | the owner (`OWNER_EMAILS`) only         |
-| `sk_live_…`         | `1`           | **live** | everyone                                |
-| anything else       | anything      | **off**  | nobody: checkout and webhook answer 503 |
+| `STRIPE_SECRET_KEY` | flag `payments.stripe.live` | mode     | who can see and pay            |
+| ------------------- | --------------------------- | -------- | ------------------------------ |
+| `sk_test_…`         | off                         | **test** | the owner (`OWNER_EMAILS`) only |
+| `sk_live_…`         | **on**                      | **live** | everyone                       |
+| `sk_live_…`         | off                         | **off**  | nobody — no test mode on a live key |
+| anything else       | anything                    | **off**  | nobody: checkout answers 503   |
 
 "Anything else" includes a missing `STRIPE_WEBHOOK_SECRET`, a test key with
-`STRIPE_LIVE=1`, a live key without it, `STRIPE_LIVE` set to anything but
-`1`, and any other key format — restricted `rk_…` keys too (the code uses a
-full secret key; accepting `rk_live_` would be a one-line, reviewed change in
-`stripeMode`). So nothing charges real money until the owner sets both a live
-key and the flag on purpose.
+the flag on, and any other key format — restricted `rk_…` keys too (the code
+uses a full secret key; accepting `rk_live_` would be a one-line, reviewed
+change in `stripeKeyMode`). A flag that cannot be read (D1 error, the Mongo
+backend) reads as **off**. So nothing charges real money until the owner has
+set a live key _and_ turned the flag on, on purpose. The old `STRIPE_LIVE`
+secret is no longer read; delete it if it is set.
 
 In **test** mode (`lib/payments/stripe-webhook.ts`):
 
@@ -61,8 +65,8 @@ In **test** mode (`lib/payments/stripe-webhook.ts`):
   `credit_test_ledger`, never to the spendable balance (see "Test credits"
   under Providers).
 
-In both modes a signed event whose `livemode` disagrees with the mode (the
-secrets are mixed up) credits nothing: it answers 503 and logs
+In both modes a signed event whose `livemode` disagrees with the key's mode
+(the secrets are mixed up) credits nothing: it answers 503 and logs
 `payments.stripe.mode-mismatch`, so Stripe retries for up to 3 days while the
 secrets are fixed. A new Checkout Session whose `livemode` disagrees is
 refused before the redirect.
@@ -73,7 +77,6 @@ refused before the redirect.
 | ------------------------ | ----------------------------------------------------------- |
 | `STRIPE_SECRET_KEY`      | `sk_test_…` (test) or `sk_live_…` (live) — Developers → API keys |
 | `STRIPE_WEBHOOK_SECRET`  | `whsec_…` of the webhook endpoint below, **in the same mode** |
-| `STRIPE_LIVE`            | `1` for live; unset for test                                |
 | `STRIPE_PAYMENT_METHODS` | optional, comma-separated (default `card,alipay,wechat_pay`) |
 
 Each is a Worker secret (`bunx wrangler secret put <name>`); secrets apply at
@@ -93,8 +96,8 @@ In the Stripe Dashboard (once per mode — test and live are separate):
 1. Dashboard in **test mode**: add the webhook endpoint above; copy its
    signing secret.
 2. `bunx wrangler secret put STRIPE_SECRET_KEY` (the `sk_test_…` key) and
-   `bunx wrangler secret put STRIPE_WEBHOOK_SECRET` (that `whsec_…`). No
-   `STRIPE_LIVE`.
+   `bunx wrangler secret put STRIPE_WEBHOOK_SECRET` (that `whsec_…`). Leave
+   the `payments.stripe.live` flag **off**.
 3. As the owner, buy a pass on `/membership` with card `4242 4242 4242 4242`
    (Checkout shows "Test mode"): Pro is extended and the `payment` row has
    `testMode = 1`. Top up ¥100 with "Stripe (test)": `/dev/credits` shows it
@@ -109,24 +112,60 @@ review asks for them), and the owner's 資格外活動許可. Then:
 1. Dashboard in **live mode** → Developers → Webhooks → add
    `https://lianki.com/api/payments/stripe-webhook` with the two events above;
    copy its (live) signing secret. Enable Alipay and WeChat Pay in live mode.
-2. Put the live secrets on the Worker, the flag last:
+2. **Set the keys**, then **flip the flag**:
 
    ```bash
    bunx wrangler secret put STRIPE_SECRET_KEY      # the live secret key (sk_live_…)
    bunx wrangler secret put STRIPE_WEBHOOK_SECRET  # the live endpoint's whsec_…
-   bunx wrangler secret put STRIPE_LIVE            # 1
    ```
 
-   Between the first put and the last, Stripe is **off** (a live key without
-   the flag is refused) — nothing half-live.
+   With a live key and the flag still off, Stripe is **off** for everyone,
+   the owner included — nothing half-live, and no test mode on a live key.
+   Then turn **`payments.stripe.live`** on at `https://lianki.com/dev/flags`;
+   it reaches every request within 30 s, no deploy.
 3. **One small real payment**: as the owner, top up **¥100** by card
    (Stripe now has no "(test)" label, and a second, non-owner account sees it
    too). Check: `wrangler tail lianki` shows no error; the balance is +¥100
    with a `topup` entry `stripe:<session id>` in the real ledger; the
    Dashboard shows the payment and the webhook delivery 200. Then refund it in
    the Dashboard and take it back at `/dev/credits` (撤回充值).
-4. If anything is off: `bunx wrangler secret delete STRIPE_LIVE` turns Stripe
-   off at once.
+4. **Kill switch**: turn `payments.stripe.live` off at `/dev/flags`. Within
+   30 s no new checkout or top-up can start, for anyone (see below for the
+   payments already in flight).
+
+### Live mode and the kill switch
+
+The flag gates **starting** a payment; the webhook **settles** by the key
+alone (`stripeKeyMode`, `komojuKeyMode`, `providerSettleMode`). The rule:
+
+- **Starting** (checkout, top-up, the buy buttons) reads the flags once per
+  request (`readFlags()`, `lib/flags-store.ts`) and uses that one snapshot for
+  the gate and for the session it creates. Unreadable = off.
+- **Settling**: a webhook whose event is genuinely live — Stripe: signed with
+  the live endpoint's secret and `livemode: true` against an `sk_live_` key;
+  KOMOJU: re-read from the API with the `sk_live_` key — is credited **whatever
+  the flag says now**. Such a payment can only have been started by this
+  server while the flag was on: only the checkout and top-up routes create
+  sessions carrying our `userId` metadata, and only in live mode. Rejecting it
+  after a flip would take a customer's money and give nothing back.
+- Why the webhook does not look the flip up in the flag log instead: a
+  session can start up to 30 s after a flip in an isolate whose cache had not
+  caught up, and a konbini or bank-transfer payment started before the flip is
+  paid days later. Both are real money this server asked for; a time check
+  would refuse them.
+- So the kill switch **stops new payments** within 30 s and never drops paid
+  ones. A payment page already issued stays payable until it expires: a Stripe
+  Checkout link is created with `expires_at` 31 minutes out
+  (`CHECKOUT_EXPIRES_S`, Stripe's 30-minute minimum plus a minute for clock
+  skew) instead of Stripe's 24 h default; a KOMOJU session keeps KOMOJU's own
+  expiry, and a konbini slip its payment deadline. To stop crediting as well (a leaked key, say), rotate or delete the
+  keys — the webhook then answers 503 and the provider retries (Stripe for 3
+  days, KOMOJU for 25), so nothing is lost while it is fixed.
+- A test event against a live key (or the reverse) is still refused, flag or
+  not (`payments.stripe.mode-mismatch`).
+
+Unit tests: "a flag flip while a checkout is in flight" in
+`unit/stripe-mode.test.ts` and `unit/komoju.test.ts`.
 
 ## Known gaps
 
@@ -215,8 +254,8 @@ credits at `/dev/credits` (adjust) instead.
 
 | id                | kind     | methods                                     | env (secrets)                                  | state       |
 | ----------------- | -------- | ------------------------------------------- | ---------------------------------------------- | ----------- |
-| `stripe`          | checkout | card, Alipay, WeChat Pay                    | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (+ `STRIPE_LIVE=1` for live) | implemented — test mode until live ([above](#turning-it-on)) |
-| `komoju`          | checkout | card, konbini, PayPay, Alipay, WeChat Pay   | `KOMOJU_SECRET_KEY`, `KOMOJU_WEBHOOK_SECRET` (+ `KOMOJU_LIVE=1` for live) | implemented — test mode until live (below) |
+| `stripe`          | checkout | card, Alipay, WeChat Pay                    | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (+ flag `payments.stripe.live` for live) | implemented — test mode until live ([above](#turning-it-on)) |
+| `komoju`          | checkout | card, konbini, PayPay, Alipay, WeChat Pay   | `KOMOJU_SECRET_KEY`, `KOMOJU_WEBHOOK_SECRET` (+ flag `payments.komoju.live` for live) | implemented — test mode until live (below) |
 | `payjp`           | checkout | card (3-D Secure, checkout-policy.ts)       | `PAYJP_SECRET_KEY`, `PAYJP_WEBHOOK_TOKEN`      | slot        |
 | `paddle`          | checkout | card, PayPal, Apple Pay                     | `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`      | slot        |
 | `usdt`            | checkout | USDT TRC-20 / ERC-20 (QR)                   | `USDT_GATEWAY_API_KEY`, `USDT_GATEWAY_WEBHOOK_SECRET` | slot |
@@ -233,13 +272,17 @@ credits the wallet as `sponsor`.
 `lib/payments/providers/komoju.ts`, webhook handling in
 `lib/payments/webhook.ts`, tests in `unit/komoju.test.ts`.
 
-- **Mode** comes from the Worker's settings only (`komojuMode`), and fails
-  closed: **test** needs an `sk_test_…` key and no `KOMOJU_LIVE`; **live**
-  needs an `sk_live_…` key _and_ `KOMOJU_LIVE=1`; anything else — a missing
-  secret, a key that disagrees with the flag, or a key in any other format
-  (KOMOJU decides the mode by the key alone and has no API field that says
-  which) — is **off**: no session, no credit. So nothing charges real money
-  until the owner sets both a live key and the flag on purpose.
+- **Mode** comes from the server only (`komojuMode`), and fails closed:
+  **test** needs an `sk_test_…` key and the **`payments.komoju.live`** flag
+  off; **live** needs an `sk_live_…` key _and_ the flag on (`/dev/flags`);
+  anything else — a missing secret, a live key with the flag off, a test key
+  with it on, a flag that cannot be read, or a key in any other format (KOMOJU
+  decides the mode by the key alone and has no API field that says which) — is
+  **off**: no new session. So nothing charges real money until the owner sets
+  a live key and turns the flag on, on purpose. The webhook settles by the key
+  alone, so a payment started while live was on still credits after the flag
+  is turned off ("Live mode and the kill switch", above). The old
+  `KOMOJU_LIVE` secret is no longer read; delete it if it is set.
 - **Top-up**: `POST /api/payments/topup` (rate limit + Turnstile, amount
   validated on the server, ¥100–¥10,000) creates a KOMOJU session —
   `amount`, `currency: JPY`, `return_url` `/membership?topup=1`, and
@@ -281,10 +324,11 @@ button.
    ```bash
    bunx wrangler secret put KOMOJU_SECRET_KEY      # the live secret key (sk_live_…)
    bunx wrangler secret put KOMOJU_WEBHOOK_SECRET  # the live webhook's secret token
-   bunx wrangler secret put KOMOJU_LIVE            # 1
    ```
 
-   Secrets apply at once, no deploy needed. The live key must start with
+   Secrets apply at once, no deploy needed; with the flag still off KOMOJU is
+   **off** for everyone. Then turn **`payments.komoju.live`** on at
+   `https://lianki.com/dev/flags` (within 30 s, no deploy). The live key must start with
    `sk_live_`; if KOMOJU's live key has another format, KOMOJU stays **off**
    (no button anywhere) — accepting that format is then a one-line code change
    in `komojuMode`, reviewed like any payment change.
@@ -295,13 +339,14 @@ button.
    KOMOJU dashboard shows the payment captured and the
    webhook delivery 200. Then refund it in the KOMOJU dashboard and check the
    wallet goes back to its old balance (a `refund` entry `topup:komoju:…`).
-4. If anything is off: `bunx wrangler secret delete KOMOJU_LIVE` turns
-   KOMOJU off at once (an `sk_live_` key without the flag is refused).
+4. **Kill switch**: turn `payments.komoju.live` off at `/dev/flags` — no new
+   KOMOJU payment starts within 30 s; payments already started (a konbini
+   slip printed before the flip) still credit when paid.
 
 #### Adding a provider
 
 1. Write `lib/payments/providers/<id>.ts` exporting a `PaymentProvider`
-   (`types.ts`): `createTopup(amount, user, urls)` returns
+   (`types.ts`): `createTopup(amount, user, urls, mode)` returns
    `{kind: "redirect", url}` or `{kind: "qr", qr}`; `verifyWebhook(req)` checks
    the provider's signature (Web Crypto, constant time — no Node-only SDKs on
    the Worker) and returns `{status: "paid", paymentId, amount, userId}`, or
@@ -319,6 +364,10 @@ button.
    provider is called.
 6. Unit-test its webhook parsing; idempotency comes from the ledger
    (`<id>:<paymentId>`), not from the adapter.
+7. If it has a test/live mode, give it a `payments.<id>.live` flag in
+   `lib/flags.ts`, a `mode(env, flags)` that needs the live key _and_ the flag
+   (live key + flag off = off), and a `keyMode(env)` for its webhook that reads
+   the key alone ("Live mode and the kill switch").
 
 ### Open questions (owner)
 
