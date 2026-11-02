@@ -151,6 +151,9 @@ export type EnrolView =
   | { step: "deleted"; files: number }
   | { step: "error"; error: string };
 
+/** An enrolment under way: sentences being recorded or saved, lost if the page goes (lib/page-dirty.ts). */
+export const enrolBusy = (v: EnrolView) => v.step === "recording" || v.step === "saving";
+
 export type AgainReason = "short" | "noise" | "mismatch" | "text" | "unreachable";
 
 /** What the card needs of the page (the local STT socket, the mic session). */

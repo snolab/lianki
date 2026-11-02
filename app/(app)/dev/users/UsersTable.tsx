@@ -68,6 +68,7 @@ export default function UsersTable({ rows, now }: { rows: DevUserRow[]; now: num
         {stat("数据总量", size(rows.reduce((s, u) => s + u.bytes, 0)))}
       </div>
       <input
+        type="search"
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="搜索邮箱或名字"

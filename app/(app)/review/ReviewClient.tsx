@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { createUiStore, useUi } from "@lianki/ui-state";
 import { useInputModality } from "@/lib/use-input-modality";
+import { useLeaveGuard } from "@/lib/use-leave-guard";
 import {
   api,
   bookmarkletSource,
@@ -87,6 +88,8 @@ export default function ReviewClient({
   const promptRef = useRef<HTMLHeadingElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+  // A grade in flight holds the deploy auto-reload (lib/page-dirty.ts).
+  useLeaveGuard(busy, ["reload"]);
   const [flash, setFlash] = useState<string | null>(null);
   const modality = useInputModality();
   const gradedText = t.graded.value;

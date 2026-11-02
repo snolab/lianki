@@ -58,4 +58,7 @@ coveragePathIgnorePatterns = [
   # (swipe-physics, swipe-machine, swipe-feel); the glue needs a browser and is
   # covered by qa-words' phone checks (light and heavy, both swipes).
   "lib/words/swipe-core.tsx",
+  # A React hook over lib/page-dirty.ts's registry (held to 90% here); it is
+  # only loaded because swipe-core.tsx calls it.
+  "lib/use-leave-guard.ts",
 ]

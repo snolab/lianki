@@ -19,7 +19,9 @@ import {
   type EnrolDeps,
   type EnrolView,
   createEnrolment,
+  enrolBusy,
 } from "./voiceprint";
+import { notifyDirty, registerDirtyCheck } from "@lianki/ui-state/dirty";
 import type { ChatStrings } from "./wire";
 
 const line = (pct: number) => `color-mix(in oklch, currentColor ${pct}%, transparent)`;
@@ -70,7 +72,16 @@ export function VoiceprintPanel({
   deps: () => EnrolDeps & { close?(): void };
   onClose: () => void;
 }) {
-  const [view, setView] = useState<EnrolView>({ step: "closed" });
+  const [view, setViewState] = useState<EnrolView>({ step: "closed" });
+  // Read by the page's dirty check at once, not after the next render.
+  const viewNow = useRef<EnrolView>(view);
+  const setView = (v: EnrolView) => {
+    viewNow.current = v;
+    setViewState(v);
+    notifyDirty();
+  };
+  // An enrolment under way holds the deploy auto-reload and the leave guard (lib/page-dirty.ts).
+  useEffect(() => registerDirtyCheck(() => enrolBusy(viewNow.current)), []);
   const ctl = useRef<{ c: ReturnType<typeof createEnrolment>; d: EnrolDeps & { close?(): void } } | null>(
     null,
   );

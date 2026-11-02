@@ -1,16 +1,18 @@
 import { ServiceWorkerRegistration } from "./ServiceWorkerRegistration";
 import { NewVersionNotice } from "./NewVersionNotice";
 import { DebugEval, type PartnerStrings } from "./DebugEval";
+import { LeaveGuard } from "./LeaveGuard";
 
 /**
  * What every page but the partner frame mounts: the service worker, the
- * version notice, and DebugEval (the owner's debug socket, pairing / Allow
+ * version notice, the unsaved-changes guard (LeaveGuard), and DebugEval (the owner's debug socket, pairing / Allow
  * UI, remote eval, hot islands). Never on /embed/partner.
  */
-export function OwnerBoots({ strings }: { strings: PartnerStrings }) {
+export function OwnerBoots({ strings, leave }: { strings: PartnerStrings; leave: string }) {
   return (
     <>
       <ServiceWorkerRegistration />
+      <LeaveGuard message={leave} />
       <NewVersionNotice />
       <DebugEval strings={strings} />
     </>

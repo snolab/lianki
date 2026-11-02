@@ -15,6 +15,7 @@ import selfIntro from "@/app/(app)/self-intro/page.content";
 import wordsImport from "@/app/(app)/words/import/page.content";
 import wordsPhrases from "@/app/(app)/words/phrases.content";
 import wordsVoiceMode from "@/app/(app)/words/voice-mode.content";
+import leaveGuard from "@/app/components/leave-guard.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -59,6 +60,7 @@ describe.each([
   ["words-import", wordsImport],
   ["words-phrases", wordsPhrases],
   ["words-voice-mode", wordsVoiceMode],
+  ["leave-guard", leaveGuard],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };
