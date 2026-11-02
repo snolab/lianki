@@ -176,8 +176,8 @@ Everything works on files. Nothing is played on the Mac.
 
 The offline scripts: `scripts/local-stt/wake-gen.py` (the synthetic set,
 Kokoro) and `scripts/local-stt/wake-eval.py` (sherpa-onnx KWS over it, his
-clips, the noisy copies and the agent's TTS). The CAM++ speaker check
-comes in a later PR.
+clips, the noisy copies and the agent's TTS). The CAM++ speaker check is
+on the Mac now, behind the KWS hit: [local-stt.md](local-stt.md), "Voiceprint".
 
 ## Implementation (2026-10-31)
 

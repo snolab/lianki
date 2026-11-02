@@ -91,6 +91,12 @@ export type ChatMessage = {
    * off. The chat lane sets it with {type: "wake", mode}.
    */
   wake?: "active" | "passive";
+  /**
+   * The Mac's speaker check on a voice line (SpeakerTag; docs/local-stt.md,
+   * "Voiceprint"), as the owner's page reported it. Only on `source: "stt"`
+   * lines; absent when the line went through the cloud or nothing is enrolled.
+   */
+  speaker?: SpeakerTag;
   /** An agent line that asks: the question(s) and their options (ask.ts). */
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */
@@ -397,6 +403,63 @@ export type ChatStrings = {
   compactIdle: string;
   /** The compact line's tooltip and screen-reader hint: a tap shows the whole chat. */
   compactShowAll: string;
+  // The voiceprint panel (VoiceprintPanel.tsx, voiceprint.ts; docs/local-stt.md, "Voiceprint").
+  /** Item in the chat's menu (owner only) that opens the voiceprint panel: enrol his voice on this device, or delete the voiceprint. A noun, the feature's name. */
+  vpMenu: string;
+  /** Heading of the voiceprint panel shown above the chat bar. 'Your' = the person using the app. Noun phrase. */
+  vpTitle: string;
+  /** Line in the voiceprint panel when no device has enrolled a voiceprint yet. One short sentence. */
+  vpNone: string;
+  /** One row per enrolled device in the voiceprint panel: {device} is a device name like iphone or android, {n} how many sentences were read for it. Keep both placeholders. */
+  vpPrint: string;
+  /** Note in the voiceprint panel when the speech model on the owner's own computer (a Mac) is not reachable; the mic button shows a green dot when it is. Keep 'Mac'. One sentence. */
+  vpOff: string;
+  /** Button in the voiceprint panel that starts enrolling the user's voice on the phone or computer in hand (it first shows a consent card; nothing is recorded yet). Imperative verb phrase. */
+  vpEnrol: string;
+  /** The consent card shown before any enrolment audio is captured: what happens, what is kept (numbers, not audio), where (only on the owner's Mac, at the given folder path; keep the path exactly), what it is for, and that it can be deleted. {n} is a range like 10–20; {name} is the assistant's name. Keep 'Mac' and 'Lianki'. Plain, honest, several sentences. */
+  vpConsent: string;
+  /** On/off checkbox on the consent card, off by default: when on, the audio of the enrolment sentences is also kept on the owner's Mac (normally only the numbers are). First person, a statement of what is kept. */
+  vpKeepAudio: string;
+  /** Button on the consent card: the user agrees and enrolment recording starts (the microphone turns on). First person agreement plus imperative verb, short. */
+  vpAgree: string;
+  /** Button on the voiceprint panel's consent, recording and delete steps that stops without saving or deleting anything. Imperative verb, one word. */
+  vpCancel: string;
+  /** Instruction above the sentence to read aloud during enrolment; the pause lets the mic know the sentence is over. Imperative, ends with a colon. */
+  vpRead: string;
+  /** Counter during enrolment: {n} sentences accepted so far out of {total} at most. Keep both placeholders; short. */
+  vpProgress: string;
+  /** Note during enrolment: the sentence just read had too little speech to use; read the same sentence again, more slowly. Two short sentences. */
+  vpShort: string;
+  /** Note during enrolment: background noise was too loud for that sentence to be used; try again in a quieter place. Two short sentences. */
+  vpNoise: string;
+  /** Note during enrolment: the voice in the sentence just read did not match the earlier sentences (maybe someone else spoke); read it again. Two short sentences. */
+  vpMismatch: string;
+  /** Note during enrolment: the words recognised were not the sentence shown, so the user should read the shown sentence again. Two short sentences. */
+  vpText: string;
+  /** Note during enrolment: the owner's own computer (Mac) running the speech model did not answer for that sentence; the mic button's green dot shows whether it is connected. Two short sentences; keep 'Mac'. */
+  vpUnreachable: string;
+  /** Button during enrolment that moves on to the next sentence without reading the one shown (too hard to read). Imperative verb, one word. */
+  vpSkip: string;
+  /** Button during enrolment, enabled once enough sentences are kept: saves the voiceprint on the owner's Mac and ends enrolment. Imperative verb phrase. */
+  vpSave: string;
+  /** Status in the voiceprint panel while the voiceprint is being written on the Mac. Progressive form, ends with an ellipsis. */
+  vpSaving: string;
+  /** Confirmation in the voiceprint panel after enrolment: the voiceprint was saved on the owner's Mac. One short sentence; keep 'Mac'. */
+  vpSaved: string;
+  /** Button in the voiceprint panel that deletes the user's own voiceprint (asks to confirm first). First person 'my'; imperative verb phrase. */
+  vpDelete: string;
+  /** Confirmation question after tapping Delete my voiceprint: it removes the voiceprint of every enrolled device from the owner's Mac, and does not touch the separately saved voice clips. A question and a reassurance. */
+  vpDeleteConfirm: string;
+  /** The confirming button under that question: deletes the voiceprint now. Imperative verb, one word. */
+  vpDeleteYes: string;
+  /** Confirmation in the voiceprint panel after deleting: the voiceprint is gone. One short sentence. */
+  vpDeleted: string;
+  /** Error line in the voiceprint panel; {error} is a short technical reason in English from the Mac. Keep {error} inside the parentheses. */
+  vpFailed: string;
+  /** Button and screen-reader label that closes the voiceprint panel (shown as ✕ or under a finished step). Imperative verb, one word. */
+  vpClose: string;
+  /** Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: the owner's Mac confirmed the line was spoken in his own voice. Short phrase, no full stop. */
+  vpVerified: string;
   /** A small note on an agent line that was not read aloud because the page was in the background. */
   notReadHidden: string;
 };
@@ -426,6 +489,34 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   clipsAutoStop: "Auto-stop after {n} min",
   compactIdle: "Only the last message while not typing",
   compactShowAll: "Show the whole chat",
+  vpMenu: "Voiceprint",
+  vpTitle: "Your voiceprint",
+  vpNone: "No voiceprint yet.",
+  vpPrint: "{device}: {n} sentences",
+  vpOff: "Needs the local speech model on your Mac (the green dot on the mic).",
+  vpEnrol: "Enrol this device",
+  vpConsent: "Before anything is recorded: you will read {n} short sentences aloud. Your Mac turns them into a voiceprint (numbers that describe your voice, not a recording) and keeps it only there, in ~/.config/lianki-stt/voiceprints, never on Lianki's servers. It is used to check that a line spoken to your {name} is your voice. You can delete it here at any time.",
+  vpKeepAudio: "Also keep the recordings of these sentences on my Mac",
+  vpAgree: "I agree, start",
+  vpCancel: "Cancel",
+  vpRead: "Read this aloud, then pause:",
+  vpProgress: "{n} of {total} kept",
+  vpShort: "Too short. Read it again, a little slower.",
+  vpNoise: "Too noisy here. Try again somewhere quieter.",
+  vpMismatch: "That did not sound like the other sentences. Read it again.",
+  vpText: "That was not this sentence. Read it again.",
+  vpUnreachable: "Your Mac did not answer. Check the green dot on the mic.",
+  vpSkip: "Skip",
+  vpSave: "Save voiceprint",
+  vpSaving: "Saving…",
+  vpSaved: "Voiceprint saved on your Mac.",
+  vpDelete: "Delete my voiceprint",
+  vpDeleteConfirm: "Delete your voiceprint from your Mac, for every device? Your saved voice clips are not touched.",
+  vpDeleteYes: "Delete",
+  vpDeleted: "Voiceprint deleted.",
+  vpFailed: "Voiceprint: something went wrong ({error})",
+  vpClose: "Close",
+  vpVerified: "Your voice, verified",
   notReadHidden: "· not read aloud: the page was in the background",
 };
 
@@ -496,6 +587,78 @@ export const VOICE_TIMING_KEYS = [
  * A VoiceTiming from the wire, or undefined: only the known keys, each a
  * finite non-negative number (rounded to whole ms); anything else is dropped.
  */
+/**
+ * The local STT server's speaker check on a voice line (scripts/local-stt/
+ * voiceprint.py; docs/local-stt.md, "Voiceprint"): the cosine `score` of the
+ * line against the owner's enrolled voiceprint, and its `decision` from the
+ * per-duration bands and the noise gate. "me" = verified as him; "other" = not
+ * him; "unknown" = too short, too noisy, between the bands, or no voiceprint.
+ * A line made of several utterances carries the weakest of them
+ * (combineSpeaker). Reported by the owner's page, never stamped by the hub:
+ * it is the base for voice approvals later, not an approval by itself.
+ */
+export type SpeakerDecision = "me" | "other" | "unknown";
+export type SpeakerTag = {
+  decision: SpeakerDecision;
+  /** Cosine to the print, -1..1 (absent when nothing was scored). */
+  score?: number;
+  /** The embedding model ("campp", later "eres2netv2"). */
+  model?: string;
+  /** Whose print it was scored against (the device slug, "iphone"). */
+  device?: string;
+  /** Why "unknown": "short" | "noise" | "between" | "no-print". */
+  reason?: string;
+  speechS?: number;
+  snrDb?: number;
+  /**
+   * The texts the Mac signed, in order: set only by the hub after it verified
+   * the proofs (lib/speaker-proof.ts), never taken from a page (cleanSpeaker
+   * drops it). Any decision based on a voice line must use these words, not
+   * the line's displayed text.
+   */
+  signed?: string[];
+};
+const SPEAKER_DECISIONS: readonly SpeakerDecision[] = ["me", "other", "unknown"];
+const SLUG = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
+/** A SpeakerTag from the wire, or undefined: known keys only, each checked. */
+export function cleanSpeaker(raw: unknown): SpeakerTag | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const d = r.decision;
+  if (typeof d !== "string" || !SPEAKER_DECISIONS.includes(d as SpeakerDecision)) return undefined;
+  const out: SpeakerTag = { decision: d as SpeakerDecision };
+  const num = (v: unknown, lo: number, hi: number) =>
+    typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi ? v : undefined;
+  const score = num(r.score, -1, 1);
+  if (score !== undefined) out.score = Math.round(score * 1000) / 1000;
+  const speech = num(r.speechS, 0, 600);
+  if (speech !== undefined) out.speechS = Math.round(speech * 100) / 100;
+  const snr = num(r.snrDb, -100, 200);
+  if (snr !== undefined) out.snrDb = Math.round(snr * 10) / 10;
+  for (const k of ["model", "device", "reason"] as const) {
+    const v = r[k];
+    if (typeof v === "string" && SLUG.test(v)) out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * One tag for a line made of several utterances: the weakest decision wins
+ * (any "other" → other; else any "unknown" → unknown; all "me" → me), with
+ * the lowest score. Undefined when no utterance carried a tag.
+ */
+export function combineSpeaker(tags: readonly (SpeakerTag | undefined)[]): SpeakerTag | undefined {
+  const ts = tags.filter((t): t is SpeakerTag => !!t);
+  if (!ts.length) return undefined;
+  const rank: Record<SpeakerDecision, number> = { other: 0, unknown: 1, me: 2 };
+  return ts.reduce((a, b) => {
+    const w = rank[b.decision] < rank[a.decision] ? b : a;
+    const scores = [a.score, b.score].filter((s): s is number => s !== undefined);
+    return scores.length ? { ...w, score: Math.min(...scores) } : w;
+  });
+}
+
 export function cleanTiming(raw: unknown): VoiceTiming | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const out: VoiceTiming = {};

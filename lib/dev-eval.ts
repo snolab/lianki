@@ -20,8 +20,11 @@ import {
   type MessageSource,
   type VoiceTiming,
   cleanTiming,
+  type SpeakerTag,
+  cleanSpeaker,
 } from "../packages/debug-chat/src/wire";
 import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
+import { cleanProofs } from "./speaker-proof";
 import { type WakeReason, isWakeReason } from "../packages/debug-chat/src/wake";
 
 export {
@@ -61,6 +64,10 @@ export {
   draftSource,
   type VoiceTiming,
   cleanTiming,
+  type SpeakerTag,
+  type SpeakerDecision,
+  cleanSpeaker,
+  combineSpeaker,
 } from "../packages/debug-chat/src/wire";
 
 /** Largest `code` accepted, in characters. */
@@ -226,6 +233,11 @@ export type PageMessage =
       timing?: VoiceTiming;
       /** The mic's wake-word mode when the line was sent (docs/wake-word.md); absent = mic off. */
       wake?: "active" | "passive";
+      /**
+       * The Mac's signed speaker attestations for a voice line's finals
+       * (lib/speaker-proof.ts). The hub verifies them; a page-made tag is never taken.
+       */
+      speakerProof?: string[];
       /** Why the mic is in that mode (wake.ts WakeReason: "rejects", "wake-word", "kws-failed", …). */
       wakeReason?: WakeReason;
     }
@@ -486,6 +498,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     // An address that is not a node path is dropped: the line goes to the main thread.
     const to = nodePath(m.to);
     const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
+    const speakerProof = m.source === "stt" ? cleanProofs(m.speakerProof) : undefined;
     return {
       type: "chat",
       id,
@@ -494,6 +507,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
       ...(timing ? { timing } : {}),
       ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
+      ...(speakerProof ? { speakerProof } : {}),
       ...((m.wake === "active" || m.wake === "passive") && isWakeReason(m.wakeReason)
         ? { wakeReason: m.wakeReason }
         : {}),

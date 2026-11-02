@@ -590,7 +590,7 @@ model, stands in for the second embedding.)
   (cross-device). Move to ERes2NetV2 once he has enrolled on the Android
   (10–20 clean utterances), since it is the more accurate of the two in
   noise. Drop only "other", in passive mode. The wake word stays the gate
-  in active mode.
+  in active mode. Built: [local-stt.md](local-stt.md), "Voiceprint".
 - **Next data:** a few clips with `track` (noiseSuppression on and off), and
   10–20 `.ref.txt` references for live noisy clips, which would turn the
   live CER from agreement into accuracy.
