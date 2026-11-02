@@ -3485,6 +3485,8 @@ function Study({
   // then new ones. Stops only when every catalog runs out.
   const [exhausted, setExhausted] = useState(false);
   const fetching = useRef(false);
+  /** Bumped when a recheck lets go of `fetching`, so a skipped endless fetch runs. */
+  const [released, setReleased] = useState(0);
   useEffect(() => {
     if (loading || exhausted || fetching.current || queue.length - reach > AHEAD) return;
     fetching.current = true;
@@ -3507,7 +3509,7 @@ function Study({
         fetching.current = false;
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, exhausted, queue.length, reach, takeNew]);
+  }, [loading, exhausted, queue.length, reach, takeNew, released]);
 
   /** An ungraded new word below the screen. */
   const newWaiting = (q: Item[]) =>
@@ -3534,6 +3536,7 @@ function Study({
       .catch(() => {})
       .finally(() => {
         fetching.current = false;
+        setReleased((n) => n + 1);
       });
   };
   useEffect(() => {
