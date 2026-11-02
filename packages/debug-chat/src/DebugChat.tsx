@@ -3244,9 +3244,9 @@ export function DebugChat({
                 <textarea
                   ref={input}
                   data-testid="debug-chat-input"
-                  // The draft is kept across pages and reloads (ui-store.ts): never
-                  // "unsaved" for the leave guard; the deploy reload checks it itself.
-                  data-dirty="skip"
+                  // The draft is kept in sessionStorage across pages and reloads
+                  // (ui-store.ts): never unsaved, for the leave guard or the deploy reload.
+                  data-dirty="persisted"
                   data-drag-hint={holding || undefined}
                   rows={1}
                   // 16px: iOS zooms the whole page into any input under 16px.

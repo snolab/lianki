@@ -3,8 +3,8 @@ import {
   type DocLike,
   type EventLike,
   type FieldLike,
-  chatDraftDirty,
   confirmLeave,
+  isPersisted,
   isSkipped,
   isTextField,
   markClean,
@@ -19,7 +19,7 @@ import {
 import { DIRTY_KEY, anyDirtyCheck, onDirtyNotify, setLeaveGuard } from "@lianki/ui-state/dirty";
 import { enrolBusy } from "@lianki/debug-chat/voiceprint";
 
-type Fake = FieldLike & { attrs: Record<string, string>; skip?: boolean };
+type Fake = FieldLike & { attrs: Record<string, string>; skip?: boolean; persisted?: boolean };
 function field(tagName: string, o: Partial<Fake> = {}): Fake {
   const attrs = o.attrs ?? {};
   return {
@@ -30,7 +30,10 @@ function field(tagName: string, o: Partial<Fake> = {}): Fake {
     ...o,
     attrs,
     getAttribute: (n: string) => attrs[n] ?? null,
-    closest: (s: string) => (s === '[data-dirty="skip"]' && o.skip ? {} : null),
+    closest: (s: string) =>
+      (s === '[data-dirty="skip"]' && o.skip) || (s === '[data-dirty="persisted"]' && o.persisted)
+        ? {}
+        : null,
   };
 }
 
@@ -221,34 +224,29 @@ describe("pageIsDirty", () => {
     bad();
   });
 
-  it("the chat draft and the mic hold the reload only", () => {
-    const doc = fakeDoc([]);
+  it("a persisted field (the chat draft, in sessionStorage) never counts, typed or focused", () => {
+    const chat = field("TEXTAREA", { persisted: true });
+    const doc = fakeDoc([chat]);
+    stop = trackEdits(doc);
+    type(doc, chat, "half a line");
+    expect(isPersisted(chat)).toBe(true);
+    doc.activeElement = chat;
+    expect(pageIsDirty(doc, "reload")).toBe(false);
+    expect(pageIsDirty(doc, "leave")).toBe(false);
     const store = { getState: () => ({ draft: "half a line" }), subscribe: () => () => {} };
     g.__lkUiStores = new Map([["lk:ui:chat", store]]);
-    expect(pageIsDirty(doc, "reload")).toBe(true);
-    expect(pageIsDirty(doc, "leave")).toBe(false);
-    delete g.__lkUiStores;
+    expect(pageIsDirty(doc, "reload")).toBe(false);
+  });
+
+  it("the mic holds the reload only", () => {
+    const doc = fakeDoc([]);
     g.__lkMic = { view: () => ({ state: "listening" }) };
     expect(pageIsDirty(doc, "reload")).toBe(true);
     expect(pageIsDirty(doc, "leave")).toBe(false);
   });
 });
 
-describe("chatDraftDirty / micBusy", () => {
-  it("reads the live chat store, else sessionStorage", () => {
-    expect(chatDraftDirty({})).toBe(false);
-    const st = (draft: unknown) => ({
-      __lkUiStores: new Map([["lk:ui:chat", { getState: () => ({ draft }) }]]),
-    });
-    expect(chatDraftDirty(st("  "))).toBe(false);
-    expect(chatDraftDirty(st("hi"))).toBe(true);
-    expect(chatDraftDirty(st(3))).toBe(false);
-    const ss = (raw: string | null) => ({ sessionStorage: { getItem: () => raw } });
-    expect(chatDraftDirty(ss(JSON.stringify({ state: { draft: "kept" }, version: 1 })))).toBe(true);
-    expect(chatDraftDirty(ss(JSON.stringify({ state: { draft: "" } })))).toBe(false);
-    expect(chatDraftDirty(ss(null))).toBe(false);
-    expect(chatDraftDirty(ss("{not json"))).toBe(false);
-  });
+describe("micBusy", () => {
   it("the mic: on, or transcripts still out", () => {
     expect(micBusy({})).toBe(false);
     expect(micBusy({ __lkMic: { view: () => ({ state: "off" }) } })).toBe(false);
@@ -321,16 +319,8 @@ describe("whenClean", () => {
     off();
   });
 
-  it("follows the chat store and the mic (not their first call)", () => {
+  it("follows the mic (not its first call)", () => {
     const doc = fakeDoc([]);
-    let draft = "x";
-    let chatF = () => {};
-    g.__lkUiStores = new Map([
-      [
-        "lk:ui:chat",
-        { getState: () => ({ draft }), subscribe: (f: () => void) => ((chatF = f), () => {}) },
-      ],
-    ]);
     let state = "listening";
     let micF = () => {};
     g.__lkMic = {
@@ -343,8 +333,6 @@ describe("whenClean", () => {
     };
     let n = 0;
     stop = whenClean(doc, () => n++);
-    draft = "";
-    chatF();
     expect(n).toBe(0);
     state = "off";
     micF();
