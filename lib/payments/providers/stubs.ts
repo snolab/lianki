@@ -17,17 +17,7 @@ function stub(p: Omit<PaymentProvider, "implemented" | "verifyWebhook">): Paymen
   };
 }
 
-export const STUB_PROVIDERS: Record<Exclude<ProviderId, "stripe">, PaymentProvider> = {
-  // KOMOJU (Degica): one hosted session for cards, Alipay, WeChat Pay, PayPay,
-  // konbini and bank transfer. Konbini settles days later — credit on the
-  // `payment.captured` webhook only.
-  komoju: stub({
-    id: "komoju",
-    label: "KOMOJU",
-    methods: ["Card", "Konbini", "PayPay", "Alipay", "WeChat Pay"],
-    kind: "checkout",
-    envKeys: ["KOMOJU_SECRET_KEY", "KOMOJU_WEBHOOK_SECRET"],
-  }),
+export const STUB_PROVIDERS: Record<Exclude<ProviderId, "stripe" | "komoju">, PaymentProvider> = {
   // PAY.JP: charges must be created with three_d_secure (checkout-policy.ts).
   payjp: stub({
     id: "payjp",

@@ -301,10 +301,8 @@ describe("providers", () => {
       true,
     );
     // A reserved slot stays hidden even with its secrets set.
-    const komoju = PROVIDERS.find((p) => p.id === "komoju")!;
-    expect(providerEnabled(komoju, { KOMOJU_SECRET_KEY: "k", KOMOJU_WEBHOOK_SECRET: "w" })).toBe(
-      false,
-    );
+    const payjp = PROVIDERS.find((p) => p.id === "payjp")!;
+    expect(providerEnabled(payjp, { PAYJP_SECRET_KEY: "k", PAYJP_WEBHOOK_TOKEN: "w" })).toBe(false);
     expect(enabledProviders({}).map((p) => p.id)).toEqual([]);
   });
   test("every slot is registered once, checkout slots can start a payment", () => {

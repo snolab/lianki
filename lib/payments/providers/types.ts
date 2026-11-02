@@ -41,8 +41,16 @@ export type WebhookOutcome =
       amount: number;
       userId: string;
     }
+  /** The provider refunded this payment in full: take the top-up back. */
+  | { status: "refunded"; paymentId: string }
   | { status: "ignored"; reason: string }
   | { status: "invalid" };
+
+/**
+ * `test`: sandbox keys — offered to the owner only, and its webhook credits the
+ * owner only, so a test card never becomes real credits. `live`: everyone.
+ */
+export type ProviderMode = "test" | "live";
 
 export interface PaymentProvider {
   id: ProviderId;
@@ -58,6 +66,11 @@ export interface PaymentProvider {
   kind: "checkout" | "grant";
   /** Env vars / Worker secrets that must all be set for it to be enabled. */
   envKeys: string[];
+  /**
+   * Test or live, from the server's env; null = off even with every envKey set
+   * (e.g. a key that contradicts the mode). Absent = live whenever enabled.
+   */
+  mode?(env?: Record<string, string | undefined>): ProviderMode | null;
   /** False for a reserved slot whose adapter is not written yet. */
   implemented: boolean;
   /** Start a top-up of `amount` JPY. Required for `checkout` providers. */

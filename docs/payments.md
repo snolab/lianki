@@ -116,13 +116,16 @@ person per code.
 ### Providers
 
 The wallet is provider-plural (`lib/payments/providers/`). A provider is
-listed on `/membership` only when it is **implemented and every one of its
-`envKeys` is set** on the Worker.
+listed on `/membership` only when it is **implemented, every one of its
+`envKeys` is set** on the Worker, and its mode is not off. A provider in
+**test mode** is listed for the owner (`OWNER_EMAILS`) only, labelled
+"(test)", and its webhook credits the owner only (ledger note `test mode`) —
+a test card can never become anyone's real credits.
 
 | id                | kind     | methods                                     | env (secrets)                                  | state       |
 | ----------------- | -------- | ------------------------------------------- | ---------------------------------------------- | ----------- |
 | `stripe`          | checkout | card, Alipay, WeChat Pay                    | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`   | implemented |
-| `komoju`          | checkout | card, konbini, PayPay, Alipay, WeChat Pay   | `KOMOJU_SECRET_KEY`, `KOMOJU_WEBHOOK_SECRET`   | slot        |
+| `komoju`          | checkout | card, konbini, PayPay, Alipay, WeChat Pay   | `KOMOJU_SECRET_KEY`, `KOMOJU_WEBHOOK_SECRET` (+ `KOMOJU_LIVE=1` for live) | implemented — test mode until live (below) |
 | `payjp`           | checkout | card (3-D Secure, checkout-policy.ts)       | `PAYJP_SECRET_KEY`, `PAYJP_WEBHOOK_TOKEN`      | slot        |
 | `paddle`          | checkout | card, PayPal, Apple Pay                     | `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`      | slot        |
 | `usdt`            | checkout | USDT TRC-20 / ERC-20 (QR)                   | `USDT_GATEWAY_API_KEY`, `USDT_GATEWAY_WEBHOOK_SECRET` | slot |
@@ -133,6 +136,69 @@ listed on `/membership` only when it is **implemented and every one of its
 `checkout` providers start a payment of an amount the user picks; `grant`
 providers have no button — money arrives on another platform and its webhook
 credits the wallet as `sponsor`.
+
+#### KOMOJU
+
+`lib/payments/providers/komoju.ts`, webhook handling in
+`lib/payments/webhook.ts`, tests in `unit/komoju.test.ts`.
+
+- **Mode** comes from the Worker's settings only (`komojuMode`): **test** by
+  default; **live** only with `KOMOJU_LIVE=1`; **off** when a secret is
+  missing or the key contradicts the mode (an `sk_live_…` key without
+  `KOMOJU_LIVE=1`, or an `sk_test_…` key with it). So nothing charges real
+  money until the owner sets both a live key and the flag on purpose.
+- **Top-up**: `POST /api/payments/topup` (rate limit + Turnstile, amount
+  validated on the server, ¥100–¥10,000) creates a KOMOJU session —
+  `amount`, `currency: JPY`, `return_url` `/membership?topup=1`, and
+  `metadata {userId, kind: "topup", amount}` — and redirects to its
+  `session_url`.
+- **Webhook** `POST /api/payments/webhook/komoju`: `X-Komoju-Signature` must
+  be the HMAC-SHA256 hex of the raw body with `KOMOJU_WEBHOOK_SECRET`
+  (constant-time compare), else 400. The body is only a hint: on
+  `payment.captured` the payment is **re-read from the KOMOJU API** (and the
+  session this server created), and the credit is the API's `amount` (not
+  `total`, which adds the konbini fee), JPY only, status `captured`, for the
+  session's `userId`, and only if it equals the session's amount. Konbini and
+  bank transfer settle days later — they credit on their own `captured`.
+  Credited once per `komoju:<payment id>`; a redelivery is a no-op. An API
+  failure is a 500, so KOMOJU retries (up to 25 times over 25 days).
+- **Refunds**: a full refund (`payment.refunded`, re-read: status `refunded`)
+  takes the top-up back once. If the credits were already spent, nothing is
+  overdrawn: it logs `credits.refund.unsettled` (wrangler tail) — settle at
+  `/dev/credits` (refund the pass first, then 撤回充值). Partial refunds
+  (`payment.refund.created`) are not automated; settle by hand.
+
+**Testing now (test keys):** set the test-mode secrets below with the
+`sk_test_…` key, sign in as the owner, top up ¥100 on `/membership` with a
+KOMOJU test card; the balance shows the credit with note `test mode`. Other
+accounts see no KOMOJU button.
+
+**Going live** (after KOMOJU approves the Live application):
+
+1. KOMOJU dashboard (live mode) → **Webhooks** → add
+   `https://lianki.com/api/payments/webhook/komoju`, events
+   `payment.captured` and `payment.refunded`, with a new random secret token.
+2. Put the live secrets on the Worker (names only — never paste values into
+   chat or commits):
+
+   ```bash
+   bunx wrangler secret put KOMOJU_SECRET_KEY      # the live secret key (sk_live_…)
+   bunx wrangler secret put KOMOJU_WEBHOOK_SECRET  # the live webhook's secret token
+   bunx wrangler secret put KOMOJU_LIVE            # 1
+   ```
+
+   Secrets apply at once, no deploy needed. If the live key's prefix is not
+   `sk_live_`, it still works (only an `sk_test_` key is refused with the flag).
+3. **One small real payment**: as the owner, top up **¥100** by card on
+   `/membership` (KOMOJU now has no "(test)" label, and a second, non-owner
+   account sees it too). Check: `wrangler tail lianki` shows no error; the
+   balance is +¥100 with a `topup` entry `komoju:<payment id>` and no
+   `test mode` note; the KOMOJU dashboard shows the payment captured and the
+   webhook delivery 200. Then refund it in the KOMOJU dashboard and check the
+   wallet goes back to its old balance (a `refund` entry `topup:komoju:…`).
+4. If anything is off: `bunx wrangler secret delete KOMOJU_LIVE` turns live
+   off at once (the provider is then off, since the live key contradicts test
+   mode).
 
 #### Adding a provider
 

@@ -133,6 +133,7 @@ export function creditTopup(
     provider: string;
     paymentId: string;
     reason?: "topup" | "sponsor";
+    note?: string;
   },
   now = new Date(),
 ) {
@@ -144,6 +145,7 @@ export function creditTopup(
       amount: t.amount,
       reason: t.reason ?? "topup",
       refId: `${t.provider}:${t.paymentId}`,
+      note: t.note,
     },
     now,
   );
