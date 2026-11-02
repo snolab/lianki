@@ -33,6 +33,7 @@ import type { LocalFinal, LocalState } from "./local-stt";
 import type { SpeakerTag } from "./wire";
 import type { KwsState } from "./wake-kws";
 import { type SpotResult, type WakeCommand, type WakeMode, type WakeReason, createWake } from "./wake";
+import { micTaps } from "./mic-taps";
 
 /** What the session needs of a local STT client (local-stt.ts LocalStt). */
 export type LocalClient = StreamStt & {
@@ -45,8 +46,12 @@ export type LocalClient = StreamStt & {
 
 /** globalThis key of the session. */
 export const MIC_SESSION_KEY = "__lkMic";
-/** Bumped when the session's shape changes; an older one is migrated, its stream kept. */
-export const MIC_SESSION_V = 9;
+/**
+ * Bumped when the session's shape changes; an older one is migrated, its
+ * stream kept. A newer one is left alone (an older bundle never downgrades
+ * it). 10: it offers finals to the command taps first (mic-taps.ts).
+ */
+export const MIC_SESSION_V = 10;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -209,6 +214,8 @@ export function createMicSession(
       });
     return kws;
   };
+  /** The command taps and pins (mic-taps.ts), shared by every session on the page. */
+  const taps = micTaps();
   const wake = createWake({
     onChange: (v, from, reason) => {
       emit({ wake: v.mode, wakeReason: v.reason });
@@ -218,6 +225,8 @@ export function createMicSession(
   });
   /** Set the mode (the agent, a tap); "ignored": the agent says the last line was not for it. */
   const command = (c: WakeCommand, reason: WakeReason = "agent") => {
+    // Pinned (a voice mode is on, mic-taps.ts): it stays active.
+    if (taps.pinned() && c !== "active") return;
     if (c === "ignored") return void wake.reject();
     if (c === "passive" && !deps.kws) return;
     wake.set(c, reason);
@@ -238,13 +247,15 @@ export function createMicSession(
     wake: deps.kws
       ? {
           // In whisper mode it stays active: the spotter is unproven on whispers.
-          passive: () => wake.mode() === "passive" && !deps.adapt?.state().whisper,
+          passive: () =>
+            wake.mode() === "passive" && !taps.pinned() && !deps.adapt?.state().whisper,
           spot: async (audio) => {
             const k = spotter();
             return k ? k.spot(audio) : { hit: false };
           },
           onWake: () => void wake.set("active", "wake-word"),
-          verdict: (ok) => void (ok ? wake.accept() : wake.reject()),
+          // Pinned: what is said is for the voice mode, so it never counts towards passive.
+          verdict: (ok) => void (ok ? wake.accept() : taps.pinned() ? undefined : wake.reject()),
         }
       : undefined,
     load: async (ev) => deps.load(ev, await ensureStream()),
@@ -258,7 +269,12 @@ export function createMicSession(
       emit({ state: s, wakeReason: wake.view().reason, ...(s !== "off" ? { resume: false } : {}) });
       deps.onState?.(s, was);
     },
-    onText: (t) => (sink ? sink.onText(t) : void held.push(t)),
+    // A command tap (mic-taps.ts) may keep it; the rest goes to the chat as before.
+    onText: (t) => {
+      if (taps.offer(t)) return;
+      if (sink) sink.onText(t);
+      else held.push(t);
+    },
     onPending: (n, interim) => {
       emit({ pending: n, interim });
       sink?.onPending(n, interim);
@@ -270,6 +286,10 @@ export function createMicSession(
     speaker: (t, p) => deps.speaker?.(t, p),
   });
   const unhold = deps.subscribeHold?.((h) => mic.hold(h));
+  // A voice mode turning on wakes the mic: commands need no "Linky".
+  const unpin = taps.onPin(() => {
+    if (wake.mode() !== "active") wake.set("active", "voice-mode");
+  });
 
   const session = {
     v: MIC_SESSION_V,
@@ -293,6 +313,8 @@ export function createMicSession(
         if (sink === s) sink = null;
       };
     },
+    /** The config in force (a voice mode adds its local STT URL without dropping the widget's). */
+    configured: (): MicConfig => cfg,
     configure(c: MicConfig) {
       cfg = c;
       localStream(); // a changed or removed URL takes effect (and shows) at once
@@ -358,6 +380,7 @@ export function createMicSession(
      */
     async retire() {
       unhold?.();
+      unpin();
       listeners.clear();
       sink = null;
       const s = stream;
@@ -388,6 +411,8 @@ export function createMicSession(
         audio = false;
       }
       if (!audio) return tap("audio context suspended");
+      // Something turned it on meanwhile (a voice mode, a tap): a toggle now would turn it off.
+      if (mic.state() !== "off") return;
       await mic.toggle();
       if (mic.state() === "off") {
         const e = view.error as { name?: string; message?: string } | null;
@@ -408,7 +433,7 @@ export function createMicSession(
 export function micSession(deps: MicDeps): MicSession {
   const g = globalThis as unknown as Record<string, MicSession | undefined>;
   const have = g[MIC_SESSION_KEY];
-  if (have && have.v === MIC_SESSION_V) return have;
+  if (have && have.v >= MIC_SESSION_V) return have;
   if (have) {
     // Migrate: the old VAD goes, its stream stays and the new one listens on it.
     const on = (have.view?.().state ?? "off") !== "off";

@@ -19,7 +19,8 @@ export type WakeReason =
   | "tap" // the mic button tapped while passive
   | "agent" // the chat lane set it ({type: "wake"})
   | "kws-failed" // the spotter could not load: back to active, never deaf
-  | "mic-on"; // listening turned on: always starts active
+  | "mic-on" // listening turned on: always starts active
+  | "voice-mode"; // a voice mode took the mic (mic-taps.ts): commands need no wake word
 /** Every WakeReason, to check one that came over the wire (a chat line's `wakeReason`). */
 export const WAKE_REASONS: readonly WakeReason[] = [
   "rejects",
@@ -28,6 +29,7 @@ export const WAKE_REASONS: readonly WakeReason[] = [
   "agent",
   "kws-failed",
   "mic-on",
+  "voice-mode",
 ];
 export const isWakeReason = (v: unknown): v is WakeReason =>
   typeof v === "string" && (WAKE_REASONS as readonly string[]).includes(v);

@@ -120,6 +120,7 @@ that are expensive to rediscover.
 | Blog posts                                                    | [blog/AGENTS.md](blog/AGENTS.md)                                    |
 | The Chrome extension, and publishing it                       | [packages/ext/README.md](packages/ext/README.md)                    |
 | /words new-word order: in order + pass, take turns, simulator | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)            |
+| /words voice mode: spoken commands, grammar, mic taps         | [docs/voice-mode.md](docs/voice-mode.md)                            |
 | Sync/offline architecture                                     | [docs/sync-architecture.md](docs/sync-architecture.md)              |
 | Sync conflicts, deletions, tombstones                         | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
 | Settings that follow the account (`lk:*` key classes)         | [docs/prefs-sync.md](docs/prefs-sync.md)                            |

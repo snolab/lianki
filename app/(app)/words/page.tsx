@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import { appLocale } from "@/lib/app-locale.server";
+import { authUserOrNull } from "@/app/signInEmail";
+import { readFlags } from "@/lib/flags-store";
+import { isOwner } from "@/lib/owner";
+import { voiceAccess } from "@/lib/words/voice-access";
 import WordsClient from "./WordsClient";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +18,9 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function WordsPage() {
+export default async function WordsPage() {
   // The (app) layout supplies the shell, auth and the Intlayer providers.
-  return <WordsClient />;
+  // Voice mode (docs/voice-mode.md): the flag for everyone, else an owner preview.
+  const [user, flags] = await Promise.all([authUserOrNull(), readFlags()]);
+  return <WordsClient voice={voiceAccess(flags, isOwner(user?.email))} />;
 }

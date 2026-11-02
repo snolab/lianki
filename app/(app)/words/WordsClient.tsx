@@ -53,6 +53,9 @@ import {
 import { createDeferredDelete, UNDO_MS, type FlushReason } from "@/lib/words/deferred-delete";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
+import type { VoiceAccess } from "@/lib/words/voice-access";
+import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/words/voice-dispatch";
+import { VoiceBadge, useVoiceMode } from "./VoiceMode";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
 import { createSequencer } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
@@ -1439,7 +1442,14 @@ function useListParam(base: string): [string | null, (id: string | null) => void
   return [id, go];
 }
 
-export default function WordsClient({ config: given }: { config?: DrillConfig }) {
+export default function WordsClient({
+  config: given,
+  voice = "off",
+}: {
+  config?: DrillConfig;
+  /** Voice mode (docs/voice-mode.md): the flag's verdict for this user, from the server. */
+  voice?: VoiceAccess;
+}) {
   // /words's own title and intro follow the app's language; other drills
   // (/alphabet) bring theirs.
   const text = useIntlayer("words-page");
@@ -1602,6 +1612,7 @@ export default function WordsClient({ config: given }: { config?: DrillConfig })
           config={config}
           lists={studying}
           catalog={fullCatalog}
+          voice={voice}
           title={
             listId === ALL
               ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
@@ -2532,8 +2543,11 @@ function Study({
   catalog,
   title,
   onExit,
+  voice,
 }: {
   config: DrillConfig;
+  /** Whether the voice mode switch is offered (lib/words/voice-access.ts). */
+  voice: VoiceAccess;
   /** One list, or every list of a group / "study all". */
   lists: WordList[];
   catalog: CatalogMeta[];
@@ -2952,8 +2966,7 @@ function Study({
    * grade not yet undone (and move there). Repeated Z walks back in time.
    * One level per word: the server keeps only the card before its last review.
    */
-  const undo = (focusedOnly = false) => {
-    const at = rowRef.current;
+  const undo = (focusedOnly = false, at = rowRef.current) => {
     const target = grades.has(at) ? at : focusedOnly ? -1 : (gradeLog.current.at(-1) ?? -1);
     if (target < 0) return;
     const it = queue[target];
@@ -3005,6 +3018,13 @@ function Study({
     return () => clearTimeout(t);
   }, [notice]);
 
+  /** A grade from the keys (or the voice on desktop): the cursor moves on past a first grade. */
+  const keyGrade = (at: number, r: Rating) => {
+    const advance = shouldAdvance(grades, at);
+    grade(at, r);
+    if (advance) moveRow(at + 1);
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const row = rowRef.current;
@@ -3035,11 +3055,8 @@ function Study({
       else if (e.key === "?") setHelp((h) => !h);
       else if (e.code === "KeyV") speech.toggle();
       else if (e.code === "KeyE") setShowAll((v) => !v);
-      else if (KEY_RATING[e.code] && !e.shiftKey) {
-        const advance = shouldAdvance(grades, row);
-        grade(row, KEY_RATING[e.code]);
-        if (advance) moveRow(row + 1);
-      } else return;
+      else if (KEY_RATING[e.code] && !e.shiftKey) keyGrade(row, KEY_RATING[e.code]);
+      else return;
       e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
@@ -3325,6 +3342,110 @@ function Study({
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [touch, focusLine, focusText]);
+
+  /** The touch focus as of now (a voice command may come before the render that moved it). */
+  const focusNow = useRef(focusLine);
+  focusNow.current = focusLine;
+  /**
+   * A swipe's grade (or the voice's on touch): auto-advance is for a card met
+   * for the first time; editing a grade already given stays on that card (the
+   * owner, 2026-10-30). Read now, not from this render: see gradesNow.
+   */
+  const swipeGrade = (i: number, r: Rating) => {
+    const advance = shouldAdvance(gradesNow.current, i);
+    // The slip glides home meanwhile: the grade's re-render can wait.
+    startTransition(() => {
+      grade(i, r);
+      if (touch && advance) setFocusLine(Math.min(queue.length - 1, i + 1));
+    });
+    if (touch && advance) focusNow.current = Math.min(queue.length - 1, i + 1);
+    // The next word slides up under the thumb.
+    if (advance) advanceList(i);
+  };
+
+  // Voice mode (docs/voice-mode.md): spoken commands run the same actions
+  // as the keys and the swipe, never anything else.
+  const [voicePref, setVoicePref] = usePref("lk:words-voice-mode", false);
+  const voiceOn = voice !== "off" && voicePref;
+  const vtext = useIntlayer("words-voice-mode");
+  /** The card a command acts on: the touch focus, or the desktop cursor. */
+  const currentRow = () => (touch ? focusNow.current : rowRef.current);
+  /** Touch: bring a focused row into the part of the list the glass leaves uncovered. */
+  const showRow = (i: number) => {
+    const el = listRef.current;
+    if (!el) return;
+    const top = pad + i * ROW_H;
+    const { top: over, bottom: under } = barRef.current;
+    if (top < el.scrollTop + over || top + ROW_H > el.scrollTop + el.clientHeight - under)
+      el.scrollTo({
+        top: Math.max(0, top - over - ROW_H * 2),
+        behavior: motionOff() ? "auto" : "smooth",
+      });
+  };
+  const voiceActions: VoiceActions = {
+    move: (d) => {
+      if (!touch) return moveRow(rowRef.current + d);
+      const to = Math.max(0, Math.min(queue.length - 1, focusNow.current + d));
+      focusNow.current = to;
+      // The focus effect reads the newly focused word, as a tap's focus does.
+      setFocusLine(to);
+      showRow(to);
+    },
+    grade: (r) => (touch ? swipeGrade(currentRow(), r) : keyGrade(currentRow(), r)),
+    show: () => {
+      const i = currentRow();
+      setRevealed((s) => (s.has(i) ? s : new Set(s).add(i)));
+    },
+    read: () => {
+      const it = queue[currentRow()];
+      if (it) speech.once(partsOf(it), true);
+    },
+    // From the card in focus (touch has no cursor): its grade, else the last one given.
+    undo: () => undo(false, currentRow()),
+    exit: () => setVoicePref(false),
+  };
+  const voiceHandle = (heard: string): VoiceOutcome => {
+    const at = currentRow();
+    // The cards around the focus: what is read aloud, or what he says to practise.
+    const near = queue.slice(Math.max(0, at - 2), at + 4);
+    return handleUtterance(heard, {
+      actions: voiceActions,
+      hasCard: !!queue[at],
+      cardTexts: near.flatMap((it) => [
+        it.term,
+        it.reading,
+        it.back,
+        spokenText(it, it.lang, !!config.readingOnBack),
+      ]),
+    });
+  };
+  const voiceMode = useVoiceMode(voiceOn, voiceHandle);
+  const voiceLabel = (o: VoiceOutcome): string => {
+    if (o.kind === "unknown") return fill(vtext.heard.value, { text: o.heard });
+    if (o.kind === "echo") return fill(vtext.echo.value, { text: o.heard });
+    if (o.kind === "no-card") return vtext.noCard.value;
+    if (o.kind === "agent") return "";
+    switch (o.cmd) {
+      case "next":
+        return `↓ ${vtext.next.value}`;
+      case "prev":
+        return `↑ ${vtext.prev.value}`;
+      case "left":
+        return `← ${ratingLabel[2]}`;
+      case "right":
+        return `→ ${ratingLabel[3]}`;
+      case "again":
+        return ratingLabel[1];
+      case "hard":
+        return ratingLabel[2];
+      case "good":
+        return ratingLabel[3];
+      case "easy":
+        return ratingLabel[4];
+      default:
+        return vtext[o.cmd].value;
+    }
+  };
 
   /** How far down the list the user has got: the cursor, or the last row in view. */
   const reach = Math.max(row, Math.floor((scrollTop - pad + viewH) / ROW_H));
@@ -3805,6 +3926,19 @@ function Study({
                   label={text.paperScrolls.value}
                   hint={text.paperScrollsHint.value}
                 />
+                {voice !== "off" && (
+                  <span className="inline-flex items-center gap-1" data-voice-setting={voice}>
+                    <TogglePill
+                      on={voicePref}
+                      onChange={setVoicePref}
+                      label={vtext.voiceMode.value}
+                      hint={vtext.voiceModeHint.value}
+                    />
+                    {voice === "preview" && (
+                      <span className="text-[10px] opacity-60">{vtext.preview}</span>
+                    )}
+                  </span>
+                )}
                 <span className="text-xs opacity-60">
                   {touch ? `${text.nativeSwipeNote.value} ` : ""}
                   {text.mayChange}
@@ -3976,19 +4110,7 @@ function Study({
                     // through a swipe that follows.
                     speech.release();
                   }}
-                  onSwipe={(r) => {
-                    // Auto-advance is for a card met for the first time: editing
-                    // a grade already given stays on that card (the owner, 2026-10-30).
-                    // Read now, not from this render: see gradesNow.
-                    const advance = shouldAdvance(gradesNow.current, i);
-                    // The slip glides home meanwhile: the grade's re-render can wait.
-                    startTransition(() => {
-                      grade(i, r);
-                      if (touch && advance) setFocusLine(Math.min(queue.length - 1, i + 1));
-                    });
-                    // The next word slides up under the thumb.
-                    if (advance) advanceList(i);
-                  }}
+                  onSwipe={(r) => swipeGrade(i, r)}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none ${
                     touch
                       ? "slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base pr-4"
@@ -4143,6 +4265,13 @@ function Study({
               <span className="opacity-75">{hintText}</span>
             </div>
           )}
+          <VoiceBadge
+            state={voiceMode.state}
+            flash={voiceMode.flash}
+            label={voiceLabel}
+            retry={voiceMode.retry}
+            bottom={bar.bottom}
+          />
         </SwipeFeelProvider>
       )}
     </div>

@@ -1,0 +1,77 @@
+/**
+ * Command taps on the page's mic (docs/voice-mode.md): a page feature that
+ * takes spoken commands (the /words voice mode) sees each final transcript
+ * before the chat does, and may keep it. It can also pin the mic to active
+ * mode, so commands need no wake word while it is on.
+ *
+ * The registry lives on globalThis (MIC_TAPS_KEY), not in the session: a mic
+ * session that is replaced (a hot-swapped widget migrating it, mic-session.ts
+ * `micSession`) consults the same taps and pins, so a feature never has to
+ * re-register. A session older than MIC_SESSION_V 10 does not consult it.
+ *
+ * Pure apart from that one global, and unit-tested (unit/mic-taps.test.ts).
+ */
+
+/** globalThis key of the registry. */
+export const MIC_TAPS_KEY = "__lkMicTaps";
+
+/** A tap: true keeps the transcript (it was a command, or was shown as "not a command"). */
+export type MicTap = (text: string) => boolean;
+
+export type MicTaps = {
+  /** Add a tap; the newest is asked first. Returns the removal. */
+  tap(f: MicTap): () => void;
+  /** Hold the mic in active mode (no wake word); returns the release. Pins count. */
+  pin(): () => void;
+  pinned(): boolean;
+  /** Offer a final transcript to the taps: true when one kept it. A throwing tap keeps nothing. */
+  offer(text: string): boolean;
+  /** Called when the first pin is taken (the session puts the mic back in active mode). */
+  onPin(f: () => void): () => void;
+};
+
+export function createMicTaps(): MicTaps {
+  const taps: MicTap[] = [];
+  const pinListeners = new Set<() => void>();
+  let pins = 0;
+  return {
+    tap(f) {
+      taps.unshift(f);
+      return () => {
+        const i = taps.indexOf(f);
+        if (i >= 0) taps.splice(i, 1);
+      };
+    },
+    pin() {
+      pins++;
+      if (pins === 1) for (const f of pinListeners) f();
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        pins = Math.max(0, pins - 1);
+      };
+    },
+    pinned: () => pins > 0,
+    offer(text) {
+      for (const f of [...taps]) {
+        try {
+          if (f(text)) return true;
+        } catch {
+          // A broken tap never swallows speech: the chat still gets it.
+        }
+      }
+      return false;
+    },
+    onPin(f) {
+      pinListeners.add(f);
+      return () => void pinListeners.delete(f);
+    },
+  };
+}
+
+/** The page's registry, made once. */
+export function micTaps(): MicTaps {
+  const g = globalThis as unknown as Record<string, MicTaps | undefined>;
+  return (g[MIC_TAPS_KEY] ??= createMicTaps());
+}
