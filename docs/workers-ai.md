@@ -333,6 +333,19 @@ own `/api/words/tts` URL in its own language.
 - **HTTP cache.** A recording is `public`; a MeloTTS clip `private` (it is
   behind sign-in), both `max-age=31536000, immutable`, so a device fetches a
   clip once a year at most.
+- **Chat read-aloud: `store=0`.** The chat's cloud voice
+  (`packages/debug-chat/src/voice-out.ts`) reads each reply sentence through
+  this route with `&store=0`, because a chat line never repeats (owner,
+  2026-11-02). The route (`lib/words-tts.ts`) still answers from a recording
+  or R2 when that text is already there, and still generates with MeloTTS on
+  a miss, but it does **not** write the clip to R2 and answers `Cache-Control:
+  no-store`. The miss counts against the same per-user limit as a word's
+  (600 per 10 min), so the parameter cannot buy more generation than a word
+  session. A replay ("read again", a resume after a duck) plays from the
+  chat's own in-memory blob URLs (last 64 sentences), not the HTTP cache.
+  `lianki-voice` passes the query through untouched and never edge-caches the
+  main Worker's answer. `/words` clips never send `store`, so they stay kept
+  once, ever.
 - **Meaning voice.** `MEANING_VOICE` in `lib/words/say-parts.ts` is `"server"`
   until the owner decides (`"browser"` is free). Meanings are not
   pre-recorded, so a meaning's first request runs MeloTTS. After that it is

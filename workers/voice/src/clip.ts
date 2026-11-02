@@ -8,6 +8,9 @@
  * meaning, a language with no recordings, a text not in a list, a guest
  * asking for MeloTTS, any error here) goes to the main Worker over the MAIN
  * service binding, unchanged: app/api/words/tts/route.ts answers it as before.
+ * That includes every query parameter — `store=0`, the chat's "do not keep
+ * this line" (lib/words-tts.ts) — and the main Worker's answer is never put in
+ * the edge cache: only a recording is.
  *
  * Why a Worker of its own: the main Worker is the whole Next.js app (≈23 MB).
  * A tap on a word in a new isolate waited 1–2.5 s for it to start, and every
