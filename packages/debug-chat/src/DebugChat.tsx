@@ -2686,7 +2686,8 @@ export function DebugChat({
       const v = voice() as ReturnType<typeof voice> & { drop?: (id: string) => boolean };
       if (!v.drop) return v.stop();
       readDispatch({ type: "drop", id: m.id });
-      v.drop(m.id);
+      // Not in the session's queue after all (untagged): stop rather than read it.
+      if (!v.drop(m.id)) return v.stop();
     }
   }, [messages, readP.queue]);
   /** Hand the unread rest of those replies back to the voice, as one queued reply each. */
@@ -2707,7 +2708,8 @@ export function DebugChat({
       const start = ranges[r.from]?.start;
       if (start === undefined) continue;
       claimed.current.add(m.id);
-      if (v.reply(m.text.slice(start)))
+      // The line as meta: its sentences carry its id (a withdrawn ask is dropped by it).
+      if (v.reply(m.text.slice(start), m))
         readDispatch({ type: "enqueue", id: m.id, n: ranges.length - r.from, from: r.from });
     }
     if (focusHack && el) {
