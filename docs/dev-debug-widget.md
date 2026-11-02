@@ -625,7 +625,8 @@ While the chat's input has the focus (the `typing` state), the chat box's own
 area gets a glass background (`data-testid="debug-chat-typing-glass"`, a child
 of the box at `-z-10`, `-inset-1.5` past its edge, rounded): a light oklch tint
 in the page's tone under `blur(12px) saturate(1.4)` (`-webkit-` too, for iOS
-Safari), with a 1px oklch hairline ring. Only the box: the page around it
+Safari), with a 1px oklch hairline ring. It covers the whole panel, the
+shown messages and the input together ("包括输入框和显示的消息"). Only the box: the page around it
 stays sharp, and nothing catches taps (`pointer-events: none`), so the page
 stays usable while typing. Rules and look in `typing-glass.ts`.
 

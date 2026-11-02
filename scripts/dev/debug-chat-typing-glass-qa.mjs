@@ -120,6 +120,18 @@ const glass = (page) =>
       rect: { w: r.width, h: r.height, dw: r.width - c.width, dh: r.height - c.height },
       screen: { w: innerWidth, h: innerHeight },
       pointer: cs.pointerEvents,
+      // Owner, 2026-11-03: "包括输入框和显示的消息" — the input and the shown messages.
+      covers: ["debug-chat-input", "debug-chat-column"].every((id) => {
+        const e = document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect();
+        return (
+          !!e &&
+          e.height > 0 &&
+          e.left >= r.left &&
+          e.right <= r.right &&
+          e.top >= r.top &&
+          e.bottom <= r.bottom
+        );
+      }),
       shown: g.dataset.shown === "true",
       opacity: Number(cs.opacity),
       visibility: cs.visibility,
@@ -179,6 +191,7 @@ try {
         on.rect.h < on.screen.h / 2,
       `${scheme}: only the box's own area (${Math.round(on.rect.w)}×${Math.round(on.rect.h)} of ${on.screen.w}×${on.screen.h})`,
     );
+    check(on.covers, `${scheme}: covers the input and the shown messages`);
     check(on.pointer === "none", `${scheme}: takes no pointer`);
     check(
       (await page.locator('[data-testid="debug-chat-typing-glass"][data-shown]').count()) === 1 &&
