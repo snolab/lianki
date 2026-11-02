@@ -57,17 +57,26 @@ working as before: a new focus reads its word.
   punctuation, spaces, SenseVoice `<|tags|>` and padding such as 嗯/请/吧,
   "okay", "please" and ください. Anything longer than 16 characters is a
   sentence. "我觉得下一张更难" does nothing.
-- **Fuzzy only where it is safe.** One edit is forgiven on CJK phrases of
-  3+ characters (再读一边 → 再读一遍) and on Latin phrases of 7+ letters
-  (previus). Two edits are forgiven from 10 letters. Shorter phrases must
-  match exactly, so "night" is not "right". A slip may never add or drop a
-  negation: 我记得 is not 不记得. A slip equally close to two commands (啥一张)
-  matches nothing.
-- **Not a card's own words.** When the utterance is the word, reading or
-  meaning of a card near the focus, it is no command. This covers the word
-  read aloud by the app and him practising it: an English list's "easy" never
-  grades Easy, and a Japanese 上 never moves the cursor. Exit is the one
-  command never blocked.
+- **Fuzzy only where it is safe.** A slip may change or lose a character,
+  never add one. One is forgiven on CJK phrases of 3+ characters
+  (再读一边 → 再读一遍, 显示答 → 显示答案) and on Latin phrases of 7+ letters
+  (previus); two from 10 letters. Shorter phrases must match exactly, so
+  "night" is not "right". An added word is a different sentence: "no show
+  answer", 未记住了, 下一张吗 match nothing. A slip may never add or drop a
+  negation (不/没/未/无, not/no/never, ない): 我记得 is not 不记得. A slip
+  equally close to two commands (啥一张) matches nothing.
+- **No questions.** A "?" or a closing 吗/么/呢/か is never a command
+  (简单吗, 簡単ですか).
+- **Not a card's own words.** The utterance is no command when it equals
+  (within a slip) the word, reading, meaning, example or a read-aloud part of
+  any card near the focus. It is also no command when it is merely
+  contained in what the focused card, or the one before it, reads aloud
+  (`sayParts`): a whole word for Latin, anywhere for CJK. So "easy" read from
+  "easy (not difficult)" never grades Easy, an English list's "good" never
+  grades Good, and a Japanese 上 never moves the cursor. The cost: a grade
+  word inside the focused card's meaning (简单 in 简单的) is not taken for
+  that card; a synonym (容易, 右) still is. Exit is the one command never
+  blocked.
 - **"Linky, …" goes to the chat.** In voice mode, every other final
   transcript is kept from the chat. A command runs; anything else is shown
   as heard and nothing happens.

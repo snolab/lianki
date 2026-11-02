@@ -3,6 +3,7 @@
  * short utterance → one command, or nothing.
  *
  * Rules:
+ * - **No questions.** A "?" or a closing 吗/呢/か is never a command.
  * - **Whole utterances only.** The transcript, normalized, must BE a command
  *   phrase (or one STT slip away from a long enough one). A command word
  *   inside a longer sentence never matches: "我觉得下一张更难" is nothing.
@@ -242,7 +243,9 @@ const TAGS = /<\|[^|]*\|>/g;
 /** Spoken padding around a command: never part of one. */
 const LEAD =
   /^(?:嗯+|啊+|呃+|哦+|噢+|诶+|欸+|哎+|那个|请|麻烦|please|uh+|um+|ok(?:ay)?|えーと|ええと|あの)+/u;
-const TRAIL = /(?:吧|呀|啊|啦|嘛|哦|呢|please|ください|して)+$/u;
+const TRAIL = /(?:吧|呀|啊|啦|嘛|哦|please|ください|して)+$/u;
+/** A question is never a command ("下一张吗？", "简单吗", "簡単ですか"). */
+const QUESTION = /(?:吗|嗎|么|麼|呢|か|かな)$/u;
 
 /** NFKC, lowercase, Simplified, no tags, punctuation, spaces or padding. */
 export function normalizeUtterance(text: string): string {
@@ -291,7 +294,8 @@ export function slack(phrase: string): number {
 }
 
 /** Negations: a slip may never add or drop one ("我记得" is not "不记得"). */
-const negations = (s: string) => s.match(/[不没別别]/gu)?.length ?? 0;
+const NEGATION = /不|没|沒|未|別|别|无|無|莫|no|not|dont|never|ない|ません|ず/gu;
+const negations = (s: string) => s.match(NEGATION)?.length ?? 0;
 
 /** Each normalized phrase and its command. A phrase in two commands is a bug (tested). */
 const PHRASES: readonly { phrase: string; cmd: VoiceCommand }[] = VOICE_COMMANDS.flatMap((cmd) =>
@@ -314,13 +318,17 @@ export type VoiceMatch = {
 export function matchCommand(text: string): VoiceMatch | null {
   const n = normalizeUtterance(text);
   if (!n || [...n].length > MAX_COMMAND_CHARS) return null;
+  if (/[?？]/u.test(text) || QUESTION.test(n)) return null;
   const exact = EXACT.get(n);
   if (exact) return { cmd: exact, phrase: n, distance: 0 };
   let best: VoiceMatch | null = null;
   let tie = false;
   for (const { phrase, cmd } of PHRASES) {
     const s = slack(phrase);
-    if (!s || Math.abs([...phrase].length - [...n].length) > s) continue;
+    // A slip may change or lose a character, never add one: an added word is
+    // a different sentence ("no show answer", "未记住了"), not an STT error.
+    if (!s || [...n].length > [...phrase].length || [...phrase].length - [...n].length > s)
+      continue;
     // A Latin phrase is matched only by Latin text, and CJK only by CJK.
     if (isLatin(phrase) !== isLatin(n)) continue;
     if (negations(phrase) !== negations(n)) continue;
@@ -349,7 +357,7 @@ export function addressesAgent(text: string): boolean {
 }
 
 /** Separators inside a card's meaning ("easy; simple", "简单的，容易的"). */
-const PARTS = /[;；,，、/|·・\n]+/u;
+const PARTS = /[;；,，、/|·・()（）[\]【】「」\n]+/u;
 
 /**
  * The utterance is (nearly) a text of the cards around the focus: the word,
@@ -357,9 +365,28 @@ const PARTS = /[;；,，、/|·・\n]+/u;
  * a line is never a command, so an English list's "easy" read aloud does not
  * grade Easy, and a Japanese list's 上 does not move the cursor.
  */
-export function isCardEcho(text: string, cardTexts: readonly (string | undefined)[]): boolean {
+export function isCardEcho(
+  text: string,
+  cardTexts: readonly (string | undefined)[],
+  /**
+   * What was just read aloud or is under the focus: here the utterance only
+   * has to be IN one of them ("easy" in "easy (not difficult)", 简单 in
+   * 简单的), since STT may catch a piece of a longer read.
+   */
+  spoken: readonly (string | undefined)[] = [],
+): boolean {
   const n = normalizeUtterance(text);
   if (!n) return false;
+  for (const t of spoken) {
+    if (!t) continue;
+    const flat = toSimplified(t.normalize("NFKC").toLowerCase());
+    // Latin: a whole word of it (so "up" is not in "cup"); CJK: anywhere in it.
+    if (/^[a-z]+$/.test(n)) {
+      const words = flat.split(/[^\p{L}\p{N}]+/u);
+      const joined = flat.replace(/[^\p{L}\p{N}]+/gu, "");
+      if (words.includes(n) || (n.length >= 7 && joined.includes(n))) return true;
+    } else if (flat.replace(/[\p{P}\p{S}\s]/gu, "").includes(n)) return true;
+  }
   for (const t of cardTexts) {
     if (!t) continue;
     for (const part of [t, ...t.split(PARTS)]) {

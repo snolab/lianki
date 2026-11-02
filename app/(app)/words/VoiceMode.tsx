@@ -34,16 +34,22 @@ export function useVoiceMode(on: boolean, handle: (text: string) => VoiceOutcome
     let alive = true;
     void import("@/lib/words/voice-mic")
       .then(({ startVoiceEar }) =>
-        startVoiceEar({
-          onState: (s) => alive && setState(s),
-          onText: (text) => {
-            const outcome = handleRef.current(text);
-            if (outcome.kind !== "agent") setFlash({ outcome, at: Date.now() });
-            return keepsTranscript(outcome);
-          },
-        }),
+        // Turned off while the module loaded: never start the mic.
+        !alive
+          ? null
+          : startVoiceEar({
+              onState: (s) => alive && setState(s),
+              onText: (text) => {
+                // Turned off while the mic was still starting: act on nothing, pass it on.
+                if (!alive) return false;
+                const outcome = handleRef.current(text);
+                if (outcome.kind !== "agent") setFlash({ outcome, at: Date.now() });
+                return keepsTranscript(outcome);
+              },
+            }),
       )
       .then((e) => {
+        if (!e) return;
         if (alive) ear = e;
         else void e.stop();
       })

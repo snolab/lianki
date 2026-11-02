@@ -59,7 +59,8 @@ async function pass(name, contextOptions) {
   );
   await page.waitForURL((u) => /\/home|\/list|\/words/.test(u.toString()), { timeout: 20000 });
 
-  await page.goto(`${BASE}/words`, { waitUntil: "networkidle" });
+  // Every list at once: a rerun's account already has one (a fresh one gets it below).
+  await page.goto(`${BASE}/words?list=all`, { waitUntil: "networkidle" });
   const rows = page.locator('[role="listitem"]');
   if (
     !(await rows
@@ -75,6 +76,7 @@ async function pass(name, contextOptions) {
     await page.getByRole("button", { name: first.lang, exact: true }).click();
     await page.getByRole("button", { name: "add", exact: true }).first().click();
   }
+  await page.waitForTimeout(500);
   await rows.first().waitFor({ timeout: 20000 });
   check((await rows.count()) > 5, `study list open (${await rows.count()} rows)`);
 

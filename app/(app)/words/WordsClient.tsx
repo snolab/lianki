@@ -3415,8 +3415,16 @@ function Study({
         it.term,
         it.reading,
         it.back,
+        it.ex,
+        it.exTr,
         spokenText(it, it.lang, !!config.readingOnBack),
+        ...partsOf(it).map((p) => p.text),
       ]),
+      // The focused card and the one before (focus moves on after a grade):
+      // exactly what sayParts reads aloud, plus the raw meaning and example.
+      spoken: queue
+        .slice(Math.max(0, at - 1), at + 1)
+        .flatMap((it) => [it.term, it.back, it.ex, it.exTr, ...partsOf(it).map((p) => p.text)]),
     });
   };
   const voiceMode = useVoiceMode(voiceOn, voiceHandle);

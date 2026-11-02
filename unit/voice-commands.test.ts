@@ -126,6 +126,21 @@ describe("voice grammar", () => {
     expect(cmd("记得了吗")).toBeNull();
   });
 
+  it("never takes an added word or a question as a slip (review, 2026-11-02)", () => {
+    expect(cmd("no show answer")).toBeNull();
+    expect(cmd("don't show answer")).toBeNull();
+    expect(cmd("未记住了")).toBeNull();
+    expect(cmd("很简单吗")).toBeNull();
+    expect(cmd("简单吗")).toBeNull();
+    expect(cmd("下一张吗")).toBeNull();
+    expect(cmd("下一张？")).toBeNull();
+    expect(cmd("Next?")).toBeNull();
+    expect(cmd("簡単ですか")).toBeNull();
+    expect(cmd("答えを表示しない")).toBeNull();
+    // A lost character is still a slip.
+    expect(cmd("显示答")).toBe("show");
+  });
+
   it("refuses a slip equally close to two commands", () => {
     // 啥一张: one edit from both 上一张 (prev) and 下一张 (next).
     expect(cmd("啥一张")).toBeNull();
@@ -167,6 +182,15 @@ describe("voice grammar", () => {
     expect(isCardEcho("下一张", ["下一章节"])).toBe(false);
     expect(isCardEcho("显示答按", ["显示答案"])).toBe(true); // within a slip
     expect(isCardEcho("next", ["", "。"])).toBe(false);
+  });
+
+  it("knows a piece of what the focused card reads aloud (review, 2026-11-02)", () => {
+    expect(isCardEcho("easy", [], ["easy (not difficult)"])).toBe(true);
+    expect(isCardEcho("Good.", [], ["Good. See you tomorrow!"])).toBe(true);
+    expect(isCardEcho("简单", [], ["简单的；容易的"])).toBe(true);
+    expect(isCardEcho("up", [], ["a cup of tea"])).toBe(false); // whole words only
+    expect(isCardEcho("previous", [], ["the-previous-day"])).toBe(true);
+    expect(isCardEcho("下一张", [], [undefined, "猫"])).toBe(false);
   });
 });
 
@@ -240,6 +264,18 @@ describe("voice commands → the study view's actions", () => {
       hasCard: true,
     });
     expect(o).toEqual({ kind: "echo", cmd: "easy", heard: "Easy" });
+    expect(f.calls).toEqual([]);
+  });
+
+  it("does nothing when the focused card's read-aloud holds the command", () => {
+    const f = fakeActions();
+    const o = handleUtterance("easy", {
+      actions: f.actions,
+      cardTexts: [],
+      spoken: ["easy (not difficult)"],
+      hasCard: true,
+    });
+    expect(o.kind).toBe("echo");
     expect(f.calls).toEqual([]);
   });
 

@@ -70,6 +70,8 @@ export type VoiceContext = {
   actions: VoiceActions;
   /** The texts of the cards around the focus (word, reading, meaning), for the echo check. */
   cardTexts: readonly (string | undefined)[];
+  /** What the focused card (and the one before it) reads aloud: word, meaning, example. */
+  spoken?: readonly (string | undefined)[];
   /** There is a current card. */
   hasCard: boolean;
 };
@@ -81,7 +83,7 @@ export function handleUtterance(text: string, ctx: VoiceContext): VoiceOutcome {
   const m = matchCommand(heard);
   if (!m) return { kind: "unknown", heard };
   // Leaving voice mode is never blocked: it must always work.
-  if (m.cmd !== "exit" && isCardEcho(heard, ctx.cardTexts))
+  if (m.cmd !== "exit" && isCardEcho(heard, ctx.cardTexts, ctx.spoken))
     return { kind: "echo", cmd: m.cmd, heard };
   if (NEEDS_CARD.has(m.cmd) && !ctx.hasCard) return { kind: "no-card", cmd: m.cmd, heard };
   COMMAND_ACTIONS[m.cmd](ctx.actions);
