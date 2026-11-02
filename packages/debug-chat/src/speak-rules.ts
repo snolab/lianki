@@ -10,6 +10,9 @@
  *    "not read aloud" note.
  * 2. A quiet line (`say --quiet`: FYI, progress, deploy notices) is never
  *    read.
+ * 3. A withdrawn ask card (eval.ts withdraw) is never read: by its
+ *    `ask.withdrawnAt`, or by its id once the page heard {type:"withdrawn"}
+ *    (markWithdrawn), for a line kept to read later from before it was.
  *
  * There is no time of day in it. Pure: unit/speak-rules.test.ts.
  */
@@ -21,10 +24,29 @@ export type SpeakMeta = { id?: unknown; quiet?: unknown; ask?: unknown };
 export const isQuiet = (m: SpeakMeta) => m.quiet === true;
 
 /** Why a line is not read aloud: null = read it (by voice.ts's own rules). */
-export type Silence = "hidden" | "quiet";
+export type Silence = "hidden" | "quiet" | "withdrawn";
+
+/** The ids of ask lines withdrawn while this page was open (shared by every copy of this module). */
+const withdrawnIds = (): Set<string> => {
+  const g = globalThis as unknown as { __lkWithdrawn?: Set<string> };
+  return (g.__lkWithdrawn ??= new Set());
+};
+/** The page heard {type:"withdrawn"} for line `id`: it is never read from now on. */
+export function markWithdrawn(id: string) {
+  const s = withdrawnIds();
+  s.add(id);
+  if (s.size > 200) s.delete(s.values().next().value as string);
+}
+/** A withdrawn ask card (its own mark, or one the page heard about). */
+export const isWithdrawn = (m: SpeakMeta) =>
+  (typeof m.ask === "object" &&
+    m.ask !== null &&
+    (m.ask as { withdrawnAt?: unknown }).withdrawnAt !== undefined) ||
+  (typeof m.id === "string" && withdrawnIds().has(m.id));
 
 export function silenceFor(m: SpeakMeta, at: { hidden: boolean }): Silence | null {
   if (isQuiet(m)) return "quiet";
+  if (isWithdrawn(m)) return "withdrawn";
   if (at.hidden) return "hidden";
   return null;
 }

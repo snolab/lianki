@@ -73,7 +73,7 @@ import {
   sentenceState,
 } from "./read-progress";
 import { aecOn, cloudOut, noSpeechVoices, outMode, setAec } from "./voice-out";
-import type { SpeakMeta } from "./speak-rules";
+import { type SpeakMeta, isWithdrawn } from "./speak-rules";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
   FADE_MS,
@@ -2675,7 +2675,13 @@ export function DebugChat({
   );
   const resumeItems = resumeLeft
     .map((r) => ({ r, m: messages.find((x) => x.id === r.id && x.from === "agent") }))
-    .filter((x): x is { r: ReadingLeft; m: ChatMessage } => !!x.m);
+    // A withdrawn ask card is never read on (speak-rules.ts).
+    .filter((x): x is { r: ReadingLeft; m: ChatMessage } => !!x.m && !isWithdrawn(x.m));
+  // An ask withdrawn while it is being read (or waits in the queue): the reading stops.
+  useEffect(() => {
+    if (readP.queue.some((e) => messages.some((m) => m.id === e.id && isWithdrawn(m))))
+      voice().stop();
+  }, [messages, readP.queue]);
   /** Hand the unread rest of those replies back to the voice, as one queued reply each. */
   const resumeNow = () => {
     const v = voice();

@@ -132,4 +132,13 @@ describe("checkChoices and askState", () => {
     ).toBe("answered");
     expect(askText(ask)).toBe("Days? — Mon / Tue (+1 more)");
   });
+
+  it("withdrawn: outranks the expiry, never an answer; an agent cannot preset it", () => {
+    const tap = { choices: {}, source: "tap" as const, thread: "owner", label: "", at: 1 };
+    expect(askState({ ask: { ...ask, withdrawnAt: now - 1 } }, now)).toBe("withdrawn");
+    expect(askState({ ask: { ...ask, withdrawnAt: 1, expiresAt: now } }, now)).toBe("withdrawn");
+    expect(askState({ ask: { ...ask, withdrawnAt: 1 }, answer: tap }, now)).toBe("answered");
+    const r = parseAsk({ question: "Q?", options: ["a"], withdrawnAt: now }, now, id);
+    expect(r.ok ? r.ask.withdrawnAt : "not ok").toBeUndefined();
+  });
 });

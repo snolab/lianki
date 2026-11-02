@@ -104,6 +104,15 @@
  *       "source":"stt", at most 3 times; friends' lines never. --last targets
  *       the owner's latest line. Uses the saved grant; never pairs.
  *
+ *   bun scripts/dev/eval.ts withdraw [<askId|msgId>|--last] [--to <thread|email>] [--no-pair]
+ *       Take back an ask card that is obsolete, so nobody has to tap it: the
+ *       hub marks it withdrawn and every open page greys it out ("Withdrawn",
+ *       no options, never read aloud); a later tap is refused. Only an
+ *       agent's ask, only while open (not answered or expired), only in the
+ *       thread it was sent to (the owner's, or --to the friend's). --last:
+ *       the latest open ask in the owner's thread. Prints {"type":"withdrawn",…}.
+ *       Uses the saved grant; never pairs.
+ *
  *   bun scripts/dev/eval.ts say --to /words/audio "text"
  *       Address a state-tree node instead of a thread (a `--to` starting
  *       with "/"): its listener gets it, its ancestors observe it. Allowed
@@ -175,7 +184,8 @@ import {
   nodeOpts,
   sayVolume,
 } from "./node-args";
-import { routeTo } from "@/lib/dev-eval";
+import { type ChatMessage, routeTo } from "@/lib/dev-eval";
+import { askState } from "@lianki/debug-chat/ask";
 import { type BusyArgs, beatMessage, endsBeat, idleFor, parseBusyArgs } from "./busy";
 import { ENDED, GRANT_INVALID, chatClose, chatStep, serveClose } from "./eval-grant";
 import { DEAD, PONG, keepalive } from "./keepalive";
@@ -253,7 +263,7 @@ for (let i = 0; i < args.length; ) {
 const noPair = boolFlag("--no-pair");
 /** ask: wait for the tap and print the answer (or time out). */
 const waitFlag = boolFlag("--wait");
-/** edit: the owner's latest line, instead of an id. */
+/** edit: the owner's latest line; withdraw: the latest open ask (instead of an id). */
 const lastFlag = boolFlag("--last");
 /** chat: exit on {type:"pages-idle"} instead of staying for pages-back. */
 const exitOnIdle = boolFlag("--exit-on-idle");
@@ -497,6 +507,14 @@ function chat(out?: string, errorsOnly = false) {
           answer: m.answer,
           labels: m.labels,
         });
+      else if (m.type === "withdrawn")
+        print({
+          type: "withdrawn",
+          id: m.id,
+          askId: m.askId,
+          thread: m.thread ?? "owner",
+          withdrawnAt: m.withdrawnAt,
+        });
       else if (m.type === "edited")
         print({
           type: "edited",
@@ -683,6 +701,8 @@ function ask(
         if (!wait) done(() => resolve(m));
         else console.error(`asked (${askId}); waiting for the tap…`);
       } else if (m.type === "answered" && askId && m.askId === askId) done(() => resolve(m));
+      else if (m.type === "withdrawn" && askId && m.askId === askId)
+        done(() => reject(new Error(`ask ${askId} was withdrawn`)));
       else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
     };
     ws.onclose = (e) => {
@@ -726,6 +746,60 @@ function edit(text: string, id: string | undefined, last: boolean): Promise<Msg>
         if (!target) return done(() => reject(new Error("the owner has no line to polish")));
         go();
       } else if (m.type === "edited" && m.id === target) done(() => resolve(m));
+      else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
+    };
+    ws.onclose = (e) => {
+      clearTimeout(give);
+      if (e.code === GRANT_INVALID) rmSync(grant.file, { force: true });
+      reject(new Error(`socket closed (${e.code}${e.reason ? ` ${e.reason}` : ""})`));
+    };
+  });
+}
+
+/**
+ * Withdraw an open ask card (`id`: its askId or message id; with `last` the
+ * latest open ask in the owner's thread, from the history the hub sends). Resolves
+ * with the hub's {type:"withdrawn"}; rejects with the rule it broke. Never pairs.
+ */
+function withdraw(id: string | undefined, last: boolean, to?: string): Promise<Msg> {
+  const grant = chatGrant();
+  if (!grant)
+    return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
+  return new Promise((resolve, reject) => {
+    const ws = openControl(grant.token);
+    let target = id;
+    const give = setTimeout(() => {
+      ws.close();
+      reject(new Error("no answer from the hub within 15 s"));
+    }, 15_000);
+    const done = (fn: () => void) => {
+      clearTimeout(give);
+      ws.close();
+      fn();
+    };
+    const go = () =>
+      ws.send(
+        JSON.stringify({ type: "withdraw", id: target, ...(to && to !== "owner" ? { to } : {}) }),
+      );
+    ws.onmessage = (e) => {
+      const m = JSON.parse(String(e.data)) as Msg;
+      if (m.type === "approved" && !last) go();
+      else if (m.type === "history" && last && target === undefined) {
+        const list = (Array.isArray(m.messages) ? m.messages : []) as ChatMessage[];
+        const now = Date.now();
+        // The history a listener gets is the owner's thread.
+        const open = list.filter(
+          (x) =>
+            x.from === "agent" &&
+            x.ask &&
+            (x.thread ?? "owner") === "owner" &&
+            askState(x, now) === "open",
+        );
+        target = open.at(-1)?.ask?.askId;
+        if (!target) return done(() => reject(new Error("no open ask to withdraw")));
+        go();
+      } else if (m.type === "withdrawn" && (m.askId === target || m.id === target))
+        done(() => resolve(m));
       else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
     };
     ws.onclose = (e) => {
@@ -893,6 +967,17 @@ async function main() {
       process.exit(2);
     }
     console.log(JSON.stringify(await edit(text, id, lastFlag)));
+    return;
+  }
+  if (args[0] === "withdraw") {
+    const rest = args.slice(1);
+    if ((lastFlag ? rest.length !== 0 : rest.length !== 1) || (lastFlag && to && to !== "owner")) {
+      console.error(
+        "usage: bun scripts/dev/eval.ts withdraw <askId|msgId> [--to <thread|email>] | --last [--no-pair]",
+      );
+      process.exit(2);
+    }
+    console.log(JSON.stringify(await withdraw(rest[0], lastFlag, to)));
     return;
   }
   if (args[0] === "ask") {

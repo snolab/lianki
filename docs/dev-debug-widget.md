@@ -575,9 +575,38 @@ chat` prints it as an `answered` line.
   chatted once). They never see the owner's asks and cannot answer them; their
   answers reach listeners tagged with their `thread`.
 - The card greys out after the tap, shows the choice, says "Expired" past the
-  deadline, and stays in the history. A page from before this change (no
+  deadline ("Withdrawn" once the agent takes it back, below), and stays in the history. A page from before this change (no
   `onAnswer`) falls back to sending the choice as a typed line — that is
   **not** a tap-grade answer.
+
+### Withdrawing an ask
+
+An ask that became obsolete (the question was settled another way) can be
+taken back, so the owner no longer has to tap it (owner, 2026-11-03):
+
+```bash
+bun scripts/dev/eval.ts withdraw 054357d6-db3 --no-pair   # by askId or message id
+bun scripts/dev/eval.ts withdraw --last                  # latest open ask, owner's thread
+bun scripts/dev/eval.ts withdraw fa1 --to friend@x.com   # a card sent to a friend
+```
+
+- Wire: `{type:"withdraw", id, to?}` (`id` is the askId or the line's id,
+  validated in `lib/dev-eval.ts`); the hub answers and broadcasts
+  `{type:"withdrawn", id, askId, thread, withdrawnAt}` to that thread's
+  pages and the approved listeners (`eval.ts chat` prints it).
+- Hub rules (`withdraw()` in `workers/push/src/debug.ts`): a live chat grant
+  (never a pairing for a friend); only the thread named (`to`, as for `ask`:
+  the owner's by default, else the friend's the card was sent to; a card is
+  never found from another thread); only an agent line carrying an ask; only
+  while open — answered, expired or already withdrawn is refused. It stamps
+  `ask.withdrawnAt` on the kept line (an agent's own `ask` can never preset
+  it: `parseAsk` drops it), so `askState` says `"withdrawn"` and a later tap
+  is refused (`ask … is withdrawn`). `ask --wait` on that ask fails.
+- Page: the card collapses to a greyed "Withdrawn" (`askWithdrawn`, 已撤回)
+  with no options. It is never read aloud (speak-rules.ts rule 3): a line
+  missed while hidden is not read on return, a reading under way stops, and
+  the after-reload resume skips it. Compact mode drops it (only open asks
+  show there).
 
 **Security:** a hub-stamped `source:"tap"` answer from the owner's thread is
 a high-confidence approval — a deliberate touch on the owner's signed-in
@@ -654,6 +683,7 @@ There is no time of day in it, and no setting
 | FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                               |
 | the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, by the page's usual rules      |
 | an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | yes, like a plain line              |
+| a withdrawn ask card (`eval.ts withdraw`)                                | `eval.ts withdraw …`      | never (nor read on later)           |
 
 Default to `--quiet` whenever the line is not a reply to him. `--loud` is
 deprecated: `eval.ts` still accepts it and prints a note, and the line goes
