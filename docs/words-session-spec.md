@@ -13,8 +13,12 @@ they land. Design details that are still open are marked **open**.
   ("大大的，不密密麻麻，不累眼"). Keep the vertical bamboo-slip list; he
   prefers it to single cards. _Top priority; phase 1._
 - **3–4 slips per phone screen**, 5 at most.
-- **Snap paging, not free scroll.** Slots align; no endless scrolling.
-- **No scroll-up after a swipe.** Today every swipe scrolls the list up.
+- **Keep scrolling** (revised 03:30–03:31 JST, replacing "snap paging" and
+  "no scroll-up"): he likes scrolling; with fixed slots his finger has to move
+  to a different slot each time, while with scrolling it stays at one spot and
+  swipes card after card. So after a swipe the next card arrives at the
+  **same screen position** under his finger. He reported that /words could
+  not scroll at 03:30 JST: check for a bug.
 - **Paper texture always scrolls with the list**; the
   `words.paperScrolls` setting is removed.
 - **Binding cords at a fixed position**: dragging a slip never carries the
@@ -23,6 +27,7 @@ they land. Design details that are still open are marked **open**.
 
 ## The window (phase 2, **open**: design options go to the owner in Slack)
 
+- _Superseded in part by "Keep scrolling" above: no fixed slots._
 - A **fixed visual window** of 3–4 slips. A swiped slip leaves its slot and
   the next word slides up from below or fades in (A B C → B C D).
 - Slots are refilled in order of **forgetting probability**.
