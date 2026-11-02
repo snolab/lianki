@@ -18,6 +18,8 @@ export interface CheckoutSessionLike {
   currency?: string | null;
   client_reference_id?: string | null;
   metadata?: Record<string, string> | null;
+  /** Stripe's own word on the mode; checked against ours by the webhook. */
+  livemode?: boolean;
 }
 
 export type FulfilResult =
@@ -29,6 +31,8 @@ export async function fulfilCheckout(
   d1: D1WithBatch,
   session: CheckoutSessionLike,
   now = new Date(),
+  /** Stripe test mode: the `payment` row is marked (`testMode = 1`). */
+  opts: { testMode?: boolean } = {},
 ): Promise<FulfilResult> {
   // Alipay and WeChat Pay settle before the redirect; anything still pending
   // arrives again as checkout.session.async_payment_succeeded.
@@ -54,7 +58,7 @@ export async function fulfilCheckout(
     await d1.batch([
       d1
         .prepare(
-          "INSERT INTO payment (id, userId, passId, days, amount, currency, proEndsAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO payment (id, userId, passId, days, amount, currency, proEndsAt, createdAt, testMode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(
           session.id,
@@ -65,6 +69,7 @@ export async function fulfilCheckout(
           session.currency ?? pass.currency,
           proEndsAt.toISOString(),
           at,
+          opts.testMode ? 1 : 0,
         ),
       d1
         .prepare("UPDATE user SET proEndsAt = ?, updatedAt = ? WHERE id = ?")

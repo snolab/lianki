@@ -1,17 +1,14 @@
 /**
  * Stripe — the first credit-wallet provider (card, Alipay, WeChat Pay via
  * Checkout). Top-ups are Checkout Sessions with `metadata.kind = "topup"`;
- * they arrive on the same /api/payments/stripe-webhook as passes, which hands
- * them to `topupFromSession`.
+ * they arrive on the same /api/payments/stripe-webhook as passes
+ * (lib/payments/stripe-webhook.ts), which hands them to `topupFromSession`.
+ * Test or live by `stripeMode` (lib/payments/stripe.ts): test mode is the
+ * owner's alone, on this provider route as on the pass route.
  */
-import { createCheckoutSession, stripeEnabled, verifyStripeSignature } from "../stripe";
+import { createCheckoutSession, PAID_EVENTS, readStripeEvent, stripeMode } from "../stripe";
 import type { CheckoutSessionLike } from "../fulfil";
 import type { PaymentProvider, WebhookOutcome } from "./types";
-
-const PAID_EVENTS = new Set([
-  "checkout.session.completed",
-  "checkout.session.async_payment_succeeded",
-]);
 
 /** A paid top-up session → what to credit; anything else is not a top-up. */
 export function topupFromSession(s: CheckoutSessionLike): WebhookOutcome {
@@ -34,6 +31,7 @@ export const stripeProvider: PaymentProvider = {
   kind: "checkout",
   envKeys: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
   implemented: true,
+  mode: stripeMode,
   async createTopup(amount, user, urls) {
     const url = await createCheckoutSession({
       purchase: { kind: "topup", amount },
@@ -44,16 +42,14 @@ export const stripeProvider: PaymentProvider = {
     return { kind: "redirect", url };
   },
   async verifyWebhook(req) {
-    if (!stripeEnabled()) return { status: "invalid" };
-    const body = await req.text();
-    const ok = await verifyStripeSignature(
-      body,
-      req.headers.get("stripe-signature"),
-      process.env.STRIPE_WEBHOOK_SECRET!.trim(),
-    );
-    if (!ok) return { status: "invalid" };
-    const event = JSON.parse(body) as { type: string; data: { object: CheckoutSessionLike } };
-    if (!PAID_EVENTS.has(event.type)) return { status: "ignored", reason: event.type };
+    const mode = stripeMode();
+    if (!mode) return { status: "invalid" };
+    const event = await readStripeEvent(req);
+    // Signed, but for the other mode: the secrets are mixed up — credit nothing.
+    if (!event || event.livemode !== (mode === "live")) return { status: "invalid" };
+    const type = String(event.type ?? "");
+    if (!PAID_EVENTS.has(type) || !event.data?.object)
+      return { status: "ignored", reason: type || "no type" };
     return topupFromSession(event.data.object);
   },
 };

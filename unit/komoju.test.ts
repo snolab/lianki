@@ -138,10 +138,10 @@ describe("mode", () => {
     const live = { ...test, KOMOJU_SECRET_KEY: "sk_live_a", KOMOJU_LIVE: "1" };
     expect(providerOpenTo(komojuProvider, "u@x.com", live)).toBe(true);
     expect(publicProvider(komojuProvider, live).label).toBe("KOMOJU");
-    // A provider without a mode is live once its secrets are set.
+    // Stripe has its own mode (unit/stripe-mode.test.ts): a key that proves nothing is off.
     expect(
       providerMode(stripeProvider, { STRIPE_SECRET_KEY: "a", STRIPE_WEBHOOK_SECRET: "b" }),
-    ).toBe("live");
+    ).toBeNull();
     expect(providerOpenTo(komojuProvider, OWNER, {})).toBe(false);
   });
 });

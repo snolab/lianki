@@ -20,7 +20,8 @@ account settles in JPY.
 3. Stripe pushes `checkout.session.completed` (or
    `checkout.session.async_payment_succeeded`) to
    `POST /api/payments/stripe-webhook`. The signature is checked with Web
-   Crypto (`lib/payments/stripe.ts`), then `lib/payments/fulfil.ts` writes a
+   Crypto (`lib/payments/stripe.ts`; handling in
+   `lib/payments/stripe-webhook.ts`), then `lib/payments/fulfil.ts` writes a
    `payment` row (keyed by the session id, `db/migrations/0013_payments.sql`)
    and the new `proEndsAt` in one D1 batch. A redelivered event is a no-op.
 
@@ -29,14 +30,54 @@ Node-only reaches the Worker. D1 only — on the Mongo backend the routes 503.
 
 ## Turning it on
 
-Off until both secrets exist on the Worker:
+Stripe has a **test / live mode** decided by the Worker's settings only
+(`stripeMode` in `lib/payments/stripe.ts`), and it fails closed — the same
+rule as KOMOJU:
 
-```bash
-bunx wrangler secret put STRIPE_SECRET_KEY       # sk_test_… / sk_live_…
-bunx wrangler secret put STRIPE_WEBHOOK_SECRET   # whsec_… of the endpoint below
-```
+| `STRIPE_SECRET_KEY` | `STRIPE_LIVE` | mode     | who can see and pay                     |
+| ------------------- | ------------- | -------- | --------------------------------------- |
+| `sk_test_…`         | unset         | **test** | the owner (`OWNER_EMAILS`) only         |
+| `sk_live_…`         | `1`           | **live** | everyone                                |
+| anything else       | anything      | **off**  | nobody: checkout and webhook answer 503 |
 
-In the Stripe Dashboard:
+"Anything else" includes a missing `STRIPE_WEBHOOK_SECRET`, a test key with
+`STRIPE_LIVE=1`, a live key without it, `STRIPE_LIVE` set to anything but
+`1`, and any other key format — restricted `rk_…` keys too (the code uses a
+full secret key; accepting `rk_live_` would be a one-line, reviewed change in
+`stripeMode`). So nothing charges real money until the owner sets both a live
+key and the flag on purpose.
+
+In **test** mode (`lib/payments/stripe-webhook.ts`):
+
+- the buy buttons and the "Stripe (test)" top-up show for the owner only;
+  `POST /api/payments/checkout` and `/api/payments/topup` answer 503 to anyone
+  else;
+- the webhook credits the owner's account only — a session for anyone else
+  is answered 200 and ignored (`payments.stripe.test-ignored` in
+  `wrangler tail lianki`);
+- what it writes is marked: a pass's `payment` row has `testMode = 1`
+  (`db/migrations/0025_payment_test_mode.sql`), a top-up's ledger entry the
+  note `test mode`; and a test pass pays **no** inviter bonus.
+
+In both modes a signed event whose `livemode` disagrees with the mode (the
+secrets are mixed up) credits nothing: it answers 503 and logs
+`payments.stripe.mode-mismatch`, so Stripe retries for up to 3 days while the
+secrets are fixed. A new Checkout Session whose `livemode` disagrees is
+refused before the redirect.
+
+### Secrets (names only — never paste values into chat or commits)
+
+| name                     | value                                                       |
+| ------------------------ | ----------------------------------------------------------- |
+| `STRIPE_SECRET_KEY`      | `sk_test_…` (test) or `sk_live_…` (live) — Developers → API keys |
+| `STRIPE_WEBHOOK_SECRET`  | `whsec_…` of the webhook endpoint below, **in the same mode** |
+| `STRIPE_LIVE`            | `1` for live; unset for test                                |
+| `STRIPE_PAYMENT_METHODS` | optional, comma-separated (default `card,alipay,wechat_pay`) |
+
+Each is a Worker secret (`bunx wrangler secret put <name>`); secrets apply at
+once, no deploy needed.
+
+In the Stripe Dashboard (once per mode — test and live are separate):
 
 - **Settings → Payment methods**: enable Alipay and WeChat Pay.
   `STRIPE_PAYMENT_METHODS` (comma-separated) overrides the offered list if one
@@ -45,8 +86,44 @@ In the Stripe Dashboard:
   `https://lianki.com/api/payments/stripe-webhook`, events
   `checkout.session.completed` and `checkout.session.async_payment_succeeded`.
 
+### Testing now (test keys)
+
+1. Dashboard in **test mode**: add the webhook endpoint above; copy its
+   signing secret.
+2. `bunx wrangler secret put STRIPE_SECRET_KEY` (the `sk_test_…` key) and
+   `bunx wrangler secret put STRIPE_WEBHOOK_SECRET` (that `whsec_…`). No
+   `STRIPE_LIVE`.
+3. As the owner, buy a pass on `/membership` with card `4242 4242 4242 4242`
+   (Checkout shows "Test mode"): Pro is extended and the `payment` row has
+   `testMode = 1`. Top up ¥100 with "Stripe (test)": the ledger entry carries
+   `test mode`. A non-owner account sees no buy buttons and no Stripe top-up.
+
+### Going live
+
 Before live keys: a 特定商取引法 page, terms and privacy policy (Stripe Japan's
-review asks for them), and the owner's 資格外活動許可.
+review asks for them), and the owner's 資格外活動許可. Then:
+
+1. Dashboard in **live mode** → Developers → Webhooks → add
+   `https://lianki.com/api/payments/stripe-webhook` with the two events above;
+   copy its (live) signing secret. Enable Alipay and WeChat Pay in live mode.
+2. Put the live secrets on the Worker, the flag last:
+
+   ```bash
+   bunx wrangler secret put STRIPE_SECRET_KEY      # the live secret key (sk_live_…)
+   bunx wrangler secret put STRIPE_WEBHOOK_SECRET  # the live endpoint's whsec_…
+   bunx wrangler secret put STRIPE_LIVE            # 1
+   ```
+
+   Between the first put and the last, Stripe is **off** (a live key without
+   the flag is refused) — nothing half-live.
+3. **One small real payment**: as the owner, top up **¥100** by card
+   (Stripe now has no "(test)" label, and a second, non-owner account sees it
+   too). Check: `wrangler tail lianki` shows no error; the balance is +¥100
+   with a `topup` entry `stripe:<session id>` and no `test mode` note; the
+   Dashboard shows the payment and the webhook delivery 200. Then refund it in
+   the Dashboard and take it back at `/dev/credits` (撤回充值).
+4. If anything is off: `bunx wrangler secret delete STRIPE_LIVE` turns Stripe
+   off at once.
 
 ## Known gaps
 
@@ -124,7 +201,7 @@ a test card can never become anyone's real credits.
 
 | id                | kind     | methods                                     | env (secrets)                                  | state       |
 | ----------------- | -------- | ------------------------------------------- | ---------------------------------------------- | ----------- |
-| `stripe`          | checkout | card, Alipay, WeChat Pay                    | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`   | implemented |
+| `stripe`          | checkout | card, Alipay, WeChat Pay                    | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (+ `STRIPE_LIVE=1` for live) | implemented — test mode until live ([above](#turning-it-on)) |
 | `komoju`          | checkout | card, konbini, PayPay, Alipay, WeChat Pay   | `KOMOJU_SECRET_KEY`, `KOMOJU_WEBHOOK_SECRET` (+ `KOMOJU_LIVE=1` for live) | implemented — test mode until live (below) |
 | `payjp`           | checkout | card (3-D Secure, checkout-policy.ts)       | `PAYJP_SECRET_KEY`, `PAYJP_WEBHOOK_TOKEN`      | slot        |
 | `paddle`          | checkout | card, PayPal, Apple Pay                     | `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`      | slot        |
