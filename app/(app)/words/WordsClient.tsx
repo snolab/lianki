@@ -3279,10 +3279,14 @@ function Study({
     };
   }, [listEl]);
   // Keep the cursor in view as it moves, a couple of rows from the edges of
-  // what the overlays leave uncovered.
+  // what the overlays leave uncovered. A row height change alone (text size)
+  // is not a move: the effect below keeps the reader's place instead.
+  const cursorRowH = useRef(ROW_H);
   useEffect(() => {
     const el = listRef.current;
-    if (!el) return;
+    const resized = cursorRowH.current !== ROW_H;
+    cursorRowH.current = ROW_H;
+    if (!el || resized) return;
     const { top: over, bottom: under } = barRef.current;
     const top = pad + row * ROW_H;
     if (top < el.scrollTop + over + ROW_H) el.scrollTop = Math.max(0, top - ROW_H - over);
