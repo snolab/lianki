@@ -50,6 +50,7 @@ re-exports for the hub and the sender.
 | `float-lines.ts`                                         | minimized: floating lines, their dwell and timers        |
 | `compact-view.ts`                                        | compact mode: last message only, when to fold again      |
 | `log-surface.ts`                                         | the log's display, shared by the log and the state tree  |
+| `typing-glass.ts`                                        | the page's frost behind the chat while typing            |
 | `Frontier.tsx`, `frontier-view.ts`                       | minimized: the ✓ ▶ › frontier lines and their rules      |
 | `DebugChatHost.tsx`                                      | the page's loader: import, re-import on reload, fallback |
 | `DebugPairModal.tsx`                                     | the pairing modal                                        |
@@ -615,6 +616,30 @@ Checks and screenshots: `node scripts/dev/debug-chat-compact-qa.mjs --shots
 
 <dir>` (silent browsers, getUserMedia refused, 390×844, light and dark);
 the rules in `unit/chat-compact.test.ts`.
+
+## Typing glass: the page frosts while typing
+
+Owner, 2026-11-02 on /home: "帮我背景玻璃化，在我在这里打字的时候". While the
+chat's input has the focus (the `typing` state), a glass layer sits between
+the page and the chat (`data-testid="debug-chat-typing-glass"`, z-39, the
+chat is z-40): a light oklch tint in the page's tone under
+`blur(12px) saturate(1.4)` (`-webkit-` too, for iOS Safari), lighter than the
+full-screen log's sheet, which replaces it while that is up. Rules and look
+in `typing-glass.ts`.
+
+- **Taps on it** blur the input (which ends the glass) and never reach the
+  page: a frosted button cannot be pressed by accident.
+- **Fade** 150 ms both ways; none under reduced motion. It stays mounted and
+  goes `visibility: hidden` after the fade, so at rest it is neither painted
+  nor hit. Without backdrop-filter, or under reduced transparency, the tint
+  goes near-opaque (0.9).
+- **Not** minimized, not embedded on other sites (the userscript), and only
+  on focus; glass while a draft waits unfocused would be a follow-up.
+
+Checks and screenshots: `node scripts/dev/debug-chat-typing-glass-qa.mjs
+--shots <dir>` (silent browsers, 390×844, light and dark); the rules in
+`unit/chat-typing-glass.test.ts`. `shot.ts` cannot show it (no
+backdrop-filter in DOM-to-image); use the QA script's shots.
 
 ## Quiet lines
 

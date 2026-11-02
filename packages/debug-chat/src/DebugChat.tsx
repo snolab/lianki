@@ -87,6 +87,7 @@ import {
 } from "./float-lines";
 import { Icon, POLISHED_ICON } from "./icons";
 import { PolishedMark } from "./PolishedMark";
+import { showTypingGlass, typingGlassLook, typingGlassMotion } from "./typing-glass";
 import {
   LINE_HALO,
   SHEET_FILTER,
@@ -2825,6 +2826,23 @@ export function DebugChat({
       </div>
     );
   })();
+  const typingGlassShown = showTypingGlass({
+    typing,
+    open,
+    fullLog: fullLog !== "off",
+    embedded,
+  });
+  const typingGlassLookNow = (() => {
+    const has = (prop: string, v: string) => typeof CSS !== "undefined" && CSS.supports(prop, v);
+    return typingGlassLook({
+      blur:
+        has("backdrop-filter", "blur(1px)") || has("-webkit-backdrop-filter", "blur(1px)"),
+      reduce:
+        typeof matchMedia !== "undefined" &&
+        matchMedia("(prefers-reduced-transparency: reduce)").matches,
+      lightDark: has("color", "light-dark(#000, #fff)"),
+    });
+  })();
   return (
     <section
       ref={root}
@@ -2844,6 +2862,31 @@ export function DebugChat({
         !embedded &&
         typeof document !== "undefined" &&
         createPortal(<ClipsBadge strings={t} />, portalRoot ?? document.body)}
+      {!embedded &&
+        typeof document !== "undefined" &&
+        createPortal(
+          // The typing glass (typing-glass.ts): while the input has the
+          // focus, the page behind the chat frosts. Always mounted, so it
+          // fades both ways; hidden, it is neither painted nor hit. A tap on
+          // it ends typing (blurs the input) and never reaches the page.
+          <div
+            aria-hidden
+            data-testid="debug-chat-typing-glass"
+            data-shown={typingGlassShown || undefined}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              input.current?.blur();
+            }}
+            style={{
+              background: typingGlassLookNow.background,
+              backdropFilter: typingGlassLookNow.filter,
+              WebkitBackdropFilter: typingGlassLookNow.filter,
+              ...typingGlassMotion(typingGlassShown, reducedMotion()),
+            }}
+            className="fixed -inset-12 z-[39] touch-none"
+          />,
+          portalRoot ?? document.body,
+        )}
       {fullLog !== "off" &&
         typeof document !== "undefined" &&
         createPortal(
