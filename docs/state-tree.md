@@ -90,7 +90,6 @@ Legend: [ ] open · [~] in progress · [!] blocked · [x] done · (!) waits on y
 ≈en done: Wins keep coming · doing: Many fronts at once · next: Ready to go
 
 ## Plan — everything in parallel (2026-10-30)
-
 ≈ done: 捷报频传 · doing: 多线并进 · next: 蓄势待发
 ≈en done: Wins keep coming · doing: Many fronts at once · next: Ready to go
 
@@ -104,9 +103,9 @@ Legend: [ ] open · [~] in progress · [!] blocked · [x] done · (!) waits on y
   ≈en doing: Several fixes at once · next: Waiting on your OK
   - [~] Unified bar preview: bar + tree button + 2 columns + floating lines + frontier lines → preview on your phone
   - [~] Minimized float fix
-    hot-loaded, ships with the bar
+        hot-loaded, ships with the bar
   - [~] Unread badge fix
-    hot-loaded, ships with the bar
+        hot-loaded, ships with the bar
   - [ ] (!) OK the bar preview @owner
   - [ ] Ship the bar after your OK
   - [ ] Mic stays on after a page refresh (needs your description of the bug)
@@ -158,10 +157,8 @@ Legend: [ ] open · [~] in progress · [!] blocked · [x] done · (!) waits on y
 Critical path: swipe fix → verify on ?swipe=native → switch the flag; bar → your OK → ship; liagent reviews → v0.1.2 + pin.
 
 ## @owner — your to-do
-
 ≈ doing: 待君定夺
 ≈en doing: Your call awaits
-
 - [ ] (!) Add a v* tag ruleset on snolab/liagent (block update/delete) @owner
 - [ ] (later) npm login / trusted publishing for liagent @owner
 - Payments (Pro passes) — not live yet: no Stripe secrets on the Worker (any order) @owner
@@ -178,10 +175,8 @@ Critical path: swipe fix → verify on ?swipe=native → switch the flag; bar �
   - [ ] Known gap: WeChat Pay shows a QR on phones; fails in WeChat's in-app browser @main-lane
 
 ## /words
-
 ≈ done: 精益求精
 ≈en done: Polished again
-
 - [x] Audio prefetch; tap reads word → meaning → example (#291)
 - [x] Glass toolbar + help, tablet glass nav, sleeping tray, 80% over-scroll (#293) (done 2026-10-30)
 - [x] Faded "back" slip stays opaque (#294)
@@ -190,22 +185,17 @@ Critical path: swipe fix → verify on ?swipe=native → switch the flag; bar �
 - [ ] Owner's session spec of 2026-11-03: tall slips, fixed window, review-first, familiar bank, voice commands — [words-session-spec.md](words-session-spec.md) @main-lane
 
 ## Learning Partner (chat)
-
 ≈ done: 声情并茂
 ≈en done: Voice comes alive
-
 - [x] Hands-free voice, read-aloud queue, barge-in with ducking (#289, #292) (done 2026-10-30)
 - [x] Mic counts as focus (#295)
 
 ## Dev tools
-
 - [ ] Iframe-overlay previews vs islands — decide @main-lane
 
 ## Later (after this tree works)
-
 ≈ next: 来日方长
 ≈en next: Plenty of time ahead
-
 - Live updates over WebSocket, agents reporting progress
 - Node addressing, subtree scopes, grants
 - Your to-do list derived automatically from "(!)" items
