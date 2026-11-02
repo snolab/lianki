@@ -73,7 +73,7 @@ import {
   sentenceState,
 } from "./read-progress";
 import { aecOn, cloudOut, noSpeechVoices, outMode, setAec } from "./voice-out";
-import type { SpeakMeta } from "./speak-rules";
+import { type SpeakMeta, isWithdrawn } from "./speak-rules";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
   FADE_MS,
@@ -2675,7 +2675,21 @@ export function DebugChat({
   );
   const resumeItems = resumeLeft
     .map((r) => ({ r, m: messages.find((x) => x.id === r.id && x.from === "agent") }))
-    .filter((x): x is { r: ReadingLeft; m: ChatMessage } => !!x.m);
+    // A withdrawn ask card is never read on (speak-rules.ts).
+    .filter((x): x is { r: ReadingLeft; m: ChatMessage } => !!x.m && !isWithdrawn(x.m));
+  // An ask withdrawn while it is being read (or waits in the queue): its
+  // sentences are dropped, the other lines read on (an older session without
+  // `drop` stops the reading instead).
+  useEffect(() => {
+    for (const m of messages) {
+      if (!isWithdrawn(m) || !readP.queue.some((e) => e.id === m.id)) continue;
+      const v = voice() as ReturnType<typeof voice> & { drop?: (id: string) => boolean };
+      if (!v.drop) return v.stop();
+      readDispatch({ type: "drop", id: m.id });
+      // Not in the session's queue after all (untagged): stop rather than read it.
+      if (!v.drop(m.id)) return v.stop();
+    }
+  }, [messages, readP.queue]);
   /** Hand the unread rest of those replies back to the voice, as one queued reply each. */
   const resumeNow = () => {
     const v = voice();
@@ -2694,7 +2708,8 @@ export function DebugChat({
       const start = ranges[r.from]?.start;
       if (start === undefined) continue;
       claimed.current.add(m.id);
-      if (v.reply(m.text.slice(start)))
+      // The line as meta: its sentences carry its id (a withdrawn ask is dropped by it).
+      if (v.reply(m.text.slice(start), m))
         readDispatch({ type: "enqueue", id: m.id, n: ranges.length - r.from, from: r.from });
     }
     if (focusHack && el) {

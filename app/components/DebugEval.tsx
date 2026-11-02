@@ -18,7 +18,14 @@ import {
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
 import { isKey } from "@lianki/debug-chat/storage-keys";
-import { type ChatStrings, type VoiceTiming, cleanTiming } from "@lianki/debug-chat/wire";
+import {
+  type ChatStrings,
+  type VoiceTiming,
+  type WithdrawnEvent,
+  applyWithdrawn,
+  cleanTiming,
+} from "@lianki/debug-chat/wire";
+import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
@@ -356,6 +363,14 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
         if (msg.type === "answered" && typeof msg.id === "string" && msg.answer) {
           const answer = msg.answer as ChatMessage["answer"];
           setMessages((list) => list.map((x) => (x.id === msg.id ? { ...x, answer } : x)));
+          return;
+        }
+        // The agent withdrew an open ask: the card greys out and is never read aloud.
+        if (msg.type === "withdrawn" && typeof msg.id === "string") {
+          const e = msg as unknown as WithdrawnEvent;
+          if (typeof e.askId !== "string" || typeof e.withdrawnAt !== "number") return;
+          markWithdrawn(e.id);
+          setMessages((list) => list.map((m) => applyWithdrawn(m, e)));
           return;
         }
         if (msg.type === "chat" && msg.message && typeof msg.message === "object") {

@@ -150,6 +150,26 @@ describe("voice session: the focus rule (mic off)", () => {
 });
 
 describe("voice session: the queue", () => {
+  it("drop: a withdrawn line's sentences go (stopped if playing); the others read on", () => {
+    const h = harness();
+    h.v.setMic(true);
+    h.v.reply("Ask one. Ask two.", { id: "ask" });
+    h.v.reply("Plain line.", { id: "p" });
+    expect(h.texts()).toEqual(["Ask one."]);
+    expect(h.v.drop("ask")).toBe(true);
+    expect(h.cancels()).toBe(1);
+    expect(h.texts()).toEqual(["Ask one.", "Plain line."]);
+    expect(h.v.state().queued).toBe(1);
+    expect(h.v.drop("ask")).toBe(false);
+    // Queued behind another line: only its own sentences go, the playing one is untouched.
+    h.v.reply("Later ask.", { id: "ask2" });
+    expect(h.v.drop("ask2")).toBe(true);
+    expect(h.cancels()).toBe(1);
+    h.end();
+    expect(h.texts()).toEqual(["Ask one.", "Plain line."]);
+    expect(h.v.state().queued).toBe(0);
+  });
+
   it("FIFO, one utterance per sentence; a new reply waits and never cuts one off", () => {
     const h = harness();
     h.v.setMic(true);
