@@ -64,7 +64,7 @@ import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
 import type { VoiceAccess } from "@/lib/words/voice-access";
 import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/words/voice-dispatch";
-import { VoiceBadge, useVoiceMode } from "./VoiceMode";
+import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
 import { createSequencer } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
@@ -3433,32 +3433,7 @@ function Study({
     });
   };
   const voiceMode = useVoiceMode(voiceOn, voiceHandle);
-  const voiceLabel = (o: VoiceOutcome): string => {
-    if (o.kind === "unknown") return fill(vtext.heard.value, { text: o.heard });
-    if (o.kind === "echo") return fill(vtext.echo.value, { text: o.heard });
-    if (o.kind === "no-card") return vtext.noCard.value;
-    if (o.kind === "agent") return "";
-    switch (o.cmd) {
-      case "next":
-        return `↓ ${vtext.next.value}`;
-      case "prev":
-        return `↑ ${vtext.prev.value}`;
-      case "left":
-        return `← ${ratingLabel[2]}`;
-      case "right":
-        return `→ ${ratingLabel[3]}`;
-      case "again":
-        return ratingLabel[1];
-      case "hard":
-        return ratingLabel[2];
-      case "good":
-        return ratingLabel[3];
-      case "easy":
-        return ratingLabel[4];
-      default:
-        return vtext[o.cmd].value;
-    }
-  };
+  const voiceLabel = (o: VoiceOutcome) => voiceOutcomeLabel(o, vtext, ratingLabel);
 
   /** How far down the list the user has got: the cursor, or the last row in view. */
   const reach = Math.max(row, Math.floor((scrollTop - pad + viewH) / ROW_H));
