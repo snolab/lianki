@@ -89,7 +89,7 @@ export default function HomeClient({ isLoggedIn }: { isLoggedIn: boolean }) {
         ) : (
           <div className="space-y-4" data-onboarding>
             <h3 className="font-medium opacity-80">{t.startTitle}</h3>
-            <ol className="space-y-2 list-decimal ps-5 text-[15px]">
+            <ol className="space-y-2 list-decimal ps-5 fs-15">
               <li>{t.step1}</li>
               <li>{t.step2}</li>
               <li>{t.step3}</li>

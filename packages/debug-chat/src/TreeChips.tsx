@@ -153,7 +153,7 @@ export function TreeChips({
                   <Label node={node} hidden={shut} />
                 </button>
                 {node.note && !shut && level < 1 && (
-                  <p className="m-0 ps-3 text-[10px] opacity-60">{node.note}</p>
+                  <p className="m-0 ps-3 fs-10 opacity-60">{node.note}</p>
                 )}
               </li>
             );

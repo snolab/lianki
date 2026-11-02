@@ -14,6 +14,7 @@ import { z } from "zod";
 import { allImmersionSites, IMMERSION_LANGUAGES } from "@/lib/immersion-sites";
 import { FEEL_RANGES } from "@/lib/words/swipe-feel";
 import { BLOG_LOCALES } from "@/lib/constants";
+import { TEXT_MAX, TEXT_MIN } from "@/lib/text-size-boot";
 
 // ── Limits ────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,12 @@ for (const [k, r] of Object.entries(FEEL_RANGES)) {
   tweakShape[k] = (r === null ? z.boolean() : z.number().min(r[0]).max(r[1])).optional();
 }
 const feelTweaks = z.object(tweakShape).strict();
+/** A text size (lib/text-size.ts): a factor in range, in steps of 0.05. */
+const textScale = z
+  .number()
+  .min(TEXT_MIN)
+  .max(TEXT_MAX)
+  .refine((v) => Math.abs(v * 20 - Math.round(v * 20)) < 1e-6);
 
 export const PREF_SCHEMAS = {
   // /words study settings
@@ -63,6 +70,9 @@ export const PREF_SCHEMAS = {
   // appearance, language, navigation
   "motion.animations": z.enum(["off", "on"]),
   "ui.paper": z.enum(["a", "b", "c", "e"]),
+  "text-size.ui": textScale,
+  "text-size.chat": textScale,
+  "text-size.cards": textScale,
   "ui.locale": z.enum(BLOG_LOCALES as unknown as [string, ...string[]]),
   "nav-pins.pinned": z.array(appPath).max(12),
   "home.lang": z.enum(IMMERSION_CODES),

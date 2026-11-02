@@ -518,7 +518,9 @@ try {
   await page.getByRole("button", { name: "Settings" }).click();
 
   // Hints follow the input: a keyboard was used, so key hints, no gestures.
-  const deskHint = await page.locator("text=? all keys").count();
+  // In the help strip: the nav island's first-visit tip repeats the hint,
+  // hidden (md:hidden) on a desktop but still in the DOM until a word counts as seen.
+  const deskHint = await page.locator("[data-words-help]").getByText("? all keys").count();
   check(
     deskHint === 1 && (await page.locator("text=/tap = show/").count()) === 0,
     "with a keyboard the hints are keys, not gestures",

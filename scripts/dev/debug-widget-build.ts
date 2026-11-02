@@ -76,6 +76,24 @@ export function themeBlock(css: string): string {
   return "";
 }
 
+/** Every top-level `@utility … { … }` of a stylesheet (the app's own utilities, e.g. `fs-*`). */
+export function utilityBlocks(css: string): string[] {
+  const out: string[] = [];
+  for (let at = css.indexOf("@utility"); at !== -1; at = css.indexOf("@utility", at + 1)) {
+    if (at > 0 && css[at - 1] !== "\n") continue;
+    let depth = 0;
+    for (let i = css.indexOf("{", at); i < css.length; i++) {
+      if (css[i] === "{") depth++;
+      else if (css[i] === "}" && --depth === 0) {
+        out.push(css.slice(at, i + 1));
+        at = i;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * The Tailwind utilities `files` use, with the app's theme, in the page's own
  * `utilities` layer — so classes the production CSS has never seen still work.
@@ -89,6 +107,9 @@ export async function widgetCss(files: string[]): Promise<string> {
     themeBlock(globals),
     "@theme { --color-background: var(--background); --color-foreground: var(--foreground); }",
     '@import "tailwindcss/utilities.css" layer(utilities);',
+    // fs-<px> (text size, lib/text-size.ts): without --lk-fs-k, as on other
+    // sites, it falls back to the plain px size.
+    ...utilityBlocks(globals),
   ].join("\n");
   const c = await compile(input, {
     base: ROOT,

@@ -54,6 +54,52 @@
   --font-antique: "Zen Antique", "LXGW WenKai TC", serif;
 }
 
+/* Text size (lib/text-size.ts): only text scales, never the layout, so
+   `html { font-size }` stays the browser's and rem spacing keeps its size.
+   --lk-fs-ui / --lk-fs-chat / --lk-fs-cards are the choices (set on <html>
+   before first paint); --lk-fs-k is the factor in effect: the app's, times
+   the area's inside .lk-fs-chat (the chat) and .lk-fs-cards (study cards).
+   Every Tailwind text-* size is re-pointed through it, and is redeclared in
+   each area so it picks up that area's factor. A size in px is written
+   fs-<px> (the utility below), never text-[<px>px], which would not scale. */
+:root {
+  --lk-fs-k: var(--lk-fs-ui, 1);
+}
+.lk-fs-chat {
+  --lk-fs-k: calc(var(--lk-fs-ui, 1) * var(--lk-fs-chat, 1));
+}
+.lk-fs-cards {
+  --lk-fs-k: calc(var(--lk-fs-ui, 1) * var(--lk-fs-cards, 1));
+}
+:root,
+.lk-fs-chat,
+.lk-fs-cards {
+  --text-xs: calc(.75rem * var(--lk-fs-k, 1));
+  --text-sm: calc(.875rem * var(--lk-fs-k, 1));
+  --text-base: calc(1rem * var(--lk-fs-k, 1));
+  --text-lg: calc(1.125rem * var(--lk-fs-k, 1));
+  --text-xl: calc(1.25rem * var(--lk-fs-k, 1));
+  --text-2xl: calc(1.5rem * var(--lk-fs-k, 1));
+  --text-3xl: calc(1.875rem * var(--lk-fs-k, 1));
+  --text-4xl: calc(2.25rem * var(--lk-fs-k, 1));
+  --text-5xl: calc(3rem * var(--lk-fs-k, 1));
+  --text-6xl: calc(3.75rem * var(--lk-fs-k, 1));
+  --text-7xl: calc(4.5rem * var(--lk-fs-k, 1));
+  --text-8xl: calc(6rem * var(--lk-fs-k, 1));
+  --text-9xl: calc(8rem * var(--lk-fs-k, 1));
+}
+@utility fs-* {
+  font-size: calc(--value(number) * 1px * var(--lk-fs-k, 1));
+}
+@layer base {
+  /* Text with no size class; a class on the element itself still wins. */
+  body,
+  .lk-fs-chat,
+  .lk-fs-cards {
+    font-size: calc(1rem * var(--lk-fs-k, 1));
+  }
+}
+
 /* Cyrillic pages: the Japanese display fonts carry Cyrillic as full-width
    glyphs, so Russian headings came out spaced letter by letter. A serif with
    real Cyrillic takes over the display faces there (loaded in app/layout.tsx;

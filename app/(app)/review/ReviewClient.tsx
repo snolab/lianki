@@ -344,7 +344,7 @@ export default function ReviewClient({
 
       {phase.s === "card" && (
         <section
-          className="rounded-2xl border border-black/10 dark:border-white/10 bg-white/60 dark:bg-gray-900/60 p-5 sm:p-6 space-y-5"
+          className="lk-fs-cards rounded-2xl border border-black/10 dark:border-white/10 bg-white/60 dark:bg-gray-900/60 p-5 sm:p-6 space-y-5"
           data-testid="review-card"
           aria-busy={busy}
         >
@@ -645,7 +645,7 @@ function Tutorial() {
       </div>
       {!collapsed && (
         <>
-          <table className="w-full table-fixed border-collapse text-[13px] leading-snug">
+          <table className="w-full table-fixed border-collapse fs-13 leading-snug">
             <colgroup>
               <col className="w-14" />
               <col />
@@ -671,7 +671,7 @@ function Tutorial() {
                 >
                   <th scope="row" className="py-1.5 pe-1 text-start font-normal">
                     <span className="font-semibold tabular-nums">{i + 1}</span>{" "}
-                    <span className="text-[11px] opacity-60">{who}</span>
+                    <span className="fs-11 opacity-60">{who}</span>
                   </th>
                   <td className="px-1.5 py-1.5">{without}</td>
                   <td className="px-1.5 py-1.5 opacity-70">{withScript ?? t.same}</td>
@@ -729,7 +729,7 @@ function Bookmarklet() {
       <summary className="cursor-pointer font-semibold min-h-10 flex items-center">
         {t.bmTitle}
       </summary>
-      <div className="space-y-3 pt-2 text-[15px]">
+      <div className="space-y-3 pt-2 fs-15">
         <p>{t.bmBody}</p>
         <p className="text-sm opacity-70">{t.bmLimit}</p>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start">

@@ -105,7 +105,7 @@ export function useTreeSource(active: boolean): TreeState | null {
 export function TreeFragment({ state }: { state: TreeState }) {
   return (
     <div data-testid="debug-chat-tree-fragment">
-      {state.note && <p className="text-[10px] text-gray-500">{state.note}</p>}
+      {state.note && <p className="fs-10 text-gray-500">{state.note}</p>}
       {state.nodes ? render(state.nodes) : !state.note && <p className="text-gray-500">Loading the tree…</p>}
     </div>
   );

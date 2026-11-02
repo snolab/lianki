@@ -113,7 +113,7 @@ export function NavRows({ place, collapsed }: IslandProps["nav.drawer"]) {
         <div
           id="lk-nav-help"
           role="note"
-          className="mx-3 rounded-xl border border-[var(--glass-line)] px-3 py-2 text-[13px] leading-snug"
+          className="mx-3 rounded-xl border border-[var(--glass-line)] px-3 py-2 fs-13 leading-snug"
         >
           {t.gestures && (
             <div className="mb-1 text-xs font-semibold uppercase tracking-wide opacity-60">

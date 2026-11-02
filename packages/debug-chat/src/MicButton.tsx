@@ -575,7 +575,7 @@ export function DebugMic({
         <span
           role="alert"
           data-testid="debug-chat-mic-note"
-          className="pointer-events-none absolute end-0 bottom-full mb-2 whitespace-nowrap text-[10px]"
+          className="pointer-events-none absolute end-0 bottom-full mb-2 whitespace-nowrap fs-10"
           style={{ color: "oklch(0.6 0.17 45)" }}
         >
           {note}
@@ -685,7 +685,7 @@ export function DebugMic({
         {passive && !rec && (
           <span
             data-testid="debug-chat-mic-wake"
-            className="text-[8px] font-bold leading-none"
+            className="fs-8 font-bold leading-none"
             style={{ color: WAIT }}
           >
             {ws.badge}
@@ -694,7 +694,7 @@ export function DebugMic({
         {rec && (
           <span
             data-testid="debug-chat-mic-rec"
-            className="text-[8px] font-bold leading-none"
+            className="fs-8 font-bold leading-none"
             style={{ color: REC }}
           >
             REC

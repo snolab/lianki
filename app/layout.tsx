@@ -1,4 +1,5 @@
 import { MOTION_BOOT_SCRIPT } from "@/lib/motion-boot";
+import { TEXT_SIZE_BOOT_SCRIPT } from "@/lib/text-size-boot";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { IntlayerServerProvider } from "next-intlayer/server";
@@ -101,6 +102,8 @@ export default async function RootLayout({
         />
         {/* "Turn off animations" (lib/motion-pref.ts), before first paint. */}
         <script dangerouslySetInnerHTML={{ __html: MOTION_BOOT_SCRIPT }} />
+        {/* Text size (lib/text-size.ts), before first paint: no flash at the wrong size. */}
+        <script dangerouslySetInnerHTML={{ __html: TEXT_SIZE_BOOT_SCRIPT }} />
         {/* Embed mode: inside an iframe (an overlay preview) or with ?embed=1, the
             page shows its content only, on a transparent background. */}
         <script

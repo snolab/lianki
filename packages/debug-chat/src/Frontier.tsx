@@ -37,7 +37,7 @@ function AvatarSlot({ a, render }: { a: Assignee; render?: RenderAvatar }) {
       aria-label={label}
       title={a.name}
       data-testid="debug-chat-frontier-avatar"
-      className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-[9px] leading-none font-semibold text-white"
+      className="inline-flex size-4 shrink-0 items-center justify-center rounded-full fs-9 leading-none font-semibold text-white"
       style={{ background: avatarColor(a.name) }}
     >
       {initialOf(a.name)}
@@ -78,7 +78,7 @@ function AgentId({ id }: { id: string }) {
       onPointerLeave={() => press.current?.cancel()}
       onPointerCancel={() => press.current?.cancel()}
       onContextMenu={(e) => e.preventDefault()}
-      className="pointer-events-auto relative ms-auto shrink-0 select-none ps-1.5 pe-2 font-mono text-[10px] text-gray-500"
+      className="pointer-events-auto relative ms-auto shrink-0 select-none ps-1.5 pe-2 font-mono fs-10 text-gray-500"
     >
       {shortId(id)}
       {shown && (
@@ -175,7 +175,7 @@ export function FrontierLines({
                     {it.assignee && <AvatarSlot a={it.assignee} render={renderAvatar} />}
                     <span className="min-w-0 truncate">
                       {it.title}
-                      {it.path && <span className="ms-1 text-[10px] text-gray-500">{it.path}</span>}
+                      {it.path && <span className="ms-1 fs-10 text-gray-500">{it.path}</span>}
                     </span>
                   </li>
                 ))}

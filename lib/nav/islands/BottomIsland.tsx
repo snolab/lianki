@@ -125,7 +125,7 @@ export function BottomIsland({ signedIn }: IslandProps["nav.bottom"]) {
           <div
             role="note"
             data-nav-tip
-            className="lk-glass pointer-events-auto absolute bottom-full mb-2 flex w-[min(24rem,calc(100vw-2rem))] items-start gap-2 rounded-2xl border border-[var(--glass-line)] py-2 ps-3 pe-1 text-[13px] leading-snug shadow-[inset_0_1px_0_oklch(1_0_0/0.5),0_10px_28px_-10px_oklch(0.22_0.015_65/0.4)] dark:shadow-[inset_0_1px_0_oklch(1_0_0/0.1),0_10px_28px_-10px_oklch(0_0_0/0.7)]"
+            className="lk-glass pointer-events-auto absolute bottom-full mb-2 flex w-[min(24rem,calc(100vw-2rem))] items-start gap-2 rounded-2xl border border-[var(--glass-line)] py-2 ps-3 pe-1 fs-13 leading-snug shadow-[inset_0_1px_0_oklch(1_0_0/0.5),0_10px_28px_-10px_oklch(0.22_0.015_65/0.4)] dark:shadow-[inset_0_1px_0_oklch(1_0_0/0.1),0_10px_28px_-10px_oklch(0_0_0/0.7)]"
           >
             <span className="min-w-0 flex-1 py-1">{hint}</span>
             <button
@@ -152,7 +152,7 @@ export function BottomIsland({ signedIn }: IslandProps["nav.bottom"]) {
         >
           <span className="h-1.5 w-10 rounded-full bg-[oklch(from_var(--foreground)_l_c_h/0.45)]" />
           {due > 0 && (
-            <span className="absolute -top-1 end-1 rounded-full bg-[var(--brand)] px-1.5 text-[10px] font-semibold leading-4 text-[oklch(0.99_0_0)] [text-shadow:none]">
+            <span className="absolute -top-1 end-1 rounded-full bg-[var(--brand)] px-1.5 fs-10 font-semibold leading-4 text-[oklch(0.99_0_0)] [text-shadow:none]">
               {badge(due)}
             </span>
           )}
@@ -269,7 +269,7 @@ function Tab({
       <span className="relative text-[1.45rem] leading-none">
         <Icon name={icon} weight={active ? "fill" : "regular"} />
         {badgeText && (
-          <span className="absolute -end-3 -top-1.5 min-w-4 rounded-full bg-[var(--brand)] px-1 text-center text-[10px] font-semibold leading-4 text-[oklch(0.99_0_0)] [text-shadow:none]">
+          <span className="absolute -end-3 -top-1.5 min-w-4 rounded-full bg-[var(--brand)] px-1 text-center fs-10 font-semibold leading-4 text-[oklch(0.99_0_0)] [text-shadow:none]">
             {badgeText}
           </span>
         )}
@@ -281,9 +281,7 @@ function Tab({
           />
         )}
       </span>
-      <span className="mt-0.5 max-w-full truncate text-[10.5px] font-medium leading-3">
-        {label}
-      </span>
+      <span className="mt-0.5 max-w-full truncate fs-10.5 font-medium leading-3">{label}</span>
     </>
   );
   const cls = `flex h-14 w-16 flex-col items-center justify-center rounded-full px-1 touch-manipulation transition-colors ${

@@ -74,7 +74,7 @@ export function PolishedMark({
       {tip && (
         <span
           role="tooltip"
-          className="pointer-events-none absolute start-1/2 bottom-full mb-1 -translate-x-1/2 whitespace-nowrap rounded px-1 text-[10px] lk-halo"
+          className="pointer-events-none absolute start-1/2 bottom-full mb-1 -translate-x-1/2 whitespace-nowrap rounded px-1 fs-10 lk-halo"
         >
           {label}
         </span>
