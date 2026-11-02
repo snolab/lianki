@@ -44,6 +44,7 @@ with no deploy and no secret change.
 | ---------------------- | -------------------------------------------------------------- |
 | `payments.stripe.live` | Stripe takes real money (also needs an `sk_live_` key)         |
 | `payments.komoju.live` | KOMOJU takes real money (also needs an `sk_live_` key)         |
+| `words.voice-mode`     | everyone gets the /words voice commands switch (off: the owner's preview only) — [voice-mode.md](voice-mode.md) |
 
 Turning a payment flag off is the kill switch: no new payment starts within
 30 s, and payments already started are still credited —

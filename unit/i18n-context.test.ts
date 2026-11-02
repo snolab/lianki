@@ -14,6 +14,7 @@ import polyglot from "@/app/(app)/polyglot/page.content";
 import selfIntro from "@/app/(app)/self-intro/page.content";
 import wordsImport from "@/app/(app)/words/import/page.content";
 import wordsPhrases from "@/app/(app)/words/phrases.content";
+import wordsVoiceMode from "@/app/(app)/words/voice-mode.content";
 import leaveGuard from "@/app/components/leave-guard.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
@@ -58,6 +59,7 @@ describe.each([
   ["self-intro-page", selfIntro],
   ["words-import", wordsImport],
   ["words-phrases", wordsPhrases],
+  ["words-voice-mode", wordsVoiceMode],
   ["leave-guard", leaveGuard],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.

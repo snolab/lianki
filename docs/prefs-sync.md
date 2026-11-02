@@ -37,6 +37,7 @@ The store column gives the account-mode store that will hold the key, as
 | `lk:words-swipe-speak`         | Speak on swipe                            | **synced** | `words.speakOnSwipe` | a habit                                                                             |
 | `lk:words-grade-tones`         | Grade tones                               | **synced** | `words.gradeTones`   | a habit                                                                             |
 | `lk:words-paper-scrolls`       | Paper scrolls (Experimental)              | **synced** | `words.paperScrolls` | owner, 02:22                                                                        |
+| `lk:words-voice-mode`          | Voice commands (docs/voice-mode.md)       | **synced** | `words.voiceMode`    | a habit; the mic itself is still asked for on each device                           |
 | `lk:swipe-ab`                  | New swipe (Experimental)                  | **synced** | `swipe.variant`      | owner, 02:22. Telemetry still tags each row with the variant                        |
 | `lk:pref:swipe-feel` `.preset` | Heavy swipe (Experimental)                | **synced** | `swipe-feel.preset`  | owner, 02:22                                                                        |
 | `lk:pref:swipe-feel` `.tweaks` | swipe tuning sliders                      | **synced** | `swipe-feel.tweaks`  | owner, 02:22. One field, because the sliders reset together with the preset         |
