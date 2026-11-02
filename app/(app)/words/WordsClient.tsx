@@ -137,6 +137,7 @@ const SwipeFeelIsland = island("words.swipeFeel", SwipeFeelSource);
 const SwipeTunerIsland = island("words.swipeTuner", SwipeTuner);
 import { downloadCatalog, loadCatalog } from "@/lib/words/catalog-cache";
 import { newScan, takeNewIndices, type NewScan } from "@/lib/words/take-new";
+import { dueFetchLimit, MAX_DUE_FETCH, nextBatch, orderDue } from "@/lib/words/review-first";
 import { countGradedNew, unseenLeft } from "@/lib/words/unseen";
 import { idbAdd, idbAll, idbDelete, idbGet, idbPut, type PendingOp } from "@/lib/words/idb";
 import {
@@ -167,6 +168,8 @@ const PAGE = 20;
 const AHEAD = 40;
 /** Due words per /session fetch; more are fetched as the queue drains. */
 const DUE_PAGE = 200;
+/** Hidden at least this long: on return, ask the server for words that fell due. */
+const RECHECK_DUE_MS = 5 * 60_000;
 /** A touch held this long without moving starts listen mode (looped audio). */
 const HOLD_MS = 300;
 /** The last swipes (distance, speed, result), kept locally to tune the physics. */
@@ -2523,17 +2526,10 @@ function ImportLink() {
   );
 }
 
-/** Round-robin merge, so a "study all" screen alternates between lists. */
-function interleave<T>(groups: T[][]): T[] {
-  const out: T[] = [];
-  for (let i = 0; groups.some((g) => i < g.length); i++)
-    for (const g of groups) if (i < g.length) out.push(g[i]);
-  return out;
-}
-
 /**
  * The study list: one endless column of words, each graded on its own and
- * saved the moment it is graded. Due words come first, then new words (green);
+ * saved the moment it is graded. Every due word comes first, then new words
+ * (green) — lib/words/review-first.ts;
  * misses come back further down within minutes. Grading a word again re-grades
  * it (the server replaces the review while the word is not due yet); Z undoes.
  */
@@ -2723,8 +2719,6 @@ function Study({
   };
   /** Per list: where the search for new words has got (lib/words/take-new.ts). */
   const scans = useRef<Map<string, NewScan>>(new Map());
-  /** Lists whose due words did not all fit in one session fetch. */
-  const moreDue = useRef<Set<string>>(new Set());
   /** Queue indices in the order they were graded (and not undone): Z walks this back. */
   const gradeLog = useRef<number[]>([]);
   /** Indices whose miss was already queued again further down. */
@@ -2827,6 +2821,33 @@ function Study({
       card: c.card,
     }));
 
+  /** Due words of a session response, minus `skip` keys, in study order (lib/words/review-first.ts). */
+  const orderedDue = (per: Record<string, { due: WordCard[] }>, skip?: Set<string>): Item[] =>
+    orderDue(
+      lists.flatMap((l) =>
+        (per[l.id]?.due ?? [])
+          .filter((c) => !skip?.has(keyOf({ listId: l.id, term: c.term })))
+          .map((c) => ({ ...c, l })),
+      ),
+      new Date(),
+    ).flatMap(({ l, ...c }) => dueItems(l, [c]));
+
+  /** Due words not in `queued` yet, from the server; [] offline. */
+  const fetchDue = async (queued: Item[]): Promise<Item[]> => {
+    if (!navigator.onLine) return [];
+    const limit = dueFetchLimit(queued.filter((it) => it.kind !== "new").length, DUE_PAGE);
+    try {
+      const s = await api<{ lists: Record<string, { due: WordCard[] }> }>(
+        `/api/words/session?lists=${encodeURIComponent(listIds)}&day=${localDay()}&limit=${limit}`,
+      );
+      await Promise.all(lists.filter((l) => s.lists[l.id]?.due.length).map(ensureCatalog));
+      return orderedDue(s.lists, new Set(queued.map(keyOf)));
+    } catch (e) {
+      if (e instanceof OfflineError) return [];
+      throw e;
+    }
+  };
+
   useEffect(() => {
     let alive = true;
     // Start from the stored cursors every run (Strict Mode mounts twice in dev).
@@ -2839,7 +2860,7 @@ function Study({
       let session: { lists: Record<string, { due: WordCard[] }>; more: boolean };
       try {
         session = await api(
-          `/api/words/session?lists=${encodeURIComponent(ids)}&day=${localDay()}`,
+          `/api/words/session?lists=${encodeURIComponent(ids)}&day=${localDay()}&limit=${MAX_DUE_FETCH}`,
         );
         cacheSessions(session.lists).catch(() => {});
       } catch (e) {
@@ -2861,16 +2882,16 @@ function Study({
             };
         setOfflineCopy(true);
       }
-      if (session.more) for (const l of lists) moreDue.current.add(l.id);
       // Catalogs only for lists with due words (for their examples); the rest
       // load when their new words are needed.
       const withDue = lists.filter((l) => session.lists[l.id]?.due.length);
       await Promise.all(withDue.map(ensureCatalog));
       // New words: two batches to start — enough headroom that a fast grader
       // never reaches the end before the next batch lands; more as you go.
-      const fresh = await takeNew(AHEAD * 2);
+      // None while more due words wait on the server: those come first.
+      const fresh = session.more ? [] : await takeNew(AHEAD * 2);
       if (!alive) return;
-      const due = interleave(lists.map((l) => dueItems(l, session.lists[l.id]?.due ?? [])));
+      const due = orderedDue(session.lists);
       setQueue([...due, ...spreadPairs(fresh, PAGE, due.length, due)]);
       setLoading(false);
     })().catch((e) => alive && setLoadError((e as Error).message));
@@ -3459,36 +3480,25 @@ function Study({
   const reach = Math.max(row, Math.floor((scrollTop - pad + viewH) / ROW_H));
   // Endless: when fewer than AHEAD ungraded words are left below the cursor
   // or below the bottom of the view (touch has no cursor; scrolling doesn't
-  // move it), fetch more — remaining due words first, then new ones. Stops only when
-  // every catalog runs out.
+  // move it), fetch more — every due word not queued yet first (the server is
+  // asked each time, so words that fell due since the page opened come too),
+  // then new ones. Stops only when every catalog runs out.
   const [exhausted, setExhausted] = useState(false);
   const fetching = useRef(false);
   useEffect(() => {
     if (loading || exhausted || fetching.current || queue.length - reach > AHEAD) return;
     fetching.current = true;
-    const queued = new Set(queue.map(keyOf));
     const append = (items: Item[]) =>
       setQueue((q) => [...q, ...spreadPairs(items, PAGE, q.length, q.slice(-PAGE))]);
     (async () => {
-      const due: Item[] = [];
-      const waiting = lists.filter((l) => moreDue.current.has(l.id));
-      if (waiting.length && navigator.onLine) {
-        const s = await api<{ lists: Record<string, { due: WordCard[] }>; more: boolean }>(
-          `/api/words/session?lists=${encodeURIComponent(waiting.map((l) => l.id).join(","))}&day=${localDay()}&limit=${DUE_PAGE}`,
-        );
-        await Promise.all(waiting.map(ensureCatalog));
-        for (const list of waiting) {
-          const fresh = (s.lists[list.id]?.due ?? []).filter(
-            (c) => !queued.has(keyOf({ listId: list.id, term: c.term })),
-          );
-          if (!fresh.length || !s.more) moreDue.current.delete(list.id);
-          due.push(...dueItems(list, fresh));
-        }
-      }
-      if (due.length) return append(due);
-      const fresh = await takeNew(AHEAD);
-      if (!fresh.length) setExhausted(true);
-      else append(fresh);
+      const next = await nextBatch({
+        due: await fetchDue([...queue, ...later.current.map((x) => x.item)]),
+        fresh: () => takeNew(AHEAD),
+      });
+      if (!next.items.length) setExhausted(true);
+      // Due words go ahead of new words still waiting below the screen.
+      else if (next.kind === "due" && newWaiting(queue)) toLater(next.items);
+      else append(next.items);
     })()
       // With nothing on screen, a failure is the page's error (with Retry),
       // not a quiet note under an empty list.
@@ -3498,6 +3508,46 @@ function Study({
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, exhausted, queue.length, reach, takeNew]);
+
+  /** An ungraded new word below the screen. */
+  const newWaiting = (q: Item[]) =>
+    q.some((it, i) => i > reach && it.kind === "new" && !grades.has(i));
+  /** Into `later`, to join just below the screen; ones already queued or waiting are dropped. */
+  const toLater = (items: Item[]) => {
+    const have = new Set([...queueNow.current, ...later.current.map((x) => x.item)].map(keyOf));
+    later.current.push(
+      ...items.filter((it) => !have.has(keyOf(it))).map((item) => ({ item, due: 0 })),
+    );
+  };
+  // Back on the page after a while (a phone keeps the tab open overnight):
+  // words that fell due meanwhile join just below the screen, through `later`,
+  // ahead of the new words still waiting. Not while the endless fetch runs:
+  // it asks for the same words.
+  const queueNow = useRef(queue);
+  queueNow.current = queue;
+  const recheckDue = useRef(() => {});
+  recheckDue.current = () => {
+    if (fetching.current) return;
+    fetching.current = true;
+    fetchDue([...queue, ...later.current.map((x) => x.item)])
+      .then(toLater)
+      .catch(() => {})
+      .finally(() => {
+        fetching.current = false;
+      });
+  };
+  useEffect(() => {
+    if (loading) return;
+    let hiddenAt = 0;
+    const onVis = () => {
+      if (document.visibilityState === "hidden") return void (hiddenAt = Date.now());
+      if (!hiddenAt || Date.now() - hiddenAt < RECHECK_DUE_MS) return;
+      hiddenAt = 0;
+      recheckDue.current();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [loading]);
 
   // Say the focused row aloud on a loop (word, then example) while the page
   // is active; paused in a hidden tab or background window.

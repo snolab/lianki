@@ -5,8 +5,47 @@ Design. The pure scheduler and an owner-only simulator are in #372
 them yet.
 
 New words on /words come from a walk over the list tree. Each parent decides
-how its children share the new words. Reviews are unchanged: every due card
-is reviewed as it is now.
+how its children share the new words. Reviews always come first: see
+[Reviews before new words](#reviews-before-new-words).
+
+## Reviews before new words
+
+Owner, 2026-11-03 03:22 JST: "复习卡片必须先于新词". If a day goes only on
+new words and time runs out, old cards must not wait for good. So every due
+card is shown before the next new word, as in Anki. This is the default and
+there is no setting for it. `lib/words/review-first.ts`,
+`unit/words-review-first.test.ts`.
+
+- **Order among due cards:** the one most likely forgotten first, that is,
+  the lowest FSRS retrievability now. Ties go to the most overdue. Lists are
+  mixed by that order, not taken in turns (`orderDue`). The server hands out
+  due cards by due date, at most 1000 per request (the first load asks for
+  all 1000). The order above applies within each fetch. Within a screen,
+  `spreadPairs` still keeps the two directions of a pair apart.
+- **A backlog bigger than one fetch:** the first load takes no new words
+  while the server says more are due (`more`). Each time the endless list
+  needs rows, it asks the server for due cards that are not in the queue yet
+  (`dueFetchLimit`: the ones queued plus a page of 200). New words come only
+  when none is left (`nextBatch`).
+- **Cards that fall due while the page is open:** a phone keeps the tab open
+  overnight. They are picked up by that same request each time more rows
+  are needed. Also, when the page comes back after at least 5 minutes
+  hidden, they join just below the screen, ahead of the new words still
+  waiting. A due word fetched while new words wait below the screen joins
+  the same way, not at the end. Rows already on screen do not move.
+- Misses and learning steps still come back within minutes, as before.
+- Offline, only the saved copy of due cards is known, so new words follow it.
+  Cached cards that fall due later in the same offline session are not
+  picked up until the page reloads.
+- Known limit: the server has no offset. If 1000 due cards are in the queue
+  and still due (skipped, not graded, or graded offline and not yet sent),
+  a request finds nothing new, and new words follow.
+
+Before this (until #???), the first 400 due cards came first, interleaved
+list by list, followed by 80 new words. Any due cards beyond those 400 came
+only after those new words. Cards that fell due while the page stayed open
+were not fetched until a reload. A re-fetch that matched only queued cards
+also stopped the due fetches for good.
 
 ## The rules (owner, 2026-10-31, final as of 02:45 JST)
 
@@ -37,7 +76,8 @@ recommend" for "don't mind"), and all of it is dropped.
 
 ## 1. What happens today
 
-`Study` (`app/(app)/words/WordsClient.tsx`) takes new words from `takeNew(n)`:
+Every due card first (above). After them, `Study`
+(`app/(app)/words/WordsClient.tsx`) takes new words from `takeNew(n)`:
 the first list until it runs out, then the next one. That is strict
 depth-first with no gate. `params.newPerDay` is counted on the server but
 never enforced, so there is no daily cap today. That stays so: none is added.
@@ -128,7 +168,7 @@ alternative is to let a list whose words are all seen open the next one.
 filled by `takeNewFrom` (cursor, `/known` skipping), and merged in plan
 order. A list that returns fewer words than asked counts as fully seen, and
 the rest of the plan is drawn again. The due queue, learning steps and
-grading are unchanged.
+grading are unchanged, and reviews still come first.
 
 ## 4. Where the settings live
 
