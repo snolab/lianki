@@ -69,12 +69,12 @@ export default function CreditsAdmin({ defaultEmail }: { defaultEmail: string })
       {view && (
         <section className="space-y-3 rounded-lg border border-[oklch(0_0_0/0.1)] dark:border-[oklch(1_0_0/0.1)] p-4 text-sm">
           <div>
-            <b>{view.email}</b> · 余额 <b data-balance>¥{view.balance.toLocaleString()}</b> · Pro
-            到期 {view.proEndsAt ? longDateTime(view.proEndsAt) : "—"}
+            <b>{view.email}</b> · 余额 <b data-balance>{view.balance.toLocaleString()} 积分</b> ·
+            Pro 到期 {view.proEndsAt ? longDateTime(view.proEndsAt) : "—"}
           </div>
           {view.testEntries && view.testEntries.length > 0 && (
             <div data-test-balance>
-              测试余额 ¥{(view.testBalance ?? 0).toLocaleString()}（测试模式充值，不可消费）：
+              测试余额 {(view.testBalance ?? 0).toLocaleString()} 积分（测试模式充值，不可消费）：
               {view.testEntries.map((e) => (
                 <span key={e.id} className="ml-2 font-mono text-xs">
                   {e.amount > 0 ? "+" : ""}

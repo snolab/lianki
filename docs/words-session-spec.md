@@ -6,19 +6,20 @@ they land. Design details that are still open are marked **open**.
 
 ## Layout
 
-- **One tall slip per word.** Today a word is split over ~3 small cells and
-  ~10 fit a screen, so the English meaning and examples are cut off. Merge
-  them: one slip the height of 3 current cells holding the word, the English
-  meaning and the example sentences, in large type with generous spacing
-  ("大大的，不密密麻麻，不累眼"). Keep the vertical bamboo-slip list; he
-  prefers it to single cards. _Top priority; phase 1._
-- **3–4 slips per phone screen**, 5 at most.
-- **Keep scrolling** (revised 03:30–03:31 JST, replacing "snap paging" and
-  "no scroll-up"): he likes scrolling; with fixed slots his finger has to move
-  to a different slot each time, while with scrolling it stays at one spot and
-  swipes card after card. So after a swipe the next card arrives at the
-  **same screen position** under his finger. He reported that /words could
-  not scroll at 03:30 JST: check for a bug.
+- **Tall slips: tried and REJECTED** (03:38 JST, rolled back on the dev
+  server, never shipped). He first asked for one slip per word, 3 cells tall,
+  holding word, meaning and examples in large type, 3–5 per screen. On his
+  phone he called it ugly ("太丑，回滚"): the **left and right columns are
+  gone**, so words no longer line up visually, and **each screen carries far
+  too little**. Keep the two-column layout and its density. The unmerged
+  branch `feat/words-big-cells` (local, tree/words-big-cells) has the attempt.
+  Still open: showing the meaning and examples that the small cells cut off,
+  without losing the columns.
+- **Keep scrolling** (03:30–03:31 JST): he likes scrolling; with fixed slots
+  his finger has to move to a different slot each time, while with scrolling
+  it stays at one spot and swipes card after card. So after a swipe the next
+  card arrives at the **same screen position** under his finger. He reported
+  that /words could not scroll at 03:30 JST: check for a bug.
 - **Paper texture always scrolls with the list**; the
   `words.paperScrolls` setting is removed.
 - **Binding cords at a fixed position**: dragging a slip never carries the
