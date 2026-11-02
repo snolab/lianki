@@ -120,12 +120,20 @@ export async function applyCredit(
 
 // ── Top-ups ─────────────────────────────────────────────────────────────────────
 
+export type TopupResult = ApplyResult | { status: "refunded" };
+
 /**
  * Credit a paid top-up. `provider` + `paymentId` is the idempotency key, so
  * every provider (lib/payments/providers) credits the same ledger once per
  * payment however often it redelivers.
+ *
+ * A payment already refunded at the provider (a `credit_refund_mark`, written
+ * by `refundProviderTopup`) is never credited: the ledger row is inserted only
+ * WHERE NOT EXISTS that mark, and the balance moves only if that very row went
+ * in — all in one batch, so a capture that read "paid" before a refund landed
+ * cannot credit afterwards.
  */
-export function creditTopup(
+export async function creditTopup(
   d1: D1WithBatch,
   t: {
     userId: string;
@@ -136,19 +144,38 @@ export function creditTopup(
     note?: string;
   },
   now = new Date(),
-) {
-  if (!(t.amount > 0)) throw new Error("top-up must be positive");
-  return applyCredit(
-    d1,
-    {
-      userId: t.userId,
-      amount: t.amount,
-      reason: t.reason ?? "topup",
-      refId: `${t.provider}:${t.paymentId}`,
-      note: t.note,
-    },
-    now,
-  );
+): Promise<TopupResult> {
+  if (!Number.isInteger(t.amount) || !(t.amount > 0)) throw new Error("top-up must be positive");
+  const user = await d1.prepare("SELECT id FROM user WHERE id = ?").bind(t.userId).first();
+  if (!user) return { status: "no user" };
+  const refId = `${t.provider}:${t.paymentId}`;
+  const id = crypto.randomUUID();
+  const at = now.toISOString();
+  try {
+    await d1.batch([
+      d1
+        .prepare(
+          "INSERT INTO credit_ledger (id, userId, amount, reason, refId, passId, note, createdAt) SELECT ?, ?, ?, ?, ?, NULL, ?, ? WHERE NOT EXISTS (SELECT 1 FROM credit_refund_mark WHERE refId = ?)",
+        )
+        .bind(id, t.userId, t.amount, t.reason ?? "topup", refId, t.note ?? null, at, refId),
+      d1
+        .prepare(
+          "INSERT INTO credit_balance (userId, balance, updatedAt) VALUES (?, 0, ?) ON CONFLICT(userId) DO NOTHING",
+        )
+        .bind(t.userId, at),
+      d1
+        .prepare(
+          "UPDATE credit_balance SET balance = balance + ?, updatedAt = ? WHERE userId = ? AND EXISTS (SELECT 1 FROM credit_ledger WHERE id = ?)",
+        )
+        .bind(t.amount, at, t.userId, id),
+    ]);
+  } catch (err) {
+    if (isUnique(err)) return { status: "duplicate" };
+    throw err;
+  }
+  const done = await d1.prepare("SELECT 1 AS ok FROM credit_ledger WHERE id = ?").bind(id).first();
+  if (!done) return { status: "refunded" };
+  return { status: "applied", balance: await getBalance(d1, t.userId) };
 }
 
 // ── Spending on passes ──────────────────────────────────────────────────────────
@@ -282,6 +309,68 @@ export async function refundPassToCredits(
   if (r.status === "applied") return { status: "refunded", amount, balance: r.balance };
   if (r.status === "duplicate") return { status: "duplicate" };
   return { status: "not found" };
+}
+
+export type ProviderRefundResult =
+  | { status: "refunded"; amount: number; balance: number }
+  | { status: "duplicate" }
+  | { status: "insufficient"; balance: number }
+  | { status: "marked" };
+
+/**
+ * A provider says payment `topupRefId` (`<provider>:<paymentId>`) was
+ * refunded in full. One batch, so it serialises with `creditTopup`:
+ *
+ * - always leaves a `credit_refund_mark`, so a capture that lands later never
+ *   credits it (`marked` when there was nothing to take back yet);
+ * - takes back the top-up if it was credited (`refunded`), once (`duplicate`);
+ * - if the credits were already spent the CHECK rolls it all back
+ *   (`insufficient`) — the top-up row exists, so no mark is needed for that.
+ */
+export async function refundProviderTopup(
+  d1: D1WithBatch,
+  topupRefId: string,
+  now = new Date(),
+  note?: string,
+): Promise<ProviderRefundResult> {
+  const at = now.toISOString();
+  const id = crypto.randomUUID();
+  const refundRef = `topup:${topupRefId}`;
+  try {
+    await d1.batch([
+      d1
+        .prepare("INSERT OR IGNORE INTO credit_refund_mark (refId, createdAt) VALUES (?, ?)")
+        .bind(topupRefId, at),
+      d1
+        .prepare(
+          "INSERT OR IGNORE INTO credit_ledger (id, userId, amount, reason, refId, passId, note, createdAt) SELECT ?, userId, -amount, 'refund', ?, NULL, ?, ? FROM credit_ledger WHERE reason = 'topup' AND refId = ?",
+        )
+        .bind(id, refundRef, note ?? null, at, topupRefId),
+      d1
+        .prepare(
+          "UPDATE credit_balance SET balance = balance + (SELECT amount FROM credit_ledger WHERE id = ?1), updatedAt = ?2 WHERE userId = (SELECT userId FROM credit_ledger WHERE id = ?1)",
+        )
+        .bind(id, at),
+    ]);
+  } catch (err) {
+    if (!isCheck(err)) throw err;
+    const t = await d1
+      .prepare("SELECT userId FROM credit_ledger WHERE reason = 'topup' AND refId = ?")
+      .bind(topupRefId)
+      .first<{ userId: string }>();
+    return { status: "insufficient", balance: t ? await getBalance(d1, t.userId) : 0 };
+  }
+  const row = await d1
+    .prepare("SELECT userId, amount FROM credit_ledger WHERE id = ?")
+    .bind(id)
+    .first<{ userId: string; amount: number }>();
+  if (row)
+    return { status: "refunded", amount: row.amount, balance: await getBalance(d1, row.userId) };
+  const prior = await d1
+    .prepare("SELECT 1 AS ok FROM credit_ledger WHERE reason = 'refund' AND refId = ?")
+    .bind(refundRef)
+    .first();
+  return prior ? { status: "duplicate" } : { status: "marked" };
 }
 
 /**

@@ -7,12 +7,13 @@
  * - `paid` → credit `<provider>:<paymentId>` once (a redelivery is a no-op).
  *   In test mode only the owner's account is credited; anyone else's is
  *   ignored, so a test card never turns into real credits;
- * - `refunded` → take the top-up back once; if the credits were already spent
+ * - `refunded` → take the top-up back once, and mark the payment so a capture
+ *   still in flight can never credit it afterwards; if the credits were already spent
  *   it is logged for the owner (the balance never goes negative) and answered
  *   200, since a retry cannot fix it.
  */
 import { isOwner } from "@/lib/owner";
-import { creditTopup, reverseTopup, type D1WithBatch } from "./credits-store";
+import { creditTopup, refundProviderTopup, type D1WithBatch } from "./credits-store";
 import { providerMode, type PaymentProvider } from "./providers";
 
 export interface WebhookReply {
@@ -52,8 +53,9 @@ export async function handleProviderWebhook(
 
   const refId = `${provider.id}:${out.paymentId}`;
   if (out.status === "refunded") {
-    const r = await reverseTopup(d1, refId, now, "refunded at the provider");
-    if (r.status === "insufficient" || r.status === "not found")
+    const r = await refundProviderTopup(d1, refId, now, "refunded at the provider");
+    // `marked`: refunded before it was credited — the mark blocks a late capture.
+    if (r.status === "insufficient" || r.status === "marked")
       console.error(
         JSON.stringify({
           event: "credits.refund.unsettled",

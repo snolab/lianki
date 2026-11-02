@@ -29,5 +29,13 @@ CREATE TABLE IF NOT EXISTS credit_balance (
   updatedAt TEXT NOT NULL
 );
 
+-- A provider payment refunded in full (refId `<provider>:<paymentId>`). A
+-- top-up is credited only WHERE NOT EXISTS its mark, in the same batch, so a
+-- capture webhook that read "paid" before the refund cannot credit after it.
+CREATE TABLE IF NOT EXISTS credit_refund_mark (
+  refId     TEXT PRIMARY KEY NOT NULL,
+  createdAt TEXT NOT NULL
+);
+
 -- Gift codes may carry credits as well as (or instead of) Pro days.
 ALTER TABLE gift_code ADD COLUMN credits INTEGER NOT NULL DEFAULT 0;

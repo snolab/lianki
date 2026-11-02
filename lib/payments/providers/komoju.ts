@@ -4,12 +4,13 @@
  *
  * Mode is decided by the server's own settings, never by a request:
  *
- * - **test** (the default): `KOMOJU_LIVE` is not `1`. Only the owner
+ * - **test** (the default): `KOMOJU_LIVE` is not `1` and the key is `sk_test_…`. Only the owner
  *   (`OWNER_EMAILS`) is offered it, and its webhook credits only the owner —
  *   a test card must never become real credits for anyone else.
- * - **live**: `KOMOJU_LIVE=1`. Offered to everyone.
- * - **off**: a secret is missing, or the key contradicts the mode (an
- *   `sk_live_` key without `KOMOJU_LIVE=1`, or an `sk_test_` key with it).
+ * - **live**: `KOMOJU_LIVE=1` and the key is `sk_live_…`. Offered to everyone.
+ * - **off**: a secret is missing, or the key does not prove the mode: test
+ *   needs an `sk_test_` key, live an `sk_live_` key; any other format is
+ *   refused (KOMOJU has no API field that says which mode a key is in).
  *
  * The webhook is only a hint: a signed `payment.captured` is re-read from the
  * KOMOJU API with the secret key, and the amount, currency, status and user are
@@ -27,9 +28,13 @@ type Env = Record<string, string | undefined>;
 export function komojuMode(env: Env = process.env): ProviderMode | null {
   const key = env.KOMOJU_SECRET_KEY?.trim();
   if (!key || !env.KOMOJU_WEBHOOK_SECRET?.trim()) return null;
+  // Fail closed: the mode must be proven by the key's own format AND agree
+  // with the flag. KOMOJU decides test/live by the key alone and exposes no
+  // mode field, so an unrecognised key (e.g. a non-prefixed one) is off — no
+  // session, no credit — rather than guessed.
   const live = env.KOMOJU_LIVE?.trim() === "1";
-  if (live) return key.startsWith("sk_test_") ? null : "live";
-  return key.startsWith("sk_live_") ? null : "test";
+  if (live) return key.startsWith("sk_live_") ? "live" : null;
+  return key.startsWith("sk_test_") ? "test" : null;
 }
 
 function authHeader(): string {

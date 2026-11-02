@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createTestD1 } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
-import { creditTopup, getBalance, ledger } from "@/lib/payments/credits-store";
+import { creditTopup, getBalance, ledger, refundProviderTopup } from "@/lib/payments/credits-store";
 import {
   komojuMode,
   komojuProvider,
@@ -114,6 +114,12 @@ describe("mode", () => {
     expect(komojuMode({ ...base, KOMOJU_SECRET_KEY: "sk_live_a" })).toBeNull(); // live key, no flag
     expect(komojuMode({ ...base, KOMOJU_SECRET_KEY: "sk_live_a", KOMOJU_LIVE: "1" })).toBe("live");
     expect(komojuMode({ ...base, KOMOJU_SECRET_KEY: "sk_live_a", KOMOJU_LIVE: "true" })).toBeNull();
+    // Fail closed: a key whose format does not prove its mode is off either way
+    // (KOMOJU's docs show non-prefixed test credentials such as this one).
+    for (const k of ["degica-mart-test", "sk_abc", "pk_test_a", "SK_TEST_A"]) {
+      expect(komojuMode({ ...base, KOMOJU_SECRET_KEY: k })).toBeNull();
+      expect(komojuMode({ ...base, KOMOJU_SECRET_KEY: k, KOMOJU_LIVE: "1" })).toBeNull();
+    }
   });
 
   test("a test-mode provider is the owner's alone; live is everyone's", () => {
@@ -346,5 +352,97 @@ describe("webhook", () => {
     expect(await refund("p_2")).toBe("insufficient");
     // Unknown at KOMOJU (404): a throw, so KOMOJU retries rather than losing it.
     await expect(refund("p_9")).rejects.toThrow("404");
+  });
+
+  test("refund lands while a capture is held mid-read: the late capture never credits", async () => {
+    env("live");
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let sawPayment!: () => void;
+    const paymentRead = new Promise<void>((r) => (sawPayment = r));
+    let refunded = false;
+    globalThis.fetch = (async (url: string) => {
+      if (url.endsWith("/payments/p_1")) {
+        // The capture's read saw "captured"; the refund's read sees "refunded".
+        const status = refunded ? "refunded" : "captured";
+        sawPayment();
+        return Response.json(payment({ status }));
+      }
+      if (url.endsWith("/sessions/s_1")) {
+        await held; // the capture pauses here, holding a stale "paid" snapshot
+        return Response.json(session("u"));
+      }
+      return Response.json({}, { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const capture = handleProviderWebhook(
+      d1,
+      komojuProvider,
+      await delivery("payment.captured", "p_1"),
+      NOW,
+    );
+    await paymentRead;
+    refunded = true;
+    const refund = await handleProviderWebhook(
+      d1,
+      komojuProvider,
+      await delivery("payment.refunded", "p_1"),
+      NOW,
+    );
+    expect(refund.body.status).toBe("marked");
+    release();
+    expect((await capture).body.status).toBe("refunded");
+    expect(await getBalance(d1, "u")).toBe(0);
+    expect(await ledger(d1, "u")).toEqual([]);
+    // A later redelivery of either changes nothing.
+    fakeApi({ p_1: payment({ status: "refunded" }) });
+    expect(
+      (
+        await handleProviderWebhook(
+          d1,
+          komojuProvider,
+          await delivery("payment.refunded", "p_1"),
+          NOW,
+        )
+      ).body.status,
+    ).toBe("marked");
+    expect(
+      (
+        await creditTopup(
+          d1,
+          { userId: "u", amount: 600, provider: "komoju", paymentId: "p_1" },
+          NOW,
+        )
+      ).status,
+    ).toBe("refunded");
+    expect(await getBalance(d1, "u")).toBe(0);
+  });
+
+  test("capture first, then refund: credited, then taken back once", async () => {
+    env("live");
+    fakeApi({ p_1: payment() }, { s_1: session("u") });
+    await handleProviderWebhook(d1, komojuProvider, await delivery("payment.captured", "p_1"), NOW);
+    expect(await getBalance(d1, "u")).toBe(600);
+    fakeApi({ p_1: payment({ status: "refunded" }) });
+    const r = await refundProviderTopup(d1, "komoju:p_1", NOW, "x");
+    expect(r).toEqual({ status: "refunded", amount: -600, balance: 0 });
+    expect(await refundProviderTopup(d1, "komoju:p_1", NOW)).toEqual({ status: "duplicate" });
+    // A redelivered capture credits nothing (the refund's mark blocks it).
+    fakeApi({ p_1: payment() }, { s_1: session("u") });
+    expect(
+      (
+        await handleProviderWebhook(
+          d1,
+          komojuProvider,
+          await delivery("payment.captured", "p_1"),
+          NOW,
+        )
+      ).body.status,
+    ).toBe("refunded");
+    expect(await getBalance(d1, "u")).toBe(0);
+  });
+
+  test("a refund for a payment never credited only leaves the mark", async () => {
+    expect(await refundProviderTopup(d1, "komoju:none", NOW)).toEqual({ status: "marked" });
   });
 });

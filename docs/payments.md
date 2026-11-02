@@ -142,11 +142,13 @@ credits the wallet as `sponsor`.
 `lib/payments/providers/komoju.ts`, webhook handling in
 `lib/payments/webhook.ts`, tests in `unit/komoju.test.ts`.
 
-- **Mode** comes from the Worker's settings only (`komojuMode`): **test** by
-  default; **live** only with `KOMOJU_LIVE=1`; **off** when a secret is
-  missing or the key contradicts the mode (an `sk_live_…` key without
-  `KOMOJU_LIVE=1`, or an `sk_test_…` key with it). So nothing charges real
-  money until the owner sets both a live key and the flag on purpose.
+- **Mode** comes from the Worker's settings only (`komojuMode`), and fails
+  closed: **test** needs an `sk_test_…` key and no `KOMOJU_LIVE`; **live**
+  needs an `sk_live_…` key _and_ `KOMOJU_LIVE=1`; anything else — a missing
+  secret, a key that disagrees with the flag, or a key in any other format
+  (KOMOJU decides the mode by the key alone and has no API field that says
+  which) — is **off**: no session, no credit. So nothing charges real money
+  until the owner sets both a live key and the flag on purpose.
 - **Top-up**: `POST /api/payments/topup` (rate limit + Turnstile, amount
   validated on the server, ¥100–¥10,000) creates a KOMOJU session —
   `amount`, `currency: JPY`, `return_url` `/membership?topup=1`, and
@@ -163,7 +165,10 @@ credits the wallet as `sponsor`.
   Credited once per `komoju:<payment id>`; a redelivery is a no-op. An API
   failure is a 500, so KOMOJU retries (up to 25 times over 25 days).
 - **Refunds**: a full refund (`payment.refunded`, re-read: status `refunded`)
-  takes the top-up back once. If the credits were already spent, nothing is
+  takes the top-up back once, and always leaves a `credit_refund_mark` for the
+  payment in the same batch. A top-up is credited only `WHERE NOT EXISTS` that
+  mark, so a capture webhook that read "captured" before the refund and
+  commits after it credits nothing (unit test "held mid-read"). If the credits were already spent, nothing is
   overdrawn: it logs `credits.refund.unsettled` (wrangler tail) — settle at
   `/dev/credits` (refund the pass first, then 撤回充值). Partial refunds
   (`payment.refund.created`) are not automated; settle by hand.
@@ -187,8 +192,10 @@ accounts see no KOMOJU button.
    bunx wrangler secret put KOMOJU_LIVE            # 1
    ```
 
-   Secrets apply at once, no deploy needed. If the live key's prefix is not
-   `sk_live_`, it still works (only an `sk_test_` key is refused with the flag).
+   Secrets apply at once, no deploy needed. The live key must start with
+   `sk_live_`; if KOMOJU's live key has another format, KOMOJU stays **off**
+   (no button anywhere) — accepting that format is then a one-line code change
+   in `komojuMode`, reviewed like any payment change.
 3. **One small real payment**: as the owner, top up **¥100** by card on
    `/membership` (KOMOJU now has no "(test)" label, and a second, non-owner
    account sees it too). Check: `wrangler tail lianki` shows no error; the
@@ -196,9 +203,8 @@ accounts see no KOMOJU button.
    `test mode` note; the KOMOJU dashboard shows the payment captured and the
    webhook delivery 200. Then refund it in the KOMOJU dashboard and check the
    wallet goes back to its old balance (a `refund` entry `topup:komoju:…`).
-4. If anything is off: `bunx wrangler secret delete KOMOJU_LIVE` turns live
-   off at once (the provider is then off, since the live key contradicts test
-   mode).
+4. If anything is off: `bunx wrangler secret delete KOMOJU_LIVE` turns
+   KOMOJU off at once (an `sk_live_` key without the flag is refused).
 
 #### Adding a provider
 
