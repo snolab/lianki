@@ -3,7 +3,7 @@
 Phases 1–3 built (2026-10-31; phase 4, push, is not). Owner request (2026-10-31 02:21 JST): habit settings
 follow the account and sync across devices and origins. Settings that belong
 to one device stay on it. The Experimental settings on /words (New swipe,
-Heavy swipe and its tuning, paper scrolls) are synced too (owner, 02:22 JST).
+Heavy swipe and its tuning) are synced too (owner, 02:22 JST).
 
 This also fixes the dev origin opening with default settings: once it signs in
 through the dev bridge, it pulls the owner's preferences like any other device.
@@ -36,7 +36,6 @@ The store column gives the account-mode store that will hold the key, as
 | `lk:words-server-voice`        | Server voice                              | **synced** | `words.serverVoice`  | a voice choice, not a device feature                                                |
 | `lk:words-swipe-speak`         | Speak on swipe                            | **synced** | `words.speakOnSwipe` | a habit                                                                             |
 | `lk:words-grade-tones`         | Grade tones                               | **synced** | `words.gradeTones`   | a habit                                                                             |
-| `lk:words-paper-scrolls`       | Paper scrolls (Experimental)              | **synced** | `words.paperScrolls` | owner, 02:22                                                                        |
 | `lk:words-voice-mode`          | Voice commands (docs/voice-mode.md)       | **synced** | `words.voiceMode`    | a habit; the mic itself is still asked for on each device                           |
 | `lk:swipe-ab`                  | New swipe (Experimental)                  | **synced** | `swipe.variant`      | owner, 02:22. Telemetry still tags each row with the variant                        |
 | `lk:pref:swipe-feel` `.preset` | Heavy swipe (Experimental)                | **synced** | `swipe-feel.preset`  | owner, 02:22                                                                        |
@@ -160,6 +159,13 @@ chat's keys.
 **Shape changes.** A field whose type changes gets a new key
 (`swipe-feel.tweaks2`). The old row is no longer read, and nothing has to be
 migrated on the server. Reads filter out keys that are not in the registry.
+
+**Removing a setting** takes its key out of the registry, nothing else. A
+row already on the server stays there unread (reads filter it out); an older
+client that still sends the key gets it back in `rejected` and drops it from
+its outbox; the device's local copy is left alone and read by nothing. So far:
+`words.paperScrolls` (`lk:words-paper-scrolls`, "Paper scrolls with the
+list"), removed 2026-11-03: the paper always scrolls with the list (owner).
 
 **Resetting** a setting writes its default value. Nothing is deleted, so
 there are no tombstones.

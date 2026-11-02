@@ -181,7 +181,6 @@ export function prefBindings(): PrefBinding[] {
     plain("words.serverVoice", "lk:words-server-voice", bool10, true),
     plain("words.speakOnSwipe", "lk:words-swipe-speak", bool10, true),
     plain("words.gradeTones", "lk:words-grade-tones", bool10, true),
-    plain("words.paperScrolls", "lk:words-paper-scrolls", bool10, false),
     plain("words.voiceMode", "lk:words-voice-mode", bool10, false),
     plain("swipe.variant", "lk:swipe-ab", text, "js"),
     field("swipe-feel.preset", "swipe-feel", 1, "preset", "light"),

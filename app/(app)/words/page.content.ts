@@ -212,42 +212,6 @@ const dictionary = {
       mr: "सेटिंग्ज",
       ko: "설정",
     }),
-    paperScrolls: t({
-      en: "Paper scrolls with the list",
-      zh: "纸纹随列表滚动",
-      hi: "कागज़ सूची के साथ स्क्रॉल हो",
-      es: "El papel se desplaza con la lista",
-      fr: "Le fond papier défile avec la liste",
-      ar: "الورق يتمرّر مع القائمة",
-      bn: "কাগজ তালিকার সাথে স্ক্রল করে",
-      pt: "O papel rola com a lista",
-      ru: "Бумага прокручивается со списком",
-      ur: "کاغذ فہرست کے ساتھ اسکرول ہو",
-      id: "Kertas bergulir bersama daftar",
-      de: "Papier scrollt mit der Liste",
-      ja: "紙の模様をリストと一緒にスクロール",
-      sw: "Karatasi isogee pamoja na orodha",
-      mr: "कागद यादीसोबत स्क्रोल होतो",
-      ko: "종이 무늬가 목록과 함께 스크롤",
-    }),
-    paperScrollsHint: t({
-      en: "The paper texture moves with the cards instead of staying still",
-      zh: "纸纹随卡片移动，而不是固定不动",
-      hi: "कागज़ की बनावट स्थिर रहने के बजाय कार्डों के साथ चलती है",
-      es: "La textura del papel se mueve con las tarjetas en lugar de quedarse quieta",
-      fr: "La texture du papier bouge avec les cartes au lieu de rester fixe",
-      ar: "يتحرّك نسيج الورق مع البطاقات بدل أن يبقى ثابتًا",
-      bn: "কাগজের টেক্সচার স্থির না থেকে কার্ডের সাথে সরে",
-      pt: "A textura do papel acompanha os cartões em vez de ficar parada",
-      ru: "Текстура бумаги движется вместе с карточками, а не стоит на месте",
-      ur: "کاغذ کی ساخت ساکن رہنے کے بجائے کارڈز کے ساتھ چلتی ہے",
-      id: "Tekstur kertas ikut bergerak bersama kartu, tidak diam",
-      de: "Die Papierstruktur bewegt sich mit den Karten, statt stillzustehen",
-      ja: "紙の模様が止まらず、カードと一緒に動きます",
-      sw: "Mchoro wa karatasi husogea pamoja na kadi badala ya kubaki tuli",
-      mr: "कागदाचा पोत स्थिर न राहता कार्डांसोबत हलतो",
-      ko: "종이 질감이 고정되지 않고 카드와 함께 움직입니다",
-    }),
     // The swipe's feel (docs/swipe-core.md): debug mode only, this device only.
     heavySwipe: t({
       en: "Heavy swipe",
@@ -1959,10 +1923,6 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "/words study view, Settings sheet, Experimental section (touch screens, debug mode only): the label of an on/off switch (a pill) that shows a panel of sliders to adjust how the swipe feels. A short imperative.",
   tuneSwipeHint:
     "/words study view, Settings sheet: the tooltip of the 'Tune swipe' switch: turning it on shows a panel for adjusting the swipe's feel. A noun phrase, no final period.",
-  paperScrolls:
-    "/words study view, Settings sheet, Experimental section: the label of an on/off switch (a pill): the background paper texture of the study list scrolls along with the list instead of staying fixed. 'Paper' = the page's paper-texture background. A short statement.",
-  paperScrollsHint:
-    "/words study view, Settings sheet: the tooltip of the 'Paper scrolls with the list' switch: the paper texture moves with the word rows (cards) instead of staying still. No final period.",
   nativeSwipeNote:
     "/words study view, Settings sheet: the small note at the end of the Experimental section on touch screens, right before 'It may change or go away.': says the experimental swipe works by native scrolling. A short fragment ending with a period.",
   mayChange:
