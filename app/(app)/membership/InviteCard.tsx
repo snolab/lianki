@@ -4,13 +4,12 @@ import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import type { InviteSummary } from "@/lib/referrals/store";
-
-const yen = (n: number) =>
-  new Intl.NumberFormat(undefined, { style: "currency", currency: "JPY" }).format(n);
+import { useCredits } from "./use-credits";
 
 /** The invite link and its results, plus the gift-code box. Renders nothing off D1. */
 export function InviteCard({ onProChanged }: { onProChanged: () => void }) {
   const s = useIntlayer("invite-card");
+  const { credits } = useCredits();
   const [summary, setSummary] = useState<InviteSummary | null>(null);
   const [copied, setCopied] = useState(false);
   const [code, setCode] = useState("");
@@ -60,7 +59,8 @@ export function InviteCard({ onProChanged }: { onProChanged: () => void }) {
       if (data.status === "redeemed") {
         const parts = [];
         if (data.days) parts.push(s.giftOk.value.replace("{days}", String(data.days)));
-        if (data.credits) parts.push(s.giftCredits.value.replace("{credits}", yen(data.credits)));
+        if (data.credits)
+          parts.push(s.giftCredits.value.replace("{credits}", credits(data.credits)));
         setGiftMsg({ ok: true, text: parts.join(" ") });
         setCode("");
         onProChanged();

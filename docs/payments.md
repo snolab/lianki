@@ -183,6 +183,13 @@ Rules in `lib/payments/credits.ts`, D1 side in `lib/payments/credits-store.ts`,
 tables in `db/migrations/0024_credits.sql`, UI in
 `app/(app)/membership/WalletCard.tsx`.
 
+**Shown in credits, never a currency** (owner, 2026-11-03): one credit is what
+¥1 of top-up buys, so the ledger's amount _is_ the number of credits. The
+balance, pass prices bought from it, the history and gift-code credits read
+"1,200 credits" (pluralized per locale: `credit-units.content.ts`,
+`lib/payments/credit-units.ts`); yen appears only where money is charged — a
+top-up reads "¥600 → 600 credits". `/dev/credits` and `/dev/gift-codes` say 积分.
+
 ### Ledger
 
 - `credit_ledger` is append-only: one row per change, amount in JPY signed

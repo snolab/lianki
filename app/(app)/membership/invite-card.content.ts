@@ -1,7 +1,8 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys } from "@/lib/i18n-context";
 
 /** Strings for the invite card and gift-code box on /membership (lib/referrals). */
-const inviteCardContent = {
+const dictionary = {
   key: "invite-card",
   content: {
     title: t({
@@ -257,22 +258,22 @@ const inviteCardContent = {
       mr: "हा कोड चालत नाही: चुकीचा टाइप, कालबाह्य किंवा संपलेला असू शकतो.",
     }),
     giftCredits: t({
-      en: "Done: {credits} of credits added to your balance.",
+      en: "Done: {credits} added to your balance.",
       zh: "成功：余额已增加 {credits}。",
       ja: "完了：残高に {credits} が追加されました。",
       ko: "완료: 잔액에 {credits}이(가) 추가되었습니다.",
-      hi: "हो गया: आपके बैलेंस में {credits} जोड़ दिए गए।",
-      es: "Listo: se añadieron {credits} a tu saldo.",
-      fr: "C'est fait : {credits} ajoutés à votre solde.",
-      ar: "تم: أُضيف {credits} إلى رصيدك.",
+      hi: "हो गया: आपके बैलेंस में जोड़ा गया — {credits}।",
+      es: "Listo: tu saldo recibió {credits}.",
+      fr: "C'est fait : votre solde a reçu {credits}.",
+      ar: "تمت إضافة {credits} إلى رصيدك.",
       bn: "সম্পন্ন: আপনার ব্যালেন্সে {credits} যোগ হয়েছে।",
-      pt: "Pronto: {credits} adicionados ao seu saldo.",
+      pt: "Pronto: seu saldo recebeu {credits}.",
       ru: "Готово: на баланс зачислено {credits}.",
-      ur: "ہو گیا: آپ کے بیلنس میں {credits} شامل ہو گئے۔",
+      ur: "ہو گیا: آپ کے بیلنس میں شامل — {credits}۔",
       id: "Selesai: {credits} ditambahkan ke saldomu.",
-      de: "Erledigt: {credits} wurden deinem Guthaben gutgeschrieben.",
-      sw: "Imekamilika: {credits} zimeongezwa kwenye salio lako.",
-      mr: "झाले: तुमच्या शिलकीत {credits} जमा झाले.",
+      de: "Erledigt: deinem Guthaben gutgeschrieben – {credits}.",
+      sw: "Imekamilika: salio lako limeongezewa {credits}.",
+      mr: "झाले: तुमच्या शिलकीत जमा — {credits}.",
     }),
     giftUsed: t({
       en: "You've already used this code.",
@@ -293,6 +294,33 @@ const inviteCardContent = {
       mr: "तुम्ही हा कोड आधीच वापरला आहे.",
     }),
   },
-} satisfies DeclarationContent;
+};
 
-export default inviteCardContent;
+const I = "/membership, the invite card:";
+const context: Record<keyof typeof dictionary.content, string> = {
+  title: `${I} the card's heading (h2). Invites friends to Lianki with a personal link. Imperative phrase.`,
+  description: `${I} the line under the heading explaining the referral rewards: extra trial days for the friend, Pro days for the inviter. Keep the numbers.`,
+  copy: `${I} button that copies the personal invite link to the clipboard. Imperative verb phrase.`,
+  copied: `${I} the copy button's label for a moment after the link was copied. Past participle, one word.`,
+  share: `${I} button that opens the phone's share sheet with the invite link. Imperative verb, one word.`,
+  shareText: `${I} the message sent with the invite link through the share sheet; the link follows after the colon. Lianki is a product name.`,
+  invited: `${I} label of a small stat: how many people signed up through the link. Past participle used as a noun.`,
+  active: `${I} label of a small stat: how many invited friends became active learners. Adjective used as a noun.`,
+  earned: `${I} label of a small stat: Pro days the inviter earned in the last 12 months. Noun phrase.`,
+  giftTitle: `${I} heading of the gift code box below the invite stats. A short question.`,
+  giftPlaceholder: `${I} placeholder inside the field where a gift code is typed. Noun phrase.`,
+  redeem: `${I} button that redeems the typed gift code. Imperative verb, one word.`,
+  giftOk: `${I} success notice after a gift code that gives Pro days. {days} is a number; keep it.`,
+  giftBad: `${I} error notice when the gift code is invalid, expired or used up. Full sentence.`,
+  giftCredits: `${I} success notice after a gift code that gives wallet credits. {credits} is an amount already in credits with its unit, e.g. '1,200 credits' or '1 credit' — not money; do not add a currency or the word credits again, and word the sentence so it reads right for one credit and for many (no plural agreement on {credits}). Keep {credits}.`,
+  giftUsed: `${I} error notice when this user already redeemed the code. Full sentence.`,
+};
+
+export default {
+  ...dictionary,
+  title: "/membership — invite friends and gift codes",
+  description: describeKeys(
+    "The invite card on /membership: a personal referral link with its results, and a box to redeem gift codes (Pro days and/or wallet credits). Lianki is a product name, not translated.",
+    context,
+  ),
+} satisfies DeclarationContent;

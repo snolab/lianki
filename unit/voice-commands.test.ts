@@ -16,7 +16,8 @@ import {
   COMMAND_ACTIONS,
   type VoiceActions,
   handleUtterance,
-  keepsTranscript,
+  isShown,
+  voiceTap,
 } from "@/lib/words/voice-dispatch";
 import { levelRating } from "@/lib/words/swipe";
 
@@ -258,10 +259,10 @@ describe("voice commands → the study view's actions", () => {
     });
     expect(o).toEqual({ kind: "done", cmd: "next", heard: "下一张。" });
     expect(f.calls).toEqual(["move 1"]);
-    expect(keepsTranscript(o)).toBe(true);
+    expect(isShown(o)).toBe(true);
   });
 
-  it("does nothing on what is not a command, and says what it heard", () => {
+  it("does nothing on what is not a command, and shows nothing", () => {
     const f = fakeActions();
     const o = handleUtterance("我觉得这个很难", {
       actions: f.actions,
@@ -270,7 +271,7 @@ describe("voice commands → the study view's actions", () => {
     });
     expect(o).toEqual({ kind: "unknown", heard: "我觉得这个很难" });
     expect(f.calls).toEqual([]);
-    expect(keepsTranscript(o)).toBe(true);
+    expect(isShown(o)).toBe(false);
   });
 
   it("does nothing on a card's own word read aloud", () => {
@@ -332,7 +333,7 @@ describe("voice commands → the study view's actions", () => {
       hasCard: true,
     });
     expect(o).toEqual({ kind: "agent" });
-    expect(keepsTranscript(o)).toBe(false);
+    expect(isShown(o)).toBe(false);
     expect(f.calls).toEqual([]);
   });
 
@@ -341,6 +342,108 @@ describe("voice commands → the study view's actions", () => {
     expect(Object.keys(fakeActions().actions).sort()).toEqual(
       ["exit", "grade", "move", "read", "show", "undo"].sort(),
     );
+  });
+});
+
+describe("voice mode never stands between him and the chat (2026-11-03)", () => {
+  /** One final transcript through the screen's tap: what ran, what showed, and whether the chat gets it. */
+  const route = (t: string, hasCard = true, actions?: Partial<VoiceActions>) => {
+    const f = fakeActions();
+    const shown: string[] = [];
+    const tap = voiceTap(
+      (text) =>
+        handleUtterance(text, { actions: actions ?? f.actions, cardTexts: ["猫", "cat"], hasCard }),
+      (o) => void shown.push(o.kind),
+    );
+    const kept = tap(t);
+    return { ran: f.calls, shown, toChat: !kept };
+  };
+
+  it("sends a sentence to the chat and runs nothing, even when it holds a command word", () => {
+    for (const t of [
+      "把左边那个改一下",
+      "左边那个按钮太小了",
+      "那个左边",
+      "下一张卡片的读音不对",
+      "我觉得下一张更难",
+      "右边的字看不清楚",
+      "这个太简单了，换难一点的",
+      "撤销按钮在哪里",
+      "简单吗？",
+      "上面那行字有点大",
+      "答案的字体能不能大一点",
+      "重复的单词太多了",
+      "please make the left button bigger",
+      "the next card is wrong",
+      "is this easy?",
+      "undo the last change in the chat",
+      "go back to the previous page and fix the font",
+      "左のボタンをもう少し大きくして",
+      "次のカードの読み方が違う",
+      "あの右のやつ",
+      "簡単ですか",
+      "答えの文字が小さい",
+    ]) {
+      expect([t, route(t)]).toEqual([t, { ran: [], shown: [], toChat: true }]);
+    }
+  });
+
+  it("runs a short utterance that is exactly a command, and keeps it from the chat (no agent turn)", () => {
+    for (const [t, call] of [
+      ["下一张", "move 1"],
+      ["下一张。", "move 1"],
+      ["嗯，下一张", "move 1"],
+      ["下一张吧", "move 1"],
+      ["左！", `grade ${levelRating(-1)}`],
+      ["右。", `grade ${levelRating(1)}`],
+      ["简单", "grade 4"],
+      ["Easy.", "grade 4"],
+      ["Next", "move 1"],
+      ["um, next", "move 1"],
+      ["previous", "move -1"],
+      ["Show answer", "show"],
+      ["次へ", "move 1"],
+      ["えーと、次", "move 1"],
+      ["簡単", "grade 4"],
+      ["答えを表示してください", "show"],
+      ["撤销", "undo"],
+      ["<|zh|><|NEUTRAL|>下一张。", "move 1"],
+    ] as const) {
+      expect([t, route(t)]).toEqual([t, { ran: [call], shown: ["done"], toChat: false }]);
+    }
+  });
+
+  it("confirms a command that did nothing (a card's own word, no card yet), kept from the chat", () => {
+    const f = fakeActions();
+    const shown: string[] = [];
+    const tap = voiceTap(
+      (t) => handleUtterance(t, { actions: f.actions, cardTexts: ["easy"], hasCard: true }),
+      (o) => void shown.push(o.kind),
+    );
+    expect(tap("easy")).toBe(true);
+    expect([shown, f.calls]).toEqual([["echo"], []]);
+    expect(route("良好", false)).toEqual({ ran: [], shown: ["no-card"], toChat: false });
+  });
+
+  it("hands every line for the agent to the chat, and runs nothing", () => {
+    for (const t of ["Linky, 下一张", "林琪，把左边那个改一下", "linky next"])
+      expect(route(t)).toEqual({ ran: [], shown: [], toChat: true });
+  });
+
+  it("runs only what the current screen registered: /review has the grades and exit", () => {
+    const calls: string[] = [];
+    const review: Partial<VoiceActions> = {
+      grade: (r) => void calls.push(`grade ${r}`),
+      exit: () => void calls.push("exit"),
+    };
+    for (const t of ["良好", "右", "下一张", "显示答案", "撤销", "退出语音模式"])
+      route(t, true, review);
+    expect(calls).toEqual(["grade 3", `grade ${levelRating(1)}`, "exit"]);
+    // Unregistered commands are plain lines for the chat, with nothing shown.
+    expect(route("下一张", true, review)).toEqual({ ran: [], shown: [], toChat: true });
+    // A screen that registers nothing: everything is the chat's.
+    for (const t of ["下一张", "良好", "退出语音模式"])
+      expect(route(t, true, {})).toEqual({ ran: [], shown: [], toChat: true });
   });
 });
 

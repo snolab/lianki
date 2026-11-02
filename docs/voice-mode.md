@@ -1,9 +1,19 @@
-# Voice mode on /words: spoken commands
+# Voice mode: spoken commands on the current screen
 
 The owner asked for this on 2026-11-02 at 20:06 JST, in the in-app chat:
 "/words 单词列表要一个纯语音模式 — 用口令操作：上下左右、上一张/下一张，复习操作（评分等）也做成口令".
 While voice mode is on, short spoken commands move through the list and grade
 it. No wake word is needed.
+
+**The chat comes first** (the owner, 2026-11-03 03:12–03:14 JST:
+"语音口令模式不应该影响我跟你发送指令", "打开语音口令模式后，形式仍以聊天为主",
+"还能操作我当前所在的画面", "当口令严格匹配的时候，也可以跳过触发你的"). A line
+that strictly matches a command of the screen he is on runs there, is
+confirmed on the badge, and is kept from the chat, so it wakes no agent turn.
+Every other final transcript goes to the chat as a normal message, exactly
+as with the mode off. Before this (#421 as merged) voice mode kept every
+line from the chat but "Linky, …", so he could not talk to the agent while
+it was on.
 
 ## Turning it on
 
@@ -56,7 +66,9 @@ working as before: a new focus reads its word.
   phrase. Normalizing applies NFKC, lowercase, Simplified Chinese, and drops
   punctuation, spaces, SenseVoice `<|tags|>` and padding such as 嗯/请/吧,
   "okay", "please" and ください. Anything longer than 16 characters is a
-  sentence. "我觉得下一张更难" does nothing.
+  sentence. "我觉得下一张更难" and "把左边那个改一下" do nothing. A
+  demonstrative is not padding: "那个左边" ("that left one") and "あの右"
+  stay sentences, never 左边/右.
 - **Grades exactly as said.** Again/Hard/Good/Easy and 左/右 take no slip at
   all: 有点累 is not 有点难, 很简短 is not 很简单. Only moving, the answer,
   reading, undo and exit forgive a slip.
@@ -81,17 +93,65 @@ working as before: a new focus reads its word.
   word inside the focused card's meaning (简单 in 简单的) is not taken for
   that card; a synonym (容易, 右) still is. Exit is the one command never
   blocked.
-- **"Linky, …" goes to the chat.** In voice mode, every other final
-  transcript is kept from the chat. A command runs; anything else is shown
-  as heard and nothing happens.
+- **Only a strict command is kept from the chat.** The tap (`voiceTap` in
+  `lib/words/voice-dispatch.ts`) returns true for a command of this screen
+  that ran, or that the badge explains (a card's own word, no card yet).
+  A sentence, a question, "Linky, …", or a command this screen did not
+  register runs nothing, shows no flash, and goes to the chat. The routing table, with
+  Chinese, Japanese and English lines, is in `unit/voice-commands.test.ts`
+  ("voice mode never stands between him and the chat").
+
+## Screens: each registers its own commands
+
+The mic, the chat and the switch are global; what a command does belongs to
+the screen he is on. A screen registers the `VoiceActions` it has, as a
+`Partial<VoiceActions>`. A command it leaves out does nothing (the line still
+goes to the chat), and a screen that registers nothing gets nothing: its
+lines are the chat's.
+
+| Screen    | Registers                                              |
+| --------- | ------------------------------------------------------ |
+| `/words`  | all: move, grade (and ←/→), show, read, undo, exit     |
+| `/review` | grade (Again/Hard/Good/Easy, ← Hard, → Good) and exit |
+
+A spoken grade on /review opens no placeholder tab for the next card: a
+voice line is no user gesture, so the browser would block it.
+
+To add a screen:
+
+1. In its `page.tsx`, pass `voiceAccess(await readFlags(), isOwner(email))`
+   (`lib/words/voice-access.ts`) to the client.
+2. In the client:
+
+   ```tsx
+   const [voicePref, setVoicePref] = useVoicePref(); // app/(app)/words/VoiceMode.tsx
+   const vtext = useIntlayer("words-voice-mode");
+   const voiceMode = useVoiceMode(voice !== "off" && voicePref, (heard) =>
+     handleUtterance(heard, {
+       actions: { grade: (r) => void grade(r), exit: () => setVoicePref(false) },
+       cardTexts: [/* the screen's own words, for the echo check */],
+       hasCard: !!current,
+     }),
+   );
+   // …
+   <VoiceBadge state={voiceMode.state} flash={voiceMode.flash} retry={voiceMode.retry}
+     label={(o) => voiceOutcomeLabel(o, vtext, gradeNames)} bottom={0} hint={null} />
+   ```
+
+3. Add the screen to the table above, and its actions to
+   `unit/voice-commands.test.ts`.
+
+The actions must be the screen's own paths (the same as its keys or
+buttons), never new ones, and never anything that deletes or touches the
+account (see "Safety").
 
 ## Feedback
 
-After each utterance a short glass line shows above the badge for 1.8 s. It
-is a live region:
+After each command a short glass line shows above the badge for 1.8 s. This
+is the only place a command shows: it does not appear in the chat log.
+Anything else shows nothing here (the chat shows it). It is a live region:
 
 - a command: ✓ and its name ("↓ 下一张", "→ 良好", "已撤销上一次评分");
-- not a command: 听到「…」：不是口令;
 - a card's own word: 听到「…」：这是卡片上的词，没有执行;
 - a grade with no card loaded yet: 还没有可操作的卡片.
 
@@ -111,7 +171,8 @@ Voice mode uses the page's one mic session, `__lkMic`
   which is open to any signed-in user.
 - **Command taps** (`packages/debug-chat/src/mic-taps.ts`, on globalThis
   `__lkMicTaps`). Each final transcript is offered to the taps before the
-  chat. A tap that returns true keeps it. The registry lives outside the
+  chat. A tap that returns true keeps it; voice mode does so only for a
+  strict command. The registry lives outside the
   session, so a session migrated by a hot-swapped widget keeps the taps.
   `MIC_SESSION_V` 10 is the first session that consults them. An older
   session on the page (a hot widget built before this) never does, so voice
@@ -135,18 +196,22 @@ Only the six `VoiceActions`: move, grade, show, read, undo and exit (which
 turns voice mode itself off). Nothing deletes a list or a card. Nothing
 changes another setting or touches the account. A double tap's sheet, list
 menus and the import pages cannot be reached by voice. Grading is in scope
-because the owner asked for it, and Undo takes a grade back.
+because the owner asked for it, and Undo takes a grade back (on /words; on
+/review a page card's grade is taken back by grading it again later). Each
+screen reaches only what it registered, and what is not a command reaches
+nothing but the chat.
 
 ## Files and tests
 
 | File                                       | Role                                                        |
 | ------------------------------------------ | ----------------------------------------------------------- |
 | `lib/words/voice-commands.ts`              | grammar, normalizing, matcher, echo check (pure)            |
-| `lib/words/voice-dispatch.ts`              | utterance → outcome → one `VoiceActions` call (pure)        |
+| `lib/words/voice-dispatch.ts`              | utterance → outcome → one of the screen's actions; `voiceTap` (pure) |
 | `lib/words/voice-access.ts`                | flag + owner → `on` / `preview` / `off`                     |
 | `lib/words/voice-mic.ts`                   | browser glue to `__lkMic` (lazy import)                     |
 | `packages/debug-chat/src/mic-taps.ts`      | command taps and pins on the page's mic                     |
-| `app/(app)/words/VoiceMode.tsx`            | the hook and the badge                                      |
+| `app/(app)/words/VoiceMode.tsx`            | the hook, the switch (`useVoicePref`), the badge, its labels; any screen |
+| `app/(app)/review/ReviewClient.tsx`        | /review's registration: the grades and exit                 |
 | `unit/voice-commands.test.ts`              | grammar, fuzz, sentences, echo, the wiring, access          |
 | `unit/mic-taps.test.ts`                    | taps, pins, the session consulting them, no downgrade       |
 | `scripts/qa/qa-voice-mode.mjs`             | end to end, desktop and phone, silent: text fixtures to the taps, fake mic, muted |

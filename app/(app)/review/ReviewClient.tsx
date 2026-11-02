@@ -28,6 +28,9 @@ import {
   type Rating,
   type ReviewCard,
 } from "@/lib/review-ui";
+import type { VoiceAccess } from "@/lib/words/voice-access";
+import { handleUtterance } from "@/lib/words/voice-dispatch";
+import { VoiceBadge, useVoiceMode, useVoicePref, voiceOutcomeLabel } from "../words/VoiceMode";
 
 /**
  * /review: one due page card at a time, graded inside the site.
@@ -77,9 +80,12 @@ const fill = (s: string, vars: Record<string, string | number>) =>
 export default function ReviewClient({
   isLoggedIn,
   initialUrl,
+  voice = "off",
 }: {
   isLoggedIn: boolean;
   initialUrl: string | null;
+  /** Who may use voice commands (lib/words/voice-access.ts). */
+  voice?: VoiceAccess;
 }) {
   const t = useIntlayer("review-page");
   const [phase, setPhase] = useState<Phase>(isLoggedIn ? { s: "loading" } : { s: "signedOut" });
@@ -165,12 +171,13 @@ export default function ReviewClient({
   };
 
   const grade = useCallback(
-    async (rating: Rating) => {
+    async (rating: Rating, spoken = false) => {
       if (phase.s !== "card" || busy) return;
       setBusy(true);
       // Step 3: this tap (or key press) is what lets a tab open; the next
-      // card's url follows once the grade is saved.
-      const tab = openPlaceholderTab(window, counts?.due ?? null);
+      // card's url follows once the grade is saved. A spoken grade is no
+      // gesture, so it opens none.
+      const tab = spoken ? null : openPlaceholderTab(window, counts?.due ?? null);
       let next: ReviewCard | null = null;
       try {
         const j = (await getJson(api.review(phase.card.id, rating))) as {
@@ -288,6 +295,18 @@ export default function ReviewClient({
     3: t.good.value,
     4: t.easy.value,
   };
+
+  // Voice commands (docs/voice-mode.md): this screen registers the grades
+  // (and ← Hard / → Good) and leaving voice mode. Anything else goes to the chat.
+  const [voicePref, setVoicePref] = useVoicePref();
+  const vtext = useIntlayer("words-voice-mode");
+  const voiceMode = useVoiceMode(isLoggedIn && voice !== "off" && voicePref, (heard) =>
+    handleUtterance(heard, {
+      actions: { grade: (r) => void grade(r, true), exit: () => setVoicePref(false) },
+      cardTexts: phase.s === "card" ? [phase.card.title ?? undefined] : [],
+      hasCard: phase.s === "card" && !busy,
+    }),
+  );
   const gradeTone: Record<Rating, string> = {
     1: "grade-again",
     2: "grade-hard",
@@ -550,6 +569,14 @@ export default function ReviewClient({
           {t.classic}
         </a>
       </footer>
+      <VoiceBadge
+        state={voiceMode.state}
+        flash={voiceMode.flash}
+        label={(o) => voiceOutcomeLabel(o, vtext, gradeLabel)}
+        retry={voiceMode.retry}
+        bottom={0}
+        hint={null}
+      />
     </main>
   );
 }

@@ -241,9 +241,13 @@ export const toSimplified = (s: string) => [...s].map((c) => TO_SIMPLIFIED[c] ??
 
 /** SenseVoice's `<|zh|><|NEUTRAL|>`-style tags, if any slip through. */
 const TAGS = /<\|[^|]*\|>/g;
-/** Spoken padding around a command: never part of one. */
+/**
+ * Spoken padding around a command: never part of one. Only true fillers: a
+ * demonstrative (那个, あの) is a sentence's start, and "那个左边" ("that left
+ * one") must stay a sentence for the chat, not become 左边 and grade the card.
+ */
 const LEAD =
-  /^(?:嗯+|啊+|呃+|哦+|噢+|诶+|欸+|哎+|那个|请|麻烦|please|uh+|um+|ok(?:ay)?|えーと|ええと|あの)+/u;
+  /^(?:嗯+|啊+|呃+|哦+|噢+|诶+|欸+|哎+|请|麻烦|please|uh+|um+|ok(?:ay)?|えーと|ええと)+/u;
 const TRAIL = /(?:吧|呀|啊|啦|嘛|哦|please|ください|して)+$/u;
 /** A question is never a command ("下一张吗？", "简单吗", "簡単ですか"). */
 const QUESTION = /(?:吗|嗎|么|麼|呢|か|かな)$/u;

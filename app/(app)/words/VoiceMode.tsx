@@ -1,16 +1,49 @@
 "use client";
 
 /**
- * The /words voice mode's UI (docs/voice-mode.md): the mic hookup while it
- * is on, the glass badge over the bottom of the list, and the short
- * confirmation after each spoken command. What a command does is the study
- * view's (lib/words/voice-dispatch.ts); this file only listens and shows.
+ * The voice commands' UI (docs/voice-mode.md): the mic hookup while they are
+ * on, the glass badge over the bottom of the screen, and the short
+ * confirmation after each spoken command. Any screen can use it (/words,
+ * /review): what a command does is that screen's (lib/words/voice-dispatch.ts
+ * `handleUtterance` with its own actions); this file only listens and shows.
+ * A strict command stays out of the chat; every other line goes to it.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
+import { notePrefWrite, PREF_APPLIED_EVENT } from "@lianki/ui-state";
 import type { VoiceOutcome } from "@/lib/words/voice-dispatch";
-import { keepsTranscript } from "@/lib/words/voice-dispatch";
+import { voiceTap } from "@/lib/words/voice-dispatch";
 import type { VoiceEar, VoiceEarState } from "@/lib/words/voice-mic";
+
+/** The synced on/off switch (docs/prefs-sync.md `words.voiceMode`): one for every screen. */
+export const VOICE_PREF_KEY = "lk:words-voice-mode";
+
+/** The voice commands switch, read after mount and again when the account or another tab changes it. */
+export function useVoicePref(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(false);
+  const read = useCallback(() => {
+    try {
+      setOn(localStorage.getItem(VOICE_PREF_KEY) === "1");
+    } catch {}
+  }, []);
+  useEffect(() => {
+    read();
+    window.addEventListener(PREF_APPLIED_EVENT, read);
+    window.addEventListener("storage", read);
+    return () => {
+      window.removeEventListener(PREF_APPLIED_EVENT, read);
+      window.removeEventListener("storage", read);
+    };
+  }, [read]);
+  const set = useCallback((n: boolean) => {
+    setOn(n);
+    try {
+      localStorage.setItem(VOICE_PREF_KEY, n ? "1" : "0");
+    } catch {}
+    notePrefWrite();
+  }, []);
+  return [on, set];
+}
 
 /** How long a confirmation stays up. */
 const FLASH_MS = 1800;
@@ -18,9 +51,9 @@ const FLASH_MS = 1800;
 export type VoiceFlash = { outcome: VoiceOutcome; at: number };
 
 /**
- * Listen while `on`: each final transcript goes to `handle` (the study
- * view's dispatcher). `retry` restarts after a failure (from a tap: the
- * gesture a mic may need).
+ * Listen while `on`: each final transcript goes to `handle` (the screen's
+ * dispatcher); what is not a strict command goes on to the chat. `retry` restarts after a
+ * failure (from a tap: the gesture a mic may need).
  */
 export function useVoiceMode(on: boolean, handle: (text: string) => VoiceOutcome) {
   const [state, setState] = useState<VoiceEarState | "off">("off");
@@ -39,13 +72,11 @@ export function useVoiceMode(on: boolean, handle: (text: string) => VoiceOutcome
           ? null
           : startVoiceEar({
               onState: (s) => alive && setState(s),
-              onText: (text) => {
-                // Turned off while the mic was still starting: act on nothing, pass it on.
-                if (!alive) return false;
-                const outcome = handleRef.current(text);
-                if (outcome.kind !== "agent") setFlash({ outcome, at: Date.now() });
-                return keepsTranscript(outcome);
-              },
+              onText: voiceTap(
+                // Turned off while the mic was still starting: act on nothing.
+                (text) => (alive ? handleRef.current(text) : { kind: "agent" }),
+                (outcome) => setFlash({ outcome, at: Date.now() }),
+              ),
             }),
       )
       .then((e) => {
@@ -79,6 +110,7 @@ export function VoiceBadge({
   label,
   retry,
   bottom,
+  hint,
 }: {
   state: VoiceEarState | "off";
   flash: VoiceFlash | null;
@@ -87,6 +119,8 @@ export function VoiceBadge({
   retry: () => void;
   /** What the help strip covers at the bottom, px. */
   bottom: number;
+  /** What to say; the /words list by default, null for none. */
+  hint?: string | null;
 }) {
   const text = useIntlayer("words-voice-mode");
   if (state === "off") return null;
@@ -133,11 +167,52 @@ export function VoiceBadge({
         />
         {failed ? text.micFailed : text.listening}
       </button>
-      {!failed && (
+      {!failed && hint !== null && (
         <div className="max-w-md text-center text-[11px] leading-snug opacity-70 lk-halo">
-          {text.sayHint}
+          {hint ?? text.sayHint}
         </div>
       )}
     </div>
   );
+}
+
+/** The confirmation's words for an outcome; `grades` names Again/Hard/Good/Easy as the screen does. */
+export function voiceOutcomeLabel(
+  o: VoiceOutcome,
+  text: {
+    echo: { value: string };
+    noCard: { value: string };
+    next: { value: string };
+    prev: { value: string };
+    show: { value: string };
+    read: { value: string };
+    undo: { value: string };
+    exit: { value: string };
+  },
+  grades: Record<1 | 2 | 3 | 4, string>,
+): string {
+  if (o.kind === "echo") return text.echo.value.replace("{text}", o.heard);
+  if (o.kind === "no-card") return text.noCard.value;
+  // Not shown: what is not a command is only the chat's.
+  if (o.kind === "unknown" || o.kind === "agent") return "";
+  switch (o.cmd) {
+    case "next":
+      return `↓ ${text.next.value}`;
+    case "prev":
+      return `↑ ${text.prev.value}`;
+    case "left":
+      return `← ${grades[2]}`;
+    case "right":
+      return `→ ${grades[3]}`;
+    case "again":
+      return grades[1];
+    case "hard":
+      return grades[2];
+    case "good":
+      return grades[3];
+    case "easy":
+      return grades[4];
+    default:
+      return text[o.cmd].value;
+  }
 }
