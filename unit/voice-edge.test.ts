@@ -122,6 +122,17 @@ describe("lianki-voice", () => {
     expect(passed[0].url).toBe(url("lang=fr&text=inconnu"));
   });
 
+  test("a chat line (store=0) reaches the main Worker as it came, and nothing is edge-cached", async () => {
+    const { get, passed, store, waits } = setup();
+    const q = "lang=en&text=Hello%20there.&store=0";
+    const res = await get(url(q));
+    expect(await res.text()).toBe("from main");
+    expect(passed.map((r) => r.url)).toEqual([url(q)]);
+    expect(new URL(passed[0].url).searchParams.get("store")).toBe("0");
+    await Promise.all(waits);
+    expect(store.size).toBe(0);
+  });
+
   test("a language with no recordings goes straight to the main Worker", async () => {
     const { get, got, passed } = setup();
     await get(url("lang=ko&text=말"));

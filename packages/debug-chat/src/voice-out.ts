@@ -152,9 +152,13 @@ export type CtxLike = {
   createMediaElementSource(el: unknown): { connect(n: unknown): unknown };
 };
 
-/** The route's URL for one sentence. */
+/**
+ * The route's URL for one sentence. `store=0`: a chat line is never asked for
+ * again, so the route does not keep it in R2 and sends it `no-store`; a
+ * replay comes from `clips` below (blob URLs in memory), not the HTTP cache.
+ */
 export const ttsUrl = (text: string, lang: string) =>
-  `/api/words/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}`;
+  `/api/words/tts?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}&store=0`;
 
 /** Why a sentence cannot be fetched at all (null: try the route). */
 export function cloudSkip(text: string, lang: string): string | null {

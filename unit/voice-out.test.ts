@@ -138,7 +138,9 @@ describe("voice-out: the switches", () => {
   });
 
   it("the route's URL and what it cannot voice", () => {
-    expect(ttsUrl("a b?", "ja")).toBe("/api/words/tts?lang=ja&text=a%20b%3F");
+    expect(ttsUrl("a b?", "ja")).toBe("/api/words/tts?lang=ja&text=a%20b%3F&store=0");
+    // A chat line is not kept by the route (store=0); /words clips never send it.
+    expect(new URL(ttsUrl("x", "en"), "https://l").searchParams.get("store")).toBe("0");
     expect(cloudSkip("Hi.", "en-US")).toBeNull();
     expect(cloudSkip("Hi.", "ru-RU")).toBe("lang");
     expect(cloudSkip("  ", "en")).toBe("empty");
@@ -203,7 +205,7 @@ describe("voice-out: the page's AudioContext and cloud output", () => {
         } finally {
           Object.assign(URL, { createObjectURL: saved.c, revokeObjectURL: saved.r });
         }
-        expect(fetched[0]).toBe("/api/words/tts?lang=en&text=Hi.");
+        expect(fetched[0]).toBe("/api/words/tts?lang=en&text=Hi.&store=0");
         expect(made.length).toBeGreaterThan(60);
         expect(revoked.length).toBeGreaterThan(0);
       },
@@ -293,7 +295,7 @@ describe("voice-out: createCloudOut", () => {
     await tick();
     expect(r.out.gain()).toBe(r.gain);
     expect(r.calls).toContainEqual(["set", 0.25, 1]);
-    expect(r.fetched).toEqual(["/api/words/tts?lang=en&text=Hello."]);
+    expect(r.fetched).toEqual(["/api/words/tts?lang=en&text=Hello.&store=0"]);
     r.el.onloadedmetadata?.();
     await tick();
     expect(r.el.plays).toBe(1);
@@ -377,7 +379,7 @@ describe("voice-out: createCloudOut", () => {
     r.out.prepare?.("One.", "en");
     r.out.prepare?.("One.", "en");
     r.out.prepare?.("Привет.", "ru"); // cannot: nothing fetched
-    expect(r.fetched).toEqual(["/api/words/tts?lang=en&text=One."]);
+    expect(r.fetched).toEqual(["/api/words/tts?lang=en&text=One.&store=0"]);
     for (let i = 0; i < 70; i++) r.out.prepare?.(`Clip ${i}.`, "en");
     await tick();
     expect(r.revoked.length).toBeGreaterThan(0);
