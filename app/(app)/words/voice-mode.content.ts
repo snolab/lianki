@@ -99,24 +99,6 @@ const dictionary = {
       mr: "म्हणा (इंग्रजीत): “next” · “previous” · “left” / “right” · “again” / “hard” / “good” / “easy” · “show answer” · “read again” · “undo” · “exit voice mode”",
       ko: "말하기(영어로): “next” · “previous” · “left” / “right” · “again” / “hard” / “good” / “easy” · “show answer” · “read again” · “undo” · “exit voice mode”",
     }),
-    heard: t({
-      en: "Heard “{text}”: not a command",
-      zh: "听到「{text}」：不是口令",
-      hi: "सुना “{text}”: यह आदेश नहीं है",
-      es: "Oí «{text}»: no es un comando",
-      fr: "Entendu « {text} » : pas une commande",
-      ar: "سُمع “{text}”: ليس أمرًا",
-      bn: "শোনা গেছে “{text}”: এটি কমান্ড নয়",
-      pt: "Ouvi “{text}”: não é um comando",
-      ru: "Услышано «{text}»: это не команда",
-      ur: "سنا گیا “{text}”: یہ حکم نہیں",
-      id: "Terdengar “{text}”: bukan perintah",
-      de: "Gehört: „{text}“ – kein Befehl",
-      ja: "「{text}」と聞こえました：コマンドではありません",
-      sw: "Nimesikia “{text}”: si amri",
-      mr: "ऐकले “{text}”: हा आदेश नाही",
-      ko: "“{text}”(으)로 들림: 명령이 아닙니다",
-    }),
     echo: t({
       en: "Heard “{text}”: that is the card’s own word, so nothing was done",
       zh: "听到「{text}」：这是卡片上的词，没有执行",
@@ -293,8 +275,6 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "/words study view: a small glass badge floating over the bottom of the word list while voice commands are on and the microphone is listening. A short status phrase.",
   sayHint:
     "/words study view: a hint line under the 'Voice commands on' badge listing what to say. The recognizer understands only Chinese, English and Japanese commands, so in every other language keep the English command words in quotes exactly as they are (do not translate them) and say they are said in English; zh and ja list their own command words. Keep the · separators.",
-  heard:
-    "/words study view: a short confirmation floating over the list after the learner spoke while voice commands are on, when what was heard is not a command, so nothing happened. {text} is the transcript; keep the placeholder and the quotes around it.",
   echo: "/words study view: a short note floating over the list when the speech heard while voice commands are on was the current card's own word or meaning (read aloud by the app, or repeated by the learner), so it was not treated as a command. {text} is the transcript; keep the placeholder.",
   noCard:
     "/words study view: a short note floating over the list when a spoken command (a grade, show the answer, read again) arrived before any word card was loaded, so it was not done. One short sentence, no final period.",
