@@ -191,6 +191,12 @@ describe("voice grammar", () => {
     expect(isCardEcho("up", [], ["a cup of tea"])).toBe(false); // whole words only
     expect(isCardEcho("previous", [], ["the-previous-day"])).toBe(true);
     expect(isCardEcho("下一张", [], [undefined, "猫"])).toBe(false);
+    // A run of its words, within a slip (review of 7e2dedff).
+    expect(isCardEcho("go down", [], ["go down the street"])).toBe(true);
+    expect(isCardEcho("Go back.", [], ["Go back home!"])).toBe(true);
+    expect(isCardEcho("previus", [], ["the previous day"])).toBe(true);
+    expect(isCardEcho("show answer", [], ["Show your answer"])).toBe(false);
+    expect(isCardEcho("next", [], ["context"])).toBe(false);
   });
 });
 

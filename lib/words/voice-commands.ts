@@ -356,6 +356,9 @@ export function addressesAgent(text: string): boolean {
   return /^(?:linky|linkie|linki|lenky|林琪|林奇|林基|林其|リンキー|リンキ)/u.test(n);
 }
 
+/** The most words a Latin command has ("exit voice mode", "say it again"). */
+const MAX_RUN_WORDS = 4;
+
 /** Separators inside a card's meaning ("easy; simple", "简单的，容易的"). */
 const PARTS = /[;；,，、/|·・()（）[\]【】「」\n]+/u;
 
@@ -380,11 +383,18 @@ export function isCardEcho(
   for (const t of spoken) {
     if (!t) continue;
     const flat = toSimplified(t.normalize("NFKC").toLowerCase());
-    // Latin: a whole word of it (so "up" is not in "cup"); CJK: anywhere in it.
+    // Latin: a run of whole words of it ("go down" in "go down the street",
+    // but "up" is not in "cup"), within a slip; CJK: anywhere in it.
     if (/^[a-z]+$/.test(n)) {
-      const words = flat.split(/[^\p{L}\p{N}]+/u);
-      const joined = flat.replace(/[^\p{L}\p{N}]+/gu, "");
-      if (words.includes(n) || (n.length >= 7 && joined.includes(n))) return true;
+      const words = flat.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+      for (let k = 1; k <= MAX_RUN_WORDS; k++)
+        for (let i = 0; i + k <= words.length; i++) {
+          const run = words.slice(i, i + k).join("");
+          if (run === n) return true;
+          const sl = Math.min(slack(run), slack(n));
+          if (sl && Math.abs(run.length - n.length) <= sl && editDistance(run, n) <= sl)
+            return true;
+        }
     } else if (flat.replace(/[\p{P}\p{S}\s]/gu, "").includes(n)) return true;
   }
   for (const t of cardTexts) {
