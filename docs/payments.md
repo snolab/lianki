@@ -154,7 +154,11 @@ alone (`stripeKeyMode`, `komojuKeyMode`, `providerSettleMode`). The rule:
   paid days later. Both are real money this server asked for; a time check
   would refuse them.
 - So the kill switch **stops new payments** within 30 s and never drops paid
-  ones. To stop crediting as well (a leaked key, say), rotate or delete the
+  ones. A payment page already issued stays payable until it expires: a Stripe
+  Checkout link is created with `expires_at` 31 minutes out
+  (`CHECKOUT_EXPIRES_S`, Stripe's 30-minute minimum plus a minute for clock
+  skew) instead of Stripe's 24 h default; a KOMOJU session keeps KOMOJU's own
+  expiry, and a konbini slip its payment deadline. To stop crediting as well (a leaked key, say), rotate or delete the
   keys — the webhook then answers 503 and the provider retries (Stripe for 3
   days, KOMOJU for 25), so nothing is lost while it is fixed.
 - A test event against a live key (or the reverse) is still refused, flag or

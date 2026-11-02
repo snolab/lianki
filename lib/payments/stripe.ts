@@ -128,13 +128,26 @@ function metadataFor(p: Purchase, userId: string): Record<string, string> {
     : { userId, kind: "topup", amount: String(p.amount) };
 }
 
+/**
+ * How long a Checkout link stays payable: Stripe's minimum (30 min; its
+ * default is 24 h). The live flag gates creating a session, not paying an
+ * issued one, so a short life bounds how long a link from before the kill
+ * switch can still be paid (docs/payments.md, "Live mode and the kill switch").
+ */
+export const CHECKOUT_EXPIRES_S = 30 * 60;
+
 /** The Checkout Session parameters for a purchase (exported for tests). */
-export function checkoutParams({ purchase, userId, email, successUrl, cancelUrl }: CheckoutInput) {
+export function checkoutParams(
+  { purchase, userId, email, successUrl, cancelUrl }: CheckoutInput,
+  nowS = Math.floor(Date.now() / 1000),
+) {
   const methods = paymentMethods();
   const line = lineFor(purchase);
   const metadata = metadataFor(purchase, userId);
   return {
     mode: "payment",
+    // A minute over Stripe's minimum, so clock skew never makes it refuse.
+    expires_at: nowS + CHECKOUT_EXPIRES_S + 60,
     success_url: successUrl,
     cancel_url: cancelUrl,
     client_reference_id: userId,

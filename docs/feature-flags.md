@@ -21,7 +21,10 @@ with no deploy and no secret change.
 - **Cache: 30 s per isolate** (`FLAG_CACHE_MS`). `readFlags()` costs one small
   query per isolate per 30 s; concurrent misses share it. A change made at
   `/dev/flags` reaches every request within 30 s. The isolate that wrote it
-  drops its cache at once.
+  drops its cache at once. The bound holds for a slow D1 too: a request never
+  joins a shared read that started 30 s or more ago, and a read whose answer
+  arrives past the window is not acted on — it reads as all off
+  (`flags.read-stale`).
 - **Owner only.** The page and `/api/dev/flags` answer 404 to anyone but
   `OWNER_EMAILS` (the admin gate, [security-measures.md](security-measures.md)
   §1; `unit/security.test.ts` enforces it), and sit under Cloudflare Access's

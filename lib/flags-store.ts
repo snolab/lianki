@@ -6,7 +6,8 @@
  * - **Read** with `readFlags()`: one small query, cached in this isolate for
  *   `FLAG_CACHE_MS` (30 s), so a request does not hit D1 for every check and a
  *   change made on /dev/flags reaches every isolate within 30 s, no deploy.
- *   Concurrent misses share one query.
+ *   Concurrent misses share one query. No snapshot older than the window is
+ *   ever returned — cached, joined or held (a held read past it is off).
  * - **Fail closed**: off the D1 backend, or when the read throws, every flag is
  *   OFF for that call. A failure is not cached, so the next call tries again.
  * - **Write** with `setFlag()`: registry keys only; the row and its log entry
@@ -25,7 +26,8 @@ export const FLAG_CACHE_MS = 30_000;
 export type FlagSnapshot = Record<FlagKey, boolean>;
 
 let cache: { at: number; values: FlagSnapshot } | null = null;
-let inflight: Promise<FlagSnapshot> | null = null;
+/** The shared read, and when it started (its snapshot is at least that old). */
+let inflight: { at: number; p: Promise<FlagSnapshot> } | null = null;
 /** Bumped by every clear, so a read that started before it never fills the cache. */
 let generation = 0;
 
@@ -71,18 +73,28 @@ export async function readFlags(
   const t = now();
   if (cache && t - cache.at >= 0 && t - cache.at < FLAG_CACHE_MS) return { ...cache.values };
   // Concurrent misses share one query; it is forgotten once settled, so a
-  // failure is retried by the next call rather than remembered.
-  let p = inflight;
-  if (!p) {
-    const mine = fetchFlags(db, t, generation);
-    p = inflight = mine;
-    mine.then(
-      () => void (inflight === mine && (inflight = null)),
-      () => void (inflight === mine && (inflight = null)),
+  // failure is retried by the next call rather than remembered. A read that
+  // started a window ago or more is not joined: its answer may predate a flip
+  // by more than FLAG_CACHE_MS, so a fresh read starts instead.
+  const fresh = (at: number, end: number) => end - at >= 0 && end - at < FLAG_CACHE_MS;
+  let mine = inflight;
+  if (!mine || !fresh(mine.at, t)) {
+    const started = { at: t, p: fetchFlags(db, t, generation) };
+    mine = inflight = started;
+    started.p.then(
+      () => void (inflight === started && (inflight = null)),
+      () => void (inflight === started && (inflight = null)),
     );
   }
   try {
-    return { ...(await p) };
+    const values = await mine.p;
+    // The same bound on the way out: a read held past the window is too old to
+    // act on, whoever started it. Fail closed.
+    if (!fresh(mine.at, now())) {
+      console.error(JSON.stringify({ event: "flags.read-stale", ms: now() - mine.at }));
+      return defaultFlags();
+    }
+    return { ...values };
   } catch (e) {
     console.error(JSON.stringify({ event: "flags.read-failed", error: String(e) }));
     return defaultFlags();

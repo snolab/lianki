@@ -306,6 +306,56 @@ describe("readFlags: cache window and fail-closed", () => {
     ).toBe(true);
   });
 
+  test("a held read is never joined or returned past FLAG_CACHE_MS (Codex P2)", async () => {
+    // Isolate B starts a read at t=0 that sees ON, and D1 holds the answer;
+    // the owner turns it OFF; a checkout at t=40 s must not join that read.
+    const d1 = createTestD1(testSchema());
+    await setFlag(d1, "payments.stripe.live", true, BY, NOW);
+    clearFlagCache();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let held = true;
+    const slow: D1Like = {
+      prepare: (q) => {
+        const stmt = d1.prepare(q);
+        return {
+          ...stmt,
+          bind: stmt.bind.bind(stmt),
+          first: stmt.first.bind(stmt),
+          run: stmt.run.bind(stmt),
+          all: async <T>() => {
+            const r = await stmt.all<T>();
+            if (held) await gate;
+            return r;
+          },
+        };
+      },
+      exec: (q) => d1.exec(q),
+    };
+    let t = 0;
+    const now = () => t;
+    const errors: string[] = [];
+    const realError = console.error;
+    console.error = (m: string) => void errors.push(m);
+    try {
+      const first = readFlags(() => slow, now); // t=0, held
+      // The flip happens in another isolate: straight to D1, this cache untouched.
+      d1.raw()
+        .prepare("UPDATE feature_flags SET enabled = 0 WHERE key = ?")
+        .run("payments.stripe.live");
+      t = FLAG_CACHE_MS + 10_000; // t=40 s: a new checkout
+      held = false;
+      const late = readFlags(() => slow, now);
+      release(); // the old answer (ON) arrives at t=41 s
+      t += 1_000;
+      expect((await late)["payments.stripe.live"]).toBe(false); // its own fresh read
+      expect((await first)["payments.stripe.live"]).toBe(false); // too old to act on: off
+    } finally {
+      console.error = realError;
+    }
+    expect(errors.some((e) => e.includes("flags.read-stale"))).toBe(true);
+  });
+
   test("off the D1 backend every flag is off, without touching a database", async () => {
     process.env.DB_BACKEND = "mongodb";
     expect(await readFlags()).toEqual(defaultFlags());

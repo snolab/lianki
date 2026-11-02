@@ -4,6 +4,7 @@ import { testSchema } from "@/lib/d1/testSchema";
 import { fulfilCheckout, type CheckoutSessionLike } from "@/lib/payments/fulfil";
 import { extendedProEnd, passFor, PASSES } from "@/lib/payments/passes";
 import {
+  CHECKOUT_EXPIRES_S,
   checkoutParams,
   createCheckoutSession,
   stripeEnabled,
@@ -200,6 +201,15 @@ describe("stripe switches and the checkout call", () => {
     const p = checkoutParams(input);
     expect(p.payment_method_types).toEqual(["card", "alipay"]);
     expect(p.payment_method_options).toEqual({ card: { request_three_d_secure: "any" } });
+  });
+
+  test("a Checkout link expires soon after Stripe's 30-minute minimum, not in 24 h", () => {
+    expect(CHECKOUT_EXPIRES_S).toBe(1800);
+    expect(checkoutParams(input, 1_000_000).expires_at).toBe(1_000_000 + 1800 + 60);
+    const now = Math.floor(Date.now() / 1000);
+    const at = checkoutParams(input).expires_at;
+    expect(at - now).toBeGreaterThanOrEqual(1860 - 1);
+    expect(at - now).toBeLessThanOrEqual(1860 + 1);
   });
 
   test("returns the hosted URL Stripe answers with", async () => {
