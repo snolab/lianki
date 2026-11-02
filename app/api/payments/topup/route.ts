@@ -5,7 +5,8 @@ import { dbBackend, getD1 } from "@/lib/d1";
 import { runtimeNodeEnv } from "@/lib/auth-env";
 import { guardCheckout } from "@/lib/payments/checkout-guard";
 import { topupAmount, TOPUP_MAX, TOPUP_MIN } from "@/lib/payments/credits";
-import { providerFor, providerOpenTo, providersFor } from "@/lib/payments/providers";
+import { readFlags } from "@/lib/flags-store";
+import { providerFor, providerMode, providerOpenTo, providersFor } from "@/lib/payments/providers";
 import { clientIp, type ThrottleDb } from "@/lib/security/throttle";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 
@@ -33,10 +34,21 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  // Only a provider open to this user: a test-mode one is the owner's alone.
-  const checkout = providersFor(session.user.email).filter((p) => p.kind === "checkout");
+  // Only a provider open to this user: a test-mode one is the owner's alone,
+  // a live one needs its live flag on. One flag snapshot for the gate and the
+  // session (fail closed: unreadable = off).
+  const flags = await readFlags();
+  const checkout = providersFor(session.user.email, process.env, flags).filter(
+    (p) => p.kind === "checkout",
+  );
   const provider = body?.provider == null ? checkout[0] : providerFor(body.provider);
-  if (!provider || !providerOpenTo(provider, session.user.email) || !provider.createTopup) {
+  const mode = provider ? providerMode(provider, process.env, flags) : null;
+  if (
+    !provider ||
+    !mode ||
+    !providerOpenTo(provider, session.user.email, process.env, flags) ||
+    !provider.createTopup
+  ) {
     return NextResponse.json({ error: "Payments are not enabled" }, { status: 503 });
   }
 
@@ -66,6 +78,7 @@ export async function POST(req: Request) {
       amount,
       { id: session.user.id, email: session.user.email },
       { successUrl: `${origin}/membership?topup=1`, cancelUrl: `${origin}/membership` },
+      mode,
     );
     return NextResponse.json(start);
   } catch (error) {

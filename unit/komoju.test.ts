@@ -10,6 +10,7 @@ import {
   testLedger,
 } from "@/lib/payments/credits-store";
 import {
+  komojuKeyMode,
   komojuMode,
   komojuProvider,
   sessionParams,
@@ -27,7 +28,7 @@ import { handleProviderWebhook } from "@/lib/payments/webhook";
 
 /**
  * KOMOJU, and the shared webhook handler. What matters: nothing is live unless
- * the owner set KOMOJU_LIVE=1; a test-mode payment credits the owner only; the
+ * the owner set a live key and turned the payments.komoju.live flag on; a test-mode payment credits the owner only; the
  * amount and user come from the KOMOJU API (the session this server made), not
  * from the webhook body; a redelivery credits once; a refund takes it back once.
  */
@@ -42,8 +43,8 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
+/** The key on the Worker; the live FLAG is passed to the functions that start a payment. */
 function env(mode: "test" | "live" | "none", key?: string) {
-  delete process.env.KOMOJU_LIVE;
   process.env.OWNER_EMAILS = OWNER;
   if (mode === "none") {
     delete process.env.KOMOJU_SECRET_KEY;
@@ -52,8 +53,8 @@ function env(mode: "test" | "live" | "none", key?: string) {
   }
   process.env.KOMOJU_SECRET_KEY = key ?? (mode === "live" ? "sk_live_x" : "sk_test_x");
   process.env.KOMOJU_WEBHOOK_SECRET = WH;
-  if (mode === "live") process.env.KOMOJU_LIVE = "1";
 }
+const LIVE = { "payments.komoju.live": true } as const;
 
 function setup() {
   const d1 = createTestD1(testSchema());
@@ -112,20 +113,27 @@ const payment = (over: object = {}) => ({
 });
 
 describe("mode", () => {
-  test("test by default, live only with KOMOJU_LIVE=1, off on a contradiction", () => {
+  test("test with the flag off, live only with the flag on, off on a contradiction", () => {
     const base = { KOMOJU_SECRET_KEY: "sk_test_a", KOMOJU_WEBHOOK_SECRET: "w" };
+    const liveKey = { ...base, KOMOJU_SECRET_KEY: "sk_live_a" };
     expect(komojuMode({})).toBeNull();
     expect(komojuMode({ KOMOJU_SECRET_KEY: "sk_test_a" })).toBeNull();
     expect(komojuMode(base)).toBe("test");
-    expect(komojuMode({ ...base, KOMOJU_LIVE: "1" })).toBeNull(); // test key, live flag
-    expect(komojuMode({ ...base, KOMOJU_SECRET_KEY: "sk_live_a" })).toBeNull(); // live key, no flag
-    expect(komojuMode({ ...base, KOMOJU_SECRET_KEY: "sk_live_a", KOMOJU_LIVE: "1" })).toBe("live");
-    expect(komojuMode({ ...base, KOMOJU_SECRET_KEY: "sk_live_a", KOMOJU_LIVE: "true" })).toBeNull();
+    expect(komojuMode(base, LIVE)).toBeNull(); // test key, live flag
+    expect(komojuMode(liveKey)).toBeNull(); // live key, flag off: no test mode on a live key
+    expect(komojuMode(liveKey, LIVE)).toBe("live");
+    expect(komojuMode({ ...liveKey, KOMOJU_LIVE: "1" })).toBeNull(); // the old env switch is gone
+    expect(komojuMode(liveKey, { "payments.stripe.live": true })).toBeNull(); // Stripe's flag
+    // The webhook settles by the key alone.
+    expect(komojuKeyMode(liveKey)).toBe("live");
+    expect(komojuKeyMode(base)).toBe("test");
+    expect(komojuKeyMode({})).toBeNull();
     // Fail closed: a key whose format does not prove its mode is off either way
     // (KOMOJU's docs show non-prefixed test credentials such as this one).
     for (const k of ["degica-mart-test", "sk_abc", "pk_test_a", "SK_TEST_A"]) {
       expect(komojuMode({ ...base, KOMOJU_SECRET_KEY: k })).toBeNull();
-      expect(komojuMode({ ...base, KOMOJU_SECRET_KEY: k, KOMOJU_LIVE: "1" })).toBeNull();
+      expect(komojuMode({ ...base, KOMOJU_SECRET_KEY: k }, LIVE)).toBeNull();
+      expect(komojuKeyMode({ ...base, KOMOJU_SECRET_KEY: k })).toBeNull();
     }
   });
 
@@ -142,9 +150,11 @@ describe("mode", () => {
     expect(providersFor("u@x.com", test).map((p) => p.id)).toEqual([]);
     expect(providersFor(OWNER, test).map((p) => p.id)).toEqual(["komoju"]);
     expect(publicProvider(komojuProvider, test).label).toBe("KOMOJU (test)");
-    const live = { ...test, KOMOJU_SECRET_KEY: "sk_live_a", KOMOJU_LIVE: "1" };
-    expect(providerOpenTo(komojuProvider, "u@x.com", live)).toBe(true);
-    expect(publicProvider(komojuProvider, live).label).toBe("KOMOJU");
+    const live = { ...test, KOMOJU_SECRET_KEY: "sk_live_a" };
+    expect(providerOpenTo(komojuProvider, "u@x.com", live, LIVE)).toBe(true);
+    expect(providerOpenTo(komojuProvider, "u@x.com", live)).toBe(false);
+    expect(providerOpenTo(komojuProvider, OWNER, live)).toBe(false);
+    expect(publicProvider(komojuProvider, live, LIVE).label).toBe("KOMOJU");
     // Stripe has its own mode (unit/stripe-mode.test.ts): a key that proves nothing is off.
     expect(
       providerMode(stripeProvider, { STRIPE_SECRET_KEY: "a", STRIPE_WEBHOOK_SECRET: "b" }),
@@ -161,6 +171,7 @@ describe("createTopup", () => {
       1200,
       { id: "u", email: "u@x.com" },
       { successUrl: "https://lianki.com/membership?topup=1", cancelUrl: "https://x/no" },
+      "test",
     );
     expect(start).toEqual({ kind: "redirect", url: "https://komoju.com/sessions/s_new" });
     expect(calls[0].url).toBe("https://komoju.com/api/v1/sessions");
@@ -181,14 +192,18 @@ describe("createTopup", () => {
     env("test");
     fakeApi({}, {}, 422);
     const urls = { successUrl: "https://x", cancelUrl: "https://x" };
-    await expect(komojuProvider.createTopup!(600, { id: "u" }, urls)).rejects.toThrow("422");
+    await expect(komojuProvider.createTopup!(600, { id: "u" }, urls, "test")).rejects.toThrow(
+      "422",
+    );
     globalThis.fetch = (async () => Response.json({ id: "s" })) as unknown as typeof fetch;
-    await expect(komojuProvider.createTopup!(600, { id: "u" }, urls)).rejects.toThrow(
+    await expect(komojuProvider.createTopup!(600, { id: "u" }, urls, "test")).rejects.toThrow(
       "session_url",
     );
     globalThis.fetch = (async () =>
       new Response("oops", { status: 500 })) as unknown as typeof fetch;
-    await expect(komojuProvider.createTopup!(600, { id: "u" }, urls)).rejects.toThrow("500");
+    await expect(komojuProvider.createTopup!(600, { id: "u" }, urls, "test")).rejects.toThrow(
+      "500",
+    );
   });
 });
 
@@ -237,7 +252,7 @@ describe("webhook", () => {
     expect(await komojuProvider.verifyWebhook(await delivery("ping", "x"))).toEqual({
       status: "invalid",
     });
-    env("test", "sk_live_x");
+    env("test", "degica-mart-test");
     expect(
       (await handleProviderWebhook(d1, komojuProvider, await delivery("ping", "x"))).status,
     ).toBe(503);
@@ -470,5 +485,41 @@ describe("webhook", () => {
 
   test("a refund for a payment never credited only leaves the mark", async () => {
     expect(await refundProviderTopup(d1, "komoju:none", NOW)).toEqual({ status: "marked" });
+  });
+});
+
+describe("a flag flip while a payment is in flight", () => {
+  test("a konbini payment started live and captured after the kill switch is credited", async () => {
+    const d1 = setup();
+    env("live");
+    // Started while the flag was on…
+    expect(komojuMode(process.env, LIVE)).toBe("live");
+    // …the owner turns it off: no new session for anyone…
+    expect(providerOpenTo(komojuProvider, "u@x.com", process.env, {})).toBe(false);
+    expect(providerOpenTo(komojuProvider, OWNER, process.env, {})).toBe(false);
+    // …and the capture days later, re-read from the live API, still credits.
+    fakeApi({ p_1: payment() }, { s_1: session("u") });
+    const r = await handleProviderWebhook(
+      d1,
+      komojuProvider,
+      await delivery("payment.captured", "p_1"),
+      NOW,
+    );
+    expect(r.body.status).toBe("applied");
+    expect(await getBalance(d1, "u")).toBe(600);
+  });
+
+  test("createTopup refuses a mode the key is not in, before any API call", async () => {
+    env("live");
+    const calls = fakeApi({});
+    const urls = { successUrl: "https://x", cancelUrl: "https://x" };
+    await expect(komojuProvider.createTopup!(600, { id: "u" }, urls, "test")).rejects.toThrow(
+      "KOMOJU is off",
+    );
+    env("test");
+    await expect(komojuProvider.createTopup!(600, { id: "u" }, urls, "live")).rejects.toThrow(
+      "KOMOJU is off",
+    );
+    expect(calls).toHaveLength(0);
   });
 });

@@ -2,8 +2,12 @@
  * What /api/payments/stripe-webhook does with a delivery, apart from the HTTP
  * glue (so it is unit-tested end to end over the test D1):
  *
- * - Stripe off (`stripeMode` null: a secret missing, or a key that does not
- *   prove its mode) → 503;
+ * - Stripe off (`stripeKeyMode` null: a secret missing, or a key that does not
+ *   prove its mode) → 503. The `payments.stripe.live` flag is NOT checked
+ *   here: it gates starting a payment, and a live session can only have been
+ *   started while it was on, so a genuinely live event is credited even after
+ *   the flag was turned off (the kill switch never drops paid money —
+ *   docs/payments.md, "Live mode and the kill switch");
  * - a bad signature or a body that is not JSON → 400;
  * - an event whose `livemode` disagrees with our mode → 503 and an error log:
  *   the secrets are mixed up, so nothing is credited, and Stripe keeps
@@ -23,7 +27,7 @@ import { rewardPurchase } from "@/lib/referrals/store";
 import { creditTestTopup, creditTopup, type D1WithBatch } from "./credits-store";
 import { fulfilCheckout } from "./fulfil";
 import { topupFromSession } from "./providers/stripe";
-import { PAID_EVENTS, readStripeEvent, stripeMode } from "./stripe";
+import { PAID_EVENTS, readStripeEvent, stripeKeyMode } from "./stripe";
 import type { WebhookReply } from "./webhook";
 
 async function emailOf(d1: D1WithBatch, userId: string): Promise<string | null> {
@@ -39,7 +43,7 @@ export async function handleStripeWebhook(
   req: Request,
   now = new Date(),
 ): Promise<WebhookReply> {
-  const mode = stripeMode();
+  const mode = stripeKeyMode();
   if (!mode) return { status: 503, body: { error: "Payments are not enabled" } };
 
   const event = await readStripeEvent(req);

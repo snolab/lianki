@@ -2,7 +2,10 @@
  * What /api/payments/webhook/<provider> does with a delivery, apart from the
  * HTTP glue (so it is unit-tested end to end over the test D1):
  *
- * - off (secrets missing, or a key that contradicts its mode) → 503;
+ * - off (secrets missing, or a key that does not prove its mode) → 503. The
+ *   live feature flag is not checked here — it gates starting a payment, and
+ *   a payment started while it was on is credited after it is turned off
+ *   (`providerSettleMode`; docs/payments.md, "Live mode and the kill switch");
  * - a bad signature → 400;
  * - `paid` → credit `<provider>:<paymentId>` once (a redelivery is a no-op).
  *   In test mode only the owner's account is credited; anyone else's is
@@ -22,7 +25,7 @@ import {
   refundTestTopup,
   type D1WithBatch,
 } from "./credits-store";
-import { providerMode, type PaymentProvider } from "./providers";
+import { providerSettleMode, type PaymentProvider } from "./providers";
 
 export interface WebhookReply {
   status: number;
@@ -43,7 +46,7 @@ export async function handleProviderWebhook(
   req: Request,
   now = new Date(),
 ): Promise<WebhookReply> {
-  const mode = providerMode(provider);
+  const mode = providerSettleMode(provider);
   if (!mode) return { status: 503, body: { error: "Not enabled" } };
 
   const out = await provider.verifyWebhook(req);

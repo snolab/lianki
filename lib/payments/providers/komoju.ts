@@ -2,21 +2,31 @@
  * KOMOJU (Degica): one hosted session for cards, konbini, PayPay, Alipay and
  * WeChat Pay. Plain fetch + Web Crypto, no SDK.
  *
- * Mode is decided by the server's own settings, never by a request:
+ * Mode is decided by the server's own settings, never by a request: the key's
+ * own prefix and the owner's `payments.komoju.live` feature flag (lib/flags.ts,
+ * toggled at /dev/flags, no deploy).
  *
- * - **test** (the default): `KOMOJU_LIVE` is not `1` and the key is `sk_test_…`. Only the owner
+ * - **test**: an `sk_test_…` key and the flag off. Only the owner
  *   (`OWNER_EMAILS`) is offered it, and its webhook credits only the owner —
  *   a test card must never become real credits for anyone else.
- * - **live**: `KOMOJU_LIVE=1` and the key is `sk_live_…`. Offered to everyone.
- * - **off**: a secret is missing, or the key does not prove the mode: test
- *   needs an `sk_test_` key, live an `sk_live_` key; any other format is
- *   refused (KOMOJU has no API field that says which mode a key is in).
+ * - **live**: an `sk_live_…` key and the flag on. Offered to everyone.
+ * - **off**: a secret is missing, the key disagrees with the flag (a live key
+ *   with the flag off: no test mode on a live key), the flag cannot be read,
+ *   or the key does not prove the mode (KOMOJU has no API field that says
+ *   which mode a key is in, so any other format is refused).
+ *
+ * The flag gates STARTING a payment only. The webhook settles by
+ * `komojuKeyMode` (the key alone): the payment it credits is re-read from the
+ * API with the live key, so it is real money, on a session this server created
+ * — which it only does while the flag is on. A konbini payment started before
+ * the kill switch and paid days after it is therefore still credited.
  *
  * The webhook is only a hint: a signed `payment.captured` is re-read from the
  * KOMOJU API with the secret key, and the amount, currency, status and user are
  * taken from that answer (and from the session this server created), never
  * from the webhook body or the client. docs/payments.md, "KOMOJU".
  */
+import { flagIn, type FlagValues } from "@/lib/flags";
 import { hmacSha256Hex, timingSafeEqual } from "../stripe";
 import { topupName } from "../credits";
 import type { PaymentProvider, ProviderMode, WebhookOutcome } from "./types";
@@ -25,16 +35,28 @@ const API = "https://komoju.com/api/v1";
 
 type Env = Record<string, string | undefined>;
 
-export function komojuMode(env: Env = process.env): ProviderMode | null {
+/** What the configured key proves on its own (the webhook settles by this). */
+export function komojuKeyMode(env: Env = process.env): ProviderMode | null {
   const key = env.KOMOJU_SECRET_KEY?.trim();
   if (!key || !env.KOMOJU_WEBHOOK_SECRET?.trim()) return null;
-  // Fail closed: the mode must be proven by the key's own format AND agree
-  // with the flag. KOMOJU decides test/live by the key alone and exposes no
-  // mode field, so an unrecognised key (e.g. a non-prefixed one) is off — no
-  // session, no credit — rather than guessed.
-  const live = env.KOMOJU_LIVE?.trim() === "1";
-  if (live) return key.startsWith("sk_live_") ? "live" : null;
-  return key.startsWith("sk_test_") ? "test" : null;
+  if (key.startsWith("sk_live_")) return "live";
+  if (key.startsWith("sk_test_")) return "test";
+  return null;
+}
+
+/**
+ * Whether a KOMOJU payment may start, and in which mode. Fail closed: the mode
+ * must be proven by the key's own format AND agree with the flag. KOMOJU
+ * decides test/live by the key alone and exposes no mode field, so an
+ * unrecognised key (e.g. a non-prefixed one) is off — no session, no credit —
+ * rather than guessed.
+ */
+export function komojuMode(env: Env = process.env, flags: FlagValues = {}): ProviderMode | null {
+  const key = komojuKeyMode(env);
+  const live = flagIn(flags, "payments.komoju.live");
+  if (key === "live") return live ? "live" : null;
+  if (key === "test") return live ? null : "test";
+  return null;
 }
 
 function authHeader(): string {
@@ -124,7 +146,10 @@ export const komojuProvider: PaymentProvider = {
   envKeys: ["KOMOJU_SECRET_KEY", "KOMOJU_WEBHOOK_SECRET"],
   implemented: true,
   mode: komojuMode,
-  async createTopup(amount, user, urls) {
+  keyMode: komojuKeyMode,
+  async createTopup(amount, user, urls, mode) {
+    // The key itself must still be in the mode the caller decided.
+    if (komojuKeyMode() !== mode) throw new Error("KOMOJU is off");
     const s = await api<{ session_url?: string }>("/sessions", {
       method: "POST",
       body: JSON.stringify(sessionParams(amount, user.id, user.email, urls.successUrl)),
@@ -133,7 +158,8 @@ export const komojuProvider: PaymentProvider = {
     return { kind: "redirect", url: s.session_url };
   },
   async verifyWebhook(req) {
-    if (!komojuMode()) return { status: "invalid" };
+    // Settled by the key alone (see the top of this file).
+    if (!komojuKeyMode()) return { status: "invalid" };
     const body = await req.text();
     const sig = req.headers.get("x-komoju-signature")?.trim().toLowerCase() ?? "";
     const want = await hmacSha256Hex(process.env.KOMOJU_WEBHOOK_SECRET!.trim(), body);

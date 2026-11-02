@@ -15,8 +15,8 @@ passkey — there is no password login in production.
 
 | surface                                   | what                                                  |
 | ----------------------------------------- | ----------------------------------------------------- |
-| `/dev/*` pages                            | users, friends, gift codes, membership grants, roadmap, A/B |
-| `/api/dev/*`                              | whoami, log, friends, state-tree, membership, gift-codes, stt-ticket, dev-tokens, dev-handoff |
+| `/dev/*` pages                            | users, friends, gift codes, membership grants, credits, feature flags, roadmap, A/B |
+| `/api/dev/*`                              | whoami, log, friends, state-tree, membership, gift-codes, credits, flags, stt-ticket, dev-tokens, dev-handoff |
 | `https://preview.lianki.com` (tunnel to the owner's dev server, production D1) | 503 to everything without a dev access token; the token signs in as the owner only (docs/dev-whole-page.md, "Off the tailnet") |
 | `POST /api/dev-access/verify`             | the dev server gate's token check: `DEV_BRIDGE_SECRET` only, 401 otherwise |
 | `wss://stt.lianki.com` (cloudflared tunnel to the owner's Mac) | his local STT server; a 60 s single-use Ed25519 ticket from `/api/dev/stt-ticket` before any upgrade (section 7) |

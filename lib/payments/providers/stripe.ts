@@ -3,10 +3,18 @@
  * Checkout). Top-ups are Checkout Sessions with `metadata.kind = "topup"`;
  * they arrive on the same /api/payments/stripe-webhook as passes
  * (lib/payments/stripe-webhook.ts), which hands them to `topupFromSession`.
- * Test or live by `stripeMode` (lib/payments/stripe.ts): test mode is the
- * owner's alone, on this provider route as on the pass route.
+ * Test or live by `stripeMode` (lib/payments/stripe.ts; key + the
+ * `payments.stripe.live` flag) to start, by `stripeKeyMode` (the key) to
+ * settle: test mode is the owner's alone, on this provider route as on the
+ * pass route.
  */
-import { createCheckoutSession, PAID_EVENTS, readStripeEvent, stripeMode } from "../stripe";
+import {
+  createCheckoutSession,
+  PAID_EVENTS,
+  readStripeEvent,
+  stripeKeyMode,
+  stripeMode,
+} from "../stripe";
 import type { CheckoutSessionLike } from "../fulfil";
 import type { PaymentProvider, WebhookOutcome } from "./types";
 
@@ -32,17 +40,23 @@ export const stripeProvider: PaymentProvider = {
   envKeys: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
   implemented: true,
   mode: stripeMode,
-  async createTopup(amount, user, urls) {
-    const url = await createCheckoutSession({
-      purchase: { kind: "topup", amount },
-      userId: user.id,
-      email: user.email,
-      ...urls,
-    });
+  keyMode: stripeKeyMode,
+  async createTopup(amount, user, urls, mode) {
+    const url = await createCheckoutSession(
+      {
+        purchase: { kind: "topup", amount },
+        userId: user.id,
+        email: user.email,
+        ...urls,
+      },
+      mode,
+    );
     return { kind: "redirect", url };
   },
   async verifyWebhook(req) {
-    const mode = stripeMode();
+    // Settled by the key alone: a live payment started while the flag was on
+    // is still credited after the flag is turned off.
+    const mode = stripeKeyMode();
     if (!mode) return { status: "invalid" };
     const event = await readStripeEvent(req);
     // Signed, but for the other mode: the secrets are mixed up — credit nothing.

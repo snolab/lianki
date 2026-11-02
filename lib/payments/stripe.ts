@@ -2,19 +2,31 @@
  * The little of Stripe that passes need, over plain fetch and Web Crypto — no
  * SDK, so nothing Node-only reaches the Worker bundle.
  *
- * Mode is decided by the server's own settings, never by a request
- * (`stripeMode`, fails closed — the same rule as KOMOJU):
+ * Mode is decided by the server's own settings, never by a request, and fails
+ * closed (the same rule as KOMOJU). Two things decide it: the key's own prefix,
+ * and the owner's `payments.stripe.live` feature flag (lib/flags.ts, toggled
+ * at /dev/flags, no deploy):
  *
- * - **test**: `STRIPE_LIVE` is not set and the key is `sk_test_…`. Passes and
- *   top-ups are offered to the owner (`OWNER_EMAILS`) only, and the webhook
- *   credits the owner only, kept apart from real money — a test card must never
- *   become real Pro days or credits for anyone.
- * - **live**: `STRIPE_LIVE=1` and the key is `sk_live_…`. Offered to everyone.
- * - **off**: a secret is missing, the key disagrees with the flag, or the key
- *   has any other format (a restricted `rk_…` key included): the checkout
- *   route answers 503, the webhook 503, and the membership page hides the buy
- *   buttons.
+ * - **test**: an `sk_test_…` key and the flag off. Passes and top-ups are
+ *   offered to the owner (`OWNER_EMAILS`) only, and the webhook credits the
+ *   owner only, kept apart from real money — a test card must never become
+ *   real Pro days or credits for anyone.
+ * - **live**: an `sk_live_…` key and the flag on. Offered to everyone.
+ * - **off**: a secret is missing, the key disagrees with the flag (a live key
+ *   with the flag off: no test mode on a live key), the flag cannot be read
+ *   (it then reads as off), or the key has any other format (a restricted
+ *   `rk_…` key included): the checkout route answers 503 and the membership
+ *   page hides the buy buttons.
+ *
+ * Starting and settling differ on purpose. `stripeMode` (key + flag) decides
+ * whether a payment may START. The webhook settles by `stripeKeyMode` (the key
+ * alone): a signed event whose `livemode` matches a live key is real money
+ * this server started while the flag was on — only the checkout route creates
+ * sessions with our metadata, and only in live mode — so it is credited even if
+ * the flag was turned off since (the kill switch stops new payments; it never
+ * drops a customer's money). docs/payments.md, "Live mode and the kill switch".
  */
+import { flagIn, type FlagValues } from "@/lib/flags";
 import { isOwner } from "@/lib/owner";
 import { stripeThreeDSecure } from "./checkout-policy";
 import { topupName } from "./credits";
@@ -29,23 +41,44 @@ const DEFAULT_METHODS = ["card", "alipay", "wechat_pay"];
 
 type Env = Record<string, string | undefined>;
 
-/** Test or live from the Worker's settings; null = off (see the top of this file). */
-export function stripeMode(env: Env = process.env): ProviderMode | null {
+/**
+ * What the configured key proves on its own: `sk_test_` → test, `sk_live_` →
+ * live, with the webhook secret set; null otherwise. The webhook settles by
+ * this (see the top of this file); starting a payment needs `stripeMode`.
+ */
+export function stripeKeyMode(env: Env = process.env): ProviderMode | null {
   const key = env.STRIPE_SECRET_KEY?.trim();
   if (!key || !env.STRIPE_WEBHOOK_SECRET?.trim()) return null;
-  // The key's own prefix must prove the mode AND agree with the flag; any
-  // other combination is off rather than guessed.
-  if (env.STRIPE_LIVE?.trim() === "1") return key.startsWith("sk_live_") ? "live" : null;
-  return key.startsWith("sk_test_") ? "test" : null;
+  if (key.startsWith("sk_live_")) return "live";
+  if (key.startsWith("sk_test_")) return "test";
+  return null;
 }
 
-export function stripeEnabled(env: Env = process.env): boolean {
-  return stripeMode(env) !== null;
+/**
+ * Whether a Stripe payment may start, and in which mode: the key's prefix must
+ * prove the mode AND agree with the `payments.stripe.live` flag; any other
+ * combination is off rather than guessed. `flags` is a `readFlags()` snapshot;
+ * a missing flag is off.
+ */
+export function stripeMode(env: Env = process.env, flags: FlagValues = {}): ProviderMode | null {
+  const key = stripeKeyMode(env);
+  const live = flagIn(flags, "payments.stripe.live");
+  if (key === "live") return live ? "live" : null;
+  if (key === "test") return live ? null : "test";
+  return null;
+}
+
+export function stripeEnabled(env: Env = process.env, flags: FlagValues = {}): boolean {
+  return stripeMode(env, flags) !== null;
 }
 
 /** Whether `email` may start a Stripe payment: live for everyone, test for the owner only. */
-export function stripeOpenTo(email: string | null | undefined, env: Env = process.env): boolean {
-  const mode = stripeMode(env);
+export function stripeOpenTo(
+  email: string | null | undefined,
+  env: Env = process.env,
+  flags: FlagValues = {},
+): boolean {
+  const mode = stripeMode(env, flags);
   return mode === "live" || (mode === "test" && isOwner(email, env.OWNER_EMAILS));
 }
 
@@ -130,10 +163,17 @@ export function checkoutParams({ purchase, userId, email, successUrl, cancelUrl 
   };
 }
 
-/** Create a Checkout Session; returns its hosted URL. */
-export async function createCheckoutSession(input: CheckoutInput): Promise<string> {
-  const mode = stripeMode();
-  if (!mode) throw new Error("Stripe is off");
+/**
+ * Create a Checkout Session in `mode` — the `stripeMode` the caller decided
+ * from its flag snapshot (so the gate and the session agree); returns its
+ * hosted URL.
+ */
+export async function createCheckoutSession(
+  input: CheckoutInput,
+  mode: ProviderMode,
+): Promise<string> {
+  // The key itself must still be in that mode.
+  if (stripeKeyMode() !== mode) throw new Error("Stripe is off");
   const res = await fetch(`${API}/checkout/sessions`, {
     method: "POST",
     headers: {
