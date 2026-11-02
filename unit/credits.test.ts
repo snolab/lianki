@@ -296,10 +296,10 @@ describe("providers", () => {
   test("enabled only when implemented and every secret is set", () => {
     const stripe = PROVIDERS.find((p) => p.id === "stripe")!;
     expect(providerEnabled(stripe, {})).toBe(false);
-    expect(providerEnabled(stripe, { STRIPE_SECRET_KEY: "sk" })).toBe(false);
-    expect(providerEnabled(stripe, { STRIPE_SECRET_KEY: "sk", STRIPE_WEBHOOK_SECRET: "wh" })).toBe(
-      true,
-    );
+    expect(providerEnabled(stripe, { STRIPE_SECRET_KEY: "sk_test_x" })).toBe(false);
+    expect(
+      providerEnabled(stripe, { STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "wh" }),
+    ).toBe(true);
     // A reserved slot stays hidden even with its secrets set.
     const payjp = PROVIDERS.find((p) => p.id === "payjp")!;
     expect(providerEnabled(payjp, { PAYJP_SECRET_KEY: "k", PAYJP_WEBHOOK_TOKEN: "w" })).toBe(false);
@@ -343,11 +343,13 @@ describe("provider adapters", () => {
   });
 
   test("Stripe createTopup redirects to a Checkout Session for the amount", async () => {
-    process.env.STRIPE_SECRET_KEY = "sk_test";
+    delete process.env.STRIPE_LIVE;
+    process.env.STRIPE_SECRET_KEY = "sk_test_x";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_t";
     let body = "";
     globalThis.fetch = (async (_u: string, init: RequestInit) => {
       body = String(init.body);
-      return Response.json({ url: "https://checkout.stripe.com/c/pay/cs_t" });
+      return Response.json({ url: "https://checkout.stripe.com/c/pay/cs_t", livemode: false });
     }) as unknown as typeof fetch;
     const start = await stripeProvider.createTopup!(
       3000,
@@ -360,11 +362,13 @@ describe("provider adapters", () => {
   });
 
   test("Stripe verifyWebhook: signed top-up → paid; bad signature → invalid", async () => {
-    process.env.STRIPE_SECRET_KEY = "sk_test";
+    delete process.env.STRIPE_LIVE;
+    process.env.STRIPE_SECRET_KEY = "sk_test_x";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_t";
     const event = (type: string) =>
       JSON.stringify({
         type,
+        livemode: false,
         data: {
           object: {
             id: "cs_w",

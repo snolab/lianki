@@ -7,11 +7,17 @@ import { guardCheckout } from "@/lib/payments/checkout-guard";
 import { clientIp, type ThrottleDb } from "@/lib/security/throttle";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { passFor } from "@/lib/payments/passes";
-import { createCheckoutSession, stripeEnabled } from "@/lib/payments/stripe";
+import { createCheckoutSession, stripeMode, stripeOpenTo } from "@/lib/payments/stripe";
 
-/** Whether passes are on sale — the membership page asks before showing buy buttons. */
+/**
+ * Whether passes are on sale to this visitor — the membership page asks before
+ * showing buy buttons. In Stripe test mode only the owner sees them.
+ */
 export async function GET() {
-  return NextResponse.json({ enabled: stripeEnabled() && dbBackend() === "d1" });
+  if (dbBackend() !== "d1" || !stripeMode()) return NextResponse.json({ enabled: false });
+  const session = await auth.api.getSession({ headers: await headers() });
+  const enabled = stripeOpenTo(session?.user?.email);
+  return NextResponse.json({ enabled, test: enabled && stripeMode() === "test" });
 }
 
 /**
@@ -21,11 +27,15 @@ export async function GET() {
  */
 export async function POST(req: Request) {
   // Fulfilment writes D1 only; the Mongo copy is a frozen rollback.
-  if (!stripeEnabled() || dbBackend() !== "d1") {
+  if (!stripeMode() || dbBackend() !== "d1") {
     return NextResponse.json({ error: "Payments are not enabled" }, { status: 503 });
   }
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Test mode is the owner's alone; to anyone else Stripe is simply off.
+  if (!stripeOpenTo(session.user.email)) {
+    return NextResponse.json({ error: "Payments are not enabled" }, { status: 503 });
+  }
 
   const body = (await req.json().catch(() => null)) as {
     passId?: unknown;

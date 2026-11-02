@@ -189,9 +189,10 @@ describe("stripe switches and the checkout call", () => {
 
   test("off unless both secrets are set", () => {
     delete process.env.STRIPE_SECRET_KEY;
+    delete process.env.STRIPE_LIVE;
     process.env.STRIPE_WEBHOOK_SECRET = "whsec";
     expect(stripeEnabled()).toBe(false);
-    process.env.STRIPE_SECRET_KEY = "sk_test";
+    process.env.STRIPE_SECRET_KEY = "sk_test_x";
     expect(stripeEnabled()).toBe(true);
   });
 
@@ -203,14 +204,16 @@ describe("stripe switches and the checkout call", () => {
   });
 
   test("returns the hosted URL Stripe answers with", async () => {
-    process.env.STRIPE_SECRET_KEY = "sk_test";
+    delete process.env.STRIPE_LIVE;
+    process.env.STRIPE_SECRET_KEY = "sk_test_x";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec";
     let sent: RequestInit | undefined;
     globalThis.fetch = (async (_url: string, init: RequestInit) => {
       sent = init;
-      return Response.json({ url: "https://checkout.stripe.com/c/pay/cs_1" });
+      return Response.json({ url: "https://checkout.stripe.com/c/pay/cs_1", livemode: false });
     }) as unknown as typeof fetch;
     expect(await createCheckoutSession(input)).toBe("https://checkout.stripe.com/c/pay/cs_1");
-    expect((sent?.headers as Record<string, string>).Authorization).toBe("Bearer sk_test");
+    expect((sent?.headers as Record<string, string>).Authorization).toBe("Bearer sk_test_x");
     expect(String(sent?.body)).toContain("metadata%5BpassId%5D=pro-1m");
     // 3-D Secure is asked for on the wire, not just in the params object.
     expect(String(sent?.body)).toContain(
@@ -219,7 +222,9 @@ describe("stripe switches and the checkout call", () => {
   });
 
   test("throws with Stripe's message on an error", async () => {
-    process.env.STRIPE_SECRET_KEY = "sk_test";
+    delete process.env.STRIPE_LIVE;
+    process.env.STRIPE_SECRET_KEY = "sk_test_x";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec";
     globalThis.fetch = (async () =>
       Response.json(
         { error: { message: "alipay not enabled" } },

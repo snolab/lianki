@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createTestD1 } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
-import { creditTopup, getBalance, ledger, refundProviderTopup } from "@/lib/payments/credits-store";
+import {
+  creditTopup,
+  getBalance,
+  getTestBalance,
+  ledger,
+  refundProviderTopup,
+  testLedger,
+} from "@/lib/payments/credits-store";
 import {
   komojuMode,
   komojuProvider,
@@ -138,10 +145,10 @@ describe("mode", () => {
     const live = { ...test, KOMOJU_SECRET_KEY: "sk_live_a", KOMOJU_LIVE: "1" };
     expect(providerOpenTo(komojuProvider, "u@x.com", live)).toBe(true);
     expect(publicProvider(komojuProvider, live).label).toBe("KOMOJU");
-    // A provider without a mode is live once its secrets are set.
+    // Stripe has its own mode (unit/stripe-mode.test.ts): a key that proves nothing is off.
     expect(
       providerMode(stripeProvider, { STRIPE_SECRET_KEY: "a", STRIPE_WEBHOOK_SECRET: "b" }),
-    ).toBe("live");
+    ).toBeNull();
     expect(providerOpenTo(komojuProvider, OWNER, {})).toBe(false);
   });
 });
@@ -298,7 +305,7 @@ describe("webhook", () => {
       expect((await handleProviderWebhook(d1, komojuProvider, d)).body.status).toBe("ignored");
   });
 
-  test("test mode: credits the owner (noted), never anyone else", async () => {
+  test("test mode: records the owner's in the test ledger only, never anyone else's", async () => {
     env("test");
     fakeApi(
       { p_1: payment(), p_2: payment({ id: "p_2", session: { id: "s_2" } }) },
@@ -319,7 +326,26 @@ describe("webhook", () => {
       NOW,
     );
     expect(forOwner.body.status).toBe("applied");
-    expect((await ledger(d1, "owner"))[0]).toMatchObject({ amount: 600, note: "test mode" });
+    // Kept apart: not spendable balance, not in the real ledger.
+    expect(await getBalance(d1, "owner")).toBe(0);
+    expect(await ledger(d1, "owner")).toEqual([]);
+    expect(await getTestBalance(d1, "owner")).toBe(600);
+    expect((await testLedger(d1, "owner"))[0]).toMatchObject({
+      amount: 600,
+      reason: "topup",
+      refId: "komoju:p_2",
+    });
+    // A full refund in test mode takes it back from the test ledger, once.
+    fakeApi({ p_2: payment({ id: "p_2", status: "refunded" }) });
+    const ref = () => delivery("payment.refunded", "p_2");
+    expect((await handleProviderWebhook(d1, komojuProvider, await ref(), NOW)).body.status).toBe(
+      "refunded",
+    );
+    expect((await handleProviderWebhook(d1, komojuProvider, await ref(), NOW)).body.status).toBe(
+      "duplicate",
+    );
+    expect(await getTestBalance(d1, "owner")).toBe(0);
+    expect(await getBalance(d1, "owner")).toBe(0);
   });
 
   test("an API failure while re-reading is a throw (500, KOMOJU retries)", async () => {

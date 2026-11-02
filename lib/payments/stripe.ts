@@ -2,22 +2,51 @@
  * The little of Stripe that passes need, over plain fetch and Web Crypto — no
  * SDK, so nothing Node-only reaches the Worker bundle.
  *
- * Off unless STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are both set: the
- * checkout route answers 503 and the membership page hides the buy buttons.
+ * Mode is decided by the server's own settings, never by a request
+ * (`stripeMode`, fails closed — the same rule as KOMOJU):
+ *
+ * - **test**: `STRIPE_LIVE` is not set and the key is `sk_test_…`. Passes and
+ *   top-ups are offered to the owner (`OWNER_EMAILS`) only, and the webhook
+ *   credits the owner only, kept apart from real money — a test card must never
+ *   become real Pro days or credits for anyone.
+ * - **live**: `STRIPE_LIVE=1` and the key is `sk_live_…`. Offered to everyone.
+ * - **off**: a secret is missing, the key disagrees with the flag, or the key
+ *   has any other format (a restricted `rk_…` key included): the checkout
+ *   route answers 503, the webhook 503, and the membership page hides the buy
+ *   buttons.
  */
+import { isOwner } from "@/lib/owner";
 import { stripeThreeDSecure } from "./checkout-policy";
 import { topupName } from "./credits";
+import type { CheckoutSessionLike } from "./fulfil";
 import type { Pass } from "./passes";
+import type { ProviderMode } from "./providers/types";
 
 const API = "https://api.stripe.com/v1";
 
 /** Payment methods offered on Checkout; each must be enabled in the Stripe Dashboard. */
 const DEFAULT_METHODS = ["card", "alipay", "wechat_pay"];
 
-export function stripeEnabled(): boolean {
-  return Boolean(
-    process.env.STRIPE_SECRET_KEY?.trim() && process.env.STRIPE_WEBHOOK_SECRET?.trim(),
-  );
+type Env = Record<string, string | undefined>;
+
+/** Test or live from the Worker's settings; null = off (see the top of this file). */
+export function stripeMode(env: Env = process.env): ProviderMode | null {
+  const key = env.STRIPE_SECRET_KEY?.trim();
+  if (!key || !env.STRIPE_WEBHOOK_SECRET?.trim()) return null;
+  // The key's own prefix must prove the mode AND agree with the flag; any
+  // other combination is off rather than guessed.
+  if (env.STRIPE_LIVE?.trim() === "1") return key.startsWith("sk_live_") ? "live" : null;
+  return key.startsWith("sk_test_") ? "test" : null;
+}
+
+export function stripeEnabled(env: Env = process.env): boolean {
+  return stripeMode(env) !== null;
+}
+
+/** Whether `email` may start a Stripe payment: live for everyone, test for the owner only. */
+export function stripeOpenTo(email: string | null | undefined, env: Env = process.env): boolean {
+  const mode = stripeMode(env);
+  return mode === "live" || (mode === "test" && isOwner(email, env.OWNER_EMAILS));
 }
 
 function paymentMethods(): string[] {
@@ -103,6 +132,8 @@ export function checkoutParams({ purchase, userId, email, successUrl, cancelUrl 
 
 /** Create a Checkout Session; returns its hosted URL. */
 export async function createCheckoutSession(input: CheckoutInput): Promise<string> {
+  const mode = stripeMode();
+  if (!mode) throw new Error("Stripe is off");
   const res = await fetch(`${API}/checkout/sessions`, {
     method: "POST",
     headers: {
@@ -111,10 +142,16 @@ export async function createCheckoutSession(input: CheckoutInput): Promise<strin
     },
     body: formEncode(checkoutParams(input)).join("&"),
   });
-  const data = (await res.json()) as { url?: string; error?: { message?: string } };
+  const data = (await res.json()) as {
+    url?: string;
+    livemode?: boolean;
+    error?: { message?: string };
+  };
   if (!res.ok || !data.url) {
     throw new Error(`Stripe checkout failed (${res.status}): ${data.error?.message ?? "no url"}`);
   }
+  // Belt and braces: Stripe says which mode the session is in; it must be ours.
+  if (data.livemode !== (mode === "live")) throw new Error("Stripe session mode mismatch");
   return data.url;
 }
 
@@ -170,4 +207,32 @@ export async function verifyStripeSignature(
   if (Math.abs(nowS - ts) > TOLERANCE_S) return false;
   const expected = await hmacSha256Hex(secret, `${t}.${body}`);
   return sigs.some((s) => timingSafeEqual(s, expected));
+}
+
+/** Events that can mean a session is now paid; any other is acknowledged and ignored. */
+export const PAID_EVENTS = new Set([
+  "checkout.session.completed",
+  "checkout.session.async_payment_succeeded",
+]);
+
+export interface StripeEvent {
+  type?: string;
+  livemode?: boolean;
+  data?: { object?: CheckoutSessionLike };
+}
+
+/** Verify a delivery and parse it; null when the signature or body is bad. */
+export async function readStripeEvent(req: Request): Promise<StripeEvent | null> {
+  // The signature covers the exact bytes, so read the raw text before parsing.
+  const body = await req.text();
+  const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
+  if (!secret) return null;
+  if (!(await verifyStripeSignature(body, req.headers.get("stripe-signature"), secret)))
+    return null;
+  try {
+    const event = JSON.parse(body) as StripeEvent;
+    return event && typeof event === "object" ? event : null;
+  } catch {
+    return null;
+  }
 }

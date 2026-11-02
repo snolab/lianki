@@ -6,14 +6,22 @@
  * - a bad signature → 400;
  * - `paid` → credit `<provider>:<paymentId>` once (a redelivery is a no-op).
  *   In test mode only the owner's account is credited; anyone else's is
- *   ignored, so a test card never turns into real credits;
+ *   ignored, and the owner's goes to the separate test ledger
+ *   (`creditTestTopup`), which nothing can spend and which never becomes real
+ *   balance — so a test card never turns into real credits or real Pro;
  * - `refunded` → take the top-up back once, and mark the payment so a capture
  *   still in flight can never credit it afterwards; if the credits were already spent
  *   it is logged for the owner (the balance never goes negative) and answered
  *   200, since a retry cannot fix it.
  */
 import { isOwner } from "@/lib/owner";
-import { creditTopup, refundProviderTopup, type D1WithBatch } from "./credits-store";
+import {
+  creditTestTopup,
+  creditTopup,
+  refundProviderTopup,
+  refundTestTopup,
+  type D1WithBatch,
+} from "./credits-store";
 import { providerMode, type PaymentProvider } from "./providers";
 
 export interface WebhookReply {
@@ -53,7 +61,10 @@ export async function handleProviderWebhook(
 
   const refId = `${provider.id}:${out.paymentId}`;
   if (out.status === "refunded") {
-    const r = await refundProviderTopup(d1, refId, now, "refunded at the provider");
+    const r =
+      mode === "test"
+        ? await refundTestTopup(d1, refId, now)
+        : await refundProviderTopup(d1, refId, now, "refunded at the provider");
     // `marked`: refunded before it was credited — the mark blocks a late capture.
     if (r.status === "insufficient" || r.status === "marked")
       console.error(
@@ -73,18 +84,29 @@ export async function handleProviderWebhook(
     );
     return { status: 200, body: { received: true, status: "ignored" } };
   }
-  const r = await creditTopup(
-    d1,
-    {
-      userId: out.userId,
-      amount: out.amount,
-      provider: provider.id,
-      paymentId: out.paymentId,
-      reason: provider.kind === "grant" ? "sponsor" : "topup",
-      note: mode === "test" ? "test mode" : undefined,
-    },
-    now,
-  );
+  const r =
+    mode === "test"
+      ? await creditTestTopup(
+          d1,
+          {
+            userId: out.userId,
+            amount: out.amount,
+            provider: provider.id,
+            paymentId: out.paymentId,
+          },
+          now,
+        )
+      : await creditTopup(
+          d1,
+          {
+            userId: out.userId,
+            amount: out.amount,
+            provider: provider.id,
+            paymentId: out.paymentId,
+            reason: provider.kind === "grant" ? "sponsor" : "topup",
+          },
+          now,
+        );
   if (r.status === "no user") console.warn("[payments] credit for unknown user", provider.id);
   return { status: 200, body: { received: true, status: r.status } };
 }
