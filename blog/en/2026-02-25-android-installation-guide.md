@@ -210,17 +210,29 @@ Regardless of browser/manager combination:
 
 ### Reviewing Cards
 
-1. **Visit Lianki Dashboard**:
+With the userscript installed, a due card's own page opens with the LiCards review dialog — grade it there.
+
+Without it (or on a browser that can't run userscripts), review on the site:
+
+1. **Open the review page**:
 
    ```
-   https://www.lianki.com/list
+   https://lianki.com/review
    ```
 
-2. **Start Review**:
-   - Tap "**Next card**" button to begin reviewing
+   (also **Home → LiCards → Review**, or "**Next card**" on your card list)
 
-3. **Review with Touch**:
-   - Tap buttons: **Again** / **Hard** / **Good** / **Easy**
+2. **Tap "Open this card"**: the card's page opens in a new tab. You tap it yourself, so the browser doesn't block it as a pop-up. After the first card, grading opens the next card's tab for you.
+
+3. **Read it, then come back**: press **Back** or close the tab. The page asks **"How did this card feel?"** the moment you're back.
+
+4. **Grade with touch**:
+   - Tap **Again** / **Hard** / **Good** / **Easy** — each shows when the card comes back
+   - The next card loads on the same page; when none is left you'll see "**All reviews done for today**"
+
+The top of the review page shows these steps side by side with the userscript's (switch between iPhone and Android there, and fold it away once you know it).
+
+**Bookmarklet**: the review page also offers a bookmarklet. Copy its code, bookmark any page, edit the bookmark so its URL is the code, and name it "LiCards". On a card's page, type "LiCards" in the address bar and tap the bookmark: the card opens on lianki.com, ready to grade. It can't grade on the page itself — browsers don't send your Lianki sign-in to other websites — which is one reason the userscript is still the better experience.
 
 4. **Keyboard Shortcuts** (if you have a physical keyboard):
    - `H` or `4`: Easy

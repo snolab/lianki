@@ -1,0 +1,3 @@
+200 text/html
+
+<script>window.close(); alert('ALL REVIEWS DONE, IT s TIME TO LEARN NEW TRICKS')</script>

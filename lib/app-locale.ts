@@ -41,6 +41,7 @@ export const APP_ROUTES = [
   "preferences",
   "profile",
   "read",
+  "review",
   "roadmap",
   "self-intro",
   "sign-in",

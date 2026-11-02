@@ -90,6 +90,7 @@ target that is not built yet.
 | recent pages (nav)                | session `lk:ui:nav`                      | done                                                            |
 | pinned pages (nav)                | local `lk:pref:nav-pins`                 | done                                                            |
 | first-run answer                  | local `lk:first-run`                     | a device fact, stays                                            |
+| /review tutorial folded, platform | local `lk:pref:review-tutorial`          | done (a device preference: iPhone or Android steps)             |
 
 ### Chat widget (packages/debug-chat, another lane)
 

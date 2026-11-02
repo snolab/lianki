@@ -12,10 +12,11 @@ import { pickNextDue } from "@/lib/next-card";
  * it to the cloud, it reports an empty deck while the userscript is still
  * serving those cards on every page. Either way the button did nothing.
  *
- * The cloud path is left exactly as it was — it opens the card and hands you the
- * grading page, which is the only review UI for someone without the userscript.
- * What is new is the fallback: when the cloud has nothing due (or there is no
- * cloud, because you are a guest), the local mirror gets a turn.
+ * Signed in with a cloud card due, it goes to /review, the in-site review page
+ * (owner, 2026-11-01). The bare HTML flow it used to hand over to
+ * (/api/fsrs/next → /api/fsrs/repeat) is unchanged and still reachable,
+ * linked from /review's footer. When the cloud has nothing due (or there is
+ * no cloud, because you are a guest), the local mirror gets a turn.
  *
  * That mirror is the userscript's own store. `syncToSiteDB()` writes GM storage
  * into `lianki-keyval` on every visit here, so reading it reaches the cards the
@@ -39,15 +40,14 @@ export default function NextCardClient({
     let cancelled = false;
 
     (async () => {
-      // Cloud first, and unchanged: if it has something due, the server flow
-      // takes over exactly as before.
+      // Cloud first: if it has something due, /review takes over.
       if (isLoggedIn) {
         try {
           const res = await fetch("/api/fsrs/next-url");
           if (res.ok) {
             const { url } = (await res.json()) as { url: string | null };
             if (url) {
-              location.href = "/api/fsrs/next";
+              location.replace("/review");
               return;
             }
           }
