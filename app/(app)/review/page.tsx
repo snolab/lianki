@@ -4,6 +4,9 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import { appLocale } from "@/lib/app-locale.server";
 import { isHttpUrl } from "@/lib/review-ui";
+import { readFlags } from "@/lib/flags-store";
+import { isOwner } from "@/lib/owner";
+import { voiceAccess } from "@/lib/words/voice-access";
 import ReviewClient from "./ReviewClient";
 
 // The due card is the signed-in user's, and changes with every grade.
@@ -27,8 +30,16 @@ export default async function ReviewPage({
   searchParams: Promise<{ url?: string | string[] }>;
 }) {
   // Signed out, the page says so and offers sign-in or the local deck.
-  const isLoggedIn = Boolean((await authUserOrNull())?.email);
+  const [user, flags] = await Promise.all([authUserOrNull(), readFlags()]);
+  const isLoggedIn = Boolean(user?.email);
   const raw = (await searchParams).url;
   const url = typeof raw === "string" && isHttpUrl(raw) ? raw : null;
-  return <ReviewClient isLoggedIn={isLoggedIn} initialUrl={url} />;
+  // Voice commands grade here too (docs/voice-mode.md), on the same switch as /words.
+  return (
+    <ReviewClient
+      isLoggedIn={isLoggedIn}
+      initialUrl={url}
+      voice={voiceAccess(flags, isOwner(user?.email))}
+    />
+  );
 }

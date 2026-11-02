@@ -148,7 +148,7 @@ async function pass(name, contextOptions) {
   const at0 = await loose();
   check(at0 === 0, `focus on row 0 (${at0})`);
 
-  check((await say("下一张")) === true, "下一张 is kept from the chat");
+  check((await say("下一张")) === true, "下一张 is kept from the chat (no agent turn)");
   let f = await flash();
   check(f.kind === "done" && /下一张|Next card/.test(f.text), `下一张 → ${f.text}`);
   check((await loose()) === 1, "focus moved to row 1");
@@ -170,20 +170,20 @@ async function pass(name, contextOptions) {
   await page.waitForTimeout(150);
   check((await stamped(2)) === null, "撤销 → row 2's grade undone");
 
-  // Not commands: shown as heard, nothing changes.
+  // Not commands: nothing changes, nothing flashes; the chat gets them as with the mode off.
   const before = await loose();
-  await say("我觉得下一张更难");
-  f = await flash();
-  check(f.kind === "unknown" && f.text.includes("我觉得下一张更难"), `sentence → ${f.text}`);
-  check((await loose()) === before, "a command word inside a sentence did nothing");
+  for (const line of ["我觉得下一张更难", "把左边那个改一下", "那个左边"]) {
+    check((await say(line)) === false, `sentence "${line}" goes to the chat`);
+    await page.waitForTimeout(150);
+    check((await loose()) === before, `…and "${line}" did nothing`);
+  }
   // The word itself: the row's first text cell (after the stamp).
   const term = (await rows.nth(before).innerText())
     .split(/[\n\t]+/)
     .map((x) => x.trim())
     .find((x) => x && !x.startsWith("▸"));
   await say(term);
-  f = await flash();
-  check(f.kind === "unknown" || f.kind === "echo", `the card's own word "${term}" → ${f.kind}`);
+  await page.waitForTimeout(150);
   check((await loose()) === before, "…and did nothing");
   check((await say("Linky, what's next?")) === false, "a line for the agent goes to the chat");
 

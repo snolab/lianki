@@ -46,7 +46,7 @@ they land. Design details that are still open are marked **open**.
 - The 「继续复习」 button after the last card: he asked whether the extra tap
   is needed (**open**: offer auto-continue as an option).
 
-## Voice-command mode (fix to #421)
+## Voice-command mode (fix to #421; done in #433, see [voice-mode.md](voice-mode.md))
 
 - Speech that **strictly matches** a command on the **current screen** is
   carried out and does **not** wake the chat agent (a small line may show

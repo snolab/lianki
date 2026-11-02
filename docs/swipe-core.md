@@ -22,10 +22,20 @@ every feel.
 | `lib/words/swipe-machine.ts`       | the gesture as a pure state machine: events in, effects out              |
 | `lib/words/swipe-feel.ts`          | `SwipeFeel` tokens, the presets, prefs parsing, `resolveFeel`            |
 | `lib/words/swipe-core.tsx`         | the React core: contexts, `useSwipeGesture`, prefs store (shared module) |
+| `lib/words/requeue.ts`             | a miss's copy; its slip retires ("↓ back"): locked, no grade, no undo   |
 | `lib/words/islands/*.tsx`          | the UI islands                                                           |
 | `app/(app)/words/WordsClient.tsx`  | `TouchWordRow` (js) and `NativeSlipRow` (native) wire the core           |
 | `unit/swipe-core.test.ts`          | physics, machine, tokens, the interface                                  |
 | `scripts/qa/qa-words.mjs`, "heavy" | end to end on the phone, both swipes                                     |
+
+## Locked slips
+
+A slip that reads "↓ back" (its miss came back further down) is retired:
+`GestureOptions.locked()` is asked as each gesture starts (the label flips on
+a timer, not a render). The machine then turns a sideways drag into a dead
+`scrolling` gesture; the native row holds its scroller like a steep drag.
+Tap and hold still work. `grade()` and Undo refuse it too. Before it is due,
+a re-grade or an undo withdraws the waiting copy, so no ghost comes back.
 
 ## Interface v1 (`SWIPE_CORE_IFACE`)
 

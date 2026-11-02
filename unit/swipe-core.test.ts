@@ -283,6 +283,31 @@ describe("gesture machine", () => {
     ).toEqual(IDLE);
   });
 
+  it("a locked slip (reads ↓ back) never slides or grades; it still taps and holds", () => {
+    const lockedDown: GestureEvent = {
+      type: "down",
+      x: 100,
+      y: 100,
+      t: 0,
+      catching: false,
+      locked: true,
+    };
+    const evs: GestureEvent[] = [lockedDown];
+    for (let i = 1; i <= 10; i++) evs.push({ type: "move", x: 100 + i * 12, y: 101, t: i * 16 });
+    evs.push({ type: "up", t: 170 });
+    const { s, fx } = run(evs);
+    expect(fx).not.toContain("slide");
+    expect(fx).not.toContain("follow");
+    expect(fx).not.toContain("release");
+    expect(fx).not.toContain("tap");
+    expect(s.phase).toBe("idle");
+    expect(run([lockedDown, { type: "up", t: 50 }]).fx).toContain("tap");
+    expect(run([lockedDown, { type: "hold" }, { type: "up", t: 500 }]).fx).toContain("holdEnd");
+    // The lock is per gesture: the next touch, unlocked, slides again.
+    const next = run([...evs, down(200), { type: "move", x: 160, y: 100, t: 216 }]);
+    expect(next.fx).toContain("slide");
+  });
+
   it("a twitch under SWIPE_START grades nothing", () => {
     const evs: GestureEvent[] = [
       down(),

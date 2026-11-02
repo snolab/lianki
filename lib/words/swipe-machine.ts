@@ -9,7 +9,10 @@
  *
  * The rules are WordRow's, unchanged: one axis per gesture (lockAxis), a
  * hold never grades, a touch on a moving list only catches it, the grade is
- * releaseRating's (lib/words/swipe.ts).
+ * releaseRating's (lib/words/swipe.ts). A locked slip (one that reads
+ * "↓ back": answered, its copy further down — lib/words/requeue.ts) never
+ * slides: a sideways drag on it is dead, as a steep one is; it still taps
+ * and holds.
  */
 import {
   type Axis,
@@ -36,10 +39,12 @@ export type GestureState = {
   samples: { t: number; x: number }[];
   /** The touch landed on a list still scrolling: it stops the fling, nothing more. */
   catching: boolean;
+  /** The slip was locked when the finger came down: this gesture never slides or grades. */
+  locked: boolean;
 };
 
 export type GestureEvent =
-  | { type: "down"; x: number; y: number; t: number; catching: boolean }
+  | { type: "down"; x: number; y: number; t: number; catching: boolean; locked?: boolean }
   | { type: "move"; x: number; y: number; t: number }
   | { type: "hold" }
   | { type: "up"; t: number }
@@ -78,6 +83,7 @@ export const IDLE: GestureState = {
   finger: 0,
   samples: [],
   catching: false,
+  locked: false,
 };
 
 export function stepGesture(
@@ -97,6 +103,7 @@ export function stepGesture(
         y0: e.y,
         samples: [{ t: e.t, x: 0 }],
         catching: e.catching,
+        locked: !!e.locked,
       });
     case "move": {
       if (s.phase !== "pressed" && s.phase !== "dragging") return out(s);
@@ -106,7 +113,8 @@ export function stepGesture(
         const axis = lockAxis(x, e.y - s.y0);
         if (!axis) return out(s);
         fx.push({ type: "disarmHold" });
-        if (axis === "v") return out({ ...s, axis, phase: "scrolling" });
+        // Locked: sideways is held (no page pan), but nothing slides.
+        if (axis === "v" || s.locked) return out({ ...s, axis, phase: "scrolling" });
         fx.push({ type: "slide" });
         next = { ...s, axis, phase: "dragging" };
       }
