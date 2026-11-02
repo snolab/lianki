@@ -2830,7 +2830,6 @@ export function DebugChat({
     typing,
     open,
     fullLog: fullLog !== "off",
-    embedded,
   });
   const typingGlassLookNow = (() => {
     const has = (prop: string, v: string) => typeof CSS !== "undefined" && CSS.supports(prop, v);
@@ -2862,31 +2861,24 @@ export function DebugChat({
         !embedded &&
         typeof document !== "undefined" &&
         createPortal(<ClipsBadge strings={t} />, portalRoot ?? document.body)}
-      {!embedded &&
-        typeof document !== "undefined" &&
-        createPortal(
-          // The typing glass (typing-glass.ts): while the input has the
-          // focus, the page behind the chat frosts. Always mounted, so it
-          // fades both ways; hidden, it is neither painted nor hit. A tap on
-          // it ends typing (blurs the input) and never reaches the page.
-          <div
-            aria-hidden
-            data-testid="debug-chat-typing-glass"
-            data-shown={typingGlassShown || undefined}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              input.current?.blur();
-            }}
-            style={{
-              background: typingGlassLookNow.background,
-              backdropFilter: typingGlassLookNow.filter,
-              WebkitBackdropFilter: typingGlassLookNow.filter,
-              ...typingGlassMotion(typingGlassShown, reducedMotion()),
-            }}
-            className="fixed -inset-12 z-[39] touch-none"
-          />,
-          portalRoot ?? document.body,
-        )}
+      {/* The typing glass (typing-glass.ts): while the input has the focus,
+          the box's own area frosts; the page around it stays sharp. Behind
+          the box's content (-z-10 in its stacking context), a little past its
+          edge so the text has room. Always mounted, so it fades both ways;
+          hidden, it is not painted. It never takes a pointer. */}
+      <div
+        aria-hidden
+        data-testid="debug-chat-typing-glass"
+        data-shown={typingGlassShown || undefined}
+        style={{
+          background: typingGlassLookNow.background,
+          backdropFilter: typingGlassLookNow.filter,
+          WebkitBackdropFilter: typingGlassLookNow.filter,
+          boxShadow: typingGlassLookNow.edge,
+          ...typingGlassMotion(typingGlassShown, reducedMotion()),
+        }}
+        className="pointer-events-none absolute -inset-1.5 -z-10 rounded-[1.5rem]"
+      />
       {fullLog !== "off" &&
         typeof document !== "undefined" &&
         createPortal(

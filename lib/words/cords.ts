@@ -1,28 +1,22 @@
 /**
- * The binding cords of a focused (loose) slip. Each cord segment is pinned
- * at the slip's top and bottom, where it ties into the neighbours; its middle
- * bows inward by its slack and is dragged along when the slip slides, up to
- * how far the slack lets it go.
+ * The binding cords of the /words list (SlipCords in WordsClient). Each row
+ * has its own cord segment, pinned at the row's top and bottom where it ties
+ * into the neighbours. The focused (loose) row's segment bows inward; it never
+ * follows a slide: the cords are the list's, not the slip's.
  */
 
 /** Inward bow of a fully loose cord, as a share of the row height. */
 export const CORD_BOW = 0.17;
-/** How far a slide can drag the loose cord's middle, as a share of the row height. */
-export const CORD_REACH = 0.55;
-
-/** How far the middle of a loose cord follows a slide of `dx`. */
-export function cordPull(dx: number, slack: number, h: number): number {
-  const reach = CORD_REACH * h;
-  return Math.max(-reach, Math.min(reach, dx)) * slack;
-}
 
 /**
- * The SVG path of one cord segment at `x`, `h` tall: straight when the middle
- * offset (`bow + shift`) is 0, otherwise a smooth S through the middle point.
+ * The SVG path of one cord segment at `x`, `h` tall: straight when `bow` is 0,
+ * otherwise a smooth S through the middle point `x + bow`. Every x in it is
+ * `x + k * bow`, so squeezing the full-bow path by scaleX(s) about `x` draws
+ * the path for `s * bow`: the loosening is a CSS transform.
  */
-export function cordPath(x: number, h: number, bow: number, shift: number): string {
+export function cordPath(x: number, h: number, bow: number): string {
   const r = (n: number) => Math.round(n * 100) / 100;
-  const mx = x + bow + shift;
+  const mx = x + bow;
   const c = x + (mx - x) * 0.2;
   return (
     `M ${r(x)} 0 C ${r(c)} ${r(h * 0.25)}, ${r(mx)} ${r(h * 0.35)}, ${r(mx)} ${r(h * 0.5)} ` +

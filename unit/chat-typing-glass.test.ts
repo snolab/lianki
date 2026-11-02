@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  TYPING_EDGE,
   TYPING_FADE_MS,
   TYPING_FILTER,
   TYPING_SCRIM,
@@ -10,7 +11,7 @@ import {
 } from "@lianki/debug-chat/typing-glass";
 import { SHEET_SCRIM } from "@lianki/debug-chat/log-surface";
 
-const base = { typing: true, open: true, fullLog: false, embedded: false };
+const base = { typing: true, open: true, fullLog: false };
 
 describe("the typing glass: when it is up", () => {
   it("is up while typing in the open chat", () => {
@@ -25,8 +26,9 @@ describe("the typing glass: when it is up", () => {
   it("gives way to the full-screen log's own sheet", () => {
     expect(showTypingGlass({ ...base, fullLog: true })).toBe(false);
   });
-  it("leaves another site's page alone (embedded)", () => {
-    expect(showTypingGlass({ ...base, embedded: true })).toBe(false);
+  it("depends on nothing about the page around the box", () => {
+    // Box-local (owner, 2026-11-03): no embedded / page switch any more.
+    expect(Object.keys(base).sort()).toEqual(["fullLog", "open", "typing"]);
   });
 });
 
@@ -39,6 +41,8 @@ describe("the typing glass: its look", () => {
       `light-dark(oklch(98% 0.01 90 / ${TYPING_SCRIM.light.a}), oklch(18% 0.01 260 / ${TYPING_SCRIM.dark.a}))`,
     );
     expect(l.background).not.toMatch(/rgb|#/);
+    expect(l.edge).toBe(`0 0 0 1px ${TYPING_EDGE}`);
+    expect(l.edge).not.toMatch(/rgb|#/);
   });
   it("is lighter than the full-screen log's sheet", () => {
     expect(TYPING_SCRIM.light.a).toBeLessThan(SHEET_SCRIM.light.a);
@@ -74,7 +78,7 @@ describe("the typing glass: its fade", () => {
     });
     expect(TYPING_FADE_MS).toBe(150);
   });
-  it("hides only after the fade out, so it is not painted or hit afterwards", () => {
+  it("hides only after the fade out, so it is not painted afterwards", () => {
     expect(typingGlassMotion(false, false)).toEqual({
       opacity: 0,
       visibility: "hidden",

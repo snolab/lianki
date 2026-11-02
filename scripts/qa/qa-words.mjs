@@ -1095,7 +1095,8 @@ try {
         `${tag} the list opens with the first word just under the toolbar (${Math.round(firstTop - barBottom)}px)`,
       );
       // Parity: the face of a slip — the row itself (A) or the scroller's
-      // face (B) — carries the same paper, node line, seam and cords.
+      // face (B) — carries the same paper, node line and seam; the cords are
+      // the list's layer over them (SlipCords).
       const look = await m.evaluate(() => {
         const faces = [...document.querySelectorAll('[role="listitem"]')]
           .slice(0, 3)
@@ -1112,7 +1113,9 @@ try {
             .join(" "),
           // The grain shifts per row.
           grains: new Set(cs.map((c) => c.backgroundPosition)).size,
-          cords: faces.every((f) => f.querySelector("[data-cords]")),
+          cords:
+            document.querySelectorAll("[data-slip-cords] [data-cords]").length ===
+            document.querySelectorAll('[role="listitem"]').length,
           width: Math.round(faces[0].getBoundingClientRect().width),
           left: Math.round(faces[0].getBoundingClientRect().left),
           centred: scroller ? Math.round(scroller.scrollLeft) : null,
@@ -1164,35 +1167,60 @@ try {
         `${tag} speech that never starts falls back to server audio (${ttsAsked.length} clips asked)`,
       );
       // Focus = that slip's cords come loose (no more green bar).
+      const looseAt = await m.evaluate(() => {
+        const c = document.querySelectorAll('[data-cords="loose"]');
+        const row = document.querySelector('[role="listitem"]').getBoundingClientRect();
+        return c.length === 1 ? Math.round(c[0].getBoundingClientRect().top - row.top) : null;
+      });
       check(
         (await mrows.nth(0).getAttribute("class")).includes("slip-loose") &&
           (await m.locator('[role="listitem"].slip-loose').count()) === 1 &&
-          (await mrows.nth(0).locator('[data-cords="loose"]').count()) === 1,
-        `${tag} the tapped slip is the one loose slip`,
+          looseAt === 0,
+        `${tag} the tapped slip is the one loose slip, its cords at its place (${looseAt})`,
       );
       // Visual: the loose cords hang at the slip's two edges, with animations
       // on and off ("Disable animations" sets html[data-motion=off], which
-      // zeroes every animation-duration: B's scroll-driven .slip-pin then
-      // sat on its last keyframe and hung the cords 2a into the slip).
+      // zeroes every transition: the cords must still end loose, not tied).
+      // Then the slip slides 30px (A: the transform the core writes; B: its
+      // scroller) and the cords stay where they are: they are the list's.
       for (const motion of ["on", "off"]) {
         const cords = await mrows.nth(0).evaluate(async (row, motion) => {
           if (motion === "off") document.documentElement.dataset.motion = "off";
-          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          const frames = () =>
+            new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          await new Promise((r) => setTimeout(r, 300));
           const rb = row.getBoundingClientRect();
-          const paths = [...row.querySelectorAll('[data-cords="loose"] path')].map((p) => {
-            const b = p.getBoundingClientRect();
-            return [Math.round(b.left - rb.left), Math.round(rb.right - b.right)];
-          });
-          return paths;
+          const at = () =>
+            [...document.querySelectorAll('[data-cords="loose"] path')].map((p) => {
+              const b = p.getBoundingClientRect();
+              return [Math.round(b.left - rb.left), Math.round(rb.right - b.right)];
+            });
+          const paths = at();
+          const scroller = row.querySelector(".slip-scroller");
+          const x0 = scroller?.scrollLeft ?? 0;
+          // No snap for the probe: it would land on a detent (every a px).
+          if (scroller) scroller.style.scrollSnapType = "none";
+          if (scroller) scroller.scrollLeft = x0 - 30;
+          else row.style.transform = "translateX(30px)";
+          await frames();
+          const slid = JSON.stringify(at()) === JSON.stringify(paths);
+          const face = (row.querySelector(".slip-face") ?? row).getBoundingClientRect().left;
+          if (scroller) {
+            scroller.scrollLeft = x0;
+            scroller.style.scrollSnapType = "";
+          } else row.style.transform = "";
+          await frames();
+          return { paths, slid, faceMoved: Math.round(face - rb.left) };
         }, motion);
         await shot(m, `cords-${variant}-motion-${motion}`);
+        const p = cords.paths;
         check(
-          cords.length === 2 &&
-            cords[0][0] >= 0 &&
-            cords[0][0] <= 12 &&
-            cords[1][1] >= 0 &&
-            cords[1][1] <= 12,
-          `${tag} the loose cords hang at the slip's edges, animations ${motion} (${JSON.stringify(cords)})`,
+          p.length === 2 && p[0][0] >= 0 && p[0][0] <= 12 && p[1][1] >= 0 && p[1][1] <= 12,
+          `${tag} the loose cords hang at the slip's edges, animations ${motion} (${JSON.stringify(p)})`,
+        );
+        check(
+          cords.slid && Math.abs(cords.faceMoved - 30) <= 1,
+          `${tag} a sliding slip leaves its cords in place, animations ${motion} (${JSON.stringify(cords)})`,
         );
       }
       await m.evaluate(() => delete document.documentElement.dataset.motion);
@@ -1684,10 +1712,9 @@ try {
           `${tag} ${when}: the page doesn't scroll and the first word sits right under the toolbar (${JSON.stringify(o)})`,
         );
       }
-      // Experimental "Paper scrolls with the list" (lk:words-paper-scrolls):
-      // off by default — the texture stays fixed on the body and no layer is
-      // mounted; on — a layer inside the list scrolls with the rows and the
-      // body behind it is plain.
+      // The paper scrolls with the list (always, since 2026-11-03): a layer
+      // inside the list scrolls with the rows and the body behind it is plain.
+      // The cords' layer scrolls with them too.
       const paper = () =>
         w.evaluate(async () => {
           const list = document.querySelector('[role="list"]');
@@ -1702,7 +1729,15 @@ try {
           const moved = before - at();
           list.scrollTop = top0;
           const cs = getComputedStyle(layer);
+          const cords = list.querySelector("[data-slip-cords]");
+          const cordsAt = () => Math.round(cords.getBoundingClientRect().top);
+          const c0 = cordsAt();
+          list.scrollTop = top0 + 200;
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          const cordsMoved = c0 - cordsAt();
+          list.scrollTop = top0;
           return {
+            cordsMoved,
             layer: layer === list.firstElementChild,
             bodyPaper: body.includes("url("),
             pointer: cs.pointerEvents,
@@ -1711,15 +1746,6 @@ try {
             moved,
           };
         });
-      const off = await paper();
-      check(
-        !off.layer && off.bodyPaper,
-        `${tag} paper scrolls off by default: fixed body texture, no layer (${JSON.stringify(off)})`,
-      );
-      await w.evaluate(() => localStorage.setItem("lk:words-paper-scrolls", "1"));
-      await w.reload({ waitUntil: "networkidle" });
-      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
-      await w.waitForTimeout(500);
       const on = await paper();
       check(
         on.layer &&
@@ -1727,13 +1753,10 @@ try {
           on.pointer === "none" &&
           on.textured &&
           on.covers &&
-          on.moved === 200,
-        `${tag} paper scrolls on: a layer under the rows scrolls with them, the body is plain (${JSON.stringify(on)})`,
+          on.moved === 200 &&
+          on.cordsMoved === 200,
+        `${tag} the paper and the cords scroll with the rows, the body is plain (${JSON.stringify(on)})`,
       );
-      await w.evaluate(() => localStorage.removeItem("lk:words-paper-scrolls"));
-      await w.reload({ waitUntil: "networkidle" });
-      await w.locator('[role="listitem"]').first().waitFor({ timeout: 15000 });
-      await w.waitForTimeout(800);
       const order = await revealOrder(w, variant);
       check(
         order === "card → label:3",
@@ -1778,11 +1801,8 @@ try {
       await w.waitForTimeout(400);
       o = await layout();
       check(
-        (await w
-          .locator("[data-experimental]")
-          .getByRole("switch", { name: "Paper scrolls with the list" })
-          .count()) === 1,
-        `${tag} Experimental has the "Paper scrolls with the list" switch`,
+        (await w.getByRole("switch", { name: "Paper scrolls with the list" }).count()) === 0,
+        `${tag} no "Paper scrolls with the list" switch: the paper always scrolls`,
       );
       check(
         o.sheet && o.barH <= 72 && pageFits(o) && o.gap >= 0 && o.gap < 4,

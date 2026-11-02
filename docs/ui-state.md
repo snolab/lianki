@@ -120,7 +120,7 @@ target that is not built yet.
 | State                                                                                           | Where                            | Status                                                             |
 | ----------------------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------ |
 | /words scroll position                                                                          | session `lk:ui:words` anchors    | done: the word at the top, per list, restored when the queue loads |
-| show all meanings, speak on swipe, grade tones, server voice, paper scrolls, scroll after swipe | local `lk:words-*` (usePref)     | device prefs → `lk:pref:words`                                     |
+| show all meanings, speak on swipe, grade tones, server voice, scroll after swipe | local `lk:words-*` (usePref)     | device prefs → `lk:pref:words`                                     |
 | list picker search / filter / sort                                                              | — (none on /words today)         | → URL when added (shareable)                                       |
 | study mode (one list, a group, "study all")                                                     | URL `?list=` (`all`, a group id) | done                                                               |
 | home pins, home language                                                                        | local `lk:home:*`                | device prefs → `lk:pref:home`                                      |
