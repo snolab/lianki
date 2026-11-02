@@ -10,8 +10,22 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import { FirstRunChoice, type FirstRunLabels } from "./FirstRunChoice";
 import { Icon, SealIcon } from "./icons";
 import { useDebugToggle } from "./useDebugToggle";
+import { useIntlayer } from "next-intlayer";
+import { useUi } from "@lianki/ui-state";
+import { island } from "@/lib/islands/Island";
+import { navUi, setDrawerOpen } from "@/lib/nav/ui-store";
+import { BottomIsland } from "@/lib/nav/islands/BottomIsland";
+import { NavRows } from "@/lib/nav/islands/NavRows";
+import { DevServerBadge, DevSwitchItem, type DevSwitch } from "./DevSwitchItem";
+import { LiveViewBoot, LiveViewItem, type LiveViewShell } from "./LiveView";
 
 const SIDEBAR_KEY = "lk:sidebar";
+
+/** The bottom island and the nav's extra rows (docs/bottom-nav.md): hot-swappable slots. */
+const BottomNavIsland = island("nav.bottom", BottomIsland);
+const NavDrawerIsland = island("nav.drawer", NavRows);
+/** The wordmark, the same island as the Header's (lib/brand.ts). */
+const BrandIsland = island("header.brand", BrandName);
 
 export type ShellUser = {
   name: string;
@@ -31,15 +45,31 @@ interface AppShellProps {
   user: ShellUser;
   /** Absent only if a caller has no content for it; the prompt then stays off. */
   firstRun?: FirstRunLabels;
+  /** The owner's dev-server switch: set by the server for the owner only (lib/dev-server-switch.ts). */
+  devSwitch?: DevSwitch;
+  /** Live view (docs/live-view.md): set by the server for the owner only. */
+  liveView?: LiveViewShell;
   children: React.ReactNode;
 }
 
-export function AppShell({ locale, appName, labels, user, firstRun, children }: AppShellProps) {
+export function AppShell({
+  locale,
+  appName,
+  labels,
+  user,
+  firstRun,
+  devSwitch,
+  liveView,
+  children,
+}: AppShellProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  // The nav store (lib/nav/ui-store.ts): the bottom island opens the drawer too.
+  const drawerOpen = useUi(navUi, (s) => s.drawerOpen);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [debug, debugTap] = useDebugToggle(undefined, 10);
+  /** The debug chat's user-facing name ("Learning Partner"), shown while it is on. */
+  const partner = useIntlayer("learning-partner");
 
   // Read the persisted collapse state after mount — reading localStorage during
   // render would desync SSR and hydration.
@@ -101,18 +131,23 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
 
   const active = activeNavKey(pathname);
 
-  const sidebar = (
+  const sidebar = (place: "drawer" | "sidebar") => (
     <nav
       aria-label={labels.ui.menu}
       className={`flex flex-col gap-6 py-4 ${collapsed ? "px-2" : "px-3"}`}
     >
+      <NavDrawerIsland place={place} collapsed={place === "sidebar" && collapsed} />
       {NAV_GROUPS.map((group) => {
         const items = APP_NAV.filter((item) => item.group === group);
         if (!items.length) return null;
         return (
           <div key={group}>
             {!collapsed && (
-              <h2 className="px-3 mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              // The page-card group is headed by the brand LiCards, which an
+              // uppercase transform would turn into LICARDS.
+              <h2
+                className={`px-3 mb-1 text-xs font-semibold tracking-wide text-gray-400 dark:text-gray-500 ${group === "advanced" ? "" : "uppercase"}`}
+              >
                 {labels.groups[group]}
               </h2>
             )}
@@ -163,8 +198,9 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
         collapsed ? "md:[--nav-w:4rem]" : "md:[--nav-w:14rem]"
       }`}
     >
+      {liveView && <LiveViewBoot lv={liveView} />}
       {/* Slim topbar: glass, above full-screen content such as the /words list. */}
-      <header className="lk-glass lk-glass-bleed-top relative z-30 flex items-center gap-3 px-4 h-14 border-b border-[var(--glass-line)] shrink-0">
+      <header className="lk-glass lk-glass-bleed-top lk-header-bleed relative z-30 flex items-center gap-3 h-14 border-b border-[var(--glass-line)] shrink-0">
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
@@ -189,10 +225,11 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a tiny static SVG */}
           <img src="/icon.svg" alt="" width={28} height={28} className="rounded-md" />
-          <BrandName appName={appName} />
+          <BrandIsland appName={appName} locale={locale} />
         </Link>
 
         <div className="ms-auto flex items-center gap-3">
+          {devSwitch?.mode === "back" && <DevServerBadge label={devSwitch.labels.badge} />}
           <LanguageSwitcher />
           {user ? (
             <div className="relative" ref={profileRef}>
@@ -241,12 +278,14 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
                     className="select-none touch-manipulation px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 truncate"
                   >
                     {user.email}
-                    {debug && " · debug"}
+                    {debug && ` · ${partner.name.value}`}
                   </div>
                   <MenuLink href="/list">{labels.dashboard}</MenuLink>
                   <MenuLink href="/profile">{labels.profile}</MenuLink>
                   <MenuLink href="/preferences">{labels.preferences}</MenuLink>
                   <MenuLink href="/membership">{labels.membership}</MenuLink>
+                  {devSwitch && <DevSwitchItem sw={devSwitch} />}
+                  {liveView && <LiveViewItem lv={liveView} />}
                   <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
                     <Link
                       href="/auth/logout"
@@ -280,7 +319,7 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
             collapsed ? "w-16" : "w-56"
           }`}
         >
-          <div className="sticky top-0">{sidebar}</div>
+          <div className="sticky top-0">{sidebar("sidebar")}</div>
         </aside>
 
         {/* Mobile drawer */}
@@ -299,13 +338,19 @@ export function AppShell({ locale, appName, labels, user, firstRun, children }: 
               onClick={() => setDrawerOpen(false)}
             />
             <div className="relative w-64 max-w-[80%] h-full overflow-y-auto pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] bg-white dark:bg-gray-900 border-e border-gray-200 dark:border-gray-800">
-              {sidebar}
+              {sidebar("drawer")}
             </div>
           </div>
         )}
 
-        <main className="lk-nav-pad flex-1 min-w-0">{children}</main>
+        {/* --lk-bottom-reserve: what the bottom island covers at rest (it
+            sets the variable), so the last of the content can scroll clear of it. */}
+        <main className="lk-nav-pad flex-1 min-w-0 pb-[var(--lk-bottom-reserve,0px)]">
+          {children}
+        </main>
       </div>
+
+      <BottomNavIsland signedIn={user !== null} />
 
       {/* Signed-out only: a signed-in visitor answered this by signing in. */}
       {user === null && firstRun && <FirstRunChoice labels={firstRun} />}

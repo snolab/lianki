@@ -19,6 +19,14 @@ import {
 import { ApkgError, mainModel, parseApkg, type ApkgDeck, type ApkgPackage } from "@/lib/words/apkg";
 import { downloadCatalog } from "@/lib/words/catalog-cache";
 import type { WordList } from "@/lib/repos/wordsD1";
+import {
+  ANKIWEB_DECKS,
+  ankiWebInfoUrl,
+  matchDeck,
+  parseAnkiWebUrl,
+  type AnkiWebDeck,
+} from "@/lib/words/ankiweb";
+import AnkiWebDecks from "./AnkiWebDecks";
 
 /** One deck of the file, as the user has set it up for import. */
 type Plan = {
@@ -30,6 +38,10 @@ type Plan = {
   lang: string;
   /** An imported list to update, or "" for a new list. */
   target: string;
+  /** The curated AnkiWeb deck this file came from, or "" (another deck or source). */
+  origin: string;
+  /** A pasted AnkiWeb deck page link, used when `origin` is "". */
+  link: string;
 };
 type Outcome = { listId: string; added: number; updated: number; unchanged: number };
 
@@ -57,7 +69,17 @@ function build(pkg: ApkgPackage, plan: Plan): BuildResult {
   );
 }
 
-function planFor(pkg: ApkgPackage, deck: ApkgDeck, lists: WordList[]): Plan {
+/** The AnkiWeb page and title a plan's words are recorded with, if known. */
+function planSource(plan: Pick<Plan, "origin" | "link">) {
+  const deck = ANKIWEB_DECKS.find((d) => d.id === plan.origin);
+  if (deck) return { src: ankiWebInfoUrl(deck.id), srcTitle: deck.title };
+  const src = parseAnkiWebUrl(plan.link);
+  return src ? { src } : {};
+}
+
+const PICKED_KEY = "lianki:ankiweb-picked";
+
+function planFor(pkg: ApkgPackage, deck: ApkgDeck, lists: WordList[], picked?: AnkiWebDeck): Plan {
   const fields = pkg.models[mainModel(deck)]?.fields ?? [];
   const mapping = guessMapping(fields);
   const terms = deck.notes.slice(0, 300).map((n) => stripAnki(n.fields[mapping.term] ?? ""));
@@ -71,6 +93,9 @@ function planFor(pkg: ApkgPackage, deck: ApkgDeck, lists: WordList[]): Plan {
     name: existing?.name ?? name,
     lang: existing?.lang ?? guessLang(deck.name, terms),
     target: existing?.id ?? "",
+    // By the deck's own name first, else the deck last opened from our list.
+    origin: matchDeck(deck.name)?.id ?? picked?.id ?? "",
+    link: "",
   };
 }
 
@@ -87,6 +112,20 @@ export default function WordsImportClient() {
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  // The curated deck opened last: the file dropped next most likely came from it.
+  const [picked, setPicked] = useState<AnkiWebDeck | undefined>();
+  useEffect(() => {
+    try {
+      const id = sessionStorage.getItem(PICKED_KEY);
+      setPicked(ANKIWEB_DECKS.find((d) => d.id === id));
+    } catch {}
+  }, []);
+  const pick = (d: AnkiWebDeck) => {
+    setPicked(d);
+    try {
+      sessionStorage.setItem(PICKED_KEY, d.id);
+    } catch {}
+  };
 
   const loadLists = async () => {
     const r = await fetch("/api/words/lists");
@@ -128,7 +167,7 @@ export default function WordsImportClient() {
       if (!parsed.decks.length) throw new ApkgError(text(t.noNotes));
       const known = lists ?? (await loadLists());
       setPkg(parsed);
-      setPlans(parsed.decks.map((d) => planFor(parsed, d, known)));
+      setPlans(parsed.decks.map((d) => planFor(parsed, d, known, picked)));
       setStage("ready");
     } catch (e) {
       setError(e instanceof ApkgError ? `${text(t.badFile)} (${e.message})` : (e as Error).message);
@@ -143,6 +182,13 @@ export default function WordsImportClient() {
     () => (lists ?? []).filter((l) => l.source?.startsWith("anki:")),
     [lists],
   );
+  // The language most of the user's lists study: preselects the deck list's language.
+  const studyLang = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const l of lists ?? [])
+      if (l.lang && !l.source?.startsWith("group:")) n.set(l.lang, (n.get(l.lang) ?? 0) + 1);
+    return [...n].sort((a, b) => b[1] - a[1])[0]?.[0];
+  }, [lists]);
   const langName = useMemo(() => {
     try {
       const names = new Intl.DisplayNames([locale], { type: "language" });
@@ -164,6 +210,7 @@ export default function WordsImportClient() {
           deckId: plan.deck.id,
           name: plan.name.trim() || plan.deck.name,
           lang: plan.lang,
+          ...planSource(plan),
           entries: built.entries,
         }),
       });
@@ -286,6 +333,8 @@ export default function WordsImportClient() {
             control={control}
           />
         ))}
+
+      {!signedOut && <AnkiWebDecks studyLang={studyLang} picked={picked} onPick={pick} />}
     </div>
   );
 }
@@ -316,8 +365,11 @@ function DeckCard({
   control: string;
 }) {
   const t = useIntlayer("words-import");
+  const ta = useIntlayer("words-import-ankiweb");
   const { locale } = useLocale();
   const built = useMemo(() => build(pkg, plan), [pkg, plan]);
+  const source = planSource(plan);
+  const badLink = !plan.origin && plan.link.trim() !== "" && !source.src;
   const n = (x: number) => x.toLocaleString(locale);
   const target = imported.find((l) => l.id === plan.target);
   const langs = IMPORT_LANGS.includes(plan.lang as (typeof IMPORT_LANGS)[number])
@@ -382,6 +434,48 @@ function DeckCard({
             ))}
           </select>
         </label>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2" data-testid="apkg-source">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="opacity-70">{ta.fromDeck}</span>
+          <select
+            className={control}
+            value={plan.origin}
+            onChange={(e) => onChange({ origin: e.target.value })}
+          >
+            <option value="">{ta.notListed}</option>
+            {ANKIWEB_DECKS.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        {!plan.origin && (
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="opacity-70">{ta.pasteLink}</span>
+            <input
+              className={control}
+              type="url"
+              inputMode="url"
+              value={plan.link}
+              maxLength={200}
+              placeholder="https://ankiweb.net/shared/info/…"
+              aria-invalid={badLink}
+              onChange={(e) => onChange({ link: e.target.value })}
+            />
+            {badLink && <span className="text-xs text-[oklch(0.6_0.2_25)]">{ta.badLink}</span>}
+          </label>
+        )}
+        {source.src && (
+          <p className="text-xs opacity-70 sm:col-span-2">
+            {ta.recorded}{" "}
+            <a href={source.src} target="_blank" rel="noopener noreferrer" className="underline">
+              {source.src.replace("https://", "")} ↗
+            </a>
+          </p>
+        )}
       </div>
 
       <fieldset className="space-y-2">

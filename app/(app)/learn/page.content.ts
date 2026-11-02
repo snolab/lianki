@@ -1,6 +1,7 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys, flattenContext, type KeyContext } from "@/lib/i18n-context";
 
-const learnPageContent = {
+const dictionary = {
   key: "learn-page",
   content: {
     metadata: {
@@ -757,22 +758,22 @@ const learnPageContent = {
         mr: "डेक शब्दसूची म्हणून आयात करा →",
       }),
       importCardsLink: t({
-        en: "or as Lianki cards (keeps images)",
-        zh: "或导入为 Lianki 卡片（保留图片）",
-        ja: "または Lianki カードとして（画像も残ります）",
-        ko: "또는 Lianki 카드로 (이미지 유지)",
-        hi: "या Lianki कार्ड के रूप में (चित्र बने रहते हैं)",
-        es: "o como tarjetas de Lianki (conserva las imágenes)",
-        fr: "ou en cartes Lianki (garde les images)",
-        ar: "أو كبطاقات Lianki (تحتفظ بالصور)",
-        bn: "অথবা Lianki কার্ড হিসেবে (ছবি থাকে)",
-        pt: "ou como cartões do Lianki (mantém as imagens)",
-        ru: "или как карточки Lianki (с картинками)",
-        ur: "یا Lianki کارڈز کے طور پر (تصاویر برقرار رہتی ہیں)",
-        id: "atau sebagai kartu Lianki (gambar tetap ada)",
-        de: "oder als Lianki-Karten (mit Bildern)",
-        sw: "au kama kadi za Lianki (picha hubaki)",
-        mr: "किंवा Lianki कार्ड म्हणून (चित्रे राहतात)",
+        en: "or into LiCards (keeps images)",
+        zh: "或导入到链卡（保留图片）",
+        ja: "または LiCards に（画像も残ります）",
+        ko: "또는 LiCards로 (이미지 유지)",
+        hi: "या LiCards में (चित्र बने रहते हैं)",
+        es: "o a LiCards (conserva las imágenes)",
+        fr: "ou dans LiCards (garde les images)",
+        ar: "أو إلى LiCards (تحتفظ بالصور)",
+        bn: "অথবা LiCards-এ (ছবি থাকে)",
+        pt: "ou para o LiCards (mantém as imagens)",
+        ru: "или в LiCards (с картинками)",
+        ur: "یا LiCards میں (تصاویر برقرار رہتی ہیں)",
+        id: "atau ke LiCards (gambar tetap ada)",
+        de: "oder in LiCards (mit Bildern)",
+        sw: "au kwenye LiCards (picha hubaki)",
+        mr: "किंवा LiCards मध्ये (चित्रे राहतात)",
       }),
       browseAll: t({
         en: "Browse all shared decks",
@@ -794,6 +795,112 @@ const learnPageContent = {
       }),
     },
   },
-} satisfies DeclarationContent;
+};
 
-export default learnPageContent;
+const context: KeyContext<typeof dictionary.content> = {
+  metadata: {
+    title:
+      "Browser tab and search-result title of the /learn page. 'Learn' (a verb or noun) + ' - Lianki'; Lianki is the app name, never translated.",
+    description:
+      "Search-result description of the /learn page: import study materials from recommended lists, YouTube playlists or custom URL lists. Keep YouTube as is.",
+  },
+  heading: "Main heading of the /learn page, which imports study materials. Title-like phrase.",
+  subtitle:
+    "First part of the sentence under the /learn heading; continues with ', YouTube playlists,' (when shown) and ' or custom URL lists.' Keep the three parts one grammatical sentence.",
+  subtitleYoutube:
+    "Middle part of the sentence under the /learn heading, shown only when YouTube import is available; starts with a comma and space. Keep YouTube and the leading comma.",
+  subtitleEnd:
+    "Last part of the sentence under the /learn heading, after 'recommended lists' (and ', YouTube playlists,'). Starts with a space; ends the sentence.",
+  tabs: {
+    recommended:
+      "Tab on the /learn page that shows the curated lists of study materials. Short noun phrase.",
+    customUrl:
+      "Tab on the /learn page for importing a text file of URLs from a web address. Short noun phrase.",
+    youtube:
+      "Tab on the /learn page for importing every video of a YouTube playlist. Keep YouTube as is.",
+  },
+  recommended: {
+    heading: "Heading of the recommended-lists tab on the /learn page. Short noun phrase.",
+    viewButton:
+      "Button on each recommended list card on /learn that opens its materials (an article). Imperative phrase; keep the arrow.",
+  },
+  customUrl: {
+    heading: "Heading of the custom-URL-list tab on the /learn page. Short phrase.",
+    description:
+      "Instructions on the custom-URL tab of /learn: give the address of a .txt file with one URL per line; each is queued for learning. Keep .txt and URL.",
+    label: "Label of the input field for the .txt file's web address on /learn. Short noun phrase.",
+    placeholder:
+      "Placeholder inside the .txt address field on /learn. An example web address; keep it exactly as is.",
+    exampleLabel:
+      "Small label above a sample of the expected .txt file contents on /learn. Ends with a colon.",
+    importing:
+      "Text on the import button of the custom-URL tab on /learn while the import runs. Progressive verb with ellipsis.",
+    importButton:
+      "Button on the custom-URL tab of /learn that imports the URLs from the file. Imperative phrase; keep URLs.",
+  },
+  youtube: {
+    heading: "Heading of the YouTube-playlist tab on the /learn page. Keep YouTube as is.",
+    description:
+      "Instructions on the YouTube tab of /learn: paste a playlist link; every video in it is queued for learning. Keep YouTube as is.",
+    label: "Label of the input field for the YouTube playlist link on /learn. Keep YouTube.",
+    placeholder:
+      "Placeholder inside the YouTube playlist field on /learn. An example web address; keep it exactly as is.",
+    exampleLabel:
+      "Small label above a sample YouTube playlist link on /learn. One word with a colon.",
+    exampleNote:
+      "Note in parentheses after the sample playlist link on /learn, naming it. Keep JLPT N4 as is.",
+    importing:
+      "Text on the import button of the YouTube tab on /learn while the import runs. Progressive verb with ellipsis.",
+    importButton:
+      "Button on the YouTube tab of /learn that imports the playlist's videos. Imperative phrase.",
+  },
+  errors: {
+    pleaseEnterUrl:
+      "Error message on /learn when the custom-URL field is left empty and import is pressed. Polite request.",
+    failedToFetchUrlList:
+      "Error message on /learn when the .txt file of URLs could not be downloaded. Short sentence.",
+    noValidUrlsFound:
+      "Error message on /learn when the downloaded .txt file has no usable web addresses. Short sentence.",
+    failedToImportFromUrl:
+      "Error message on /learn when importing from the custom URL list failed for another reason. Short sentence.",
+    pleaseEnterYoutubeUrl:
+      "Error message on /learn when the YouTube playlist field is left empty and import is pressed. Keep YouTube.",
+    invalidYoutubeUrl:
+      "Error message on /learn when the pasted link is not a YouTube playlist link. Keep YouTube.",
+    failedToImportYoutubePlaylist:
+      "Error message on /learn when the server could not import the YouTube playlist. Keep YouTube.",
+    failedToImportFromYoutube:
+      "Error message on /learn when importing from YouTube failed for another reason. Keep YouTube.",
+    failedToImportUrls:
+      "Error message on /learn when adding the URLs of a recommended list failed. Short sentence.",
+  },
+  success: {
+    importedUrls:
+      "Success message on /learn after a URL list import; {count} is the number of web addresses added. Keep {count}.",
+    importedVideos:
+      "Success message on /learn after a YouTube playlist import; {count} is the number of videos added. Keep {count}.",
+  },
+  ankiDecks: {
+    heading:
+      "Heading of the box on /learn that points to the shared Anki decks on AnkiWeb. Keep Anki as is.",
+    description:
+      "Text in the shared-decks box on /learn: free decks made by learners; download one as an .apkg file, then import it. Keep .apkg.",
+    importNote:
+      "Sentence in the shared-decks box on /learn, before two import links: Lianki reads Anki's .apkg files directly. Keep Lianki, Anki and .apkg.",
+    importLink:
+      "First link after the import note on /learn: imports an Anki deck as a vocabulary word list. Imperative phrase; keep the arrow.",
+    importCardsLink:
+      "Second, quieter link right after 'Import a deck as a word list →' on /learn: imports the deck into LiCards instead, which keeps images. Continues that phrase ('or into …'). LiCards is a product name: never translate it; keep LiCards in every language except Chinese, which uses 链卡.",
+    browseAll:
+      "Link in the shared-decks box on /learn that opens the full list of shared decks on AnkiWeb. Imperative phrase.",
+  },
+};
+
+export default {
+  ...dictionary,
+  title: "/learn — import study materials",
+  description: describeKeys(
+    "The /learn page: import study materials from recommended lists, a .txt list of URLs or a YouTube playlist, plus a box pointing to shared Anki decks. Lianki and LiCards (zh: 链卡) are product names, not translated.",
+    flattenContext(context),
+  ),
+} satisfies DeclarationContent;

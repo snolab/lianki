@@ -9,7 +9,7 @@ summary: "Step-by-step guide to install Lianki on iPhone and iPad using Userscri
 
 _Posted February 23, 2025 by [lianki.com](https://www.lianki.com)_
 
-Lianki works on iPhone and iPad through userscript managers — apps that run userscripts in Safari or other browsers. This guide shows you the easiest way to get started.
+**LiCards** is Lianki's way of turning any web page into a review card: save a page, and Lianki brings it back when it is due. On iPhone and iPad it runs through userscript managers — apps that run userscripts in Safari or other browsers. This guide shows you the easiest way to get started.
 
 **Recommended for most users**: The **Userscripts** app (free, open source, actively maintained).
 
@@ -126,7 +126,7 @@ Let's make sure everything works.
 
 2. **Visit any HTTPS website** (for example: https://en.wikipedia.org)
 
-3. **Look for the Lianki floating button**
+3. **Look for the LiCards floating button** (🔖)
    - You should see a small circular button in the bottom-right corner
    - It may take a second to appear after the page loads
 
@@ -135,10 +135,10 @@ Let's make sure everything works.
    - This confirms the script is running
 
 5. **Press and hold the button** (or try tapping it)
-   - The Lianki dialog should open
+   - The LiCards dialog should open
    - If you're not logged in, you'll see a login prompt
 
-**If you see the floating button**: ✅ Success! Lianki is installed and working.
+**If you see the floating button**: ✅ Success! LiCards is installed and working.
 
 **If you don't see it**: Skip to [Troubleshooting](#troubleshooting) below.
 
@@ -169,7 +169,7 @@ Now you're ready to start using Lianki on iOS.
 1. **Visit a webpage you want to remember**
    - For example, an article, tutorial, or video
 
-2. **Tap the Lianki floating button**
+2. **Tap the LiCards floating button**
 
 3. **The title and URL are auto-filled**
 

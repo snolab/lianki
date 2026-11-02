@@ -1,7 +1,7 @@
 /**
- * The widget's own strings in Chinese, picked when the page is in Chinese
- * (`<html lang="zh…">`), until the host passes localized ones. English
- * otherwise. The tree's strings (StateTree.tsx TreeStrings) included.
+ * The widget's own strings in Chinese or Japanese, picked by the page's
+ * language (`<html lang="zh…">`, `"ja"`), until the host passes localized
+ * ones. English otherwise. The tree's strings (StateTree.tsx TreeStrings) included.
  */
 import type { TreeStrings } from "./StateTree";
 
@@ -16,6 +16,91 @@ export type UiStrings = {
   items: string;
   /** The mark on a voice line the agent polished (its tooltip and label). */
   polished: string;
+  /** The menu's Latency row (latency.ts): its title, and before any voice reply. */
+  latency: string;
+  latencyNone: string;
+  /**
+   * The menu's mic row (adaptive.ts), a debug readout for the owner: the
+   * room's noise floor, his voice level, the input gain the mic adds, and the
+   * speech detector's settings, which adapt to a quiet room and a soft voice.
+   * - micAdapt: the row's title;
+   * - micAdaptFloor / micAdaptVoice / micAdaptGain: short labels before a
+   *   value in dB ("room −58 dB", "voice −44 dB", "gain +12 dB");
+   * - micAdaptWhisper: a short tag shown while it is in its most sensitive
+   *   (whisper) setting, chosen by itself or forced in Settings.
+   */
+  micAdapt: string;
+  micAdaptFloor: string;
+  micAdaptVoice: string;
+  micAdaptGain: string;
+  micAdaptWhisper: string;
+  /** Its stages: the VAD's silence wait, STT, the page's own steps, the hub, the agent, the voice. */
+  latVad: string;
+  latStt: string;
+  latSend: string;
+  latHub: string;
+  latReply: string;
+  latVoice: string;
+  /**
+   * The menu's latency readout as two lines, each with its parts adding up
+   * to its total (seconds follow each label):
+   * - latSpeechLine: line 1, from the end of his speech to his text being sent;
+   * - latReplyLine: line 2, from his text sent to the reply starting to play;
+   * - latTotal: the overall time, end of speech to the reply's first sound;
+   * - latPause: waiting for silence to know he stopped speaking;
+   * - latRecog: speech recognition; latLocal / latCloud say where it ran
+   *   (on his own computer, or on the server), in parentheses after it;
+   * - latToAgent: the text reaching the agent (its "heard you" signal);
+   * - latAgent: the agent thinking and writing its reply;
+   * - latVoiceStart: from the reply arriving to its voice starting;
+   * - latOther: the remainder not measured separately.
+   */
+  latSpeechLine: string;
+  latReplyLine: string;
+  latTotal: string;
+  latPause: string;
+  latRecog: string;
+  latLocal: string;
+  latCloud: string;
+  latToAgent: string;
+  latAgent: string;
+  latVoiceStart: string;
+  latOther: string;
+  /**
+   * The menu's echo-cancellation switch (an A/B the owner flips): on, the
+   * mic is echo-cancelled and stays open while the agent speaks; off, raw
+   * capture, paused while the agent speaks. "Applies the next time the mic
+   * turns on."
+   */
+  aec: string;
+  aecHint: string;
+  /**
+   * A chip shown after a reload cut a reply off mid-read, when the browser
+   * needs a tap before it may speak (iOS/Android autoplay rules). Tapping
+   * it reads on from the sentence it stopped at.
+   */
+  resumeRead: string;
+  /**
+   * Ask cards (AskCard.tsx): the agent asks a question with options shown
+   * as tappable pills; the owner taps one. The question and option texts
+   * come from the agent. These are the card's own words:
+   * - askRecommended: a short tag after the option the agent recommends;
+   * - askSend: the button that sends the choices of a multi-question card;
+   * - askExpired: under a card past its deadline (it can no longer be answered);
+   * - askAnswered: under a card that has its answer (it is one-shot);
+   * - askSent: under a card just tapped here, until the answer is confirmed.
+   */
+  askRecommended: string;
+  askSend: string;
+  askExpired: string;
+  askAnswered: string;
+  askSent: string;
+  /**
+   * Compact mode (compact-view.ts), until the host passes localized ones
+   * (ChatStrings): the menu switch, and the compact line's tap hint.
+   */
+  compactIdle: string;
+  compactShowAll: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -28,6 +113,40 @@ export const UI_EN: UiStrings = {
   needsYou: "needs you",
   items: "items",
   polished: "Polished",
+  latency: "Latency, last voice line",
+  micAdapt: "Mic, adapting",
+  micAdaptFloor: "room",
+  micAdaptVoice: "voice",
+  micAdaptGain: "gain",
+  micAdaptWhisper: "whisper",
+  latencyNone: "Latency: no voice reply yet",
+  latVad: "silence",
+  latStt: "STT",
+  latSend: "send",
+  latHub: "hub",
+  latReply: "reply",
+  latVoice: "voice",
+  latSpeechLine: "Speech → text",
+  latReplyLine: "Reply",
+  latTotal: "Total",
+  latPause: "pause detection",
+  latRecog: "recognition",
+  latLocal: "local",
+  latCloud: "cloud",
+  latToAgent: "to agent",
+  latAgent: "agent",
+  latVoiceStart: "voice start",
+  latOther: "other",
+  aec: "Echo cancellation",
+  resumeRead: "Tap to continue reading",
+  askRecommended: "recommended",
+  askSend: "Send",
+  askExpired: "Expired",
+  askAnswered: "Answered",
+  askSent: "Sent",
+  aecHint: "On: you can talk over replies; on Android the speaker may sound like a call. Off: fuller sound, the mic pauses while replies play. Applies the next time the mic turns on.",
+  compactIdle: "Only the last message while not typing",
+  compactShowAll: "Show the whole chat",
 };
 
 export const UI_ZH: UiStrings = {
@@ -40,6 +159,86 @@ export const UI_ZH: UiStrings = {
   needsYou: "等你处理",
   items: "项",
   polished: "已润色",
+  latency: "延迟（上一句语音）",
+  micAdapt: "麦克风（自适应）",
+  micAdaptFloor: "环境",
+  micAdaptVoice: "语音",
+  micAdaptGain: "增益",
+  micAdaptWhisper: "耳语",
+  latencyNone: "延迟：还没有语音回复",
+  latVad: "静音等待",
+  latStt: "转写",
+  latSend: "发送",
+  latHub: "传输",
+  latReply: "回复",
+  latVoice: "朗读",
+  latSpeechLine: "语音 → 文字",
+  latReplyLine: "回复",
+  latTotal: "总计",
+  latPause: "停顿检测",
+  latRecog: "识别",
+  latLocal: "本地",
+  latCloud: "云端",
+  latToAgent: "送达助手",
+  latAgent: "助手",
+  latVoiceStart: "开始朗读",
+  latOther: "其他",
+  aec: "回声消除",
+  resumeRead: "点按继续朗读",
+  askRecommended: "推荐",
+  askSend: "发送",
+  askExpired: "已过期",
+  askAnswered: "已回答",
+  askSent: "已发送",
+  aecHint: "开：回复朗读时也能插话；安卓上扬声器可能变成通话音质。关：音质更好，朗读回复时麦克风暂停。下次打开麦克风时生效。",
+  compactIdle: "不打字时只显示最后一条消息",
+  compactShowAll: "显示完整聊天",
+};
+
+export const UI_JA: UiStrings = {
+  stateTree: "状態ツリー",
+  closeTree: "状態ツリーを閉じる",
+  noTreeSource: "状態ツリーのソースがありません",
+  lastDone: "最近の完了",
+  nowDoing: "進行中",
+  upNext: "次",
+  needsYou: "あなた待ち",
+  items: "件",
+  polished: "整えました",
+  latency: "遅延（直前の音声）",
+  micAdapt: "マイク（自動調整）",
+  micAdaptFloor: "周囲",
+  micAdaptVoice: "声",
+  micAdaptGain: "ゲイン",
+  micAdaptWhisper: "ささやき",
+  latencyNone: "遅延：まだ音声の返信がありません",
+  latVad: "無音待ち",
+  latStt: "文字起こし",
+  latSend: "送信",
+  latHub: "転送",
+  latReply: "返信",
+  latVoice: "読み上げ",
+  latSpeechLine: "音声 → 文字",
+  latReplyLine: "返信",
+  latTotal: "合計",
+  latPause: "無音検出",
+  latRecog: "認識",
+  latLocal: "ローカル",
+  latCloud: "クラウド",
+  latToAgent: "エージェントへ",
+  latAgent: "エージェント",
+  latVoiceStart: "読み上げ開始",
+  latOther: "その他",
+  aec: "エコーキャンセル",
+  resumeRead: "タップして読み上げを続ける",
+  askRecommended: "おすすめ",
+  askSend: "送信",
+  askExpired: "期限切れ",
+  askAnswered: "回答済み",
+  askSent: "送信しました",
+  aecHint: "オン：返事の読み上げ中も話しかけられます。Android ではスピーカーが通話の音質になることがあります。オフ：音質が良く、読み上げ中はマイクが一時停止します。次にマイクをオンにしたときから有効。",
+  compactIdle: "入力していないときは最後のメッセージだけ表示",
+  compactShowAll: "チャット全体を表示",
 };
 
 /** The tree's strings in Chinese (StateTree.tsx TreeStrings). */
@@ -74,8 +273,14 @@ export function isZh(lang: string | null | undefined = globalThis.document?.docu
   return /^zh\b/i.test(lang ?? "");
 }
 
-/** The widget's strings for the page's language. */
-export const uiStrings = (lang?: string | null): UiStrings => (isZh(lang) ? UI_ZH : UI_EN);
+/** The page's language is Japanese. */
+export function isJa(lang: string | null | undefined = globalThis.document?.documentElement.lang) {
+  return /^ja\b/i.test(lang ?? "");
+}
+
+/** The widget's strings for the page's language (zh, ja, else English). */
+export const uiStrings = (lang?: string | null): UiStrings =>
+  isZh(lang) ? UI_ZH : isJa(lang) ? UI_JA : UI_EN;
 
 /** The tree's defaults for the page's language, under the host's own. */
 export const treeDefaults = (lang?: string | null): Partial<TreeStrings> =>
@@ -83,3 +288,165 @@ export const treeDefaults = (lang?: string | null): Partial<TreeStrings> =>
 
 /** Opacity blink for in-progress items (globals.css lk-blink: 1 → 0.35 → 1, 1.6 s). */
 export const BLINK = "animate-lk-blink motion-reduce:animate-none";
+
+/** The mic's local-STT dot (MicButton.tsx, docs/local-stt.md): what each state says. */
+export type LocalSttStrings = { ready: string; connecting: string; down: string };
+const LOCAL_STT: Record<"en" | "zh" | "ja", LocalSttStrings> = {
+  en: {
+    ready: "Local speech model connected",
+    connecting: "Connecting to the local speech model…",
+    down: "Local speech model unreachable: using the cloud",
+  },
+  zh: {
+    ready: "已连接本地语音模型",
+    connecting: "正在连接本地语音模型…",
+    down: "本地语音模型连不上，改用云端识别",
+  },
+  ja: {
+    ready: "ローカル音声モデルに接続済み",
+    connecting: "ローカル音声モデルに接続中…",
+    down: "ローカル音声モデルに接続できません。クラウドで認識します",
+  },
+};
+export function localSttStrings(
+  lang: string | null | undefined = globalThis.document?.documentElement.lang,
+): LocalSttStrings {
+  if (isZh(lang)) return LOCAL_STT.zh;
+  if (/^ja\b/i.test(lang ?? "")) return LOCAL_STT.ja;
+  return LOCAL_STT.en;
+}
+
+/**
+ * The mic's wake-word state (MicButton.tsx, docs/wake-word.md).
+ *
+ * Context for translators: "Linky" is the learning partner's name and the
+ * word the user says to wake it; keep it in Latin letters in every language.
+ * Passive = the mic is on but only waits for that word, on the device;
+ * nothing is transcribed or sent until it hears it.
+ */
+export type WakeStrings = {
+  /** Under the mic icon while passive (at most 6 characters): the word it waits for. */
+  badge: string;
+  /** The mic button's label and tooltip while passive: what to do to talk again. */
+  passive: string;
+  /** The same while the on-device spotter downloads (the first time only, ~25 MB). */
+  loading: string;
+  /** The note when the spotter could not load; the mic went back to hearing everything. */
+  failed: string;
+  /** The note when the first download waits for Wi-Fi (on cellular data or Data Saver). */
+  wifi: string;
+};
+const WAKE: Record<"en" | "zh" | "ja", WakeStrings> = {
+  en: {
+    badge: "Linky?",
+    passive: "Waiting for “Linky”: say it, then talk, or tap",
+    loading: "Getting the wake word ready…",
+    failed: "Wake word unavailable: listening to everything",
+    wifi: "Wake word downloads on Wi-Fi (25 MB): listening to everything",
+  },
+  zh: {
+    badge: "Linky?",
+    passive: "等你叫“Linky”：叫一声再说，或点一下",
+    loading: "正在准备唤醒词…",
+    failed: "唤醒词不可用，照常听所有声音",
+    wifi: "唤醒词需连 Wi-Fi 下载（25 MB），先照常听所有声音",
+  },
+  ja: {
+    badge: "Linky?",
+    passive: "「Linky」待ち：呼んでから話すか、タップしてください",
+    loading: "ウェイクワードを準備中…",
+    failed: "ウェイクワードが使えません。すべて聞き取ります",
+    wifi: "ウェイクワードは Wi-Fi でダウンロードします（25 MB）。今はすべて聞き取ります",
+  },
+};
+export function wakeStrings(
+  lang: string | null | undefined = globalThis.document?.documentElement.lang,
+): WakeStrings {
+  return isZh(lang) ? WAKE.zh : isJa(lang) ? WAKE.ja : WAKE.en;
+}
+
+/**
+ * The Learning Partner on another site (the userscript, embed/; docs/dev-debug-widget.md
+ * "On every site"). Picked by the browser's own language (navigator.language),
+ * not the site's: the site is someone else's page in any language.
+ *
+ * Context for translators: these show in one small glass note in the corner
+ * of a third-party website (GitHub, a news site), instead of the chat, when
+ * the chat cannot run safely there. `{name}` is the feature's localized name
+ * (Learning Partner / 学习伙伴); keep it. "lianki.com" is a domain: keep it.
+ */
+export type EmbedStrings = {
+  /** The note when the userscript manager runs Lianki inside the page's own JavaScript, where the site's scripts could read the chat: a full sentence saying it is off here, and why. */
+  pageRealm: string;
+  /** The note when this site's Content-Security-Policy blocks the connection to Lianki's server: a full sentence. */
+  connect: string;
+  /** The note when this site's Content-Security-Policy blocks the chat's styles (it would render unstyled): a full sentence. */
+  styles: string;
+  /** The note when this site's policy (CSP or Trusted Types) blocks running the chat's code: a full sentence. */
+  script: string;
+  /** The note when the chat's code could not be downloaded or failed to start: a full sentence. */
+  load: string;
+  /** A link under the note that opens lianki.com in a new tab, where the chat works: imperative, short. */
+  openLianki: string;
+  /** The × button's accessible label and tooltip: hides the note and the chat on this website only (until re-enabled). Imperative. */
+  hideHere: string;
+  /** Shown in place of the chat's input box on a site that blocks the private typing frame: replies still show, but typing here could be read by the site, so it is off. A full sentence. */
+  readOnly: string;
+  /** The link after `readOnly` that opens lianki.com in a new tab, to reply there: imperative, short. */
+  replyOnLianki: string;
+  /** The tooltip and accessible label of the small grip above the chat frame: drag to move it, double-click to minimize or restore. */
+  grip: string;
+};
+export const EMBED_STRINGS: Record<"en" | "zh" | "ja", EmbedStrings> = {
+  en: {
+    pageRealm:
+      "Your {name} is off on this site: your userscript manager runs Lianki inside the page, where the site's own scripts could read the chat.",
+    connect: "This site's security policy blocks the connection to your {name}.",
+    styles: "This site's security policy blocks your {name}'s styles.",
+    script: "This site's security policy blocks your {name}'s code.",
+    load: "Your {name} could not load on this page.",
+    openLianki: "Open on lianki.com",
+    hideHere: "Hide on this site",
+    readOnly: "This site blocks private typing, so replies only show here.",
+    replyOnLianki: "Reply on lianki.com",
+    grip: "Drag to move; double-click to minimize",
+  },
+  zh: {
+    pageRealm:
+      "{name}在本网站已关闭：你的脚本管理器把 Lianki 运行在网页自身的环境里，网站的脚本可能读到聊天内容。",
+    connect: "本网站的安全策略阻止了与{name}的连接。",
+    styles: "本网站的安全策略阻止了{name}的样式。",
+    script: "本网站的安全策略阻止了{name}的代码运行。",
+    load: "{name}在此页面加载失败。",
+    openLianki: "在 lianki.com 打开",
+    hideHere: "在本网站隐藏",
+    readOnly: "本网站不允许私密输入，这里只显示回复。",
+    replyOnLianki: "去 lianki.com 回复",
+    grip: "拖动可移动；双击可最小化",
+  },
+  ja: {
+    pageRealm:
+      "このサイトでは{name}をオフにしています。スクリプトマネージャーが Lianki をページ内で実行しており、サイトのスクリプトにチャットを読まれるおそれがあります。",
+    connect: "このサイトのセキュリティポリシーにより、{name}に接続できません。",
+    styles: "このサイトのセキュリティポリシーにより、{name}のスタイルが読み込めません。",
+    script: "このサイトのセキュリティポリシーにより、{name}のコードを実行できません。",
+    load: "このページでは{name}を読み込めませんでした。",
+    openLianki: "lianki.com で開く",
+    hideHere: "このサイトでは非表示",
+    readOnly: "このサイトでは安全に入力できないため、返信の表示のみです。",
+    replyOnLianki: "lianki.com で返信",
+    grip: "ドラッグで移動、ダブルクリックで最小化",
+  },
+};
+/** The feature's name in the same three languages (docs/dev-debug-widget.md, "Naming"). */
+export const EMBED_NAME: Record<"en" | "zh" | "ja", string> = {
+  en: "Learning Partner",
+  zh: "学习伙伴",
+  ja: "学習パートナー",
+};
+/** The browser's language (not the site's): en, zh or ja. */
+export function embedLang(
+  lang: string | null | undefined = globalThis.navigator?.language,
+): "en" | "zh" | "ja" {
+  return isZh(lang) ? "zh" : isJa(lang) ? "ja" : "en";
+}

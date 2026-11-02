@@ -14,6 +14,8 @@
  * on the deployed app even though `BETTER_AUTH_BASE_URL` is set there too.
  */
 
+import { devWholePageOrigin } from "./dev-whole-page";
+
 export const PRODUCTION_ORIGINS = [
   "https://lianki.com",
   "https://www.lianki.com",
@@ -35,7 +37,11 @@ export function localQaOrigin(baseUrl: string | undefined | null): string[] {
   }
 }
 
-/** Deployed origins plus the QA one, de-duplicated and order-stable. */
+/**
+ * Deployed origins plus the QA one, de-duplicated and order-stable, plus the
+ * whole-page dev server's LAN origin while (and only while) its launcher runs
+ * `next dev` — lib/dev-whole-page.ts.
+ */
 export function trustedOrigins(baseUrl = process.env.BETTER_AUTH_BASE_URL): string[] {
-  return [...new Set([...PRODUCTION_ORIGINS, ...localQaOrigin(baseUrl)])];
+  return [...new Set([...PRODUCTION_ORIGINS, ...localQaOrigin(baseUrl), ...devWholePageOrigin()])];
 }

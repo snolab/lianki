@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useIntlayer } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import Globe3D from "./Globe3D";
 
@@ -89,6 +90,8 @@ type TranslatedContent = {
 type CellData = Record<string, TranslatedContent>; // langCode -> content
 
 export default function PolyglotPage() {
+  // Only the save button reads the dictionary so far; the rest is still inline English.
+  const { saving, saveToCards: saveToCardsLabel } = useIntlayer("polyglot-page");
   const [isSaving, setIsSaving] = useState(false);
   const [motherTongue, setMotherTongue] = useState<Language | null>(null);
   const [selectedLanguages, setSelectedLanguages] = useState<Language[]>([]);
@@ -589,7 +592,7 @@ export default function PolyglotPage() {
               disabled={isSaving || Object.keys(matrix).length === 0}
               className="flex-1 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSaving ? "Saving..." : "Save to Lianki Cards"}
+              {isSaving ? saving : saveToCardsLabel}
             </button>
           </div>
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { notePrefWrite, PREF_APPLIED_EVENT } from "@lianki/ui-state";
 
 /** Paper skins (紙紋) — see the `data-paper` rules in app/globals.css. */
 const SKINS = [
@@ -10,12 +11,20 @@ const SKINS = [
   { id: "e", name: "手漉紙", hint: "Handmade, lit relief" },
 ] as const;
 
-/** localStorage key, read before first paint by the inline script in app/layout.tsx. */
+/**
+ * localStorage key, read before first paint by the inline script in
+ * app/layout.tsx. Synced with the account (docs/prefs-sync.md, `ui.paper`).
+ */
 export const PAPER_KEY = "lk:paper";
 
 export function PaperSkinPicker() {
   const [skin, setSkin] = useState("b");
-  useEffect(() => setSkin(document.documentElement.dataset.paper || "b"), []);
+  useEffect(() => {
+    const read = () => setSkin(document.documentElement.dataset.paper || "b");
+    read();
+    window.addEventListener(PREF_APPLIED_EVENT, read);
+    return () => window.removeEventListener(PREF_APPLIED_EVENT, read);
+  }, []);
 
   const pick = (id: string) => {
     setSkin(id);
@@ -23,6 +32,7 @@ export function PaperSkinPicker() {
     try {
       localStorage.setItem(PAPER_KEY, id);
     } catch {}
+    notePrefWrite();
   };
 
   return (

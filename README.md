@@ -2,7 +2,7 @@
 
 **Turn any webpage into a flashcard you'll actually remember.**
 ；
-Lianki is a spaced repetition learning system that helps you retain what you read online. Instead of bookmarking pages you'll never revisit, Lianki schedules them for review using the scientifically-proven FSRS algorithm — showing you content right before you'd forget it.
+Lianki is a spaced repetition learning system that helps you retain what you read online. Its page-card feature is called **LiCards** (链卡 in Chinese). Instead of bookmarking pages you'll never revisit, Lianki schedules them for review using the scientifically-proven FSRS algorithm — showing you content right before you'd forget it.
 
 🌐 **Try it now:** [lianki.com](https://lianki.com)
 
@@ -29,11 +29,11 @@ Apps like Anki have proven this works — but Lianki removes the friction. No ca
 
 ### 1. Install the Userscript
 
-Lianki uses a browser userscript (Tampermonkey/Violentmonkey) to add a floating button on every page you visit.
+LiCards uses a browser userscript (Tampermonkey/Violentmonkey) to add a floating button on every page you visit.
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) (Chrome/Edge/Safari) or [Violentmonkey](https://violentmonkey.github.io/) (Firefox/Chrome)
 2. Visit [lianki.com/lianki.user.js](https://lianki.com/lianki.user.js) to install the script
-3. You'll see a small Lianki button on every webpage
+3. You'll see a small LiCards button (🔖) on every webpage
 
 ### 2. Add Cards
 

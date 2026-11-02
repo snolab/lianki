@@ -1,6 +1,7 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys, flattenContext, type KeyContext } from "@/lib/i18n-context";
 
-const selfIntroPageContent = {
+const dictionary = {
   key: "self-intro-page",
   content: {
     metadata: {
@@ -587,22 +588,22 @@ const selfIntroPageContent = {
         mr: "सेव्ह करत आहे...",
       }),
       saveToCards: t({
-        en: "Save to Lianki Cards",
-        zh: "保存到 Lianki 卡片",
-        ja: "Lianki カードに保存",
-        ko: "Lianki 카드에 저장",
-        hi: "Lianki कार्ड में सहेजें",
-        es: "Guardar en Tarjetas de Lianki",
-        fr: "Enregistrer dans les Cartes Lianki",
-        ar: "حفظ في بطاقات Lianki",
-        bn: "Lianki কার্ডে সংরক্ষণ করুন",
-        pt: "Salvar nos Cartões Lianki",
-        ru: "Сохранить в Карточки Lianki",
-        ur: "Lianki کارڈز میں محفوظ کریں",
-        id: "Simpan ke Kartu Lianki",
-        de: "Zu Lianki-Karten Speichern",
-        sw: "Hifadhi kwenye Kadi za Lianki",
-        mr: "Lianki कार्ड्समध्ये सेव्ह करा",
+        en: "Save to LiCards",
+        zh: "保存到链卡",
+        ja: "LiCards に保存",
+        ko: "LiCards에 저장",
+        hi: "LiCards में सहेजें",
+        es: "Guardar en LiCards",
+        fr: "Enregistrer dans LiCards",
+        ar: "حفظ في LiCards",
+        bn: "LiCards-এ সংরক্ষণ করুন",
+        pt: "Salvar no LiCards",
+        ru: "Сохранить в LiCards",
+        ur: "LiCards میں محفوظ کریں",
+        id: "Simpan ke LiCards",
+        de: "In LiCards speichern",
+        sw: "Hifadhi kwenye LiCards",
+        mr: "LiCards मध्ये सेव्ह करा",
       }),
     },
     errors: {
@@ -682,6 +683,95 @@ const selfIntroPageContent = {
       }),
     },
   },
-} satisfies DeclarationContent;
+};
 
-export default selfIntroPageContent;
+const context: KeyContext<typeof dictionary.content> = {
+  metadata: {
+    title:
+      "Browser tab and search-result title of the /self-intro page. 'Self-Introduction Practice' + ' - Lianki'; Lianki is the app name, never translated.",
+    description:
+      "Search-result description of the /self-intro page: write a personal self-introduction in the language being learned, with AI-generated audio.",
+  },
+  selectLanguage: {
+    heading:
+      "Main heading of the first /self-intro step, before a language is picked. Imperative phrase: write your own self-introduction.",
+    description:
+      "Sentence under that heading, above the language buttons: pick the language to introduce yourself in. Ends with a colon.",
+  },
+  interview: {
+    learning:
+      "Line at the top of the /self-intro questions: {lang} is the language name in that language, {name} its English name. Keep both placeholders and the parentheses.",
+    changeLanguage:
+      "Button at the top of the /self-intro questions that goes back to picking a language. Imperative phrase.",
+    questionProgress:
+      "Progress line on /self-intro: question {current} of {total}. Keep both placeholders.",
+    showExample:
+      "Expandable link under a /self-intro question that reveals a sample answer. Imperative phrase.",
+    generated:
+      "Label above the sentence AI wrote in the target language from the user's answer on /self-intro. Past participle with a colon.",
+    edit: "Small link on /self-intro that lets the user edit the generated sentence. Imperative verb.",
+    regenerating:
+      "Text on a /self-intro button while the audio (or sentence) is being made again. Progressive verb with ellipsis.",
+    regenerateVoice:
+      "Button on /self-intro after editing a sentence: make its spoken audio again. Imperative phrase; voice means the recording.",
+    cancel:
+      "Button on /self-intro that drops the edit of a generated sentence. Imperative verb, as in Cancel.",
+    showAdvanced:
+      "Toggle on /self-intro that shows voice and speed settings for the audio. Imperative phrase.",
+    hideAdvanced:
+      "Toggle on /self-intro that hides the voice and speed settings again. Imperative phrase.",
+    voice: "Label of the menu on /self-intro that picks the text-to-speech voice. One noun.",
+    speechRate:
+      "Label of the audio speed slider on /self-intro; {speed} is the speed factor, e.g. 1.0. Keep {speed}x.",
+    slow: "End label of the speed slider on /self-intro: the slowest speed. Keep (0.25x).",
+    normal: "Middle label of the speed slider on /self-intro: normal speed. Keep (1.0x).",
+    fast: "End label of the speed slider on /self-intro: the fastest speed. Keep (2.0x).",
+    back: "Button on /self-intro that goes to the previous question. One word.",
+    generating:
+      "Text on the generate button on /self-intro while AI writes the sentence. Progressive verb with ellipsis.",
+    generate:
+      "Button on /self-intro that has AI turn the user's answer into a sentence in the target language. Imperative verb.",
+    nextQuestion: "Button on /self-intro that moves on to the next question. Imperative phrase.",
+    reviewAll:
+      "Button on the last /self-intro question that opens the review of all answers. Imperative phrase.",
+    yourSelfIntro:
+      "Heading on /self-intro above the sentences written so far. Noun phrase with a colon.",
+    saveAndRegenerate:
+      "Button on /self-intro that saves an edited sentence and makes its audio again. Two imperative verbs.",
+  },
+  review: {
+    heading:
+      "Heading of the /self-intro review step, which lists every question with its sentence. Imperative phrase.",
+    yourAnswer:
+      "Line under a question in the /self-intro review; {answer} is what the user typed. Keep {answer}.",
+    saveAndRegenerateVoice:
+      "Button in the /self-intro review that saves an edited sentence and makes its audio again. Imperative phrase.",
+    editAnswers:
+      "Button in the /self-intro review that goes back to the questions to change answers. Imperative phrase.",
+    saving:
+      "Text on the save button in the /self-intro review while the cards are being saved. Progressive verb with ellipsis.",
+    saveToCards:
+      "Main button at the end of the /self-intro review that saves each sentence as a review card in LiCards. LiCards is a product name: never translate it; keep LiCards in every language except Chinese, which uses 链卡. Imperative phrase.",
+  },
+  errors: {
+    failedToGenerate:
+      "Alert on /self-intro when AI could not write the sentence. Short sentence asking to try again.",
+    failedToRegenerateVoice:
+      "Alert on /self-intro when the audio could not be made again. Short sentence asking to try again.",
+    failedToSaveCards:
+      "Alert on /self-intro when saving the sentences as cards failed. Short sentence asking to try again.",
+  },
+  success: {
+    cardsSaved:
+      "Alert on /self-intro after the sentences were saved as review cards. Short happy sentence.",
+  },
+};
+
+export default {
+  ...dictionary,
+  title: "/self-intro — self-introduction practice",
+  description: describeKeys(
+    "The /self-intro page: the user answers questions about themselves, AI writes each answer as a sentence in the target language with audio, and the result is saved as review cards. Lianki and LiCards (zh: 链卡) are product names, not translated.",
+    flattenContext(context),
+  ),
+} satisfies DeclarationContent;

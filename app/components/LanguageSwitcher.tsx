@@ -1,17 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { usePathname } from "next/navigation";
-import { LOCALE_PARAM, isAppRoute } from "@/lib/app-locale";
+import { notePrefWrite } from "@lianki/ui-state";
+import { LOCALE_PARAM, LOCALE_PICK_KEY, isAppRoute } from "@/lib/app-locale";
 import { LANGUAGES, isSupportedLocale } from "@/lib/constants";
 
 export function LanguageSwitcher() {
   const [isOpen, setIsOpen] = useState(false);
+  // The portal leaves the shell's <div lang dir>; the sheet carries them over.
+  const [scope, setScope] = useState<{ lang?: string; dir?: string }>({});
   const [browserLangs, setBrowserLangs] = useState<string[]>([]);
   const { locale: currentLocale } = useLocale();
   const text = useIntlayer("language-switcher");
   const pathname = usePathname();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
 
   // Get browser's preferred languages
   useEffect(() => {
@@ -22,6 +28,21 @@ export function LanguageSwitcher() {
     }
   }, []);
 
+  // Modal: Escape closes it, focus moves in on open and back to the trigger on close.
+  useEffect(() => {
+    if (!isOpen) return;
+    const trigger = triggerRef.current;
+    closeRef.current?.focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      trigger?.focus({ preventScroll: true });
+    };
+  }, [isOpen]);
+
   const handleLanguageSelect = (code: string) => {
     // Remember the choice for a year: NEXT_LOCALE for the prefixed landing/blog
     // pages, `lang` for the app routes, which are otherwise bare URLs.
@@ -30,6 +51,12 @@ export function LanguageSwitcher() {
     for (const name of ["NEXT_LOCALE", LOCALE_PARAM]) {
       document.cookie = `${name}=${code}; path=/; expires=${expires.toUTCString()}; SameSite=Lax`;
     }
+    // A pick by hand follows the account (docs/prefs-sync.md, `ui.locale`);
+    // a detected language never does.
+    try {
+      localStorage.setItem(LOCALE_PICK_KEY, code);
+    } catch {}
+    notePrefWrite();
 
     // App routes: an explicit switch is the one time `?lang=` goes in the URL.
     if (isAppRoute(pathname)) {
@@ -51,13 +78,135 @@ export function LanguageSwitcher() {
 
   const isSupported = isSupportedLocale;
 
+  // The picker is portalled to <body>. Rendered in place it sat inside the glass
+  // header, whose backdrop-filter makes it the containing block of a fixed
+  // child: the "full-screen" overlay was laid out against the 56px header and
+  // the panel, centred on it, ran off the top of a phone screen (owner,
+  // 2026-10-31, iPhone 414x721). Placement and sizing: .lk-lang-sheet.
+  const picker = (
+    <div
+      lang={scope.lang}
+      dir={scope.dir}
+      className="lk-lang-backdrop fixed inset-0 z-[70]"
+      onClick={() => setIsOpen(false)}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lk-lang-title"
+        className="lk-lang-sheet lk-glass fixed flex flex-col rounded-2xl border border-[var(--glass-line)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--glass-line)] px-4 py-2">
+          <h2 id="lk-lang-title" className="text-lg font-semibold">
+            {text.title}
+          </h2>
+          <button
+            ref={closeRef}
+            onClick={() => setIsOpen(false)}
+            className="-me-2 flex min-h-10 min-w-10 items-center justify-center rounded-lg opacity-70 hover:opacity-100"
+            aria-label={text.close.value}
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+
+        {/* Many locales (16): the list scrolls inside the sheet, never the page. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {LANGUAGES.map((lang) => {
+              const isCurrent = lang.code === currentLocale;
+              const isBrowserPreferred = browserLangs.includes(lang.code);
+              const supported = isSupported(lang.code);
+
+              return (
+                <button
+                  key={lang.code}
+                  data-lang={lang.code}
+                  onClick={() => handleLanguageSelect(lang.code)}
+                  disabled={!supported}
+                  aria-current={isCurrent ? "true" : undefined}
+                  className={`
+                    lk-lang-option min-h-11 text-left px-3 py-2 rounded-lg border transition-colors
+                    ${
+                      isCurrent
+                        ? "lk-lang-current border-2"
+                        : supported
+                          ? "border-[var(--glass-line)]"
+                          : "opacity-50 cursor-not-allowed border-[var(--glass-line)]"
+                    }
+                    ${isBrowserPreferred ? "lk-lang-preferred" : ""}
+                  `}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className={`${isCurrent ? "font-bold" : "font-medium"}`}>
+                        {lang.nativeName}
+                      </div>
+                      <div className="text-sm opacity-70">{lang.name}</div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      {isCurrent && (
+                        <span className="lk-lang-badge-current text-xs px-2 py-0.5 rounded-full">
+                          {text.current}
+                        </span>
+                      )}
+                      {isBrowserPreferred && !isCurrent && (
+                        <span className="lk-lang-badge-preferred text-xs px-2 py-0.5 rounded-full">
+                          {text.preferred}
+                        </span>
+                      )}
+                      {!supported && (
+                        <span className="text-xs px-2 py-0.5 rounded-full border border-[var(--glass-line)]">
+                          Coming Soon
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 text-xs opacity-70">
+            <p>
+              <span className="lk-lang-dot-preferred inline-block w-3 h-3 rounded-full me-1" />
+              Green ring: Your browser's preferred languages
+            </p>
+            <p className="mt-1">
+              <span className="lk-lang-dot-current inline-block w-3 h-3 rounded-full me-1" />
+              Blue background: Currently selected
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <button
-        onClick={() => setIsOpen(true)}
+        ref={triggerRef}
+        onClick={(e) => {
+          const t = e.currentTarget;
+          setScope({
+            lang: t.closest("[lang]")?.getAttribute("lang") ?? undefined,
+            dir: t.closest("[dir]")?.getAttribute("dir") ?? undefined,
+          });
+          setIsOpen(true);
+        }}
         // A 40px hit area around the 20px glyph; -m-2.5 keeps the header compact.
         className="text-lg font-medium hover:underline flex items-center gap-2 min-h-10 min-w-10 justify-center -m-2.5 p-2.5"
         aria-label={text.switchLanguage.value}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
         title={text.switchLanguage.value}
       >
         <svg
@@ -79,104 +228,7 @@ export function LanguageSwitcher() {
         </span>
       </button>
 
-      {/* Modal */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
-          onClick={() => setIsOpen(false)}
-        >
-          <div
-            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold">{text.title}</h2>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 p-2 -m-2"
-                aria-label={text.close.value}
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <div className="p-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {LANGUAGES.map((lang) => {
-                  const isCurrent = lang.code === currentLocale;
-                  const isBrowserPreferred = browserLangs.includes(lang.code);
-                  const supported = isSupported(lang.code);
-
-                  return (
-                    <button
-                      key={lang.code}
-                      onClick={() => handleLanguageSelect(lang.code)}
-                      disabled={!supported}
-                      className={`
-                        text-left p-3 rounded-lg transition-colors
-                        ${
-                          isCurrent
-                            ? "bg-blue-100 dark:bg-blue-900 border-2 border-blue-500"
-                            : supported
-                              ? "hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600"
-                              : "opacity-50 cursor-not-allowed border border-gray-200 dark:border-gray-600"
-                        }
-                        ${isBrowserPreferred ? "ring-2 ring-green-400 dark:ring-green-600" : ""}
-                      `}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className={`${isCurrent ? "font-bold" : "font-medium"}`}>
-                            {lang.nativeName}
-                          </div>
-                          <div className="text-sm text-gray-600 dark:text-gray-400">
-                            {lang.name}
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          {isCurrent && (
-                            <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">
-                              {text.current}
-                            </span>
-                          )}
-                          {isBrowserPreferred && !isCurrent && (
-                            <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">
-                              {text.preferred}
-                            </span>
-                          )}
-                          {!supported && (
-                            <span className="text-xs bg-gray-400 text-white px-2 py-0.5 rounded-full">
-                              Coming Soon
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-                <p>
-                  <span className="inline-block w-3 h-3 rounded-full bg-green-500 mr-1" />
-                  Green ring: Your browser's preferred languages
-                </p>
-                <p className="mt-1">
-                  <span className="inline-block w-3 h-3 rounded-full bg-blue-500 mr-1" />
-                  Blue background: Currently selected
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {isOpen && createPortal(picker, document.body)}
     </>
   );
 }

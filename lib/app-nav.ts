@@ -24,7 +24,9 @@ export type NavItem = {
 
 // Home is navigation and onboarding; word lists are the main path. The
 // page-card features (immersion sites, reviewing pages, the card list with
-// its userscript install) sit under "Advanced".
+// its userscript install) sit under the "advanced" group, which the UI names
+// LiCards (zh: 链卡) — the product name of turning web pages into cards. The
+// group key stays "advanced".
 export const APP_NAV: NavItem[] = [
   { key: "home", href: "/home", icon: "house", group: "main" },
   { key: "words", href: "/words", icon: "textAa", group: "main" },

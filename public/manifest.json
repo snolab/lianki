@@ -29,5 +29,10 @@
     }
   ],
   "id": "/",
-  "scope": "/"
+  "scope": "/",
+  "share_target": {
+    "action": "/add-note",
+    "method": "GET",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  }
 }

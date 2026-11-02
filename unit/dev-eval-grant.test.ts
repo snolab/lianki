@@ -6,6 +6,7 @@ import {
   chatClose,
   chatStep,
   evalStep,
+  freshenedGrantFile,
   grantFileBody,
   readGrantFile,
   serveClose,
@@ -24,6 +25,26 @@ describe("eval.ts grant files", () => {
     expect(readGrantFile("{", 0)).toBeUndefined();
     expect(readGrantFile('{"token":""}', 0)).toBeUndefined();
     expect(readGrantFile('{"token":"old"}', 0)).toBe("old");
+  });
+
+  it("a renewal (or a resume's until) moves the same token's file forward, nothing else", () => {
+    const body = grantFileBody("t1", 10_000);
+    const renewed = freshenedGrantFile(body, "t1", { type: "renewed", until: 20_000 });
+    expect(renewed).toBe(grantFileBody("t1", 20_000));
+    expect(readGrantFile(renewed, 15_000)).toBe("t1");
+    expect(freshenedGrantFile(body, "t1", { type: "approved", scope: "eval", until: 20_000 })).toBe(
+      grantFileBody("t1", 20_000),
+    );
+    // Another token's file, a chat approval, no until, an earlier until, no file: untouched.
+    expect(freshenedGrantFile(body, "t2", { type: "renewed", until: 20_000 })).toBeUndefined();
+    expect(
+      freshenedGrantFile(body, "t1", { type: "approved", scope: "chat", until: 20_000 }),
+    ).toBeUndefined();
+    expect(freshenedGrantFile(body, "t1", { type: "renewed" })).toBeUndefined();
+    expect(freshenedGrantFile(body, "t1", { type: "renewed", until: 9_000 })).toBeUndefined();
+    expect(freshenedGrantFile(undefined, "t1", { type: "renewed", until: 20_000 })).toBeUndefined();
+    expect(freshenedGrantFile("{", "t1", { type: "renewed", until: 20_000 })).toBeUndefined();
+    expect(freshenedGrantFile(body, "t1", { type: "eval", until: 20_000 })).toBeUndefined();
   });
 });
 

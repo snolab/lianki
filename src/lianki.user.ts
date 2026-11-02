@@ -1,5 +1,8 @@
 // ==UserScript==
 // @name        Lianki
+// @name:en     Lianki LiCards
+// @name:zh     链卡 Lianki
+// @name:zh-CN  链卡 Lianki
 // @namespace   Violentmonkey Scripts
 // @match       *://*/*
 // @grant       GM_xmlhttpRequest
@@ -7,15 +10,23 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.20
+// @version     2.24.25
 // @author      lianki.com
-// @description Lianki spaced repetition — offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
+// @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
+// @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
+// @description:zh-CN 链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
 // @run-at      document-end
 // @downloadURL https://lianki.com/lianki.user.js
 // @updateURL   https://lianki.com/lianki.meta.js
 // @connect     lianki.com
 // @connect     www.lianki.com
 // ==/UserScript==
+
+// The feature is named LiCards (zh: 链卡) — docs/i18n.md, "Product names". The
+// bare @name stays "Lianki": a script manager identifies an installed script by
+// @name + @namespace, so renaming it would make a fresh install from lianki.com
+// a second copy beside the old one. The localized @name:* lines change only
+// what the manager displays.
 
 import { fsrs, generatorParameters, Rating } from "ts-fsrs";
 // Watch-time accounting is a grow-only CRDT whose merge rules the server relies
@@ -38,12 +49,15 @@ import {
 } from "@lianki/core/watchStats";
 import { heatmapBuckets, rateColor, videoDifficulty } from "@lianki/core/difficulty";
 import { dueWindow, isProvablyDeleted } from "@lianki/core/duePrune";
+import { mirrorPartnerSwitch, startPartner } from "./partner";
 
 declare const GM_xmlhttpRequest: Function;
 declare const GM_setValue: (key: string, value: any) => void;
 declare const GM_getValue: (key: string, defaultValue?: any) => any;
 declare const GM_deleteValue: (key: string) => void;
 declare const GM_info: { script: { version: string } };
+/** Set by the dev loader's server only: where it serves the partner's script. */
+declare const __LK_PARTNER_SRC__: string | undefined;
 
 if (window.self === window.top) {
   globalThis.unload_Lianki?.();
@@ -931,6 +945,8 @@ function main() {
   // Match www too — it 308s to apex, but a stale tab can still be sitting on it.
   const originHost = new URL(ORIGIN).hostname;
   if (location.hostname === originHost || location.hostname === "www." + originHost) {
+    // This browser's debug-mode switch is the partner's opt-in on other sites.
+    mirrorPartnerSwitch(localStorage, GM_setValue);
     setTimeout(() => syncToSiteDB(), 500);
     return () => {};
   }
@@ -1357,7 +1373,7 @@ function main() {
     };
 
     const slowerBtn = makeBtn("⏪", "Slower (,/v)", () => pardon(-3, 0.7));
-    const liankiBtn = makeBtn("🔖", "Lianki (Alt+F)", () =>
+    const liankiBtn = makeBtn("🔖", "LiCards (Alt+F)", () =>
       dialog ? closeDialog() : openDialog(),
     );
     const fasterBtn = makeBtn("⏩", "Faster (./b)", () => pardon(0, 1.2));
@@ -1386,7 +1402,7 @@ function main() {
       const icon = hasCard ? "📗" : "🔖";
       if (liankiBtn.textContent !== icon) {
         liankiBtn.textContent = icon;
-        liankiBtn.title = hasCard ? "Review this card (Alt+F)" : "Add to Lianki (Alt+F)";
+        liankiBtn.title = hasCard ? "Review this card (Alt+F)" : "Add to LiCards (Alt+F)";
       }
     };
     addInterval(updateLiankiIcon, 1000);
@@ -1749,7 +1765,7 @@ function main() {
     });
     const titleSpan = document.createElement("span");
     Object.assign(titleSpan.style, { fontWeight: "700", fontSize: "16px" });
-    titleSpan.textContent = "🔖 Lianki";
+    titleSpan.textContent = "🔖 LiCards";
 
     // Where the cards live, and how many are waiting. Both were invisible: the
     // panel looked the same signed in or out, and the only way to see the queue
@@ -3910,7 +3926,30 @@ function main() {
     initOfflineStorage();
   }, 100);
 
+  // ── Learning Partner on every site (docs/dev-debug-widget.md, "On every site") ──
+  // The owner's only, opt-in (debug mode on lianki.com); a no-op for everyone else.
+  let stopPartner = () => {};
+  startPartner({
+    origin: ORIGIN,
+    src: typeof __LK_PARTNER_SRC__ === "string" ? __LK_PARTNER_SRC__ : `${ORIGIN}/partner-embed.js`,
+    gmFetch,
+    getValue: GM_getValue,
+    setValue: GM_setValue,
+    deleteValue: GM_deleteValue,
+    info: GM_info,
+    report: (what, detail) =>
+      what === "partner-mode" && detail.startsWith("isolated")
+        ? console.debug(`[Lianki] ${what}: ${detail}`)
+        : console.error(`[Lianki] ${what}: ${detail}`),
+  })
+    .then((stop) => {
+      if (signal.aborted) stop();
+      else stopPartner = stop;
+    })
+    .catch((err) => console.error("[Lianki] partner failed:", err));
+
   return () => {
+    stopPartner();
     ac.abort();
     for (const id of intervals) clearInterval(id);
     intervals.length = 0;

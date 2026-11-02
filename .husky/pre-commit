@@ -10,5 +10,8 @@ bunx lint-staged
 # against the built script, and the constant had not been regenerated yet.
 bun scripts/pre-commit.ts
 
+# OXC, check-only, whole repo (not just staged files): oxlint fails on errors,
+# oxfmt --check on any unformatted file. ~0.1 s. Fix with `bun fix`.
+bun run lint
 bun run typecheck
 bun run test:unit -- --coverage

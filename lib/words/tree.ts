@@ -34,6 +34,20 @@ export function flatten<T extends TreeNode>(nodes: T[]): FlatItem<T>[] {
   return out;
 }
 
+/**
+ * The tree without `id`, as the server leaves it after a delete: the removed
+ * node's children move up to its own parent. For hiding a row while its
+ * delete can still be undone.
+ */
+export function withoutNode<T extends TreeNode>(nodes: T[], id: string | null): T[] {
+  if (!id) return nodes;
+  const gone = nodes.find((n) => n.id === id);
+  if (!gone) return nodes;
+  return nodes
+    .filter((n) => n.id !== id)
+    .map((n) => (n.parentId === id ? { ...n, parentId: gone.parentId } : n));
+}
+
 /** Ids of everything below `id` in a flattened tree. */
 export function descendants<T extends TreeNode>(flat: FlatItem<T>[], id: string): string[] {
   const i = flat.findIndex((x) => x.id === id);

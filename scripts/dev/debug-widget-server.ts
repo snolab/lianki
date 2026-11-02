@@ -28,7 +28,7 @@
  * Then, on the owner's page (debug mode):
  *   localStorage.setItem("lk:debug-widget-src", "<origin>/debug-chat.js"); location.reload()
  */
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync, watch } from "node:fs";
 import { resolve } from "node:path";
 import {
@@ -39,7 +39,8 @@ import {
   harnessCss,
   sse,
 } from "./debug-widget-build";
-import { clipsDir, handleClips } from "./clip-sink";
+import { clipsDir, handleClips, sinkKeys } from "./clip-sink";
+import { serveOnTailnet, tailnetHost, unserveOnTailnet, validTailnetPath } from "./tailnet";
 
 const argv = Bun.argv.slice(2);
 const flag = (name: string, fallback = "") => {
@@ -51,18 +52,9 @@ const PORT = Number(flag("port", "5180"));
 const TUNNEL = flag("tunnel");
 /** `--tailnet /path`: mount this server there with `tailscale serve`. */
 const TAILNET = flag("tailnet").replace(/\/+$/, "");
-if (TAILNET && !/^\/[\w.-]+(\/[\w.-]+)*$/.test(TAILNET)) {
+if (TAILNET && !validTailnetPath(TAILNET)) {
   console.error(`--tailnet wants a path like /lianki-widget, not ${TAILNET}`);
   process.exit(1);
-}
-/** This machine's tailnet name, e.g. my-mac.example-tailnet.ts.net. */
-function tailnetHost(): string {
-  const r = spawnSync("tailscale", ["status", "--json"], { encoding: "utf8" });
-  if (r.status !== 0) throw new Error(`tailscale status failed: ${r.stderr || r.error}`);
-  return String((JSON.parse(r.stdout) as { Self: { DNSName: string } }).Self.DNSName).replace(
-    /\.$/,
-    "",
-  );
 }
 let ORIGIN = flag("origin").replace(/\/+$/, "") || `http://localhost:${PORT}`;
 if (TAILNET) ORIGIN = `https://${tailnetHost()}${TAILNET}`;
@@ -76,6 +68,8 @@ if (TUNNEL && !flag("origin")) {
 
 /** Where the mic's clips are kept: --clips-dir, LIANKI_CLIPS_DIR, or ~/lianki-voice-clips. */
 const CLIPS = flag("clips-dir") ? resolve(flag("clips-dir")) : clipsDir();
+/** The sink's read and write keys (clip-sink.ts): made once, 0600, shared with eval.ts and the bench. */
+const SINK_KEYS = sinkKeys();
 const log = (msg: string) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${msg}`);
 
 let code = "";
@@ -133,8 +127,8 @@ function startServer() {
     idleTimeout: 0,
     async fetch(req) {
       const url = new URL(req.url);
-      // The mic's voice clips (scripts/dev/clip-sink.ts): lianki.com only, kept on this machine.
-      const clip = await handleClips(req, CLIPS);
+      // The mic's voice clips (scripts/dev/clip-sink.ts): lianki.com and LIANKI_DEV_ORIGINS / LIANKI_CLIPS_ORIGINS, kept on this machine.
+      const clip = await handleClips(req, CLIPS, undefined, undefined, SINK_KEYS);
       if (clip) return clip;
       const h = cors(req);
       if (req.method === "OPTIONS")
@@ -258,19 +252,15 @@ function startTreeWatch() {
 
 /** `tailscale serve` (never funnel): this port at <host><path>, tailnet only. */
 function startTailnet() {
-  const r = spawnSync(
-    "tailscale",
-    ["serve", "--bg", "--set-path", TAILNET, `http://127.0.0.1:${PORT}`],
-    { encoding: "utf8" },
-  );
-  if (r.status !== 0) {
-    log(`tailscale serve failed: ${r.stderr || r.error}`);
+  const err = serveOnTailnet(TAILNET, PORT);
+  if (err) {
+    log(`tailscale serve failed: ${err}`);
     process.exit(1);
   }
   log(`tailnet: ${ORIGIN}/debug-chat.js (tailscale serve, tailnet only)`);
 }
 function stopTailnet() {
-  spawnSync("tailscale", ["serve", "--set-path", TAILNET, "off"], { encoding: "utf8" });
+  unserveOnTailnet(TAILNET);
   log(`tailnet mapping ${TAILNET} removed`);
 }
 
@@ -312,10 +302,10 @@ if (import.meta.main) {
   if (TAILNET) startTailnet();
   log(`listening on http://localhost:${PORT} · harness http://localhost:${PORT}/harness`);
   console.log(
-    `\n  On the owner's page (debug mode), in the console or with eval.ts:\n` +
-      `    localStorage.setItem("lk:debug-widget-src", "${ORIGIN}/debug-chat.js"); location.reload()\n` +
-      `  Back to the built-in chat:\n` +
-      `    localStorage.removeItem("lk:debug-widget-src"); location.reload()\n`,
+    `\n  On lianki.com (live view, docs/live-view.md), then "Live view" in the account menu:\n` +
+      `    bun scripts/dev/live-view.ts on --widget ${ORIGIN}/debug-chat.js\n` +
+      `  On localhost or a dev build only, the unsigned key still works:\n` +
+      `    localStorage.setItem("lk:debug-widget-src", "${ORIGIN}/debug-chat.js"); location.reload()\n`,
   );
   const stop = () => {
     stopping = true;

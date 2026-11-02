@@ -203,6 +203,23 @@ describe("liveTreeSource", () => {
     h.off();
     h.socks.at(-1)!.onclose?.({});
   });
+
+  it("an outline that failed to load is fetched again when the socket opens, then shows", async () => {
+    let fail = true;
+    const h = make(() => (fail ? Promise.reject(new Error("HTTP 503")) : MD));
+    await flush();
+    expect(h.errors).toHaveLength(1);
+    expect(h.updates).toHaveLength(0);
+    fail = false;
+    h.socks[0]!.onopen?.({}); // the next event retries; the success clears the error upstream
+    await flush();
+    expect(h.updates).toHaveLength(1);
+    // Loaded: opening again fetches nothing more.
+    h.socks[0]!.onopen?.({});
+    h.wake();
+    await flush();
+    expect(h.updates).toHaveLength(1);
+  });
 });
 
 describe("browserWake", () => {

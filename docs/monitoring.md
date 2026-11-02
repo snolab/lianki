@@ -29,6 +29,11 @@ FROM lianki_metrics WHERE index1 = 'req' AND timestamp > NOW() - INTERVAL '1' DA
 GROUP BY path ORDER BY n DESC
 ```
 
+`lianki-voice` (`workers/voice`, the word clips at the edge) also names the
+monitor as tail consumer: its requests land under `index1 = 'voice'` (same
+blobs and doubles), timings only — a clip it passes on is counted, and
+alerted on, again as the main Worker's request.
+
 ## New-version push (`lianki-push`)
 
 `workers/push`: one Durable Object holds every open page's WebSocket
@@ -171,6 +176,74 @@ the token on the next command; End or Deny stops it. Without a running
 a random token are kept in `~/.config/lianki/eval-session.json` (mode 600)
 while `serve` runs.
 
+#### Renewal
+
+The owner's eval grant renews itself, so the Allow prompt does not come back
+every 8 hours (owner's decision, 2026-11-01). The rules, in the hub
+(`workers/push/src/debug.ts`, "Renewal"; tests in `unit/debug-hub-renew.test.ts`):
+
+- **Bound at the tap.** The Allow stores, with the grant, the answering
+  page's device id (the `dev=` it connects with) and its sign-in session —
+  as a tag, `sessionTag(session id)`, a SHA-256, never the id or the cookie
+  token. `/api/debug/identity` answers `session` and `sessionUntil`;
+  lianki-push passes them to the hub as `x-debug-session(-until)`, set by
+  itself only (a page's or a sender's own are removed).
+- **When.** With at most 2 hours left (`EVAL_RENEW_BEFORE_MS`), the grant
+  is extended to 8 hours from now on the next event: a message from a socket
+  holding it, a resume with its token, that device's page connecting, or the
+  one Durable Object alarm set for `until − 2 h` (a grant not yet due always
+  sets it strictly later than now). No polling.
+- **Only on that device and session.** At that moment an owner page with
+  the same device id and the same, unexpired session must be connected.
+  Another device, a new session (signed out and in again), or a friend's
+  page (the hub keeps no session or device for one) renews nothing.
+- **The auth db has the last word.** Right before renewing, the hub asks the
+  main Worker — `SESSIONS.live(user, session)`, the `DebugSessions` RPC
+  entrypoint that `worker.ts` adds to the OpenNext build, a D1 lookup of the
+  owner's unexpired sessions by tag (`lib/debug-session.ts`). It is not an
+  HTTP route: an RPC entrypoint has no URL, only lianki-push's service
+  binding reaches it, so no shared secret is needed. Inputs are bounded
+  before any DB work; it allows 60 checks a minute per isolate ("busy"
+  after), and the hub asks at most once per grant per 30 s. Only `"live"`
+  renews. An error, `"busy"`, an odd answer or no binding renews nothing
+  (fail closed) and keeps the chain for a later try; `"gone"` drops the
+  chain and the session from the pages, as a sign-out notice would. So a
+  lost sign-out notice cannot keep a grant renewing.
+- **No stale write.** The answer may take a while. After it, the hub
+  re-reads the grant and writes the renewal only if it is still there, with
+  the same `until`, the same chain (start, count, device, session, user) and
+  an approving page still connected with that session — all inside
+  `blockConcurrencyWhile`, so an End or sign-out that landed meanwhile wins
+  and a revoked token stays dead (`debug.renew-skip` is logged).
+- **Cap.** Never past 30 days from the tap (`EVAL_CHAIN_MS`); then the grant
+  lapses and the next pairing asks again.
+- **Stops at once.** End (live or on the sleeping `idle` entry) deletes the
+  grant. Sign-out deletes the session, and better-auth's
+  `session.delete.after` hook (`auth-impl.ts` → `lib/push-signed-out.ts`)
+  posts its tag to lianki-push's `/internal/signed-out` over the PUSH
+  binding: every grant bound to it stops renewing and ends at its current
+  `until`, and every owner page attachment carrying that session loses it
+  (a stale tab can no longer vouch for a renewal). The notice is durable: one
+  that is not acknowledged (2xx) is written to the D1 outbox
+  `debug_signout_outbox` (migration 0023) before sign-out returns, retried
+  after the response (1 s, 4 s, 15 s), then when the owner's debug page
+  connects (`/api/debug/identity`, signed in as the owner; after the
+  response, at most one flush a minute per isolate, 20 rows), each row on an
+  exponential backoff (1 min doubling, at most 1 h), until acknowledged or
+  no chain could still use it (30 days).
+- **Never for anyone else.** Chat grants, friends' previews, and grants
+  approved on a page with no session (the dev bridge) are never renewed.
+- **The sender.** Each socket holding the grant hears
+  `{type:"renewed", until, count}`; `eval-socket.ts` moves the token file's
+  `until` (on a resumed socket and on a freshly paired one, and on a resume's
+  `approved`), so the next run resumes instead of pairing. The file's `until`
+  is only a hint: a renewal made while no sender was connected (the alarm,
+  the page coming back) reaches no file, so the saved eval token is always
+  tried with the hub first, and dropped only on its 4498. The first
+  `approved` says `renewsUntil` (the cap). Tests: `unit/eval-socket.test.ts`.
+- **Logs.** `debug.renew` {via, label, device, count, until, chainEnds} and
+  `debug.renew-stop` {why, device, count} — never code.
+
 ### Chat with the agent
 
 Every owner page that holds the debug socket also shows a small chat box at
@@ -237,6 +310,9 @@ bun scripts/dev/eval.ts chat --label "agent on $(hostname -s)" --out /tmp/lianki
 # Reply (uses the saved grant; exits once the hub has it):
 bun scripts/dev/eval.ts say "On it — fixing the swipe now."
 echo "multi-line reply" | bun scripts/dev/eval.ts say -
+# FYI / progress / deploy notices: shown, never read aloud
+# (docs/dev-debug-widget.md, "Quiet lines"):
+bun scripts/dev/eval.ts say --quiet "PR #390 opened, CI running."
 
 # A line with "source":"stt" was spoken: polish its misheard words first
 # (docs/dev-debug-widget.md, "Agent edits of voice messages"):
@@ -274,6 +350,14 @@ session listing carry the current path) and sends the listeners
 `{type:"page-changed", label, thread, email?, at}`, which `chat` prints as a
 JSON line. Silent on the page, never stored, never in the chat log. A
 friend's page can only relabel its own socket.
+
+**Page errors.** The owner's pages also send `{type:"page-error", kind,
+message, stack?, path, status?, at, rev?}` — uncaught errors, rejections,
+console.error, failed `/api/*` calls, media load errors — scrubbed on the
+page; the hub adds `label` and `hubAt` and forwards them live to the
+approved listeners only, never stored, a friend's dropped. `chat` prints
+them; `eval.ts errors --out <file>` prints only them.
+docs/dev-debug-widget.md, "Page errors".
 
 **The chat bar, the state tree and the menu.** No title bar: the controls
 and the input are one rounded glass container (`debug-chat-pill`): the mark,
@@ -438,9 +522,15 @@ fakes in `unit/voice-session.test.ts`):
   speech probability over that window ≥ 0.7 (`BARGE_IN_PROB`; weaker speech
   stays ducked and is judged again), is it a barge-in: the reading pauses and
   resumes as below. The utterance is transcribed and sent either way.
-  `localStorage["lk:voice-aec"] = "0"` brings back the old way: the mic holds
-  capture while an utterance plays (VAD paused, what it hears dropped) and for
-  400 ms after the last one ends, with the old constraints.
+  `localStorage["lk:voice-aec"] = "0"` (or the ⋯ menu's **Echo
+  cancellation** switch, from the next time the mic opens) is the
+  half-duplex way: the mic holds capture while an utterance plays (VAD
+  paused, what it hears dropped) and for 400 ms after the last one ends,
+  with no processing at all (echoCancellation, noiseSuppression and
+  autoGainControl off), plus the text echo guard. It is the A/B against
+  Chrome for Android, where an echo-cancelled mic moves playback to the
+  call stream (a thinner speaker). Each clip in the clip sink carries
+  `aec: true | false` beside its transcript, to compare recognition by mode.
 - _Output_ (`lk:voice-out`): `"speech"` (default) is the phone's own
   speechSynthesis. Its volume cannot change mid-utterance on iOS, so a duck
   applies from the next sentence; and on iOS it is probably _not_ in the
@@ -498,6 +588,66 @@ do); a ↓ button at the right of the row above the input (the row stays
 click-through, only the button takes taps) scrolls to the end, with a dot
 when messages arrived below. The log's top edge fades once it overflows.
 
+#### Voice latency
+
+Each line spoken into the mic gets one timing record, voice → reply
+(`packages/debug-chat/src/latency.ts`, tested in `unit/latency.test.ts`).
+Every stamp is the page's own `Date.now()`, so no stage mixes clocks:
+
+| Stage (ms) | From → to                                                   | Stamped in                |
+| ---------- | ----------------------------------------------------------- | ------------------------- |
+| `vadMs`    | last frame Silero scored ≥ 0.5 → the VAD ends the utterance | `mic.ts` createMic        |
+| `encodeMs` | VAD end → the WAV upload starts                             | `mic.ts`                  |
+| `sttMs`    | `/api/debug/stt` round trip (`sttServerMs` = its own `ms`)  | `mic.ts`, `MicButton.tsx` |
+| `waitMs`   | transcript back → in the input (an earlier one still out)   | `DebugChat.tsx` dictated  |
+| `sendMs`   | in the input → sent on the socket                           | `DebugChat.tsx` submit    |
+| `hubMs`    | sent → the hub's copy of the line back on this page         | `DebugEval.tsx`           |
+| `ackMs`    | sent → the first busy beat (a listener's "heard you")       | `DebugEval.tsx`           |
+| `agentMs`  | hub copy back → the agent's reply here                      | `DebugEval.tsx`           |
+| `voiceMs`  | reply here → it starts playing (utterance `start` / `play`) | `voice.ts` onStart        |
+| `totalMs`  | end of speech → the reply audible (unspoken: here)          |                           |
+
+The owner line carries the mic's stamps as an optional `timing` object
+(`VoiceTiming` in `wire.ts`: `t_lastVoice`, `t_speechEnd`, `t_uploadStart`,
+`t_sttDone`, `t_shown`, `t_sent`, `sttServerMs`, `audioMs`), on `source:
+"stt"` lines only. The hub validates it (`cleanTiming`) and keeps it on the
+stored line; an older hub or page ignores it. `eval.ts chat` prints it, plus
+`lagMs` (hub → listener, two clocks) on live lines.
+
+**Where to see it.** The chat's ⋯ menu shows the latest record
+(`debug-menu-latency`, while the mic is on or once there is one): "Latency,
+last voice line 8.7 s", then `silence 1.4 · STT 0.9 · send 0.0 · hub 0.1 ·
+reply 6.0 · voice 0.3` (zh/ja/en in `ui-strings.ts`). Each record is also
+logged once as `{ev: "voice-latency", id, chars, replied, …stages, timing}`
+through devLog (`wrangler tail lianki`).
+
+**Collecting samples** (event-driven: it reads the tail's stream, and exits
+after `--n` records):
+
+```bash
+bunx wrangler tail lianki --format json | bun scripts/dev/voice-latency.ts --n 10
+```
+
+It prints each record as it arrives and then the markdown table (n, median,
+p90, mean per stage). The samples need the owner speaking on their own
+device, with an agent answering; nothing here can make them.
+
+**Fixed waits** (a floor under every reply):
+
+- Silero ends an utterance only after vad-web's default `redemptionMs`,
+  **1400 ms** of silence in 0.0.30 (43 frames × 32 ms); `MicButton.tsx`
+  `silero()` passes no override (the old comment said ~0.8 s). The energy
+  fallback waits 700 ms (`energyGate`'s `hangMs`, `mic.ts`).
+- No send debounce for voice: a spoken final is punctuated and sent at once
+  (`appendDictation` → `submit` in `DebugChat.tsx` `dictated`). The 3 s
+  `DEBOUNCE_MS` is for typing, and is off while the mic is on.
+- Cloud voice (`lk:voice-out = "cloud"`) fetches each sentence's clip before
+  it plays; that shows up in `voiceMs`.
+
+**"Heard you".** `eval.ts chat --ack` answers each new owner or friend line
+with one busy beat at once, so the spinner shows within a hub round trip,
+before the agent's turn starts (`ackMs` measures it).
+
 #### Agent is busy (heartbeat)
 
 While the agent works on a message, a small spinner shows at the right end
@@ -549,6 +699,7 @@ tests:
   `debug-chat-warning`.
 - The pill's menu: `debug-menu`, `debug-menu-status`, `debug-menu-note` (where
   the widget came from, or why it fell back), `debug-menu-speak`,
+  `debug-menu-latency` (the last voice line's breakdown),
   `debug-menu-minimize`, `debug-menu-page` (`data-self` on this one),
   `debug-menu-page-open`, `debug-menu-page-end`, `debug-menu-session`,
   `debug-menu-session-add` and `debug-menu-session-end`.

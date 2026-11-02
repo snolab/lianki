@@ -17,12 +17,32 @@ import {
   busyLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
+import { isKey } from "@lianki/debug-chat/storage-keys";
+import { type ChatStrings, type VoiceTiming, cleanTiming } from "@lianki/debug-chat/wire";
+import { voiceLatency } from "@lianki/debug-chat/latency";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
 import { voice } from "@lianki/debug-chat/voice";
 import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
 import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
+import {
+  clipsConnectQuery,
+  installClipsLifecycle,
+  onClipsState,
+  setClipsSender,
+} from "@lianki/debug-chat/clips-store";
+import {
+  type PageErrorReporter,
+  createPageErrorReporter,
+  installPageErrorHooks,
+  typedText,
+} from "@lianki/debug-chat/page-errors";
+import { grantUntil } from "@/lib/islands/rules";
+import { frameContext } from "@/lib/frame-context";
+import { islandStore } from "@/lib/islands/store";
+import { useIslands } from "@/lib/islands/useIslands";
+import { useLiveView, widgetSource } from "@/lib/live-view/client";
 
 /** Hidden this long before the socket is dropped. */
 const IDLE_MS = 30_000;
@@ -33,6 +53,10 @@ const RELABEL_MS = 300;
 const AGENT_AVATAR = "/icon-192.png";
 /** sessionStorage: this tab's page id (docs/monitoring.md, "Remote eval"). */
 const TAB_KEY = "lk:debug-tab";
+/** The build the page runs, on each page-error ("dev" under next dev). */
+const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev";
+/** The chat lines cut out of page errors: the latest this many. */
+const SENSITIVE_LINES = 50;
 
 /** This page as the hub and the agent see it: path, `pwa` when installed, user agent. */
 const pageLabel = () => {
@@ -65,7 +89,10 @@ const pageLabel = () => {
  * Reconnects only on events (the socket closing while still visible, coming
  * back to the page, debug turned on) — no timers that touch the network.
  */
-export function DebugEval() {
+/** The chat's user-facing strings, localized by the root layout (learning-partner.content.ts). */
+export type PartnerStrings = ChatStrings & { unavailable: string };
+
+export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {}) {
   const [live, setLive] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [state, setState] = useState<HubState | null>(null);
@@ -79,6 +106,11 @@ export function DebugEval() {
   const [viewer, setViewer] = useState<Sender | undefined>(undefined);
   const sockRef = useRef<WebSocket | null>(null);
   const friendRef = useRef(false);
+  /** The chat's lines, for page-errors to cut out (never sent with an error). */
+  const messagesRef = useRef<ChatMessage[]>([]);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
   /** The owner's page (a state arrived with no friend-status first): may hot-load the widget. */
   const [owner, setOwner] = useState(false);
   /** The agent's heartbeat (docs/monitoring.md, "Agent is working"). */
@@ -86,6 +118,8 @@ export function DebugEval() {
   const beatRef = useRef<(Heartbeat & { label: string }) | null>(null);
   /** Hub time of the newest agent reply: a beat older than it is stale. */
   const agentAtRef = useRef(0);
+  /** Agent lines already handed to the voice: one delivered again (a reconnect) is not read again. */
+  const spokenIds = useRef(new Set<string>());
   const liveRef = useRef(false);
   const beatTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** One local timeout re-checks the spinner when it would lapse; no network. */
@@ -100,6 +134,10 @@ export function DebugEval() {
   const sentLabel = useRef("");
   const pathname = usePathname();
   const router = useRouter();
+  // Hot islands (docs/dev-hot-islands.md): on with the code-run grant below, or live view.
+  useIslands();
+  /** Live view (docs/live-view.md): the signed pointer, verified on this page. */
+  const liveState = useLiveView();
   /** This device's tabs agree on one to read replies aloud (BroadcastChannel). */
   const tabsRef = useRef<ReturnType<typeof joinTabs> | null>(null);
   useEffect(() => {
@@ -145,10 +183,28 @@ export function DebugEval() {
     let idle: ReturnType<typeof setTimeout> | undefined;
     let hideToast: ReturnType<typeof setTimeout> | undefined;
     const opened = new WeakSet<WebSocket>();
+    // Page errors (docs/dev-debug-widget.md, "Page errors"): hooked while the
+    // socket is wanted, queued until the hub says this is the owner's page,
+    // dropped for good on a friend's.
+    const newReporter = () =>
+      createPageErrorReporter({
+        rev: BUILD_ID,
+        pagePath: () => location.pathname,
+        sensitive: () => [
+          ...typedText(document),
+          ...messagesRef.current.slice(-SENSITIVE_LINES).map((m) => m.text),
+        ],
+      });
+    let reporter: PageErrorReporter = newReporter();
+    let unhook: (() => void) | null = null;
+    const unhookErrors = () => {
+      unhook?.();
+      unhook = null;
+    };
 
     const run = async (sock: WebSocket, id: string, to: string, code: string) => {
       clearTimeout(hideToast);
-      setToast(`debug eval ran · ${id}`);
+      setToast(`eval ran · ${id}`);
       hideToast = setTimeout(() => setToast(null), TOAST_MS);
       const t0 = performance.now();
       let result: Record<string, unknown>;
@@ -180,6 +236,7 @@ export function DebugEval() {
 
     const connect = () => {
       if (ws) return;
+      if (!unhook && !friendRef.current) unhook = installPageErrorHooks(window, reporter);
       const label = pageLabel();
       sentLabel.current = label;
       // This tab's id, kept across reloads, so a "this page" grant survives one.
@@ -188,13 +245,24 @@ export function DebugEval() {
         tab = sessionStorage.getItem(TAB_KEY) ?? "";
         if (!tab) sessionStorage.setItem(TAB_KEY, (tab = crypto.randomUUID().slice(0, 12)));
       } catch {}
+      // The recording session (packages/debug-chat/src/clips.ts): this window's
+      // id, the device's, and a handoff token if the page came from another origin.
+      let clipsQ = "";
+      try {
+        clipsQ = clipsConnectQuery();
+      } catch {}
       const sock = new WebSocket(
-        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}`,
+        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}${clipsQ}&frame=${frameContext()}`,
       );
       ws = sock;
       sockRef.current = sock;
       sock.onopen = () => {
         opened.add(sock);
+        setClipsSender((m) => {
+          if (sock.readyState !== WebSocket.OPEN) return false;
+          sock.send(JSON.stringify(m));
+          return true;
+        });
         liveRef.current = true;
         setLive(true);
         setChat(true);
@@ -211,14 +279,20 @@ export function DebugEval() {
           status?: unknown;
           retryIn?: unknown;
           sender?: unknown;
+          answer?: unknown;
         };
         try {
           msg = JSON.parse(String(e.data));
         } catch {
           return;
         }
+        // This window's recording session (the hub holds it, not this origin).
+        if (msg.type === "clips") return void onClipsState(msg);
         if (msg.type === "friend-status") {
           friendRef.current = true;
+          // Never a friend's errors: nothing queued is sent, nothing more is kept.
+          reporter.disable();
+          unhookErrors();
           setFriend(msg.status === "blocked" ? "blocked" : "open");
           if (msg.status === "blocked") setChat(true);
           return;
@@ -239,7 +313,15 @@ export function DebugEval() {
         if (msg.type === "state") {
           setState(msg as HubState);
           // Friends hear friend-status before any state: no status yet = the owner.
-          if (!friendRef.current) setOwner(true);
+          if (!friendRef.current) {
+            setOwner(true);
+            reporter.attach((m) => {
+              if (sock.readyState !== WebSocket.OPEN) throw new Error("socket closed");
+              sock.send(JSON.stringify(m));
+            });
+            // Hot islands follow the owner's code-run grant for this page.
+            islandStore.setGrant(grantUntil(msg as HubState, Date.now()));
+          }
           return;
         }
         if (msg.type === "busy") {
@@ -250,7 +332,16 @@ export function DebugEval() {
             seenAt: Date.now(),
             label: typeof m.label === "string" ? m.label : "agent",
           };
+          voiceLatency().ack();
           reBeat();
+          return;
+        }
+        if (msg.type === "wake") {
+          // The agent sets the mic's wake-word mode (docs/wake-word.md); the
+          // page-wide mic session (packages/debug-chat mic-session.ts) applies it.
+          const mode = (msg as { mode?: unknown }).mode;
+          const mic = (globalThis as { __lkMic?: { wake?: (m: string) => void } }).__lkMic;
+          if (mode === "active" || mode === "passive" || mode === "ignored") mic?.wake?.(mode);
           return;
         }
         if (msg.type === "history" && Array.isArray(msg.messages)) {
@@ -259,6 +350,12 @@ export function DebugEval() {
             if (m.from === "agent") agentAtRef.current = Math.max(agentAtRef.current, m.at);
           setMessages(list);
           reBeat();
+          return;
+        }
+        // An ask answered by a tap (on this page or another): the card shows it.
+        if (msg.type === "answered" && typeof msg.id === "string" && msg.answer) {
+          const answer = msg.answer as ChatMessage["answer"];
+          setMessages((list) => list.map((x) => (x.id === msg.id ? { ...x, answer } : x)));
           return;
         }
         if (msg.type === "chat" && msg.message && typeof msg.message === "object") {
@@ -273,8 +370,16 @@ export function DebugEval() {
             reBeat();
             // Every tab shows it; only one reads it aloud. speakReply queues it
             // (voice.ts): always read while the mic is on, else by the focus rule.
-            if (tabsRef.current?.isSpeaker() ?? true) speakReply(m.text);
-          } else setWarning(null);
+            const fresh = !spokenIds.current.has(m.id);
+            spokenIds.current.add(m.id);
+            // Never a quiet line; a hidden page reads the newest one when it is
+            // back (speak-rules.ts): the line itself is the meta.
+            const spoken = fresh && (tabsRef.current?.isSpeaker() ?? true) && speakReply(m.text, m);
+            voiceLatency().heard(m, spoken === true);
+          } else {
+            setWarning(null);
+            voiceLatency().heard(m);
+          }
           return;
         }
         if (msg.type === "edited") {
@@ -296,6 +401,8 @@ export function DebugEval() {
       sock.onclose = (e) => {
         if (ws !== sock) return;
         ws = null;
+        setClipsSender(null);
+        reporter.detach();
         sockRef.current = null;
         liveRef.current = false;
         beatRef.current = null;
@@ -307,14 +414,21 @@ export function DebugEval() {
     };
     const disconnect = () => {
       clearTimeout(idle);
+      reporter.detach();
       if (!debugOn()) {
+        islandStore.setGrant(null);
         setChat(false);
         setFriend(null);
         setOwner(false);
         friendRef.current = false;
+        // Debug mode off: no hooks, and a fresh reporter for next time.
+        unhookErrors();
+        reporter.disable();
+        reporter = newReporter();
       }
       const sock = ws;
       ws = null;
+      setClipsSender(null);
       sockRef.current = null;
       liveRef.current = false;
       beatRef.current = null;
@@ -323,28 +437,51 @@ export function DebugEval() {
       setState(null);
       sock?.close();
     };
-    const wanted = () => document.visibilityState === "visible" && debugOn();
+    // Never inside another site's frame: no cookie socket, no pairing or Allow UI
+    // a parent could clickjack (lib/frame-context.ts). The hub refuses too.
+    const wanted = () =>
+      document.visibilityState === "visible" && debugOn() && frameContext() !== "foreign";
+    /**
+     * Tell the hub how this window is doing, while the socket is still open:
+     * hidden (screen off, app in the background) keeps a recording session
+     * for hours; leaving (closed, or navigating away) only for a couple of
+     * minutes, enough to land on the next page (clips.ts CLIPS_GONE_MS).
+     */
+    const vis = (state: "hidden" | "visible" | "leaving") => {
+      try {
+        if (ws?.readyState === WebSocket.OPEN)
+          ws.send(JSON.stringify({ type: "clips-vis", state }));
+      } catch {}
+    };
+    const leaving = () => vis("leaving");
+    // pagehide → departed, pageshow from the bfcache → off until a tap (clips-store.ts).
+    const unClips = installClipsLifecycle(window);
     const update = () => {
+      vis(document.visibilityState === "visible" ? "visible" : "hidden");
       clearTimeout(idle);
       if (wanted()) connect();
       else if (!debugOn()) disconnect();
       else if (ws) idle = setTimeout(disconnect, IDLE_MS);
     };
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "lk:debug") update();
+      if (isKey(e.key, "lk:debug")) update();
     };
 
     update();
+    window.addEventListener("pagehide", leaving);
     document.addEventListener("visibilitychange", update);
     window.addEventListener(DEBUG_EVENT, update);
     window.addEventListener("storage", onStorage);
     return () => {
+      window.removeEventListener("pagehide", leaving);
+      unClips();
       document.removeEventListener("visibilitychange", update);
       window.removeEventListener(DEBUG_EVENT, update);
       window.removeEventListener("storage", onStorage);
       clearTimeout(hideToast);
       clearTimeout(beatTimer.current);
       disconnect();
+      unhookErrors();
     };
   }, []);
 
@@ -401,19 +538,54 @@ export function DebugEval() {
     } catch {}
   };
   /** `to`: the state-tree node the line is addressed to (absent = the main thread). */
-  const sendChat = (text: string, to?: string, opts?: { source?: "stt" }) => {
+  const sendChat = (
+    text: string,
+    to?: string,
+    opts?: { source?: "stt"; timing?: VoiceTiming; speakerProof?: string[] },
+  ) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return false;
     try {
+      const id = crypto.randomUUID().slice(0, 12);
+      // A voice line's timestamps ride along (an older hub drops them).
+      const timing = opts?.source === "stt" ? cleanTiming(opts.timing) : undefined;
+      // The Mac's signed speaker attestations (lib/speaker-proof.ts); the hub verifies them.
+      const speakerProof = opts?.source === "stt" ? opts.speakerProof?.slice(0, 8) : undefined;
+      // The mic's wake-word mode rides along, so the agent sees it (docs/wake-word.md).
+      const mic = (
+        globalThis as {
+          __lkMic?: { view?: () => { state: string; wake?: string; wakeReason?: string } };
+        }
+      ).__lkMic?.view?.();
+      const wake = mic && mic.state !== "off" ? mic.wake : undefined;
+      const wakeReason = wake ? mic?.wakeReason : undefined;
       sock.send(
         JSON.stringify({
           type: "chat",
-          id: crypto.randomUUID().slice(0, 12),
+          id,
           text,
           ...(to ? { to } : {}),
           ...(opts?.source === "stt" ? { source: "stt" } : {}),
+          ...(timing ? { timing } : {}),
+          ...(wake === "active" || wake === "passive" ? { wake } : {}),
+          ...(speakerProof?.length ? { speakerProof } : {}),
+          ...(wakeReason ? { wakeReason } : {}),
         }),
       );
+      // Its reply is timed against it (latency.ts); main-thread lines only.
+      if (timing && !to) voiceLatency().sent(id, text, timing);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  /** A tap on an ask card: only which options; the hub stamps who, where, when and source "tap". */
+  const sendAnswer = (askId: string, choices: Record<string, string[]>) => {
+    const sock = sockRef.current;
+    if (!sock || sock.readyState !== WebSocket.OPEN) return false;
+    try {
+      sock.send(JSON.stringify({ type: "answer", askId, choices }));
       return true;
     } catch {
       return false;
@@ -444,7 +616,9 @@ export function DebugEval() {
     <>
       {chat && (
         <DebugChatHost
-          hot={owner && !isFriend}
+          // A verified pointer is the owner's (the server checked the session).
+          hot={(owner && !isFriend) || (liveState.on && !!liveState.claim.widget)}
+          src={widgetSource(liveState)}
           busy={busy}
           pages={state?.pages ?? []}
           selfPage={state?.self}
@@ -454,14 +628,20 @@ export function DebugEval() {
           listeners={state?.listeners ?? sessions.length}
           messages={messages}
           onSend={sendChat}
+          onAnswer={sendAnswer}
           nodes={state?.nodes}
-          notice={friend === "blocked" ? "Chat is not available for this account." : undefined}
+          notice={
+            friend === "blocked"
+              ? (strings?.unavailable ?? "Chat is not available for this account.")
+              : undefined
+          }
           warning={warning ?? undefined}
           sessions={sessions}
           onEnd={(x) => answer("revoke", x)}
           onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
           evalRan={!!toast}
           friend={isFriend}
+          strings={strings}
           treeSource={owner && !isFriend ? ownerTree : undefined}
           treeRepo="snolab/lianki"
           agentAvatar={AGENT_AVATAR}
@@ -485,7 +665,7 @@ export function DebugEval() {
           aria-live="polite"
           data-debug-eval
           data-testid="debug-eval"
-          className="fixed bottom-2 left-2 z-50 flex max-w-[calc(100vw-1rem)] flex-col items-start gap-1 text-xs"
+          className="fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-[calc(0.5rem+env(safe-area-inset-left))] z-50 flex max-w-[calc(100vw-1rem)] flex-col items-start gap-1 text-xs"
           style={{ color: "oklch(0.98 0 0)" }}
         >
           {sessions.map((s) => (

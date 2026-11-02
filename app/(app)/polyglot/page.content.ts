@@ -1,6 +1,7 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys, flattenContext, type KeyContext } from "@/lib/i18n-context";
 
-const polyglotPageContent = {
+const dictionary = {
   key: "polyglot-page",
   content: {
     metadata: {
@@ -456,22 +457,22 @@ const polyglotPageContent = {
       mr: "सेव्ह करत आहे...",
     }),
     saveToCards: t({
-      en: "Save to Lianki Cards",
-      zh: "保存到 Lianki 卡片",
-      ja: "Lianki カードに保存",
-      ko: "Lianki 카드에 저장",
-      hi: "Lianki कार्ड में सहेजें",
-      es: "Guardar en Tarjetas de Lianki",
-      fr: "Enregistrer dans les Cartes Lianki",
-      ar: "حفظ في بطاقات Lianki",
-      bn: "Lianki কার্ডে সংরক্ষণ করুন",
-      pt: "Salvar nos Cartões Lianki",
-      ru: "Сохранить в Карточки Lianki",
-      ur: "Lianki کارڈز میں محفوظ کریں",
-      id: "Simpan ke Kartu Lianki",
-      de: "Zu Lianki-Karten Speichern",
-      sw: "Hifadhi kwenye Kadi za Lianki",
-      mr: "Lianki कार्ड्समध्ये सेव्ह करा",
+      en: "Save to LiCards",
+      zh: "保存到链卡",
+      ja: "LiCards に保存",
+      ko: "LiCards에 저장",
+      hi: "LiCards में सहेजें",
+      es: "Guardar en LiCards",
+      fr: "Enregistrer dans LiCards",
+      ar: "حفظ في LiCards",
+      bn: "LiCards-এ সংরক্ষণ করুন",
+      pt: "Salvar no LiCards",
+      ru: "Сохранить в LiCards",
+      ur: "LiCards میں محفوظ کریں",
+      id: "Simpan ke LiCards",
+      de: "In LiCards speichern",
+      sw: "Hifadhi kwenye LiCards",
+      mr: "LiCards मध्ये सेव्ह करा",
     }),
     errors: {
       failedToGenerate: t({
@@ -676,6 +677,93 @@ const polyglotPageContent = {
       }),
     },
   },
-} satisfies DeclarationContent;
+};
 
-export default polyglotPageContent;
+const context: KeyContext<typeof dictionary.content> = {
+  metadata: {
+    title:
+      "Browser tab and search-result title of the /polyglot page. 'Polyglot Matrix' + ' - Lianki'; Lianki is the app name, never translated.",
+    description:
+      "Search-result description of the /polyglot page: practise answering common questions in several languages at once. One sentence.",
+  },
+  heading:
+    "Main heading of the /polyglot page: a grid of questions (rows) by languages (columns). Feature name, title case in English.",
+  description:
+    "Sentence under the /polyglot heading: practise answering common questions in several languages at once.",
+  selectMotherTongue:
+    "Heading of the first /polyglot step, where the user picks their native language. Imperative phrase.",
+  selectTargetLanguages:
+    "Heading of the second /polyglot step, where the user picks one or more languages to learn. Imperative phrase with a note in parentheses.",
+  continueToQuestions:
+    "Button after picking languages on /polyglot that goes on to the questions; {count} is how many were picked. Keep {count}.",
+  motherTongueLabel:
+    "Summary line above the /polyglot grid: {lang} is the native language, {langs} the languages being learned. Keep both placeholders and the arrow.",
+  generateAll:
+    "Button above the /polyglot grid that has AI write every answer in every language. Imperative phrase.",
+  changeLanguages:
+    "Button above the /polyglot grid that goes back to picking languages. Imperative phrase.",
+  addQuestionPlaceholder:
+    "Placeholder of the field on /polyglot where the user types a question of their own. Ends with an ellipsis.",
+  addQuestion:
+    "Button next to the own-question field on /polyglot that adds it as a new row. Imperative phrase.",
+  questionYourAnswer:
+    "Header of the first /polyglot grid column: the question, and the user's answer in their native language.",
+  answerInLanguage:
+    "Placeholder of a /polyglot answer field; {lang} is the language to answer in. Keep {lang}; ends with an ellipsis.",
+  generating:
+    "Text on a /polyglot generate button, or in a grid cell, while AI writes the answer. Progressive verb with ellipsis.",
+  generateRow:
+    "Button in a /polyglot row that has AI write that question's answer in every chosen language. Imperative phrase.",
+  questionLabel:
+    "Tiny label before the question text inside a /polyglot grid cell. Abbreviation of Question, with a colon.",
+  answerLabel:
+    "Tiny label before the answer text inside a /polyglot grid cell. Abbreviation of Answer, with a colon.",
+  playQuestion:
+    "Small button in a /polyglot cell that reads the question aloud. Play triangle + abbreviation of Question.",
+  playAnswer:
+    "Small button in a /polyglot cell that reads the answer aloud. Play triangle + abbreviation of Answer.",
+  regenerate:
+    "Button in a filled /polyglot cell that has AI write that answer again. Imperative verb.",
+  generate:
+    "Button in an empty /polyglot cell that has AI write the answer for that language. Imperative verb.",
+  answerFirst:
+    "Shown in a /polyglot cell instead of the generate button until the user has answered the question in their own language. Short instruction.",
+  cellsGenerated:
+    "Counter in the bottom bar of /polyglot; {count} is how many grid cells have an answer. Keep {count}.",
+  saving:
+    "Text on the save button in the bottom bar of /polyglot while the cards are being saved. Progressive verb with ellipsis.",
+  saveToCards:
+    "Button in the bottom bar of /polyglot that saves every filled cell as a review card in LiCards. LiCards is a product name: never translate it; keep LiCards in every language except Chinese, which uses 链卡. Imperative phrase.",
+  errors: {
+    failedToGenerate:
+      "Alert on /polyglot when AI could not write one answer. Short sentence asking to try again.",
+    failedToGenerateRow:
+      "Alert on /polyglot when AI could not write the answers of one row. Short sentence asking to try again.",
+    signInRequired:
+      "Alert on /polyglot when a visitor who is not signed in presses save. Polite request to sign in.",
+    failedToSave:
+      "Alert on /polyglot when saving the cards failed. Short sentence asking to try again.",
+  },
+  categories: {
+    basicIntroduction:
+      "Name of a group of /polyglot questions about who you are (name, origin, work). Short noun phrase.",
+    dailyLife: "Name of a group of /polyglot questions about everyday routines. Short noun phrase.",
+    familyRelationships:
+      "Name of a group of /polyglot questions about family and the people close to you. Short noun phrase.",
+    interestsPreferences:
+      "Name of a group of /polyglot questions about hobbies and what you like. Short noun phrase.",
+    languageLearning:
+      "Name of a group of /polyglot questions about learning languages. Short noun phrase.",
+    futureGoals: "Name of a group of /polyglot questions about plans and goals. Short noun phrase.",
+    custom: "Name of the /polyglot group holding questions the user added. One adjective or noun.",
+  },
+};
+
+export default {
+  ...dictionary,
+  title: "/polyglot — the Polyglot Matrix",
+  description: describeKeys(
+    "The /polyglot page: the user picks a native language and languages to learn, answers common questions, AI fills a grid of answers per language, and the grid is saved as review cards. Lianki and LiCards (zh: 链卡) are product names, not translated.",
+    flattenContext(context),
+  ),
+} satisfies DeclarationContent;

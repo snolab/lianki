@@ -25,6 +25,8 @@ export type PlayOptions = {
   loop?: boolean;
   /** Wait before the first part (0: start now, inside a tap's gesture). */
   delayMs?: number;
+  /** What this sequence is (e.g. "hold"), for `playing()` while it runs. */
+  tag?: string;
 };
 
 export function createSequencer<P>(deps: SequencerDeps<P>) {
@@ -32,9 +34,12 @@ export function createSequencer<P>(deps: SequencerDeps<P>) {
   const repeat = deps.repeatMs ?? 1200;
   let generation = 0;
   let timer: unknown;
+  /** The sequence playing now, if any: its tag, and whether it still loops. */
+  let current: { tag: string; loop: boolean } | null = null;
 
   const stop = () => {
     generation++;
+    current = null;
     deps.clearTimeout(timer);
     deps.cancel();
   };
@@ -43,6 +48,11 @@ export function createSequencer<P>(deps: SequencerDeps<P>) {
     stop();
     if (!parts.length) return;
     const gen = generation;
+    const cur = { tag: opts.tag ?? "", loop: !!opts.loop };
+    current = cur;
+    const end = () => {
+      if (current === cur) current = null;
+    };
     let i = 0;
     /** Something played this round: a loop where nothing can play ends. */
     let any = false;
@@ -55,7 +65,7 @@ export function createSequencer<P>(deps: SequencerDeps<P>) {
         any ||= played;
         i++;
         if (i < parts.length) return void (timer = deps.setTimeout(next, gap));
-        if (!opts.loop || !any) return;
+        if (!cur.loop || !any) return end();
         i = 0;
         any = false;
         timer = deps.setTimeout(next, repeat);
@@ -65,5 +75,13 @@ export function createSequencer<P>(deps: SequencerDeps<P>) {
     else next();
   };
 
-  return { play, stop };
+  /** A loop plays the pass it is in to its end, then stops (nothing is cut). */
+  const finish = () => {
+    if (current) current.loop = false;
+  };
+
+  /** The tag of the sequence playing now ("" untagged), or null when silent. */
+  const playing = () => current?.tag ?? null;
+
+  return { play, stop, finish, playing };
 }

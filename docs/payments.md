@@ -61,7 +61,7 @@ A wallet balance in JPY, modelled on wallets like renzhe.cloud's: top up once
 through any enabled payment method, then spend the balance on passes; a pass
 bought with the balance activates at once, with no payment page in between.
 Rules in `lib/payments/credits.ts`, D1 side in `lib/payments/credits-store.ts`,
-tables in `db/migrations/0017_credits.sql`, UI in
+tables in `db/migrations/0024_credits.sql`, UI in
 `app/(app)/membership/WalletCard.tsx`.
 
 ### Ledger

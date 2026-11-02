@@ -13,7 +13,10 @@ import {
   type UtterLike,
   chunk,
   createVoice,
+  REPLY_DEDUPE_MS,
+  heardFraction,
   isBargeIn,
+  resumeOffset,
   sentences,
   speakHere,
   speechEnabled,
@@ -165,6 +168,23 @@ describe("voice session: the queue", () => {
     h.v.reply("A. B.");
     h.spoken.at(-1)?.onerror?.();
     expect(h.texts().at(-1)).toBe("B.");
+  });
+
+  it("onStart hears each sentence begin playing, but not a dropped one's late start", () => {
+    const h = harness();
+    let starts = 0;
+    const off = h.v.onStart(() => starts++);
+    h.v.setMic(true);
+    h.v.reply("One. Two.");
+    h.spoken[0].onstart?.();
+    expect(starts).toBe(1);
+    h.v.stop();
+    h.spoken[0].onstart?.(); // stopped: its epoch is gone
+    expect(starts).toBe(1);
+    off();
+    h.v.reply("Three.");
+    h.spoken.at(-1)?.onstart?.();
+    expect(starts).toBe(1);
   });
 
   it("stop() clears the queue (Stop reading)", () => {
@@ -426,7 +446,12 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /** The session with the real cloud output over fakes (fetch, element, AudioContext, GainNode). */
 function cloudHarness(
-  o: { aec?: boolean; mode?: "speech" | "cloud"; status?: (text: string) => number } = {},
+  o: {
+    aec?: boolean;
+    mode?: "speech" | "cloud";
+    status?: (text: string) => number;
+    hasVoice?: (lang: string) => boolean;
+  } = {},
 ) {
   const h0 = { t: 0 };
   const el = new FakeEl();
@@ -471,6 +496,7 @@ function cloudHarness(
     enabled: () => true,
     here: () => false,
     cloud: () => cloud,
+    hasVoice: o.hasVoice,
     mode: () => flags.mode,
     aec: () => flags.aec,
     now: () => h0.t,
@@ -722,6 +748,64 @@ describe("voice session: the cloud route falls back to speech per sentence", () 
   });
 });
 
+describe("voice session: no speechSynthesis voice for the language → the cloud reads it", () => {
+  it("speech mode, getVoices() empty (Android Chrome): read through /api/words/tts, not silent", async () => {
+    const h = cloudHarness({ mode: "speech", hasVoice: () => false });
+    h.v.setMic(true);
+    expect(h.v.reply("你好。")).toBe(true);
+    await h.loaded();
+    expect(h.spoken).toEqual([]);
+    expect(h.el.plays).toHaveLength(1);
+    expect(h.fetched[0]).toContain("/api/words/tts?lang=zh&text=");
+    expect(h.logs.find((l) => l.ev === "voice-out")).toMatchObject({
+      out: "cloud",
+      route: "audio",
+      fallback: "no-voice",
+    });
+  });
+
+  it("speech mode with a voice for the language stays on speechSynthesis", async () => {
+    const h = cloudHarness({ mode: "speech", hasVoice: (l) => l.startsWith("en") });
+    h.v.setMic(true);
+    h.v.reply("Hello there.");
+    await tick();
+    expect(h.spoken.map((u) => u.text)).toEqual(["Hello there."]);
+    expect(h.fetched).toEqual([]);
+    // A language it has no voice for, in the same session: the cloud.
+    h.spoken[0].onend?.();
+    h.v.reply("こんにちは。");
+    await h.loaded();
+    expect(h.el.plays).toHaveLength(1);
+    expect(h.spoken).toHaveLength(1);
+  });
+
+  it("no speechSynthesis at all, cloud available: replies are still read (canSpeak)", async () => {
+    const h = cloudHarness();
+    const v = createVoice({
+      synth: () => null,
+      utter: () => ({}) as UtterLike,
+      enabled: () => true,
+      here: () => true,
+      cloud: () =>
+        createCloudOut({
+          fetch: async () => ({
+            ok: true,
+            status: 200,
+            headers: { get: () => null },
+            blob: async () => new Blob(["x"]),
+          }),
+          element: () => h.el,
+          ctx: () => null,
+          toUrl: () => "blob:x",
+        }),
+      mode: () => "speech",
+    });
+    expect(v.reply("Read me.")).toBe(true);
+    await h.loaded();
+    expect(h.el.plays).toHaveLength(1);
+  });
+});
+
 describe("voice session: the echo check", () => {
   it("matches what the agent said in the window, and says whether it was audible during the utterance", () => {
     const h = cloudHarness({ mode: "speech" });
@@ -769,5 +853,84 @@ describe("voice session: the echo check", () => {
     h.v.setMic(true);
     h.v.reply("Hi.");
     expect(seen).toEqual([{ ev: "x" }, expect.objectContaining({ ev: "voice-out" })]);
+  });
+});
+
+describe("resuming where the reading was (resumeOffset, heardFraction)", () => {
+  it("resumeOffset: rounds DOWN to the start of a sentence or clause, never skipping", () => {
+    const t = "今天先复习单词，然后做听力。最后休息一下！";
+    // Half heard: back to after the last mark before the middle.
+    expect(t.slice(resumeOffset(t, 0.5))).toBe("然后做听力。最后休息一下！");
+    expect(t.slice(resumeOffset(t, 0.75))).toBe("最后休息一下！");
+    expect(resumeOffset(t, 0.1)).toBe(0); // no mark passed yet: from the start
+    expect(resumeOffset(t, 0)).toBe(0);
+    const en = "First we review, then we listen. Then rest.";
+    expect(en.slice(resumeOffset(en, 0.9))).toBe("Then rest.");
+    expect(en.slice(resumeOffset(en, 0.5))).toBe("then we listen. Then rest.");
+    expect("one\ntwo\nthree".slice(resumeOffset("one\ntwo\nthree", 0.8))).toBe("three");
+    expect(resumeOffset("", 0.5)).toBe(0);
+    expect(resumeOffset("abc", 7)).toBe(0); // clamped, and no mark at all
+  });
+
+  it("heardFraction: by the reading speed, CJK slower per character, capped at 1", () => {
+    expect(heardFraction("你好你好你好你好你好", 1000)).toBeCloseTo(0.5, 5); // 5 chars/s of 10
+    expect(heardFraction("a".repeat(28), 1000, 1)).toBeCloseTo(0.5, 5); // 14 chars/s of 28
+    expect(heardFraction("a".repeat(28), 1000, 2)).toBeCloseTo(1, 5);
+    expect(heardFraction("abc", 0)).toBe(0);
+    expect(heardFraction("", 500)).toBe(0);
+  });
+});
+
+describe("voice session: resume after a pause", () => {
+  function timed() {
+    let t = 0;
+    const spoken: UtterLike[] = [];
+    const v = createVoice({
+      synth: () => ({ speak: (u) => void spoken.push(u), cancel: () => {} }),
+      utter: (text) => ({ text, onend: null, onerror: null, onboundary: null }) as UtterLike,
+      enabled: () => true,
+      here: () => true,
+      now: () => t,
+      setTimer: () => ({}),
+      clearTimer: () => {},
+    });
+    v.setMic(true);
+    return { v, spoken, advance: (ms: number) => void (t += ms) };
+  }
+
+  it("goes on from the sentence it was on, not from the reply's first", () => {
+    const h = timed();
+    h.v.reply("One. Two. Three.");
+    h.spoken.at(-1)?.onend?.(); // "One." done
+    h.spoken.at(-1)?.onend?.(); // "Two." done
+    expect(h.spoken.at(-1)?.text).toBe("Three.");
+    h.v.interrupt("speech");
+    h.v.resume();
+    expect(h.spoken.map((u) => u.text)).toEqual(["One.", "Two.", "Three.", "Three."]);
+  });
+
+  it("no word boundaries (Android voices): the place is estimated, rounded down to a clause", () => {
+    const h = timed();
+    // One long utterance (no sentence stop inside): commas only.
+    h.v.reply("今天先复习单词，然后做听力，最后休息一下");
+    h.advance(2_000); // 10 of 19 characters at 5/s
+    h.v.interrupt("speech");
+    h.v.resume();
+    expect(h.spoken.at(-1)?.text).toBe("然后做听力，最后休息一下");
+  });
+
+  it("a reply delivered again is not read again; a new reply while paused waits its turn", () => {
+    const h = timed();
+    h.v.reply("Alpha. Beta.");
+    h.v.interrupt("typing");
+    expect(h.v.reply("Alpha. Beta.")).toBe(false); // a reconnect re-sent it
+    expect(h.v.reply("Gamma.")).toBe(true); // queued behind the rest
+    h.v.resume();
+    h.spoken.at(-1)?.onend?.();
+    h.spoken.at(-1)?.onend?.();
+    expect(h.spoken.map((u) => u.text)).toEqual(["Alpha.", "Alpha.", "Beta.", "Gamma."]);
+    // Long after, the same words are a new reply.
+    h.advance(REPLY_DEDUPE_MS + 1);
+    expect(h.v.reply("Alpha. Beta.")).toBe(true);
   });
 });

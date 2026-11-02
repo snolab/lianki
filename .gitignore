@@ -43,6 +43,8 @@ yarn-error.log*
 .env.staging
 # wrangler dev local secrets (used by `bun run qa:all`) — keep .dev.vars.example
 .dev.vars
+# the whole-page dev server's secrets (scripts/dev/whole-page.ts)
+.dev-whole-page.json
 # the debug chat's resumable grant (scripts/dev/eval.ts chat) — a credential
 .debug-chat-token.json
 .debug-eval-token.json
@@ -73,3 +75,9 @@ test-results/
 # rech/Playwright browser snapshots (may contain sensitive page content)
 .playwright-cli-multi-tab/
 .shots/
+
+# Python bytecode (scripts/local-stt, scripts/voice)
+__pycache__/
+
+# The Learning Partner for other sites: built at deploy (scripts/build-partner-embed.ts)
+public/partner-embed.js

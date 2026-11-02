@@ -1,7 +1,8 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys } from "@/lib/i18n-context";
 
 /** Home: navigation and onboarding (the page-card start page is /sites). */
-const navHomeContent = {
+const dictionary = {
   key: "nav-home",
   content: {
     title: t({
@@ -203,42 +204,72 @@ const navHomeContent = {
       ko: "둘러보기",
     }),
     advanced: t({
-      en: "Advanced",
-      zh: "进阶",
-      hi: "उन्नत",
-      es: "Avanzado",
-      fr: "Avancé",
-      ar: "متقدم",
-      bn: "উন্নত",
-      pt: "Avançado",
-      ru: "Расширенное",
-      ur: "ایڈوانسڈ",
-      id: "Lanjutan",
-      de: "Erweitert",
-      ja: "上級",
-      sw: "Ya juu",
-      mr: "प्रगत",
-      ko: "고급",
+      en: "LiCards",
+      zh: "链卡",
+      hi: "LiCards",
+      es: "LiCards",
+      fr: "LiCards",
+      ar: "LiCards",
+      bn: "LiCards",
+      pt: "LiCards",
+      ru: "LiCards",
+      ur: "LiCards",
+      id: "LiCards",
+      de: "LiCards",
+      ja: "LiCards",
+      sw: "LiCards",
+      mr: "LiCards",
+      ko: "LiCards",
     }),
     advancedHint: t({
-      en: "Lianki cards: save any web page as a card and review it, with the browser userscript",
-      zh: "Lianki 卡片：用浏览器用户脚本，把任意网页存成卡片来复习",
-      hi: "Lianki कार्ड: ब्राउज़र यूज़रस्क्रिप्ट से किसी भी पेज को कार्ड बनाकर दोहराएँ",
-      es: "Tarjetas Lianki: guarda cualquier página como tarjeta y repásala, con el userscript",
-      fr: "Cartes Lianki : enregistrez n'importe quelle page comme carte et révisez-la, avec le userscript",
-      ar: "بطاقات Lianki: احفظ أي صفحة كبطاقة وراجعها باستخدام سكربت المتصفح",
-      bn: "Lianki কার্ড: ইউজারস্ক্রিপ্ট দিয়ে যেকোনো পেজকে কার্ড বানিয়ে রিভিউ করুন",
-      pt: "Cartões Lianki: salve qualquer página como cartão e revise, com o userscript",
-      ru: "Карточки Lianki: сохраняйте любую страницу как карточку и повторяйте её с помощью userscript",
-      ur: "Lianki کارڈ: یوزر اسکرپٹ سے کسی بھی صفحے کو کارڈ بنا کر دہرائیں",
-      id: "Kartu Lianki: simpan halaman apa pun sebagai kartu dan ulangi, dengan userscript",
-      de: "Lianki-Karten: jede Webseite als Karte speichern und wiederholen, mit dem Userscript",
-      ja: "Lianki カード：ユーザースクリプトで、どんなページもカードにして復習",
-      sw: "Kadi za Lianki: hifadhi ukurasa wowote kama kadi na urudie, kwa userscript",
-      mr: "Lianki कार्ड: यूजरस्क्रिप्टने कोणतेही पेज कार्ड म्हणून जतन करून उजळणी करा",
-      ko: "Lianki 카드: 유저스크립트로 어떤 웹페이지든 카드로 저장해 복습",
+      en: "Save any web page as a card and review it, with the browser userscript",
+      zh: "用浏览器用户脚本，把任意网页存成卡片来复习",
+      hi: "ब्राउज़र यूज़रस्क्रिप्ट से किसी भी पेज को कार्ड बनाकर दोहराएँ",
+      es: "Guarda cualquier página como tarjeta y repásala, con el userscript",
+      fr: "Enregistrez n'importe quelle page comme carte et révisez-la, avec le userscript",
+      ar: "احفظ أي صفحة كبطاقة وراجعها باستخدام سكربت المتصفح",
+      bn: "ইউজারস্ক্রিপ্ট দিয়ে যেকোনো পেজকে কার্ড বানিয়ে রিভিউ করুন",
+      pt: "Salve qualquer página como cartão e revise, com o userscript",
+      ru: "Сохраняйте любую страницу как карточку и повторяйте её с помощью userscript",
+      ur: "یوزر اسکرپٹ سے کسی بھی صفحے کو کارڈ بنا کر دہرائیں",
+      id: "Simpan halaman apa pun sebagai kartu dan ulangi, dengan userscript",
+      de: "Jede Webseite als Karte speichern und wiederholen, mit dem Userscript",
+      ja: "ユーザースクリプトで、どんなページもカードにして復習",
+      sw: "Hifadhi ukurasa wowote kama kadi na urudie, kwa userscript",
+      mr: "यूजरस्क्रिप्टने कोणतेही पेज कार्ड म्हणून जतन करून उजळणी करा",
+      ko: "유저스크립트로 어떤 웹페이지든 카드로 저장해 복습",
     }),
   },
-} satisfies DeclarationContent;
+};
 
-export default navHomeContent;
+const context: Record<keyof typeof dictionary.content, string> = {
+  title: "Page title and main heading of the Home page, also the browser tab title. One noun.",
+  wordsTitle:
+    "Heading of the first Home section, which shows the user's vocabulary word lists. Plural noun phrase.",
+  due: "Text after a big number on Home: how many words are due for review today, e.g. '16 due today'.",
+  lists: "Small text after a number on Home: how many word lists the user studies, e.g. '3 lists'.",
+  cont: "Button on Home that resumes studying the due words. Imperative verb, very short.",
+  startTitle:
+    "Heading above three numbered onboarding steps on Home, shown before any word list is started.",
+  step1: "First onboarding step on Home: choose a vocabulary list for the language being learned.",
+  step2:
+    "Second onboarding step on Home: grading each word is fast, with the keys A S W D or a swipe on a phone. Keep A S W D as is.",
+  step3:
+    "Third onboarding step on Home: return daily; due words come back by themselves (spaced repetition).",
+  startButton:
+    "Button under the onboarding steps on Home that opens the word lists. Imperative phrase.",
+  explore: "Small uppercase heading above the grid of other learning features on Home. One word.",
+  advanced:
+    "Small uppercase heading above the page-card features on Home (sites, review, card list). LiCards is the product name of the feature that turns web pages into cards: never translate it; keep LiCards in every language except Chinese, which uses 链卡.",
+  advancedHint:
+    "One-line explanation under the LiCards heading on Home of what the feature does: any web page can be saved as a review card and reviewed, with the browser userscript. Do not repeat the name LiCards here.",
+};
+
+export default {
+  ...dictionary,
+  title: "Home — navigation and onboarding",
+  description: describeKeys(
+    "The Home page of the Lianki app: word lists first, then other learning features, then the page-card features under the LiCards heading. Lianki and LiCards (zh: 链卡) are product names, not translated.",
+    context,
+  ),
+} satisfies DeclarationContent;

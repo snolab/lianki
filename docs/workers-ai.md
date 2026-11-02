@@ -118,11 +118,12 @@ Content-Type: audio/webm | audio/ogg | audio/mp4 | audio/wav | audio/mpeg   (cod
   other AI routes: per isolate, so a spread-out burst can get a little more.
 - **Model.** `?model=` is honoured for the owner only (`isOwner`), and only
   from `STT_MODELS`; everyone else, and any other value, gets the default.
-  No language hint by default; `?lang=` is optional.
+  `?lang=` forces one language (optional). `?hint=zh|ja|en` is softer: it
+  only picks the prompt (below); the mic sends it.
 - **Fallback.** When the default fails, the fallback is tried once. A model
   the owner named explicitly is not replaced, so the bench sees real errors.
-- **Logs.** `debug.stt` with model, bytes, ms and the transcript's length.
-  Never the audio or the text.
+- **Logs.** `debug.stt` with model, bytes, ms, the transcript's length, the
+  hint and the detected language. Never the audio or the text.
 
 ### Which model, and why
 
@@ -150,6 +151,63 @@ the Japanese from a ja + en clip. `STT_PROMPT`, an `initial_prompt` that
 itself mixes 日本語, English and 中文, fixed that, and did not leak into a
 clip of silence. It is sent only when no `?lang=` is given.
 
+**The hint (`?hint=`, 2026-10-30).** `STT_PROMPT` leads with Japanese, and
+short Chinese clips from the owner came back as katakana nonsense
+(「シェイカーマイカフォン。」). On his 12 saved clips (`~/lianki-voice-clips`,
+10 zh, 2 en), a simplified-Chinese-led prompt (`sttPrompt("zh")`) beat
+`STT_PROMPT` on every Chinese clip: simplified output instead of
+traditional, 銀外 → 另外, punctuation kept, and no katakana (that clip came
+back as English instead). `language: "zh"` was worse: it dropped all
+punctuation and turned both English clips into Chinese. So the hint only
+swaps the prompt, and Whisper still detects. ja and en keep `STT_PROMPT`.
+The mic's hint (`packages/debug-chat/src/stt-hint.ts`) is the language of the
+owner's last **typed** line (kana → ja, else Han → zh, else Latin → en), else
+the device's language. Dictated lines never teach it, so a misheard line
+can't make the next one worse.
+
+Silence hallucinations (「ご視聴ありがとうございました。」, "Thanks for
+watching" — Whisper's subtitle credits) are handled twice. Turbo is sent
+`STT_ANTI_HALLUCINATION` (`condition_on_previous_text: false`,
+`no_speech_threshold: 0.5`; both in its input schema, not yet verified live).
+The mic then drops a final transcript that is one of `HALLUCINATIONS`
+(normalized: NFKC, no punctuation or spaces) when the utterance had under
+`HALLUCINATION_MAX_MS` of speech or a mean Silero probability under
+`HALLUCINATION_MIN_PROB` (`isHallucination`, `packages/debug-chat/src/mic.ts`).
+Each drop is a `stt-hallucination` devLog event with `{text, ms, prob}`, to
+tune those two.
+
+**Whisper's additions inside real speech (2026-10-31).** In the field the
+cloud route also mixed its own text into what the owner said, e.g.
+「我说中文，中文字幕提供。…ert ert ert ert ert. 中文。有时夹杂日本語和English。」:
+the prompt read back in pieces, a subtitle credit, and a decoding loop. Every
+final transcript, cloud or local (the same `send` in `createMic`), first goes
+through `cleanTranscript` (`mic.ts`), which takes out:
+
+1. **An echo of the prompt.** The prompts live in
+   `packages/debug-chat/src/stt-hint.ts` (`STT_PROMPTS`; `lib/stt.ts`
+   `sttPrompt` sends them), so the mic strips exactly what the route can
+   send. The whole prompt, or one of its clauses (split on 。，,.!?) of 4 or
+   more normalized characters, is cut when it is a clause of the transcript;
+   the whole prompt and clauses of 8 or more are cut inside a clause too. A
+   short word that is merely in the prompt (a lone 中文) stays, unless all
+   that is left after an echo is such scraps.
+2. **Stock subtitle and outro phrases** (`HALLUCINATIONS`, now with
+   中文字幕提供, 请订阅 and the prompts) when they are a clause, or a run of
+   clauses, of their own anywhere in the message, or stuck on its end. Inside
+   a sentence (「他说感谢观看这个视频的人」) they stay, and おやすみなさい is
+   only ever dropped as a whole message. A message that is nothing but stock
+   phrases is left to `isHallucination` as before.
+3. **Decoding loops** (`collapseRepeats`): a token or n-gram (n ≤ 4)
+   repeated 4 or more times in a row goes to one copy ("the the the the" →
+   "the"), or to nothing when it is a Latin fragment that is no word ("ert").
+   Three in a row ("no no no") stays, and one CJK character needs 6
+   (哈哈哈哈 is laughter).
+
+If nothing meaningful is left, the message is dropped. Each cleaning is a
+`stt-cleaned` devLog event with the counts `{prompt, phrase, repeat,
+dropped}` and the removed text (Whisper's, not the user's), up to 80
+characters.
+
 Request formats, all verified live: turbo takes JSON with the audio in
 base64; Whisper and Nova-3 take the raw bytes with their Content-Type, Nova-3
 its options as query parameters. MP3, M4A (AAC) and WAV were tested; WebM/Opus
@@ -162,6 +220,10 @@ with `CLOUDFLARE_AI_TOKEN` (a Worker secret), like the other AI calls. An
 
 The bench for the owner's own voice is in
 [dev-debug-widget.md](dev-debug-widget.md), "Voice clips and the STT bench".
+
+For the owner only, the mic can stream to a local model on his Mac instead
+(SenseVoice over a tailnet WebSocket, partials while he speaks), falling back
+to this route on any failure: [local-stt.md](local-stt.md).
 
 ## Not migrated
 
@@ -226,23 +288,51 @@ any voice is ambiguous.
 
 ## Prefetch and cost
 
-`/words` fetches the audio of the rows on screen and up to two screens below,
-plus the next five in queue order, before they are tapped
-(`lib/words/audio-cache.ts`, an IntersectionObserver in `WordsClient.tsx`).
+`/words` fetches audio before it is tapped (`lib/words/audio-cache.ts`), in
+the owner's order (2026-10-30, `lib/words/audio-priority.ts`): the rows on
+screen, then their neighbours outward across the rendered window (one below,
+one above, two below, …), then five past it, and last of all today's due
+words (`stock`, to the device only, for offline study). Every scroll re-orders
+the wish: visible rows jump the queue and take the due-word download's slots,
+and prefetches of rows that scrolled away are aborted. Within each group, all
+words first, then examples, then meanings.
 A tap reads three clips back to back, ~150 ms apart: the word, its meaning
 (first sense, `lib/words/say-parts.ts`), and the example sentence. Each is its
-own `/api/words/tts` URL in its own language. Prefetch order is all words
-first, then examples, then meanings.
+own `/api/words/tts` URL in its own language.
 
-- **Limits.** 3 fetches at once, 300 clips per tab session, an in-memory LRU
-  of 200 blob URLs (revoked on eviction), and nothing at all on Save-Data or
-  2G. A 429 pauses prefetch for its Retry-After. A tap goes ahead of every
-  prefetch. A text with no voice (404 `X-Voice: miss`, or 400) is remembered
-  and goes straight to the browser's speech, for that part only.
-- **HTTP cache.** Every 200 is `private, max-age=31536000, immutable`, so a
-  device fetches a clip once a year at most. It stays `private`, not
-  `public`, because the route is behind sign-in. No ETag is needed, since an
-  immutable response is never revalidated.
+- **On the device.** Read order is memory → disk → network. Every clip
+  fetched (200s only — never a miss or an error) goes into the Cache API
+  (`lianki-audio-v1`, `lib/words/audio-disk.ts`), so it plays next time, and
+  offline, with no network at all. The browser's HTTP cache is not relied on:
+  an iOS home-screen app drops it too often. Least recently used first out
+  past 4000 clips or 120 MB, never a clip of a row on screen; the index (size,
+  last use) is one JSON entry in the same cache. `navigator.storage.persist()`
+  is asked once per device. The service worker (`public/sw.js`) still leaves
+  `/api/` alone: the page is the only writer. Debug mode logs each `play`
+  with `from: memory | disk | network`.
+
+- **Limits.** 6 fetches at once, 300 _generated_ clips per tab session (a
+  recording, a MeloTTS clip already in R2, or a prefetch aborted because its
+  row scrolled away does not count), an in-memory LRU of 200 blob URLs
+  (revoked on eviction), and nothing at all on Save-Data or 2G. A 429 pauses
+  prefetch for its Retry-After. A tap goes ahead of every prefetch, and
+  fetches all three parts of its row at once (`warm`): the meaning and the
+  example arrive while the word plays. A text with no voice (404
+  `X-Voice: miss`, or 400) is remembered and goes straight to the browser's
+  speech, for that part only.
+- **Edge Worker for recordings.** `lianki-voice` (`workers/voice`, a few KB)
+  owns the zone route `lianki.com/api/words/tts*`. A recorded clip comes from
+  Cloudflare's edge cache or R2 with no session lookup and no Next.js —
+  `public, max-age=31536000, immutable`, with an ETag. Anything else
+  (meanings, MeloTTS languages, texts not in a list, errors) is passed
+  unchanged to the main Worker over its `MAIN` binding, and the route below
+  answers it. Measured before (2026-10-30, `lianki_metrics`): a warm clip
+  77–150 ms in the Worker (D1 session + R2), and one request in ten landed on
+  a new isolate of the 23 MB main Worker, 1–2.5 s to first byte. Its timings
+  are under `index1 = 'voice'` in `lianki_metrics`.
+- **HTTP cache.** A recording is `public`; a MeloTTS clip `private` (it is
+  behind sign-in), both `max-age=31536000, immutable`, so a device fetches a
+  clip once a year at most.
 - **Meaning voice.** `MEANING_VOICE` in `lib/words/say-parts.ts` is `"server"`
   until the owner decides (`"browser"` is free). Meanings are not
   pre-recorded, so a meaning's first request runs MeloTTS. After that it is

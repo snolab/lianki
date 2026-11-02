@@ -17,6 +17,7 @@ import {
   micConstraints,
   noteTrack,
   outMode,
+  setAec,
   ttsUrl,
 } from "@lianki/debug-chat/voice-out";
 
@@ -67,6 +68,26 @@ describe("voice-out: the switches", () => {
     });
   });
 
+  it("setAec: the menu's A/B switch writes lk:voice-aec, never throws", () => {
+    const store: Record<string, string> = {};
+    const localStorage = {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => void (store[k] = v),
+      removeItem: (k: string) => void delete store[k],
+    };
+    withGlobals({ localStorage }, () => {
+      setAec(false);
+      expect(store[VOICE_AEC_KEY]).toBe("0");
+      expect(aecOn()).toBe(false);
+      setAec(true);
+      expect(VOICE_AEC_KEY in store).toBe(false);
+      expect(aecOn()).toBe(true);
+    });
+    withGlobals({ localStorage: undefined }, () => {
+      expect(() => setAec(false)).not.toThrow();
+    });
+  });
+
   it("AEC constraints: echo cancellation, noise suppression and auto gain all on", () => {
     expect(micConstraints(true)).toEqual({
       echoCancellation: true,
@@ -75,7 +96,13 @@ describe("voice-out: the switches", () => {
       channelCount: 1,
     });
     expect(AEC_CONSTRAINTS.autoGainControl).toBe(true);
-    expect("autoGainControl" in micConstraints(false)).toBe(false);
+    // Off: no processing at all (the A/B against Android's call mode).
+    expect(micConstraints(false)).toEqual({
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      channelCount: 1,
+    });
   });
 
   it("keeps what the browser applied to the mic track", () => {

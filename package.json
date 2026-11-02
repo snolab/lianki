@@ -13,9 +13,12 @@
     "dev:db": "node scripts/dev-mongo.mjs",
     "qa:api": "node scripts/qa/qa-api.mjs",
     "qa:ui": "node scripts/qa/qa-ui.mjs",
-    "qa:all": "node scripts/qa/qa-all.mjs",
+    "qa:lang-menu": "bash scripts/qa/with-muted-mac.sh node scripts/qa/qa-lang-menu.mjs",
+    "qa:all": "bash scripts/qa/with-muted-mac.sh node scripts/qa/qa-all.mjs",
+    "qa:partner": "bash scripts/qa/with-muted-mac.sh bun scripts/qa/qa-partner-embed.ts",
     "build": "next build --turbopack",
     "start": "next start",
+    "lint": "oxlint --ignore-pattern 'packages/**' && oxfmt --check '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**'",
     "fix": "oxlint --fix --ignore-pattern 'packages/**' && oxfmt '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**'",
     "typecheck": "tsgo --noEmit",
     "prepare": "husky",
@@ -40,6 +43,7 @@
     "@ai-sdk/openai": "^3.0.41",
     "@better-auth/kysely-adapter": "1.7.10",
     "@better-auth/passkey": "1.7.10",
+    "@simplewebauthn/server": "13.3.3",
     "@dnd-kit/core": "6.3.1",
     "@dnd-kit/sortable": "10.0.0",
     "@dnd-kit/utilities": "3.2.2",
@@ -74,7 +78,8 @@
     "streamdown": "^2.4.0",
     "ts-fsrs": "^5.2.3",
     "yaml": "^2.9.0",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "zustand": "5.0.15"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",
@@ -113,5 +118,8 @@
   },
   "overrides": {
     "kysely": "0.28.17"
+  },
+  "patchedDependencies": {
+    "miniflare@5.20261012.0-beta": "patches/miniflare@5.20261012.0-beta.patch"
   }
 }

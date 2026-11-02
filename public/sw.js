@@ -6,6 +6,12 @@
 // IndexedDB — see lib/words/idb.ts.
 const CACHE_NAME = "lianki-v2";
 
+/**
+ * Caches the page writes itself, never cleared here on an update: the word
+ * clips kept on the device (lib/words/audio-disk.ts, AUDIO_CACHE_NAME).
+ */
+const KEEP_CACHES = ["lianki-audio-v1"];
+
 // Assets to pre-cache on install
 const PRECACHE_URLS = ["/manifest.json"];
 
@@ -22,7 +28,11 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))),
+        Promise.all(
+          keys
+            .filter((k) => k !== CACHE_NAME && !KEEP_CACHES.includes(k))
+            .map((k) => caches.delete(k)),
+        ),
       )
       .then(() => self.clients.claim()),
   );

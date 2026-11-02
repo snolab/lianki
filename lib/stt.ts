@@ -3,6 +3,7 @@
  * text"): which Workers AI models may be asked for, what they cost, and how
  * their answers are read. Shared by /api/debug/stt and the STT bench. No I/O.
  */
+import { STT_PROMPT, STT_PROMPT_ZH } from "@lianki/debug-chat/stt-hint";
 
 /**
  * The Workers AI ASR models that take one audio file over REST, from
@@ -38,7 +39,26 @@ export const FALLBACK_STT_MODEL: SttModel = "@cf/openai/whisper";
  * makes it keep switching. Without it, a ja + en clip came back English only.
  * It does not leak into silence (tested: "" for 2 s of noise).
  */
-export const STT_PROMPT = "日本語、English、中文が混ざります。";
+export { STT_PROMPT };
+
+/** The languages a mic may hint (`?hint=`): the one the speaker mostly uses. */
+export const STT_HINTS = ["zh", "ja", "en"] as const;
+export type SttHint = (typeof STT_HINTS)[number];
+export const sttHint = (raw: string | null | undefined): SttHint | undefined =>
+  (STT_HINTS as readonly string[]).includes(raw ?? "") ? (raw as SttHint) : undefined;
+
+/**
+ * The prompt for a hinted language. A hint is softer than `?lang=`: Whisper
+ * still detects per window, and the prompt only says which language leads.
+ * On the owner's 12 saved clips (2026-10-30), a Chinese-led prompt in
+ * simplified characters beat STT_PROMPT on every Chinese clip (simplified
+ * output, 銀外 → 另外, and no katakana for a short clip that came back as
+ * シェイカーマイカフォン), while `language: "zh"` dropped all punctuation and
+ * turned the English clips into Chinese. ja and en keep STT_PROMPT.
+ */
+export function sttPrompt(hint?: SttHint): string {
+  return hint === "zh" ? STT_PROMPT_ZH : STT_PROMPT;
+}
 
 /**
  * USD per audio minute over REST: Cloudflare's pricing page

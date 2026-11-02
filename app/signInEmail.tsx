@@ -16,10 +16,14 @@ export async function authUser() {
 
 /** For API routes: returns null instead of redirecting when unauthenticated. */
 export async function authUserOrNull() {
+  return (await authSessionOrNull())?.user ?? null;
+}
+
+/** The user and their sign-in session ({user, session}), or null for a guest. */
+export async function authSessionOrNull() {
   const h = await headers();
   // A guest has no session cookie, and then getSession can only answer null:
   // skip it, so a guest's request never loads better-auth at all.
   if (!hasSessionCookie(h)) return null;
-  const session = await auth.api.getSession({ headers: h });
-  return session?.user ?? null;
+  return (await auth.api.getSession({ headers: h })) ?? null;
 }

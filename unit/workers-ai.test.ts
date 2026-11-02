@@ -9,11 +9,12 @@ import {
   workersAiOpenAI,
   workersAiProvider,
   sniffAudioType,
+  melottsCode,
   workersAiSpeech,
   workersAiTranscribe,
   WORKERS_AI_NOT_CONFIGURED,
 } from "../lib/workers-ai";
-import { STT_PROMPT } from "../lib/stt";
+import { STT_PROMPT, sttPrompt } from "../lib/stt";
 
 const ENV_KEYS = [
   "CLOUDFLARE_ACCOUNT_ID",
@@ -155,10 +156,24 @@ describe("speech", () => {
       "https://api.cloudflare.com/client/v4/accounts/acct123/ai/run/@cf/myshell-ai/melotts",
     );
     expect((seen!.init.headers as Record<string, string>).Authorization).toBe("Bearer tok_abc");
+    // MeloTTS's own code: it rejects ISO "ja" ("Supported: en, es, fr, jp, kr, zh").
     expect(JSON.parse(seen!.init.body as string)).toEqual({
       prompt: "これは日本語です",
-      lang: "ja",
+      lang: "jp",
     });
+  });
+
+  it("sends MeloTTS's codes for Japanese and Korean, ISO for the rest", async () => {
+    configure();
+    const sent: string[] = [];
+    globalThis.fetch = (async (_u: string, init: RequestInit) => {
+      sent.push(JSON.parse(init.body as string).lang);
+      return new Response(mp3, { headers: { "content-type": "audio/mpeg" } });
+    }) as never;
+    for (const lang of ["ja", "ko", "zh", "en", "es", "fr"])
+      await workersAiSpeech({ text: "x", lang });
+    expect(sent).toEqual(["jp", "kr", "zh", "en", "es", "fr"]);
+    expect(melottsCode("ja")).toBe("jp");
   });
 
   it("honours an explicit lang", async () => {
@@ -285,6 +300,8 @@ describe("workersAiTranscribe", () => {
       audio: "AQID",
       task: "transcribe",
       vad_filter: true,
+      condition_on_previous_text: false,
+      no_speech_threshold: 0.5,
       language: "ja",
     });
     calls.length = 0;
@@ -298,8 +315,21 @@ describe("workersAiTranscribe", () => {
       audio: "AQID",
       task: "transcribe",
       vad_filter: true,
+      condition_on_previous_text: false,
+      no_speech_threshold: 0.5,
       initial_prompt: STT_PROMPT,
     });
+    // A hint (no language) only picks the prompt: Whisper still detects.
+    calls.length = 0;
+    await workersAiTranscribe({
+      audio,
+      mime: "audio/webm",
+      model: "@cf/openai/whisper-large-v3-turbo",
+      hint: "zh",
+    });
+    const hinted = JSON.parse(String(calls[0].init.body));
+    expect(hinted.initial_prompt).toBe(sttPrompt("zh"));
+    expect(hinted.language).toBeUndefined();
     answer(200, JSON.stringify({ result: { text: "hi" } }));
     expect(
       await workersAiTranscribe({ audio, mime: "audio/webm", model: "@cf/openai/whisper" }),

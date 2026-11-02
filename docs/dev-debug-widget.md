@@ -5,6 +5,38 @@ the owner's phone, seconds after saving and without merge or deploy. The page
 stays on lianki.com, so the debug socket, the chat history and the owner's
 data all keep working. Only the widget module comes from your machine.
 
+## Naming
+
+**User-facing name: Learning Partner / 学习伙伴; internal: debug.** Users never
+see the word "debug": the menu badge, the /words badge, toasts, the chat's
+aria-labels and placeholders all say the localized name, from
+`app/components/learning-partner.content.ts` (key `learning-partner`). English
+reads one constant, `AGENT_NAME_EN` in `packages/debug-chat/src/wire.ts`; the
+widget takes its strings as the `strings` prop (`ChatStrings`, English
+defaults in `wire.ts`), so the package still imports nothing from the app.
+
+| Locale | Name                       | Locale | Name                |
+| ------ | -------------------------- | ------ | ------------------- |
+| en     | Learning Partner           | ru     | Напарник по учёбе   |
+| zh     | 学习伙伴 (zh-TW 學習夥伴)  | ar     | رفيق الدراسة        |
+| ja     | 学習パートナー             | hi     | पढ़ाई का साथी       |
+| ko     | 학습 파트너                | bn     | পড়াশোনার সাথী      |
+| fr     | Partenaire d'apprentissage | ur     | پڑھائی کا ساتھی     |
+| de     | Lernpartner                | id     | Teman Belajar       |
+| es     | Compañero de aprendizaje   | sw     | Mwenzi wa Kujifunza |
+| pt     | Parceiro de aprendizagem   | mr     | अभ्यास सोबती        |
+
+The app ships one Chinese locale (`zh`, Simplified); 學習夥伴 is the agreed
+name for when zh-TW is added.
+
+Everything internal keeps "debug": the package, files, APIs, `/api/debug/*`,
+`data-debug-*` / `data-testid="debug-*"` hooks, and the owner-only dev pages.
+Storage moves to `lk:agent*` gradually (`packages/debug-chat/src/storage-keys.ts`):
+reads try `lk:agent*` then `lk:debug*`, writes go to both, and a one-time
+migration (marker `lk:agent-migrated`) copies `lk:debug*` to `lk:agent*`. Drop
+the `lk:debug*` writes one release later. `?agent=1` / `?agent=0` work as
+aliases of `?debug=1` / `?debug=0` (`?agent=` wins when both are given).
+
 The widget lives in its own workspace package, `packages/debug-chat`
 (`@lianki/debug-chat`), which imports nothing from the app, so it can move to
 its own repo as is. Lianki passes what it needs as `DebugChatProps`; the wire
@@ -16,11 +48,13 @@ re-exports for the hub and the sender.
 | `debug-chat-widget.ts`                                   | the widget entry: `DebugChat` and `WIDGET_API`           |
 | `DebugChat.tsx`                                          | the chat box: log, the bar (controls + input), menu      |
 | `float-lines.ts`                                         | minimized: floating lines, their dwell and timers        |
+| `compact-view.ts`                                        | compact mode: last message only, when to fold again      |
 | `log-surface.ts`                                         | the log's display, shared by the log and the state tree  |
 | `Frontier.tsx`, `frontier-view.ts`                       | minimized: the ✓ ▶ › frontier lines and their rules      |
 | `DebugChatHost.tsx`                                      | the page's loader: import, re-import on reload, fallback |
 | `DebugPairModal.tsx`                                     | the pairing modal                                        |
 | `MicButton.tsx`, `mic.ts`                                | the mic: VAD, STT client, dictation rules                |
+| `latency.ts`                                             | voice → reply timing per line (monitoring.md)            |
 | `debug-widget.ts`                                        | shared rules: allowed URLs, cache-busting, module checks |
 | `debug-chat-tabs.ts`, `tap-gesture.ts`                   | one voice per device; taps and drags                     |
 | `wire.ts`, `icons.tsx`, `LiagentMark.tsx`                | wire types and helpers; icons; the liagent mark          |
@@ -44,8 +78,17 @@ bun scripts/dev/debug-widget-server.ts --port 5180 --no-tunnel
 bun scripts/dev/debug-widget-server.ts --port 5180 --tunnel lianki-dev-mac --origin https://dev-mac.lianki.com
 ```
 
-Then, on the owner's page in debug mode, run this once in the console, or
-with `bun scripts/dev/eval.ts`:
+Pages on other origins (e.g. the whole-page dev server, docs/dev-whole-page.md) are
+answered cross-origin only when listed exactly in `LIANKI_DEV_ORIGINS` (comma-separated
+https origins, no wildcards), for both this server and `scripts/dev/islands-server.ts`:
+`LIANKI_DEV_ORIGINS=https://<mac>.<tailnet>.ts.net:8443 bun scripts/dev/debug-widget-server.ts …`.
+
+**On lianki.com, use live view** ([live-view.md](live-view.md)):
+`bun scripts/dev/live-view.ts on --widget /lianki-widget`, then "Live view" in
+the account menu. Since 2026-11-01 the unsigned key below is ignored on
+production; it still works on localhost and in dev builds (the harness, the
+whole-page dev server). There, run this once in the console, or with
+`bun scripts/dev/eval.ts`:
 
 ```js
 localStorage.setItem(
@@ -138,6 +181,164 @@ userscript loader apply ([dev-userscript-loader.md](dev-userscript-loader.md)):
 the server binds `::`, and if the tunnel is remotely managed, its port must
 match. The URL is public, but it serves only the widget code.
 
+## On every site (the userscript)
+
+Owner, 2026-11-01: the Learning Partner renders on every site through the
+userscript, without touching the site's CSS or being touched by it.
+
+**Who gets it.** Off for everyone by default. It runs only when (1) debug
+mode is on for that browser on lianki.com (`lk:agent`/`lk:debug` = "1"; the
+userscript mirrors it into its own storage as `lianki_partner_on` when he
+visits lianki.com), (2) `POST /api/debug/partner-ticket` answers with a
+ticket, which it does for the owner only (404 for anyone else), and (3) it is
+the top window and not a site he hid it on (the note's ×, `lianki_partner_hidden`).
+
+**Files.** `src/partner.ts` (the userscript's side: switch, ticket, fetch,
+mount), `packages/debug-chat/src/embed/` (`isolation.ts` the shadow host,
+styles and key guard; `guard.ts` when it may run and why not;
+`partner-client.ts` the socket; `partner-embed.tsx` the entry),
+`scripts/build-partner-embed.ts` (the build), `scripts/qa/qa-partner-embed.ts`
+(`bun run qa:partner`, silent, against a hostile fixture page).
+
+**Isolation.** One plain `<div>` on `<html>` (never a custom tag: a page could predefine one and take the root through attachInternals), its style set
+inline with `!important` through the CSSOM (beats `* { all: unset
+!important }`; CSP does not govern the CSSOM), and a **closed** shadow root.
+Inside: `:host { all: initial }`, a reset in `@layer base` (under Tailwind's
+utilities), the font stack `system-ui` first (a generic family no page
+`@font-face` can redefine), and every `rem` of the widget's CSS rewritten to
+px, so the page's `html { font-size }` changes nothing. All CSS goes into the
+root as constructed sheets (`adoptedStyleSheets`, which CSP `style-src` does
+not block), else a `<style>` inside the root. `:root` becomes `:host`;
+`@font-face`, `@property` and `@import` are dropped, so nothing leaks out.
+
+**Keys.** Keyboard events are stopped at the shadow root in the bubble phase,
+after the widget's own handlers and before the page's document/window
+listeners. Only events from inside the root pass there, so a key typed on the
+page is never touched. Nothing listens on document or window for keys; the
+tree's Escape (a window listener) acts only while focus is inside the chat
+(`embedded`). Limit: a page listener in the capture phase still sees the key
+first (as a key on a custom element).
+
+**What the widget may reach.** The bundle is one function; inside it,
+`localStorage` is the userscript's GM storage (`lianki_partner_ls:*`),
+`sessionStorage` is memory, and `fetch`, `EventSource`, `WebSocket`,
+`XMLHttpRequest` throw, and `navigator` has no `mediaDevices`/`sendBeacon`.
+`window.X`/`globalThis.X`/`self.X` of those names are rewritten at build
+time. So nothing lands in the site's storage and no request goes to the site.
+`embedded` also drops the mic and voice-clip recording.
+
+**Auth.** The userscript fetches a 60 s single-use ticket with
+GM_xmlhttpRequest (its lianki.com session or `lk:token`, header
+`x-lianki-userscript: 1`), signed with the STT ticket key under another
+audience (`lianki-partner`, `lib/stt-ticket.ts`). It is offered in
+`Sec-WebSocket-Protocol: lianki-partner, <ticket>`, never in the URL.
+lianki-push (`workers/push/src/auth.ts` `partnerTicket`) verifies it with
+`PARTNER_TICKET_PUB` and the hub burns its jti (`pjti:*`) before accepting.
+The split is strict: from https://lianki.com only the cookie counts; from any
+other origin only a ticket. A ticket socket is the owner's thread, **chat
+only**: the hub sends it no eval, lists it in no page list, never counts it
+for a grant, and drops everything it sends except `chat` and `page`
+(`unit/partner-ticket-hub.test.ts`). Its `state`, on connect and in every
+broadcast, is `{type, pending: null, sessions: [], listeners}` only: no
+pairing, session, grant, page label or id, node or `self` (`pageState` in
+`workers/push/src/debug.ts`). The label is host + path, never the query.
+
+**The frame: private typing (owner, 2026-11-01).** A shadow widget cannot
+keep keys private: the host page's capture listeners on document or window
+see every `KeyboardEvent.key` (and composed `input` events) before any
+guard. So the chat runs in a **lianki.com frame**, `/embed/partner`
+(`app/embed/partner/`), the one route any site may frame
+(`frame-ancestors *`, next.config.mjs). Keys typed there go to the frame's
+own document; the host page never sees them.
+
+- **Shell** (`src/partner-frame.ts`, trusted userscript code, plain DOM): a
+  plain div with a closed root holding a grip and the iframe. It keeps the
+  position (drag the grip; kept in `lianki_partner_pos`), minimize
+  (double-click the grip) and the iframe's size (the frame reports its
+  chat's box, so the rest of the page keeps its clicks).
+- **Handshake** (`embed/frame-protocol.ts`, `embed/frame-guest.ts`): the frame
+  posts `{lk:"partner-frame-up"}` to its parent (nothing secret); the shell
+  checks it came from its own iframe on the app origin and answers with
+  `{lk:"partner-hello", label}` and a `MessagePort`, to that origin only; the
+  frame says `ready` on the port. No `up` within 800 ms of the frame's load
+  (10 s overall), or a CSP report refusing the frame (`frame-src`,
+  `child-src`), means blocked. The handshake decides, not a site list: he
+  runs an extension that blocks frames on some sites.
+- **Tickets**: the frame holds no session (third-party: no cookie). It asks
+  for a ticket on the port; the shell fetches one with GM_xmlhttpRequest and
+  writes it into its own port only. The frame's socket comes from
+  https://lianki.com with the partner subprotocol, so lianki-push judges it
+  on the ticket alone (`offersPartner`), chat only, as before. A hostile
+  parent that gets its hello in first can only keep the frame from working;
+  it never receives a ticket or typed text.
+- **No owner boots in the frame.** `/embed/partner` is framable by any site,
+  so the root layout mounts none of the owner's page boots there
+  (`OwnerBoots`: DebugEval with its cookie socket, pairing / Allow UI, eval
+  and hot islands; the service worker; the version notice). middleware.ts
+  sets `x-lianki-partner-frame` from the path alone (a request can neither
+  set nor clear it), and app/layout.tsx skips `OwnerBoots` on it. It does
+  not rely on third-party cookie blocking.
+- **Defence in depth.** DebugEval never connects from a frame whose
+  ancestors are not its own origin (`lib/frame-context.ts`), and says where
+  it sits (`&frame=top|same|foreign`). The hub treats a `frame=foreign` page
+  as chat-only, like a ticket socket (no pairing, no Allow, no eval, minimal
+  state), and refuses a pairing when no real owner page is open.
+  Tests: `unit/partner-frame-route.test.ts`, `unit/partner-ticket-hub.test.ts`;
+  the real route in a frame: `scripts/qa/qa-partner-frame-route.ts` (in qa:all).
+- **Blocked → read-only**: the shadow widget (`mountPartner({readOnly:
+  true})`) shows the replies, and in place of the input a note ("This site
+  blocks private typing…") with a link to reply on lianki.com. No key is
+  asked for on such a site.
+- **ScriptCat's network rules** ("移除 CSP、改写请求头"): an options-page
+  feature only (Tools → Network rules), with actions to remove or set whole
+  response headers; no metadata key or GM API lets a script add one, and a
+  DNR rule cannot add one source to one directive (a second CSP header only
+  narrows). So nothing is added for it; the handshake still decides.
+
+**Where it must not run.** `guard.ts` decides, and a small glass note says
+why instead of the chat (strings `EmbedStrings` in `ui-strings.ts`, by the
+browser's language):
+
+| Blocker     | When                                                                                         |
+| ----------- | -------------------------------------------------------------------------------------------- |
+| `pageRealm` | the manager runs the script in the page's own JS realm (the site could patch WebSocket, read memory) |
+| `connect`   | a CSP `connect-src` report names the hub, or the socket constructor throws                  |
+| `styles`    | constructed sheets unsupported and the `<style>` fallback blocked                           |
+| `script`    | a CSP report on eval/inline script or Trusted Types                                          |
+| `load`      | the widget threw while rendering                                                            |
+
+Isolation is decided fail-closed from the manager's own `GM_info` only (a
+binding in our scope, never a page global; `window.Object` and the like can
+be made to answer anything), read as own properties through syntax alone (a
+null-prototype spread, strict string equality: no built-in the page could
+replace). A page word refuses (`injectInto: "page"`, a declared
+`@inject-into page`, `sandboxMode` "raw" or "js"); then it needs a positive
+word (`injectInto: "content"`, or `sandboxMode: "dom"`); anything else,
+including an unknown manager, counts as the page's realm. So the chat runs
+only where the manager says it injected into the content/DOM world; the
+default page modes of Tampermonkey, Violentmonkey and ScriptCat get the note.
+In the page's realm `startPartner` stops
+before anything privileged: no ticket is asked for, nothing is downloaded or
+evaluated, no callback is handed out (the page could replace `eval` and
+capture them). The `pageRealm` note there is drawn by the userscript's own
+code (`pageRealmNote` in `src/partner.ts`: plain DOM, CSSOM styles, a closed
+root on a div). Never a broken page: every step catches.
+
+**The host is a plain div**, never a custom tag: a page could define that tag
+first with a class calling `attachInternals()`, and `ElementInternals.shadowRoot`
+would hand it our closed root (`qa:partner` checks it, with a control).
+
+**Serving.** Production: `public/partner-embed.js`, built in
+`deploy-worker.yml` (gitignored). Dev: the userscript dev server
+(`bun run dev:loader`) serves `/partner-embed.js` and rebuilds on any change
+in `packages/debug-chat/src`, so a widget edit reaches every attached tab.
+
+**Deploy needs.** `PARTNER_TICKET_PUB` on lianki-push
+(`wrangler secret put PARTNER_TICKET_PUB -c workers/push/wrangler.jsonc <
+~/.config/lianki-stt/ticket.pub`) and `STT_TICKET_KEY` on the main Worker
+(already set for the STT). Without them, tickets are refused and the
+partner stays off.
+
 ## Avatars
 
 Each log line starts with an 18px round avatar instead of a name. Who it
@@ -189,14 +390,14 @@ routing is tested in `unit/debug-hub.test.ts`, "DebugHub node paths".
 **Fields.** Every field is optional, and lines and listeners without them
 work as before.
 
-| Field              | On                          | Meaning                                                          |
-| ------------------ | --------------------------- | ---------------------------------------------------------------- |
-| `taskPath`         | an agent's line             | the sender's node, e.g. `/words/prefetch`                        |
-| `agentId`          | an agent's line             | the node's assignee, e.g. `prefetcher`                           |
-| `to`               | an owner's or agent's line  | the node it is addressed to; absent or `/` = the main thread     |
-| `observed`         | the `chat` envelope         | delivered to an ancestor of `to`, not to `to` itself             |
-| `?node=`/`?agent=` | the controller's socket URL | the node a listener subscribes at, and its assignee              |
-| `nodes`            | the pages' `state`          | the listeners' nodes (never `/`), for the input's completions    |
+| Field              | On                          | Meaning                                                       |
+| ------------------ | --------------------------- | ------------------------------------------------------------- |
+| `taskPath`         | an agent's line             | the sender's node, e.g. `/words/prefetch`                     |
+| `agentId`          | an agent's line             | the node's assignee, e.g. `prefetcher`                        |
+| `to`               | an owner's or agent's line  | the node it is addressed to; absent or `/` = the main thread  |
+| `observed`         | the `chat` envelope         | delivered to an ancestor of `to`, not to `to` itself          |
+| `?node=`/`?agent=` | the controller's socket URL | the node a listener subscribes at, and its assignee           |
+| `nodes`            | the pages' `state`          | the listeners' nodes (never `/`), for the input's completions |
 
 The hub validates every path the same way: it trims it, splits it on `/` or
 `›`, accepts only the characters `A–Z a–z 0–9 . _ ~ -` in each segment, refuses
@@ -333,6 +534,150 @@ the raw STT text, muted; another tap goes back. The icon is one slot:
 `POLISHED_ICON` in `packages/debug-chat/src/icons.tsx`, or the widget's
 `polishedIcon` prop.
 
+## Voiceprint: enrolment and delete by a tap
+
+The chat menu's **Voiceprint** (owner pages with a local STT) opens a panel
+over the bar (`VoiceprintPanel.tsx`, `voiceprint.ts`): enrol this device
+(a consent card first, nothing captured until "I agree, start"), the
+sentences to read, and "Delete my voiceprint" (a confirming tap). The print
+lives only on the Mac; voice lines it verified as him get a small green
+check (`VoiceMark`). The same rule as recording: starting enrolment and
+deleting are taps, never voice. Details: [local-stt.md](local-stt.md),
+"Voiceprint".
+
+## Ask cards: approvals by a tap
+
+The agent can ask with options instead of open text; the page shows them as
+pills the owner taps (`packages/debug-chat/src/ask.ts`, `AskCard.tsx`).
+
+```bash
+bun scripts/dev/eval.ts ask --q "Deploy lianki-push now?" --opt "Deploy" --opt "Wait"
+bun scripts/dev/eval.ts ask --to owner --q "Days?" --opt Mon --opt Tue --multi \
+  --q "Time zone?" --opt UTC --opt Local --wait --timeout 900
+```
+
+- Wire: the controller sends `{type:"ask", questions:[{id?, question,
+options:[{id?, label, recommended?}], multi?}], expiresAt?, to?}` (or one
+  `question` + `options`); the hub answers `{type:"asked", id, askId,
+thread}`. In `eval.ts` the first `--opt` of each `--q` is the recommended
+  one; `--wait` waits for the tap (event-driven, no polling). Limits: 20
+  questions, 8 options, a 7-day expiry at most.
+- The page sends only `{type:"answer", askId, choices}`. The **hub** checks
+  the ask is in that page's own thread, still open (one-shot, not expired)
+  and that the choices fit it, then stamps `{choices, source:"tap", thread,
+label, at}` on the line and sends `{type:"answered", id, askId, answer,
+labels}` to the thread's pages and to the approved listeners; `eval.ts
+chat` prints it as an `answered` line.
+- A controller can never answer: `parseControllerMessage` refuses
+  `type:"answer"`, so `source:"tap"` only ever comes from a page socket.
+- Friends: `--to <email>` asks a friend in their own thread (they must have
+  chatted once). They never see the owner's asks and cannot answer them; their
+  answers reach listeners tagged with their `thread`.
+- The card greys out after the tap, shows the choice, says "Expired" past the
+  deadline, and stays in the history. A page from before this change (no
+  `onAnswer`) falls back to sending the choice as a typed line — that is
+  **not** a tap-grade answer.
+
+**Security:** a hub-stamped `source:"tap"` answer from the owner's thread is
+a high-confidence approval — a deliberate touch on the owner's signed-in
+page. A voice line (stt) is **never** enough to approve anything sensitive:
+it can be misheard, overheard or played from a speaker. A typed line is no
+approval either. Ask with a card and act on the `answered` event.
+
+## Compact mode: only the last message while not typing
+
+For talking to the chat by voice with less on screen (owner, 2026-11-01:
+"相当于最小化模式或者只显示最后一条消息", "让他减少干扰"). While the input
+does not have the focus, the open chat shows only its last message, one line
+of at most two rows with the avatar (never the name), as the minimized
+chat's floating lines do. The bar, the input, the mic and the live interim
+transcript are unchanged and keep working.
+
+- **The setting** is per device: the chat's menu → "Only the last message
+  while not typing" (zh 不打字时只显示最后一条消息), kept in localStorage
+  `lk:pref:chat-view` (`chatPrefs` in `ui-store.ts`), off by default and never
+  synced. Turn it on in the window where you want it (the installed /words
+  app), and it stays off everywhere else.
+- **Whole chat back**: a tap on the input (focus) or on the compact line, or
+  a vertical drag on the mic or the empty input (the full-screen log).
+- **Folding again** (`compact-view.ts` `foldIn`): after the latest hold —
+  1.5 s after the input's blur, 8 s after a tap on the line, 3 s after the
+  last scroll or touch in the log, and a new reply's reading time
+  (`dwellMs`). Never while typing, while the log is scrolled up, or with the
+  menu, the tree or the full-screen log up. One timer, re-armed when it
+  fires; scrolling only moves a ref, so nothing re-renders per scroll.
+- **Ask cards** (above) that are still open show in full above the line (the
+  newest two), their pills tappable; an ask that is the last message is the
+  line itself, in full.
+- **State tree**: when the tree has the log's place, it stays.
+
+Checks and screenshots: `node scripts/dev/debug-chat-compact-qa.mjs --shots
+
+<dir>` (silent browsers, getUserMedia refused, 390×844, light and dark);
+the rules in `unit/chat-compact.test.ts`.
+
+## Quiet lines
+
+Every agent line is shown; what changes is whether it is also read aloud.
+There is no time of day in it, and no setting
+(owner, 2026-11-01).
+
+**Which `say` to use** (agents, read this):
+
+| Line                                                                     | Command                   | Read aloud                          |
+| ------------------------------------------------------------------------ | ------------------------- | ----------------------------------- |
+| FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                               |
+| the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, by the page's usual rules      |
+| an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | yes, like a plain line              |
+
+Default to `--quiet` whenever the line is not a reply to him. `--loud` is
+deprecated: `eval.ts` still accepts it and prints a note, and the line goes
+as a plain `say`.
+
+**Wire.** `{type:"say", text, quiet?: true}`. The hub
+(`parseControllerMessage` in `lib/dev-eval.ts`) keeps `quiet` only as
+boolean `true` and drops anything else (an old `loud` included). It copies
+it onto the `ChatMessage`, so pages get it live and in history, and logs it
+in `debug.say`.
+
+**On the page** (`packages/debug-chat/src/speak-rules.ts`, gated in
+`voice.ts` `gateVoice`), on top of the usual rules (mic on, or the speaker
+toggle on and the input focused):
+
+1. **Quiet** (`quiet: true`): never spoken, even with the mic on.
+2. **Hidden page or locked screen** (`document.visibilityState` "hidden"):
+   never spoken (the browser would not let it). Hiding the page also stops a
+   reading under way. When the page is visible again, the newest line that
+   arrived while it was hidden is read once (not a backlog); the lines left
+   unread show a small note, "not read aloud: the page was in the
+   background" (`ChatStrings.notReadHidden`, `data-testid="debug-chat-unheard"`).
+
+A line kept silent is logged as `{ev:"voice-silent", why}` (quiet, hidden)
+on the voice session's log, and a missed line read on return as
+`{ev:"voice-missed"}`. Quiet lines carry `data-volume="quiet"` in the log,
+for tests; they look the same.
+
+**No voice on the device.** With the output on "speech" (the default), a
+reply in a language speechSynthesis has no voice for (some Android Chromes
+report `getVoices()` = 0) is read through the cloud (`/api/words/tts`,
+`voice-out.ts`) instead of staying silent; it is logged with
+`fallback: "no-voice"`. The cloud's `<audio>` element is unlocked in the
+first gesture on such a device.
+
+**Hot-loadable.** The gate wraps `reply` on the shared voice session
+(`globalThis.__lkVoice`), so a hot-loaded widget applies these rules even
+under a deployed DebugEval that still calls `speakReply(text)` without the
+line.
+
+**Cleanup.** An older build kept a time-of-day setting under
+`lk:agent-quiet-hours`; the gate removes that key once on load
+(`dropRetiredKeys`), so nothing of it is left on his devices.
+
+Tests: `unit/speak-rules.test.ts` (the rules, the gate, the missed line, the
+cleanup), `unit/voice-session.test.ts` (the no-voice fallback),
+`unit/debug-hub.test.ts` ("say --quiet"), `unit/dev-eval.test.ts`,
+`unit/node-args.test.ts`.
+
 ## The state tree, live
 
 The chat's Tree view (menu → Tree; `docs/state-tree.md`) normally shows the
@@ -350,6 +695,108 @@ the bundled copy and the dot is gone.
 `treeSource` accepts a URL, a function returning markdown or nodes, or
 `{subscribe(onUpdate) → unsubscribe}`: the WebSocket progress feed
 (`feat/live-roadmap`, parked) will be another such feed.
+
+## UI state across a refresh and a hot swap
+
+The chat's session UI state is one store, `chat`, made with the shared
+UI-state factory (`@lianki/ui-state`, `docs/ui-state.md`;
+`packages/debug-chat/src/ui-store.ts`). It is zustand `persist` over
+**sessionStorage**, under `lk:ui:chat`. It holds:
+
+- the draft, its caret, and whether the draft is still pure dictation, so a
+  restored voice line still sends as `source: "stt"`;
+- whether the tree panel is open;
+- the state tree's place: the focused node, the opened nodes and their
+  depths, and the minimized tree's scroll.
+
+The tree's place is kept by **title paths**, not index ids
+(`tree-keep.ts` `keepTree` / `restoreTree`). A node added above it does not
+move the focus, and a node that is gone falls back to its nearest ancestor.
+
+How it is stored and restored:
+
+- The factory's storage never throws (it falls back to memory).
+- `migrateChatUi` checks every stored value (as the factory's `clean`, and
+  as `migrate` for an older version), so a damaged entry falls back to the
+  defaults.
+- The factory keeps one store per page on `globalThis.__lkUiStores`, so a
+  re-imported widget (a hot reload, or the built-in chat taking over) uses
+  the same store.
+
+Only UI state goes in it, never business data (messages, grants, tokens).
+Device preferences, including the bar's position, stay in localStorage.
+Not kept, on purpose:
+
+- the log's scroll: the resting compact log always shows the newest lines;
+- the full-screen log: it only lasts as long as a drag;
+- the mic: it never turns itself on after a reload.
+
+**zustand and the page's React.** zustand's `import React from "react"`
+made Bun wrap the React shim as CommonJS with its ESM exports empty. So the
+shim (`hostModule` in `scripts/dev/debug-widget-build.ts`) is now CommonJS
+outright: `module.exports = globalThis.__lkReact.React`.
+
+## Page errors
+
+The owner's pages report their own errors to the agent, so it can watch them
+and fix them without being told (owner's order, 2026-10-31).
+`packages/debug-chat/src/page-errors.ts` hooks the page, and
+`app/components/DebugEval.tsx` wires it to the debug socket.
+
+**What is caught:** window `error` and `unhandledrejection`; every
+`console.error` (still logged as usual); same-origin `/api/*` fetches
+answering ≥ 400 (`fetch`, e.g. `/api/words/tts` 503, `/api/debug/stt` 502)
+or failing on the network (`network`; an abort is not an error);
+`<audio>`/`<video>`/`<img>`/`<source>` load errors (`media`, listened for in
+the capture phase on `window`); and the local STT socket closing on its own
+(`socket`, reported by `local-stt.ts` through `reportPageError`).
+
+**Who reports:** the hooks go in when the debug socket is first wanted
+(debug mode on), and errors are queued (at most 10) until the hub's `state`
+arrives with no `friend-status` first — the owner's page. Then the queue,
+and every later error, goes over the socket. A friend's page drops its queue
+and removes the hooks at `friend-status`; ordinary users never open the
+socket, so never hook. The hub ignores a page-error from a friend's page
+anyway. Debug mode off removes the hooks.
+
+**Wire.** Page → hub `{type:"page-error", kind, message, stack?, path,
+status?, at, rev?}` — `kind` one of error, rejection, console, fetch,
+network, media, socket; `path` the page's (or the failed request's) path,
+never a query; `rev` the build (`NEXT_PUBLIC_BUILD_ID`, `dev` under next
+dev). The hub (`workers/push/src/debug.ts`) adds the socket's own `label`
+(the page's path and user agent; a label in the message is ignored) and
+`hubAt`, and sends it live to the owner-approved listeners only — not
+heartbeat sockets, not a friend's preview pairing, never a page. It is never
+stored. Log: `debug.page-error` (kind, path, status, first 80 characters).
+
+**Scrubbing (on the page, before anything is kept):** emails →
+`<email>`; `Bearer …`/JWTs → `<token>`; `token=`/`password:`/`cookie`/
+`session`/`api_key`/`sig`… values → `<redacted>`; cookie strings →
+`<cookie>`; query strings and fragments → `?…`; opaque strings of 32+
+letters and digits → `<token>`. Text the user typed or said is cut out as
+`<typed>`: the current values of every input, textarea and contenteditable,
+and the chat's latest 50 lines (owner, friend and agent; so chat and STT
+text never leave). Arguments to `console.error` that are objects are never
+serialized (`[Object]`, `[Array]`); Errors become `Name: message`. Message
+≤ 500 characters, stack ≤ 12 lines and 1500 characters (the hub caps the
+same).
+
+**Dedupe and rate.** The same kind + message + path is sent once per 5
+minutes; at most 10 errors a minute go out (the rest are dropped, and are
+not even scrubbed).
+
+**Listening.** `eval.ts chat` prints them as `{"type":"page-error","kind",
+"message","stack","path","status","label","rev","at"}` lines (and appends
+them to `--out`). A dedicated watcher, printing only those:
+
+```bash
+# In the background (run_in_background); the main lane watches the file with Monitor.
+bun scripts/dev/eval.ts errors --no-pair --out /tmp/lianki-page-errors.jsonl
+```
+
+It holds the saved chat grant like `chat` (same reconnects, no polling);
+`--no-pair` never asks the owner — with no grant it prints
+`{"type":"error"}` and waits for one to be saved.
 
 ## Testing
 
@@ -471,12 +918,103 @@ The folder is `--clips-dir`, else `LIANKI_CLIPS_DIR`, else
 | `POST /clips/bench?run=<id>` | the bench's raw results, written once as `bench-raw-<id>.json`                                                                                                                                      |
 
 A clip is at most 5 MB, and webm, ogg, m4a, wav or mp3. Cross-origin
-requests are allowed from `https://lianki.com` only (with
-`Access-Control-Allow-Private-Network`). Any other `Origin` gets 403.
+requests are allowed from `https://lianki.com`, plus each exact https origin
+listed in `LIANKI_DEV_ORIGINS` or `LIANKI_CLIPS_ORIGINS` (comma-separated, no
+wildcards: the whole-page dev server's `https://<mac>.<tailnet>.ts.net:8443`,
+a widget preview origin). The answer echoes that origin, with
+`Access-Control-Allow-Private-Network`. Any other `Origin` gets 403. Nothing
+deletes a clip: the sink has no delete route and nothing cleans up. Ask the
+owner before removing any.
 
-The page posts to the sink only when the owner has set
-`localStorage["lk:debug-clip-sink"]` to the server's origin, e.g.
-`https://<machine>.<tailnet>.ts.net/lianki-widget`.
+**Keys.** An allowed origin is not enough. Every request carries
+`authorization: Bearer <key>`, with one of two random keys in
+`~/.config/lianki/clip-sink-keys.json` (0600, made on first use;
+`LIANKI_CLIP_SINK_KEYS` overrides the path). The **write** key is for
+`POST /clips`. `eval.ts clips on` hands it to the hub, which gives it only
+to the owner's pages of a recording session. The **read** key is for
+`GET /clips/*` and `POST /clips/bench`, and only the agent and `stt-bench.ts`
+use it (it travels to the page inside the bench's eval code). A request
+without the right key gets 401: another account's page on lianki.com, or a
+client with no Origin, can neither read nor add.
+
+### Recording: a window session held by the hub
+
+Owner, 2026-10-31: the switch is not in any origin's storage, and it follows
+the window across URLs and origins (lianki.com, the :8443 dev server, the
+widget previews). It is session-scoped, like sessionStorage. The rules are in
+`packages/debug-chat/src/clips.ts`, the hub's side in `workers/push/src/debug.ts`
+("Voice-clip recording"), the page's in `clips-store.ts` (zustand, through
+`@lianki/ui-state`) and `ClipsBadge.tsx`.
+
+- **Ids.** Each window has a session id in sessionStorage (`lk:ui:clips`).
+  Each origin has a device id in localStorage (`lk:pref:clips-device`). The
+  first page on an origin makes one. When the hub puts a page in an existing
+  session, its answer carries that session's device id, and the page keeps
+  it. The page sends both on its hub socket (`?ws=&dev=`).
+- **The hub keeps** `clips:<sid>` only while recording: device, since,
+  optional auto-stop, sink and its write key, the owner's origins, the hash
+  of a one-time handoff token, and since when no page has been connected. It
+  also keeps `clipsink`, the sink the agent last set up, so that a tap can
+  reuse it. Every page of the session hears `{type:"clips", sid, device, on,
+until?, left?, sink?, sinkKey?, origins?, handoff?, paused?, resumable?,
+canStart?}` on connect and on each change.
+- **Across origins.** The session moves only between the owner's origins,
+  matched exactly: lianki.com plus the list `eval.ts clips on` passes. That
+  list is the sink's own allowlist (`LIANKI_DEV_ORIGINS`,
+  `LIANKI_CLIPS_ORIGINS`), or `--origins a,b`. Any other host never sees the
+  token, including another person's tailnet host or another port. A tap on a
+  link to one of these origins gets `?lkws=<token>` added as it is followed. The new page takes it out of the address bar and knocks with
+  `&hand=<token>`, and the hub puts it in the same session. The token works
+  once and rotates on every join. `__lkClips.go(url)` does the same from
+  eval. An address typed by hand carries no token: the page of the same
+  device continues a session that just lost its page; on another device it
+  is only offered ("Continue recording", a tap).
+- **When it ends.** Stop on the badge, the agent's `clips off`, the optional
+  auto-stop, or no page of the session for `CLIPS_GONE_MS` (2 min: a closed
+  window). A page reports `hidden` (screen off, app in the background)
+  before its socket drops, and `leaving` on pagehide. A hidden session lasts
+  `CLIPS_HIDDEN_MS` (12 h). When the screen comes back, the same document
+  says so (`cont=1`: it was recording when its socket dropped, and it never
+  went through pagehide), and recording resumes with no tap. The badge then
+  shows "paused N min" for a minute. Other pages rejoin silently only after a
+  quick reload or navigation (not hidden, within 2 min). That excludes a tab
+  closed while hidden and restored later, and a page back from the bfcache:
+  a document that went through pagehide knocks with `back=1`, and the hub
+  never joins it by itself, not even within those 2 min. Those pages are
+  offered "Continue recording" and need a tap.
+- **Stop is local first.** A tap on Stop turns recording off on the page at
+  once (`stopPending`, kept in sessionStorage), whether or not the hub can be
+  told. Each clip checks at send time that its session still records. The
+  page sends `clips-off` again on every reconnect, and a hub state saying
+  that same recording (same `since`) is on never turns it back on. Only a new
+  tap, or a new `clips on` from the agent, does.
+- **Wake lock.** While recording and visible, the page holds
+  `navigator.wakeLock.request("screen")` ("Screen kept on" on the badge). It
+  asks again when the page is visible after the system dropped it, and
+  releases it when recording stops. Without the API, the badge says it
+  pauses when the screen sleeps.
+- **The badge** ("录音中 / Recording") is a glass pill at the top of every
+  page of the session, with a one-tap Stop. It always shows how many clips
+  the sink acknowledged. A failed post turns it to "Saving failed" in red,
+  and the page logs `clip-post-failed` (status and sink host only, never
+  audio or text) to `/api/dev/log`.
+- **The sink URL has one source**: the hub. `eval.ts clips on` sets it,
+  defaulting to `https://<this Mac's tailnet>/lianki-widget`, and checks
+  first that it answers with the read key. A tap in the menu reuses the
+  sink the agent last set up; the menu item shows only when there is one
+  (`canStart`). No origin's localStorage key is read any more, so a stale
+  `lk:agent-clip-sink` cannot win (it once sent every clip to a dead host).
+- **On and off.** The agent: `bun scripts/dev/eval.ts clips` (list),
+  `clips on --device <text> [--minutes N] [--sink <url>]`, `clips off
+[--device <text>]`. `<text>` matches a session or device id prefix, or text
+  in a page label ("Android"). The page: the chat menu's "Record voice clips"
+  (with an "Auto-stop after 60 min" switch, off by default), and Stop on the
+  badge. Turning it on is always a tap or the agent, never the voice.
+- **Off the critical path.** The upload is built and sent in a later task,
+  after the mic has its final transcript (`mic.ts sideClip`). It never delays
+  recognition, and the VAD never waits on it. `unit/clips-session.test.ts`
+  measures this: 20 utterances with a 200 ms sink take no longer than with no
+  sink.
 
 **Reference text.** To score a clip, put what was really said in
 `<name>.ref.txt` next to it. The bench then adds a CER for each model.

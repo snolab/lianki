@@ -18,12 +18,35 @@
  * Everything that touches the browser is injected (MicDeps), so this is
  * unit-tested with fakes.
  */
-import { type MicState, type UploadInfo, type Vad, type VadEvents, createMic } from "./mic";
+import type { MicAdapt } from "./mic";
+import type { UttMarks } from "./latency";
+import {
+  type MicState,
+  type StreamStt,
+  type UploadInfo,
+  type Vad,
+  type VadEvents,
+  createMic,
+  keepStream,
+} from "./mic";
+import type { LocalFinal, LocalState } from "./local-stt";
+import type { SpeakerTag } from "./wire";
+import type { KwsState } from "./wake-kws";
+import { type SpotResult, type WakeCommand, type WakeMode, type WakeReason, createWake } from "./wake";
+
+/** What the session needs of a local STT client (local-stt.ts LocalStt). */
+export type LocalClient = StreamStt & {
+  close(): void;
+  state(): LocalState;
+  subscribe(f: (s: LocalState) => void): () => void;
+  /** A voiceprint request (local-stt.ts request); absent on an older client. */
+  request?(msg: Record<string, unknown>): Promise<Record<string, unknown>>;
+};
 
 /** globalThis key of the session. */
 export const MIC_SESSION_KEY = "__lkMic";
 /** Bumped when the session's shape changes; an older one is migrated, its stream kept. */
-export const MIC_SESSION_V = 1;
+export const MIC_SESSION_V = 9;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -41,9 +64,24 @@ export type MicView = {
   error: unknown;
   /** Reloaded with the mic on, but it could not resume by itself: one tap does. */
   resume: boolean;
+  /** The local streaming STT's socket, when one is configured (the button's dot). */
+  local?: LocalState;
+  /** Active: everything goes to STT. Passive: only "Linky" wakes it (wake.ts). */
+  wake: WakeMode;
+  /** Why it is in that mode (its last change), sent with each chat line for the agents. */
+  wakeReason?: WakeReason;
+  /** The on-device spotter, once passive mode first asked for it (wake-kws.ts). */
+  kws?: Exclude<KwsState, "idle">;
 };
-export type MicConfig = { clipSink?: string; label: string };
+export type MicConfig = {
+  clipSink?: string;
+  label: string;
+  /** The owner's local streaming STT (local-stt.ts), a ws(s) URL. */
+  localStt?: string;
+};
 export type MicDeps = {
+  /** The room and voice estimator (adaptive.ts): the endpoint follows it. */
+  adapt?: MicAdapt;
   /** getUserMedia with the session's constraints. */
   getStream: () => Promise<StreamLike>;
   /** The VAD on a stream (Silero), and the fallback (an energy gate). Neither stops the stream. */
@@ -62,6 +100,20 @@ export type MicDeps = {
   /** Try to get the AudioContext running without a gesture; false if it stays suspended. */
   resumeAudio?: () => Promise<boolean>;
   log?: (ev: Record<string, unknown>) => void;
+  /** A client for the local streaming STT at this URL (local-stt.ts createLocalStt). */
+  localStt?: (url: string) => LocalClient;
+  /** Each kept final's speaker tag and the Mac's signed proof of it (voiceprint.ts noteSpeaker). */
+  speaker?: (tag: SpeakerTag | undefined, proof?: string) => void;
+  /** A final utterance's timestamps (createMic's `timing`; latency.ts). */
+  timing?: (seq: number, marks: UttMarks) => void;
+  /**
+   * The on-device "Linky" spotter (wake-kws.ts createKws), made on first use:
+   * the first time the mic goes passive. Without it the mic never goes passive.
+   */
+  kws?: (onState: (s: KwsState) => void) => {
+    load(): Promise<void>;
+    spot(audio: Float32Array): Promise<SpotResult>;
+  };
 };
 
 type Listener = (v: MicView) => void;
@@ -77,7 +129,15 @@ export function createMicSession(
   from?: { stream: StreamLike | null; on: boolean },
 ) {
   let stream: StreamLike | null = from?.stream ?? null;
-  let view: MicView = { state: "off", pending: 0, interim: "", error: null, resume: false };
+  let view: MicView = {
+    state: "off",
+    pending: 0,
+    interim: "",
+    error: null,
+    resume: false,
+    wake: "active",
+    wakeReason: "mic-on",
+  };
   let cfg: MicConfig = { label: "" };
   const listeners = new Set<Listener>();
   let sink: Sink | null = null;
@@ -119,14 +179,83 @@ export function createMicSession(
     stream = null;
   };
   let prev: MicState = "off";
+  /** The local STT client for cfg.localStt; replaced when the URL changes. */
+  let local: { url: string; c: LocalClient; off: () => void } | null = null;
+  const localStream = (): StreamStt | undefined => {
+    const url = cfg.localStt;
+    if (local && local.url !== url) {
+      local.off();
+      local.c.close();
+      local = null;
+      emit({ local: undefined });
+    }
+    if (!url || !deps.localStt) return undefined;
+    if (!local) {
+      const c = deps.localStt(url);
+      local = { url, c, off: c.subscribe((s) => emit({ local: s })) };
+      emit({ local: c.state() });
+    }
+    return local.c;
+  };
+  /** The spotter, made the first time the mic goes passive. */
+  let kws: ReturnType<NonNullable<MicDeps["kws"]>> | null = null;
+  const spotter = () => {
+    if (!kws && deps.kws)
+      kws = deps.kws((s) => {
+        emit({ kws: s === "idle" ? undefined : s });
+        // Never deaf: a spotter that cannot load puts the mic back in active mode.
+        if ((s === "failed" || s === "needs-wifi") && wake.mode() === "passive")
+          wake.set("active", "kws-failed");
+      });
+    return kws;
+  };
+  const wake = createWake({
+    onChange: (v, from, reason) => {
+      emit({ wake: v.mode, wakeReason: v.reason });
+      deps.log?.({ ev: "wake", from, to: v.mode, reason });
+      if (v.mode === "passive") void spotter()?.load().catch(() => {});
+    },
+  });
+  /** Set the mode (the agent, a tap); "ignored": the agent says the last line was not for it. */
+  const command = (c: WakeCommand, reason: WakeReason = "agent") => {
+    if (c === "ignored") return void wake.reject();
+    if (c === "passive" && !deps.kws) return;
+    wake.set(c, reason);
+  };
+  /** The enrolment card's hook while it records (voiceprint.ts), and whether it turned the mic on. */
+  let enrolHook: ((f: Promise<LocalFinal> | null) => void) | null = null;
+  /** The open enrolment's id on the Mac (its start answer). */
+  let enrolId = "";
+  let enrolOpened = false;
   const mic = createMic({
+    stream: localStream,
+    enrol: {
+      active: () => !!enrolHook,
+      begin: (cb) => localStream()?.begin(cb, { enrol: enrolId }) ?? null,
+      done: (f) => enrolHook?.(f),
+    },
+    adapt: deps.adapt,
+    wake: deps.kws
+      ? {
+          // In whisper mode it stays active: the spotter is unproven on whispers.
+          passive: () => wake.mode() === "passive" && !deps.adapt?.state().whisper,
+          spot: async (audio) => {
+            const k = spotter();
+            return k ? k.spot(audio) : { hit: false };
+          },
+          onWake: () => void wake.set("active", "wake-word"),
+          verdict: (ok) => void (ok ? wake.accept() : wake.reject()),
+        }
+      : undefined,
     load: async (ev) => deps.load(ev, await ensureStream()),
     fallback: deps.fallback ? async (ev) => deps.fallback!(ev, await ensureStream()) : undefined,
     upload: (wav, info) => deps.upload(wav, info, cfg),
     onState: (s) => {
       const was = prev;
       prev = s;
-      emit({ state: s, ...(s !== "off" ? { resume: false } : {}) });
+      // Listening always starts active: a tap on means "I'm talking to you".
+      if (was === "off" && s !== "off") wake.set("active", "mic-on");
+      emit({ state: s, wakeReason: wake.view().reason, ...(s !== "off" ? { resume: false } : {}) });
       deps.onState?.(s, was);
     },
     onText: (t) => (sink ? sink.onText(t) : void held.push(t)),
@@ -136,6 +265,9 @@ export function createMicSession(
     },
     onError: (e) => emit({ error: e }),
     onProb: (p) => deps.onProb?.(p),
+    log: (ev) => deps.log?.(ev),
+    timing: (seq, m) => deps.timing?.(seq, m),
+    speaker: (t, p) => deps.speaker?.(t, p),
   });
   const unhold = deps.subscribeHold?.((h) => mic.hold(h));
 
@@ -163,10 +295,15 @@ export function createMicSession(
     },
     configure(c: MicConfig) {
       cfg = c;
+      localStream(); // a changed or removed URL takes effect (and shows) at once
+      if (mic.state() !== "off") keepStream(local?.c, true);
     },
-    /** A tap: on (remembered for a reload), or an explicit off. */
+    /** Active or passive (wake.ts); the chat lane's {type: "wake"} and the tests. */
+    wake: (c: WakeCommand, reason?: WakeReason) => command(c, reason),
+    /** A tap: on (remembered for a reload), back to active from passive, or an explicit off. */
     async toggle() {
       emit({ error: null });
+      if (mic.state() !== "off" && wake.mode() === "passive") return void wake.set("active", "tap");
       if (mic.state() === "off") {
         store.on();
         await mic.toggle();
@@ -181,6 +318,41 @@ export function createMicSession(
     },
     hold: (on: boolean) => mic.hold(on),
     /**
+     * Enrolment (voiceprint.ts): on, every utterance goes to `onFinal` as an
+     * enrolment sentence (to the Mac only), turning the mic on if it was off
+     * (the consent tap is the gesture); off, back to the chat, and the mic off
+     * again if enrolment turned it on.
+     */
+    async enrolCapture(
+      on: boolean,
+      onFinal: (f: Promise<LocalFinal> | null) => void,
+      id = "",
+    ) {
+      if (!on || !id) {
+        enrolHook = null;
+        enrolId = "";
+        if (enrolOpened && mic.state() !== "off") await session.off();
+        enrolOpened = false;
+        return;
+      }
+      enrolHook = onFinal;
+      enrolId = id;
+      if (mic.state() === "off") {
+        enrolOpened = true;
+        emit({ error: null });
+        await mic.toggle();
+        if (mic.state() === "off") {
+          // Refused or unavailable: nothing to enrol with.
+          enrolHook = null;
+          enrolId = "";
+          enrolOpened = false;
+          throw new Error("microphone not available");
+        }
+      }
+    },
+    /** Enrolling now: the button shows it, and the chat's draft gets nothing. */
+    enrolling: () => !!enrolHook,
+    /**
      * Replaced by a newer session: the VAD goes, the stream stays (the new
      * session builds its VAD on it).
      */
@@ -191,6 +363,10 @@ export function createMicSession(
       const s = stream;
       stream = null; // so the off below can't stop it
       await mic.off();
+      // The new session opens its own socket to the local STT.
+      local?.off();
+      local?.c.close();
+      local = null;
       return s;
     },
     /** After a reload with the mic on: resume without a gesture if we may, else wait for a tap. */

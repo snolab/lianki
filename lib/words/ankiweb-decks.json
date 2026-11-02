@@ -1,0 +1,164 @@
+{
+  "$comment": "Hand-curated AnkiWeb shared decks for /words/import (lib/words/ankiweb.ts). Only the deck id, a title to recognise it by, and a one-sentence description we wrote ourselves: nothing is copied from AnkiWeb. Ids come from public web search results, never AnkiWeb's own search; each checked with one HEAD request to its /shared/info/<id> page. licence: 'personal' = personal use only (AnkiWeb terms); anything else is what the deck's author states, with where it is stated.",
+  "checked": "2026-10-31",
+  "decks": [
+    {
+      "id": "135014526",
+      "title": "Open Anki JLPT N5 Vocab",
+      "lang": "ja",
+      "level": "JLPT N5",
+      "licence": "open",
+      "licenceNote": "Open-source project (github.com/jamsinclair/open-anki-jlpt-decks, MIT; word data CC BY from tanos.co.uk)",
+      "description": "The beginner JLPT vocabulary, word, reading and English meaning, no audio; kept up to date from an open GitHub project."
+    },
+    {
+      "id": "1027909933",
+      "title": "Open Anki JLPT N4 Vocab",
+      "lang": "ja",
+      "level": "JLPT N4",
+      "licence": "open",
+      "licenceNote": "Open-source project (github.com/jamsinclair/open-anki-jlpt-decks, MIT; word data CC BY from tanos.co.uk)",
+      "description": "The next step after N5: the N4 word list with readings and meanings, in the same plain open format."
+    },
+    {
+      "id": "1934609314",
+      "title": "Open Anki JLPT N3 Vocab",
+      "lang": "ja",
+      "level": "JLPT N3",
+      "licence": "open",
+      "licenceNote": "Open-source project (github.com/jamsinclair/open-anki-jlpt-decks, MIT; word data CC BY from tanos.co.uk)",
+      "description": "Intermediate JLPT vocabulary, about two thousand words, text only, from the same open project."
+    },
+    {
+      "id": "1850740099",
+      "title": "Open Anki JLPT N2 Vocab",
+      "lang": "ja",
+      "level": "JLPT N2",
+      "licence": "open",
+      "licenceNote": "Open-source project (github.com/jamsinclair/open-anki-jlpt-decks, MIT; word data CC BY from tanos.co.uk)",
+      "description": "Upper-intermediate JLPT words with readings and meanings, from the open N5–N1 series."
+    },
+    {
+      "id": "1268273817",
+      "title": "Open Anki JLPT N1 Vocab",
+      "lang": "ja",
+      "level": "JLPT N1",
+      "licence": "open",
+      "licenceNote": "Open-source project (github.com/jamsinclair/open-anki-jlpt-decks, MIT; word data CC BY from tanos.co.uk)",
+      "description": "The advanced end of the open JLPT series: the N1 word list, text only."
+    },
+    {
+      "id": "1196762551",
+      "title": "Kaishi 1.5k",
+      "lang": "ja",
+      "level": "Beginner",
+      "licence": "personal",
+      "description": "A community-made first 1,500 Japanese words in frequency order, each with an example sentence, audio and pitch accent."
+    },
+    {
+      "id": "832276382",
+      "title": "egg rolls JLPT N1–N5",
+      "lang": "ja",
+      "level": "JLPT N5–N1",
+      "licence": "CC BY-NC 4.0",
+      "licenceNote": "Stated by the author on github.com/5mdld/anki-jlpt-decks (non-commercial)",
+      "description": "About ten thousand JLPT words across all five levels with audio and examples, explained in Chinese rather than English."
+    },
+    {
+      "id": "1161302916",
+      "title": "HSK 1 Mandarin",
+      "lang": "zh",
+      "level": "HSK 1",
+      "licence": "personal",
+      "description": "The first HSK level on its own, with audio and example sentences, a small place to start Mandarin."
+    },
+    {
+      "id": "236250141",
+      "title": "HSK 5 Mandarin",
+      "lang": "zh",
+      "level": "HSK 5",
+      "licence": "personal",
+      "description": "The HSK 5 vocabulary as a single deck with audio and example sentences, for upper-intermediate learners."
+    },
+    {
+      "id": "1352957654",
+      "title": "Chinese Vocabulary (HSK 1-4)",
+      "lang": "zh",
+      "level": "HSK 1–4",
+      "licence": "personal",
+      "description": "The words of the first four HSK levels in one deck, following the HSK textbook series."
+    },
+    {
+      "id": "701666449",
+      "title": "New HSK 3.0 (2025) Mandarin",
+      "lang": "zh",
+      "level": "HSK 3.0",
+      "licence": "personal",
+      "description": "The newer nine-level HSK 3.0 word list with audio, cards for meaning, pinyin and characters."
+    },
+    {
+      "id": "258311532",
+      "title": "New HSK 3.0 Mandarin Chinese Sentence Deck",
+      "lang": "zh",
+      "level": "HSK 3.0",
+      "licence": "personal",
+      "description": "HSK 3.0 words taught through example sentences; the higher levels are separate downloads on the same page."
+    },
+    {
+      "id": "1334071224",
+      "title": "1000 Most Common English Words",
+      "lang": "en",
+      "level": "Beginner",
+      "licence": "personal",
+      "description": "A thousand high-frequency English words with recorded audio, a solid first list."
+    },
+    {
+      "id": "2068081270",
+      "title": "400 essential English words (Level A1)",
+      "lang": "en",
+      "level": "CEFR A1",
+      "licence": "personal",
+      "description": "A short starter set of everyday English words at the A1 level."
+    },
+    {
+      "id": "1575087857",
+      "title": "The Oxford 3000 Most Important Words",
+      "lang": "en",
+      "level": "CEFR A1–B2",
+      "licence": "personal",
+      "description": "The core 3,000 words Oxford lists for English learners, from beginner to upper-intermediate."
+    },
+    {
+      "id": "241428882",
+      "title": "Spanish Top 5000 Vocabulary",
+      "lang": "es",
+      "level": "Frequency",
+      "licence": "personal",
+      "description": "The five thousand most frequent Spanish words in order, most of them with audio."
+    },
+    {
+      "id": "893324022",
+      "title": "5000 most frequently used French words",
+      "lang": "fr",
+      "level": "Frequency",
+      "licence": "personal",
+      "description": "French by frequency with audio and example sentences, split into the first 500 words and the next 4,500."
+    },
+    {
+      "id": "9239409",
+      "title": "20,000 Most Frequent German Words",
+      "lang": "de",
+      "level": "Frequency",
+      "licence": "personal",
+      "description": "A large German frequency list in small chunks; Lianki keeps the first 20,000 words of a deck."
+    },
+    {
+      "id": "994297597",
+      "title": "Korean Vocabulary Core 2k/5k/10k by Soi",
+      "lang": "ko",
+      "level": "Core 2k–10k",
+      "licence": "personal",
+      "description": "Korean vocabulary in difficulty tiers from a learner's dictionary, with English and several other glosses."
+    }
+  ]
+}

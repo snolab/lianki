@@ -17,7 +17,7 @@
 
 import { createOpenAI } from "@ai-sdk/openai";
 import OpenAI from "openai";
-import { STT_PROMPT, type SttModel, readStt } from "./stt";
+import { type SttHint, type SttModel, readStt, sttPrompt } from "./stt";
 
 /** Replaces gpt-4o-mini: the everyday model for short, cheap generations. */
 export const textModel = () =>
@@ -83,6 +83,16 @@ export function resolveTtsLang(text: string, locale?: string): string {
   return guessTtsLang(text);
 }
 
+/**
+ * The app speaks ISO 639-1 (`ja`, `ko`), but MeloTTS on Workers AI wants its
+ * own codes and rejects the ISO ones: "Unsupported language 'ja'. Supported:
+ * ['en', 'es', 'fr', 'jp', 'kr', 'zh']" (HTTP 400, seen 2026-10-31 — every
+ * generated Japanese and Korean clip failed with "Failed to generate speech").
+ * Mapped only at the request; keys, routes and MELOTTS_LANGS stay ISO.
+ */
+const MELOTTS_CODE: Record<string, string> = { ja: "jp", ko: "kr" };
+export const melottsCode = (lang: string) => MELOTTS_CODE[lang] ?? lang;
+
 export function guessTtsLang(text: string): string {
   if (/[぀-ゟ゠-ヿ]/.test(text)) return "ja"; // hiragana / katakana
   if (/[가-힯ᄀ-ᇿ]/.test(text)) return "ko"; // hangul
@@ -135,7 +145,7 @@ export async function workersAiSpeech(opts: {
       Authorization: `Bearer ${apiToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ prompt: opts.text, lang }),
+    body: JSON.stringify({ prompt: opts.text, lang: melottsCode(lang) }),
     signal: opts.signal,
   });
 
@@ -171,12 +181,25 @@ export async function workersAiSpeech(opts: {
 }
 
 /**
+ * whisper-large-v3-turbo's guards against its silence hallucinations
+ * (「ご視聴ありがとうございました」, "Thanks for watching"): each utterance is
+ * decoded on its own, never conditioned on its earlier text, and segments
+ * Whisper itself thinks are no speech are skipped a little sooner than its
+ * default 0.6. Both are in the model's input schema (@cloudflare/workers-types).
+ * The client drops what still gets through (isHallucination, debug-chat/mic.ts).
+ */
+export const STT_ANTI_HALLUCINATION = {
+  condition_on_previous_text: false,
+  no_speech_threshold: 0.5,
+} as const;
+
+/**
  * Speech to text over the native `/ai/run/<model>` endpoint
  * (docs/workers-ai.md, "Speech to text"). Each model takes its audio its own
  * way: Nova-3 and the original Whisper take the raw bytes as the body (Nova-3's
  * options as query parameters: `language=multi` for code-switching unless a
  * language is given); whisper-large-v3-turbo takes JSON with the audio in
- * base64, and STT_PROMPT unless a language is given. All three verified
+ * base64, and the prompt for `hint` (sttPrompt) unless a language is given. All three verified
  * against the live API (2026-10-29). The answer is read by `readStt`.
  */
 export async function workersAiTranscribe(opts: {
@@ -184,6 +207,7 @@ export async function workersAiTranscribe(opts: {
   mime: string;
   model: SttModel;
   lang?: string;
+  hint?: SttHint;
   signal?: AbortSignal;
 }): Promise<{ text: string; language?: string }> {
   const { apiToken } = requireConfig();
@@ -197,7 +221,10 @@ export async function workersAiTranscribe(opts: {
         audio: Buffer.from(opts.audio).toString("base64"),
         task: "transcribe",
         vad_filter: true,
-        ...(opts.lang ? { language: opts.lang.split("-")[0] } : { initial_prompt: STT_PROMPT }),
+        ...STT_ANTI_HALLUCINATION,
+        ...(opts.lang
+          ? { language: opts.lang.split("-")[0] }
+          : { initial_prompt: sttPrompt(opts.hint) }),
       }),
     };
   } else {

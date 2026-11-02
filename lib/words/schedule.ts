@@ -3,8 +3,9 @@
  *
  * Word lists run on their own rhythm, apart from page cards: lower target
  * retention (more new words, fewer reviews), minute-level learning steps so a
- * fresh word comes back within the same session, and a per-list daily cap on
- * new words. Each list stores its own WordListParams.
+ * fresh word comes back within the same session. Each list stores its own
+ * WordListParams. There is no daily cap on new words: /words is an endless
+ * scroll, not a daily quota (owner, 2026-10-31).
  */
 import {
   type Card,
@@ -27,7 +28,6 @@ export type WordListParams = {
   /** Relearning steps after a lapse. */
   relearningSteps: string[];
   maxIntervalDays: number;
-  newPerDay: number;
 };
 
 export const DEFAULT_WORD_PARAMS: WordListParams = {
@@ -35,7 +35,6 @@ export const DEFAULT_WORD_PARAMS: WordListParams = {
   learningSteps: ["1m", "5m"],
   relearningSteps: ["2m"],
   maxIntervalDays: 365,
-  newPerDay: 50,
 };
 
 const STEP = /^\d{1,4}[mhd]$/;
@@ -46,7 +45,10 @@ const steps = (v: unknown, fallback: string[]) =>
 const num = (v: unknown, lo: number, hi: number, fallback: number) =>
   typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
 
-/** Coerce stored or client-sent params into a safe WordListParams. */
+/**
+ * Coerce stored or client-sent params into a safe WordListParams. A stored
+ * `newPerDay` (the old daily cap, default 50) is dropped: nothing limits new words.
+ */
 export function normalizeParams(raw: unknown): WordListParams {
   const p = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const d = DEFAULT_WORD_PARAMS;
@@ -55,7 +57,6 @@ export function normalizeParams(raw: unknown): WordListParams {
     learningSteps: steps(p.learningSteps, d.learningSteps),
     relearningSteps: steps(p.relearningSteps, d.relearningSteps),
     maxIntervalDays: Math.round(num(p.maxIntervalDays, 1, 36500, d.maxIntervalDays)),
-    newPerDay: Math.round(num(p.newPerDay, 0, 1000, d.newPerDay)),
   };
 }
 
@@ -102,21 +103,14 @@ export function reviewWord(
   return { card: next.card, prevState: before.state };
 }
 
-/** Local calendar day for the daily new-word count. The client sends its own. */
+/**
+ * Local calendar day for word_lists.new_day / new_today, the count of new words
+ * introduced that day. A statistic only, never a limit. The client sends its own.
+ */
 export function dayKey(day: unknown, now = new Date()): string {
   return typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day)
     ? day
     : now.toISOString().slice(0, 10);
-}
-
-/** How many new words may still be introduced today. */
-export function newRemaining(
-  list: { new_day: string | null; new_today: number },
-  params: WordListParams,
-  day: string,
-): number {
-  const used = list.new_day === day ? list.new_today : 0;
-  return Math.max(0, params.newPerDay - used);
 }
 
 /** Short interval label: 30s, 10m, 5h, 3d, 4mo, 1y. */

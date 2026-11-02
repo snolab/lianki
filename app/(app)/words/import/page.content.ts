@@ -1,7 +1,8 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys, flattenContext, type KeyContext } from "@/lib/i18n-context";
 
 /** /words/import: an Anki deck (.apkg) → a word list. Placeholders: {n}, {max}, {name}, {added}… */
-const wordsImportContent = {
+const dictionary = {
   key: "words-import",
   content: {
     pickerLink: t({
@@ -491,40 +492,40 @@ const wordsImportContent = {
       mr: "{n} नोंदींमध्ये चित्रे आहेत. Lianki शब्दसूचीत अजून चित्रांना समर्थन देत नाही, म्हणून ती वगळली जातील.",
     }),
     imagesAdvice: t({
-      en: "If the pictures matter, keep using Anki for this deck — or import it as Lianki cards, which keep each note’s full content.",
-      zh: "如果图片很重要，请继续用 Anki 学习这个牌组——或者把它导入为 Lianki 卡片，完整保留每条笔记的内容。",
-      ja: "画像が大切なデッキは、引き続き Anki で学習してください。または Lianki カードとして取り込めば、各ノートの内容をそのまま残せます。",
-      ko: "그림이 중요하다면 이 덱은 계속 Anki로 학습하세요. 또는 Lianki 카드로 가져오면 각 노트의 내용이 그대로 유지됩니다.",
-      hi: "अगर चित्र ज़रूरी हैं, तो इस डेक के लिए Anki का उपयोग करते रहें — या इसे Lianki कार्ड के रूप में आयात करें, जो हर नोट की पूरी सामग्री रखते हैं।",
-      es: "Si las imágenes importan, sigue usando Anki para este mazo, o impórtalo como tarjetas de Lianki, que conservan todo el contenido de cada nota.",
-      fr: "Si les images comptent, continuez d’utiliser Anki pour ce paquet — ou importez-le en cartes Lianki, qui gardent tout le contenu de chaque note.",
-      ar: "إذا كانت الصور مهمة، فواصل استخدام Anki لهذه المجموعة، أو استوردها كبطاقات Lianki التي تحتفظ بالمحتوى الكامل لكل ملاحظة.",
-      bn: "ছবি জরুরি হলে এই ডেকের জন্য Anki ব্যবহার চালিয়ে যান — অথবা এটিকে Lianki কার্ড হিসেবে আমদানি করুন, যা প্রতিটি নোটের পুরো বিষয়বস্তু রাখে।",
-      pt: "Se as imagens importam, continue usando o Anki para este baralho — ou importe-o como cartões do Lianki, que mantêm todo o conteúdo de cada nota.",
-      ru: "Если картинки важны, продолжайте учить эту колоду в Anki — или импортируйте её как карточки Lianki: они сохраняют заметки целиком.",
-      ur: "اگر تصاویر اہم ہیں تو اس ڈیک کے لیے Anki ہی استعمال کرتے رہیں — یا اسے Lianki کارڈز کے طور پر درآمد کریں، جو ہر نوٹ کا پورا مواد رکھتے ہیں۔",
-      id: "Jika gambarnya penting, tetap gunakan Anki untuk dek ini — atau impor sebagai kartu Lianki, yang menyimpan isi lengkap setiap catatan.",
-      de: "Wenn es auf die Bilder ankommt, lerne dieses Deck weiter in Anki – oder importiere es als Lianki-Karten, die jede Notiz vollständig behalten.",
-      sw: "Ikiwa picha ni muhimu, endelea kutumia Anki kwa deki hii — au iingize kama kadi za Lianki, zinazohifadhi maudhui kamili ya kila noti.",
-      mr: "चित्रे महत्त्वाची असल्यास हा डेक Anki मध्येच वापरत राहा — किंवा तो Lianki कार्ड म्हणून आयात करा, जे प्रत्येक नोंदीचा पूर्ण मजकूर ठेवतात.",
+      en: "If the pictures matter, keep using Anki for this deck — or import it into LiCards, which keeps each note’s full content.",
+      zh: "如果图片很重要，请继续用 Anki 学习这个牌组——或者把它导入到链卡，完整保留每条笔记的内容。",
+      ja: "画像が大切なデッキは、引き続き Anki で学習してください。または LiCards に取り込めば、各ノートの内容をそのまま残せます。",
+      ko: "그림이 중요하다면 이 덱은 계속 Anki로 학습하세요. 또는 LiCards로 가져오면 각 노트의 내용이 그대로 유지됩니다.",
+      hi: "अगर चित्र ज़रूरी हैं, तो इस डेक के लिए Anki का उपयोग करते रहें — या इसे LiCards में आयात करें, जो हर नोट की पूरी सामग्री रखता है।",
+      es: "Si las imágenes importan, sigue usando Anki para este mazo, o impórtalo a LiCards, que conserva todo el contenido de cada nota.",
+      fr: "Si les images comptent, continuez d’utiliser Anki pour ce paquet — ou importez-le dans LiCards, qui garde tout le contenu de chaque note.",
+      ar: "إذا كانت الصور مهمة، فواصل استخدام Anki لهذه المجموعة، أو استوردها إلى LiCards الذي يحتفظ بالمحتوى الكامل لكل ملاحظة.",
+      bn: "ছবি জরুরি হলে এই ডেকের জন্য Anki ব্যবহার চালিয়ে যান — অথবা এটিকে LiCards-এ আমদানি করুন, যা প্রতিটি নোটের পুরো বিষয়বস্তু রাখে।",
+      pt: "Se as imagens importam, continue usando o Anki para este baralho — ou importe-o para o LiCards, que mantém todo o conteúdo de cada nota.",
+      ru: "Если картинки важны, продолжайте учить эту колоду в Anki — или импортируйте её в LiCards: там заметки сохраняются целиком.",
+      ur: "اگر تصاویر اہم ہیں تو اس ڈیک کے لیے Anki ہی استعمال کرتے رہیں — یا اسے LiCards میں درآمد کریں، جو ہر نوٹ کا پورا مواد رکھتا ہے۔",
+      id: "Jika gambarnya penting, tetap gunakan Anki untuk dek ini — atau impor ke LiCards, yang menyimpan isi lengkap setiap catatan.",
+      de: "Wenn es auf die Bilder ankommt, lerne dieses Deck weiter in Anki – oder importiere es in LiCards, wo jede Notiz vollständig erhalten bleibt.",
+      sw: "Ikiwa picha ni muhimu, endelea kutumia Anki kwa deki hii — au iingize kwenye LiCards, inayohifadhi maudhui kamili ya kila noti.",
+      mr: "चित्रे महत्त्वाची असल्यास हा डेक Anki मध्येच वापरत राहा — किंवा तो LiCards मध्ये आयात करा, जे प्रत्येक नोंदीचा पूर्ण मजकूर ठेवते.",
     }),
     importAsCards: t({
-      en: "Import as Lianki cards",
-      zh: "导入为 Lianki 卡片",
-      ja: "Lianki カードとして取り込む",
-      ko: "Lianki 카드로 가져오기",
-      hi: "Lianki कार्ड के रूप में आयात करें",
-      es: "Importar como tarjetas de Lianki",
-      fr: "Importer en cartes Lianki",
-      ar: "الاستيراد كبطاقات Lianki",
-      bn: "Lianki কার্ড হিসেবে আমদানি করুন",
-      pt: "Importar como cartões do Lianki",
-      ru: "Импортировать как карточки Lianki",
-      ur: "Lianki کارڈز کے طور پر درآمد کریں",
-      id: "Impor sebagai kartu Lianki",
-      de: "Als Lianki-Karten importieren",
-      sw: "Ingiza kama kadi za Lianki",
-      mr: "Lianki कार्ड म्हणून आयात करा",
+      en: "Import into LiCards",
+      zh: "导入到链卡",
+      ja: "LiCards に取り込む",
+      ko: "LiCards로 가져오기",
+      hi: "LiCards में आयात करें",
+      es: "Importar a LiCards",
+      fr: "Importer dans LiCards",
+      ar: "الاستيراد إلى LiCards",
+      bn: "LiCards-এ আমদানি করুন",
+      pt: "Importar para o LiCards",
+      ru: "Импортировать в LiCards",
+      ur: "LiCards میں درآمد کریں",
+      id: "Impor ke LiCards",
+      de: "In LiCards importieren",
+      sw: "Ingiza kwenye LiCards",
+      mr: "LiCards मध्ये आयात करा",
     }),
     soundNote: t({
       en: "Audio in the deck is left out — Lianki speaks each word with its own voices.",
@@ -671,6 +672,83 @@ const wordsImportContent = {
       mr: "{n} शब्द",
     }),
   },
-} satisfies DeclarationContent;
+};
 
-export default wordsImportContent;
+const context: KeyContext<typeof dictionary.content> = {
+  pickerLink:
+    "Link in the /words list picker that opens the Anki deck import page. Imperative phrase; keep Anki and (.apkg).",
+  title:
+    "Main heading of the /words/import page, which turns an Anki deck into a vocabulary word list. Keep Anki.",
+  intro:
+    "Paragraph under the /words/import heading: the deck becomes a word list reviewed a screen of words at a time; the file is read on the device and only words are saved.",
+  sharedDecks:
+    "Link on /words/import to the shared decks on the AnkiWeb site (opens outside, ↗ follows). Keep AnkiWeb.",
+  dropzone:
+    "Text inside the file drop area on /words/import: drop an .apkg file or click to pick one. Keep .apkg.",
+  dropHint:
+    "Small hint under the drop area on /words/import: the accepted file types and the word limit per list. Keep .apkg, .colpkg and {max}.",
+  parsing:
+    "Text in the drop area on /words/import while the deck file is being read. Progressive verb with ellipsis.",
+  notes:
+    "Count in the deck summary on /words/import; {n} is how many Anki notes the deck has. Keep {n}; note is Anki's term.",
+  listName: "Label of the field on /words/import that names the new word list. Short noun phrase.",
+  language:
+    "Label of the menu on /words/import that picks which language the deck's words are in. Short noun phrase.",
+  fields:
+    "Heading of the /words/import section that maps the deck's note fields to word, meaning, reading and so on. Question-like phrase.",
+  roleTerm:
+    "Option in the field mapping on /words/import: this field is the word itself (the card front). Keep the parentheses.",
+  roleBack:
+    "Option in the field mapping on /words/import: this field is the meaning (the card back). Keep the parentheses.",
+  roleReading:
+    "Option in the field mapping on /words/import: this field is the reading or pronunciation (e.g. kana). One noun.",
+  roleEx:
+    "Option in the field mapping on /words/import: this field is an example sentence. One noun.",
+  roleExTr:
+    "Option in the field mapping on /words/import: this field translates the example sentence. Short noun phrase.",
+  none: "Menu choice in the field mapping on /words/import meaning no field is used for this role. Keep the dashes.",
+  preview: "Heading above a few sample words on /words/import, as they will be imported. One noun.",
+  target:
+    "Label of the menu on /words/import that picks which word list receives the words. Short phrase.",
+  newList:
+    "First option of the target menu on /words/import: create a new word list. Short noun phrase.",
+  updates:
+    "Note on /words/import when importing into an existing list named {name}: progress is kept, changed words updated, new ones added, none doubled. Keep {name} and the quotes.",
+  importButton: "Main button on /words/import that starts the import. Imperative verb.",
+  importing:
+    "Text on the import button on /words/import while words are being saved. Progressive verb with ellipsis.",
+  done: "Result line on /words/import after the import; {added}, {updated}, {unchanged} are word counts. Keep all three placeholders.",
+  openList:
+    "Link on /words/import after the import that opens the word list just filled. Imperative phrase; an arrow follows.",
+  backToLists:
+    "Back link at the top of /words/import to the user's word lists. Keep the leading arrow.",
+  imagesWarning:
+    "Warning on /words/import: {n} notes have images, which word lists do not support yet, so they are dropped. Keep {n}; Lianki is the app name.",
+  imagesAdvice:
+    "Advice right after the images warning on /words/import: keep this deck in Anki, or import it into LiCards, which keeps each note whole. LiCards is a product name: never translate it; keep LiCards in every language except Chinese, which uses 链卡.",
+  importAsCards:
+    "Link after the images advice on /words/import that imports the deck into LiCards (the /import page) instead of a word list; an arrow follows. LiCards is a product name: never translate it; keep LiCards in every language except Chinese, which uses 链卡. Imperative phrase.",
+  soundNote:
+    "Small note on /words/import: the deck's audio is dropped because Lianki speaks each word with its own voices. Lianki is the app name.",
+  skippedEmpty:
+    "List item on /words/import: {n} notes were skipped because their front has no text. Keep {n}.",
+  duplicates: "List item on /words/import: {n} repeated words were skipped. Keep {n}.",
+  tooMany:
+    "List item on /words/import: {n} notes beyond the {max}-word list limit are dropped. Keep {n} and {max}.",
+  signIn:
+    "Notice on /words/import for a visitor who is not signed in: sign in to import decks. Imperative sentence.",
+  badFile:
+    "Error on /words/import when the chosen file is not an Anki package. Keep Anki, .apkg and .colpkg.",
+  noNotes: "Error on /words/import when the deck file holds no notes at all. Short sentence.",
+  words:
+    "Count in the deck summary on /words/import, after the notes count; {n} is how many words will be imported. Keep {n}.",
+};
+
+export default {
+  ...dictionary,
+  title: "/words/import — Anki deck to word list",
+  description: describeKeys(
+    "The /words/import page: an Anki deck (.apkg) is read on the device and turned into a vocabulary word list, with field mapping, preview and import results. Lianki and LiCards (zh: 链卡) are product names, not translated.",
+    flattenContext(context),
+  ),
+} satisfies DeclarationContent;

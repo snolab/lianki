@@ -42,6 +42,19 @@ describe("parseControllerMessage", () => {
     expect(r.ok && r.value.type === "eval" && r.value.target).toBe("iPhone");
   });
 
+  it("say keeps quiet / loud only as true; loud wins over quiet", () => {
+    const say = (extra: object) => {
+      const r = parseControllerMessage(JSON.stringify({ type: "say", text: "hi", ...extra }));
+      return r.ok ? r.value : null;
+    };
+    expect(say({ quiet: true })).toEqual({ type: "say", text: "hi", quiet: true });
+    // An old `loud` is dropped (it means nothing now); quiet still holds beside it.
+    expect(say({ loud: true })).toEqual({ type: "say", text: "hi" });
+    expect(say({ quiet: true, loud: true })).toEqual({ type: "say", text: "hi", quiet: true });
+    expect(say({ quiet: "true", loud: 1 })).toEqual({ type: "say", text: "hi" });
+    expect(say({ quiet: false })).toEqual({ type: "say", text: "hi" });
+  });
+
   it("refuses anything else", () => {
     expect(parseControllerMessage("nope").ok).toBe(false);
     expect(parseControllerMessage('{"type":"allow","pair":"x"}').ok).toBe(false);
@@ -371,7 +384,7 @@ describe("pairing: requested scope, pages, wording", () => {
       "agent wants to chat with you for 30 days.",
     );
     expect(pairSentence({ label: "lane", scope: "eval" }, false)).toBe(
-      "lane wants to run code on your debug pages for 8 hours.",
+      "lane wants to run code on your pages for 8 hours.",
     );
     expect(pairSentence({ label: "agent", scope: "eval" }, true)).toBe(
       "agent wants to preview a change on this page for 1 hour.",

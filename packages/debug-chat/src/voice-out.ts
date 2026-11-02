@@ -30,10 +30,17 @@ export const AEC_CONSTRAINTS = {
   autoGainControl: true,
   channelCount: 1,
 } as const;
-/** lk:voice-aec = "0": the constraints from before, used with capture held while the agent speaks. */
+/**
+ * lk:voice-aec = "0": no processing at all (echo cancellation, noise
+ * suppression and auto gain all off), with capture held while the agent
+ * speaks (half-duplex) and the text echo guard. On Chrome for Android an
+ * echo-cancelled mic moves playback onto the call stream ("call mode", a
+ * thinner speaker); this is the A/B against it.
+ */
 export const LEGACY_CONSTRAINTS = {
-  echoCancellation: true,
-  noiseSuppression: true,
+  echoCancellation: false,
+  noiseSuppression: false,
+  autoGainControl: false,
   channelCount: 1,
 } as const;
 
@@ -56,8 +63,26 @@ const read = (k: string): string | null => {
 };
 /** The output mode: "cloud" only when asked for. */
 export const outMode = (): OutMode => (read(VOICE_OUT_KEY) === "cloud" ? "cloud" : "speech");
+/**
+ * speechSynthesis lists no voice at all (some Android Chromes, always): the
+ * replies go to the cloud (voice.ts), so its element is unlocked in a gesture.
+ */
+export const noSpeechVoices = (): boolean => {
+  try {
+    return typeof speechSynthesis === "undefined" || speechSynthesis.getVoices().length === 0;
+  } catch {
+    return true;
+  }
+};
 /** Echo-cancelled barge-in (default on; "0" = the old hold behaviour). */
 export const aecOn = (): boolean => read(VOICE_AEC_KEY) !== "0";
+/** The menu's A/B switch: takes effect the next time the mic opens. */
+export function setAec(on: boolean) {
+  try {
+    if (on) localStorage.removeItem(VOICE_AEC_KEY);
+    else localStorage.setItem(VOICE_AEC_KEY, "0");
+  } catch {}
+}
 export const micConstraints = (aec = aecOn()): MediaTrackConstraints =>
   aec ? { ...AEC_CONSTRAINTS } : { ...LEGACY_CONSTRAINTS };
 
@@ -271,9 +296,12 @@ export function createCloudOut(d: {
             a.playbackRate = rate;
             a.preservesPitch = true;
             a.webkitPreservesPitch = true;
-            a.play().catch((e: unknown) => {
-              if (live()) ev.onfail?.(`play ${(e as Error)?.name ?? "error"}`);
-            });
+            a.play().then(
+              () => live() && ev.onstart?.(),
+              (e: unknown) => {
+                if (live()) ev.onfail?.(`play ${(e as Error)?.name ?? "error"}`);
+              },
+            );
           };
           a.src = url;
           a.load();

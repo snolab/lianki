@@ -18,7 +18,14 @@ import {
   type PairInfo,
   type Scope,
   type MessageSource,
+  type VoiceTiming,
+  cleanTiming,
+  type SpeakerTag,
+  cleanSpeaker,
 } from "../packages/debug-chat/src/wire";
+import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
+import { cleanProofs } from "./speaker-proof";
+import { type WakeReason, isWakeReason } from "../packages/debug-chat/src/wake";
 
 export {
   MAX_AGENT_ID,
@@ -55,6 +62,12 @@ export {
   applyEdit,
   dictatedDraft,
   draftSource,
+  type VoiceTiming,
+  cleanTiming,
+  type SpeakerTag,
+  type SpeakerDecision,
+  cleanSpeaker,
+  combineSpeaker,
 } from "../packages/debug-chat/src/wire";
 
 /** Largest `code` accepted, in characters. */
@@ -82,6 +95,16 @@ export const APPROVAL_MS = 60 * 60_000;
  * then, or until End revokes it.
  */
 export const EVAL_GRANT_MS = 8 * 60 * 60_000;
+/**
+ * Auto-renewal of the owner's eval grant (docs/monitoring.md, "Renewal"): with
+ * less than this left, a use of the grant (or the one alarm set for that
+ * moment, or the approving page coming back) extends it by EVAL_GRANT_MS —
+ * only while the owner's page on the device that approved it, signed in with
+ * the same session, is connected.
+ */
+export const EVAL_RENEW_BEFORE_MS = 2 * 60 * 60_000;
+/** A renewal chain ends this long after the tap that started it: then a new tap. */
+export const EVAL_CHAIN_MS = 30 * 24 * 60 * 60_000;
 /** How long "Allow chat" lasts — and its resumable grant token. */
 export const CHAT_MS = 30 * 24 * 60 * 60_000;
 /** Chat messages the hub keeps per thread (and sends a page on connect). */
@@ -112,7 +135,25 @@ export type Identity = {
   /** Display name and picture URL (better-auth's user.name / user.image), when known: the chat's avatars. */
   name?: string;
   image?: string;
+  /**
+   * The sign-in session: sessionTag(session id), never the id or its token,
+   * and when it expires (ms). Binds an eval grant's renewal to it.
+   */
+  session?: string;
+  sessionUntil?: number;
 };
+
+/** A sign-in session as the debug hub knows it: a SHA-256 of its id, never the id itself. */
+export async function sessionTag(sessionId: string): Promise<string> {
+  const d = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`lianki-debug-session:${sessionId}`),
+  );
+  return Array.from(new Uint8Array(d), (x) => x.toString(16).padStart(2, "0")).join("");
+}
+/** A session tag as sessionTag makes it. */
+export const isSessionTag = (v: unknown): v is string =>
+  typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
 
 /** A user id usable as a thread and a storage key: no separators, bounded. */
 export const isUserId = (v: unknown): v is string =>
@@ -133,6 +174,8 @@ export type FriendRecord = {
 /** Messages a controller (the sender CLI) may send to the hub. */
 export type ControllerMessage =
   | { type: "eval"; code: string; target?: string }
+  /** An ask card (ask.ts): `to` a thread as for say (absent = the owner's). */
+  | { type: "ask"; ask: Ask; to?: string }
   /**
    * `to`: a friend's thread (user id or email); `node`: a state-tree node to
    * address instead (a `to` starting with "/"). `taskPath`/`agentId`: the
@@ -145,8 +188,17 @@ export type ControllerMessage =
       node?: string;
       taskPath?: string;
       agentId?: string;
+      /** `say --quiet`: shown, never read aloud. */
+      quiet?: true;
     }
   | { type: "busy"; to?: string; label?: string }
+  /**
+   * The mic's wake-word mode on that thread's pages (docs/wake-word.md):
+   * "passive" waits for "Linky", "active" hears everything, "ignored" says
+   * the last line was not for the agent (one rejection towards passive).
+   * Relayed like a heartbeat: not stored, not shown.
+   */
+  | { type: "wake"; mode: "active" | "passive" | "ignored"; to?: string }
   /**
    * Polish the owner's latest line, when it came from the widget's mic
    * (`source: "stt"`): docs/dev-debug-widget.md, "Agent edits of voice messages".
@@ -160,6 +212,8 @@ export type ControllerMessage =
   | { type: "ungrant"; from: string; to: string };
 /** Messages an owner page may send to the hub. */
 export type PageMessage =
+  /** A tap on an ask card: which options, per question. The hub stamps the rest. */
+  | { type: "answer"; askId: string; choices: Record<string, unknown> }
   /**
    * `pages`: the page ids the grant covers, or "all" (also every page that
    * connects later). Absent (a page from before) = "all". `scope` is the old
@@ -169,7 +223,24 @@ export type PageMessage =
   | { type: "deny" | "revoke"; pair: string }
   /** `to`: the state-tree node it is addressed to (absent = the main thread). */
   /** `source: "stt"`: sent from the widget's mic, unchanged (absent = typed). */
-  | { type: "chat"; id: string; text: string; to?: string; source?: MessageSource }
+  /** `timing`: a voice line's timestamps (VoiceTiming), kept on the stored line. */
+  | {
+      type: "chat";
+      id: string;
+      text: string;
+      to?: string;
+      source?: MessageSource;
+      timing?: VoiceTiming;
+      /** The mic's wake-word mode when the line was sent (docs/wake-word.md); absent = mic off. */
+      wake?: "active" | "passive";
+      /**
+       * The Mac's signed speaker attestations for a voice line's finals
+       * (lib/speaker-proof.ts). The hub verifies them; a page-made tag is never taken.
+       */
+      speakerProof?: string[];
+      /** Why the mic is in that mode (wake.ts WakeReason: "rejects", "wake-word", "kws-failed", …). */
+      wakeReason?: WakeReason;
+    }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
   /** Close another (or this) page of the same audience, from the chat's menu. */
@@ -197,7 +268,38 @@ export type PageMessage =
       error?: string;
       stack?: string;
       ms?: number;
-    };
+    }
+  | PageErrorMessage;
+
+/**
+ * Page errors (docs/dev-debug-widget.md, "Page errors"): an owner page's
+ * uncaught error, rejection, console.error, failed /api call, or media load
+ * failure, scrubbed on the page (packages/debug-chat/src/page-errors.ts).
+ * The hub forwards it to the owner-approved listeners only; never stored.
+ */
+export const PAGE_ERROR_KINDS = [
+  "error",
+  "rejection",
+  "console",
+  "fetch",
+  "network",
+  "media",
+  "socket",
+] as const;
+export type PageErrorKind = (typeof PAGE_ERROR_KINDS)[number];
+export const PAGE_ERROR_MAX_MESSAGE = 500;
+export const PAGE_ERROR_MAX_STACK = 1500;
+export type PageErrorMessage = {
+  type: "page-error";
+  kind: PageErrorKind;
+  message: string;
+  stack?: string;
+  /** The page's path (or the failed request's), never a query. */
+  path: string;
+  status?: number;
+  at: number;
+  rev?: string;
+};
 
 /** A page id: the tab's own (sessionStorage), so a reload keeps its grants. */
 export const isPageId = (v: unknown): v is string =>
@@ -276,6 +378,8 @@ export function parseControllerMessage(
     if (m.taskPath !== undefined && !taskPath)
       return { ok: false, error: `not a node path: ${String(m.taskPath)}` };
     const agentId = agentIdOf(m.agentId);
+    // A boolean only, and only `true` is kept. An old `loud` is dropped: it means nothing now.
+    const quiet = m.quiet === true;
     return {
       ok: true,
       value: {
@@ -285,9 +389,22 @@ export function parseControllerMessage(
         ...(node ? { node } : {}),
         ...(taskPath && taskPath !== ROOT_NODE ? { taskPath } : {}),
         ...(agentId ? { agentId } : {}),
+        ...(quiet ? { quiet: true as const } : {}),
       },
     };
   }
+  if (m?.type === "ask") {
+    const r = parseAsk(m, Date.now(), () => crypto.randomUUID().slice(0, 12));
+    if (!r.ok) return { ok: false, error: r.error };
+    const to = str(m.to, 320)?.trim();
+    return { ok: true, value: { type: "ask", ask: r.ask, ...(to ? { to } : {}) } };
+  }
+  // A tap is a person on a page: an agent or controller can never answer.
+  if (m?.type === "answer")
+    return {
+      ok: false,
+      error: "answers come only from a tap on a page; a controller cannot answer",
+    };
   if (m?.type === "edit") {
     const id = str(m.id, 64)?.trim();
     if (!id) return { ok: false, error: "edit needs the id of the message to polish" };
@@ -303,6 +420,13 @@ export function parseControllerMessage(
     const ms = typeof m.ms === "number" && m.ms > 0 ? Math.min(m.ms, CHAT_MS) : undefined;
     return { ok: true, value: { type: "grant", from, to, ...(ms ? { ms } : {}) } };
   }
+  if (m?.type === "wake") {
+    const mode = m.mode;
+    if (mode !== "active" && mode !== "passive" && mode !== "ignored")
+      return { ok: false, error: 'wake needs mode "active", "passive" or "ignored"' };
+    const to = str(m.to, 320)?.trim();
+    return { ok: true, value: { type: "wake", mode, ...(to ? { to } : {}) } };
+  }
   if (m?.type === "busy") {
     const to = str(m.to, 320)?.trim();
     const label = cleanLabel(str(m.label, 80));
@@ -315,7 +439,7 @@ export function parseControllerMessage(
     return {
       ok: false,
       error:
-        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"edit","id","text"} or {"type":"grant","from","to"}',
+        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"wake","mode"}, {"type":"edit","id","text"} or {"type":"grant","from","to"}',
     };
   if (typeof m.code !== "string" || !m.code.trim()) return { ok: false, error: "empty code" };
   if (m.code.length > MAX_CODE) return { ok: false, error: `code over ${MAX_CODE} chars` };
@@ -361,20 +485,35 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     const label = cleanLabel(str(m.label, MAX_LABEL * 2));
     return label ? { type: "page", label } : null;
   }
+  if (m.type === "answer") {
+    const askId = str(m.askId, 64);
+    if (!askId || !m.choices || typeof m.choices !== "object" || Array.isArray(m.choices))
+      return null;
+    return { type: "answer", askId, choices: m.choices as Record<string, unknown> };
+  }
   if (m.type === "chat") {
     const id = str(m.id, 64);
     const text = chatText(m.text);
     if (!id || !text) return null;
     // An address that is not a node path is dropped: the line goes to the main thread.
     const to = nodePath(m.to);
+    const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
+    const speakerProof = m.source === "stt" ? cleanProofs(m.speakerProof) : undefined;
     return {
       type: "chat",
       id,
       text,
       ...(to && to !== ROOT_NODE ? { to } : {}),
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
+      ...(timing ? { timing } : {}),
+      ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
+      ...(speakerProof ? { speakerProof } : {}),
+      ...((m.wake === "active" || m.wake === "passive") && isWakeReason(m.wakeReason)
+        ? { wakeReason: m.wakeReason }
+        : {}),
     };
   }
+  if (m.type === "page-error") return parsePageError(m);
   if (m.type === "result") {
     const id = str(m.id, 64);
     const to = str(m.to, 64);
@@ -391,6 +530,27 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     };
   }
   return null;
+}
+
+/** A page-error as the hub forwards it: a known kind, bounded strings, a path with no query. */
+function parsePageError(m: Record<string, unknown>): PageErrorMessage | null {
+  const kind = PAGE_ERROR_KINDS.find((k) => k === m.kind);
+  const message = str(m.message, PAGE_ERROR_MAX_MESSAGE)?.trim();
+  if (!kind || !message) return null;
+  const path = (str(m.path, 300) ?? "").split(/[?#]/)[0] || "/";
+  const stack = str(m.stack, PAGE_ERROR_MAX_STACK);
+  const status = count(m.status, 1000);
+  const rev = str(m.rev, 64);
+  return {
+    type: "page-error",
+    kind,
+    message,
+    ...(stack ? { stack } : {}),
+    path,
+    ...(status !== undefined ? { status } : {}),
+    at: typeof m.at === "number" && Number.isFinite(m.at) ? m.at : 0,
+    ...(rev ? { rev } : {}),
+  };
 }
 
 const count = (v: unknown, max: number) =>

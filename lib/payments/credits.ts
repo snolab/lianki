@@ -4,7 +4,7 @@
  * Modelled on wallets like renzhe.cloud's: top up once through any payment
  * method, then spend the balance on passes; a pass bought with the balance
  * activates at once, with no payment page in between. The D1 side is
- * `credits-store.ts`, the tables `db/migrations/0017_credits.sql`.
+ * `credits-store.ts`, the tables `db/migrations/0024_credits.sql`.
  */
 import { PASSES } from "./passes";
 

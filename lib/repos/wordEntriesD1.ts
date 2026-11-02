@@ -20,6 +20,9 @@ export type SyncResult = {
   duplicates: number;
 };
 
+/** An imported list's source, kept on the list and each of its entries. */
+export type Attribution = { url: string; title?: string; licence: string };
+
 type Row = {
   key: string;
   position: number;
@@ -191,6 +194,33 @@ export class WordEntriesD1Repo {
     if (batch) await batch.call(this.db, statements);
     else for (const st of statements) await st.run();
     return out;
+  }
+
+  /**
+   * Record where an imported list came from: on the list (`src`, `license`)
+   * and on every entry (`src` JSON). Best effort: before migration 0017 is
+   * applied the columns are missing, and the import itself must still succeed
+   * (it returns false then).
+   */
+  async attribute(listId: string, a: Attribution): Promise<boolean> {
+    const json = JSON.stringify({ source: "ankiweb", ...a });
+    const statements = [
+      this.db
+        .prepare("UPDATE word_lists SET src = ?, license = ? WHERE email = ? AND id = ?")
+        .bind(a.url, a.licence, this.email, listId),
+      this.db
+        .prepare("UPDATE word_list_entries SET src = ? WHERE email = ? AND list_id = ?")
+        .bind(json, this.email, listId),
+    ];
+    try {
+      const batch = (this.db as { batch?: (s: D1StmtLike[]) => Promise<unknown> }).batch;
+      if (batch) await batch.call(this.db, statements);
+      else for (const st of statements) await st.run();
+      return true;
+    } catch (e) {
+      if (/no such column|has no column/i.test(String((e as Error)?.message ?? e))) return false;
+      throw e;
+    }
   }
 
   async deleteAll(listId: string): Promise<void> {

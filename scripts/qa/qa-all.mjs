@@ -167,7 +167,13 @@ async function waitReady(timeoutMs = 120_000) {
   while (Date.now() < deadline) {
     if (server.exitCode != null) throw new Error("wrangler dev exited before becoming ready");
     try {
-      const r = await fetch(`${BASE}/`, { redirect: "manual" });
+      // Per-attempt timeout: a server that accepts but never answers (wrangler's
+      // proxy stuck paused — see patches/miniflare@*.patch) must not hang this
+      // loop past its deadline.
+      const r = await fetch(`${BASE}/`, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(10_000),
+      });
       if (r.status > 0) return;
     } catch {}
     await new Promise((res) => setTimeout(res, 1000));
@@ -200,6 +206,8 @@ const suites = [
     ["playwright", "test", "tests/userscript-redirect.spec.ts"],
     { LIANKI_URL: BASE },
   ],
+  // The real /embed/partner in a frame on another origin: ready, ticket, private keys, no owner boots.
+  ["PARTNER FRAME (route)", "bun", ["scripts/qa/qa-partner-frame-route.ts"], { QA_BASE: BASE }],
 ];
 
 const results = [];

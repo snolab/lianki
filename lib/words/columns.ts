@@ -13,6 +13,8 @@
  *  - The goal moves only when the target leaves a dead band, in quantized
  *    steps; the shown width follows it on a spring (lib/words/motion.ts).
  */
+import { springStep } from "./motion";
+
 export const TERM_MIN_REM = 6;
 export const TERM_MAX_REM = 20;
 export const TOUCH_TERM_MIN_REM = 5;
@@ -81,4 +83,34 @@ export function splitTarget(backNeed: number, exNeed: number, avail: number, rem
         ? backNeed + (avail - need) / 2
         : (avail * backNeed) / need;
   return Math.min(avail - min, Math.max(min, back));
+}
+
+/** Spring stiffness of a column glide (rad/s): settles in about 0.3 s. */
+export const COLUMN_OMEGA = 14;
+/** Longest frame a glide steps over (s): after a stall it resumes, not leaps. */
+const MAX_DT = 1 / 30;
+
+/** Seconds since the last frame, from rAF timestamps; the first frame counts as one 60 Hz frame. */
+export function frameDt(now: number, last: number | null) {
+  if (last === null) return 1 / 60;
+  return Math.min(MAX_DT, Math.max(0, (now - last) / 1000));
+}
+
+/**
+ * One frame of a column width gliding toward `goal` on a critically damped
+ * spring, at sub-pixel precision (nothing is rounded). `reduce` (prefers-
+ * reduced-motion) jumps straight to the goal. Settled once within half a
+ * pixel and nearly still; it then rests exactly on the goal.
+ */
+export function glideStep(
+  shown: number,
+  velocity: number,
+  goal: number,
+  dt: number,
+  reduce = false,
+): { x: number; v: number; settled: boolean } {
+  if (reduce) return { x: goal, v: 0, settled: true };
+  const s = springStep(shown, velocity, goal, Math.max(0, dt), COLUMN_OMEGA);
+  const settled = Math.abs(s.x - goal) < 0.5 && Math.abs(s.v) < 5;
+  return settled ? { x: goal, v: 0, settled } : { x: s.x, v: s.v, settled };
 }

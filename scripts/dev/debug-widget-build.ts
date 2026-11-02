@@ -31,11 +31,13 @@ export function hostModule(spec: string, keys: string[]): string {
       `export const jsxDEV = (type, props, key) => J.jsx(type, props, key);\n`
     );
   const obj = spec.startsWith("react-dom") ? "ReactDOM" : "React";
-  const list = names(keys);
-  return (
-    `${guard}const R = ${g}.${obj};\nexport default R;\n` +
-    (list.length ? `export const { ${list.join(", ")} } = R;\n` : "")
-  );
+  // A dependency that default-imports React from node_modules (zustand's
+  // `import React from "react"`) makes Bun wrap this module as CommonJS, and
+  // the wrapped ESM exports came out empty ("useState is not a function").
+  // So it is CommonJS to begin with: every importer, default or named, reads
+  // the page's object through Bun's interop. `keys` only document the shape.
+  void names(keys);
+  return `${guard}module.exports = ${g}.${obj};\n`;
 }
 
 /** Rewrites every `react`, `react-dom` and JSX-runtime import to hostModule(). */
@@ -137,13 +139,33 @@ export async function buildHarness(): Promise<string> {
   return out.outputs[0].text();
 }
 
-/** Whom /debug-chat.js and /events answer cross-origin: lianki.com, or a local page. */
-export function allowOrigin(origin: string | null): string {
+/**
+ * Extra page origins the dev servers answer, from LIANKI_DEV_ORIGINS (comma-separated,
+ * exact origins such as the whole-page dev server's tailnet origin, docs/dev-whole-page.md).
+ * Exact matches only: never a wildcard.
+ */
+export function devOrigins(raw: string | undefined = process.env.LIANKI_DEV_ORIGINS): string[] {
+  const out: string[] = [];
+  for (const part of (raw ?? "").split(",")) {
+    try {
+      const u = new URL(part.trim());
+      if (u.protocol === "https:") out.push(u.origin);
+    } catch {}
+  }
+  return out;
+}
+
+/**
+ * Whom /debug-chat.js, /events and /state-tree.md answer cross-origin: lianki.com, a local
+ * page, or one of LIANKI_DEV_ORIGINS.
+ */
+export function allowOrigin(origin: string | null, extra: string[] = devOrigins()): string {
   if (!origin) return "https://lianki.com";
   try {
     const u = new URL(origin);
     if (u.origin === "https://lianki.com") return origin;
     if (["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)) return origin;
+    if (extra.includes(u.origin)) return u.origin;
   } catch {}
   return "https://lianki.com";
 }

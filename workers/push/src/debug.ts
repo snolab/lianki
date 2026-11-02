@@ -55,6 +55,12 @@
  * per FRIEND_CHAT_WINDOW_MS; the owner can Block one (/dev/friends →
  * /internal/friends), which closes their sockets and refuses them after.
  *
+ * Page errors. An owner page sends {type:"page-error", kind, message, stack?,
+ * path, status?, at, rev?} (scrubbed on the page: page-errors.ts); the hub
+ * adds the socket's own `label` and `hubAt` and forwards it live to the
+ * owner-approved listeners (not heartbeat sockets). Never stored, never sent
+ * to a page; a friend's page-error is dropped.
+ *
  * Avatars. index.ts also passes the user's name and picture (x-debug-name,
  * percent-encoded, and x-debug-image, from better-auth's user.image). The
  * page keeps them as a Sender (wire.ts: the user id hashed, never the
@@ -96,13 +102,63 @@
  * A stored eval grant with no socket holding it is still listed in the owner
  * pages' sessions (code "idle"), so End reaches it while it sleeps. A
  * friend's preview pairing is never stored: one socket, APPROVAL_MS.
+ *
+ * Renewal (the owner's eval grant only). The Allow binds the grant to the
+ * answering page's device id and sign-in session (`renew`: {device, session,
+ * user, start, count}; a session tag is a hash, lib/dev-eval.ts sessionTag). With
+ * at most EVAL_RENEW_BEFORE_MS left, it is extended to EVAL_GRANT_MS from
+ * now — never past start + EVAL_CHAIN_MS, after which a tap is needed again —
+ * on any of these events, and only while an owner page of that device and
+ * session (unexpired) is connected, and the main Worker confirms right then
+ * that the session is still live in the auth db (the SESSIONS binding to its
+ * DebugSessions RPC entrypoint, worker.ts; at most once per grant per 30 s;
+ * any doubt = no renewal, "gone" = stopRenewal). The write after that answer
+ * re-reads the grant and re-checks it all under blockConcurrencyWhile, so
+ * an End or sign-out that landed meanwhile wins:
+ *   use     a message from a socket holding the grant
+ *   resume  a reconnect with its token
+ *   page    that device's page connecting
+ *   alarm   the one alarm set for until − EVAL_RENEW_BEFORE_MS
+ * No polling. Each socket holding the grant hears {type:"renewed", until,
+ * count} (its attachment's `until` moves too); `debug.renew` logs the count
+ * and device. End (revoke) deletes the grant, so nothing renews; the session
+ * being deleted (sign-out: the main Worker's POST /internal/signed-out)
+ * drops `renew` from every grant bound to it at once, and the session from
+ * every owner page attachment that carried it. A chat grant, a
+ * friend's preview, and a grant approved without a session (the dev bridge,
+ * an older main Worker) are never renewed.
+ *
+ * Voice-clip recording (packages/debug-chat/src/clips.ts). The switch is a
+ * window session's, held here, never in an origin's storage. An owner page
+ * knocks with `?ws=<its window's session id>&dev=<device id>` (and
+ * `&hand=<token>` when it came from another origin). Only a recording session
+ * is stored, as `clips:<sid>` {device, at, until?, sink?, handoff (a token's
+ * SHA-256), goneAt?, hidden?}; it is deleted when recording stops, at its
+ * auto-stop, or once no page of it has been connected for CLIPS_GONE_MS
+ * (CLIPS_HIDDEN_MS when its last page said it was hidden: a phone's screen
+ * off). Every page of the session hears {type:"clips", …} on connect and on
+ * each change, with a fresh one-time handoff token: a page that redeems it
+ * (`hand=`) joins the session and takes its device id. A page with no token
+ * whose device had a session lose its page moments ago (an address typed by
+ * hand) continues it; another device's is only offered (`resumable`, a tap).
+ * A page silently rejoins its own session after a long gap only when it is
+ * the same document coming back (`cont=1`: the screen was off); a tab closed
+ * while hidden and restored, or one back from the bfcache (`back=1`: it went
+ * through pagehide; never joined by itself, even right away), is offered it.
+ * The sink the agent set up (`clipsink`: URL, write key, the owner's exact
+ * origins) is what a tap reuses; pages get the key and the origins only
+ * while their session records.
+ * Pages turn it on (a tap) and off; the agent too ({type:"clips", op}). Never
+ * a friend's. Clips themselves never pass through here.
  */
 import {
   APPROVAL_MS,
   CHAT_HISTORY,
   CHAT_MS,
   type ChatMessage,
+  EVAL_CHAIN_MS,
   EVAL_GRANT_MS,
+  EVAL_RENEW_BEFORE_MS,
   FRIEND_CHAT_MAX,
   FRIEND_CHAT_WINDOW_MS,
   type EditedEvent,
@@ -126,6 +182,7 @@ import {
   agentIdOf,
   cleanLabel,
   isPageId,
+  isSessionTag,
   isWithin,
   mayAddress,
   nodePath,
@@ -137,6 +194,30 @@ import {
   senderOf,
   shortCode,
 } from "../../../lib/dev-eval";
+import {
+  type Ask,
+  type AskAnswer,
+  askState,
+  askText,
+  checkChoices,
+} from "../../../packages/debug-chat/src/ask";
+import type { AnsweredEvent, SpeakerTag } from "../../../packages/debug-chat/src/wire";
+import { verifySpeakerProofs } from "../../../lib/speaker-proof";
+import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
+import { EMBED_HEADER } from "./auth";
+import {
+  CLIPS_GONE_MS,
+  CLIPS_HIDDEN_MS,
+  type ClipsControl,
+  type ClipsState,
+  LIANKI_ORIGIN,
+  isClipsId,
+  isHandoffToken,
+  matchesSession,
+  parseClipsControl,
+  parseClipsPageMessage,
+  randomId,
+} from "../../../packages/debug-chat/src/clips";
 
 export type Socket = {
   send(data: string): void;
@@ -150,15 +231,25 @@ export type Storage = {
   put(key: string, value: unknown): Promise<void>;
   delete(key: string): Promise<boolean>;
   list<T>(opts: { prefix: string; reverse?: boolean; limit?: number }): Promise<Map<string, T>>;
-  /** The Durable Object alarm: one per hub, used only for the pages-idle check. */
+  /** The Durable Object alarm: one per hub (pages idle, clips auto-stop, eval-grant renewal). */
   getAlarm(): Promise<number | null>;
   setAlarm(at: number): Promise<void>;
 };
 export type DebugState = {
   acceptWebSocket(ws: Socket): void;
   getWebSockets(): Socket[];
+  /**
+   * Answer a fixed message without waking the hub (the runtime's
+   * WebSocketRequestResponsePair): the listeners' keepalive ping.
+   */
+  setWebSocketAutoResponse?(pair?: unknown): void;
+  /** The runtime's gate: no other event is delivered until `f` settles. */
+  blockConcurrencyWhile?<T>(f: () => Promise<T>): Promise<T>;
   storage: Storage;
 };
+/** A controller's keepalive (scripts/dev/keepalive.ts): "ping" is answered "pong". */
+export const KEEPALIVE = { ping: "ping", pong: "pong" } as const;
+type PairCtor = new (request: string, response: string) => unknown;
 /**
  * `thread` is "owner" or the friend's user id; `email` is the friend's. `id`
  * names the socket in the chat menu's page list; `at` is when it connected.
@@ -173,7 +264,51 @@ type PageAtt = {
   sender?: Sender;
   id?: string;
   at?: number;
+  /** The owner's window session (clips.ts) and device; never on a friend's page. */
+  sid?: string;
+  device?: string;
+  /** The owner's sign-in session (a tag, never the id) and its expiry; never on a friend's page. */
+  session?: string;
+  sessionUntil?: number;
+  /** The owner's user id, kept with the session (the main Worker's lookup key). */
+  user?: string;
+  /** The page said it is going (pagehide): it no longer holds its session open. */
+  leaving?: boolean;
+  /**
+   * The Learning Partner on another site (a ticket socket, index.ts): the
+   * owner's thread, chat only. It never gets eval, never counts for a
+   * pairing or a grant's pages, never joins a recording session.
+   */
+  embed?: true;
 };
+/** A recording window session (`clips:<sid>`), see "Voice-clip recording" above. */
+type ClipsRec = {
+  sid: string;
+  device: string;
+  at: number;
+  until?: number;
+  sink?: string;
+  /** SHA-256 of the current handoff token. */
+  handoff?: string;
+  /** When its last page left; absent while one is connected. */
+  goneAt?: number;
+  /** Its last page said it was hidden (a longer grace). */
+  hidden?: boolean;
+  /** The last page's label, for the agent's list and a "Continue" offer. */
+  label?: string;
+  /** The sink's write key (clip-sink.ts), for this session's pages only. */
+  sinkKey?: string;
+  /** The owner's origins the session may be handed to, exactly. */
+  origins?: string[];
+};
+const clipsKey = (sid: string) => `clips:${sid}`;
+/**
+ * The sink the agent set up (`clips on --sink`, with its write key and the
+ * owner's origins), kept so a tap on a page can turn recording on later.
+ * Configuration, not a session: replaced by the next `clips on --sink`.
+ */
+type SinkConfig = { url: string; key: string; origins: string[]; at: number };
+const SINK_CONFIG = "clipsink";
 /**
  * `grant` is the hash of the resumable chat token this socket holds, if any.
  * `forUser`/`forEmail`: the friend this pairing is for; absent = the owner.
@@ -203,9 +338,38 @@ type ControllerAtt = {
 /**
  * A stored grant (`grant:<sha256 of its token>`). `scope` absent = "chat"
  * (grants from before eval grants were stored). `pages`: the owner's page ids
- * an eval grant reaches (absent = all). `at`: when it was allowed.
+ * an eval grant reaches (absent = all). `at`: when it was allowed. `renew`:
+ * the owner's eval grant only, what its renewal is bound to ("Renewal" above).
  */
-type Grant = { label: string; until: number; scope?: Scope; pages?: string[]; at?: number };
+type Grant = {
+  label: string;
+  until: number;
+  scope?: Scope;
+  pages?: string[];
+  at?: number;
+  renew?: Renewal;
+};
+/**
+ * The approving page's device id and session tag, when the chain began (the
+ * tap), and how many times it was renewed since.
+ */
+type Renewal = {
+  device: string;
+  session: string;
+  /** The owner's user id: what the main Worker looks the session up under. */
+  user?: string;
+  start: number;
+  count: number;
+};
+/** In the renewal window: at most EVAL_RENEW_BEFORE_MS left (so "not due" is strictly before it). */
+const renewDueAt = (until: number, t: number) => until - t <= EVAL_RENEW_BEFORE_MS;
+/**
+ * The main Worker's DebugSessions RPC entrypoint (worker.ts, over the
+ * SESSIONS service binding: no URL, nothing public): "live" | "gone" | "busy".
+ */
+type SessionsRpc = { live(user: string, session: string): Promise<unknown> };
+/** At most one live-session check per grant in this long (a burst of uses asks once). */
+const SESSION_CHECK_MIN_MS = 30_000;
 /** A sleeping eval grant's pair id in the pages' state: "g:" + the start of its hash. */
 const DORMANT = "g:";
 const dormantPair = (hash: string) => `${DORMANT}${hash.slice(0, 40)}`;
@@ -221,7 +385,12 @@ export const IDENTITY_HEADERS = {
   /** Percent-encoded display name, and picture URL: the chat's avatars only. */
   name: "x-debug-name",
   image: "x-debug-image",
+  /** The sign-in session's tag and expiry (ms): what an eval grant's renewal is bound to. */
+  session: "x-debug-session",
+  sessionUntil: "x-debug-session-until",
 } as const;
+/** The main Worker tells the hub a session was deleted (sign-out), over its PUSH binding. */
+const SIGNED_OUT_PATH = "/internal/signed-out";
 type Att = PageAtt | ControllerAtt;
 declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
 
@@ -252,6 +421,26 @@ const hex = (b: ArrayBuffer | Uint8Array) =>
 export const hashToken = async (token: string) =>
   hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token)));
 const head = (text: string) => text.slice(0, 80);
+/** A clips message (small, JSON, of a known type), parsed; null when it is something else. */
+function clipsParse<R>(raw: unknown, f: (m: Record<string, unknown>) => R | null): R | null {
+  if (typeof raw !== "string" || raw.length > 2000 || !raw.includes('"clips')) return null;
+  try {
+    const m = JSON.parse(raw) as unknown;
+    return m && typeof m === "object" && !Array.isArray(m) ? f(m as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+/**
+ * The state one page is sent. An embedded page (a ticket socket on another
+ * site) gets the listener count only: never a pairing, a session, a grant,
+ * the page list (labels, ids) or the nodes, and no `self`.
+ */
+function pageState(a: PageAtt, s: HubState): HubState & { self?: string } {
+  if (a.embed) return { type: "state", pending: null, sessions: [], listeners: s.listeners ?? 0 };
+  return { ...s, self: a.id };
+}
+
 /** Whose a socket is: a page's thread, or the audience a controller was paired for. */
 const audience = (a: Att) => (a.role === "page" ? a.thread : (a.forUser ?? OWNER_THREAD));
 
@@ -289,12 +478,30 @@ export class DebugHub {
    */
   private grants?: Map<string, Grant>;
   private loadingGrants?: Promise<void>;
+  /** STT_SPEAKER_PUB: the Mac's attestation key (lib/speaker-proof.ts). */
+  private speakerPub?: string;
+  /** A renewal in flight per grant hash: two events at once renew once. */
+  private renewing = new Map<string, Promise<void>>();
+  /** The main Worker (service binding): asked whether a renewal's session is still live. */
+  private sessions?: SessionsRpc;
+  /** When each grant's session was last checked (the per-grant rate limit). */
+  private checkedAt = new Map<string, number>();
 
   constructor(
     private ctx: DebugState,
-    _env?: unknown,
+    env?: unknown,
     private now: () => number = Date.now,
-  ) {}
+  ) {
+    // The Mac's speaker-attestation public key (voiceprint.py attest-key); without it no tag is kept.
+    this.speakerPub = (env as { STT_SPEAKER_PUB?: string } | undefined)?.STT_SPEAKER_PUB;
+    this.sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
+    // The listener pings to find a socket that died without a close (a
+    // redeploy, a dropped connection); the runtime answers it while the hub
+    // hibernates, so it costs no wake-up.
+    const Pair = (globalThis as { WebSocketRequestResponsePair?: PairCtor })
+      .WebSocketRequestResponsePair;
+    if (Pair) ctx.setWebSocketAutoResponse?.(new Pair(KEEPALIVE.ping, KEEPALIVE.pong));
+  }
 
   /** Open sockets of one role, optionally leaving one out (the one closing). */
   private sockets<R extends Att["role"]>(role: R, except?: Socket) {
@@ -317,7 +524,8 @@ export class DebugHub {
    * was authorized for some pages only and this is its own audience's thread.
    */
   private reach(c: ControllerAtt, thread: string) {
-    const all = this.pages(thread);
+    // An embedded page (another site) is never reached by eval.
+    const all = this.pages(thread).filter((p) => !p.a.embed);
     // A chat grant reaches every page (one made before that rule may still carry pages).
     if (!c.pages || c.scope === "chat" || thread !== audience(c)) return all;
     return all.filter((p) => p.a.id && c.pages?.includes(p.a.id));
@@ -371,11 +579,14 @@ export class DebugHub {
             scope: "eval",
             ...(g.pages ? { pages: g.pages } : {}),
           });
-    const pages = this.pages(who, except).map(({ a }) => ({
-      id: a.id ?? "",
-      label: a.label,
-      at: a.at ?? 0,
-    }));
+    // Embedded pages are not listed: nothing can be granted to them.
+    const pages = this.pages(who, except)
+      .filter(({ a }) => !a.embed)
+      .map(({ a }) => ({
+        id: a.id ?? "",
+        label: a.label,
+        at: a.at ?? 0,
+      }));
     const agents = this.agents(except);
     const nodes = [...new Set(agents.map((c) => c.a.node).filter((n): n is string => !!n))].sort();
     return {
@@ -394,7 +605,7 @@ export class DebugHub {
     for (const { ws, a } of this.sockets("page", except)) {
       let s = by.get(a.thread);
       if (!s) by.set(a.thread, (s = this.state(a.thread, except)));
-      send(ws, { ...s, self: a.id });
+      send(ws, pageState(a, s));
     }
   }
 
@@ -514,6 +725,87 @@ export class DebugHub {
     if (!told) send(ws, out);
   }
 
+  /**
+   * The agent asks (ask.ts): kept and sent like a say, to the owner's
+   * thread or a friend's (`to`), as an agent line carrying the ask; its text
+   * is the question, for pages without cards. A pairing for a friend cannot
+   * ask (it cannot chat either).
+   */
+  private async ask(ws: Socket, c: ControllerAtt, ask: Ask, to?: string) {
+    if (c.forUser) return send(ws, { type: "error", error: "a pairing for a friend cannot ask" });
+    const dest = await this.sayTarget(to);
+    if ("error" in dest) return send(ws, { type: "error", error: dest.error });
+    const t = this.now();
+    const who = c.assignee;
+    const said: ChatMessage & { thread: string } = {
+      id: crypto.randomUUID().slice(0, 8),
+      from: "agent",
+      label: c.label,
+      text: askText(ask),
+      at: t,
+      ask,
+      ...dest,
+      ...(who ? { agentId: who } : {}),
+    };
+    console.log(
+      JSON.stringify({
+        msg: "debug.ask",
+        pair: c.pair,
+        thread: said.thread,
+        askId: ask.askId,
+        questions: ask.questions.length,
+      }),
+    );
+    await this.post(said);
+    send(ws, { type: "asked", id: said.id, askId: ask.askId, thread: said.thread });
+  }
+
+  /**
+   * A tap on an ask card, from a page: the ask must be in that page's own
+   * thread (a friend can never answer the owner's), still open (one answer
+   * only, not expired), and the choices must fit it. The hub stamps it:
+   * source "tap", the thread, the page's label, the time. Kept on the ask's
+   * line (a reload shows it answered) and sent to the thread's pages and the
+   * owner-approved listeners.
+   */
+  private async answer(ws: Socket, page: PageAtt, askId: string, raw: unknown) {
+    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
+    const kept = await this.ctx.storage.list<ChatMessage>({
+      prefix: threadKeys(page.thread).prefix,
+      reverse: true,
+      limit: CHAT_HISTORY,
+    });
+    const hit = [...kept].find(([, x]) => x.ask?.askId === askId);
+    if (!hit) return fail(`no ask ${askId} in this thread`);
+    const [key, line] = hit;
+    const t = this.now();
+    const state = askState(line, t);
+    if (state !== "open") return fail(`ask ${askId} is ${state}`);
+    const choices = checkChoices(line.ask as Ask, raw);
+    if (!choices) return fail(`that answer does not fit ask ${askId}`);
+    const answer: AskAnswer = {
+      choices,
+      source: "tap",
+      thread: page.thread,
+      label: page.label,
+      at: t,
+    };
+    await this.ctx.storage.put(key, { ...line, answer } satisfies ChatMessage);
+    const labels: Record<string, string[]> = {};
+    for (const q of (line.ask as Ask).questions)
+      labels[q.id] = (choices[q.id] ?? []).map(
+        (id) => q.options.find((o) => o.id === id)?.label ?? id,
+      );
+    const out: AnsweredEvent = { type: "answered", id: line.id, askId, answer, labels };
+    console.log(
+      JSON.stringify({ msg: "debug.answer", thread: page.thread, page: page.label, askId }),
+    );
+    for (const { ws: p } of this.pages(page.thread)) send(p, out);
+    for (const { ws: l, a } of this.listeners())
+      if (audience(a) === page.thread || page.thread === OWNER_THREAD || !a.forUser)
+        send(l, page.thread === OWNER_THREAD ? out : { ...out, thread: page.thread });
+  }
+
   /** The live node grants (`ngrant:`), lapsed ones dropped as they are met. */
   private async nodeGrants(): Promise<NodeGrant[]> {
     const t = this.now();
@@ -545,6 +837,7 @@ export class DebugHub {
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
+    if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);
     const control = url.pathname.endsWith("/control");
     let who: Identity | undefined;
     if (!control) {
@@ -558,20 +851,55 @@ export class DebugHub {
         name = decodeURIComponent(h.get(IDENTITY_HEADERS.name) ?? "");
       } catch {}
       const image = h.get(IDENTITY_HEADERS.image) ?? "";
+      const session = h.get(IDENTITY_HEADERS.session);
+      const sessionUntil = Number(h.get(IDENTITY_HEADERS.sessionUntil));
       who = {
         userId,
         email: h.get(IDENTITY_HEADERS.email) ?? "",
         owner,
         ...(name ? { name } : {}),
         ...(image ? { image } : {}),
+        ...(isSessionTag(session) ? { session } : {}),
+        ...(Number.isFinite(sessionUntil) && sessionUntil > 0 ? { sessionUntil } : {}),
       };
     }
+    // A ticket socket from another site (index.ts verified the signature):
+    // its ticket is burned here, once, before the upgrade is accepted.
+    const ticket = control ? null : req.headers.get(EMBED_HEADER);
+    const embed = ticket !== null;
+    if (embed && !(await this.burnTicket(ticket)))
+      return new Response("forbidden", { status: 403 });
     const pair = new WebSocketPair();
     const ws = pair[1];
     this.ctx.acceptWebSocket(ws);
     if (control) await this.connectController(ws, url, req.headers.get(TOKEN_HEADER));
-    else await this.connectPage(ws, url, who);
-    return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit);
+    else await this.connectPage(ws, url, who, embed);
+    // The browser fails a socket whose offered subprotocol is not selected.
+    return new Response(null, {
+      status: 101,
+      webSocket: pair[0],
+      ...(embed ? { headers: { "sec-websocket-protocol": PARTNER_SUBPROTOCOL } } : {}),
+    } as ResponseInit);
+  }
+
+  /**
+   * A partner ticket (`<jti>.<exp>`, from index.ts) is good once: its jti is
+   * kept until it expires. Expired ones are swept as new ones arrive.
+   */
+  async burnTicket(raw: string): Promise<boolean> {
+    const at = raw.lastIndexOf(".");
+    const jti = raw.slice(0, at);
+    const exp = Number(raw.slice(at + 1));
+    const t = this.now();
+    if (at <= 0 || !/^[A-Za-z0-9_-]{8,64}$/.test(jti) || !Number.isFinite(exp)) return false;
+    if (exp * 1000 + STT_TICKET_SKEW_S * 1000 < t) return false;
+    const key = `pjti:${jti}`;
+    if ((await this.ctx.storage.get<number>(key)) !== undefined) return false;
+    await this.ctx.storage.put(key, exp);
+    const old = await this.ctx.storage.list<number>({ prefix: "pjti:", limit: 200 });
+    for (const [k, e] of old)
+      if (e * 1000 + STT_TICKET_SKEW_S * 1000 < t) await this.ctx.storage.delete(k);
+    return true;
   }
 
   /**
@@ -602,6 +930,182 @@ export class DebugHub {
     return Response.json({ ok: true, friend: { userId: body.userId, ...rec } });
   }
 
+  /**
+   * POST /internal/signed-out {session}: the main Worker deleted that sign-in
+   * session (sign-out). Reached only over its PUSH binding, like the friends API.
+   */
+  private async signedOutApi(req: Request): Promise<Response> {
+    if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+    let body: { session?: unknown };
+    try {
+      body = (await req.json()) as typeof body;
+    } catch {
+      return Response.json({ error: "bad json" }, { status: 400 });
+    }
+    if (!isSessionTag(body.session))
+      return Response.json({ error: "expected {session}" }, { status: 400 });
+    return Response.json({ ok: true, stopped: await this.stopRenewal(body.session) });
+  }
+
+  /**
+   * `session` is over (sign-out, or the main Worker says it is gone): no eval
+   * grant bound to it renews any more, and the owner pages that connected
+   * with it lose it (their attachment no longer names a session, so they can
+   * never vouch for a renewal). How many grants were bound.
+   */
+  async stopRenewal(session: string, why = "signed-out"): Promise<number> {
+    await this.loadGrants();
+    let n = 0;
+    for (const [hash, g] of this.grants ?? []) {
+      if (g.renew?.session !== session) continue;
+      const { renew: r, ...rest } = g;
+      await this.putGrant(hash, rest satisfies Grant);
+      console.log(
+        JSON.stringify({ msg: "debug.renew-stop", why, device: r.device, count: r.count }),
+      );
+      n++;
+    }
+    for (const { ws, a } of this.pages(OWNER_THREAD))
+      if (a.session === session) {
+        const { session: _s, sessionUntil: _u, user: _user, ...rest } = a;
+        ws.serializeAttachment(rest satisfies PageAtt);
+      }
+    return n;
+  }
+
+  /**
+   * Is the session behind a renewal still live? Asked of the main Worker's
+   * DebugSessions RPC entrypoint (SESSIONS binding: an auth-db lookup of the
+   * owner's live sessions by tag) right before each renewal, at most once per
+   * grant per SESSION_CHECK_MIN_MS. "unsure" — no binding, no user id, an
+   * error, "busy", an odd answer, too soon — renews nothing.
+   */
+  private async sessionLive(hash: string, r: Renewal): Promise<"live" | "gone" | "unsure"> {
+    if (!this.sessions || !r.user) return "unsure";
+    const t = this.now();
+    const last = this.checkedAt.get(hash);
+    if (last !== undefined && t - last < SESSION_CHECK_MIN_MS) return "unsure";
+    this.checkedAt.set(hash, t);
+    try {
+      const said = await this.sessions.live(r.user, r.session);
+      return said === "live" ? "live" : said === "gone" ? "gone" : "unsure";
+    } catch {
+      return "unsure";
+    }
+  }
+
+  /** Run read-check-write with no other event in between (the DO's own gate, where there is one). */
+  private exclusive<T>(f: () => Promise<T>): Promise<T> {
+    return this.ctx.blockConcurrencyWhile ? this.ctx.blockConcurrencyWhile(f) : f();
+  }
+
+  /**
+   * Renew the owner's eval grant `hash` if it is due ("Renewal" above): less
+   * than EVAL_RENEW_BEFORE_MS left, the chain not at its cap, and an owner page
+   * of the approving device and session connected. Otherwise nothing.
+   */
+  private async renew(hash: string, via: "use" | "resume" | "page" | "alarm") {
+    if (this.renewing.has(hash)) return this.renewing.get(hash);
+    const run = this.renewNow(hash, via).finally(() => this.renewing.delete(hash));
+    this.renewing.set(hash, run);
+    return run;
+  }
+
+  private async renewNow(hash: string, via: string) {
+    const t = this.now();
+    const g = await this.ctx.storage.get<Grant>(`grant:${hash}`);
+    const r = g?.renew;
+    if (!g || !r || g.scope !== "eval" || g.until <= t || !renewDueAt(g.until, t)) return;
+    // The chain is at its cap: the next grant needs a tap.
+    if (Math.min(t + EVAL_GRANT_MS, r.start + EVAL_CHAIN_MS) <= g.until) return;
+    if (!this.approverHere(r, t)) return;
+    // The auth db has the last word: a session it does not know renews nothing.
+    const live = await this.sessionLive(hash, r);
+    if (live === "gone") await this.stopRenewal(r.session, "session-gone");
+    if (live !== "live") return;
+    // That answer took a while: End, sign-out or another renewal may have
+    // happened meanwhile. Re-read and re-check everything, and write only if
+    // it is still the same grant in the same state, with no event in between.
+    const next = await this.exclusive(async () => {
+      const t2 = this.now();
+      const now = await this.ctx.storage.get<Grant>(`grant:${hash}`);
+      const r2 = now?.renew;
+      if (!now || !r2 || now.scope !== "eval" || now.until !== g.until || now.until <= t2)
+        return null;
+      if (
+        r2.count !== r.count ||
+        r2.start !== r.start ||
+        r2.device !== r.device ||
+        r2.session !== r.session ||
+        r2.user !== r.user ||
+        !this.approverHere(r2, t2)
+      )
+        return null;
+      const n: Grant = {
+        ...now,
+        until: Math.min(t2 + EVAL_GRANT_MS, r2.start + EVAL_CHAIN_MS),
+        renew: { ...r2, count: r2.count + 1 },
+      };
+      if (n.until <= now.until) return null;
+      await this.putGrant(hash, n);
+      return n;
+    });
+    if (!next?.renew) {
+      console.log(JSON.stringify({ msg: "debug.renew-skip", why: "changed while checking" }));
+      return;
+    }
+    const { count } = next.renew;
+    const until = next.until;
+    for (const c of this.sockets("controller"))
+      if (c.a.grant === hash) {
+        c.ws.serializeAttachment({ ...c.a, until } satisfies ControllerAtt);
+        send(c.ws, { type: "renewed", until, count });
+      }
+    console.log(
+      JSON.stringify({
+        msg: "debug.renew",
+        via,
+        label: g.label,
+        device: r.device,
+        count,
+        until,
+        chainEnds: r.start + EVAL_CHAIN_MS,
+      }),
+    );
+    this.broadcast();
+    await this.scheduleRenewal(next);
+  }
+
+  /** An owner page of that device and that (unexpired) session is connected now. */
+  private approverHere(r: Renewal, t: number) {
+    return this.pages(OWNER_THREAD).some(
+      (p) => p.a.device === r.device && p.a.session === r.session && (p.a.sessionUntil ?? 0) > t,
+    );
+  }
+
+  /** The one alarm for a renewable grant: when its renewal window opens. */
+  private async scheduleRenewal(g: Grant) {
+    if (g.renew && g.scope === "eval") await this.schedule(g.until - EVAL_RENEW_BEFORE_MS);
+  }
+
+  /**
+   * The alarm, or an approving page connecting: renew what is due. A grant
+   * whose window has not opened yet sets the alarm for when it does; one due
+   * with no approving page waits for that page (its connect is the event).
+   */
+  private async renewDue(via: "page" | "alarm", only?: { device: string; session: string }) {
+    await this.loadGrants();
+    const t = this.now();
+    for (const [hash, g] of this.grants ?? []) {
+      const r = g.renew;
+      if (!r || g.scope !== "eval" || g.until <= t) continue;
+      if (only && (r.device !== only.device || r.session !== only.session)) continue;
+      // Not due yet means the window opens strictly later: the alarm always moves forward.
+      if (renewDueAt(g.until, t)) await this.renew(hash, via);
+      else await this.scheduleRenewal(g);
+    }
+  }
+
   /** Block (or unblock) a friend: blocking closes their pages and every pairing made for them. */
   async block(userId: string, blocked: boolean): Promise<FriendRecord | null> {
     const rec = await this.ctx.storage.get<FriendRecord>(friendKey(userId));
@@ -630,7 +1134,11 @@ export class DebugHub {
    * history and its audience's state. A blocked friend is told and closed.
    * Called without an identity (the unit tests' shorthand) it is an owner page.
    */
-  async connectPage(ws: Socket, url: URL, who?: Identity) {
+  async connectPage(ws: Socket, url: URL, who?: Identity, ticketSocket = false) {
+    // A page that says another site frames it (lib/frame-context.ts) is chat-only
+    // like a ticket socket: no pairing, no Allow, no eval, no clips (defence in
+    // depth: the page itself never connects from such a frame).
+    const embed = ticketSocket || url.searchParams.get("frame") === "foreign";
     const label = cleanLabel(url.searchParams.get("label"), MAX_LABEL);
     // The tab's own id (kept across reloads), so "this page" grants survive them.
     const tab = url.searchParams.get("tab");
@@ -670,6 +1178,13 @@ export class DebugHub {
         ...me,
         id,
         at: this.now(),
+        // A chat-only page (a ticket socket, or a page another site frames) never
+        // carries the owner's session: no eval grant is ever bound to or renewed on it.
+        ...(embed
+          ? { embed: true as const }
+          : who?.owner && who.session
+            ? { session: who.session, sessionUntil: who.sessionUntil ?? 0, user: who.userId }
+            : {}),
       } satisfies PageAtt);
     const thread = audience(att(ws) as PageAtt);
     // The page's own avatar (older pages ignore an unknown type).
@@ -677,7 +1192,7 @@ export class DebugHub {
     // A granted page is back: its pairings' grace clock stops at once.
     this.sweep();
     // Everyone sees the new page in their list; this one gets its state first.
-    send(ws, { ...this.state(thread), self: id });
+    send(ws, pageState(att(ws) as PageAtt, this.state(thread)));
     send(ws, { type: "history", messages: await this.history(thread) });
     this.broadcast(ws);
     // First page since the hub woke: list the sleeping eval grants too.
@@ -686,6 +1201,19 @@ export class DebugHub {
       this.broadcast();
     }
     await this.pageBack(thread, label);
+    // The owner's window session: recording follows it across URLs and origins.
+    if (thread === OWNER_THREAD && !embed) await this.clipsJoin(ws, url);
+    // The device that approved an eval grant is back: renew what is due on it
+    // (never from a chat-only page: it carries no session).
+    const joined = att(ws);
+    if (
+      !embed &&
+      joined?.role === "page" &&
+      joined.thread === OWNER_THREAD &&
+      joined.session &&
+      joined.device
+    )
+      await this.renewDue("page", { device: joined.device, session: joined.session });
   }
 
   /**
@@ -702,7 +1230,8 @@ export class DebugHub {
     if (token) return this.resume(ws, url, token);
     const label = cleanLabel(url.searchParams.get("label"), 80) || "unnamed controller";
     if (!this.clearPending(ws, OWNER_THREAD)) return;
-    if (this.pages(OWNER_THREAD, ws).length === 0) {
+    // Only a real owner page can answer a pairing: never a ticket socket or a framed page.
+    if (this.pages(OWNER_THREAD, ws).filter((p) => !p.a.embed).length === 0) {
       send(ws, { type: "error", error: "no owner page in debug mode is open" });
       return close(ws, 4404, "no debug page");
     }
@@ -806,7 +1335,10 @@ export class DebugHub {
       send(ws, { type: "error", error: "grant is not valid (expired or ended)" });
       return close(ws, 4498, "grant invalid");
     }
-    const { hash, g } = live;
+    const { hash } = live;
+    // A reconnect is a use: renew first if it is due, so `approved` carries the new until.
+    await this.renew(hash, "resume");
+    const g = (await this.ctx.storage.get<Grant>(`grant:${hash}`)) ?? live.g;
     const scope: Scope = g.scope === "eval" ? "eval" : "chat";
     const a: ControllerAtt = {
       role: "controller",
@@ -872,6 +1404,30 @@ export class DebugHub {
     await this.schedule(this.now() + PAGES_IDLE_MS);
   }
 
+  /**
+   * Burn speaker-proof uids in storage (`proof:<uid>` → until), so a proof
+   * serves one line only, across restarts, hibernation and deploys. Storage
+   * calls of one event never interleave with another's (the Durable Object's
+   * input gate), so check-then-put is atomic. The alarm sweeps them later.
+   */
+  private async burnProofs(uids: string[], until: number): Promise<boolean> {
+    for (const u of uids) if (await this.ctx.storage.get(`proof:${u}`)) return false;
+    for (const u of uids) await this.ctx.storage.put(`proof:${u}`, until);
+    await this.schedule(until);
+    return true;
+  }
+
+  /** Forget burned proofs past their window (they can no longer verify anyway). */
+  private async proofSweep() {
+    const all = await this.ctx.storage.list<number>({ prefix: "proof:" });
+    let next = Number.POSITIVE_INFINITY;
+    for (const [k, until] of all) {
+      if (until <= this.now()) await this.ctx.storage.delete(k);
+      else next = Math.min(next, until);
+    }
+    if (Number.isFinite(next)) await this.schedule(next);
+  }
+
   /** Make sure the alarm goes off by `at` (one already due is the one running now). */
   private async schedule(at: number) {
     const cur = await this.ctx.storage.getAlarm();
@@ -931,6 +1487,9 @@ export class DebugHub {
   async alarm() {
     this.sweep();
     await this.checkIdle();
+    await this.clipsSweep();
+    await this.proofSweep();
+    await this.renewDue("alarm");
   }
 
   webSocketMessage(ws: Socket, raw: string | ArrayBuffer): void | Promise<void> {
@@ -938,12 +1497,31 @@ export class DebugHub {
     this.checkIdle().catch(() => {});
     this.sweep();
     if (ws.readyState !== undefined && ws.readyState > 1) return;
+    // The auto-response normally answers it before the hub sees it.
+    if (raw === KEEPALIVE.ping) return ws.send(KEEPALIVE.pong);
     const a = att(ws);
     if (a?.role === "page") return this.fromPage(ws, a, raw);
-    if (a?.role === "controller") return this.fromController(ws, a, raw);
+    if (a?.role !== "controller") return;
+    // A use of the owner's eval grant near its end renews it first (if allowed).
+    const t = this.now();
+    if (a.grant && a.scope === "eval" && !a.forUser && a.until && a.until > t)
+      if (renewDueAt(a.until, t))
+        return this.renew(a.grant, "use").then(() => {
+          const b = att(ws);
+          return b?.role === "controller" ? this.fromController(ws, b, raw) : undefined;
+        });
+    return this.fromController(ws, a, raw);
   }
 
   private fromPage(ws: Socket, page: PageAtt, raw: unknown): void | Promise<void> {
+    // An embedded page (another site) may only chat and say where it is:
+    // no answers, no pairings, no results, no clips, no page errors.
+    if (page.embed) {
+      const em = parsePageMessage(raw);
+      if (!em || (em.type !== "chat" && em.type !== "page")) return;
+    }
+    const cm = clipsParse(raw, parseClipsPageMessage);
+    if (cm) return page.thread === OWNER_THREAD ? this.clipsFromPage(ws, page, cm) : undefined;
     const m = parsePageMessage(raw);
     if (!m) return;
     const t = this.now();
@@ -972,6 +1550,24 @@ export class DebugHub {
       );
       return this.broadcast(target.ws);
     }
+    if (m.type === "page-error") {
+      // The owner's pages only: a friend's page never reports one (and is
+      // ignored if it does). Forwarded live to the owner-approved listeners,
+      // never stored, never sent to any page.
+      if (page.thread !== OWNER_THREAD) return;
+      console.log(
+        JSON.stringify({
+          msg: "debug.page-error",
+          kind: m.kind,
+          path: m.path,
+          ...(m.status !== undefined ? { status: m.status } : {}),
+          head: head(m.message),
+        }),
+      );
+      const out = { ...m, label: page.label, hubAt: t };
+      for (const { ws: c } of this.agents()) send(c, out);
+      return;
+    }
     if (m.type === "chat") {
       console.log(
         JSON.stringify({
@@ -985,18 +1581,38 @@ export class DebugHub {
       );
       // A friend's line is always their own thread's: no node addressing there.
       if (page.thread !== OWNER_THREAD) return this.friendChat(ws, page, m.id, m.text);
-      return this.post({
-        id: m.id,
-        from: "owner",
-        label: page.label,
-        text: m.text,
-        at: t,
-        thread: OWNER_THREAD,
-        ...(page.sender ? { sender: page.sender } : {}),
-        ...(m.to ? { to: m.to } : {}),
-        ...(m.source ? { source: m.source } : {}),
-      });
+      const line = (speaker: SpeakerTag | undefined) =>
+        this.post({
+          id: m.id,
+          from: "owner",
+          label: page.label,
+          text: m.text,
+          at: t,
+          thread: OWNER_THREAD,
+          ...(page.sender ? { sender: page.sender } : {}),
+          ...(m.to ? { to: m.to } : {}),
+          ...(m.source ? { source: m.source } : {}),
+          ...(m.timing ? { timing: m.timing } : {}),
+          ...(m.wake ? { wake: m.wake } : {}),
+          ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
+          // Only a tag the Mac signed over these words (lib/speaker-proof.ts); voice
+          // approvals later must rely on this, never on what a page says.
+          ...(speaker ? { speaker } : {}),
+        });
+      // A voice line with the Mac's signed attestations: verified first, then stored.
+      if (m.source === "stt" && m.speakerProof?.length)
+        return verifySpeakerProofs(
+          m.speakerProof,
+          m.text,
+          page.thread,
+          this.speakerPub,
+          (uids, until) => this.burnProofs(uids, until),
+          this.now(),
+        ).then(line);
+      return line(undefined);
     }
+    // A tap on an ask card: stamped here, never by the page or an agent.
+    if (m.type === "answer") return this.answer(ws, page, m.askId, m.choices);
     // A sleeping eval grant (listed to the owner's pages only): End, or add a page.
     if ((m.type === "revoke" || m.type === "allow") && m.pair.startsWith(DORMANT))
       return page.thread === OWNER_THREAD
@@ -1015,7 +1631,7 @@ export class DebugHub {
       // A chat grant is for every page: a phone's page comes and goes with the app.
       return (c.a.scope === "chat" || m.scope === "chat") && !c.a.forUser
         ? this.allowChat(c.ws, c.a)
-        : this.allowEval(c.ws, c.a, pages);
+        : this.allowEval(c.ws, c.a, pages, page);
     }
     if (m.type === "deny" || m.type === "revoke") return this.end(m.type, c.ws, c.a);
     // A result (or a streamed piece of one) goes back only to an approved
@@ -1081,7 +1697,11 @@ export class DebugHub {
    */
   private grantPages(page: PageAtt, want: string[] | "all" | undefined) {
     if (want === undefined || want === "all") return undefined;
-    const open = new Set(this.pages(page.thread).map((p) => p.a.id));
+    const open = new Set(
+      this.pages(page.thread)
+        .filter((p) => !p.a.embed)
+        .map((p) => p.a.id),
+    );
     const ids = want.filter((id) => open.has(id));
     return ids.length ? [...new Set(ids)] : page.id ? [page.id] : undefined;
   }
@@ -1107,8 +1727,10 @@ export class DebugHub {
    * "Allow" for eval. The owner's: code and chat for EVAL_GRANT_MS, with a
    * grant token the controller resumes with (pages and all). A friend's
    * preview: code only, for APPROVAL_MS, on this socket only — no token.
+   * The owner's is bound for renewal to the answering page's device and
+   * session, when that page has both ("Renewal" above).
    */
-  private async allowEval(ws: Socket, a: ControllerAtt, pages?: string[]) {
+  private async allowEval(ws: Socket, a: ControllerAtt, pages?: string[], by?: PageAtt) {
     const t = this.now();
     if (a.forUser) {
       const until = t + APPROVAL_MS;
@@ -1123,18 +1745,39 @@ export class DebugHub {
     const until = t + EVAL_GRANT_MS;
     const token = hex(crypto.getRandomValues(new Uint8Array(32)));
     const grant = await hashToken(token);
-    await this.putGrant(grant, {
+    // Only an owner page signed in with a session, on a known device, starts a chain.
+    const renew: Renewal | undefined =
+      by?.thread === OWNER_THREAD && by.session && by.device && by.user
+        ? { device: by.device, session: by.session, user: by.user, start: t, count: 0 }
+        : undefined;
+    const g: Grant = {
       label: a.label,
       until,
       scope: "eval",
       at: t,
       ...(pages ? { pages } : {}),
-    } satisfies Grant);
+      ...(renew ? { renew } : {}),
+    };
+    await this.putGrant(grant, g);
     ws.serializeAttachment({ ...a, until, scope: "eval", pages, grant } satisfies ControllerAtt);
-    send(ws, { type: "approved", until, scope: "eval", token });
+    send(ws, {
+      type: "approved",
+      until,
+      scope: "eval",
+      token,
+      ...(renew ? { renewsUntil: t + EVAL_CHAIN_MS } : {}),
+    });
     console.log(
-      JSON.stringify({ msg: "debug.allow", pair: a.pair, label: a.label, until, scope: "eval" }),
+      JSON.stringify({
+        msg: "debug.allow",
+        pair: a.pair,
+        label: a.label,
+        until,
+        scope: "eval",
+        ...(renew ? { device: renew.device, renewable: true } : {}),
+      }),
     );
+    await this.scheduleRenewal(g);
     this.broadcast();
     send(ws, { type: "history", messages: forNode(await this.history(), a.node) });
   }
@@ -1258,6 +1901,13 @@ export class DebugHub {
       close(ws, 4408, "approval expired");
       return this.broadcast(ws);
     }
+    const clip = clipsParse(raw, (j) => (j.type === "clips" ? parseClipsControl(j) : null));
+    if (clip) {
+      if (c.forUser)
+        return send(ws, { type: "error", error: "a pairing for a friend cannot record" });
+      if (!clip.ok) return send(ws, { type: "error", error: clip.error });
+      return this.clipsControl(ws, c, clip.value);
+    }
     const m = parseControllerMessage(raw);
     if (!m.ok) return send(ws, { type: "error", error: m.error });
     if (m.value.type === "busy") {
@@ -1275,16 +1925,32 @@ export class DebugHub {
         send(ws, { type: "beat", thread: dest.thread, delivered: pages.length, at: t });
       });
     }
+    if (m.value.type === "wake") {
+      if (c.forUser)
+        return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
+      const { to, mode } = m.value;
+      return this.sayTarget(to).then((dest) => {
+        if ("error" in dest) return send(ws, { type: "error", error: dest.error });
+        // That thread's pages set their mic's mode (docs/wake-word.md); not stored.
+        const pages = this.reach(c, dest.thread);
+        for (const { ws: p } of pages) send(p, { type: "wake", mode, at: t });
+        console.log(
+          JSON.stringify({ msg: "debug.wake", thread: dest.thread, mode, delivered: pages.length }),
+        );
+        send(ws, { type: "woke", thread: dest.thread, mode, delivered: pages.length, at: t });
+      });
+    }
     if (m.value.type === "grant" || m.value.type === "ungrant") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
       return this.nodeGrant(ws, c, m.value);
     }
     if (m.value.type === "edit") return this.edit(ws, c, m.value);
+    if (m.value.type === "ask") return this.ask(ws, c, m.value.ask, m.value.to);
     if (m.value.type === "say") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
-      const { text, to, node, agentId } = m.value;
+      const { text, to, node, agentId, quiet } = m.value;
       // The sender's node: what the line says, within the node its socket listens at.
       const home = c.node ?? ROOT_NODE;
       const from = m.value.taskPath ?? home;
@@ -1313,6 +1979,8 @@ export class DebugHub {
           ...(from !== ROOT_NODE ? { taskPath: from } : {}),
           ...(who ? { agentId: who } : {}),
           ...(node ? { to: node } : {}),
+          // say --quiet (already a boolean): shown, never read aloud.
+          ...(quiet ? { quiet } : {}),
         };
         console.log(
           JSON.stringify({
@@ -1322,6 +1990,7 @@ export class DebugHub {
             thread: said.thread,
             ...(said.taskPath ? { taskPath: said.taskPath } : {}),
             ...(said.to ? { to: said.to } : {}),
+            ...(quiet ? { quiet } : {}),
             len: text.length,
             head: head(text),
           }),
@@ -1347,7 +2016,7 @@ export class DebugHub {
           : "the page you were authorized for is not connected now; the pairing ends if it stays away 5 min",
       });
     for (const p of reach) {
-      if (!matchesTarget(p.a.label, m.value.target)) continue;
+      if (p.a.embed || !matchesTarget(p.a.label, m.value.target)) continue;
       send(p.ws, { type: "eval", id, code: m.value.code, to: c.pair });
       labels.push(p.a.label);
     }
@@ -1377,8 +2046,334 @@ export class DebugHub {
     close(ws, code === 1005 ? 1000 : code, "");
     this.sweep(ws);
     this.broadcast(ws);
+    const gone = a?.role === "page" && a.sid ? this.clipsLeft(a.sid, ws) : undefined;
     if (a?.role === "page" && this.pages(a.thread, ws).length === 0)
-      return this.markEmpty(a.thread);
+      return Promise.all([gone, this.markEmpty(a.thread)]).then(() => {});
+    return gone;
+  }
+
+  // --- Voice-clip recording: one window session at a time (see the header) ---
+
+  /** The owner pages of one window session that hold it open (not ones that said they are going). */
+  private clipPages(sid: string, except?: Socket) {
+    return this.pages(OWNER_THREAD, except).filter((p) => p.a.sid === sid && !p.a.leaving);
+  }
+
+  private async clipRecords(): Promise<ClipsRec[]> {
+    return [...(await this.ctx.storage.list<ClipsRec>({ prefix: "clips:" })).values()];
+  }
+
+  /** The sink the agent last set up (`clips on --sink`), which a tap on a page reuses. */
+  private sinkConfig() {
+    return this.ctx.storage.get<SinkConfig>(SINK_CONFIG);
+  }
+
+  /** What one page of a session is told; `token` is the session's fresh handoff token. */
+  private clipsMsg(
+    sid: string,
+    device: string,
+    rec?: ClipsRec,
+    token?: string,
+    extra: Partial<ClipsState> = {},
+  ): ClipsState {
+    const t = this.now();
+    return {
+      type: "clips",
+      sid,
+      device,
+      on: !!rec,
+      ...(rec
+        ? {
+            since: rec.at,
+            ...(rec.until ? { until: rec.until, left: Math.max(0, rec.until - t) } : {}),
+            ...(rec.sink ? { sink: rec.sink } : {}),
+            ...(rec.sinkKey ? { sinkKey: rec.sinkKey } : {}),
+            origins: rec.origins ?? [LIANKI_ORIGIN],
+            ...(token ? { handoff: token } : {}),
+          }
+        : {}),
+      ...extra,
+    };
+  }
+
+  /** Store a recording session with a new handoff token, and tell each of its pages. */
+  private async clipsPublish(rec: ClipsRec, extraFor?: { ws: Socket; extra: Partial<ClipsState> }) {
+    const token = randomId(24);
+    const next: ClipsRec = { ...rec, handoff: await hashToken(token) };
+    await this.ctx.storage.put(clipsKey(rec.sid), next);
+    for (const p of this.pages(OWNER_THREAD))
+      if (p.a.sid === rec.sid)
+        send(
+          p.ws,
+          this.clipsMsg(
+            rec.sid,
+            rec.device,
+            next,
+            token,
+            p.ws === extraFor?.ws ? extraFor.extra : {},
+          ),
+        );
+    if (next.until) await this.schedule(next.until);
+  }
+
+  /** Recording stops (a tap, the agent, the auto-stop): the record goes, its pages hear "off". */
+  private async clipsStop(rec: ClipsRec, why: string) {
+    await this.ctx.storage.delete(clipsKey(rec.sid));
+    const canStart = !!(await this.sinkConfig());
+    for (const p of this.pages(OWNER_THREAD))
+      if (p.a.sid === rec.sid)
+        send(
+          p.ws,
+          this.clipsMsg(rec.sid, p.a.device ?? rec.device, undefined, undefined, { canStart }),
+        );
+    console.log(JSON.stringify({ msg: "debug.clips-off", sid: rec.sid.slice(0, 6), why }));
+  }
+
+  /**
+   * An owner page connected: put it in its window's session (see the header).
+   * It joins a recording session silently only when nothing suggests a
+   * window was closed in between: a handoff token, the same document coming
+   * back (`cont=1`: it was recording when its socket dropped, e.g. the screen
+   * went off), or a quick reload or navigation (not hidden, within
+   * CLIPS_GONE_MS). A tab closed while hidden and restored later, or a page
+   * back from the bfcache, is offered "Continue recording" instead: a tap.
+   */
+  private async clipsJoin(ws: Socket, url: URL) {
+    const page = att(ws) as PageAtt;
+    const t = this.now();
+    let sid = url.searchParams.get("ws") ?? "";
+    let device = url.searchParams.get("dev") ?? "";
+    if (!isClipsId(sid)) sid = randomId();
+    if (!isClipsId(device)) device = randomId();
+    const hand = url.searchParams.get("hand");
+    const cont = url.searchParams.get("cont") === "1";
+    // The page went through pagehide (a bfcache return): it is only ever offered its session.
+    const back = url.searchParams.get("back") === "1";
+    const all = await this.clipRecords();
+    const canStart = !!(await this.sinkConfig());
+    let rec: ClipsRec | undefined;
+    if (isHandoffToken(hand)) {
+      const h = await hashToken(hand);
+      rec = all.find((r) => r.handoff === h);
+    }
+    const quick = (r: ClipsRec) =>
+      !r.hidden && (r.goneAt === undefined || t - r.goneAt < CLIPS_GONE_MS);
+    if (!rec) {
+      const own = all.find((r) => r.sid === sid);
+      if (own && !back && (cont || quick(own))) rec = own;
+    }
+    // A page that said it is leaving counts as gone already (its close may come after this knock).
+    const orphan = (r: ClipsRec) => this.clipPages(r.sid, ws).length === 0;
+    // No token (an address typed by hand): this device's session that just lost its page.
+    if (!rec && !back) {
+      const mine = all.filter((r) => r.device === device && r.sid !== sid && quick(r) && orphan(r));
+      if (mine.length === 1) rec = mine[0];
+    }
+    if (!rec) {
+      ws.serializeAttachment({ ...page, sid, device } satisfies PageAtt);
+      // Offered, never taken: this window's own session after a gap, or another that just lost its page.
+      const resumable = all
+        .filter((r) => orphan(r) && (r.sid === sid || quick(r)))
+        .map((r) => ({ sid: r.sid, label: r.label ?? "", since: r.at }));
+      return send(
+        ws,
+        this.clipsMsg(sid, device, undefined, undefined, {
+          canStart,
+          ...(resumable.length ? { resumable } : {}),
+        }),
+      );
+    }
+    const paused = rec.goneAt !== undefined ? t - rec.goneAt : undefined;
+    ws.serializeAttachment({ ...page, sid: rec.sid, device: rec.device } satisfies PageAtt);
+    const { goneAt: _g, hidden: _h, ...live } = rec;
+    console.log(
+      JSON.stringify({ msg: "debug.clips-join", sid: rec.sid.slice(0, 6), handoff: !!hand, cont }),
+    );
+    await this.clipsPublish(
+      { ...live, label: page.label },
+      paused ? { ws, extra: { paused } } : undefined,
+    );
+  }
+
+  /** A page of a session closed: with none left, the session's grace clock starts. */
+  private async clipsLeft(sid: string, ws: Socket) {
+    if (this.clipPages(sid, ws).length > 0) return;
+    const rec = await this.ctx.storage.get<ClipsRec>(clipsKey(sid));
+    if (!rec || rec.goneAt !== undefined) return;
+    const t = this.now();
+    await this.ctx.storage.put(clipsKey(sid), { ...rec, goneAt: t } satisfies ClipsRec);
+    await this.schedule(t + (rec.hidden ? CLIPS_HIDDEN_MS : CLIPS_GONE_MS));
+  }
+
+  /** Auto-stops due, and sessions whose pages stayed away past their grace: gone. Never a clip. */
+  async clipsSweep() {
+    const t = this.now();
+    let next: number | null = null;
+    const at = (x: number) => (next = Math.min(next ?? Infinity, x));
+    for (const rec of await this.clipRecords()) {
+      if (rec.until && rec.until <= t) {
+        await this.clipsStop(rec, "auto-stop");
+        continue;
+      }
+      if (rec.until) at(rec.until);
+      if (this.clipPages(rec.sid).length > 0) continue;
+      if (rec.goneAt === undefined) {
+        // Woken after an eviction with no page: its clock starts now.
+        await this.ctx.storage.put(clipsKey(rec.sid), { ...rec, goneAt: t } satisfies ClipsRec);
+        at(t + (rec.hidden ? CLIPS_HIDDEN_MS : CLIPS_GONE_MS));
+        continue;
+      }
+      const end = rec.goneAt + (rec.hidden ? CLIPS_HIDDEN_MS : CLIPS_GONE_MS);
+      if (end <= t) {
+        await this.ctx.storage.delete(clipsKey(rec.sid));
+        console.log(JSON.stringify({ msg: "debug.clips-ended", sid: rec.sid.slice(0, 6) }));
+      } else at(end);
+    }
+    if (next !== null) await this.schedule(next);
+  }
+
+  private async clipsFromPage(
+    ws: Socket,
+    page: PageAtt,
+    m: NonNullable<ReturnType<typeof parseClipsPageMessage>>,
+  ) {
+    const sid = page.sid;
+    if (!sid || !page.device) return;
+    const t = this.now();
+    const rec = await this.ctx.storage.get<ClipsRec>(clipsKey(sid));
+    if (m.type === "clips-vis") {
+      const leaving = m.state === "leaving";
+      if (!!page.leaving !== leaving)
+        ws.serializeAttachment({ ...page, leaving: leaving || undefined } satisfies PageAtt);
+      const hidden = m.state === "hidden";
+      if (rec && !!rec.hidden !== hidden)
+        await this.ctx.storage.put(clipsKey(sid), {
+          ...rec,
+          hidden: hidden || undefined,
+        } satisfies ClipsRec);
+      return;
+    }
+    const cfg = await this.sinkConfig();
+    if (m.type === "clips-off")
+      return rec
+        ? this.clipsStop(rec, "page")
+        : send(ws, this.clipsMsg(sid, page.device, undefined, undefined, { canStart: !!cfg }));
+    if (m.type === "clips-on") {
+      // Recording with nowhere to keep the clips would only look like recording.
+      const sink = rec?.sink ? rec : cfg ? { sink: cfg.url, sinkKey: cfg.key } : null;
+      if (!sink) return send(ws, this.clipsMsg(sid, page.device, rec));
+      console.log(
+        JSON.stringify({
+          msg: "debug.clips-on",
+          sid: sid.slice(0, 6),
+          by: "page",
+          minutes: m.minutes,
+        }),
+      );
+      return this.clipsPublish({
+        sid,
+        device: page.device,
+        at: rec?.at ?? t,
+        sink: sink.sink,
+        ...(sink.sinkKey ? { sinkKey: sink.sinkKey } : {}),
+        origins: rec?.origins ?? cfg?.origins ?? [LIANKI_ORIGIN],
+        ...(m.minutes ? { until: t + m.minutes * 60_000 } : {}),
+        label: page.label,
+      });
+    }
+    // clips-adopt: a session that has no page now (another window's, or this
+    // window's own after a gap), continued here by a tap.
+    const other = await this.ctx.storage.get<ClipsRec>(clipsKey(m.sid));
+    if (!other || this.clipPages(m.sid, ws).length > 0)
+      return send(ws, this.clipsMsg(sid, page.device, rec));
+    ws.serializeAttachment({ ...page, sid: other.sid, device: other.device } satisfies PageAtt);
+    const { goneAt: _g, hidden: _h, ...live } = other;
+    console.log(JSON.stringify({ msg: "debug.clips-adopt", sid: other.sid.slice(0, 6) }));
+    return this.clipsPublish({ ...live, label: page.label });
+  }
+
+  /** The agent's `eval.ts clips`: list the owner's window sessions, or turn recording on or off. */
+  private async clipsControl(ws: Socket, c: ControllerAtt, m: ClipsControl) {
+    const t = this.now();
+    const recs = await this.clipRecords();
+    // Every session: the live ones (from the pages) and the recording ones (stored).
+    const by = new Map<string, { sid: string; device: string; labels: string[]; rec?: ClipsRec }>();
+    for (const p of this.pages(OWNER_THREAD)) {
+      if (!p.a.sid || !p.a.device) continue;
+      const s = by.get(p.a.sid) ?? { sid: p.a.sid, device: p.a.device, labels: [] };
+      s.labels.push(p.a.label);
+      by.set(p.a.sid, s);
+    }
+    for (const r of recs) {
+      const s = by.get(r.sid) ?? { sid: r.sid, device: r.device, labels: r.label ? [r.label] : [] };
+      s.rec = r;
+      by.set(r.sid, s);
+    }
+    const view = (s: { sid: string; device: string; labels: string[]; rec?: ClipsRec }) => ({
+      sid: s.sid,
+      device: s.device,
+      on: !!s.rec,
+      pages: s.labels,
+      ...(s.rec?.until ? { until: s.rec.until } : {}),
+      ...(s.rec?.sink ? { sink: s.rec.sink } : {}),
+      ...(s.rec?.goneAt !== undefined ? { goneAt: s.rec.goneAt, hidden: !!s.rec.hidden } : {}),
+    });
+    const hits = [...by.values()].filter((s) => matchesSession(m.match, s));
+    if (m.op === "list")
+      return send(ws, { type: "clips-list", sessions: [...by.values()].map(view), at: t });
+    if (m.op === "off") {
+      for (const s of hits) if (s.rec) await this.clipsStop(s.rec, "agent");
+      return send(ws, {
+        type: "clips-done",
+        op: "off",
+        sessions: hits.filter((s) => s.rec).map((s) => s.sid),
+        at: t,
+      });
+    }
+    // On: the live sessions it matches (a window with a page open now).
+    const live = hits.filter((s) => this.clipPages(s.sid).length > 0);
+    if (!live.length)
+      return send(ws, {
+        type: "error",
+        error: `no open owner page matches "${m.match}" (eval.ts clips lists them)`,
+      });
+    // The sink set here is the one a tap on a page reuses later (with its write key and origins).
+    let cfg = await this.sinkConfig();
+    if (m.sink && m.sinkKey) {
+      cfg = {
+        url: m.sink,
+        key: m.sinkKey,
+        origins: m.origins ?? cfg?.origins ?? [LIANKI_ORIGIN],
+        at: t,
+      };
+      await this.ctx.storage.put(SINK_CONFIG, cfg);
+    }
+    if (!cfg)
+      return send(ws, {
+        type: "error",
+        error: "clips on needs --sink <url>: where the clips are kept",
+      });
+    for (const s of live) {
+      await this.clipsPublish({
+        sid: s.sid,
+        device: s.device,
+        at: s.rec?.at ?? t,
+        sink: cfg.url,
+        sinkKey: cfg.key,
+        origins: m.origins ?? cfg.origins,
+        ...(m.minutes ? { until: t + m.minutes * 60_000 } : {}),
+        label: s.labels[0] ?? s.rec?.label ?? "",
+      });
+      console.log(
+        JSON.stringify({
+          msg: "debug.clips-on",
+          sid: s.sid.slice(0, 6),
+          by: c.label,
+          minutes: m.minutes,
+        }),
+      );
+    }
+    send(ws, { type: "clips-done", op: "on", sessions: live.map((s) => s.sid), at: t });
   }
 
   /** A socket that errored is gone too (the runtime may not also report a close). */

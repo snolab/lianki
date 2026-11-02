@@ -7,7 +7,9 @@ name: Deploy Worker
 # which failed the differential gate for reasons that had nothing to do with
 # the Workers runtime. See docs/cf-d1-migration.md.
 #
-# Runs only after CI passes on main — never deploys a red commit.
+# Runs only after CI passes on main — never deploys a red commit. CI is the
+# fast `Typecheck + unit` job only; qa:all runs nightly (nightly-qa.yml) and
+# in the pre-push hook, so the deploy does not wait ~4 min for it.
 on:
   workflow_run:
     workflows: [CI]
@@ -43,6 +45,10 @@ jobs:
           node-version: 22
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
+      # The Learning Partner for other sites (docs/dev-debug-widget.md, "On every
+      # site"): built here, served as /partner-embed.js, never committed.
+      - name: Partner embed build
+        run: bun scripts/build-partner-embed.ts
       # Same flags as qa:all's build. NEXT_PUBLIC_* is inlined at build time, so
       # the real Turnstile site key must be present here, not as a Worker var.
       - name: OpenNext build
@@ -59,19 +65,47 @@ jobs:
       # never leaves the schema a migration behind the code.
       - name: D1 migrations
         run: bunx wrangler d1 migrations apply lianki --remote
-      # The monitor and the push service first: the main Worker names them
-      # (tail consumer; service binding). lianki-push owns the zone route
-      # lianki.com/api/version/*, so the token needs Zone · Workers Routes ·
-      # Edit on lianki.com (granted 2026-10-29; docs/monitoring.md).
+      # worker.ts must keep every export of the OpenNext build (its Durable
+      # Object classes, the default handler) and add only DebugSessions.
+      - name: Worker exports unchanged
+        run: bun scripts/ci/check-worker-exports.ts
+      # Order: the monitor, then the main Worker, then lianki-push (docs/shipping.md,
+      # "Deploy order"). The monitor first: the main Worker names it as its tail
+      # consumer. The main Worker before lianki-push: lianki-push binds a named
+      # entrypoint of it (SESSIONS → lianki#DebugSessions), and a binding to an
+      # entrypoint the callee does not export yet can be refused at deploy;
+      # Cloudflare's advice is callee first. The other way round needs nothing
+      # new: the main Worker's PUSH binding is to lianki-push's default fetch,
+      # which already exists, and a route lianki-push gains later (e.g.
+      # /internal/signed-out) is only called with a fallback (the outbox).
+      # lianki-push owns the zone route lianki.com/api/version/*, so the token
+      # needs Zone · Workers Routes · Edit on lianki.com (granted 2026-10-29;
+      # docs/monitoring.md).
       - name: Deploy the monitor
         run: bunx wrangler deploy -c workers/monitor/wrangler.jsonc
-      - name: Deploy the push service
-        run: bunx wrangler deploy -c workers/push/wrangler.jsonc
       - name: Deploy
         run: bunx wrangler deploy
+      - name: Deploy the push service
+        run: bunx wrangler deploy -c workers/push/wrangler.jsonc
+      # lianki-voice owns the zone route lianki.com/api/words/tts* (word clips
+      # at the edge, workers/voice) and passes the rest to the main Worker.
+      # After the main Deploy and never blocking it: without lianki-voice the
+      # main Worker still serves /api/words/tts itself, only slower. A failure
+      # here fails the run at the very end ("Voice service deployed?").
+      - name: Deploy the voice service
+        id: voice
+        continue-on-error: true
+        run: bunx wrangler deploy -c workers/voice/wrangler.jsonc
       # Differential check against lianki.com. Advisory until cutover: Vercel
       # deploys the same commit on its own schedule, so the asset comparison can
       # race it.
       - name: Differential gate
         continue-on-error: true
         run: bun scripts/qa/qa-worker.mjs https://lianki.snomiao.workers.dev
+      # Last, so the app and every check above are already out: a voice deploy
+      # that failed turns the run red instead of passing unnoticed.
+      - name: Voice service deployed?
+        if: steps.voice.outcome == 'failure'
+        run: |
+          echo "::error title=lianki-voice not deployed::The app deployed, but lianki-voice did not (see 'Deploy the voice service'). /api/words/tts is served by the main Worker meanwhile. Likely cause: the token lacks Zone · Workers Routes · Edit on lianki.com."
+          exit 1
