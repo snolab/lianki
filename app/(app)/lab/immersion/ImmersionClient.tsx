@@ -96,7 +96,7 @@ function TopicHeader({
         {domain.registers.map((r) => (
           <span
             key={r}
-            className="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-gray-600 dark:text-gray-300"
+            className="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 fs-10 font-normal uppercase tracking-wide text-gray-600 dark:text-gray-300"
           >
             {registerLabel(r)}
           </span>

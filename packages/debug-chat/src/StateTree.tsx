@@ -215,7 +215,7 @@ function Title({ node }: { node: TreeNode }) {
 function Badge({ children }: { children: ReactNode }) {
   return (
     <span
-      className="ms-1.5 inline-flex shrink-0 items-center gap-0.5 align-[0.05em] text-[10px] font-semibold"
+      className="ms-1.5 inline-flex shrink-0 items-center gap-0.5 align-[0.05em] fs-10 font-semibold"
       style={{ color: ACCENT }}
     >
       {children}
@@ -230,7 +230,7 @@ function Who({ who, t }: { who?: Assignee; t: TreeStrings }) {
     <span
       data-testid="state-tree-assignee"
       title={who.id ? `${who.name}#${who.id}` : who.name}
-      className="ms-1.5 whitespace-nowrap text-[10px] opacity-60"
+      className="ms-1.5 whitespace-nowrap fs-10 opacity-60"
     >
       @{who.type === "human" ? t.you : who.name}
     </span>
@@ -268,7 +268,7 @@ function Action({ text, t }: { text: string; t: TreeStrings }) {
   const url = /^https?:\/\/\S+$/.test(text) ? text : null;
   return (
     <div className="pointer-events-auto ps-4 leading-snug">
-      <code className="whitespace-pre-wrap break-all font-mono text-[11px] opacity-80">
+      <code className="whitespace-pre-wrap break-all font-mono fs-11 opacity-80">
         {url ? (
           <a href={url} target="_blank" rel="noreferrer" style={{ color: LINK_INK }}>
             {text}
@@ -364,7 +364,7 @@ function Item({
         )}
         {!node.needsOwner && <Who who={who} t={t} />}
         {counts && counts.open > 0 && (
-          <span className="ms-1.5 whitespace-nowrap text-[10px] tabular-nums opacity-60">
+          <span className="ms-1.5 whitespace-nowrap fs-10 tabular-nums opacity-60">
             {fill(t.openCount, counts.open)}
           </span>
         )}
@@ -535,7 +535,7 @@ export function StateTree({
           data-testid="state-tree-needs-me"
           aria-pressed={needsMe}
           onClick={toggleNeedsMe}
-          className={`relative inline-flex shrink-0 items-center gap-0.5 border-0 bg-transparent p-0 text-[10px] font-semibold after:absolute after:-inset-2.5 after:content-[''] ${needsMe ? "underline underline-offset-2" : "opacity-70"}`}
+          className={`relative inline-flex shrink-0 items-center gap-0.5 border-0 bg-transparent p-0 fs-10 font-semibold after:absolute after:-inset-2.5 after:content-[''] ${needsMe ? "underline underline-offset-2" : "opacity-70"}`}
           style={{ color: ACCENT }}
         >
           <Svg d={FLAG} size={10} />
@@ -677,7 +677,7 @@ export function FrontierLines({
               </span>
             )}
             {who && (
-              <span className="shrink-0 text-[10px] opacity-60">
+              <span className="shrink-0 fs-10 opacity-60">
                 @{who.type === "human" ? t.you : who.name}
               </span>
             )}
@@ -703,7 +703,7 @@ export function FrontierLines({
                   <li key={i} className="flex gap-1" title={crumbs(it.path)}>
                     <span className="min-w-0 truncate">{it.title}</span>
                     {it.assignee && (
-                      <span className="shrink-0 text-[10px] opacity-60">
+                      <span className="shrink-0 fs-10 opacity-60">
                         @{it.assignee.type === "human" ? t.you : it.assignee.name}
                       </span>
                     )}

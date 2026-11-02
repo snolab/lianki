@@ -143,9 +143,7 @@ export default function StatsClient() {
               <div key={s.label.value} className="rounded-lg bg-white/5 p-4">
                 <div className="text-2xl font-semibold tabular-nums">{s.value}</div>
                 <div className="text-xs opacity-70">{s.label}</div>
-                {s.hint && (
-                  <div className="text-[10px] opacity-40 mt-1 leading-tight">{s.hint}</div>
-                )}
+                {s.hint && <div className="fs-10 opacity-40 mt-1 leading-tight">{s.hint}</div>}
               </div>
             ))}
           </section>

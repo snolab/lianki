@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import TokenManager from "../list/components/TokenManager";
 import { PaperSkinPicker } from "@/app/components/PaperSkinPicker";
+import { TextSizeControls } from "@/app/components/TextSizeControls";
 
 type FilterType = "domain" | "title" | "url";
 
@@ -29,6 +30,7 @@ export default function PreferencesClient() {
     examples,
     reviewOrder: reviewOrderUi,
   } = useIntlayer("preferences-page");
+  const textSize = useIntlayer("text-size");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -145,6 +147,14 @@ export default function PreferencesClient() {
       <section className="mb-10">
         <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">紙紋 Paper</h2>
         <PaperSkinPicker />
+      </section>
+
+      {/* Text size — follows the account (lib/text-size.ts) */}
+      <section className="mb-10 max-w-md" data-section="text-size">
+        <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
+          {textSize.heading}
+        </h2>
+        <TextSizeControls />
       </section>
 
       {/* Next-card order */}

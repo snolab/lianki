@@ -9,6 +9,9 @@ import { useEffect } from "react";
  */
 export function PrefSync({ signedIn }: { signedIn: boolean }) {
   useEffect(() => {
+    // Text size applies on every page, signed in or not, and follows a change
+    // made in another tab (lib/text-size.ts).
+    void import("@/lib/text-size");
     if (!signedIn) return;
     void import("@/lib/prefs/client").then((m) => m.startPrefSync());
   }, [signedIn]);

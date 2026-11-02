@@ -2049,7 +2049,7 @@ export function DebugChat({
             ref={treeHintEl}
             role="status"
             data-testid="debug-chat-tree-hint"
-            className="pointer-events-none absolute start-0 bottom-full mb-2 whitespace-nowrap text-[10px] lk-halo"
+            className="pointer-events-none absolute start-0 bottom-full mb-2 whitespace-nowrap fs-10 lk-halo"
             style={{ transform: `translateX(${treeHintOffset.current}px)` }}
           >
             {treeHint}
@@ -2061,7 +2061,7 @@ export function DebugChat({
           <span
             aria-hidden
             data-testid="debug-chat-evals"
-            className={`absolute end-0.5 top-0 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5 text-[8px] leading-none text-white tabular-nums ${evalRan ? "animate-pulse" : ""}`}
+            className={`absolute end-0.5 top-0 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5 fs-8 leading-none text-white tabular-nums ${evalRan ? "animate-pulse" : ""}`}
             style={{ background: "oklch(0.55 0.15 30)" }}
           >
             {evalSessions.length}
@@ -2180,7 +2180,7 @@ export function DebugChat({
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => setPanel("none")}
         // Beside the tree, never over it (first in the DOM, last on screen).
-        className="tap-40 pointer-events-auto shrink-0 px-1.5 text-[10px] text-gray-500"
+        className="tap-40 pointer-events-auto shrink-0 px-1.5 fs-10 text-gray-500"
       >
         ✕
       </button>
@@ -2538,7 +2538,7 @@ export function DebugChat({
               className="flex min-w-0 flex-1 items-baseline gap-1.5 text-start"
             >
               <span className="truncate text-gray-700 dark:text-gray-200">{path}</span>
-              <span className="shrink-0 text-[10px]">
+              <span className="shrink-0 fs-10">
                 {[device, self ? "this page" : ""].filter(Boolean).join(" · ")}
               </span>
             </button>
@@ -2551,7 +2551,7 @@ export function DebugChat({
                   if (self) twoStep(key, () => onEndPage?.(pg.id));
                   else onEndPage?.(pg.id);
                 }}
-                className="text-[10px] underline opacity-70"
+                className="fs-10 underline opacity-70"
                 style={endArmed === key ? { color: "oklch(0.58 0.19 25)" } : undefined}
               >
                 {endArmed === key ? "tap again" : "disconnect"}
@@ -2855,7 +2855,7 @@ export function DebugChat({
       onKeyDown={unlockSpeech}
       // A live mic counts as focus: the box goes opaque as it does while typing.
       style={offset}
-      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-40 flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo text-xs text-gray-800 dark:text-gray-100`}
+      className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-40 flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${micActive ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} pointer-events-none lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
     >
       {/* The recording badge, top of the screen, out of the box's transform. */}
       {!friend &&
@@ -2991,7 +2991,7 @@ export function DebugChat({
                   <span
                     aria-hidden
                     data-testid="debug-chat-node"
-                    className="block truncate text-[10px] leading-tight text-gray-500"
+                    className="block truncate fs-10 leading-tight text-gray-500"
                   >
                     {node.subtitle}
                   </span>
@@ -3041,7 +3041,7 @@ export function DebugChat({
                         {m.from === "agent" && unheardIds.has(m.id) && (
                           <span
                             data-testid="debug-chat-unheard"
-                            className="ms-1 text-[10px] text-gray-500"
+                            className="ms-1 fs-10 text-gray-500"
                           >
                             {t.notReadHidden}
                           </span>
@@ -3049,7 +3049,7 @@ export function DebugChat({
                         {!agentOnline && m.from !== "agent" && i > lastAgent && (
                           <span
                             data-testid="debug-chat-queued"
-                            className="ms-1 text-[10px] text-gray-500"
+                            className="ms-1 fs-10 text-gray-500"
                             title={t.waitingTitle}
                           >
                             {t.waiting}
@@ -3070,7 +3070,7 @@ export function DebugChat({
         <div
           role="alert"
           data-testid="debug-chat-warning"
-          className="px-2 pt-1 text-[10px]"
+          className="px-2 pt-1 fs-10"
           style={{ color: "oklch(0.6 0.17 45)" }}
         >
           {warning}
@@ -3085,7 +3085,7 @@ export function DebugChat({
             onMouseDown={(e) => e.preventDefault()}
             onClick={resumeNow}
             style={{ background: INPUT_BG }}
-            className="rounded-full border border-current/25 px-2.5 py-1 text-[11px] backdrop-blur"
+            className="rounded-full border border-current/25 px-2.5 py-1 fs-11 backdrop-blur"
           >
             ▶ {ui.resumeRead}
           </button>
@@ -3098,7 +3098,7 @@ export function DebugChat({
               setResumeLeft([]);
               uiStore.setState({ reading: [] });
             }}
-            className="tap-40 px-1 text-[10px] text-gray-500"
+            className="tap-40 px-1 fs-10 text-gray-500"
           >
             ✕
           </button>
@@ -3130,7 +3130,7 @@ export function DebugChat({
                 aria-label="Nodes to address"
                 data-testid="debug-chat-nodes"
                 style={{ background: INPUT_BG }}
-                className="pointer-events-auto max-w-full list-none overflow-hidden rounded-lg border border-current/25 py-0.5 text-[11px] backdrop-blur"
+                className="pointer-events-auto max-w-full list-none overflow-hidden rounded-lg border border-current/25 py-0.5 fs-11 backdrop-blur"
               >
                 {completions.map((n) => (
                   <li key={n} role="option" aria-selected={false}>
@@ -3156,7 +3156,7 @@ export function DebugChat({
                   background: INPUT_BG,
                   borderColor: lineNode({ from: "owner", to: shownTarget })?.border,
                 }}
-                className={`pointer-events-auto inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 text-[10px] leading-4 text-gray-600 dark:text-gray-300 ${preview ? "opacity-70" : ""}`}
+                className={`pointer-events-auto inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 fs-10 leading-4 text-gray-600 dark:text-gray-300 ${preview ? "opacity-70" : ""}`}
               >
                 <span className="truncate">→ {pathLabel(shownTarget)}</span>
                 {!preview && (
@@ -3382,7 +3382,7 @@ export function DebugChat({
                   // The draft hides the placeholder: the hint sits over it instead.
                   <span
                     data-testid="debug-chat-drag-hint"
-                    className="pointer-events-none absolute inset-x-1 top-0.5 truncate rounded px-1 text-[10px] text-gray-500"
+                    className="pointer-events-none absolute inset-x-1 top-0.5 truncate rounded px-1 fs-10 text-gray-500"
                     style={{ background: INPUT_BG }}
                   >
                     {DRAG_HINT}
@@ -3423,7 +3423,7 @@ export function DebugChat({
           {!open && unread > 0 && (
             <span
               data-testid="debug-chat-pill-unread"
-              className="pointer-events-none absolute -end-1.5 -top-1.5 rounded-full px-1 text-[10px] leading-4 text-white"
+              className="pointer-events-none absolute -end-1.5 -top-1.5 rounded-full px-1 fs-10 leading-4 text-white"
               style={{ background: "oklch(0.55 0.2 260)" }}
             >
               {unread}

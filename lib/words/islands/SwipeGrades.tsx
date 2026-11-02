@@ -38,7 +38,7 @@ export function SwipeGrades({
       style={{ background: BG[r] }}
     >
       <span
-        className="absolute inset-y-0 flex items-center justify-center text-[11px] font-medium opacity-90"
+        className="absolute inset-y-0 flex items-center justify-center fs-11 font-medium opacity-90"
         style={{ [side]: 0, width: "var(--a)" }}
       >
         {LABEL[r]}

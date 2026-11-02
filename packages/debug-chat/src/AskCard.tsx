@@ -14,7 +14,7 @@ const pill = {
   borderWidth: 1,
   borderStyle: "solid",
   padding: "4px 10px",
-  fontSize: 12,
+  fontSize: "calc(12px * var(--lk-fs-k, 1))",
   lineHeight: 1.25,
   background: "transparent",
   color: "inherit",
@@ -88,7 +88,7 @@ export function AskCard({
       {ask.questions.map((q) => (
         <span key={q.id} style={{ display: "block", marginTop: 6 }}>
           {ask.questions.length > 1 && (
-            <span style={{ display: "block", fontSize: 11, fontWeight: 500 }}>{q.question}</span>
+            <span style={{ display: "block", fontSize: "calc(11px * var(--lk-fs-k, 1))", fontWeight: 500 }}>{q.question}</span>
           )}
           <span style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
             {q.options.map((o) => {
@@ -115,7 +115,7 @@ export function AskCard({
                   {chosen && done ? "✓ " : ""}
                   {o.label}
                   {o.recommended && (
-                    <span style={{ marginInlineStart: 4, fontSize: 10, opacity: 0.7 }}>
+                    <span style={{ marginInlineStart: 4, fontSize: "calc(10px * var(--lk-fs-k, 1))", opacity: 0.7 }}>
                       · {ui.askRecommended}
                     </span>
                   )}
@@ -148,7 +148,7 @@ export function AskCard({
       {done && (
         <span
           data-testid="debug-chat-ask-status"
-          style={{ display: "block", marginTop: 4, fontSize: 10, opacity: 0.7 }}
+          style={{ display: "block", marginTop: 4, fontSize: "calc(10px * var(--lk-fs-k, 1))", opacity: 0.7 }}
         >
           {state === "expired" ? ui.askExpired : state === "answered" ? ui.askAnswered : ui.askSent}
         </span>

@@ -42,6 +42,9 @@ The store column gives the account-mode store that will hold the key, as
 | `lk:pref:swipe-feel` `.preset` | Heavy swipe (Experimental)                | **synced** | `swipe-feel.preset`  | owner, 02:22                                                                        |
 | `lk:pref:swipe-feel` `.tweaks` | swipe tuning sliders                      | **synced** | `swipe-feel.tweaks`  | owner, 02:22. One field, because the sliders reset together with the preset         |
 | `lk:pref:motion`               | Turn off animations                       | **synced** | `motion.animations`  | a preference about motion, not the screen. `system` (the default) is never uploaded |
+| `lk:pref:text-size` `.ui`      | Text size: whole app                      | **synced** | `text-size.ui`       | owner, 2026-11-03: a reading habit, like Show all meanings                          |
+| `lk:pref:text-size` `.chat`    | Text size: chat                           | **synced** | `text-size.chat`     | the same; multiplies the whole-app size inside the chat                             |
+| `lk:pref:text-size` `.cards`   | Text size: study cards                    | **synced** | `text-size.cards`    | the same; multiplies the whole-app size on /words slips and the /review card        |
 | `lk:words-fullscreen`          | Full screen                               | device     | —                    | owner: depends on the screen and the browser                                        |
 | `lk:ui:swipe-tuner`            | tuner panel open                          | session    | —                    | a panel                                                                             |
 | `lk:ui:words`                  | list, Settings open, help, scroll anchors | session    | —                    | UI state of this tab (ui-state.md)                                                  |
@@ -285,8 +288,8 @@ are the point of a dev origin) never leave it.
 **`@lianki/ui-state` gets `storage: "account"`.** It is stored exactly as
 `local` (`lk:pref:<name>`), so turning a local store into an account store
 moves no data and the before-paint script for `lk:pref:motion` keeps
-working. Each write fires `lk:pref-write`. `motion`, `swipe-feel` and
-`nav-pins` are account stores.
+working. Each write fires `lk:pref-write`. `motion`, `swipe-feel`,
+`nav-pins` and `text-size` are account stores.
 
 **The engine** is `@lianki/ui-state/account` (`createPrefSync`), app-free and
 tested with fakes against the real repo (`unit/prefs-sync.test.ts`). The app

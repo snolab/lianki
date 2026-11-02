@@ -40,7 +40,7 @@ function hostLabel(url: string): string {
 function StatBadge({ stat, dueLabel }: { stat: SiteStat | undefined; dueLabel: string }) {
   if (!stat) return null;
   return (
-    <span className="ms-auto shrink-0 flex items-center gap-1 text-[11px] tabular-nums">
+    <span className="ms-auto shrink-0 flex items-center gap-1 fs-11 tabular-nums">
       <span className="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-gray-600 dark:text-gray-300">
         {stat.count}
       </span>
@@ -327,7 +327,7 @@ export default function SitesClient({
               >
                 <h3
                   lang={locale}
-                  className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 truncate mb-1"
+                  className="fs-11 font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 truncate mb-1"
                   title={d.blurb}
                 >
                   {d.title}

@@ -1,6 +1,8 @@
 "use client";
 
 import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
+import { useTextScale } from "@/lib/use-text-size";
+import { TextSizeControls } from "@/app/components/TextSizeControls";
 import { advanceTop, shouldAdvance } from "@/lib/words/advance";
 import { progressPercent } from "@/lib/words/progress";
 import { voiceQuality } from "@lianki/debug-chat/wire";
@@ -2405,7 +2407,7 @@ function ListPicker({
               ))}
             </SortableContext>
           </DndContext>
-          <p className="text-[11px] opacity-40">{text.reorderHelp}</p>
+          <p className="fs-11 opacity-40">{text.reorderHelp}</p>
         </div>
       )}
       <div className="flex flex-wrap items-center gap-3">
@@ -2455,7 +2457,7 @@ function ListPicker({
               <div className="space-y-1">
                 {words.map((c) => row(c, c.name))}
                 {words[0] && (
-                  <p className="text-[11px] opacity-40 pt-2">
+                  <p className="fs-11 opacity-40 pt-2">
                     {words[0].source} — {words[0].license}
                   </p>
                 )}
@@ -2463,7 +2465,7 @@ function ListPicker({
                   <div className="space-y-1 pt-3" data-add-phrases>
                     <h3 className="text-xs font-medium opacity-70">{phraseText.phrases}</h3>
                     {phrases.map((c) => row(c, scenarioName(c.scenario!)))}
-                    <p className="text-[11px] opacity-40 pt-2">
+                    <p className="fs-11 opacity-40 pt-2">
                       {phrases[0].source} — {phrases[0].license}
                     </p>
                   </div>
@@ -2483,7 +2485,7 @@ function PhraseNote({ note, register }: { note?: string; register?: Register }) 
     <>
       {register && (
         <span
-          className="me-1.5 inline-block rounded-full border border-current px-1.5 text-[10px] leading-4 opacity-80"
+          className="me-1.5 inline-block rounded-full border border-current px-1.5 fs-10 leading-4 opacity-80"
           data-register={register}
         >
           {register === "polite" ? text.polite : text.casual}
@@ -3065,7 +3067,10 @@ function Study({
 
   // The list is a box the height of the screen that scrolls inside itself;
   // only the rows in view (plus a margin) are rendered.
-  const ROW_H = touch ? 44 : 28;
+  // Text size (lib/text-size.ts): rows grow with the cards' text, never shrink
+  // under the 44px tap target.
+  const cardScale = useTextScale("cards");
+  const ROW_H = Math.round((touch ? 44 : 28) * Math.max(1, cardScale));
   const listRef = useRef<HTMLDivElement>(null);
   /** The list element as state, for effects that must start when it mounts. */
   const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
@@ -3213,9 +3218,19 @@ function Study({
         setAnchor(ui, studyKey, it ? keyOf(it) : null);
       }, 200);
     },
-    [queue, pad, ui, studyKey],
+    [queue, pad, ui, studyKey, ROW_H],
   );
   useEffect(() => () => clearTimeout(anchorTimer.current), []);
+  // A text size change resizes the rows (lib/text-size.ts): the word at the
+  // top stays at the top.
+  const rowHWas = useRef(ROW_H);
+  useLayoutEffect(() => {
+    const was = rowHWas.current;
+    rowHWas.current = ROW_H;
+    const el = listRef.current;
+    if (was === ROW_H || !el) return;
+    el.scrollTop = pad + ((el.scrollTop - pad) / was) * ROW_H;
+  }, [ROW_H, pad]);
   // The list fills the window (.lk-words-list); the toolbar and the help strip
   // float over it. Measured whenever any of them changes size (settings open,
   // hints change, the window turns), never polled.
@@ -3552,17 +3567,17 @@ function Study({
       const k = keyOf(it);
       let w = cache.get(k);
       if (w === undefined && ctx) {
-        ctx.font = `500 ${touch ? 16 : 15}px ${family}`;
+        ctx.font = `500 ${(touch ? 16 : 15) * cardScale}px ${family}`;
         w = ctx.measureText(it.term).width;
         if (!config.readingOnBack && it.reading && it.reading !== it.term) {
-          ctx.font = `400 12px ${family}`;
+          ctx.font = `400 ${12 * cardScale}px ${family}`;
           w += 8 + ctx.measureText(it.reading).width;
         }
         cache.set(k, w);
       }
       return w ?? 0;
     };
-  }, [touch, config.readingOnBack]);
+  }, [touch, config.readingOnBack, cardScale]);
   /** Desktop: how wide a row's meaning and example want to be (text-sm, one line). */
   const measureCells = useMemo(() => {
     if (typeof document === "undefined") return () => ({ back: 0, ex: 0 });
@@ -3573,18 +3588,18 @@ function Study({
       const k = keyOf(it);
       let w = cache.get(k);
       if (!w && ctx) {
-        ctx.font = `400 14px ${family}`;
+        ctx.font = `400 ${14 * cardScale}px ${family}`;
         let back = ctx.measureText(it.back).width;
         let ex = it.ex ? ctx.measureText(it.ex).width : 0;
         if (config.readingOnBack && it.reading && it.reading !== it.term)
           back += 8 + ctx.measureText(it.reading).width;
         if (it.exTr) {
-          ctx.font = `400 12px ${family}`;
+          ctx.font = `400 ${12 * cardScale}px ${family}`;
           ex += 8 + ctx.measureText(it.exTr).width;
         }
         // A phrase's note (and its register badge) sits where an example would.
         if (!it.ex && it.note) {
-          ctx.font = `400 12px ${family}`;
+          ctx.font = `400 ${12 * cardScale}px ${family}`;
           ex = ctx.measureText(it.note).width + (it.register ? 56 : 0);
         }
         w = { back, ex };
@@ -3592,7 +3607,7 @@ function Study({
       }
       return w ?? { back: 0, ex: 0 };
     };
-  }, [config.readingOnBack]);
+  }, [config.readingOnBack, cardScale]);
   const rem = useMemo(
     () =>
       typeof document === "undefined"
@@ -3892,8 +3907,9 @@ function Study({
               label={text.animationsOff.value}
               hint={text.animationsOffHint.value}
             />
+            <TextSizeControls compact />
             <div className="w-full pt-1" data-experimental>
-              <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
+              <div className="fs-11 font-medium uppercase tracking-wide opacity-50">
                 {text.experimental}
               </div>
               <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -3943,7 +3959,7 @@ function Study({
                       hint={vtext.voiceModeHint.value}
                     />
                     {voice === "preview" && (
-                      <span className="text-[10px] opacity-60">{vtext.preview}</span>
+                      <span className="fs-10 opacity-60">{vtext.preview}</span>
                     )}
                   </span>
                 )}
@@ -3994,7 +4010,7 @@ function Study({
             ref={setListRef}
             // The whole window, edge to edge, under the glass overlays
             // (.lk-words-list); scroll-padding keeps resting rows clear of them.
-            className="lk-words-list overflow-y-auto overscroll-contain"
+            className="lk-words-list lk-fs-cards overflow-y-auto overscroll-contain"
             data-touch={touch ? "true" : "false"}
             // overflow-anchor: none — the padding and spacers change as rows
             // load; the browser must not "help" by shifting the scroll.
@@ -4123,13 +4139,13 @@ function Study({
                     touch
                       ? "slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base pr-4"
                       : hasExamples
-                        ? "grid-cols-[1.25rem_var(--term-w,12rem)_var(--back-w,minmax(10rem,1fr))_minmax(8rem,1fr)_3.5rem] text-[15px]"
-                        : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] text-[15px]"
+                        ? "grid-cols-[1.25rem_var(--term-w,12rem)_var(--back-w,minmax(10rem,1fr))_minmax(8rem,1fr)_3.5rem] fs-15"
+                        : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] fs-15"
                   } ${rating ? RATING_STYLE[rating] : ""}`}
                   style={{ height: ROW_H }}
                 >
                   {/* The grade, stamped like a small seal (盖章) at the slip's left end. */}
-                  <span className="flex justify-center text-[10px]" data-stamp-cell>
+                  <span className="flex justify-center fs-10" data-stamp-cell>
                     {rating ? (
                       <i key={rating} className="lk-stamp" aria-label={ratingLabel[rating]} />
                     ) : !touch && i === row ? (
@@ -4231,7 +4247,7 @@ function Study({
                   )}
                   {/* Graded: when it comes back. Ungraded: "new", or how long it has been due. */}
                   <span
-                    className={`flex items-center justify-end gap-1.5 text-[11px] tabular-nums ${rating ? "font-medium" : "opacity-40"}`}
+                    className={`flex items-center justify-end gap-1.5 fs-11 tabular-nums ${rating ? "font-medium" : "opacity-40"}`}
                     style={rating ? { color: "var(--grade)" } : undefined}
                     title={rating ? ratingLabel[rating] : text.dueTitle.value}
                   >
@@ -4268,7 +4284,7 @@ function Study({
             <div
               ref={hintRef}
               data-words-help
-              className="lk-words-bar lk-glass bottom-0 border-t border-[var(--glass-line)] pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] text-[11px]"
+              className="lk-words-bar lk-glass bottom-0 border-t border-[var(--glass-line)] pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] fs-11"
             >
               <span className="opacity-75">{hintText}</span>
             </div>

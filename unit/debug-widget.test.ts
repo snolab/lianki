@@ -18,6 +18,7 @@ import {
   hostModule,
   sse,
   themeBlock,
+  utilityBlocks,
   topBlocks,
 } from "@/scripts/dev/debug-widget-build";
 
@@ -98,6 +99,11 @@ describe("the widget build", () => {
     );
     expect(themeBlock("a{}")).toBe("");
     expect(themeBlock("@theme { open")).toBe("");
+    expect(utilityBlocks("a{}\n@utility fs-* {\n  b: c;\n}\n.x{}\n@utility y { z: 1 }")).toEqual([
+      "@utility fs-* {\n  b: c;\n}",
+      "@utility y { z: 1 }",
+    ]);
+    expect(utilityBlocks("/* @utility in a comment */ a{}")).toEqual([]);
     expect(allowOrigin("https://lianki.com")).toBe("https://lianki.com");
     expect(allowOrigin("http://localhost:3000")).toBe("http://localhost:3000");
     expect(allowOrigin("https://evil.example")).toBe("https://lianki.com");

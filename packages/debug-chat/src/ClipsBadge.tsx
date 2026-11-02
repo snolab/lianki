@@ -164,7 +164,7 @@ export function ClipsBadge({ strings }: { strings: Strings }) {
               )}
             </span>
             {notes.length > 0 && (
-              <span data-testid="clips-badge-note" className="text-[11px] opacity-80">
+              <span data-testid="clips-badge-note" className="fs-11 opacity-80">
                 {notes.join(" · ")}
               </span>
             )}

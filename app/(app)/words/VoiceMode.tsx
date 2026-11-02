@@ -134,7 +134,7 @@ export function VoiceBadge({
         {failed ? text.micFailed : text.listening}
       </button>
       {!failed && (
-        <div className="max-w-md text-center text-[11px] leading-snug opacity-70 lk-halo">
+        <div className="max-w-md text-center fs-11 leading-snug opacity-70 lk-halo">
           {text.sayHint}
         </div>
       )}

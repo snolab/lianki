@@ -72,6 +72,8 @@ describe("prefs schema: values", () => {
       "swipe-feel.preset": "heavy",
       "swipe-feel.tweaks": { friction: 12, lift: 0.5 },
       "motion.animations": "off",
+      "text-size.ui": 1.15,
+      "text-size.cards": 0.85,
       "ui.paper": "c",
       "ui.locale": "ja",
       "nav-pins.pinned": ["/words?list=n5", "/sites"],
@@ -90,6 +92,10 @@ describe("prefs schema: values", () => {
     expect(checkPref("swipe-feel.tweaks", { friction: 1e9 })).toBeUndefined();
     expect(checkPref("swipe-feel.tweaks", { note: "hi" })).toBeUndefined();
     expect(checkPref("motion.animations", "system")).toBeUndefined();
+    expect(checkPref("text-size.ui", 3)).toBeUndefined();
+    expect(checkPref("text-size.ui", 0.5)).toBeUndefined();
+    expect(checkPref("text-size.chat", 1.234)).toBeUndefined();
+    expect(checkPref("text-size.cards", "1.2")).toBeUndefined();
     expect(checkPref("nope", true)).toBeUndefined();
     expect(checkPref("__proto__", {})).toBeUndefined();
     expect(checkPref("nav-pins.pinned", Array(13).fill("/words"))).toBeUndefined();

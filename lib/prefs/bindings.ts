@@ -5,7 +5,7 @@
  *
  * Two kinds:
  * - a field of an account store (`@lianki/ui-state`, `lk:pref:<store>`):
- *   motion, swipe feel, nav pins. Applied through the store when the page has
+ *   motion, swipe feel, nav pins, text size. Applied through the store when the page has
  *   it, else into its persisted JSON;
  * - a plain localStorage key the feature already reads (`lk:words-show-all`,
  *   `lk:paper`, the chat's `lk:agent-speech-rate`, …). Kept, so the code that
@@ -187,6 +187,10 @@ export function prefBindings(): PrefBinding[] {
     field("swipe-feel.preset", "swipe-feel", 1, "preset", "light"),
     field("swipe-feel.tweaks", "swipe-feel", 1, "tweaks", {}),
     field("motion.animations", "motion", 1, "animations", "on", "system"),
+    // Text size (lib/text-size.ts): the store's own default (1) is the server default too.
+    field("text-size.ui", "text-size", 1, "ui", 1),
+    field("text-size.chat", "text-size", 1, "chat", 1),
+    field("text-size.cards", "text-size", 1, "cards", 1),
     plain("ui.paper", "lk:paper", text, "b", {
       also: (v) => {
         try {

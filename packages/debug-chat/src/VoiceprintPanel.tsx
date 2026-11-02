@@ -30,7 +30,7 @@ const pill = {
   borderWidth: 1,
   borderStyle: "solid",
   padding: "6px 12px",
-  fontSize: 12,
+  fontSize: "calc(12px * var(--lk-fs-k, 1))",
   lineHeight: 1.25,
   background: "transparent",
   color: "inherit",
@@ -132,7 +132,7 @@ export function VoiceprintPanel({
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>{children}</div>
   );
   const note = (text: string, testid?: string) => (
-    <p data-testid={testid} style={{ margin: "6px 0 0", fontSize: 12, opacity: 0.75 }}>
+    <p data-testid={testid} style={{ margin: "6px 0 0", fontSize: "calc(12px * var(--lk-fs-k, 1))", opacity: 0.75 }}>
       {text}
     </p>
   );
@@ -154,7 +154,7 @@ export function VoiceprintPanel({
       body = (
         <>
           {view.prints.length ? (
-            <ul data-testid="debug-voiceprint-prints" style={{ margin: "6px 0 0", paddingInlineStart: 18, fontSize: 12 }}>
+            <ul data-testid="debug-voiceprint-prints" style={{ margin: "6px 0 0", paddingInlineStart: 18, fontSize: "calc(12px * var(--lk-fs-k, 1))" }}>
               {view.prints.map((p) => (
                 <li key={`${p.device}.${p.model}`}>
                   {t.vpPrint.replaceAll("{device}", p.device).replaceAll("{n}", String(p.n))}
@@ -179,10 +179,10 @@ export function VoiceprintPanel({
     case "consent":
       body = (
         <>
-          <p data-testid="debug-voiceprint-consent" style={{ margin: "6px 0 0", fontSize: 13, lineHeight: 1.45 }}>
+          <p data-testid="debug-voiceprint-consent" style={{ margin: "6px 0 0", fontSize: "calc(13px * var(--lk-fs-k, 1))", lineHeight: 1.45 }}>
             {t.vpConsent.replaceAll("{n}", `${ENROL_MIN}–${ENROL_MAX}`)}
           </p>
-          <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, fontSize: 12 }} className="pointer-events-auto">
+          <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, fontSize: "calc(12px * var(--lk-fs-k, 1))" }} className="pointer-events-auto">
             <input
               type="checkbox"
               data-testid="debug-voiceprint-keep-audio"
@@ -204,15 +204,15 @@ export function VoiceprintPanel({
       const sentence = ENROL_SENTENCES[view.index % ENROL_SENTENCES.length]!;
       body = (
         <>
-          <p style={{ margin: "6px 0 0", fontSize: 12, opacity: 0.75 }}>{t.vpRead}</p>
-          <p data-testid="debug-voiceprint-sentence" lang={/[぀-ヿ]/.test(sentence) ? "ja" : /[一-鿿]/.test(sentence) ? "zh" : "en"} style={{ margin: "6px 0 0", fontSize: 18, lineHeight: 1.4, fontWeight: 500 }}>
+          <p style={{ margin: "6px 0 0", fontSize: "calc(12px * var(--lk-fs-k, 1))", opacity: 0.75 }}>{t.vpRead}</p>
+          <p data-testid="debug-voiceprint-sentence" lang={/[぀-ヿ]/.test(sentence) ? "ja" : /[一-鿿]/.test(sentence) ? "zh" : "en"} style={{ margin: "6px 0 0", fontSize: "calc(18px * var(--lk-fs-k, 1))", lineHeight: 1.4, fontWeight: 500 }}>
             {sentence}
           </p>
-          <p data-testid="debug-voiceprint-progress" style={{ margin: "8px 0 0", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
+          <p data-testid="debug-voiceprint-progress" style={{ margin: "8px 0 0", fontSize: "calc(12px * var(--lk-fs-k, 1))", fontVariantNumeric: "tabular-nums" }}>
             {t.vpProgress.replaceAll("{n}", String(view.kept)).replaceAll("{total}", String(ENROL_MAX))}
           </p>
           {view.again && (
-            <p data-testid="debug-voiceprint-again" data-reason={view.again} role="status" style={{ margin: "4px 0 0", fontSize: 12, color: DANGER }}>
+            <p data-testid="debug-voiceprint-again" data-reason={view.again} role="status" style={{ margin: "4px 0 0", fontSize: "calc(12px * var(--lk-fs-k, 1))", color: DANGER }}>
               {again[view.again]}
             </p>
           )}
@@ -241,7 +241,7 @@ export function VoiceprintPanel({
     case "confirm-delete":
       body = (
         <>
-          <p data-testid="debug-voiceprint-confirm" style={{ margin: "6px 0 0", fontSize: 13 }}>
+          <p data-testid="debug-voiceprint-confirm" style={{ margin: "6px 0 0", fontSize: "calc(13px * var(--lk-fs-k, 1))" }}>
             {t.vpDeleteConfirm}
           </p>
           {row(
@@ -297,7 +297,7 @@ export function VoiceprintPanel({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <strong style={{ fontSize: 13 }}>{t.vpTitle}</strong>
+        <strong style={{ fontSize: "calc(13px * var(--lk-fs-k, 1))" }}>{t.vpTitle}</strong>
         <button
           type="button"
           data-testid="debug-voiceprint-x"
@@ -305,7 +305,7 @@ export function VoiceprintPanel({
           onMouseDown={(e) => e.preventDefault()}
           onClick={close}
           className="tap-40 pointer-events-auto"
-          style={{ background: "transparent", border: 0, color: "inherit", fontSize: 12, opacity: 0.6, cursor: "pointer" }}
+          style={{ background: "transparent", border: 0, color: "inherit", fontSize: "calc(12px * var(--lk-fs-k, 1))", opacity: 0.6, cursor: "pointer" }}
         >
           ✕
         </button>
