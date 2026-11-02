@@ -128,3 +128,16 @@ describe("a backlog larger than one fetch is all reviewed before new words", () 
     expect(queued.size).toBe(700);
   });
 });
+
+describe("fetched due words ride the requeue's `later` (from -1)", () => {
+  test("they join at the insertion point and no slip's withdraw takes them back", async () => {
+    const { emptyRequeue, takeDue, withdraw } = await import("@/lib/words/requeue");
+    let q = emptyRequeue<string>();
+    q = { ...q, later: [{ item: "due1", due: 0, from: -1 }] };
+    q = withdraw({ ...q, requeued: new Set([0]) }, 0);
+    expect(q.later.map((w) => w.item)).toEqual(["due1"]);
+    const { ready, next } = takeDue(q, 1, 5);
+    expect(ready).toEqual(["due1"]);
+    expect(next.later).toEqual([]);
+  });
+});

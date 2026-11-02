@@ -3474,7 +3474,7 @@ function Study({
       setQueue((q) => [...q, ...spreadPairs(items, PAGE, q.length, q.slice(-PAGE))]);
     (async () => {
       const next = await nextBatch({
-        due: await fetchDue([...queue, ...later.current.map((x) => x.item)]),
+        due: await fetchDue([...queue, ...requeue.current.later.map((x) => x.item)]),
         fresh: () => takeNew(AHEAD),
       });
       if (!next.items.length) setExhausted(true);
@@ -3494,15 +3494,18 @@ function Study({
   /** An ungraded new word below the screen. */
   const newWaiting = (q: Item[]) =>
     q.some((it, i) => i > reach && it.kind === "new" && !grades.has(i));
-  /** Into `later`, to join just below the screen; ones already queued or waiting are dropped. */
+  /** Into `requeue.later`, to join just below the screen; ones already queued or waiting are dropped. */
   const toLater = (items: Item[]) => {
-    const have = new Set([...queueNow.current, ...later.current.map((x) => x.item)].map(keyOf));
-    later.current.push(
-      ...items.filter((it) => !have.has(keyOf(it))).map((item) => ({ item, due: 0 })),
-    );
+    const q = requeue.current;
+    const have = new Set([...queueNow.current, ...q.later.map((x) => x.item)].map(keyOf));
+    // from -1: fetched, not a copy of a graded slip (lib/words/requeue.ts).
+    const add = items
+      .filter((it) => !have.has(keyOf(it)))
+      .map((item) => ({ item, due: 0, from: -1 }));
+    requeue.current = { ...q, later: [...q.later, ...add] };
   };
   // Back on the page after a while (a phone keeps the tab open overnight):
-  // words that fell due meanwhile join just below the screen, through `later`,
+  // words that fell due meanwhile join just below the screen, through `requeue.later`,
   // ahead of the new words still waiting. Not while the endless fetch runs:
   // it asks for the same words.
   const queueNow = useRef(queue);
@@ -3511,7 +3514,7 @@ function Study({
   recheckDue.current = () => {
     if (fetching.current) return;
     fetching.current = true;
-    fetchDue([...queue, ...later.current.map((x) => x.item)])
+    fetchDue([...queue, ...requeue.current.later.map((x) => x.item)])
       .then(toLater)
       .catch(() => {})
       .finally(() => {
