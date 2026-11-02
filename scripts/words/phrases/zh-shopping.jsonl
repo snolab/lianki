@@ -1,0 +1,30 @@
+{"term":"这个多少钱？","reading":"zhège duōshao qián？","back":"How much is this?","note":"The basic price question, anywhere.","register":"casual","scene":"asking the price","src":"tatoeba:10052325","by":"GlossaMatik"}
+{"term":"欢迎光临！","reading":"huānyíng guānglín！","back":"Welcome!","note":"Shop staff call this as you walk in — no reply needed.","register":"polite","scene":"walking in","src":"generated"}
+{"term":"我随便看看。","reading":"wǒ suíbiàn kànkan","back":"I'm just looking.","note":"Polite brush-off when staff ask what you need.","register":"casual","scene":"browsing","src":"generated"}
+{"term":"能便宜点吗？","reading":"néng piányi diǎn ma？","back":"Can you do it cheaper?","note":"Bargaining at markets and small shops; not in malls or chains.","register":"casual","scene":"bargaining","src":"generated"}
+{"term":"太贵了吧！","reading":"tài guì le ba！","back":"That's way too expensive!","note":"Reacting to a price, often as the first move in bargaining.","register":"casual","scene":"bargaining","src":"tatoeba:4761386","by":"billt_estates"}
+{"term":"一共多少钱？","reading":"yīgòng duōshao qián？","back":"How much altogether?","note":"Asking the total at the till.","register":"casual","scene":"paying","src":"generated"}
+{"term":"可以扫码吗？","reading":"kěyǐ sǎomǎ ma？","back":"Can I pay by QR code?","note":"Most places take WeChat Pay or Alipay by scanning a code.","register":"polite","scene":"paying","src":"generated"}
+{"term":"微信还是支付宝？","reading":"wēixìn háishi zhīfùbǎo？","back":"WeChat or Alipay?","note":"Staff line asking how you'll pay.","register":"polite","scene":"paying","src":"generated"}
+{"term":"要袋子吗？","reading":"yào dàizi ma？","back":"Do you need a bag?","note":"Staff line at the till; bags usually cost a little extra.","register":"polite","scene":"paying","src":"generated"}
+{"term":"可以试穿吗？","reading":"kěyǐ shìchuān ma？","back":"Can I try it on?","note":"Asking in a clothes shop.","register":"polite","scene":"trying things on","src":"generated"}
+{"term":"有大一号的吗？","reading":"yǒu dà yī hào de ma？","back":"Do you have this one size up?","note":"Use 小一号 for a size down.","register":"polite","scene":"trying things on","src":"generated"}
+{"term":"有别的颜色吗？","reading":"yǒu bié de yánsè ma？","back":"Does it come in other colours?","note":"Asking for other options.","register":"polite","scene":"trying things on","src":"generated"}
+{"term":"这不是我的尺码。","reading":"zhè bù shì wǒ de chǐmǎ","back":"This isn't my size.","note":"After trying something on, or when handed the wrong size.","register":"casual","scene":"trying things on","src":"tatoeba:10054219","by":"slo_oth"}
+{"term":"就要这个吧。","reading":"jiù yào zhège ba","back":"I'll take this one.","note":"Deciding what to buy.","register":"casual","scene":"deciding","src":"generated"}
+{"term":"我再考虑一下。","reading":"wǒ zài kǎolǜ yīxià","back":"I'll think about it.","note":"Soft way to leave without buying.","register":"polite","scene":"deciding","src":"generated"}
+{"term":"我能看看那个吗？","reading":"wǒ néng kànkan nàge ma？","back":"Can I see that one?","note":"Pointing at something behind the counter.","register":"polite","scene":"browsing","src":"tatoeba:8749676","by":"crescat"}
+{"term":"这个怎么卖？","reading":"zhège zěnme mài？","back":"How much is this?","note":"Market version of the price question, e.g. for fruit sold by weight.","register":"casual","scene":"asking the price","src":"generated"}
+{"term":"能刷卡吗？","reading":"néng shuākǎ ma？","back":"Can I pay by card?","note":"Card isn't taken everywhere; worth asking first.","register":"polite","scene":"paying","src":"generated"}
+{"term":"不好意思，我没零钱。","reading":"bù hǎoyìsi， wǒ méi língqián","back":"Sorry, I don't have change.","note":"Paying cash with a big note.","register":"polite","scene":"paying","src":"tatoeba:7798822","by":"jiangche"}
+{"term":"能退货吗？","reading":"néng tuìhuò ma？","back":"Can I return this?","note":"Asking about returns before or after buying.","register":"polite","scene":"returns","src":"generated"}
+{"term":"能帮我包起来吗？","reading":"néng bāng wǒ bāo qǐlai ma？","back":"Could you wrap it up for me?","note":"For gifts or fragile things.","register":"polite","scene":"paying","src":"generated"}
+{"term":"有会员卡吗？","reading":"yǒu huìyuánkǎ ma？","back":"Do you have a membership card?","note":"Staff line at the till; just say 没有 if you don't.","register":"polite","scene":"paying","src":"generated"}
+{"term":"不好意思，请问鸡蛋在哪儿？","reading":"bù hǎoyìsi， qǐngwèn jīdàn zài nǎr？","back":"Excuse me, where are the eggs?","note":"Asking staff in a supermarket; swap in any item.","register":"polite","scene":"finding things","src":"tatoeba:11702399","by":"Jokubas"}
+{"term":"这里附近有超市吗？","reading":"zhèlǐ fùjìn yǒu chāoshì ma？","back":"Is there a supermarket near here?","note":"Asking a local or hotel staff.","register":"polite","scene":"finding things","src":"tatoeba:10109526","by":"ColawithIce"}
+{"term":"你们几点关门？","reading":"nǐmen jǐ diǎn guānmén？","back":"What time do you close?","note":"Checking opening hours.","register":"casual","scene":"opening hours","src":"tatoeba:1785977","by":"sadhen"}
+{"term":"那件毛衣不错呀！","reading":"nà jiàn máoyī bùcuò ya！","back":"That sweater's nice!","note":"Commenting while shopping with a friend.","register":"casual","scene":"browsing","src":"tatoeba:12686033","by":"soueihin"}
+{"term":"我晚点再来拿。","reading":"wǒ wǎn diǎn zài lái ná","back":"I'll come back for it later.","note":"When an item needs altering or you'll pick it up later.","register":"casual","scene":"pickup","src":"tatoeba:8789683","by":"crescat"}
+{"term":"回来的路上买点牛奶。","reading":"huílai de lùshang mǎi diǎn niúnǎi","back":"Grab some milk on your way back.","note":"Errand request to family.","register":"casual","scene":"errands","src":"tatoeba:8656919","by":"crescat"}
+{"term":"帮我买点零食吧。","reading":"bāng wǒ mǎi diǎn língshí ba","back":"Get me some snacks, would you?","note":"Asking a friend heading to the shop.","register":"casual","scene":"errands","src":"tatoeba:9838191","by":"morningstar"}
+{"term":"能开发票吗？","reading":"néng kāi fāpiào ma？","back":"Can I get an invoice (fapiao)?","note":"发票 is the official receipt, needed for work expenses.","register":"polite","scene":"paying","src":"generated"}

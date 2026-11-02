@@ -41,6 +41,15 @@ import {
   withoutNode,
 } from "@/lib/words/tree";
 import { shownName } from "@/lib/words/lang-groups";
+import {
+  SCENARIOS,
+  isPhraseMeta,
+  moveUnder,
+  phraseHome,
+  phraseRowName,
+  type Register,
+  type Scenario,
+} from "@/lib/words/phrases";
 import { createDeferredDelete, UNDO_MS, type FlushReason } from "@/lib/words/deferred-delete";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
@@ -58,7 +67,6 @@ import {
 import { debugOn, devLog } from "@/lib/debug-client";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
-import { QuietHoursSetting } from "./QuietHoursSetting";
 import { useDebugToggle } from "@/app/components/useDebugToggle";
 import {
   COLUMN_QUANTILE,
@@ -299,6 +307,10 @@ type CatalogMeta = {
    * words come from /api/words/lists/<id>/entries.
    */
   path?: string;
+  /** "phrase" for a scenario phrase deck (lib/words/phrases.ts); word lists have none. */
+  kind?: "phrase";
+  /** A phrase deck's scenario. */
+  scenario?: Scenario;
 };
 /** The URL of a catalog's entries. */
 const catalogPath = (base: string, c: CatalogMeta) => c.path ?? `${base}/${c.file}`;
@@ -324,6 +336,10 @@ type Entry = {
   /** An example sentence in the target language, and its English. */
   ex?: string;
   exTr?: string;
+  /** Phrase decks: a usage note (English), casual / polite, and the moment it is said in. */
+  note?: string;
+  register?: Register;
+  scene?: string;
 };
 type Item = Entry & {
   kind: "due" | "new" | "again";
@@ -2119,6 +2135,10 @@ function ListPicker({
   const groupSource = groupSourceOf(config);
   const isGroup = (l: WordList) => l.source === groupSource;
   const text = useIntlayer("words-page");
+  const phraseText = useIntlayer("words-phrases");
+  const catalogById = useMemo(() => new Map(catalog.map((c) => [c.id, c])), [catalog]);
+  const isPhrase = (l: WordList) => isPhraseMeta(catalogById.get(l.source ?? ""));
+  const scenarioName = (s: Scenario) => phraseText[scenarioKey(s)].value;
   // Number keys open lists: show them only with a hardware keyboard.
   const keys = useInputModality() === "keyboard";
   const flat = useMemo(() => flatten(lists), [lists]);
@@ -2224,10 +2244,52 @@ function ListPicker({
         method: "POST",
         body: JSON.stringify({ name: c.name, lang: c.lang, source: c.id }),
       });
+      // A phrase deck is still added if placing it fails; it shows at the top level.
+      if (isPhraseMeta(c)) await placePhrase(list).catch(() => {});
       onCreated(list.id);
     } finally {
       setBusy(false);
     }
+  };
+
+  /**
+   * Put a newly added phrase deck where it belongs: language → Phrases →
+   * scenario. The language's Phrases group is made when it has none, inside
+   * the language's own group when there is one (lib/words/phrases.ts).
+   */
+  const placePhrase = async (list: WordList) => {
+    let nodes = [...lists, list];
+    const label = phraseText.phrases.value;
+    const home = phraseHome(flatten(nodes), list.lang, isGroup, isPhrase, label);
+    let phrasesGroup = home.phrasesGroup;
+    if (!phrasesGroup) {
+      const { list: g } = await api<{ list: WordList }>("/api/words/lists", {
+        method: "POST",
+        body: JSON.stringify({ name: label, lang: list.lang, source: groupSource }),
+      });
+      phrasesGroup = g.id;
+      nodes = applyOrder([...nodes, g], moveUnder(flatten([...nodes, g]), g.id, home.langGroup));
+    }
+    const order = moveUnder(flatten(nodes), list.id, phrasesGroup);
+    await api("/api/words/lists", { method: "PATCH", body: JSON.stringify({ order }) });
+  };
+
+  /** A row's name: phrase decks name their scenario in the UI's language. */
+  const rowName = (row: WordList) => {
+    const parent = row.parentId ? byId.get(row.parentId) : null;
+    const meta = catalogById.get(row.source ?? "");
+    if (isPhraseMeta(meta) && meta?.scenario) {
+      const holds =
+        !!parent &&
+        isGroup(parent) &&
+        lists.filter((x) => x.parentId === parent.id).every((x) => isPhrase(x));
+      const named = phraseRowName(row, meta.name, parent, holds, {
+        phrases: phraseText.phrases.value,
+        scenario: scenarioName(meta.scenario),
+      });
+      if (named) return named;
+    }
+    return shownName(row, parent);
   };
 
   const addGroup = async () => {
@@ -2327,7 +2389,7 @@ function ListPicker({
                   onDelete={() => onDelete(row, isGroup(row))}
                   onRename={(name) => onRename(row.id, name)}
                   keys={keys}
-                  displayName={shownName(row, row.parentId ? byId.get(row.parentId) : null)}
+                  displayName={rowName(row)}
                 />
               ))}
             </SortableContext>
@@ -2358,32 +2420,82 @@ function ListPicker({
             </button>
           ))}
         </div>
-        {lang && (
-          <div className="space-y-1">
-            {builtIn
-              .filter((c) => c.lang === lang)
-              .map((c) => (
-                <div key={c.id} className="flex items-center gap-3 text-sm">
-                  <span className="flex-1">{c.name}</span>
-                  <span className="opacity-50 tabular-nums">{c.count}</span>
-                  <button
-                    disabled={busy || added.has(c.id)}
-                    onClick={() => add(c)}
-                    className="px-3 py-1 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-40"
-                  >
-                    {added.has(c.id) ? text.added : text.add}
-                  </button>
-                </div>
-              ))}
-            <p className="text-[11px] opacity-40 pt-2">
-              {builtIn.find((c) => c.lang === lang)?.source} —{" "}
-              {builtIn.find((c) => c.lang === lang)?.license}
-            </p>
-          </div>
-        )}
+        {lang &&
+          (() => {
+            const ofLang = builtIn.filter((c) => c.lang === lang);
+            const words = ofLang.filter((c) => !isPhraseMeta(c));
+            const phrases = ofLang
+              .filter((c) => isPhraseMeta(c) && c.scenario)
+              .sort((a, b) => SCENARIOS.indexOf(a.scenario!) - SCENARIOS.indexOf(b.scenario!));
+            const row = (c: CatalogMeta, name: string) => (
+              <div key={c.id} className="flex items-center gap-3 text-sm">
+                <span className="flex-1">{name}</span>
+                <span className="opacity-50 tabular-nums">{c.count}</span>
+                <button
+                  disabled={busy || added.has(c.id)}
+                  onClick={() => add(c)}
+                  className="px-3 py-1 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-40"
+                >
+                  {added.has(c.id) ? text.added : text.add}
+                </button>
+              </div>
+            );
+            return (
+              <div className="space-y-1">
+                {words.map((c) => row(c, c.name))}
+                {words[0] && (
+                  <p className="text-[11px] opacity-40 pt-2">
+                    {words[0].source} — {words[0].license}
+                  </p>
+                )}
+                {phrases.length > 0 && (
+                  <div className="space-y-1 pt-3" data-add-phrases>
+                    <h3 className="text-xs font-medium opacity-70">{phraseText.phrases}</h3>
+                    {phrases.map((c) => row(c, scenarioName(c.scenario!)))}
+                    <p className="text-[11px] opacity-40 pt-2">
+                      {phrases[0].source} — {phrases[0].license}
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
       </div>
     </div>
   );
+}
+
+/** A phrase card's casual / polite badge, then its usage note (phrase decks only). */
+function PhraseNote({ note, register }: { note?: string; register?: Register }) {
+  const text = useIntlayer("words-phrases");
+  return (
+    <>
+      {register && (
+        <span
+          className="me-1.5 inline-block rounded-full border border-current px-1.5 text-[10px] leading-4 opacity-80"
+          data-register={register}
+        >
+          {register === "polite" ? text.polite : text.casual}
+        </span>
+      )}
+      {note && <span data-row-note>{note}</span>}
+    </>
+  );
+}
+
+/** A scenario's key in the words-phrases dictionary. */
+const scenarioKey = (s: Scenario) => (s === "small-talk" ? "smallTalk" : s);
+
+/** Nodes with the parents an order (PATCH /api/words/lists) gives them, in that order. */
+function applyOrder<T extends { id: string; parentId: string | null }>(
+  nodes: T[],
+  order: { id: string; parentId: string | null }[],
+): T[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  return order.flatMap((o) => {
+    const n = byId.get(o.id);
+    return n ? [{ ...n, parentId: o.parentId }] : [];
+  });
 }
 
 /** "Import Anki deck (.apkg)" → /words/import. */
@@ -2576,15 +2688,24 @@ function Study({
 
   const catalogs = useRef<Map<string, Entry[]>>(new Map());
   const byTerm = useRef<Map<string, Map<string, Entry>>>(new Map());
-  /** A word's example sentence, from its list's catalog (cards store none). */
-  const exampleOf = (listId: string, term: string) => {
+  /**
+   * A word's example sentence, or a phrase's note, register and scene, from
+   * its list's catalog (cards store none).
+   */
+  const exampleOf = (listId: string, term: string): Partial<Entry> => {
     let m = byTerm.current.get(listId);
     if (!m) {
       m = new Map((catalogs.current.get(listId) ?? []).map((e) => [e.term, e]));
       byTerm.current.set(listId, m);
     }
     const e = m.get(term);
-    return e?.ex ? { ex: e.ex, exTr: e.exTr } : {};
+    if (!e) return {};
+    return {
+      ...(e.ex ? { ex: e.ex, exTr: e.exTr } : {}),
+      ...(e.note ? { note: e.note } : {}),
+      ...(e.register ? { register: e.register } : {}),
+      ...(e.scene ? { scene: e.scene } : {}),
+    };
   };
   /** Per list: where the search for new words has got (lib/words/take-new.ts). */
   const scans = useRef<Map<string, NewScan>>(new Map());
@@ -3289,7 +3410,7 @@ function Study({
   }, [audioOn, loading, queue, speech, partsOf]);
   // Sticky over the whole loaded queue: a column appearing and disappearing
   // as example-less stretches scroll by would shift every other column.
-  const hasExamples = useMemo(() => queue.some((it) => it.ex), [queue]);
+  const hasExamples = useMemo(() => queue.some((it) => it.ex || it.note), [queue]);
 
   // Term column width (lib/words/columns.ts): fitted to the terms near the
   // middle of the screen, eased into place through --term-w on the list.
@@ -3331,6 +3452,11 @@ function Study({
         if (it.exTr) {
           ctx.font = `400 12px ${family}`;
           ex += 8 + ctx.measureText(it.exTr).width;
+        }
+        // A phrase's note (and its register badge) sits where an example would.
+        if (!it.ex && it.note) {
+          ctx.font = `400 12px ${family}`;
+          ex = ctx.measureText(it.note).width + (it.register ? 56 : 0);
         }
         w = { back, ex };
         cache.set(k, w);
@@ -3637,18 +3763,6 @@ function Study({
               label={text.animationsOff.value}
               hint={text.animationsOffHint.value}
             />
-            {/* The learning partner's quiet hours: debug mode only, this device only. */}
-            {debug && (
-              <QuietHoursSetting
-                Toggle={TogglePill}
-                text={{
-                  label: text.quietHours.value,
-                  hint: text.quietHoursHint.value,
-                  from: text.quietFrom.value,
-                  to: text.quietTo.value,
-                }}
-              />
-            )}
             <div className="w-full pt-1" data-experimental>
               <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
                 {text.experimental}
@@ -3923,7 +4037,7 @@ function Study({
                         {it.back}
                       </Glance>
                     );
-                    if (!touch || !it.ex) return meaning;
+                    if (!touch || (!it.ex && !it.note)) return meaning;
                     // Phones: one row is the whole card — the front, then everything
                     // on the back (meaning, then example), as "Show all meanings"
                     // shows and reads it. Two lines in the row's fixed height (one
@@ -3937,15 +4051,23 @@ function Study({
                         {meaning}
                         <Glance
                           active={glancing && show}
-                          title={show ? `${it.ex}\n${it.exTr ?? ""}` : undefined}
+                          title={
+                            show ? (it.ex ? `${it.ex}\n${it.exTr ?? ""}` : it.note) : undefined
+                          }
                           className={`block min-w-0 text-xs opacity-60 transition-[filter] duration-75 sm:flex-1 ${
                             show ? "" : "slip-blank"
                           }`}
                         >
-                          <span lang={it.lang} data-row-example>
-                            {it.ex}
-                          </span>
-                          {it.exTr && <span className="ml-2 opacity-80">{it.exTr}</span>}
+                          {it.ex ? (
+                            <>
+                              <span lang={it.lang} data-row-example>
+                                {it.ex}
+                              </span>
+                              {it.exTr && <span className="ml-2 opacity-80">{it.exTr}</span>}
+                            </>
+                          ) : (
+                            <PhraseNote note={it.note} register={it.register} />
+                          )}
                         </Glance>
                       </span>
                     );
@@ -3957,10 +4079,24 @@ function Study({
                       className={`text-sm opacity-70 transition-[filter] duration-75 ${
                         show ? "" : "slip-blank"
                       }`}
-                      title={it.ex && show ? `${it.ex}\n${it.exTr ?? ""}` : undefined}
+                      title={
+                        show && it.ex
+                          ? `${it.ex}\n${it.exTr ?? ""}`
+                          : show && it.note
+                            ? it.note
+                            : undefined
+                      }
                     >
-                      {it.ex}
-                      {it.exTr && <span className="ml-2 text-xs opacity-60">{it.exTr}</span>}
+                      {it.ex ? (
+                        <>
+                          {it.ex}
+                          {it.exTr && <span className="ml-2 text-xs opacity-60">{it.exTr}</span>}
+                        </>
+                      ) : (
+                        <span className="text-xs">
+                          <PhraseNote note={it.note} register={it.register} />
+                        </span>
+                      )}
                     </Glance>
                   )}
                   {/* Graded: when it comes back. Ungraded: "new", or how long it has been due. */}
@@ -4078,6 +4214,16 @@ function SlipSheet({
                 {t}
               </span>
             ))}
+          </div>
+        )}
+        {/* A phrase: its register, the moment it is said in, and the note in full. */}
+        {item.note && (
+          <div
+            className="border-b border-black/10 dark:border-white/10 px-1 py-3 text-sm"
+            data-sheet-note
+          >
+            <PhraseNote note={item.note} register={item.register} />
+            {item.scene && <div className="mt-1 text-xs opacity-60">{item.scene}</div>}
           </div>
         )}
         {/* The row shows the example too; here it is in full. */}

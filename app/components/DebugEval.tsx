@@ -39,6 +39,7 @@ import {
   typedText,
 } from "@lianki/debug-chat/page-errors";
 import { grantUntil } from "@/lib/islands/rules";
+import { frameContext } from "@/lib/frame-context";
 import { islandStore } from "@/lib/islands/store";
 import { useIslands } from "@/lib/islands/useIslands";
 import { useLiveView, widgetSource } from "@/lib/live-view/client";
@@ -251,7 +252,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
         clipsQ = clipsConnectQuery();
       } catch {}
       const sock = new WebSocket(
-        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}${clipsQ}`,
+        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}${clipsQ}&frame=${frameContext()}`,
       );
       ws = sock;
       sockRef.current = sock;
@@ -371,8 +372,8 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
             // (voice.ts): always read while the mic is on, else by the focus rule.
             const fresh = !spokenIds.current.has(m.id);
             spokenIds.current.add(m.id);
-            // Never on a hidden page, never a quiet line, and not in quiet hours
-            // unless it is loud (quiet-hours.ts): the line itself is the meta.
+            // Never a quiet line; a hidden page reads the newest one when it is
+            // back (speak-rules.ts): the line itself is the meta.
             const spoken = fresh && (tabsRef.current?.isSpeaker() ?? true) && speakReply(m.text, m);
             voiceLatency().heard(m, spoken === true);
           } else {
@@ -436,7 +437,10 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
       setState(null);
       sock?.close();
     };
-    const wanted = () => document.visibilityState === "visible" && debugOn();
+    // Never inside another site's frame: no cookie socket, no pairing or Allow UI
+    // a parent could clickjack (lib/frame-context.ts). The hub refuses too.
+    const wanted = () =>
+      document.visibilityState === "visible" && debugOn() && frameContext() !== "foreign";
     /**
      * Tell the hub how this window is doing, while the socket is still open:
      * hidden (screen off, app in the background) keeps a recording session
@@ -534,18 +538,27 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
     } catch {}
   };
   /** `to`: the state-tree node the line is addressed to (absent = the main thread). */
-  const sendChat = (text: string, to?: string, opts?: { source?: "stt"; timing?: VoiceTiming }) => {
+  const sendChat = (
+    text: string,
+    to?: string,
+    opts?: { source?: "stt"; timing?: VoiceTiming; speakerProof?: string[] },
+  ) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return false;
     try {
       const id = crypto.randomUUID().slice(0, 12);
       // A voice line's timestamps ride along (an older hub drops them).
       const timing = opts?.source === "stt" ? cleanTiming(opts.timing) : undefined;
+      // The Mac's signed speaker attestations (lib/speaker-proof.ts); the hub verifies them.
+      const speakerProof = opts?.source === "stt" ? opts.speakerProof?.slice(0, 8) : undefined;
       // The mic's wake-word mode rides along, so the agent sees it (docs/wake-word.md).
       const mic = (
-        globalThis as { __lkMic?: { view?: () => { state: string; wake?: string } } }
+        globalThis as {
+          __lkMic?: { view?: () => { state: string; wake?: string; wakeReason?: string } };
+        }
       ).__lkMic?.view?.();
       const wake = mic && mic.state !== "off" ? mic.wake : undefined;
+      const wakeReason = wake ? mic?.wakeReason : undefined;
       sock.send(
         JSON.stringify({
           type: "chat",
@@ -555,6 +568,8 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           ...(opts?.source === "stt" ? { source: "stt" } : {}),
           ...(timing ? { timing } : {}),
           ...(wake === "active" || wake === "passive" ? { wake } : {}),
+          ...(speakerProof?.length ? { speakerProof } : {}),
+          ...(wakeReason ? { wakeReason } : {}),
         }),
       );
       // Its reply is timed against it (latency.ts); main-thread lines only.

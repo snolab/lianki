@@ -8,7 +8,9 @@
  *       Hold an eval session: resumes the saved eval grant if there is one
  *       (no prompt), else pairs — prints a short code that the page's prompt
  *       shows too; the owner taps Allow if they match, which grants eval
- *       (and chat) for 8 hours and saves the grant. Keep it running (in the
+ *       (and chat) for 8 hours and saves the grant (it renews itself while
+ *       the approving device's page is connected, up to 30 days: docs/monitoring.md,
+ *       "Renewal"; the file's until follows). Keep it running (in the
  *       background); the commands below then go through it. If its socket
  *       drops (the authorized page was away 5 min, a deploy, the network),
  *       the next command resumes with the grant, silently.
@@ -78,18 +80,17 @@
  *       or --origins a,b. `off` stops the matching ones (all without --device).
  *       Never deletes a clip.
  *
- *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet | --loud] "text"   (or - for stdin)
+ *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] "text"   (or - for stdin)
  *       Reply with the saved grant (the chat grant, else the eval grant:
  *       eval implies chat; never pairs), and exit: to the owner by default, or to
  *       a friend's thread by user id or email.
  *
- *       Agent lines must not wake the owner (docs/dev-debug-widget.md,
- *       "Quiet lines and quiet hours"): --quiet for FYI, progress and deploy
- *       notices (shown, never read aloud); plain say for an answer to what
- *       he just said (read aloud, but not in his quiet hours, default
- *       23:00–08:00 on his device); --loud only when urgent or it needs his
- *       confirmation (read even in quiet hours, unless he muted the page).
- *       A hidden page or a locked screen never speaks.
+ *       Quiet lines (docs/dev-debug-widget.md, "Quiet lines"): --quiet for
+ *       FYI, progress and deploy notices (shown, never read aloud); plain
+ *       say for an answer to what he just said (read aloud by the page's
+ *       usual rules). A hidden page never speaks; it reads the newest line
+ *       once it is visible again. --loud is deprecated: accepted and
+ *       ignored (a plain say), so older commands still work.
  *
  *       A line spoken into the widget's mic carries "source":"stt"; when
  *       the agent polishes one, {"type":"edited","id","thread","text","raw",
@@ -166,7 +167,14 @@ import {
 import { homedir, hostname } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { type NodeOpts, type SayVolume, chatLine, nodeOpts, sayVolume } from "./node-args";
+import {
+  LOUD_DEPRECATED,
+  type NodeOpts,
+  type SayVolume,
+  chatLine,
+  nodeOpts,
+  sayVolume,
+} from "./node-args";
 import { routeTo } from "@/lib/dev-eval";
 import { type BusyArgs, beatMessage, endsBeat, idleFor, parseBusyArgs } from "./busy";
 import { ENDED, GRANT_INVALID, chatClose, chatStep, serveClose } from "./eval-grant";
@@ -253,7 +261,7 @@ const exitOnIdle = boolFlag("--exit-on-idle");
 const ackFlag = boolFlag("--ack");
 /** say: shown on his page, never read aloud (FYI, progress, deploy notices). */
 const quietFlag = boolFlag("--quiet");
-/** say: read aloud even in his quiet hours (urgent, or it needs his answer). */
+/** say: deprecated, a no-op (a plain say); accepted so old commands still work. */
 const loudFlag = boolFlag("--loud");
 const labelFlag = flag("--label");
 const label = labelFlag ?? `lianki main lane on ${hostname()}`;
@@ -960,11 +968,11 @@ async function main() {
   }
   if (args[0] === "say") {
     const text = (args[1] === "-" ? await Bun.stdin.text() : (args[1] ?? "")).trim();
-    const volume = sayVolume({ quiet: quietFlag, loud: loudFlag });
-    if (!text || "error" in volume) {
-      if ("error" in volume) console.error(volume.error);
+    const volume = sayVolume({ quiet: quietFlag });
+    if (loudFlag) console.error(LOUD_DEPRECATED);
+    if (!text) {
       console.error(
-        'usage: bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet | --loud] "text" | -',
+        'usage: bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] "text" | -',
       );
       process.exit(2);
     }
@@ -974,7 +982,7 @@ async function main() {
   const code = args[0] === "-" ? await Bun.stdin.text() : args[0];
   if (!code?.trim()) {
     console.error(
-      "usage: bun scripts/dev/eval.ts [--for <email>] [--target <text>] [--no-pair] '<code>' | - | serve [--for <email>] [--no-pair] | chat [--out <file>] [--exit-on-idle] | errors [--no-pair] [--out <file>] | say [--to <thread|email>] [--quiet | --loud] <text>",
+      "usage: bun scripts/dev/eval.ts [--for <email>] [--target <text>] [--no-pair] '<code>' | - | serve [--for <email>] [--no-pair] | chat [--out <file>] [--exit-on-idle] | errors [--no-pair] [--out <file>] | say [--to <thread|email>] [--quiet] <text>",
     );
     process.exit(2);
   }

@@ -176,6 +176,74 @@ the token on the next command; End or Deny stops it. Without a running
 a random token are kept in `~/.config/lianki/eval-session.json` (mode 600)
 while `serve` runs.
 
+#### Renewal
+
+The owner's eval grant renews itself, so the Allow prompt does not come back
+every 8 hours (owner's decision, 2026-11-01). The rules, in the hub
+(`workers/push/src/debug.ts`, "Renewal"; tests in `unit/debug-hub-renew.test.ts`):
+
+- **Bound at the tap.** The Allow stores, with the grant, the answering
+  page's device id (the `dev=` it connects with) and its sign-in session —
+  as a tag, `sessionTag(session id)`, a SHA-256, never the id or the cookie
+  token. `/api/debug/identity` answers `session` and `sessionUntil`;
+  lianki-push passes them to the hub as `x-debug-session(-until)`, set by
+  itself only (a page's or a sender's own are removed).
+- **When.** With at most 2 hours left (`EVAL_RENEW_BEFORE_MS`), the grant
+  is extended to 8 hours from now on the next event: a message from a socket
+  holding it, a resume with its token, that device's page connecting, or the
+  one Durable Object alarm set for `until − 2 h` (a grant not yet due always
+  sets it strictly later than now). No polling.
+- **Only on that device and session.** At that moment an owner page with
+  the same device id and the same, unexpired session must be connected.
+  Another device, a new session (signed out and in again), or a friend's
+  page (the hub keeps no session or device for one) renews nothing.
+- **The auth db has the last word.** Right before renewing, the hub asks the
+  main Worker — `SESSIONS.live(user, session)`, the `DebugSessions` RPC
+  entrypoint that `worker.ts` adds to the OpenNext build, a D1 lookup of the
+  owner's unexpired sessions by tag (`lib/debug-session.ts`). It is not an
+  HTTP route: an RPC entrypoint has no URL, only lianki-push's service
+  binding reaches it, so no shared secret is needed. Inputs are bounded
+  before any DB work; it allows 60 checks a minute per isolate ("busy"
+  after), and the hub asks at most once per grant per 30 s. Only `"live"`
+  renews. An error, `"busy"`, an odd answer or no binding renews nothing
+  (fail closed) and keeps the chain for a later try; `"gone"` drops the
+  chain and the session from the pages, as a sign-out notice would. So a
+  lost sign-out notice cannot keep a grant renewing.
+- **No stale write.** The answer may take a while. After it, the hub
+  re-reads the grant and writes the renewal only if it is still there, with
+  the same `until`, the same chain (start, count, device, session, user) and
+  an approving page still connected with that session — all inside
+  `blockConcurrencyWhile`, so an End or sign-out that landed meanwhile wins
+  and a revoked token stays dead (`debug.renew-skip` is logged).
+- **Cap.** Never past 30 days from the tap (`EVAL_CHAIN_MS`); then the grant
+  lapses and the next pairing asks again.
+- **Stops at once.** End (live or on the sleeping `idle` entry) deletes the
+  grant. Sign-out deletes the session, and better-auth's
+  `session.delete.after` hook (`auth-impl.ts` → `lib/push-signed-out.ts`)
+  posts its tag to lianki-push's `/internal/signed-out` over the PUSH
+  binding: every grant bound to it stops renewing and ends at its current
+  `until`, and every owner page attachment carrying that session loses it
+  (a stale tab can no longer vouch for a renewal). The notice is durable: one
+  that is not acknowledged (2xx) is written to the D1 outbox
+  `debug_signout_outbox` (migration 0023) before sign-out returns, retried
+  after the response (1 s, 4 s, 15 s), then when the owner's debug page
+  connects (`/api/debug/identity`, signed in as the owner; after the
+  response, at most one flush a minute per isolate, 20 rows), each row on an
+  exponential backoff (1 min doubling, at most 1 h), until acknowledged or
+  no chain could still use it (30 days).
+- **Never for anyone else.** Chat grants, friends' previews, and grants
+  approved on a page with no session (the dev bridge) are never renewed.
+- **The sender.** Each socket holding the grant hears
+  `{type:"renewed", until, count}`; `eval-socket.ts` moves the token file's
+  `until` (on a resumed socket and on a freshly paired one, and on a resume's
+  `approved`), so the next run resumes instead of pairing. The file's `until`
+  is only a hint: a renewal made while no sender was connected (the alarm,
+  the page coming back) reaches no file, so the saved eval token is always
+  tried with the hub first, and dropped only on its 4498. The first
+  `approved` says `renewsUntil` (the cap). Tests: `unit/eval-socket.test.ts`.
+- **Logs.** `debug.renew` {via, label, device, count, until, chainEnds} and
+  `debug.renew-stop` {why, device, count} — never code.
+
 ### Chat with the agent
 
 Every owner page that holds the debug socket also shows a small chat box at
@@ -242,8 +310,8 @@ bun scripts/dev/eval.ts chat --label "agent on $(hostname -s)" --out /tmp/lianki
 # Reply (uses the saved grant; exits once the hub has it):
 bun scripts/dev/eval.ts say "On it — fixing the swipe now."
 echo "multi-line reply" | bun scripts/dev/eval.ts say -
-# FYI / progress / deploy notices: shown, never read aloud. --loud only when
-# urgent or it needs his confirmation (docs/dev-debug-widget.md, "Quiet lines and quiet hours"):
+# FYI / progress / deploy notices: shown, never read aloud
+# (docs/dev-debug-widget.md, "Quiet lines"):
 bun scripts/dev/eval.ts say --quiet "PR #390 opened, CI running."
 
 # A line with "source":"stt" was spoken: polish its misheard words first

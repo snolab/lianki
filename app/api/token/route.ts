@@ -1,7 +1,8 @@
 import { randomBytes } from "crypto";
 import { ObjectId } from "mongodb";
 import { authEmail } from "@/app/signInEmail";
-import { getApiTokensCollection, hashToken } from "@/lib/getApiTokensCollection";
+import { getApiTokensCollection } from "@/lib/getApiTokensCollection";
+import { hashToken } from "@/lib/apiTokenAuth";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { ApiTokensD1Repo } from "@/lib/repos/d1Repos";
 

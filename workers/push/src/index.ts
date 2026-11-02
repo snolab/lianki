@@ -38,6 +38,9 @@
  *   GET/POST /internal/friends The main Worker's owner-only /api/dev/friends,
  *                              over its PUSH binding: list chat users, read
  *                              one's thread, Block or unblock (debug.ts).
+ *   POST /internal/signed-out  The main Worker, when a sign-in session is
+ *                              deleted (sign-out): body {session: its tag}.
+ *                              Every eval grant renewing on it stops at once.
  *
  * /internal/* is answered only on the binding's own hostname (lianki-push):
  * there is no workers.dev URL, and the zone route covers /api/version/* only.
@@ -49,7 +52,14 @@
  * Types are declared here rather than taken from @cloudflare/workers-types:
  * the repo's root tsconfig type-checks this folder with the DOM lib.
  */
-import { DEV_BRIDGE_HEADER, debugIdentity } from "./auth";
+import {
+  DEBUG_ORIGIN,
+  DEV_BRIDGE_HEADER,
+  EMBED_HEADER,
+  debugIdentity,
+  offersPartner,
+  partnerTicket,
+} from "./auth";
 import { IDENTITY_HEADERS } from "./debug";
 import { PROGRESS_OWNER_HEADER, progressGate } from "./progress";
 
@@ -71,8 +81,16 @@ export type Env = {
   /** Optional only so older test envs type-check; deployed, it is always bound. */
   PROGRESS?: Namespace;
   MAIN?: Fetcher;
+  /** The main Worker's DebugSessions RPC entrypoint (worker.ts): is a session still live? */
+  SESSIONS?: { live(user: string, session: string): Promise<unknown> };
   /** Agents' bearer token for POST /api/version/progress (a Worker secret). */
   PROGRESS_TOKEN?: string;
+  /**
+   * The Learning Partner tickets' public key (raw Ed25519, base64url: the
+   * STT_TICKET_KEY pair's, ~/.config/lianki-stt/ticket.pub). Unset = every
+   * socket from another site is refused.
+   */
+  PARTNER_TICKET_PUB?: string;
 };
 declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
 
@@ -128,18 +146,39 @@ export default {
     }
     if (url.pathname === "/api/version/debug") {
       if (!wantsSocket) return new Response("WebSocket only", { status: 426 });
+      // A socket offering the partner subprotocol (the userscript's shadow
+      // widget on another site, or the lianki.com frame inside it): its ticket
+      // alone, never a cookie; chat-only in the owner's thread (debug.ts).
+      // Any other socket: the cookie alone, and only from https://lianki.com.
+      if (offersPartner(req) || req.headers.get("origin") !== DEBUG_ORIGIN) {
+        const t = await partnerTicket(req, env.PARTNER_TICKET_PUB);
+        if (!t) return new Response("forbidden", { status: 403 });
+        const headers = new Headers(req.headers);
+        for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
+        headers.delete(DEV_BRIDGE_HEADER);
+        headers.delete("cookie");
+        headers.set(IDENTITY_HEADERS.user, "owner");
+        headers.set(IDENTITY_HEADERS.email, "");
+        headers.set(IDENTITY_HEADERS.owner, "1");
+        headers.set(EMBED_HEADER, `${t.jti}.${t.exp}`);
+        return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
+      }
       const who = await debugIdentity(req, env.MAIN);
       if (!who) return new Response("forbidden", { status: 403 });
       const headers = new Headers(req.headers);
       // Only what the main Worker said: a page cannot claim any of these itself.
       for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
       headers.delete(DEV_BRIDGE_HEADER);
+      // A lianki.com page is never an embedded one, whatever it sends.
+      headers.delete(EMBED_HEADER);
       headers.set(IDENTITY_HEADERS.user, who.userId);
       headers.set(IDENTITY_HEADERS.email, who.email);
       headers.set(IDENTITY_HEADERS.owner, who.owner ? "1" : "0");
       // A header holds bytes, not any name: percent-encoded.
       if (who.name) headers.set(IDENTITY_HEADERS.name, encodeURIComponent(who.name));
       if (who.image) headers.set(IDENTITY_HEADERS.image, who.image);
+      if (who.session) headers.set(IDENTITY_HEADERS.session, who.session);
+      if (who.sessionUntil) headers.set(IDENTITY_HEADERS.sessionUntil, String(who.sessionUntil));
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
     }
     if (
@@ -179,7 +218,11 @@ export default {
       headers.delete("x-liagent-token");
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
     }
-    if (url.pathname.startsWith("/internal/friends") && isInternal(url))
+    // Friends, and a signed-out session (it stops eval-grant renewal bound to it).
+    if (
+      (url.pathname.startsWith("/internal/friends") || url.pathname === "/internal/signed-out") &&
+      isInternal(url)
+    )
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(req);
     if (url.pathname === "/internal/publish" && req.method === "POST" && isInternal(url))
       return env.HUB.get(env.HUB.idFromName("version")).fetch(req);

@@ -21,6 +21,7 @@ import {
 import { voiceLatency, noteSttVia } from "./latency";
 import { postSessionClip } from "./clips-store";
 import { createLocalStt } from "./local-stt";
+import { VOICE_DEVICE_KEY, deviceSlug, noteSpeaker } from "./voiceprint";
 import { localSttStrings, wakeStrings } from "./ui-strings";
 import { createKws } from "./wake-kws";
 import { type MicSession, type MicView, micSession } from "./mic-session";
@@ -33,6 +34,7 @@ import {
   cloudOut,
   existingCtx,
   micConstraints,
+  noSpeechVoices,
   noteTrack,
   outMode,
 } from "./voice-out";
@@ -267,6 +269,15 @@ async function energy(ev: VadEvents, stream: MediaStream): Promise<Vad> {
   };
 }
 
+/** This device's slug for the voiceprint (voiceprint.ts; localStorage lk:agent-voice-device overrides it). */
+export const voiceDevice = () => {
+  let o: string | null = null;
+  try {
+    o = localStorage.getItem(VOICE_DEVICE_KEY);
+  } catch {}
+  return deviceSlug(typeof navigator === "undefined" ? "" : navigator.userAgent, o);
+};
+
 /** The wake word is off on this device (localStorage lk:agent-wake = "0"; docs/wake-word.md). */
 const wakeOff = () => {
   try {
@@ -304,7 +315,9 @@ function session(): MicSession {
       f(v.state().hold);
       return v.subscribe((x) => f(x.hold));
     },
-    localStt: (url) => createLocalStt(url, { log: (ev) => v.log(ev) }),
+    // The device goes along, so the Mac scores finals against this device's voiceprint.
+    localStt: (url) => createLocalStt(url, { log: (ev) => v.log(ev), device: voiceDevice(), thread: "owner" }),
+    speaker: noteSpeaker,
     // The "Linky" spotter: made (and downloaded) the first time the mic goes passive.
     // localStorage lk:agent-wake = "0" turns the wake word off (never passive).
     kws: wakeOff() ? undefined : (onState) => createKws({ log: (ev) => v.log(ev), onState }),
@@ -401,6 +414,9 @@ function session(): MicSession {
     timing: (seq, m) => voiceLatency().mark(seq, m),
   });
 }
+
+/** The page's mic session (the voiceprint card routes enrolment sentences through it). */
+export const pageMic = session;
 
 /** Phosphor "microphone" (MIT, (c) 2023 Phosphor Icons), regular and fill. */
 const MIC_PATH = {
@@ -612,7 +628,8 @@ export function DebugMic({
           // Made in this gesture, so iOS lets it play the send tick (and cloud replies) later.
           if (state === "off") {
             void audioCtx()?.resume().catch(() => {});
-            if (outMode() === "cloud") cloudOut()?.unlock();
+            // The cloud reads replies when this device has no speechSynthesis voice (voice.ts).
+            if (outMode() === "cloud" || noSpeechVoices()) cloudOut()?.unlock();
           }
           void mic.current?.toggle();
         }}

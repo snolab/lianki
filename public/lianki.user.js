@@ -10,7 +10,7 @@
 // @grant       GM_getValue
 // @grant       GM_deleteValue
 // @grant       GM_info
-// @version     2.24.21
+// @version     2.24.25
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -1654,6 +1654,470 @@
     return dueMs > w.lo && dueMs < w.hi;
   }
 
+  // packages/debug-chat/src/embed/guard.ts
+  function own(o) {
+    if (!o || typeof o !== "object") return { __proto__: null };
+    try {
+      return { __proto__: null, ...o };
+    } catch {
+      return { __proto__: null };
+    }
+  }
+  function is(v, ...words) {
+    if (typeof v !== "string") return false;
+    for (let k = 0; k < words.length; k++) if (v === words[k]) return true;
+    return false;
+  }
+  function isolatedWorld(info) {
+    const i = own(info);
+    const declared = own(i.script).injectInto;
+    if (is(i.injectInto, "page", "Page", "PAGE") || is(declared, "page", "Page", "PAGE"))
+      return false;
+    if (
+      is(i.sandboxMode, "raw", "Raw", "RAW", "js", "JS", "javascript", "JavaScript", "JAVASCRIPT")
+    )
+      return false;
+    return (
+      is(i.injectInto, "content", "Content", "CONTENT") || is(i.sandboxMode, "dom", "DOM", "Dom")
+    );
+  }
+  function blockerText(b, strings, name) {
+    return strings[b].replaceAll("{name}", name);
+  }
+  function partnerWanted(o) {
+    return o.top && o.enabled && !o.hiddenHosts.includes(o.host);
+  }
+
+  // packages/debug-chat/src/ui-strings.ts
+  function isZh(lang = globalThis.document?.documentElement.lang) {
+    return /^zh\b/i.test(lang ?? "");
+  }
+  function isJa(lang = globalThis.document?.documentElement.lang) {
+    return /^ja\b/i.test(lang ?? "");
+  }
+  var EMBED_STRINGS = {
+    en: {
+      pageRealm:
+        "Your {name} is off on this site: your userscript manager runs Lianki inside the page, where the site's own scripts could read the chat.",
+      connect: "This site's security policy blocks the connection to your {name}.",
+      styles: "This site's security policy blocks your {name}'s styles.",
+      script: "This site's security policy blocks your {name}'s code.",
+      load: "Your {name} could not load on this page.",
+      openLianki: "Open on lianki.com",
+      hideHere: "Hide on this site",
+      readOnly: "This site blocks private typing, so replies only show here.",
+      replyOnLianki: "Reply on lianki.com",
+      grip: "Drag to move; double-click to minimize",
+    },
+    zh: {
+      pageRealm:
+        "{name}在本网站已关闭：你的脚本管理器把 Lianki 运行在网页自身的环境里，网站的脚本可能读到聊天内容。",
+      connect: "本网站的安全策略阻止了与{name}的连接。",
+      styles: "本网站的安全策略阻止了{name}的样式。",
+      script: "本网站的安全策略阻止了{name}的代码运行。",
+      load: "{name}在此页面加载失败。",
+      openLianki: "在 lianki.com 打开",
+      hideHere: "在本网站隐藏",
+      readOnly: "本网站不允许私密输入，这里只显示回复。",
+      replyOnLianki: "去 lianki.com 回复",
+      grip: "拖动可移动；双击可最小化",
+    },
+    ja: {
+      pageRealm:
+        "このサイトでは{name}をオフにしています。スクリプトマネージャーが Lianki をページ内で実行しており、サイトのスクリプトにチャットを読まれるおそれがあります。",
+      connect: "このサイトのセキュリティポリシーにより、{name}に接続できません。",
+      styles: "このサイトのセキュリティポリシーにより、{name}のスタイルが読み込めません。",
+      script: "このサイトのセキュリティポリシーにより、{name}のコードを実行できません。",
+      load: "このページでは{name}を読み込めませんでした。",
+      openLianki: "lianki.com で開く",
+      hideHere: "このサイトでは非表示",
+      readOnly: "このサイトでは安全に入力できないため、返信の表示のみです。",
+      replyOnLianki: "lianki.com で返信",
+      grip: "ドラッグで移動、ダブルクリックで最小化",
+    },
+  };
+  var EMBED_NAME = {
+    en: "Learning Partner",
+    zh: "学习伙伴",
+    ja: "学習パートナー",
+  };
+  function embedLang(lang = globalThis.navigator?.language) {
+    return isZh(lang) ? "zh" : isJa(lang) ? "ja" : "en";
+  }
+
+  // packages/debug-chat/src/embed/frame-protocol.ts
+  var PROTOCOL_V = 1;
+  var FRAME_UP = "partner-frame-up";
+  var HELLO = "partner-hello";
+  var FRAME_PATH = "/embed/partner";
+  var READY_MS = 800;
+  var LOAD_CAP_MS = 1e4;
+  var MIN_W = 120;
+  var MIN_H = 56;
+  var MAX_W = 480;
+  var MAX_H = 720;
+  var clamp2 = (n, lo, hi) => Math.min(hi, Math.max(lo, Math.round(n)));
+  var frameUrl = (origin) => `${origin}${FRAME_PATH}`;
+  var rec = (d) => (d && typeof d === "object" ? d : null);
+  function isFrameUp(e, frameWindow, origin) {
+    const d = rec(e.data);
+    return !!frameWindow && e.source === frameWindow && e.origin === origin && d?.lk === FRAME_UP;
+  }
+  function portMsg(data) {
+    const d = rec(data);
+    if (d?.type === "ready" || d?.type === "need-ticket") return { type: d.type };
+    if (d?.type === "size" && Number.isFinite(d.w) && Number.isFinite(d.h))
+      return {
+        type: "size",
+        w: clamp2(d.w, MIN_W, MAX_W),
+        h: clamp2(d.h, MIN_H, MAX_H),
+      };
+    if (d?.type === "ticket")
+      return {
+        type: "ticket",
+        ticket: typeof d.ticket === "string" && d.ticket.length < 1024 ? d.ticket : null,
+      };
+    return null;
+  }
+  function frameBlocked(e, origin) {
+    const dir = (e.effectiveDirective || e.violatedDirective || "").split(" ")[0];
+    return (
+      (dir === "frame-src" || dir === "child-src" || dir === "default-src") &&
+      (e.blockedURI ?? "").startsWith(origin)
+    );
+  }
+
+  // src/partner-frame.ts
+  var css = (el, rules) => {
+    for (const [k, v] of rules) el.style.setProperty(k, v, "important");
+  };
+  function frameShell(d) {
+    const { doc, win, origin } = d;
+    const host = doc.createElement("div");
+    let pos = d.pos?.get() ?? { x: 0, y: 0 };
+    const place = () =>
+      css(host, [
+        ["all", "initial"],
+        ["display", "block"],
+        ["position", "fixed"],
+        ["right", `${8 - pos.x}px`],
+        ["bottom", `${8 - pos.y}px`],
+        ["z-index", "2147483647"],
+      ]);
+    place();
+    const root = host.attachShadow({ mode: "closed" });
+    const box = doc.createElement("div");
+    css(box, [
+      ["all", "initial"],
+      ["display", "flex"],
+      ["flex-direction", "column"],
+      ["align-items", "flex-end"],
+      ["gap", "2px"],
+    ]);
+    const grip = doc.createElement("div");
+    grip.setAttribute("role", "button");
+    grip.setAttribute("aria-label", d.gripLabel);
+    grip.title = d.gripLabel;
+    css(grip, [
+      ["all", "initial"],
+      ["display", "block"],
+      ["width", "48px"],
+      ["height", "12px"],
+      ["border-radius", "6px"],
+      ["background", "oklch(0.55 0.02 65 / 0.55)"],
+      ["cursor", "grab"],
+      ["touch-action", "none"],
+    ]);
+    const iframe = doc.createElement("iframe");
+    iframe.src = frameUrl(origin);
+    iframe.referrerPolicy = "no-referrer";
+    iframe.setAttribute("title", d.gripLabel);
+    css(iframe, [
+      ["all", "initial"],
+      ["display", "block"],
+      ["border", "0"],
+      ["width", `${MIN_W}px`],
+      ["height", `${MIN_H}px`],
+      ["background", "transparent"],
+      ["color-scheme", "normal"],
+    ]);
+    box.append(grip, iframe);
+    root.append(box);
+    let settle = () => {};
+    let settled = false;
+    const result = new Promise((resolve) => {
+      settle = (r) => {
+        if (settled) return;
+        settled = true;
+        resolve(r);
+      };
+    });
+    const timers = [];
+    timers.push(setTimeout(() => settle("blocked"), d.capMs ?? LOAD_CAP_MS));
+    iframe.addEventListener("load", () =>
+      timers.push(setTimeout(() => settle("blocked"), d.readyMs ?? READY_MS)),
+    );
+    let port = null;
+    const onMessage = (e) => {
+      if (port || !isFrameUp(e, iframe.contentWindow, origin)) return;
+      const ch = new (d.Channel ?? MessageChannel)();
+      port = ch.port1;
+      port.onmessage = (m) => {
+        const msg = portMsg(m.data);
+        if (!msg) return;
+        if (msg.type === "ready") settle("ready");
+        else if (msg.type === "need-ticket")
+          d.ticket().then(
+            (ticket) => port?.postMessage({ type: "ticket", ticket }),
+            () => port?.postMessage({ type: "ticket", ticket: null }),
+          );
+        else if (msg.type === "size")
+          css(iframe, [
+            ["width", `${msg.w}px`],
+            ["height", `${msg.h}px`],
+          ]);
+      };
+      iframe.contentWindow?.postMessage({ lk: HELLO, v: PROTOCOL_V, label: d.label }, origin, [
+        ch.port2,
+      ]);
+    };
+    const onViolation = (e) => {
+      if (frameBlocked(e, origin)) settle("blocked");
+    };
+    win.addEventListener("message", onMessage);
+    doc.addEventListener("securitypolicyviolation", onViolation);
+    let drag = null;
+    grip.addEventListener("pointerdown", (e) => {
+      drag = { x: e.clientX, y: e.clientY, from: pos };
+      grip.setPointerCapture?.(e.pointerId);
+    });
+    grip.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      pos = { x: drag.from.x + e.clientX - drag.x, y: drag.from.y + e.clientY - drag.y };
+      place();
+    });
+    grip.addEventListener("pointerup", () => {
+      if (drag) d.pos?.set(pos);
+      drag = null;
+    });
+    let minimized = false;
+    grip.addEventListener("dblclick", () => {
+      minimized = !minimized;
+      css(iframe, [["display", minimized ? "none" : "block"]]);
+    });
+    (doc.documentElement ?? doc.body).append(host);
+    return {
+      result,
+      iframe,
+      host,
+      destroy() {
+        for (const t of timers) clearTimeout(t);
+        settle("blocked");
+        win.removeEventListener("message", onMessage);
+        doc.removeEventListener("securitypolicyviolation", onViolation);
+        port?.close();
+        host.remove();
+      },
+    };
+  }
+
+  // src/partner.ts
+  var PARTNER_ON_KEY = "lianki_partner_on";
+  var PARTNER_HIDDEN_KEY = "lianki_partner_hidden";
+  var PARTNER_POS_KEY = "lianki_partner_pos";
+  var PARTNER_STORE_PREFIX = "lianki_partner_ls:";
+  var NOOP = () => {};
+  function mirrorPartnerSwitch(store, setValue) {
+    try {
+      const v = store.getItem("lk:agent") ?? store.getItem("lk:debug");
+      setValue(PARTNER_ON_KEY, v === "1");
+    } catch {}
+  }
+  async function startPartner(d) {
+    const host = d.host ?? location.host;
+    const hidden = (() => {
+      try {
+        const v = JSON.parse(d.getValue(PARTNER_HIDDEN_KEY, "[]"));
+        return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+      } catch {
+        return [];
+      }
+    })();
+    const wanted = partnerWanted({
+      enabled: d.getValue(PARTNER_ON_KEY, false) === true,
+      hiddenHosts: hidden,
+      host,
+      top: d.top ?? window.self === window.top,
+    });
+    if (!wanted) return NOOP;
+    const isolated = isolatedWorld(d.info);
+    d.report("partner-mode", `${isolated ? "isolated" : "page-realm"} ${host}`);
+    const hideHere = () =>
+      d.setValue(PARTNER_HIDDEN_KEY, JSON.stringify([...new Set([...hidden, host])]));
+    if (!isolated) return pageRealmNote(d.doc ?? document, d.origin, hideHere);
+    const ticket = async () => {
+      try {
+        const r = await d.gmFetch(`${d.origin}/api/debug/partner-ticket`, {
+          method: "POST",
+          headers: { "x-lianki-userscript": "1" },
+          credentials: "include",
+        });
+        if (!r.ok) return null;
+        const body = await r.json();
+        return typeof body?.ticket === "string" ? body.ticket : null;
+      } catch {
+        return null;
+      }
+    };
+    const first = await ticket();
+    if (!first) return NOOP;
+    let spare = { t: first, at: Date.now() };
+    const nextTicket = async () => {
+      const s = spare;
+      spare = null;
+      return s && Date.now() - s.at < 30000 ? s.t : ticket();
+    };
+    const lang = embedLang();
+    const shell = (d.frame ?? frameShell)({
+      doc: d.doc ?? document,
+      win: d.win ?? globalThis,
+      origin: d.origin,
+      label: `${host}${d.path ?? location.pathname}`.slice(0, 300),
+      ticket: nextTicket,
+      gripLabel: EMBED_STRINGS[lang].grip,
+      pos: {
+        get: () => {
+          const p = d.getValue(PARTNER_POS_KEY, null);
+          return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null;
+        },
+        set: (p) => d.setValue(PARTNER_POS_KEY, { x: Math.round(p.x), y: Math.round(p.y) }),
+      },
+    });
+    const how = await shell.result;
+    d.report("partner-frame", `${how} ${host}`);
+    if (how === "ready") return () => shell.destroy();
+    shell.destroy();
+    let code;
+    try {
+      const r = await d.gmFetch(d.src);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      code = await r.text();
+    } catch (e) {
+      d.report("partner-load", String(e?.message ?? e));
+      return NOOP;
+    }
+    let built;
+    try {
+      const factory = (0, eval)(code);
+      const keys = () =>
+        (d.listValues?.() ?? [])
+          .filter((k) => k.startsWith(PARTNER_STORE_PREFIX))
+          .map((k) => k.slice(PARTNER_STORE_PREFIX.length));
+      built = factory({
+        get: (k) => d.getValue(PARTNER_STORE_PREFIX + k, null),
+        set: (k, v) => d.setValue(PARTNER_STORE_PREFIX + k, v),
+        del: (k) => d.deleteValue(PARTNER_STORE_PREFIX + k),
+        keys,
+      });
+    } catch (e) {
+      d.report("partner-eval", String(e?.message ?? e));
+      return NOOP;
+    }
+    let mounted = null;
+    try {
+      mounted = built.api.mountPartner({
+        doc: d.doc ?? document,
+        css: built.css,
+        appOrigin: d.origin,
+        ticket: nextTicket,
+        WebSocket: d.WebSocket ?? WebSocket,
+        readOnly: true,
+        report: d.report,
+        hide: () => {
+          hideHere();
+          mounted?.destroy();
+          mounted = null;
+        },
+      });
+    } catch (e) {
+      d.report("partner-mount", String(e?.message ?? e));
+    }
+    return () => {
+      mounted?.destroy();
+      mounted = null;
+    };
+  }
+  var styleAll = (el, css) => {
+    for (const [k, v] of css) el.style.setProperty(k, v, "important");
+  };
+  function pageRealmNote(doc, origin, hideHere) {
+    const lang = embedLang();
+    const t = EMBED_STRINGS[lang];
+    const host = doc.createElement("div");
+    styleAll(host, [
+      ["all", "initial"],
+      ["display", "block"],
+      ["position", "fixed"],
+      ["right", "8px"],
+      ["bottom", "8px"],
+      ["z-index", "2147483647"],
+    ]);
+    const root = host.attachShadow({ mode: "closed" });
+    const box = doc.createElement("div");
+    box.setAttribute("role", "status");
+    styleAll(box, [
+      ["all", "initial"],
+      ["display", "flex"],
+      ["gap", "8px"],
+      ["align-items", "flex-start"],
+      ["max-width", "min(320px, calc(100vw - 16px))"],
+      ["padding", "10px 12px"],
+      ["border-radius", "12px"],
+      ["background", "oklch(0.97 0.01 82 / 0.92)"],
+      ["color", "oklch(0.25 0.02 65)"],
+      ["border", "1px solid oklch(0.25 0.02 65 / 0.15)"],
+      ["font", "13px/18px system-ui, sans-serif"],
+    ]);
+    const text = doc.createElement("div");
+    text.textContent = blockerText("pageRealm", t, EMBED_NAME[lang]);
+    const link = doc.createElement("a");
+    link.href = origin;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = t.openLianki;
+    styleAll(link, [
+      ["display", "block"],
+      ["margin-top", "4px"],
+      ["color", "oklch(0.45 0.12 250)"],
+      ["text-decoration", "underline"],
+    ]);
+    text.append(link);
+    const close = doc.createElement("button");
+    close.type = "button";
+    close.textContent = "×";
+    close.setAttribute("aria-label", t.hideHere);
+    close.title = t.hideHere;
+    styleAll(close, [
+      ["all", "initial"],
+      ["width", "40px"],
+      ["height", "40px"],
+      ["margin", "-10px -8px -10px 0"],
+      ["font", "18px/40px system-ui, sans-serif"],
+      ["text-align", "center"],
+      ["cursor", "pointer"],
+      ["color", "oklch(0.25 0.02 65)"],
+    ]);
+    const remove = () => host.remove();
+    close.addEventListener("click", () => {
+      hideHere();
+      remove();
+    });
+    box.append(text, close);
+    root.append(box);
+    (doc.documentElement ?? doc.body).append(host);
+    return remove;
+  }
+
   // src/lianki.user.ts
   if (window.self === window.top) {
     globalThis.unload_Lianki?.();
@@ -2206,6 +2670,7 @@
     }
     const originHost = new URL(ORIGIN).hostname;
     if (location.hostname === originHost || location.hostname === "www." + originHost) {
+      mirrorPartnerSwitch(localStorage, GM_setValue);
       setTimeout(() => syncToSiteDB(), 500);
       return () => {};
     }
@@ -4418,7 +4883,28 @@ ${actualUrl}
     setTimeout(() => {
       initOfflineStorage();
     }, 100);
+    let stopPartner = () => {};
+    startPartner({
+      origin: ORIGIN,
+      src:
+        typeof __LK_PARTNER_SRC__ === "string" ? __LK_PARTNER_SRC__ : `${ORIGIN}/partner-embed.js`,
+      gmFetch,
+      getValue: GM_getValue,
+      setValue: GM_setValue,
+      deleteValue: GM_deleteValue,
+      info: GM_info,
+      report: (what, detail) =>
+        what === "partner-mode" && detail.startsWith("isolated")
+          ? console.debug(`[Lianki] ${what}: ${detail}`)
+          : console.error(`[Lianki] ${what}: ${detail}`),
+    })
+      .then((stop) => {
+        if (signal.aborted) stop();
+        else stopPartner = stop;
+      })
+      .catch((err) => console.error("[Lianki] partner failed:", err));
     return () => {
+      stopPartner();
       ac.abort();
       for (const id of intervals) clearInterval(id);
       intervals.length = 0;

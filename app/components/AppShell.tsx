@@ -16,6 +16,7 @@ import { island } from "@/lib/islands/Island";
 import { navUi, setDrawerOpen } from "@/lib/nav/ui-store";
 import { BottomIsland } from "@/lib/nav/islands/BottomIsland";
 import { NavRows } from "@/lib/nav/islands/NavRows";
+import { DevServerBadge, DevSwitchItem, type DevSwitch } from "./DevSwitchItem";
 import { LiveViewBoot, LiveViewItem, type LiveViewShell } from "./LiveView";
 
 const SIDEBAR_KEY = "lk:sidebar";
@@ -44,6 +45,8 @@ interface AppShellProps {
   user: ShellUser;
   /** Absent only if a caller has no content for it; the prompt then stays off. */
   firstRun?: FirstRunLabels;
+  /** The owner's dev-server switch: set by the server for the owner only (lib/dev-server-switch.ts). */
+  devSwitch?: DevSwitch;
   /** Live view (docs/live-view.md): set by the server for the owner only. */
   liveView?: LiveViewShell;
   children: React.ReactNode;
@@ -55,6 +58,7 @@ export function AppShell({
   labels,
   user,
   firstRun,
+  devSwitch,
   liveView,
   children,
 }: AppShellProps) {
@@ -225,6 +229,7 @@ export function AppShell({
         </Link>
 
         <div className="ms-auto flex items-center gap-3">
+          {devSwitch?.mode === "back" && <DevServerBadge label={devSwitch.labels.badge} />}
           <LanguageSwitcher />
           {user ? (
             <div className="relative" ref={profileRef}>
@@ -279,6 +284,7 @@ export function AppShell({
                   <MenuLink href="/profile">{labels.profile}</MenuLink>
                   <MenuLink href="/preferences">{labels.preferences}</MenuLink>
                   <MenuLink href="/membership">{labels.membership}</MenuLink>
+                  {devSwitch && <DevSwitchItem sw={devSwitch} />}
                   {liveView && <LiveViewItem lv={liveView} />}
                   <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
                     <Link

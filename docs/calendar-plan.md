@@ -441,7 +441,7 @@ token's subtree.
   day, and busy bands (busy bands only when the flag is on and the user is
   connected).
 - **`calendar.freeSlots(from, to, minutes, window?)`:** the gaps between busy
-  times, timed nodes and quiet hours (23:00–07:00 by default).
+  times and timed nodes.
 - **`tree.subscribe(node, depth, filters)`:** opens the socket subscription
   above.
 - **`changes.apply(summary, ops[])`:** writes the ops **directly**, in one D1

@@ -78,3 +78,6 @@ test-results/
 
 # Python bytecode (scripts/local-stt, scripts/voice)
 __pycache__/
+
+# The Learning Partner for other sites: built at deploy (scripts/build-partner-embed.ts)
+public/partner-embed.js

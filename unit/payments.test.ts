@@ -4,6 +4,7 @@ import { testSchema } from "@/lib/d1/testSchema";
 import { fulfilCheckout, type CheckoutSessionLike } from "@/lib/payments/fulfil";
 import { extendedProEnd, passFor, PASSES } from "@/lib/payments/passes";
 import {
+  CHECKOUT_EXPIRES_S,
   checkoutParams,
   createCheckoutSession,
   stripeEnabled,
@@ -45,7 +46,7 @@ describe("passFor", () => {
 describe("checkout params", () => {
   test("a one-time JPY payment carrying the user and pass", () => {
     const p = checkoutParams({
-      pass: PASSES["pro-12m"],
+      purchase: { kind: "pass", pass: PASSES["pro-12m"] },
       userId: "u1",
       email: "a@b.c",
       successUrl: "https://x/ok",
@@ -181,7 +182,7 @@ describe("stripe switches and the checkout call", () => {
     globalThis.fetch = realFetch;
   });
   const input = {
-    pass: PASSES["pro-1m"],
+    purchase: { kind: "pass" as const, pass: PASSES["pro-1m"] },
     userId: "u1",
     successUrl: "https://x/ok",
     cancelUrl: "https://x/no",
@@ -191,7 +192,7 @@ describe("stripe switches and the checkout call", () => {
     delete process.env.STRIPE_SECRET_KEY;
     process.env.STRIPE_WEBHOOK_SECRET = "whsec";
     expect(stripeEnabled()).toBe(false);
-    process.env.STRIPE_SECRET_KEY = "sk_test";
+    process.env.STRIPE_SECRET_KEY = "sk_test_x";
     expect(stripeEnabled()).toBe(true);
   });
 
@@ -202,15 +203,27 @@ describe("stripe switches and the checkout call", () => {
     expect(p.payment_method_options).toEqual({ card: { request_three_d_secure: "any" } });
   });
 
+  test("a Checkout link expires soon after Stripe's 30-minute minimum, not in 24 h", () => {
+    expect(CHECKOUT_EXPIRES_S).toBe(1800);
+    expect(checkoutParams(input, 1_000_000).expires_at).toBe(1_000_000 + 1800 + 60);
+    const now = Math.floor(Date.now() / 1000);
+    const at = checkoutParams(input).expires_at;
+    expect(at - now).toBeGreaterThanOrEqual(1860 - 1);
+    expect(at - now).toBeLessThanOrEqual(1860 + 1);
+  });
+
   test("returns the hosted URL Stripe answers with", async () => {
-    process.env.STRIPE_SECRET_KEY = "sk_test";
+    process.env.STRIPE_SECRET_KEY = "sk_test_x";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec";
     let sent: RequestInit | undefined;
     globalThis.fetch = (async (_url: string, init: RequestInit) => {
       sent = init;
-      return Response.json({ url: "https://checkout.stripe.com/c/pay/cs_1" });
+      return Response.json({ url: "https://checkout.stripe.com/c/pay/cs_1", livemode: false });
     }) as unknown as typeof fetch;
-    expect(await createCheckoutSession(input)).toBe("https://checkout.stripe.com/c/pay/cs_1");
-    expect((sent?.headers as Record<string, string>).Authorization).toBe("Bearer sk_test");
+    expect(await createCheckoutSession(input, "test")).toBe(
+      "https://checkout.stripe.com/c/pay/cs_1",
+    );
+    expect((sent?.headers as Record<string, string>).Authorization).toBe("Bearer sk_test_x");
     expect(String(sent?.body)).toContain("metadata%5BpassId%5D=pro-1m");
     // 3-D Secure is asked for on the wire, not just in the params object.
     expect(String(sent?.body)).toContain(
@@ -219,12 +232,13 @@ describe("stripe switches and the checkout call", () => {
   });
 
   test("throws with Stripe's message on an error", async () => {
-    process.env.STRIPE_SECRET_KEY = "sk_test";
+    process.env.STRIPE_SECRET_KEY = "sk_test_x";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec";
     globalThis.fetch = (async () =>
       Response.json(
         { error: { message: "alipay not enabled" } },
         { status: 400 },
       )) as unknown as typeof fetch;
-    await expect(createCheckoutSession(input)).rejects.toThrow("alipay not enabled");
+    await expect(createCheckoutSession(input, "test")).rejects.toThrow("alipay not enabled");
   });
 });

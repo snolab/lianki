@@ -77,17 +77,16 @@ function fakeStorage(
   };
 }
 
-function setup() {
+function setup(env?: unknown, storage = fakeStorage()) {
   const sockets: FakeSocket[] = [];
   let t = 1_000_000;
-  const storage = fakeStorage();
   const hub = new DebugHub(
     {
       acceptWebSocket: (ws) => sockets.push(ws as FakeSocket),
       getWebSockets: () => sockets,
       storage,
     },
-    undefined,
+    env,
     () => t,
   );
   const page = (label = "/words pwa iPhone") => {
@@ -387,7 +386,7 @@ describe("DebugHub chat", () => {
     expect(c.last("said")?.id).toBe(chats(p).at(-1)?.id as string);
   });
 
-  it("say --quiet / --loud: the hub keeps the flag (true only) and forwards it, live and in history", async () => {
+  it("say --quiet: the hub keeps the flag (true only) and forwards it, live and in history; an old loud is dropped", async () => {
     const { hub, page, controller, msg, pairOf } = setup();
     const p = page();
     const c = controller("main lane");
@@ -395,23 +394,24 @@ describe("DebugHub chat", () => {
     await msg(c, { type: "say", text: "deployed", quiet: true });
     await msg(c, { type: "say", text: "approve?", loud: true });
     await msg(c, { type: "say", text: "plain" });
-    // Not booleans: dropped. Both: loud wins (it may need his answer).
+    // Not booleans: dropped. loud means nothing now: dropped, quiet kept.
     await msg(c, { type: "say", text: "junk", quiet: "yes", loud: 1 });
     await msg(c, { type: "say", text: "both", quiet: true, loud: true });
     const lines = chats(p).slice(-5);
     expect(lines.map((m) => [m.text, m.quiet, m.loud])).toEqual([
       ["deployed", true, undefined],
-      ["approve?", undefined, true],
+      ["approve?", undefined, undefined],
       ["plain", undefined, undefined],
       ["junk", undefined, undefined],
-      ["both", undefined, true],
+      ["both", true, undefined],
     ]);
-    for (const m of lines.slice(2)) expect(m).not.toHaveProperty("quiet");
+    for (const m of lines) expect(m).not.toHaveProperty("loud");
+    for (const m of lines.slice(1, 4)) expect(m).not.toHaveProperty("quiet");
     const again = page();
     await hub.history();
     const h = again.last("history") as { messages: Record<string, unknown>[] };
     expect(h.messages.find((m) => m.text === "deployed")).toMatchObject({ quiet: true });
-    expect(h.messages.find((m) => m.text === "approve?")).toMatchObject({ loud: true });
+    expect(h.messages.find((m) => m.text === "approve?")).not.toHaveProperty("loud");
   });
 
   it("an unapproved controller cannot say", async () => {
@@ -587,6 +587,62 @@ describe("lianki-push debug routes", () => {
       owner: true,
     });
     expect(calls).toEqual(["https://lianki.com/api/debug/identity s=1"]);
+  });
+
+  it("the session tag and expiry pass through only when well-formed", async () => {
+    const answer = (body: unknown) => ({
+      fetch: async () => Response.json(body),
+    });
+    const req = upgrade("/api/version/debug", { origin: "https://lianki.com", cookie: "s=1" });
+    const base = { userId: "u1", email: "o@x", owner: true };
+    expect(
+      await debugIdentity(req, answer({ ...base, session: "a".repeat(64), sessionUntil: 5 })),
+    ).toEqual({ ...base, session: "a".repeat(64), sessionUntil: 5 });
+    expect(
+      await debugIdentity(req, answer({ ...base, session: "raw-session-id", sessionUntil: "x" })),
+    ).toEqual(base);
+  });
+
+  it("the session headers reach the hub from index.ts, and a page's own are dropped", async () => {
+    const seen: Headers[] = [];
+    const e = {
+      HUB: { idFromName: () => "v", get: () => ({ fetch: async () => new Response("v") }) },
+      DEBUG: {
+        idFromName: () => "d",
+        get: () => ({
+          fetch: async (r: Request) => {
+            seen.push(r.headers);
+            return new Response("d");
+          },
+        }),
+      },
+      MAIN: {
+        fetch: async () =>
+          Response.json({
+            userId: "u1",
+            email: "o@x",
+            owner: true,
+            session: "a".repeat(64),
+            sessionUntil: 77,
+          }),
+      },
+    } as unknown as Env;
+    await push.fetch(
+      upgrade("/api/version/debug", {
+        origin: "https://lianki.com",
+        cookie: "s=1",
+        "x-debug-session": "f".repeat(64),
+      }),
+      e,
+    );
+    expect(seen[0].get("x-debug-session")).toBe("a".repeat(64));
+    expect(seen[0].get("x-debug-session-until")).toBe("77");
+    // A sender cannot claim a session either.
+    await push.fetch(
+      upgrade("/api/version/debug/control", { "x-debug-session": "f".repeat(64) }),
+      e,
+    );
+    expect(seen[1].get("x-debug-session")).toBeNull();
   });
 
   it("the dev bridge header goes to the main Worker in place of a cookie", async () => {
@@ -867,6 +923,12 @@ describe("lianki-push routing", () => {
     );
     expect(await go("https://lianki-push/internal/friends", {})).toBe("200 debug");
     expect(await go("https://lianki.com/internal/friends", {})).toStartWith("404");
+    expect(await go("https://lianki-push/internal/signed-out", { method: "POST" })).toBe(
+      "200 debug",
+    );
+    expect(await go("https://lianki.com/internal/signed-out", { method: "POST" })).toStartWith(
+      "404",
+    );
     expect(await go("https://lianki.com/api/version/stream", {})).toContain("lianki-push");
     expect(await go("https://lianki.com/elsewhere", {})).toStartWith("404");
   });
@@ -1280,14 +1342,168 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
       text: "next word",
       source: "stt",
       wake: "passive",
+      wakeReason: "rejects",
     });
-    await s.msg(owner, { type: "chat", id: "w2", text: "typed", wake: "sleepy" });
+    await s.msg(owner, {
+      type: "chat",
+      id: "w2",
+      text: "typed",
+      wake: "sleepy",
+      wakeReason: "rejects",
+    });
+    await s.msg(owner, {
+      type: "chat",
+      id: "w3",
+      text: "woken",
+      wake: "active",
+      wakeReason: "made-up",
+    });
+    const stored = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as Record<string, unknown>)
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    expect(stored.map((m) => m.wake)).toEqual(["passive", undefined, "active"]);
+    // The reason rides only with a mode, and only a known one.
+    expect(stored.map((m) => m.wakeReason)).toEqual(["rejects", undefined, undefined]);
+  });
+
+  it("a voice line keeps only a speaker tag the Mac signed over exactly its words", async () => {
+    const mac = await speakerKey();
+    const s = setup({ STT_SPEAKER_PUB: mac.pub });
+    const owner = s.page();
+    await agent(s, owner);
+    const tag = {
+      decision: "me",
+      score: 0.47,
+      model: "campp",
+      device: "iphone",
+      speechS: 2.4,
+      snrDb: 21,
+    };
+    const at = 1_000_000;
+    const sign = (text: string, uid: string, o: Record<string, unknown> = {}) =>
+      mac.sign({ ...tag, text, uid: uid.padEnd(16, "x"), thread: "owner", at, ...o });
+    const say = (id: string, text: string, speakerProof: string[]) =>
+      s.msg(owner, { type: "chat", id, text, source: "stt", speakerProof });
+    const good = await sign("Next  word", "u1");
+    // Signed, fresh, this thread, the line's words (NFKC, spaces, final punctuation only): kept.
+    await say("s1", "Next word。", [good]);
+    // Two utterances, in order, joined by the page: kept.
+    await say("s2", "你好。 下一个!", [await sign("你好", "u2"), await sign("下一个!", "u3")]);
+    // The same proof again (replayed onto another line): dropped.
+    await say("s3", "Next word", [good]);
+    // A page's own tag, no proof: dropped.
+    await s.msg(owner, { type: "chat", id: "s4", text: "hi there", source: "stt", speaker: tag });
+    // A signed word dropped (the negation): dropped.
+    await say("s5", "delete all my cards", [await sign("do not delete all my cards", "u5")]);
+    // A word added, or replaced: dropped.
+    await say("s6", "next word now", [await sign("next word", "u6")]);
+    await say("s7", "next bird", [await sign("next word", "u7")]);
+    // The utterances out of order: dropped.
+    await say("s8", "下一个 你好", [await sign("你好", "u8"), await sign("下一个", "u9")]);
+    // Another key, another thread, stale: dropped.
+    const forger = await speakerKey();
+    await say("s9", "next word", [
+      await forger.sign({
+        ...tag,
+        text: "next word",
+        uid: "u10".padEnd(16, "x"),
+        thread: "owner",
+        at,
+      }),
+    ]);
+    await say("s10", "next word", [await sign("next word", "u11", { thread: "friend-1" })]);
+    await say("s11", "next word", [await sign("next word", "u12", { at: at - 11 * 60_000 })]);
     const stored = [...s.storage.store.entries()]
       .filter(([k]) => k.startsWith("msg:"))
       .map(([, v]) => v as Record<string, unknown>);
-    expect(stored.map((m) => m.wake)).toEqual(["passive", undefined]);
+    expect(stored.map((m) => !!m.speaker)).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    // The signed words ride on the stored tag (an approval must use them, not the line).
+    expect(stored[0]!.speaker).toEqual({ ...tag, signed: ["Next  word"] });
+    // Burned durably: a new hub on the same storage (a restart, a deploy) refuses it too.
+    const again = setup({ STT_SPEAKER_PUB: mac.pub }, s.storage);
+    const p2 = again.page();
+    await agent(again, p2);
+    await again.msg(p2, {
+      type: "chat",
+      id: "r1",
+      text: "Next word",
+      source: "stt",
+      speakerProof: [good],
+    });
+    const r1 = [...again.storage.store.values()].find((v) => (v as { id?: string }).id === "r1") as
+      | Record<string, unknown>
+      | undefined;
+    expect(r1?.speaker).toBeUndefined();
+    expect([...s.storage.store.keys()].filter((k) => k.startsWith("proof:")).length).toBe(3);
+  });
+
+  it("without STT_SPEAKER_PUB no tag is ever kept", async () => {
+    const mac = await speakerKey();
+    const s = setup();
+    const owner = s.page();
+    await agent(s, owner);
+    const p = await mac.sign({
+      decision: "me",
+      score: 0.5,
+      text: "next word",
+      uid: "u1".padEnd(16, "x"),
+      thread: "owner",
+      at: 1_000_000,
+    });
+    await s.msg(owner, {
+      type: "chat",
+      id: "s1",
+      text: "next word",
+      source: "stt",
+      speakerProof: [p],
+    });
+    const stored = [...s.storage.store.values()].filter(
+      (v) => (v as { id?: string }).id === "s1",
+    ) as Record<string, unknown>[];
+    expect(stored[0]?.speaker).toBeUndefined();
   });
 });
+
+/** A stand-in for the Mac's attestation key (voiceprint.py Attestor), same wire form. */
+async function speakerKey() {
+  const kp = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
+  const b64 = (b: Uint8Array) =>
+    btoa(String.fromCharCode(...b))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  const pub = b64(new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey)));
+  return {
+    pub,
+    async sign(payload: Record<string, unknown>) {
+      const body = b64(new TextEncoder().encode(JSON.stringify({ v: 1, ...payload })));
+      const sig = new Uint8Array(
+        await crypto.subtle.sign(
+          { name: "Ed25519" },
+          kp.privateKey,
+          new TextEncoder().encode(body),
+        ),
+      );
+      return `${body}.${b64(sig)}`;
+    },
+  };
+}
 
 describe("DebugHub page moves (relabel)", () => {
   it("relabels only that socket, tells the listeners silently, and later chat carries the new path", async () => {

@@ -46,6 +46,37 @@ verified 2026-10-14). There the nightly run is the only integration gate; `LIANK
 the local run, for example to re-test after an OpenNext upgrade. WSL counts as
 Linux and runs the gate normally.
 
+## Deploy order
+
+`.github/workflows/deploy-worker.yml` runs after CI passes on `main`: OpenNext
+build, asset hygiene, **Worker exports unchanged**
+(`scripts/ci/check-worker-exports.ts`), D1 migrations, then the Workers in
+this order:
+
+1. `lianki-monitor` — the main Worker names it as its tail consumer.
+2. `lianki` (the main Worker) — before lianki-push, because lianki-push binds
+   one of its named RPC entrypoints (`SESSIONS` → `lianki#DebugSessions`,
+   `worker.ts`). A binding to an entrypoint the callee does not export yet can
+   be refused at deploy time, which would stop the run and keep main from
+   updating; Cloudflare's advice is to deploy the callee first
+   ([service bindings, deployment](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/#deployment)).
+3. `lianki-push` — the reverse direction needs nothing new: the main Worker's
+   `PUSH` binding is to lianki-push's default `fetch`, which already exists,
+   and a route lianki-push adds later is only called with a fallback (the
+   sign-out notice goes to the D1 outbox until lianki-push answers).
+4. `lianki-voice` — last and non-blocking.
+
+Until 2026-11-02 lianki-push went before `lianki`; that was fine while every
+binding between them was a plain one. Adding a new entrypoint or RPC method:
+keep the callee first. Removing one: deploy the caller without the binding
+first, then the callee.
+
+`worker.ts` is the main Worker's entry: it re-exports everything the OpenNext
+build exports (`export *`, and the whole default handler) and adds
+`DebugSessions`. The export check bundles it like the deploy does
+(`wrangler deploy --dry-run`) and fails the run if the set differs from the
+build's own plus `DebugSessions`.
+
 ## Branch protection — two mechanisms
 
 Don't confuse them when debugging a rejected push:

@@ -1,0 +1,31 @@
+{"term":"誰か助けて！","reading":"だれかたすけて","back":"Somebody help!","note":"Shouted when you need help right now.","register":"casual","scene":"calling for help","src":"tatoeba:2529055","by":"tommy_san"}
+{"term":"救急車を呼んでください！","reading":"きゅうきゅうしゃをよんでください","back":"Call an ambulance!","note":"To bystanders. The number in Japan is one-one-nine.","register":"polite","scene":"calling for help","src":"tatoeba:182412","by":"tommy_san"}
+{"term":"警察を呼んでください。","reading":"けいさつをよんでください","back":"Please call the police.","note":"To staff or bystanders. Police in Japan is one-one-zero.","register":"polite","scene":"calling for help","src":"generated"}
+{"term":"救急車呼びましょうか？","reading":"きゅうきゅうしゃよびましょうか","back":"Should I call an ambulance?","note":"Offering help to someone who's hurt or collapsed.","register":"polite","scene":"helping someone","src":"tatoeba:2838455","by":"tommy_san"}
+{"term":"危ない！","reading":"あぶない","back":"Watch out!","note":"Shouted to warn someone of danger.","register":"casual","scene":"warnings","src":"tatoeba:183597","by":"bunbuku"}
+{"term":"火事だ！","reading":"かじだ","back":"Fire!","note":"Shouted to alert people.","register":"casual","scene":"fire","src":"tatoeba:5955873","by":"tatoebane"}
+{"term":"火事ですか、救急ですか？","reading":"かじですかきゅうきゅうですか","back":"Fire or ambulance?","note":"First question from the 119 operator.","register":"polite","scene":"calling 119","src":"generated"}
+{"term":"事件ですか、事故ですか？","reading":"じけんですかじこですか","back":"Is it a crime or an accident?","note":"First question from the 110 police operator.","register":"polite","scene":"calling 110","src":"generated"}
+{"term":"大丈夫ですか？","reading":"だいじょうぶですか","back":"Are you OK?","note":"To a stranger who fell or looks unwell.","register":"polite","scene":"helping someone","src":"generated"}
+{"term":"怪我はない？","reading":"けがはない","back":"Are you hurt?","note":"Checking on a friend after a fall or accident.","register":"casual","scene":"helping someone","src":"tatoeba:10682289","by":"small_snow"}
+{"term":"何があったの？","reading":"なにがあったの","back":"What happened?","note":"Asking a friend after something went wrong.","register":"casual","scene":"after an incident","src":"tatoeba:188169","by":"bunbuku"}
+{"term":"落ち着いてください。","reading":"おちついてください","back":"Please stay calm.","note":"Said by police, staff or anyone calming a crowd.","register":"polite","scene":"after an incident","src":"tatoeba:10701773","by":"small_snow"}
+{"term":"財布をなくしたみたい。","reading":"さいふをなくしたみたい","back":"I think I lost my wallet.","note":"Telling a friend in a panic.","register":"casual","scene":"lost items","src":"tatoeba:10574443","by":"small_snow"}
+{"term":"パスポートをなくしました。","reading":"パスポートをなくしました","back":"I've lost my passport.","note":"Reporting to police, hotel staff or the embassy.","register":"polite","scene":"lost items","src":"generated"}
+{"term":"バッグを盗まれました。","reading":"バッグをぬすまれました","back":"My bag was stolen.","note":"Reporting a theft to the police.","register":"polite","scene":"theft","src":"tatoeba:197966","by":"tommy_san"}
+{"term":"交番はどこですか？","reading":"こうばんはどこですか","back":"Where's the police box?","note":"交番 are small neighborhood police posts; go there first.","register":"polite","scene":"finding help","src":"generated"}
+{"term":"地震だ！","reading":"じしんだ","back":"Earthquake!","note":"Shouted when the shaking starts. Get under a table.","register":"casual","scene":"earthquakes","src":"generated"}
+{"term":"揺れてる？","reading":"ゆれてる","back":"Is it shaking?","note":"Asked when you're not sure if it's a quake.","register":"casual","scene":"earthquakes","src":"generated"}
+{"term":"避難所はどこですか？","reading":"ひなんじょはどこですか","back":"Where's the evacuation shelter?","note":"After a disaster. Usually a nearby school.","register":"polite","scene":"disasters","src":"generated"}
+{"term":"至急、高台に避難してください。","reading":"しきゅうたかだいにひなんしてください","back":"Evacuate to high ground now.","note":"Tsunami warning on loudspeakers or TV. Move immediately.","register":"polite","scene":"disasters","src":"tatoeba:1180855","by":"bunbuku"}
+{"term":"早く逃げて！","reading":"はやくにげて","back":"Get out, quick!","note":"Urging someone to run from fire or danger.","register":"casual","scene":"fire","src":"generated"}
+{"term":"気をつけて！","reading":"きをつけて","back":"Be careful!","note":"Warning someone of a hazard.","register":"casual","scene":"warnings","src":"tatoeba:1266928","by":"bunbuku"}
+{"term":"やめてください！","reading":"やめてください","back":"Stop it!","note":"Firm and loud to someone harassing you.","register":"polite","scene":"harassment","src":"tatoeba:10901607","by":"small_snow"}
+{"term":"痴漢です！","reading":"ちかんです","back":"This man is groping me!","note":"Shout it on a crowded train to get help.","register":"polite","scene":"harassment","src":"generated"}
+{"term":"泥棒！","reading":"どろぼう","back":"Thief!","note":"Shouted to make people notice and stop the thief.","register":"casual","scene":"theft","src":"generated"}
+{"term":"英語を話せる人はいますか？","reading":"えいごをはなせるひとはいますか","back":"Does anyone here speak English?","note":"Asking for someone who can help translate.","register":"polite","scene":"finding help","src":"generated"}
+{"term":"お願い、急いで！","reading":"おねがいいそいで","back":"Please, hurry!","note":"Begging someone to move fast.","register":"casual","scene":"calling for help","src":"tatoeba:227358","by":"arnab"}
+{"term":"動かないで！","reading":"うごかないで","back":"Don't move!","note":"To an injured person, or someone near danger.","register":"casual","scene":"helping someone","src":"generated"}
+{"term":"AED持ってきて！","reading":"エーイーディーもってきて","back":"Get the AED!","note":"Shouted when someone collapses. AEDs are in stations and shops.","register":"casual","scene":"helping someone","src":"generated"}
+{"term":"警察に電話したよ。","reading":"けいさつにでんわしたよ","back":"I called the police.","note":"Reassuring others that help is coming.","register":"casual","scene":"after an incident","src":"tatoeba:8974455","by":"bunbuku"}
+{"term":"危ないとこだったよ。","reading":"あぶないとこだったよ","back":"That was close.","note":"After a near miss.","register":"casual","scene":"after an incident","src":"tatoeba:9161932","by":"bunbuku"}

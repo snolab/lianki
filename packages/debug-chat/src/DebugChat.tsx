@@ -58,8 +58,10 @@ import { clipsAction, clipsDevice, clipsLive } from "./clips-store";
 import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttFrom } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
-import { DebugMic, canCapture, playSentTick } from "./MicButton";
-import { SPEAK_KEY, type VoiceState, speechEnabled, voice } from "./voice";
+import { DebugMic, canCapture, pageMic, playSentTick, voiceDevice } from "./MicButton";
+import { VoiceMark, VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
+import { clearSpeaker, takeSpeaker } from "./voiceprint";
+import { SPEAK_KEY, type VoiceState, speechEnabled, unheard, voice } from "./voice";
 import {
   type ReadingLeft,
   initialRead,
@@ -70,8 +72,8 @@ import {
   sentenceRanges,
   sentenceState,
 } from "./read-progress";
-import { aecOn, cloudOut, outMode, setAec } from "./voice-out";
-import type { SpeakMeta } from "./quiet-hours";
+import { aecOn, cloudOut, noSpeechVoices, outMode, setAec } from "./voice-out";
+import type { SpeakMeta } from "./speak-rules";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
   FADE_MS,
@@ -418,9 +420,8 @@ if (typeof window !== "undefined")
  * called for a reply that arrived live, never for history. With the mic on it
  * is always read; otherwise only to someone typing here with the speaker on.
  * DebugEval calls this bundled copy; the hot-loaded chat shares the session.
- * `meta` is the line itself (its quiet, loud and ask): a hidden page, a quiet
- * line and quiet hours keep it silent (quiet-hours.ts), a loud one is exempt
- * from quiet hours.
+ * `meta` is the line itself (its id and quiet): a hidden page and a quiet
+ * line keep it silent (speak-rules.ts).
  */
 export function speakReply(text: string, meta?: SpeakMeta): boolean {
   return voice().reply(text, meta);
@@ -433,8 +434,9 @@ function unlockSpeech() {
   if (unlocked || !s) return;
   unlocked = true;
   s.speak(new SpeechSynthesisUtterance(""));
-  // The cloud voice's <audio> element too (lk:voice-out = "cloud").
-  if (outMode() === "cloud") cloudOut()?.unlock();
+  // The cloud voice's <audio> element too: lk:voice-out = "cloud", or a
+  // device with no speechSynthesis voices, whose replies the cloud reads.
+  if (outMode() === "cloud" || noSpeechVoices()) cloudOut()?.unlock();
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -469,7 +471,7 @@ export type DebugChatProps = {
   onSend: (
     text: string,
     to?: string,
-    opts?: { source?: MessageSource; timing?: VoiceTiming },
+    opts?: { source?: MessageSource; timing?: VoiceTiming; speakerProof?: string[] },
   ) => boolean;
   /**
    * A tap on an ask card (AskCard.tsx): the page sends {type:"answer",
@@ -488,6 +490,8 @@ export type DebugChatProps = {
   friend?: boolean;
   /** Shown instead of the input when this account cannot chat (blocked). */
   notice?: string;
+  /** With `notice`: a link under it (the read-only partner on another site: type on lianki.com). */
+  noticeHref?: { href: string; label: string };
   /** A one-line note above the input (a message dropped by the rate limit). */
   warning?: string;
   /**
@@ -544,6 +548,14 @@ export type DebugChatProps = {
   avatarFor?: (m: ChatMessage) => Sender | undefined;
   /** The mark on a voice line the agent polished (default POLISHED_ICON, a sparkle). */
   polishedIcon?: ReactNode;
+  /**
+   * On another site (the userscript, embed/; docs/dev-debug-widget.md "On
+   * every site"): no mic, no voice-clip recording, and Escape is taken only
+   * while focus is inside the chat, so the page's own keys are never touched.
+   */
+  embedded?: boolean;
+  /** Where the full-screen sheet and badges are portalled (default document.body; the shadow root's container when embedded). */
+  portalRoot?: Element;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -573,6 +585,7 @@ export function DebugChat({
   evalRan = false,
   friend = false,
   notice,
+  noticeHref,
   warning,
   busy = null,
   note,
@@ -593,6 +606,8 @@ export function DebugChat({
   avatarFor,
   nodes = [],
   polishedIcon = POLISHED_ICON,
+  embedded = false,
+  portalRoot,
 }: DebugChatProps) {
   const t = chatStrings(strings);
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
@@ -620,7 +635,9 @@ export function DebugChat({
    * sessions; a double tap on the mark) or the state tree (the tree button).
    * Opening one closes the other.
    */
-  const [panel, setPanel] = useState<"none" | "menu" | "tree">(() => uiStore.getState().panel);
+  const [panel, setPanel] = useState<"none" | "menu" | "tree" | "voiceprint">(
+    () => uiStore.getState().panel,
+  );
   // Kept for a refresh or a hot swap (ui-store.ts): the tree, never the menu.
   useEffect(() => uiStore.setState({ panel: panel === "tree" ? "tree" : "none" }), [panel]);
   const menu = panel === "menu";
@@ -743,6 +760,13 @@ export function DebugChat({
   const fetchedTree = useFragmentSource(tree && !renderTree && !treeSource);
   /** The widget's strings for the page's language (ui-strings.ts), under the host's. */
   const ui = uiStrings();
+  /** Agent lines not read aloud because the page was in the background (voice.ts gateVoice). */
+  const [unheardIds, setUnheardIds] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    const u = unheard();
+    setUnheardIds(u.ids);
+    return u.subscribe(() => setUnheardIds(u.ids));
+  }, []);
   /** The latest voice → reply breakdown (latency.ts), for the menu. */
   const [lastLatency, setLastLatency] = useState(() => voiceLatency().latest());
   useEffect(() => {
@@ -902,6 +926,12 @@ export function DebugChat({
     if (!tree) return;
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // On another site, the page's Escape stays the page's unless the chat has focus.
+      if (embedded) {
+        const box = root.current;
+        const scope = box?.getRootNode() as Document | ShadowRoot | undefined;
+        if (!box || !scope?.activeElement || !box.contains(scope.activeElement)) return;
+      }
       e.stopPropagation();
       setPanel("none");
     };
@@ -1479,11 +1509,16 @@ export function DebugChat({
     const source = draftSource(draftRef.current, pureDictation.current);
     // A voice line carries its timestamps (latency.ts): the latest utterance in it.
     const timing = source ? voiceLatency().take() : undefined;
+    // And the Mac's speaker check (voiceprint.ts): the weakest of its utterances.
+    // The Mac's signed proofs ride along; the hub verifies them and stores the tag.
+    const speakerProof = source ? takeSpeaker().proofs : (clearSpeaker(), undefined);
     if (
       !sendRef.current(
         text,
         to === ROOT_NODE ? undefined : to,
-        source ? { source, ...(timing ? { timing } : {}) } : undefined,
+        source
+          ? { source, ...(timing ? { timing } : {}), ...(speakerProof?.length ? { speakerProof } : {}) }
+          : undefined,
       )
     ) {
       setOffline(true);
@@ -1521,7 +1556,8 @@ export function DebugChat({
   const micPending = useRef(0);
   /** This browser can capture (the mic button shows inside the input). */
   const [hasMic, setHasMic] = useState(false);
-  useEffect(() => setHasMic(canCapture()), []);
+  // No mic on another site: its speech-to-text and voice are lianki.com's.
+  useEffect(() => setHasMic(!embedded && canCapture()), [embedded]);
   /** Dimmed after the draft: partial transcripts, or "…" for those still out. */
   const [interim, setInterim] = useState("");
   const mirror = useRef<HTMLDivElement | null>(null);
@@ -2175,7 +2211,16 @@ export function DebugChat({
                 you: t.you,
               })}
               text={p.text}
-              mark={p.mark}
+              mark={
+                m.speaker?.decision === "me" ? (
+                  <>
+                    {p.mark}
+                    <VoiceMark label={t.vpVerified} />
+                  </>
+                ) : (
+                  p.mark
+                )
+              }
               epoch={floatEpoch}
               paused={floatHover || scrubbing}
               onHover={setFloatHover}
@@ -2205,6 +2250,14 @@ export function DebugChat({
       )}
     </div>
   );
+  /** The voiceprint panel's page side: the Mac over the local STT socket, and the mic session. */
+  const voiceprintDeps = () =>
+    panelDeps({
+      url: localSttFrom(read(LOCAL_STT_KEY)) ?? "",
+      device: voiceDevice(),
+      capture: (on, onFinal, id) => pageMic().enrolCapture(on, onFinal, id),
+      log: (ev) => voice().log(ev),
+    });
   /** The menu (a double tap on the mark), open or minimized. */
   const menuEl = menu && (
     <div
@@ -2378,8 +2431,23 @@ export function DebugChat({
           {treeStrings(treeText).tree}
         </button>
       )}
+      {/* The voiceprint (voiceprint.ts): owner pages with a local STT; enrolling and deleting are taps in its panel. */}
+      {!friend && localSttFrom(read(LOCAL_STT_KEY)) && (
+        <button
+          type="button"
+          role="menuitem"
+          data-testid="debug-menu-voiceprint"
+          onClick={() => setPanel("voiceprint")}
+          className="flex items-center gap-2 px-3 py-1.5 text-start"
+        >
+          <span aria-hidden className="w-[1em] text-center">
+            ◎
+          </span>
+          {t.vpMenu}
+        </button>
+      )}
       {/* Voice clips (clips.ts): a tap turns this window's recording on; the badge stops it. */}
-      {!friend && !clipsHub?.on && clipsCanStart && (
+      {!friend && !embedded && !clipsHub?.on && clipsCanStart && (
         <>
           <button
             type="button"
@@ -2757,8 +2825,9 @@ export function DebugChat({
     >
       {/* The recording badge, top of the screen, out of the box's transform. */}
       {!friend &&
+        !embedded &&
         typeof document !== "undefined" &&
-        createPortal(<ClipsBadge strings={t} />, document.body)}
+        createPortal(<ClipsBadge strings={t} />, portalRoot ?? document.body)}
       {fullLog !== "off" &&
         typeof document !== "undefined" &&
         createPortal(
@@ -2776,7 +2845,7 @@ export function DebugChat({
             }}
             className={`pointer-events-none fixed -inset-12 z-[39] transition-opacity duration-200 ease-out starting:opacity-0 motion-reduce:transition-none ${fullLog === "leaving" ? "opacity-0" : "opacity-100"}`}
           />,
-          document.body,
+          portalRoot ?? document.body,
         )}
       {/* Expanded, one or the other in the log's slot: the state tree, or the log. */}
       {open && tree && treePanel(false)}
@@ -2889,8 +2958,8 @@ export function DebugChat({
                         data-from={m.from}
                         data-node={node?.node}
                         data-run-start={k === 0 || undefined}
-                        // say --quiet / --loud: shown alike; only reading it aloud differs (quiet-hours.ts).
-                        data-volume={m.loud ? "loud" : m.quiet ? "quiet" : undefined}
+                        // say --quiet: shown alike; only reading it aloud differs (speak-rules.ts).
+                        data-volume={m.quiet ? "quiet" : undefined}
                         title={
                           node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)
                         }
@@ -2909,6 +2978,15 @@ export function DebugChat({
                           />
                         )}
                         {polish(m).mark}
+                        {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
+                        {m.from === "agent" && unheardIds.has(m.id) && (
+                          <span
+                            data-testid="debug-chat-unheard"
+                            className="ms-1 text-[10px] text-gray-500"
+                          >
+                            {t.notReadHidden}
+                          </span>
+                        )}
                         {!agentOnline && m.from !== "agent" && i > lastAgent && (
                           <span
                             data-testid="debug-chat-queued"
@@ -3119,6 +3197,17 @@ export function DebugChat({
                 className="min-w-0 flex-1 px-2 py-2 text-gray-600 dark:text-gray-400"
               >
                 {notice}
+                {noticeHref && (
+                  <a
+                    href={noticeHref.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="debug-chat-notice-link"
+                    className="pointer-events-auto ms-1 underline"
+                  >
+                    {noticeHref.label}
+                  </a>
+                )}
               </p>
             ) : (
               <>
@@ -3282,6 +3371,11 @@ export function DebugChat({
         <span aria-hidden />
         {floatBoxEl}
         {menuEl}
+        {panel === "voiceprint" && (
+          <div className="pointer-events-auto absolute inset-x-0 bottom-full mb-1">
+            <VoiceprintPanel t={t} deps={voiceprintDeps} onClose={() => setPanel("none")} />
+          </div>
+        )}
       </div>
     </section>
   );

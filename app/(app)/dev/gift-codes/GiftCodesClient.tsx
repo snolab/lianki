@@ -6,6 +6,7 @@ import type { GiftCodeRow } from "@/lib/referrals/store";
 export function GiftCodesClient() {
   const [codes, setCodes] = useState<GiftCodeRow[]>([]);
   const [days, setDays] = useState(7);
+  const [credits, setCredits] = useState(0);
   const [maxUses, setMaxUses] = useState(1);
   const [note, setNote] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
@@ -28,6 +29,7 @@ export function GiftCodesClient() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         days,
+        credits,
         maxUses,
         note: note || undefined,
         expiresAt: expiresAt || undefined,
@@ -46,15 +48,27 @@ export function GiftCodesClient() {
     "rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2";
   return (
     <div className="space-y-6">
-      <form onSubmit={create} className="grid grid-cols-2 gap-3 sm:grid-cols-4 items-end">
+      <form onSubmit={create} className="grid grid-cols-2 gap-3 sm:grid-cols-5 items-end">
         <label className="space-y-1 text-sm">
           <span>天数</span>
           <input
             type="number"
-            min={1}
+            min={0}
             max={3660}
             value={days}
             onChange={(e) => setDays(Number(e.target.value))}
+            className={`${field} w-full`}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span>余额（日元，可 0）</span>
+          <input
+            type="number"
+            min={0}
+            max={100000}
+            step={100}
+            value={credits}
+            onChange={(e) => setCredits(Number(e.target.value))}
             className={`${field} w-full`}
           />
         </label>
@@ -89,7 +103,7 @@ export function GiftCodesClient() {
         </label>
         <button
           type="submit"
-          className="col-span-2 sm:col-span-4 rounded-lg bg-blue-600 text-white px-4 py-2 font-semibold"
+          className="col-span-2 sm:col-span-5 rounded-lg bg-blue-600 text-white px-4 py-2 font-semibold"
         >
           生成
         </button>
@@ -105,6 +119,7 @@ export function GiftCodesClient() {
           <tr className="text-left opacity-60">
             <th>码</th>
             <th>天数</th>
+            <th>余额</th>
             <th>已用/次数</th>
             <th>到期</th>
             <th>备注</th>
@@ -115,6 +130,7 @@ export function GiftCodesClient() {
             <tr key={c.code} className="border-t border-gray-200 dark:border-gray-700">
               <td className="font-mono select-all py-1">{c.code}</td>
               <td>{c.days}</td>
+              <td>{c.credits ? `¥${c.credits}` : "—"}</td>
               <td>
                 {c.uses}/{c.maxUses}
               </td>

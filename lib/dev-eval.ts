@@ -20,8 +20,12 @@ import {
   type MessageSource,
   type VoiceTiming,
   cleanTiming,
+  type SpeakerTag,
+  cleanSpeaker,
 } from "../packages/debug-chat/src/wire";
 import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
+import { cleanProofs } from "./speaker-proof";
+import { type WakeReason, isWakeReason } from "../packages/debug-chat/src/wake";
 
 export {
   MAX_AGENT_ID,
@@ -60,6 +64,10 @@ export {
   draftSource,
   type VoiceTiming,
   cleanTiming,
+  type SpeakerTag,
+  type SpeakerDecision,
+  cleanSpeaker,
+  combineSpeaker,
 } from "../packages/debug-chat/src/wire";
 
 /** Largest `code` accepted, in characters. */
@@ -87,6 +95,16 @@ export const APPROVAL_MS = 60 * 60_000;
  * then, or until End revokes it.
  */
 export const EVAL_GRANT_MS = 8 * 60 * 60_000;
+/**
+ * Auto-renewal of the owner's eval grant (docs/monitoring.md, "Renewal"): with
+ * less than this left, a use of the grant (or the one alarm set for that
+ * moment, or the approving page coming back) extends it by EVAL_GRANT_MS —
+ * only while the owner's page on the device that approved it, signed in with
+ * the same session, is connected.
+ */
+export const EVAL_RENEW_BEFORE_MS = 2 * 60 * 60_000;
+/** A renewal chain ends this long after the tap that started it: then a new tap. */
+export const EVAL_CHAIN_MS = 30 * 24 * 60 * 60_000;
 /** How long "Allow chat" lasts — and its resumable grant token. */
 export const CHAT_MS = 30 * 24 * 60 * 60_000;
 /** Chat messages the hub keeps per thread (and sends a page on connect). */
@@ -117,7 +135,25 @@ export type Identity = {
   /** Display name and picture URL (better-auth's user.name / user.image), when known: the chat's avatars. */
   name?: string;
   image?: string;
+  /**
+   * The sign-in session: sessionTag(session id), never the id or its token,
+   * and when it expires (ms). Binds an eval grant's renewal to it.
+   */
+  session?: string;
+  sessionUntil?: number;
 };
+
+/** A sign-in session as the debug hub knows it: a SHA-256 of its id, never the id itself. */
+export async function sessionTag(sessionId: string): Promise<string> {
+  const d = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`lianki-debug-session:${sessionId}`),
+  );
+  return Array.from(new Uint8Array(d), (x) => x.toString(16).padStart(2, "0")).join("");
+}
+/** A session tag as sessionTag makes it. */
+export const isSessionTag = (v: unknown): v is string =>
+  typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
 
 /** A user id usable as a thread and a storage key: no separators, bounded. */
 export const isUserId = (v: unknown): v is string =>
@@ -152,9 +188,8 @@ export type ControllerMessage =
       node?: string;
       taskPath?: string;
       agentId?: string;
-      /** `say --quiet`: shown, never read aloud. `say --loud`: read even in quiet hours. */
+      /** `say --quiet`: shown, never read aloud. */
       quiet?: true;
-      loud?: true;
     }
   | { type: "busy"; to?: string; label?: string }
   /**
@@ -198,6 +233,13 @@ export type PageMessage =
       timing?: VoiceTiming;
       /** The mic's wake-word mode when the line was sent (docs/wake-word.md); absent = mic off. */
       wake?: "active" | "passive";
+      /**
+       * The Mac's signed speaker attestations for a voice line's finals
+       * (lib/speaker-proof.ts). The hub verifies them; a page-made tag is never taken.
+       */
+      speakerProof?: string[];
+      /** Why the mic is in that mode (wake.ts WakeReason: "rejects", "wake-word", "kws-failed", …). */
+      wakeReason?: WakeReason;
     }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
@@ -336,9 +378,8 @@ export function parseControllerMessage(
     if (m.taskPath !== undefined && !taskPath)
       return { ok: false, error: `not a node path: ${String(m.taskPath)}` };
     const agentId = agentIdOf(m.agentId);
-    // Booleans only, and only `true` is kept; loud wins over quiet (it may need his answer).
-    const loud = m.loud === true;
-    const quiet = m.quiet === true && !loud;
+    // A boolean only, and only `true` is kept. An old `loud` is dropped: it means nothing now.
+    const quiet = m.quiet === true;
     return {
       ok: true,
       value: {
@@ -349,7 +390,6 @@ export function parseControllerMessage(
         ...(taskPath && taskPath !== ROOT_NODE ? { taskPath } : {}),
         ...(agentId ? { agentId } : {}),
         ...(quiet ? { quiet: true as const } : {}),
-        ...(loud ? { loud: true as const } : {}),
       },
     };
   }
@@ -458,6 +498,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     // An address that is not a node path is dropped: the line goes to the main thread.
     const to = nodePath(m.to);
     const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
+    const speakerProof = m.source === "stt" ? cleanProofs(m.speakerProof) : undefined;
     return {
       type: "chat",
       id,
@@ -466,6 +507,10 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
       ...(timing ? { timing } : {}),
       ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
+      ...(speakerProof ? { speakerProof } : {}),
+      ...((m.wake === "active" || m.wake === "passive") && isWakeReason(m.wakeReason)
+        ? { wakeReason: m.wakeReason }
+        : {}),
     };
   }
   if (m.type === "page-error") return parsePageError(m);

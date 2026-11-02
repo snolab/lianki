@@ -29,21 +29,24 @@ import {
   createMic,
   keepStream,
 } from "./mic";
-import type { LocalState } from "./local-stt";
+import type { LocalFinal, LocalState } from "./local-stt";
+import type { SpeakerTag } from "./wire";
 import type { KwsState } from "./wake-kws";
-import { type WakeCommand, type WakeMode, type WakeReason, type WakeSpot, createWake } from "./wake";
+import { type SpotResult, type WakeCommand, type WakeMode, type WakeReason, createWake } from "./wake";
 
 /** What the session needs of a local STT client (local-stt.ts LocalStt). */
 export type LocalClient = StreamStt & {
   close(): void;
   state(): LocalState;
   subscribe(f: (s: LocalState) => void): () => void;
+  /** A voiceprint request (local-stt.ts request); absent on an older client. */
+  request?(msg: Record<string, unknown>): Promise<Record<string, unknown>>;
 };
 
 /** globalThis key of the session. */
 export const MIC_SESSION_KEY = "__lkMic";
 /** Bumped when the session's shape changes; an older one is migrated, its stream kept. */
-export const MIC_SESSION_V = 8;
+export const MIC_SESSION_V = 9;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -65,6 +68,8 @@ export type MicView = {
   local?: LocalState;
   /** Active: everything goes to STT. Passive: only "Linky" wakes it (wake.ts). */
   wake: WakeMode;
+  /** Why it is in that mode (its last change), sent with each chat line for the agents. */
+  wakeReason?: WakeReason;
   /** The on-device spotter, once passive mode first asked for it (wake-kws.ts). */
   kws?: Exclude<KwsState, "idle">;
 };
@@ -97,6 +102,8 @@ export type MicDeps = {
   log?: (ev: Record<string, unknown>) => void;
   /** A client for the local streaming STT at this URL (local-stt.ts createLocalStt). */
   localStt?: (url: string) => LocalClient;
+  /** Each kept final's speaker tag and the Mac's signed proof of it (voiceprint.ts noteSpeaker). */
+  speaker?: (tag: SpeakerTag | undefined, proof?: string) => void;
   /** A final utterance's timestamps (createMic's `timing`; latency.ts). */
   timing?: (seq: number, marks: UttMarks) => void;
   /**
@@ -105,7 +112,7 @@ export type MicDeps = {
    */
   kws?: (onState: (s: KwsState) => void) => {
     load(): Promise<void>;
-    spot(audio: Float32Array): Promise<WakeSpot & { ms?: number; error?: string }>;
+    spot(audio: Float32Array): Promise<SpotResult>;
   };
 };
 
@@ -129,6 +136,7 @@ export function createMicSession(
     error: null,
     resume: false,
     wake: "active",
+    wakeReason: "mic-on",
   };
   let cfg: MicConfig = { label: "" };
   const listeners = new Set<Listener>();
@@ -203,7 +211,7 @@ export function createMicSession(
   };
   const wake = createWake({
     onChange: (v, from, reason) => {
-      emit({ wake: v.mode });
+      emit({ wake: v.mode, wakeReason: v.reason });
       deps.log?.({ ev: "wake", from, to: v.mode, reason });
       if (v.mode === "passive") void spotter()?.load().catch(() => {});
     },
@@ -214,8 +222,18 @@ export function createMicSession(
     if (c === "passive" && !deps.kws) return;
     wake.set(c, reason);
   };
+  /** The enrolment card's hook while it records (voiceprint.ts), and whether it turned the mic on. */
+  let enrolHook: ((f: Promise<LocalFinal> | null) => void) | null = null;
+  /** The open enrolment's id on the Mac (its start answer). */
+  let enrolId = "";
+  let enrolOpened = false;
   const mic = createMic({
     stream: localStream,
+    enrol: {
+      active: () => !!enrolHook,
+      begin: (cb) => localStream()?.begin(cb, { enrol: enrolId }) ?? null,
+      done: (f) => enrolHook?.(f),
+    },
     adapt: deps.adapt,
     wake: deps.kws
       ? {
@@ -237,7 +255,7 @@ export function createMicSession(
       prev = s;
       // Listening always starts active: a tap on means "I'm talking to you".
       if (was === "off" && s !== "off") wake.set("active", "mic-on");
-      emit({ state: s, ...(s !== "off" ? { resume: false } : {}) });
+      emit({ state: s, wakeReason: wake.view().reason, ...(s !== "off" ? { resume: false } : {}) });
       deps.onState?.(s, was);
     },
     onText: (t) => (sink ? sink.onText(t) : void held.push(t)),
@@ -249,6 +267,7 @@ export function createMicSession(
     onProb: (p) => deps.onProb?.(p),
     log: (ev) => deps.log?.(ev),
     timing: (seq, m) => deps.timing?.(seq, m),
+    speaker: (t, p) => deps.speaker?.(t, p),
   });
   const unhold = deps.subscribeHold?.((h) => mic.hold(h));
 
@@ -298,6 +317,41 @@ export function createMicSession(
       stopStream();
     },
     hold: (on: boolean) => mic.hold(on),
+    /**
+     * Enrolment (voiceprint.ts): on, every utterance goes to `onFinal` as an
+     * enrolment sentence (to the Mac only), turning the mic on if it was off
+     * (the consent tap is the gesture); off, back to the chat, and the mic off
+     * again if enrolment turned it on.
+     */
+    async enrolCapture(
+      on: boolean,
+      onFinal: (f: Promise<LocalFinal> | null) => void,
+      id = "",
+    ) {
+      if (!on || !id) {
+        enrolHook = null;
+        enrolId = "";
+        if (enrolOpened && mic.state() !== "off") await session.off();
+        enrolOpened = false;
+        return;
+      }
+      enrolHook = onFinal;
+      enrolId = id;
+      if (mic.state() === "off") {
+        enrolOpened = true;
+        emit({ error: null });
+        await mic.toggle();
+        if (mic.state() === "off") {
+          // Refused or unavailable: nothing to enrol with.
+          enrolHook = null;
+          enrolId = "";
+          enrolOpened = false;
+          throw new Error("microphone not available");
+        }
+      }
+    },
+    /** Enrolling now: the button shows it, and the chat's draft gets nothing. */
+    enrolling: () => !!enrolHook,
     /**
      * Replaced by a newer session: the VAD goes, the stream stays (the new
      * session builds its VAD on it).

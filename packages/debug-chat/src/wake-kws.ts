@@ -11,7 +11,7 @@
  * utterance (a VAD segment) is checked at a time, after it ends, so the
  * spotter costs nothing while the room is quiet.
  */
-import { type Detection, LINKY, type WakeSpot, afterKeyword } from "./wake";
+import { type Detection, LINKY, type SpotResult, afterKeyword } from "./wake";
 
 /** The KWS runtime: its Emscripten glue and wasm (npm @sherpaw/kws, published 2026-10-12). */
 export const KWS_BASE = "https://cdn.jsdelivr.net/npm/@sherpaw/kws@0.3.0/dist/";
@@ -30,6 +30,13 @@ export const KWS_SHA256: Record<string, string> = {
 export const WAKE_CACHE = "lk-wake-v1";
 /** One utterance's check; past this the utterance is dropped as "no wake word". */
 export const SPOT_TIMEOUT_MS = 8_000;
+/**
+ * The spotter's start (download, digest checks, WASM init); past this it is
+ * "failed", so the mic goes back to active and no utterance waits on it. The
+ * Worker keeps going: if it gets ready later, the next passive turn uses it
+ * (a slow first download is not thrown away and started over).
+ */
+export const LOAD_TIMEOUT_MS = 15_000;
 export const RATE = 16_000;
 /** Silence appended so the spotter flushes a keyword at the very end of the segment. */
 export const TAIL_PAD_S = 1;
@@ -166,13 +173,17 @@ export type Kws = ReturnType<typeof createKws>;
 /**
  * The spotter's page side: `load()` starts the Worker once (later calls share
  * it), `spot(audio)` checks one utterance. A failed load can be retried by
- * calling `load()` again.
+ * calling `load()` again. A load still going after `loadTimeoutMs` is
+ * "failed" (`{ev: "wake-kws", error: "load-timeout"}`) and its waiters get
+ * no hit; a retry waits on the same Worker again rather than a new one.
  */
 export function createKws(o: {
   worker?: () => WorkerLike;
   log?: (ev: Record<string, unknown>) => void;
   onState?: (s: KwsState) => void;
   timeoutMs?: number;
+  /** LOAD_TIMEOUT_MS, shorter in the tests. */
+  loadTimeoutMs?: number;
   /** mayDownload, replaced in the tests. */
   allowed?: () => Promise<boolean>;
 }) {
@@ -206,8 +217,10 @@ export function createKws(o: {
     state = s;
     o.onState?.(s);
   };
+  /** The Worker's start itself, with no time limit; `ready` is it raced against the load timeout. */
+  let boot: Promise<void> | null = null;
   const load = () => {
-    if (ready && state !== "failed" && state !== "needs-wifi") return ready;
+    if (ready && (state === "ready" || state === "loading")) return ready;
     set("loading");
     const t0 = Date.now();
     const start = () =>
@@ -239,6 +252,8 @@ export function createKws(o: {
           downloaded?: boolean;
         };
         if (m.type === "ready") {
+          // Also after a load timeout: the next passive turn finds it ready.
+          ready = Promise.resolve();
           set("ready");
           o.log?.({ ev: "wake-kws", ok: true, ms: m.ms, downloaded: m.downloaded });
           resolve();
@@ -251,23 +266,41 @@ export function createKws(o: {
       };
       w.postMessage({ type: "init", keywords: [LINKY] });
     });
-    ready = (o.allowed ?? mayDownload)()
-      .catch(() => true)
-      .then((ok) => {
-        if (ok) return start();
-        set("needs-wifi");
-        o.log?.({ ev: "wake-kws", ok: false, error: "needs-wifi" });
-        throw new Error("needs-wifi");
+    if (!boot) {
+      const b = (o.allowed ?? mayDownload)()
+        .catch(() => true)
+        .then((ok) => {
+          if (ok) return start();
+          set("needs-wifi");
+          o.log?.({ ev: "wake-kws", ok: false, error: "needs-wifi" });
+          throw new Error("needs-wifi");
+        });
+      // A failed start is forgotten, so the next load() tries again from the top.
+      b.catch(() => {
+        if (boot === b) boot = null;
       });
-    ready.catch(() => {});
-    return ready;
+      boot = b;
+    }
+    const b = boot;
+    const p = new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => {
+        if (state !== "loading") return;
+        set("failed");
+        o.log?.({ ev: "wake-kws", ok: false, error: "load-timeout", ms: Date.now() - t0 });
+        reject(new Error("load-timeout"));
+      }, o.loadTimeoutMs ?? LOAD_TIMEOUT_MS);
+      b.then(resolve, reject).finally(() => clearTimeout(t));
+    });
+    p.catch(() => {});
+    ready = p;
+    return p;
   };
   /** Check one utterance (16 kHz mono) for "Linky"; never throws (a failure is "no hit"). */
-  async function spot(audio: Float32Array): Promise<WakeSpot & { ms?: number; error?: string }> {
+  async function spot(audio: Float32Array): Promise<SpotResult> {
     try {
       await load();
     } catch (e) {
-      return { hit: false, error: String((e as Error)?.message ?? e) };
+      return { hit: false, error: String((e as Error)?.message ?? e), unchecked: true };
     }
     const id = ++seq;
     const samples = padForSpot(audio);
@@ -292,6 +325,7 @@ export function createKws(o: {
       w?.terminate();
       w = null;
       ready = null;
+      boot = null;
       set("idle");
     },
   };

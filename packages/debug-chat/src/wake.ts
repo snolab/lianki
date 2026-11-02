@@ -20,6 +20,17 @@ export type WakeReason =
   | "agent" // the chat lane set it ({type: "wake"})
   | "kws-failed" // the spotter could not load: back to active, never deaf
   | "mic-on"; // listening turned on: always starts active
+/** Every WakeReason, to check one that came over the wire (a chat line's `wakeReason`). */
+export const WAKE_REASONS: readonly WakeReason[] = [
+  "rejects",
+  "wake-word",
+  "tap",
+  "agent",
+  "kws-failed",
+  "mic-on",
+];
+export const isWakeReason = (v: unknown): v is WakeReason =>
+  typeof v === "string" && (WAKE_REASONS as readonly string[]).includes(v);
 
 /** Rejected utterances in a row that make the mic passive. */
 export const REJECTS_TO_PASSIVE = 3;
@@ -37,19 +48,27 @@ export type KeywordEntry = {
  * "Linky" for kws-zipformer-zh-en-3M-2025-12-20 (CMU phones for English,
  * toned pinyin for Chinese). The variants are the accents measured in
  * docs/wake-word.md: English, "lin-kii" without ŋ (Chinese and Japanese
- * speakers), and the readings 林琪 / lín kì. Threshold 0.25 / score 1.0: the
- * measured setting with no false accept on his clips or the agent's TTS.
+ * speakers), "Lenky" (L EH1 NG K IY0: how STT heard him on 2026-11-01),
+ * and the readings 林琪 / lín kì / lín kī. "l íng k ī" (líng kī) is left out
+ * on purpose: added, it cost 2 of 12 Chinese-voice positives and gained none
+ * (it competes with "l ín …" in the search).
+ *
+ * Threshold 0.15 / score 1.5, looser than the first 0.25 / 1.0, which was
+ * tuned on synthetic voices only and often missed him on his phone. The
+ * sweep over his own clips is in docs/wake-word.md, "Tuning on his voice".
  */
 export const LINKY: KeywordEntry = {
   label: "LINKY",
-  score: 1,
-  threshold: 0.25,
+  score: 1.5,
+  threshold: 0.15,
   matches: [
     { tokens: ["L", "IH1", "NG", "K", "IY0"] },
     { tokens: ["L", "IH1", "NG", "K", "IY1"] },
     { tokens: ["L", "IH1", "N", "K", "IY1"] },
+    { tokens: ["L", "EH1", "NG", "K", "IY0"] },
     { tokens: ["l", "ín", "k", "ì"] },
     { tokens: ["l", "ín", "q", "í"] },
+    { tokens: ["l", "ín", "k", "ī"] },
   ],
 };
 
@@ -80,6 +99,12 @@ export function keywordEnd(d: Detection): number {
  */
 export type WakeSpot = { hit: false } | { hit: true; rest: Float32Array; tokens: string[] };
 
+/**
+ * A check as the gate gets it: `unchecked` when the spotter never heard it
+ * (it could not load); the mic then treats it by the mode it is in now.
+ */
+export type SpotResult = WakeSpot & { ms?: number; error?: string; unchecked?: true };
+
 /** The samples after the first detection's keyword (`pad` samples of silence were put in front). */
 export function afterKeyword(
   audio: Float32Array,
@@ -95,7 +120,8 @@ export function afterKeyword(
   return { hit: true, rest: ms < MIN_REQUEST_MS ? new Float32Array(0) : rest, tokens: first.tokens };
 }
 
-export type WakeView = { mode: WakeMode; rejects: number };
+/** `reason`: why the mode is what it is (the last `set`, "mic-on" before any). */
+export type WakeView = { mode: WakeMode; rejects: number; reason: WakeReason };
 
 /**
  * The active/passive state machine. `reject` counts an utterance that was not
@@ -109,9 +135,11 @@ export function createWake(o: {
   const limit = o.rejectsToPassive ?? REJECTS_TO_PASSIVE;
   let mode: WakeMode = "active";
   let rejects = 0;
-  const view = (): WakeView => ({ mode, rejects });
+  let why: WakeReason = "mic-on";
+  const view = (): WakeView => ({ mode, rejects, reason: why });
   const set = (to: WakeMode, reason: WakeReason) => {
     rejects = 0;
+    why = reason; // the last thing that set it, changed or not
     if (to === mode) return false;
     const from = mode;
     mode = to;

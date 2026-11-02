@@ -1,6 +1,6 @@
 import { auth, hasSessionCookie } from "@/auth";
 import { headers } from "next/headers";
-import { getEmailByToken } from "./getApiTokensCollection";
+import { getEmailByToken } from "./apiTokenAuth";
 
 export async function authEmailOrToken(req: Request): Promise<string | null> {
   const authHeader = req.headers.get("Authorization");

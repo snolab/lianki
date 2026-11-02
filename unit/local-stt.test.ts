@@ -5,6 +5,7 @@ import {
   STABLE_MS,
   FINAL_TIMEOUT_MS,
   RACE_STAGGER_MS,
+  REQUEST_TIMEOUT_MS,
   STT_TICKET_PATH,
   type WsLike,
   createLocalStt,
@@ -784,5 +785,110 @@ describe("createLocalStt: the browser's close code", () => {
     h.ready();
     h.stt.close();
     expect(h.logs.filter((x) => x.ev === "local-stt-close")).toHaveLength(n);
+  });
+});
+
+describe("edge paths: requests, hello, page events", () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  it("needsTicket: a value that is not a URL needs none", () => {
+    expect(needsTicket("not a url")).toBe(false);
+  });
+
+  it("request: rejected at its deadline when the socket never says ready", async () => {
+    const h = setup();
+    const p = h.stt.request({ t: "voiceprint", op: "status" });
+    h.timers.find((x) => x.live && x.ms === REQUEST_TIMEOUT_MS)!.f();
+    await expect(p).rejects.toThrow("local stt not connected");
+  });
+
+  it("request: rejected when every route fails before ready", async () => {
+    const h = setup();
+    const p = h.stt.request({ t: "voiceprint", op: "status" });
+    h.w.socks[0]!.drop();
+    await expect(p).rejects.toThrow("local stt unreachable");
+  });
+
+  it("request: rejected when the Mac never answers it", async () => {
+    const h = setup();
+    const s = h.connect();
+    const p = h.stt.request({ t: "voiceprint", op: "status" });
+    await tick();
+    expect(json(s.sent.at(-1)!)).toMatchObject({ t: "voiceprint", op: "status" });
+    h.timers
+      .filter((x) => x.live && x.ms === REQUEST_TIMEOUT_MS)
+      .at(-1)!
+      .f();
+    await expect(p).rejects.toThrow("local stt: no answer");
+  });
+
+  it("request: rejected at once when the send throws", async () => {
+    const h = setup();
+    const s = h.connect();
+    s.send = () => {
+      throw new Error("socket busy");
+    };
+    await expect(h.stt.request({ t: "voiceprint", op: "status" })).rejects.toThrow(
+      "local stt: send failed",
+    );
+  });
+
+  it("a hello that throws is swallowed, and an unparseable URL logs as '?'", () => {
+    const w = fakeWs();
+    const logs: Record<string, unknown>[] = [];
+    const stt = createLocalStt("nonsense", {
+      open: () => {
+        const s = w.open();
+        s.send = () => {
+          throw new Error("socket busy");
+        };
+        return s;
+      },
+      setTimer: () => 0,
+      clearTimer: () => {},
+      log: (ev) => logs.push(ev),
+      device: "iphone",
+      thread: "owner",
+    });
+    stt.warm();
+    const s = w.socks[0]!;
+    s.readyState = 1;
+    s.say({ t: "ready", engine: "sensevoice", model: "m" });
+    expect(stt.connected()).toBe(true);
+    expect(logs).toContainEqual(expect.objectContaining({ state: "ready", via: "?" }));
+    stt.close();
+  });
+
+  it("by default it watches the page's visibilitychange and online events", () => {
+    const g = globalThis as Record<string, unknown>;
+    const had = { window: g.window, document: g.document };
+    const on = new Map<string, () => void>();
+    const target = () => ({
+      addEventListener: (k: string, f: () => void) => on.set(k, f),
+      removeEventListener: (k: string) => on.delete(k),
+    });
+    const doc = { ...target(), visibilityState: "hidden" };
+    g.window = target();
+    g.document = doc;
+    try {
+      const w = fakeWs();
+      const stt = createLocalStt("wss://mac.ts.net/lianki-stt", {
+        open: w.open,
+        setTimer: () => 0,
+        clearTimer: () => {},
+      });
+      stt.keep(true);
+      expect([...on.keys()].sort()).toEqual(["online", "visibilitychange"]);
+      on.get("visibilitychange")!(); // still hidden: nothing
+      doc.visibilityState = "visible";
+      on.get("visibilitychange")!();
+      on.get("online")!();
+      stt.keep(false);
+      expect(on.size).toBe(0);
+      stt.close();
+    } finally {
+      g.window = had.window;
+      g.document = had.document;
+    }
   });
 });

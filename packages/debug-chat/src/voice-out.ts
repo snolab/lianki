@@ -63,6 +63,17 @@ const read = (k: string): string | null => {
 };
 /** The output mode: "cloud" only when asked for. */
 export const outMode = (): OutMode => (read(VOICE_OUT_KEY) === "cloud" ? "cloud" : "speech");
+/**
+ * speechSynthesis lists no voice at all (some Android Chromes, always): the
+ * replies go to the cloud (voice.ts), so its element is unlocked in a gesture.
+ */
+export const noSpeechVoices = (): boolean => {
+  try {
+    return typeof speechSynthesis === "undefined" || speechSynthesis.getVoices().length === 0;
+  } catch {
+    return true;
+  }
+};
 /** Echo-cancelled barge-in (default on; "0" = the old hold behaviour). */
 export const aecOn = (): boolean => read(VOICE_AEC_KEY) !== "0";
 /** The menu's A/B switch: takes effect the next time the mic opens. */

@@ -12,7 +12,10 @@
  * - Output (voice-out.ts, `lk:voice-out`): the device's speechSynthesis
  *   ("speech", default), or "cloud": each sentence from /api/words/tts played
  *   through the page's own audio, so the echo canceller hears it. A sentence
- *   the cloud cannot voice is read by speechSynthesis instead.
+ *   the cloud cannot voice is read by speechSynthesis instead. With
+ *   "speech", a sentence in a language the device has no voice for (some
+ *   Android Chromes list no voices at all) goes to the cloud instead of
+ *   staying silent.
  * - Mic on: every reply is read, whatever the speaker toggle or focus says
  *   (the toggle itself is never changed, so it is "restored" when the mic
  *   stops). Mic off: a reply is read only with the toggle on and the chat
@@ -36,9 +39,9 @@
  */
 import { speechRate } from "./speech-rate";
 import { ECHO_WINDOW_MS, type EchoScore, echoScore } from "./echo";
-import { aecOn, cloudOut, outMode } from "./voice-out";
+import { aecOn, cloudOut, cloudSkip, outMode } from "./voice-out";
 import { pickLang, pickVoice } from "./wire";
-import { type Silence, type SpeakMeta, silenceHere } from "./quiet-hours";
+import { type Silence, type SpeakMeta, dropRetiredKeys, silenceHere } from "./speak-rules";
 import { getKey } from "./storage-keys";
 
 /** Capture resumes this long after the last utterance ends (the room's echo; hold mode). */
@@ -242,8 +245,10 @@ export function createVoice(d: {
   enabled: () => boolean;
   /** The focus rule: this tab is visible and the chat input has focus. */
   here: () => boolean;
-  /** The cloud output, for `mode() === "cloud"`. */
+  /** The cloud output, for `mode() === "cloud"`, and for a language speechSynthesis has no voice for. */
   cloud?: () => CloudOut | null;
+  /** speechSynthesis has a voice for `lang` (absent: assume it has). */
+  hasVoice?: (lang: string) => boolean;
   mode?: () => OutMode;
   /** Echo-cancelled barge-in (else capture is held while the agent speaks). */
   aec?: () => boolean;
@@ -296,7 +301,20 @@ export function createVoice(d: {
     for (const f of subs) f(s);
   };
   const focusRule = () => d.enabled() && d.here();
-  const canSpeak = () => !!d.synth() || mode() === "cloud";
+  /** Nothing on this device can read `lang`: no speechSynthesis, or no voice for it. */
+  const noVoice = (lang: string) => !d.synth() || (d.hasVoice ? !d.hasVoice(lang) : false);
+  /**
+   * The cloud output when a sentence in `lang` goes there: always in cloud
+   * mode; in speech mode when the device has no voice for it and the cloud
+   * can voice that language.
+   */
+  const routeFor = (lang: string): CloudOut | null => {
+    const c = cloud();
+    if (!c) return null;
+    if (mode() === "cloud") return c;
+    return noVoice(lang) && cloudSkip("x", lang) === null ? c : null;
+  };
+  const canSpeak = () => !!d.synth() || !!cloud();
 
   const ended = () => {
     if (current && current.said.end === undefined) current.said.end = now();
@@ -372,7 +390,7 @@ export function createVoice(d: {
       },
     };
     const rec: Said = { text: head.text, start: now() };
-    const c = mode() === "cloud" ? cloud() : null;
+    const c = routeFor(head.lang);
     current = { p: null as unknown as Playback, mark: head.from, said: rec };
     const p = c
       ? c.play(
@@ -391,13 +409,15 @@ export function createVoice(d: {
       ev: "voice-out",
       out: c ? "cloud" : "speech",
       route: p.route,
+      // Speech mode, but no voice here for this language: the cloud reads it.
+      ...(c && mode() !== "cloud" ? { fallback: "no-voice" } : {}),
       ...info,
       volume: level,
       at: head.at || undefined,
       from: head.from || undefined,
     });
     // Fetch the next one while this plays.
-    if (c && queue[1]) c.prepare?.(queue[1].text, queue[1].lang);
+    if (queue[1]) routeFor(queue[1].lang)?.prepare?.(queue[1].text, queue[1].lang);
     clearTimer(tail);
     speaking = true;
   };
@@ -503,8 +523,8 @@ export function createVoice(d: {
      * A reply arrived live: queue its sentences (if it should be read),
      * behind what is still being read (a reply arriving while the reading is
      * paused waits for it). The same reply delivered again (a reconnect
-     * re-sending it) is not read again from its start. `meta` is the line's
-     * quiet/loud/ask; voice() gates on it (gateVoice) first.
+     * re-sending it) is not read again from its start. `meta` is the line
+     * itself (its id, quiet); voice() gates on it (gateVoice) first.
      */
     reply(text: string, _meta?: SpeakMeta): boolean {
       if (!canSpeak() || !api.shouldSpeak()) return false;
@@ -520,8 +540,7 @@ export function createVoice(d: {
         .flatMap((s) => chunk(s))
         .map((t) => ({ text: t, lang, from: 0, at: 0 }));
       if (!add.length) return false;
-      const c = mode() === "cloud" ? cloud() : null;
-      if (c && !queue.length) c.prepare?.(add[0].text, lang);
+      if (!queue.length) routeFor(lang)?.prepare?.(add[0].text, lang);
       queue.push(...add);
       next();
       emit();
@@ -642,43 +661,123 @@ export function speakHere() {
 const alive = new Set<unknown>();
 
 /** The gate's version: a session gated by an older copy is gated again by this one. */
-const GATE_V = 1;
-type Gated = Voice & { __gate?: number; __rawReply?: Voice["reply"] };
+const GATE_V = 2;
+/** How many unread line ids are kept (the note under each). */
+const UNHEARD_MAX = 50;
+
+/** Lines kept silent because the page was hidden, and the newest of them still to read. */
+export type Unheard = {
+  /** Ids of lines not read aloud because the page was in the background. */
+  ids: ReadonlySet<string>;
+  subscribe(f: () => void): () => void;
+};
+type Missed = { text: string; meta: SpeakMeta };
+type Gated = Voice & {
+  __gate?: number;
+  __rawReply?: Voice["reply"];
+  __unheard?: Unheard & { add(id: string): void; drop(id: string): void };
+  __missed?: Missed | null;
+  /** Read the newest line missed while hidden, once (on visible). */
+  __readMissed?: () => void;
+};
+
+function unheardSet(): NonNullable<Gated["__unheard"]> {
+  let ids = new Set<string>();
+  const subs = new Set<() => void>();
+  const set = (next: Set<string>) => {
+    ids = next;
+    for (const f of subs) f();
+  };
+  return {
+    get ids() {
+      return ids;
+    },
+    subscribe(f) {
+      subs.add(f);
+      return () => void subs.delete(f);
+    },
+    add(id) {
+      if (ids.has(id)) return;
+      const next = new Set(ids).add(id);
+      while (next.size > UNHEARD_MAX) next.delete(next.values().next().value as string);
+      set(next);
+    },
+    drop(id) {
+      if (!ids.has(id)) return;
+      const next = new Set(ids);
+      next.delete(id);
+      set(next);
+    },
+  };
+}
 
 /**
- * Agent lines must not wake the owner (quiet-hours.ts): wrap the session's
- * `reply` so a hidden page, a quiet line or quiet hours keep it silent. It
- * wraps the shared session object itself, so a deployed copy of this module
- * calling `voice().reply(text)` (no meta) gets quiet hours and the hidden
- * rule from a hot-loaded widget too. It also stops the reading the moment
- * the page is hidden (one listener per page).
+ * Speak rules (speak-rules.ts): wrap the session's `reply` so a hidden page
+ * or a quiet line keeps it silent. It wraps the shared session object
+ * itself, so a deployed copy of this module calling `voice().reply(text)`
+ * (no meta) gets the hidden rule from a hot-loaded widget too. Hiding the
+ * page stops the reading under way; showing it again reads the newest line
+ * that arrived while hidden, once (not a backlog), and the lines left
+ * unread are listed in `unheard()` for the chat's note.
  */
 export function gateVoice(v: Voice, why: (m: SpeakMeta) => Silence | null = silenceHere): Voice {
   const s = v as Gated;
   if (s.__gate === GATE_V) return v;
   const raw = s.__rawReply ?? v.reply;
   s.__rawReply = raw;
+  const unheard = (s.__unheard ??= unheardSet());
+  s.__missed = null;
   s.reply = (text: string, meta?: SpeakMeta) => {
-    const silence = why(meta ?? {});
+    const m = meta ?? {};
+    const silence = why(m);
+    const id = typeof m.id === "string" ? m.id : null;
     if (silence) {
       v.log({ ev: "voice-silent", why: silence });
+      if (silence === "hidden") {
+        s.__missed = { text, meta: m };
+        if (id) unheard.add(id);
+      }
       return false;
     }
-    return raw(text, meta);
+    const read = raw(text, meta);
+    if (read && id) unheard.drop(id);
+    return read;
+  };
+  s.__readMissed = () => {
+    const m = s.__missed;
+    s.__missed = null;
+    if (!m) return;
+    v.log({ ev: "voice-missed", chars: m.text.length });
+    // Through the gate again (the page is visible now); a line read loses its note there.
+    s.reply(m.text, m.meta);
   };
   s.__gate = GATE_V;
   const g = globalThis as unknown as Record<string, unknown>;
-  if (
-    !g.__lkVoiceHide &&
-    typeof document !== "undefined" &&
-    typeof document.addEventListener === "function"
-  ) {
-    g.__lkVoiceHide = true;
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") (g[KEY] as Voice | undefined)?.stop();
-    });
+  if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+    if (!g.__lkVoiceHide) {
+      g.__lkVoiceHide = true;
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") (g[KEY] as Voice | undefined)?.stop();
+      });
+    }
+    if (!g.__lkVoiceShow) {
+      g.__lkVoiceShow = true;
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") (g[KEY] as Gated | undefined)?.__readMissed?.();
+      });
+    }
+    if (!g.__lkVoiceRetired) {
+      g.__lkVoiceRetired = true;
+      dropRetiredKeys();
+    }
   }
   return v;
+}
+
+/** The lines on this page not read aloud because it was hidden (for the chat's note). */
+export function unheard(v: Voice = voice()): Unheard {
+  const s = gateVoice(v) as Gated;
+  return s.__unheard ?? (s.__unheard = unheardSet());
 }
 
 /** The session, shared by every copy of this module on the page. */
@@ -691,6 +790,14 @@ export function voice(): Voice {
     enabled: speechEnabled,
     here: speakHere,
     cloud: cloudOut,
+    // getVoices() can be empty (some Android Chromes always): the cloud reads those.
+    hasVoice: (lang) => {
+      try {
+        return !!pickVoice(speechSynthesis.getVoices(), lang);
+      } catch {
+        return false;
+      }
+    },
     mode: outMode,
     aec: aecOn,
     rate: () => speechRate(),

@@ -206,6 +206,8 @@ const suites = [
     ["playwright", "test", "tests/userscript-redirect.spec.ts"],
     { LIANKI_URL: BASE },
   ],
+  // The real /embed/partner in a frame on another origin: ready, ticket, private keys, no owner boots.
+  ["PARTNER FRAME (route)", "bun", ["scripts/qa/qa-partner-frame-route.ts"], { QA_BASE: BASE }],
 ];
 
 const results = [];
