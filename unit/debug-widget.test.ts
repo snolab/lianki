@@ -123,7 +123,8 @@ describe("the widget build", () => {
     expect(b.code).not.toContain("react.production");
     expect(b.code).toContain(`globalThis["${REACT_GLOBAL}"]`);
     expect(b.code).toMatch(/export\s*{[^}]*DebugChat/);
-    expect(b.code).toContain(`export const rev = "${b.rev}"`);
+    expect(b.code).toContain(`const __lkWidgetRev = "${b.rev}"`);
+    expect(b.code).toContain("export { __lkWidgetCss as css, __lkWidgetRev as rev }");
     expect(b.css).toContain(".animate-spin");
     expect(b.inputs.some((p) => p.endsWith("packages/debug-chat/src/DebugChat.tsx"))).toBe(true);
     expect((await buildWidget()).rev).toBe(b.rev);

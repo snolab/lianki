@@ -123,7 +123,10 @@ export async function buildWidget(entry = WIDGET_ENTRY): Promise<WidgetBuild> {
   const rev = Bun.hash(js + css)
     .toString(36)
     .slice(0, 8);
-  const code = `${js}\nexport const css = ${JSON.stringify(css)};\nexport const rev = ${JSON.stringify(rev)};\n`;
+  // Names no bundled module will use at its top level: a source file with its
+  // own top-level `css` or `rev` would otherwise be a redeclaration, and the
+  // whole module would fail to import (silently falling back to the built-in chat).
+  const code = `${js}\nconst __lkWidgetCss = ${JSON.stringify(css)};\nconst __lkWidgetRev = ${JSON.stringify(rev)};\nexport { __lkWidgetCss as css, __lkWidgetRev as rev };\n`;
   return { code, css, rev, inputs };
 }
 
