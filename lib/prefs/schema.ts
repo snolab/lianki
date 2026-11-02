@@ -55,7 +55,6 @@ export const PREF_SCHEMAS = {
   "words.serverVoice": z.boolean(),
   "words.speakOnSwipe": z.boolean(),
   "words.gradeTones": z.boolean(),
-  "words.paperScrolls": z.boolean(),
   "words.voiceMode": z.boolean(),
   // the swipe (Experimental)
   "swipe.variant": z.enum(["js", "native"]),

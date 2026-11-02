@@ -151,9 +151,10 @@ ruby rt {
 }
 
 /* Bamboo slips (竹簡) — /words rows. Each row is a slip: a flat bamboo colour,
- * one shared 6KB fibre tile, a node line at the term column's edge, and two
- * binding cords that line up across rows into one continuous cord. All of it is
- * background layers — no filters, nothing per frame. Grades swap --slip-c. */
+ * one shared 6KB fibre tile and a node line at the term column's edge. All of
+ * it is background layers — no filters, nothing per frame. Grades swap
+ * --slip-c. The two binding cords are not the slip's: they are the list's
+ * (.slip-cords), so a slip slides out from under them. */
 :root {
   --slip-fib: url(/paper/bamboo-light.webp);
   --slip-base: oklch(0.88 0.056 84);
@@ -183,16 +184,13 @@ ruby rt {
    * labels show only as the slip slides away, never on top of it. */
   z-index: 1;
   --slip-c: var(--slip-base);
-  --cord-c: var(--slip-cord);
   /* term/meaning boundary: padding + marker column + gaps + the fitted term width */
   --node-x: calc(0.5rem + 1.25rem + 0.75rem + var(--term-w, 12rem));
   --fx: 0px;
   background:
     /* A veil in the page colour dims a slip that stays opaque (.lk-back). */
     linear-gradient(var(--slip-veil, transparent), var(--slip-veil, transparent)),
-    linear-gradient(var(--cord-c), var(--cord-c)) 3px 0 / 3px 100% no-repeat,
-    linear-gradient(var(--cord-c), var(--cord-c)) right 3px top 0 / 3px 100% no-repeat,
-    /* The seam between slips: under the cords, so they run on unbroken. */
+    /* The seam between slips (the cords run on unbroken over it). */
     linear-gradient(var(--slip-seam), var(--slip-seam)) 0 100% / 100% 1px no-repeat,
     linear-gradient(var(--slip-node), var(--slip-node)) var(--node-x) 0 / 2px 100% no-repeat,
     var(--slip-fib) var(--fx) 0 / 512px 48px repeat,
@@ -209,10 +207,9 @@ ruby rt {
   /* padding + stamp column + gaps + the fitted term width */
   --node-x: calc(0.5rem + 1rem + 0.75rem + var(--term-w, 8rem));
 }
-/* Focus = this slip's cords come loose (SlipCords draws them slack) and the
- * slip lifts a little off its neighbours. */
+/* Focus = this slip's cords come loose (.slip-cords) and the slip lifts a
+ * little off its neighbours. */
 .slip-loose {
-  --cord-c: transparent;
   z-index: 2;
   box-shadow:
     0 6px 14px -6px oklch(0.2 0.03 50 / 0.45),
@@ -296,29 +293,21 @@ ruby rt {
 .slip-native:nth-child(3n + 2) .slip {
   --fx: -343px;
 }
-/* Loose cords stay pinned while the face slides: counter-moved by the
- * scroll position. Without scroll-driven animations they ride with it. */
-@supports (animation-timeline: scroll()) {
-  .slip-pin {
-    animation: slip-pin linear both;
-    animation-timeline: --slip-x;
-  }
-  /* Not motion but position: the pin follows the finger's scroll. The app's
-   * "no animations" rule (html[data-motion="off"] *, below) zeroes every
-   * animation-duration, and a 0s scroll-driven animation sits on its last
-   * keyframe — the loose cords hung 2a (88px) into the slip, on a
-   * motion-off phone (the owner, 2026-10-31). */
-  html[data-motion="off"] .slip-pin {
-    animation-duration: auto !important;
-  }
+/* The binding cords (SlipCords): one layer over the rows, inside the list
+ * scroller, so it scrolls with them but never moves with a slip's slide (js
+ * swipe: transform; new swipe: the row's own scroller). Its edges are the
+ * rows' (the list's inline padding); one cell per rendered row. */
+.slip-cords {
+  position: absolute;
+  inset-inline-start: var(--list-ps, 0px);
+  inset-inline-end: var(--list-pe, 0px);
+  /* Over every slip, the lifted one (z 3) included. */
+  z-index: 4;
+  pointer-events: none;
 }
-@keyframes slip-pin {
-  from {
-    transform: translateX(calc(-2 * var(--a)));
-  }
-  to {
-    transform: translateX(calc(2 * var(--a)));
-  }
+.slip-cords > span {
+  position: absolute;
+  inset-inline: 0;
 }
 .slip-cord {
   position: absolute;
@@ -332,7 +321,26 @@ ruby rt {
   fill: none;
   stroke: var(--slip-cord);
   stroke-width: 3;
-  stroke-linecap: round;
+  /* The squeeze below must not thin the stroke. */
+  vector-effect: non-scaling-stroke;
+  /* A tied cord: the loose path squeezed straight (lib/words/cords.ts). */
+  transform: scaleX(0.001);
+  transform-origin: 4.5px 0;
+  transition-property: transform;
+  transition-duration: 200ms;
+  /* minimum jerk (MIN_JERK_EASING), set on the layer */
+  transition-timing-function: var(--cord-ease, ease-in-out);
+}
+.slip-cord-end path {
+  transform-origin: 35.5px 0;
+}
+[data-cords="loose"] .slip-cord path {
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .slip-cord path {
+    transition: none;
+  }
 }
 .slip-again {
   --slip-c: var(--slip-again);
@@ -754,8 +762,11 @@ html[data-motion="off"] .lk-undo-timer {
   inset: 0;
   z-index: 0;
   --gutter: 0px;
-  padding-inline-start: max(var(--gutter), env(safe-area-inset-left));
-  padding-inline-end: max(var(--gutter), env(safe-area-inset-right));
+  /* As properties, so the cords layer (.slip-cords) lines up with the rows. */
+  --list-ps: max(var(--gutter), env(safe-area-inset-left));
+  --list-pe: max(var(--gutter), env(safe-area-inset-right));
+  padding-inline-start: var(--list-ps);
+  padding-inline-end: var(--list-pe);
 }
 .lk-words-list[data-touch="false"] {
   --gutter: 0.75rem;
@@ -767,7 +778,7 @@ html[data-motion="off"] .lk-undo-timer {
 }
 @media (min-width: 48rem) and (max-width: 79.99rem) {
   .lk-words-list {
-    padding-inline-start: calc(var(--nav-w, 0px) + var(--gutter));
+    --list-ps: calc(var(--nav-w, 0px) + var(--gutter));
   }
 }
 @media (min-width: 80rem) {
@@ -811,9 +822,8 @@ html.lk-page-lock .min-h-screen {
   }
 }
 
-/* Experimental "Paper scrolls with the list" (lk:words-paper-scrolls): the
- * paper is a layer inside the list scroller, so it moves with the rows; the
- * body behind it is plain. --paper follows the skin (data-paper) and the
+/* The paper scrolls with the list: a layer inside the list scroller, so it
+ * moves with the rows; the body behind it is plain. --paper follows the skin (data-paper) and the
  * scheme. Its own composited layer: as cheap to scroll as the fixed texture. */
 .lk-paper-layer {
   position: absolute;

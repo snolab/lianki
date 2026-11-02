@@ -81,8 +81,8 @@ import {
   termTarget,
   weightedQuantile,
 } from "@/lib/words/columns";
-import { MIN_JERK_EASING, minJerk, moveSeconds } from "@/lib/words/motion";
-import { CORD_BOW, cordPath, cordPull } from "@/lib/words/cords";
+import { MIN_JERK_EASING, moveSeconds } from "@/lib/words/motion";
+import { CORD_BOW, cordPath } from "@/lib/words/cords";
 import {
   type SwipeLevel,
   lockAxis,
@@ -670,15 +670,13 @@ const SPEECH_TAG: Record<string, string> = {
 
 /**
  * Debug-only swipe profiler: frame times while a finger is on a slip, plus
- * how often the slip rendered and how long the loose-cord frames took.
+ * how often the slip rendered.
  * Reported to devLog when the finger lifts.
  */
 const swipePerf = {
   on: false,
   frames: [] as number[],
   renders: 0,
-  cordFrames: 0,
-  cordMs: 0,
   raf: 0,
   last: 0,
   start() {
@@ -686,8 +684,6 @@ const swipePerf = {
     this.on = true;
     this.frames = [];
     this.renders = 0;
-    this.cordFrames = 0;
-    this.cordMs = 0;
     this.last = performance.now();
     const tick = (now: number) => {
       if (!this.on) return;
@@ -714,8 +710,6 @@ const swipePerf = {
       over20: f.filter((x) => x > 20).length,
       over34: f.filter((x) => x > 34).length,
       renders: this.renders,
-      cordFrames: this.cordFrames,
-      cordMsPerFrame: this.cordFrames ? +(this.cordMs / this.cordFrames).toFixed(2) : 0,
       dpr: devicePixelRatio,
     });
   },
@@ -2616,12 +2610,6 @@ function Study({
   const feelPrefs = useFeelPrefs();
   usePrefReader(useCallback(() => setSwipeAb(swipeVariant()), []));
   const native = touch && swipeAb === "native";
-  /**
-   * Experimental: the paper texture scrolls with the list (a layer inside the
-   * scroller, [data-paper-layer]) instead of staying fixed on the body.
-   * Per device; off unless turned on.
-   */
-  const [paperScrolls, setPaperScrolls] = usePref("lk:words-paper-scrolls", false);
   /** Phone full screen. Remembered: once on, the first touch of a later study re-enters it. */
   const fs = useFullscreen();
   const [fsHint, setFsHint] = useState(false);
@@ -3264,14 +3252,14 @@ function Study({
     for (const el of [topRef.current, hintRef.current, listEl]) if (el) ro.observe(el);
     return () => ro.disconnect();
   }, [listEl, room]);
-  // Paper scrolls with the list: the body behind it is plain, so the texture
-  // isn't drawn twice.
+  // The paper scrolls with the list (.lk-paper-layer): the body behind it is
+  // plain, so the texture isn't drawn twice.
   useEffect(() => {
-    if (!listEl || !paperScrolls) return;
+    if (!listEl) return;
     const root = document.documentElement;
     root.classList.add("lk-paper-scrolls");
     return () => root.classList.remove("lk-paper-scrolls");
-  }, [listEl, paperScrolls]);
+  }, [listEl]);
   // Only the list scrolls: the page under it stays put.
   useEffect(() => {
     if (!listEl) return;
@@ -3945,67 +3933,64 @@ function Study({
               label={text.animationsOff.value}
               hint={text.animationsOffHint.value}
             />
-            <div className="w-full pt-1" data-experimental>
-              <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
-                {text.experimental}
-              </div>
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                {touch && (
-                  <TogglePill
-                    on={swipeAb === "native"}
-                    onChange={(on) => {
-                      const v = on ? "native" : "js";
-                      setSwipeVariant(v);
-                      setSwipeAb(v);
-                    }}
-                    label={text.newSwipe.value}
-                    hint={text.newSwipeHint.value}
-                  />
-                )}
-                {/* The swipe's feel (docs/swipe-core.md): debug mode only, this device only. */}
-                {touch && debug && (
-                  <>
+            {/* Nothing experimental on a desktop without voice mode: no empty heading. */}
+            {(touch || voice !== "off") && (
+              <div className="w-full pt-1" data-experimental>
+                <div className="text-[11px] font-medium uppercase tracking-wide opacity-50">
+                  {text.experimental}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {touch && (
                     <TogglePill
-                      on={feelPrefs.preset === "heavy"}
-                      onChange={(on) =>
-                        setFeelPrefs({ ...feelPrefs, preset: on ? "heavy" : "light", tweaks: {} })
-                      }
-                      label={text.heavySwipe.value}
-                      hint={text.heavySwipeHint.value}
+                      on={swipeAb === "native"}
+                      onChange={(on) => {
+                        const v = on ? "native" : "js";
+                        setSwipeVariant(v);
+                        setSwipeAb(v);
+                      }}
+                      label={text.newSwipe.value}
+                      hint={text.newSwipeHint.value}
                     />
-                    <TogglePill
-                      on={feelPrefs.tune}
-                      onChange={(on) => setFeelPrefs({ ...feelPrefs, tune: on })}
-                      label={text.tuneSwipe.value}
-                      hint={text.tuneSwipeHint.value}
-                    />
-                  </>
-                )}
-                <TogglePill
-                  on={paperScrolls}
-                  onChange={setPaperScrolls}
-                  label={text.paperScrolls.value}
-                  hint={text.paperScrollsHint.value}
-                />
-                {voice !== "off" && (
-                  <span className="inline-flex items-center gap-1" data-voice-setting={voice}>
-                    <TogglePill
-                      on={voicePref}
-                      onChange={setVoicePref}
-                      label={vtext.voiceMode.value}
-                      hint={vtext.voiceModeHint.value}
-                    />
-                    {voice === "preview" && (
-                      <span className="text-[10px] opacity-60">{vtext.preview}</span>
-                    )}
+                  )}
+                  {/* The swipe's feel (docs/swipe-core.md): debug mode only, this device only. */}
+                  {touch && debug && (
+                    <>
+                      <TogglePill
+                        on={feelPrefs.preset === "heavy"}
+                        onChange={(on) =>
+                          setFeelPrefs({ ...feelPrefs, preset: on ? "heavy" : "light", tweaks: {} })
+                        }
+                        label={text.heavySwipe.value}
+                        hint={text.heavySwipeHint.value}
+                      />
+                      <TogglePill
+                        on={feelPrefs.tune}
+                        onChange={(on) => setFeelPrefs({ ...feelPrefs, tune: on })}
+                        label={text.tuneSwipe.value}
+                        hint={text.tuneSwipeHint.value}
+                      />
+                    </>
+                  )}
+                  {voice !== "off" && (
+                    <span className="inline-flex items-center gap-1" data-voice-setting={voice}>
+                      <TogglePill
+                        on={voicePref}
+                        onChange={setVoicePref}
+                        label={vtext.voiceMode.value}
+                        hint={vtext.voiceModeHint.value}
+                      />
+                      {voice === "preview" && (
+                        <span className="text-[10px] opacity-60">{vtext.preview}</span>
+                      )}
+                    </span>
+                  )}
+                  <span className="text-xs opacity-60">
+                    {touch ? `${text.nativeSwipeNote.value} ` : ""}
+                    {text.mayChange}
                   </span>
-                )}
-                <span className="text-xs opacity-60">
-                  {touch ? `${text.nativeSwipeNote.value} ` : ""}
-                  {text.mayChange}
-                </span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
           {fsHint && (
             <div className="text-sm mt-2 opacity-80" onClick={() => setFsHint(false)}>
@@ -4076,19 +4061,17 @@ function Study({
             onPointerUp={touch ? resumeFullscreen : undefined}
             role="list"
           >
-            {paperScrolls && (
-              // The paper, scrolling with the rows: one composited layer the
-              // height of the whole content (both over-scroll pads included),
-              // under everything in the list. `background-attachment: local`
-              // on the list cost ~50 of 90 frames over 20ms on an iPhone;
-              // this layer scrolls as fast as the fixed body texture.
-              <div
-                aria-hidden
-                data-paper-layer
-                className="lk-paper-layer"
-                style={{ height: pad * 2 + queue.length * ROW_H }}
-              />
-            )}
+            {/* The paper, scrolling with the rows: one composited layer the
+              height of the whole content (both over-scroll pads included),
+              under everything in the list. `background-attachment: local`
+              on the list cost ~50 of 90 frames over 20ms on an iPhone; this
+              layer scrolls as fast as the fixed body texture. */}
+            <div
+              aria-hidden
+              data-paper-layer
+              className="lk-paper-layer"
+              style={{ height: pad * 2 + queue.length * ROW_H }}
+            />
             {touch && !native && <SwipeUnderlay ref={underlay} />}
             <div className="relative" style={{ height: pad + from * ROW_H }}>
               {pad - bar.top > 140 && <EmptyTray style={{ top: bar.top, height: pad - bar.top }} />}
@@ -4298,6 +4281,15 @@ function Study({
                 <EmptyTray style={{ bottom: bar.bottom, height: pad - bar.bottom }} />
               )}
             </div>
+            {/* Last, so the rows' :nth-child grain is unchanged. */}
+            <SlipCords
+              top={pad}
+              h={ROW_H}
+              count={queue.length}
+              from={from}
+              to={to}
+              loose={touch ? focusLine : row}
+            />
           </div>
           {sheet !== null && queue[sheet] && (
             <SlipSheet
@@ -4454,89 +4446,58 @@ function SlipSheet({
 }
 
 /**
- * The focused slip's binding cords, come loose: drawn over the slip, pinned at
- * its top and bottom (counter-moved against the slip's slide), bowing inward
- * and dragged along as the slip slides. Loosening and tightening take 200 ms
- * of minimum jerk. Runs frames only while easing or while the slip is off
- * its rest position.
- *
- * Every rendered row has one (tied: hidden), and rows mount all the time as
- * the list scrolls. So a tied cord that stays tied runs no frame at all, and
- * the row's size is read once per run, in its first frame, not every frame.
- * Before, each mounted row ran 200 ms of frames that each read
- * offsetHeight/offsetWidth after the previous row's writes: a forced layout
- * per row per frame while scrolling. Animations off ran one frame instead,
- * which is why turning them off felt so much smoother on an iPhone.
+ * The binding cords (编绳) down both edges of the list: one layer over the
+ * rows, not part of any slip, so a slip slides out from under its cords (both
+ * swipes) and nothing follows the finger. It sits inside the list scroller,
+ * so it scrolls with the rows, as the paper does. One cell per rendered row,
+ * at the row's place: tied, the cord runs straight on; the focused row's
+ * (`loose`) bows inward. A loose cord is the same path at full bow, squeezed
+ * flat by scaleX when tied, so loosening and tightening are a CSS transition
+ * (200 ms, minimum jerk) and no frame runs in JS.
  */
 function SlipCords({
+  top,
+  h,
+  count,
+  from,
+  to,
   loose,
-  moving,
-  pos,
 }: {
-  loose: boolean;
-  moving: boolean;
-  /** The slip's position at a moment (touch rows); none = it never slides. */
-  pos?: React.RefObject<(now: number) => number>;
+  /** Where the first row starts in the list (the top over-scroll pad). */
+  top: number;
+  /** The row height. */
+  h: number;
+  count: number;
+  /** The rendered rows. */
+  from: number;
+  to: number;
+  /** The focused row: its cords are loose. */
+  loose: number;
 }) {
-  const host = useRef<HTMLSpanElement>(null);
-  const slack = useRef(0);
-  useEffect(() => {
-    const el = host.current;
-    const row = el?.parentElement;
-    if (!el || !row) return;
-    const from = slack.current;
-    const to = loose ? 1 : 0;
-    // Tied and staying tied, at rest: nothing to draw (the host starts hidden).
-    if (from === 0 && to === 0 && !moving && !(pos?.current(performance.now()) ?? 0)) return;
-    const [left, right] = Array.from(el.querySelectorAll("path"));
-    let size: { h: number; w: number } | null = null;
-    const t0 = performance.now();
-    const still = motionOff();
-    let raf = 0;
-    let last = "";
-    const frame = (now: number) => {
-      const c0 = swipePerf.on ? performance.now() : 0;
-      const t = still ? 1 : Math.min(1, (now - t0) / 200);
-      slack.current = from + (to - from) * minJerk(t);
-      size ??= { h: row.offsetHeight, w: row.offsetWidth };
-      const { h, w } = size;
-      const x = pos?.current(now) ?? 0;
-      const pull = cordPull(x, slack.current, h);
-      const bow = CORD_BOW * h * slack.current;
-      // Write only what changed: an idle loose cord (moving, x 0) costs nothing.
-      const key = `${x}|${slack.current}|${h}|${w}`;
-      if (key !== last) {
-        last = key;
-        el.style.transform = x ? `translateX(${-x}px)` : "";
-        el.style.visibility = slack.current > 0.001 ? "visible" : "hidden";
-        left.setAttribute("d", cordPath(4.5, h, bow, pull));
-        right.setAttribute("d", cordPath(35.5, h, -bow, pull));
-        right.parentElement!.style.left = `${w - 40}px`;
-      }
-      if (swipePerf.on) {
-        swipePerf.cordFrames++;
-        swipePerf.cordMs += performance.now() - c0;
-      }
-      if (t < 1 || x !== 0 || moving) raf = requestAnimationFrame(frame);
-    };
-    raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
-  }, [loose, moving, pos]);
+  const bow = CORD_BOW * h;
+  const left = cordPath(4.5, h, bow);
+  const right = cordPath(35.5, h, -bow);
+  const cells = [];
+  for (let i = from; i < to; i++)
+    cells.push(
+      <span key={i} data-cords={i === loose ? "loose" : "tied"} style={{ top: i * h, height: h }}>
+        <svg className="slip-cord" style={{ left: 0 }}>
+          <path d={left} />
+        </svg>
+        <svg className="slip-cord slip-cord-end" style={{ right: 0 }}>
+          <path d={right} />
+        </svg>
+      </span>,
+    );
   return (
-    <span
-      ref={host}
+    <div
       aria-hidden
-      data-cords={loose ? "loose" : "tied"}
-      className="pointer-events-none absolute inset-0"
-      style={{ visibility: "hidden" }}
+      data-slip-cords
+      className="slip-cords"
+      style={{ top, height: count * h, ["--cord-ease" as string]: MIN_JERK_EASING }}
     >
-      <svg className="slip-cord" style={{ left: 0 }}>
-        <path />
-      </svg>
-      <svg className="slip-cord" style={{ left: 0 }}>
-        <path />
-      </svg>
-    </span>
+      {cells}
+    </div>
   );
 }
 
@@ -4578,7 +4539,7 @@ function showReveal(el: HTMLElement | null | undefined, k: number) {
 type RowProps = {
   index: number;
   touch: boolean;
-  /** Focused: its cords come loose (and only a loose slip slides). */
+  /** Focused: it lifts, its cords (SlipCords) come loose, and only a loose slip slides. */
   loose?: boolean;
   onHover: () => void;
   /** `at`: when the finger lifted (the event's own time, not when it was handled). */
@@ -4633,7 +4594,6 @@ function DeskWordRow({
       style={style}
     >
       {children}
-      <SlipCords loose={loose} moving={false} />
     </div>
   );
 }
@@ -4698,7 +4658,6 @@ function TouchWordRow({
     onRelease: (r) =>
       logSwipe({ finger: r.finger, v: r.v, projected: r.projected, rating: r.rating, a }),
   });
-  const moving = core.phase === "dragging" || core.phase === "settling";
   const value: SwipeRowValue = {
     iface: 1,
     variant: "js",
@@ -4720,7 +4679,6 @@ function TouchWordRow({
         <>
           {children}
           <SwipeCueIsland />
-          <SlipCords loose={loose} moving={moving} pos={core.pos} />
         </>
       ),
     },
@@ -4738,8 +4696,8 @@ function TouchWordRow({
  * browser locks the axis, follows the finger, coasts, snaps to the levels at
  * 0, ±a, ±2a and stops hard at ±2a — all on the compositor; script runs only
  * as a gesture starts and ends. What the slip uncovers is the same grade
- * strip as SwipeUnderlay, held still behind the face (sticky); its cords stay
- * pinned by a scroll-driven animation; it glides home by a smooth scroll.
+ * strip as SwipeUnderlay, held still behind the face (sticky); its cords are
+ * the list's (SlipCords), not the slip's; it glides home by a smooth scroll.
  * Touch only: desktop rows are always WordRow.
  */
 function NativeSlipRow({
@@ -5068,13 +5026,7 @@ function NativeSlipRow({
             {[0, 1, 2, 3, 4].map((k) => (
               <i key={k} className="slip-snap" style={{ left: k * a }} />
             ))}
-            <div className={`slip-face ${className} ${loose ? "slip-loose" : ""}`}>
-              {children}
-              {/* Counter-moved by the scroll position (CSS): the cords stay pinned. */}
-              <span className="slip-pin pointer-events-none absolute inset-0">
-                <SlipCords loose={loose} moving={false} />
-              </span>
-            </div>
+            <div className={`slip-face ${className} ${loose ? "slip-loose" : ""}`}>{children}</div>
           </div>
         </div>
       </div>
