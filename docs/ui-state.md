@@ -165,3 +165,61 @@ named `chat`, `chat-voice` and so on, with session storage for UI state and
 local storage for preferences. Because stores are kept per page on
 `globalThis`, the hot-loaded widget bundle and the built-in one share state
 across a reload of the widget.
+
+## Unsaved work
+
+Owner rules (2026-11-02): a deploy never reloads a page over unsaved work, and
+no form is left with unsaved changes without a confirm. One answer serves
+both: `pageIsDirty(doc, mode)` in `lib/page-dirty.ts`, with a registry for
+components in `@lianki/ui-state/dirty` (on `globalThis`, so the hot-loaded
+chat widget shares it).
+
+- **What counts.** A text input, textarea or contenteditable the user typed
+  in (a trusted `input` event) whose value now differs from what it held
+  before. Hidden, readonly and disabled fields never count, and neither do
+  checkboxes, radios, ranges or selects, which save at once. React-controlled
+  fields work because nothing is compared with the DOM default. Typing a value
+  back to what it was makes it clean. A form's `submit` makes its fields
+  clean, and so does `markClean()` for a save done by a button outside a form.
+- **Skipped.** Search boxes (`type="search"`, `role="searchbox"`,
+  `enterkeyhint="search"`) and anything inside `data-dirty="skip"`: filters,
+  inputs that save on change, and the chat's input, whose draft is kept across
+  pages anyway.
+- **Two modes.** `"leave"` is used by the guard and counts unsaved content
+  only. `"reload"` is used by the deploy auto-reload and is stricter: it also
+  counts a focused field (except an empty search box), typed text in a search
+  box, the chat's unsent draft (`lk:ui:chat`), and the mic being on or still
+  transcribing (`__lkMic`). The mic needs a tap to come back after a reload.
+- **Component checks.** `registerDirtyCheck((mode) => boolean)` returns its
+  unregister. Call `notifyDirty()` when the answer may have changed. React
+  components use `useLeaveGuard(dirty, modes)` (`lib/use-leave-guard.ts`).
+  Registered today: a voiceprint enrolment that is recording or saving (both
+  modes), a /words swipe mid-gesture (reload only), and a /review grade in
+  flight (reload only).
+
+**Deploy auto-reload** (`app/components/NewVersionNotice.tsx`). A debug
+device (`lk:debug` = 1) that hears a new build reloads after 1.5 s if the page
+is clean (it checks again at that point). If the page is dirty, it shows "New
+version · Refresh" and reloads as soon as the page is clean (`whenClean`).
+That check reruns on input, change, focusout, submit, visibilitychange, the
+registry's notify, the chat store and the mic. There are no timers. It still
+reloads at most once per build (`lk:reloaded-for`). Everyone else gets the
+button only, as before.
+
+**Leave guard** (`app/components/LeaveGuard.tsx` → `lib/leave-guard.ts`,
+mounted for every page in `OwnerBoots`). While the page is dirty in `"leave"`
+mode:
+
+- closing the tab, reloading, or following an external or full-page link
+  shows the browser's own `beforeunload` prompt;
+- a same-origin link to another page (next/link, the locale links, plain
+  `<a>`) asks "You have unsaved changes. Leave anyway?" (`leave-guard.content.ts`,
+  16 locales). The click is caught on `window` in the capture phase, before
+  React, so Cancel stops Next.js from navigating. OK goes ahead, and the
+  `beforeunload` that follows within 3 s does not ask again;
+- a tab, a panel, or `router.push` from code: the component calls
+  `confirmLeave()` first and proceeds only on `true`. The chat's panel switch
+  does this when leaving the voiceprint panel.
+
+Not guarded: back/forward. When `popstate` fires the URL has already
+changed, and undoing it would fight the Next.js router's own history state.

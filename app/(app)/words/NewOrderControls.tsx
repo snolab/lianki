@@ -185,6 +185,8 @@ export function NewOrderSettings({
                   max={10}
                   step={1}
                   inputMode="numeric"
+                  // Saved on every change: never unsaved (lib/page-dirty.ts).
+                  data-dirty="skip"
                   value={c.weight ?? 1}
                   aria-label={fill(text.weightOf.value, { name: c.name ?? c.id })}
                   onChange={(e) =>

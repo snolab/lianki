@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getKey } from "@lianki/debug-chat/storage-keys";
+import { pageIsDirty, reloadDecision, whenClean } from "@/lib/page-dirty";
 
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev";
 
@@ -48,6 +49,12 @@ export function NewVersionNotice() {
     let ws: WebSocket | null = null;
     let idle: ReturnType<typeof setTimeout> | undefined;
     let done = false;
+    let unwait = () => {};
+    const waitClean = () => {
+      unwait();
+      unwait = whenClean(document, () => location.reload());
+      setStale(true);
+    };
 
     const connect = () => {
       if (ws || done) return;
@@ -67,11 +74,24 @@ export function NewVersionNotice() {
         done = true;
         disconnect();
         // The owner's debug devices pick up a deploy by themselves — so a fix can
-        // be tried on the phone without anyone tapping Refresh. Once per build:
-        // if the reload still serves the old one (the push beat the rollout),
-        // fall back to the button instead of reloading every 1.5 s forever.
-        if (debugDevice() && reloadOnceFor(build))
-          return void setTimeout(() => location.reload(), 1500);
+        // be tried on the phone without anyone tapping Refresh — but never over
+        // unsaved work (lib/page-dirty.ts): a dirty page shows the button and
+        // reloads the moment it is clean (whenClean: on the page's events, no
+        // timer). Once per build: if the reload still serves the old one (the
+        // push beat the rollout), fall back to the button instead of reloading
+        // every 1.5 s forever.
+        const debug = debugDevice();
+        const decision = reloadDecision({
+          debug,
+          first: debug && reloadOnceFor(build),
+          dirty: pageIsDirty(document),
+        });
+        if (decision === "reload")
+          return void setTimeout(() => {
+            if (!pageIsDirty(document)) location.reload();
+            else waitClean();
+          }, 1500);
+        if (decision === "wait") waitClean();
         setStale(true);
       };
       // Dropped by the network (or never opened): reopen on that event if
@@ -107,6 +127,7 @@ export function NewVersionNotice() {
       window.removeEventListener("focus", update);
       window.removeEventListener("blur", update);
       disconnect();
+      unwait();
     };
   }, []);
 

@@ -74,6 +74,8 @@ export default async function RootLayout({
       String(v),
     ]),
   ) as unknown as PartnerStrings;
+  // The unsaved-changes confirm (LeaveGuard, leave-guard.content.ts).
+  const leave = String(getIntlayer("leave-guard", locale as never).unsaved);
   return (
     <html lang={LANG_TAGS[locale] ?? locale} suppressHydrationWarning>
       <head>
@@ -118,7 +120,7 @@ export default async function RootLayout({
         {/* The band behind the status bar's white clock (home-screen app only). */}
         <div aria-hidden="true" className="lk-statusbar" />
         <IntlayerServerProvider locale={locale}>
-          {partnerFrame ? null : <OwnerBoots strings={partner} />}
+          {partnerFrame ? null : <OwnerBoots strings={partner} leave={leave} />}
           {children}
         </IntlayerServerProvider>
       </body>

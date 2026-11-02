@@ -52,6 +52,7 @@ import {
 } from "./swipe-machine";
 import { followSwipe, releaseTrajectory, springStep, trajectoryEasing } from "./swipe-physics";
 import type { SwipeLevel, SwipeRating } from "./swipe";
+import { useLeaveGuard } from "@/lib/use-leave-guard";
 
 /** Bump when a context value's shape or a hook's meaning changes (and the islands' contract versions). */
 export const SWIPE_CORE_IFACE = 1;
@@ -301,6 +302,8 @@ export function useSwipeGesture(opts: GestureOptions) {
   const o = useRef(opts);
   o.current = opts;
   const [phase, setPhase] = useState<SwipePhase>("idle");
+  // A card mid-gesture holds the deploy auto-reload (lib/page-dirty.ts), never the leave guard.
+  useLeaveGuard(phase !== "idle", ["reload"]);
   const g = useRef(IDLE);
   const el = useRef<HTMLElement | null>(null);
   const pos = useRef<(now: number) => number>(() => 0);
