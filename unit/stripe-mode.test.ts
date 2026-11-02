@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createTestD1 } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
-import { getBalance, ledger } from "@/lib/payments/credits-store";
+import {
+  buyPassWithCredits,
+  creditTestTopup,
+  getBalance,
+  getTestBalance,
+  ledger,
+  refundTestTopup,
+  testLedger,
+} from "@/lib/payments/credits-store";
 import { PASSES } from "@/lib/payments/passes";
 import { providerMode, providerOpenTo, providersFor } from "@/lib/payments/providers";
 import { stripeProvider } from "@/lib/payments/providers/stripe";
@@ -293,20 +301,25 @@ describe("handleStripeWebhook", () => {
     ).toBe("ignored");
   });
 
-  test("top-ups: test credits the owner only (noted), live anyone (unnoted)", async () => {
+  test("top-ups: test goes to the owner's test ledger only; live to anyone's balance", async () => {
     env("test");
     expect((await handleStripeWebhook(d1, await delivery(topup("u")), NOW)).body.status).toBe(
       "ignored",
     );
     expect(await getBalance(d1, "u")).toBe(0);
+    expect(await getTestBalance(d1, "u")).toBe(0);
     expect((await handleStripeWebhook(d1, await delivery(topup("owner")), NOW)).body.status).toBe(
       "applied",
     );
-    expect((await ledger(d1, "owner"))[0]).toMatchObject({
-      amount: 1200,
-      refId: "stripe:cs_t_owner",
-      note: "test mode",
-    });
+    expect(await getBalance(d1, "owner")).toBe(0);
+    expect(await ledger(d1, "owner")).toEqual([]);
+    expect(await testLedger(d1, "owner")).toMatchObject([
+      { amount: 1200, reason: "topup", refId: "stripe:cs_t_owner" },
+    ]);
+    expect((await handleStripeWebhook(d1, await delivery(topup("owner")), NOW)).body.status).toBe(
+      "duplicate",
+    );
+    expect(await getTestBalance(d1, "owner")).toBe(1200);
     env("live");
     const live = (s: unknown) => delivery(s, { livemode: true });
     expect((await handleStripeWebhook(d1, await live(topup("u")), NOW)).body.status).toBe(
@@ -317,6 +330,51 @@ describe("handleStripeWebhook", () => {
     const unpaid = { ...topup("u", "cs_t_2"), payment_status: "unpaid" };
     expect((await handleStripeWebhook(d1, await live(unpaid), NOW)).body.status).toBe("ignored");
     expect(await getBalance(d1, "u")).toBe(1200);
+  });
+
+  test("regression: test credits buy nothing, pay no inviter, and stay test after going live", async () => {
+    env("test");
+    // The owner was invited by someone else (worst case for the bonus).
+    await claimInvite(d1, "owner", await getOrCreateInviteCode(d1, "inviter", NOW), NOW);
+    await handleStripeWebhook(d1, await delivery(topup("owner")), NOW);
+    expect(await getTestBalance(d1, "owner")).toBe(1200);
+    // Buying a ¥600 pass "from the balance" finds nothing to spend.
+    const buy = await buyPassWithCredits(d1, "owner", "pro-1m", "k1", NOW);
+    expect(buy).toMatchObject({ status: "insufficient", balance: 0, price: 600 });
+    expect(pro("owner")).toBeNull();
+    expect(pro("inviter")).toBeNull();
+    // Switching Stripe to live turns none of it into real balance.
+    env("live");
+    expect(await getBalance(d1, "owner")).toBe(0);
+    expect((await buyPassWithCredits(d1, "owner", "pro-1m", "k2", NOW)).status).toBe(
+      "insufficient",
+    );
+    expect(pro("inviter")).toBeNull();
+  });
+});
+
+describe("the test ledger", () => {
+  test("once per payment; a refund before capture blocks it; refunds are once", async () => {
+    const d1 = setup();
+    const t = { userId: "owner", amount: 600, provider: "komoju", paymentId: "p1" };
+    expect(await creditTestTopup(d1, { ...t, userId: "ghost" }, NOW)).toEqual({
+      status: "no user",
+    });
+    await expect(creditTestTopup(d1, { ...t, amount: 0 }, NOW)).rejects.toThrow("positive");
+    expect((await creditTestTopup(d1, t, NOW)).status).toBe("applied");
+    expect((await creditTestTopup(d1, t, NOW)).status).toBe("duplicate");
+    expect(await refundTestTopup(d1, "komoju:p1", NOW)).toEqual({
+      status: "refunded",
+      amount: -600,
+      balance: 0,
+    });
+    expect(await refundTestTopup(d1, "komoju:p1", NOW)).toEqual({ status: "duplicate" });
+    // Refunded before the capture arrived: marked, and the capture records nothing.
+    expect(await refundTestTopup(d1, "komoju:p2", NOW)).toEqual({ status: "marked" });
+    expect((await creditTestTopup(d1, { ...t, paymentId: "p2" }, NOW)).status).toBe("refunded");
+    expect(await getTestBalance(d1, "owner")).toBe(0);
+    expect(await getBalance(d1, "owner")).toBe(0);
+    expect(await testLedger(d1, "owner")).toHaveLength(2);
   });
 });
 
@@ -355,6 +413,7 @@ describe("stripe on the provider webhook route", () => {
     expect(
       (await handleProviderWebhook(d1, stripeProvider, await req(topup("owner")), NOW)).body.status,
     ).toBe("applied");
-    expect((await ledger(d1, "owner"))[0]).toMatchObject({ amount: 1200, note: "test mode" });
+    expect(await getBalance(d1, "owner")).toBe(0);
+    expect(await getTestBalance(d1, "owner")).toBe(1200);
   });
 });

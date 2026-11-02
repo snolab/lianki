@@ -12,13 +12,15 @@
  *   "topup"`, the credit ledger), once per session.
  *
  * Test mode credits the owner's account only — anyone else's session is
- * acknowledged and ignored — and marks what it writes: the `payment` row gets
- * `testMode = 1`, the ledger entry the note `test mode`. A test pass also earns
- * no inviter bonus, since that bonus would be real Pro days for someone else.
+ * acknowledged and ignored — and keeps it apart from real money: a pass's
+ * `payment` row gets `testMode = 1` and earns no inviter bonus (that would be
+ * real Pro days for someone else); a top-up goes to `credit_test_ledger`
+ * (`creditTestTopup`), never to the spendable balance, so test credits can buy
+ * nothing and never become real credits, even after a switch to live.
  */
 import { isOwner } from "@/lib/owner";
 import { rewardPurchase } from "@/lib/referrals/store";
-import { creditTopup, type D1WithBatch } from "./credits-store";
+import { creditTestTopup, creditTopup, type D1WithBatch } from "./credits-store";
 import { fulfilCheckout } from "./fulfil";
 import { topupFromSession } from "./providers/stripe";
 import { PAID_EVENTS, readStripeEvent, stripeMode } from "./stripe";
@@ -68,11 +70,10 @@ export async function handleStripeWebhook(
       console.warn("[payments] top-up ignored", session.id, t);
       return { status: 200, body: { received: true, status: "ignored" } };
     }
-    const r = await creditTopup(
-      d1,
-      { ...t, provider: "stripe", note: testMode ? "test mode" : undefined },
-      now,
-    );
+    // Test credits go to the separate test ledger: never spendable, never real.
+    const r = testMode
+      ? await creditTestTopup(d1, { ...t, provider: "stripe" }, now)
+      : await creditTopup(d1, { ...t, provider: "stripe" }, now);
     return { status: 200, body: { received: true, status: r.status } };
   }
 

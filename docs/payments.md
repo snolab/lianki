@@ -55,9 +55,11 @@ In **test** mode (`lib/payments/stripe-webhook.ts`):
 - the webhook credits the owner's account only — a session for anyone else
   is answered 200 and ignored (`payments.stripe.test-ignored` in
   `wrangler tail lianki`);
-- what it writes is marked: a pass's `payment` row has `testMode = 1`
-  (`db/migrations/0025_payment_test_mode.sql`), a top-up's ledger entry the
-  note `test mode`; and a test pass pays **no** inviter bonus.
+- what it writes is kept apart from real money
+  (`db/migrations/0025_payment_test_mode.sql`): a pass's `payment` row has
+  `testMode = 1` and pays **no** inviter bonus; a top-up goes to
+  `credit_test_ledger`, never to the spendable balance (see "Test credits"
+  under Providers).
 
 In both modes a signed event whose `livemode` disagrees with the mode (the
 secrets are mixed up) credits nothing: it answers 503 and logs
@@ -95,8 +97,9 @@ In the Stripe Dashboard (once per mode — test and live are separate):
    `STRIPE_LIVE`.
 3. As the owner, buy a pass on `/membership` with card `4242 4242 4242 4242`
    (Checkout shows "Test mode"): Pro is extended and the `payment` row has
-   `testMode = 1`. Top up ¥100 with "Stripe (test)": the ledger entry carries
-   `test mode`. A non-owner account sees no buy buttons and no Stripe top-up.
+   `testMode = 1`. Top up ¥100 with "Stripe (test)": `/dev/credits` shows it
+   under 测试余额, and the real balance is unchanged. A non-owner account sees
+   no buy buttons and no Stripe top-up.
 
 ### Going live
 
@@ -119,7 +122,7 @@ review asks for them), and the owner's 資格外活動許可. Then:
 3. **One small real payment**: as the owner, top up **¥100** by card
    (Stripe now has no "(test)" label, and a second, non-owner account sees it
    too). Check: `wrangler tail lianki` shows no error; the balance is +¥100
-   with a `topup` entry `stripe:<session id>` and no `test mode` note; the
+   with a `topup` entry `stripe:<session id>` in the real ledger; the
    Dashboard shows the payment and the webhook delivery 200. Then refund it in
    the Dashboard and take it back at `/dev/credits` (撤回充值).
 4. If anything is off: `bunx wrangler secret delete STRIPE_LIVE` turns Stripe
@@ -196,8 +199,19 @@ The wallet is provider-plural (`lib/payments/providers/`). A provider is
 listed on `/membership` only when it is **implemented, every one of its
 `envKeys` is set** on the Worker, and its mode is not off. A provider in
 **test mode** is listed for the owner (`OWNER_EMAILS`) only, labelled
-"(test)", and its webhook credits the owner only (ledger note `test mode`) —
-a test card can never become anyone's real credits.
+"(test)", and its webhook credits the owner only — and only to the test
+ledger — so a test card can never become anyone's real credits.
+
+**Test credits** (`creditTestTopup` / `refundTestTopup` in
+`credits-store.ts`): a test-mode top-up is written to `credit_test_ledger`
+(once per `<provider>:<paymentId>`, blocked by a refund mark like a real one),
+never to `credit_ledger` / `credit_balance`. So test credits cannot buy a pass
+— and so cannot trigger the inviter's purchase bonus, or any real value for
+anyone — and they never turn into real balance, not even after the provider
+is switched to live. They show at `/dev/credits` (测试余额) and under `test`
+in `GET /api/payments/credits`. A test-mode refund takes them back from the
+test ledger only. To try buying a pass with the balance, give the owner
+credits at `/dev/credits` (adjust) instead.
 
 | id                | kind     | methods                                     | env (secrets)                                  | state       |
 | ----------------- | -------- | ------------------------------------------- | ---------------------------------------------- | ----------- |
@@ -252,8 +266,9 @@ credits the wallet as `sponsor`.
 
 **Testing now (test keys):** set the test-mode secrets below with the
 `sk_test_…` key, sign in as the owner, top up ¥100 on `/membership` with a
-KOMOJU test card; the balance shows the credit with note `test mode`. Other
-accounts see no KOMOJU button.
+KOMOJU test card; `/dev/credits` shows it under 测试余额 (the real balance is
+unchanged — test credits are never spendable). Other accounts see no KOMOJU
+button.
 
 **Going live** (after KOMOJU approves the Live application):
 
@@ -276,8 +291,8 @@ accounts see no KOMOJU button.
 3. **One small real payment**: as the owner, top up **¥100** by card on
    `/membership` (KOMOJU now has no "(test)" label, and a second, non-owner
    account sees it too). Check: `wrangler tail lianki` shows no error; the
-   balance is +¥100 with a `topup` entry `komoju:<payment id>` and no
-   `test mode` note; the KOMOJU dashboard shows the payment captured and the
+   real balance is +¥100 with a `topup` entry `komoju:<payment id>`; the
+   KOMOJU dashboard shows the payment captured and the
    webhook delivery 200. Then refund it in the KOMOJU dashboard and check the
    wallet goes back to its old balance (a `refund` entry `topup:komoju:…`).
 4. If anything is off: `bunx wrangler secret delete KOMOJU_LIVE` turns

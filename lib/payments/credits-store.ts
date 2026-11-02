@@ -406,3 +406,112 @@ export async function reverseTopup(
   if (r.status === "insufficient") return { status: "insufficient", balance: r.balance };
   return { status: "not found" };
 }
+
+// ── Test mode ───────────────────────────────────────────────────────────────────
+
+/**
+ * Test-mode top-ups live in `credit_test_ledger` only (migration 0025): they
+ * never touch `credit_balance`, so nothing can spend them — no pass, no inviter
+ * bonus — and they never become real credits, even after the provider goes
+ * live. The webhook routes a test-mode payment here, never to `creditTopup`.
+ */
+export interface TestLedgerEntry {
+  id: string;
+  amount: number;
+  reason: "topup" | "refund";
+  refId: string;
+  createdAt: string;
+}
+
+export async function getTestBalance(d1: D1Like, userId: string): Promise<number> {
+  const row = await d1
+    .prepare("SELECT COALESCE(SUM(amount), 0) AS b FROM credit_test_ledger WHERE userId = ?")
+    .bind(userId)
+    .first<{ b: number }>();
+  return Number(row?.b ?? 0);
+}
+
+export async function testLedger(
+  d1: D1Like,
+  userId: string,
+  limit = 50,
+): Promise<TestLedgerEntry[]> {
+  return (
+    await d1
+      .prepare(
+        "SELECT id, amount, reason, refId, createdAt FROM credit_test_ledger WHERE userId = ? ORDER BY createdAt DESC, rowid DESC LIMIT ?",
+      )
+      .bind(userId, limit)
+      .all<TestLedgerEntry>()
+  ).results;
+}
+
+/** Record a test-mode top-up, once per payment, unless it was refunded first. */
+export async function creditTestTopup(
+  d1: D1WithBatch,
+  t: { userId: string; amount: number; provider: string; paymentId: string },
+  now = new Date(),
+): Promise<TopupResult> {
+  if (!Number.isInteger(t.amount) || !(t.amount > 0)) throw new Error("top-up must be positive");
+  const user = await d1.prepare("SELECT id FROM user WHERE id = ?").bind(t.userId).first();
+  if (!user) return { status: "no user" };
+  const refId = `${t.provider}:${t.paymentId}`;
+  const id = crypto.randomUUID();
+  try {
+    await d1
+      .prepare(
+        "INSERT INTO credit_test_ledger (id, userId, amount, reason, refId, createdAt) SELECT ?, ?, ?, 'topup', ?, ? WHERE NOT EXISTS (SELECT 1 FROM credit_refund_mark WHERE refId = ?)",
+      )
+      .bind(id, t.userId, t.amount, refId, now.toISOString(), refId)
+      .run();
+  } catch (err) {
+    if (isUnique(err)) return { status: "duplicate" };
+    throw err;
+  }
+  const done = await d1
+    .prepare("SELECT 1 AS ok FROM credit_test_ledger WHERE id = ?")
+    .bind(id)
+    .first();
+  if (!done) return { status: "refunded" };
+  return { status: "applied", balance: await getTestBalance(d1, t.userId) };
+}
+
+/**
+ * A test-mode payment refunded at the provider: mark it (so a late capture
+ * never records it) and take its test top-up back, once. Never touches real
+ * credits.
+ */
+export async function refundTestTopup(
+  d1: D1WithBatch,
+  topupRefId: string,
+  now = new Date(),
+): Promise<ProviderRefundResult> {
+  const at = now.toISOString();
+  const id = crypto.randomUUID();
+  const refundRef = `topup:${topupRefId}`;
+  await d1.batch([
+    d1
+      .prepare("INSERT OR IGNORE INTO credit_refund_mark (refId, createdAt) VALUES (?, ?)")
+      .bind(topupRefId, at),
+    d1
+      .prepare(
+        "INSERT OR IGNORE INTO credit_test_ledger (id, userId, amount, reason, refId, createdAt) SELECT ?, userId, -amount, 'refund', ?, ? FROM credit_test_ledger WHERE reason = 'topup' AND refId = ?",
+      )
+      .bind(id, refundRef, at, topupRefId),
+  ]);
+  const row = await d1
+    .prepare("SELECT userId, amount FROM credit_test_ledger WHERE id = ?")
+    .bind(id)
+    .first<{ userId: string; amount: number }>();
+  if (row)
+    return {
+      status: "refunded",
+      amount: row.amount,
+      balance: await getTestBalance(d1, row.userId),
+    };
+  const prior = await d1
+    .prepare("SELECT 1 AS ok FROM credit_test_ledger WHERE reason = 'refund' AND refId = ?")
+    .bind(refundRef)
+    .first();
+  return prior ? { status: "duplicate" } : { status: "marked" };
+}

@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { longDateTime } from "@/lib/dates";
-import type { LedgerEntry } from "@/lib/payments/credits-store";
+import type { LedgerEntry, TestLedgerEntry } from "@/lib/payments/credits-store";
 
 type View = {
   email: string;
   proEndsAt: string | null;
   balance: number;
   entries: LedgerEntry[];
+  testBalance?: number;
+  testEntries?: TestLedgerEntry[];
 };
 
 const field =
@@ -70,6 +72,17 @@ export default function CreditsAdmin({ defaultEmail }: { defaultEmail: string })
             <b>{view.email}</b> · 余额 <b data-balance>¥{view.balance.toLocaleString()}</b> · Pro
             到期 {view.proEndsAt ? longDateTime(view.proEndsAt) : "—"}
           </div>
+          {view.testEntries && view.testEntries.length > 0 && (
+            <div data-test-balance>
+              测试余额 ¥{(view.testBalance ?? 0).toLocaleString()}（测试模式充值，不可消费）：
+              {view.testEntries.map((e) => (
+                <span key={e.id} className="ml-2 font-mono text-xs">
+                  {e.amount > 0 ? "+" : ""}
+                  {e.amount} {e.refId}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <input
               type="number"

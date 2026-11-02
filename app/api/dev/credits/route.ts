@@ -7,9 +7,11 @@ import { ADMIN_MAX, ADMIN_REASONS, type AdminReason } from "@/lib/payments/credi
 import {
   applyCredit,
   getBalance,
+  getTestBalance,
   ledger,
   refundPassToCredits,
   reverseTopup,
+  testLedger,
   type D1WithBatch,
 } from "@/lib/payments/credits-store";
 
@@ -38,6 +40,9 @@ async function view(email: string) {
     proEndsAt: row.proEndsAt,
     balance: await getBalance(d1, row.id),
     entries: await ledger(d1, row.id, 100),
+    // Test-mode top-ups: their own ledger, never spendable (migration 0025).
+    testBalance: await getTestBalance(d1, row.id),
+    testEntries: await testLedger(d1, row.id, 100),
   };
 }
 

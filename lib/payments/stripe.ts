@@ -7,7 +7,7 @@
  *
  * - **test**: `STRIPE_LIVE` is not set and the key is `sk_test_…`. Passes and
  *   top-ups are offered to the owner (`OWNER_EMAILS`) only, and the webhook
- *   credits the owner only, marked as test mode — a test card must never
+ *   credits the owner only, kept apart from real money — a test card must never
  *   become real Pro days or credits for anyone.
  * - **live**: `STRIPE_LIVE=1` and the key is `sk_live_…`. Offered to everyone.
  * - **off**: a secret is missing, the key disagrees with the flag, or the key
