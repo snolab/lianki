@@ -61,7 +61,7 @@ export function GiftCodesClient() {
           />
         </label>
         <label className="space-y-1 text-sm">
-          <span>余额（日元，可 0）</span>
+          <span>余额（积分，可 0）</span>
           <input
             type="number"
             min={0}
@@ -130,7 +130,7 @@ export function GiftCodesClient() {
             <tr key={c.code} className="border-t border-gray-200 dark:border-gray-700">
               <td className="font-mono select-all py-1">{c.code}</td>
               <td>{c.days}</td>
-              <td>{c.credits ? `¥${c.credits}` : "—"}</td>
+              <td>{c.credits ? `${c.credits.toLocaleString()} 积分` : "—"}</td>
               <td>
                 {c.uses}/{c.maxUses}
               </td>
