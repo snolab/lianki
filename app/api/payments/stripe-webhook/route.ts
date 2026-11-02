@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getD1 } from "@/lib/d1";
 import { fulfilCheckout, type CheckoutSessionLike } from "@/lib/payments/fulfil";
 import { stripeEnabled, verifyStripeSignature } from "@/lib/payments/stripe";
+import { creditTopup } from "@/lib/payments/credits-store";
+import { topupFromSession } from "@/lib/payments/providers/stripe";
 import { rewardPurchase } from "@/lib/referrals/store";
 
 /** Events that can mean a session is now paid; any other is acknowledged and ignored. */
@@ -33,6 +35,18 @@ export async function POST(req: Request) {
 
   // A throw here is a 500, so Stripe retries; a duplicate or ignored session is a 200.
   const d1 = getD1() as never;
+
+  // Credit-wallet top-ups ride the same endpoint (metadata.kind = "topup").
+  if (event.data.object.metadata?.kind === "topup") {
+    const t = topupFromSession(event.data.object);
+    if (t.status !== "paid") {
+      console.warn("[payments] top-up ignored", event.data.object.id, t);
+      return NextResponse.json({ received: true, status: "ignored" });
+    }
+    const r = await creditTopup(d1, { ...t, provider: "stripe" });
+    return NextResponse.json({ received: true, status: r.status });
+  }
+
   const result = await fulfilCheckout(d1, event.data.object);
   // The inviter's purchase bonus. Also on a duplicate, so a failure here is
   // retried with the redelivery; it is once-only by itself.

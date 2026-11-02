@@ -20,7 +20,7 @@ export default async function GiftCodesPage() {
       <header className="space-y-1">
         <h1 className="font-brush text-4xl">礼品码</h1>
         <p className="text-sm opacity-60">
-          只有你能看到这页。生成「N 天 Pro，可用 M 次」的码；朋友在 /membership
+          只有你能看到这页。生成「N 天 Pro 和/或 ¥X 余额，可用 M 次」的码；朋友在 /membership
           页底部兑换，每人每个码只能用一次。不占邀请奖励的年度上限。
         </p>
       </header>

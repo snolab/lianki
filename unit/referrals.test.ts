@@ -219,12 +219,20 @@ describe("gift codes", () => {
       { days: 7, maxUses: 2, note: "friends" },
       NOW,
     );
-    expect(await redeemGiftCode(d1, "x", code, NOW)).toEqual({ status: "redeemed", days: 7 });
+    expect(await redeemGiftCode(d1, "x", code, NOW)).toEqual({
+      status: "redeemed",
+      days: 7,
+      credits: 0,
+    });
     expect(await redeemGiftCode(d1, "x", code, NOW)).toEqual({
       status: "rejected",
       reason: "already redeemed",
     });
-    expect(await redeemGiftCode(d1, "y", code, NOW)).toEqual({ status: "redeemed", days: 7 });
+    expect(await redeemGiftCode(d1, "y", code, NOW)).toEqual({
+      status: "redeemed",
+      days: 7,
+      credits: 0,
+    });
     expect(await redeemGiftCode(d1, "z", code, NOW)).toEqual({
       status: "rejected",
       reason: "used up",

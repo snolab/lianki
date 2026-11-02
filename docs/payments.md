@@ -52,7 +52,194 @@ review asks for them), and the owner's 資格外活動許可.
 
 - WeChat Pay on Stripe shows a QR code even on phones, and does not work inside
   WeChat's in-app browser.
-- No refunds UI: refund in the Dashboard and shorten `proEndsAt` by hand.
+- No refunds UI for passes paid by card: refund in the Dashboard and shorten
+  `proEndsAt` by hand. Credit-wallet refunds are at `/dev/credits` (below).
+
+## Credits (prepaid wallet)
+
+A wallet balance in JPY, modelled on wallets like renzhe.cloud's: top up once
+through any enabled payment method, then spend the balance on passes; a pass
+bought with the balance activates at once, with no payment page in between.
+Rules in `lib/payments/credits.ts`, D1 side in `lib/payments/credits-store.ts`,
+tables in `db/migrations/0024_credits.sql`, UI in
+`app/(app)/membership/WalletCard.tsx`.
+
+### Ledger
+
+- `credit_ledger` is append-only: one row per change, amount in JPY signed
+  (+ top-up, gift, sponsor, refund to the wallet; − a pass, a reversed
+  top-up), reason `topup | pass | refund | gift | sponsor | adjust`, and
+  **UNIQUE (reason, refId)** — each entry is once-only.
+- `credit_balance` caches the sum. Every ledger row and its balance change are
+  written in the **same D1 batch** (one transaction), so the two never
+  disagree. `CHECK (balance >= 0)` is the no-negative rule: an overdraft fails
+  the UPDATE and rolls back the whole batch, Pro extension included. The
+  pre-read balance only shapes the answer; the CHECK is the guard, so two
+  concurrent spends cannot both pass (unit test "atomic").
+- The row is created at 0 and then updated — not upserted with the delta:
+  SQLite checks CHECK on the proposed INSERT row before `ON CONFLICT`.
+- refIds: top-up `<provider>:<paymentId>`; pass `<userId>:<client key>` (one
+  key per click, so a retried request buys once); refund `pass:<spend refId>`
+  or `topup:<top-up refId>`; gift `<code>:<userId>`; admin `admin:<uuid>`.
+
+### Endpoints
+
+| endpoint                                 | does                                                                                                                                                                 |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/payments/credits`              | balance, the newest 50 entries, top-up limits and the **enabled** providers                                                                                          |
+| `POST /api/payments/topup`               | `{amount, provider?, turnstileToken}`, ¥100–¥10,000 whole yen → `{kind:"redirect",url}` or `{kind:"qr",qr}`. Same rate limit + Turnstile as pass checkout           |
+| `POST /api/payments/buy-pass`            | `{passId, key}` → 200 `{balance, proEndsAt}`, or **402** `{balance, price, missing}` — the page offers a top-up of exactly `missing` (at least the ¥100 minimum)      |
+| `POST /api/payments/webhook/<provider>`  | the provider's webhook; it verifies its own signature, then credits the ledger keyed by provider + paymentId                                                         |
+| `POST /api/payments/stripe-webhook`      | Stripe's single endpoint: passes as before, and sessions with `metadata.kind = "topup"` credit the wallet                                                            |
+| `GET/POST /api/dev/credits`, `/dev/credits` | owner only (404 otherwise): look a wallet up; add/take credits (`sponsor`/`adjust`/`gift`); refund a credit-bought pass to the wallet; reverse a refunded top-up |
+
+Quick amounts are ¥600, ¥1,200, ¥3,000 and ¥5,000, so they line up with the
+passes. A Stripe top-up credits `amount_total` — what was actually paid, JPY
+only — not the amount the metadata asked for. Buying a pass with credits also
+triggers the inviter's first-pass bonus.
+
+Gift codes can carry credits (`gift_code.credits`) as well as, or instead of,
+Pro days; both land in one batch with the `membership_grant` marker, once per
+person per code.
+
+### Refunds
+
+- **A pass bought with credits**: `/dev/credits` → "退回余额" returns the
+  price to the wallet and takes the pass's days off `proEndsAt` (never before
+  now), once.
+- **A top-up refunded at the provider** (Stripe Dashboard): `/dev/credits` →
+  "撤回充值" takes the credits back. Refused if they were already spent — the
+  balance never goes negative; refund the pass first, or settle by hand.
+- No refund of unused credits to the user's card yet — see the open question
+  below.
+
+### Providers
+
+The wallet is provider-plural (`lib/payments/providers/`). A provider is
+listed on `/membership` only when it is **implemented, every one of its
+`envKeys` is set** on the Worker, and its mode is not off. A provider in
+**test mode** is listed for the owner (`OWNER_EMAILS`) only, labelled
+"(test)", and its webhook credits the owner only (ledger note `test mode`) —
+a test card can never become anyone's real credits.
+
+| id                | kind     | methods                                     | env (secrets)                                  | state       |
+| ----------------- | -------- | ------------------------------------------- | ---------------------------------------------- | ----------- |
+| `stripe`          | checkout | card, Alipay, WeChat Pay                    | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`   | implemented |
+| `komoju`          | checkout | card, konbini, PayPay, Alipay, WeChat Pay   | `KOMOJU_SECRET_KEY`, `KOMOJU_WEBHOOK_SECRET` (+ `KOMOJU_LIVE=1` for live) | implemented — test mode until live (below) |
+| `payjp`           | checkout | card (3-D Secure, checkout-policy.ts)       | `PAYJP_SECRET_KEY`, `PAYJP_WEBHOOK_TOKEN`      | slot        |
+| `paddle`          | checkout | card, PayPal, Apple Pay                     | `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`      | slot        |
+| `usdt`            | checkout | USDT TRC-20 / ERC-20 (QR)                   | `USDT_GATEWAY_API_KEY`, `USDT_GATEWAY_WEBHOOK_SECRET` | slot |
+| `afdian`          | grant    | 爱发电 (Alipay, WeChat Pay)                  | `AFDIAN_USER_ID`, `AFDIAN_API_TOKEN`           | slot        |
+| `patreon`         | grant    | Patreon                                     | `PATREON_WEBHOOK_SECRET`                       | slot        |
+| `github-sponsors` | grant    | GitHub Sponsors (as credits, not Pro days)  | `GITHUB_SPONSORS_CREDITS`                      | slot        |
+
+`checkout` providers start a payment of an amount the user picks; `grant`
+providers have no button — money arrives on another platform and its webhook
+credits the wallet as `sponsor`.
+
+#### KOMOJU
+
+`lib/payments/providers/komoju.ts`, webhook handling in
+`lib/payments/webhook.ts`, tests in `unit/komoju.test.ts`.
+
+- **Mode** comes from the Worker's settings only (`komojuMode`), and fails
+  closed: **test** needs an `sk_test_…` key and no `KOMOJU_LIVE`; **live**
+  needs an `sk_live_…` key _and_ `KOMOJU_LIVE=1`; anything else — a missing
+  secret, a key that disagrees with the flag, or a key in any other format
+  (KOMOJU decides the mode by the key alone and has no API field that says
+  which) — is **off**: no session, no credit. So nothing charges real money
+  until the owner sets both a live key and the flag on purpose.
+- **Top-up**: `POST /api/payments/topup` (rate limit + Turnstile, amount
+  validated on the server, ¥100–¥10,000) creates a KOMOJU session —
+  `amount`, `currency: JPY`, `return_url` `/membership?topup=1`, and
+  `metadata {userId, kind: "topup", amount}` — and redirects to its
+  `session_url`.
+- **Webhook** `POST /api/payments/webhook/komoju`: `X-Komoju-Signature` must
+  be the HMAC-SHA256 hex of the raw body with `KOMOJU_WEBHOOK_SECRET`
+  (constant-time compare), else 400. The body is only a hint: on
+  `payment.captured` the payment is **re-read from the KOMOJU API** (and the
+  session this server created), and the credit is the API's `amount` (not
+  `total`, which adds the konbini fee), JPY only, status `captured`, for the
+  session's `userId`, and only if it equals the session's amount. Konbini and
+  bank transfer settle days later — they credit on their own `captured`.
+  Credited once per `komoju:<payment id>`; a redelivery is a no-op. An API
+  failure is a 500, so KOMOJU retries (up to 25 times over 25 days).
+- **Refunds**: a full refund (`payment.refunded`, re-read: status `refunded`)
+  takes the top-up back once, and always leaves a `credit_refund_mark` for the
+  payment in the same batch. A top-up is credited only `WHERE NOT EXISTS` that
+  mark, so a capture webhook that read "captured" before the refund and
+  commits after it credits nothing (unit test "held mid-read"). If the credits were already spent, nothing is
+  overdrawn: it logs `credits.refund.unsettled` (wrangler tail) — settle at
+  `/dev/credits` (refund the pass first, then 撤回充值). Partial refunds
+  (`payment.refund.created`) are not automated; settle by hand.
+
+**Testing now (test keys):** set the test-mode secrets below with the
+`sk_test_…` key, sign in as the owner, top up ¥100 on `/membership` with a
+KOMOJU test card; the balance shows the credit with note `test mode`. Other
+accounts see no KOMOJU button.
+
+**Going live** (after KOMOJU approves the Live application):
+
+1. KOMOJU dashboard (live mode) → **Webhooks** → add
+   `https://lianki.com/api/payments/webhook/komoju`, events
+   `payment.captured` and `payment.refunded`, with a new random secret token.
+2. Put the live secrets on the Worker (names only — never paste values into
+   chat or commits):
+
+   ```bash
+   bunx wrangler secret put KOMOJU_SECRET_KEY      # the live secret key (sk_live_…)
+   bunx wrangler secret put KOMOJU_WEBHOOK_SECRET  # the live webhook's secret token
+   bunx wrangler secret put KOMOJU_LIVE            # 1
+   ```
+
+   Secrets apply at once, no deploy needed. The live key must start with
+   `sk_live_`; if KOMOJU's live key has another format, KOMOJU stays **off**
+   (no button anywhere) — accepting that format is then a one-line code change
+   in `komojuMode`, reviewed like any payment change.
+3. **One small real payment**: as the owner, top up **¥100** by card on
+   `/membership` (KOMOJU now has no "(test)" label, and a second, non-owner
+   account sees it too). Check: `wrangler tail lianki` shows no error; the
+   balance is +¥100 with a `topup` entry `komoju:<payment id>` and no
+   `test mode` note; the KOMOJU dashboard shows the payment captured and the
+   webhook delivery 200. Then refund it in the KOMOJU dashboard and check the
+   wallet goes back to its old balance (a `refund` entry `topup:komoju:…`).
+4. If anything is off: `bunx wrangler secret delete KOMOJU_LIVE` turns
+   KOMOJU off at once (an `sk_live_` key without the flag is refused).
+
+#### Adding a provider
+
+1. Write `lib/payments/providers/<id>.ts` exporting a `PaymentProvider`
+   (`types.ts`): `createTopup(amount, user, urls)` returns
+   `{kind: "redirect", url}` or `{kind: "qr", qr}`; `verifyWebhook(req)` checks
+   the provider's signature (Web Crypto, constant time — no Node-only SDKs on
+   the Worker) and returns `{status: "paid", paymentId, amount, userId}`, or
+   `ignored` / `invalid`. Put `userId` in the provider's metadata when the
+   payment is created, and credit the JPY actually paid.
+2. Credit only on the provider's "settled" event (konbini and crypto settle
+   later than the redirect).
+3. Replace its stub in `stubs.ts` with the real module in `index.ts`'s
+   `PROVIDERS` (or add a new id to `ProviderId`).
+4. Register the webhook at `https://lianki.com/api/payments/webhook/<id>` and
+   `bunx wrangler secret put` each of its `envKeys`. It shows up on
+   `/membership` once all are set.
+5. Card providers must request 3-D Secure (`checkout-policy.ts`), and
+   `/api/payments/topup` already runs the rate limit + Turnstile before any
+   provider is called.
+6. Unit-test its webhook parsing; idempotency comes from the ledger
+   (`<id>:<paymentId>`), not from the adapter.
+
+### Open questions (owner)
+
+- **Minimum top-up**: ¥100 now (`TOPUP_MIN`); Stripe's JPY minimum is ¥50.
+  Card fees (~3.6%) make tiny top-ups poor value — ¥500 or ¥600 may be better.
+- **Expiry**: none (suggested). Note that unexpiring prepaid credits are a
+  自家型前払式支払手段 under 資金決済法: no registration, but if the unused
+  balance on 3/31 or 9/30 exceeds ¥10M, a 届出 and a deposit of half of it are
+  required. Credits valid ≤ 6 months are outside the act.
+- **Refunds of unused credits**: 資金決済法 in principle forbids paying back
+  前払式支払手段 except when the business stops (or small amounts). The
+  refund policy should say unused credits are not refundable except as the law
+  requires; passes bought with credits can be refunded to the wallet.
 
 ## Invites and gift codes
 

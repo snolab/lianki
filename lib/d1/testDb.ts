@@ -30,6 +30,10 @@ class TestPreparedStatement {
   }
 
   async run(): Promise<{ success: true; meta: Record<string, unknown> }> {
+    return this.runSync();
+  }
+
+  runSync(): { success: true; meta: Record<string, unknown> } {
     this.db.prepare(this.query).run(...(this.params as never[]));
     return { success: true, meta: {} };
   }
@@ -47,9 +51,23 @@ export class TestD1Database {
     return { count: 0, duration: 0 };
   }
 
+  /**
+   * Like D1's batch: one transaction — a statement that throws (a UNIQUE or
+   * CHECK violation) rolls back the ones before it, and no other request's
+   * statements interleave (synchronous, no await inside). Code that relies on
+   * that, e.g. the credit wallet's no-negative-balance CHECK, is tested for real.
+   */
   async batch(statements: TestPreparedStatement[]): Promise<unknown[]> {
     const out: unknown[] = [];
-    for (const s of statements) out.push(await s.run());
+    this.db.exec("SAVEPOINT batch");
+    try {
+      for (const s of statements) out.push(s.runSync());
+      this.db.exec("RELEASE batch");
+    } catch (e) {
+      this.db.exec("ROLLBACK TO batch");
+      this.db.exec("RELEASE batch");
+      throw e;
+    }
     return out;
   }
 

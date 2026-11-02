@@ -6,6 +6,7 @@
  * checkout route answers 503 and the membership page hides the buy buttons.
  */
 import { stripeThreeDSecure } from "./checkout-policy";
+import { topupName } from "./credits";
 import type { Pass } from "./passes";
 
 const API = "https://api.stripe.com/v1";
@@ -41,17 +42,35 @@ export function formEncode(obj: Record<string, unknown>, prefix = ""): string[] 
   return out;
 }
 
+/** What a checkout sells: a pass, or credits for the wallet (lib/payments/credits.ts). */
+export type Purchase = { kind: "pass"; pass: Pass } | { kind: "topup"; amount: number };
+
 export interface CheckoutInput {
-  pass: Pass;
+  purchase: Purchase;
   userId: string;
   email?: string;
   successUrl: string;
   cancelUrl: string;
 }
 
-/** The Checkout Session parameters for a pass (exported for tests). */
-export function checkoutParams({ pass, userId, email, successUrl, cancelUrl }: CheckoutInput) {
+function lineFor(p: Purchase) {
+  return p.kind === "pass"
+    ? { currency: p.pass.currency, unit_amount: p.pass.amount, name: p.pass.name }
+    : { currency: "jpy", unit_amount: p.amount, name: topupName(p.amount) };
+}
+
+/** Metadata the webhook reads back: who paid, and for what. */
+function metadataFor(p: Purchase, userId: string): Record<string, string> {
+  return p.kind === "pass"
+    ? { userId, passId: p.pass.id }
+    : { userId, kind: "topup", amount: String(p.amount) };
+}
+
+/** The Checkout Session parameters for a purchase (exported for tests). */
+export function checkoutParams({ purchase, userId, email, successUrl, cancelUrl }: CheckoutInput) {
   const methods = paymentMethods();
+  const line = lineFor(purchase);
+  const metadata = metadataFor(purchase, userId);
   return {
     mode: "payment",
     success_url: successUrl,
@@ -71,14 +90,14 @@ export function checkoutParams({ pass, userId, email, successUrl, cancelUrl }: C
       {
         quantity: 1,
         price_data: {
-          currency: pass.currency,
-          unit_amount: pass.amount,
-          product_data: { name: pass.name },
+          currency: line.currency,
+          unit_amount: line.unit_amount,
+          product_data: { name: line.name },
         },
       },
     ],
-    metadata: { userId, passId: pass.id },
-    payment_intent_data: { metadata: { userId, passId: pass.id } },
+    metadata,
+    payment_intent_data: { metadata },
   };
 }
 

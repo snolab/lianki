@@ -20,18 +20,23 @@ export async function GET() {
   return NextResponse.json({ codes: await listGiftCodes(getD1()) });
 }
 
-/** `{ days, maxUses, note?, expiresAt? }` → `{ code }`. */
+/** `{ days, credits?, maxUses, note?, expiresAt? }` → `{ code }`. Days or credits may be 0, not both. */
 export async function POST(req: Request) {
   const user = await owner();
   if (!user || dbBackend() !== "d1") return new NextResponse(null, { status: 404 });
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const days = Number(body?.days);
+  const credits = Number(body?.credits ?? 0);
   const maxUses = Number(body?.maxUses);
   const expiresAt = body?.expiresAt ? new Date(String(body.expiresAt)) : undefined;
   if (
     !Number.isInteger(days) ||
-    days < 1 ||
+    days < 0 ||
     days > 3660 ||
+    !Number.isInteger(credits) ||
+    credits < 0 ||
+    credits > 100000 ||
+    days + credits === 0 ||
     !Number.isInteger(maxUses) ||
     maxUses < 1 ||
     maxUses > 100000 ||
@@ -40,6 +45,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bad input" }, { status: 400 });
   }
   const note = typeof body?.note === "string" ? body.note.slice(0, 200) : undefined;
-  const code = await createGiftCode(getD1(), user.email, { days, maxUses, note, expiresAt });
+  const code = await createGiftCode(getD1(), user.email, {
+    days,
+    credits,
+    maxUses,
+    note,
+    expiresAt,
+  });
   return NextResponse.json({ code });
 }
