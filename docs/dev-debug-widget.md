@@ -50,7 +50,7 @@ re-exports for the hub and the sender.
 | `float-lines.ts`                                         | minimized: floating lines, their dwell and timers        |
 | `compact-view.ts`                                        | compact mode: last message only, when to fold again      |
 | `log-surface.ts`                                         | the log's display, shared by the log and the state tree  |
-| `typing-glass.ts`                                        | the page's frost behind the chat while typing            |
+| `typing-glass.ts`                                        | the chat box's own frost while typing                    |
 | `Frontier.tsx`, `frontier-view.ts`                       | minimized: the ✓ ▶ › frontier lines and their rules      |
 | `DebugChatHost.tsx`                                      | the page's loader: import, re-import on reload, fallback |
 | `DebugPairModal.tsx`                                     | the pairing modal                                        |
@@ -617,24 +617,31 @@ Checks and screenshots: `node scripts/dev/debug-chat-compact-qa.mjs --shots
 <dir>` (silent browsers, getUserMedia refused, 390×844, light and dark);
 the rules in `unit/chat-compact.test.ts`.
 
-## Typing glass: the page frosts while typing
+## Typing glass: the chat box frosts while typing
 
-Owner, 2026-11-02 on /home: "帮我背景玻璃化，在我在这里打字的时候". While the
-chat's input has the focus (the `typing` state), a glass layer sits between
-the page and the chat (`data-testid="debug-chat-typing-glass"`, z-39, the
-chat is z-40): a light oklch tint in the page's tone under
-`blur(12px) saturate(1.4)` (`-webkit-` too, for iOS Safari), lighter than the
-full-screen log's sheet, which replaces it while that is up. Rules and look
-in `typing-glass.ts`.
+Owner, 2026-11-02 on /home: "帮我背景玻璃化，在我在这里打字的时候"; corrected
+2026-11-03: "打字时的背景模糊应该只用于聊天框那一小块区域，不要全屏背景模糊".
+While the chat's input has the focus (the `typing` state), the chat box's own
+area gets a glass background (`data-testid="debug-chat-typing-glass"`, a child
+of the box at `-z-10`, `-inset-1.5` past its edge, rounded): a light oklch tint
+in the page's tone under `blur(12px) saturate(1.4)` (`-webkit-` too, for iOS
+Safari), with a 1px oklch hairline ring. Only the box: the page around it
+stays sharp, and nothing catches taps (`pointer-events: none`), so the page
+stays usable while typing. Rules and look in `typing-glass.ts`.
 
-- **Taps on it** blur the input (which ends the glass) and never reach the
-  page: a frosted button cannot be pressed by accident.
+- **Not full-screen.** #425 first shipped a full-screen frosted layer with a
+  tap-catcher; the owner corrected it the next day. Do not bring it back.
 - **Fade** 150 ms both ways; none under reduced motion. It stays mounted and
-  goes `visibility: hidden` after the fade, so at rest it is neither painted
-  nor hit. Without backdrop-filter, or under reduced transparency, the tint
-  goes near-opaque (0.9).
-- **Not** minimized, not embedded on other sites (the userscript), and only
-  on focus; glass while a draft waits unfocused would be a follow-up.
+  goes `visibility: hidden` after the fade, so at rest it is not painted.
+  Without backdrop-filter, or under reduced transparency, the tint goes
+  near-opaque (0.9).
+- **Backdrop root:** the box sits at `opacity-60` at rest, and an ancestor
+  under opacity 1 would stop the blur from seeing the page. While typing
+  `focus-within` makes it opaque, so the glass blurs the page as it should.
+- **Not** minimized, and gives way to the full-screen log's own sheet. Also
+  on other sites (the userscript): it covers only the box, so the host page
+  is untouched. Only on focus; glass while a draft waits unfocused would be a
+  follow-up.
 
 Checks and screenshots: `node scripts/dev/debug-chat-typing-glass-qa.mjs
 --shots <dir>` (silent browsers, 390×844, light and dark); the rules in

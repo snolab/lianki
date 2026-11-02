@@ -3,9 +3,11 @@
  * Browser checks for the chat's typing glass (packages/debug-chat/src/typing-glass.ts)
  * on the local /harness page, with the hot widget, over a made-up busy page:
  *
- *   - at rest the glass is hidden (not painted, not hit)
- *   - focusing the input frosts the page: blur + saturate, an oklch tint
- *   - a tap on the frosted page blurs the input and never reaches the page
+ *   - at rest the glass is hidden (not painted)
+ *   - focusing the input frosts the chat box's own area only: blur + saturate,
+ *     an oklch tint, inside the box (owner, 2026-11-03: not full-screen)
+ *   - the page outside the box stays sharp and usable: a tap on a page button
+ *     while typing reaches the page (nothing catches taps)
  *   - the glass fades out again; nothing on the page moves (no layout shift)
  *   - under prefers-reduced-motion it does not animate
  *
@@ -77,7 +79,7 @@ const open = async ({ colorScheme = "light", reducedMotion = "no-preference" } =
   const page = await ctx.newPage();
   await page.goto(`${ORIGIN}/harness?open&nofrontier`);
   await page.waitForSelector("[data-debug-widget] [data-debug-chat]", { timeout: 30_000 });
-  // A busy page behind the chat: a word list with a button the glass must shield.
+  // A busy page behind the chat: a word list, with a button that must stay usable.
   await page.evaluate(() => {
     const words = ["serendipity", "ephemeral", "luminous", "quintessential", "resilience"];
     const list = document.createElement("main");
@@ -96,7 +98,10 @@ const open = async ({ colorScheme = "light", reducedMotion = "no-preference" } =
     document.getElementById("qa-btn").addEventListener("click", () => globalThis.__btnClicks++);
   });
   await page.evaluate(() =>
-    globalThis.__push("好的，打字的时候背景会变成磨砂玻璃，点一下背景就收起。", "agent"),
+    globalThis.__push(
+      "好的，打字的时候只有聊天框这一块变成磨砂玻璃，页面其他地方保持清晰。",
+      "agent",
+    ),
   );
   await page.waitForTimeout(400);
   return { ctx, page };
@@ -106,7 +111,15 @@ const glass = (page) =>
     const g = document.querySelector('[data-testid="debug-chat-typing-glass"]');
     if (!g) return null;
     const cs = getComputedStyle(g);
+    const chat = document.querySelector("[data-debug-chat]");
+    const r = g.getBoundingClientRect();
+    const c = chat.getBoundingClientRect();
     return {
+      inChat: chat.contains(g),
+      // Its rect: the box's, a few px past its edge; nowhere near the screen's.
+      rect: { w: r.width, h: r.height, dw: r.width - c.width, dh: r.height - c.height },
+      screen: { w: innerWidth, h: innerHeight },
+      pointer: cs.pointerEvents,
       shown: g.dataset.shown === "true",
       opacity: Number(cs.opacity),
       visibility: cs.visibility,
@@ -114,7 +127,6 @@ const glass = (page) =>
       background: g.style.background,
       transition: cs.transitionProperty + " " + cs.transitionDuration,
       z: Number(cs.zIndex),
-      chatZ: Number(getComputedStyle(document.querySelector("[data-debug-chat]")).zIndex),
     };
   });
 const pageRect = (page) =>
@@ -157,31 +169,46 @@ try {
       `${scheme}: an oklch tint`,
     );
     check(/150ms|0\.15s/.test(on.transition), `${scheme}: ~150 ms fade`);
-    check(on.z < on.chatZ, `${scheme}: under the chat, over the page`);
+    check(on.inChat && on.z < 0, `${scheme}: inside the chat box, behind its content`);
+    check(
+      on.rect.dw > 0 &&
+        on.rect.dw <= 16 &&
+        on.rect.dh > 0 &&
+        on.rect.dh <= 16 &&
+        on.rect.w < on.screen.w &&
+        on.rect.h < on.screen.h / 2,
+      `${scheme}: only the box's own area (${Math.round(on.rect.w)}×${Math.round(on.rect.h)} of ${on.screen.w}×${on.screen.h})`,
+    );
+    check(on.pointer === "none", `${scheme}: takes no pointer`);
+    check(
+      (await page.locator('[data-testid="debug-chat-typing-glass"][data-shown]').count()) === 1 &&
+        (await page.evaluate(
+          () =>
+            [...document.querySelectorAll("body *")].filter((el) => {
+              if (el.closest("[data-debug-chat]")) return false;
+              const f = getComputedStyle(el).backdropFilter;
+              const r = el.getBoundingClientRect();
+              return f && f !== "none" && r.width >= innerWidth && r.height >= innerHeight;
+            }).length,
+        )) === 0,
+      `${scheme}: no full-screen blur layer`,
+    );
     check((await pageRect(page)) === before, `${scheme}: no layout shift`);
     if (SHOTS) await page.screenshot({ path: join(SHOTS, `typing-glass-${scheme}.png`) });
 
-    // A tap on the frosted page button: blurs the input, never clicks the page.
+    // The page around the box stays usable while typing: a tap reaches it.
     const box = await page.locator("#qa-btn").boundingBox();
     await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
     await page.waitForTimeout(300);
     check(
-      (await page.evaluate(() => globalThis.__btnClicks)) === 1,
-      `${scheme}: a tap on the glass does not reach the page`,
+      (await page.evaluate(() => globalThis.__btnClicks)) === 2,
+      `${scheme}: a tap on the page while typing reaches the page`,
     );
-    check(
-      await page.evaluate(
-        () => document.activeElement?.getAttribute("data-testid") !== "debug-chat-input",
-      ),
-      `${scheme}: a tap on the glass blurs the input`,
-    );
+    // Tapping the page blurs the input (a button takes the focus): the glass goes.
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.waitForTimeout(300);
     const off = await glass(page);
     check(off.visibility === "hidden" && off.opacity === 0, `${scheme}: gone after the fade`);
-    await page.click("#qa-btn");
-    check(
-      (await page.evaluate(() => globalThis.__btnClicks)) === 2,
-      `${scheme}: page usable again after`,
-    );
     await ctx.close();
   }
   {
