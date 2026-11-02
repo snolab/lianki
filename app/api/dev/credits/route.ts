@@ -40,7 +40,7 @@ async function view(email: string) {
     proEndsAt: row.proEndsAt,
     balance: await getBalance(d1, row.id),
     entries: await ledger(d1, row.id, 100),
-    // Test-mode top-ups: their own ledger, never spendable (migration 0025).
+    // Test-mode top-ups: their own ledger, never spendable (migration 0026).
     testBalance: await getTestBalance(d1, row.id),
     testEntries: await testLedger(d1, row.id, 100),
   };

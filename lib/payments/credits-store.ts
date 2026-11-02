@@ -410,7 +410,7 @@ export async function reverseTopup(
 // ── Test mode ───────────────────────────────────────────────────────────────────
 
 /**
- * Test-mode top-ups live in `credit_test_ledger` only (migration 0025): they
+ * Test-mode top-ups live in `credit_test_ledger` only (migration 0026): they
  * never touch `credit_balance`, so nothing can spend them — no pass, no inviter
  * bonus — and they never become real credits, even after the provider goes
  * live. The webhook routes a test-mode payment here, never to `creditTopup`.

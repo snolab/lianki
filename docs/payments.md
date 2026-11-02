@@ -56,7 +56,7 @@ In **test** mode (`lib/payments/stripe-webhook.ts`):
   is answered 200 and ignored (`payments.stripe.test-ignored` in
   `wrangler tail lianki`);
 - what it writes is kept apart from real money
-  (`db/migrations/0025_payment_test_mode.sql`): a pass's `payment` row has
+  (`db/migrations/0025_payment_test_mode.sql`, `0026_credit_test_ledger.sql`): a pass's `payment` row has
   `testMode = 1` and pays **no** inviter bonus; a top-up goes to
   `credit_test_ledger`, never to the spendable balance (see "Test credits"
   under Providers).
