@@ -3,8 +3,8 @@
  * (docs/ui-state.md, "Unsaved work".) Two questions, one answer each:
  *
  * - "reload" (NewVersionNotice: may a debug device pick up a deploy now?):
- *   strict. Also dirty while a field has focus (he is typing), while the
- *   debug chat has an unsent draft, and while the mic is on.
+ *   strict. Also dirty while a field has focus (he is typing), and while the
+ *   mic is on.
  * - "leave" (LeaveGuard: may he go to another page or panel without a
  *   confirm?): unsaved content only, so no false alarms. Focus alone, the
  *   chat (its draft is kept across pages), the mic, search boxes and fields
@@ -16,6 +16,11 @@
  * and typing then deleting is clean again. A form's `submit` makes its fields
  * clean; markClean() does so for a save done by a button outside a form.
  * Components add their own checks with registerDirtyCheck (@lianki/ui-state/dirty).
+ *
+ * Fields inside `data-dirty="persisted"` never count, in either mode: what is
+ * typed there is already saved (the chat's draft, kept in sessionStorage by
+ * ui-store.ts), so neither a reload nor leaving loses it. The owner's rule,
+ * 2026-11-02.
  */
 import { type DirtyMode, anyDirtyCheck, notifyDirty, onDirtyNotify } from "@lianki/ui-state/dirty";
 
@@ -73,6 +78,11 @@ export function isTextField(el: FieldLike): boolean {
   return true;
 }
 
+/** Inside `data-dirty="persisted"`: what is typed is already kept (sessionStorage), never dirty. */
+export function isPersisted(el: FieldLike): boolean {
+  return !!el.closest?.('[data-dirty="persisted"]');
+}
+
 /** A search box or filter, or marked to be skipped: never unsaved work. */
 export function isSkipped(el: FieldLike): boolean {
   if ((el.type ?? "").toLowerCase() === "search") return true;
@@ -94,23 +104,6 @@ function focused(doc: DocLike): FieldLike | null {
   return el;
 }
 
-/** The debug chat's unsent draft (packages/debug-chat ui-store.ts, `lk:ui:chat`). */
-export function chatDraftDirty(g: object = globalThis): boolean {
-  const stores = (g as Record<string, unknown>).__lkUiStores as
-    | Map<string, { getState(): { draft?: unknown } }>
-    | undefined;
-  const s = stores?.get?.("lk:ui:chat");
-  if (s)
-    return typeof s.getState().draft === "string" && (s.getState().draft as string).trim() !== "";
-  try {
-    const raw = (g as { sessionStorage?: Storage }).sessionStorage?.getItem("lk:ui:chat");
-    const draft = raw ? (JSON.parse(raw) as { state?: { draft?: unknown } }).state?.draft : "";
-    return typeof draft === "string" && draft.trim() !== "";
-  } catch {
-    return false;
-  }
-}
-
 type MicLike = { view(): { state: string; pending?: number } };
 /** The mic is on (or transcripts are still out): a reload turns it off, and it needs a tap to come back. */
 export function micBusy(g: object = globalThis): boolean {
@@ -130,14 +123,14 @@ export function pageIsDirty(
   g: object = globalThis,
 ): boolean {
   const active = focused(doc);
-  if (mode === "reload" && active && isTextField(active)) {
+  if (mode === "reload" && active && isTextField(active) && !isPersisted(active)) {
     // A focused search box only counts when something is typed in it.
     if (!isSkipped(active) || textOf(active) !== "") return true;
   }
   const all = doc.querySelectorAll(FIELDS);
   for (let i = 0; i < all.length; i++) {
     const el = all[i];
-    if (!isTextField(el)) continue;
+    if (!isTextField(el) || isPersisted(el)) continue;
     if (isSkipped(el)) {
       // A search box or filter: only a reload loses what is typed in it.
       if (mode === "reload" && fieldChanged(el)) return true;
@@ -146,7 +139,7 @@ export function pageIsDirty(
     if (fieldChanged(el)) return true;
   }
   if (anyDirtyCheck(mode)) return true;
-  if (mode === "reload" && (chatDraftDirty(g) || micBusy(g))) return true;
+  if (mode === "reload" && micBusy(g)) return true;
   return false;
 }
 
@@ -252,7 +245,6 @@ export function whenClean(
     offs.push(off);
   };
   const r = g as Record<string, unknown>;
-  sub((r.__lkUiStores as Map<string, Subscribable> | undefined)?.get?.("lk:ui:chat"));
   sub(r.__lkMic as Subscribable | undefined);
   return stop;
 }

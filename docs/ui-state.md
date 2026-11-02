@@ -182,13 +182,16 @@ chat widget shares it).
   back to what it was makes it clean. A form's `submit` makes its fields
   clean, and so does `markClean()` for a save done by a button outside a form.
 - **Skipped.** Search boxes (`type="search"`, `role="searchbox"`,
-  `enterkeyhint="search"`) and anything inside `data-dirty="skip"`: filters,
-  inputs that save on change, and the chat's input, whose draft is kept across
-  pages anyway.
+  `enterkeyhint="search"`) and anything inside `data-dirty="skip"`: filters
+  and inputs that save on change.
+- **Persisted.** Anything inside `data-dirty="persisted"` never counts, in
+  either mode, focused or not: what is typed there is already saved. The
+  chat's input is one: its draft is kept in sessionStorage (`lk:ui:chat`), so
+  a reload or leaving loses nothing (the owner's rule, 2026-11-02).
 - **Two modes.** `"leave"` is used by the guard and counts unsaved content
   only. `"reload"` is used by the deploy auto-reload and is stricter: it also
   counts a focused field (except an empty search box), typed text in a search
-  box, the chat's unsent draft (`lk:ui:chat`), and the mic being on or still
+  box, and the mic being on or still
   transcribing (`__lkMic`). The mic needs a tap to come back after a reload.
 - **Component checks.** `registerDirtyCheck((mode) => boolean)` returns its
   unregister. Call `notifyDirty()` when the answer may have changed. React
