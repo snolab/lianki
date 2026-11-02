@@ -115,6 +115,7 @@ import {
 } from "./tree-nav";
 import { SPEECH_RATES, setSpeechRate, speechRate } from "./speech-rate";
 import { notePrefWrite } from "@lianki/ui-state/account";
+import { confirmLeave } from "@lianki/ui-state/dirty";
 import { type AnchorSide, placeBox } from "./anchor";
 import { keyboardLift } from "./keyboard-lift";
 import { onChatOpen } from "./island-bus";
@@ -574,6 +575,9 @@ const AVATAR_PX = 18;
 /** The input grows to about five lines, then scrolls inside itself. */
 const INPUT_MAX_PX = 128;
 
+/** The one panel over the log. */
+type Panel = "none" | "menu" | "tree" | "voiceprint";
+
 export function DebugChat({
   live,
   listeners,
@@ -635,9 +639,21 @@ export function DebugChat({
    * sessions; a double tap on the mark) or the state tree (the tree button).
    * Opening one closes the other.
    */
-  const [panel, setPanel] = useState<"none" | "menu" | "tree" | "voiceprint">(
-    () => uiStore.getState().panel,
-  );
+  const [panel, setPanelState] = useState<Panel>(() => uiStore.getState().panel);
+  const panelNow = useRef(panel);
+  panelNow.current = panel;
+  /**
+   * Switch panels. Leaving the voiceprint panel while an enrolment is under
+   * way drops it: the page's leave guard confirms first (@lianki/ui-state/dirty).
+   */
+  const setPanel = (v: Panel | ((p: Panel) => Panel)) => {
+    const cur = panelNow.current;
+    const next = typeof v === "function" ? v(cur) : v;
+    if (next === cur) return;
+    if (cur === "voiceprint" && !confirmLeave()) return;
+    panelNow.current = next;
+    setPanelState(next);
+  };
   // Kept for a refresh or a hot swap (ui-store.ts): the tree, never the menu.
   useEffect(() => uiStore.setState({ panel: panel === "tree" ? "tree" : "none" }), [panel]);
   const menu = panel === "menu";
@@ -3228,6 +3244,9 @@ export function DebugChat({
                 <textarea
                   ref={input}
                   data-testid="debug-chat-input"
+                  // The draft is kept across pages and reloads (ui-store.ts): never
+                  // "unsaved" for the leave guard; the deploy reload checks it itself.
+                  data-dirty="skip"
                   data-drag-hint={holding || undefined}
                   rows={1}
                   // 16px: iOS zooms the whole page into any input under 16px.

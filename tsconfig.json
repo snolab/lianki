@@ -26,7 +26,8 @@
       "@lianki/core/*": ["./packages/core/src/*.ts"],
       "@lianki/debug-chat/*": ["./packages/debug-chat/src/*"],
       "@lianki/ui-state": ["./packages/ui-state/src/index.ts"],
-      "@lianki/ui-state/account": ["./packages/ui-state/src/account.ts"]
+      "@lianki/ui-state/account": ["./packages/ui-state/src/account.ts"],
+      "@lianki/ui-state/dirty": ["./packages/ui-state/src/dirty.ts"]
     },
     "target": "ES2017"
   },
