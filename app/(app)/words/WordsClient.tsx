@@ -2,6 +2,15 @@
 
 import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
 import { advanceTop, shouldAdvance } from "@/lib/words/advance";
+import {
+  afterGrade,
+  emptyRequeue,
+  isRetired,
+  takeDue,
+  undoPick,
+  withdraw,
+  type Requeue,
+} from "@/lib/words/requeue";
 import { progressPercent } from "@/lib/words/progress";
 import { voiceQuality } from "@lianki/debug-chat/wire";
 import {
@@ -2715,14 +2724,19 @@ function Study({
   const moreDue = useRef<Set<string>>(new Set());
   /** Queue indices in the order they were graded (and not undone): Z walks this back. */
   const gradeLog = useRef<number[]>([]);
-  /** Indices whose miss was already queued again further down. */
-  const requeued = useRef<Set<number>>(new Set());
   /**
-   * Words in a learning step (due again within minutes) wait here until due —
-   * met early, grading them would re-grade the review just made instead of
-   * recording a new one — then join the list just below the screen.
+   * Misses queued again further down (lib/words/requeue.ts). Words in a
+   * learning step (due again within minutes) wait in `later` until due — met
+   * early, grading them would re-grade the review just made instead of
+   * recording a new one — then join the list just below the screen. From
+   * then on the slip they came from reads "↓ back" and is frozen.
    */
-  const later = useRef<{ item: Item; due: number }[]>([]);
+  const requeue = useRef<Requeue<Item>>(emptyRequeue());
+  /** Slip i reads "↓ back": its copy below is the one to answer; it no longer grades. */
+  const retired = (i: number) => {
+    const card = gradesNow.current.get(i)?.card;
+    return isRetired(requeue.current, i, card ? dueOf(card) : undefined, Date.now());
+  };
   const dwellSince = useRef(Date.now());
 
   /**
@@ -2900,7 +2914,7 @@ function Study({
    */
   const grade = (i: number, rating: Rating) => {
     const it = queue[i];
-    if (!it) return;
+    if (!it || retired(i)) return;
     const now = new Date();
     const elapsedMs = i === rowRef.current ? now.getTime() - dwellSince.current : null;
     // From the card as it was before this row's grade, so a re-grade replaces.
@@ -2911,14 +2925,16 @@ function Study({
     gradeLog.current = [...gradeLog.current.filter((x) => x !== i), i];
     navigator.vibrate?.(10);
     tone(rating);
-    // A miss comes back further down, within minutes (learning steps).
-    if (!requeued.current.has(i) && card.due.getTime() - now.getTime() < SESSION_WINDOW_MS) {
-      requeued.current.add(i);
-      later.current.push({
-        item: { ...it, kind: "again", newIndex: undefined, card: cardJson },
-        due: card.due.getTime(),
-      });
-    }
+    // A miss comes back further down, within minutes (learning steps). A
+    // re-grade first takes back the copy its earlier grade queued.
+    requeue.current = afterGrade(
+      requeue.current,
+      i,
+      { ...it, kind: "again", newIndex: undefined, card: cardJson },
+      card.due.getTime(),
+      now.getTime(),
+      SESSION_WINDOW_MS,
+    );
     const op: PendingOp = {
       listId: it.listId,
       op: "review",
@@ -2955,9 +2971,12 @@ function Study({
    * One level per word: the server keeps only the card before its last review.
    */
   const undo = (focusedOnly = false, at = rowRef.current) => {
-    const target = grades.has(at) ? at : focusedOnly ? -1 : (gradeLog.current.at(-1) ?? -1);
+    // A slip reading "↓ back" stays answered: its copy below is the live one.
+    const target = undoPick(gradeLog.current, at, focusedOnly, (i) => grades.has(i), retired);
     if (target < 0) return;
     const it = queue[target];
+    // Its copy, still waiting, must not come back for an ungraded word.
+    requeue.current = withdraw(requeue.current, target);
     if (touch) logUndoAfterSwipe();
     tone("undo");
     gradeLog.current = gradeLog.current.filter((x) => x !== target);
@@ -3290,22 +3309,20 @@ function Study({
     const t = setInterval(() => {
       const el = listRef.current;
       const now = Date.now();
-      const ready = later.current.filter((x) => x.due <= now);
-      if (!ready.length || !el) return;
+      if (!el || !requeue.current.later.some((x) => x.due <= now)) return;
       if (touchingList.current || performance.now() - lastScrollAt.current < 400) return;
-      later.current = later.current.filter((x) => x.due > now);
       // The list's top spacer (`pad`), from the live height.
       const top = Math.round(el.clientHeight * OVERSCROLL_FRACTION);
       const below = Math.floor((el.scrollTop - top + el.clientHeight) / ROW_H) + 1;
       // Updaters stay pure (Strict Mode runs them twice): the insertion point
       // is fixed here, from the queue length as last rendered.
       const at = Math.max(0, Math.min(queueLen.current, below));
+      const { ready, next, shift } = takeDue(requeue.current, now, at);
       const n = ready.length;
-      const shift = (i: number) => (i >= at ? i + n : i);
-      setQueue((q) => [...q.slice(0, at), ...ready.map((x) => x.item), ...q.slice(at)]);
+      requeue.current = next;
+      setQueue((q) => [...q.slice(0, at), ...ready, ...q.slice(at)]);
       setGrades((g) => new Map([...g].map(([k, v]) => [shift(k), v])));
       setRevealed((r) => new Set([...r].map(shift)));
-      requeued.current = new Set([...requeued.current].map(shift));
       gradeLog.current = gradeLog.current.map(shift);
       rowRef.current = shift(rowRef.current);
       queueLen.current += n;
@@ -3694,7 +3711,7 @@ function Study({
     const g = grades.get(i);
     if (g) {
       // Saved: when it actually comes back. Not yet saved: the preview.
-      if (g.card) return <Countdown due={dueOf(g.card)} back={requeued.current.has(i)} />;
+      if (g.card) return <Countdown due={dueOf(g.card)} back={requeue.current.requeued.has(i)} />;
       return previewInterval(it.card, g.rating, paramsOf.get(it.listId)!);
     }
     if (it.kind === "new" || !it.card) return text.statusNew.value;
@@ -4102,6 +4119,7 @@ function Study({
                     speech.release();
                   }}
                   onSwipe={(r) => swipeGrade(i, r)}
+                  locked={() => retired(i)}
                   className={`slip group grid items-center gap-2 px-2 leading-none cursor-pointer select-none ${
                     touch
                       ? "slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base pr-4"
@@ -4494,6 +4512,8 @@ type RowProps = {
   /** The slip's other actions (desktop: right click). */
   onMore?: () => void;
   onSwipe: (r: Rating) => void;
+  /** The slip reads "↓ back" (lib/words/requeue.ts): it taps and holds, never slides. */
+  locked?: () => boolean;
   /** The finger has started moving sideways (a grade is being decided). */
   onSwipeStart?: () => void;
   /** The list's one SwipeUnderlay: moved under this slip as it starts sliding. */
@@ -4555,6 +4575,7 @@ function TouchWordRow({
   loose = false,
   onTap,
   onSwipe,
+  locked,
   onSwipeStart,
   onHold,
   onHoldEnd,
@@ -4574,6 +4595,7 @@ function TouchWordRow({
     reducedMotion,
     holdMs: HOLD_MS,
     scrolling,
+    locked,
     onTap,
     onSwipe,
     onSwipeStart,
@@ -4652,6 +4674,7 @@ function NativeSlipRow({
   loose = false,
   onTap,
   onSwipe,
+  locked,
   onSwipeStart,
   onHold,
   onHoldEnd,
@@ -4677,6 +4700,7 @@ function NativeSlipRow({
     onHold,
     onHoldEnd,
     scrolling,
+    locked,
     feel,
     reducedMotion,
   });
@@ -4687,6 +4711,7 @@ function NativeSlipRow({
     onHold,
     onHoldEnd,
     scrolling,
+    locked,
     feel,
     reducedMotion,
   };
@@ -4814,13 +4839,17 @@ function NativeSlipRow({
       g.x0 = e.touches[0].clientX;
       g.y0 = e.touches[0].clientY;
       g.finger = 0;
-      g.steep = false;
+      // A locked slip ("↓ back", asked now: the label flips on a timer) is
+      // held as a steep drag is: it can't scroll sideways, so it never slides
+      // or grades (settle, springRelease); it still taps and holds.
+      g.steep = props.current.locked?.() ?? false;
+      if (g.steep) el.style.overflowX = "hidden";
       g.level = 0;
       g.samples = [{ t: performance.now(), x: home - el.scrollLeft }];
       if (!g.caught) setPhase("pressed");
       swipePerf.start();
       el.addEventListener("scroll", slid, { once: true, passive: true });
-      el.addEventListener("touchmove", axis, { passive: false });
+      if (!g.steep) el.addEventListener("touchmove", axis, { passive: false });
     };
     /**
      * The browser hands a diagonal drag to this slip when it can scroll that

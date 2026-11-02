@@ -278,6 +278,11 @@ export type GestureOptions = {
   holdMs: number;
   /** The list is (or just was) scrolling: a touch now only catches it. */
   scrolling?: () => boolean;
+  /**
+   * The slip may not slide or grade (it reads "↓ back": lib/words/requeue.ts).
+   * Asked as each gesture starts: the label flips on a timer, not a render.
+   */
+  locked?: () => boolean;
   onTap: (at: number) => void;
   onSwipe: (r: SwipeRating) => void;
   onSwipeStart?: () => void;
@@ -484,6 +489,7 @@ export function useSwipeGesture(opts: GestureOptions) {
         y: e.clientY,
         t: performance.now(),
         catching: o.current.scrolling?.() ?? false,
+        locked: o.current.locked?.() ?? false,
       });
     },
     onPointerMove: (e) => {
