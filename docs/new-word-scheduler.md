@@ -41,7 +41,7 @@ there is no setting for it. `lib/words/review-first.ts`,
   and still due (skipped, not graded, or graded offline and not yet sent),
   a request finds nothing new, and new words follow.
 
-Before this (until #???), the first 400 due cards came first, interleaved
+Before this (until #431), the first 400 due cards came first, interleaved
 list by list, followed by 80 new words. Any due cards beyond those 400 came
 only after those new words. Cards that fell due while the page stayed open
 were not fetched until a reload. A re-fetch that matched only queued cards
