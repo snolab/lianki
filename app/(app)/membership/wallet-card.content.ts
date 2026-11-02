@@ -1,7 +1,8 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys, flattenContext, type KeyContext } from "@/lib/i18n-context";
 
 /** Strings for the credit wallet on /membership (lib/payments/credits*.ts). */
-const walletCardContent = {
+const dictionary = {
   key: "wallet-card",
   content: {
     title: t({
@@ -511,6 +512,47 @@ const walletCardContent = {
       }),
     },
   },
-} satisfies DeclarationContent;
+};
 
-export default walletCardContent;
+const W = "/membership, the credit wallet card:";
+const context: KeyContext<typeof dictionary.content> = {
+  title: `${W} the card's heading (h2) beside a star icon. Names the prepaid wallet — the credits a user holds — as a noun, one or two words.`,
+  balance: `${W} small label above the big balance number (shown in credits, e.g. '1,200 credits'). One noun: what is left in the wallet.`,
+  description: `${W} the line under the heading explaining how the wallet works: top up with money once, then buy Pro passes with the credits, which start at once.`,
+  topupTitle: `${W} heading (h3) of the section where the user buys credits with real money. A noun or imperative, one or two words.`,
+  customAmount: `${W} label of the number field for a top-up amount the user types, in yen (the money charged; the same number of credits is added). Keep (¥) or name the yen.`,
+  topupButton: `${W} the main top-up button. {amount} is the yen charged and the credits received, e.g. '¥600 → 600 credits'. Imperative verb phrase; keep {amount}.`,
+  range: `${W} error under the custom amount field when the number is out of range. {min} and {max} are yen amounts (¥100, ¥10,000). Keep both placeholders.`,
+  payWith: `${W} legend above the choice of payment provider (Stripe, KOMOJU…) for a top-up. Short phrase, like a form label.`,
+  noProviders: `${W} shown instead of the top-up controls when no payment method is enabled yet. A full sentence.`,
+  buyTitle: `${W} heading (h3) of the section that buys a Pro pass with credits from the wallet (prices shown in credits). Imperative phrase.`,
+  oneMonth: `${W} name of the 1-month Pro pass, in the pass list and in history rows ('Pass · 1 month'). Duration only.`,
+  twelveMonths: `${W} name of the 12-month Pro pass, in the pass list and in history rows ('Pass · 12 months'). Duration only.`,
+  buyWithBalance: `${W} button on each pass that buys it with credits from the wallet, no payment page. Imperative verb phrase, short.`,
+  short: `${W} note when the wallet has too few credits for a pass. {missing} is an amount of credits, e.g. '200 credits'. Short sentence; keep {missing}.`,
+  topupDifference: `${W} button that tops up exactly what is missing for a pass. {missing} is the yen charged and the credits received, e.g. '¥200 → 200 credits'. Imperative; keep {missing}.`,
+  bought: `${W} success notice after a pass was bought with credits. {date} is the new Pro end date, written out. Keep {date}.`,
+  toppedUp: `${W} notice after returning from the payment page: the credits arrive when the provider confirms the payment, which may take a moment.`,
+  history: `${W} heading (h3) of the wallet's history list (top-ups, passes, refunds, gifts). One noun.`,
+  empty: `${W} shown in the history list when the wallet has no entries yet. Short sentence.`,
+  failed: `${W} generic error notice after a top-up or pass purchase fails. Short sentence asking to try again.`,
+  tooMany: `${W} error when top-up attempts hit the rate limit. Asks the user to wait a few minutes.`,
+  captcha: `${W} error when the Turnstile security check was not passed before a top-up. Asks to complete it and retry.`,
+  reasons: {
+    topup: `${W} history row label: credits bought with money. One noun.`,
+    pass: `${W} history row label: credits spent on a Pro pass (followed by ' · 1 month'). One noun.`,
+    refund: `${W} history row label: credits returned to the wallet for a refunded pass. One noun.`,
+    gift: `${W} history row label: credits from a gift code or given by the owner. One noun.`,
+    sponsor: `${W} history row label: credits given for sponsoring the project (GitHub Sponsors). One noun.`,
+    adjust: `${W} history row label: a manual correction of the balance by the team. One noun.`,
+  },
+};
+
+export default {
+  ...dictionary,
+  title: "/membership — the credit wallet card",
+  description: describeKeys(
+    "The prepaid credit wallet on /membership: balance, top-up, buying Pro passes with credits, and the history. The balance, pass prices paid from it and history amounts are in credits, never a currency; yen appears only where real money is charged (a top-up). Lianki is a product name, not translated.",
+    flattenContext(context),
+  ),
+} satisfies DeclarationContent;

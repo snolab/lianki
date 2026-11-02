@@ -7,9 +7,7 @@ import { Icon } from "@/app/components/icons";
 import { longDate } from "@/lib/dates";
 import { PASSES, type PassId } from "@/lib/payments/passes";
 import type { LedgerEntry } from "@/lib/payments/credits-store";
-
-const yen = (n: number) =>
-  new Intl.NumberFormat(undefined, { style: "currency", currency: "JPY" }).format(n);
+import { useCredits, yen } from "./use-credits";
 
 interface Provider {
   id: string;
@@ -50,6 +48,9 @@ export function WalletCard({
   onProChanged: () => void;
 }) {
   const s = useIntlayer("wallet-card");
+  // The balance, pass prices paid from it and history are in credits; yen only
+  // where money is charged (owner, 2026-11-03).
+  const { credits, signed, topup: topupLabel } = useCredits();
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [amount, setAmount] = useState<number>(600);
   const [custom, setCustom] = useState("");
@@ -169,8 +170,8 @@ export function WalletCard({
         </div>
         <div className="text-right">
           <div className={`text-xs ${muted}`}>{s.balance.value}</div>
-          <div className="text-4xl font-bold tabular-nums" data-wallet-balance>
-            {yen(wallet.balance)}
+          <div className="text-3xl font-bold tabular-nums" data-wallet-balance>
+            {credits(wallet.balance)}
           </div>
         </div>
       </header>
@@ -210,8 +211,8 @@ export function WalletCard({
                     {id === "pro-1m" ? s.oneMonth.value : s.twelveMonths.value}
                   </div>
                   <div className={`text-sm tabular-nums ${muted}`}>
-                    {yen(PASSES[id].amount)}
-                    {short > 0 && ` · ${s.short.value.replace("{missing}", yen(short))}`}
+                    {credits(PASSES[id].amount)}
+                    {short > 0 && ` · ${s.short.value.replace("{missing}", credits(short))}`}
                   </div>
                 </div>
                 <button
@@ -228,14 +229,14 @@ export function WalletCard({
         </ul>
         {missing !== null && (
           <div className={`${well} p-3 flex flex-wrap items-center justify-between gap-2`}>
-            <span className="text-sm">{s.short.value.replace("{missing}", yen(missing))}</span>
+            <span className="text-sm">{s.short.value.replace("{missing}", credits(missing))}</span>
             {providers.length > 0 ? (
               <button
                 onClick={() => void topup(missing)}
                 disabled={!canTopup}
                 className={`${accent} rounded-lg px-4 py-2 font-semibold`}
               >
-                {s.topupDifference.value.replace("{missing}", yen(missing))}
+                {s.topupDifference.value.replace("{missing}", topupLabel(missing))}
               </button>
             ) : (
               <span className={`text-sm ${muted}`}>{s.noProviders.value}</span>
@@ -263,6 +264,7 @@ export function WalletCard({
                   className={`${chip} ${!custom && amount === q ? chipOn : ""}`}
                 >
                   {yen(q)}
+                  <span className={`block text-xs font-normal ${muted}`}>{credits(q)}</span>
                 </button>
               ))}
             </div>
@@ -331,7 +333,7 @@ export function WalletCard({
               className={`${accent} w-full rounded-lg px-6 py-3 font-semibold`}
               data-topup
             >
-              {s.topupButton.value.replace("{amount}", valid ? yen(chosen) : "")}
+              {s.topupButton.value.replace("{amount}", valid ? topupLabel(chosen) : "")}
             </button>
             {qr && (
               <div className={`${well} p-4 flex flex-col items-center gap-2`}>
@@ -374,8 +376,7 @@ export function WalletCard({
                     e.amount > 0 ? "text-[oklch(0.5_0.14_150)] dark:text-[oklch(0.8_0.12_150)]" : ""
                   }`}
                 >
-                  {e.amount > 0 ? "+" : "−"}
-                  {yen(Math.abs(e.amount))}
+                  {signed(e.amount)}
                 </span>
               </li>
             ))}
