@@ -278,7 +278,7 @@ describe("local reader data", () => {
       chapterStarts: new Set<number>(),
       lang: "en",
     };
-    const [item] = d.blocks(book);
+    const [item] = (await d.load(book)).blocks;
     if (item.kind !== "item") throw new Error("item expected");
     const r1 = await d.grade(book, item, 3);
     await d.grade(book, item, 1);

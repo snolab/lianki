@@ -31,9 +31,11 @@ export type Block =
   | { kind: "heading"; line: number }
   | {
       kind: "item";
-      /** Stable: "<line>.<sentence>" of its first sentence. */
+      /** Stable: "<line>.<sentence>" of its first sentence (local), or the server's item key. */
       id: string;
       pieces: Piece[];
+      /** The server's familiarity of the item, 0..1 (words and his grades); absent: from the words. */
+      fam?: number;
     };
 
 /** A word's familiarity, as its mark shows it. */

@@ -120,6 +120,7 @@ export type RowCommon = {
   fam: Map<string, Fam> | null;
   /** A line that continues the paragraph before (the EPUB's <br>, or a long one split at import). */
   joinOf: (line: number) => "br" | "sp" | undefined;
+  isHeading: (line: number) => boolean;
   /** Bumped when the word map arrives (memo key). */
   famV: number;
   lang: string;
@@ -152,12 +153,16 @@ export const BlockRow = memo(function BlockRow(p: RowCommon) {
 function ItemBody({ p }: { p: RowCommon }) {
   const b = p.block as Extract<Block, { kind: "item" }>;
   const paras = b.pieces.map((pc) => p.para(pc.line));
-  const cov = p.fam
-    ? itemCoverage(
-        b.pieces.flatMap((pc, i) => pieceSentences(paras[i], pc)),
-        p.fam,
-      )
-    : null;
+  // The server's familiarity (words and his grades) when it gave one.
+  const cov =
+    b.fam !== undefined
+      ? b.fam
+      : p.fam
+        ? itemCoverage(
+            b.pieces.flatMap((pc, i) => pieceSentences(paras[i], pc)),
+            p.fam,
+          )
+        : null;
   return (
     <>
       <span
@@ -166,17 +171,24 @@ function ItemBody({ p }: { p: RowCommon }) {
         data-rail={railLevel(cov)}
         data-grade={p.grade ?? undefined}
       />
-      {b.pieces.map((pc, i) => (
-        <PieceText
-          key={`${pc.line}.${pc.s0}`}
-          para={paras[i]}
-          piece={pc}
-          fam={p.fam}
-          lang={p.lang}
-          last={i === b.pieces.length - 1}
-          join={pc.s0 === 0 ? p.joinOf(pc.line) : undefined}
-        />
-      ))}
+      {b.pieces.map((pc, i) =>
+        p.isHeading(pc.line) ? (
+          // A heading the server put into an item stays a heading.
+          <h2 key={`${pc.line}.${pc.s0}`} data-line={pc.line} lang={p.lang} className="lk-head">
+            {p.lineText(pc.line)}
+          </h2>
+        ) : (
+          <PieceText
+            key={`${pc.line}.${pc.s0}`}
+            para={paras[i]}
+            piece={pc}
+            fam={p.fam}
+            lang={p.lang}
+            last={i === b.pieces.length - 1}
+            join={pc.s0 === 0 ? p.joinOf(pc.line) : undefined}
+          />
+        ),
+      )}
     </>
   );
 }
