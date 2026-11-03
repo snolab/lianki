@@ -17,9 +17,11 @@ export const DEFAULT_URL = "https://lianki.com";
 export const EXIT = { ok: 0, usage: 1, auth: 2, notFound: 3, server: 4, refused: 5 };
 
 /**
- * The settings that follow the account, as lib/prefs/schema.ts lists them
- * (unit/lianki-cli.test.ts keeps the two in step). The server checks every
- * value; this list is for `settings list` and for refusing a typo early.
+ * The settings that follow the account, as lib/prefs/schema.ts listed them
+ * when this version was published. A newer server may know more keys: those
+ * still work (the server checks every key and value), and `settings list`
+ * shows any the server returns. unit/lianki-cli.test.ts checks that none of
+ * these has been removed from the server.
  */
 export const PREF_KEYS = [
   "words.showAll",
@@ -28,6 +30,7 @@ export const PREF_KEYS = [
   "words.speakOnSwipe",
   "words.gradeTones",
   "words.voiceMode",
+  "words.swipeMirror",
   "swipe.variant",
   "swipe-feel.preset",
   "swipe-feel.tweaks",
@@ -404,8 +407,8 @@ async function cmdLogout(c) {
 // ── settings ──────────────────────────────────────────────────────────────
 
 function checkKey(key) {
-  if (!PREF_KEYS.includes(key))
-    throw usage(`unknown setting "${key}"`, "lianki settings list   (shows every key)");
+  if (!/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(key))
+    throw usage(`"${key}" is not a setting name`, "lianki settings list   (shows every key)");
 }
 
 async function readPrefs(c, token) {
@@ -439,7 +442,8 @@ export function nextHlc(prev, id, now = Date.now()) {
 async function cmdSettingsList(c) {
   const token = await needToken(c);
   const prefs = await readPrefs(c, token);
-  const settings = Object.fromEntries(PREF_KEYS.map((k) => [k, k in prefs ? prefs[k].value : null]));
+  const keys = [...new Set([...PREF_KEYS, ...Object.keys(prefs)])];
+  const settings = Object.fromEntries(keys.map((k) => [k, k in prefs ? prefs[k].value : null]));
   emit(c, "settings list", { settings }, (d) =>
     Object.entries(d.settings).map(([k, v]) => `${k} = ${v === null ? "(not set)" : JSON.stringify(v)}`).join("\n"),
   );
@@ -449,6 +453,8 @@ async function cmdSettingsGet(c) {
   checkKey(c.argv.key);
   const token = await needToken(c);
   const prefs = await readPrefs(c, token);
+  if (!(c.argv.key in prefs) && !PREF_KEYS.includes(c.argv.key))
+    throw new CliError("not_found", EXIT.notFound, `no setting "${c.argv.key}"`, "lianki settings list");
   const value = c.argv.key in prefs ? prefs[c.argv.key].value : null;
   emit(c, "settings get", { key: c.argv.key, value }, (d) => (d.value === null ? "(not set)" : JSON.stringify(d.value)));
 }

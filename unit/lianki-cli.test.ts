@@ -520,8 +520,10 @@ describe("auth", () => {
 });
 
 describe("settings", () => {
-  test("the key list matches lib/prefs/schema.ts", () => {
-    expect([...cli.PREF_KEYS].sort()).toEqual([...SERVER_PREF_KEYS].sort());
+  test("every key the CLI lists still exists in lib/prefs/schema.ts", () => {
+    // A new server key needs no CLI release (the server checks keys); a
+    // removed one would leave the published CLI listing a dead setting.
+    for (const k of cli.PREF_KEYS) expect(SERVER_PREF_KEYS).toContain(k);
   });
   test("list, get, set with a newer clock under a cli device id", async () => {
     const h = harness({ env });
@@ -540,7 +542,13 @@ describe("settings", () => {
     expect(h.calls.at(-1)!.body.ops[0].hlc).toMatchObject({ timestamp: 1e12, counter: 0 });
     const bad = await h.run("settings", "set", "ui.paper", "zz", "--json");
     expect(bad.code).toBe(5);
-    expect((await h.run("settings", "get", "nope")).code).toBe(1);
+    expect((await h.run("settings", "get", "nope")).code).toBe(3);
+    expect((await h.run("settings", "get", "../x")).code).toBe(1);
+    h.prefs["future.key"] = { value: 1, hlc: { timestamp: 1, counter: 0, deviceId: "phone0001" } };
+    expect(
+      envelope((await h.run("settings", "list", "--json")).out).data.settings["future.key"],
+    ).toBe(1);
+    expect((await h.run("settings", "get", "future.key")).out).toBe("1");
   });
   test("parseValue and nextHlc", () => {
     expect(cli.parseValue("1.25")).toBe(1.25);
