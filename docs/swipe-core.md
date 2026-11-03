@@ -38,6 +38,28 @@ a timer, not a render). The machine then turns a sideways drag into a dead
 Tap and hold still work. `grade()` and Undo refuse it too. Before it is due,
 a re-grade or an undo withdraws the waiting copy, so no ghost comes back.
 
+## Mirrored sides
+
+Settings → **Mirror swipe sides** (owner, 2026-11-03; `lk:words-swipe-mirror`,
+synced as `words.swipeMirror`, off by default) swaps the sides on both
+swipes: ← gives Good / Easy, → Hard / Again. The physics, the levels and the
+machine are unchanged and still report the default side's grade; the mirror
+is applied once, where the row's grade is taken (`swipeGrade(i,
+sideRating(r, mirror))` in WordsClient, lib/words/swipe.ts). With it:
+
+- the reveal swaps too: `SwipeGrades` gets `mirror` (Good / Easy on the
+  right, island version 3), and its container carries `data-mirror`, which
+  `showReveal` reads (`revealShownSide`);
+- the help strip fills its ← with the left side's grades, whatever they are;
+- voice 左 / 右 follow the visible side (`sideGrade`, docs/voice-mode.md);
+- the keys stay: 1–4 and H J K L name grades, not sides, and ←/→ grade
+  nothing;
+- telemetry logs the grade given and tags `mirror=1`, so a row's `finger`
+  sign with that tag reads the other way;
+- undo and a locked ("↓ back") slip are untouched.
+
+The Settings switch shows the mapping in force beside it, live.
+
 ## The New swipe comes to rest
 
 A native slip settles on the browser's `scrollend`, or, lifted while it

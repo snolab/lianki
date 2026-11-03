@@ -109,6 +109,21 @@ nothing. Confirm it armed with `gh pr view <N> --json autoMergeRequest` (should
 be non-null). With no required checks, `--auto` merges _immediately_ — which is
 why protection must stay in place.
 
+## Publishing the CLI (npm `lianki`)
+
+`packages/lianki-cli` goes to npm only through
+`.github/workflows/publish-cli.yml`, never `npm publish` from a laptop. It
+runs on a pushed tag `lianki-cli-v<version>`; the tag must sit on a commit
+already on `main` and match `version` in its `package.json`. It packs the
+tarball, smoke-tests it under Node in an empty folder, and publishes with
+`--provenance`, authenticated by the `NPM_TOKEN` repo secret. Publishing is
+outward-facing: the owner approves each release (tap card) before the tag is
+pushed.
+
+```bash
+git tag lianki-cli-v0.2.0 <sha on main> && git push origin lianki-cli-v0.2.0
+```
+
 ## QA after every deploy
 
 Use remote Chrome AND Vercel logs together:

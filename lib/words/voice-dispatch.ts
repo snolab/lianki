@@ -9,7 +9,7 @@
  * Pure: unit/voice-commands.test.ts.
  */
 import type { Rating } from "./schedule";
-import { levelRating } from "./swipe";
+import { sideGrade } from "./swipe";
 import { type VoiceCommand, addressesAgent, isCardEcho, matchCommand } from "./voice-commands";
 
 /** What a screen lends the voice mode. Each is the same path a key or a swipe takes. */
@@ -44,12 +44,17 @@ const ACTION_OF: Record<VoiceCommand, keyof VoiceActions> = {
   exit: "exit",
 };
 
-/** Each command, as the actions it runs. ←/→ are a one-level swipe (lib/words/swipe.ts levelRating). */
-export const COMMAND_ACTIONS: Record<VoiceCommand, (a: VoiceActions) => void> = {
+/**
+ * Each command, as the actions it runs. ←/→ are a one-level swipe to that
+ * side (lib/words/swipe.ts sideGrade): Hard / Good, or with the sides
+ * mirrored (Settings → Mirror swipe sides) Good / Hard. 左 always means the
+ * grade on the left as the screen shows it now.
+ */
+export const COMMAND_ACTIONS: Record<VoiceCommand, (a: VoiceActions, mirror?: boolean) => void> = {
   next: (a) => a.move(1),
   prev: (a) => a.move(-1),
-  left: (a) => a.grade(levelRating(-1) as Rating),
-  right: (a) => a.grade(levelRating(1) as Rating),
+  left: (a, mirror = false) => a.grade(sideGrade("left", mirror) as Rating),
+  right: (a, mirror = false) => a.grade(sideGrade("right", mirror) as Rating),
   again: (a) => a.grade(1),
   hard: (a) => a.grade(2),
   good: (a) => a.grade(3),
@@ -93,6 +98,8 @@ export type VoiceContext = {
   spoken?: readonly (string | undefined)[];
   /** There is a current card. */
   hasCard: boolean;
+  /** The swipe's sides are mirrored: 左/右 follow them (sideGrade). */
+  mirror?: boolean;
 };
 
 /** One final transcript, start to end: match it, check it, run it. */
@@ -105,7 +112,7 @@ export function handleUtterance(text: string, ctx: VoiceContext): VoiceOutcome {
   if (m.cmd !== "exit" && isCardEcho(heard, ctx.cardTexts, ctx.spoken))
     return { kind: "echo", cmd: m.cmd, heard };
   if (NEEDS_CARD.has(m.cmd) && !ctx.hasCard) return { kind: "no-card", cmd: m.cmd, heard };
-  COMMAND_ACTIONS[m.cmd](ctx.actions as VoiceActions);
+  COMMAND_ACTIONS[m.cmd](ctx.actions as VoiceActions, !!ctx.mirror);
   return { kind: "done", cmd: m.cmd, heard };
 }
 

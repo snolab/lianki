@@ -8,7 +8,9 @@
  * the same spot (crossfade + a short slide, CSS .lk-reveal), and gives it
  * back on the way home. The container's data-good / data-hard (showReveal in
  * WordsClient) pick which. The grade names come as props, in the app's
- * language (words-page, read by the host).
+ * language (words-page, read by the host). `mirror` (Settings → Mirror swipe
+ * sides, lib/words/swipe.ts): Good/Easy sit on the right, uncovered by a slide
+ * left, and Hard/Again on the left.
  */
 type Rating = 1 | 2 | 3 | 4;
 
@@ -23,11 +25,13 @@ export function SwipeGrades({
   hard,
   good,
   easy,
+  mirror = false,
 }: {
   again: string;
   hard: string;
   good: string;
   easy: string;
+  mirror?: boolean;
 }) {
   const LABEL: Record<Rating, string> = { 1: again, 2: hard, 3: good, 4: easy };
   const layer = (r: Rating, side: "left" | "right", far: boolean) => (
@@ -45,23 +49,27 @@ export function SwipeGrades({
       </span>
     </span>
   );
+  const goodSide = mirror ? "right" : "left";
+  const hardSide = mirror ? "left" : "right";
   return (
     <>
       <span
         data-reveal-slot="good"
-        className="absolute inset-y-0 left-0 overflow-hidden"
+        data-reveal-side={goodSide}
+        className={`absolute inset-y-0 ${mirror ? "right-0" : "left-0"} overflow-hidden`}
         style={{ width: "calc(var(--a) * 2.5)" }}
       >
-        {layer(3, "left", false)}
-        {layer(4, "left", true)}
+        {layer(3, goodSide, false)}
+        {layer(4, goodSide, true)}
       </span>
       <span
         data-reveal-slot="hard"
-        className="absolute inset-y-0 right-0 overflow-hidden"
+        data-reveal-side={hardSide}
+        className={`absolute inset-y-0 ${mirror ? "left-0" : "right-0"} overflow-hidden`}
         style={{ width: "calc(var(--a) * 2.5)" }}
       >
-        {layer(2, "right", false)}
-        {layer(1, "right", true)}
+        {layer(2, hardSide, false)}
+        {layer(1, hardSide, true)}
       </span>
     </>
   );

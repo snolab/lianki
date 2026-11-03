@@ -8,6 +8,13 @@ Heavy swipe and its tuning) are synced too (owner, 02:22 JST).
 This also fixes the dev origin opening with default settings: once it signs in
 through the dev bridge, it pulls the owner's preferences like any other device.
 
+The terminal is a device too: `lianki settings list | get | set` (npm `lianki`)
+reads and writes `/api/prefs` with `Authorization: Bearer lk_…` (the only
+route that takes an API token this way; `lianki auth login` makes one —
+[secrets-and-auth.md](secrets-and-auth.md), "CLI login"). Values are checked
+against the registry by the server, and each write takes a clock newer
+than the stored one, under its own device id (`cli…`).
+
 It adds a fifth row to the table in [ui-state.md](ui-state.md). The **account**
 mode is a localStorage copy (the device's cache, read for the first paint)
 kept in step with the server.
@@ -37,6 +44,7 @@ The store column gives the account-mode store that will hold the key, as
 | `lk:words-swipe-speak`         | Speak on swipe                            | **synced** | `words.speakOnSwipe` | a habit                                                                             |
 | `lk:words-grade-tones`         | Grade tones                               | **synced** | `words.gradeTones`   | a habit                                                                             |
 | `lk:words-voice-mode`          | Voice commands (docs/voice-mode.md)       | **synced** | `words.voiceMode`    | a habit; the mic itself is still asked for on each device                           |
+| `lk:words-swipe-mirror`        | Mirror swipe sides (← Good, → Hard)       | **synced** | `words.swipeMirror`  | owner, 2026-11-03: which hand swipes is a habit. Telemetry rows tag `mirror=1`      |
 | `lk:swipe-ab`                  | New swipe (Experimental)                  | **synced** | `swipe.variant`      | owner, 02:22. Telemetry still tags each row with the variant                        |
 | `lk:pref:swipe-feel` `.preset` | Heavy swipe (Experimental)                | **synced** | `swipe-feel.preset`  | owner, 02:22                                                                        |
 | `lk:pref:swipe-feel` `.tweaks` | swipe tuning sliders                      | **synced** | `swipe-feel.tweaks`  | owner, 02:22. One field, because the sliders reset together with the preset         |
