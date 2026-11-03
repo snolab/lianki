@@ -7,7 +7,12 @@
 export interface Anchor {
   /** The line (paragraph or heading) at the reading line. */
   line: number;
-  /** How far down that line's block the reading line is, 0..1. */
+  /**
+   * The block's first sentence in that line: a long paragraph split into
+   * items has one block per piece (absent: 0, the paragraph's first).
+   */
+  s?: number;
+  /** How far down that block the reading line is, 0..1. */
   off: number;
   /** When it was taken (ms since the epoch); the newest anchor wins. */
   at: number;
@@ -32,7 +37,8 @@ export function parseAnchor(raw: unknown): Anchor | null {
   if (!Number.isInteger(a.line) || (a.line as number) < 0) return null;
   const off = typeof a.off === "number" && a.off >= 0 && a.off <= 1 ? a.off : 0;
   const at = typeof a.at === "number" && Number.isFinite(a.at) ? a.at : 0;
-  return { line: a.line as number, off, at };
+  const s = Number.isInteger(a.s) && (a.s as number) > 0 ? (a.s as number) : undefined;
+  return { line: a.line as number, ...(s ? { s } : {}), off, at };
 }
 
 export function loadAnchor(id: string, s: Store | null = store()): Anchor | null {
@@ -69,14 +75,14 @@ export function newestAnchor(a: Anchor | null, b: Anchor | null): Anchor | null 
  * below it.
  */
 export function anchorAt(
-  rects: readonly { line: number; top: number; height: number }[],
+  rects: readonly { line: number; s?: number; top: number; height: number }[],
   eye: number,
   now = Date.now(),
 ): Anchor | null {
   for (const r of rects) {
     if (r.top + r.height <= eye) continue;
     const off = r.height > 0 ? Math.min(1, Math.max(0, (eye - r.top) / r.height)) : 0;
-    return { line: r.line, off, at: now };
+    return { line: r.line, ...(r.s ? { s: r.s } : {}), off, at: now };
   }
   return null;
 }

@@ -241,6 +241,21 @@ export function blockOfLine(blocks: readonly Block[], line: number): number {
   return ans;
 }
 
+/** The block a position points at: its line and the first sentence of its piece. */
+export function blockOfAnchor(blocks: readonly Block[], line: number, s = 0): number {
+  let i = blockOfLine(blocks, line);
+  // Later pieces of the same split paragraph follow its first block.
+  while (
+    s > 0 &&
+    i + 1 < blocks.length &&
+    blocks[i + 1].kind === "item" &&
+    (blocks[i + 1] as Extract<Block, { kind: "item" }>).pieces[0].line === line &&
+    (blocks[i + 1] as Extract<Block, { kind: "item" }>).pieces[0].s0 <= s
+  )
+    i++;
+  return i;
+}
+
 /** The first line a block shows. */
 export const blockLine = (b: Block) => (b.kind === "heading" ? b.line : b.pieces[0].line);
 

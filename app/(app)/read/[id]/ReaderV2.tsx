@@ -48,6 +48,7 @@ import {
   type WordRow,
   ParaCache,
   blockLine,
+  blockOfAnchor,
   blockOfLine,
   blockSpeech,
   famMap,
@@ -370,12 +371,17 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const takeAnchor = useCallback((): Anchor | null => {
     const root = listRef.current;
     if (!root) return null;
-    const rects: { line: number; top: number; height: number }[] = [];
+    const rects: { line: number; s: number; top: number; height: number }[] = [];
     for (const el of root.querySelectorAll<HTMLElement>("[data-index]")) {
       const b = blocks[Number(el.dataset.index)];
       if (!b) continue;
       const r = el.getBoundingClientRect();
-      rects.push({ line: blockLine(b), top: r.top, height: r.height });
+      rects.push({
+        line: blockLine(b),
+        s: b.kind === "item" ? b.pieces[0].s0 : 0,
+        top: r.top,
+        height: r.height,
+      });
     }
     rects.sort((x, y) => x.top - y.top);
     return anchorAt(rects, eye());
@@ -393,7 +399,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     let live = true;
     data.anchor(id).then((a) => {
       if (!live || !a) return;
-      const i = blockOfLine(blocks, a.line);
+      const i = blockOfAnchor(blocks, a.line, a.s ?? 0);
       prog.current = true;
       vz().scrollToIndex(i, { align: "start" });
       dispatch({ type: "select", line: i });
@@ -448,7 +454,8 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
         // The block at the eye line, from the virtualiser's offsets.
         const v = vRef.current;
         if (!v) return;
-        const at = y + eye() - v.options.scrollMargin;
+        // Virtual items' start/end include the scroll margin: page coordinates.
+        const at = y + eye();
         let idx = eyeIndexRef.current;
         for (const it of v.getVirtualItems())
           if (it.start <= at && it.end > at) {

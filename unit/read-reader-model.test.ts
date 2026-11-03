@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   ParaCache,
   blockLine,
+  blockOfAnchor,
   blockOfLine,
   blockSpeech,
   cutPara,
@@ -118,6 +119,10 @@ describe("reader model: items", () => {
     expect(blockOfLine(b, 0)).toBe(0);
     expect(blockOfLine(b, 1)).toBe(1);
     expect(blockLine(b[blockOfLine(b, 2)])).toBeLessThanOrEqual(2);
+    // A position in the paragraph's third piece finds that piece.
+    expect(blockOfAnchor(b, 1, 4)).toBe(3);
+    expect(blockOfAnchor(b, 1, 2)).toBe(2);
+    expect(blockOfAnchor(b, 1)).toBe(1);
   });
 
   it("speaks an item sentence by sentence, each with its address", () => {
@@ -229,6 +234,18 @@ describe("reader position", () => {
       { line: 9, top: 250, height: 100 },
     ];
     expect(anchorAt(rects, 100, 7)).toEqual({ line: 4, off: 0.5, at: 7 });
+    expect(anchorAt([{ line: 4, s: 2, top: 0, height: 100 }], 50, 1)).toEqual({
+      line: 4,
+      s: 2,
+      off: 0.5,
+      at: 1,
+    });
+    expect(parseAnchor({ line: 4, s: 2, off: 0.1, at: 3 })).toEqual({
+      line: 4,
+      s: 2,
+      off: 0.1,
+      at: 3,
+    });
     expect(anchorAt(rects, 1000)).toBeNull();
   });
 });
