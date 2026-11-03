@@ -197,7 +197,14 @@ for (let tries = 0; tries < 5; tries++) {
   await page.waitForTimeout(400);
   const box = await list.boundingBox();
   const x = Math.round(box.x + box.width / 2);
-  const y = Math.round(box.y + Math.min(box.height, 300) / 2);
+  // The visible part of the list: the page may end before it does, and the
+  // bottom navigation floats over the screen's lower edge.
+  const bottom = await page.evaluate(
+    () =>
+      document.querySelector('nav[aria-label="App navigation"]')?.getBoundingClientRect().top ??
+      innerHeight,
+  );
+  const y = Math.round(Math.min(box.y + box.height / 2, (box.y + bottom) / 2));
   const onList = await page.evaluate(
     ([px, py]) => !!document.elementFromPoint(px, py)?.closest('[data-testid="read-lines"]'),
     [x, y],
@@ -212,8 +219,14 @@ for (let tries = 0; tries < 5; tries++) {
   });
   if (await page.getByTestId("read-follow").isVisible()) break;
 }
-await page.waitForTimeout(300);
-const top = await list.evaluate((el) => el.scrollTop);
+// Let the flick's momentum settle before taking where he left it.
+let top = -1;
+for (let k = 0; k < 20; k++) {
+  await page.waitForTimeout(250);
+  const now = await list.evaluate((el) => el.scrollTop);
+  if (now === top) break;
+  top = now;
+}
 const lineAtScroll = await current();
 await until(async () => (await current()) >= lineAtScroll + 2, 15000);
 await page.evaluate(() => (window.__lineMs = 0));
