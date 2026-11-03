@@ -28,6 +28,8 @@ export type PhraseListMeta = {
   level: string;
   kind: "phrase";
   scenario: Scenario;
+  /** Learning order among the language's phrase decks: the scenario order (SCENARIOS). */
+  order?: number;
   count: number;
   file: string;
   source: string;
@@ -135,7 +137,12 @@ export function buildPhraseDecks(
     };
     files.push({ file: `${id}.json`, json: { ...meta, entries } });
     credits.push({ id, sentences });
-    lists.push({ ...meta, count: entries.length, file: `${id}.json` });
+    lists.push({
+      ...meta,
+      order: SCENARIOS.indexOf(scenario) + 1,
+      count: entries.length,
+      file: `${id}.json`,
+    });
   }
   return { files, lists, problems, credits };
 }

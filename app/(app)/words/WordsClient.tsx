@@ -60,9 +60,12 @@ import {
   withoutNode,
 } from "@/lib/words/tree";
 import { shownName } from "@/lib/words/lang-groups";
+import { planArrange } from "@/lib/words/arrange";
 import {
-  branchKeys,
   buildAddTree,
+  loadAddOpen,
+  saveAddOpen,
+  toggleOpenKey,
   coverageBands,
   defaultOpen,
   freqListsOf,
@@ -2374,19 +2377,21 @@ function ListPicker({
   // never starts studying: the learner stays here and opens a list himself.
   const addTree = useMemo(() => buildAddTree(builtIn, SCENARIOS, EXTERNAL_SEARCHES), [builtIn]);
   const [ticked, setTicked] = useState<Set<string>>(() => new Set());
-  const [openKeys, setOpenKeys] = useState<Set<string>>(() =>
-    defaultOpen(
-      addTree,
-      studyable.map((l) => l.lang),
-      typeof navigator === "undefined" ? [] : [...(navigator.languages ?? [])],
-    ),
+  const [openKeys, setOpenKeys] = useState<Set<string>>(
+    () =>
+      loadAddOpen(config.base) ??
+      defaultOpen(
+        addTree,
+        studyable.map((l) => l.lang),
+        typeof navigator === "undefined" ? [] : [...(navigator.languages ?? [])],
+      ),
   );
-  // Unfolding a node unfolds everything under it too; folding keeps that inside.
+  // Folding a node hides its whole branch; unfolding it shows its branches as
+  // they were (the first time, all of them open). Kept per device.
   const toggleOpen = (node: AddNode) =>
     setOpenKeys((s) => {
-      const n = new Set(s);
-      if (n.has(node.key)) n.delete(node.key);
-      else for (const k of [node.key, ...branchKeys(node)]) n.add(k);
+      const n = toggleOpenKey(node, s);
+      saveAddOpen(config.base, n);
       return n;
     });
   const [addedNow, setAddedNow] = useState<AddedNow | null>(null);
@@ -2394,6 +2399,68 @@ function ListPicker({
   /** A built-in list's name in the toast: a phrase deck by its scenario. */
   const addName = (c: CatalogMeta) =>
     isPhraseMeta(c) && c.scenario ? scenarioName(c.scenario) : c.name;
+
+  // "Arrange by language" (lib/words/arrange.ts): every list he has into
+  // language → kind → lists in learning order, with Undo while it shows.
+  const { locale } = useLocale();
+  const [arrangedNow, setArrangedNow] = useState<{
+    before: { id: string; parentId: string | null }[];
+    made: string[];
+    at: number;
+  } | null>(null);
+  const arrange = async () => {
+    const index = new Map(catalog.map((c, i) => [c.id, i]));
+    const labels = {
+      freq: text.freqLists.value,
+      phrase: phraseText.phrases.value,
+      exam: text.examLists.value,
+    };
+    const plan = planArrange(lists, {
+      isGroup,
+      metaOf: (l) => catalogById.get(l.source ?? ""),
+      catalogIndex: (l) => index.get(l.source ?? "") ?? catalog.length,
+      kindLabels: labels,
+    });
+    const before = flat.map((r) => ({ id: r.id, parentId: r.parentId }));
+    const ids = new Map<string, string>();
+    setBusy(true);
+    try {
+      for (const g of plan.make) {
+        const { list } = await api<{ list: WordList }>("/api/words/lists", {
+          method: "POST",
+          body: JSON.stringify({
+            name: g.kind ? labels[g.kind] : langName(g.lang, locale),
+            lang: g.lang,
+            source: groupSource,
+          }),
+        });
+        ids.set(g.key, list.id);
+      }
+      const order = plan.order(ids);
+      await api("/api/words/lists", { method: "PATCH", body: JSON.stringify({ order }) });
+      setArrangedNow({ before, made: [...ids.values()], at: Date.now() });
+    } finally {
+      await onRefresh().catch(() => {});
+      setBusy(false);
+    }
+  };
+  const undoArrange = async (a: NonNullable<typeof arrangedNow>) => {
+    setArrangedNow(null);
+    setBusy(true);
+    try {
+      await api("/api/words/lists", { method: "PATCH", body: JSON.stringify({ order: a.before }) });
+      // The groups it made are empty again now.
+      for (const id of a.made) await api(`/api/words/lists/${id}`, { method: "DELETE" });
+    } finally {
+      await onRefresh().catch(() => {});
+      setBusy(false);
+    }
+  };
+  useEffect(() => {
+    if (!arrangedNow) return;
+    const t = setTimeout(() => setArrangedNow(null), UNDO_MS);
+    return () => clearTimeout(t);
+  }, [arrangedNow]);
 
   /** Add these built-in lists in one go (Add selected, or a language's Add all). */
   const addLists = async (all: CatalogMeta[]) => {
@@ -2615,6 +2682,31 @@ function ListPicker({
         >
           {text.newGroup}
         </button>
+        {studyable.length > 1 &&
+          (arrangedNow ? (
+            <span className="flex items-center gap-2 text-sm" data-arranged>
+              <span className="opacity-70">{text.arranged}</span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => undoArrange(arrangedNow)}
+                data-undo-arrange
+                className="min-h-11 rounded-lg px-3 font-medium text-[oklch(0.5_0.14_155)] hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-40 dark:text-[oklch(0.78_0.13_155)]"
+              >
+                {text.undoArrange}
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={arrange}
+              data-arrange-lists
+              className="text-sm px-3 py-1.5 rounded bg-[oklch(0.5_0_0/0.12)] hover:bg-[oklch(0.5_0_0/0.2)] disabled:opacity-40"
+            >
+              {text.arrangeLists}
+            </button>
+          ))}
         {config.imports && <ImportLink />}
       </div>
 
@@ -2798,7 +2890,8 @@ function AddTreeNode({
               <span className="fs-11 tabular-nums opacity-40">{node.meta.count}</span>
             ))}
         </label>
-        {node.kind === "lang" && !state.disabled && (
+        {/* Folded, a language is only its row: no Add all, no bands, no children. */}
+        {node.kind === "lang" && open && !state.disabled && (
           <button
             type="button"
             disabled={busy}
@@ -2810,8 +2903,8 @@ function AddTreeNode({
           </button>
         )}
       </div>
-      {/* Every language's one-tap coverage bands, on its own row's branch, folded or not. */}
-      {node.kind === "lang" && (
+      {/* A language's one-tap coverage bands are part of its branch: they fold with it. */}
+      {node.kind === "lang" && open && (
         <CoverageBands
           lists={freqListsOf(node)}
           added={added}

@@ -77,6 +77,12 @@ type ListMeta = {
   license: string;
   /** The exam a level list belongs to (JLPT, HSK 3.0); the /words picker groups by it. */
   exam?: string;
+  /**
+   * Learning order among the language's lists of its kind, easiest first
+   * (JLPT N5 = 1 … N1 = 5, HSK 1 = 1, top 1–500 = 1). The /words picker's
+   * "Arrange" sorts his lists by it (lib/words/arrange.ts), never by name.
+   */
+  order?: number;
 };
 const index: ListMeta[] = [];
 
@@ -274,6 +280,7 @@ function buildJapanese() {
         name: `Japanese · JLPT N${n}`,
         level: `N${n}`,
         exam: "JLPT",
+        order: 6 - n,
         source:
           "JLPT vocabulary: jamsinclair/open-anki-jlpt-decks (via chyyran/jlpt-anki-decks, from Jonathan Waller's tanos.co.uk lists); ordered by OpenSubtitles frequency (hermitdave/FrequencyWords)" +
           EX_SOURCE,
@@ -348,6 +355,7 @@ function buildChinese() {
         name: `Chinese · HSK 3.0 level ${level}`,
         level: `HSK ${level}`,
         exam: "HSK 3.0",
+        order: parseInt(level, 10),
         source:
           "HSK 3.0 word lists: drkameleon/complete-hsk-vocabulary (lists from elkmovie/hsk30; definitions from CC-CEDICT via MDBG); ordered by its frequency rank" +
           EX_SOURCE,
@@ -1159,6 +1167,7 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
         lang,
         name: `${name} · top ${lo}–${hi}`,
         level: `${lo}–${hi}`,
+        order: b + 1,
         source: `Ranks: hermitdave/FrequencyWords (OpenSubtitles 2018, ${lang}_50k); glosses: English Wiktionary via kaikki.org (${name} extract), inflected forms folded into lemmas${EX_SOURCE_WIKT}`,
         license: "CC BY-SA 4.0 (FrequencyWords; Wiktionary content, also GFDL)" + EX_LICENSE,
       },

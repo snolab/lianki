@@ -57,6 +57,8 @@ export type ExamListMeta = {
   kind: "exam";
   /** The exam the deck prepares for; the /words picker groups decks by it. */
   exam: string;
+  /** Learning order among the language's exam decks, easiest first (中考 → 高考 → CET-4 …). */
+  order?: number;
   count: number;
   file: string;
   source: string;
