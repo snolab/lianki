@@ -1322,6 +1322,14 @@ try {
           Math.round(document.querySelectorAll(".slip-scroller")[3].scrollLeft),
         );
         check(home === 88, `${tag} the graded slip glides home (scrollLeft ${home})`);
+        // A vertical drag on a slip scrolls the list.
+        const top0 = await m.locator('[role="list"]').evaluate((el) => el.scrollTop);
+        await drag(6, 0, -120);
+        const top1 = await m.locator('[role="list"]').evaluate((el) => el.scrollTop);
+        check(
+          top1 > top0 + 40,
+          `${tag} a vertical drag on a slip scrolls the list (${top0} → ${top1})`,
+        );
         // A slow slide lifted a pixel short of the first detent (the owner,
         // Android, 2026-11-03: "stuck on the first slot"). Chromium snaps the
         // last pixel itself after the lift, and that snap used to override the
@@ -1361,14 +1369,6 @@ try {
         check(
           short.every((s) => s === "88:graded"),
           `${tag} a slow slide lifted short of a detent grades and comes home, every time (${short.join(" ")})`,
-        );
-        // A vertical drag on a slip scrolls the list.
-        const top0 = await m.locator('[role="list"]').evaluate((el) => el.scrollTop);
-        await drag(6, 0, -120);
-        const top1 = await m.locator('[role="list"]').evaluate((el) => el.scrollTop);
-        check(
-          top1 > top0 + 40,
-          `${tag} a vertical drag on a slip scrolls the list (${top0} → ${top1})`,
         );
       }
       // What the slip uncovers: A's list-wide grade strip put under that row;
