@@ -60,6 +60,18 @@ import {
 } from "@/lib/words/tree";
 import { shownName } from "@/lib/words/lang-groups";
 import {
+  branchKeys,
+  buildAddTree,
+  coverageBands,
+  defaultOpen,
+  freqListsOf,
+  leavesOf,
+  tickState,
+  tickedInOrder,
+  toggleTick,
+  type AddNode,
+} from "@/lib/words/add-tree";
+import {
   SCENARIOS,
   isPhraseMeta,
   moveUnder,
@@ -370,6 +382,11 @@ type CatalogMeta = {
   exam?: string;
   /** A phrase deck's scenario. */
   scenario?: Scenario;
+  /**
+   * A frequency list's text coverage: the share of running text its top rank
+   * covers, at least (scripts/words/freq-coverage.ts). The add tree's bands.
+   */
+  coverage?: number;
 };
 /** The URL of a catalog's entries. */
 const catalogPath = (base: string, c: CatalogMeta) => c.path ?? `${base}/${c.file}`;
@@ -1725,10 +1742,6 @@ export default function WordsClient({
         catalog={fullCatalog}
         offline={offline}
         onOpen={setListId}
-        onCreated={async (id) => {
-          await refreshLists();
-          setListId(id);
-        }}
         onRefresh={refreshLists}
         onDelete={(list, isGroup) => deleter.remove({ list, isGroup })}
         onRename={renameList}
@@ -1897,8 +1910,11 @@ function SortableListRow({
   onRename,
   keys,
   displayName,
+  fresh,
 }: {
   list: WordList;
+  /** Just added from the "Add a list" tree: outlined while its toast is up. */
+  fresh?: boolean;
   /** The name as shown: inside a language group, without the language prefix. */
   displayName: string;
   /** A hardware keyboard is in use: show the row's number key. */
@@ -1947,7 +1963,10 @@ function SortableListRow({
       }}
       data-list-row={l.id}
       data-group={isGroup || undefined}
+      data-fresh={fresh || undefined}
       className={`relative flex min-h-14 items-center rounded-lg ps-0.5 pe-1 ${
+        fresh ? "ring-2 ring-[oklch(0.65_0.15_155)] " : ""
+      }${
         isDragging
           ? "z-10 bg-[oklch(0.5_0_0/0.14)] ring-1 ring-[oklch(0.5_0_0/0.35)] shadow-lg"
           : isGroup
@@ -2189,7 +2208,6 @@ function ListPicker({
   catalog,
   offline,
   onOpen,
-  onCreated,
   onRefresh,
   onDelete,
   onRename,
@@ -2201,9 +2219,8 @@ function ListPicker({
   /** Showing the offline copy of the lists. */
   offline: boolean;
   onOpen: (id: string) => void;
-  onCreated: (id: string) => void;
   /** Reload the lists from the server. */
-  onRefresh: () => void;
+  onRefresh: () => Promise<void>;
   /** Delete a row, with Undo (the toast is the parent's). */
   onDelete: (list: WordList, isGroup: boolean) => void;
   onRename: (id: string, name: string) => void;
@@ -2294,9 +2311,7 @@ function ListPicker({
   const [busy, setBusy] = useState(false);
   // Imported decks are already lists; only the built-in catalogs can be added.
   const builtIn = useMemo(() => catalog.filter((c) => !c.path), [catalog]);
-  const langs = useMemo(() => [...new Set(builtIn.map((c) => c.lang))], [builtIn]);
-  const [lang, setLang] = useState<string>("");
-  const added = new Set(lists.map((l) => l.source));
+  const added = new Set(lists.flatMap((l) => (l.source ? [l.source] : [])));
   const studyable = lists.filter((l) => !isGroup(l));
 
   // 1–9 open the matching row, 0 studies everything — no mouse needed.
@@ -2306,7 +2321,7 @@ function ListPicker({
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
       // Keys inside a row's ⋯ menu or the Undo toast are theirs.
-      if (t.closest?.('[role="menu"], [data-undo-delete]')) return;
+      if (t.closest?.('[role="menu"], [data-undo-delete], [data-added-toast]')) return;
       const n = Number(e.key);
       if (e.key === "0" && studyable.length > 1) onOpen(ALL);
       else if (n >= 1 && n <= 9 && items[n - 1]) onOpen(items[n - 1].id);
@@ -2315,41 +2330,119 @@ function ListPicker({
     return () => window.removeEventListener("keydown", onKey);
   }, [items, studyable.length, onOpen]);
 
-  const add = async (c: CatalogMeta) => {
+  // "Add a list" as a tree with checkboxes (lib/words/add-tree.ts): tick
+  // lists, languages or whole branches, then add them all in one go. Adding
+  // never starts studying: the learner stays here and opens a list himself.
+  const addTree = useMemo(() => buildAddTree(builtIn, SCENARIOS), [builtIn]);
+  const [ticked, setTicked] = useState<Set<string>>(() => new Set());
+  const [openKeys, setOpenKeys] = useState<Set<string>>(() =>
+    defaultOpen(
+      addTree,
+      studyable.map((l) => l.lang),
+      typeof navigator === "undefined" ? [] : [...(navigator.languages ?? [])],
+    ),
+  );
+  // Unfolding a node unfolds everything under it too; folding keeps that inside.
+  const toggleOpen = (node: AddNode) =>
+    setOpenKeys((s) => {
+      const n = new Set(s);
+      if (n.has(node.key)) n.delete(node.key);
+      else for (const k of branchKeys(node)) n.add(k);
+      return n;
+    });
+  const [addedNow, setAddedNow] = useState<AddedNow | null>(null);
+  const fresh = useMemo(() => new Set(addedNow?.ids ?? []), [addedNow]);
+  /** A built-in list's name in the toast: a phrase deck by its scenario. */
+  const addName = (c: CatalogMeta) =>
+    isPhraseMeta(c) && c.scenario ? scenarioName(c.scenario) : c.name;
+
+  /** Add these built-in lists in one go (Add selected, or a language's Add all). */
+  const addLists = async (all: CatalogMeta[]) => {
+    const picks = all.filter((c) => !added.has(c.id));
+    if (!picks.length) return;
+    setBusy(true);
+    let nodes = lists;
+    const done: AddedNow = { ids: [], names: [], made: [], at: Date.now() };
+    try {
+      for (const c of picks) {
+        const { list } = await api<{ list: WordList }>("/api/words/lists", {
+          method: "POST",
+          body: JSON.stringify({ name: c.name, lang: c.lang, source: c.id }),
+        });
+        done.ids.push(list.id);
+        done.names.push(addName(c));
+        nodes = [...nodes, list];
+        // A phrase deck is still added if placing it fails; it shows at the top level.
+        if (isPhraseMeta(c)) {
+          const placed = await placePhrase(list, nodes).catch(() => null);
+          if (placed) {
+            nodes = placed.nodes;
+            if (placed.group) done.made.push(placed.group);
+          }
+        }
+      }
+    } catch (e) {
+      done.error = (e as Error).message;
+    }
+    setTicked((t) => new Set([...t].filter((id) => !picks.some((c) => c.id === id))));
+    await onRefresh().catch(() => {});
+    setBusy(false);
+    setAddedNow(done);
+  };
+
+  const undoAdd = async (a: AddedNow) => {
+    setAddedNow(null);
     setBusy(true);
     try {
-      const { list } = await api<{ list: WordList }>("/api/words/lists", {
-        method: "POST",
-        body: JSON.stringify({ name: c.name, lang: c.lang, source: c.id }),
-      });
-      // A phrase deck is still added if placing it fails; it shows at the top level.
-      if (isPhraseMeta(c)) await placePhrase(list).catch(() => {});
-      onCreated(list.id);
+      // The lists first, then any Phrases group made for them (empty by then).
+      for (const id of [...a.ids, ...a.made])
+        await api(`/api/words/lists/${id}`, { method: "DELETE" }).catch(() => {});
+      await onRefresh().catch(() => {});
     } finally {
       setBusy(false);
     }
   };
 
+  // The toast runs out on its own; the new rows lose their outline with it.
+  useEffect(() => {
+    if (!addedNow) return;
+    const t = setTimeout(() => setAddedNow(null), UNDO_MS);
+    return () => clearTimeout(t);
+  }, [addedNow]);
+  // Bring the first new row into view (it may sit inside a folded group).
+  useEffect(() => {
+    const id = addedNow?.ids[0];
+    if (!id) return;
+    requestAnimationFrame(() =>
+      document
+        .querySelector(`[data-list-row="${id}"]`)
+        ?.scrollIntoView({ block: "nearest", behavior: motionOff() ? "auto" : "smooth" }),
+    );
+  }, [addedNow]);
+
   /**
    * Put a newly added phrase deck where it belongs: language → Phrases →
    * scenario. The language's Phrases group is made when it has none, inside
    * the language's own group when there is one (lib/words/phrases.ts).
+   * `nodes` is the tree so far, the new list included; the tree after is returned.
    */
-  const placePhrase = async (list: WordList) => {
-    let nodes = [...lists, list];
+  const placePhrase = async (list: WordList, before: WordList[]) => {
+    let nodes = before;
     const label = phraseText.phrases.value;
     const home = phraseHome(flatten(nodes), list.lang, isGroup, isPhrase, label);
     let phrasesGroup = home.phrasesGroup;
+    let group: string | undefined;
     if (!phrasesGroup) {
       const { list: g } = await api<{ list: WordList }>("/api/words/lists", {
         method: "POST",
         body: JSON.stringify({ name: label, lang: list.lang, source: groupSource }),
       });
-      phrasesGroup = g.id;
+      phrasesGroup = group = g.id;
       nodes = applyOrder([...nodes, g], moveUnder(flatten([...nodes, g]), g.id, home.langGroup));
     }
     const order = moveUnder(flatten(nodes), list.id, phrasesGroup);
     await api("/api/words/lists", { method: "PATCH", body: JSON.stringify({ order }) });
+    return { nodes: applyOrder(nodes, order), group };
   };
 
   /** A row's name: phrase decks name their scenario in the UI's language. */
@@ -2468,6 +2561,7 @@ function ListPicker({
                   onRename={(name) => onRename(row.id, name)}
                   keys={keys}
                   displayName={rowName(row)}
+                  fresh={fresh.has(row.id)}
                 />
               ))}
             </SortableContext>
@@ -2485,82 +2579,323 @@ function ListPicker({
         {config.imports && <ImportLink />}
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2" data-add-tree>
         <h2 className="text-sm font-medium opacity-80">{text.addList}</h2>
-        <div className="flex flex-wrap gap-2">
-          {langs.map((l) => (
-            <button
-              key={l}
-              onClick={() => setLang(l)}
-              className={`px-3 py-1 rounded text-sm ${l === lang ? "bg-black/20 dark:bg-white/25" : "bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"}`}
-            >
-              {l}
-            </button>
+        <div role="tree" aria-multiselectable className="-mx-2">
+          {addTree.map((n) => (
+            <AddTreeNode
+              key={n.key}
+              node={n}
+              depth={0}
+              ticked={ticked}
+              added={added}
+              openKeys={openKeys}
+              busy={busy}
+              onTick={(node) => setTicked((t) => toggleTick(node, t, added))}
+              onToggleOpen={toggleOpen}
+              onAdd={addLists}
+              scenarioName={scenarioName}
+            />
           ))}
         </div>
-        {lang &&
-          (() => {
-            const ofLang = builtIn.filter((c) => c.lang === lang);
-            const words = ofLang.filter((c) => !isPhraseMeta(c) && !c.exam);
-            // exam lists by exam, in catalog order (CET-4 before CET-6, N5 before N1)
-            const exams = [...new Set(ofLang.filter((c) => c.exam).map((c) => c.exam!))].map(
-              (exam) => ofLang.filter((c) => c.exam === exam),
-            );
-            const phrases = ofLang
-              .filter((c) => isPhraseMeta(c) && c.scenario)
-              .sort((a, b) => SCENARIOS.indexOf(a.scenario!) - SCENARIOS.indexOf(b.scenario!));
-            const row = (c: CatalogMeta, name: string) => (
-              <div key={c.id} className="flex items-center gap-3 text-sm">
-                <span className="flex-1">{name}</span>
-                <span className="opacity-50 tabular-nums">{c.count}</span>
-                <button
-                  disabled={busy || added.has(c.id)}
-                  onClick={() => add(c)}
-                  className="px-3 py-1 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-40"
-                >
-                  {added.has(c.id) ? text.added : text.add}
-                </button>
-              </div>
-            );
-            return (
-              <div className="space-y-1">
-                {words.map((c) => row(c, c.name))}
-                {words[0] && (
-                  <p className="fs-11 opacity-40 pt-2">
-                    {words[0].source} — {words[0].license}
-                  </p>
-                )}
-                {exams.length > 0 && (
-                  <div className="space-y-1 pt-3" data-add-exams>
-                    <h3 className="text-xs font-medium opacity-70">{text.examLists}</h3>
-                    {exams.map((decks) => (
-                      <div key={decks[0].exam} className="space-y-1 pt-1">
-                        <h4 className="fs-11 font-medium opacity-60">{decks[0].exam}</h4>
-                        {decks.map((c) => row(c, c.name))}
-                      </div>
-                    ))}
-                    {[...new Set(exams.flat().map((c) => `${c.source} — ${c.license}`))].map(
-                      (credit) => (
-                        <p key={credit} className="fs-11 opacity-40 pt-2">
-                          {credit}
-                        </p>
-                      ),
-                    )}
-                  </div>
-                )}
-                {phrases.length > 0 && (
-                  <div className="space-y-1 pt-3" data-add-phrases>
-                    <h3 className="text-xs font-medium opacity-70">{phraseText.phrases}</h3>
-                    {phrases.map((c) => row(c, scenarioName(c.scenario!)))}
-                    <p className="fs-11 opacity-40 pt-2">
-                      {phrases[0].source} — {phrases[0].license}
-                    </p>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button
+            disabled={busy || ![...ticked].some((id) => !added.has(id))}
+            onClick={() => addLists(tickedInOrder(addTree, ticked))}
+            data-add-selected
+            className="min-h-11 rounded-lg bg-[oklch(0.55_0.14_155)] px-4 text-sm font-medium text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.14_155)] disabled:opacity-40"
+          >
+            {text.addSelected}
+          </button>
+        </div>
+        {[
+          ...new Set(
+            builtIn
+              .filter((c) => ticked.has(c.id) || openKeys.has(`lang:${c.lang}`))
+              .map((c) => `${c.source} — ${c.license}`),
+          ),
+        ].map((credit) => (
+          <p key={credit} className="fs-11 opacity-40">
+            {credit}
+          </p>
+        ))}
       </div>
+      {addedNow && (
+        <AddedToast
+          key={addedNow.at}
+          added={addedNow}
+          onStart={
+            addedNow.ids.length === 1 && !addedNow.error
+              ? () => {
+                  setAddedNow(null);
+                  onOpen(addedNow.ids[0]);
+                }
+              : undefined
+          }
+          onUndo={addedNow.ids.length ? () => undoAdd(addedNow) : undefined}
+        />
+      )}
+    </div>
+  );
+}
+
+/** What one "Add selected" did: the new lists, any group made for them, a failure. */
+type AddedNow = { ids: string[]; names: string[]; made: string[]; error?: string; at: number };
+
+/**
+ * One node of the "Add a list" tree: the whole row ticks it (a language or a
+ * branch ticks everything under it), the arrow folds it. Flat: depth is shown
+ * by indentation and type weight, with no box per level.
+ */
+function AddTreeNode({
+  node,
+  depth,
+  ticked,
+  added,
+  openKeys,
+  busy,
+  onTick,
+  onToggleOpen,
+  onAdd,
+  scenarioName,
+}: {
+  node: AddNode<CatalogMeta>;
+  depth: number;
+  ticked: ReadonlySet<string>;
+  added: ReadonlySet<string>;
+  openKeys: ReadonlySet<string>;
+  busy: boolean;
+  onTick: (node: AddNode<CatalogMeta>) => void;
+  onToggleOpen: (node: AddNode<CatalogMeta>) => void;
+  /** One tap adds these lists: a language's "Add all", a coverage band. */
+  onAdd: (lists: CatalogMeta[]) => void;
+  scenarioName: (s: Scenario) => string;
+}) {
+  const text = useIntlayer("words-page");
+  const phraseText = useIntlayer("words-phrases");
+  const { locale } = useLocale();
+  const box = useRef<HTMLInputElement>(null);
+  const state = tickState(node, ticked, added);
+  useEffect(() => {
+    if (box.current) box.current.indeterminate = state.mixed;
+  }, [state.mixed]);
+  const label =
+    node.kind === "lang"
+      ? langName(node.lang, locale)
+      : node.kind === "family"
+        ? node.family === "freq"
+          ? text.freqLists.value
+          : node.family === "exam"
+            ? text.examLists.value
+            : phraseText.phrases.value
+        : node.kind === "exam"
+          ? node.exam
+          : node.meta.scenario
+            ? scenarioName(node.meta.scenario as Scenario)
+            : // the language is the row above: "Japanese · JLPT N5" → "JLPT N5"
+              node.meta.name.replace(/^[^·]*·\s*/, "");
+  const open = node.kind !== "list" && openKeys.has(node.key);
+  const weight =
+    node.kind === "lang" ? "font-semibold" : node.kind === "list" ? "" : "font-medium opacity-80";
+  return (
+    <div
+      role="treeitem"
+      aria-expanded={node.kind === "list" ? undefined : open}
+      aria-selected={state.checked}
+    >
+      <div
+        className="flex min-h-11 items-center rounded-lg pe-2 hover:bg-[oklch(0.5_0_0/0.07)]"
+        style={{ paddingInlineStart: `calc(${depth} * 1.25rem)` }}
+        data-add-node={node.key}
+      >
+        {node.kind === "list" ? (
+          <span className="w-9 shrink-0" aria-hidden />
+        ) : (
+          <button
+            type="button"
+            onClick={() => onToggleOpen(node)}
+            aria-label={fill((open ? text.collapseGroup : text.expandGroup).value, { name: label })}
+            className="grid h-11 w-9 shrink-0 place-items-center text-sm opacity-60 hover:opacity-100"
+          >
+            <span
+              className={`inline-block transition-transform ${open ? "rotate-90" : "rtl:rotate-180"}`}
+            >
+              ▸
+            </span>
+          </button>
+        )}
+        {/* The whole row is the checkbox's label: tapping anywhere on it ticks it. */}
+        <label
+          className={`flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm ${weight} ${state.disabled ? "cursor-default" : ""}`}
+        >
+          <input
+            ref={box}
+            type="checkbox"
+            checked={state.checked}
+            disabled={state.disabled || busy}
+            onChange={() => onTick(node)}
+            className="size-4 shrink-0 accent-[oklch(0.55_0.14_155)]"
+          />
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {node.kind === "list" &&
+            (added.has(node.meta.id) ? (
+              <span className="fs-11 opacity-50">{text.added}</span>
+            ) : (
+              <span className="fs-11 tabular-nums opacity-40">{node.meta.count}</span>
+            ))}
+        </label>
+        {node.kind === "lang" && !state.disabled && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onAdd(leavesOf(node))}
+            data-add-all={node.lang}
+            className="min-h-11 shrink-0 rounded-lg px-3 text-sm font-medium text-[oklch(0.5_0.14_155)] hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-40 dark:text-[oklch(0.78_0.13_155)]"
+          >
+            {text.addAll}
+          </button>
+        )}
+      </div>
+      {/* Every language's one-tap coverage bands, on its own row's branch, folded or not. */}
+      {node.kind === "lang" && (
+        <CoverageBands
+          lists={freqListsOf(node)}
+          added={added}
+          busy={busy}
+          depth={depth + 1}
+          onAdd={onAdd}
+        />
+      )}
+      {open && (
+        <div role="group">
+          {node.children.map((c) => (
+            <AddTreeNode
+              key={c.key}
+              node={c}
+              depth={depth + 1}
+              ticked={ticked}
+              added={added}
+              openKeys={openKeys}
+              busy={busy}
+              onTick={onTick}
+              onToggleOpen={onToggleOpen}
+              onAdd={onAdd}
+              scenarioName={scenarioName}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One-tap bands over a language's most common words, by how much of running
+ * text they cover (lib/words/add-tree.ts coverageBands): "Covers 75% of text ·
+ * top 1–500". A band adds its frequency lists that are not added yet.
+ */
+function CoverageBands({
+  lists,
+  added,
+  busy,
+  depth,
+  onAdd,
+}: {
+  lists: CatalogMeta[];
+  added: ReadonlySet<string>;
+  busy: boolean;
+  depth: number;
+  onAdd: (lists: CatalogMeta[]) => void;
+}) {
+  const text = useIntlayer("words-page");
+  const bands = coverageBands(lists);
+  if (!bands.length) return null;
+  return (
+    <div
+      className="flex flex-wrap gap-x-1"
+      style={{ paddingInlineStart: `calc(${depth} * 1.25rem + 2.25rem)` }}
+      data-coverage-bands
+    >
+      {bands.map((b) => {
+        const done = b.ids.every((id) => added.has(id));
+        return (
+          <button
+            key={b.top}
+            type="button"
+            disabled={busy || done}
+            onClick={() => onAdd(lists.filter((c) => b.ids.includes(c.id)))}
+            data-band={b.top}
+            className="min-h-11 rounded-lg px-2 text-start text-sm text-[oklch(0.5_0.14_155)] hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-40 dark:text-[oklch(0.78_0.13_155)]"
+          >
+            {fill(text.coverageBand.value, { pct: Math.floor(b.coverage * 100) })}
+            <span className="ms-1.5 fs-11 tabular-nums opacity-60">
+              {done ? text.added : fill(text.coverageRanks.value, { top: b.top })}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A language's name in the UI's language ("ja" → "Japanese" / "日语"). */
+function langName(code: string, locale: string) {
+  try {
+    return new Intl.DisplayNames([locale], { type: "language" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/**
+ * "Added: JLPT N5 and JLPT N4", as glass over the bottom of the page: one
+ * layer, with Start studying (one list added) and Undo. It runs out with the
+ * new rows' outline (UNDO_MS).
+ */
+function AddedToast({
+  added,
+  onStart,
+  onUndo,
+}: {
+  added: AddedNow;
+  onStart?: () => void;
+  onUndo?: () => void;
+}) {
+  const text = useIntlayer("words-page");
+  const { locale } = useLocale();
+  let names = added.names.join(", ");
+  try {
+    names = new Intl.ListFormat([locale], { type: "conjunction" }).format(added.names);
+  } catch {}
+  const said = added.error
+    ? fill(text.addFailed.value, { error: added.error })
+    : fill(text.addedToast.value, { names });
+  const action =
+    "min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.15_250)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.12_250)]";
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      data-added-toast
+      className="lk-glass fixed inset-x-4 z-50 mx-auto flex max-w-md items-center gap-1 rounded-xl border border-[var(--glass-line)] py-1 ps-4 pe-1 shadow-lg"
+      style={{ bottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}
+    >
+      <span className="line-clamp-2 min-w-0 flex-1 text-sm">{said}</span>
+      {onStart && (
+        <button onClick={onStart} className={action} data-added-start>
+          {text.startStudying}
+        </button>
+      )}
+      {onUndo && (
+        <button onClick={onUndo} className={action} data-added-undo>
+          {text.undoAdd}
+        </button>
+      )}
+      <span
+        aria-hidden
+        className="lk-undo-timer pointer-events-none absolute inset-x-3 bottom-0 h-0.5 origin-left rounded-full bg-[oklch(0.5_0_0/0.35)] rtl:origin-right"
+        style={{ animationDuration: `${UNDO_MS}ms` }}
+      />
     </div>
   );
 }
