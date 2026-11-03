@@ -23,6 +23,8 @@ export type WordsUi = {
   anchors: Record<string, string>;
   /** List picker: the groups this tab has folded shut (their ids). */
   collapsed: string[];
+  /** List picker: the stats panel (heatmap, headline numbers) is open. */
+  statsOpen: boolean;
 };
 
 const INITIAL: WordsUi = {
@@ -31,6 +33,7 @@ const INITIAL: WordsUi = {
   helpOpen: false,
   anchors: {},
   collapsed: [],
+  statsOpen: false,
 };
 
 /** Folded groups remembered per tab; ids beyond this are dropped. */
@@ -47,6 +50,7 @@ export function cleanWordsUi(raw: unknown): Partial<WordsUi> {
     out.listId = v.listId;
   if (typeof v.settingsOpen === "boolean") out.settingsOpen = v.settingsOpen;
   if (typeof v.helpOpen === "boolean") out.helpOpen = v.helpOpen;
+  if (typeof v.statsOpen === "boolean") out.statsOpen = v.statsOpen;
   if (v.anchors && typeof v.anchors === "object" && !Array.isArray(v.anchors))
     out.anchors = Object.fromEntries(
       Object.entries(v.anchors as Record<string, unknown>)
