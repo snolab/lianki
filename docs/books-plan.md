@@ -462,7 +462,7 @@ items) and `lib/read/familiarity.ts` (aggregation); store
 ### Built: the reader v2 UI (2026-11-03, behind `read.reader-v2`)
 
 `app/(app)/read/[id]/ReaderV2.tsx` (rows: `reader-blocks.tsx`). The old reader
-stays while the flag is off; the owner sees v2 on the whole-page dev server.
+stays while the flag is off; the owner always gets v2, on lianki.com too (the same rule as its backend, `readerV2On`).
 
 - The whole book on the window's scroll, virtualised (`@tanstack/react-virtual`,
   measured heights); the EPUB's paragraphs, headings, emphasis and joins as

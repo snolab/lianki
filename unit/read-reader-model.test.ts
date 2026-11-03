@@ -253,12 +253,12 @@ describe("reader position", () => {
 });
 
 describe("reader access", () => {
-  const o = { flags: {}, owner: false, devPreview: false, dev: false };
-  it("is v1 unless the flag is on, or the owner previews on the dev server", () => {
+  const o = { flags: {}, owner: false, dev: false };
+  it("is v2 for the owner or with the flag on, as its backend (readerV2On)", () => {
     expect(readerPick(o)).toBe("v1");
     expect(readerPick({ ...o, flags: { "read.reader-v2": true } })).toBe("v2");
-    expect(readerPick({ ...o, owner: true })).toBe("v1");
-    expect(readerPick({ ...o, owner: true, devPreview: true })).toBe("v2");
+    expect(readerPick({ ...o, owner: true })).toBe("v2");
+    expect(readerPick({ ...o, owner: true, query: "v1" })).toBe("v1");
   });
   it("lets ?reader= choose: v2 only for the owner or a local dev server", () => {
     expect(readerPick({ ...o, query: "v2" })).toBe("v1");
