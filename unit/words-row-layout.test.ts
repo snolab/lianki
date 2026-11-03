@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BACK_ORDER, backParts } from "@/lib/words/row-layout";
+import { BACK_ORDER, backParts, rowMetrics } from "@/lib/words/row-layout";
 import { sayParts } from "@/lib/words/say-parts";
 import {
   exampleSegments,
@@ -104,5 +104,16 @@ describe("one example per showing", () => {
     const e = withPickedExample({ term: "x", ex: "A.", exTr: "a", exs }, "k", () => 0.99);
     expect(e.ex).toBe("C.");
     expect(e.exTr).toBeUndefined();
+  });
+});
+
+describe("rowMetrics (rows 1.5× taller, owner 2026-11-03 23:01 JST)", () => {
+  test("rows are 1.5× the old height; the swipe unit keeps the old one", () => {
+    expect(rowMetrics(true, 1)).toEqual({ rowH: 66, a: 44 });
+    expect(rowMetrics(false, 1)).toEqual({ rowH: 42, a: 28 });
+  });
+  test("both grow with the cards' text, never shrink under it", () => {
+    expect(rowMetrics(true, 1.5)).toEqual({ rowH: 99, a: 66 });
+    expect(rowMetrics(true, 0.85)).toEqual({ rowH: 66, a: 44 });
   });
 });

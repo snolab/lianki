@@ -507,6 +507,19 @@ try {
     (await rows.nth(0).locator("[data-stamp-cell] .lk-stamp").count()) === 1,
     "a graded slip gets a small seal at its left end",
   );
+  // Rows are 1.5× the old 28px line (owner, 2026-11-03 23:01 JST), and a
+  // long cell wraps to a second line instead of cutting off at one.
+  {
+    const r = await rows.nth(0).evaluate((el) => {
+      const lines = [...el.querySelectorAll(":scope > span")].map((c) => {
+        const lh = parseFloat(getComputedStyle(c).lineHeight);
+        return lh > 0 ? Math.floor(c.clientHeight / lh + 0.01) : 0;
+      });
+      return { h: Math.round(el.getBoundingClientRect().height), maxLines: Math.max(...lines) };
+    });
+    check(r.h === 42, `a desktop row is 42px tall (${JSON.stringify(r)})`);
+    check(r.maxLines <= 2, `no desktop cell takes more than two lines (${JSON.stringify(r)})`);
+  }
   // Desktop: the cursor's slip is the loose one; a right click opens its sheet.
   const loose = page.locator('[role="listitem"].slip-loose');
   check((await loose.count()) === 1, "the cursor's slip is the one loose slip");
@@ -1474,7 +1487,7 @@ try {
         };
       });
       check(
-        unified.example === 1 && unified.exampleFirst && unified.h === 44,
+        unified.example === 1 && unified.exampleFirst && unified.h === 66,
         `${tag} the row shows the example above the meaning, at the fixed height (${JSON.stringify(unified)})`,
       );
       await m.getByRole("button", { name: "Cancel" }).click();
@@ -1966,7 +1979,7 @@ try {
             steps.push({ i: t.i, focus: b.focus - t.i, top: b.top - a.top });
           }
           check(
-            steps.every((s) => s.focus === 1 && s.top === 44),
+            steps.every((s) => s.focus === 1 && s.top === 66),
             `${tag} each grade moves the focus and the list by exactly one row (${JSON.stringify(steps)})`,
           );
           // Re-grade the row just graded (now one row above the focus): nothing moves.

@@ -24,3 +24,25 @@ export interface BackCard {
 export function backParts(it: BackCard): BackPart[] {
   return BACK_ORDER.filter((k) => k === "meaning" || !!(it.ex || it.note));
 }
+
+/**
+ * How much taller a row is than its swipe unit. Owner, 2026-11-03 23:01 JST:
+ * "单词列表复习的时候，卡片的高度再拉高那么一点… 1.5倍高度吧，现在的1.5倍".
+ * Same layout and columns (the 3× slips were rejected, words-session-spec.md);
+ * the height goes to the text: the first back line may wrap to a second line.
+ */
+export const ROW_TALL = 1.5;
+/** The base unit before ROW_TALL: the 44px touch target, the 28px desktop line. */
+const BASE_PX = { touch: 44, desktop: 28 } as const;
+
+/**
+ * A /words row's sizes for a card text scale (lib/text-size.ts): `rowH` is
+ * what the list, the cords and the windowing use; `a` is the swipe's travel
+ * unit (one detent), which stays the old row height so a grade still takes
+ * the same finger distance. Both grow with the text, never shrink.
+ */
+export function rowMetrics(touch: boolean, cardScale: number): { rowH: number; a: number } {
+  const k = Math.max(1, cardScale);
+  const base = touch ? BASE_PX.touch : BASE_PX.desktop;
+  return { rowH: Math.round(base * ROW_TALL * k), a: Math.round(base * k) };
+}
