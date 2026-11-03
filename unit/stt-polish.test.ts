@@ -114,6 +114,7 @@ describe("polishCheck: realistic garbles", () => {
     expect(polishCheck("do do it", "Do it.", []).ok).toBe(true);
     expect(polishCheck("I insist", "insist", []).ok).toBe(false);
     expect(polishCheck("a apple", "apple", []).ok).toBe(false);
+    expect(polishCheck("I insist on skiing", "insist on skiing", []).ok).toBe(false);
   });
 
   it("a replacement that only drops characters is a removal (不要 → 要)", () => {

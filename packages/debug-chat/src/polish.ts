@@ -41,11 +41,16 @@ const norm = (s: string) => s.normalize("NFKC").toLowerCase();
 
 /** The words of a text, normalised; punctuation and spaces are not words. */
 export function polishWords(text: string): string[] {
-  const out: string[] = [];
+  return spans(text).map((x) => x.w);
+}
+
+/** The words, and where each sits in the normalised text. */
+function spans(text: string): { w: string; start: number; end: number }[] {
+  const out: { w: string; start: number; end: number }[] = [];
   for (const s of segmenter().segment(norm(text))) {
     // Marks inside a word (can't, let's, e-mail) are punctuation too.
     const w = s.isWordLike ? s.segment.replace(/[^\p{L}\p{N}\p{M}]/gu, "") : "";
-    if (w) out.push(w);
+    if (w) out.push({ w, start: s.index, end: s.index + s.segment.length });
   }
   return out;
 }
@@ -118,20 +123,20 @@ function diff(a: string[], b: string[]): Hunk[] {
  * The removed run repeats what is right next to it (a stutter): it is copies
  * of one unit, said again right before or after it, as whole words — or, a
  * single character written up against it with no space, which is how a
- * script that does not space its words stutters (我我我想 → 我想: its segmenter may join the last 我 to 想). Never
- * part of a longer word: "not" is not repeated by "notify".
+ * script that does not space its words stutters (我我我想 → 我想: its
+ * segmenter may join the last 我 to 想). Never part of a longer word: "not" is not repeated by "notify".
  */
-function isRepeat(raw: string[], h: Hunk, written: string): boolean {
+function isRepeat(raw: string[], h: Hunk, joined: boolean[]): boolean {
   const run = h.del.join("");
   const before = raw.slice(0, h.at);
   const after = raw.slice(h.at + h.del.length);
   /** The words' joined text starts (or ends) with `unit`, at a word boundary unless it is one grapheme. */
   const next = (words: string[], unit: string, fromEnd: boolean) => {
-    const joined = words.join("");
-    if (!(fromEnd ? joined.endsWith(unit) : joined.startsWith(unit))) return false;
+    const text = words.join("");
+    if (!(fromEnd ? text.endsWith(unit) : text.startsWith(unit))) return false;
     // One character counts only where the text itself does not space it off
     // (我我我想, not "I insist"): its writing, not a language, decides.
-    if (graphemes(unit) === 1) return written.includes(fromEnd ? unit + run : run + unit);
+    if (graphemes(unit) === 1) return fromEnd ? !!joined[h.at - 1] : !!joined[h.at + h.del.length - 1];
     let at = 0;
     for (const w of fromEnd ? [...words].reverse() : words) {
       at += w.length;
@@ -150,7 +155,10 @@ function isRepeat(raw: string[], h: Hunk, written: string): boolean {
 
 /** Is a polished text of a voice line one the context supports? */
 export function polishCheck(raw: string, polished: string, context: PolishContext): PolishVerdict {
-  const a = polishWords(raw);
+  const rawSpans = spans(raw);
+  const a = rawSpans.map((x) => x.w);
+  // Word i is written up against word i + 1, nothing between (no space, no mark).
+  const joined = rawSpans.map((x, i) => rawSpans[i + 1]?.start === x.end);
   const b = polishWords(polished);
   // Spaceless, so a run matches however a script spaces (or segments) it.
   const known = context.map(polishWords);
@@ -158,7 +166,7 @@ export function polishCheck(raw: string, polished: string, context: PolishContex
     const said = h.del.join(" ");
     const put = h.ins.join(" ");
     if (!h.ins.length) {
-      if (isRepeat(a, h, norm(raw))) continue;
+      if (isRepeat(a, h, joined)) continue;
       return { ok: false, reason: `drops "${said}", which is not a repeat: it may be meaning` };
     }
     if (!h.del.length) return { ok: false, reason: `adds "${put}", which was not said` };
