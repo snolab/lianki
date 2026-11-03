@@ -5,6 +5,9 @@ import { readFlags } from "@/lib/flags-store";
 import { isOwner } from "@/lib/owner";
 import { devWholePage } from "@/lib/dev-whole-page";
 import { readerPick } from "@/lib/read/reader-access";
+import { resolveReadId } from "@/lib/read/book-link";
+import { findReadMaterialIdByHash } from "@/lib/getReadMaterialsCollection";
+import { notFound, redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +24,17 @@ export default async function ReadMaterialPage({
     authUserOrNull(),
     readFlags(),
   ]);
+  // A deep link names the book by its content hash: open the reader's own
+  // copy of that text, or 404 (lib/read/book-link.ts). The browser keeps the
+  // link's #fragment across the redirect.
+  const target = await resolveReadId(id, user?.id, findReadMaterialIdByHash);
+  if (target.kind === "none") notFound();
+  if (target.kind === "redirect") {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(query))
+      for (const x of Array.isArray(v) ? v : v === undefined ? [] : [v]) q.append(k, x);
+    redirect(`/read/${encodeURIComponent(target.id)}${q.size ? `?${q}` : ""}`);
+  }
   const pick = readerPick({
     flags,
     owner: isOwner(user?.email),

@@ -1098,6 +1098,37 @@ html[data-read-marks="unknown"] .lk-book [data-f="u"] {
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
+/* The combo-click selection (use-reader-select.ts): drawn by the CSS Custom
+ * Highlight API, else by [data-sel] on the same elements; never the DOM
+ * selection. A deep link's unit flashes once as it lands. */
+::highlight(lk-sel) {
+  background-color: oklch(0.72 0.11 250 / 0.32);
+}
+.lk-book [data-sel] {
+  background: oklch(0.72 0.11 250 / 0.32);
+  border-radius: 0.15em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+@media (prefers-color-scheme: dark) {
+  ::highlight(lk-sel) { background-color: oklch(0.62 0.12 250 / 0.42); }
+  .lk-book [data-sel] { background: oklch(0.62 0.12 250 / 0.42); }
+}
+@keyframes lk-flash {
+  0%, 35% { background-color: oklch(0.82 0.13 85 / 0.6); }
+  100% { background-color: oklch(0.82 0.13 85 / 0); }
+}
+.lk-book [data-flash] {
+  animation: lk-flash 1.6s ease-out 1;
+  border-radius: 0.15em;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-book [data-flash] { animation-duration: 0.01s; }
+}
+/* Double taps are combo clicks here, never a zoom. */
+.lk-book {
+  touch-action: manipulation;
+}
 @media (prefers-color-scheme: dark) {
   .lk-book [data-reading] {
     background: oklch(0.5 0.08 85 / 0.35);
