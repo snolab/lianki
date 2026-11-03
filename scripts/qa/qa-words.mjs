@@ -274,6 +274,21 @@ try {
   );
   check(catalog?.length > 0, `catalog lists: ${catalog?.length}`);
   const first = catalog.find((c) => c.lang === "fr") ?? catalog[0];
+  // Folding a language hides its whole branch: lists, coverage bands, Add all
+  // (owner, 2026-11-03 20:12 JST); lib/words/add-tree.ts shownKeys.
+  {
+    const lang = page.locator(`[data-add-node="lang:${first.lang}"]`);
+    const item = lang.locator("xpath=..");
+    const fold = lang.locator("button").first();
+    if ((await item.getAttribute("aria-expanded")) !== "true") await fold.click();
+    const branch = () => item.locator(`[data-add-node], [data-coverage-bands], [data-add-all]`);
+    check((await branch().count()) > 1, "an unfolded language shows its branch");
+    await fold.click();
+    check(
+      (await branch().count()) === 1,
+      `a folded language shows only its row: ${await branch().count()}`,
+    );
+  }
   await addFromTree(first, { checks: true });
 
   const rows = page.locator('[role="listitem"]');
