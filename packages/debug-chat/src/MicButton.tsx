@@ -52,7 +52,16 @@ import {
 const ORT = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/";
 const VAD = "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/";
 const REC = "oklch(0.6 0.22 25)";
-/** The agent speaking (capture held): a calm blue, unlike the red of REC. */
+/**
+ * The capturing ring's pulse: its opacity and a slight scale, both on the GPU,
+ * about the ring's own centre, so it stays concentric and nothing moves. Under
+ * reduced motion it holds still, a little thicker than the listening ring.
+ * In a <style> beside the button, not a Tailwind class: a stale stylesheet
+ * (docs/dev-debug-widget.md, "concentric") cannot drop it.
+ */
+const MIC_PULSE = `@keyframes lk-mic-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.12)}}
+@media (prefers-reduced-motion:reduce){[data-testid="debug-chat-mic-ring"][data-rec]{animation:none!important;box-shadow:0 0 0 3px ${REC}!important}}`;
+/** The agent speaking (capture held): a calm blue, unlike the red of capture. */
 const TALK = "oklch(0.62 0.14 250)";
 /** Passive (docs/wake-word.md): on, but only waiting for "Linky": a quiet grey-violet. */
 const WAIT = "oklch(0.62 0.06 290)";
@@ -480,7 +489,8 @@ export const canCapture = () =>
  * turns listening on, another (or Escape) off. Each utterance the VAD cuts is
  * sent to /api/debug/stt at once, and its transcript appended to the input in
  * order (`onText`); nothing is sent as a message. While capturing: a red
- * pulsing ring and REC; listening but quiet: a steady faint ring. With
+ * pulsing ring; listening but quiet: a steady faint ring. No text on the
+ * button: the ring shows the state, and a polite live region says it. With
  * `clipSink` (the owner's dev server) each utterance is also posted there,
  * with its transcript, to build a local test set. Hidden where the browser
  * cannot capture.
@@ -608,6 +618,11 @@ export function DebugMic({
   return (
     // The chat bar's last control, right of the input.
     <div className="relative flex shrink-0">
+      <style>{MIC_PULSE}</style>
+      {/* What the ring shows, for screen readers: said on each change of state. */}
+      <span role="status" aria-live="polite" className="sr-only" data-testid="debug-chat-mic-live">
+        {state === "off" || state === "loading" ? "" : speaking ? "Agent speaking" : passive ? wakeLabel : "Listening"}
+      </span>
       {note && (
         <span
           role="alert"
@@ -681,11 +696,11 @@ export function DebugMic({
         className={`tap-40 pointer-events-auto relative flex touch-none flex-col items-center justify-center text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
       >
         {speaking ? (
-          // The agent speaks: a slow blue ring, so it is never mistaken for REC.
+          // The agent speaks: a slow blue ring, so it is never mistaken for capture.
           <span
             aria-hidden
             data-testid="debug-chat-mic-speaking"
-            className={`pointer-events-none absolute rounded-full animate-pulse`}
+            className="pointer-events-none absolute rounded-full animate-pulse motion-reduce:animate-none"
             style={{ ...MIC_RING, boxShadow: `0 0 0 2px ${TALK}`, animationDuration: "2.4s" }}
           />
         ) : passive ? (
@@ -705,11 +720,18 @@ export function DebugMic({
             style={{ ...MIC_RING, borderColor: REC }}
           />
         ) : listening && (
-          // Steady and faint while listening; red and pulsing while audio is captured.
+          // Steady and faint while listening; red and pulsing (MIC_PULSE) while audio
+          // is captured. The ring alone shows it: no text on the button (owner, 2026-11-03).
           <span
             aria-hidden
-            className={`pointer-events-none absolute rounded-full ${rec ? "animate-pulse" : ""}`}
-            style={{ ...MIC_RING, boxShadow: `0 0 0 2px ${rec ? REC : "oklch(0.6 0.22 25 / 0.35)"}` }}
+            data-testid="debug-chat-mic-ring"
+            data-rec={rec || undefined}
+            className="pointer-events-none absolute rounded-full"
+            style={{
+              ...MIC_RING,
+              boxShadow: `0 0 0 2px ${rec ? REC : "oklch(0.6 0.22 25 / 0.35)"}`,
+              animation: rec ? "lk-mic-pulse 1.2s ease-in-out infinite" : undefined,
+            }}
           />
         )}
         <MicIcon fill={state !== "off"} />
@@ -724,24 +746,6 @@ export function DebugMic({
             className={`pointer-events-none absolute end-1 top-0 size-1.5 rounded-full ${view.local === "connecting" ? "animate-pulse motion-reduce:animate-none" : ""}`}
             style={{ background: LOCAL_DOT[view.local] }}
           />
-        )}
-        {passive && !rec && (
-          <span
-            data-testid="debug-chat-mic-wake"
-            className="fs-8 font-bold leading-none"
-            style={{ color: WAIT }}
-          >
-            {ws.badge}
-          </span>
-        )}
-        {rec && (
-          <span
-            data-testid="debug-chat-mic-rec"
-            className="fs-8 font-bold leading-none"
-            style={{ color: REC }}
-          >
-            REC
-          </span>
         )}
       </button>
     </div>
