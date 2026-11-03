@@ -33,6 +33,10 @@ export function sameString(a, b) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
+/** lianki.com and www.lianki.com are one site (www redirects to the apex). */
+const apex = (host) => (host === "www.lianki.com" ? "lianki.com" : host);
+export const sameSite = (a, b) => apex(a) === apex(b);
+
 // ── Config file ───────────────────────────────────────────────────────────
 
 const configDir = (env) => join(env.XDG_CONFIG_HOME || join(homedir(), ".config"), "lianki");
@@ -57,10 +61,14 @@ export function fileConfig(env) {
       writeFileSync(path, JSON.stringify(c, null, 2) + "\n", { mode: 0o600 });
       chmodSync(path, 0o600);
     },
-    legacyToken() {
+    /** 0.1.x's token, only for the site it was saved for (its `api`, default www.lianki.com). */
+    legacyToken(site) {
       try {
-        const t = JSON.parse(readFileSync(legacyConfigPath(env), "utf8")).token;
-        return typeof t === "string" && TOKEN_RE.test(t) ? t : null;
+        const c = JSON.parse(readFileSync(legacyConfigPath(env), "utf8"));
+        const t = c.token;
+        if (typeof t !== "string" || !TOKEN_RE.test(t)) return null;
+        const host = new URL(typeof c.api === "string" ? c.api : "https://www.lianki.com").host;
+        return sameSite(host, site) ? t : null;
       } catch {
         return null;
       }

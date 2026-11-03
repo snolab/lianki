@@ -359,6 +359,26 @@ describe("cards", () => {
     expect((await h.run("auth", "logout")).out).toContain("revoked");
     expect((await h.run("stats")).code).toBe(2);
   });
+  test("a 0.1.x token is only sent to the site it was saved for", async () => {
+    const h = harness();
+    mkdirSync(join(h.home, "lianki"), { recursive: true });
+    writeFileSync(
+      join(h.home, "lianki", "config.json"),
+      JSON.stringify({ token: TOKEN, api: "https://www.lianki.com" }),
+    );
+    expect((await h.run("stats", "--api", "https://evil.example")).code).toBe(2);
+    expect(h.calls.length).toBe(0);
+    expect((await h.run("auth", "logout", "--api", "https://evil.example")).out).toBe(
+      "not signed in",
+    );
+    expect((await h.run("stats")).code).toBe(0);
+    writeFileSync(
+      join(h.home, "lianki", "config.json"),
+      JSON.stringify({ token: TOKEN, api: "https://staging.example" }),
+    );
+    expect((await h.run("stats")).code).toBe(2);
+    expect((await h.run("stats", "--api", "https://staging.example")).code).toBe(0);
+  });
 });
 
 describe("auth", () => {
@@ -475,7 +495,13 @@ describe("auth", () => {
   });
   test("logout: nothing stored, and a server that cannot revoke", async () => {
     expect((await harness().run("auth", "logout")).out).toBe("not signed in");
-    expect((await harness({ env }).run("auth", "logout")).out).toContain("LIANKI_TOKEN is set");
+    const envOnly = await harness({ env }).run("auth", "logout");
+    expect(envOnly.code).toBe(1);
+    expect(envOnly.err).toContain('--token "$LIANKI_TOKEN"');
+    const explicit = harness({ env });
+    const ex = await explicit.run("auth", "logout", "--token", TOKEN, "--json");
+    expect(envelope(ex.out).data).toEqual({ site: "lianki.com", revoked: true, forgotten: false });
+    expect(explicit.calls.at(-1)).toMatchObject({ method: "DELETE", auth: `Bearer ${TOKEN}` });
     const h = harness({
       stdin: TOKEN,
       server: { "DELETE /api/cli-login/token": () => json({ error: "x" }, 503) },

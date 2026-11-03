@@ -99,7 +99,7 @@ async function currentToken(c) {
     const token = await deps.store.get(c.site, meta);
     if (token) return { token, from: meta.storage, meta };
   }
-  const legacy = deps.config.legacyToken?.();
+  const legacy = deps.config.legacyToken?.(c.site);
   if (legacy) return { token: legacy, from: "legacy-file" };
   return { token: null, from: "none" };
 }
@@ -361,13 +361,21 @@ async function cmdStatus(c) {
 }
 
 async function cmdLogout(c) {
-  const { deps, site } = c;
+  const { argv, deps, site } = c;
   const cfg = deps.config.read();
   const meta = cfg.sites[site];
-  const token = meta ? await deps.store.get(site, meta) : deps.config.legacyToken?.();
-  if (!meta && !token) {
-    const envNote = deps.env.LIANKI_TOKEN ? " (LIANKI_TOKEN is set: unset it, and delete that token in lianki.com/preferences → API Tokens)" : "";
-    return emit(c, "auth logout", { site, revoked: false, forgotten: false }, () => `not signed in${envNote}`);
+  // `--token` names the token to revoke. LIANKI_TOKEN alone is not revoked:
+  // it may be shared with other scripts, so that takes an explicit --token.
+  const given = typeof argv.token === "string" && argv.token.trim() ? (await currentToken(c)).token : null;
+  const legacy = deps.config.legacyToken?.(site) ?? null;
+  const token = given ?? (meta ? await deps.store.get(site, meta) : legacy);
+  if (!given && !meta && !token) {
+    if (deps.env.LIANKI_TOKEN)
+      throw usage(
+        "nothing is stored; LIANKI_TOKEN is set and is not revoked by logout",
+        'lianki auth logout --token "$LIANKI_TOKEN"   (revokes it), or unset LIANKI_TOKEN',
+      );
+    return emit(c, "auth logout", { site, revoked: false, forgotten: false }, () => "not signed in");
   }
   let revoked = false;
   if (token) {
@@ -378,13 +386,14 @@ async function cmdLogout(c) {
       revoked = e instanceof CliError && (e.code === "not_found" || e.code === "auth_refused");
     }
   }
-  if (meta) {
+  const storedHere = meta && (!given || token === (await deps.store.get(site, meta)));
+  if (storedHere) {
     await deps.store.delete(site);
     delete cfg.sites[site];
     deps.config.write(cfg);
   }
-  deps.config.dropLegacy?.();
-  emit(c, "auth logout", { site, revoked, forgotten: true }, (d) =>
+  const legacyDropped = Boolean(legacy && (!given || given === legacy) && deps.config.dropLegacy?.());
+  emit(c, "auth logout", { site, revoked, forgotten: Boolean(storedHere || legacyDropped) }, (d) =>
     d.revoked
       ? "signed out: the token is revoked and forgotten"
       : "signed out here, but the server could not revoke the token — delete it in lianki.com/preferences → API Tokens",
