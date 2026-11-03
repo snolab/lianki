@@ -98,6 +98,41 @@ export function blocksFromItems(
   return { blocks, cuts, sids, grades };
 }
 
+/**
+ * Grades past their Undo window that the server has not acknowledged yet,
+ * kept on the device (local `lk:read-unsent`, a queue like /words'
+ * `lk:swipe-unsent`, not UI state), so going offline or closing the page
+ * loses none: each open of the book sends them again (the clientId makes a
+ * resend grade once).
+ */
+export const UNSENT_KEY = "lk:read-unsent";
+const UNSENT_MAX = 500;
+type Unsent = { m: string; req: GradeRequest };
+const unsent = {
+  read(): Unsent[] {
+    try {
+      const v = JSON.parse(localStorage.getItem(UNSENT_KEY) ?? "[]");
+      return Array.isArray(v) ? v : [];
+    } catch {
+      return [];
+    }
+  },
+  write(list: Unsent[]) {
+    try {
+      if (list.length) localStorage.setItem(UNSENT_KEY, JSON.stringify(list.slice(-UNSENT_MAX)));
+      else localStorage.removeItem(UNSENT_KEY);
+    } catch {}
+  },
+  add(m: string, req: GradeRequest) {
+    const list = unsent.read().filter((u) => u.req.clientId !== req.clientId);
+    list.push({ m, req });
+    unsent.write(list);
+  },
+  drop(clientId: string | undefined) {
+    unsent.write(unsent.read().filter((u) => u.req.clientId !== clientId));
+  },
+};
+
 type Pending = {
   req: GradeRequest;
   timer: ReturnType<typeof setTimeout>;
@@ -107,7 +142,12 @@ type Pending = {
   line: number;
 };
 
-export function serverReaderData(materialId: string, bookHash: string): ReaderData {
+export function serverReaderData(
+  materialId: string,
+  bookHash: string,
+  /** The Undo window (tests shorten it). */
+  holdMs = GRADE_HOLD_MS,
+): ReaderData {
   const base = `/api/read/${encodeURIComponent(materialId)}`;
   let sids = new Map<string, string[]>();
   const last = new Map<string, SwipeRating[]>();
@@ -123,6 +163,7 @@ export function serverReaderData(materialId: string, bookHash: string): ReaderDa
     const p = pending.get(clientId);
     if (!p) return;
     clearTimeout(p.timer);
+    if (!p.inflight) unsent.add(materialId, p.req);
     p.inflight = true;
     void fetch(`${base}/grade`, {
       method: "POST",
@@ -133,11 +174,12 @@ export function serverReaderData(materialId: string, bookHash: string): ReaderDa
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         pending.delete(clientId);
+        unsent.drop(clientId);
         highLine = Math.max(highLine, p.line);
       })
       .catch((err) => {
         console.error("read: grade failed, trying again", err);
-        p.timer = setTimeout(() => send(clientId), GRADE_HOLD_MS);
+        p.timer = setTimeout(() => send(clientId), holdMs);
       });
   };
   const flush = () => {
@@ -150,6 +192,15 @@ export function serverReaderData(materialId: string, bookHash: string): ReaderDa
       const r = await fetch(`${base}/items?g=paragraph&from=0&to=${book.lines.length}`);
       if (!r.ok) throw new Error(`items: HTTP ${r.status}`);
       const res = (await r.json()) as ItemsResponse;
+      // Grades a page closed or went offline before sending: send them now.
+      for (const u of unsent.read().filter((x) => x.m === materialId))
+        void fetch(`${base}/grade`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(u.req),
+        })
+          .then((x) => x.ok && unsent.drop(u.req.clientId))
+          .catch(() => {});
       const out = blocksFromItems(res, book.headings, book.lines.length);
       sids = out.sids;
       for (const [k, g] of Object.entries(out.grades)) last.set(k, [g]);
@@ -172,7 +223,7 @@ export function serverReaderData(materialId: string, bookHash: string): ReaderDa
       if (req.sentences.length)
         pending.set(clientId, {
           req,
-          timer: setTimeout(() => send(clientId), GRADE_HOLD_MS),
+          timer: setTimeout(() => send(clientId), holdMs),
           inflight: false,
           line: Math.max(...item.pieces.map((p) => p.line)),
         });

@@ -213,4 +213,102 @@ describe("server reader data", () => {
     await new Promise((ok) => setTimeout(ok, 5));
     expect(again).toBe(1);
   });
+
+  it("keeps sent-but-unacknowledged grades on the device and replays them on the next open", async () => {
+    const store = new Map<string, string>();
+    const g = globalThis as unknown as { localStorage?: unknown };
+    const had = g.localStorage;
+    g.localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    };
+    try {
+      fake({
+        ...res,
+        lang: "en",
+        granularity: "paragraph",
+        chapters: [0],
+        lines: [0, 3],
+        bounds: {},
+      });
+      const d = serverReaderData("m1", H);
+      const item = (await d.load(book)).blocks[1];
+      if (item.kind !== "item") throw new Error("item");
+      globalThis.fetch = mock(async () => {
+        throw new Error("offline");
+      }) as unknown as typeof fetch;
+      await d.grade(book, item, 3);
+      d.flush();
+      await new Promise((ok) => setTimeout(ok, 5));
+      expect(JSON.parse(store.get("lk:read-unsent") ?? "[]").length).toBe(1);
+      // The next open sends it, and the outbox empties.
+      fake({
+        ...res,
+        lang: "en",
+        granularity: "paragraph",
+        chapters: [0],
+        lines: [0, 3],
+        bounds: {},
+      });
+      await serverReaderData("m1", H).load(book);
+      await new Promise((ok) => setTimeout(ok, 5));
+      expect(calls.some((c) => c.url.endsWith("/grade"))).toBe(true);
+      expect(store.has("lk:read-unsent")).toBe(false);
+    } finally {
+      g.localStorage = had;
+    }
+  });
+
+  it("an outbox that cannot be read or written never breaks grading", async () => {
+    const g = globalThis as unknown as { localStorage?: unknown };
+    const had = g.localStorage;
+    const boom = () => {
+      throw new Error("denied");
+    };
+    g.localStorage = { getItem: () => "not json", setItem: boom, removeItem: boom };
+    try {
+      fake({
+        ...res,
+        lang: "en",
+        granularity: "paragraph",
+        chapters: [0],
+        lines: [0, 3],
+        bounds: {},
+      });
+      const d = serverReaderData("m1", H);
+      const item = (await d.load(book)).blocks[1];
+      if (item.kind !== "item") throw new Error("item");
+      await d.grade(book, item, 4);
+      d.flush();
+      await new Promise((ok) => setTimeout(ok, 5));
+      expect(calls.some((c) => c.url.endsWith("/grade"))).toBe(true);
+    } finally {
+      g.localStorage = had;
+    }
+  });
+
+  it("sends a grade by itself once the Undo window is over, retrying a failure", async () => {
+    fake({
+      ...res,
+      lang: "en",
+      granularity: "paragraph",
+      chapters: [0],
+      lines: [0, 3],
+      bounds: {},
+    });
+    const d = serverReaderData("m1", H, 2);
+    const item = (await d.load(book)).blocks[1];
+    if (item.kind !== "item") throw new Error("item");
+    let n = 0;
+    globalThis.fetch = mock(async (url: string | URL) => {
+      if (String(url).endsWith("/progress")) throw new Error("offline");
+      return new Response("{}", { status: n++ ? 200 : 503 });
+    }) as unknown as typeof fetch;
+    await d.grade(book, item, 3);
+    await new Promise((ok) => setTimeout(ok, 30));
+    expect(n).toBe(2);
+    d.saveAnchor("m1", { line: 1, off: 0, at: 0 });
+    await new Promise((ok) => setTimeout(ok, 5));
+  });
 });
