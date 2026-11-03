@@ -405,24 +405,6 @@ const dictionary = {
       sw: "Mihuri",
       mr: "शिक्के",
     }),
-    stampsNone: t({
-      en: "No stamps yet: not graded",
-      zh: "还没有印章：尚未评分",
-      ja: "まだスタンプなし：未評価",
-      ko: "아직 도장 없음: 평가 전",
-      hi: "अभी कोई मुहर नहीं: ग्रेड नहीं दिया",
-      es: "Aún sin sellos: sin calificar",
-      fr: "Pas encore de tampon : pas noté",
-      ar: "لا أختام بعد: لم يُقيَّم",
-      bn: "এখনও সিল নেই: গ্রেড দেওয়া হয়নি",
-      pt: "Ainda sem carimbos: sem nota",
-      ru: "Печатей пока нет: без оценки",
-      ur: "ابھی کوئی مہر نہیں: درجہ نہیں دیا",
-      id: "Belum ada stempel: belum dinilai",
-      de: "Noch keine Stempel: nicht bewertet",
-      sw: "Bado hakuna mihuri: haijapimwa",
-      mr: "अजून शिक्के नाहीत: श्रेणी दिलेली नाही",
-    }),
     stampCaption: t({
       en: "{grade}, {date}",
       zh: "{grade}，{date}",
@@ -484,8 +466,6 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Option in the /words heatmap look switcher: each week is a strip of bamboo (ancient Chinese bamboo writing slips) with a carved notch for each studied day. A short noun phrase, plural.",
   stampsHeading:
     "Small heading in the word sheet on /words (opened by double-tapping a word): above a row of seal stamps, one per time the user graded this word, oldest first, coloured by the grade. One short noun, plural.",
-  stampsNone:
-    "Note in the word sheet on /words where the row of grade stamps would be, when this word has never been graded yet. A short phrase.",
   stampCaption:
     "Caption after tapping one grade stamp in the word sheet on /words: {grade} is the grade name (Again, Hard, Good or Easy), {date} a written-out date and time of that review. Keep both placeholders.",
 };

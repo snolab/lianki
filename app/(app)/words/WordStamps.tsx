@@ -51,8 +51,8 @@ export default function WordStamps({ listId, term }: { listId: string; term: str
     fade();
   }, [reviews]);
 
-  // Offline or failed: the sheet simply has no stamp row.
-  if (!reviews) return null;
+  // Offline, failed, or never graded: the sheet simply has no stamp row.
+  if (!reviews?.length) return null;
   const name = (r: number) =>
     ["", grades.again.value, grades.hard.value, grades.good.value, grades.easy.value][r] ?? "";
   const shown = picked !== null ? reviews[picked] : null;
@@ -60,7 +60,7 @@ export default function WordStamps({ listId, term }: { listId: string; term: str
     <div className="border-b border-black/10 dark:border-white/10 px-1 py-3" data-sheet-stamps>
       <div className="mb-2 flex items-baseline gap-2 text-xs">
         <span className="font-medium opacity-70">{text.stampsHeading}</span>
-        {reviews.length > 0 && <span className="opacity-50 tabular-nums">{reviews.length}</span>}
+        <span className="opacity-50 tabular-nums">{reviews.length}</span>
         <span className="ms-auto truncate opacity-70" aria-live="polite">
           {shown &&
             fill(text.stampCaption.value, {
@@ -69,26 +69,22 @@ export default function WordStamps({ listId, term }: { listId: string; term: str
             })}
         </span>
       </div>
-      {reviews.length === 0 ? (
-        <p className="text-xs opacity-50">{text.stampsNone}</p>
-      ) : (
-        <div className="lk-stamp-row" ref={row} onScroll={fade}>
-          {reviews.map(([r, at], i) => (
-            <button
-              key={`${i}-${at}`}
-              type="button"
-              aria-pressed={picked === i}
-              aria-label={fill(text.stampCaption.value, {
-                grade: name(r),
-                date: longDateTime(at, locale),
-              })}
-              onClick={() => setPicked(picked === i ? null : i)}
-              className={`lk-grade-seal ${GRADE_CLASS[r] ?? ""}`}
-              style={{ transform: `rotate(${((i * 7) % 9) - 4}deg)` }}
-            />
-          ))}
-        </div>
-      )}
+      <div className="lk-stamp-row" ref={row} onScroll={fade}>
+        {reviews.map(([r, at], i) => (
+          <button
+            key={`${i}-${at}`}
+            type="button"
+            aria-pressed={picked === i}
+            aria-label={fill(text.stampCaption.value, {
+              grade: name(r),
+              date: longDateTime(at, locale),
+            })}
+            onClick={() => setPicked(picked === i ? null : i)}
+            className={`lk-grade-seal ${GRADE_CLASS[r] ?? ""}`}
+            style={{ transform: `rotate(${((i * 7) % 9) - 4}deg)` }}
+          />
+        ))}
+      </div>
     </div>
   );
 }
