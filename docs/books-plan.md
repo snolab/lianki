@@ -305,6 +305,20 @@ selecting DOM text.
   machine translation, both in a new tab; "New to me" on a word logs a
   `select` exposure (no list API yet: extracts become cards later). QA:
   `scripts/qa/qa-read-select.mjs`.
+- **Each level says its unit** (owner, 2026-11-03 22:12 / 22:13 JST: "点击选择
+  某个词的时候，只要朗读那个词就可以了" / "连点三下，如果是选中句子的话，那就朗读整个
+  句子"): a click reads aloud exactly what it selected — the word, the phrase,
+  the sentence, the paragraph — never the item or the book on from there. A
+  chapter or the book says nothing on a tap (too long; their card's "read
+  from here" plays the book). A book playback running is paused and left
+  paused, its current item unmoved (▶ resumes). The first click speaks at
+  once, inside the gesture; each further click of the combo cuts what is
+  being said and speaks its unit once the combo rests for the double-click
+  interval, so a fast triple-click goes straight to the paragraph. Same
+  speaker as the player (book-language voice or cloud TTS per voice-out, the
+  mic hold and echo guard); a failure shows on the card ("Could not read it
+  aloud (why)"). Rules: `tapVoice` in `lib/read/reader-select.ts`
+  (`unit/read-tap-voice.test.ts`).
 
 ### Review a range's words (owner, 2026-11-03 22:17–22:27 JST)
 

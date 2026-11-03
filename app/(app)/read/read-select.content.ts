@@ -227,6 +227,24 @@ const dictionary = {
       sw: "Imeshindwa kuhifadhi",
       mr: "जतन करता आले नाही",
     }),
+    sayFailed: t({
+      en: "Could not read it aloud",
+      zh: "没能读出来",
+      ja: "読み上げられませんでした",
+      ko: "읽어 주지 못했습니다",
+      hi: "पढ़कर नहीं सुनाया जा सका",
+      es: "No se pudo leer en voz alta",
+      fr: "Lecture à voix haute impossible",
+      ar: "تعذّرت القراءة بصوت عالٍ",
+      bn: "জোরে পড়া যায়নি",
+      pt: "Não foi possível ler em voz alta",
+      ru: "Не удалось прочитать вслух",
+      ur: "بلند آواز سے نہیں پڑھا جا سکا",
+      id: "Tidak bisa membacakan",
+      de: "Vorlesen fehlgeschlagen",
+      sw: "Imeshindwa kusoma kwa sauti",
+      mr: "मोठ्याने वाचता आले नाही",
+    }),
     lookUp: t({
       en: "Look up",
       zh: "查词",
@@ -435,6 +453,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Short error shown on the reader's selection card when the browser refused to copy the text or the link to the clipboard. A short phrase.",
   markFailed:
     "Short error on the reader's selection card when noting the selected word as new to the learner did not reach the server (offline, or an error). A short phrase.",
+  sayFailed:
+    "Short error on the reader's selection card when tapping a word, sentence or paragraph should have read the selected text aloud but no voice could (no voice for the language, network or server failure, playback refused); the technical reason is shown after it in parentheses. A short phrase.",
   lookUp:
     "Button on the reader's selection card for a selected word or phrase: opens a dictionary entry (Wiktionary) for it in a new tab. An imperative verb phrase.",
   translate:

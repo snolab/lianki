@@ -112,6 +112,9 @@ const aWord = (page) =>
         line: Number(el.closest("[data-line]").dataset.line),
         t: Number(el.dataset.t),
         s: Number(el.closest("[data-s]").dataset.s),
+        text: el.textContent.trim(),
+        sentence: el.closest("[data-s]").textContent.replace(/\s+/g, " ").trim(),
+        para: el.closest("[data-line]").textContent.replace(/\s+/g, " ").trim(),
       };
     }
     return null;
@@ -180,6 +183,60 @@ async function desktop(scheme) {
   check((c?.ranges ?? 0) > 0, "the word is highlighted");
   check(!!c?.bg && c.bg !== "none", "the card is glass (backdrop-filter)");
   await page.screenshot({ path: join(OUT, `select-word-${tag}.png`) });
+  // Owner 22:12 JST: a tapped word says that word alone, not its sentence.
+  await page.waitForTimeout(500);
+  let spoken = await page.evaluate(() => window.__spoken.splice(0));
+  check(
+    spoken.length === 1 && spoken[0] === w.text,
+    `a click says the word alone (${JSON.stringify(spoken)})`,
+  );
+
+  // Each level says its own unit; the levels a fast combo passes are not said.
+  await page.waitForTimeout(700);
+  await page.mouse.click(w.x, w.y, { clickCount: 2, delay: 20 });
+  await page.waitForTimeout(800);
+  spoken = await page.evaluate(() => window.__spoken.splice(0));
+  check(
+    spoken[0] === w.text && spoken.slice(1).join(" ") === w.sentence,
+    `a double-click says the sentence (${JSON.stringify(spoken)})`,
+  );
+  await page.waitForTimeout(700);
+  await page.mouse.click(w.x, w.y, { clickCount: 3, delay: 20 });
+  await page.waitForTimeout(400 + 200 * (w.para.length / 40));
+  spoken = await page.evaluate(() => window.__spoken.splice(0));
+  check(
+    spoken[0] === w.text && spoken.slice(1).join(" ") === w.para,
+    `a triple-click says the paragraph, not the sentence on the way (${JSON.stringify(spoken).slice(0, 120)})`,
+  );
+  await page.waitForTimeout(700);
+  await page.mouse.click(w.x, w.y, { clickCount: 5, delay: 20 });
+  await page.waitForTimeout(800);
+  spoken = await page.evaluate(() => window.__spoken.splice(0));
+  check(
+    spoken.length <= 1,
+    `the book (5 clicks) is not read on a tap (${JSON.stringify(spoken).slice(0, 80)})`,
+  );
+
+  // A word tapped during playback: the book pauses and stays paused, the word is said.
+  await page.keyboard.press("Escape");
+  await page.mouse.click(5, 300);
+  await page.waitForTimeout(500);
+  await page.getByTestId("read-play").click();
+  await until(page, () => page.evaluate(() => window.__spoken.length > 0), 3000);
+  const w2 = await aWord(page);
+  await page.evaluate(() => window.__spoken.splice(0));
+  await page.mouse.click(w2.x, w2.y);
+  await page.waitForTimeout(1200);
+  // (A line the player began just before the click may come first.)
+  spoken = await page.evaluate(() => window.__spoken.splice(0));
+  const st = await page.getByTestId("read-play").getAttribute("data-status");
+  check(
+    st === "idle" && spoken[spoken.length - 1] === w2.text,
+    `a tap during playback pauses it and says the word last (${st}, ${JSON.stringify(spoken).slice(-60)})`,
+  );
+  await page.waitForTimeout(1200);
+  const after = await page.evaluate(() => window.__spoken.splice(0));
+  check(after.length === 0, `and the book stays paused (${JSON.stringify(after).slice(0, 60)})`);
 
   // A pause, then a triple-click: word → sentence → paragraph, no DOM text selected.
   await page.waitForTimeout(700);
@@ -251,6 +308,8 @@ async function desktop(scheme) {
   // Read from here (a sentence).
   await page.mouse.click(w.x, w.y, { clickCount: 2, delay: 20 });
   await page.waitForTimeout(150);
+  await page.waitForTimeout(600);
+  await page.evaluate(() => window.__spoken.splice(0));
   await page.locator('[data-testid=read-select-card] [data-action="read-from"]').click();
   const spoke = await until(page, () => page.evaluate(() => window.__spoken.length > 0), 3000);
   check(spoke, "read from here starts read-aloud");
