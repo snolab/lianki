@@ -510,8 +510,34 @@ echo "polished text" | bun scripts/dev/eval.ts edit --last --no-pair -
 ```
 
 Prints the hub's `{"type":"edited","id","thread","text","raw","edited"}`, or
-fails with the rule it broke. Polish, then reply: correct misheard words,
-names and punctuation only — never change what the owner meant.
+fails with the rule it broke. Polish, then reply.
+
+**Polish with the context, or not at all.** Fix punctuation, words misheard
+as a homophone that the context disambiguates, and stutters. Never change the
+meaning, never add or drop a word, never use a word the context does not
+contain. If unsure, do not edit: the raw line stands. The context is what the
+voice line carries and what `eval.ts chat` prints with it:
+
+- `scene` — where it was spoken: the page's `path`, `title`, and `screen`, the
+  text visible on screen outside the chat (the deck's words, the book's
+  paragraph), up to `MAX_SCENE_SCREEN` (2000, the selection's bound).
+  Captured by `pageScene()` (`packages/debug-chat/src/scene.ts`) when the line
+  is sent; voice lines only (`cleanScene` in `wire.ts`).
+- `context.selection`, when something was attached;
+- the thread's other kept lines.
+
+The hub holds every edit to that (`polishCheck` in
+`packages/debug-chat/src/polish.ts`, on the words as `Intl.Segmenter` splits
+them, the same for every script): punctuation, spacing, case and width change
+freely; a replaced run must be in the context and within 2x the length of what
+it replaces (the same stretch of audio); a removed run only if it repeats what
+is next to it; added words never. A refusal reads `not polished, the raw line
+stands: …`.
+
+**Off switch.** `stt.polish-off` at `/dev/flags` (docs/feature-flags.md):
+on, every edit is refused (`polish is off …`) and the chat keeps only what was
+heard. The hub asks the main Worker's `DebugSessions.flag()` on each edit; no
+answer means not off. Off (the default) is the behaviour above.
 
 **The rules** (`DebugHub.edit` in `workers/push/src/debug.ts`, each one unit-tested
 in `unit/debug-hub.test.ts`). `{type:"edit", id, text}` is accepted only if:
@@ -522,6 +548,8 @@ in `unit/debug-hub.test.ts`). `{type:"edit", id, text}` is accepted only if:
   after it do not count; any earlier line is refused);
 - that line has `source: "stt"`;
 - it was polished fewer than `MAX_EDITS` (3) times, and the text changes.
+- the polish passes `polishCheck` against the raw text and the context;
+- `stt.polish-off` is not on.
 
 Friends' threads and lines can never be edited. On success the stored line
 keeps the first STT text as `raw` (only the first), takes the polished

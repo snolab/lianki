@@ -2629,7 +2629,13 @@ describe("DebugHub agent edits of voice messages", () => {
     await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
     return { c, token: c.last("approved")?.token as string };
   };
-  const voice = (id: string, text: string) => ({ type: "chat", id, text, source: "stt" });
+  const voice = (id: string, text: string, scene?: Record<string, string>) => ({
+    type: "chat",
+    id,
+    text,
+    source: "stt",
+    ...(scene ? { scene } : {}),
+  });
   const stored = (s: ReturnType<typeof setup>) =>
     [...s.storage.store.entries()]
       .filter(([k]) => k.startsWith("msg:"))
@@ -2649,7 +2655,10 @@ describe("DebugHub agent edits of voice messages", () => {
     const owner = s.page();
     const mac = s.page("/list Macintosh");
     const { c } = await agent(s, owner);
-    await s.msg(owner, voice("v1", "fix the sink button"));
+    await s.msg(
+      owner,
+      voice("v1", "fix the sink button", { path: "/words", title: "Sync button" }),
+    );
     s.tick(5);
     await s.msg(c, { type: "edit", id: "v1", text: "Fix the sync button." });
     const ev = {
@@ -2686,12 +2695,65 @@ describe("DebugHub agent edits of voice messages", () => {
     const owner = s.page();
     const { c } = await agent(s, owner);
     await s.msg(owner, voice("v1", "raw one"));
-    for (const t of ["two", "three", "four"]) await s.msg(c, { type: "edit", id: "v1", text: t });
-    expect(owner.last("edited")).toMatchObject({ text: "four", raw: "raw one" });
+    for (const t of ["Raw one.", "Raw, one.", "Raw one!"])
+      await s.msg(c, { type: "edit", id: "v1", text: t });
+    expect(owner.last("edited")).toMatchObject({ text: "Raw one!", raw: "raw one" });
     expect((owner.last("edited") as { edited: { count: number } }).edited.count).toBe(MAX_EDITS);
-    await s.msg(c, { type: "edit", id: "v1", text: "five" });
+    await s.msg(c, { type: "edit", id: "v1", text: "Raw one?" });
     expect(c.last("error")?.error).toContain(`already polished ${MAX_EDITS} times`);
-    expect(stored(s)[0]).toMatchObject({ text: "four", raw: "raw one" });
+    expect(stored(s)[0]).toMatchObject({ text: "Raw one!", raw: "raw one" });
+  });
+
+  it("keeps a voice line's scene, and lets the polish draw on it and on the thread", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    await s.msg(owner, { type: "chat", id: "t0", text: "我们在讲流式识别" });
+    await s.msg(owner, voice("v1", "现在是流失传输吗", { path: "/words", screen: "传输" }));
+    expect(stored(s)[1]).toMatchObject({ scene: { path: "/words", screen: "传输" } });
+    expect(chats(c).at(-1)).toMatchObject({ scene: { path: "/words", screen: "传输" } });
+    await s.msg(c, { type: "edit", id: "v1", text: "现在是流式传输吗？" });
+    expect(owner.last("edited")).toMatchObject({
+      text: "现在是流式传输吗？",
+      raw: "现在是流失传输吗",
+    });
+  });
+
+  it("refuses a polish the context does not support: the raw line stands", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    await s.msg(owner, voice("v1", "fix the sink button", { path: "/words" }));
+    for (const text of [
+      "Fix the sync button.", // "sync" is nowhere in the context
+      "Fix the sink button and deploy.", // adds words
+      "Fix the button.", // drops a word
+    ]) {
+      await s.msg(c, { type: "edit", id: "v1", text });
+      expect(c.last("error")?.error).toContain("the raw line stands");
+    }
+    expect(owner.last("edited")).toBeUndefined();
+    expect(stored(s)[0]).toMatchObject({ text: "fix the sink button" });
+  });
+
+  it("refuses every polish while the owner's stt.polish-off flag is on", async () => {
+    const asked: string[] = [];
+    let on = true;
+    const SESSIONS = {
+      live: async () => "live",
+      flag: async (k: string) => (asked.push(k), on),
+    };
+    const s = setup({ SESSIONS });
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    await s.msg(owner, voice("v1", "hello world"));
+    await s.msg(c, { type: "edit", id: "v1", text: "Hello, world." });
+    expect(c.last("error")?.error).toContain("polish is off");
+    expect(asked).toEqual(["stt.polish-off"]);
+    expect(owner.last("edited")).toBeUndefined();
+    on = false;
+    await s.msg(c, { type: "edit", id: "v1", text: "Hello, world." });
+    expect(owner.last("edited")).toMatchObject({ text: "Hello, world.", raw: "hello world" });
   });
 
   it("refuses a typed line", async () => {
