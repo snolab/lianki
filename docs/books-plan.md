@@ -57,6 +57,27 @@ neutrally, alongside other classics). Check every edition:
 - Japanese: 文語訳 (明治元訳/大正改訳) is public domain; check 口語訳 (1955)
   before use.
 
+## Classical languages: Buddhist sutras and more
+
+The owner (16:35 JST): Sanskrit Buddhist sutras too, and other classical
+texts, if licence-safe sources exist. Leads to verify before use (the
+digital edition's licence matters, not only the age of the text):
+
+- **Pali canon:** SuttaCentral publishes the Pali (Mahāsaṅgīti) text and
+  Bhikkhu Sujato's English translations under CC0. Strong first candidate.
+- **Chinese canon (大正藏):** the printed edition (1924–1934) is old, but
+  the usual digital text, CBETA, is **CC BY-NC-SA: non-commercial**, so it
+  cannot be used in Lianki as is. Needs another source or permission.
+- **Sanskrit:** GRETIL and the Digital Sanskrit Buddhist Canon have mixed or
+  unclear terms per text; check each file's header. Use only texts with an
+  explicit free licence.
+- Other classical languages (Latin, Ancient Greek, Classical Chinese,
+  Classical Japanese) mostly via Perseus (CC BY-SA), Wikisource and ctext
+  (check its terms).
+
+Segmenting these needs care (Sanskrit sandhi, Pali compounds, classical
+Chinese without spaces); a later phase, after modern languages.
+
 ## Cost
 
 Extraction with Workers AI (gpt-oss-120b) is about $0.002 per chunk: about
