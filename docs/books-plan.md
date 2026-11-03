@@ -125,8 +125,10 @@ $0.12 for _Le Petit Prince_, about $0.8 for a long novel.
 
 1. Book/language for v1 (his French EPUB is already imported).
 2. The shared-catalogue rule as above, or stricter (death 100+ years).
-3. Free monthly quota for own uploads; credits beyond it?
-4. v1 owner-only behind a flag?
+3. Free monthly quota for own uploads; credits beyond it? **Decided
+   2026-11-03 (Slack): by how much they have topped up** — upload and
+   extraction allowance scales with the user's credit top-ups (the wallet).
+4. v1 owner-only behind a flag? **Decided 2026-11-03 (Slack): yes.**
 5. Accept the own-upload legal risk (ToS + takedown contact)? **Decided
    2026-11-03 (Slack): yes — a user's own upload is fine as long as it is
    never shared** (private, unlisted, deletable).
