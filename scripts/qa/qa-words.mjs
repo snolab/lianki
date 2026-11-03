@@ -86,6 +86,37 @@ const toPicker = async () => {
   await back.waitFor({ timeout: 15000 });
   await back.click();
 };
+/**
+ * "Add a list" is a tree (lib/words/add-tree.ts): unfold the language, tick
+ * the list's row, Add selected. Adding only adds: the picker stays, the new
+ * row shows (outlined) with an "Added" toast, and no study session starts;
+ * then the new row is tapped to study it.
+ */
+const addFromTree = async (c, { checks = false } = {}) => {
+  const node = page.locator(`[data-add-node="${c.id}"]`);
+  if (!(await node.isVisible()))
+    await page.locator(`[data-add-node="lang:${c.lang}"] button`).first().click();
+  await node.locator("label").click();
+  if (checks)
+    check(await node.locator("input").isChecked(), "a tapped list row ticks its checkbox");
+  await page.locator("[data-add-selected]").click();
+  await page.locator("[data-added-toast]").waitFor({ timeout: 15000 });
+  await page.waitForTimeout(500);
+  if (checks) {
+    check(!new URL(page.url()).searchParams.has("list"), `still on the picker: ${page.url()}`);
+    check(
+      (await page.locator('[role="listitem"]').count()) === 0,
+      "adding starts no study session",
+    );
+    check(
+      await page.locator("[data-fresh]").first().isVisible(),
+      "the new list shows in his lists",
+    );
+    check(await node.locator("input").isDisabled(), "the added list is checked and disabled");
+    await shot(page, "added-stays");
+  }
+  await page.locator("[data-fresh] [data-open-list]").first().click();
+};
 const errs = [];
 page.on("pageerror", (e) => {
   // Local runs have no Turnstile site key; that warning is not this page's fault.
@@ -243,8 +274,7 @@ try {
   );
   check(catalog?.length > 0, `catalog lists: ${catalog?.length}`);
   const first = catalog.find((c) => c.lang === "fr") ?? catalog[0];
-  await page.getByRole("button", { name: first.lang, exact: true }).click();
-  await page.getByRole("button", { name: "add", exact: true }).first().click();
+  await addFromTree(first, { checks: true });
 
   const rows = page.locator('[role="listitem"]');
   await rows.first().waitFor({ timeout: 15000 });
@@ -2048,8 +2078,7 @@ try {
 
   // /alphabet: same drill over its own catalog; its lists stay off /words.
   await page.goto(`${BASE}/alphabet`, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "ja", exact: true }).click();
-  await page.getByRole("button", { name: "add", exact: true }).first().click();
+  await addFromTree({ id: "ja-hiragana", lang: "ja" });
   await rows.first().waitFor({ timeout: 15000 });
   const firstTerms = await rows.locator("span.font-medium.overflow-hidden").allInnerTexts();
   const fronts = firstTerms.map((t) => t.split("\n")[0].trim());
@@ -2069,8 +2098,8 @@ try {
   check(saved, "download for offline completes");
 
   // Study all: with two lists, one queue mixes both.
-  await page.getByRole("button", { name: first.lang, exact: true }).click();
-  await page.getByRole("button", { name: "add", exact: true }).first().click();
+  const second = catalog.find((c) => c.lang === first.lang && c.id !== first.id && !c.kind);
+  await addFromTree(second);
   await rows.first().waitFor({ timeout: 15000 });
   await page.getByRole("button", { name: "← lists" }).click();
   await page.getByRole("button", { name: /Study all lists together/ }).click();

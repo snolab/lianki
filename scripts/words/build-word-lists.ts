@@ -45,6 +45,8 @@
  *   curl -sfL https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2 | bunzip2 > $RAW/tatoeba/eng_sentences.tsv
  *   # 6. Build
  *   bun scripts/words/build-word-lists.ts $RAW public/words
+ *   # 7. Text coverage of the frequency lists (the add tree's one-tap bands)
+ *   RAW=$RAW bun scripts/words/freq-coverage.ts
  *
  * See public/words/SOURCES.md for licenses and attribution.
  */
