@@ -10,6 +10,7 @@
  * Data: the counts already on the lists (cards, due) plus one GET
  * /api/words/stats when the picker opens. Nothing polls.
  */
+import "./stats.css";
 import { useEffect, useMemo, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { createUiStore, useUi } from "@lianki/ui-state";
@@ -103,7 +104,7 @@ export default function WordsStats({
 
   const summary = [
     run !== null ? fill(text.summaryStreak.value, { n: run }) : null,
-    fill(text.summaryToday.value, { n: freshToday }),
+    rows ? fill(text.summaryToday.value, { n: freshToday }) : null,
   ]
     .filter(Boolean)
     .join(" · ");

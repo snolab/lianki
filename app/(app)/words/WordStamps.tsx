@@ -7,6 +7,7 @@
  * 1–4 so colour is never the only cue. Tap one for its grade and date.
  * Fetched once when the sheet opens; nothing polls.
  */
+import "./stats.css";
 import { useEffect, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { fill } from "@/lib/nav/nav-core";
