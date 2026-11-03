@@ -572,6 +572,11 @@ export type DebugChatProps = {
   embedded?: boolean;
   /** Where the full-screen sheet and badges are portalled (default document.body; the shadow root's container when embedded). */
   portalRoot?: Element;
+  /**
+   * The input's + menu (AttachMenu.tsx). Off in the cross-site iframe
+   * (app/embed/partner): it cannot see the page's selection, and its box is tiny.
+   */
+  attach?: boolean;
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -627,6 +632,7 @@ export function DebugChat({
   polishedIcon = POLISHED_ICON,
   embedded = false,
   portalRoot,
+  attach = true,
 }: DebugChatProps) {
   const t = chatStrings(strings);
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
@@ -3357,7 +3363,7 @@ export function DebugChat({
           )}
           {controls}
           {/* + : add to Lianki, or attach to the line (AttachMenu.tsx). Open only. */}
-          {open && !notice && (
+          {open && !notice && attach && (
             <AttachButton t={t} open={attachMenu} onToggle={() => setAttachMenu((v) => !v)} />
           )}
           {/* The input: gone while minimized (inert, so it can't take focus or
