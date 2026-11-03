@@ -234,6 +234,10 @@ function useDrag() {
         write(POS_KEY, JSON.stringify(p));
         return p;
       });
+      // The host's bottom island may dock above (or leave) the bar now, and
+      // only now (lib/nav/nav-core.ts, CHAT_MOVED_EVENT): after the new place
+      // is painted.
+      requestAnimationFrame(() => dispatchEvent(new CustomEvent("lk:chat-moved")));
     },
     onPointerCancel: () => {
       setHolding(false);
