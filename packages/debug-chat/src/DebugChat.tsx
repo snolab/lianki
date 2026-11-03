@@ -72,7 +72,8 @@ import {
   sentenceRanges,
   sentenceState,
 } from "./read-progress";
-import { aecOn, cloudOut, noSpeechVoices, outMode, setAec } from "./voice-out";
+import { cloudOut, noSpeechVoices, outMode } from "./voice-out";
+import { AEC_EVENT, aecOn, applyAec } from "./aec";
 import type { SpeakMeta } from "./speak-rules";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
@@ -627,6 +628,12 @@ export function DebugChat({
   const [speak, setSpeak] = useState(speechEnabled);
   /** Echo cancellation on the mic (lk:voice-aec): the menu's A/B switch. */
   const [aec, setAecState] = useState(aecOn);
+  // The same switch in /words' Settings sheet: follow it.
+  useEffect(() => {
+    const f = () => setAecState(aecOn());
+    window.addEventListener(AEC_EVENT, f);
+    return () => window.removeEventListener(AEC_EVENT, f);
+  }, []);
   /** How fast replies are read (speech-rate.ts; per device, default 1.5×). */
   const [rate, setRate] = useState(speechRate);
   const { offset, handle, begin, wasDrag, holding, fit } = useDrag();
@@ -2309,7 +2316,7 @@ export function DebugChat({
         <Icon name="speakerHigh" weight={speak || vs.mic ? "fill" : "regular"} />
         {vs.mic ? "Replies read aloud (mic on)" : speak ? "Replies read aloud" : "Replies silent"}
       </button>
-      {/* Echo cancellation, an A/B (voice-out.ts lk:voice-aec): from the next time the mic opens. */}
+      {/* Echo cancellation, an A/B (aec.ts lk:voice-aec): an open mic reopens with it at once. */}
       <button
         type="button"
         role="menuitemcheckbox"
@@ -2317,8 +2324,8 @@ export function DebugChat({
         aria-checked={aec}
         title={ui.aecHint}
         onClick={() => {
-          setAec(!aec);
           setAecState(!aec);
+          void applyAec(!aec);
         }}
         className="flex items-center gap-2 px-3 py-1.5 text-start"
       >

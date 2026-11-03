@@ -524,15 +524,25 @@ fakes in `unit/voice-session.test.ts`):
   speech probability over that window ≥ 0.7 (`BARGE_IN_PROB`; weaker speech
   stays ducked and is judged again), is it a barge-in: the reading pauses and
   resumes as below. The utterance is transcribed and sent either way.
-  `localStorage["lk:voice-aec"] = "0"` (or the ⋯ menu's **Echo
-  cancellation** switch, from the next time the mic opens) is the
-  half-duplex way: the mic holds capture while an utterance plays (VAD
-  paused, what it hears dropped) and for 400 ms after the last one ends,
-  with no processing at all (echoCancellation, noiseSuppression and
-  autoGainControl off), plus the text echo guard. It is the A/B against
+  `localStorage["lk:voice-aec"] = "0"` (the **Echo cancellation** switch,
+  in the chat's ⋯ menu and in /words' Settings sheet; `aec.ts`) is the
+  half-duplex way: the mic is opened with no processing at all
+  (`RAW_CONSTRAINTS`: echoCancellation, noiseSuppression and
+  autoGainControl all `false`), and it holds capture (VAD paused, what it
+  hears dropped) while anything the page plays is playing and for 400 ms
+  after the last one ends: the chat's read-aloud (`voice.ts` `hold`) and
+  /words' word audio, clips and browser voices alike (`page-audio.ts`,
+  signalled by `useSpeech` in `WordsClient.tsx`; a sound whose end never
+  comes lets go after 30 s). Plus the text echo guard. It is the A/B against
   Chrome for Android, where an echo-cancelled mic moves playback to the
-  call stream (a thinner speaker). Each clip in the clip sink carries
-  `aec: true | false` beside its transcript, to compare recognition by mode.
+  call stream (a thinner speaker). A switch flipped while the mic is on
+  reopens it at once (`mic-session.ts` `reopen`, a new track with the new
+  constraints, logged `mic-reopen`), so the difference is heard right away;
+  with the mic off it applies when it next opens. The setting stays on the
+  device (docs/prefs-sync.md). The hold, barge-in and clip metadata go by
+  the mode the open track was opened with (`micAec`), not the switch alone.
+  Each clip in the clip sink carries `aec: true | false` and the track's
+  applied settings beside its transcript, to compare recognition by mode.
 - _Output_ (`lk:voice-out`): `"speech"` (default) is the phone's own
   speechSynthesis. Its volume cannot change mid-utterance on iOS, so a duck
   applies from the next sentence; and on iOS it is probably _not_ in the

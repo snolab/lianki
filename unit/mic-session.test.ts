@@ -63,6 +63,38 @@ afterEach(() => {
 });
 
 describe("mic session", () => {
+  it("reopen: a new stream with the constraints in force now, the off in between not shown", async () => {
+    let mode = "aec";
+    const opened: string[] = [];
+    const f = fakes();
+    const base = f.deps.getStream;
+    const states: string[] = [];
+    const s = createMicSession({
+      ...f.deps,
+      getStream: async () => {
+        opened.push(mode);
+        return base();
+      },
+      onState: (st) => void states.push(st),
+    });
+    expect(await s.reopen()).toBe(false); // off: nothing to reopen
+    expect(f.calls.gum).toBe(0);
+    await s.toggle();
+    const first = s.stream()?.id;
+    const views: string[] = [];
+    s.subscribe((v) => views.push(v.state));
+    mode = "raw";
+    expect(await s.reopen()).toBe(true);
+    expect(opened).toEqual(["aec", "raw"]);
+    expect(f.calls.stops).toBe(1); // the old track stopped
+    expect(s.stream()?.id).not.toBe(first);
+    expect(s.view().state).toBe("listening");
+    expect(views).not.toContain("off");
+    expect(states).not.toContain("off");
+    expect(f.store.get(MIC_ON_KEY)).toBe("1"); // a reload still resumes it
+    expect(f.logs.some((e) => e.ev === "mic-reopen" && e.ok === true)).toBe(true);
+  });
+
   it("survives a detach: the stream stays live, only an explicit off stops it", async () => {
     const f = fakes();
     const s = createMicSession(f.deps);

@@ -49,9 +49,10 @@ export const MIC_SESSION_KEY = "__lkMic";
 /**
  * Bumped when the session's shape changes; an older one is migrated, its
  * stream kept. A newer one is left alone (an older bundle never downgrades
- * it). 10: it offers finals to the command taps first (mic-taps.ts).
+ * it). 10: it offers finals to the command taps first (mic-taps.ts). 11:
+ * reopen (the echo cancellation switch, aec.ts applyAec).
  */
-export const MIC_SESSION_V = 10;
+export const MIC_SESSION_V = 11;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -184,6 +185,8 @@ export function createMicSession(
     stream = null;
   };
   let prev: MicState = "off";
+  /** reopen() under way: its own off is not shown (the mic is coming straight back). */
+  let reopening = false;
   /** The local STT client for cfg.localStt; replaced when the URL changes. */
   let local: { url: string; c: LocalClient; off: () => void } | null = null;
   const localStream = (): StreamStt | undefined => {
@@ -264,6 +267,7 @@ export function createMicSession(
     onState: (s) => {
       const was = prev;
       prev = s;
+      if (reopening && s === "off") return;
       // Listening always starts active: a tap on means "I'm talking to you".
       if (was === "off" && s !== "off") wake.set("active", "mic-on");
       emit({ state: s, wakeReason: wake.view().reason, ...(s !== "off" ? { resume: false } : {}) });
@@ -339,6 +343,26 @@ export function createMicSession(
       stopStream();
     },
     hold: (on: boolean) => mic.hold(on),
+    /**
+     * Open the mic again with the constraints in force now (aec.ts applyAec:
+     * the echo cancellation switch, heard at once). Only when it is on; the
+     * off in between is not shown, and the reload flag stays. False: it was
+     * off, or could not come back (the error shows as for a tap).
+     */
+    async reopen() {
+      if (mic.state() === "off" || reopening) return false;
+      reopening = true;
+      try {
+        await mic.off();
+        stopStream();
+      } finally {
+        reopening = false;
+      }
+      // Shown as off only if it fails to come back.
+      await mic.toggle();
+      deps.log?.({ ev: "mic-reopen", ok: mic.state() !== "off" });
+      return mic.state() !== "off";
+    },
     /**
      * Enrolment (voiceprint.ts): on, every utterance goes to `onFinal` as an
      * enrolment sentence (to the Mac only), turning the mic on if it was off
