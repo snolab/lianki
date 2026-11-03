@@ -29,7 +29,8 @@
  *       prints {"type":"pending","code"} to stdout; the owner taps "Allow chat
  *       for 30 days" — then prints each new owner or friend message as one
  *       JSON line {"type":"chat","id","thread","email","from","text","at","label"}
- *       (thread "owner" or the friend's user id; label = page path + user
+ *       (plus "context":{"selection","path","title","host"} when the sender
+ *       attached a page selection with the input's + menu; thread "owner" or the friend's user id; label = page path + user
  *       agent), and {"type":"friend-new","userId","email","at"} when someone
  *       writes for the first time, and {"type":"page-changed","thread",
  *       "email","label","at"} when a debug page navigates (silent on the

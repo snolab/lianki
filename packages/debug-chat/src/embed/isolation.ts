@@ -214,6 +214,8 @@ export type ShadowHost = {
 export function createShadowHost(doc: Document, css: string[]): ShadowHost {
   const host = doc.createElement(HOST_TAG);
   applyHostStyle(host);
+  // The chat's own: a selection in it is never attached (AttachMenu.tsx inChat).
+  host.setAttribute("data-lk-chat-host", "");
   const root = host.attachShadow({ mode: "closed" });
   const styles = attachStyles(root, [baseCss(), ...css.map(isolateCss)]);
   const container = doc.createElement("div");

@@ -20,6 +20,7 @@ import textSize from "@/app/components/text-size.content";
 import walletCard from "@/app/(app)/membership/wallet-card.content";
 import inviteCard from "@/app/(app)/membership/invite-card.content";
 import creditUnits from "@/app/(app)/membership/credit-units.content";
+import readEpub from "@/app/(app)/read/read-epub.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -69,6 +70,7 @@ describe.each([
   ["wallet-card", walletCard],
   ["invite-card", inviteCard],
   ["credit-units", creditUnits],
+  ["read-epub", readEpub],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };

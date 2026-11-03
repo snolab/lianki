@@ -84,6 +84,7 @@ target that is not built yet.
 | /words list picker: folded groups | session `lk:ui:words` (`collapsed`)      | done (was local `lk:words-collapsed:<base>`, carried over once) |
 | /words keyboard help strip (`?`)  | session `lk:ui:words`                    | done                                                            |
 | swipe tuner panel open            | session `lk:ui:swipe-tuner`              | done                                                            |
+| /read reading position (line)   | local `lk:read-pos:<id>`              | done (this device; → the server with the book-as-goal plan)     |
 | slip action sheet open            | memory (it is modal, closed on refresh)  | intentional; back closes it (below)                             |
 | sidebar collapsed                 | local `lk:sidebar`                       | → `lk:pref:sidebar`                                             |
 | phone drawer open                 | memory, `navUi` (lib/nav/ui-store.ts)    | done: the bottom island opens it too                            |

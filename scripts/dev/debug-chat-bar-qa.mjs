@@ -5,7 +5,7 @@
  * on a free port, loads the hot widget (so its Tailwind CSS is there too), and
  * checks, expanded and minimized:
  *
- *   - one container: mark → tree → input → mic, in tab order
+ *   - one container: mark → tree → + → input → mic, in tab order
  *     (minimized: mark → tree → mic)
  *   - the tree button opens and closes the state tree (also ✕ and Escape)
  *     without taking the input's focus or its draft; the tree is shown as the
@@ -99,7 +99,7 @@ try {
     page.evaluate(async () => {
       const ids = [];
       document.querySelector('[data-testid="debug-chat-pill-min"]').focus();
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 5; i++) {
         ids.push(document.activeElement?.dataset.testid ?? document.activeElement?.tagName);
         // Synthetic Tab is not trusted; walk the tab order by hand instead.
         const all = [...document.querySelectorAll("button, textarea, [tabindex]")].filter(
@@ -128,9 +128,12 @@ try {
       return {
         inBar: kids.every(Boolean) && bar.contains(ta),
         font: Number.parseFloat(getComputedStyle(ta).fontSize),
-        targets: ["debug-chat-pill-min", "debug-chat-tree-button", "debug-chat-mic"].map((id) =>
-          target(q(id)),
-        ),
+        targets: [
+          "debug-chat-pill-min",
+          "debug-chat-tree-button",
+          "debug-chat-attach",
+          "debug-chat-mic",
+        ].map((id) => target(q(id))),
         expanded: q("debug-chat-pill-min").getAttribute("aria-expanded"),
         width: bar.getBoundingClientRect().width,
         // The mic sits at the far right, after the input.
@@ -157,7 +160,8 @@ try {
     });
     const order = await tabOrder(page);
     check(
-      order.join() === "debug-chat-pill-min,debug-chat-tree-button,debug-chat-input,debug-chat-mic",
+      order.join() ===
+        "debug-chat-pill-min,debug-chat-tree-button,debug-chat-attach,debug-chat-input,debug-chat-mic",
       `expanded focus order: ${order.join(" → ")}`,
     );
     // Tap the mark: minimizes after the double-tap window, the bar shrinks.

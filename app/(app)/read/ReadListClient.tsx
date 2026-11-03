@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useIntlayer } from "next-intlayer";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { isoDay, longDate } from "@/lib/dates";
@@ -10,6 +11,8 @@ export interface ReadMaterial {
   title: string;
   content?: string;
   lines: string[];
+  /** From the list API: the count, without the lines themselves. */
+  lineCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -53,6 +56,59 @@ export function ReadListClient({ isLoggedIn }: { isLoggedIn: boolean }) {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const epubText = useIntlayer("read-epub");
+  const epubInput = useRef<HTMLInputElement>(null);
+  const [epubBusy, setEpubBusy] = useState(false);
+  const [epubError, setEpubError] = useState("");
+
+  // EPUB: unpacked and parsed here in the browser (lib/epub/), so the Worker
+  // never inflates an untrusted zip; the server validates and caps the result.
+  const handleEpub = async (file: File) => {
+    setEpubError("");
+    const { EPUB_LIMITS, importEpub } = await import("@/lib/epub/unzip");
+    if (file.size > EPUB_LIMITS.maxFileBytes) {
+      setEpubError(epubText.errTooLarge.value);
+      return;
+    }
+    setEpubBusy(true);
+    try {
+      let book;
+      try {
+        book = await importEpub(await file.arrayBuffer());
+      } catch (err) {
+        const code = (err as { code?: string }).code;
+        setEpubError(
+          code === "drm"
+            ? epubText.errDrm.value
+            : code === "too-large"
+              ? epubText.errTooLarge.value
+              : code === "no-text"
+                ? epubText.errNoText.value
+                : code === "too-much-text"
+                  ? epubText.errTooMuch.value
+                  : epubText.errNotEpub.value,
+        );
+        return;
+      }
+      const res = await fetch("/api/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ book }),
+      });
+      if (!res.ok) {
+        setEpubError(res.status === 413 ? epubText.errTooMuch.value : epubText.errFailed.value);
+        return;
+      }
+      const saved = await res.json();
+      router.push(`/read/${saved.id}`);
+    } catch (err) {
+      console.error("EPUB import failed:", err);
+      setEpubError(epubText.errFailed.value);
+    } finally {
+      setEpubBusy(false);
+      if (epubInput.current) epubInput.current.value = "";
+    }
+  };
 
   // Load materials
   useEffect(() => {
@@ -145,12 +201,47 @@ export function ReadListClient({ isLoggedIn }: { isLoggedIn: boolean }) {
     <div className="space-y-6">
       {/* Import Button / Form */}
       {!isImporting ? (
-        <button
-          onClick={() => setIsImporting(true)}
-          className="w-full py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
-        >
-          + Import Text Material
-        </button>
+        <div className="space-y-2">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={() => setIsImporting(true)}
+              className="flex-1 py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
+            >
+              + Import Text Material
+            </button>
+            {isLoggedIn && (
+              <label
+                data-testid="read-import-epub"
+                className={`flex-1 py-4 text-center cursor-pointer border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors ${epubBusy ? "pointer-events-none opacity-60" : ""}`}
+              >
+                {epubBusy ? epubText.reading : <>+ {epubText.importEpub}</>}
+                <input
+                  ref={epubInput}
+                  type="file"
+                  accept=".epub,application/epub+zip"
+                  className="sr-only"
+                  disabled={epubBusy}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void handleEpub(f);
+                  }}
+                />
+              </label>
+            )}
+          </div>
+          {isLoggedIn && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">{epubText.note}</p>
+          )}
+          {epubError && (
+            <p
+              role="alert"
+              data-testid="read-epub-error"
+              className="text-sm text-[oklch(0.58_0.2_27)] dark:text-[oklch(0.72_0.16_27)]"
+            >
+              {epubError}
+            </p>
+          )}
+        </div>
       ) : (
         <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-4">
           <input
@@ -206,7 +297,8 @@ export function ReadListClient({ isLoggedIn }: { isLoggedIn: boolean }) {
               <Link href={`/read/${material.id}`} className="flex-1 min-w-0">
                 <h3 className="font-medium truncate">{material.title}</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {material.lines.length} lines &middot; {longDate(material.updatedAt)}
+                  {material.lineCount ?? material.lines.length} lines &middot;{" "}
+                  {longDate(material.updatedAt)}
                 </p>
               </Link>
               <button

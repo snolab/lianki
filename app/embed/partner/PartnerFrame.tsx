@@ -66,6 +66,8 @@ function Chat({ client, strings }: { client: PartnerClient; strings?: Partial<Ch
   return (
     <DebugChat
       embedded
+      // No + menu: the frame cannot see the host page's selection.
+      attach={false}
       live={s.live}
       listeners={s.listeners}
       messages={s.messages}
