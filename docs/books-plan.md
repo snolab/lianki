@@ -42,20 +42,48 @@ _Le Petit Prince_ in French) is a test case, never a product default.
   2032, so it can never be in the shared catalogue; own copy only. Its
   drawings and name are trademarks.
 
-## A first multilingual text: the Bible
+## A first multilingual text: the Bible, in its original languages
 
-The owner's example (16:34 JST): many language editions, mostly free to use,
-chosen for language-learning value, not to promote a religion (present it
-neutrally, alongside other classics). Check every edition:
+The owner's example (16:34 JST), refined at 16:36: chosen for language-learning
+value, not to promote a religion (present it neutrally, alongside other
+classics). Use the **original-language texts** (Hebrew, Aramaic, Greek) to stay
+out of translation-edition disputes; English only as a gloss. Leads to verify
+(the digital edition's licence, not just the text's age):
 
-- Public domain in the US and elsewhere: Louis Segond 1910 (fr), Luther 1912
-  (de), Reina-Valera 1909 (es), 和合本 1919 (zh), Synodal 1876 (ru), World
-  English Bible (en, explicitly public domain).
-- **KJV is not free in the UK**: the Crown's letters patent still control it
-  there. Use the World English Bible for English, or gate KJV by country.
-- Modern translations (NIV, ESV, 新共同訳, 新改訳 …) are copyrighted: never.
-- Japanese: 文語訳 (明治元訳/大正改訳) is public domain; check 口語訳 (1955)
-  before use.
+- **Hebrew Bible:** the Westminster Leningrad Codex text (public domain) via
+  the Open Scriptures Hebrew Bible (OSHB; its lemma and morphology data are
+  CC BY 4.0, a good fit for word splitting).
+- **Greek New Testament:** SBLGNT (check its current licence: it moved to
+  CC BY 4.0), the Robinson–Pierpont Byzantine text (public domain), the
+  Textus Receptus (public domain). **Nestle–Aland / UBS are copyrighted:
+  never.**
+- **Greek Old Testament (Septuagint):** Swete's edition (public domain).
+  Rahlfs (1935) is copyrighted by the Deutsche Bibelgesellschaft: never.
+- **English gloss:** the World English Bible (explicitly public domain), not
+  KJV (Crown letters patent in the UK) and no modern copyrighted version.
+- Segmenting: Hebrew needs prefix/suffix splitting (OSHB morphology covers
+  it); Greek is inflected, so cards carry the lemma plus the form read.
+
+## Classical languages: Buddhist sutras and more
+
+The owner (16:35 JST): Sanskrit Buddhist sutras too, and other classical
+texts, if licence-safe sources exist. Leads to verify before use (the
+digital edition's licence matters, not only the age of the text):
+
+- **Pali canon:** SuttaCentral publishes the Pali (Mahāsaṅgīti) text and
+  Bhikkhu Sujato's English translations under CC0. Strong first candidate.
+- **Chinese canon (大正藏):** the printed edition (1924–1934) is old, but
+  the usual digital text, CBETA, is **CC BY-NC-SA: non-commercial**, so it
+  cannot be used in Lianki as is. Needs another source or permission.
+- **Sanskrit:** GRETIL and the Digital Sanskrit Buddhist Canon have mixed or
+  unclear terms per text; check each file's header. Use only texts with an
+  explicit free licence.
+- Other classical languages (Latin, Ancient Greek, Classical Chinese,
+  Classical Japanese) mostly via Perseus (CC BY-SA), Wikisource and ctext
+  (check its terms).
+
+Segmenting these needs care (Sanskrit sandhi, Pali compounds, classical
+Chinese without spaces); a later phase, after modern languages.
 
 ## Cost
 
