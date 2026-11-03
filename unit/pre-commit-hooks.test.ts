@@ -30,6 +30,7 @@ describe("planPreCommit", () => {
   it("regenerates the state-tree copy when the outline or the copy is staged", () => {
     expect(planPreCommit(["docs/state-tree.md"]).stateTree).toBe(true);
     expect(planPreCommit(["lib/state-tree.generated.ts"]).stateTree).toBe(true);
+    expect(planPreCommit(["scripts/gen-state-tree.ts"]).stateTree).toBe(true);
     expect(planPreCommit(["docs/state-tree.md.bak"]).stateTree).toBe(false);
   });
 
@@ -43,6 +44,7 @@ describe("planPreCommit", () => {
   it("rebundles the blog when a post or the corpus is staged", () => {
     expect(planPreCommit(["blog/en/some-post.md"]).blogCorpus).toBe(true);
     expect(planPreCommit(["lib/blog.corpus.json"]).blogCorpus).toBe(true);
+    expect(planPreCommit(["scripts/gen-blog-corpus.ts"]).blogCorpus).toBe(true);
     expect(planPreCommit(["blog/en/cover.png"]).blogCorpus).toBe(false);
     expect(planPreCommit(["docs/blog.md"]).blogCorpus).toBe(false);
   });

@@ -26,8 +26,13 @@ export type PreCommitPlan = {
 export function planPreCommit(staged: readonly string[]): PreCommitPlan {
   const has = (p: string) => staged.includes(p);
   return {
-    stateTree: has(STATE_TREE_PATH) || has(STATE_TREE_MODULE),
+    // The generator itself counts as an input: a change to its output format
+    // must land with the regenerated file.
+    stateTree: has(STATE_TREE_PATH) || has(STATE_TREE_MODULE) || has("scripts/gen-state-tree.ts"),
     buildUserscript: has(USERSCRIPT_SRC),
-    blogCorpus: has(CORPUS_PATH) || staged.some((f) => f.startsWith("blog/") && f.endsWith(".md")),
+    blogCorpus:
+      has(CORPUS_PATH) ||
+      has("scripts/gen-blog-corpus.ts") ||
+      staged.some((f) => f.startsWith("blog/") && f.endsWith(".md")),
   };
 }
