@@ -124,7 +124,7 @@ export default function TokensClient() {
                 onClick={() => postToDevServer(fresh, "/__dev/landing")}
                 className="rounded border px-3 py-1"
               >
-                在本设备打开 live 试用版
+                在本设备打开预览版
               </button>
             </div>
             <p className="opacity-60">
@@ -139,7 +139,7 @@ export default function TokensClient() {
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">令牌</h2>
           <button onClick={endAll} className="text-sm text-red-600">
-            全部撤销（结束所有 live 试用版会话）
+            全部撤销（结束所有预览版会话）
           </button>
         </div>
         <table className="w-full text-sm">

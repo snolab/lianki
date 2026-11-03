@@ -2,6 +2,7 @@
 
 import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
 import { useTextScale } from "@/lib/use-text-size";
+import { useBackToClose } from "@/lib/use-back-to-close";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
 import { advanceTop, shouldAdvance } from "@/lib/words/advance";
 import { GLIDE_WATCH_MS, homeStep, onDetent } from "@/lib/words/native-slip";
@@ -2620,6 +2621,8 @@ function Study({
   const lastTap = useRef({ i: -1, t: 0 });
   const sheetOpen = useRef(false);
   sheetOpen.current = sheet !== null;
+  // Back (the browser's, the phone's) folds the sheet instead of leaving /words.
+  useBackToClose(sheet !== null, () => setSheet(null));
   const sync = useSyncStatus();
   /** The queue was built from the offline copy. */
   const [offlineCopy, setOfflineCopy] = useState(false);
