@@ -22,6 +22,7 @@ import inviteCard from "@/app/(app)/membership/invite-card.content";
 import creditUnits from "@/app/(app)/membership/credit-units.content";
 import readEpub from "@/app/(app)/read/read-epub.content";
 import readPlayer from "@/app/(app)/read/read-player.content";
+import cliLogin from "@/app/(app)/cli-login/page.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -73,6 +74,7 @@ describe.each([
   ["credit-units", creditUnits],
   ["read-epub", readEpub],
   ["read-player", readPlayer],
+  ["cli-login-page", cliLogin],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };

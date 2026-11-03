@@ -2,7 +2,7 @@
 
 import { type Adaptive, LIMIT, voiceAdapt } from "./adaptive";
 import { VOICE_CAPTURE_EVENT, voiceTune } from "./voice-tune";
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   type MicState,
   type Vad,
@@ -24,6 +24,7 @@ import { createLocalStt } from "./local-stt";
 import { VOICE_DEVICE_KEY, deviceSlug, noteSpeaker } from "./voiceprint";
 import { localSttStrings, wakeStrings } from "./ui-strings";
 import { createKws } from "./wake-kws";
+import { MIC_BOX, MIC_RING } from "./bar-geometry";
 import { type MicSession, type MicView, micSession } from "./mic-session";
 import { sttHint } from "./stt-hint";
 import { voice } from "./voice";
@@ -491,12 +492,6 @@ export const canCapture = () =>
  * transcript goes through the echo guard first. With it off, capture is held
  * while the agent speaks, as before.
  */
-/** The mic's box: 40px wide to the touch; its circle the bar's line box (bar-geometry.ts). */
-const MIC_BOX = { "--lk-mic-w": "2.5rem", "--lk-mic-ring": "3px" } as CSSProperties;
-/** A ring on the mic's circle, inset by --lk-mic-ring: concentric with it, so with the bar. */
-const RING =
-  "pointer-events-none absolute inset-y-[var(--lk-mic-ring)] end-[var(--lk-mic-ring)] start-[calc(var(--lk-mic-w)_-_var(--lk-bar-line)_+_var(--lk-mic-ring))] rounded-full";
-
 export function DebugMic({
   onText,
   onPending,
@@ -683,38 +678,38 @@ export function DebugMic({
           ...MIC_BOX,
           color: state === "off" ? undefined : speaking ? TALK : passive ? WAIT : REC,
         }}
-        className={`tap-40 pointer-events-auto relative flex h-[var(--lk-bar-line)] w-[var(--lk-mic-w)] touch-none flex-col items-center justify-center rounded-[var(--lk-bar-inner-r)] ps-[calc(var(--lk-mic-w)_-_var(--lk-bar-line))] text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
+        className={`tap-40 pointer-events-auto relative flex touch-none flex-col items-center justify-center text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}
       >
         {speaking ? (
           // The agent speaks: a slow blue ring, so it is never mistaken for REC.
           <span
             aria-hidden
             data-testid="debug-chat-mic-speaking"
-            className={`${RING} animate-pulse`}
-            style={{ boxShadow: `0 0 0 2px ${TALK}`, animationDuration: "2.4s" }}
+            className={`pointer-events-none absolute rounded-full animate-pulse`}
+            style={{ ...MIC_RING, boxShadow: `0 0 0 2px ${TALK}`, animationDuration: "2.4s" }}
           />
         ) : passive ? (
           // Passive: a dashed ring, pulsing slowly while the spotter downloads.
           <span
             aria-hidden
             data-testid="debug-chat-mic-passive"
-            className={`${RING} border-2 border-dashed ${view.kws === "loading" ? "animate-pulse motion-reduce:animate-none" : ""}`}
-            style={{ borderColor: WAIT }}
+            className={`pointer-events-none absolute rounded-full border-2 border-dashed ${view.kws === "loading" ? "animate-pulse motion-reduce:animate-none" : ""}`}
+            style={{ ...MIC_RING, borderColor: WAIT }}
           />
         ) : view.resume && state === "off" ? (
           // Reloaded with the mic on, and it could not resume by itself: one tap does.
           <span
             aria-hidden
             data-testid="debug-chat-mic-resume"
-            className={`${RING} border-2 border-dashed`}
-            style={{ borderColor: REC }}
+            className={`pointer-events-none absolute rounded-full border-2 border-dashed`}
+            style={{ ...MIC_RING, borderColor: REC }}
           />
         ) : listening && (
           // Steady and faint while listening; red and pulsing while audio is captured.
           <span
             aria-hidden
-            className={`${RING} ${rec ? "animate-pulse" : ""}`}
-            style={{ boxShadow: `0 0 0 2px ${rec ? REC : "oklch(0.6 0.22 25 / 0.35)"}` }}
+            className={`pointer-events-none absolute rounded-full ${rec ? "animate-pulse" : ""}`}
+            style={{ ...MIC_RING, boxShadow: `0 0 0 2px ${rec ? REC : "oklch(0.6 0.22 25 / 0.35)"}` }}
           />
         )}
         <MicIcon fill={state !== "off"} />

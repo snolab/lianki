@@ -937,10 +937,10 @@ html[data-embed] [data-words-top] {
 .lk-reveal[data-far] {
   opacity: 0;
 }
-[data-reveal-slot="good"] > .lk-reveal[data-far] {
+[data-reveal-side="left"] > .lk-reveal[data-far] {
   transform: translateX(-10px);
 }
-[data-reveal-slot="hard"] > .lk-reveal[data-far] {
+[data-reveal-side="right"] > .lk-reveal[data-far] {
   transform: translateX(10px);
 }
 [data-good="4"] [data-reveal="3"],

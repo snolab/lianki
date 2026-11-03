@@ -1373,6 +1373,61 @@ try {
         !!undoRow && undoRow.includes(`ab=${variant}`),
         `${tag} an undo within 5 s of a swipe is logged (${undoRow})`,
       );
+      // Mirror swipe sides (Settings; lib/words/swipe.ts): on, a swipe left
+      // gives the grade a swipe right gave, the reveal and the help strip
+      // swap, and telemetry tags it. Off again for the checks below.
+      {
+        await m.getByRole("button", { name: "Settings" }).click();
+        const msw = m.getByRole("switch", { name: "Mirror swipe sides" });
+        const map = () => m.locator("[data-swipe-mirror-map]").innerText();
+        const map0 = await map();
+        check(
+          (await msw.getAttribute("aria-checked")) === "false" &&
+            map0.includes("← Hard / Again") &&
+            map0.includes("→ Good / Easy"),
+          `${tag} Mirror swipe sides is off by default, its mapping shown (${map0})`,
+        );
+        await msw.click();
+        const map1 = await map();
+        check(
+          (await m.evaluate(() => localStorage.getItem("lk:words-swipe-mirror"))) === "1" &&
+            map1.includes("← Good / Easy") &&
+            map1.includes("→ Hard / Again"),
+          `${tag} the switch flips the mapping at once, and is remembered (${map1})`,
+        );
+        await m.getByRole("button", { name: "Settings" }).click();
+        const sides = await m.evaluate(() =>
+          [...document.querySelectorAll('[data-reveal-slot="good"]')].map((e) =>
+            e.getAttribute("data-reveal-side"),
+          ),
+        );
+        check(
+          sides.length > 0 && sides.every((x) => x === "right"),
+          `${tag} mirrored, Good / Easy are uncovered on the right (${[...new Set(sides)]})`,
+        );
+        const was = await mStatus(3);
+        await drag(3, -70, 4);
+        const row = await m.evaluate(() =>
+          JSON.parse(localStorage.getItem("lk:swipe-unsent") ?? "[]")
+            .filter((r) => !r.params.includes("ev=undo"))
+            .at(-1),
+        );
+        check(
+          (await mStatus(3)) !== was &&
+            row?.finger < 0 &&
+            (row.rating === 3 || row.rating === 4) &&
+            row.params.includes("mirror=1"),
+          `${tag} mirrored, a swipe left grades as a swipe right did, tagged (${JSON.stringify(row)})`,
+        );
+        await m.getByRole("button", { name: "Undo" }).click();
+        await m.getByRole("button", { name: "Settings" }).click();
+        await msw.click();
+        await m.getByRole("button", { name: "Settings" }).click();
+        check(
+          (await m.evaluate(() => localStorage.getItem("lk:words-swipe-mirror"))) === "0",
+          `${tag} the mirror turns off again`,
+        );
+      }
       if (cdp) {
         // It glided home, and the list scrolled on by a row as in A.
         const home = await m.evaluate(() =>
