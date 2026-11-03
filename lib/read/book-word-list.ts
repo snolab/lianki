@@ -203,7 +203,11 @@ export async function scopeSession(
   return { items, lists, missing };
 }
 
-/** Append words to the book's list (each once: its term is the entry's key). */
+/**
+ * Append words to the book's list (each once: its term is the entry's key),
+ * only where the word's card is in this list: an entry without a card would
+ * be a new word to /words, carded twice if another list got it first.
+ */
 export function entryStatements(
   db: D1Like,
   email: string,
@@ -216,10 +220,25 @@ export function entryStatements(
       .prepare(
         `INSERT OR IGNORE INTO word_list_entries
            (email, list_id, key, position, term, back, reading, ex, updated_at)
-         VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM word_list_entries
-           WHERE email = ? AND list_id = ?), ?, ?, ?, ?, ?)`,
+         SELECT ?, ?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM word_list_entries
+           WHERE email = ? AND list_id = ?), ?, ?, ?, ?, ?
+         WHERE EXISTS (SELECT 1 FROM word_cards WHERE email = ? AND list_id = ? AND term = ?)`,
       )
-      .bind(email, listId, e.term, email, listId, e.term, e.back, e.reading, e.ex, at),
+      .bind(
+        email,
+        listId,
+        e.term,
+        email,
+        listId,
+        e.term,
+        e.back,
+        e.reading,
+        e.ex,
+        at,
+        email,
+        listId,
+        e.term,
+      ),
   );
 }
 
@@ -263,7 +282,6 @@ export async function makeCards(
     ex: clip(x.ex, 1000),
   }));
   const statements = [
-    ...entryStatements(db, email, listId, entries),
     // In the same transaction as a guard: a card made meanwhile under the
     // same term in any of his lists of this language (another tab, another
     // book) wins, and one already in this list keeps its progress.
@@ -293,9 +311,20 @@ export async function makeCards(
           `${book.lang}-%`,
         ),
     ),
+    // After the cards, in the same transaction: entries only for cards made here.
+    ...entryStatements(db, email, listId, entries),
   ];
   await runAll(db, statements);
-  return { listId, terms: entries.map((e) => e.term) };
+  // The terms whose card is this list's (a race lost to another list made none).
+  const made = await fullCards(
+    db,
+    email,
+    entries.map((e) => ({ listId, term: e.term })),
+  );
+  return {
+    listId,
+    terms: entries.map((e) => e.term).filter((t) => made.has(`${listId}\u0000${t}`)),
+  };
 }
 
 /**
