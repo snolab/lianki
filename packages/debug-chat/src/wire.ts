@@ -97,6 +97,12 @@ export type ChatMessage = {
    * lines; absent when the line went through the cloud or nothing is enrolled.
    */
   speaker?: SpeakerTag;
+  /**
+   * What the sender attached from the page with the input's + menu
+   * (attach.ts): the text selected on the page, and where. Owner and friend
+   * lines only; checked by cleanContext, so it is never more than its limits.
+   */
+  context?: ChatContext;
   /** An agent line that asks: the question(s) and their options (ask.ts). */
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */
@@ -462,6 +468,27 @@ export type ChatStrings = {
   vpVerified: string;
   /** A small note on an agent line that was not read aloud because the page was in the background. */
   notReadHidden: string;
+  // The input's + menu (attach.tsx).
+  /** Screen-reader label and tooltip of the + button at the start of the chat input: opens a menu to add something to Lianki or attach something to the message. */
+  attachOpen: string;
+  /** Section heading in the + menu: actions that add content to Lianki (a link as a card, words from a deck, imports). A short noun or imperative, one word if possible. */
+  attachGroupAdd: string;
+  /** Section heading in the + menu: things attached to the message being typed (page selection, files, media). A short phrase. */
+  attachGroupMessage: string;
+  /** Menu item in the + menu: attaches the text the user selected on the page to the next message. Noun phrase, the thing attached. */
+  attachSelection: string;
+  /** Grey hint under the disabled 'Page selection' item when nothing is selected: the user should first select (highlight) text on the page. One short imperative sentence. */
+  attachSelectionNone: string;
+  /** Menu item in the + menu (not available yet): attach a file from the device to the message. Noun or short verb phrase. */
+  attachFile: string;
+  /** Menu item in the + menu (not available yet): attach a photo, a video or a sound recording to the message. Short noun phrase. */
+  attachMedia: string;
+  /** Small grey tag on a + menu item that is not available yet. Two or three words. */
+  attachSoon: string;
+  /** Screen-reader label of the × on the chip above the input that shows the attached page selection: removes it from the message. Imperative verb phrase. */
+  attachRemove: string;
+  /** Screen-reader label of the quoted page selection shown above a message in the chat log, and of the chip above the input: it is text quoted from the page. Short noun phrase. */
+  attachQuoted: string;
 };
 
 export const CHAT_STRINGS_EN: ChatStrings = {
@@ -518,7 +545,55 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpClose: "Close",
   vpVerified: "Your voice, verified",
   notReadHidden: "· not read aloud: the page was in the background",
+  attachOpen: "Add or attach",
+  attachGroupAdd: "Add",
+  attachGroupMessage: "Attach to message",
+  attachSelection: "Page selection",
+  attachSelectionNone: "Select some text on the page first.",
+  attachFile: "File",
+  attachMedia: "Photo, video or audio",
+  attachSoon: "Coming soon",
+  attachRemove: "Remove the attached selection",
+  attachQuoted: "Quoted from the page",
 };
+
+/** Most characters of a page selection attached to a line. */
+export const MAX_SELECTION = 2000;
+/** Most characters of the attached page's title. */
+export const MAX_CONTEXT_TITLE = 200;
+/** Most characters of its path (or host). */
+export const MAX_CONTEXT_PATH = 300;
+
+/**
+ * A line's attachment from the page (the + menu's "Page selection",
+ * attach.ts): the selected text, the page's path (never its query or
+ * fragment) and title, and its host when the chat runs on another site.
+ */
+export type ChatContext = {
+  selection: string;
+  path?: string;
+  title?: string;
+  host?: string;
+};
+
+/** A ChatContext from the wire, or undefined: known keys only, each bounded; no selection, none. */
+export function cleanContext(raw: unknown): ChatContext | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const text = (v: unknown, max: number) =>
+    typeof v === "string" ? v.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").slice(0, max) : "";
+  const selection = text(r.selection, MAX_SELECTION).trim();
+  if (!selection) return undefined;
+  const path = text(r.path, MAX_CONTEXT_PATH).split(/[?#]/)[0]!.trim();
+  const title = text(r.title, MAX_CONTEXT_TITLE).replace(/\s+/g, " ").trim();
+  const host = text(r.host, MAX_CONTEXT_PATH).trim().toLowerCase();
+  return {
+    selection,
+    ...(path.startsWith("/") ? { path } : {}),
+    ...(title ? { title } : {}),
+    ...(/^[a-z0-9.-]+(:\d+)?$/.test(host) ? { host } : {}),
+  };
+}
 
 /** Defaults filled in and `{name}` substituted. */
 export function chatStrings(s?: Partial<ChatStrings>): ChatStrings {

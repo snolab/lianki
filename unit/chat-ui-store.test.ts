@@ -85,8 +85,17 @@ describe("migrateChatUi", () => {
       },
       spoken: { m1: 2, m2: 1 },
       reading: [{ id: "m3", from: 1, at: 1_000 }],
+      attached: { selection: "a quoted line", path: "/words", title: "Words" },
     };
     expect(migrateChatUi(s, CHAT_UI_VERSION)).toEqual(s);
+  });
+
+  it("keeps an attached selection only when it is well formed and bounded", () => {
+    expect(migrateChatUi({ attached: { selection: "  " } }, 1).attached).toBeNull();
+    expect(migrateChatUi({ attached: "x" }, 1).attached).toBeNull();
+    const big = migrateChatUi({ attached: { selection: "y".repeat(5000), path: "/a?t=1" } }, 1);
+    expect(big.attached?.selection.length).toBe(2000);
+    expect(big.attached?.path).toBe("/a");
   });
 
   it("keeps only well-formed spoken counts", () => {

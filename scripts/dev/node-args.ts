@@ -61,6 +61,8 @@ export function chatLine(
     ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
     ...(typeof m.wakeReason === "string" ? { wakeReason: m.wakeReason } : {}),
     ...(m.edited && typeof m.edited === "object" ? { raw: m.raw, edited: m.edited } : {}),
+    // Attached with the + menu (attach.ts): {selection, path?, title?, host?}.
+    ...(m.context && typeof m.context === "object" ? { context: m.context } : {}),
     ...(observed ? { observed: true } : {}),
   };
 }

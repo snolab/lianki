@@ -15,7 +15,7 @@ the easiest reach for the thumb.
 | -------- | ------------------------------------------------------ |
 | Home     | `/home`; shows the due-review badge                     |
 | Menu     | opens the drawer (an edge swipe does too); sync dot     |
-| ＋ Create | the Create sheet                                        |
+| ＋ Create | the Create sheet (not shown while the chat's + is up)   |
 | Search   | the command palette (Ctrl/⌘ K anywhere)                |
 
 - **Create** offers a link as a card (paste it), words from an Anki deck
@@ -23,6 +23,10 @@ the easiest reach for the thumb.
   making words with AI (`/ai-vocab`). Two things are left out because the app
   has no path for them yet: typing in a single new word, and CSV import. Photo
   capture is left out for the same reason.
+- **With the chat input on the page** (debug mode, owner and friends), ＋
+  leaves the island and its Create items move into the chat's own + menu
+  (owner, 2026-11-03; docs/dev-debug-widget.md, "The + menu"). Without the
+  chat, ＋ stays.
 - **The Learning Partner** is no longer on the island. It is reached through
   its chat bar, and through a "Learning Partner" row in the drawer (debug
   mode, where the chat is on).

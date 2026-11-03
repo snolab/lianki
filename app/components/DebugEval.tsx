@@ -18,7 +18,13 @@ import {
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
 import { isKey } from "@lianki/debug-chat/storage-keys";
-import { type ChatStrings, type VoiceTiming, cleanTiming } from "@lianki/debug-chat/wire";
+import {
+  type ChatContext,
+  type ChatStrings,
+  type VoiceTiming,
+  cleanContext,
+  cleanTiming,
+} from "@lianki/debug-chat/wire";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
@@ -541,7 +547,12 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
   const sendChat = (
     text: string,
     to?: string,
-    opts?: { source?: "stt"; timing?: VoiceTiming; speakerProof?: string[] },
+    opts?: {
+      source?: "stt";
+      timing?: VoiceTiming;
+      speakerProof?: string[];
+      context?: ChatContext;
+    },
   ) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return false;
@@ -559,6 +570,8 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
       ).__lkMic?.view?.();
       const wake = mic && mic.state !== "off" ? mic.wake : undefined;
       const wakeReason = wake ? mic?.wakeReason : undefined;
+      // The page selection attached with the + menu (bounded as the hub bounds it).
+      const context = cleanContext(opts?.context);
       sock.send(
         JSON.stringify({
           type: "chat",
@@ -570,6 +583,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           ...(wake === "active" || wake === "passive" ? { wake } : {}),
           ...(speakerProof?.length ? { speakerProof } : {}),
           ...(wakeReason ? { wakeReason } : {}),
+          ...(context ? { context } : {}),
         }),
       );
       // Its reply is timed against it (latency.ts); main-thread lines only.

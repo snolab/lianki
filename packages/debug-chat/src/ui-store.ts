@@ -13,6 +13,7 @@
  */
 import { createUiStore } from "@lianki/ui-state";
 import type { KeptTree } from "./tree-keep";
+import { type ChatContext, cleanContext } from "./wire";
 
 /** The chat's session UI state. */
 export type ChatUi = {
@@ -34,6 +35,8 @@ export type ChatUi = {
   spoken: Record<string, number>;
   /** Replies still being read when the page went away: resumed after a reload (read-progress.ts). */
   reading: { id: string; from: number; at: number }[];
+  /** Attached to the next line with the + menu (attach.ts): kept with the draft. */
+  attached: ChatContext | null;
   // Not kept: the log's scroll (at rest the compact log always shows the
   // newest lines), the bar's position (localStorage, remembered across
   // sessions), the full-screen log (only during a drag) and the mic (it
@@ -49,6 +52,7 @@ export const CHAT_UI_INITIAL: ChatUi = {
   tree: null,
   spoken: {},
   reading: [],
+  attached: null,
 };
 /** A draft longer than this is not restored (the input's own cap is lower). */
 const MAX_DRAFT = 20_000;
@@ -85,7 +89,17 @@ export function migrateChatUi(persisted: unknown, _version: number): ChatUi {
       )
         reading.push({ id: x.id, from: x.from as number, at: x.at });
     }
-  return { draft, caret, pureDictation, panel, tree: migrateTree(p.tree), spoken, reading };
+  const attached = cleanContext(p.attached) ?? null;
+  return {
+    draft,
+    caret,
+    pureDictation,
+    panel,
+    tree: migrateTree(p.tree),
+    spoken,
+    reading,
+    attached,
+  };
 }
 
 /** A title path: a short list of short strings. */

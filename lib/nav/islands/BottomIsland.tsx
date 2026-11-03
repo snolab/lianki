@@ -3,8 +3,9 @@
 /**
  * The bottom island navigation (docs/bottom-nav.md): a floating glass
  * capsule fixed at the bottom of a phone screen. Home, Menu (the drawer),
- * the centre button (the Learning Partner in debug mode, else Create; a long
- * press is always Create) and Search (the command palette, also Ctrl/⌘ K).
+ * ＋ Create and Search (the command palette, also Ctrl/⌘ K). While the
+ * Learning Partner's input is on the page, ＋ is not here: its Create items
+ * are in the chat's own + menu (registered with setAddItems).
  *
  * It shrinks to a small capsule on scrolling down and comes back on scrolling
  * up or when scrolling stops, hides while the on-screen keyboard is open,
@@ -32,6 +33,28 @@ import {
   useWordsHint,
 } from "./signals";
 import { useNavText } from "./text";
+import { createItems } from "./SearchPalette";
+import { CHAT_ATTACH_EVENT, chatAttachShown, setAddItems } from "@lianki/debug-chat/attach";
+
+/** The Create actions' icons in the chat's + menu (packages/debug-chat icons.tsx). */
+const CHAT_ICON: Record<string, string> = {
+  "create:link": "link",
+  "create:deck": "textAa",
+  "create:import": "uploadSimple",
+  "create:ai": "sparkle",
+};
+
+/** Whether the chat's + menu is on the page (it then holds Create). Event-driven. */
+function useChatAttach(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const read = () => setOn(chatAttachShown());
+    read();
+    window.addEventListener(CHAT_ATTACH_EVENT, read);
+    return () => window.removeEventListener(CHAT_ATTACH_EVENT, read);
+  }, []);
+  return on;
+}
 
 /** Haptics where the device has them (Android); a no-op elsewhere. */
 const tick = () => {
@@ -61,6 +84,40 @@ export function BottomIsland({ signedIn }: IslandProps["nav.bottom"]) {
   useEdgeSwipe(!drawerOpen && !sheet);
 
   useEffect(() => noteVisit(pathname), [pathname]);
+
+  // Create goes into the chat's + menu, and ＋ leaves the island while that menu is here.
+  const chatCreate = useChatAttach();
+  const pick = useCallback(
+    (href: string) => {
+      if (href === "#link") setSheet("link");
+      else {
+        setSheet(null);
+        router.push(href);
+      }
+    },
+    [router],
+  );
+  const pickRef = useRef(pick);
+  pickRef.current = pick;
+  const create = createItems(t);
+  const createRef = useRef(create);
+  createRef.current = create;
+  // Registered again only when a title changes (useNavText is a new object each render).
+  const createSig = create.map((it) => `${it.id}\t${it.title}`).join("\n");
+  useEffect(() => {
+    setAddItems(
+      createRef.current.map((it) => ({
+        id: it.id,
+        title: it.title,
+        icon: CHAT_ICON[it.id],
+        onPick: () => pickRef.current(it.href),
+      })),
+    );
+    return () => setAddItems([]);
+  }, [createSig]);
+  useEffect(() => {
+    if (chatCreate) setSheet((s) => (s === "create" ? null : s));
+  }, [chatCreate]);
   useEffect(() => setSheet(null), [pathname]);
 
   // Ctrl/⌘ K: the palette, on any screen.
@@ -187,20 +244,23 @@ export function BottomIsland({ signedIn }: IslandProps["nav.bottom"]) {
             dotLabel={syncLabel}
             expanded={drawerOpen}
           />
-          {/* ＋ Create: third of four, the largest, where the thumb rests. */}
-          <button
-            type="button"
-            aria-label={t.create}
-            aria-haspopup="dialog"
-            aria-expanded={sheet === "create"}
-            onClick={() => {
-              tick();
-              setSheet((s) => (s === "create" ? null : "create"));
-            }}
-            className="relative mx-1 flex h-[3.75rem] w-[3.75rem] shrink-0 touch-manipulation select-none items-center justify-center rounded-full bg-[oklch(from_var(--brand)_l_c_h/0.88)] text-[1.75rem] text-[oklch(0.985_0.01_82)] shadow-[inset_0_1px_0_oklch(1_0_0/0.45),0_6px_16px_-4px_oklch(from_var(--brand)_l_c_h/0.6)] [text-shadow:none] active:scale-95 motion-reduce:active:scale-100"
-          >
-            <Icon name="plus" />
-          </button>
+          {/* ＋ Create: third of four, the largest, where the thumb rests. Not
+              while the chat's + menu is on the page: Create is in it. */}
+          {!chatCreate && (
+            <button
+              type="button"
+              aria-label={t.create}
+              aria-haspopup="dialog"
+              aria-expanded={sheet === "create"}
+              onClick={() => {
+                tick();
+                setSheet((s) => (s === "create" ? null : "create"));
+              }}
+              className="relative mx-1 flex h-[3.75rem] w-[3.75rem] shrink-0 touch-manipulation select-none items-center justify-center rounded-full bg-[oklch(from_var(--brand)_l_c_h/0.88)] text-[1.75rem] text-[oklch(0.985_0.01_82)] shadow-[inset_0_1px_0_oklch(1_0_0/0.45),0_6px_16px_-4px_oklch(from_var(--brand)_l_c_h/0.6)] [text-shadow:none] active:scale-95 motion-reduce:active:scale-100"
+            >
+              <Icon name="plus" />
+            </button>
+          )}
           <Tab
             icon="magnifyingGlass"
             label={t.search}
@@ -225,13 +285,7 @@ export function BottomIsland({ signedIn }: IslandProps["nav.bottom"]) {
       <CreateSheet
         open={sheet === "create"}
         onClose={closeSheet}
-        onPick={(href) => {
-          if (href === "#link") setSheet("link");
-          else {
-            setSheet(null);
-            router.push(href);
-          }
-        }}
+        onPick={pick}
         t={t}
         bottom={bottom}
       />

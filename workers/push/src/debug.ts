@@ -155,6 +155,7 @@ import {
   APPROVAL_MS,
   CHAT_HISTORY,
   CHAT_MS,
+  type ChatContext,
   type ChatMessage,
   EVAL_CHAIN_MS,
   EVAL_GRANT_MS,
@@ -1577,10 +1578,13 @@ export class DebugHub {
           len: m.text.length,
           head: head(m.text),
           ...(m.to ? { to: m.to } : {}),
+          // Its length only: the selection itself is never logged.
+          ...(m.context ? { selection: m.context.selection.length } : {}),
         }),
       );
       // A friend's line is always their own thread's: no node addressing there.
-      if (page.thread !== OWNER_THREAD) return this.friendChat(ws, page, m.id, m.text);
+      // Its attachment (the page selection) stays on the sender's own thread.
+      if (page.thread !== OWNER_THREAD) return this.friendChat(ws, page, m.id, m.text, m.context);
       const line = (speaker: SpeakerTag | undefined) =>
         this.post({
           id: m.id,
@@ -1595,6 +1599,7 @@ export class DebugHub {
           ...(m.timing ? { timing: m.timing } : {}),
           ...(m.wake ? { wake: m.wake } : {}),
           ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
+          ...(m.context ? { context: m.context } : {}),
           // Only a tag the Mac signed over these words (lib/speaker-proof.ts); voice
           // approvals later must rely on this, never on what a page says.
           ...(speaker ? { speaker } : {}),
@@ -1646,7 +1651,13 @@ export class DebugHub {
    * and more than FRIEND_CHAT_MAX in a window is dropped (and the page told).
    * Their first ever message tells the agent ({type:"friend-new"}).
    */
-  private async friendChat(ws: Socket, page: PageAtt, id: string, text: string) {
+  private async friendChat(
+    ws: Socket,
+    page: PageAtt,
+    id: string,
+    text: string,
+    context?: ChatContext,
+  ) {
     const t = this.now();
     const userId = page.thread;
     const rec = await this.ctx.storage.get<FriendRecord>(friendKey(userId));
@@ -1687,6 +1698,7 @@ export class DebugHub {
       thread: userId,
       email,
       ...(page.sender ? { sender: page.sender } : {}),
+      ...(context ? { context } : {}),
     });
   }
 

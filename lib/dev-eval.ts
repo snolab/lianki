@@ -22,6 +22,8 @@ import {
   cleanTiming,
   type SpeakerTag,
   cleanSpeaker,
+  type ChatContext,
+  cleanContext,
 } from "../packages/debug-chat/src/wire";
 import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
 import { cleanProofs } from "./speaker-proof";
@@ -68,6 +70,9 @@ export {
   type SpeakerDecision,
   cleanSpeaker,
   combineSpeaker,
+  type ChatContext,
+  cleanContext,
+  MAX_SELECTION,
 } from "../packages/debug-chat/src/wire";
 
 /** Largest `code` accepted, in characters. */
@@ -240,6 +245,8 @@ export type PageMessage =
       speakerProof?: string[];
       /** Why the mic is in that mode (wake.ts WakeReason: "rejects", "wake-word", "kws-failed", …). */
       wakeReason?: WakeReason;
+      /** Attached with the + menu: the page selection and where (cleanContext's limits). */
+      context?: ChatContext;
     }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
@@ -499,6 +506,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     const to = nodePath(m.to);
     const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
     const speakerProof = m.source === "stt" ? cleanProofs(m.speakerProof) : undefined;
+    const context = cleanContext(m.context);
     return {
       type: "chat",
       id,
@@ -511,6 +519,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...((m.wake === "active" || m.wake === "passive") && isWakeReason(m.wakeReason)
         ? { wakeReason: m.wakeReason }
         : {}),
+      ...(context ? { context } : {}),
     };
   }
   if (m.type === "page-error") return parsePageError(m);
