@@ -261,3 +261,19 @@ selecting DOM text.
   or catalogue); for a private book they are personal bookmarks.
 - **Phrases.** Phrase boundaries come from the extraction step (books-plan
   phase 1); until then the phrase level is skipped.
+
+### Reading progress = familiarity, not distance (owner, 2026-11-03 ~18:55 JST)
+
+"阅读进度实际上按段落里面所有能够识别到的单词、短语和概念的熟悉程度来区分".
+Progress is not how far he has scrolled. Each **paragraph** has a familiarity
+level: the coverage of everything recognisable in it — words, phrases and
+(once extraction exists) concepts — weighted by his familiarity with each,
+by the same rule as the book's coverage (running items, names known,
+numbers and punctuation out). The book's progress is the same measure over
+the whole book (the 95% line); a chapter's over the chapter.
+
+- The reader can show it per paragraph (e.g. a faint margin tint or a thin
+  rail whose strength is the paragraph's familiarity), so he sees at a
+  glance which parts are already readable and which aren't. No counts.
+- The "furthest read" position stays only as a bookmark (where to resume)
+  and as the trigger for background extraction; it is not progress.
