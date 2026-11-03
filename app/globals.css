@@ -58,7 +58,8 @@
    `html { font-size }` stays the browser's and rem spacing keeps its size.
    --lk-fs-ui / --lk-fs-chat / --lk-fs-cards are the choices (set on <html>
    before first paint); --lk-fs-k is the factor in effect: the app's, times
-   the area's inside .lk-fs-chat (the chat) and .lk-fs-cards (study cards).
+   the area's inside .lk-fs-chat (the chat), .lk-fs-cards (study cards) and
+   .lk-fs-read (a book in the /read reader).
    Every Tailwind text-* size is re-pointed through it, and is redeclared in
    each area so it picks up that area's factor. A size in px is written
    fs-<px> (the utility below), never text-[<px>px], which would not scale. */
@@ -71,9 +72,13 @@
 .lk-fs-cards {
   --lk-fs-k: calc(var(--lk-fs-ui, 1) * var(--lk-fs-cards, 1));
 }
+.lk-fs-read {
+  --lk-fs-k: calc(var(--lk-fs-ui, 1) * var(--lk-fs-read, 1));
+}
 :root,
 .lk-fs-chat,
-.lk-fs-cards {
+.lk-fs-cards,
+.lk-fs-read {
   --text-xs: calc(0.75rem * var(--lk-fs-k, 1));
   --text-sm: calc(0.875rem * var(--lk-fs-k, 1));
   --text-base: calc(1rem * var(--lk-fs-k, 1));
@@ -95,7 +100,8 @@
   /* Text with no size class; a class on the element itself still wins. */
   body,
   .lk-fs-chat,
-  .lk-fs-cards {
+  .lk-fs-cards,
+  .lk-fs-read {
     font-size: calc(1rem * var(--lk-fs-k, 1));
   }
 }
@@ -1026,4 +1032,166 @@ html[data-motion="off"] *::after {
   transition-duration: 0s !important;
   transition-delay: 0s !important;
   scroll-behavior: auto !important;
+}
+
+/* ── The /read reader v2 (app/(app)/read/[id]/ReaderV2.tsx) ─────────────────
+ * The book as it is, flat: paragraphs on the page, no boxes. Sizes in em so
+ * the `read` text size (.lk-fs-read) scales the book and its spacing. */
+.lk-book {
+  font-size: calc(1.125rem * var(--lk-fs-k, 1));
+  line-height: 1.7;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+.lk-book .lk-para {
+  margin: 0;
+  padding: 0.45em 0;
+}
+/* A long paragraph split into items reads as one paragraph. */
+.lk-book .lk-para[data-cont] {
+  padding-top: 0;
+}
+.lk-book .lk-para[data-open] {
+  padding-bottom: 0;
+}
+/* A line that continues the paragraph before (the EPUB's <br>, a long
+ * paragraph split at import): no paragraph gap between them. */
+.lk-book .lk-para[data-join] {
+  margin-top: -0.45em;
+  padding-top: 0;
+}
+.lk-book .lk-head {
+  margin: 0;
+  padding: 1.6em 0 0.5em;
+  font-size: 1.25em;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.lk-book .lk-item {
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Sliding: the item is opaque over what it uncovers. */
+.lk-book .lk-item[data-moving],
+.lk-book .lk-item-face {
+  background: var(--background);
+}
+/* The item's familiarity: a thin rail in the gutter that joins its
+ * paragraphs. A strength, never a box. Colour-blind safe: the strength is
+ * the cue; the grade tint only adds to it. */
+.lk-book .lk-rail {
+  position: absolute;
+  inset-block: 0.55em;
+  inset-inline-start: -0.75rem;
+  width: 2px;
+  border-radius: 1px;
+  background: oklch(0.6 0.12 155 / var(--rail-a, 0));
+  pointer-events: none;
+}
+.lk-book .lk-rail[data-rail="0"] { --rail-a: 0.12; }
+.lk-book .lk-rail[data-rail="1"] { --rail-a: 0.25; }
+.lk-book .lk-rail[data-rail="2"] { --rail-a: 0.4; }
+.lk-book .lk-rail[data-rail="3"] { --rail-a: 0.6; }
+.lk-book .lk-rail[data-rail="4"] { --rail-a: 0.85; }
+.lk-book .lk-rail[data-grade] { width: 3px; }
+.lk-book .lk-rail[data-grade="1"] { background: oklch(0.6 0.15 30 / 0.8); }
+.lk-book .lk-rail[data-grade="2"] { background: oklch(0.68 0.13 75 / 0.8); }
+.lk-book .lk-rail[data-grade="3"] { background: oklch(0.62 0.13 140 / 0.85); }
+.lk-book .lk-rail[data-grade="4"] { background: oklch(0.62 0.1 235 / 0.85); }
+
+/* Word marks by familiarity (html[data-read-marks]; switching repaints only).
+ * The line style is the cue: solid = learning (by band), dotted = new,
+ * dashed = not recognised; mastered and names carry none. */
+.lk-book [data-f] {
+  text-decoration-skip-ink: auto;
+  text-underline-offset: 0.24em;
+}
+html[data-read-marks="all"] .lk-book [data-f^="l"] {
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+}
+html[data-read-marks="all"] .lk-book [data-f="l1"] {
+  text-decoration-color: oklch(0.6 0.13 60 / 0.9);
+  text-decoration-thickness: 2px;
+}
+html[data-read-marks="all"] .lk-book [data-f="l2"] {
+  text-decoration-color: oklch(0.6 0.13 60 / 0.6);
+  text-decoration-thickness: 1.5px;
+}
+html[data-read-marks="all"] .lk-book [data-f="l3"] {
+  text-decoration-color: oklch(0.6 0.13 60 / 0.35);
+  text-decoration-thickness: 1px;
+}
+html[data-read-marks="all"] .lk-book [data-f="n"],
+html[data-read-marks="unknown"] .lk-book [data-f="n"] {
+  text-decoration: underline dotted oklch(0.55 0.13 250 / 0.85) 2px;
+  text-underline-offset: 0.24em;
+}
+html[data-read-marks="all"] .lk-book [data-f="u"],
+html[data-read-marks="unknown"] .lk-book [data-f="u"] {
+  text-decoration: underline dashed oklch(0.55 0.02 60 / 0.5) 1px;
+  text-underline-offset: 0.24em;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-read-marks="all"] .lk-book [data-f="l1"] { text-decoration-color: oklch(0.78 0.12 70 / 0.9); }
+  html[data-read-marks="all"] .lk-book [data-f="l2"] { text-decoration-color: oklch(0.78 0.12 70 / 0.6); }
+  html[data-read-marks="all"] .lk-book [data-f="l3"] { text-decoration-color: oklch(0.78 0.12 70 / 0.38); }
+  html[data-read-marks="all"] .lk-book [data-f="n"],
+  html[data-read-marks="unknown"] .lk-book [data-f="n"] { text-decoration-color: oklch(0.75 0.12 250 / 0.85); }
+  html[data-read-marks="all"] .lk-book [data-f="u"],
+  html[data-read-marks="unknown"] .lk-book [data-f="u"] { text-decoration-color: oklch(0.75 0.02 60 / 0.5); }
+}
+/* The sentence being read aloud. */
+.lk-book [data-reading] {
+  background: oklch(0.85 0.09 85 / 0.45);
+  border-radius: 0.2em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+@media (prefers-color-scheme: dark) {
+  .lk-book [data-reading] {
+    background: oklch(0.5 0.08 85 / 0.35);
+  }
+}
+/* The New swipe on an item: its own horizontal scroller (as .slip-native). */
+.lk-book .lk-item-native {
+  position: relative;
+  isolation: isolate;
+}
+.lk-book .lk-item-strip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--slip-seam);
+  z-index: 0;
+  isolation: isolate;
+}
+.lk-book .lk-item-scroller {
+  position: relative;
+  z-index: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+  /* Out into the gutter, where the face carries its rail (a scroller clips). */
+  margin-inline-start: -0.75rem;
+}
+.lk-book .lk-item-scroller::-webkit-scrollbar {
+  display: none;
+}
+.lk-book .lk-item-track {
+  position: relative;
+  width: calc(100% + 4 * var(--a));
+}
+.lk-book .lk-item-face {
+  position: relative;
+  margin-inline-start: calc(2 * var(--a));
+  width: calc(100% - 4 * var(--a));
+  padding-inline-start: 0.75rem;
+}
+.lk-book .lk-item-face > .lk-rail {
+  inset-inline-start: 0;
 }

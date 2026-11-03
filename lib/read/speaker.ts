@@ -59,7 +59,12 @@ export type ReadSpeakerDeps = {
   clearTimer(t: unknown): void;
   log?(ev: Record<string, unknown>): void;
 };
-export type SpeakCallbacks = { onend(): void; onerror(why: string): void };
+export type SpeakCallbacks = {
+  onend(): void;
+  onerror(why: string): void;
+  /** A part (of `speak`'s array form) starts: its index. */
+  onpart?(part: number): void;
+};
 
 export const baseLang = (lang: string) => lang.toLowerCase().split(/[-_]/)[0];
 export const readTtsUrl = (text: string, lang: string) =>
@@ -127,12 +132,31 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
       if (voiceFor(lang)) return "speech";
       return cloudOk ? "cloud" : null;
     },
-    /** Say `text` in `lang`; exactly one of the callbacks, once, unless cancelled first. */
-    speak(text: string, lang: string, cb: SpeakCallbacks): () => void {
+    /**
+     * Say `text` in `lang`; exactly one of onend / onerror, once, unless
+     * cancelled first. An array is said part after part (the reader v2's
+     * sentences), and `onpart` hears each part start, for its highlight.
+     */
+    speak(text: string | readonly string[], lang: string, cb: SpeakCallbacks): () => void {
       stopCurrent?.();
       const me = ++turn;
       const live = () => me === turn;
-      const chunks = speechChunks(text);
+      const parts = typeof text === "string" ? [text] : text;
+      const chunks: string[] = [];
+      /** The part each chunk belongs to. */
+      const partOf: number[] = [];
+      parts.forEach((p, i) =>
+        speechChunks(p).forEach((c) => {
+          chunks.push(c);
+          partOf.push(i);
+        }),
+      );
+      let partShown = -1;
+      const startChunk = (i: number) => {
+        if (partOf[i] === partShown) return;
+        partShown = partOf[i];
+        cb.onpart?.(partShown);
+      };
       // The mic hold is taken per sentence, the next before the last is let
       // go, and renewed every HOLD_RENEW_MS while one sentence lasts (a slow
       // fetch, a long CJK sentence), so the registry's 30 s cap never reopens
@@ -199,6 +223,7 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
           if (!cur()) return;
           if (i >= chunks.length) return finish(true);
           hold(chunks[i]);
+          startChunk(i);
           try {
             speakOne(i);
           } catch (e) {
@@ -251,6 +276,7 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
           if (!cur()) return;
           if (i >= chunks.length) return finish(true);
           hold(chunks[i]);
+          startChunk(i);
           try {
             const r = await d.fetch(readTtsUrl(chunks[i], baseLang(lang)));
             if (!cur()) return;

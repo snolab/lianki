@@ -24,6 +24,7 @@ import creditUnits from "@/app/(app)/membership/credit-units.content";
 import readEpub from "@/app/(app)/read/read-epub.content";
 import readPlayer from "@/app/(app)/read/read-player.content";
 import readWords from "@/app/(app)/read/read-words.content";
+import readReader from "@/app/(app)/read/read-reader.content";
 import cliLogin from "@/app/(app)/cli-login/page.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
@@ -78,6 +79,7 @@ describe.each([
   ["read-epub", readEpub],
   ["read-player", readPlayer],
   ["read-words", readWords],
+  ["read-reader", readReader],
   ["cli-login-page", cliLogin],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.

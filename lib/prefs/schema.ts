@@ -74,6 +74,7 @@ export const PREF_SCHEMAS = {
   "text-size.ui": textScale,
   "text-size.chat": textScale,
   "text-size.cards": textScale,
+  "text-size.read": textScale,
   "ui.locale": z.enum(BLOG_LOCALES as unknown as [string, ...string[]]),
   "nav-pins.pinned": z.array(appPath).max(12),
   "home.lang": z.enum(IMMERSION_CODES),

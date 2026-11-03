@@ -54,7 +54,7 @@ function sectionsOf(total: number, book?: BookMeta): number[] {
 
 const STORAGE_KEY = "lianki-read-materials";
 
-function getLocalMaterial(id: string): ReadMaterial | null {
+export function getLocalMaterial(id: string): ReadMaterial | null {
   if (typeof window === "undefined") return null;
   const stored = localStorage.getItem(STORAGE_KEY);
   if (!stored) return null;

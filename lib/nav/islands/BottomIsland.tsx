@@ -20,6 +20,7 @@ import type { IslandProps } from "@/lib/islands/contract";
 import { useUi } from "@lianki/ui-state";
 import { badge, fill, showFirstTip } from "../nav-core";
 import { navTip, navUi, noteVisit, setDrawerOpen } from "../ui-store";
+import { readingUi, setReading } from "../reading";
 import { CreateSheet } from "./CreateSheet";
 import { SearchPalette } from "./SearchPalette";
 import {
@@ -71,7 +72,11 @@ export function BottomIsland({ signedIn }: IslandProps["nav.bottom"]) {
   const debug = useDebugMode();
   const drawerOpen = useUi(navUi, (s) => s.drawerOpen);
   const [sheet, setSheet] = useState<null | "search" | "link" | "create">(null);
-  const [compact, setCompact] = useCompactOnScroll();
+  const [scrolledCompact, setCompact] = useCompactOnScroll();
+  // A reader in reading mode (lib/nav/reading.ts): the capsule, unless he tapped it.
+  const reading = useUi(readingUi, (s) => (s.on ? !s.island : null));
+  const compact = reading ?? scrolledCompact;
+  const expand = () => (reading === null ? setCompact(false) : setReading({ island: true }));
   const keyboard = useKeyboardUp();
   const nav = useRef<HTMLElement>(null);
   const dock = useChatDock(nav, debug);
@@ -180,7 +185,7 @@ export function BottomIsland({ signedIn }: IslandProps["nav.bottom"]) {
         <button
           type="button"
           aria-label={t.navigation}
-          onClick={() => setCompact(false)}
+          onClick={expand}
           tabIndex={compact ? 0 : -1}
           className={`lk-glass absolute bottom-1 flex h-11 w-24 items-center justify-center rounded-full border border-[var(--glass-line)] shadow-[inset_0_1px_0_oklch(1_0_0/0.5),0_6px_18px_-6px_oklch(0.22_0.015_65/0.35)] transition-[opacity,transform] duration-300 dark:shadow-[inset_0_1px_0_oklch(1_0_0/0.1),0_6px_18px_-6px_oklch(0_0_0/0.6)] motion-reduce:transition-none ${
             compact

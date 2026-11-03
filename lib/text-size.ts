@@ -1,7 +1,7 @@
 /**
  * Text size (owner, 2026-11-03 03:10 JST): one scale for all the app's text,
- * and one more for each of two areas, the chat (packages/debug-chat) and the
- * study cards (/words slips, the /review card). Kept on the device
+ * and one more for each of three areas, the chat (packages/debug-chat), the
+ * study cards (/words slips, the /review card) and a book in the /read reader. Kept on the device
  * (`lk:pref:text-size`) and synced with the account (docs/prefs-sync.md,
  * `text-size.*`).
  *
@@ -9,9 +9,9 @@
  * so spacing and widths in rem keep their size. The scales are CSS custom
  * properties on `<html>`:
  *
- * - `--lk-fs-ui`, `--lk-fs-chat`, `--lk-fs-cards`: the three choices;
+ * - `--lk-fs-ui`, `--lk-fs-chat`, `--lk-fs-cards`, `--lk-fs-read`: the choices;
  * - `--lk-fs-k`: the factor in effect, `ui` on the page and `ui × area` inside
- *   `.lk-fs-chat` / `.lk-fs-cards` (app/globals.css). Every Tailwind `text-*`
+ *   `.lk-fs-chat` / `.lk-fs-cards` / `.lk-fs-read` (app/globals.css). Every Tailwind `text-*`
  *   size and the `fs-<px>` utility multiply by it.
  *
  * Set before first paint by TEXT_SIZE_BOOT_SCRIPT (lib/text-size-boot.ts), so a page never flashes
@@ -24,11 +24,11 @@ export const TEXT_STEPS = [0.85, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5] as const;
 export { TEXT_MIN, TEXT_MAX } from "@/lib/text-size-boot";
 import { TEXT_MIN, TEXT_MAX } from "@/lib/text-size-boot";
 
-export type TextArea = "ui" | "chat" | "cards";
-export const TEXT_AREAS: readonly TextArea[] = ["ui", "chat", "cards"];
+export type TextArea = "ui" | "chat" | "cards" | "read";
+export const TEXT_AREAS: readonly TextArea[] = ["ui", "chat", "cards", "read"];
 export type TextSizes = Record<TextArea, number>;
 
-const DEFAULTS: TextSizes = { ui: 1, chat: 1, cards: 1 };
+const DEFAULTS: TextSizes = { ui: 1, chat: 1, cards: 1, read: 1 };
 
 /** A stored value, or undefined when it is not a scale in range. */
 export function asScale(v: unknown): number | undefined {
