@@ -24,6 +24,9 @@ export function screenText(doc: Document = document, max = MAX_SCENE_SCREEN): st
     const t = n.textContent?.replace(/\s+/g, " ").trim();
     const el = n.parentElement;
     if (!t || !el || el.closest(`script, style, noscript, template, ${CHAT_FENCE}`)) continue;
+    // Hidden by CSS (display, visibility, opacity 0) is not on screen.
+    if (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true }))
+      continue;
     range.selectNodeContents(n);
     const r = range.getBoundingClientRect();
     if (!r.width || !r.height || r.bottom <= 0 || r.right <= 0 || r.top >= vh || r.left >= vw)

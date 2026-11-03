@@ -1013,14 +1013,18 @@ export class DebugHub {
   /**
    * Has the owner switched agent polish off (POLISH_OFF_FLAG at /dev/flags)?
    * Asked of the main Worker's DebugSessions entrypoint on each edit (edits are
-   * one per voice line at most). No binding, an older main Worker, an error or
-   * an odd answer: not off — polish as before, the switch only ever turns it off.
+   * one per voice line at most). Only an answer of exactly false lets polish
+   * through; "busy", an error or an odd answer count as off (unsure: the raw
+   * line stands). No binding, or a main Worker from before `flag()`: not off,
+   * polish as before, so the deploy order never matters.
    */
   private async polishOff(): Promise<boolean> {
+    const ask = this.sessions?.flag?.bind(this.sessions);
+    if (!ask) return false;
     try {
-      return (await this.sessions?.flag?.(POLISH_OFF_FLAG)) === true;
+      return (await ask(POLISH_OFF_FLAG)) !== false;
     } catch {
-      return false;
+      return true;
     }
   }
 

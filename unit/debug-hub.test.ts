@@ -2756,6 +2756,23 @@ describe("DebugHub agent edits of voice messages", () => {
     expect(owner.last("edited")).toMatchObject({ text: "Hello, world.", raw: "hello world" });
   });
 
+  it("an unsure flag answer (busy, an error) keeps the raw line; no flag() polishes as before", async () => {
+    for (const flag of [async () => "busy", async () => Promise.reject(new Error("d1"))]) {
+      const s = setup({ SESSIONS: { live: async () => "live", flag } });
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await s.msg(owner, voice("v1", "hello world"));
+      await s.msg(c, { type: "edit", id: "v1", text: "Hello, world." });
+      expect(c.last("error")?.error).toContain("polish is off");
+    }
+    const s = setup({ SESSIONS: { live: async () => "live" } });
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    await s.msg(owner, voice("v1", "hello world"));
+    await s.msg(c, { type: "edit", id: "v1", text: "Hello, world." });
+    expect(owner.last("edited")).toMatchObject({ text: "Hello, world." });
+  });
+
   it("refuses a typed line", async () => {
     const s = setup();
     const owner = s.page();

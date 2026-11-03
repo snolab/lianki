@@ -41,10 +41,11 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
   /**
    * A feature flag's value (lib/flags.ts registry keys only; anything else,
    * or over the rate limit, is false). The hub asks before an agent polishes
-   * a voice line (`stt.polish-off`). A D1 error throws: the hub treats it as unset.
+   * a voice line (`stt.polish-off`). "busy" over the rate limit; a D1 error
+   * throws. The hub treats either as unsure, and keeps the raw line.
    */
-  async flag(key: unknown): Promise<boolean> {
-    if (!allow()) return false;
+  async flag(key: unknown): Promise<boolean | "busy"> {
+    if (!allow()) return "busy";
     return flagLive(this.env.DB, key);
   }
 }

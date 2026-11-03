@@ -519,8 +519,8 @@ contain. If unsure, do not edit: the raw line stands. The context is what the
 voice line carries and what `eval.ts chat` prints with it:
 
 - `scene` — where it was spoken: the page's `path`, `title`, and `screen`, the
-  text visible on screen outside the chat (the deck's words, the book's
-  paragraph), up to `MAX_SCENE_SCREEN` (2000, the selection's bound).
+  text visible on screen outside the chat and not hidden by CSS (the deck's
+  words, the book's paragraph), up to `MAX_SCENE_SCREEN` (2000, the selection's bound).
   Captured by `pageScene()` (`packages/debug-chat/src/scene.ts`) when the line
   is sent; voice lines only (`cleanScene` in `wire.ts`).
 - `context.selection`, when something was attached;
@@ -529,15 +529,19 @@ voice line carries and what `eval.ts chat` prints with it:
 The hub holds every edit to that (`polishCheck` in
 `packages/debug-chat/src/polish.ts`, on the words as `Intl.Segmenter` splits
 them, the same for every script): punctuation, spacing, case and width change
-freely; a replaced run must be in the context and within 2x the length of what
-it replaces (the same stretch of audio); a removed run only if it repeats what
+freely (marks inside a word too: cant → can't); a replaced run must be in the
+context as whole words ("now" is not in "snow"), must not merely drop or add
+characters (不要 → 要 is a removal), and stays within 2x the length of what it
+replaces (the same stretch of audio); a removed run only if it repeats what
 is next to it; added words never. A refusal reads `not polished, the raw line
 stands: …`.
 
 **Off switch.** `stt.polish-off` at `/dev/flags` (docs/feature-flags.md):
 on, every edit is refused (`polish is off …`) and the chat keeps only what was
-heard. The hub asks the main Worker's `DebugSessions.flag()` on each edit; no
-answer means not off. Off (the default) is the behaviour above.
+heard. The hub asks the main Worker's `DebugSessions.flag()` on each edit; only an
+answer of exactly `false` lets polish through (busy or an error: the raw line
+stands). A main Worker without `flag()` means not off, so deploy order does
+not matter. Off (the default) is the behaviour above.
 
 **The rules** (`DebugHub.edit` in `workers/push/src/debug.ts`, each one unit-tested
 in `unit/debug-hub.test.ts`). `{type:"edit", id, text}` is accepted only if:

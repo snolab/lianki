@@ -104,6 +104,20 @@ describe("polishCheck: realistic garbles", () => {
     expect(polishCheck("", "deploy now", ["deploy now"]).ok).toBe(false);
   });
 
+  it("a context word must be whole: part of one never counts", () => {
+    expect(polishCheck("do not deploy", "do now deploy", ["snow"]).ok).toBe(false);
+    expect(polishCheck("do not deploy", "Do not deploy.", ["snow"]).ok).toBe(true);
+  });
+
+  it("a replacement that only drops characters is a removal (不要 → 要)", () => {
+    expect(polishCheck("不要合并", "要合并", ["要"]).ok).toBe(false);
+  });
+
+  it("apostrophes and marks inside a word are punctuation", () => {
+    expect(polishCheck("cant deploy", "can’t deploy.", []).ok).toBe(true);
+    expect(polishCheck("lets eat", "Let's eat!", []).ok).toBe(true);
+  });
+
   it("punctuation and spaces are not words", () => {
     expect(polishWords("Fix, the  sync-button!")).toEqual(["fix", "the", "sync", "button"]);
   });
