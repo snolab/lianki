@@ -47,18 +47,29 @@ const HOLD_MS = 500;
 
 // ── Text ────────────────────────────────────────────────────────────────
 
+/** The EPUB's inline emphasis, as its own elements (a closed set, never HTML). */
+function emphasise(node: ReactNode, kinds: Seg["k"], key: number): ReactNode {
+  if (!kinds) return node;
+  return kinds.reduceRight<ReactNode>((inner, k, i) => {
+    const Tag = k;
+    return <Tag key={`${key}k${i}`}>{inner}</Tag>;
+  }, node);
+}
+
 function segNode(g: Seg, fam: Map<string, Fam> | null, key: number): ReactNode {
   if (g.t < 0) {
     // In-paragraph line breaks of the book (verse, letters) stay line breaks.
-    if (!g.text.includes("\n")) return g.text;
+    if (!g.text.includes("\n")) return emphasise(g.text, g.k, key);
     const parts = g.text.split("\n");
     return parts.flatMap((p, i) => (i ? [<br key={`${key}b${i}`} />, p] : [p]));
   }
   const f = g.w && fam ? fam.get(g.w) : undefined;
-  return (
+  return emphasise(
     <span key={key} data-t={g.t} data-f={f === "k" ? undefined : f}>
       {g.text}
-    </span>
+    </span>,
+    g.k,
+    key,
   );
 }
 
@@ -68,12 +79,14 @@ function PieceText({
   fam,
   lang,
   last,
+  join,
 }: {
   para: Para;
   piece: Piece;
   fam: Map<string, Fam> | null;
   lang: string;
   last: boolean;
+  join?: "br" | "sp";
 }) {
   const ss = pieceSentences(para, piece);
   const cont = piece.s0 > 0;
@@ -86,6 +99,7 @@ function PieceText({
       data-cont={cont ? "" : undefined}
       data-open={open ? "" : undefined}
       data-last={last ? "" : undefined}
+      data-join={join}
     >
       {ss.map((st, i) => (
         <span key={piece.s0 + i} data-s={piece.s0 + i}>
@@ -104,6 +118,8 @@ export type RowCommon = {
   para: (line: number) => Para;
   lineText: (line: number) => string;
   fam: Map<string, Fam> | null;
+  /** A line that continues the paragraph before (the EPUB's <br>, or a long one split at import). */
+  joinOf: (line: number) => "br" | "sp" | undefined;
   /** Bumped when the word map arrives (memo key). */
   famV: number;
   lang: string;
@@ -158,6 +174,7 @@ function ItemBody({ p }: { p: RowCommon }) {
           fam={p.fam}
           lang={p.lang}
           last={i === b.pieces.length - 1}
+          join={pc.s0 === 0 ? p.joinOf(pc.line) : undefined}
         />
       ))}
     </>

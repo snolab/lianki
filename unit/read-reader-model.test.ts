@@ -11,6 +11,8 @@ import {
   itemWords,
   learningBand,
   localItems,
+  marksByLine,
+  sentencesFromCuts,
   pieceSentences,
   railLevel,
   roughWords,
@@ -309,5 +311,50 @@ describe("reader position: storage edges", () => {
       { id: "x", lines: [], headings: new Set(), chapterStarts: new Set(), lang: "en" },
       { itemId: "none", rating: 3, at: 0 },
     );
+  });
+});
+
+describe("reader model: the backend's cuts and the EPUB's markup", () => {
+  it("takes explicit sentence cuts, keeping the text exact", () => {
+    const text = "Mrs. Dupont arrive. Elle rit.";
+    expect(
+      sentencesFromCuts(text, [
+        [0, 19],
+        [20, 29],
+      ]),
+    ).toEqual(["Mrs. Dupont arrive. ", "Elle rit."]);
+    expect(sentencesFromCuts(text, [])).toEqual([text]);
+    const p = cutPara(text, "fr", "fr", [
+      [0, 19],
+      [20, 29],
+    ]);
+    expect(p.sentences.length).toBe(2);
+    expect(p.sentences.map((x) => x.text).join("")).toBe(text);
+  });
+
+  it("puts inline emphasis on the words it covers", () => {
+    const p = cutPara("A very big cat.", "en", "en", null, [
+      [2, 6, "em"],
+      [7, 10, "strong"],
+    ]);
+    const segs = p.sentences[0].segs;
+    expect(segs.find((g) => g.text === "very")?.k).toEqual(["em"]);
+    expect(segs.find((g) => g.text === "big")?.k).toEqual(["strong"]);
+    expect(segs.find((g) => g.text === "cat")?.k).toBeUndefined();
+    const m = marksByLine([
+      [3, 0, 2, "em"],
+      [3, 4, 5, "sup"],
+      [4, 0, 1, "script"],
+    ]);
+    expect(m.get(3)).toEqual([
+      [0, 2, "em"],
+      [4, 5, "sup"],
+    ]);
+    expect(m.has(4)).toBe(false);
+    const c = new ParaCache(["A very cat."], "en", "en", 10, {
+      cuts: () => [[0, 11]],
+      marks: () => [[2, 6, "em"]],
+    });
+    expect(c.get(0).sentences[0].segs.find((g) => g.text === "very")?.k).toEqual(["em"]);
   });
 });

@@ -47,6 +47,7 @@ import {
   type Fam,
   type WordRow,
   ParaCache,
+  marksByLine,
   blockLine,
   blockOfAnchor,
   blockOfLine,
@@ -206,7 +207,27 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     [id, lines, book, lang],
   );
   const blocks = useMemo(() => data.blocks(rbook), [data, rbook]);
-  const paras = useMemo(() => new ParaCache(lines, lang, normLang), [lines, lang, normLang]);
+  // The EPUB's own markup, when the book was imported with it (BookMeta
+  // marks / breaks / continues, feat/reader-data): emphasis and joins.
+  const markup = book as
+    | (BookMeta & {
+        marks?: [number, number, number, string][];
+        breaks?: number[];
+        continues?: number[];
+      })
+    | undefined;
+  const inline = useMemo(() => marksByLine(markup?.marks), [markup]);
+  const joins = useMemo(() => {
+    const m = new Map<number, "br" | "sp">();
+    for (const l of markup?.breaks ?? []) m.set(l, "br");
+    for (const l of markup?.continues ?? []) m.set(l, "sp");
+    return m;
+  }, [markup]);
+  const joinOf = useCallback((line: number) => joins.get(line), [joins]);
+  const paras = useMemo(
+    () => new ParaCache(lines, lang, normLang, 400, { marks: (l) => inline.get(l) ?? null }),
+    [lines, lang, normLang, inline],
+  );
   const para = useCallback((line: number) => paras.get(line), [paras]);
   const lineText = useCallback((line: number) => lines[line] ?? "", [lines]);
 
@@ -647,6 +668,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     () => ({
       para,
       lineText,
+      joinOf,
       fam: fam?.map ?? null,
       famV: fam?.v ?? 0,
       lang,
@@ -658,7 +680,7 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
       underlay,
       scrolling,
     }),
-    [para, lineText, fam, lang, touch, variant, mirror, onSwipe, onTap, scrolling],
+    [para, lineText, joinOf, fam, lang, touch, variant, mirror, onSwipe, onTap, scrolling],
   );
 
   // Rows remounted by the virtualiser get the reading highlight back.

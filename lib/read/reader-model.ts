@@ -45,6 +45,8 @@ export interface Seg {
   t: number;
   /** Its normalised form (lib/read/words.ts normWord), when it is a counted word. */
   w: string | null;
+  /** Inline emphasis over it, outermost first. */
+  k?: InlineKind[];
 }
 
 export interface Sentence {
@@ -111,27 +113,75 @@ export function sentencesOf(text: string, lang: string): string[] {
 }
 
 /**
+ * Sentences from explicit [start, end) cuts (the backend's sentence refs,
+ * lib/read/reader-api.ts SentenceRef): text between and after the cuts goes
+ * with the sentence before it, text before the first with the first, so the
+ * paragraph renders back exactly.
+ */
+export function sentencesFromCuts(text: string, cuts: readonly [number, number][]): string[] {
+  if (!cuts.length) return [text];
+  const out: string[] = [];
+  for (let i = 0; i < cuts.length; i++) {
+    const start = i === 0 ? 0 : cuts[i][0];
+    const end = i + 1 < cuts.length ? cuts[i + 1][0] : text.length;
+    out.push(text.slice(start, end));
+  }
+  return out;
+}
+
+/** Inline emphasis on a paragraph: [start, end, kind], UTF-16 offsets (the EPUB's own). */
+export type LineMark = [start: number, end: number, kind: InlineKind];
+export type InlineKind = "em" | "strong" | "sup" | "sub";
+
+/**
  * A paragraph cut into sentences and tokens. `normLang` is the language the
  * book's words were counted in (lib/read/words.ts), so a token's `w` matches
- * the word map's keys.
+ * the word map's keys. `cuts`: the sentences as the backend cut them (else
+ * Intl.Segmenter's). `marks`: the paragraph's inline emphasis.
  */
-export function cutPara(text: string, lang: string, normLang = lang): Para {
+export function cutPara(
+  text: string,
+  lang: string,
+  normLang = lang,
+  cuts?: readonly [number, number][] | null,
+  marks?: readonly LineMark[] | null,
+): Para {
   const { word } = segmenters(lang);
   let t = 0;
-  const sentences = sentencesOf(text, lang).map((st) => {
+  let base = 0;
+  const kindsAt = (o: number): InlineKind[] | undefined => {
+    if (!marks?.length) return undefined;
+    const k = marks.filter((m) => m[0] <= o && o < m[1]).map((m) => m[2]);
+    return k.length ? k : undefined;
+  };
+  const texts = cuts ? sentencesFromCuts(text, cuts) : sentencesOf(text, lang);
+  const sentences = texts.map((st) => {
     const segs: Seg[] = [];
     for (const s of word.segment(st)) {
-      if (s.isWordLike) segs.push({ text: s.segment, t: t++, w: normWord(s.segment, normLang) });
-      else {
-        const last = segs[segs.length - 1];
-        // Runs of non-words merge: fewer nodes.
-        if (last && last.t < 0) last.text += s.segment;
-        else segs.push({ text: s.segment, t: -1, w: null });
-      }
+      const o = base + s.index;
+      const k = kindsAt(o);
+      const last = segs[segs.length - 1];
+      if (s.isWordLike)
+        segs.push({
+          text: s.segment,
+          t: t++,
+          w: normWord(s.segment, normLang),
+          ...(k ? { k } : {}),
+        });
+      // Runs of non-words merge (fewer nodes), when they carry the same emphasis.
+      else if (last && last.t < 0 && String(last.k) === String(k)) last.text += s.segment;
+      else segs.push({ text: s.segment, t: -1, w: null, ...(k ? { k } : {}) });
     }
+    base += st.length;
     return { segs, text: st };
   });
   return { sentences };
+}
+
+/** Per-line extras from the backend: sentence cuts and inline marks. */
+export interface LineExtras {
+  cuts?(line: number): readonly [number, number][] | null;
+  marks?(line: number): readonly LineMark[] | null;
 }
 
 /** Paragraphs already cut, per book: a paragraph is cut once, when first shown. */
@@ -142,6 +192,7 @@ export class ParaCache {
     private lang: string,
     private normLang = lang,
     private max = 400,
+    private extras: LineExtras = {},
   ) {}
   get(line: number): Para {
     let p = this.map.get(line);
@@ -151,11 +202,32 @@ export class ParaCache {
       this.map.set(line, p);
       return p;
     }
-    p = cutPara(this.lines[line] ?? "", this.lang, this.normLang);
+    p = cutPara(
+      this.lines[line] ?? "",
+      this.lang,
+      this.normLang,
+      this.extras.cuts?.(line),
+      this.extras.marks?.(line),
+    );
     this.map.set(line, p);
     if (this.map.size > this.max) this.map.delete(this.map.keys().next().value as number);
     return p;
   }
+}
+
+/** Inline marks of a book (BookMeta.marks: [line, start, end, kind]) by line. */
+export function marksByLine(
+  marks: readonly (readonly [number, number, number, string])[] | undefined,
+): Map<number, LineMark[]> {
+  const m = new Map<number, LineMark[]>();
+  const kinds = new Set(["em", "strong", "sup", "sub"]);
+  for (const [line, a, z, k] of marks ?? []) {
+    if (!kinds.has(k)) continue;
+    const list = m.get(line) ?? [];
+    list.push([a, z, k as InlineKind]);
+    m.set(line, list);
+  }
+  return m;
 }
 
 // ── Items (the local adapter) ───────────────────────────────────────────

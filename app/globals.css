@@ -1010,6 +1010,12 @@ html[data-motion="off"] *::after {
 .lk-book .lk-para[data-open] {
   padding-bottom: 0;
 }
+/* A line that continues the paragraph before (the EPUB's <br>, a long
+ * paragraph split at import): no paragraph gap between them. */
+.lk-book .lk-para[data-join] {
+  margin-top: -0.45em;
+  padding-top: 0;
+}
 .lk-book .lk-head {
   margin: 0;
   padding: 1.6em 0 0.5em;
