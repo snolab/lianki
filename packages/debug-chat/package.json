@@ -26,6 +26,8 @@
     "./page-errors": "./src/page-errors.ts",
     "./tap-gesture": "./src/tap-gesture.ts",
     "./wire": "./src/wire.ts",
+    "./scene": "./src/scene.ts",
+    "./polish": "./src/polish.ts",
     "./voice": "./src/voice.ts",
     "./voiceprint": "./src/voiceprint.ts",
     "./VoiceprintPanel": "./src/VoiceprintPanel.tsx",

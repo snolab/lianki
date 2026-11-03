@@ -104,6 +104,9 @@
  *       (never read aloud again). Only the owner's LATEST line, only
  *       "source":"stt", at most 3 times; friends' lines never. --last targets
  *       the owner's latest line. Uses the saved grant; never pairs.
+ *       The hub refuses a polish its context does not support (polish.ts):
+ *       fix punctuation, homophones the line's `scene`, selection or thread
+ *       disambiguate, and stutters; never add, drop or invent words.
  *
  *   bun scripts/dev/eval.ts say --to /words/audio "text"
  *       Address a state-tree node instead of a thread (a `--to` starting

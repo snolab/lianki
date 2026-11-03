@@ -26,6 +26,7 @@ import {
   cleanTiming,
 } from "@lianki/debug-chat/wire";
 import { voiceLatency } from "@lianki/debug-chat/latency";
+import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
@@ -572,6 +573,8 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
       const wakeReason = wake ? mic?.wakeReason : undefined;
       // The page selection attached with the + menu (bounded as the hub bounds it).
       const context = cleanContext(opts?.context);
+      // Where a voice line was spoken (path, title, screen text): its polish draws on it.
+      const scene = opts?.source === "stt" ? pageScene() : undefined;
       sock.send(
         JSON.stringify({
           type: "chat",
@@ -584,6 +587,7 @@ export function DebugEval({ strings }: { strings?: Partial<PartnerStrings> } = {
           ...(speakerProof?.length ? { speakerProof } : {}),
           ...(wakeReason ? { wakeReason } : {}),
           ...(context ? { context } : {}),
+          ...(scene ? { scene } : {}),
         }),
       );
       // Its reply is timed against it (latency.ts); main-thread lines only.
