@@ -203,7 +203,7 @@ const glossPath = join(import.meta.dir, "exam-glosses.tsv");
 const written = parseGlosses(readFileSync(glossPath, "utf8"));
 
 /** Sentences found on cards in review: untrue as fact, or crude in context. */
-const SKIP_EXAMPLES = new Set(["Evolution is a lie.", "I provide escorts."]);
+const SKIP_EXAMPLES = new Set(["Evolution is a lie.", "I provide escorts.", "I'm a dominant top."]);
 // Tatoeba English sentences with their ids and authors; none that offend.
 type Credit = { id: string; by?: string };
 const credit = new Map<string, Credit>();
