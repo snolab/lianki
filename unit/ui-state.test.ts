@@ -197,6 +197,7 @@ describe("/words UI store", () => {
       helpOpen: false,
       anchors: { L1: "L1\u0000chat" },
       collapsed: [],
+      statsOpen: false,
     });
   });
 

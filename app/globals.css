@@ -496,6 +496,89 @@ ruby rt {
     opacity: 0;
   }
 }
+/* The /words stats strip (app/(app)/words/WordsStats.tsx): the heatmap's
+ * looks, all in the slips' own inks. Seals use the Again vermilion; the 正
+ * tally and ink dots a warm sumi; the bamboo slips a carved brown on cane. */
+.lk-stats {
+  --stats-brush: oklch(0.3 0.03 40);
+  --stats-faint: oklch(0.5 0 0 / 0.1);
+  --stats-carve: oklch(1 0 0 / 0.6);
+  --stats-cane: oklch(0.87 0.06 88);
+  --stats-notch: oklch(0.42 0.08 55);
+}
+@media (prefers-color-scheme: dark) {
+  .lk-stats {
+    --stats-brush: oklch(0.9 0.025 85);
+    --stats-faint: oklch(1 0 0 / 0.08);
+    --stats-carve: oklch(0.2 0.02 30 / 0.55);
+    --stats-cane: oklch(0.42 0.045 82);
+    --stats-notch: oklch(0.92 0.05 88);
+  }
+}
+.lk-ink-seal {
+  fill: var(--ink-again);
+}
+.lk-ink-carve {
+  stroke: var(--stats-carve);
+}
+.lk-ink-blank {
+  fill: var(--stats-faint);
+}
+.lk-ink-brush {
+  stroke: var(--stats-brush);
+}
+.lk-ink-ghost {
+  stroke: var(--stats-faint);
+}
+.lk-ink-dot {
+  fill: var(--stats-faint);
+}
+.lk-ink-wash {
+  fill: var(--stats-brush);
+}
+.lk-slip-strip {
+  background: var(--stats-cane);
+}
+.lk-ink-notch {
+  fill: var(--stats-notch);
+}
+.lk-ink-today {
+  stroke: oklch(from currentColor l c h / 0.5);
+}
+.lk-ink-picked {
+  stroke: var(--ink-easy);
+}
+/* A word's stamps in its sheet: one seal per grade that stands, oldest
+ * first, carved with the grade's key (1–4) so colour is never the only cue. */
+.lk-stamp-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.lk-grade-seal {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 4px;
+  background: var(--grade);
+  color: oklch(1 0 0 / 0.92);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: inset 0 0 0 1.5px oklch(1 0 0 / 0.45);
+}
+@media (prefers-color-scheme: dark) {
+  .lk-grade-seal {
+    color: oklch(0.2 0.02 30 / 0.9);
+    box-shadow: inset 0 0 0 1.5px oklch(0.2 0.02 30 / 0.4);
+  }
+}
+.lk-grade-seal[aria-pressed="true"] {
+  outline: 2px solid oklch(0.55 0 0 / 0.7);
+  outline-offset: 1px;
+}
+
 /* The selected icon (app/components/icons.tsx SealIcon): a seal-red stamp
  * with the glyph carved out, so the paper shows through — nothing is painted
  * behind it. Pressed on with the same settle as the grade stamps. */

@@ -40,6 +40,9 @@ export type WordList = {
   createdAt: string;
 };
 
+/** One local day of one list's study (WordsD1Repo.activity). */
+export type ActivityRow = { day: string; list_id: string; words: number; fresh: number };
+
 /** A word that has been reviewed at least once. */
 export type WordCard = {
   term: string;
@@ -592,6 +595,53 @@ export class WordsD1Repo {
       card: JSON.stringify(s.card),
     }));
     return { cards };
+  }
+
+  /**
+   * One word's reviews, oldest first: the stamps the word sheet shows. A
+   * re-grade or undo deleted its row, so only grades that stand are here.
+   */
+  async history(
+    listId: string,
+    term: string,
+    limit = 500,
+  ): Promise<{ rating: number; at: string }[]> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT rating, reviewed_at FROM word_reviews
+         WHERE email = ? AND list_id = ? AND term = ?
+         ORDER BY reviewed_at, rowid LIMIT ?`,
+      )
+      .bind(this.email, listId, term, limit)
+      .all<{ rating: number; reviewed_at: string }>();
+    return results.map((r) => ({ rating: Number(r.rating), at: r.reviewed_at }));
+  }
+
+  /**
+   * Study activity for the picker's heatmap (lib/words/stats.ts): per local
+   * day and list, the words graded and how many of them were new. `offsetMin`
+   * is the reader's UTC offset in minutes east (JST +540), so a day is theirs,
+   * not UTC's. Re-grades and undos delete their review row, so a word counts
+   * once per grade that stands.
+   */
+  async activity(since: Date, offsetMin: number): Promise<ActivityRow[]> {
+    const shift = `${offsetMin >= 0 ? "+" : "-"}${Math.abs(Math.trunc(offsetMin))} minutes`;
+    const { results } = await this.db
+      .prepare(
+        `SELECT substr(datetime(reviewed_at, ?), 1, 10) AS day, list_id,
+           COUNT(DISTINCT term) AS words,
+           COUNT(DISTINCT CASE WHEN state = 0 THEN term END) AS fresh
+         FROM word_reviews WHERE email = ? AND reviewed_at >= ?
+         GROUP BY day, list_id`,
+      )
+      .bind(shift, this.email, since.toISOString())
+      .all<ActivityRow>();
+    return results.map((r) => ({
+      day: r.day,
+      list_id: r.list_id,
+      words: Number(r.words) || 0,
+      fresh: Number(r.fresh) || 0,
+    }));
   }
 
   /** Store swipe telemetry (db/migrations/0010_swipe_log.sql). At most 200 per call. */

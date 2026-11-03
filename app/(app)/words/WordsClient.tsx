@@ -26,6 +26,8 @@ import {
   useState,
 } from "react";
 import { Icon, type IconName } from "@/app/components/icons";
+import WordsStats from "./WordsStats";
+import WordStamps from "./WordStamps";
 import { useIntlayer, useLocale } from "next-intlayer";
 import {
   closestCenter,
@@ -2363,6 +2365,14 @@ function ListPicker({
         </div>
       </div>
 
+      {studyable.length > 0 && (
+        <WordsStats
+          base={config.base}
+          listIds={studyable.map((l) => l.id)}
+          learned={studyable.reduce((n, l) => n + l.cards, 0)}
+          due={studyable.reduce((n, l) => n + l.due, 0)}
+        />
+      )}
       {studyable.length > 1 && (
         <button
           onClick={() => onOpen(ALL)}
@@ -4424,6 +4434,7 @@ function SlipSheet({
             {item.scene && <div className="mt-1 text-xs opacity-60">{item.scene}</div>}
           </div>
         )}
+        <WordStamps listId={item.listId} term={item.term} />
         {/* The row shows the example too; here it is in full. */}
         {item.ex && (
           <div

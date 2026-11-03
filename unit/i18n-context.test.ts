@@ -17,6 +17,7 @@ import wordsPhrases from "@/app/(app)/words/phrases.content";
 import wordsVoiceMode from "@/app/(app)/words/voice-mode.content";
 import leaveGuard from "@/app/components/leave-guard.content";
 import textSize from "@/app/components/text-size.content";
+import wordsStats from "@/app/(app)/words/stats.content";
 import walletCard from "@/app/(app)/membership/wallet-card.content";
 import inviteCard from "@/app/(app)/membership/invite-card.content";
 import creditUnits from "@/app/(app)/membership/credit-units.content";
@@ -66,6 +67,7 @@ describe.each([
   ["words-voice-mode", wordsVoiceMode],
   ["leave-guard", leaveGuard],
   ["text-size", textSize],
+  ["words-stats", wordsStats],
   ["wallet-card", walletCard],
   ["invite-card", inviteCard],
   ["credit-units", creditUnits],
