@@ -68,7 +68,7 @@ book a ✓, and the day it first passed is kept.
 ### French recognition, and language rules as data (2026-11-03)
 
 Owner, 18:53 JST, a French EPUB: "这里未识别的词有点多". On a public-domain
-test text (Verne, *Le tour du monde en quatre-vingts jours*, Project
+test text (Verne, _Le tour du monde en quatre-vingts jours_, Project
 Gutenberg #800; 66k running words) **25.3% of running words** were
 unrecognised. About half were inflected forms of lemmas our decks hold
 (était, dit, yeux, fut, cette), a quarter dictionary words outside the
@@ -223,7 +223,7 @@ performance (18:32), and keep visual nesting to one level (design-principles).
   today's marker.
 - **Position.** Stored as an anchor (line, offsetRatio), never pixels, and
   synced: D1 `read_progress(email, material_id, line, offset, read_through,
-  updated_at)`, written 1.5 s after scrolling stops and on `pagehide`; newest
+updated_at)`, written 1.5 s after scrolling stops and on `pagehide`; newest
   anchor wins, `read_through` only grows. localStorage stays as cache.
 - **Familiarity on every word.** From the per-book word map
   (`/api/read/[id]/words`, fetched once, memoised): unrecognised dotted
@@ -292,6 +292,19 @@ selecting DOM text.
   or catalogue); for a private book they are personal bookmarks.
 - **Phrases.** Phrase boundaries come from the extraction step (books-plan
   phase 1); until then the phrase level is skipped.
+- **Built** (reader v2, behind `read.reader-v2`): the rules in
+  `lib/read/reader-select.ts` (levels, fragments; unit-tested), the listener
+  and highlight in `app/(app)/read/[id]/use-reader-select.ts`, the card in
+  `reader-select-card.tsx`. Every level is drawn with the CSS Custom Highlight
+  API (an attribute where it is missing), never the DOM selection, so the
+  iOS selection menu never covers the card. The card takes the half of the
+  screen away from the finger, so the next click lands on the book. Links
+  name the book by its content hash; `/read/<hash>` redirects to the
+  signed-in user's own copy of that text or answers 404
+  (`lib/read/book-link.ts`). Gloss is a Wiktionary search and translate a
+  machine translation, both in a new tab; "New to me" on a word logs a
+  `select` exposure (no list API yet: extracts become cards later). QA:
+  `scripts/qa/qa-read-select.mjs`.
 
 ### No chunks in the reader (owner, 2026-11-03 ~18:50 JST)
 

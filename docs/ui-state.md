@@ -176,7 +176,8 @@ folds the sheet; it does not leave the page. `useBackToClose(open, close)`
   (`dropOrphan`). The entry stays, so one back after such a reload changes
   nothing on screen.
 
-In use: the /words slip sheet (double tap, right click). Candidates: the
+In use: the /words slip sheet (double tap, right click); the reader v2's sheets
+and its combo-click selection card (back clears the selection). Candidates: the
 phone nav drawer (`AppShell`), the language switcher dialog and the chat
 panel.
 

@@ -1,6 +1,7 @@
 import { GridFSBucket, ObjectId } from "mongodb";
 import { db } from "@/app/db";
 import { dbBackend, getBlobs, getD1 } from "@/lib/d1";
+import { bookHash } from "@/lib/read/units";
 
 export interface ReadMaterial {
   _id: ObjectId | string;
@@ -319,4 +320,51 @@ export async function findReadMaterialByText(
     .bind(userId, contentHash, JSON.stringify(lines))
     .first<ReadMaterialRow>();
   return row ? rowToMaterial(row) : null;
+}
+
+/**
+ * The id of the user's own material whose text has this book hash (the
+ * content hash a deep link names, lib/read/book-link.ts), newest first; null
+ * if the user has none. Looks only at `userId`'s rows. Rows from before the
+ * hash was stored are hashed here (and the hash saved), so an old upload
+ * still answers its links.
+ */
+export async function findReadMaterialIdByHash(
+  userId: string,
+  hash: string,
+): Promise<string | null> {
+  if (dbBackend() === "d1") {
+    const d1 = getD1();
+    const hit = await d1
+      .prepare(
+        "SELECT id FROM read_materials WHERE user_id = ? AND content_hash = ? ORDER BY updated_at DESC LIMIT 1",
+      )
+      .bind(userId, hash)
+      .first<{ id: string }>();
+    if (hit) return hit.id;
+    const { results } = await d1
+      .prepare(
+        "SELECT id, lines FROM read_materials WHERE user_id = ? AND content_hash IS NULL ORDER BY updated_at DESC",
+      )
+      .bind(userId)
+      .all<{ id: string; lines: string }>();
+    for (const r of results) {
+      const h = await bookHash(JSON.parse(r.lines || "[]"));
+      try {
+        await d1
+          .prepare("UPDATE read_materials SET content_hash = ? WHERE id = ? AND user_id = ?")
+          .bind(h, r.id, userId)
+          .run();
+      } catch {}
+      if (h === hash) return r.id;
+    }
+    return null;
+  }
+  const docs = await getReadMaterialsCollection(userId)
+    .find({ userId }, { projection: { _id: 1, lines: 1, contentHash: 1 } })
+    .sort({ updatedAt: -1 })
+    .toArray();
+  for (const d of docs)
+    if ((d.contentHash ?? (await bookHash(d.lines ?? []))) === hash) return String(d._id);
+  return null;
 }

@@ -48,6 +48,7 @@ import {
   type WordRow,
   ParaCache,
   marksByLine,
+  cutPara,
   blockLine,
   blockOfAnchor,
   blockOfLine,
@@ -76,6 +77,23 @@ import { useBackToClose } from "@/lib/use-back-to-close";
 import { BookScan } from "../BookWords";
 import { getLocalMaterial } from "./ReadViewClient";
 import { BlockRow, GradeStrip, type RowCommon } from "./reader-blocks";
+import { SelectCard, type CardActions, type UnitView } from "./reader-select-card";
+import { useReaderSelect } from "./use-reader-select";
+import {
+  COMBO_MS,
+  type ComboCtx,
+  type Unit,
+  countSentences,
+  decodeUnit,
+  emptyCounts,
+  sentenceOfToken,
+  tokenOffset,
+  tokenText,
+  tokenWord,
+  unitLink,
+} from "@/lib/read/reader-select";
+import { segmentLine } from "@/lib/read/units";
+import { sentenceId } from "@/lib/read/reader-api";
 
 type WindowVirtualizer = Virtualizer<Window, Element>;
 
@@ -130,6 +148,7 @@ type Material = ReadMaterial & {
   words?: WordsSummary;
   /** Reader v2's server side is on for him (GET /api/read/[id], lib/read/reader-api.ts). */
   readerV2?: boolean;
+  /** The content hash: deep links name the book by it (lib/read/book-link.ts). */
   bookHash?: string;
 };
 
@@ -279,6 +298,15 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   );
   const para = useCallback((line: number) => paras.get(line), [paras]);
   const lineText = useCallback((line: number) => lines[line] ?? "", [lines]);
+  const chapters = useMemo(() => book?.chapters ?? [], [book]);
+  /** A chapter's lines, [start, end). */
+  const chapterRange = useCallback(
+    (n: number): [number, number] | null =>
+      n >= 0 && n < chapters.length
+        ? [chapters[n].start, chapters[n + 1]?.start ?? lines.length]
+        : null,
+    [chapters, lines.length],
+  );
 
   // ── Familiarity: the per-book word map, fetched once ──
   const [fam, setFam] = useState<{ map: Map<string, Fam>; v: number } | null>(null);
@@ -466,11 +494,102 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
     [takeAnchor, data, id],
   );
 
-  // Restore once: the synced anchor (or this device's copy).
+  // ── Combo-click selection (lib/read/reader-select.ts, use-reader-select.ts) ──
+  const comboCtx = useMemo<ComboCtx>(
+    () => ({
+      interval: COMBO_MS,
+      // Phrase bounds come with extraction (books-plan phase 1): until then the level is skipped.
+      phraseAt: () => null,
+      chapterAt: (line) => (chapters.length ? chapterAt(chapters, line) : -1),
+      chapterRange,
+    }),
+    [chapters, chapterRange],
+  );
+  const sel = useReaderSelect({
+    listRef,
+    ctx: comboCtx,
+    scrolling: () => performance.now() - lastScrollAt.current < 100,
+  });
+  useBackToClose(sel.unit !== null, sel.clear);
+
+  /** The block a unit sits in, or -1 when the book has no such unit. */
+  const unitBlock = useCallback(
+    (u: Unit): number => {
+      if (!blocks.length) return -1;
+      if (u.kind === "book") return 0;
+      if (u.kind === "chapter") {
+        const r = chapterRange(u.n);
+        return r ? blockOfLine(blocks, r[0]) : -1;
+      }
+      if (u.line >= lines.length || !lines[u.line]?.trim()) return -1;
+      const ss = para(u.line).sentences;
+      let s = 0;
+      if (u.kind === "sentence") {
+        if (u.s >= ss.length) return -1;
+        s = u.s;
+      } else if (u.kind === "word" || u.kind === "phrase") {
+        const [t0, t1] = u.kind === "word" ? [u.t, u.t] : [u.t0, u.t1];
+        s = sentenceOfToken(ss, t0);
+        if (s < 0 || sentenceOfToken(ss, t1) < 0) return -1;
+      }
+      return blockOfAnchor(blocks, u.line, s);
+    },
+    [blocks, chapterRange, lines, para],
+  );
+
+  /** Opens a deep link: the unit at the eye line, flashed, its card shown. False: no such unit. */
+  const openLink = useCallback(
+    (u: Unit): boolean => {
+      const i = unitBlock(u);
+      if (i < 0) return false;
+      placed.current = i;
+      prog.current = true;
+      vz().scrollToIndex(i, { align: "start" });
+      dispatch({ type: "select", line: i });
+      sel.select(u, { flash: true });
+      // Twice: the rows around it are measured on the first frame.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const y =
+            u.kind === "chapter" || u.kind === "book"
+              ? (strip.current?.offsetHeight ?? 44) + 8
+              : eye();
+          const root = listRef.current;
+          const el =
+            u.kind === "word" || u.kind === "phrase" || u.kind === "sentence"
+              ? root?.querySelector<HTMLElement>(
+                  u.kind === "sentence"
+                    ? `[data-line="${u.line}"] [data-s="${u.s}"]`
+                    : `[data-line="${u.line}"] [data-t="${u.kind === "word" ? u.t : u.t0}"]`,
+                )
+              : null;
+          if (el) scrollTo(window.scrollY + el.getBoundingClientRect().top - y);
+          else placeBlock(i, y);
+        }),
+      );
+      return true;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [unitBlock, dispatch, placeBlock, scrollTo, sel.select],
+  );
+  const openLinkRef = useRef(openLink);
+  openLinkRef.current = openLink;
+  useEffect(() => {
+    const on = () => {
+      const u = decodeUnit(location.hash);
+      if (u) openLinkRef.current(u);
+    };
+    window.addEventListener("hashchange", on);
+    return () => window.removeEventListener("hashchange", on);
+  }, []);
+
+  // Restore once: a deep link's unit, else the synced anchor (or this device's copy).
   const restored = useRef(false);
   useEffect(() => {
     if (restored.current || !blocks.length) return;
     restored.current = true;
+    const linked = decodeUnit(location.hash);
+    if (linked && openLinkRef.current(linked)) return;
     let live = true;
     data.anchor(id).then((a) => {
       if (!live || !a) return;
@@ -718,8 +837,191 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
   const [sheet, setSheet] = useState<null | "toc" | "aa">(null);
   const closeSheet = useCallback(() => setSheet(null), []);
   useBackToClose(sheet !== null, closeSheet);
+  // A sheet over the book takes the selection's place.
+  const clearSel = sel.clear;
+  useEffect(() => {
+    if (sheet) clearSel();
+  }, [sheet, clearSel]);
 
-  const chapters = book?.chapters ?? [];
+  // ── The selection card: what is selected, its familiarity, its actions ──
+  const ts = useIntlayer("read-select");
+  const { locale } = useLocale();
+  const [selStatus, setSelStatus] = useState<string | null>(null);
+  useEffect(() => setSelStatus(null), [sel.unit]);
+  const view = useMemo<UnitView | null>(() => {
+    const u = sel.unit;
+    if (!u) return null;
+    const fm = fam?.map ?? null;
+    const v: UnitView = {
+      unit: u,
+      text: null,
+      title: null,
+      size: null,
+      counts: null,
+      coverage: null,
+    };
+    if (u.kind === "book") {
+      v.title = material.title;
+      v.size = {
+        words: material.words?.tokens ?? Math.round(lines.reduce((n, l) => n + roughWords(l), 0)),
+        chapters: chapters.length,
+      };
+      v.coverage = material.words?.coverage ?? null;
+      return v;
+    }
+    if (u.kind === "chapter") {
+      const r = chapterRange(u.n);
+      if (!r) return v;
+      v.title = chapters[u.n].title;
+      const heads = new Set(book?.headings ?? []);
+      const c = emptyCounts();
+      let words = 0;
+      let paras = 0;
+      for (let l = r[0]; l < r[1]; l++) {
+        if (!lines[l]?.trim() || heads.has(l)) continue;
+        paras++;
+        // Cut here, not through the row cache: a chapter would push the rows on screen out.
+        const p = cutPara(lines[l], lang, normLang);
+        for (const st of p.sentences) for (const g of st.segs) if (g.t >= 0) words++;
+        if (fm) countSentences(p.sentences, fm, undefined, c);
+      }
+      v.size = { words, paras };
+      v.counts = fm ? c : null;
+      return v;
+    }
+    const ss = para(u.line).sentences;
+    if (u.kind === "word") {
+      v.text = tokenText(ss, u.t, u.t);
+      const w = tokenWord(ss, u.t);
+      v.fam = w && fm ? fm.get(w) : undefined;
+      return v;
+    }
+    if (u.kind === "phrase") {
+      v.text = tokenText(ss, u.t0, u.t1);
+      v.counts = fm ? countSentences(ss, fm, [u.t0, u.t1]) : null;
+      return v;
+    }
+    const part = u.kind === "sentence" ? ss.slice(u.s, u.s + 1) : ss;
+    v.text = u.kind === "para" ? lineText(u.line) : (part[0]?.text ?? "");
+    v.counts = fm ? countSentences(part, fm) : null;
+    return v;
+  }, [
+    sel.unit,
+    fam,
+    material,
+    lines,
+    chapters,
+    chapterRange,
+    book,
+    lang,
+    normLang,
+    para,
+    lineText,
+  ]);
+
+  const copy = useCallback(
+    async (text: string, ok: string) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        setSelStatus(ok);
+      } catch {
+        setSelStatus(ts.copyFailed.value);
+      }
+    },
+    [ts],
+  );
+  const actions = useMemo<CardActions | null>(() => {
+    const u = view?.unit;
+    if (!view || !u) return null;
+    const ui = String(locale).split("-")[0];
+    const src = lang && lang !== "und" ? lang.split("-")[0] : "auto";
+    const open = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
+    const text =
+      u.kind === "chapter"
+        ? (() => {
+            const r = chapterRange(u.n);
+            return r
+              ? lines
+                  .slice(r[0], r[1])
+                  .filter((l) => l.trim())
+                  .join("\n\n")
+              : null;
+          })()
+        : view.text;
+    const a: CardActions = {
+      copyLink: () =>
+        void copy(unitLink(location.origin, material.bookHash ?? id, u), ts.linkCopied.value),
+      readFrom: () => {
+        const i = unitBlock(u);
+        if (i < 0) return;
+        speaker.unlock();
+        placed.current = null;
+        setFollow(true);
+        dispatch({ type: "select", line: i });
+        dispatch({ type: "play" });
+      },
+    };
+    if (text && u.kind !== "book") a.copyText = () => void copy(text, ts.textCopied.value);
+    if (view.text && (u.kind === "word" || u.kind === "phrase"))
+      a.lookUp = () =>
+        open(
+          `https://${ui}.wiktionary.org/w/index.php?search=${encodeURIComponent(view.text!.trim())}`,
+        );
+    if (view.text && (u.kind === "phrase" || u.kind === "sentence" || u.kind === "para"))
+      a.translate = () =>
+        open(
+          `https://translate.google.com/?sl=${src}&tl=${ui}&op=translate&text=${encodeURIComponent(view.text!.trim())}`,
+        );
+    const hash = material.bookHash;
+    if (u.kind === "word" && signedIn && material.readerV2 && hash)
+      a.markNew = () => {
+        // An explicit "not recognised" (books-plan, option A): the exposure log
+        // only; its sentence as the server cuts the line (lib/read/units.ts).
+        const ss = para(u.line).sentences;
+        const off = tokenOffset(ss, u.t);
+        const idx = segmentLine(lines[u.line] ?? "", normLang).findIndex(
+          ([s0, s1]) => off >= s0 && off < s1,
+        );
+        if (off < 0 || idx < 0) return setSelStatus(ts.markFailed.value);
+        void fetch(`/api/read/${id}/exposures`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            events: [
+              {
+                kind: "select",
+                sid: sentenceId(hash, u.line, idx),
+                word: tokenText(ss, u.t, u.t),
+                at: new Date().toISOString(),
+              },
+            ],
+          }),
+        })
+          .then((r) => r.json().catch(() => null))
+          .then((d: { accepted?: number; duplicates?: number } | null) =>
+            setSelStatus(
+              d && (d.accepted || d.duplicates) ? ts.markedNew.value : ts.markFailed.value,
+            ),
+          )
+          .catch(() => setSelStatus(ts.markFailed.value));
+      };
+    return a;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    view,
+    locale,
+    lang,
+    normLang,
+    lines,
+    chapterRange,
+    material,
+    id,
+    signedIn,
+    copy,
+    unitBlock,
+    ts,
+  ]);
+
   const eyeLine = blocks[eyeIndex] ? blockLine(blocks[eyeIndex]) : 0;
   const chapter = chapters.length ? chapterAt(chapters, eyeLine) : -1;
   const chapterTitle = chapter >= 0 ? chapters[chapter].title : material.title;
@@ -903,6 +1205,16 @@ function Reader({ id, material, signedIn }: { id: string; material: Material; si
             <span aria-hidden>{speaking ? "❚❚" : "▶"}</span>
           </button>
         </div>
+        {view && actions && (
+          <SelectCard
+            view={view}
+            actions={actions}
+            atTop={sel.low}
+            bottom={`calc(env(safe-area-inset-bottom) + ${(islandOpen ? 8.5 : 4.75) + (playing && !follow ? 3 : 0)}rem)`}
+            status={selStatus}
+            onClose={sel.clear}
+          />
+        )}
         {player.status === "error" && (
           <p role="alert" data-testid="read-status" data-status="error" className="sr-only">
             {tp.failed} ({player.error})
