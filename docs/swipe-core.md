@@ -23,6 +23,7 @@ every feel.
 | `lib/words/swipe-feel.ts`          | `SwipeFeel` tokens, the presets, prefs parsing, `resolveFeel`            |
 | `lib/words/swipe-core.tsx`         | the React core: contexts, `useSwipeGesture`, prefs store (shared module) |
 | `lib/words/requeue.ts`             | a miss's copy; its slip retires ("↓ back"): locked, no grade, no undo   |
+| `lib/words/native-slip.ts`         | New swipe rest rules: on a detent, a glide home that stops short          |
 | `lib/words/islands/*.tsx`          | the UI islands                                                           |
 | `app/(app)/words/WordsClient.tsx`  | `TouchWordRow` (js) and `NativeSlipRow` (native) wire the core           |
 | `unit/swipe-core.test.ts`          | physics, machine, tokens, the interface                                  |
@@ -36,6 +37,19 @@ a timer, not a render). The machine then turns a sideways drag into a dead
 `scrolling` gesture; the native row holds its scroller like a steep drag.
 Tap and hold still work. `grade()` and Undo refuse it too. Before it is due,
 a re-grade or an undo withdraws the waiting copy, so no ghost comes back.
+
+## The New swipe comes to rest
+
+A native slip settles on the browser's `scrollend`, or, lifted while it
+already rests on a detent, on a timer 50 ms after the lift. The timer counts
+a slip as resting only within half a pixel of a detent (`onDetent`). Chrome
+on Android often lifts a pixel short and then snaps that pixel itself, over
+about 200 ms. That snap overrode the glide home the timer had started, and
+left the slip on the first detent (the owner, 2026-11-03). A glide home that
+stops short of home glides again, and after `GLIDE_RETRIES` it jumps home
+(`homeStep`). A watch `GLIDE_WATCH_MS` after each glide covers a glide that
+was cancelled with no `scrollend` at all. `qa-words` checks six slow slides
+lifted short of a detent.
 
 ## Interface v1 (`SWIPE_CORE_IFACE`)
 

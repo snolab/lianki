@@ -1322,6 +1322,46 @@ try {
           Math.round(document.querySelectorAll(".slip-scroller")[3].scrollLeft),
         );
         check(home === 88, `${tag} the graded slip glides home (scrollLeft ${home})`);
+        // A slow slide lifted a pixel short of the first detent (the owner,
+        // Android, 2026-11-03: "stuck on the first slot"). Chromium snaps the
+        // last pixel itself after the lift, and that snap used to override the
+        // glide home, leaving the slip on Good's detent. Every one must grade
+        // and come home (lib/words/native-slip.ts); 3 in 10 stuck before.
+        const listTop = await m
+          .locator("[data-words-top]")
+          .evaluate((el) => el.getBoundingClientRect().bottom);
+        const short = [];
+        for (let n = 0; n < 6; n++) {
+          let at = null;
+          for (let i = 0; !at && i < 40; i++) {
+            const b = await mrows.nth(i).boundingBox();
+            if (b && b.y > listTop + 50 && b.y + b.height < 700) at = { i, b };
+          }
+          const di = await mrows.nth(at.i).getAttribute("data-i");
+          const status = () => m.locator(`[data-i="${di}"] span.tabular-nums`).innerText();
+          const was = await status();
+          const [x, y] = [at.b.x + at.b.width / 2, at.b.y + at.b.height / 2];
+          await touch("touchStart", x, y);
+          for (let k = 1; k <= 12; k++) {
+            await touch("touchMove", x + (60 * k) / 12, y);
+            await m.waitForTimeout(16);
+          }
+          await m.waitForTimeout(120);
+          await touch("touchEnd");
+          await m.waitForTimeout(1500);
+          const left = await m.evaluate(
+            (i) =>
+              Math.round(
+                document.querySelector(`[data-i="${i}"] .slip-scroller`)?.scrollLeft ?? -1,
+              ),
+            di,
+          );
+          short.push(`${left}:${(await status()) !== was ? "graded" : "not"}`);
+        }
+        check(
+          short.every((s) => s === "88:graded"),
+          `${tag} a slow slide lifted short of a detent grades and comes home, every time (${short.join(" ")})`,
+        );
         // A vertical drag on a slip scrolls the list.
         const top0 = await m.locator('[role="list"]').evaluate((el) => el.scrollTop);
         await drag(6, 0, -120);

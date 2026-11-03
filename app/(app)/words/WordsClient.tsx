@@ -4,6 +4,7 @@ import { motionOff, setMotionOff, useMotionOff } from "@/lib/motion-pref";
 import { useTextScale } from "@/lib/use-text-size";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
 import { advanceTop, shouldAdvance } from "@/lib/words/advance";
+import { GLIDE_WATCH_MS, homeStep, onDetent } from "@/lib/words/native-slip";
 import {
   afterGrade,
   emptyRequeue,
@@ -4797,6 +4798,12 @@ function NativeSlipRow({
       samples: [] as { t: number; x: number }[],
       /** The spring release's frame while it runs (feel.nativeRelease). */
       springing: 0,
+      /** Glides home started for this rest (lib/words/native-slip.ts, homeStep). */
+      glides: 0,
+      /** Looks again after a glide home, in case it was cancelled with no scrollend. */
+      watch: undefined as ReturnType<typeof setTimeout> | undefined,
+      /** When this slip last scrolled (performance.now()). */
+      scrolledAt: 0,
     };
     const hasScrollEnd = "onscrollend" in window;
     /**
@@ -4851,17 +4858,41 @@ function NativeSlipRow({
     };
     const glideHome = () => {
       g.returning = true;
+      g.glides++;
       el.scrollTo({ left: home, behavior: "smooth" });
+      clearTimeout(g.watch);
+      g.watch = setTimeout(watchGlide, GLIDE_WATCH_MS);
+    };
+    /**
+     * A glide home stopped (scrollend, or the watch): home, or it stopped
+     * short — the browser's own snap after the lift can override the smooth
+     * scroll and leave the slip on the first detent — so glide again, and in
+     * the end put it home at once. Nothing else would ever move it.
+     */
+    const backHome = () => {
+      const step = homeStep(home - el.scrollLeft, g.glides);
+      if (step === "glide") return void glideHome();
+      clearTimeout(g.watch);
+      g.returning = false;
+      g.glides = 0;
+      if (step === "jump") el.scrollTo({ left: home, behavior: "instant" });
+    };
+    const watchGlide = () => {
+      if (g.touching || g.springing || !g.returning) return;
+      // Still moving: its own scrollend (or the next watch) decides.
+      if (performance.now() - g.scrolledAt < 150) {
+        g.watch = setTimeout(watchGlide, 150);
+        return;
+      }
+      backHome();
     };
     /** The scroller came to rest: grade where it landed, then glide home. */
     const settle = () => {
       if (g.touching) return; // still under the finger: the gesture isn't over
       if (g.springing) return; // the spring release has it
       const offset = home - el.scrollLeft; // + = slid right
-      if (g.returning) {
-        if (Math.abs(offset) < 1) g.returning = false;
-        return;
-      }
+      if (g.returning) return void backHome();
+      g.glides = 0;
       // Only a slide this gesture made grades (not a glide caught by a tap,
       // nor a steep drag the browser let slide anyway).
       const swiped = g.panned && g.moved && !g.steep;
@@ -4886,6 +4917,8 @@ function NativeSlipRow({
       // A slip still springing home finishes its path: this touch only catches it.
       g.caught = g.returning || !!g.springing;
       g.returning = false;
+      g.glides = 0;
+      clearTimeout(g.watch);
       g.panned = g.moved = false;
       g.x0 = e.touches[0].clientX;
       g.y0 = e.touches[0].clientY;
@@ -4936,9 +4969,11 @@ function NativeSlipRow({
       // already run. Settle here, or the slip would stay slid off its face,
       // its grade label showing. A slip still coasting is between levels:
       // its own scrollend / quiet timer settles it.
+      // On a detent within a physical pixel only: a pixel short, Chrome still
+      // snaps it (~200 ms) and that snap would override the glide home; its
+      // scrollend settles it instead (lib/words/native-slip.ts).
       setTimeout(() => {
-        const k = el.scrollLeft / a;
-        if (!g.touching && !g.returning && Math.abs(k - Math.round(k)) < 1 / a) settle();
+        if (!g.touching && !g.returning && onDetent(el.scrollLeft, a)) settle();
       }, 50);
     };
     const pointerdown = (e: PointerEvent) => {
@@ -4983,6 +5018,7 @@ function NativeSlipRow({
     // takes over the first one's spot).
     const strip = el.parentElement?.querySelector<HTMLElement>("[data-swipe-strip]");
     const reveal = () => {
+      g.scrolledAt = performance.now();
       const offset = home - el.scrollLeft;
       showReveal(strip, Math.max(-2, Math.min(2, Math.round(offset / a))));
       if (!g.touching) return;
@@ -5004,6 +5040,7 @@ function NativeSlipRow({
     else el.addEventListener("scroll", scrolled, { passive: true });
     return () => {
       clearTimeout(g.hold);
+      clearTimeout(g.watch);
       clearTimeout(quiet);
       cancelAnimationFrame(g.springing);
       el.removeEventListener("touchstart", touchstart);
