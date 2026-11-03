@@ -378,6 +378,47 @@ try {
   );
   await page.keyboard.press("Escape");
   check((await page.locator("[data-slip-sheet]").count()) === 0, "Escape closes the sheet");
+  // Back folds the sheet and stays on /words (owner, 2026-11-03); a sheet
+  // closed by its own UI leaves no extra history entry behind
+  // (lib/back-to-close.ts).
+  {
+    const where = () => page.evaluate(() => [location.href, history.length, history.state]);
+    await page.waitForTimeout(300); // Escape's history.back() lands
+    const [hrefBefore, lenBefore] = await where();
+    await loose.click({ button: "right" });
+    await page.locator("[data-slip-sheet]").waitFor({ timeout: 3000 });
+    const [, lenOpen, stateOpen] = await where();
+    check(
+      lenOpen === lenBefore + 1 && typeof stateOpen?.__lkBack === "string",
+      `an open sheet has one history entry of its own (${lenBefore} → ${lenOpen})`,
+    );
+    await page.evaluate(() => history.back());
+    await page
+      .locator("[data-slip-sheet]")
+      .waitFor({ state: "detached", timeout: 3000 })
+      .catch(() => {});
+    await page.waitForTimeout(300);
+    const [hrefAfter] = await where();
+    check(
+      (await page.locator("[data-slip-sheet]").count()) === 0 && hrefAfter === hrefBefore,
+      `back closes the sheet and stays on /words (${hrefAfter})`,
+    );
+    check(
+      (await page.locator('[role="listitem"]').count()) > 0,
+      "after back the word list is still there",
+    );
+    // Reopen, close by Escape: the sheet's entry is consumed, so the next
+    // back leaves /words for the page before, not a dead entry.
+    await loose.click({ button: "right" });
+    await page.locator("[data-slip-sheet]").waitFor({ timeout: 3000 });
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    const [hrefEsc, , stateEsc] = await where();
+    check(
+      hrefEsc === hrefBefore && stateEsc?.__lkBack === undefined,
+      "a sheet closed by Escape consumes its history entry",
+    );
+  }
   await shot(page, "words-desktop-graded");
   check(
     /^\d+(\.\d)?(s|m|h|d|mo|y)$/.test(await statusOf(0)),
@@ -1265,6 +1306,21 @@ try {
       );
       await m.getByRole("button", { name: "Cancel" }).click();
       check((await m.locator("[data-slip-sheet]").count()) === 0, `${tag} Cancel closes the sheet`);
+      // The phone's back with the sheet open folds it, on /words still.
+      await m.waitForTimeout(400);
+      const hrefBefore = await m.evaluate(() => location.href);
+      await m.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+      await m.locator("[data-slip-sheet]").waitFor({ timeout: 3000 });
+      await m.evaluate(() => history.back());
+      await m
+        .locator("[data-slip-sheet]")
+        .waitFor({ state: "detached", timeout: 3000 })
+        .catch(() => {});
+      check(
+        (await m.locator("[data-slip-sheet]").count()) === 0 &&
+          (await m.evaluate(() => location.href)) === hrefBefore,
+        `${tag} back closes the double-tap sheet and stays on /words`,
+      );
       // Swipe vs scroll: a steep drag is a scroll and never grades; a clearly
       // sideways drag grades. A: pointer drags (WordRow reads pointer events).
       // B: real touches through CDP, so Chromium's own gesture code scrolls the

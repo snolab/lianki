@@ -84,7 +84,7 @@ target that is not built yet.
 | /words list picker: folded groups | session `lk:ui:words` (`collapsed`)      | done (was local `lk:words-collapsed:<base>`, carried over once) |
 | /words keyboard help strip (`?`)  | session `lk:ui:words`                    | done                                                            |
 | swipe tuner panel open            | session `lk:ui:swipe-tuner`              | done                                                            |
-| slip action sheet open            | memory (it is modal, closed on refresh)  | intentional                                                     |
+| slip action sheet open            | memory (it is modal, closed on refresh)  | intentional; back closes it (below)                             |
 | sidebar collapsed                 | local `lk:sidebar`                       | → `lk:pref:sidebar`                                             |
 | phone drawer open                 | memory, `navUi` (lib/nav/ui-store.ts)    | done: the bottom island opens it too                            |
 | recent pages (nav)                | session `lk:ui:nav`                      | done                                                            |
@@ -150,6 +150,30 @@ These are queues, logs and sync bookkeeping, and they stay where they are:
 (`lk:s:<key>`, zod-checked, [dev-hot-islands.md](dev-hot-islands.md)) is a
 separate channel. It is for an island to talk to another island, not to
 persist UI.
+
+## Back closes an overlay
+
+Owner rule (2026-11-03): with a sheet open, the browser's or the phone's back
+folds the sheet; it does not leave the page. `useBackToClose(open, close)`
+(`lib/use-back-to-close.ts` → `lib/back-to-close.ts`) does it for any overlay.
+
+- **Opening** pushes one history entry: the same URL, the same state plus a
+  marker `__lkBack`. The state keeps Next.js's `__NA` tree, so its patched
+  `pushState` passes it straight through and the router sees no change.
+  Showing another word while the sheet stays open adds nothing.
+- **Back** (popstate off that entry) calls `close`.
+- **Closed by its own UI** (scrim, Cancel, Escape, an action): one
+  `history.back()` consumes the entry, only if it is still the current one,
+  so a `router.push` since then is never undone. A reopen before that back
+  has landed waits for it.
+- **Reload** with a sheet open: the sheet is memory state and does not come
+  back. The marker left in that entry is stripped on the next mount
+  (`dropOrphan`). The entry stays, so one back after such a reload changes
+  nothing on screen.
+
+In use: the /words slip sheet (double tap, right click). Candidates: the
+phone nav drawer (`AppShell`), the language switcher dialog and the chat
+panel.
 
 ## Migrating an existing key
 
