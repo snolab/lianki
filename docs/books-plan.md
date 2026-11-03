@@ -261,3 +261,14 @@ selecting DOM text.
   or catalogue); for a private book they are personal bookmarks.
 - **Phrases.** Phrase boundaries come from the extraction step (books-plan
   phase 1); until then the phrase level is skipped.
+
+### Show the book as it is (owner, 2026-11-03 ~18:52 JST)
+
+"在 UI 上，图书导入进来段落长什么样，我们也显示成什么样". The reader shows the
+book's own structure, not ours: one block per paragraph of the source, the
+book's headings as headings, line breaks inside a paragraph (verse, letters,
+dialogue lines) kept, and inline emphasis (italics, bold, small caps)
+preserved. Nothing re-wrapped into our own units. The EPUB import (#448)
+today keeps paragraphs and headings but drops inline emphasis and in-paragraph
+line breaks; the reader rebuild should store and render them (a small inline
+markup per line, sanitised — never raw HTML from the book).
