@@ -24,6 +24,7 @@ import { readingUi, setReading } from "../reading";
 import { CreateSheet } from "./CreateSheet";
 import { SearchPalette } from "./SearchPalette";
 import {
+  useBottomReserve,
   useChatDock,
   useCompactOnScroll,
   useDebugMode,
@@ -138,27 +139,7 @@ export function BottomIsland({ signedIn }: IslandProps["nav.bottom"]) {
   }, []);
 
   // What the island covers at rest, for <main>'s bottom padding.
-  useEffect(() => {
-    const el = nav.current;
-    if (!el) return;
-    const root = document.documentElement;
-    const set = () => {
-      const h = el.offsetHeight; // 0 while display:none (tablet and up)
-      if (h)
-        root.style.setProperty(
-          "--lk-bottom-reserve",
-          `calc(${h + 16}px + env(safe-area-inset-bottom))`,
-        );
-      else root.style.removeProperty("--lk-bottom-reserve");
-    };
-    const ro = new ResizeObserver(set);
-    ro.observe(el);
-    set();
-    return () => {
-      ro.disconnect();
-      root.style.removeProperty("--lk-bottom-reserve");
-    };
-  }, []);
+  useBottomReserve(nav);
 
   const closeSheet = useCallback(() => setSheet(null), []);
 

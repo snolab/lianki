@@ -59,9 +59,12 @@ import {
   withoutNode,
 } from "@/lib/words/tree";
 import { shownName } from "@/lib/words/lang-groups";
+import { planArrange } from "@/lib/words/arrange";
 import {
-  branchKeys,
   buildAddTree,
+  loadAddOpen,
+  saveAddOpen,
+  toggleOpenKey,
   coverageBands,
   defaultOpen,
   freqListsOf,
@@ -88,6 +91,17 @@ import type { VoiceAccess } from "@/lib/words/voice-access";
 import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/words/voice-dispatch";
 import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
+import { backParts } from "@/lib/words/row-layout";
+import { withPickedExample, type Example } from "@/lib/words/example-pick";
+import {
+  exampleSegments,
+  famLang,
+  famMark,
+  missingWords,
+  recordHits,
+  type FamHit,
+  type FamMap,
+} from "@/lib/words/example-marks";
 import { createSequencer } from "@/lib/words/sequence";
 import { AudioCache } from "@/lib/words/audio-cache";
 import { AUDIO_CACHE_NAME, AudioDisk } from "@/lib/words/audio-disk";
@@ -401,6 +415,8 @@ type Entry = {
   /** An example sentence in the target language, and its English. */
   ex?: string;
   exTr?: string;
+  /** More example sentences, if the deck has them: one is shown per showing (lib/words/example-pick.ts). */
+  exs?: Example[];
   /** Phrase decks: a usage note (English), casual / polite, and the moment it is said in. */
   note?: string;
   register?: Register;
@@ -464,6 +480,30 @@ function useTouch() {
     return () => mq.removeEventListener("change", on);
   }, []);
   return touch;
+}
+
+/**
+ * An example sentence with its words marked by the user's familiarity
+ * (lib/words/example-marks.ts): a word with a card gets a solid (weak) or
+ * dashed (learning) line; mastered words and words without a card stay plain.
+ */
+function MarkedExample({ text, lang, fam }: { text: string; lang: string; fam: FamMap }) {
+  const known = fam.get(famLang(lang));
+  if (!known) return <>{text}</>;
+  return (
+    <>
+      {exampleSegments(text, lang).map((s, k) => {
+        const mark = s.word ? famMark(known.get(s.word)) : null;
+        return mark ? (
+          <span key={k} className={`lk-fam-${mark}`} data-fam={mark}>
+            {s.text}
+          </span>
+        ) : (
+          s.text
+        );
+      })}
+    </>
+  );
 }
 
 /**
@@ -2324,19 +2364,21 @@ function ListPicker({
   // never starts studying: the learner stays here and opens a list himself.
   const addTree = useMemo(() => buildAddTree(builtIn, SCENARIOS, EXTERNAL_SEARCHES), [builtIn]);
   const [ticked, setTicked] = useState<Set<string>>(() => new Set());
-  const [openKeys, setOpenKeys] = useState<Set<string>>(() =>
-    defaultOpen(
-      addTree,
-      studyable.map((l) => l.lang),
-      typeof navigator === "undefined" ? [] : [...(navigator.languages ?? [])],
-    ),
+  const [openKeys, setOpenKeys] = useState<Set<string>>(
+    () =>
+      loadAddOpen(config.base) ??
+      defaultOpen(
+        addTree,
+        studyable.map((l) => l.lang),
+        typeof navigator === "undefined" ? [] : [...(navigator.languages ?? [])],
+      ),
   );
-  // Unfolding a node unfolds everything under it too; folding keeps that inside.
+  // Folding a node hides its whole branch; unfolding it shows its branches as
+  // they were (the first time, all of them open). Kept per device.
   const toggleOpen = (node: AddNode) =>
     setOpenKeys((s) => {
-      const n = new Set(s);
-      if (n.has(node.key)) n.delete(node.key);
-      else for (const k of [node.key, ...branchKeys(node)]) n.add(k);
+      const n = toggleOpenKey(node, s);
+      saveAddOpen(config.base, n);
       return n;
     });
   const [addedNow, setAddedNow] = useState<AddedNow | null>(null);
@@ -2344,6 +2386,68 @@ function ListPicker({
   /** A built-in list's name in the toast: a phrase deck by its scenario. */
   const addName = (c: CatalogMeta) =>
     isPhraseMeta(c) && c.scenario ? scenarioName(c.scenario) : c.name;
+
+  // "Arrange by language" (lib/words/arrange.ts): every list he has into
+  // language → kind → lists in learning order, with Undo while it shows.
+  const { locale } = useLocale();
+  const [arrangedNow, setArrangedNow] = useState<{
+    before: { id: string; parentId: string | null }[];
+    made: string[];
+    at: number;
+  } | null>(null);
+  const arrange = async () => {
+    const index = new Map(catalog.map((c, i) => [c.id, i]));
+    const labels = {
+      freq: text.freqLists.value,
+      phrase: phraseText.phrases.value,
+      exam: text.examLists.value,
+    };
+    const plan = planArrange(lists, {
+      isGroup,
+      metaOf: (l) => catalogById.get(l.source ?? ""),
+      catalogIndex: (l) => index.get(l.source ?? "") ?? catalog.length,
+      kindLabels: labels,
+    });
+    const before = flat.map((r) => ({ id: r.id, parentId: r.parentId }));
+    const ids = new Map<string, string>();
+    setBusy(true);
+    try {
+      for (const g of plan.make) {
+        const { list } = await api<{ list: WordList }>("/api/words/lists", {
+          method: "POST",
+          body: JSON.stringify({
+            name: g.kind ? labels[g.kind] : langName(g.lang, locale),
+            lang: g.lang,
+            source: groupSource,
+          }),
+        });
+        ids.set(g.key, list.id);
+      }
+      const order = plan.order(ids);
+      await api("/api/words/lists", { method: "PATCH", body: JSON.stringify({ order }) });
+      setArrangedNow({ before, made: [...ids.values()], at: Date.now() });
+    } finally {
+      await onRefresh().catch(() => {});
+      setBusy(false);
+    }
+  };
+  const undoArrange = async (a: NonNullable<typeof arrangedNow>) => {
+    setArrangedNow(null);
+    setBusy(true);
+    try {
+      await api("/api/words/lists", { method: "PATCH", body: JSON.stringify({ order: a.before }) });
+      // The groups it made are empty again now.
+      for (const id of a.made) await api(`/api/words/lists/${id}`, { method: "DELETE" });
+    } finally {
+      await onRefresh().catch(() => {});
+      setBusy(false);
+    }
+  };
+  useEffect(() => {
+    if (!arrangedNow) return;
+    const t = setTimeout(() => setArrangedNow(null), UNDO_MS);
+    return () => clearTimeout(t);
+  }, [arrangedNow]);
 
   /** Add these built-in lists in one go (Add selected, or a language's Add all). */
   const addLists = async (all: CatalogMeta[]) => {
@@ -2565,6 +2669,31 @@ function ListPicker({
         >
           {text.newGroup}
         </button>
+        {studyable.length > 1 &&
+          (arrangedNow ? (
+            <span className="flex items-center gap-2 text-sm" data-arranged>
+              <span className="opacity-70">{text.arranged}</span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => undoArrange(arrangedNow)}
+                data-undo-arrange
+                className="min-h-11 rounded-lg px-3 font-medium text-[oklch(0.5_0.14_155)] hover:bg-[oklch(0.5_0_0/0.1)] disabled:opacity-40 dark:text-[oklch(0.78_0.13_155)]"
+              >
+                {text.undoArrange}
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={arrange}
+              data-arrange-lists
+              className="text-sm px-3 py-1.5 rounded bg-[oklch(0.5_0_0/0.12)] hover:bg-[oklch(0.5_0_0/0.2)] disabled:opacity-40"
+            >
+              {text.arrangeLists}
+            </button>
+          ))}
         {config.imports && <ImportLink />}
       </div>
 
@@ -2748,7 +2877,8 @@ function AddTreeNode({
               <span className="fs-11 tabular-nums opacity-40">{node.meta.count}</span>
             ))}
         </label>
-        {node.kind === "lang" && !state.disabled && (
+        {/* Folded, a language is only its row: no Add all, no bands, no children. */}
+        {node.kind === "lang" && open && !state.disabled && (
           <button
             type="button"
             disabled={busy}
@@ -2760,8 +2890,8 @@ function AddTreeNode({
           </button>
         )}
       </div>
-      {/* Every language's one-tap coverage bands, on its own row's branch, folded or not. */}
-      {node.kind === "lang" && (
+      {/* A language's one-tap coverage bands are part of its branch: they fold with it. */}
+      {node.kind === "lang" && open && (
         <CoverageBands
           lists={freqListsOf(node)}
           added={added}
@@ -3172,7 +3302,7 @@ function Study({
   const [serverVoice, setServerVoice] = usePref("lk:words-server-voice", true);
   const speech = useSpeech(serverVoice);
   const { locale } = useLocale();
-  /** What a tap, a hold or the focus reads: word → meaning → example. */
+  /** What a tap, a hold or the focus reads: word → example → meaning (the row's order). */
   const partsOf = useCallback(
     (it: Item) => sayParts(it, it.lang, !!config.readingOnBack, String(locale)),
     [config.readingOnBack, locale],
@@ -3210,8 +3340,10 @@ function Study({
       m = new Map((catalogs.current.get(listId) ?? []).map((e) => [e.term, e]));
       byTerm.current.set(listId, m);
     }
-    const e = m.get(term);
-    if (!e) return {};
+    const found = m.get(term);
+    if (!found) return {};
+    // Several examples: one at random for this showing, frozen into the item.
+    const e = withPickedExample(found, keyOf({ listId, term }));
     return {
       ...(e.ex ? { ex: e.ex, exTr: e.exTr } : {}),
       ...(e.note ? { note: e.note } : {}),
@@ -3292,7 +3424,8 @@ function Study({
         },
       );
       return picked.map((i) => ({
-        ...entries[i],
+        // Several examples: one at random for this showing, frozen into the item.
+        ...withPickedExample(entries[i], keyOf({ listId: list.id, term: entries[i].term })),
         kind: "new",
         newIndex: i,
         listId: list.id,
@@ -3889,7 +4022,7 @@ function Study({
   useEffect(() => {
     if (!touch || !active || holding !== null || !focusItem) return;
     if (quietFocus.current === focusLine) return void (quietFocus.current = null);
-    // With every meaning shown, the back is read too: word → meaning → example.
+    // With every meaning shown, the back is read too: word → example → meaning.
     speech.once(
       showAll ? partsOf(focusItem) : [{ kind: "word", text: focusText, lang: focusItem.lang }],
       false,
@@ -4067,7 +4200,7 @@ function Study({
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [loading]);
 
-  // Say the focused row aloud on a loop (word, then example) while the page
+  // Say the focused row aloud on a loop (word, example, meaning) while the page
   // is active; paused in a hidden tab or background window.
   const active = usePageActive();
   const focused = !touch && active ? queue[row] : undefined;
@@ -4108,6 +4241,37 @@ function Study({
   // Sticky over the whole loaded queue: a column appearing and disappearing
   // as example-less stretches scroll by would shift every other column.
   const hasExamples = useMemo(() => queue.some((it) => it.ex || it.note), [queue]);
+
+  // Familiarity marks inside the examples (lib/words/example-marks.ts): the
+  // words of the rendered window not asked yet, in one request per language
+  // once the window has held still for a moment; answers kept for the session.
+  const fam = useRef<FamMap>(new Map());
+  const [, setFamRev] = useState(0);
+  useEffect(() => {
+    const want = missingWords(queue.slice(from, to), fam.current);
+    if (!want.size) return;
+    const t = setTimeout(() => {
+      for (const [lang, all] of want)
+        for (let k = 0; k < all.length; k += 500) {
+          const words = all.slice(k, k + 500);
+          // Asked: never again this session, even if the request fails.
+          recordHits(fam.current, lang, words, {});
+          void fetch("/api/words/familiarity", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lang, words }),
+          })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((j: { hits?: Record<string, FamHit> } | null) => {
+              if (!j?.hits || !Object.keys(j.hits).length) return;
+              recordHits(fam.current, lang, words, j.hits);
+              setFamRev((n) => n + 1);
+            })
+            .catch(() => {});
+        }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [from, to, queue]);
 
   // Term column width (lib/words/columns.ts): fitted to the terms near the
   // middle of the screen, eased into place through --term-w on the list.
@@ -4171,10 +4335,10 @@ function Study({
   const termGoal = useRef<number | null>(null);
   const termShown = useRef<number | null>(null);
   const termVelocity = useRef(0);
-  // Desktop with examples: the meaning column's share, the same way.
-  const backGoal = useRef<number | null>(null);
-  const backShown = useRef<number | null>(null);
-  const backVelocity = useRef(0);
+  // Desktop with examples: the example column's share (it comes first), the same way.
+  const exGoal = useRef<number | null>(null);
+  const exShown = useRef<number | null>(null);
+  const exVelocity = useRef(0);
   /** The glide's one rAF loop, kept across renders (see below). */
   const glideRaf = useRef(0);
   const glideLast = useRef<number | null>(null);
@@ -4201,18 +4365,18 @@ function Study({
         );
       // The list less padding, marker and status columns, gaps, and the term column.
       const avail = el.clientWidth - (1 + 1.25 + 3.5 + 2) * rem - termGoal.current;
-      backGoal.current = nextGoal(
-        backGoal.current,
-        splitTarget(weighted((c) => c.back) + rem, weighted((c) => c.ex) + rem, avail, rem),
+      exGoal.current = nextGoal(
+        exGoal.current,
+        splitTarget(weighted((c) => c.ex) + rem, weighted((c) => c.back) + rem, avail, rem),
         rem,
       );
     }
-    if (termShown.current === null || (split && backShown.current === null)) {
+    if (termShown.current === null || (split && exShown.current === null)) {
       termShown.current = termGoal.current;
       el.style.setProperty("--term-w", `${termShown.current}px`);
       if (split) {
-        backShown.current = backGoal.current;
-        el.style.setProperty("--back-w", `${backShown.current}px`);
+        exShown.current = exGoal.current;
+        el.style.setProperty("--ex-w", `${exShown.current}px`);
       }
       return;
     }
@@ -4251,9 +4415,9 @@ function Study({
       const a = glide(termGoal.current!, termShown, termVelocity, "--term-w", dt);
       const b =
         !glideSplit.current ||
-        backGoal.current === null ||
-        backShown.current === null ||
-        glide(backGoal.current, backShown, backVelocity, "--back-w", dt);
+        exGoal.current === null ||
+        exShown.current === null ||
+        glide(exGoal.current, exShown, exVelocity, "--ex-w", dt);
       if (a && b) {
         glideRaf.current = 0;
         glideLast.current = null;
@@ -4720,7 +4884,7 @@ function Study({
                     touch
                       ? "slip-touch grid-cols-[1rem_var(--term-w,8rem)_1fr_3rem] text-base pr-4"
                       : hasExamples
-                        ? "grid-cols-[1.25rem_var(--term-w,12rem)_var(--back-w,minmax(10rem,1fr))_minmax(8rem,1fr)_3.5rem] fs-15"
+                        ? "grid-cols-[1.25rem_var(--term-w,12rem)_var(--ex-w,minmax(10rem,1fr))_minmax(8rem,1fr)_3.5rem] fs-15"
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] fs-15"
                   } ${rating ? RATING_STYLE[rating] : ""}`}
                   style={{ height: ROW_H }}
@@ -4750,82 +4914,81 @@ function Study({
                     )}
                   </Glance>
                   {(() => {
-                    const meaning = (
-                      <Glance
-                        active={glancing && show}
-                        title={show ? it.back : undefined}
-                        className={`text-sm opacity-80 transition-[filter] duration-75 ${
-                          touch ? "block min-w-0" : ""
-                        } ${show ? "" : "slip-blank"}`}
-                      >
-                        {config.readingOnBack && it.reading && it.reading !== it.term && (
-                          <span className="mr-2 font-medium">{it.reading}</span>
-                        )}
-                        {it.back}
-                      </Glance>
-                    );
-                    if (!touch || (!it.ex && !it.note)) return meaning;
-                    // Phones: one row is the whole card — the front, then everything
-                    // on the back (meaning, then example), as "Show all meanings"
-                    // shows and reads it. Two lines in the row's fixed height (one
-                    // line on a wider screen), so the windowing stays exact.
-                    // Tags (level, list) are only in the double-tap sheet.
+                    // The back in the row's order (lib/words/row-layout.ts): the
+                    // example, then the meaning; with no example the meaning
+                    // takes its place. Each part is styled by its place, not by
+                    // what it is: the first is the stronger.
+                    const parts = backParts(it);
+                    const cell = (k: (typeof parts)[number], at: number) => {
+                      const first = at === 0;
+                      const tone = touch
+                        ? first
+                          ? "text-sm opacity-80"
+                          : "text-xs opacity-60"
+                        : first
+                          ? "text-sm opacity-80"
+                          : "text-sm opacity-70";
+                      // Desktop: a card without an example spans both columns.
+                      const span = !touch && hasExamples && parts.length === 1 ? "col-span-2" : "";
+                      const look = `${tone} ${span} transition-[filter] duration-75 ${
+                        touch ? "block min-w-0" : ""
+                      } ${show ? "" : "slip-blank"}`;
+                      if (k === "meaning")
+                        return (
+                          <Glance
+                            key={k}
+                            active={glancing && show}
+                            title={show ? it.back : undefined}
+                            className={look}
+                          >
+                            {config.readingOnBack && it.reading && it.reading !== it.term && (
+                              <span className="mr-2 font-medium">{it.reading}</span>
+                            )}
+                            {it.back}
+                          </Glance>
+                        );
+                      return (
+                        <Glance
+                          key={k}
+                          active={glancing && show}
+                          title={
+                            show ? (it.ex ? `${it.ex}\n${it.exTr ?? ""}` : it.note) : undefined
+                          }
+                          className={look}
+                        >
+                          {it.ex ? (
+                            <>
+                              <span lang={it.lang} data-row-example>
+                                <MarkedExample text={it.ex} lang={it.lang} fam={fam.current} />
+                              </span>
+                              {it.exTr && (
+                                <span className="ml-2 text-xs opacity-60">{it.exTr}</span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-xs">
+                              <PhraseNote note={it.note} register={it.register} />
+                            </span>
+                          )}
+                        </Glance>
+                      );
+                    };
+                    const cells = parts.map(cell);
+                    if (!touch) return cells;
+                    // Phones: one row is the whole card — the front, then the
+                    // back beside it (example, then meaning), as "Show all
+                    // meanings" shows and reads it. Two lines in the row's fixed
+                    // height (one line on a wider screen), so the windowing
+                    // stays exact. Tags (level, list) are only in the double-tap sheet.
                     return (
                       <span
                         className="flex min-w-0 flex-col justify-center gap-1 sm:flex-row sm:items-baseline sm:gap-3"
                         data-row-back
                       >
-                        {meaning}
-                        <Glance
-                          active={glancing && show}
-                          title={
-                            show ? (it.ex ? `${it.ex}\n${it.exTr ?? ""}` : it.note) : undefined
-                          }
-                          className={`block min-w-0 text-xs opacity-60 transition-[filter] duration-75 sm:flex-1 ${
-                            show ? "" : "slip-blank"
-                          }`}
-                        >
-                          {it.ex ? (
-                            <>
-                              <span lang={it.lang} data-row-example>
-                                {it.ex}
-                              </span>
-                              {it.exTr && <span className="ml-2 opacity-80">{it.exTr}</span>}
-                            </>
-                          ) : (
-                            <PhraseNote note={it.note} register={it.register} />
-                          )}
-                        </Glance>
+                        {cells}
                       </span>
                     );
                   })()}
-                  {hasExamples && !touch && (
-                    // The example is part of the answer side: hidden with the meaning.
-                    <Glance
-                      active={glancing && show}
-                      className={`text-sm opacity-70 transition-[filter] duration-75 ${
-                        show ? "" : "slip-blank"
-                      }`}
-                      title={
-                        show && it.ex
-                          ? `${it.ex}\n${it.exTr ?? ""}`
-                          : show && it.note
-                            ? it.note
-                            : undefined
-                      }
-                    >
-                      {it.ex ? (
-                        <>
-                          {it.ex}
-                          {it.exTr && <span className="ml-2 text-xs opacity-60">{it.exTr}</span>}
-                        </>
-                      ) : (
-                        <span className="text-xs">
-                          <PhraseNote note={it.note} register={it.register} />
-                        </span>
-                      )}
-                    </Glance>
-                  )}
                   {/* Graded: when it comes back. Ungraded: "new", or how long it has been due. */}
                   <span
                     className={`flex items-center justify-end gap-1.5 fs-11 tabular-nums ${rating ? "font-medium" : "opacity-40"}`}
@@ -4944,7 +5107,9 @@ function SlipSheet({
         <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-current opacity-20" />
         <div className="flex items-baseline gap-3 border-b border-black/10 dark:border-white/10 px-1 pb-3">
           <b className="text-2xl font-normal">{item.term}</b>
-          <span className="truncate opacity-70">{item.back}</span>
+          {/* Example first (lib/words/row-layout.ts): with an example, the
+          meaning comes after it, below; without one it stays up here. */}
+          {!item.ex && <span className="truncate opacity-70">{item.back}</span>}
           <small className="ml-auto shrink-0 text-xs opacity-60">{status}</small>
         </div>
         {tags.length > 0 && (
@@ -4977,6 +5142,14 @@ function SlipSheet({
           >
             <div lang={item.lang}>{item.ex}</div>
             {item.exTr && <div className="mt-1 text-sm opacity-60">{item.exTr}</div>}
+          </div>
+        )}
+        {item.ex && (
+          <div
+            className="border-b border-black/10 dark:border-white/10 px-1 py-3 opacity-70"
+            data-sheet-meaning
+          >
+            {item.back}
           </div>
         )}
         <ul className="mt-1">
