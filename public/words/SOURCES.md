@@ -373,7 +373,9 @@ Chinese.
   word or one of its forms. Sentences with profanity, slurs or sexual content
   are skipped (`isOffensive`). Each card records the sentence's source in
   `exSrc` (`tatoeba:<id>`, see https://tatoeba.org/sentences/show/<id>, or
-  `wiktionary`) and its Tatoeba author in `exBy`, as CC BY 2.0 FR asks.
+  `wiktionary`) and its Tatoeba author in `exBy`, under
+  [CC BY 2.0 FR](https://creativecommons.org/licenses/by/2.0/fr/). Some Tatoeba
+  sentences have no author on record (orphans); they carry the id only.
 - **Left out.** Proper names, abbreviations, an inflection whose lemma is in
   the same deck, and words with no English Wiktionary entry.
 

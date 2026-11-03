@@ -219,6 +219,8 @@ for (const line of readFileSync(join(RAW, "kaikki-en-zh.jsonl"), "utf8").split("
 const glossPath = join(import.meta.dir, "exam-glosses.tsv");
 const written = parseGlosses(readFileSync(glossPath, "utf8"));
 
+/** Sentences found on cards in review that state something untrue as fact. */
+const UNTRUE = new Set(["Evolution is a lie."]);
 // Tatoeba English sentences with their ids and authors; none that offend.
 type Credit = { id: string; by?: string };
 const credit = new Map<string, Credit>();
@@ -227,7 +229,8 @@ for (const line of readFileSync(join(RAW, "tatoeba/eng_sentences_detailed.tsv"),
   "\n",
 )) {
   const [id, , text, by] = line.split("\t");
-  if (!id || !text || text.length > 80 || credit.has(text) || isOffensive(text)) continue;
+  if (!id || !text || text.length > 80 || credit.has(text) || isOffensive(text) || UNTRUE.has(text))
+    continue;
   credit.set(text, { id, ...(by && by !== "\\N" ? { by } : {}) });
   sents.push({ s: text, en: "", words: text.split(/\s+/).length });
 }

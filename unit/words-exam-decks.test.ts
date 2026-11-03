@@ -106,6 +106,12 @@ describe("wiktIpa", () => {
       ]),
     ).toBe("/tæp/");
     expect(wiktIpa([entry("noun", [])])).toBe("");
+    // a heteronym takes the sound of the meaning the back leads with
+    const lead = [
+      entry("verb", [["帶領 /带领", "guide"]], [{ ipa: "/liːd/", tags: [] }]),
+      entry("noun", [["鉛 /铅", "metal"]], [{ ipa: "/lɛd/", tags: ["UK"] }]),
+    ];
+    expect(wiktIpa(lead)).toBe("/liːd/");
   });
   it("is never read aloud", () => {
     expect(spokenText({ term: "abandon", reading: "/əˈbændən/", back: "放弃" }, "en", false)).toBe(
@@ -190,6 +196,7 @@ describe("cards", () => {
     expect(isOffensive("He put a dick joke in.")).toBe(true);
     expect(isOffensive("Send me your résumé.")).toBe(false);
     expect(isOffensive("Dickens wrote it.")).toBe(false);
+    expect(isOffensive("Why is masturbation so stigmatized?")).toBe(true);
   });
 });
 

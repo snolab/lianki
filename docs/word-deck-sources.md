@@ -18,7 +18,7 @@ levels). JLPT and HSK, which were already shipped, now appear there too.
 ## Shipped
 
 All English decks have **Chinese meanings** (the owner's ask), an IPA reading
-and, where one is found, one example sentence. They are ordered by frequency,
+where Wiktionary has one (about 94% of words) and, where one is found, one example sentence. They are ordered by frequency,
 most common first. Each part of a card comes from one place:
 
 | Part of the card                          | Source                                                                                                                                                                       | Licence                                                    | Attribution shown                                                                                                   |
@@ -27,7 +27,7 @@ most common first. Each part of a card comes from one place:
 | Frequency order, word forms               | ECDICT columns `frq` (COCA rank), `bnc` (BNC rank) and `exchange` (inflections, the lemma of a plural)                                                                       | MIT                                                        | as above                                                                                                            |
 | Which words the NGSL/TSL/NAWL decks hold, and their order | [NGSL 1.2](https://www.newgeneralservicelist.com/new-general-service-list), [NAWL 1.2](https://www.newgeneralservicelist.com/new-academic-word-list), [TSL 1.2](https://www.newgeneralservicelist.com/toeic-service-list), `*_12_stats.csv` | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) | NGSL and NAWL: "by Charles Browne, Brent Culligan and Joseph Phillips"; TSL: "by Charles Browne and Brent Culligan" |
 | Chinese meaning                           | English Wiktionary's translation tables into Mandarin, via the [kaikki.org](https://kaikki.org/dictionary/English/) extract (wiktextract, Tatu Ylonen)                       | CC BY-SA 4.0 (and GFDL)                                    | "Chinese meanings and IPA: English Wiktionary (en.wiktionary.org) contributors, via kaikki.org"                     |
-| Chinese meaning, when Wiktionary has none (4,392 words; 30% of the 14,672) | Written for Lianki in `scripts/words/exam-glosses.tsv`, from the word's English Wiktionary definitions, which the builder writes next to each word in `need-glosses.tsv`. They were drafted with an LLM (Claude) under fixed rules: dictionary-style equivalents, at most 3 senses, no rare senses. | CC BY-SA 4.0, as an adaptation of the Wiktionary definitions | "meanings Wiktionary has no Chinese for written for Lianki from its definitions"                                    |
+| Chinese meaning, when Wiktionary has none (4,392 words, about 30%) | Written for Lianki in `scripts/words/exam-glosses.tsv`, from the word's English Wiktionary definitions, which the builder writes next to each word in `need-glosses.tsv`. They were drafted with an LLM (Claude) under fixed rules: dictionary-style equivalents, at most 3 senses, no rare senses. | CC BY-SA 4.0, as an adaptation of the Wiktionary definitions | "meanings Wiktionary has no Chinese for written for Lianki from its definitions"                                    |
 | IPA                                       | English Wiktionary pronunciation (British when given, as Chinese exam books use)                                                                                            | CC BY-SA 4.0                                               | as Chinese meaning                                                                                                  |
 | Example sentence                          | The sentence the English frequency list (`en-freq-*`) gives the word, else the shortest [Tatoeba](https://tatoeba.org) English sentence with the word or a form             | CC BY 2.0 FR (Tatoeba); CC BY-SA 4.0 (Wiktionary examples) | Each card carries `exSrc` (`tatoeba:<id>` or `wiktionary`) and `exBy` (the Tatoeba author)                          |
 
@@ -66,9 +66,9 @@ and place names.
   only pass on the rights its author holds. So we take **no expressive content
   from ECDICT**: no Chinese glosses, definitions or phonetics. We take only
   facts about words:
-  - whether a word is tagged for an exam: a set of headwords, with no
-    selection or arrangement of ours kept from the source, because we re-sort
-    by frequency;
+  - whether a word is tagged for an exam: a set of headwords. We re-sort it
+    by frequency, which removes the source's arrangement but not its
+    selection (see the next point);
   - two corpus frequency ranks;
   - inflected forms.
   Meanings, IPA and examples come from Wiktionary and Tatoeba, whose licences

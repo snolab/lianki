@@ -217,7 +217,12 @@ export function joinParts(parts: string[], maxLen = 48): string {
  * as Chinese exam books use, else the first. Only a plain /…/ transcription.
  */
 export function wiktIpa(entries: WiktEntry[]): string {
-  const all = entries.flatMap((e) => e.ipa).filter((x) => /^\/[^/]+\/$/.test(x.ipa));
+  const plain = (e: WiktEntry) => e.ipa.filter((x) => /^\/[^/]+\/$/.test(x.ipa));
+  // The entry the back leads with (the first with a Mandarin translation)
+  // decides, so a heteronym gets the sound of its first meaning (lead "to
+  // guide" /liːd/, not the metal /lɛd/).
+  const lead = entries.find((e) => POS[e.pos] && e.tr.length && plain(e).length);
+  const all = lead ? plain(lead) : entries.flatMap(plain);
   const uk = all.find((x) => x.tags.some((t) => /^(UK|Received-Pronunciation|British)$/.test(t)));
   return (uk ?? all[0])?.ipa ?? "";
 }
@@ -329,5 +334,5 @@ export function mergeExamIndex<T extends { id: string; lang: string; kind?: stri
  * people. Checked on whole words, case-insensitive.
  */
 const OFFENSIVE =
-  /\b(fuck\w*|shit\w*|bitch\w*|cunt\w*|dick|dicks|cock|cocks|pussy|whore\w*|slut\w*|bastard\w*|asshole\w*|arse\w*|nigg\w*|fag\w*|retard\w*|rape\w*|raping|porn\w*|sex|sexy|horny|damn\w*|goddamn|piss\w*|wank\w*|kill (yourself|myself|you|him|her)|suicide)\b/i;
+  /\b(fuck\w*|shit\w*|bitch\w*|cunt\w*|dick|dicks|cock|cocks|pussy|whore\w*|slut\w*|bastard\w*|asshole\w*|arse\w*|nigg\w*|fag\w*|retard\w*|rape\w*|raping|porn\w*|sex|sexy|horny|damn\w*|goddamn|piss\w*|wank\w*|kill (yourself|myself|you|him|her)|suicide|penis\w*|vagina\w*|masturbat\w*|orgasm\w*|erection\w*|nude|naked|condom\w*|semen|sperm|testic\w*|genital\w*|anal|anus|boob\w*|tits?|nipple\w*|prostitut\w*|hooker\w*|virgin\w*|sexual\w*|lesbian\w*|gay)\b/i;
 export const isOffensive = (s: string) => OFFENSIVE.test(s);
