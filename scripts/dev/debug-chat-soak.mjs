@@ -194,7 +194,8 @@ for (let minute = 1; minute <= MINUTES; minute++) {
     await sleep(1500);
     await click("debug-chat-pill-min"); // expand
     await sleep(800);
-    if (await click("debug-chat-tree-button")) {
+    // The state tree is in the + menu (its View group).
+    if ((await click("debug-chat-attach")) && (await click("debug-chat-attach-tree"))) {
       await sleep(1200);
       await page.keyboard.press("Escape");
     }

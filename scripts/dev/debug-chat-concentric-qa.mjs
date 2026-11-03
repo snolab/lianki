@@ -8,6 +8,9 @@
  *   - expanded (one line), minimized, a draft of several lines (the bar grows
  *     and the mic stays in the bottom-right arc), the chat's text size at 150%
  *   - 390×844 and 412×915, light and dark
+ *   - the bar's round controls are [mark | + | input | mic] expanded and
+ *     [mark | mic] minimized (no tree button since 2026-11-03: the state tree
+ *     is in the + menu), each centred on the mic's line (one line box high)
  *
  * The rule (R = d/2 + g, the nested-radius rule): the bar's radius is
  * --lk-bar-r = border + padding + line/2, and the mic's circle is the
@@ -86,7 +89,20 @@ const measure = () => {
   const mc = { x: (left + right) / 2, y: (top + bottom) / 2 };
   const arc = { x: b.right - r, y: b.bottom - r };
   const topArc = { x: b.right - r, y: b.top + r };
+  // The round controls, left of the input and the mic: centred on the mic's line.
+  const controls = [...bar.querySelectorAll("button")]
+    .filter((el) => !el.closest("[inert]") && el.getBoundingClientRect().width > 0)
+    .map((el) => el.dataset.testid);
+  const lineOff = ["debug-chat-pill-min", "debug-chat-attach"]
+    .map((id) => q(id))
+    .filter(Boolean)
+    .map((el) => {
+      const c = el.getBoundingClientRect();
+      return Math.abs((c.top + c.bottom) / 2 - mc.y);
+    });
   return {
+    controls,
+    lineOff: Math.max(0, ...lineOff),
     r,
     h: b.height,
     d: Math.min(right - left, bottom - top),
@@ -136,6 +152,18 @@ try {
         check(
           m.square <= 0.5,
           `${at} ${state}: the mic's circle is square (off by ${f(m.square)})`,
+        );
+        const want =
+          state === "minimized"
+            ? "debug-chat-pill-min,debug-chat-mic"
+            : "debug-chat-pill-min,debug-chat-attach,debug-chat-mic";
+        check(
+          m.controls.join() === want,
+          `${at} ${state}: the bar's controls are ${want} (${m.controls.join()})`,
+        );
+        check(
+          m.lineOff <= MAX_DELTA,
+          `${at} ${state}: the mark and the + are centred on the mic's line (off by ${f(m.lineOff)} px)`,
         );
         if (state === "one line" || state === "minimized")
           check(

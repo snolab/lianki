@@ -1199,6 +1199,42 @@ const learningPartnerContent = {
       mr: "पेजवरून उद्धृत",
       ko: "페이지에서 인용",
     }),
+    attachGroupView: t({
+      en: "View",
+      zh: "查看",
+      hi: "देखें",
+      es: "Ver",
+      fr: "Afficher",
+      ar: "عرض",
+      bn: "দেখুন",
+      pt: "Ver",
+      ru: "Просмотр",
+      ur: "دیکھیں",
+      id: "Lihat",
+      de: "Ansicht",
+      ja: "表示",
+      sw: "Tazama",
+      mr: "पहा",
+      ko: "보기",
+    }),
+    attachTree: t({
+      en: "State tree",
+      zh: "状态树",
+      hi: "स्टेट ट्री",
+      es: "Árbol de estado",
+      fr: "Arbre d’état",
+      ar: "شجرة الحالة",
+      bn: "স্টেট ট্রি",
+      pt: "Árvore de estado",
+      ru: "Дерево состояния",
+      ur: "اسٹیٹ ٹری",
+      id: "Pohon status",
+      de: "Statusbaum",
+      ja: "状態ツリー",
+      sw: "Mti wa hali",
+      mr: "स्टेट ट्री",
+      ko: "상태 트리",
+    }),
   },
 } satisfies DeclarationContent;
 
@@ -1330,6 +1366,10 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Screen-reader label of the × button on the small quote chip just above the chat input, which shows the page text attached to the next message: removes that attachment (the typed text stays). Imperative verb phrase.",
   attachQuoted:
     "Screen-reader label of a quoted piece of page text: on the chip above the chat input and above a sent message in the chat log, it is text the user selected on the page and attached. Short noun phrase, no full stop.",
+  attachGroupView:
+    "Section heading in the chat's + menu, the last group, above items that show something to look at rather than add or attach: for now only the state tree. One short word used as a heading (a view, to look), not a verb phrase.",
+  attachTree:
+    "Menu item in the chat's + menu, under the View heading: shows or hides the state tree, a panel with the outline of the work in progress (what was done, what is being done, what is next, what needs the owner). A check mark follows it while the panel is open. Short noun phrase naming the panel; 状态树 in Chinese.",
 };
 
 export default {
@@ -1337,7 +1377,7 @@ export default {
   title:
     "Learning Partner: the chat assistant's name, chat box, voice-clip recording badge and voiceprint panel",
   description: describeKeys(
-    "The chat assistant (Learning Partner) floating over every page: its name, the chat box, its menu, the + menu beside the input (add to Lianki; attach the page's selected text to a message), the owner-only badge shown while voice clips are recorded, and the owner-only voiceprint panel (enrolling his voice so his Mac can tell it is him speaking; consent first, delete any time). {name} is replaced by the assistant's name and {n} by a number; keep both as they are.",
+    "The chat assistant (Learning Partner) floating over every page: its name, the chat box, its menu, the + menu beside the input (add to Lianki; attach the page's selected text to a message; view the state tree), the owner-only badge shown while voice clips are recorded, and the owner-only voiceprint panel (enrolling his voice so his Mac can tell it is him speaking; consent first, delete any time). {name} is replaced by the assistant's name and {n} by a number; keep both as they are.",
     context,
   ),
 } satisfies DeclarationContent;

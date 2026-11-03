@@ -61,4 +61,8 @@ coveragePathIgnorePatterns = [
   # A React hook over lib/page-dirty.ts's registry (held to 90% here); it is
   # only loaded because swipe-core.tsx calls it.
   "lib/use-leave-guard.ts",
+  # The chat's + menu components (React glue: hooks, effects, DOM listeners).
+  # Their logic is in attach.ts (held to 90% here); unit/chat-attach-tree.test.ts
+  # renders the markup only, and debug-chat-bar-qa.mjs drives them in a browser.
+  "packages/debug-chat/src/AttachMenu.tsx",
 ]
