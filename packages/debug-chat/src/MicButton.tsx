@@ -29,6 +29,7 @@ import { type MicSession, type MicView, micSession } from "./mic-session";
 import { sttHint } from "./stt-hint";
 import { voice } from "./voice";
 import { captureHeld, pageAudio } from "./page-audio";
+import { ECHO_WINDOW_MS, echoScore } from "./echo";
 import { micAec, onOpened } from "./aec";
 import {
   aecOn,
@@ -304,6 +305,7 @@ function session(): MicSession {
     onState: (s, last) => {
       const active = s !== "off";
       v.setMic(active);
+      pageAudio().setMic(active);
       // The user starts talking: over the agent it ducks (a barge-in if they
       // keep going), else the reading pauses; it reads on once they are done.
       if (s === "capturing") {
@@ -319,7 +321,8 @@ function session(): MicSession {
     // Held while the chat reads (voice.ts) or the page plays word audio (page-audio.ts).
     subscribeHold: (f) => {
       const page = pageAudio();
-      const calc = () => f(captureHeld(v.state().hold, page.playing(), micAec()));
+      const calc = () =>
+        f(captureHeld(v.state().hold, page.playing(), micAec(), page.always()));
       calc();
       const a = v.subscribe(calc);
       const b = page.subscribe(calc);
@@ -366,7 +369,23 @@ function session(): MicSession {
           }
         } else out = await postStt(wav, fetch, "audio/wav", sttHint());
         // The text guard: the agent's own words that leaked past the AEC are dropped.
-        const echo = v.echoCheck(out.text, durationMs);
+        const chatEcho = v.echoCheck(out.text, durationMs);
+        // The page reads aloud too (/read): what it said is the same kind of echo.
+        // But first the page may claim the line as the user's own (/read's shadowing).
+        const page = pageAudio();
+        // From `at` (taken before the transcription await): when the speech began.
+        const spokeAt = at - durationMs;
+        if (!partial && !chatEcho.drop && page.heard(out.text, spokeAt)) {
+          v.log({ ev: "voice-utt-page", durationMs, text: out.text.slice(0, 80) });
+          return "";
+        }
+        const pageEcho = chatEcho.drop
+          ? null
+          : echoScore(
+              out.text,
+              page.said(spokeAt, ECHO_WINDOW_MS).map((r) => r.text),
+            );
+        const echo = pageEcho?.drop ? { ...pageEcho, during: chatEcho.during } : chatEcho;
         if (!partial)
           v.log({
             ev: "voice-utt",
