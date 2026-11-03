@@ -661,24 +661,24 @@ export async function updateNote(
   text: string,
   now: Date,
 ): Promise<ReadNote | null> {
+  // One statement: the old text joins the history as SQLite reads the row,
+  // so two edits at once each keep the text they replaced.
+  await db
+    .prepare(
+      `UPDATE read_notes SET
+         history = json_insert(history, '$[#]', json_object('text', text, 'at', updated_at)),
+         text = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND book_hash = ? AND deleted_at IS NULL AND text != ?`,
+    )
+    .bind(text, now.toISOString(), id, userId, bookHash, text)
+    .run();
   const r = await db
     .prepare(
       `SELECT ${NOTE_COLS} FROM read_notes WHERE id = ? AND user_id = ? AND book_hash = ? AND deleted_at IS NULL`,
     )
     .bind(id, userId, bookHash)
     .first<NoteRow>();
-  if (!r) return null;
-  const note = toNote(r);
-  if (note.text === text) return note;
-  const at = now.toISOString();
-  const history = [...note.history, { text: note.text, at: note.updatedAt }];
-  await db
-    .prepare(
-      "UPDATE read_notes SET text = ?, history = ?, updated_at = ? WHERE id = ? AND user_id = ?",
-    )
-    .bind(text, JSON.stringify(history), at, id, userId)
-    .run();
-  return { ...note, text, history, updatedAt: at };
+  return r ? toNote(r) : null;
 }
 
 /** Soft delete. False when not the user's. */
