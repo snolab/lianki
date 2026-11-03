@@ -1,11 +1,11 @@
 /**
  * A host page for scripts/dev/live-view-qa.ts: the real LiveViewBoot (it
  * verifies the pointer with the browser's WebCrypto) and the account menu's
- * LiveViewItem, under a stand-in top bar. The QA script injects the pointer
+ * LiveViewChip (in a stand-in Preview build row), under a stand-in top bar. The QA script injects the pointer
  * and the test public key; nothing here talks to lianki.com.
  */
 import { createRoot } from "react-dom/client";
-import { LiveViewBoot, LiveViewItem, type LiveViewShell } from "@/app/components/LiveView";
+import { LiveViewBoot, LiveViewChip, type LiveViewShell } from "@/app/components/LiveView";
 
 const w = window as unknown as { __LV: LiveViewShell };
 const lv = w.__LV;
@@ -28,7 +28,15 @@ function Page() {
           </div>
           <div className="px-4 py-2 text-sm">Dashboard</div>
           <div className="px-4 py-2 text-sm">Profile</div>
-          <LiveViewItem lv={lv} />
+          <div data-preview-row>
+            <div className="flex items-center gap-3 px-4 py-2 text-sm">
+              <span className="flex-1">Preview build</span>
+              <span className="w-9 h-5 rounded-full bg-gray-300 dark:bg-gray-600" />
+            </div>
+            <div className="px-4 pb-2 -mt-0.5">
+              <LiveViewChip lv={lv} />
+            </div>
+          </div>
         </div>
       </div>
     </div>
