@@ -767,6 +767,7 @@ const SPEECH_TAG: Record<string, string> = {
   it: "it-IT",
   pt: "pt-BR",
   ru: "ru-RU",
+  fi: "fi-FI",
   en: "en-US",
 };
 

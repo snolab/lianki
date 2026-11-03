@@ -153,6 +153,28 @@ itself is not redistributable sentence by sentence. Hebrew phrase decks need
 the same hand curation and review as the ja/zh decks (Tatoeba has 212,000
 Hebrew sentences, 173,000 of them linked to English): a follow-up.
 
+## Finnish (2026-11-04)
+
+Owner, 2026-11-04 01:21 JST, /read: "添加芬兰语的卡组". Built with the same
+pipeline and sources as the other frequency lists; no new licence.
+
+| Part                     | Source                                                                                     | Licence                       |
+| ------------------------ | ------------------------------------------------------------------------------------------ | ----------------------------- |
+| Ranks (`fi-freq-1…6`)    | FrequencyWords `fi` (OpenSubtitles 2018)                                                     | CC BY-SA 4.0                  |
+| Meanings, inflected forms | English Wiktionary via the kaikki.org Finnish extract (form-of entries, declension and conjugation tables) | CC BY-SA 4.0 / GFDL |
+| Examples                 | Wiktionary usage examples, then Tatoeba Finnish sentences (`credits/tatoeba-fi.tsv`)        | CC BY-SA 4.0; CC BY 2.0 FR    |
+| /read lemma file (`lemma/fi.txt`) | kaikki.org Finnish extract; forms kept only when among FrequencyWords `fi`'s top 200,000 | CC BY-SA 4.0 / GFDL |
+
+Coverage by lemma: list 1 65.6%, lists 1–6 83.0%; the ceiling of the data
+is 88.1%, so the add tree offers the 50% and 80% lines, not 90/95%. The
+/read language data is `lib/read/lang/fi.json` (function words for guessing,
+abbreviations such as "esim." that do not end a sentence, the lemma file);
+no Finnish code. Read-aloud uses the device's Finnish voice (`fi-FI`); the
+server voice (MeloTTS) has no Finnish, as it has no German, Italian, Russian
+or Hebrew. Scenario phrase decks: none yet. The ja/zh decks are hand-curated
+and reviewed, so Finnish ones would be too (Tatoeba has the sentences, CC BY
+2.0 FR): a follow-up.
+
 ## Not shipped (no cleared source identified)
 
 | Candidate                                    | What exists                                                                                                                                                                                                   | Why not                                                                                                                                                                                                                                            |

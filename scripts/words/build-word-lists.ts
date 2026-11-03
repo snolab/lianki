@@ -11,7 +11,7 @@
  *   # 1. Frequency ranks — hermitdave/FrequencyWords (OpenSubtitles 2018, CC BY-SA 4.0).
  *   #    The _full lists: the lists take words from their top 50,000; the top
  *   #    200,000 (WORDS_SCAN) and the whole corpus count toward text coverage.
- *   for l in fr es de en ko it pt ru he zh_cn; do
+ *   for l in fr es de en ko it pt ru he fi zh_cn; do
  *     curl -sfL -o $RAW/freq/${l}_full.txt \
  *       https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/$l/${l}_full.txt
  *   done
@@ -19,7 +19,7 @@
  *     https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/ja/ja_full.txt
  *   # 2. Glosses — kaikki.org English-Wiktionary extracts (CC BY-SA 4.0 / GFDL),
  *   #    streamed through a filter so the multi-GB files never touch disk
- *   for p in fr:French es:Spanish de:German en:English it:Italian pt:Portuguese ru:Russian he:Hebrew; do
+ *   for p in fr:French es:Spanish de:German en:English it:Italian pt:Portuguese ru:Russian he:Hebrew fi:Finnish; do
  *     l=${p%%:*}; L=${p#*:}
  *     curl -sL https://kaikki.org/dictionary/$L/kaikki.org-dictionary-$L.jsonl \
  *       | FREQ_TOP=200000 bun scripts/words/filter-kaikki.ts $RAW/freq/${l}_full.txt > $RAW/kaikki/$l.jsonl
@@ -42,7 +42,7 @@
  *   done
  *   # 5. Example sentences — Tatoeba per-language exports (CC BY 2.0 FR), plus
  *   #    the English sentences their translations point to
- *   for t in fra spa deu kor ita por rus heb jpn cmn; do
+ *   for t in fra spa deu kor ita por rus heb fin jpn cmn; do
  *     curl -sfL https://downloads.tatoeba.org/exports/per_language/$t/${t}_sentences.tsv.bz2 | bunzip2 > $RAW/tatoeba/${t}_sentences.tsv
  *     curl -sfL https://downloads.tatoeba.org/exports/per_language/$t/$t-eng_links.tsv.bz2 | bunzip2 > $RAW/tatoeba/$t-eng_links.tsv
  *   done
@@ -778,6 +778,32 @@ const OVERRIDES: Record<string, Record<string, string>> = {
     есть: "there is, there are; is; (verb) to eat",
     то: "then; that (thing)",
   },
+  // Finnish case forms of pronouns that Wiktionary also lists under a rarer
+  // homograph (siitä "to be conceived", sitä "the … the"), and words it leads
+  // with a usage note or a rare sense (juuri "root" before "just")
+  fi: {
+    ei: "not, no (the negative verb: en, et, ei …)",
+    et: "(you) do not (2nd person singular of ei)",
+    mitä: "what (partitive of mikä); (with a comparative) the … the",
+    sitä: "it, that (partitive of se); (with a comparative) the … the",
+    siitä: "from it, about it, of it (elative of se)",
+    voi: "can (3rd person singular of voida); (interj) oh!; (noun) butter",
+    kaikki: "all, every; everyone, everything",
+    sitten: "then; ago",
+    kyllä: "yes; surely, certainly",
+    kiitos: "thank you, thanks; (noun) thanks",
+    juuri: "just, exactly; just now; (noun) root",
+    syy: "reason, cause; fault, blame; (noun) fibre, grain",
+    jolla: "on which, with which; who has (adessive of joka)",
+    pieniä: "small (partitive plural of pieni)",
+    käynyt: "been, visited (past participle of käydä); (adj) fermented",
+    pitää: "to hold, keep; to like (with elative); must, have to",
+    päästä: "to get to, reach; to get out, be let go; (postp) after, from",
+    kuulostaa: "to sound (like); to listen closely",
+    koski: "touched, concerned (3rd sg. past of koskea); (noun) rapids",
+    kuin: "than; as, like; as if",
+    tästä: "from this, about this (elative of tämä); from here",
+  },
   ko: {
     네: "yes; your (= 너의)",
     예: "yes; (noun) example",
@@ -908,9 +934,21 @@ const techOnly = (e: KEntry) =>
 type FormRef = { base: string; g: string; tags: string[]; pos: string };
 
 /** Lemmas this entry is a form of, with the form's own description. */
+/**
+ * The lemma a form-of gloss names when Wiktionary gave the sense no link
+ * (fi etsin: "first-person singular present/past indicative of etsiä").
+ */
+const unlinkedFormOf = (s: KSense): string[] => {
+  if (s.of.length || !FORMISH_GLOSS.test(s.g)) return [];
+  const m = /\bof (\p{L}[\p{L}\p{M}'-]*)\s*$/u.exec(s.g);
+  return m ? [m[1]] : [];
+};
 function formRefs(e: KEntry, lang: string): FormRef[] {
   if (BAD_POS.has(e.pos)) return [];
   return e.senses
+    .map((s) =>
+      unlinkedFormOf(s).length ? { ...s, of: unlinkedFormOf(s), tags: [...s.tags, "form-of"] } : s,
+    )
     .filter((s) => s.of.length && s.tags.some((t) => t === "form-of" || t === "alt-of"))
     .flatMap((s) =>
       s.of.map((w) => ({
@@ -1087,6 +1125,15 @@ const EN_JUNK = new Set(
  * subjunctive or literary tense); the token's own meaning follows.
  */
 const COMMON_BASE_RANK = 400;
+/**
+ * A person-marked verb form ("1st sg. past of ottaa", "first-person singular
+ * … of etsiä"). In a language that spreads a verb over many forms (Finnish),
+ * the lemma itself ranks low although the verb is common; such a form leads
+ * a homograph (etsin "I search" before "viewfinder") when its lemma is in the
+ * top FINITE_BASE_RANK and not much rarer than the token.
+ */
+const FINITE_FORM = /^(?:first|second|third|1st|2nd|3rd)\b.*\b(?:singular|plural|sg\.|pl\.)/i;
+const FINITE_BASE_RANK = 2000;
 const RARE_FORM = /\b(subjunctive|pluperfect|past historic|conditional|future|anterior)\b/i;
 
 /** "third-person singular present indicative of être" → "3rd sg. present of être". */
@@ -1394,8 +1441,12 @@ function buildFrequencyLang(lang: string, dict: Map<string, KEntry[]>) {
         ? word + (lang === "es" && !/[aeiouáéíóú]$/.test(word) ? "es" : "s")
         : "";
     const unattested = !!plural && rankOf(plural) > 20 * Math.max(rankOf(word), 50);
+    const finite =
+      FINITE_FORM.test(ref.g) &&
+      rankOf(ref.base) < FINITE_BASE_RANK &&
+      rankOf(ref.base) < 3 * rankOf(word);
     const formFirst =
-      (rankOf(ref.base) < COMMON_BASE_RANK || (unattested && rankOf(ref.base) < 3000)) &&
+      (rankOf(ref.base) < COMMON_BASE_RANK || finite || (unattested && rankOf(ref.base) < 3000)) &&
       !RARE_FORM.test(ref.g) &&
       !ref.tags.some((t) => RARE_FORM.test(t)) &&
       // a German infinitive that is also an adjective ending (lieben, heißen) is the verb
@@ -1767,7 +1818,7 @@ if (want("zh")) {
   }
   if (buildChineseFrequency() === false) skipped.push("zh-freq-");
 }
-for (const lang of ["fr", "es", "de", "en", "ko", "it", "pt", "ru", "he"]) {
+for (const lang of ["fr", "es", "de", "en", "ko", "it", "pt", "ru", "he", "fi"]) {
   if (!want(lang)) continue;
   const p = join(RAW, `kaikki/${lang}.jsonl`);
   if (!existsSync(p)) {
@@ -1794,7 +1845,7 @@ if (existsSync(indexPath)) {
       (!!only && !index.some((n) => n.id === l.id)),
   );
 }
-const order = ["ja", "zh", "fr", "es", "de", "en", "ko", "it", "pt", "ru", "he"];
+const order = ["ja", "zh", "fr", "es", "de", "en", "ko", "it", "pt", "ru", "he", "fi"];
 const langRank = (l: string) => (order.includes(l) ? order.indexOf(l) : order.length);
 // stable sort: language order, word lists before phrase decks, then build
 // order (N5→N1, HSK 1→7–9, band 1→6)

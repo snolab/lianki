@@ -1,0 +1,5 @@
+{
+  "stop": ["ja", "ei", "että", "oli", "mutta", "kuin", "ole", "hän", "minä", "sinä", "tämä", "mitä", "niin", "olen"],
+  "abbreviations": ["esim", "ns", "mm", "jne", "yms", "tms", "ym", "ks", "vrt", "klo", "kpl", "nro", "prof", "tri", "rva", "hra", "nti"],
+  "lemmas": true
+}

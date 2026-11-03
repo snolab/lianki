@@ -276,6 +276,7 @@ const NAME_HINTS: [RegExp, string][] = [
   [/turkish|türkçe/i, "tr"],
   [/greek|ελλην/i, "el"],
   [/hebrew|עברית/i, "he"],
+  [/finnish|suomi/i, "fi"],
   [/vietnam|tiếng việt/i, "vi"],
   [/thai|ภาษาไทย/i, "th"],
   [/latin/i, "la"],

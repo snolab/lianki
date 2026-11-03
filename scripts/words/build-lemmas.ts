@@ -27,6 +27,21 @@
  * that occur in it, themselves or through a form, keep their forms
  * (French: 344 KB, and 0.3% more of a novel's running words unrecognised).
  *
+ * Heavily inflected languages (Finnish: about 150 table forms per headword,
+ * cases × numbers × possessive suffixes × clitics; 186 MB unfiltered) also
+ * set FORMS_IN_FREQ=1: a headword keeps only the forms that occur in the
+ * frequency list, so the file holds the forms people actually write. Finnish
+ * with the list's top 200,000 words (the word lists' WORDS_SCAN floor), 2026-11-04:
+ * 164,017 headwords, 129,981 forms, 2.7 MB (864 KB gzip), French's size;
+ * the whole 2.5M-word list would give 779,195 forms and 6.6 MB, too much to
+ * parse once per Worker isolate:
+ *
+ *   head -n 200000 $RAW/freq/fi_full.txt > $RAW/freq/fi_200k.txt
+ *   curl -sfL -o $RAW/kaikki/Finnish.jsonl.gz \
+ *     https://kaikki.org/dictionary/Finnish/kaikki.org-dictionary-Finnish.jsonl.gz
+ *   gunzip -c $RAW/kaikki/Finnish.jsonl.gz | FORMS_IN_FREQ=1 \
+ *     bun scripts/words/build-lemmas.ts fi public/words/lemma/fi.txt $RAW/freq/fi_200k.txt
+ *
  * Format (UTF-8, NFC, lowercase), documented in lib/read/lemma.ts:
  *   line 1:  #lianki-lemmas v1 <lang>
  *   then one headword per line, optionally followed by a tab and its forms,
@@ -144,12 +159,16 @@ const enc = (h: string, f: string) => {
   return (d < 10 ? String(d) : `~${d}~`) + f.slice(i);
 };
 
+// FORMS_IN_FREQ=1: only forms the frequency list has (see the header).
+const formsInFreq = process.env.FORMS_IN_FREQ === "1" && freq.size > 0;
 const heads = [...forms.keys()].sort();
 let withForms = 0;
 let formCount = 0;
 const lines = [`#lianki-lemmas v1 ${lang}`];
 for (const h of heads) {
-  const fs = attested(h) ? [...forms.get(h)!].sort() : [];
+  const fs = attested(h)
+    ? [...forms.get(h)!].filter((f) => !formsInFreq || freq.has(f)).sort()
+    : [];
   if (fs.length) {
     withForms++;
     formCount += fs.length;
