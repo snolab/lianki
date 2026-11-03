@@ -576,7 +576,8 @@ function unblockVoice() {
   // Once: the chip's own tap is also the page's tap (both listen).
   if (!voice().state().blocked) return;
   void existingCtx()?.resume().catch(() => {});
-  if (outMode() === "cloud" || noSpeechVoices()) cloudOut()?.unlock();
+  // Whatever the mode: a sentence in a language with no voice here goes to the cloud too.
+  cloudOut()?.unlock();
   try {
     synth()?.speak(new SpeechSynthesisUtterance(""));
   } catch {}
