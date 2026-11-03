@@ -45,6 +45,11 @@ export const FLAGS = {
       "关闭语音消息的自动润色：打开后，助手不能再改写你的语音消息，聊天里只留识别原文。关闭（默认）= 照旧：助手只按上下文（最近的消息、当前页面、屏幕上的词）改错字和标点，不改原意；原文一直保留，点 ✨ 可看。",
     default: false,
   },
+  "partner.ai-reply": {
+    description:
+      "学习伙伴由 AI 回复（除你以外的所有用户）：打开后，普通登录用户在任意页面都能看到学习伙伴聊天框（不用调试模式），他们的消息由 Cloudflare Workers AI 上的 DeepSeek 模型在服务器端回复，只读他们自己的词表、到期卡片和学习计划。你的线程永远不经过模型，仍是你的 Claude 通道；通道先回复则 AI 不再回复。每人每日 token 上限和全站每日花费上限在 lib/partner-ai-config.ts。关闭（默认）= 照旧：只有调试模式的朋友能聊，由开发通道回复。",
+    default: false,
+  },
 } as const satisfies Record<string, FlagDef>;
 
 export type FlagKey = keyof typeof FLAGS;
