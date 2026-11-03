@@ -102,13 +102,18 @@ export type TreeSource =
   | (() => string | TreeNode[] | Promise<string | TreeNode[]>)
   | {
       subscribe: (
-        onUpdate: (v: string | TreeNode[], meta?: { live?: boolean }) => void,
+        /** Markdown, the top-level nodes, or the document root (its ≈ summaries kept). */
+        onUpdate: (v: string | TreeNode[] | TreeNode, meta?: { live?: boolean }) => void,
         onError?: (e: unknown) => void,
       ) => () => void;
     };
 
-const toRoot = (v: string | TreeNode[], opts: ParseOptions): TreeNode =>
-  typeof v === "string" ? parseTreeDoc(v, opts) : { title: "", links: [], children: v };
+const toRoot = (v: string | TreeNode[] | TreeNode, opts: ParseOptions): TreeNode =>
+  typeof v === "string"
+    ? parseTreeDoc(v, opts)
+    : Array.isArray(v)
+      ? { title: "", links: [], children: v }
+      : v;
 
 /** Load a URL or function source once into its document root (children: the top-level nodes). */
 export async function loadTree(

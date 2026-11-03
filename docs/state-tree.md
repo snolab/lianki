@@ -2,8 +2,9 @@
 The state tree: what is in flight and what waits on the owner. Hand-edited
 by the owner and by agents. The plan (lanes) comes first; an item lives in
 one place only. The owner reads it in the Learning Partner chat
-(menu → Tree) and at the top of /dev/roadmap; the chat's minimized bar shows
-its frontier: ✓ the latest done, ▶ in progress, › next. Parser and rules:
+(menu → Tree) and at the top of /dev/roadmap; the tree marks its frontier:
+✓ the latest done, ▶ in progress, › next. The chat's minimized bar shows only
+live in-progress items (reported to the hub), as their ≈ line. Parser and rules:
 packages/debug-chat/src/state-tree.ts. The repo is public: no personal info.
 
 Syntax

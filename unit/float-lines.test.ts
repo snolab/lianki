@@ -9,8 +9,10 @@ import {
   countUnread,
   createArrivals,
   createDwellTimer,
+  chainDwells,
   createFloatLife,
   dwellMs,
+  fifoDwellMs,
   minimizeFloat,
   readTime,
 } from "@lianki/debug-chat/float-lines";
@@ -326,5 +328,47 @@ describe("countUnread (the minimized badge)", () => {
 
   it("counts nothing it has never seen", () => {
     expect(countUnread([msg("x")], () => undefined, 0)).toBe(0);
+  });
+});
+
+describe("floating lines leave in order (fifoDwellMs, chainDwells)", () => {
+  const long = "这是一句比较长的话，需要多读一会儿才能读完，所以它停留得更久一些。";
+  const short = "好";
+  it("a short line after a long one waits for it", () => {
+    const [a, b] = chainDwells([long, short]);
+    expect(a).toBe(dwellMs(long));
+    expect(b).toBe(a); // not dwellMs(short), which is shorter
+    expect(dwellMs(short)).toBeLessThan(a!);
+  });
+  it("a long line after a short one keeps its own reading time", () => {
+    expect(chainDwells([short, long])).toEqual([dwellMs(short), dwellMs(long)]);
+  });
+  it("a burst never reorders: each dwell is at least the one above's", () => {
+    const texts = [short, long, short, "ok", long + long, short];
+    const d = chainDwells(texts);
+    d.forEach((ms, i) => {
+      expect(ms).toBeGreaterThanOrEqual(dwellMs(texts[i]!));
+      if (i) expect(ms).toBeGreaterThanOrEqual(d[i - 1]!);
+    });
+  });
+  it("a line that arrives later waits for what is left of the one above", () => {
+    expect(fifoDwellMs(short, 7_000)).toBe(7_000);
+    expect(fifoDwellMs(short, 0)).toBe(dwellMs(short));
+    expect(fifoDwellMs(long, 1)).toBe(dwellMs(long));
+  });
+  it("a life reports the dwell left, 0 once fading", () => {
+    const c = clock();
+    const life = createFloatLife({
+      ms: 3_000,
+      onPhase: () => {},
+      now: c.now,
+      setTimer: c.setTimer,
+      clearTimer: c.clearTimer,
+    });
+    c.advance(1_000);
+    expect(life.remaining()).toBe(2_000);
+    c.advance(2_000);
+    expect(life.phase()).toBe("fade");
+    expect(life.remaining()).toBe(0);
   });
 });

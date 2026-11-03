@@ -64,6 +64,7 @@ function liveNote(e: ProgressEntry) {
 }
 
 function apply(n: TreeNode, e: ProgressEntry, waiting: boolean, repo?: string) {
+  n.live = true;
   n.status = STATUS[e.status];
   n.done = e.status === "done";
   if (waiting) n.needsOwner = true;
@@ -191,7 +192,8 @@ export function liveTreeSource(deps: LiveDeps): TreeSource {
       let stopped = false;
       const push = () => {
         if (stopped || !base) return;
-        onUpdate(overlayProgress(base, view.rows, { repo: deps.repo }).children, { live });
+        // The root itself, so its ≈ summaries (above the first ##) are kept.
+        onUpdate(overlayProgress(base, view.rows, { repo: deps.repo }), { live });
       };
       /** The outline; a failed load is tried again on the next event (the socket opening, a wake). */
       let loading = false;

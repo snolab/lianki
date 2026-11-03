@@ -67,6 +67,8 @@ export type TreeNode = {
   note?: string;
   /** The `≈` lines, by locale (bare `≈` is "zh"). */
   summaries?: Record<string, TreeSummary>;
+  /** Laid over by the live progress hub (lib/progress-tree.ts): an agent reported it. */
+  live?: boolean;
   links: TreeLink[];
   children: TreeNode[];
 };
@@ -323,6 +325,12 @@ export type FrontierOptions = {
   locale?: string;
   /** Titles from the top down to the subtree to look at (default: all). */
   scope?: string[];
+  /**
+   * Only the items the live hub reported (`TreeNode.live`), and a ≈ summary
+   * even for one item: the minimized bar's frontier, which never shows a
+   * bundled outline's stale items or a raw title.
+   */
+  live?: boolean;
 };
 
 /** `[~]` first, then not started, blocked, done: the order inside an `(any order)` parent. */
@@ -392,9 +400,10 @@ function entry(
   pick: Walked,
   key: keyof TreeSummary,
   locales: string[],
+  always = false,
 ): FrontierEntry {
   const e: FrontierEntry = { ...strip(pick), count: group.length, items: group.map(strip) };
-  if (group.length > 1) {
+  if (group.length > 1 || always) {
     const s = summaryFor(group, key, locales);
     if (s) e.summary = s;
   }
@@ -414,7 +423,8 @@ export function frontier(input: TreeNode | TreeNode[], opts: FrontierOptions = {
     root = hit;
   }
   const locales = localeChain(opts.locale);
-  const all = walk(root);
+  const all = opts.live ? walk(root).filter((w) => w.node.live) : walk(root);
+  const one = !!opts.live;
   const out: Frontier = {};
 
   const done = all.filter((w) => w.node.status === "done");
@@ -423,19 +433,19 @@ export function frontier(input: TreeNode | TreeNode[], opts: FrontierOptions = {
     const pick = dated.length
       ? dated.reduce((a, b) => (b.node.doneAt! >= a.node.doneAt! ? b : a))
       : done[done.length - 1];
-    out.done = entry(done, pick!, "done", locales);
+    out.done = entry(done, pick!, "done", locales, one);
   }
 
   const owner = all.filter((w) => w.node.needsOwner && w.node.status !== "done");
   const doing = [...owner, ...all.filter((w) => w.node.status === "doing" && !w.node.needsOwner)];
-  if (doing.length) out.doing = entry(doing, doing[0]!, "doing", locales);
+  if (doing.length) out.doing = entry(doing, doing[0]!, "doing", locales, one);
 
   const next = all.filter((w) => w.node.status === "open" && !w.node.needsOwner);
   if (next.length) {
     // The first not started after the item in progress (when that is an agent's).
     const now = out.doing && !out.doing.node.needsOwner ? all.indexOf(doing[0]!) : -1;
     const pick = next.find((w) => all.indexOf(w) > now) ?? next[0];
-    out.next = entry(next, pick!, "next", locales);
+    out.next = entry(next, pick!, "next", locales, one);
   }
   return out;
 }

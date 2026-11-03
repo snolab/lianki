@@ -5,6 +5,8 @@
  * small display rules, so they can be tested without a DOM.
  */
 
+import { type TreeNode, crumbs, frontier as frontierOf } from "./state-tree";
+
 /** Who is on an item: an agent (with an opaque id slug) or a human. */
 export type Assignee = { type: "agent" | "human"; name: string; id?: string };
 export type FrontierItem = { title: string; path?: string; assignee?: Assignee };
@@ -69,3 +71,30 @@ export function hueOf(name: string): number {
 
 /** The fallback avatar's colour: the name's hue, mid lightness. */
 export const avatarColor = (name: string) => `oklch(0.6 0.13 ${hueOf(name)})`;
+
+/**
+ * The minimized bar's lines from a tree (state-tree.ts frontier()), in the
+ * shape the bar draws (frontier-view.ts). Only what is live: the items an
+ * agent reported to the progress hub (`TreeNode.live`) that are in progress
+ * or wait on the owner — one ▶ line, no ✓ done and no › next. Its text is the
+ * ≈ summary in the page's language (else zh, en), or "In progress" in it,
+ * never an item's title: the bundled outline's items are developer notes,
+ * often finished days ago (the owner, 2026-11-03, asked what "iOS glass: first
+ * card under the toolbar…" was). A tap still lists the items.
+ */
+export function treeFrontier(
+  root: TreeNode | null,
+  opts: { locale?: string; inProgress?: string } = {},
+): Frontier | undefined {
+  if (!root) return undefined;
+  const e = frontierOf(root, { locale: opts.locale, live: true }).doing;
+  if (!e) return undefined;
+  return {
+    doing: {
+      text: e.summary ?? opts.inProgress ?? "In progress",
+      count: e.count,
+      assignee: e.count > 1 ? undefined : e.assignee,
+      items: e.items.map((it) => ({ title: it.title, path: crumbs(it.path), assignee: it.assignee })),
+    },
+  };
+}
