@@ -794,7 +794,7 @@ this is owner-only.
   device, all, never a clips folder beside it), the CLI, enrolment checks,
   and the real server (`--engine fake --speaker fake`) end to end over
   WebSocket. Synthetic tones in temp folders; skipped in CI.
-- `node scripts/dev/voiceprint-qa.mjs [--shots <dir>]`: the panel in a
+- `bun scripts/dev/voiceprint-qa.mjs [--shots <dir>]`: the panel in a
   silent browser on `/harness` against that fake server: the consent card
   (the path, keep-audio off), no microphone and no enrolment on the Mac
   before the tap, the tap opening it, a refused mic dropping it, and the

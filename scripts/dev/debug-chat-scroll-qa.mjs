@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Browser checks for the chat log's scroll position on the local /harness
  * page (the hot widget), in an Android-sized touch viewport (412×915):
@@ -16,7 +16,7 @@
  *
  * Browsers are muted (scripts/qa/silent.mjs); getUserMedia is refused.
  *
- *   node scripts/dev/debug-chat-scroll-qa.mjs
+ *   bun scripts/dev/debug-chat-scroll-qa.mjs
  */
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";

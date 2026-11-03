@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * The bottom island never moves when the chat bar changes state
  * (docs/bottom-nav.md, "Sharing the bottom edge with the chat bar"). On the
@@ -11,7 +11,7 @@
  *
  * Muted (silent.mjs); getUserMedia is stubbed, so nothing is recorded.
  *
- *   node scripts/dev/nav-island-chat-qa.mjs
+ *   bun scripts/dev/nav-island-chat-qa.mjs
  */
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";

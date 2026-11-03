@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Browser checks for the chat input's + menu (packages/debug-chat/src/
  * AttachMenu.tsx; docs/dev-debug-widget.md, "The + menu") on the local
@@ -14,7 +14,7 @@
  *
  * Silent (muted browser); getUserMedia refused.
  *
- *   node scripts/dev/debug-chat-attach-qa.mjs [--shots <dir>]
+ *   bun scripts/dev/debug-chat-attach-qa.mjs [--shots <dir>]
  *     --shots: light and dark, iPhone and Android, menu open and chip shown
  */
 import { spawn } from "node:child_process";

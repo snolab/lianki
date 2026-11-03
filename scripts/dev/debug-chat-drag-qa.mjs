@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Browser checks for a vertical drag on the chat's empty input (the
  * full-screen log) on the local /harness page, with the hot widget, at
@@ -17,7 +17,7 @@
  *
  * getUserMedia is refused; browsers are muted (scripts/qa/silent.mjs).
  *
- *   node scripts/dev/debug-chat-drag-qa.mjs [--shots <dir>]
+ *   bun scripts/dev/debug-chat-drag-qa.mjs [--shots <dir>]
  */
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";

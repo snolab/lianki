@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * qa:all — local "test everything" against the **deployed D1/Workers path**.
  *
@@ -25,6 +25,11 @@
  * Prereqs: a Cloudflare-capable wrangler (devDependency), Playwright chromium
  * (`bunx playwright install chromium`), and Node ≥ 22.12 (older Node mis-handles
  * node:sqlite null rows — see the test-stack notes).
+ *
+ * Runtimes: this script and the qa-*.mjs suites run on Bun. The OpenNext build,
+ * wrangler and the `playwright test` runner still run on Node (their bins
+ * have a node shebang, which bunx honours) — see DEVELOPMENT.md, "Bun and
+ * Node".
  */
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -185,11 +190,11 @@ log("server ready");
 
 // ── 5. Run every suite; keep going on failure, report at the end ──────────────
 const suites = [
-  ["API  (qa-api)", "node", ["scripts/qa/qa-api.mjs"], { QA_BASE: BASE }],
-  ["UI   (qa-ui)", "node", ["scripts/qa/qa-ui.mjs"], { QA_BASE: BASE }],
-  ["WORDS (qa-words)", "node", ["scripts/qa/qa-words.mjs"], { QA_BASE: BASE }],
-  ["READ EPUB (qa-read-epub)", "node", ["scripts/qa/qa-read-epub.mjs"], { QA_BASE: BASE }],
-  ["READ PLAY (qa-read-play)", "node", ["scripts/qa/qa-read-play.mjs"], { QA_BASE: BASE }],
+  ["API  (qa-api)", "bun", ["scripts/qa/qa-api.mjs"], { QA_BASE: BASE }],
+  ["UI   (qa-ui)", "bun", ["scripts/qa/qa-ui.mjs"], { QA_BASE: BASE }],
+  ["WORDS (qa-words)", "bun", ["scripts/qa/qa-words.mjs"], { QA_BASE: BASE }],
+  ["READ EPUB (qa-read-epub)", "bun", ["scripts/qa/qa-read-epub.mjs"], { QA_BASE: BASE }],
+  ["READ PLAY (qa-read-play)", "bun", ["scripts/qa/qa-read-play.mjs"], { QA_BASE: BASE }],
   [
     "SYNC (db-sync-matrix)",
     "bunx",

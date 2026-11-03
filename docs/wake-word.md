@@ -189,7 +189,7 @@ on the Mac now, behind the KWS hit: [local-stt.md](local-stt.md), "Voiceprint".
 | Mode, rejections, lazy load, never-deaf fallback, `__lkMic.wake(mode)` | `mic-session.ts` |
 | The button: dashed violet ring (no text), zh/ja/en strings with translator context | `MicButton.tsx`, `ui-strings.ts` (`wakeStrings`) |
 | The chat lane: `{type: "wake", mode: "active" \| "passive" \| "ignored"}`, relayed to the thread's pages, not stored; each owner line carries `wake` (its mode) | `lib/dev-eval.ts`, `workers/push/src/debug.ts`, `app/components/DebugEval.tsx`, `bun scripts/dev/eval.ts wake <mode>` |
-| Browser end to end (fake mic from WAV files, nothing played) | `node scripts/dev/wake-word-qa.mjs --clip <wav> [--negative <wav>] [--save sent.wav]` |
+| Browser end to end (fake mic from WAV files, nothing played) | `bun scripts/dev/wake-word-qa.mjs --clip <wav> [--negative <wav>] [--save sent.wav]` |
 
 - **Loading:** nothing loads until the mic first goes passive. Then about
   12 MB of runtime (jsDelivr) and 13 MB of model (Hugging Face) are

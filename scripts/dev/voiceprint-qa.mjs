@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Browser checks for the voiceprint panel (packages/debug-chat/src/VoiceprintPanel.tsx;
  * docs/local-stt.md, "Voiceprint") on the local /harness page, against the
@@ -18,7 +18,7 @@
  *     a refused mic drops it there
  *   - a voice line tagged "me" (verified by the hub) shows the mark; "other" does not
  *
- *   node scripts/dev/voiceprint-qa.mjs [--shots <dir>]   (light/dark at 390 px)
+ *   bun scripts/dev/voiceprint-qa.mjs [--shots <dir>]   (light/dark at 390 px)
  */
 import { spawn } from "node:child_process";
 import { generateKeyPairSync, randomBytes, sign } from "node:crypto";

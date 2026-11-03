@@ -35,10 +35,10 @@ Run this command to automatically translate missing keys:
 export OPENAI_API_KEY=your-openai-key-here
 
 # Generate translations for all missing keys
-npx intlayer fill
+bunx intlayer fill
 
 # Or only translate unpushed changes
-npx intlayer fill --unpushed --mode fill
+bunx intlayer fill --unpushed --mode fill
 ```
 
 ### Option 2: Intlayer Dashboard (Recommended)
@@ -116,7 +116,7 @@ Add to your GitHub Actions workflow:
 - name: Generate translations
   env:
     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-  run: npx intlayer fill --unpushed --mode fill
+  run: bunx intlayer fill --unpushed --mode fill
 ```
 
 ## Learn More
