@@ -54,7 +54,7 @@ belongs to its list): new lists are appended after them.
   with the most senses is used (以 yǐ, not Yǐ "Israel"). `zh-hsk-7-9` is
   the combined advanced band, with 5,606 words.
 
-## Frequency bands: fr, es, de, en, ko, it, pt, ru, he (`<lang>-freq-<n>`)
+## Frequency bands: fr, es, de, en, ko, it, pt, ru, he, fi (`<lang>-freq-<n>`)
 
 - Ranks come from [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords),
   `content/2018/<lang>/<lang>_full.txt` (list entries from its top 50,000
@@ -73,7 +73,8 @@ belongs to its list): new lists are appended after them.
   words are covered; proper names (tokens Wiktionary has only as names) are
   left out of the count. Tokens past rank 200,000 count as not covered. The
   figures are estimates from this one subtitle corpus. Reachable lines: English and Spanish/Portuguese up to 95%; French,
-  German, Italian, Russian 90%; Hebrew 80% (data ceiling 89.6%); Korean 50%
+  German, Italian, Russian 90%; Hebrew 80% (data ceiling 89.6%); Finnish 80%
+  (ceiling 88.1%); Korean 50%
   (ceiling 72.9%: eojeol tokens fold to lemmas only partly); Chinese 50%.
 - Hebrew (`he-freq-*`, 2026-11-03): ranks from FrequencyWords `he`
   (CC BY-SA 4.0), meanings from the kaikki.org Hebrew extract of English
@@ -85,6 +86,21 @@ belongs to its list): new lists are appended after them.
   leads with a usage note: את, עם, כל, אם, אין, יש, הם, אותו, אותה, לו, כדי.
   Examples: Wiktionary usage examples, then Tatoeba Hebrew sentences
   (CC BY 2.0 FR).
+- Finnish (`fi-freq-1` … `fi-freq-6`, 2026-11-04): ranks from FrequencyWords
+  `fi` (CC BY-SA 4.0), meanings from the kaikki.org Finnish extract of English
+  Wiktionary (CC BY-SA 4.0 / GFDL). Finnish is highly inflected, so the
+  frequency list holds many forms of each word (talossa, talon, talot): they
+  fold to their lemma through Wiktionary's form-of entries and its
+  declension and conjugation tables (`olen`, `on`, `oli` → `olla`; `en` →
+  `ei`). Lists 1–6 reach 83.0% of running words; all 9,624 lemmas the top
+  50,000 tokens fold to reach 88.1%, so the 50% and 80% lines are offered and
+  90% is past this corpus's ceiling (a long tail of rare forms; 4.2% of
+  running words are past rank 200,000). Hand-written backs for a few top
+  words that Wiktionary leads with a rarer homograph or a usage note: ei, et,
+  mitä, sitä, siitä, voi, kaikki, sitten, kyllä, kiitos, juuri. Examples:
+  Wiktionary usage examples, then Tatoeba Finnish sentences (CC BY 2.0 FR;
+  per-sentence credits in `credits/tatoeba-fi.tsv`). No scenario phrase
+  decks yet (they are hand-curated; a follow-up).
 - Glosses are English Wiktionary content, taken from the per-language
   [kaikki.org](https://kaikki.org/dictionary/) extracts made with wiktextract
   (Tatu Ylonen). Wiktionary text is dual-licensed CC BY-SA 4.0 and GFDL.
@@ -456,7 +472,7 @@ SOFTWARE.
 - Japanese has no frequency lists: FrequencyWords `ja` is not segmented into
   words (verb stems such as 言, 行, 知 stand alone), so it cannot rank words.
 
-## Lemma files: French (`lemma/fr.txt`)
+## Lemma files: French (`lemma/fr.txt`), Finnish (`lemma/fi.txt`)
 
 Used by `/read` (not a word list): which words the dictionary has, and which
 inflected forms belong to which headword, so a book's "regarda" or "yeux"
@@ -478,11 +494,19 @@ the dictionary counts as "new" rather than "unrecognised".
   (`cœur` → `coeur`), forms written as a suffix of the headword.
 - The file is redistributed under CC BY-SA 4.0. Rebuild:
   `scripts/words/build-lemmas.ts` (commands in its header).
+- Finnish (2026-11-04): the same, from the kaikki.org Finnish extract
+  ([kaikki.org/dictionary/Finnish](https://kaikki.org/dictionary/Finnish/),
+  CC BY-SA 4.0 and GFDL). Attribution: "Finnish headwords and inflected
+  forms: English Wiktionary (en.wiktionary.org) contributors, via kaikki.org".
+  A Finnish table has about 150 forms per word (cases, numbers, possessive
+  suffixes, clitics), so a headword keeps only the forms that occur among the
+  top 200,000 words of FrequencyWords `fi` (`FORMS_IN_FREQ=1`): 164,017
+  headwords, 129,981 forms, 2.7 MB.
 
 ## Licensing summary
 
 Lists and files built from CC BY-SA sources (all frequency bands including
-Hebrew and Chinese, the French lemma file, the HSK lists via
+Hebrew, Finnish and Chinese, the French and Finnish lemma files, the HSK lists via
 CC-CEDICT, the ordering of the JLPT lists, and the NGSL, NAWL and TOEIC
 Service List decks) are redistributed under CC BY-SA 4.0 with the attribution
 above. The exam decks' word lists from ECDICT are MIT (notice above); their

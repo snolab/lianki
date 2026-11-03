@@ -10,12 +10,13 @@
  * Wiktionary in SOURCES.md).
  *
  *   # the detailed exports carry each sentence's author
- *   for t in fra spa deu kor ita por rus heb jpn cmn eng; do
+ *   for t in fra spa deu kor ita por rus heb fin jpn cmn eng; do
  *     curl -sfL https://downloads.tatoeba.org/exports/per_language/$t/${t}_sentences_detailed.tsv.bz2 \
  *       | bunzip2 > $RAW/tatoeba-detailed/${t}_sentences_detailed.tsv
  *   done
  *   # plus $RAW/tatoeba/<code>-eng_links.tsv (build-word-lists.ts step 5)
  *   bun scripts/words/tatoeba-credits.ts $RAW public/words
+ *   # WORDS_ONLY=fi,he… credits only those languages (others' files are kept)
  *
  * Downloads are untrusted data: only split and compared, never executed.
  */
@@ -50,7 +51,9 @@ function detailed(code: string, want: Set<string>) {
 }
 
 mkdirSync(join(OUT, "credits"), { recursive: true });
+const only = process.env.WORDS_ONLY?.split(",");
 for (const lang of new Set(lists.map((l) => l.lang))) {
+  if (only && !only.includes(lang)) continue;
   const code = TATOEBA_CODE[lang];
   if (!code) continue;
   const pairs: [string, string][] = [];

@@ -24,6 +24,7 @@ export const TATOEBA_CODE: Record<string, string> = {
   ja: "jpn",
   zh: "cmn",
   he: "heb",
+  fi: "fin",
 };
 
 const MAX_EX = 80;

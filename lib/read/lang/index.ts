@@ -15,6 +15,7 @@ import ca from "./ca.json";
 import de from "./de.json";
 import en from "./en.json";
 import es from "./es.json";
+import fi from "./fi.json";
 import fr from "./fr.json";
 import it from "./it.json";
 import ja from "./ja.json";
@@ -69,6 +70,7 @@ const FILES: [string, LangData][] = [
   ["ko", ko as LangData],
   ["zh", zh as LangData],
   ["ru", ru as LangData],
+  ["fi", fi as LangData],
   ["und", und as LangData],
 ];
 
