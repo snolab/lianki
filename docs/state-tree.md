@@ -178,7 +178,7 @@ Critical path: swipe fix → verify on ?swipe=native → switch the flag; bar �
 ## /words
 ≈ done: 精益求精
 ≈en done: Polished again
-- [x] Audio prefetch; tap reads word → meaning → example (#291)
+- [x] Audio prefetch; tap reads word → meaning → example (#291); example first since 2026-11-03: word → example → meaning
 - [x] Glass toolbar + help, tablet glass nav, sleeping tray, 80% over-scroll (#293) (done 2026-10-30)
 - [x] Faded "back" slip stays opaque (#294)
 - [x] iOS glass: first card under the toolbar; labels behind the card; page-scroll lock (#299) (done 2026-10-30T01:12)

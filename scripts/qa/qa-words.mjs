@@ -1149,15 +1149,36 @@ try {
         // The island's own rim (its padding, no button), or its small
         // capsule while it is shrunk: a touch that changes nothing on the list.
         const rim = await m.evaluate(() => {
-          const nav = document.querySelector("[data-nav-island] nav");
-          if (!nav) return null;
-          const b = nav.getBoundingClientRect();
-          const p = { x: b.left + 3, y: b.top + b.height / 2 };
-          const el = document.elementFromPoint(p.x, p.y);
-          if (el && el.closest("[data-nav-island]")) return p;
-          const cap = document.querySelector("[data-nav-island] > button");
-          const c = cap?.getBoundingClientRect();
-          return c ? { x: c.left + c.width / 2, y: c.top + c.height / 2 } : null;
+          // The toolbar's empty space: the point farthest from any of its
+          // links and buttons (Chrome's touch adjustment moves a tap near one
+          // onto it). The bottom island is no good: a tap on its capsule
+          // grows it under the finger, and the click lands on a button.
+          const top = document.querySelector("[data-words-top]");
+          if (!top) return null;
+          const b = top.getBoundingClientRect();
+          const hits = [...top.querySelectorAll("a, button, input, [role=switch]")].map((e) =>
+            e.getBoundingClientRect(),
+          );
+          const gap = (x, y) =>
+            Math.min(
+              99,
+              ...hits.map((r) =>
+                Math.hypot(
+                  Math.max(r.left - x, 0, x - r.right),
+                  Math.max(r.top - y, 0, y - r.bottom),
+                ),
+              ),
+            );
+          let p = null;
+          let best = 0;
+          for (let x = b.left + 2; x <= b.right - 2; x += 2)
+            for (let y = b.top + 2; y <= b.bottom - 2; y += 4) {
+              const el = document.elementFromPoint(x, y);
+              if (!el?.closest("[data-words-top]") || el.closest("a, button, input")) continue;
+              const d = gap(x, y);
+              if (d > best) [best, p] = [d, { x, y }];
+            }
+          return best >= 8 ? p : null;
         });
         const hidden = await m
           .locator("[data-words-help]")
@@ -1343,15 +1364,21 @@ try {
         (await m.locator("[data-slip-sheet] [data-sheet-tags] span").count()) > 0,
         `${tag} the sheet shows the word's tags`,
       );
-      // One row = the whole card: front, then the back (meaning, then the
-      // example), in the row's fixed height, so the windowing stays exact.
-      const unified = await mrows.nth(0).evaluate((el) => ({
-        example: el.querySelectorAll("[data-row-back] [data-row-example]").length,
-        h: Math.round(el.getBoundingClientRect().height),
-      }));
+      // One row = the whole card: front, then the back (the example, then
+      // the meaning: example first, owner 2026-11-03), in the row's fixed
+      // height, so the windowing stays exact.
+      const unified = await mrows.nth(0).evaluate((el) => {
+        const back = el.querySelector("[data-row-back]");
+        const ex = back?.querySelector("[data-row-example]");
+        return {
+          example: ex ? 1 : 0,
+          exampleFirst: !!ex && !!back.firstElementChild?.contains(ex),
+          h: Math.round(el.getBoundingClientRect().height),
+        };
+      });
       check(
-        unified.example === 1 && unified.h === 44,
-        `${tag} the row shows the example under the meaning, at the fixed height (${JSON.stringify(unified)})`,
+        unified.example === 1 && unified.exampleFirst && unified.h === 44,
+        `${tag} the row shows the example above the meaning, at the fixed height (${JSON.stringify(unified)})`,
       );
       await m.getByRole("button", { name: "Cancel" }).click();
       check((await m.locator("[data-slip-sheet]").count()) === 0, `${tag} Cancel closes the sheet`);

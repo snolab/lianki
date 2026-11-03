@@ -253,6 +253,32 @@ ruby rt {
   /* padding + stamp column + gaps + the fitted term width */
   --node-x: calc(0.5rem + 1rem + 0.75rem + var(--term-w, 8rem));
 }
+/* Familiarity marks in an example (lib/words/example-marks.ts), the reader's
+ * scheme: the line style says the level (solid = weak, dashed = learning),
+ * the tint repeats it; mastered words and words without a card are plain. */
+.lk-fam-weak,
+.lk-fam-learning {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
+  text-decoration-skip-ink: none;
+}
+.lk-fam-weak {
+  text-decoration-style: solid;
+  text-decoration-color: oklch(0.6 0.17 35);
+}
+.lk-fam-learning {
+  text-decoration-style: dashed;
+  text-decoration-color: oklch(0.55 0.12 250 / 0.8);
+}
+@media (prefers-color-scheme: dark) {
+  .lk-fam-weak {
+    text-decoration-color: oklch(0.75 0.15 40);
+  }
+  .lk-fam-learning {
+    text-decoration-color: oklch(0.75 0.1 250 / 0.8);
+  }
+}
 /* Focus = this slip's cords come loose (.slip-cords) and the slip lifts a
  * little off its neighbours. */
 .slip-loose {
@@ -412,6 +438,11 @@ ruby rt {
 .slip-blank * {
   color: transparent;
 }
+/* Marks would give the hidden example away. */
+.slip-blank .lk-fam-weak,
+.slip-blank .lk-fam-learning {
+  text-decoration-line: none;
+}
 @media (hover: hover) {
   .group:hover .slip-blank {
     color: inherit;
@@ -420,6 +451,10 @@ ruby rt {
   }
   .group:hover .slip-blank * {
     color: inherit;
+  }
+  .group:hover .slip-blank .lk-fam-weak,
+  .group:hover .slip-blank .lk-fam-learning {
+    text-decoration-line: underline;
   }
 }
 
